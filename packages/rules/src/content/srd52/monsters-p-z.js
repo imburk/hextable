@@ -1463,18 +1463,18 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 19,
+                largest: "large"
               },
               {
-                condition: "restrained"
-              },
-              {
-                manual: "Grapple escape DC 19, and only if the target is Large or smaller. The Restrained condition lasts only until the grapple ends."
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "A melee attack that grapples and restrains a Large or smaller target (escape DC 19)."
+        text: "A reach attack that holds the target and Restrains it while it is held."
       },
       {
         id: "tail-stinger",
@@ -2084,18 +2084,18 @@ export const monsters = [
                 type: "fire"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 17,
+                largest: "large"
               },
               {
-                condition: "restrained"
-              },
-              {
-                manual: "Grapple escape DC 17, and only if the target is Large or smaller. The Restrained condition lasts only until the grapple ends."
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "A melee attack with extra fire damage that grapples and restrains a Large or smaller target (escape DC 17)."
+        text: "A bite with extra fire damage that holds and Restrains the target while it is held."
       }
     ],
     tier: "assist",
@@ -2191,18 +2191,18 @@ export const monsters = [
                 type: "slashing"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 19,
+                largest: "huge"
               },
               {
-                condition: "restrained"
-              },
-              {
-                manual: "Grapple escape DC 19, only if the target is Huge or smaller, held by both talons. The Restrained condition lasts only until the grapple ends."
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "A melee attack that grapples and restrains a Huge or smaller target (escape DC 19)."
+        text: "A melee attack that holds the target in both talons and Restrains it while it is held."
       }
     ],
     tier: "assist",
@@ -2295,18 +2295,21 @@ export const monsters = [
             bonus: 7,
             onHit: [
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 14,
+                holds: 6
               },
               {
-                condition: "poisoned"
+                condition: "poisoned",
+                whileHeld: true
               },
               {
-                manual: "Grapple escape DC 14, from one of six tentacles; the target stays Poisoned until the grapple ends. A tentacle can be attacked (AC 20, HP 10, Immunity to Poison and Psychic damage); destroying it frees the creature, deals no damage to the roper, and it regrows at the start of the roper's next turn."
+                manual: "A tentacle can be attacked (AC 20, HP 10, Immunity to Poison and Psychic damage); destroying it frees the creature, deals no damage to the roper, and it regrows at the start of the roper's next turn."
               }
             ]
           }
         ],
-        text: "A long-reach attack that grapples and poisons the target; it deals no damage itself."
+        text: "A long-reach attack that holds the target with one of six tentacles and Poisons it while it is held; it deals no damage itself."
       },
       {
         id: "reel",
@@ -2656,18 +2659,18 @@ export const monsters = [
                 type: "fire"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 14,
+                largest: "large"
               },
               {
-                condition: "restrained"
-              },
-              {
-                manual: "Grapple escape DC 14, and the Restrained condition lasts only until the grapple ends."
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "Strength save (DC 15) for a Large or smaller creature within 10 feet, or it takes bludgeoning and fire damage and is grappled and restrained."
+        text: "Squeezes a creature within 10 feet, hurting it and holding it Restrained."
       }
     ],
     tier: "assist",
@@ -3141,6 +3144,13 @@ export const monsters = [
         modifiers: [],
         text: "When it takes lightning damage, it regains that many Hit Points. The DM applies this."
       },
+      {
+        id: "engulf-carry",
+        name: "Engulf (Carrying)",
+        modifiers: [],
+        dragFree: true,
+        text: "Moving a creature it has engulfed costs it no extra movement. This comes from the Engulf action."
+      },
     ],
     actions: [
       {
@@ -3195,21 +3205,25 @@ export const monsters = [
             half: false,
             onFail: [
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 14,
+                largest: "medium"
               },
               {
-                condition: "blinded"
+                condition: "blinded",
+                whileHeld: true
               },
               {
-                condition: "restrained"
+                condition: "restrained",
+                whileHeld: true
               },
               {
-                manual: "The target is pulled into the mound's space (escape DC 14). While grappled it is Blinded and Restrained, and takes 10 (3d6) lightning damage at the start of each of its turns. The grappled target moves with the mound at no extra cost, and the mound can hold only one creature this way."
+                manual: "The target is pulled into the mound's space and takes 10 (3d6) lightning damage at the start of each of its turns while it is held."
               }
             ]
           }
         ],
-        text: "Strength save (DC 15) for a Medium or smaller creature within 5 feet, or it is engulfed."
+        text: "Engulfs a creature within 5 feet. While it is held, it is Blinded and Restrained."
       }
     ],
     tier: "assist",
@@ -5396,18 +5410,20 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 20
               },
               {
-                condition: "restrained"
+                condition: "restrained",
+                whileHeld: true
               },
               {
-                manual: "Grapple escape DC 20. The Restrained condition lasts only until the grapple ends, and while Restrained the target cannot teleport."
+                manual: "While Restrained this way the target cannot teleport."
               }
             ]
           }
         ],
-        text: "A melee attack that grapples and restrains the target (escape DC 20)."
+        text: "A reach attack that holds the target and Restrains it while it is held."
       },
       {
         id: "claw",
@@ -6346,15 +6362,15 @@ export const monsters = [
                 type: "slashing"
               },
               {
-                condition: "grappled"
-              },
-              {
-                manual: "Grapple escape DC 13, from one of two claws, only if the target is Medium or smaller."
+                condition: "grappled",
+                escape: 13,
+                largest: "medium",
+                holds: 2
               }
             ]
           }
         ],
-        text: "A melee attack that grapples a Medium or smaller target (escape DC 13)."
+        text: "A melee attack that holds the target in one of two claws."
       },
       {
         id: "bite",
@@ -6519,15 +6535,15 @@ export const monsters = [
                 type: "necrotic"
               },
               {
-                condition: "grappled"
-              },
-              {
-                manual: "Grapple escape DC 14, from one of two hands, only if the target is Large or smaller."
+                condition: "grappled",
+                escape: 14,
+                largest: "large",
+                holds: 2
               }
             ]
           }
         ],
-        text: "A melee attack with extra necrotic damage that grapples a Large or smaller target (escape DC 14)."
+        text: "A melee attack with extra necrotic damage that holds the target in one of two hands."
       },
       {
         id: "bite",
@@ -10565,18 +10581,21 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 17,
+                largest: "large"
               },
               {
-                condition: "restrained"
+                condition: "restrained",
+                whileHeld: true
               },
               {
-                manual: "Grapple escape DC 17, only if the target is Large or smaller. While Grappled the target is Restrained and cannot be targeted by the tyrannosaurus's Tail."
+                manual: "While Grappled the target cannot be targeted by the tyrannosaurus's Tail."
               }
             ]
           }
         ],
-        text: "A melee attack that grapples and restrains a Large or smaller target (escape DC 17)."
+        text: "A bite that holds the target and Restrains it while it is held. A held target can't be targeted by the tyrannosaurus's Tail; the DM applies this."
       },
       {
         id: "tail",

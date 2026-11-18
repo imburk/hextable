@@ -2055,15 +2055,17 @@ export const monsters = [
                 type: "thunder"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 13,
+                largest: "large"
               },
               {
-                manual: "Targets one Large or smaller creature in the stalker's space. Escape DC 13. While Grappled the target cannot cast spells with a Verbal component and takes 2d6 Thunder damage at the start of each of the stalker's turns."
+                manual: "While Grappled the target cannot cast spells with a Verbal component and takes 2d6 Thunder damage at the start of each of the stalker's turns."
               }
             ]
           }
         ],
-        text: "A whirlwind that grapples a Large or smaller creature."
+        text: "A whirlwind that grabs a creature in the stalker's space."
       }
     ],
     tier: "assist",
@@ -2665,18 +2667,18 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 20,
+                holds: 10
               },
               {
-                condition: "restrained"
-              },
-              {
-                manual: "Escape DC 20; the target is Grappled by one of ten tentacles and Restrained until the grapple ends."
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "A very long reach attack that grapples and restrains."
+        text: "A very long reach attack. It holds the target with one of ten tentacles and Restrains it while it is held."
       },
       {
         id: "fling",
@@ -3924,18 +3926,18 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "grappled"
+                condition: "grappled",
+                escape: 14,
+                largest: "medium"
               },
               {
-                condition: "restrained"
-              },
-              {
-                manual: "Targets a Medium or smaller creature. Escape DC 14; the target is Restrained until the grapple ends."
+                condition: "restrained",
+                whileHeld: true
               }
             ]
           }
         ],
-        text: "Coils around a Medium or smaller creature within 5 feet."
+        text: "Coils around a creature within 5 feet and holds it Restrained."
       }
     ],
     tier: "assist",
@@ -4484,6 +4486,7 @@ export const monsters = [
             attack: "melee",
             kind: "weapon",
             bonus: 5,
+            advantageIf: ["target.grappledBySelf"],
             onHit: [
               {
                 damage: "1d8+3",
@@ -4494,12 +4497,12 @@ export const monsters = [
                 type: "acid"
               },
               {
-                manual: "Against a target Grappled by the mimic the attack has Advantage and the piercing damage is 2d8+3 instead."
+                manual: "Against a target Grappled by the mimic the piercing damage is 2d8+3 instead."
               }
             ]
           }
         ],
-        text: "A bite with extra acid damage, better against a grappled target."
+        text: "A bite with extra acid damage, with Advantage against a creature the mimic is grappling."
       },
       {
         id: "pseudopod",
@@ -4524,15 +4527,15 @@ export const monsters = [
                 type: "acid"
               },
               {
-                condition: "grappled"
-              },
-              {
-                manual: "Grapples a Large or smaller target (escape DC 13, with Disadvantage on the check)."
+                condition: "grappled",
+                escape: 13,
+                largest: "large",
+                escapeDis: true
               }
             ]
           }
         ],
-        text: "A blow that grapples a Large or smaller target."
+        text: "A blow that grabs the target. Checks to escape have Disadvantage."
       }
     ],
     tier: "assist",
@@ -6012,15 +6015,15 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "grappled"
-              },
-              {
-                manual: "Grapples a Medium or smaller target (escape DC 13) from one of two tentacles."
+                condition: "grappled",
+                escape: 13,
+                largest: "medium",
+                holds: 2
               }
             ]
           }
         ],
-        text: "A reach attack that grapples a Medium or smaller target."
+        text: "A reach attack that holds the target with one of two tentacles."
       },
       {
         id: "tentacle-slam",
