@@ -19,7 +19,7 @@ export function bringBackSpells(s, kept) {
 }
 
 // ---------- scenes ----------
-export { GRIDS, DM, U1, U2, U3, ok, spawn };
+export { GRIDS, DM, U1, U2, U3, ok, spawn, table };
 export const json = (x) => JSON.stringify(x);
 // The cells at exactly `d` cells from a creature, in a fixed order.
 export function ring(s, id, d) {

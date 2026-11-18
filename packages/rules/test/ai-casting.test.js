@@ -11,7 +11,7 @@ import { aimArea, apply, current } from "../src/engine.js";
 import { gridOf } from "../src/grid.js";
 import { apart as apartFor } from "../src/space.js";
 import { view, viewEvents } from "../src/view.js";
-import { DM, GRIDS, U1, U2, U3, caughtBy, fits, goblinAt, json, ok, put, ring, scene, spawn, standIn, step } from "./ai-casting-kit.js";
+import { DM, GRIDS, U1, U2, U3, caughtBy, fits, goblinAt, json, ok, put, ring, scene, spawn, standIn, step, table } from "./ai-casting-kit.js";
 
 const WIZARD = "wizard", CLERIC = "cleric", FIGHTER = "fighter";
 const spellsOf = (id, s) => s.entities[id].spells;
@@ -163,5 +163,129 @@ for (const grid of GRIDS) {
       assert.ok(going(), `still running after her turn ${turns + 1}`);
     }
     assert.ok(sent.every((a) => a.spell !== "shield-of-faith"), "it never casts another Concentration spell");
+  });
+}
+
+const PLAYERS = [U1, U2, U3];
+const seen = (s, r) => PLAYERS.map((u) => json([viewEvents(r.events, s, u), view(s, u)]));
+for (const grid of GRIDS) {
+  test(`${grid}: hidden information: a goblin the party does not know of beside the cone's best spot changes nothing the AI chooses or any player sees, until the cast finds it`, () => {
+    const make = (hereAtCone) => {
+      const s = table(grid);
+      ok(apply(s, { type: "setting", key: "unseenTurns", value: "quiet" }, DM));
+      const w = s.entities[WIZARD], G = gridOf(s.map);
+      const A = ring(s, WIZARD, 2).find((h) => fits(s, "goblin-warrior", h));
+      const g1 = spawn(s, "goblin-warrior", A);
+      const B = G.range(A, 1).filter((h) => G.dist(h, w.pos) >= 2 && G.dist(h, w.pos) <= 3 && fits(s, "goblin-warrior", h)).find((h) => { const t = structuredClone(s); spawn(t, "goblin-warrior", h); return caughtBy(t, WIZARD, "burning-hands", t.entities[g1].pos, SPELLS).length === 2; });
+      const g2 = spawn(s, "goblin-warrior", B);
+      // The lurker: in the cone behind the two in one world, far off in the other.
+      const inCone = G.range(A, 2).filter((h) => fits(s, "goblin-warrior", h)).find((h) => { const t = structuredClone(s); spawn(t, "goblin-warrior", h); return caughtBy(t, WIZARD, "burning-hands", t.entities[g1].pos, SPELLS).length === 3; });
+      assert.ok(inCone, "a place in the cone for the lurker");
+      const far = ring(s, WIZARD, 10).find((h) => fits(s, "goblin-warrior", h));
+      const lurker = spawn(s, "goblin-warrior", hereAtCone ? inCone : far, { name: "Lurker" });
+      s.entities[lurker].hiding = { dc: 30 };
+      return { s, g1, g2, lurker };
+    };
+    const A = make(true), B = make(false);
+    assert.equal(A.lurker, B.lurker, "the same ids in both worlds");
+    const fa = ok(apply(A.s, { type: "startEncounter", center: A.s.entities[WIZARD].pos, radius: 24 }, DM)), fb = ok(apply(B.s, { type: "startEncounter", center: B.s.entities[WIZARD].pos, radius: 24 }, DM));
+    assert.ok(A.s.encounter.order.some((o) => o.id === A.lurker) && A.s.entities[A.lurker].hiding, "the lurker is in the fight, hiding");
+    assert.deepEqual(seen(A.s, fa), seen(B.s, fb), "the fight starts the same for every player");
+    for (let i = 0; i < 80 && current(A.s) !== WIZARD; i++) {
+      const id = current(A.s);
+      assert.equal(current(B.s), id);
+      assert.deepEqual(seen(A.s, ok(apply(A.s, { type: "endTurn", actor: id }, DM))), seen(B.s, ok(apply(B.s, { type: "endTurn", actor: id }, DM))), `${id}'s turn`);
+    }
+    assert.equal(current(B.s), WIZARD);
+    const a = aiStep(A.s, WIZARD), b = aiStep(B.s, WIZARD);
+    assert.deepEqual(a, b, "the same first action in both worlds");
+    assert.equal(a.spell, "burning-hands");
+    assert.deepEqual(PLAYERS.map((u) => json(view(A.s, u))), PLAYERS.map((u) => json(view(B.s, u))), "every player sees the same before it");
+    const ra = ok(apply(A.s, a, DM)), rb = ok(apply(B.s, b, DM));
+    // In A the cone catches the lurker as the engine's area rule has it (the AI did not know it was there); in B it is far off.
+    assert.ok(A.s.entities[A.lurker].hp < 10 || A.s.entities[A.lurker].dead, "the lurker was caught by the cone in A");
+    assert.equal(B.s.entities[B.lurker].hp, 10, "and not in B");
+    assert.ok(ra.events.some((e) => e.type === "damage" && (e.id === A.lurker || e.target === A.lurker)), json(ra.events.filter((e) => e.type === "damage")));
+  });
+}
+
+test("determinism: the same state gives the same answer on two copies, and the AI changes nothing it reads", () => {
+  for (const grid of GRIDS) {
+    for (const [id, make] of [
+      [WIZARD, (s) => { goblinAt(s, WIZARD, 2); goblinAt(s, WIZARD, 2, 1); goblinAt(s, WIZARD, 9); }],
+      [CLERIC, (s) => { goblinAt(s, CLERIC, 8); put(s, FIGHTER, ring(s, CLERIC, 3)[0]); down(s, FIGHTER); }],
+    ]) {
+      const s = scene(grid, make, id), before = json(s);
+      const one = aiStep(structuredClone(s), id), two = aiStep(structuredClone(s), id), here = aiStep(s, id);
+      assert.deepEqual(one, two);
+      assert.deepEqual(one, here);
+      assert.equal(json(s), before, "the state it reads is unchanged");
+    }
+  }
+});
+
+test("who is played by the casting AI, and what stops it", () => {
+  const s = scene("hex", (s) => goblinAt(s, WIZARD, 12), WIZARD);
+  const e = s.entities[WIZARD], foes = Object.values(s.entities).filter((o) => o.side === "foe");
+  assert.equal(casterStep(s, e, foes)?.spell, "fire-bolt");
+  const was = (f) => { const t = structuredClone(s); f(t, t.entities[WIZARD]); return casterStep(t, t.entities[WIZARD], foes.map((o) => t.entities[o.id])); };
+  assert.equal(was((t, w) => { w.spells = []; }), null, "no spells");
+  assert.equal(was((t, w) => { w.actions = [{ id: "x" }]; }), null, "a creature with actions is played from them");
+  assert.equal(was((t, w) => { w.form = { name: "Wolf" }; }), null, "not in a form");
+  assert.equal(was((t, w) => { t.effects = [{ id: "fx1", source: WIZARD, name: "Rage", noSpells: true, parts: [] }]; }), null, "not under an effect that stops spells");
+  assert.equal(was((t, w) => { w.cond.stunned = true; }), null, "not Incapacitated");
+  assert.equal(was((t) => { t.encounter.budget.action = 0; }), null, "no action left");
+  assert.equal(was((t) => { t.encounter.budget.attacks = [[{ action: null, left: 1 }]]; }), null, "in the middle of an Attack action");
+  assert.equal(was((t) => { t.encounter.flags[`surge:${WIZARD}`] = true; t.encounter.flags[`magic:${WIZARD}`] = true; }), null, "Action Surge's action can't cast a spell after a Magic action");
+  assert.equal(was((t, w) => { w.spells = ["magic-missile"]; }), null, "a slot spell with no hard fight is not worth a slot");
+  assert.equal(was((t, w) => { w.spells = ["magic-missile"]; w.slots = { 1: 0 }; }), null, "no slot");
+  // A companion that can't attack casts no spell with an attack roll (Fire Bolt) but may cast one without (Magic Missile in a hard fight).
+  assert.equal(casterStep(s, e, foes, { noAttack: true }), null);
+  const hard = structuredClone(s);
+  for (const id of ["fighter", "rogue", CLERIC]) hard.entities[id].hp = 0;
+  const hf = Object.values(hard.entities).filter((o) => o.side === "foe");
+  assert.equal(casterStep(hard, hard.entities[WIZARD], hf, { noAttack: true })?.spell, "magic-missile");
+  assert.equal(casterStep(hard, hard.entities[WIZARD], hf)?.spell, "magic-missile");
+});
+
+for (const grid of GRIDS) {
+  test(`${grid}: a badly hurt ally is healed by a Bonus Action spell with a spare slot, by an action spell only if it heals more than the damage; the last slot is kept`, () => {
+    const hurt = (spells, slots) => scene(grid, (s) => { goblinAt(s, CLERIC, 8); s.entities.rogue.hp = 2; put(s, "rogue", ring(s, CLERIC, 1).find((h) => fits(s, "goblin-warrior", h))); s.entities[CLERIC].spells = spells; s.entities[CLERIC].slots = { 1: slots }; }, CLERIC);
+    assert.deepEqual(aiStep(hurt(["sacred-flame", "healing-word"], 2), CLERIC), { type: "cast", actor: CLERIC, spell: "healing-word", target: "rogue" });
+    assert.equal(aiStep(hurt(["sacred-flame", "healing-word"], 1), CLERIC).spell, "sacred-flame", "the last slot is kept for a creature at 0: a cantrip");
+    assert.deepEqual(aiStep(hurt(["sacred-flame", "cure-wounds"], 2), CLERIC), { type: "cast", actor: CLERIC, spell: "cure-wounds", target: "rogue" }, "8 Hit Points back beat a cantrip");
+    assert.equal(aiStep(hurt(["sacred-flame", "cure-wounds"], 1), CLERIC).spell, "sacred-flame");
+  });
+}
+
+// Every spell on the list, cast alone by a high-level caster with every slot, in a fight where it is worth a slot: the AI sends it and the engine
+// accepts it (a refusal would waste the turn). The foes stand where the spell can be aimed: beside the caster for a Touch spell, beyond the
+// radius of a sphere (it would catch the caster, who is not a candidate there), near for a cone or a cube from the caster.
+const SQUARE_ROOM = 11;                                          // the room is 15 squares wide: a sphere with a radius of more than 9 squares does not fit
+for (const grid of GRIDS) {
+  test(`${grid}: every spell the AI casts is accepted by the engine when it casts it`, () => {
+    const ids = Object.values(SPELLS).filter((sp) => aiCastable(sp)).map((sp) => sp.id);
+    const cast = [], skipped = [];
+    for (const id of ids) {
+      const sp = SPELLS[id], kind = aiCastable(sp);
+      const round = sp.area && ["sphere", "cylinder"].includes(sp.area.shape) && sp.range > 0;
+      const d = sp.aim === "creature" && sp.range <= 5 ? 1 : round ? sp.area.size / 5 + 1 : 3;
+      if (grid === "square" && d > SQUARE_ROOM) { skipped.push(id); continue; }
+      const s = scene(grid, (s) => {
+        const w = s.entities[WIZARD];
+        Object.assign(w, { level: 17, spells: [id], slots: { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1, 7: 1, 8: 1, 9: 1 }, attacks: [] });
+        for (const o of [FIGHTER, "rogue", CLERIC]) ok(apply(s, { type: "remove", actor: o }, DM));
+        for (let n = 0; n < 4; n++) goblinAt(s, WIZARD, d);
+        if (kind === "heal") s.entities[WIZARD].hp = 1;
+      }, WIZARD);
+      const a = aiStep(s, WIZARD);
+      assert.equal(a?.type, "cast", `${id} is cast (foes ${d} cells off)`);
+      assert.equal(a.spell, id);
+      const r = apply(s, a, DM);
+      assert.ok(r.ok, `${id}: ${json(a)} was refused: ${r.error}`);
+      cast.push(id);
+    }
+    assert.equal(cast.length + skipped.length, ids.length);
+    assert.deepEqual(skipped, grid === "square" ? ["circle-of-death", "freezing-sphere", "sunburst"] : [], "only what does not fit the room is left out");
   });
 }
