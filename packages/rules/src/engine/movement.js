@@ -6,13 +6,14 @@ import { entered, holds, snapshot, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
-import { canReact, grappleInstead, instruction, OPPORTUNITY, OPPORTUNITY_GRAPPLE, opportunityAttack, reactionsOf } from '../reactions.js';
+import { canReact, grappleInstead, instruction, OPPORTUNITY, OPPORTUNITY_GRAPPLE, opportunityAttack, opportunityAttacks, reactionsOf } from '../reactions.js';
 import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
+import { partRefusal } from './attacks.js';
 import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
@@ -167,6 +168,12 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         // (stage C6b, Decision 8). The rider is offered only where the attacker could attack it (riderTarget).
         const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY)), alt = riderTarget(s, o, rider, prev);
         if (w === 'never') continue;
+        // A part that holds as many creatures as it may can't be used on another (SRD "Grappling"): a monster makes its Opportunity Attack
+        // with a melee action whose part is free, and with none it makes none (docs/specs/grapple-shove.md, G6; DEBT T74).
+        if (o.actions && !opportunityAttacks(o).some((a) => !partRefusal(s, o, a, [e]))) {
+          ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true, text: `${o.name} holds a creature with the part that makes its Opportunity Attack, so it can't make one on ${e.name} leaving its reach until it lets go.` });
+          continue;
+        }
         let t = e, grab = null;
         if (w === 'ask') {
           // Grapple instead of the damage (stage G6): a third answer, only when it asks, from a creature with an Unarmed Strike and a hand
@@ -190,7 +197,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         if (t === e && !seesFor(s, o, e)) found.push(findFor(s, o, e, ev));
         o.reactionUsed = true;
         ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
-        const oa = opportunityAttack(o, s);
+        const oa = o.actions ? opportunityAttacks(o).find((a) => !partRefusal(s, o, a, [t])) ?? opportunityAttack(o, s) : opportunityAttack(o, s);
         if (grab) strikeOption(s, o, e, grab, 'grapple', undefined, ev);
         else if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
         else resolveAttack(s, o, t, oa, ev, { opportunity: true });

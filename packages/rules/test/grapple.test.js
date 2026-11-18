@@ -596,3 +596,30 @@ test("a condition two grapplers share (`whileHeld`) keeps as `source` one that s
   ok(apply(u, { type: "condition", actor: "hero", condition: "unconscious", on: true }, DM));
   assert.deepEqual(x.cond.restrained, { source: "ally", grapples: ["ally"] });
 });
+
+test("G6, DEBT T74: a monster whose Bite is full makes no Opportunity Attack on another creature leaving its reach, and keeps its Reaction", () => {
+  const make = (held) => {
+    const s = newGame(7);
+    for (const id of Object.keys(s.entities)) delete s.entities[id];
+    for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
+    s.settings.autoEngage = false;
+    s.entities.hero = makeEntity(derive(fighter(STR16)).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+    s.entities.pal = makeEntity(derive(fighter(STR16)).record, { id: "pal", kind: "pc", side: "party", pos: { q: 0, r: 1, z: 0 } });
+    const g = ok(apply(s, { type: "spawn", monster: "ankheg", at: { q: 1, r: 0 } }, DM)).events.find((e) => e.type === "spawned").id;
+    Object.assign(s.entities[g], { hp: 900, maxHp: 900 });
+    for (const id of ["hero", "pal"]) Object.assign(s.entities[id], { hp: 900, maxHp: 900, ac: 1 });
+    if (held) s.entities.hero.cond.grappled = { source: g, holds: [{ by: g, with: "bite", escape: 13, range: 5 }] };
+    ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
+    turnOf(s, "pal");
+    return { s, g };
+  };
+  const free = make(false);
+  const a = ok(apply(free.s, { type: "move", actor: "pal", to: { q: -3, r: 3 } }, DM));
+  assert.ok(a.events.some((e) => e.type === "reaction" && e.id === free.g), "control: a free Bite makes its Opportunity Attack");
+  const full = make(true);
+  const b = ok(apply(full.s, { type: "move", actor: "pal", to: { q: -3, r: 3 } }, DM));
+  assert.ok(!b.events.some((e) => e.type === "reaction" || e.type === "attack"), "its Bite holds the hero: no Opportunity Attack on the pal");
+  assert.ok(b.events.some((e) => e.type === "manual" && e.actor === full.g && /can't make one/.test(e.text)), "the DM is told why");
+  assert.equal(full.s.entities[full.g].reactionUsed, false, "and the Reaction is kept");
+  assert.ok(b.events.some((e) => e.type === "moved" && e.id === "pal"), "the pal walked on");
+});

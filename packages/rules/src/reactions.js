@@ -55,9 +55,16 @@ export const WHILE_WAITING = new Set(['react', 'say', 'note', 'claim', 'release'
 // With the game state `s`, a melee attack the creature may make (weapons.js: a Two-Handed weapon beside a Shield is not one); without it,
 // the list of reactions says what the creature has.
 export function opportunityAttack(o, s = null) {
-  if (o.bond?.noAttack) return null;
-  if (o.actions) return o.actions.find((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee') ?? null;
-  return steadiest(o, (o.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, o, a))) ?? null;
+  return opportunityAttacks(o, s)[0] ?? null;
+}
+// Every melee attack the creature could make as an Opportunity Attack, the one it prefers first: for a creature that plays from actions, its
+// melee attack actions in order (the walk takes the first whose part is not full: engine/movement.js, DEBT T74); for one with flat
+// records, the one `steadiest` picks.
+export function opportunityAttacks(o, s = null) {
+  if (o.bond?.noAttack) return [];
+  if (o.actions) return o.actions.filter((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee');
+  const a = steadiest(o, (o.attacks ?? []).filter((x) => x.type === 'melee' && !handsFull(s, o, x)));
+  return a ? [a] : [];
 }
 
 // The Unarmed Strike `o` may Grapple `t` with as its Opportunity Attack (SRD "Opportunity Attacks": "a weapon or an Unarmed Strike";
