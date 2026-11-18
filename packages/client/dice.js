@@ -115,6 +115,8 @@ export function nextSource(src, ev) {
   switch (ev.type) {
     case 'attack': return { kind: 'attack', actor: ev.actor, name: ev.name, target: ev.target, hit: !!ev.hit };
     case 'cast': case 'act': return { kind: 'cast', actor: ev.actor, name: ev.name, targets: Array.isArray(ev.targets) ? ev.targets : [] };
+    // A Grapple or Shove is a save, not an attack roll: the save that follows is "vs Grapple" or "vs Shove" (docs/specs/grapple-shove.md, Decision 1).
+    case 'strikeOption': return { kind: 'cast', actor: ev.actor, name: ev.option === 'shove' ? 'Shove' : 'Grapple', targets: [ev.target] };
     case 'turn': case 'moved': case 'encounterStart': case 'encounterEnd': return null;
     default: return src ?? null;
   }

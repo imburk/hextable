@@ -11,6 +11,7 @@ import { gap, under } from './shared/space.js';
 import { coverOf } from './shared/sight.js';
 import { aiStep, autoPlays } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
+import { holdWords, heldEndText, noteText, previewState, targetRefusals } from './grapple.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
@@ -290,9 +291,9 @@ function words(ev) {
     case 'died': return [`${n(ev.id)} dies.`, 'bad'];
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
     case 'std': return [`${n(ev.id)} uses ${ev.action}.`];
-    case 'note': return [`${n(ev.id)}: ${ev.text}.`];
+    case 'note': return [noteText(ev, n)];
     case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
-    case 'condEnd': return [`${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
+    case 'condEnd': return [ev.cond === 'grappled' ? heldEndText(ev, n) : `${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
     case 'manual': return [`${ev.name}: ${ev.text}`, 'head'];
     case 'effectStart': return [`${ev.name} takes hold${ev.conc ? ` (${n(ev.source)} is concentrating)` : ''}: ${ev.lasts}.`];
     case 'effectEnd': return [`${ev.name} ends: ${ev.why}.`];
@@ -326,7 +327,7 @@ function words(ev) {
     case 'map': return [`The scene changes: ${ev.name}.`];
     case 'region': return [`The party sees ${ev.name}.`];
     case 'check': {
-      const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
+      const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.escape !== undefined ? `tries to break free of ${ev.escape === 'someone' ? 'someone' : n(ev.escape)} (${(ev.skill ?? ev.ability ?? 'a check').replace(/-/g, ' ')})` : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
       const how = ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : '';
       const end = ev.search ? (ev.found ? ` and finds ${ev.found === 1 ? 'something' : `${ev.found} things`}.` : ' and finds nothing.') : ev.success === true ? ' Success.' : ev.success === false ? ' Failed.' : '';
       // Reliable Talent and the like: `floor` is { name, value, was }; the dice show the real face, the d20 counted as `value`.
@@ -375,7 +376,7 @@ function words(ev) {
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     // The transcript of a scene, one line each, until the scene screen is built.
     case 'say': return [ev.as === null ? `(${ev.name}, out of character) ${ev.text}` : `${ev.name}: “${ev.text}”`];
-    default: return HO.describe(ev) ?? SC.describe(ev);       // handouts and private notes; scenes
+    default: return holdWords(ev, n) ?? HO.describe(ev) ?? SC.describe(ev);       // handouts and private notes; scenes
   }
 }
 // The floating text an event throws, as [id, text, class], or null.
@@ -590,11 +591,15 @@ function refresh() {
     if (my && up(e)) {
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
-      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(S, e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
+      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
-        hint = hl.targets.length ? `${a.name}${mode.label ? ` with ${mode.label}` : ''}: tap a target${coverHint(e, hl.targets)}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
+        // Grapple, Shove and Punch and Grab: a target the engine would refuse (too big, no hand free) is not offered, and the hint says why (grapple.js).
+        const bad = targetRefusals(S, e, mode.id, mode.extra, hl.targets, dry);
+        if (bad.length) hl.targets = hl.targets.filter((id) => !bad.some((b) => b.id === id));
+        hint = hl.targets.length ? `${a.name}${mode.label ? ` with ${mode.label}` : ''}: tap a target${coverHint(e, hl.targets)}${bad.length ? ` (${bad[0].why})` : ''}`
+          : bad.length ? `${a.name} with ${mode.label}: ${bad[0].why}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
@@ -856,7 +861,7 @@ R.onTap = ({ hex, id }) => {
   if (e && mine(e) && hex) {
     // A flyer goes to the tapped hex at its chosen height; if it cannot stop there, say so.
     if (aloft(S, e) && altOf(e) > 0) {
-      const spot = [...moveOptions(S, e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
+      const spot = [...moveOptions(previewState(S, e), e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
       return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${altOf(e)} ft up.`);
     }
     lastMove = { hex, at: Date.now() };       // if the arena refuses it, the edge nearest this hex flashes (T.on.error)
