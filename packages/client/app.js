@@ -38,6 +38,7 @@ import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
+import { refreshReport, refreshNote } from './refresh.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
@@ -170,6 +171,7 @@ function preview(e, a) {
 }
 const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
 let flick = null, closeTray = null, armed = null;
+let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh the party: the next update says what was remade (refresh.js)
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action) {
   if (skipping()) return;
@@ -420,6 +422,8 @@ function onUpdate(state, events, fresh) {
   if (first) known.clear();
   for (const e of Object.values(S?.entities ?? {})) known.set(e.id, shownName(S, e));      // what a creature that vanishes in these events was called
   S = state; stamp++; dryCache.clear();
+  if (refreshAsk && Date.now() - refreshAsk.at > 8000) refreshAsk = null;
+  if (refreshAsk) { const say = refreshReport(events, (id) => known.get(id) ?? S.entities[id]?.name ?? 'Someone', refreshAsk); if (say) { refreshAsk = null; toast(say, !/Not refreshed/.test(say)); } }
   for (const e of Object.values(S.entities)) known.set(e.id, shownName(S, e));
   TL.setPace(pace());
   if (first) {
@@ -690,6 +694,7 @@ function renderSheet() {
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
       ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
+    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}
     ${featuresHtml(e, mine(e))}
     ${mine(e) ? pocketHtml(e) : ''}
     ${mine(e) ? reactionsHtml(S, e) : ''}
@@ -698,6 +703,7 @@ function renderSheet() {
     <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}" data-skill="${k}">${k.replace(/-/g, ' ')} ${signed(checkBonus(e, { skill: k }))}</button>`).join('')}</div><p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
+  if ($('sheet-refresh')) $('sheet-refresh').onclick = () => { refreshAsk = { party: false, at: Date.now() }; act({ type: 'refresh', actor: e.id }); };
   for (const b of $('sheet-body').querySelectorAll('[data-hb]')) b.onclick = () => PK.reading(b.dataset.hb);
   for (const b of $('sheet-body').querySelectorAll('[data-skill]')) b.onclick = () => act({ type: 'check', actor: e.id, skill: b.dataset.skill });
 }
@@ -919,6 +925,7 @@ $('dm-place').onclick = () => { if (!selId) return toast('Select a creature firs
 const SR = initShortRest({ host: $('dm-rest-all'), act, getState: () => S });
 $('dm-short-rest').addEventListener('click', () => CLS.restRows($('dm-short-box')));       // Arcane Recovery and Natural Recovery rows (classes.js), after the box is drawn
 $('dm-rest').onclick = () => act({ type: 'rest' });
+$('dm-refresh-party').onclick = () => { refreshAsk = { party: true, at: Date.now() }; act({ type: 'refresh' }); };
 $('dm-rest-all').onclick = () => act({ type: 'rest', ids: Object.values(S.entities).filter((e) => !e.dead).map((e) => e.id) });
 // Conditions: pick one, then put it on the selected creature or take it off.
 $('dm-cond').innerHTML = Object.values(CONTENT.conditions).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
@@ -1150,7 +1157,7 @@ function start(transport, map = null) {
   closeTray?.(); armed = null; DICE.skip();
   T.on.error = (msg, expired) => {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
-    flick = null;
+    flick = null; refreshAsk = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }

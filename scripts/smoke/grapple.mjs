@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, openTab, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
 
 // ---------- Grapple, Shove, Escape and Let go; the familiar's attacks and Investment; Refresh from sheet (issue #486, stage G7 of docs/specs/grapple-shove.md) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Part 1: on the fighter's turn the Unarmed Strike has Grapple, Shove away and Shove Prone rows; a tap arms
@@ -78,7 +78,12 @@ async function part1(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind === 'attack' && window.hextable.mode.extra?.option === 'grapple');
         if (!/Grapple: tap a target/.test(await text(page, '#hint-text'))) throw new Error(`the hint: ${await text(page, '#hint-text')}`);
         if (!(await page.$eval('#ap-attacks [data-row="strike:unarmed-strike:grapple"]', (b) => b.classList.contains('armed')))) throw new Error('the row does not show as armed');
-        await tapCreature(page, touch, foe);
+        // The camera may still be moving when the tap lands: tapped again while the row is still armed and nothing was sent.
+        const held = () => page.evaluate(([f, h]) => window.hextable.state.entities[f].cond.grappled?.holds?.[0]?.by === h, [foe, hero]);
+        for (let k = 0; k < 3 && !(await held()); k++) {
+          await tapCreature(page, touch, foe);
+          await wait(page, ([f, h]) => window.hextable.state.entities[f].cond.grappled?.holds?.[0]?.by === h, [foe, hero], 4000).catch(() => {});
+        }
         await wait(page, ([f, h]) => window.hextable.state.entities[f].cond.grappled?.holds?.[0]?.by === h, [foe, hero]);
         await idle(page);
         const g = await state(page, (S, f) => S.entities[f].cond.grappled, foe);
@@ -278,9 +283,77 @@ async function part3(browser, url, label, opts) {
   });
 }
 
+async function part4(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, phone = opts.viewport.width <= 600;
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const tap = (sel) => (touch ? page.locator(sel).tap() : page.click(sel));
+      const shot = (n) => (process.env.SMOKE_SHOTS ? (mkdirSync(process.env.SMOKE_SHOTS, { recursive: true }), page.screenshot({ path: `${process.env.SMOKE_SHOTS}/grapple-${n}-${phone ? 'phone' : 'wide'}.png` }).catch(() => {})) : null);
+      const toastNow = () => page.evaluate(() => { const t = document.getElementById('toast'); return t.hidden ? '' : t.textContent.replace(/\s+/g, ' ').trim(); });
+      const toastHas = (re) => wait(page, (src) => { const t = document.getElementById('toast'); return !t.hidden && new RegExp(src).test(t.textContent); }, re.source, 8000);
+      const sheetOf = async (id) => { await closePanels(page); await page.evaluate((i) => window.hextable.select(i), id); await waitShown(page, '#card'); await page.click('#btn-sheet'); await waitShown(page, '#sheet-refresh'); };
+      let gru = null;
+
+      await run.do('the DM panel\'s Refresh the party with nobody built from a sheet: the engine\'s refusal is shown, nothing changes', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+        await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
+        const was = await state(page, (S) => S.timeline.length);
+        await tap('#dm-refresh-party');
+        await toastHas(/No party character has a sheet/);
+        if ((await state(page, (S) => S.timeline.length)) !== was) throw new Error('a refused refresh changed the table');
+      });
+
+      await run.do('a character typed in by hand: the sheet\'s note is the engine\'s words, and a tap shows them again', async () => {
+        const brenna = await state(page, (S) => Object.values(S.entities).find((e) => e.kind === 'pc' && e.name === 'Brenna').id);
+        await sheetOf(brenna);
+        const note = await text(page, '#sheet-refresh-note');
+        if (!/typed in by hand/.test(note)) throw new Error(`the note should be the engine's refusal: ${note}`);
+        await page.locator('#sheet-refresh-note').scrollIntoViewIfNeeded(); await sleep(1800);
+        await shot('refresh-refused');
+        await tap('#sheet-refresh');
+        await toastHas(/typed in by hand/);
+      });
+
+      await run.do('a character built from a sheet: Refresh from sheet makes it again and says so; hit points stay as play left them', async () => {
+        await page.evaluate(() => {
+          window.hextable.act({ type: 'setSheet', sheet: { name: 'Gru', class: 'fighter', level: 5, subclass: 'champion', abilities: { str: 16, dex: 14, con: 14, int: 10, wis: 8, cha: 8 }, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, weapons: [] } });
+        });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Gru' && e.sheet));
+        gru = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Gru').id);
+        await page.evaluate((i) => window.hextable.act({ type: 'setHp', actor: i, hp: window.hextable.state.entities[i].maxHp - 7 }), gru);
+        await wait(page, (i) => window.hextable.state.entities[i].hp === window.hextable.state.entities[i].maxHp - 7, gru);
+        const hp = await state(page, (S, i) => S.entities[i].hp, gru);
+        await sheetOf(gru);
+        const note = await text(page, '#sheet-refresh-note');
+        if (/typed in by hand|refus/i.test(note) || !/saved sheet/.test(note)) throw new Error(`a built character's note should say what the button does: ${note}`);
+        const was = await state(page, (S) => S.timeline.length);
+        await tap('#sheet-refresh');
+        await toastHas(/Gru was made again from the sheet/);
+        await wait(page, (n) => window.hextable.state.timeline.slice(n).some((e) => e.type === 'edited'), was);
+        if ((await state(page, (S, i) => S.entities[i].hp, gru)) !== hp) throw new Error('refresh changed the hit points');
+        await page.locator('#sheet-refresh-note').scrollIntoViewIfNeeded();
+        await shot('refresh-done');
+      });
+
+      await run.do('Refresh the party in the DM panel remakes the built character and the toast names it; the typed-in ones are left alone', async () => {
+        await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
+        await tap('#dm-refresh-party');
+        await toastHas(/Made again from their sheets: Gru\./);
+        await shot('refresh-party');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   await part1(browser, url, 'grapple, shove, escape and let go at 1280x800', { viewport: { width: 1280, height: 800 } });
   await part1(browser, url, 'grapple, shove, escape and let go at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await part3(browser, url, 'the familiar\'s attacks and Investment at 1280x800', { viewport: { width: 1280, height: 800 } });
   await part3(browser, url, 'the familiar\'s attacks and Investment at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await part4(browser, url, 'Refresh from sheet at 1280x800', { viewport: { width: 1280, height: 800 } });
+  await part4(browser, url, 'Refresh from sheet at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 }
