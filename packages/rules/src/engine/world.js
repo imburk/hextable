@@ -1210,7 +1210,7 @@ export function catchUp(s, arena, walked, ev) {
   const G = gridOf(s.map);
   const inArena = (e) => !!arena[col(e.pos)];
   const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
-  const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e)).sort(byMarch);
+  const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e) && !holdsOf(s, e).length).sort(byMarch);      // one that holds a creature does not walk (stage G2)
   const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));
   for (;;) {
     const f = pending.find((x) => party.has(x.follow));

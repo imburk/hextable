@@ -34,7 +34,9 @@ export const conditions = [
     text: "Afraid of something: worse at checks and attacks while the source is in line of sight, and unable to approach it." },
   { id: "grappled", name: "Grappled", source: "SRD 5.2.1", visible: true, checked: true,
     modifiers: [{ on: "speed", op: "set", value: 0 }, { on: "attack.roll", op: "disadvantage", when: ["target.notGrappler"] }],
-    also: "The grappler can drag or carry it, but each foot of that movement costs the grappler 1 extra foot unless the grappled creature is Tiny or two or more sizes smaller.",
+    // The Disadvantage below holds only for a hold the engine keeps (`holds`, docs/specs/grapple-shove.md): a Grappled condition
+    // that names no grappler (the DM's, a monster action's) is the DM's to apply, as `also` says.
+    also: "It has Disadvantage on attack rolls against anyone but its grappler. The grappler can drag or carry it, but each foot of that movement costs the grappler 1 extra foot unless the grappled creature is Tiny or two or more sizes smaller.",
     text: "Held. Speed is 0 and cannot rise, and it attacks at Disadvantage anyone but the grappler." },
   { id: "incapacitated", name: "Incapacitated", source: "SRD 5.2.1", visible: true, checked: true, incapacitated: true,
     modifiers: [{ on: "initiative", op: "disadvantage" }],

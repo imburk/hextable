@@ -11,6 +11,7 @@ import { apply, current, makeEntity, rollMode } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
+import { describeStep, mark } from "../src/history.js";
 import { speedOf } from "../src/modifiers.js";
 import { CONTENT } from "../src/content/index.js";
 
@@ -178,13 +179,111 @@ test("the held creature taken 30 ft away ends the hold (distance); within the ra
   assert.ok(t.entities[t.foe].cond.grappled, "still beside the grappler");
 });
 
-test("until dragging is built (G3), a grappler that walks away ends its hold, and the DM is told", () => {
+test("until dragging is built (G3), a creature that holds another is refused move and Dash, and may move once it lets go (M3)", () => {
   const s = field(fighter(STR16));
   ok(grapple(s));
-  const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, DM));
-  assert.equal(s.entities[s.foe].cond.grappled, undefined);
-  assert.ok(r.events.some((e) => e.type === "condEnd" && e.why === "distance"));
-  assert.ok(r.events.some((e) => e.type === "manual" && /does not drag a held creature yet/.test(e.text)));
+  const name = s.entities[s.foe].name;
+  refused(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, new RegExp(`Fi is holding ${name}\\. Dragging is not in the game yet: let go first\\.`));
+  refused(s, { type: "dash", actor: "hero" }, /Dragging is not in the game yet/);
+  ok(apply(s, { type: "letGo", actor: "hero", target: s.foe }, DM));
+  ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, DM));
+});
+
+test("a follower that holds a creature stays where it is when the column walks, and its hold does not end (M3)", () => {
+  const s = field(fighter(STR16), { fight: false, ally: fighter(STR16) });
+  ok(apply(s, { type: "follow", actor: "ally", leader: "hero" }, DM));
+  s.entities[s.foe].cond.grappled = { source: "ally", holds: [{ ...HOLD, by: "ally" }] };
+  const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -3, r: 0 } }, DM));
+  assert.deepEqual(s.entities.ally.pos, { q: 1, r: -1, z: 0 });
+  assert.ok(!r.events.some((e) => e.type === "moved" && e.id === "ally"));
+  assert.deepEqual(s.entities[s.foe].cond.grappled.holds.map((h) => h.by), ["ally"]);
+  assert.equal(s.entities.ally.follow, "hero", "it still follows");
+});
+
+test("a grappler that teleports away ends its hold, and the note says it teleported, not that the engine does not drag (L1)", () => {
+  const s = newGame(7);
+  s.settings.autoEngage = false;
+  const w = s.entities.wizard;
+  const spot = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]].map(([dq, dr]) => ({ q: w.pos.q + dq, r: w.pos.r + dr }))
+    .find((h) => !Object.values(s.entities).some((o) => o.pos.q === h.q && o.pos.r === h.r));
+  const gob = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: spot }, DM)).events.find((e) => e.type === "spawned").id;
+  if (!w.spells.includes("misty-step")) w.spells.push("misty-step");
+  w.slots = { ...w.slots, 2: 3 }; w.slotsMax = { ...w.slotsMax, 2: 3 };
+  s.entities[gob].cond.grappled = { source: "wizard", holds: [{ ...HOLD, by: "wizard" }] };
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "misty-step", hex: { q: w.pos.q - 5, r: w.pos.r } }, DM));
+  assert.ok(r.events.some((e) => e.type === "moved" && e.id === "wizard" && e.teleport), r.events.map((e) => e.type).join());
+  assert.equal(s.entities[gob].cond.grappled, undefined);
+  assert.ok(r.events.some((e) => e.type === "note" && /teleported away/.test(e.text)));
+  assert.ok(!r.events.some((e) => /does not drag/.test(e.text ?? "")));
+});
+
+test("the DM placing the grappler away: the note says how far apart they are (L1)", () => {
+  const s = field(fighter(STR16));
+  ok(grapple(s));
+  const r = ok(apply(s, { type: "place", actor: "hero", to: { q: -5, r: 0 } }, DM));
+  assert.ok(r.events.some((e) => e.type === "note" && /more than 5 ft apart, so the grapple ended/.test(e.text)));
+  assert.ok(!r.events.some((e) => /does not drag/.test(e.text ?? "")));
+});
+
+test("a held creature that dies is held no more: the hold ends and the hand is free (M1)", () => {
+  const s = field(fighter(STR16), { foes: 3 });
+  ok(grapple(s, s.foes[0]));
+  const r = ok(apply(s, { type: "harm", actor: s.foes[0], amount: 9999 }, DM));
+  assert.ok(s.entities[s.foes[0]].dead);
+  assert.equal(s.entities[s.foes[0]].cond.grappled, undefined);
+  assert.ok(r.events.some((e) => e.type === "condEnd" && e.id === s.foes[0] && e.cond === "grappled" && e.why === "released"));
+  ok(grapple(s, s.foes[1]));
+  ok(apply(s, { type: "feature", actor: "hero", feature: "action-surge" }, DM));
+  // The safety net: a corpse still marked as held (as the record could be between two passes) fills no hand.
+  s.entities[s.foes[0]].cond.grappled = { source: "hero", holds: [HOLD] };
+  ok(grapple(s, s.foes[2]));
+  assert.ok(s.entities[s.foes[2]].cond.grappled);
+  assert.equal(s.entities[s.foes[0]].cond.grappled, undefined, "and the after-pass ends it");
+});
+
+test("a Shield can't be taken up with both hands holding creatures (L2)", () => {
+  const sheet = fighter(STR16, ["longsword"], { shield: true, shieldStowed: true }), s = field(sheet, { foes: 2 });
+  s.entities.hero.sheet = structuredClone(sheet);                   // a built character keeps its sheet, which `shield` changes
+  assert.ok(!s.entities.hero.shield);
+  ok(grapple(s, s.foes[0])); ok(grapple(s, s.foes[1]));
+  ok(apply(s, { type: "endTurn", actor: "hero" }, DM));
+  turnOf(s, "hero");
+  refused(s, { type: "shield", actor: "hero", on: true }, /no hand free for a Shield: it is holding .* and .*\. Let go first/);
+  ok(apply(s, { type: "letGo", actor: "hero", target: s.foes[1] }, DM));
+  ok(apply(s, { type: "shield", actor: "hero", on: true }, DM));
+  assert.ok(s.entities.hero.shield);
+});
+
+test("a held creature that is Prone can't stand: its Speed is 0", () => {
+  const s = field(fighter(STR16));
+  ok(grapple(s));
+  s.entities[s.foe].cond.prone = {};
+  turnOf(s, s.foe);
+  refused(s, { type: "stand", actor: s.foe }, /Speed of 0|Speed is 0/);
+});
+
+test("the history names a Grapple and a Shove for what they are (L3)", () => {
+  const s = field(fighter(STR16));
+  const name = s.entities[s.foe].name;
+  const label = (a) => { const before = mark(s), r = ok(apply(s, a, DM)); return describeStep(a, r.events, before, s).label; };
+  assert.equal(label({ ...GRAB, target: s.foe }), `Fi grappled ${name}`);
+  assert.equal(label({ type: "attack", actor: "hero", attack: "unarmed-strike", option: "shove", shove: "prone", target: s.foe }), `Fi shoved ${name}`);
+});
+
+test("a second hold by a grappler the party does not know of: the `hold` event reaches them without who", () => {
+  const s = field(fighter(STR16), { foes: 2 });
+  ok(apply(s, { type: "claim", entity: "hero", user: "u1", userName: "Ann" }, U1));
+  const [g1, g2] = s.foes.map((id) => s.entities[id]);
+  s.entities.hero.cond.grappled = { source: g1.id, holds: [{ by: g1.id, with: "hand", escape: 12, range: 5 }] };
+  g2.attacks = [{ id: "unarmed-strike", name: "Unarmed Strike", type: "melee", bonus: 4, damage: "+1", dtype: "bludgeoning", reach: 5, abil: "str", dc: 12 }];
+  fails(s.entities.hero);
+  turnOf(s, g2.id);
+  g2.hidden = true;
+  const r = ok(apply(s, { ...GRAB, actor: g2.id, target: "hero" }, DM));
+  assert.ok(r.events.some((e) => e.type === "hold" && e.by === g2.id), "the DM has who");
+  const seen = viewEvents(r.events, s, U1);
+  assert.deepEqual(seen.find((e) => e.type === "hold"), { type: "hold", id: "hero" });
+  assert.ok(!JSON.stringify(seen).includes(g2.id));
 });
 
 test("the grappler pushed away ends the hold; the other grappler's stays", () => {
@@ -238,11 +337,13 @@ test("Grappled: Disadvantage on attack rolls against anyone but the grappler; th
   const fist = s.entities.hero.attacks.find((a) => a.id === "unarmed-strike");
   assert.deepEqual(rollMode(s, s.entities.hero, foe, fist).adv, ["Grappler"]);
   assert.deepEqual(rollMode(s, s.entities.ally, foe, s.entities.ally.attacks.find((a) => a.id === "unarmed-strike")).adv, [], "only the grappler's own");
-  // A Grappled condition that names no grappler (the DM's): the engine cannot tell, and gives nothing.
+  // A Grappled condition with no holds (the DM's, or a monster action's with only a `source`): as before holds, the DM applies it
+  // (the condition's `also` says so), and the engine gives nothing (fix round 1 of #468, M2).
   foe.cond.grappled = {};
   assert.deepEqual(rollMode(s, foe, s.entities.ally, bite).dis, []);
   foe.cond.grappled = { source: "hero" };
-  assert.deepEqual(rollMode(s, foe, s.entities.ally, bite).dis, ["attacker grappled"], "an old save's grapple names its grappler by `source`");
+  assert.deepEqual(rollMode(s, foe, s.entities.ally, bite).dis, []);
+  assert.deepEqual(rollMode(s, s.entities.hero, foe, fist).adv, [], "nor the Grappler's Advantage");
 });
 
 test("Punch and Grab: a hit with the Damage option grapples too, once a turn, from the Attack action only, and only for the Grappler", () => {
@@ -323,11 +424,11 @@ test("what a player is sent: `heldBy` on the held creature, a monster's escape D
   assert.deepEqual(seen.find((e) => e.type === "condEnd"), { type: "condEnd", id: "ally", cond: "grappled", why: "released" });
 });
 
-test("the Grappled condition's data: the Disadvantage is a modifier now and `also` keeps only the drag; the Grappler feat gives the Advantage", () => {
+test("the Grappled condition's data: the Disadvantage is a modifier for holds and `also` is as before; the Grappler feat gives the Advantage", () => {
   const g = CONTENT.conditions.grappled;
   assert.deepEqual(g.modifiers[1], { on: "attack.roll", op: "disadvantage", when: ["target.notGrappler"] });
-  assert.doesNotMatch(g.also, /Disadvantage/);
-  assert.match(g.also, /1 extra foot/);
+  // Kept word for word as before holds (fix round 1 of #468, M2): a Grappled condition with no holds is the DM's to apply.
+  assert.equal(g.also, "It has Disadvantage on attack rolls against anyone but its grappler. The grappler can drag or carry it, but each foot of that movement costs the grappler 1 extra foot unless the grappled creature is Tiny or two or more sizes smaller.");
   assert.deepEqual(CONTENT.feats.grappler.grants.modifiers, [{ on: "attack.roll", op: "advantage", when: ["target.grappledBySelf"] }]);
 });
 
@@ -340,4 +441,20 @@ test("the same seed gives the same grapple, and a Monk's Flurry strike may grapp
   ok(grapple(s));
   assert.equal(s.entities[s.foe].cond.grappled.holds[0].escape, 14, "Dexterous Attacks: the DC from Dexterity");
   assert.equal(s.encounter.budget.bonusAttacks.left, 1);
+});
+
+test("a Grappled condition the DM puts on is as before holds: the DM is told the Disadvantage, and the engine applies none (M2)", () => {
+  const s = field(fighter(STR16));
+  const foe = s.entities[s.foe];
+  const r = ok(apply(s, { type: "condition", actor: s.foe, condition: "grappled", on: true }, DM));
+  const m = r.events.find((e) => e.type === "manual");
+  // The text main sent before G2, word for word.
+  assert.equal(m.text, `${foe.name} is Grappled. The engine applies what it can; the DM applies the rest: It has Disadvantage on attack rolls against anyone but its grappler. The grappler can drag or carry it, but each foot of that movement costs the grappler 1 extra foot unless the grappled creature is Tiny or two or more sizes smaller. Nothing ends it yet: the DM removes it.`);
+  turnOf(s, s.foe);
+  const atk = ok(apply(s, { type: "act", actor: s.foe, action: foe.actions.find((x) => !x.multiattack && x.target?.creature).id, target: "hero" }, DM)).events.find((e) => e.type === "attack");
+  assert.equal(atk.mode, "normal");
+  // A hold the engine keeps is told nothing of the sort: it applies the Disadvantage itself.
+  const t = field(fighter(STR16));
+  const g = ok(grapple(t));
+  assert.ok(!g.events.some((e) => e.type === "manual"), g.events.filter((e) => e.type === "manual").map((e) => e.text).join());
 });

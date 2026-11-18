@@ -39,10 +39,11 @@ export function handsFull(s, e, atk, grapple = false) {
 }
 
 // The creatures `e` holds with a hand (engine/world.js, holdsOf, keeps the full list; this one is here so the checks above need
-// nothing from engine/). Without the game state (a list of a creature's reactions) none is known.
-function handHolds(s, e) {
+// nothing from engine/). Without the game state (a list of a creature's reactions) none is known. A dead creature fills no hand:
+// its hold ends after the action that killed it (settleHolds), and this does not wait for that.
+export function handHolds(s, e) {
   if (!s?.entities || !e) return [];
-  return Object.values(s.entities).filter((t) => (t.cond?.grappled?.holds ?? []).some((h) => h.by === e.id && h.with === 'hand'));
+  return Object.values(s.entities).filter((t) => !t.dead && (t.cond?.grappled?.holds ?? []).some((h) => h.by === e.id && h.with === 'hand'));
 }
 
 // Loading (SRD "Weapons", Properties): "You can fire only one piece of ammunition from a Loading weapon when you use an action,

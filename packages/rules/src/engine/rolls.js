@@ -179,7 +179,8 @@ function ending(s, step, f, ev, t) {
 // `f` is the effect frame that caused it, if any, and `step` the step. If the frame belongs to
 // a lasting effect the condition is tied to it and ends when it does; otherwise only the DM
 // (or standing up, for Prone) ends it, and the DM is told so.
-// `ended`: something the engine runs ends it (a grapple's hold, `grip`), so the DM is not told that nothing does.
+// `ended`: a grapple's hold (`grip`): the engine ends it and runs what `also` hands the DM for a Grappled condition with no hold
+// (the Disadvantage is a modifier for a hold; a holder may not walk until dragging is built), so the DM is told neither.
 export function condition(s, t, id, ev, f = null, step = null, level = undefined, ended = false) {
   if (!up(t) || t.cond[id]) return;
   if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
@@ -194,7 +195,7 @@ export function condition(s, t, id, ev, f = null, step = null, level = undefined
   if (fx) fx.parts.push({ target: t.id, cond: id, ...end.part });
   ev.push({ type: 'cond', id: t.id, cond: id });
   const def = conditionDef(id), name = conditionName(id);
-  const rest = def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : '';
+  const rest = def?.also && !ended ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : '';
   const nothing = fx || id === 'prone' || end.told || ended ? '' : ' Nothing ends it yet: the DM removes it.';
   if (rest || nothing) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} ${conditionPhrase(id)}.${rest}${nothing}` });
   concentrationLost(s, ev, t, `${t.name} ${conditionPhrase(id)}`);

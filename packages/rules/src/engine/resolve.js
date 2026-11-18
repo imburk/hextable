@@ -1374,6 +1374,16 @@ export function endHold(s, t, by, why, ev) {
   for (const [c, v] of Object.entries(t.cond)) if (v?.grapple === by) { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
   return true;
 }
+// What the DM is told when a hold ends by distance, by what moved. A grappler's own walk is refused until G3 builds dragging
+// (movement.js), so a walk here is one the refusal does not cover (a mount carrying it): the DM is told the engine does not drag.
+// A teleport, or anything else, is said for what it was.
+function holdNote(s, g, t, h, ev) {
+  const mine = ev.filter((x) => x.type === 'moved' && x.id === g.id);
+  if (mine.some((x) => !x.forced && !x.teleport && !x.caughtUp)) return ev.push({ type: 'manual', actor: g.id, name: 'Grapple', partial: true,
+    text: `${g.name} moved away from ${t.name}, so the grapple ended: the engine does not drag a held creature yet. If ${g.name} meant to drag ${t.name} (each foot costing 1 extra foot unless ${t.name} is Tiny or two or more sizes smaller), the DM places ${t.name} and ${g.name} grapples again.` });
+  const what = mine.some((x) => x.teleport) ? `${g.name} teleported away from ${t.name}` : `${g.name} and ${t.name} are now more than ${h.range} ft apart`;
+  ev.push({ type: 'note', id: t.id, text: `${what}, so the grapple ended` });
+}
 // After every action (engine.js, apply, beside settleBonds): every hold whose grappler is gone from the map, is dead, down or
 // Incapacitated (any condition that includes it), or is farther from the held creature than the hold's range, ends (SRD
 // "Grappling", Ending a Grapple). A pass after the action cannot miss a way of moving (a push, a teleport, a fall). A condition
@@ -1382,13 +1392,11 @@ export function settleHolds(s, ev) {
   for (const t of Object.values(s.entities)) {
     for (const h of [...(t.cond?.grappled?.holds ?? [])]) {
       const g = Object.hasOwn(s.entities, h.by) ? s.entities[h.by] : null;
-      const why = !g ? 'gone' : g.dead || !up(g) || incapacitated(g) ? 'incapacitated' : apart(s, g, t) * FT > h.range ? 'distance' : null;
+      // A dead creature is held by no one (a removed one takes its holds with it): the hold ends, and the hand is free.
+      const why = t.dead ? 'released' : !g ? 'gone' : g.dead || !up(g) || incapacitated(g) ? 'incapacitated' : apart(s, g, t) * FT > h.range ? 'distance' : null;
       if (!why) continue;
-      // Dragging is stage G3: until it is built, a grappler that walks off leaves its catch behind, and the DM is told so.
-      const walked = why === 'distance' && ev.some((x) => x.type === 'moved' && x.id === g.id && !x.forced);
       endHold(s, t, h.by, why, ev);
-      if (walked) ev.push({ type: 'manual', actor: g.id, name: 'Grapple', partial: true,
-        text: `${g.name} moved away from ${t.name}, so the grapple ended: the engine does not drag a held creature yet. If ${g.name} meant to drag ${t.name} (each foot costing 1 extra foot unless ${t.name} is Tiny or two or more sizes smaller), the DM places ${t.name} and ${g.name} grapples again.` });
+      if (why === 'distance') holdNote(s, g, t, h, ev);
     }
     for (const [c, v] of Object.entries(t.cond ?? {})) {
       if (typeof v?.grapple !== 'string' || (t.cond.grappled?.holds ?? []).some((h) => h.by === v.grapple)) continue;

@@ -42,12 +42,12 @@ export const visibleConditions = (e) => Object.keys(e.cond ?? {}).filter((id) =>
 
 const upright = (e) => !e.dead && e.hp > 0;
 // The creatures that hold `e` (its Grappled condition's holds; docs/specs/grapple-shove.md, Decision 2), [] when it is not
-// Grappled, or null when it is but nothing says by whom (one the DM put on).
+// Grappled, or null when it is but has no holds (one the DM put on, or a monster action's, from before holds): the engine does not
+// judge those, and the condition's `also` hands their Disadvantage to the DM, as before holds existed.
 export function grapplersOf(e) {
   const g = e?.cond?.grappled;
   if (!g) return [];
-  if (Array.isArray(g.holds)) return g.holds.map((h) => h.by);
-  return typeof g.source === 'string' ? [g.source] : null;
+  return Array.isArray(g.holds) ? g.holds.map((h) => h.by) : null;
 }
 
 // Can the engine tell whether this situation holds? true, false, or null for "cannot judge yet".
@@ -74,8 +74,8 @@ export function judge(tag, sit, s) {
     case 'check.proficient': return sit.proficient === undefined ? null : sit.proficient;   // a check with one of its skill or tool proficiencies (Reliable Talent)
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
-    // Grapples (docs/specs/grapple-shove.md): who holds whom is on the held creature's `cond.grappled` (`holds`, or only the
-    // `source` of a grapple put on before holds existed). A grapple with neither names no grappler: the engine cannot judge.
+    // Grapples (docs/specs/grapple-shove.md): who holds whom is on the held creature's `cond.grappled.holds`. A Grappled condition
+    // without holds: the engine cannot judge, and the DM applies it (the condition's `also`).
     case 'target.notGrappler': { const g = a && t ? grapplersOf(a) : null; return g ? !g.includes(t.id) : null; }
     case 'target.grappledBySelf': return a && t ? (grapplersOf(t) ?? []).includes(a.id) : null;
     case 'check.escape': return sit.escape === undefined ? null : sit.escape === true;
