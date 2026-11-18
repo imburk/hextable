@@ -2,6 +2,8 @@
 
 Status: agreed. Issue #240; the owner's answers of 14 November are recorded under "The owner's
 answers" below and in the decisions they change. Built so far: S0 to S14 (S13e, S13c and S14 in #274; see the build notes).
+The hand-written renderer (`render.js`) that S9a drew squares in was deleted by R14 step 2 (#355); S9b's Three.js renderer is the one that
+draws them now. The audit tables below (S0) and the S9a row describe the code as it was then.
 
 The owner asked on 13 November: "can we pivot to squares?" He brought four
 published battle maps, all drawn on a square grid. `maps-and-objects.md`
@@ -85,8 +87,8 @@ counted. Full lists are in the appendix.
 | Marching order, followers | `engine/movement.js` | — | `KEEP_UP = 2` cells, `H.dist` |
 | Arena lock | `engine/resolve.js` `startEncounter` | — | `H.range(center, ARENA_RADIUS = 6)` |
 | Timeline (client) | `client/timeline.js` | beats | its own copy of the hex distance (timeline.js:52) |
-| Default renderer | `render.js` | camera, models, beats | `UNIT = √3/5`; tiles are six-sided prisms (`ring(..., 6, π/6)`, :163, :633); highlight rims (:801-805); picking through `H.fromWorld` (:459, :1066) |
-| Three.js renderer | `render-three.js`, `three-build.js` | Three.js scene | the same code as `render.js`, duplicated until R14 (`docs/DEBT.md` P25) |
+| Default renderer (deleted by R14 step 2, #355) | `render.js` | camera, models, beats | `UNIT = √3/5`; tiles are six-sided prisms (`ring(..., 6, π/6)`, :163, :633); highlight rims (:801-805); picking through `H.fromWorld` (:459, :1066) |
+| Three.js renderer (the only one since #355) | `render-three.js`, `three-build.js` | Three.js scene | the same code as `render.js`, duplicated until R14 step 2 folded it (`docs/DEBT.md` P25) |
 | Floors | `client/floors.js` | clipping cells to walls, patches | `hexCorners` (six), the six-strip grid loop (:324, :488), `HEX_RADIUS` |
 | Editor | `client/editor.js` | trace, scale, nudge, levels, regions | brush `H.range`; door edges `(e + 3) % 6` (:163); stairs on "the three grid directions" (:317); Fill floor row `5√3/2` (:570); `#doorAt` (:501) |
 | UVTT import | `import-uvtt.js` | walls and doors copied as segments in feet | the hex tiling loop (:83-91) and `SIZE = 5/√3` |
@@ -477,8 +479,9 @@ choice below (S7 build notes give the counts).
   column march (`render.js`:1066, `render-three.js`:563) uses `G.cell`.
 - The grid overlay over a picture is drawn from the same corners, so on a
   square map traced from a square picture the two grids are one.
-- `three-build.js` duplicates `render.js` until renderer task R14. If R14
-  lands first, S9b is not needed.
+- `three-build.js` duplicated `render.js` until renderer task R14 step 2
+  (#355) deleted `render.js`. S9b was built first (#266), so both drew squares
+  for a while; only `three-build.js` and `render-three.js` are left.
 
 ### Decision 9: the editor and the importer on squares
 
@@ -581,7 +584,7 @@ map.
 | S7 | **Areas on squares.** `layout` by `G`; E5 `areaFill` with `round` as default, in `SETTINGS`. | engine | Opus | `engine/world.js`, `engine/dm.js` (`SETTINGS` only), `packages/rules/test/square-areas.test.js` (new) | on `square-room`: a 20-ft Sphere covers 49 squares under `round` and 81 under `grid`; Burning Hands (15-ft cone) catches the creatures on the 7 squares east and not one beside them; Lightning Bolt (100 by 5 ft line) aimed diagonally is one square wide; Thunderwave (15-ft cube from self) is the 3 by 3 in front; a wall still shelters what is behind it; every hex area test still passes |
 | S8 | **Sight, cover and what players are sent on squares.** E6, E7; the vision flood over `G.neighbors`. | engine | Opus | `sight.js`, `vision.js`, `view.js`, `engine/dm.js` (`SETTINGS` only), `packages/rules/test/square-sight.test.js` (new) | cover from a pillar beside the line is Half and from a wall end Three-Quarters, by the owner's rule and by the four-corner rule (#259); the property test "over a long random game nothing the party cannot see reaches any player" (`sight-views.test.js`, seed 3) passes on a square map too; a wall is sent only where it runs beside a shown square; **reviewed for hidden information before merge** |
 | S9a | **The default renderer draws squares.** Tile prisms, highlights and rims from `G.corners`, picking by `G.cell`, floors and cut-away, grid overlay, the arena. A smoke pass `square` that loads `square-room`, walks diagonally, aims a cone and checks each tap lands on the square under it. | render | Sonnet | `render.js`, `floors.js`, `packages/client/test/floors.test.js` (new tests only), `scripts/smoke/square.mjs` (new), `scripts/smoke.mjs` (one registry line) | `SMOKE_ONLY=square` passes at both sizes with no page errors; squares meet walls with no gaps; every existing smoke pass still passes |
-| S9b | **The Three.js renderer draws squares.** As S9a. Skipped if R14 has removed the hand-written renderer. | render | Sonnet | `three-build.js`, `render-three.js`, `scripts/smoke/three-parity.mjs` (a square map added) | `three-parity` passes on `square-room` and on a hex map |
+| S9b | **The Three.js renderer draws squares.** As S9a. Built (#266) before R14 step 2 (#355) removed the hand-written renderer, so it is the one that draws them. Its checks: `three-parity` (the square-room map and a fight with a Large creature, the highlights and the arena, against numbers recorded from the hand-written renderer, and taps on the ogre's four squares) and `square` (the arena edge on squares, both sizes). | render | Sonnet | `three-build.js`, `render-three.js`, `scripts/smoke/three-parity.mjs` (a square map added) | `three-parity` passes on `square-room` and on a hex map |
 | S10 | **The editor on squares.** Grid choice for a new map; brush, walls snapping to square sides and corners, doors on sides, stairs in 8 directions, Fill floor by `G.cellsIn`; Align to the picture's grid. | editor | Sonnet | `editor.js`, `index.html`, `style.css`, `scripts/smoke/maps.mjs` | on a tablet-sized screen a DM makes a square map from a generated square-grid test picture: after Align the picture's lines lie on the square edges within one screen pixel at default zoom; Fill floor and a traced door give a room the party can walk into; the hex editor works as before |
 | S11 | **UVTT import onto squares.** Decision 9; `grid: 'square'` the default, hex an option; the editor's import dialog offers both. | engine (importer) | Sonnet, engine review | `import-uvtt.js`, `packages/rules/test/import-uvtt.test.js` (new tests only), `editor.js` (the dialog only) | `fixtures/room.dd2vtt` imports as `map_size.x` by `map_size.y` squares; every wall end lies on a square corner or side; nobody walks through an imported wall and the open door lets them out (as the hex test does); the hex import still gives today's result |
 | S12 | **A square stock map.** A square builder in `gen-maps.mjs` and one map (question 6); `docs/maps.md` says how to draw on squares. | content | Sonnet | `scripts/gen-maps.mjs`, `content/maps/<new>.js`, `content/maps/index.js`, `docs/maps.md`, `packages/rules/test/stock-maps.test.js` (new tests only) | the stock-map tests (lint, plain data, size for a phone, every room reachable through its doors) pass for it |
@@ -848,7 +851,7 @@ map.
   square tests run the main rules on a square map. A call that slips through
   shows as a wrong distance, not a crash; the square smoke pass is the last
   net.
-- **Two renderers, twice the work** until R14. S9b is the cost.
+- ~~**Two renderers, twice the work** until R14. S9b is the cost.~~ (R14 step 2, #355: one renderer.)
 - **Replays.** `HEX` must keep `range` and `neighbors` order exactly (S0's
   test). `SQUARE` fixes its own order once and pins it.
 - **The arena on squares is a third larger** (169 against 127 cells). If

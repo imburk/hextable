@@ -11,9 +11,10 @@ import { aiStep } from "../../rules/src/ai.js";
 import { CONTENT, HOMEBREW_LOOKUPS, MONSTERS, SPELLS } from "../../rules/src/content/index.js";
 import { hashOf } from "../../rules/src/content/packs.js";
 import { installed } from "../../rules/src/content/registry.js";
-import { current } from "../../rules/src/engine.js";
+import { derive } from "../../rules/src/derive.js";
+import { current, makeEntity } from "../../rules/src/engine.js";
 import { createReceiver } from "../../rules/src/patch.js";
-import { createTables, HOMEBREW_SUMMON_SENTENCE, MAX_PACK_BYTES, MAX_PACK_TEXT_BYTES, packForPlayer, PLAYER_PACK_KINDS, sanitizePacks, summonsHomebrew, usesIn, vetPacks } from "../src/tables.js";
+import { createTables, MAX_PACK_BYTES, MAX_PACK_TEXT_BYTES, packForPlayer, PLAYER_PACK_KINDS, sanitizePacks, usesIn, vetPacks } from "../src/tables.js";
 import { startServer, stopAll } from "./helpers.js";
 
 after(stopAll);
@@ -710,26 +711,255 @@ test("M1: a table file with a bad `packs` value does not stop the server or anot
   } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 5 }); }
 });
 
-test("M2: a pack with a spell that summons a homebrew creature is refused with the plain sentence, whatever the depth", () => {
+// A homebrew spell that summons a homebrew creature of the same pack (allowed, #457; the server refused it under #400).
+const CALL = "hb-ember-folk-call-wraith";
+// The numbers of the blocks below are found nowhere else in a game, so a search of what a player was sent finds a leak and nothing else.
+const OWLET = "hb-ember-folk-owlet", WOLFLING = "hb-ember-folk-wolfling";
+const own = (id, base, name, over) => ({ ...structuredClone(CONTENT.monsters[base]), id, name, source: "homebrew:ember-folk", checked: false, text: `The ${name}.`, ...over });
+const abilities = (base, dex) => ({ ...CONTENT.monsters[base].abilities, dex });
+const BLOCKS = [monster("ember-folk", "quillwraith", { ac: 23, hp: 77, abilities: abilities("goblin-warrior", 23) }),
+  own(OWLET, "owl", "Ember owlet", { ac: 21, abilities: abilities("owl", 25) }), own(WOLFLING, "wolf", "Ember wolfling", { ac: 22, hp: 66, abilities: abilities("wolf", 27) })];
+const WYRM = "hb-ember-folk-wyrmling";
+BLOCKS.push((() => { const m = own(WYRM, "black-dragon-wyrmling", "Ember wyrmling", {}); m.actions = structuredClone(m.actions); m.actions.find((a) => a.id === "acid-breath").effects[0].dc = 19; return m; })());
+const NUMBERS = ['"ac":23', '"maxHp":77', '"dex":23', '"ac":21', '"dex":25', '"ac":22', '"maxHp":66', '"dex":27'];
+const callPack = () => doc("ember-folk", { spells: [spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon: WRAITH, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" } }] })], monsters: BLOCKS });
+const second = (tables, dm, code, name) => {
+  const p = client(tables);
+  p.say({ t: "join", code, name });
+  dm.say({ t: "approve", userId: p.last("welcome").userId, ok: true });
+  return p;
+};
+
+test("M2: a pack with a spell that summons a homebrew creature is accepted; a player is sent the spell and no monster, the DM all of it", () => {
   const tables = createTables({ seed: () => 5 });
   const { dm, player, code } = seated(tables);
-  const call = (summon, extra = {}) => spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" }, ...extra }] });
-  const bad = doc("ember-folk", { spells: [call(WRAITH)], monsters: [monster("ember-folk", "quillwraith")] });
-  const before = snapshotOf(tables, code), seen = player.raw.length;
-  add(dm, bad);
-  assert.equal(dm.last("error").error, HOMEBREW_SUMMON_SENTENCE, dm.last("error").error);
-  assert.equal(snapshotOf(tables, code), before);
-  assert.equal(player.raw.length, seen);
-  // The walk itself: any depth, a `forms` list, another pack's monster; not an SRD summon or an ordinary spell.
-  const wrap = (x, n) => { let y = x; for (let i = 0; i < n; i++) y = { onFail: [y] }; return y; };
-  assert.equal(summonsHomebrew({ spells: [{ effects: [wrap({ summon: "hb-other-imp" }, 5)] }] }), true);
-  assert.equal(summonsHomebrew({ spells: [{ effects: [{ onHit: [{ summon: "form", forms: ["hb-x-a", "hb-x-b"] }] }] }] }), true);
-  assert.equal(summonsHomebrew({ spells: [{ effects: [wrap({ summon: "celestial" }, 3), { summon: "form", forms: ["wolf"] }, { damage: "1d4" }] }] }), false);
-  assert.equal(summonsHomebrew({ spells: [spell("a", "b")], monsters: [{ summon: "hb-x-y" }] }), false, "only spells are walked");
-  assert.equal(summonsHomebrew({}), false);
-  // A stored pack that does so is dropped at load as well.
-  const d = bad;
-  assert.equal(vetPacks([{ id: "ember-folk", version: 1, hash: hashOf(d), data: d }]).ok, false);
+  add(dm, callPack());
+  assert.equal(dm.last("error"), undefined, dm.last("error")?.error);
+  assert.equal(tables.get(code).packs.length, 1);
+  assert.ok(dm.last("packData").data.monsters.some((m) => m.id === WRAITH), "the DM is sent the creature's block");
+  const pd = player.last("packData");
+  assert.ok(pd.data.spells.some((x) => x.id === CALL), "a player is sent the spell");
+  assert.equal("monsters" in pd.data, false, "and no monster");
+  assert.equal(player.raw.some((x) => x.includes(NAME) || x.includes(TEXT) || x.includes(ATTACK)), false);
+  // A stored pack that does so is kept at load as well.
+  const d = callPack();
+  assert.equal(vetPacks([{ id: "ember-folk", version: 1, hash: hashOf(d), data: d }]).ok, true);
+  assert.deepEqual(sanitizePacks([{ id: "ember-folk", version: 1, hash: hashOf(d), data: d }]).dropped, []);
+  clean();
+});
+
+test("a player's homebrew summon: its block goes to its controller alone, in the state and in every patch after; another player and the DM as they should", () => {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player: pat, code } = seated(tables);
+  const bo = second(tables, dm, code, "Bo");
+  add(dm, callPack());
+  const t = tables.get(code);
+  t.state.entities.wizard.spells.push(CALL);
+  pat.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  bo.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  assert.ok(t.state.entities.wizard.owner && t.state.entities.rogue.owner && t.state.entities.wizard.owner !== t.state.entities.rogue.owner);
+  const p = t.state.entities.wizard.pos;
+  let id = null;
+  for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1]]) {
+    pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: CALL, slot: 1, summon: { at: [{ q: p.q + dq, r: p.r + dr }] } } });
+    id = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === WRAITH);
+    if (id) break;
+  }
+  assert.ok(id, pat.last("error")?.error);
+  const OPEN = ["ac", "maxHp", "abil", "actions", "speeds"];
+  const open = (rec) => OPEN.every((k) => rec?.[k] !== undefined), seenOnly = (rec) => !!rec && OPEN.every((k) => rec[k] === undefined) && rec.tpl === WRAITH && rec.side === "party";
+  assert.ok(open(pat.last("update").state.entities[id]), "its controller is sent it whole");
+  assert.ok(seenOnly(bo.last("update").state.entities[id]), JSON.stringify(Object.keys(bo.last("update").state.entities[id] ?? {})));
+  assert.ok(open(dm.last("update").state.entities[id]));
+  // What it does: its controller is told its roll, another player is told nothing of it.
+  const errs = pat.count("error");
+  pat.say({ t: "act", action: { type: "check", actor: id, skill: "stealth" } });
+  assert.equal(pat.count("error"), errs, pat.last("error")?.error);
+  assert.ok(pat.last("update").events.some((e) => e.type === "check" && e.id === id && Number.isInteger(e.total)));
+  assert.equal(bo.last("update").events.some((e) => e.type === "check"), false);
+  // What changes about it afterwards reaches the other player as a patch of its seen record, never the open one.
+  const frames = bo.raw.length;
+  dm.say({ t: "act", action: { type: "setHp", actor: id, hp: 1 } });
+  assert.equal(dm.last("error"), undefined);
+  assert.ok(bo.raw.length > frames, "the other player was told something changed");
+  const patch = JSON.parse(bo.raw.at(-1)).patch;
+  assert.ok(patch?.entities?.[id], "it was a patch of that creature");
+  assert.ok(seenOnly(patch.entities[id]), "the patch holds the seen record");
+  assert.ok(seenOnly(bo.last("update").state.entities[id]), "applied, it leaves the seen record");
+  assert.equal(bo.last("update").state.entities[id].health, "bloodied");
+  assert.ok(open(pat.last("update").state.entities[id]));
+  assert.equal(pat.last("update").state.entities[id].hp, 1);
+  // A resync gives each the same split.
+  bo.say({ t: "sync" }); pat.say({ t: "sync" });
+  assert.ok(seenOnly(bo.last("update").state.entities[id]) && open(pat.last("update").state.entities[id]));
+  // Nothing the other player was sent holds the block's own text, on the wire.
+  const wire = bo.raw.join("\n");
+  for (const secret of [TEXT, ATTACK, '"skill":"stealth"', ...NUMBERS.slice(0, 3)]) assert.equal(wire.includes(secret), false, secret);
+  assert.ok(pat.raw.join("\n").includes(ATTACK), "the controller was sent its attacks, so the search is not passing by accident");
+  for (const n of NUMBERS.slice(0, 3)) assert.ok(pat.raw.join("\n").includes(n), `its controller was sent ${n}`);
+  assert.equal(dm.raw.join("\n").includes(ATTACK), true);
+  clean();
+});
+
+// What a player is told when they ask for the record later, or come back: once the creature is gone or its form has ended (review of #461).
+const asks = (c, fight) => { c.say({ t: "history", limit: 200 }); c.say({ t: "history", types: ["check", "attack", "form", "effectStart"], limit: 200 }); c.say({ t: "sync" }); if (fight !== undefined) c.say({ t: "history", fight }); };
+const noBlock = (c, extra = []) => {
+  const wire = c.raw.join("\n");
+  for (const secret of [TEXT, ATTACK, '"skill":"stealth"', '"skill":"perception"', WOLFLING, "Ember wolfling", ...NUMBERS, ...extra]) assert.equal(wire.includes(secret), false, `${secret} reached a player`);
+};
+function bothSeated() {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player: pat, code } = seated(tables);
+  const bo = second(tables, dm, code, "Bo");
+  add(dm, callPack());
+  const t = tables.get(code);
+  t.state.entities.wizard.spells.push(CALL, "find-familiar");
+  pat.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  bo.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  return { tables, dm, pat, bo, code, t };
+}
+function summonWraith(t, pat) {
+  const p = t.state.entities.wizard.pos;
+  for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1]]) {
+    pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: CALL, slot: 1, summon: { at: [{ q: p.q + dq, r: p.r + dr }] } } });
+    const id = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === WRAITH);
+    if (id) return id;
+  }
+  assert.fail(pat.last("error")?.error);
+}
+
+test("the record and a return: a summon removed, in a fight and out of it, tells another player nothing of its block, by history, sync, per-fight history and a new connection", () => {
+  const { tables, dm, pat, bo, code, t } = bothSeated();
+  const id = summonWraith(t, pat);
+  pat.say({ t: "act", action: { type: "check", actor: id, skill: "stealth" } });
+  dm.say({ t: "act", action: { type: "startEncounter", center: t.state.entities[id].pos, radius: 30 } });
+  const fight = t.state.timeline.find((e) => e.type === "encounterStart")?.fight;
+  assert.ok(t.state.encounter, dm.last("error")?.error);
+  pat.say({ t: "act", action: { type: "check", actor: id, skill: "perception" } });
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  dm.say({ t: "act", action: { type: "remove", actor: id } });
+  assert.equal(t.state.entities[id], undefined, dm.last("error")?.error);
+  asks(bo, fight);
+  const hist = bo.all("history");
+  assert.ok(hist.length >= 3, "the other player was sent the record");
+  assert.ok(bo.all("history").flatMap((h) => h.entries ?? []).every((e) => !("hb" in e)), "the stamp is not sent");
+  // A player who comes back (the same member, a new connection) is sent the recent log again.
+  const again = client(tables);
+  again.say({ t: "resume", code, token: bo.last("welcome").token });
+  asks(again, fight);
+  noBlock(bo); noBlock(again);
+  // The controller is sent its checks and its block; the search can find them.
+  asks(pat, fight);
+  const patWire = pat.raw.join("\n");
+  assert.ok(patWire.includes('"skill":"stealth"') && patWire.includes('"ac":23'));
+  assert.ok(pat.all("history").flatMap((h) => h.entries ?? []).some((e) => e.type === "check" && e.id === id));
+  clean();
+});
+
+test("a homebrew party creature's breath: the save DC is sent to its runner and to no other player, live and by history after it is removed", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  dm.say({ t: "act", action: { type: "spawn", monster: WYRM, at: { q: 3, r: -1 } } });
+  const w = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === WYRM);
+  assert.ok(w, dm.last("error")?.error);
+  dm.say({ t: "act", action: { type: "bond", actor: w, to: "wizard" } });
+  assert.equal(t.state.entities[w].side, "party", dm.last("error")?.error);
+  dm.say({ t: "act", action: { type: "startEncounter", center: t.state.entities[w].pos } });
+  t.state.encounter.turn = t.state.encounter.order.findIndex((o) => o.id === w);
+  const before = dm.count("error");
+  dm.say({ t: "act", action: { type: "act", actor: w, action: "acid-breath", hex: { q: 4, r: -1 } } });
+  assert.equal(dm.count("error"), before, dm.last("error")?.error);
+  assert.ok(dm.raw.join("\n").includes('"dc":19'), "the DM is sent the DC");
+  assert.ok(pat.raw.join("\n").includes('"dc":19'), "its runner is sent the DC");
+  assert.equal(bo.raw.join("\n").includes('"dc":19'), false, "another player, live, is not");
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  dm.say({ t: "act", action: { type: "remove", actor: w } });
+  assert.equal(t.state.entities[w], undefined, dm.last("error")?.error);
+  asks(bo); asks(pat);
+  assert.equal(bo.raw.join("\n").includes('"dc":19'), false, "nor in the record, after it is gone");
+  assert.ok(pat.all("history").flatMap((h) => h.entries ?? []).some((e) => e.type === "save" && e.dc === 19), "its runner has it in the record");
+  clean();
+});
+
+test("a homebrew party creature's lasting condition on another player's hero: its DC is told to its runner alone, live, in the state, in the repeated save and in the record", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  // The wizard stands in for a homebrew creature of Pat's that casts (a template id that begins `hb-` is what makes it one).
+  Object.assign(t.state.entities.wizard, { tpl: "hb-ember-folk-mage", slots: { 1: 4, 2: 4 }, slotsMax: { 1: 4, 2: 4 } });
+  t.state.entities.wizard.abil = { ...t.state.entities.wizard.abil, int: 30 };
+  t.state.entities.wizard.spells.push("hold-person");
+  t.state.entities.rogue.abil = { ...t.state.entities.rogue.abil, wis: 1 };
+  t.state.entities.wizard.pos = { q: 1, r: 0, z: 0 }; t.state.entities.rogue.pos = { q: 3, r: -1, z: 0 };
+  dm.say({ t: "act", action: { type: "startEncounter", center: t.state.entities.m1.pos } });
+  assert.ok(t.state.encounter, dm.last("error")?.error);
+  const to = (id) => { for (let i = 0; i < 12 && t.state.encounter.order[t.state.encounter.turn].id !== id; i++) dm.say({ t: "act", action: { type: "endTurn", actor: t.state.encounter.order[t.state.encounter.turn].id } }); assert.equal(t.state.encounter.order[t.state.encounter.turn].id, id); };
+  to("wizard");
+  const before = [dm, pat, bo].map((c) => c.raw.length);
+  pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "hold-person", slot: 2, target: "rogue" } });
+  const cast = t.state.timeline.find((e) => e.type === "save" && e.id === "rogue");
+  assert.ok(cast && Number.isInteger(cast.dc), pat.last("error")?.error);
+  const DCS = `"dc":${cast.dc}`;
+  const wire = (c, from) => c.raw.slice(from).join("\n");
+  assert.ok(wire(dm, before[0]).includes(DCS) && wire(pat, before[1]).includes(DCS), "the DM and its runner are sent the DC");
+  assert.equal(wire(bo, before[2]).includes(DCS), false, "the target's own player, live, is not");
+  assert.ok(wire(bo, before[2]).includes('"type":"save"'), "he is told of the save and the condition");
+  bo.say({ t: "sync" }); pat.say({ t: "sync" });
+  assert.equal(bo.raw.slice(before[2]).join("\n").includes(DCS), false, "nor in the state, in the effects of the table");
+  assert.ok(pat.raw.slice(before[1]).join("\n").includes(DCS));
+  delete t.state.entities.wizard.tpl;     // its block is gone by the time of the repeated save (a form that ended): the effect remembers who ran it
+  to("rogue");
+  const mid = [pat, bo].map((c) => c.raw.length);
+  dm.say({ t: "act", action: { type: "endTurn", actor: "rogue" } });
+  assert.ok(t.state.timeline.filter((e) => e.type === "save" && e.id === "rogue").length >= 2, "the repeated save was rolled");
+  assert.equal(bo.raw.slice(mid[1]).join("\n").includes(DCS), false, "the repeated save, live");
+  asks(bo); asks(pat);
+  assert.equal(bo.raw.slice(mid[1]).join("\n").includes(DCS), false, "nor in the record");
+  assert.ok(pat.all("history").flatMap((h) => h.entries ?? []).some((e) => e.type === "save" && e.dc === cast.dc), "its runner has it in the record");
+  clean();
+});
+
+test("the record: a familiar dismissed to the pocket dimension, then re-formed there, tells another player nothing of its homebrew form", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  t.state.entities.wizard.slots[1] = 4;
+  const p = t.state.entities.wizard.pos;
+  let fam = null;
+  for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) {
+    pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "find-familiar", slot: 1, summon: { form: OWLET, type: "fey", at: [{ q: p.q + dq, r: p.r + dr }] } } });
+    fam = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === OWLET);
+    if (fam) break;
+  }
+  assert.ok(fam, pat.last("error")?.error);
+  pat.say({ t: "act", action: { type: "check", actor: fam, skill: "perception" } });
+  pat.say({ t: "act", action: { type: "dismiss", actor: "wizard", id: fam } });
+  assert.equal(t.state.entities[fam], undefined, pat.last("error")?.error);
+  pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "find-familiar", slot: 1, summon: { form: "owl", type: "fey" } } });
+  pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "find-familiar", slot: 1, summon: { form: OWLET, type: "fey" } } });
+  asks(bo);
+  noBlock(bo);
+  assert.ok(pat.raw.join("\n").includes('"ac":21'), "the controller was sent it");
+  clean();
+});
+
+test("the record: a druid in a homebrew form, after the form has ended, tells another player nothing of the form, and shows the druid as the party's own throughout", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  const A = { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 };
+  const druid = { name: "Ven", class: "druid", level: 2, abilities: A, skills: ["nature", "perception"], choices: { "primal-order": "warden" }, armour: "leather-armor", shield: true, weapons: ["quarterstaff"], spells: ["produce-flame", "cure-wounds"] };
+  t.state.entities.hero = makeEntity(derive(druid).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  pat.say({ t: "act", action: { type: "release", entity: "wizard" } });
+  pat.say({ t: "act", action: { type: "claim", entity: "hero" } });
+  assert.ok(t.state.entities.hero.owner, pat.last("error")?.error);
+  const hp = t.state.entities.hero.hp;
+  pat.say({ t: "act", action: { type: "feature", actor: "hero", feature: "wild-shape", form: WOLFLING } });
+  assert.equal(t.state.entities.hero.form?.block, WOLFLING, pat.last("error")?.error);
+  pat.say({ t: "act", action: { type: "check", actor: "hero", skill: "stealth" } });
+  // In the form: another player is sent the druid, with its own Hit Points, and nothing the form gave it.
+  const seen = bo.last("update").state.entities.hero;
+  assert.ok(seen && seen.form === undefined && seen.hp === hp && seen.abil?.dex === 14, JSON.stringify(seen));
+  noBlock(bo, ['"block":', "Wild Shape (Ember"]);
+  pat.say({ t: "act", action: { type: "feature", actor: "hero", feature: "wild-shape" } });
+  assert.equal(t.state.entities.hero.form, undefined, pat.last("error")?.error);
+  asks(bo);
+  noBlock(bo, ['"block":', "Wild Shape (Ember"]);
+  assert.ok(pat.raw.join("\n").includes('"dex":27'), "the druid's player was sent the form");
+  clean();
 });
 
 test("M3: the pack budget is the table's and is spent only by its seated DM", () => {

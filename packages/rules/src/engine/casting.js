@@ -16,7 +16,6 @@ import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, summonCount, summonMade } from './resolve.js';
 import { roll } from '../rng.js';
 import { incapacitatedBy } from '../modifiers.js';
-import { HOMEBREW_FORM, isHomebrew } from '../summons.js';
 
 // ---------- teleportation ----------
 // SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
@@ -291,9 +290,8 @@ function summonFor(s, e, sp, a, slot, range, ctx, fc) {
   else p.type === undefined || fail(`${sp.name} has no choice of creature type.`);
   if (step.forms !== undefined) {
     const m = typeof p.form === 'string' && Object.hasOwn(CONTENT.monsters, p.form) ? CONTENT.monsters[p.form] : null;
-    !isHomebrew(m) || fail(HOMEBREW_FORM);   // before the filter: a filter never matches one, and the refusal says nothing of its type or rating
-    // Forms a feature of the caster adds for this spell (`freeCast.forms`, Pact of the Chain; docs/specs/companions.md, C9b): after the
-    // homebrew check above, so a homebrew monster is never one, and the caster's own, whether it casts through the feature or by a slot.
+    // Forms a feature of the caster adds for this spell (`freeCast.forms`, Pact of the Chain; docs/specs/companions.md, C9b): the caster's own,
+    // whether it casts through the feature or by a slot. A homebrew monster may be a form, as an SRD one (#457); what players are sent of it is view.js's.
     const extra = (e.feats ?? []).some((f) => f.freeCast?.spells?.includes(sp.id) && f.freeCast.forms?.includes(p.form));
     const fits = m && (extra || (Array.isArray(step.forms) ? step.forms.includes(p.form) : m.type === step.forms.type && m.cr === step.forms.cr));
     fits || fail(`Choose a form ${sp.name} can take.`);

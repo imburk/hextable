@@ -17,7 +17,6 @@ import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { gridOf } from "../src/grid.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
-import { HOMEBREW_FORM } from "../src/summons.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -144,15 +143,17 @@ test("the seven extra forms are for the warlock with the pact only: not a wizard
   refused(s, pactCast(s, "no-such-monster"), PAT, /Choose a form/);
 });
 
-test("freeCast forms: a homebrew monster is never a form, even if the feature lists it (#403 first)", () => {
-  const hb = { ...structuredClone(CONTENT.monsters.owl), id: "hb-ember-folk-owlet", name: "Ember owlet", source: "homebrew:ember-folk", checked: false, text: "An ember beast." };
+test("freeCast forms: a homebrew monster the feature lists is a form like any (#457); one it does not list is not", () => {
+  const hb = { ...structuredClone(CONTENT.monsters.wolf), id: "hb-ember-folk-wolfling", name: "Ember wolfling", source: "homebrew:ember-folk", checked: false, text: "An ember beast." };
   const pack = { format: "hextable-pack", v: 1, pack: { id: "ember-folk", name: "ember-folk", version: 1, license: "CC0, by the author", attribution: "Written for a test." }, monsters: [hb] };
   const r = loadPack(pack); assert.ok(r.ok, r.problems?.join("; "));
   using(overlayOf([r.pack]), () => {
     const s = pactField();
+    refused(s, pactCast(s, hb.id), PAT, /Choose a form/);        // a Challenge Rating 1/4 Beast: not the filter's, and not on the feature's list, as the SRD Wolf is not
     s.entities.mor.feats.find((f) => f.id === PACT).freeCast.forms.push(hb.id);
-    refused(s, pactCast(s, hb.id), PAT, new RegExp(HOMEBREW_FORM));
-    ok(apply(s, pactCast(s, "imp"), PAT));
+    const res = ok(apply(s, pactCast(s, hb.id), PAT));
+    assert.equal(s.entities[res.events.find((e) => e.type === "summoned").id].tpl, hb.id);
+    ok(apply(s, pactCast(s, "imp", { summon: { form: "imp", type: "fiend" } }), PAT));   // cast again: it takes the new form where it is
   });
 });
 

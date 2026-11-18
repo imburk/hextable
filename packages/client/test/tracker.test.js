@@ -154,3 +154,27 @@ test('a ridden pair in a fight: the mount stands after its rider, says whom it c
   assert.equal(P2.entities[gob].riding, undefined);
   assert.doesNotMatch(text(rowHTML(P2, { e: P2.entities[gob] }, {})), /Riding/);
 });
+
+// #457: another player is sent a homebrew companion as a seen record that keeps its side (view.js, forViewer): no numbers, no master.
+// The tracker must draw it as a party creature with a word for its health, and the turn line must name it, without a failure.
+test("a party creature a player is sent as a seen record (a homebrew companion that is not theirs) is drawn, with words and no numbers", () => {
+  const s = newGame(7);
+  ok(apply(s, { type: 'claim', entity: 'fighter', user: 'pat', userName: 'pat' }, PAT));
+  const id = ok(apply(s, { type: 'spawn', monster: 'wolf', at: { q: -5, r: 2 }, name: 'Ember wolfling' }, DM)).events[0].id;
+  Object.assign(s.entities[id], { tpl: 'hb-ember-folk-wolfling', side: 'party', bond: { to: 'fighter', kind: 'familiar', orders: 'free' } });
+  ok(apply(s, { type: 'startEncounter', center: { q: -5, r: 2 } }, DM));
+  const BO = { role: 'player', userId: 'bo' };
+  const theirs = view(s, BO), mine = view(s, PAT);
+  assert.equal(theirs.entities[id].abil, undefined);
+  assert.ok(mine.entities[id].abil);
+  const draw = (S, who) => trackerRows(S, {}).filter((r) => r.e?.id === id).map((r) => rowHTML(S, r, { mine: (e) => e.owner === who }));
+  const rows = draw(theirs, 'bo');
+  assert.equal(rows.length, 1, 'it is in their tracker');
+  assert.match(text(rows[0]), /Ember wolfling/);
+  assert.doesNotMatch(text(rows[0]), /\d+ \/ \d+/, 'no hit point numbers');
+  assert.match(text(draw(mine, 'pat')[0]), /\d+ \/ \d+/, 'its controller has them');
+  // Every creature's turn can be named from the seen record.
+  const S = structuredClone(theirs);
+  S.encounter.turn = S.encounter.order.findIndex((o) => o.id === id);
+  assert.match(turnLine(S), /Ember wolfling's turn/);
+});

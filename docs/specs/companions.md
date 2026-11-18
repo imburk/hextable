@@ -1965,6 +1965,6 @@ What was settled while building C10. The client draws only what the view sends.
 - **`vanished`** fades as `removed` does: the renderer reads both (`app.js` also sends a `removed` beat for it, which is harmless).
 - **Tracker.** A mount that keeps its own place in the order (a steed standing `after` its master) says "Carrying <rider>"; one drawn under its rider keeps "Carries its rider". Both only where
   the view sends the rider.
-- **The old renderer** (`render.js`, due for removal, #355) raises a rider by its mount's pawn height and nothing more; it does not move the pair as one.
+- ~~**The old renderer** (`render.js`, due for removal, #355) raises a rider by its mount's pawn height and nothing more; it does not move the pair as one.~~ (Deleted by R14 step 2, #355.)
 - **Also built:** the pocket on the sheet (`pocketHtml`, the party's own characters), the tap guard of `paneltabs.mjs` in `classes.mjs` (DEBT T30).
 - **Not built:** a rider's lift on a flying mount's ground shadow; a different look for a rider (the pawn is the rider's own); a rider seen only as `someone`.
