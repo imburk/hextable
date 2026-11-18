@@ -462,3 +462,17 @@ build settled:
   sent, with `escape` and `escapeDis` taken off any hold whose grappler is not the party's.
 - `target.notGrappler` reads the holds, or `source` of a grapple from before holds; a Grappled condition naming no grappler gives no
   Disadvantage (DEBT T67). The Grappler feat stays `assist` until G3 brings Fast Wrestler.
+
+Fix round 1 of #468 (decided by the coordinator):
+- A hold on a creature that is dead ends after the action (`why: 'released'`); a removed one takes its holds with it. `handHolds`
+  (`weapons.js`) does not count a dead creature, so a corpse never fills a hand even before the after-pass.
+- A Grappled condition with no `holds` (the DM's, or a monster action's with only a `source`) is exactly as before G2: its `also`
+  keeps the Disadvantage sentence (word for word as on main), and `target.notGrappler` and `target.grappledBySelf` do not judge it.
+  Only a hold the engine keeps gets the modifier; `grip` tells the DM nothing of `also`.
+- Until G3, Decision 6 is kept by refusing: a creature that holds another is refused `move` (as the rider or the mount) and `dash`
+  ("Brenna is holding Goblin 2. Dragging is not in the game yet: let go first."), and a follower that holds one is left out of the
+  column's walk and of the catch-up when a fight starts (it stays, its hold stays). Teleports and forced moves still end a hold by
+  distance; the DM's note says a teleport is one, and otherwise how far apart they are. Only a walk the refusal does not cover (a mount
+  carrying a holder) gets the "does not drag yet" note.
+- `shield` and `equip` refuse to take up a Shield when both hands hold creatures.
+- `describeStep` labels an Unarmed Strike by its option: "grappled", "shoved".
