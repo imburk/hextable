@@ -30,7 +30,7 @@
 import { CONTENT, SPELLS } from './content/index.js';
 import { handsFull, isUnarmed, steadiest } from './weapons.js';
 import { incapacitated } from './modifiers.js';
-import { SIZES } from './content/sizes.js';
+import { SIZES } from './content/schema.js';
 import { ownerOf } from './engine/shared.js';
 
 export const OPPORTUNITY = 'opportunity-attack';
