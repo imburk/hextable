@@ -1,8 +1,8 @@
-// The Three.js renderer (docs/specs/renderer.md, R11): the same interface as render.js, drawn with the vendored Three.js r187.
-// It is loaded only when the kind 'three' is chosen (renderer.js imports it dynamically), so a normal page never fetches vendor/.
-// Parity is the aim, not improvement: the camera, the light and the fog, the shapes and colours, the picking and the beats are the
-// default renderer's. Terrain, walls, overlay and pawns are built by three-build.js (pure) into one BufferGeometry per kind and drawn
-// with one small ShaderMaterial that does what render.js's shader does (a colour per vertex, one directional light, fog, the hour's
+// The Three.js renderer (docs/specs/renderer.md, R11): the one renderer (the interface of renderer.js), drawn with the vendored Three.js r187. The hand-written renderer it was ported from, render.js, was deleted in R14 step 2 (#355).
+// It is loaded when the kind 'three' is chosen, which is every page but `?renderer=none` (renderer.js imports it dynamically).
+// It was written for parity with the old renderer, not as an improvement: the camera, the light and the fog, the shapes and colours, the picking and the beats were the
+// old renderer's. Terrain, walls, overlay and pawns are built by three-build.js (pure) into one BufferGeometry per kind and drawn
+// with one small ShaderMaterial that does what the old hand-written renderer's shader did (a colour per vertex, one directional light, fog, the hour's
 // grade, a tint per draw), so the pictures agree. Picking is still the hex-column march (Decision 8): only the camera ray is Three's.
 // No glTF here (R12). Real shadows (docs/specs/renderer.md, R15): a depth pass from the sun into a shadow map, read by the floors; the blobs
 // are drawn when it is off. The governor gives them up before it gives up any pixel ratio.
@@ -22,7 +22,7 @@ const tweenAt = (tw, now) => { const p = Math.max(0, Math.min(1, (now - tw.t0) /
 const clock = () => performance.now() / 1000;
 const norm = (a) => { const l = Math.hypot(...a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 
-// The shader is render.js's, in Three's clothes: the model matrix, the view and projection come from Three.
+// The shader is the old hand-written renderer's, in Three's clothes: the model matrix, the view and projection come from Three.
 const VS = `
 attribute vec4 aCol;
 uniform vec3 uLight, uGrade; uniform vec4 uTint; uniform float uLit; uniform vec2 uFog;
@@ -164,9 +164,9 @@ export class ThreeRenderer {
   constructor(canvas, labels, theme) {
     this.canvas = canvas; this.labels = labels; this.theme = theme;
     this.three = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-    this.three.autoClear = true; this.three.outputColorSpace = THREE.LinearSRGBColorSpace;      // colours are written as they are, as render.js does (no sRGB conversion of the clear colour)
+    this.three.autoClear = true; this.three.outputColorSpace = THREE.LinearSRGBColorSpace;      // colours are written as they are, as the old renderer did (no sRGB conversion of the clear colour)
     this.scene = new THREE.Scene(); this.scene.matrixWorldAutoUpdate = false;
-    this.camera = new THREE.PerspectiveCamera((0.75 * 180) / Math.PI, 1, 0.3, 200);       // the same lens as render.js: 0.75 rad, near 0.3, far 200
+    this.camera = new THREE.PerspectiveCamera((0.75 * 180) / Math.PI, 1, 0.3, 200);       // the lens the table has always had: 0.75 rad, near 0.3, far 200
     const V3 = (...a) => ({ value: new THREE.Vector3(...a) });
     this.u = { light: V3(...norm([0.45, 0.8, 0.35])), grade: V3(1, 1, 1), flat: V3(1, 1, 1), sky: V3(0, 0, 0), fog: { value: new THREE.Vector2(60, 34) } };
     this.u.sh = { uSMap: { value: null }, uSVP: { value: new THREE.Matrix4() }, uSP: { value: new THREE.Vector4(0.02, 0.85, 0.01, 4) } };       // what the floors read the shadow map through
@@ -292,7 +292,7 @@ export class ThreeRenderer {
     for (const e of Object.values(state.entities)) {
       const a = this.actors.get(e.id), w = this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);
       if (e.riding && this.actors.has(e.riding.on) && !a.boarding) continue;       // a rider is where its mount is drawn (#ride); the frame sets it
-      // as render.js: on hexes a big creature is put at its own hex here, on squares at the middle of its squares
+      // on hexes a big creature is put at its own hex here, on squares at the middle of its squares
       if (!a.way.length && (Math.abs(a.x - w.x) > 0.01 || Math.abs(a.z - w.z) > 0.01)) Object.assign(a, w);
       const yy = spot(state.map, e, e.pos).y;
       if (!a.way.length && Math.abs(a.y - yy) > 0.01) {
@@ -596,7 +596,7 @@ export class ThreeRenderer {
     this.three.setPixelRatio(dpr);
     this.three.setSize(Math.max(1, c.clientWidth), Math.max(1, c.clientHeight), false);
   }
-  // The camera as render.js has it: the eye on a sphere round the focus, a 0.75 rad lens, and the picture slid up by the inset.
+  // The camera: the eye on a sphere round the focus, a 0.75 rad lens, and the picture slid up by the inset.
   #camera() {
     const c = this.cam, cp = Math.cos(c.pitch), cam = this.camera;
     cam.position.set(c.x + c.dist * cp * Math.sin(c.yaw), c.y + c.dist * Math.sin(c.pitch), c.z + c.dist * cp * Math.cos(c.yaw));
@@ -765,7 +765,7 @@ export class ThreeRenderer {
   }
 
   // ---------- picking and input ----------
-  // The hex-column march of render.js, unchanged (Decision 8); only the ray comes from Three.
+  // The hex-column march, as the old renderer had it (Decision 8); only the ray comes from Three.
   #pick(px, py) {
     const C = this.C; if (!C || !this.state) return null;
     const d = this.#dir(C, px, py);
