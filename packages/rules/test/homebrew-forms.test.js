@@ -262,6 +262,95 @@ test("a homebrew foe that the DM later bonds to a party master: what it did as a
   });
 });
 
+// ---------- a DC that does not follow its own cast: a zone, a repeated save, a target of the party (third review of #461) ----------
+// The wizard stands in for a homebrew creature of Pat's that casts: its template id begins `hb-` (a homebrew creature is told by that), so
+// every event that names it is stamped, and what it casts has a Difficulty Class that is a number of its block.
+const BOP = { role: "player", userId: "bo" };
+function fight(homebrew) {
+  const s = newGame(5);
+  s.settings.autoEngage = false;
+  ok(apply(s, { type: "claim", entity: "wizard", user: "pat", userName: "Pat" }, PAT));
+  ok(apply(s, { type: "claim", entity: "fighter", user: "bo", userName: "Bo" }, BOP));
+  if (homebrew) Object.assign(s.entities.wizard, { tpl: "hb-ember-folk-mage", abil: { ...s.entities.wizard.abil, int: 30 } });
+  s.entities.wizard.spells.push("moonbeam", "hold-person");
+  s.entities.wizard.slots = { 1: 4, 2: 4, 3: 4 }; s.entities.wizard.slotsMax = { 1: 4, 2: 4, 3: 4 };
+  s.entities.fighter.abil.wis = 1;    // a fighter that fails its saves, whatever the dice
+  s.entities.wizard.pos = { q: 1, r: 0, z: 0 }; s.entities.fighter.pos = { q: 3, r: -1, z: 0 };
+  ok(apply(s, { type: "startEncounter", center: s.entities.m1.pos }, DM));
+  return s;
+}
+const turnTo = (s, id) => { s.encounter.turn = s.encounter.order.findIndex((o) => o.id === id); assert.equal(current(s), id); };
+// The turns pass as they do in play (a turn's own budget is spent and renewed), as far as the one that is named.
+const passTo = (s, id) => { for (let i = 0; i < 12 && current(s) !== id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); assert.equal(current(s), id); };
+const dcsIn = (evs) => evs.filter((e) => e.type === "save").map((e) => e.dc).filter((d) => d !== undefined);
+const told = (evs, s, v, dc) => sees(viewEvents(structuredClone(evs), s, v), `"dc":${dc}`);
+
+test("a zone's save, long after the cast and after an attack of the party: its DC is the runner's, in the record and live", () => {
+  const s = fight(true);
+  s.entities.m1.hp = s.entities.m1.maxHp = 500;    // it outlives the beam and the blow
+  turnTo(s, "wizard");
+  const cast1 = ok(apply(s, { type: "cast", actor: "wizard", spell: "moonbeam", slot: 2, hex: s.entities.m1.pos }, PAT));
+  passTo(s, "fighter");
+  const hit = ok(apply(s, { type: "attack", actor: "fighter", attack: s.entities.fighter.attacks.find((a) => a.type === "melee").id, target: "m1" }, BOP));      // an attack of the party between
+  passTo(s, "m1");
+  const end = ok(apply(s, { type: "endTurn", actor: "m1" }, DM));
+  const zoned = [...cast1.events, ...end.events].filter((e) => e.type === "save" && e.id === "m1");
+  assert.ok(zoned.length > 0, "the goblin saves against the beam: " + JSON.stringify(end.events.map((e) => e.type)));
+  const dc = zoned[0].dc;
+  assert.ok(Number.isInteger(dc) && dc >= 19, `the DM's own event holds the DC (${dc})`);
+  assert.ok(zoned.every((e) => e.src === "wizard"), "a save names whose DC it is");
+  const live = [cast1.events, hit.events, end.events];
+  for (const evs of live) assert.equal(told(evs, s, BOP, dc), false, "live, not to another player");
+  assert.equal(told(end.events, s, PAT, dc) || told(cast1.events, s, PAT, dc), true, "live, to its runner");
+  const tl = record(s);
+  assert.equal(sees(viewEvents(tl, s, BOP), `"dc":${dc}`), false, "in the record");
+  assert.equal(sees(viewEvents(tl, s, PAT), `"dc":${dc}`), true);
+  assert.ok(viewEvents(tl, s, BOP).some((e) => e.type === "save" && e.id === "m1"), "he is told of the save, as a foe's");
+});
+
+test("a lasting condition's repeated save, and a target of the party: no DC to another player, live, in the record and in the effects", () => {
+  const s = fight(true);
+  turnTo(s, "wizard");
+  const cast1 = ok(apply(s, { type: "cast", actor: "wizard", spell: "hold-person", slot: 2, target: "fighter" }, PAT));
+  const dc = dcsIn(cast1.events)[0];
+  assert.ok(Number.isInteger(dc) && dc >= 19, JSON.stringify(cast1.events.map((e) => [e.type, e.dc])));
+  const first = viewEvents(structuredClone(cast1.events), s, BOP).filter((e) => e.type === "save");
+  assert.ok(first.length > 0 && first.every((e) => e.dc === undefined), "Bo's fighter is the target: its save is told, the DC is not");
+  assert.ok(first[0].roll !== undefined && first[0].total !== undefined, "the target's own roll stays");
+  assert.ok(dcsIn(viewEvents(structuredClone(cast1.events), s, PAT)).every((x) => x === dc), "its runner has the DC");
+  // The effect on the fighter, in everyone's state.
+  const parts = (v) => view(s, v).effects.flatMap((fx) => fx.parts);
+  assert.ok(parts(PAT).some((p) => p.dc === dc || p.ends?.dc === dc), "the runner's effects hold the DC");
+  assert.ok(parts(BOP).length > 0 && parts(BOP).every((p) => p.dc === undefined && p.ends?.dc === undefined), "another player's do not");
+  assert.equal(sees(view(s, BOP).effects, `"dc":${dc}`), false);
+  assert.ok(sees(view(s, DM).effects, `"dc":${dc}`));
+  // The repeated save at the end of the fighter's turn.
+  turnTo(s, "fighter");
+  const end = ok(apply(s, { type: "endTurn", actor: "fighter" }, BOP));
+  const again = end.events.filter((e) => e.type === "save");
+  assert.ok(again.length > 0 && again.every((e) => e.dc === dc && e.src === "wizard"), "the engine rolled it against the same DC: " + JSON.stringify(again));
+  assert.equal(told(end.events, s, BOP, dc), false, "live");
+  assert.equal(told(end.events, s, PAT, dc), true);
+  const tl = record(s);
+  assert.equal(sees(viewEvents(tl, s, BOP), `"dc":${dc}`), false, "in the record");
+  assert.equal(sees(viewEvents(tl, s, PAT), `"dc":${dc}`), true);
+});
+
+test("an SRD creature's cast and lasting effect keep showing their DC to the party, as before", () => {
+  const s = fight(false);
+  turnTo(s, "wizard");
+  const c = ok(apply(s, { type: "cast", actor: "wizard", spell: "hold-person", slot: 2, target: "fighter" }, PAT));
+  assert.equal(c.events.some((e) => "src" in e || "hb" in e), false, "no event of an SRD game carries a stamp or a `src`");
+  const dc = dcsIn(c.events)[0];
+  assert.ok(Number.isInteger(dc));
+  assert.ok(told(c.events, s, BOP, dc));
+  assert.ok(view(s, BOP).effects.flatMap((fx) => fx.parts).some((p) => p.dc === dc || p.ends?.dc === dc));
+  turnTo(s, "fighter");
+  const end = ok(apply(s, { type: "endTurn", actor: "fighter" }, BOP));
+  assert.equal(end.events.some((e) => "src" in e || "hb" in e), false);
+  assert.ok(told(end.events, s, BOP, dc), "the repeated save keeps its DC, as before");
+});
+
 test("a start of fight too large to be read through is stamped with every homebrew creature there is", () => {
   const ov = OV();
   using(ov, () => {

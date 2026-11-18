@@ -116,10 +116,17 @@ export function forViewer(base, state, viewer) {
       }
     }
   }
-  if (!replaced) return base;
-  const out = { ...base, entities: replaced }, enc = base.encounter, held = (id) => seen.has(id) || formed.has(id);
+  // A lasting effect whose source is a homebrew creature that is not the viewer's: the Difficulty Class it carries is a number of that
+  // creature's block (a repeated save, a condition's end), and is not sent, on a target of the party or any other.
+  const noDc = (fx) => fx.parts.some((q) => q.dc !== undefined || q.ends?.dc !== undefined);
+  const theirDc = (fx) => { const src = state.entities[(state.effects ?? []).find((x) => x.id === fx.id)?.source]; return !!src && homebrewBlock(src) && !controlledBy(state, src, uid) && noDc(fx); };
+  const dcless = (fx) => ({ ...fx, parts: fx.parts.map((q) => { const { dc, ...p } = q; if (p.ends && p.ends.dc !== undefined) { const { dc: d2, ...ends } = p.ends; p.ends = ends; } return p; }) });
+  const stripDc = base.effects?.some(theirDc);
+  if (!replaced && !stripDc) return base;
+  const out = { ...base, entities: replaced ?? base.entities }, enc = base.encounter, held = (id) => seen.has(id) || formed.has(id);
   const form = (fx) => fx.parts.some((q) => q.form && formed.has(q.target));
   if (formed.size && base.effects?.some(form)) out.effects = base.effects.filter((fx) => !form(fx));
+  if (stripDc) out.effects = (out.effects ?? base.effects).map((fx) => (theirDc(fx) ? dcless(fx) : fx));
   if (enc && (seen.size || formed.size)) {
     const active = state.encounter?.order[state.encounter.turn]?.id;
     out.encounter = { ...enc, order: enc.order.map((o) => (seen.has(o.id) ? { id: o.id } : formed.has(o.id) ? Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'dex')) : o)),
@@ -507,6 +514,7 @@ export function viewEvents(events, state, viewer) {
   // A creature the viewer did not run is told as a foe they can see, whatever it is now (gone, or out of its form): no dice, DC, check or
   // hand-applied action text of it. The stamp is read from the event being told, and is never sent.
   const theirs = (id) => { const hb = out.ev?.hb; return !!hb && Object.hasOwn(hb, id) && !(typeof viewer?.userId === 'string' && hb[id] === viewer.userId); };
+  const runs = (id) => { const hb = out.ev?.hb; return !!hb && typeof viewer?.userId === 'string' && hb[id] === viewer.userId; };      // the stamp says the viewer ran it
   const cls = (id) => {
     if (was?.includes(id)) return 'hidden';
     const c = gone.get(id) ?? classify(state, id);
@@ -584,10 +592,19 @@ export function viewEvents(events, state, viewer) {
         out.push(e);
         break;
       }
-      case 'save':
-        if (cls(ev.id) === 'open') { const e = structuredClone(ev); if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by; out.push(e); }
-        else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...(casterOpen ? ['dc'] : [])]));
+      case 'save': {
+        // A save names the creature whose DC it is (`src`, only a homebrew one: the DC is a number of its block): told to the player who runs
+        // it and to no other, whoever the target is. Any other save: the target's own, or the caster of the step it follows, as ever.
+        const told = ev.src !== undefined ? runs(ev.src) : null;
+        if (cls(ev.id) === 'open') {
+          const e = structuredClone(ev);
+          if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by;
+          if (told === false) delete e.dc;
+          if (e.src !== undefined && cls(e.src) === 'hidden') delete e.src;
+          out.push(e);
+        } else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...((told ?? casterOpen) ? ['dc'] : [])]));
         break;
+      }
       case 'reaction':                                 // a creature took a Reaction: who, what, and against whom, as anyone watching would see
         out.push({ ...pick(ev, ['type', 'id', 'reaction', 'name', 'trigger']),
           ...(ev.against !== undefined && cls(ev.against) !== 'hidden' ? { against: ev.against } : {}),

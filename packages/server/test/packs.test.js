@@ -880,6 +880,41 @@ test("a homebrew party creature's breath: the save DC is sent to its runner and 
   clean();
 });
 
+test("a homebrew party creature's lasting condition on another player's hero: its DC is told to its runner alone, live, in the state, in the repeated save and in the record", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  // The wizard stands in for a homebrew creature of Pat's that casts (a template id that begins `hb-` is what makes it one).
+  Object.assign(t.state.entities.wizard, { tpl: "hb-ember-folk-mage", slots: { 1: 4, 2: 4 }, slotsMax: { 1: 4, 2: 4 } });
+  t.state.entities.wizard.abil = { ...t.state.entities.wizard.abil, int: 30 };
+  t.state.entities.wizard.spells.push("hold-person");
+  t.state.entities.rogue.abil = { ...t.state.entities.rogue.abil, wis: 1 };
+  t.state.entities.wizard.pos = { q: 1, r: 0, z: 0 }; t.state.entities.rogue.pos = { q: 3, r: -1, z: 0 };
+  dm.say({ t: "act", action: { type: "startEncounter", center: t.state.entities.m1.pos } });
+  assert.ok(t.state.encounter, dm.last("error")?.error);
+  const to = (id) => { for (let i = 0; i < 12 && t.state.encounter.order[t.state.encounter.turn].id !== id; i++) dm.say({ t: "act", action: { type: "endTurn", actor: t.state.encounter.order[t.state.encounter.turn].id } }); assert.equal(t.state.encounter.order[t.state.encounter.turn].id, id); };
+  to("wizard");
+  const before = [dm, pat, bo].map((c) => c.raw.length);
+  pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "hold-person", slot: 2, target: "rogue" } });
+  const cast = t.state.timeline.find((e) => e.type === "save" && e.id === "rogue");
+  assert.ok(cast && Number.isInteger(cast.dc), pat.last("error")?.error);
+  const DCS = `"dc":${cast.dc}`;
+  const wire = (c, from) => c.raw.slice(from).join("\n");
+  assert.ok(wire(dm, before[0]).includes(DCS) && wire(pat, before[1]).includes(DCS), "the DM and its runner are sent the DC");
+  assert.equal(wire(bo, before[2]).includes(DCS), false, "the target's own player, live, is not");
+  assert.ok(wire(bo, before[2]).includes('"type":"save"'), "he is told of the save and the condition");
+  bo.say({ t: "sync" }); pat.say({ t: "sync" });
+  assert.equal(bo.raw.slice(before[2]).join("\n").includes(DCS), false, "nor in the state, in the effects of the table");
+  assert.ok(pat.raw.slice(before[1]).join("\n").includes(DCS));
+  to("rogue");
+  const mid = [pat, bo].map((c) => c.raw.length);
+  dm.say({ t: "act", action: { type: "endTurn", actor: "rogue" } });
+  assert.ok(t.state.timeline.filter((e) => e.type === "save" && e.id === "rogue").length >= 2, "the repeated save was rolled");
+  assert.equal(bo.raw.slice(mid[1]).join("\n").includes(DCS), false, "the repeated save, live");
+  asks(bo); asks(pat);
+  assert.equal(bo.raw.slice(mid[1]).join("\n").includes(DCS), false, "nor in the record");
+  assert.ok(pat.all("history").flatMap((h) => h.entries ?? []).some((e) => e.type === "save" && e.dc === cast.dc), "its runner has it in the record");
+  clean();
+});
+
 test("the record: a familiar dismissed to the pocket dimension, then re-formed there, tells another player nothing of its homebrew form", () => {
   const { dm, pat, bo, t } = bothSeated();
   t.state.entities.wizard.slots[1] = 4;

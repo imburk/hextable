@@ -5,6 +5,7 @@ import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
+import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
@@ -882,7 +883,7 @@ function relentless(s, t, ev) {
   const r = f.relentless, n = t.uses?.[f.id] ?? 0, dc = r.dc + r.step * n;
   (t.uses ??= {})[f.id] = n + 1;
   const { used, ...sv } = savingThrow(s, t, 'con', dc, null, null, null, null, ev);
-  ev.push({ type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name });
+  ev.push({ type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name, ...srcOf(s, t.id) });
   useUp(s, ev, used ?? []);
   if (!sv.success) return;
   t.hp = Math.min(t.maxHp, r.hp);
@@ -1224,7 +1225,7 @@ export function strikeOption(s, e, t, atk, shove, ev) {
   renew(s, e, t);                                                       // making an enemy save keeps a Rage going
   const about = shove === 'prone' ? ['prone'] : null, abil = bestSave(s, t, ['str', 'dex'], e, about);
   const { used, ...sv } = savingThrow(s, t, abil, dc, null, e, null, null, ev, about);
-  ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv });
+  ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv, ...srcOf(s, e.id) });
   useUp(s, ev, used ?? []);
   if (sv.success) return;
   if (shove === 'prone') {

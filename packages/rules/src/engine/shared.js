@@ -6,6 +6,7 @@ import { coverOf, inSight } from '../sight.js';
 import { bounded, incapacitatedBy, modifiers } from '../modifiers.js';
 import { SUMMON_MOST } from '../content/schema.js';
 import { turnKey } from '../durations.js';
+import { hbId, homebrewBlock } from '../homebrew.js';
 
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
 export const EXPLORE_BUDGET = 300;   // feet per tap while free roaming
@@ -51,9 +52,7 @@ export const ownerOf = (s, e) => {
 // ---------- homebrew creatures of the party (#457; docs/specs/homebrew.md, the build notes on #457) ----------
 // A homebrew monster's block is sent only to the player who runs the creature made from it. These say which creatures those are and who
 // runs them. Homebrew is told by the id, which the strict linter makes begin `hb-` for every entry of a pack; nothing here reads a pack.
-export const hbId = (id) => typeof id === 'string' && id.startsWith('hb-');
-// Does this creature carry a homebrew monster's block: made from one (`tpl`) or in the form of one (`form.block`)?
-export const homebrewBlock = (e) => !!e && (hbId(e.tpl) || hbId(typeof e.form === 'string' ? e.form : e.form?.block));
+export { hbId, homebrewBlock };
 // The user who runs a creature: its player (`ownerOf`), or, for a companion, its master's, up the bond (not turn by turn: a commanded
 // creature is the DM's on a turn its master did not command it, and what a player is sent must not change with the turn). null: the DM's.
 export function controllerOf(s, e, depth = 0) {
