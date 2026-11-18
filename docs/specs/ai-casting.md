@@ -235,7 +235,7 @@ levelled action spell is not a candidate that turn, and a cantrip or the weapon 
   reach gives a line, it does not Dash into melee: it ends its turn (or uses its weapon, if a foe is already beside it).
 - **Ties between foes break by distance, then id, for a party creature** here and wherever the AI ranks foes (the weapon
   fall-through, `withActions`' order, `protect`'s `close` list), never by the foe's Hit Points, which a party creature must
-  not use (Decision 2). A monster's tie by Hit Points is unchanged.
+  not use (Decision 2). A foe-side monster's tie by Hit Points is unchanged; a party-side creature (a companion's `protect` included) breaks ties by id.
 - **`close` reads what the party knows.** Whether a foe next to the caster can see it (it takes Disadvantage on a ranged spell
   attack) is judged from what the party can know: a party creature does not read a foe's senses; it assumes the foe sees it,
   unless it is Blinded (an open condition).
@@ -421,7 +421,7 @@ was silent or a choice had to be made; none of it changes a decision.
 - **Fix round 1 (see the amendment to Decision 5).** Built as amended: no walk after a cast; the approach goes only as far as the
   chosen option needs (`plan` in `casterStep` tries each stoppable cell with the spell's own reach, keeps the one farthest from the
   foes); the slot rule is twice the best free option with the lowest slot within 25% of the best; a party creature breaks ties by
-  distance then id (`byHp` in `ai.js` gives 0 for a party creature, so a monster is unchanged); `close` assumes a foe sees a caster
+  distance then id (`byHp` in `ai.js` gives 0 for a party creature, so a foe-side monster is unchanged and every party-side creature, a companion's `protect` too, breaks ties by id); `close` assumes a foe sees a caster
   unless it is Blinded. A test of the `sight: los` stand-in pins that a fighter does not walk to a foe behind a shut door it cannot
   know of (`ai-casting.test.js`).
 - **Tests.** `ai-casting.test.js` (the spec's list, on both grids, plus the gates, a badly hurt ally, and every spell of the list sent to
@@ -431,4 +431,32 @@ was silent or a choice had to be made; none of it changes a decision.
   `fixtures/c7-ai-replay.json`, re-recorded on the AC1 head because a party creature's tie rule changed on purpose (steps differ on
   4 of 7 fights); and `ai-casting-replay.test.js` plays them with the party passive against `fixtures/ai-casting-monsters.json`,
   recorded on main's `ai.js` before AC1: the monsters-byte-identical check.
-- **Not done here:** AC2 (the DM's screen calls `aiStep` for a stand-in; `autoPlays` is unchanged), buffs and control (AC3).
+- **Not done here:** AC2 (the DM's screen calls `aiStep` for a stand-in; `autoPlays` is unchanged; built in #490, below), buffs and control (AC3).
+
+## Build notes (AC2, #490)
+
+Built to Decision 1 and the AC2 job, on the owner questions' defaults (Q1: `standIn` is the handover, in a fight only; Q5: an `ask` waits for the DM).
+What was settled in building; none of it changes a decision.
+
+- **`autoPlays`** (`ai.js`): a `kind: 'pc'` creature is auto-played exactly when `awayHow(s, e) === 'standIn'`, checked before the bond test (a character
+  is never a companion). Not set aside, asked but not granted, set aside under `dodge`, `end`, `endKeep` or `hold`, or a player merely offline: false. A
+  monster is played as before, whether or not the DM set it aside. `aiStep` still does not check who is present.
+- **A stand-in that drops to 0 in its own turn** (an Opportunity Attack as it moved) gets `endTurn` from `aiStep`, as a monster does (DEBT W24); a character
+  at 0 that is not a stand-in is still left to its player (`null`).
+- **`idled()`** (`app.js`) asks `autoPlays` alone; the `cur.kind === 'npc'` test is gone. It is the DM's screen only (`isDM()` and the DM's "Run monsters
+  automatically"), so a stand-in is never played from two screens: a player's page never calls the AI. A table has one DM; a DM with the table open in two
+  tabs would play from both, as for monsters (not new, not handled).
+- **The overlay** is installed around the call by `aiAction` (`packages/client/standin.js`, a file added for this: `app.js` cannot be loaded in Node, and the
+  call has to be tested). It runs `aiStep` under `using(overlay)` for the overlay the page's pack store keeps installed (`PK.store.installed()`); `using` of the
+  installed overlay is a no-op re-entry, and a table with no homebrew has none. `packages/client/test/standin.test.js` shows a homebrew cantrip cast by a stand-in
+  with the overlay and not cast without it. The server plays nothing, so it has nothing to install.
+- **Dice.** An action the auto-play sends for a character (a stand-in) is thrown, when the table's dice are set to `throw`, by the device's monster setting
+  ("auto-roll monsters"), not the player's "my own dice": nobody is throwing for a stand-in. A monster or a companion is as before.
+- **Log lines** (`app.js`, `words`): `away` ("Tavin steps away: the stand-in plays Tavin's turns.", "asks to step away", other hows "steps away"), `back`
+  ("is back.") and `awayTurn` under `standIn` ("Tavin is played by the stand-in."). Set aside on its own turn there is no `awayTurn` until its next turn
+  (`dm.js`), so the `away` line is what says the screen plays from then on. The view sends these for a party creature only, so players see them for their
+  own side and the log of a monster set aside stays silent, as the history already has it.
+- **Smoke**: a new registered pass `standin` (`scripts/smoke/standin.mjs`, in the matrix of `.github/workflows/smoke.yml`): solo at 1280x800 and at 390x844 with
+  touch, then a hosted table with a DM and a phone player. There is no tracker button or player's break button yet (DEBT T20), so the passes send the
+  `stepAway` the button would.
+- **Not done here:** the tracker control, the player's button, the hint on a lost link, "auto after N seconds" (T20 (1), what is left of it), and any buff or control spell (AC3).

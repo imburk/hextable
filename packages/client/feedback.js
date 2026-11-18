@@ -64,7 +64,7 @@ export const LINE_KINDS = {
   summoned: 'engine', bonded: 'engine', unbonded: 'engine', companion: 'engine', vanished: 'engine', fell: 'engine', size: 'engine', speed: 'engine',
   revealed: 'engine', concealed: 'engine', hid: 'engine', unhidden: 'engine', light: 'engine', follow: 'engine', formation: 'engine', marchingOrder: 'engine',
   rewound: 'engine', levelReady: 'engine', conclusionSkipped: 'engine', conclusionReady: 'engine', xp: 'engine', conclusionEdited: 'engine',
-  companionOrder: 'engine', pocketed: 'engine', recalled: 'engine', reformed: 'engine', delivered: 'engine', reasserted: 'engine', mounted: 'engine', dismounted: 'engine',
+  companionOrder: 'engine', pocketed: 'engine', recalled: 'engine', reformed: 'engine', delivered: 'engine', reasserted: 'engine', mounted: 'engine', dismounted: 'engine', away: 'engine', back: 'engine', awayTurn: 'engine',
   undone: 'fixed', redone: 'fixed',
   note: 'typed', chronicle: 'typed', claimed: 'typed', released: 'typed', map: 'typed', region: 'typed', check: 'typed', object: 'typed', noticed: 'typed', triggered: 'typed',
   gear: 'typed', item: 'typed', equip: 'typed', shield: 'typed', attuning: 'typed', attuned: 'typed', conclusion: 'typed',

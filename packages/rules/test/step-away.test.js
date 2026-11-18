@@ -4,7 +4,7 @@
 // SRD has no rule for delaying a turn.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { aiStep } from "../src/ai.js";
+import { aiStep, autoPlays } from "../src/ai.js";
 import { apply, AWAY, awayHow, current, moveOptions, SETTING_TEXT, SETTINGS } from "../src/engine.js";
 import * as H from "../src/hex.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
@@ -185,6 +185,53 @@ test("standIn: the turn starts as any does and waits; the monster AI can play it
   assert.equal(s.encounter.budget.action, 1, "nothing was done for it");
   assert.equal(awayHow(s, s.entities.wizard), "standIn");
   assert.ok(aiStep(s, "wizard"), "the AI has something to send for it");
+});
+
+test("the DM's auto-play (AC2): a character is played exactly while it is set aside under standIn; a monster as before", () => {
+  const s = fight({}, { away: "standIn" });
+  const opts = { offline: (u) => u === "pat" || u === "sam" };
+  // Not set aside: its player's, or the DM's by hand. Offline players are not a reason (E20: a lost link never acts by itself).
+  for (const id of ["wizard", "cleric", "fighter", "rogue"]) assert.equal(autoPlays(s, id), false, `${id} present`);
+  for (const id of ["wizard", "cleric"]) assert.equal(autoPlays(s, id, opts), false, `${id} offline but not set aside`);
+  assert.equal(autoPlays(s, "wizard", { offline: () => true }), false);
+  // Asked to step away, not yet granted: still the player's.
+  const a = fight({}, { away: "standIn", breaks: "ask" });
+  ok(apply(a, { type: "stepAway", actor: "wizard" }, PAT));
+  assert.equal(autoPlays(a, "wizard"), false, "a request is not a stand-in");
+  // Set aside under standIn: played, by the player's break or the DM's.
+  ok(apply(s, { type: "stepAway", actor: "wizard" }, PAT));
+  ok(apply(s, { type: "stepAway", actor: "cleric", how: "standIn" }, DM));
+  for (const id of ["wizard", "cleric"]) assert.equal(autoPlays(s, id), true, `${id} under standIn`);
+  assert.equal(autoPlays(s, "wizard", opts), true, "whether or not the player is online");
+  assert.equal(autoPlays(s, "fighter"), false, "the one beside it is still its player's");
+  // Set aside under any other how: the engine settles the turn, nothing is played.
+  for (const how of ["dodge", "end", "endKeep", "hold"]) {
+    ok(apply(s, { type: "stepAway", actor: "cleric", how }, DM));
+    assert.equal(autoPlays(s, "cleric"), false, how);
+  }
+  // Back: its own again.
+  ok(apply(s, { type: "stepBack", actor: "wizard" }, DM));
+  assert.equal(autoPlays(s, "wizard"), false);
+  // A monster is played, and the DM setting one aside changes nothing; an unknown id is not.
+  assert.equal(autoPlays(s, "m1"), true);
+  ok(apply(s, { type: "stepAway", actor: "m1", how: "standIn" }, DM));
+  assert.equal(autoPlays(s, "m1"), true);
+  assert.equal(autoPlays(s, "nobody"), false);
+  // The fight over: nobody is set aside any more.
+  ok(apply(s, { type: "stepAway", actor: "wizard", how: "standIn" }, DM));
+  ok(apply(s, { type: "endEncounter" }, DM));
+  assert.equal(autoPlays(s, "wizard"), false);
+});
+
+test("a stand-in that drops to 0 in its own turn has its turn ended by the AI; a character not set aside is left to its player", () => {
+  const s = fight({}, { away: "standIn" });
+  until(s, "wizard");
+  s.entities.wizard.hp = 0;
+  assert.equal(aiStep(s, "wizard"), null, "a character at 0 in its own turn, not set aside, is its player's");
+  ok(apply(s, { type: "stepAway", actor: "wizard" }, DM));
+  assert.deepEqual(aiStep(s, "wizard"), { type: "endTurn", actor: "wizard" });
+  ok(apply(s, aiStep(s, "wizard"), DM));
+  assert.notEqual(current(s), "wizard", "the turn went on");
 });
 
 test("nobody present: after a lap of turns played for those set aside, the next turn waits for the DM", () => {

@@ -32,7 +32,8 @@ export function aiStep(s, id, opts) {
   if (e.bond) return companionStep(s, id, opts);
   // Dropped to 0 in its own turn (an Opportunity Attack on its way): its turn ends, as the brain ends a companion's,
   // instead of waiting for the DM (DEBT W24). A character at 0 is its player's and is not played here.
-  if (!up(e)) return e.kind === 'pc' ? null : end;
+  // A stand-in (a character set aside under `standIn`, ai-casting.md Decision 1) is played here, so for it too the turn ends.
+  if (!up(e)) return e.kind === 'pc' && awayHow(s, e) !== 'standIn' ? null : end;
   // A mount its rider steers moves on its rider's turn and can only Dash, Disengage or Dodge (engine/shared.js,
   // control): on a turn of its own (its rider got back on after its place) it is offered nothing it would be refused,
   // and its turn ends (DEBT W24).
@@ -550,11 +551,15 @@ export function brainMode(s, e, opts = {}) {
   if (r && mode !== 'protect' && (!up(r) || !!incapacitatedBy(r) || !!awayHow(s, r) || absent(s, ownerOf(s, r), null, opts))) return 'hold';
   return mode;
 }
-// Does the DM's auto-play play this creature's turn? Every creature with no bond, as before; a companion when the brain
-// plays it (not when it waits for its player or for the DM's hand). The client asks this (app.js, idled()).
+// Does the DM's auto-play play this creature's turn? Every monster with no bond, as before; a companion when the brain
+// plays it (not when it waits for its player or for the DM's hand); a character (`kind: 'pc'`) only while it is set aside
+// under `standIn` (ai-casting.md, Decision 1; DEBT T20 (1)): one not set aside is its player's or the DM's by hand, one set
+// aside under another `how` is passed over by the engine, and a player who is merely offline is not a reason (E20: a lost
+// link "must never act by itself"). The client asks this and nothing else (app.js, idled()).
 export function autoPlays(s, id, opts) {
   const e = s?.entities?.[id];
   if (!e) return false;
+  if (e.kind === 'pc') return awayHow(s, e) === 'standIn';
   if (!e.bond) return true;
   const m = brainMode(s, e, opts);
   return m === 'guard' || m === 'protect' || m === 'free' || m === 'hold';
