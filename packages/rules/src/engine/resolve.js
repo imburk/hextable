@@ -19,7 +19,7 @@ import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 
@@ -1206,6 +1206,25 @@ export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cun
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
   if (brutal && !t.dead) strikeEffect(s, e, t, brutal, ev);
   for (const o of paid ?? []) if (o.effects && !t.dead) strikeEffect(s, e, t, o, ev);
+}
+
+// The Shove option of an Unarmed Strike (SRD "Unarmed Strike", Shove; docs/specs/grapple-shove.md, Decision 1): no attack roll, so
+// nothing that waits for a hit or a miss happens. The target saves with Strength or Dexterity (the engine takes the better, `bestSave`)
+// against 8 + the attacker's Strength modifier + Proficiency Bonus (the Unarmed Strike's `dc`, or worked out here for a record made
+// before it had one, with the ability the attack uses). On a failure it is pushed 5 feet away (`push`: stops at a wall, a drop or a
+// creature, provokes nothing, asks a rider) or made Prone (`condition`: immunity is told, the attack is spent). `a.shove` is
+// 'push' or 'prone', chosen when the Shove is declared (attacks.js).
+export function strikeOption(s, e, t, atk, shove, ev) {
+  const dc = Number.isInteger(atk.dc) ? atk.dc : 8 + mod(e.abil[atk.abil ?? 'str']) + e.prof;
+  ev.push({ type: 'strikeOption', actor: e.id, target: t.id, option: 'shove', shove });
+  renew(s, e, t);                                                       // making an enemy save keeps a Rage going
+  const about = shove === 'prone' ? ['prone'] : null, abil = bestSave(s, t, ['str', 'dex'], e, about);
+  const { used, ...sv } = savingThrow(s, t, abil, dc, null, e, null, null, ev, about);
+  ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv });
+  useUp(s, ev, used ?? []);
+  if (sv.success) return;
+  if (shove === 'push') push(s, t, 5, 'away', e.pos, ev);
+  else condition(s, t, 'prone', ev);
 }
 
 // What a choice made for a hit does to its target after the damage (a Brutal Strike option): its
