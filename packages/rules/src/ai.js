@@ -278,7 +278,7 @@ export function casterStep(s, e, foes, lim = {}) {
   // Can the spell, cast from `from`, reach this creature: in range, nothing solid between, and seen.
   const reaches = (sp, t, from = e, harmful = true) => !t.dead && inFight(s, t.id) && (t.id === from.id ? !harmful : apart(s, from, t) * FT <= sp.range && unblocked(s, from, t) && canSee(s, from, t) !== 'no');
   const caught = (sp, hex) => { try { return aimArea(s, e, sp.name, sp.area, sp.range, hex).targets; } catch (err) { if (refusal(err)) return null; throw err; } };
-  const perTarget = (sp, slot) => worth(scaleSteps(sp.def, e.level, sp.level > 0 ? slot : 0).steps, hit, mod(e.abil[castAbilOf(e, sp.id)] ?? 10));
+  const perTarget = (sp, slot) => worth(scaleSteps(sp.def, e.level, sp.level > 0 ? slot : 0).steps, hit, mod(e.abil?.[castAbilOf(e, sp.id)] ?? 10));
   const hex = (t) => ({ q: t.pos.q, r: t.pos.r, z: t.pos.z });
   const targeting = (ids) => (ids.length === 1 ? { target: ids[0] } : { targets: ids });
 
@@ -396,7 +396,7 @@ export function casterStep(s, e, foes, lim = {}) {
   // gives (the same with Disadvantage for a ranged one with an enemy within 5 feet). A melee one counts if a foe is beside it or a
   // step would put it there. Spare Unarmed Strike is only a last resort, so it counts for nothing.
   function weaponScore() {
-    if (b.action < 1) return 0;
+    if (b.action < 1 || lim.noAttack) return 0;
     const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id)), atks = e.attacks ?? [], times = 1 + (e.features?.extraAttack ?? 0);
     const melee = steadiest(e, atks.filter((a) => a.type === 'melee' && !spareStrike(e, a) && allowed(a)));
     const ranged = steadiest(e, atks.filter((a) => a.type === 'ranged' && allowed(a)));
