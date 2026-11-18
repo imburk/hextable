@@ -212,7 +212,7 @@ function worth(steps, hit, heal) {
 }
 // What a spell is to the casting AI: { kind: 'damage' | 'heal', attack } or null if the AI does not cast it
 // (Decision 3). Worked out from the spell's data, so a homebrew spell of the same shape joins.
-function shapeOf(sp) {
+function castShape(sp) {
   if (SHAPE.has(sp)) return SHAPE.get(sp);
   let out = null;
   const d = sp.def;
@@ -231,7 +231,7 @@ function shapeOf(sp) {
   return out;
 }
 // Does the casting AI cast this spell, and as damage or healing? ('damage', 'heal' or null; the tests print the list from the pack.)
-export const aiCastable = (sp) => shapeOf(sp)?.kind ?? null;
+export const aiCastable = (sp) => castShape(sp)?.kind ?? null;
 
 // One action of a built spellcaster's turn, or null if it has none to cast (then `withAttacks` plays on: a weapon, a move, the end
 // of its turn). The order is Decision 5: (1) a creature of its side at 0 Hit Points; (2) one badly hurt, in a hard fight; (3) the best
@@ -244,7 +244,7 @@ export function casterStep(s, e, foes, lim = {}) {
   const flags = enc.flags ?? {};
   const known = [];
   e.spells.forEach((sid, i) => {
-    const sp = Object.hasOwn(SPELLS, sid) ? SPELLS[sid] : null, sh = sp && shapeOf(sp);
+    const sp = Object.hasOwn(SPELLS, sid) ? SPELLS[sid] : null, sh = sp && castShape(sp);
     if (sh && !(lim.noAttack && sh.attack)) known.push({ sp, i, kind: sh.kind });
   });
   if (!known.length) return null;
