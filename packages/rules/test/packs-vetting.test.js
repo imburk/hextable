@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTENT } from "../src/content/index.js";
-import { cleanPacks, forPlayers, hashOf, HOMEBREW_SUMMON_SENTENCE, inUse, packForPlayer, PLAYER_PACK_KINDS, summonsHomebrew, usesIn, vetAdd, vetPacks, vetUpdate } from "../src/content/packs.js";
+import { cleanPacks, forPlayers, hashOf, inUse, packForPlayer, PLAYER_PACK_KINDS, usesIn, vetAdd, vetPacks, vetUpdate } from "../src/content/packs.js";
 import { installed } from "../src/content/registry.js";
 
 const spell = (pack, name, over = {}) => ({
@@ -42,15 +42,25 @@ test("forPlayers: a pack without a version is sent as version 1", () => {
   assert.equal(forPlayers(d).data.version, 1);
 });
 
-// ---------- summonsHomebrew ----------
-test("summonsHomebrew finds a homebrew summon or form at any depth, in spells only", () => {
-  const wrap = (x, n) => (n ? { onHit: [wrap(x, n - 1)] } : x);
-  assert.equal(summonsHomebrew({ spells: [{ effects: [wrap({ summon: "hb-other-imp" }, 5)] }] }), true);
-  assert.equal(summonsHomebrew({ spells: [{ effects: [{ summon: "form", forms: ["hb-x-a", "wolf"] }] }] }), true);
-  assert.equal(summonsHomebrew({ spells: [{ effects: [{ summon: "celestial" }, { summon: "form", forms: ["wolf"] }] }] }), false);
-  assert.equal(summonsHomebrew({ monsters: [{ summon: "hb-x-y" }] }), false);
-  assert.equal(summonsHomebrew({}), false);
-  assert.equal(summonsHomebrew(null), false);
+// ---------- a homebrew spell that summons a homebrew creature (allowed, #457; it was refused under #400) ----------
+test("a pack whose homebrew spell summons a homebrew creature, or names one as a form, is no longer refused", () => {
+  const imp = doc("imp-folk", { spells: [callWraith("imp-folk", "hb-imp-folk-imp")], monsters: [monster("imp-folk", "imp")] });
+  const v = vetAdd([], imp);
+  assert.deepEqual([v.ok, v.problems], [true, []], v.problems.join("; "));
+  assert.equal(vetUpdate([record(imp)], { ...structuredClone(imp), pack: { ...imp.pack, version: 2 } }).ok, true);
+  assert.equal(vetPacks([record(imp)]).ok, true);
+  const forms = doc("imp-folk", { spells: [spell("imp-folk", "call-owl", { target: { self: true }, effects: [{ summon: "form", forms: ["hb-imp-folk-imp"], bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" } }] })], monsters: [monster("imp-folk", "imp")] });
+  const f = vetAdd([], forms);
+  assert.equal(f.ok, true, f.problems.join("; "));
+});
+
+test("what a player is sent of such a pack is still no monster: the creature's block is not in the pack copy", () => {
+  const imp = doc("imp-folk", { spells: [callWraith("imp-folk", "hb-imp-folk-imp")], monsters: [monster("imp-folk", "imp")] });
+  const f = forPlayers(imp);
+  assert.equal("monsters" in f.data, false);
+  assert.equal(JSON.stringify(f.data).includes("Zorblax Quillwraith"), false);
+  assert.deepEqual(f.data.spells.map((x) => x.id), ["hb-imp-folk-call-wraith"], "the spell is sent, naming the creature by id as any spell names what it summons");
+  assert.equal(f.hash, hashOf(f.data));
 });
 
 // ---------- vetAdd / vetUpdate ----------
@@ -99,12 +109,11 @@ test("vetUpdate: more than five dropped entries are counted and the list cut", (
   assert.match(v.problems[0], /^Version 2 of "ember-folk" drops 7 entries that version 1 had \((hb-[a-z0-9-]+, ){4}hb-[a-z0-9-]+, and more\)\./);
 });
 
-test("vetAdd: the summon refusal comes before the id checks; the lint comes before the summon refusal", () => {
-  const d = doc("imp-folk", { spells: [callWraith("imp-folk", "hb-imp-folk-imp")], monsters: [monster("imp-folk", "imp")] });
-  const v = vetAdd([record(doc("imp-folk"))], d);                 // the id is taken as well, but the summon is said first
-  assert.deepEqual([v.ok, v.form, v.problems], [false, "summon", [HOMEBREW_SUMMON_SENTENCE]]);
+test("vetAdd: the lint comes before the id checks", () => {
   const bad = doc("imp-folk", { spells: [{ id: "nope" }] });
-  assert.equal(vetAdd([], bad).form, "refuse");
+  assert.equal(vetAdd([record(doc("imp-folk"))], bad).form, "refuse");
+  const imp = doc("imp-folk", { spells: [callWraith("imp-folk", "hb-imp-folk-imp")], monsters: [monster("imp-folk", "imp")] });
+  assert.equal(vetAdd([record(doc("imp-folk"))], imp).form, "error", "a pack that summons one is checked as any other: here the id is taken");
 });
 
 test("vetAdd: the cross-pack rules come through overlayOf; four packs at most; ids may not begin with another's", () => {
@@ -198,14 +207,15 @@ test("cleanPacks keeps the records that pass, drops the rest with a reason, and 
   assert.equal(r.dropped[2].reason, "frost-kin: its hash does not match its contents.");
 });
 
-test("cleanPacks drops a set the registry refuses, and a pack that summons a homebrew creature", () => {
+test("cleanPacks drops a set the registry refuses, and keeps a pack that summons a homebrew creature", () => {
   const five = ["aa", "bb", "cc", "dd", "ee"].map((id) => record(doc(id)));
   const r = cleanPacks(five);
   assert.deepEqual(r.packs, []);
   assert.equal(r.dropped.length, 5);
   assert.match(r.dropped[0].reason, /^the packs cannot be on one table: .*4 homebrew packs/);
   const imp = record(doc("imp-folk", { spells: [callWraith("imp-folk", "hb-imp-folk-imp")], monsters: [monster("imp-folk", "imp")] }));
-  assert.deepEqual(cleanPacks([imp]).dropped, [{ id: "imp-folk", reason: `imp-folk: ${HOMEBREW_SUMMON_SENTENCE}` }]);
+  assert.deepEqual(cleanPacks([imp]).dropped, []);
+  assert.equal(cleanPacks([imp]).packs.length, 1);
   const hostile = [{ get id() { throw new Error("boom"); } }, Object.create(null)];
   assert.doesNotThrow(() => cleanPacks(hostile));
   assert.equal(installed(), null);
