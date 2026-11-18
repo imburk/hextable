@@ -477,7 +477,7 @@ function exec(s, ev, kit, f, step, at) {
     spend('dice', diceIn(step[kind]));
     const r = kind === 'tempHp' && f.src.maxTemp ? maxRoll(step[kind], false) : roll(s, step[kind]), add = step.addMod ? f.src.healMod : 0, rolled = { dice: r.dice, bonus: r.bonus + add, by: f.actor ?? null };
     const n = Math.max(step.atLeast ?? -Infinity, r.total + add);      // "minimum of 1 Hit Point regained"
-    return kind === 'heal' ? kit.heal(s, t, n, ev, rolled) : kit.tempHp(s, t, n, ev, f, rolled);
+    return kind === 'heal' ? kit.heal(s, t, n, ev, rolled, f) : kit.tempHp(s, t, n, ev, f, rolled);
   }
   if (kind === 'condition') return kit.condition(s, t, step.condition, ev, f, step);
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);

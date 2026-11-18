@@ -24,6 +24,7 @@
 //   damaged  it takes damage from a hostile creature it can see within the spell's range (Hellish Rebuke)
 //   saveFailed  it or an ally within range fails a save against an effect that would apply one of
 //            some conditions (Countercharm: rolled again with Advantage; by instruction only)
+//   familiarDamaged  its familiar takes damage (Investment of the Chain Master: Resistance to it; #464, from `invest.ward`)
 // Shield's "targeted by Magic Missile" is the spell's `blocks` list, checked when a spell is cast.
 // Pure: no I/O, no randomness here.
 import { CONTENT, SPELLS } from './content/index.js';
@@ -94,13 +95,25 @@ export function reactionsOf(e) {
     // A reroll of an ally's failed save (Countercharm) is taken by instruction only: no prompt is built for it.
     out.push({ id: f.id, name: f.name, kind: 'feature', on: f.reaction.on, options: f.reaction.on === 'saveFailed' ? ['never', 'always'] : ['never', 'always', 'ask'], dflt: 'always', reaction: f.reaction, tier: f.tier, text: f.text });
   }
+  // Investment of the Chain Master's Resistance (`invest.ward`; docs/specs/companions.md, C9c): its master's Reaction when its
+  // familiar made by `spell` takes damage (engine/resolve.js, wardFor). It costs only the Reaction, but a familiar is hit nearly every
+  // round, so for a master a player runs the default is `ask` (`dfltPlayer`), not `always`: the Reaction is not spent on every scratch
+  // unasked (review of #467, 1). The DM's masters keep `always`, so their turns never stop. Nothing is stored for the default.
+  for (const f of e.feats ?? []) {
+    if (!f.invest?.ward) continue;
+    out.push({ id: f.id, name: f.name, kind: 'feature', on: 'familiarDamaged', spell: f.invest.spell, options: ['never', 'always', 'ask'], dflt: 'always', dfltPlayer: 'ask', reaction: { on: 'familiarDamaged', resist: true }, tier: f.tier, text: f.text });
+  }
   return out;
 }
 
 // The instruction a creature has for a reaction: what was set, or the default.
-export const instruction = (e, r) => {
+// The default of a reaction for this creature: `dfltPlayer` where one is given and a player runs it (ownerOf), else `dflt`. Without
+// the game state `s` (or a reaction with no `dfltPlayer`) it is `dflt`.
+export const defaultOf = (r, s = null, e = null) => (r.dfltPlayer && s && e && ownerOf(s, e) ? r.dfltPlayer : r.dflt);
+// The instruction a creature has for a reaction: what was set, or the default (worked out from `s` where it depends on who runs it).
+export const instruction = (e, r, s = null) => {
   const w = e.reactions?.[r.id];
-  return r.options.includes(w) ? w : r.dflt;
+  return r.options.includes(w) ? w : defaultOf(r, s, e);
 };
 
 // Can it take a Reaction now? Not if it has used one since its turn began, is down or dead, or
@@ -111,7 +124,10 @@ export const canReact = (e) => !!e && !e.dead && e.hp > 0 && !e.reactionUsed && 
 // with a standing instruction of `ask`. The engine takes a copy of the state before an action
 // only then (engine.js, apply), so the rest of the time asking costs nothing.
 // A companion is asked through its master's player (ownerOf).
-export const mayAsk = (s) => Object.values(s.entities).some((e) => e.reactions && Object.values(e.reactions).includes('ask') && ownerOf(s, e));
+// A default of `ask` counts too (Investment of the Chain Master's Resistance for a master a player runs: `dfltPlayer`), read from the
+// feature itself so that this stays cheap; no other reaction has a default of `ask`.
+export const mayAsk = (s) => Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
+  || (e.feats ?? []).some((f) => f.invest?.ward && !e.reactions?.[f.id])) && ownerOf(s, e));
 
 // Check a `reactions` action's settings against what the creature has. Returns an error text, or null.
 export function checkInstructions(e, set) {

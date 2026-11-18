@@ -120,3 +120,28 @@ export function castings(block) {
       for (const type of block.types ?? [undefined]) out.push({ slot, ...(variant !== undefined ? { variant } : {}), ...(type !== undefined ? { type } : {}) });
   return out;
 }
+
+// Investment of the Chain Master (docs/specs/companions.md, amendment C9c): what a casting's `invest` choices give the creature
+// it makes, written onto the made record `e` (a familiar from a pack monster's block), so the rest of the engine sees plain
+// numbers, as `bake` gives them. `inv`: { move?, feet?, damage?, from?, saveDc? } (engine/casting.js, summonFor); `dc`: the
+// master's spell save DC.
+//   move, feet   a Speed of `feet` in that way of moving; one it already has that is faster is kept ("gains a Fly Speed")
+//   damage, from damage of a type in `from` that its actions or attacks deal is of type `damage` instead
+//   saveDc       every save its actions force is against `dc`
+// Changes `e` in place; returns it.
+export function investIn(e, inv, dc) {
+  if (inv.move) {
+    if (inv.move === 'walk') e.speed = Math.max(e.speed ?? 0, inv.feet);
+    else e.speeds = { ...(e.speeds ?? {}), [inv.move]: Math.max(e.speeds?.[inv.move] ?? 0, inv.feet) };
+  }
+  const walkIn = (v) => {
+    if (Array.isArray(v)) { for (const x of v) walkIn(x); return; }
+    if (!plain(v)) return;
+    if (inv.damage && 'damage' in v && typeof v.type === 'string' && inv.from.includes(v.type)) v.type = inv.damage;
+    if (inv.saveDc && typeof v.save === 'string' && typeof v.dc === 'number') v.dc = dc;
+    for (const x of Object.values(v)) walkIn(x);
+  };
+  walkIn(e.actions ?? []);
+  if (inv.damage) for (const a of e.attacks ?? []) if (inv.from.includes(a.dtype)) a.dtype = inv.damage;
+  return e;
+}

@@ -747,3 +747,22 @@ test('Shield: a Shield the sheet keeps put away survives an edit (buildsheet kee
   const { readFileSync } = await import('node:fs');
   assert.match(readFileSync(join(tmp, 'buildsheet.js'), 'utf8').match(/const KEEP = \[[^\]]*\]/)[0], /'shieldStowed'/);
 });
+
+// Fix round 1 of #467: the words for Investment of the Chain Master's trigger, and its default worked out from who runs the master.
+test('reactions: the familiarDamaged trigger has words in the sheet and the prompt; its default is Ask for a player\'s master, Always for the DM\'s', async () => {
+  const { TRIGGER, reactionRows } = await import(pathToFileURL(join(tmp, 'reactionsheet.js')));
+  const { triggerText } = await import(pathToFileURL(join(tmp, 'reactionprompt.js')));
+  for (const t of ['leave', 'hit', 'targeted', 'cast', 'damaged', 'familiarDamaged']) {
+    assert.ok(TRIGGER[t], `the sheet has words for ${t}`);
+    assert.notEqual(triggerText({ trigger: t }), 'Something has happened that a reaction answers.', `the prompt has words for ${t}`);
+  }
+  assert.equal(triggerText({ trigger: 'familiarDamaged', dtype: 'acid' }), 'Your familiar is taking acid damage. Your Reaction can give it Resistance to it.');
+  const sheet = { name: 'Mor', class: 'warlock', level: 5, subclass: 'fiend', abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 18 }, skills: ['arcana', 'deception'],
+    spells: ['eldritch-blast', 'chill-touch', 'hex'], choices: { 'eldritch-invocations': ['pact-of-the-chain', 'investment-of-the-chain-master'] } };
+  const s = newGame(7);
+  s.entities.mor = makeEntity(derive(sheet).record, { id: 'mor', kind: 'pc', side: 'party', pos: { q: 0, r: 0, z: 0 } });
+  const row = () => reactionRows(s, s.entities.mor).find((r) => r.on === 'familiarDamaged');
+  assert.equal(row().now, 'always'); assert.equal(row().dflt, 'always');
+  s.entities.mor.owner = 'u1';
+  assert.equal(row().now, 'ask'); assert.equal(row().dflt, 'ask');
+});
