@@ -9,7 +9,8 @@ import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { coverOf } from './shared/sight.js';
-import { aiStep, autoPlays } from './shared/ai.js';
+import { autoPlays } from './shared/ai.js';
+import { aiAction } from './standin.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { holdWords, heldEndText, noteText, previewState, targetRefusals } from './grapple.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
@@ -149,11 +150,13 @@ function rollsDice(a) {
   const o = S.map.objects.find((x) => x.id === a.object);
   return !!(o && objectDef(o)?.uses?.find((u) => u.id === a.verb)?.check);
 }
-function toThrow(a) {
+// `byAI`: the DM's auto-play sent it. A character it plays (a stand-in) is nobody's own roll to throw: it is thrown or not as a monster's is, by this device's
+// monster setting (the player's own dice are the player's; a stand-in is played by the DM's screen).
+function toThrow(a, byAI = false) {
   if (S?.settings?.diceThrow !== 'throw' || !rollsDice(a)) return false;
   const e = S.entities[a.actor];
   if (!e) return false;
-  return e.side === 'party' ? !autoMine() : !autoMonsters();
+  return e.side === 'party' && !(byAI && e.kind === 'pc') ? !autoMine() : !autoMonsters();
 }
 const colorOf = (state, id) => { const e = state?.entities[id]; return !e ? '#8a8a8a' : e.side === 'party' ? e.look?.color || '#e6dcc0' : '#a8322b'; };
 // The dice an action will roll, as far as the action says: the tray's promise of when, not what.
@@ -173,11 +176,11 @@ const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'fou
 let flick = null, closeTray = null, armed = null;
 let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh the party: the next update says what was remade (refresh.js)
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
-function act(action) {
+function act(action, byAI = false) {
   if (skipping()) return;
   acted++;
   action = CLS.decorate(action);
-  if (!toThrow(action)) return T.send(action);
+  if (!toThrow(action, byAI)) return T.send(action);
   closeTray?.();
   const e = S.entities[action.actor], p = preview(e, action);
   armed = action;
@@ -268,6 +271,9 @@ function words(ev) {
     case 'encounterStart': return ['Roll initiative! ' + ev.order.map((o) => (o.init === undefined ? n(o.id) : `${n(o.id)} ${o.init}`)).join(', '), 'head'];
     case 'encounterEnd': return [{ victory: 'The fight is won.', defeat: 'The party has fallen.', ended: 'The DM ends the fight.', stalemate: 'The fight ends.' }[ev.result] + ` (${ev.rounds} round${ev.rounds > 1 ? 's' : ''})`, 'head'];
     case 'turn': return [ev.someone ? `Round ${ev.round}: something moves where you cannot see` : `Round ${ev.round}: ${n(ev.id)}'s turn`, 'head'];
+    // A character set aside under `standIn` (E20): its turn starts as any does and the DM's screen plays it with the AI (ai-casting.md, AC2). The other
+    // ways to set a turn aside are the engine's alone, and say nothing here.
+    case 'awayTurn': return ev.how === 'standIn' ? [`${n(ev.id)} is played by the stand-in.`] : null;
     case 'joined': return [`${n(ev.id)} joins the fight${ev.init === undefined ? '' : ` (initiative ${ev.init})`}.`];
     case 'attack': {
       const how = `${ev.actor === null ? `The ${ev.name.toLowerCase()}` : n(ev.actor)} ${ev.opportunity ? 'makes an Opportunity Attack on' : 'attacks'} ${n(ev.target)}${behind(ev.cover)}${ev.actor === null ? '' : ` with ${ev.name}`}`;
@@ -466,15 +472,17 @@ function idled() {
   refresh();
   syncCards();
   const cur = S.entities[current(S)];
-  // The DM's auto-play (companions.md, Decision 9; the brain, C7): a companion is played when the brain plays it (`autoPlays`, ai.js: the DM's own,
-  // `bond.auto`, never commanded, its master's player offline or stepped away, its master Incapacitated); otherwise it waits for its player or the DM.
+  // The DM's auto-play (companions.md, Decision 9; the brain, C7; ai-casting.md, AC2): what plays is what `autoPlays` (ai.js) says: a monster, a companion
+  // when the brain plays it (the DM's own, `bond.auto`, never commanded, its master's player offline or stepped away, its master Incapacitated), and a
+  // character set aside under the table rule `standIn`; otherwise it waits for its player or the DM. This screen is the DM's alone (`isDM()`), so a
+  // stand-in is never played from two screens; what it does is only an action sent to the table, which the engine answers as for anyone.
   const offline = (uid) => !T.solo && (T.lobby?.members ?? []).some((m) => m.id === uid && m.online === false);
-  const plays = cur && cur.kind === 'npc' && autoPlays(S, cur.id, { offline });
+  const plays = cur && autoPlays(S, cur.id, { offline });
   if (plays && isDM() && $('dm-auto').checked && !tookBack) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
-    // server never waits. Otherwise as before, 800 ms after the update.
-    aiTimer = setTimeout(() => { const a = aiStep(S, cur.id, { offline }); if (a) { aiSent = cur.id; act(a); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
+    // server never waits. Otherwise as before, 800 ms after the update. The table's homebrew is installed around the call (standin.js).
+    aiTimer = setTimeout(() => { const a = aiAction(S, cur.id, { offline }, PK.installed()); if (a) { aiSent = cur.id; act(a, true); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
   }
 }
 
