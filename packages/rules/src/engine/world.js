@@ -24,6 +24,18 @@ export function holdsOf(s, e) {
   for (const t of Object.values(s.entities)) for (const h of t.cond?.grappled?.holds ?? []) if (h.by === e.id) out.push({ t, hold: h });
   return out;
 }
+// What a mover drags (docs/specs/grapple-shove.md, Decision 6): the creatures it holds, and those held by the rider its mount carries
+// (the rider moves as its mount does). [{ g, t, hold }]: `g` the grappler, `t` the held creature.
+export function draggedBy(s, e) {
+  const r = riderOf(s, e);
+  return [...holdsOf(s, e), ...(r ? holdsOf(s, r) : [])].map(({ t, hold }) => ({ g: s.entities[hold.by], t, hold }));
+}
+// The extra feet that each foot of the grappler's movement costs for dragging `t` (SRD Grappled, "Movable"): 1, unless `t` is Tiny
+// or two or more sizes smaller than the grappler; or, with the Grappler feat (Fast Wrestler), the grappler's size or smaller.
+export function dragExtra(g, t) {
+  const gi = SIZE_ORDER.indexOf(g.size ?? 'medium'), ti = SIZE_ORDER.indexOf(t.size ?? 'medium');
+  return ti === 0 || ti <= gi - 2 || (ti <= gi && (g.feats ?? []).some((f) => f.id === 'feat-grappler')) ? 0 : 1;
+}
 
 // ---------- movement ----------
 
@@ -215,12 +227,17 @@ export function route(reach, k) {
 // Map of position key -> {cost, prev, canStop, h} that this creature can move to right now.
 // Walking steps onto surfaces in neighbouring columns; a bigger rise or drop is a climb; a ladder
 // or the like joins two places; and a creature that can fly moves through the air in 5 ft steps.
-export function moveOptions(s, e) {
+// `aerial`: a mover that drags a creature is offered the ground only (the engine drags along the ground; Decision 6, question Q6);
+// with `aerial` its flying, climbing and ladder ways are laid out too, so `move` can tell a place only they reach from one too far.
+export function moveOptions(s, e, aerial = false) {
   // A rider goes where its mount goes (stage C6a): its ways are the mount's, and `move` sent for it moves the mount.
   const steed = mountOf(s, e);
-  if (steed && !steed.riding) return moveOptions(s, steed);
+  if (steed && !steed.riding) return moveOptions(s, steed, aerial);
   const walk = e && up(e) ? speedOf(s, e) : 0, flying = !!e && aloft(s, e), flySpeed = flying ? speedOf(s, e, 'fly') : 0;
   if (!e || !up(e) || (walk === 0 && !flying)) return new Map();
+  // What it drags: every step of the route costs 1 extra foot a foot for each creature held that is not exempt (dragExtra), added to
+  // the step's own cost as the SRD adds such extras ("1 extra foot (2 extra feet in Difficult Terrain)", Crawling, Climbing).
+  const dragged = draggedBy(s, e), toll = dragged.reduce((n, { g, t }) => n + (g ? dragExtra(g, t) : 0), 0), grounded = dragged.length > 0 && !aerial;
   const enc = s.encounter, fighting = inFight(s, e.id);
   // In a fight it moves on its turn from the turn's budget; a controlled mount on its rider's turn, from `budget.mount`.
   const bud = fighting ? turnBudget(s, e) : null;
@@ -283,9 +300,9 @@ export function moveOptions(s, e) {
           if (diag && !cornersFree(from, h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
-            const flat = Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1);                     // Difficult Terrain does not stack
+            const flat = Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1) + toll;               // Difficult Terrain does not stack; dragging adds to it
             out.push({ h, cost: flat * FT, max: limit.walk, flat, extra: 0, diag, level: up_ <= STEP_FREE });     // a rise the cost does not count
-          } else if (climbs) {
+          } else if (climbs && !grounded) {
             // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
             // of the two places, and only a wall at the top counts: a wall below is what is climbed.
             const lowCol = dz > 0 ? columnOf(from) : column, lowZ = Math.min(sf.z, from.z), highZ = Math.max(sf.z, from.z);
@@ -299,7 +316,7 @@ export function moveOptions(s, e) {
       }
       // A ladder, a rope, a climbable tree: something that joins this place to another.
       for (const o of map.objects) {
-        if (!o.to || !objectDef(o).connects) continue;
+        if (grounded || !o.to || !objectDef(o).connects) continue;
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
         const h = key(a) === key(from) ? b : b && key(b) === key(from) ? a : null;
         if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
@@ -307,7 +324,7 @@ export function moveOptions(s, e) {
         out.push({ h, cost, max: limit.climb, flat: 0, extra: cost, diag: false });
       }
     }
-    if (flying) {
+    if (flying && !grounded) {
       // Through the air: any of the grid's directions, level, up or down 5 ft, or straight up or down.
       const around = G.neighbors(from), top = Math.max(tiers.at(-1), ...tiers, e.pos.z) + FLY_CEILING;
       for (const dz of [0, FT, -FT]) for (let i = dz ? -1 : 0; i < G.DIRS.length; i++) {
@@ -1210,7 +1227,7 @@ export function catchUp(s, arena, walked, ev) {
   const G = gridOf(s.map);
   const inArena = (e) => !!arena[col(e.pos)];
   const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
-  const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e) && !holdsOf(s, e).length).sort(byMarch);      // one that holds a creature does not walk (stage G2)
+  const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e) && !draggedBy(s, e).length).sort(byMarch);      // one that holds a creature does not follow or keep a place (Decision 6; march says so)
   const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));
   for (;;) {
     const f = pending.find((x) => party.has(x.follow));

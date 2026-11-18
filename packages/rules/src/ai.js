@@ -5,7 +5,7 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
+import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { actionProfile } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
@@ -267,17 +267,14 @@ export function companionStep(s, id, opts = {}) {
   const k = knownTo(s, e), m = masterOf(s, e);
   const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
   const leash = typeof e.bond.leash === 'number' && m && (e.side === 'party' || !unknown(s, m)) ? { m, feet: e.bond.leash } : null;
-  // One that holds a creature may not walk until dragging is built (docs/specs/grapple-shove.md, G3; movement.js refuses it): it
-  // is never sent a move, which would be refused and leave its turn waiting. Read from the true state: it knows what it holds.
-  const holding = holdsOf(s, e).length > 0;
-  if (mode === 'guard') return guard(k, e, foes, leash, holding);
-  if (mode === 'protect') return protect(k, e, m, foes, holding);
+  if (mode === 'guard') return guard(k, e, foes, leash);
+  if (mode === 'protect') return protect(k, e, m, foes);
   // 'free': as a monster plays, but never an attack for one that can't attack.
   const end = { type: 'endTurn', actor: id }, b = k.encounter.budget, noAttack = e.bond.noAttack === true;
   if (k.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(k, e)) return { type: 'hide', actor: id };
   if (!foes.length) return end;
   const a = e.actions ? withActions(k, e, foes, { noAttack }) : noAttack ? end : withAttacks(k, e, foes);
-  return noAttack && a.type === 'endTurn' ? guard(k, e, foes, leash, holding) : a;
+  return noAttack && a.type === 'endTurn' ? guard(k, e, foes, leash) : a;
 }
 const rolled = (p) => p.roll === 'melee' || p.roll === 'ranged' || p.aim === 'multi';
 
@@ -292,10 +289,10 @@ const rolled = (p) => p.roll === 'melee' || p.roll === 'ranged' || p.aim === 'mu
 // (re-review of #368, N4). Where a step is no harm it goes to the cheapest place out of 5 feet of every foe it knows of
 // (then the farthest from them, then the order moveOptions lists places in); where none is, it stays and Dodges. It
 // never goes past its leash (it would vanish).
-function guard(s, e, foes, leash, holding = false) {
+function guard(s, e, foes, leash) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   if (b.action > 0 && !e.cond?.dodging && !incapacitatedBy(e)) return { type: 'dodge', actor: id };
-  if (holding || !foes.some((f) => apart(s, e, f) <= 1)) return end;
+  if (!foes.some((f) => apart(s, e, f) <= 1)) return end;
   const threats = foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
   const safe = (pos) => !threats.some((f) => apartAt(s, e, pos, f, f.pos) <= 1);
   if (!safe(e.pos)) return end;                                     // any step away from it would provoke
@@ -315,7 +312,7 @@ function guard(s, e, foes, leash, holding = false) {
 // it can; then an attack on a foe within 5 feet of its master (the nearest to it, then the most hurt, then by id); with
 // none, the Dodge action. A steed carrying anyone (its master, or another rider) does not move: it would only carry
 // them about.
-function protect(s, e, m, foes, holding = false) {
+function protect(s, e, m, foes) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   const close = foes.filter((f) => apart(s, m, f) <= 1).sort((x, y) => apart(s, e, x) - apart(s, e, y) || x.hp - y.hp || (x.id < y.id ? -1 : 1));
   const moves = profiled(e.actions ?? []).filter((x) => x.p.harmful && x.p.time === 'action' && x.p.aim === 'creature' && !actionSpent(e, x.def));
@@ -328,7 +325,7 @@ function protect(s, e, m, foes, holding = false) {
       if (w) return { type: 'attack', actor: id, target: t.id, attack: w.id };
     }
   }
-  if (!holding && !riderOn(s, e) && b.move >= FT) {
+  if (!riderOn(s, e) && b.move >= FT) {
     const score = (pos) => [apartAt(s, e, pos, m, m.pos) <= 1 ? 0 : 1, close.some((f) => apartAt(s, e, pos, f, f.pos) * FT <= reach) ? 0 : 1, apartAt(s, e, pos, m, m.pos)];
     const less = (x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
     const here = score(e.pos);

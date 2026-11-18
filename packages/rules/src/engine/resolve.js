@@ -71,8 +71,9 @@ export function fall(s, t, feet, ev) {
 // SRD gives no rule for (it is not the mount that is moved): the engine does not move it, and the DM is told.
 // It returns what became of it, for a caller that has to say: 'mount' (a riding creature: the DM is told, nothing moves), 'aloft' (the
 // creature stands on nothing, so no step is found), 'blocked' (a wall, a drop, a creature, or a boundary stops the first step),
-// 'moved'.
-function push(s, t, feet, dir, from, ev) {
+// 'moved'. `dry`: only find out whether the first step can be taken (answers 'moved' or why not), changing nothing and telling nothing
+// (the drag of a held creature asks it before its grappler steps, movement.js).
+function push(s, t, feet, dir, from, ev, dry = false) {
   if (mountOf(s, t)) {
     ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
       text: `${t.name} would be ${dir === 'toward' ? 'pulled' : 'pushed'} ${feet} ft while riding ${mountOf(s, t).name}. The SRD has no rule for a rider moved off its mount this way, so the engine leaves ${t.name} riding: the DM moves ${t.name} (dismount, then place) if it should go.` });
@@ -100,6 +101,7 @@ function push(s, t, feet, dir, from, ev) {
       if (!best || straight > best.straight + 1e-9) best = { h, straight };
     }
     if (!best) break;
+    if (dry) return 'moved';
     // The save is made once a step is found (the effect is about to move it).
     if (rider && !asked) { asked = true; if (!staysOn(s, rider, ev)) { fallen = rider; rider = null; } }
     if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= stride(t.pos, best.h); if (d) odd = !odd; }
@@ -1374,14 +1376,10 @@ export function endHold(s, t, by, why, ev) {
   for (const [c, v] of Object.entries(t.cond)) if (v?.grapple === by) { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
   return true;
 }
-// What the DM is told when a hold ends by distance, by what moved. A grappler's own walk is refused until G3 builds dragging
-// (movement.js), so a walk here is one the refusal does not cover (a mount carrying it): the DM is told the engine does not drag.
-// A teleport, or anything else, is said for what it was.
+// What the DM is told when a hold ends by distance: what moved the two apart. A grappler's own walk never ends a hold, for it drags
+// (movement.js); so it is a teleport, or a push, a fall or the DM's placing, said for what it was.
 function holdNote(s, g, t, h, ev) {
-  const mine = ev.filter((x) => x.type === 'moved' && x.id === g.id);
-  if (mine.some((x) => !x.forced && !x.teleport && !x.caughtUp)) return ev.push({ type: 'manual', actor: g.id, name: 'Grapple', partial: true,
-    text: `${g.name} moved away from ${t.name}, so the grapple ended: the engine does not drag a held creature yet. If ${g.name} meant to drag ${t.name} (each foot costing 1 extra foot unless ${t.name} is Tiny or two or more sizes smaller), the DM places ${t.name} and ${g.name} grapples again.` });
-  const what = mine.some((x) => x.teleport) ? `${g.name} teleported away from ${t.name}` : `${g.name} and ${t.name} are now more than ${h.range} ft apart`;
+  const what = ev.some((x) => x.type === 'moved' && x.id === g.id && x.teleport) ? `${g.name} teleported away from ${t.name}` : `${g.name} and ${t.name} are now more than ${h.range} ft apart`;
   ev.push({ type: 'note', id: t.id, text: `${what}, so the grapple ended` });
 }
 // After every action (engine.js, apply, beside settleBonds): every hold whose grappler is gone from the map, is dead, down or
