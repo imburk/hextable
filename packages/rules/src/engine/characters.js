@@ -189,7 +189,7 @@ export const handlers = {
   },
   // Put a Shield away or take it up (SRD "Armor": "Shield (Utilize Action to Don or Doff)"). { type: 'shield', actor, on: true | false,
   // item? } By its controller or the DM, for a built character. In a fight it takes the creature's action (Utilize) on its own turn;
-  // outside one it is free. A Shield of the sheet (`shield: true`) put away is `shieldStowed: true` beside it: carried, not held,
+  // outside one it is free. A Shield of the sheet (`shield: true` or a Shield id) put away is `shieldStowed: true` beside it: carried, not held,
   // no Armor Class from it and a hand free; a magic Shield item toggles its `equipped` (an Attunement stays). `item` names which
   // magic Shield to take up when the character carries more than one. The creature is made again from the sheet, as `equip` does.
   shield(s, a, ctx, ev) {
@@ -202,7 +202,7 @@ export const handlers = {
     else { up(e) || fail(`${e.name} is down.`); able(e); }
     const sheet = structuredClone(e.sheet), on = a.on;
     const items = (sheet.items ?? []).filter((y) => CONTENT.items[y?.item]?.wear === 'shield');
-    const plain = sheet.shield === true, held = items.find((y) => y.equipped === true) ?? (plain && sheet.shieldStowed !== true ? 'plain' : null);
+    const plain = sheet.shield === true || typeof sheet.shield === 'string', held = items.find((y) => y.equipped === true) ?? (plain && sheet.shieldStowed !== true ? 'plain' : null);
     let name = 'Shield', key;
     if (!on) {
       held || fail(plain || items.length ? `${e.name} has no Shield in hand.` : `${e.name} has no Shield.`);
