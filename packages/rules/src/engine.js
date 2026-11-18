@@ -13,7 +13,7 @@ import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
 import { control, current, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
-import { checkEnd, fall, settleBonds } from './engine/resolve.js';
+import { checkEnd, fall, settleBonds, settleHolds } from './engine/resolve.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -233,8 +233,9 @@ function applyInner(s, action, ctx) {
     throw err;
   }
   setRun(null);
-  // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds).
-  try { gravity(s, ev); settleBonds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
+  // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds);
+  // a grapple whose grappler is gone, Incapacitated or out of range ends (settleHolds).
+  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
     if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
   }

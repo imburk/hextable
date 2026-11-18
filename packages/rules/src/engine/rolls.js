@@ -179,7 +179,8 @@ function ending(s, step, f, ev, t) {
 // `f` is the effect frame that caused it, if any, and `step` the step. If the frame belongs to
 // a lasting effect the condition is tied to it and ends when it does; otherwise only the DM
 // (or standing up, for Prone) ends it, and the DM is told so.
-export function condition(s, t, id, ev, f = null, step = null, level = undefined) {
+// `ended`: something the engine runs ends it (a grapple's hold, `grip`), so the DM is not told that nothing does.
+export function condition(s, t, id, ev, f = null, step = null, level = undefined, ended = false) {
   if (!up(t) || t.cond[id]) return;
   if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   // An instant spell's effect that exists only to hold the endings of its other steps (`bound`) cannot end a condition
@@ -194,9 +195,36 @@ export function condition(s, t, id, ev, f = null, step = null, level = undefined
   ev.push({ type: 'cond', id: t.id, cond: id });
   const def = conditionDef(id), name = conditionName(id);
   const rest = def?.also ? ` The engine applies what it can; the DM applies the rest: ${def.also}` : '';
-  const nothing = fx || id === 'prone' || end.told ? '' : ' Nothing ends it yet: the DM removes it.';
+  const nothing = fx || id === 'prone' || end.told || ended ? '' : ' Nothing ends it yet: the DM removes it.';
   if (rest || nothing) ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src.name ?? name, partial: true, text: `${t.name} ${conditionPhrase(id)}.${rest}${nothing}` });
   concentrationLost(s, ev, t, `${t.name} ${conditionPhrase(id)}`);
+}
+
+// A hold on `t` (docs/specs/grapple-shove.md, Decision 2): `hold` is { by, with, escape, range, escapeDis? }. The first puts the
+// Grappled condition on (`condition`, which says when it is immune or down and puts nothing on); another adds to its list, since
+// one creature may be held by more than one grappler. `source` always names the first hold's grappler. A Grappled condition with
+// no holds is one the DM put on (or a monster's, from a game saved before holds): the engine does not end it and adds nothing to
+// it, and the DM is told. Returns true when the hold was put on.
+export function grip(s, t, hold, ev) {
+  const g = t.cond.grappled, by = s.entities[hold.by], name = by?.name ?? 'someone';
+  if (g && !Array.isArray(g.holds)) {
+    ev.push({ type: 'manual', actor: hold.by, name: 'Grapple', partial: true,
+      text: `${t.name} is already Grappled by a grapple the engine does not keep (the DM's). ${name}'s grapple is not added to it: the DM decides whether ${t.name} is now held by ${name} too, and ends both by hand.` });
+    return false;
+  }
+  if (g) {
+    if (g.holds.some((h) => h.by === hold.by)) return false;
+    g.holds.push({ ...hold });
+    ev.push({ type: 'hold', id: t.id, by: hold.by });
+    return true;
+  }
+  condition(s, t, 'grappled', ev, null, null, undefined, true);
+  if (!t.cond.grappled) return false;                                     // immune, or down: condition() said so where it says anything
+  t.cond.grappled.source = hold.by;
+  t.cond.grappled.holds = [{ ...hold }];
+  const c = ev.findLast((x) => x.type === 'cond' && x.id === t.id && x.cond === 'grappled');
+  if (c) c.by = hold.by;
+  return true;
 }
 
 // Attach a modifier to a creature for as long as a lasting effect runs. Returns false if there

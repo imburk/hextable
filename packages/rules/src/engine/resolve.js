@@ -18,8 +18,8 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
-import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { aloft, below, creatureType, carry, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 
@@ -1218,15 +1218,19 @@ export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cun
 // before it had one, with the ability the attack uses). On a failure it is pushed 5 feet away (`push`: stops at a wall, a drop or a
 // creature, provokes nothing, asks a rider) or made Prone (`condition`: immunity is told, the attack is spent). `a.shove` is
 // 'push' or 'prone', chosen when the Shove is declared (attacks.js).
-export function strikeOption(s, e, t, atk, shove, ev) {
-  const dc = Number.isInteger(atk.dc) ? atk.dc : 8 + mod(e.abil[atk.abil ?? 'str']) + e.prof;
-  ev.push({ type: 'strikeOption', actor: e.id, target: t.id, option: 'shove', shove });
+// The Grapple option (stage G2): the same save; on a failure the target has the Grappled condition, held by `e`'s hand with the
+// save's DC as its escape DC and a range of 5 feet (`grip`). `option` is 'grapple' or 'shove' (then `shove` says which).
+export const strikeDC = (e, atk) => (Number.isInteger(atk.dc) ? atk.dc : 8 + mod(e.abil[atk.abil ?? 'str']) + e.prof);
+export function strikeOption(s, e, t, atk, option, shove, ev) {
+  const dc = strikeDC(e, atk);
+  ev.push({ type: 'strikeOption', actor: e.id, target: t.id, option, ...(option === 'shove' ? { shove } : {}) });
   renew(s, e, t);                                                       // making an enemy save keeps a Rage going
-  const about = shove === 'prone' ? ['prone'] : null, abil = bestSave(s, t, ['str', 'dex'], e, about);
+  const about = option === 'grapple' ? ['grappled'] : shove === 'prone' ? ['prone'] : null, abil = bestSave(s, t, ['str', 'dex'], e, about);
   const { used, ...sv } = savingThrow(s, t, abil, dc, null, e, null, null, ev, about);
   ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv });
   useUp(s, ev, used ?? []);
   if (sv.success) return;
+  if (option === 'grapple') { grip(s, t, { by: e.id, with: 'hand', escape: dc, range: 5 }, ev); return; }
   if (shove === 'prone') {
     if (t.cond.prone) ev.push({ type: 'note', id: t.id, text: `${t.name} is already Prone` });      // allowed: the attack is spent, nothing changes
     else condition(s, t, 'prone', ev);
@@ -1347,9 +1351,44 @@ function settleSeen(s, e, ev, went = 'vanished') {
     if (x.id === e.id || !x.cond) continue;
     for (const [c, v] of Object.entries(x.cond)) {
       if (v?.source !== e.id || v.effect !== undefined) continue;
+      if ((c === 'grappled' && Array.isArray(v.holds)) || v.grapple === e.id) continue;      // holds, and what ends with them: below
       if (c === 'grappled') { delete x.cond[c]; ev.push({ type: 'condEnd', id: x.id, cond: c }); continue; }
       delete v.source;
       ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has ${went === 'vanished' ? 'vanished' : 'gone'}. Whether that ends is the DM's.` });
+    }
+  }
+  // A grapple it held ends, and only that one: the creature may be held by another too (docs/specs/grapple-shove.md, Decision 3).
+  for (const { t } of holdsOf(s, e)) endHold(s, t, e.id, 'gone', ev);
+}
+
+// ---------- grapples (docs/specs/grapple-shove.md, Decisions 2 and 3) ----------
+// One hold on `t`, the one `by` has, ends: it leaves the list, `source` names the first hold left, and the Grappled condition
+// goes when none is left (`condEnd` with `by` and `why`), or stays (`holdEnd`). A condition tied to the hold (`grapple: by`, a
+// stat block's "Restrained until the grapple ends") ends with it. `why`: 'escaped', 'released', 'incapacitated', 'distance', 'gone'.
+export function endHold(s, t, by, why, ev) {
+  const g = t.cond.grappled;
+  if (!Array.isArray(g?.holds) || !g.holds.some((h) => h.by === by)) return false;
+  g.holds = g.holds.filter((h) => h.by !== by);
+  if (g.holds.length) { g.source = g.holds[0].by; ev.push({ type: 'holdEnd', id: t.id, by, why }); }
+  else { delete t.cond.grappled; ev.push({ type: 'condEnd', id: t.id, cond: 'grappled', by, why }); }
+  for (const [c, v] of Object.entries(t.cond)) if (v?.grapple === by) { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
+  return true;
+}
+// After every action (engine.js, apply, beside settleBonds): every hold whose grappler is gone from the map, is dead, down or
+// Incapacitated (any condition that includes it), or is farther from the held creature than the hold's range, ends (SRD
+// "Grappling", Ending a Grapple). A pass after the action cannot miss a way of moving (a push, a teleport, a fall). A condition
+// tied to a hold that is no longer there (the DM took the Grappled condition off) ends too. In the order the creatures are kept.
+export function settleHolds(s, ev) {
+  for (const t of Object.values(s.entities)) {
+    for (const h of [...(t.cond?.grappled?.holds ?? [])]) {
+      const g = Object.hasOwn(s.entities, h.by) ? s.entities[h.by] : null;
+      const why = !g ? 'gone' : g.dead || !up(g) || incapacitated(g) ? 'incapacitated' : apart(s, g, t) * FT > h.range ? 'distance' : null;
+      if (why) endHold(s, t, h.by, why, ev);
+    }
+    for (const [c, v] of Object.entries(t.cond ?? {})) {
+      if (typeof v?.grapple !== 'string' || (t.cond.grappled?.holds ?? []).some((h) => h.by === v.grapple)) continue;
+      delete t.cond[c];
+      ev.push({ type: 'condEnd', id: t.id, cond: c, by: v.grapple, why: 'released' });
     }
   }
 }
