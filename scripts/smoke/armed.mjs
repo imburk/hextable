@@ -114,8 +114,120 @@ async function armed(browser, url, label, opts) {
   });
 }
 
+// An area aim locks on the first tap or click (issue #456): before it hover previews, after it hover changes nothing, a tap on another
+// hex moves the lock, Cast casts at the locked hex, Cancel drops the lock. The wizard casts Burning Hands in a fight.
+async function aimLock(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch;
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${touch ? 'phone' : 'desktop'}-${n}.png` }); };
+      const view = () => page.evaluate(() => { const m = window.hextable.mode; return { kind: m.kind, aim: m.aim ?? null, pinned: !!m.pinned, area: [...window.hextable.R.hl.area].sort().join(' '), hint: document.getElementById('hint-text').textContent }; });
+      const tapHex = async (h) => {
+        await page.evaluate(async (t) => {          // the hex in the middle of the map, clear of the panels
+          const G = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, w = G.toWorld(t);
+          R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
+        }, h);
+        await sleep(600);
+        const pt = await page.evaluate((t) => window.hextable.R.screenOf(t), h);
+        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`hex ${JSON.stringify(h)} is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
+        await tapAt(page, touch, pt.x, pt.y);
+      };
+      // A pointer moving about: a mouse over the map and then the Cast button; on touch nothing hovers, so the hover is sent as the renderer would.
+      const wander = async (hexes) => {
+        if (!touch) { await page.mouse.move(300, 300); await page.mouse.move(640, 420, { steps: 5 }); const b = await page.locator('#hint-go').boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 }); }
+        await page.evaluate((hs) => { for (const h of hs) window.hextable.R.onHover(h); }, hexes);
+        await sleep(200);
+      };
+      let wiz, a, b, c;
+
+      await run.do('a fight on the wizard\'s turn; Burning Hands armed: no aim yet, hover previews', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(() => { document.getElementById('dm-auto').checked = false; const S = window.hextable.state; const foe = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0); window.hextable.act({ type: 'startEncounter', center: foe.pos, radius: 14 }); });
+        await wait(page, () => window.hextable.state.encounter, null, 8000);
+        await wait(page, () => window.hextable.waiting === 0, null, 20000).catch(async (e) => { throw new Error(`waiting stuck: ${await page.evaluate(() => JSON.stringify([window.hextable.waiting, !!window.hextable.armed, window.hextable.state.encounter?.turn]))}`); });
+        for (let i = 0; i < 30; i++) {
+          const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
+          if (cur === 'wizard') break;
+          await page.evaluate((x) => window.hextable.act({ type: 'endTurn', actor: x }), cur);
+          await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        }
+        await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000).catch(async () => { throw new Error(`no turn for the wizard: ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify([S.encounter?.order.map((o) => o.id), S.encounter?.turn, S.timeline.slice(-3).map((e) => e.type), document.getElementById('toast')?.textContent]); })}`); });
+        await closePanels(page);
+        await page.click('#party button:has-text("Tavin")');
+        await panelTab(page, 'spells');
+        await page.click('#ap-spells [data-row="spell:burning-hands"]');
+        await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'burning-hands');
+        wiz = await state(page, (S) => S.entities.wizard.pos);
+        a = { q: wiz.q + 2, r: wiz.r }; b = { q: wiz.q, r: wiz.r + 2 }; c = { q: wiz.q - 2, r: wiz.r + 2 };
+        const v = await view();
+        if (v.aim || v.pinned) throw new Error(`armed with an aim already: ${JSON.stringify(v)}`);
+        if (!/tap a hex to aim/i.test(v.hint)) throw new Error(`before a tap the hint says "${v.hint}"`);
+        await page.evaluate((h) => window.hextable.R.onHover(h), a);
+        const w = await view();
+        if (!w.aim || w.aim.q !== a.q || w.pinned || !w.area) throw new Error(`hover did not preview: ${JSON.stringify(w)}`);
+      });
+
+      await run.do('the first tap locks the aim; the pointer going to Cast (and over other hexes) changes nothing', async () => {
+        await tapHex(a);
+        const v = await view();
+        if (!v.pinned || v.aim?.q !== a.q || v.aim?.r !== a.r) throw new Error(`the tap did not lock at ${JSON.stringify(a)}: ${JSON.stringify(v)}`);
+        if (!/Aimed: tap another \w+ to move it, or Cast/.test(v.hint)) throw new Error(`after the tap the hint says "${v.hint}"`);
+        await shot('1-locked');
+        await wander([b, c, wiz]);
+        const w = await view();
+        if (w.aim?.q !== a.q || w.aim?.r !== a.r || w.area !== v.area || w.hint !== v.hint) throw new Error(`the aim moved after the lock: ${JSON.stringify([v, w])}`);
+        await shot('2-pointer-at-cast');
+      });
+
+      await run.do('a tap on another hex moves the lock there, still locked; Cast casts at that hex', async () => {
+        await tapHex(b);
+        const v = await view();
+        if (!v.pinned || v.aim?.q !== b.q || v.aim?.r !== b.r) throw new Error(`the second tap did not move the lock to ${JSON.stringify(b)}: ${JSON.stringify(v)}`);
+        await wander([a]);
+        if ((await view()).aim?.r !== b.r) throw new Error('hover moved the second lock');
+        const n = await state(page, (S) => S.timeline.length);
+        await (touch ? page.locator('#hint-go').tap() : page.click('#hint-go'));
+        await wait(page, (k) => window.hextable.state.timeline.length > k, n, 15000);
+        const ev = await page.evaluate((k) => window.hextable.state.timeline.slice(k).find((e) => e.type === 'cast'), n);
+        const at = ev?.hex ?? ev?.at ?? ev?.target;
+        if (!ev) throw new Error('Cast sent no cast event');
+        if (at && (at.q !== b.q || at.r !== b.r)) throw new Error(`cast at ${JSON.stringify(at)}, locked at ${JSON.stringify(b)}`);
+        if ((await view()).kind === 'spell') throw new Error('still armed after Cast');
+      });
+
+      await run.do('arm again: the lock is gone; tap then Cancel drops it and a new arming starts unlocked', async () => {
+        await page.evaluate(() => window.hextable.act({ type: 'endTurn', actor: 'wizard' }));
+        await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        for (let i = 0; i < 30; i++) {
+          const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
+          if (cur === 'wizard') break;
+          await page.evaluate((x) => window.hextable.act({ type: 'endTurn', actor: x }), cur);
+          await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        }
+        await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000).catch(async () => { throw new Error(`no turn for the wizard: ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify([S.encounter?.order.map((o) => o.id), S.encounter?.turn, S.timeline.slice(-3).map((e) => e.type), document.getElementById('toast')?.textContent]); })}`); });
+        await panelTab(page, 'spells');
+        await page.click('#ap-spells [data-row="spell:burning-hands"]');
+        await wait(page, () => window.hextable.mode.kind === 'spell');
+        await tapHex(a);
+        if (!(await view()).pinned) throw new Error('no lock on the tap');
+        await (touch ? page.locator('#hint-cancel').tap() : page.click('#hint-cancel'));
+        await wait(page, () => window.hextable.mode.kind !== 'spell');
+        await page.click('#ap-spells [data-row="spell:burning-hands"]');
+        await wait(page, () => window.hextable.mode.kind === 'spell');
+        const v = await view();
+        if (v.pinned || v.aim) throw new Error(`a new arming starts with the old lock: ${JSON.stringify(v)}`);
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=armed.
 export default async function (browser, url) {
   await armed(browser, url, 'armed features at 1280x800', { viewport: { width: 1280, height: 800 } });
   await armed(browser, url, 'armed features at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await aimLock(browser, url, 'aim lock at 1280x800', { viewport: { width: 1280, height: 800 } });
+  await aimLock(browser, url, 'aim lock at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 }

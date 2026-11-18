@@ -708,3 +708,42 @@ test('items: a player is offered only the creatures and piles the engine sent; a
   const dm = handRows(s, s.entities[id], { dm: true });
   assert.equal(dm.ground.length, 0);
 });
+
+// The Shield button (#453, client half of #449): one row, in the Move tab's standard actions; the engine decides, the row only sends.
+test('Shield: Put Shield away / Take up Shield for a built character; the action in a fight, free outside; greyed with the engine\'s words; the label says which way', async () => {
+  const { describeStep, mark } = await import(pathToFileURL(join(tmp, 'shared/history.js')));
+  const { shieldRow } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+  const A = { str: 16, dex: 14, con: 14, int: 10, wis: 8, cha: 8 };
+  const sheet = { name: 'Fi', class: 'fighter', level: 5, subclass: 'champion', abilities: A, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, armour: 'chain-mail', shield: true, weapons: ['greatsword'] };
+  const s = newGame(7);
+  for (const id of Object.keys(s.entities)) delete s.entities[id];
+  s.settings.autoEngage = false;
+  s.entities.hero = makeEntity(derive(sheet).record, { id: 'hero', kind: 'pc', side: 'party', pos: { q: 0, r: 0, z: 0 } });
+  s.entities.hero.sheet = structuredClone(sheet);
+  const hero = () => s.entities.hero, find = () => moveRows(s, hero()).find((r) => r.id === 'shield');
+  // Outside a fight: free, always available.
+  assert.deepEqual([find().label, find().chip, find().why, find().send], ['Put Shield away', 'Free', '', { type: 'shield', actor: 'hero', on: false }]);
+  const b = mark(s), r = ok(apply(s, find().send, DM));
+  assert.equal(describeStep(find() && { type: 'shield', actor: 'hero', on: false }, r.events, b, s).label, 'Shield away');
+  assert.deepEqual([find().label, find().send], ['Take up Shield', { type: 'shield', actor: 'hero', on: true }]);
+  assert.equal(describeStep({ type: 'shield', actor: 'hero', on: true }, [{ type: 'shield', id: 'hero', on: true }], b, s).label, 'Shield up');
+  // In a fight: costs the action, greyed when it is spent or it is not the turn.
+  ok(apply(s, { type: 'spawn', monster: 'goblin-warrior', at: { q: 1, r: 0 } }, DM));
+  ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM));
+  while (current(s) !== 'hero') ok(apply(s, { type: 'endTurn', actor: current(s) }, DM));
+  assert.deepEqual([find().chip, find().time, find().why], ['Action', 'action', '']);
+  ok(apply(s, find().send, DM));
+  assert.equal(find().label, 'Put Shield away');
+  assert.match(find().why, /already used an action/);
+  ok(apply(s, { type: 'endTurn', actor: 'hero' }, DM));
+  assert.match(find().why, /isn't Fi's turn/);
+  // No Shield, no row; a hand-typed creature has none.
+  const bare = { ...hero(), sheet: { ...sheet, shield: false } };
+  assert.equal(shieldRow(s, bare), null);
+  assert.equal(shieldRow(s, { ...hero(), sheet: undefined }), null);
+});
+
+test('Shield: a Shield the sheet keeps put away survives an edit (buildsheet keeps shieldStowed)', async () => {
+  const { readFileSync } = await import('node:fs');
+  assert.match(readFileSync(join(tmp, 'buildsheet.js'), 'utf8').match(/const KEEP = \[[^\]]*\]/)[0], /'shieldStowed'/);
+});

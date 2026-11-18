@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { SQUARE_RULES, gridWords, gridName } = await import(pathToFileURL(join(tmp, 'tablecontrols.js')));
+const { SQUARE_RULES, gridWords, gridName, aimedWords } = await import(pathToFileURL(join(tmp, 'tablecontrols.js')));
 const { SETTINGS, SETTING_TEXT } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { HEX, SQUARE } = await import(pathToFileURL(join(tmp, 'shared/grid.js')));
 
@@ -31,4 +31,9 @@ test('hex words become square words on a square map and are left alone on a hex 
   assert.equal(gridName({ grid: 'square' }), 'squares');
   assert.equal(gridName({ grid: 'hex' }), 'hexes');
   assert.equal(gridName(undefined), 'hexes');
+});
+
+test('the locked-aim hint says it is aimed, how to move it, and Cast, in the grid\'s words', () => {
+  assert.equal(aimedWords(HEX), 'Aimed: tap another hex to move it, or Cast');
+  assert.equal(aimedWords(SQUARE), 'Aimed: tap another square to move it, or Cast');
 });

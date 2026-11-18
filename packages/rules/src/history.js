@@ -236,6 +236,7 @@ export function describeStep(action, events, before, after) {
   let label;
   switch (a.type) {
     case 'move': label = `${who} moved`; break;
+    case 'shield': label = ev('shield')?.on === false ? 'Shield away' : 'Shield up'; break;
     case 'attack': label = `${who} attacked ${name(a.target)}`; break;
     case 'cast': {
       // Its own cast, not a reaction cast against it (Counterspell). A spell that was countered
