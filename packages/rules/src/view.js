@@ -458,7 +458,7 @@ export function viewEvents(events, state, viewer) {
   for (const ev of events) {
     out.ev = ev;
     was = Array.isArray(ev.unseen) ? ev.unseen : null;
-    if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack') caster = ev.actor;      // a save on a hit answers the attacker
+    if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack' || ev.type === 'strikeOption') caster = ev.actor;      // a save on a hit or a Shove answers the attacker
     if (ev.type === 'turn') {
       const hidden = cls(ev.id) === 'hidden', before = lastTurnHidden ?? turnBeforeUnseen(state, ev);
       lastTurnHidden = hidden;
@@ -501,6 +501,9 @@ export function viewEvents(events, state, viewer) {
         }
         break;
       }
+      case 'strikeOption':                             // a Grapple or Shove option of an Unarmed Strike: seen as the attack between the same two would be
+        out.push(pick(ev, ['type', 'actor', 'target', 'option', 'shove']));
+        break;
       case 'damage':
       case 'heal': {
         const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'note', 'hp']), ...facesFor(ev) };
@@ -514,7 +517,7 @@ export function viewEvents(events, state, viewer) {
         break;
       }
       case 'save':
-        if (cls(ev.id) === 'open') out.push(structuredClone(ev));
+        if (cls(ev.id) === 'open') { const e = structuredClone(ev); if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by; out.push(e); }
         else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...(caster !== null && cls(caster) === 'open' ? ['dc'] : [])]));
         break;
       case 'reaction':                                 // a creature took a Reaction: who, what, and against whom, as anyone watching would see

@@ -411,7 +411,7 @@ export function derive(sheet) {
   // no weapon, so weapons.js never refuses it. A sheet that lists it or has Martial Arts gets what it always did.
   {
     const ab = maDie && abil.dex > abil.str ? 'dex' : 'str', m = mod(abil[ab]);
-    const u = { name: 'Unarmed Strike', type: 'melee', bonus: m + pb, damage: maDie ? dice(maDie, m) : signed(1 + m), dtype: 'bludgeoning', reach: 5, abil: ab };
+    const u = { name: 'Unarmed Strike', type: 'melee', bonus: m + pb, damage: maDie ? dice(maDie, m) : signed(1 + m), dtype: 'bludgeoning', reach: 5, abil: ab, dc: 8 + m + pb };
     add({ id: 'unarmed-strike', ...u });
     if (maDie) add({ id: 'unarmed-strike-bonus', ...u, name: 'Unarmed Strike (Bonus Action)', time: 'bonus' });
   }
