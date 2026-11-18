@@ -254,7 +254,9 @@ export function autoPlays(s, id, opts) {
 // it is stopped and reveals it, by the engine's own rule). A foe's companion knows what the monster AI knows.
 function knownTo(s, e) {
   if (e.side !== 'party') return s;
-  return { ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !unknown(s, o))) };
+  // What it holds is known to it, whoever else knows of that (its drag is worked out from what is true).
+  const mine = new Set(holdsOf(s, e).map((x) => x.t.id));
+  return { ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !unknown(s, o) || mine.has(o.id))) };
 }
 export function companionStep(s, id, opts = {}) {
   const e = s.entities[id];

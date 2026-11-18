@@ -10,6 +10,9 @@ import { dragExtra } from "../src/engine/world.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { aiStep } from "../src/ai.js";
+import { newMap } from "../src/map.js";
+import * as H from "../src/hex.js";
+import { viewEvents } from "../src/view.js";
 import { squareRoom } from "./fixtures/square-room.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -27,10 +30,10 @@ const hold = (s, id, by = "hero", extra = {}) => { const c = s.entities[id].cond
 
 // A hero (built from `sheet`) and a goblin held by it, in a fight and the hero's turn. Hex: hero 0,0, goblins at 1,0, 0,1 and -1,1
 // (`foes`). Square: the square room, hero at 9,7 and the goblins at 10,7, 9,8 and 8,8.
-function field(sheet = fighter(STR16), { square = false, foes = 1, fight = true, hexes = true } = {}) {
+function field(sheet = fighter(STR16), { square = false, foes = 1, fight = true, keep = false } = {}) {
   const s = newGame(7);
   if (square) ok(apply(s, { type: "loadMap", map: squareRoom() }, DM));
-  for (const id of Object.keys(s.entities)) delete s.entities[id];
+  for (const id of Object.keys(s.entities)) if (!(keep && id === "wizard")) delete s.entities[id];
   if (!square) for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
   const at = square ? { q: 9, r: 7 } : { q: 0, r: 0 };
@@ -173,28 +176,29 @@ test("a hold with a longer reach is not pulled until the grappler steps beyond i
   assert.ok(s.entities[s.foe].cond.grappled);
 });
 
-test("square: a wall stops the pull and so the walk: the grappler's step is not taken, and a first step that cannot be dragged is refused outright", () => {
+test("square: a wall stops the pull and so the walk: no step the held creature could not follow is offered, so the grappler goes round", () => {
   const s = field(fighter(STR16), { square: true });
   // The wall stands between columns 2 and 3 on rows 6 and 7, ending at the corner of 2,5 and 3,6.
   s.entities.hero.pos = { q: 2, r: 5, z: 0 };
   s.entities[s.foe].pos = { q: 3, r: 6, z: 0 };
   hold(s, s.foe);
-  const before = JSON.stringify(s);
-  refused(s, { type: "move", actor: "hero", to: { q: 1, r: 5 } }, /Fi can't drag Goblin \d* any further\.|Fi can't drag .* any further\./);
-  assert.equal(JSON.stringify(s), before);
-  // From 3,5 the walk west goes one step (the goblin at 3,6 is then beside it) and stops at the second.
+  // West from 2,5 the goblin at 3,6 could not follow (the corner of the wall), so a way that begins there is not offered; the grappler
+  // reaches 1,5 round the other way, by 2,4, and the goblin comes along.
+  const r0 = ok(apply(s, { type: "move", actor: "hero", to: { q: 1, r: 5 } }, DM));
+  assert.deepEqual(r0.events.find((e) => e.type === "moved" && e.id === "hero").path[0], { q: 2, r: 4, z: 0 }, "it goes round");
+  assert.ok(s.entities[s.foe].cond.grappled);
+  const near = (a, b) => Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r)) <= 1;
+  assert.ok(near(s.entities.hero.pos, s.entities[s.foe].pos), "and the goblin came along");
+  // From 3,5 the way west by 2,5 is not offered either (the goblin at 3,6 could not follow the second step): it goes round, and the hold stays.
   const t = field(fighter(STR16), { square: true });
   t.entities.hero.pos = { q: 3, r: 5, z: 0 };
   t.entities[t.foe].pos = { q: 3, r: 6, z: 0 };
   hold(t, t.foe);
-  const was = t.encounter.budget.move;
   const r = ok(apply(t, { type: "move", actor: "hero", to: { q: 1, r: 5 } }, DM));
-  assert.equal(pos(t, "hero"), "2,5", "one step west, the walk stops where the held creature cannot follow");
-  assert.equal(pos(t, t.foe), "3,6", "it was beside the new place already");
-  assert.ok(r.events.some((e) => e.type === "note" && /can't drag .* any further/.test(e.text)));
-  assert.equal(t.encounter.budget.move, was - 10, "only the step taken is paid");
+  assert.equal(pos(t, "hero"), "1,5");
+  assert.ok(near(t.entities.hero.pos, t.entities[t.foe].pos), "the goblin came along");
   assert.ok(t.entities[t.foe].cond.grappled, "the hold is never ended by a move the grappler chose");
-  assert.equal(t.entities.hero.reactionUsed ?? false, false);
+  assert.ok(!r.events.some((e) => e.type === "note" && /can't drag/.test(e.text)));
 });
 
 test("square: a shut door stops the pull of a hold that reaches through it", () => {
@@ -203,26 +207,22 @@ test("square: a shut door stops the pull of a hold that reaches through it", () 
   s.entities.hero.pos = { q: 17, r: 10, z: 0 };
   s.entities[s.foe].pos = { q: 19, r: 10, z: 0 };
   hold(s, s.foe, "hero", { range: 10 });
-  assert.ok(moveOptions(s, s.entities.hero).has("16,10"), "the way west is open to the grappler");
-  refused(s, { type: "move", actor: "hero", to: { q: 16, r: 10 } }, /can't drag .* any further/);
+  assert.ok(moveOptions(s, s.entities.hero, { unchecked: true }).has("16,10"), "the way west is open to the grappler alone");
+  assert.equal(moveOptions(s, s.entities.hero).has("16,10"), false, "but it is not offered: what it holds could not follow");
+  refused(s, { type: "move", actor: "hero", to: { q: 16, r: 10 } }, /Fi can't drag Goblin Warrior \d+ that way\./);
   assert.deepEqual(s.entities[s.foe].pos, { q: 19, r: 10, z: 0 });
 });
 
-test("two held, and the one pulled second finds the cell taken by the first: the step is undone, nothing is left half done, and the hold stays", () => {
+test("two held that need the same cell: the step is asked as a whole before anything happens, so no Opportunity Attack, no zone, no spent step", () => {
   const s = field(fighter(STR16), { foes: 1 });
   const spawn = (at) => { const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM)).events.find((e) => e.type === "spawned").id; Object.assign(s.entities[id], { hp: 500, maxHp: 500, ac: 1 }); return id; };
-  const b = spawn({ q: 1, r: -1 }), blocker = spawn({ q: 0, r: -1 });
+  const b = spawn({ q: 1, r: -1 }), blocker = spawn({ q: 0, r: -1 }), guard = spawn({ q: 0, r: 1 });
   hold(s, s.foe); hold(s, b);
-  const before = { hero: pos(s, "hero"), a: pos(s, s.foe), b: pos(s, b), blocker: pos(s, blocker), move: s.encounter.budget.move };
-  const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -1, r: 0 } }, DM));
-  // Each of the two could be pulled into 0,0 alone, and that is the only cell they share.
-  assert.equal(pos(s, "hero"), before.hero, "the step is undone");
-  assert.equal(pos(s, s.foe), before.a);
-  assert.equal(pos(s, b), before.b);
-  assert.equal(s.encounter.budget.move, before.move, "and not paid for");
-  assert.ok(r.events.some((e) => e.type === "note" && /can't drag/.test(e.text)));
-  assert.ok(!r.events.some((e) => e.type === "moved"), "no movement is told");
-  assert.ok(s.entities[s.foe].cond.grappled && s.entities[b].cond.grappled);
+  // Each could be pulled into 0,0 alone, and that is the only cell they share; a hostile creature beside the hero would have its Opportunity Attack.
+  assert.equal(moveOptions(s, s.entities.hero).has("-1,0"), false, "not offered");
+  assert.ok(moveOptions(s, s.entities.hero, { unchecked: true }).has("-1,0"));
+  refused(s, { type: "move", actor: "hero", to: { q: -1, r: 0 } }, /Fi can't drag Goblin Warrior \d+ and Goblin Warrior \d+ that way/);
+  assert.equal(s.entities[guard].reactionUsed ?? false, false, "(and the state is as it was, byte for byte)");
 });
 
 test("Dash works for a holder, and moving outside a fight drags at the same cost", () => {
@@ -249,7 +249,7 @@ test("off the ground: a grappler whose way would leave it (climbing, flying) is 
   assert.ok(ledge(moveOptions(s, s.entities.hero)), "alone it climbs there");
   hold(s, s.foe);
   assert.equal(ledge(moveOptions(s, s.entities.hero)), false, "holding, it is offered the ground only");
-  assert.ok(ledge(moveOptions(s, s.entities.hero, true)), "(aerial: laid out as the refusal asks)");
+  assert.ok(ledge(moveOptions(s, s.entities.hero, { aerial: true })), "(aerial: laid out as the refusal asks)");
   refused(s, { type: "move", actor: "hero", to: { q: -1, r: 0, z: 10 } }, /The engine drags along the ground only\. Release Goblin Warrior \d+ first, or the DM moves both\./);
   ok(apply(s, { type: "move", actor: "hero", to: { q: 0, r: -1 } }, DM));         // along the ground: fine
   const t = field();
@@ -339,4 +339,97 @@ test("a companion that holds a creature and has another foe beside it may step a
     const sk = s.entities[skel].pos, g = s.entities[held1].pos;
     assert.ok(Math.max(Math.abs(sk.q - g.q), Math.abs(sk.r - g.r), Math.abs(sk.q + sk.r - g.q - g.r)) <= 1, "and the held creature came along");
   }
+});
+
+// ---------- fix round 1 of #474 (review) ----------
+test("a held creature on a 5 ft ledge: the steps it could not be pulled down from are not offered, and the AI is never sent a move that would be refused", () => {
+  const ground = Object.fromEntries(H.range({ q: 0, r: 0 }, 8).map((h) => [H.col(h), { t: "grass" }]));
+  const ledge = { "1,0": { t: "stone" }, "1,-1": { t: "stone" } };
+  delete ground["1,0"]; delete ground["1,-1"];
+  const s = newGame(7);
+  ok(apply(s, { type: "loadMap", map: newMap({ id: "m", name: "m", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "G", z: 0, tiles: ground }, { id: "ledge", name: "L", z: 5, tiles: ledge }] }) }, DM));
+  for (const id of Object.keys(s.entities)) delete s.entities[id];
+  s.settings.autoEngage = false;
+  s.entities.hero = makeEntity(derive(fighter(STR16)).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  const a = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0, z: 5 } }, DM)).events.find((e) => e.type === "spawned").id;
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM)); turnOf(s, "hero");
+  hold(s, a);
+  const offered = moveOptions(s, s.entities.hero), free = moveOptions(s, s.entities.hero, { unchecked: true });
+  assert.equal(offered.has("-1,0"), false, "straight away from it: the goblin could not step down 5 ft, as a pull steps only 2.5");
+  assert.ok(free.has("-1,0"), "(it is a place the grappler alone reaches)");
+  for (const [k, v] of offered) {                                   // whatever is offered, the engine takes
+    if (!v.canStop) continue;
+    const c = structuredClone(s);
+    const [q, r] = k.split(",").map(Number);
+    const res = apply(c, { type: "move", actor: "hero", to: { q, r } }, DM);
+    assert.ok(res.ok, `${k}: ${res.error}`);
+  }
+  refused(s, { type: "move", actor: "hero", to: { q: -1, r: 0 } }, /Fi can't drag Goblin Warrior \d+ that way\./);
+});
+
+test("a held creature the mover cannot see is dragged at the same cost, from the true state", () => {
+  const s = field(fighter(STR16), { foes: 1 });
+  hold(s, s.foe);
+  s.entities[s.foe].hiding = { dc: 30 };                              // it took Hide: unseen by the party
+  const o = s.entities.hero.pos;
+  assert.equal(moveOptions(s, s.entities.hero).has(`${o.q - 6},${o.r}`), false);
+  assert.equal(moveOptions(s, s.entities.hero).get(`${o.q - 3},${o.r}`).cost, 30);
+  refused(s, { type: "move", actor: "hero", to: { q: o.q - 6, r: o.r } }, /Too far/);
+  const r = ok(apply(s, { type: "move", actor: "hero", to: { q: o.q - 3, r: o.r } }, DM));
+  assert.equal(s.encounter.budget.move, 0, "three steps of 10 ft");
+  assert.equal(pos(s, s.foe), `${o.q - 2},${o.r}`);
+  // What a player is sent of the hidden creature stays as it was: none of its movement.
+  s.entities.hero.owner = "u1";
+  const seen = viewEvents(r.events, s, { role: "player", userId: "u1" });
+  assert.ok(!seen.some((e) => e.type === "moved" && e.id === s.foe), "the hidden creature's pulls are not sent");
+});
+
+test("a zone is not entered by a creature that was not pulled: two held that need the same cell are stopped before any effect", () => {
+  const s = field(fighter(STR16), { foes: 1, keep: true, fight: false });
+  const spawn = (at) => { const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM)).events.find((e) => e.type === "spawned").id; Object.assign(s.entities[id], { hp: 500, maxHp: 500, ac: 1 }); return id; };
+  const b = spawn({ q: 1, r: -1 }); spawn({ q: 0, r: -1 }); spawn({ q: 0, r: 1 });
+  Object.assign(s.entities.wizard, { slots: { 1: 4, 2: 3, 3: 3 }, slotsMax: { 1: 4, 2: 3, 3: 3 } });
+  s.entities.wizard.spells.push("moonbeam");
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
+  turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: -1, r: 0 } }, DM));
+  turnOf(s, "hero");
+  hold(s, s.foe); hold(s, b);
+  const hp = s.entities[s.foe].hp, before = JSON.stringify(s);
+  refused(s, { type: "move", actor: "hero", to: { q: -1, r: 0 } }, /can't drag/);
+  assert.equal(JSON.stringify(s), before);
+  assert.equal(s.entities[s.foe].hp, hp);
+});
+
+test("the AI is never sent into a no-op: a companion that holds two creatures behind a blocker ends its turn, and every move it sends changes something", () => {
+  const s = field(fighter(STR16), { foes: 0, keep: true, fight: false });
+  delete s.entities.hero;
+  const spawn = (at, monster = "goblin-warrior") => { const id = ok(apply(s, { type: "spawn", monster, at }, DM)).events.find((e) => e.type === "spawned").id; Object.assign(s.entities[id], { hp: 500, maxHp: 500, ac: 1 }); return id; };
+  const sk = spawn({ q: 0, r: 0 }, "skeleton");
+  s.entities[sk].side = "party";
+  ok(apply(s, { type: "bond", actor: sk, to: "wizard", kind: "undead", orders: "command" }, DM));
+  const A = spawn({ q: 1, r: 0 }), B = spawn({ q: 1, r: -1 }), blk = spawn({ q: 0, r: -1 }), C = spawn({ q: 0, r: 1 });
+  for (const x of [C, blk]) ok(apply(s, { type: "condition", actor: x, condition: "blinded" }, DM));
+  hold(s, A, sk); hold(s, B, sk);
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
+  turnOf(s, sk);
+  let ended = false;
+  for (let i = 0; i < 8 && current(s) === sk; i++) {
+    const a = aiStep(s, sk, {}), was = JSON.stringify(s.entities);
+    assert.ok(a, "it has something to send");
+    const r = apply(s, a, DM);
+    assert.ok(r.ok, `${JSON.stringify(a)}: ${r.error}`);
+    if (a.type === "endTurn") { ended = true; break; }
+    assert.notEqual(JSON.stringify(s.entities), was, `${JSON.stringify(a)} changed nothing`);
+  }
+  assert.ok(ended || current(s) !== sk, "its turn ended");
+});
+
+test("a creature dragged onto a thing that goes off when stepped on is handed to the DM, as a teleport onto one is", () => {
+  const s = field(fighter(STR16), { fight: false });
+  hold(s, s.foe);
+  s.map.objects.push({ id: "pit", def: "pit-trap", level: "ground", at: { q: 0, r: 0 }, state: "hidden" });
+  s.settings.passiveFind = "off";
+  const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, DM));
+  assert.ok(r.events.some((e) => e.type === "manual" && e.actor === s.foe && /was dragged onto/.test(e.text)), r.events.map((e) => e.type + (e.text ? ":" + e.text : "")).join("\n"));
 });

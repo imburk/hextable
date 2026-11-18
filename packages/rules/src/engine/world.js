@@ -37,6 +37,65 @@ export function dragExtra(g, t) {
   return ti === 0 || ti <= gi - 2 || (ti <= gi && (g.feats ?? []).some((f) => f.id === 'feat-grappler')) ? 0 : 1;
 }
 
+// ---------- forced moves and dragging ----------
+// How far one step of a forced move (a push, a pull) goes: 5 ft, or on squares what the table's diagonal rule says a diagonal costs.
+export function forcedStride(s, a, b, odd = false) {
+  const G = gridOf(s.map), rule = s.settings.diagonals ?? 'real';
+  return G.kind !== 'square' || !G.beside(a, b).length ? FT : rule === 'real' ? FT * Math.SQRT2 : rule === 'alternate' && odd ? 2 * FT : FT;
+}
+// The next step of a forced move of `t` away from (`sign` 1) or toward (-1) the point `from`: { h } the place it would go to, or { why }
+// ('aloft': it stands on nothing; 'blocked': a wall, a drop, a creature or the arena's edge stops it). `left` feet of the move are left and
+// `odd` is whether an odd number of diagonals has been taken (squares). Changes nothing: `push` (resolve.js) takes the step; a grappler's
+// drag asks it first, so that it knows before it moves whether what it holds can follow.
+export function forcedStep(s, t, from, sign, left = Infinity, odd = false) {
+  const B = barriers(s.map), G = gridOf(s.map), square = G.kind === 'square', r0 = riderOf(s, t), here = ground(s.map, t.pos);
+  if (!here) return { why: 'aloft' };
+  const d0 = G.dist(t.pos, from), w = G.toWorld(t.pos), o = G.toWorld(from);
+  let best = null;
+  for (const n of G.neighbors(t.pos)) {
+    if (G.dist(n, from) !== d0 + sign || (inFight(s, t.id) && !s.encounter.arena[col(n)])) continue;
+    const sf = surfaces(s.map, n).find((x) => Math.abs(x.z - t.pos.z) <= STEP_FREE);
+    if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
+    const h = { q: n.q, r: n.r, z: sf.z };
+    if (living(s).some((c) => c.id !== t.id && c.id !== r0?.id && overlapAt(c, c.pos, t, h, G)) || !fitsOn(s.map, t, h, B)) continue;
+    if (square && below(left, forcedStride(s, t.pos, n, odd))) continue;                                                // not enough of the push left for this step
+    if (square && !footprint(t, t.pos, G).every((f, j) => { const g = footprint(t, h, G)[j]; return !B.blocked(here.level.id, f, g) && cornerFree(s.map, G, B, f, g, t.pos.z); })) continue;     // every part: no wall, no corner
+    const nw = G.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
+    if (!best || straight > best.straight + 1e-9) best = { h, straight };
+  }
+  return best ? { h: best.h } : { why: 'blocked' };
+}
+// A pull is one grid step: 5 ft, or on squares by the real diagonal rule the 7.07 ft a diagonal is, so one step is taken whichever way it goes.
+export const pullFeet = (s) => (gridOf(s.map).kind === 'square' && (s.settings.diagonals ?? 'real') === 'real' ? FT * Math.SQRT2 : FT);
+// Is `t`, held by `g` with `hold`, beyond the hold's reach (as `settleHolds` measures it)?
+export const beyond = (s, g, t, hold) => !!g && !t.dead && apart(s, g, t) * FT > hold.range;
+// A copy of the game's creatures with `e` (and the rider it carries) put at `pos`: for asking what would be, changing nothing.
+const placed = (s, e, pos) => {
+  const entities = { ...s.entities, [e.id]: { ...e, pos } }, r = riderOf(s, e);
+  if (r) entities[r.id] = { ...r, pos: { q: pos.q, r: pos.r, z: pos.z ?? 0 } };
+  return { ...s, entities };
+};
+// `e` steps to `step`: could everything it holds follow? Plays the pulls in order, each creature taking its cell before the next is asked
+// (two held creatures that need the same cell: the second can't), as `walk` pulls them. Changes nothing: it works on copies of the
+// creatures. Returns { blocked } (the first creature that could not follow; a riding one is left to the DM, as `push` does) or
+// { next }, the game as it would stand (the grappler at `step`, what it holds pulled), to ask the step after it from.
+export function dragStep(s, e, step) {
+  let cur = placed(s, e, step);
+  for (const { t, hold } of draggedBy(s, e)) {
+    for (let i = 0; i < 4; i++) {
+      const g = cur.entities[hold.by], now = cur.entities[t.id];
+      if (!beyond(cur, g, now, hold)) break;
+      const f = mountOf(cur, now) ? { why: 'mount' } : forcedStep(cur, now, g.pos, -1, pullFeet(cur), false);
+      if (!f.h) return { blocked: t };
+      cur = placed(cur, now, f.h);
+    }
+    if (beyond(cur, cur.entities[hold.by], cur.entities[t.id], hold)) return { blocked: t };
+  }
+  return { next: cur };
+}
+// The first creature `e` holds that could not follow it to `step` (changes nothing), or null.
+export const dragBlocked = (s, e, step) => (draggedBy(s, e).length ? dragStep(s, e, step).blocked ?? null : null);
+
 // ---------- movement ----------
 
 // Can this creature stay up without anything under it? It needs a Fly Speed that is not 0, and
@@ -227,17 +286,23 @@ export function route(reach, k) {
 // Map of position key -> {cost, prev, canStop, h} that this creature can move to right now.
 // Walking steps onto surfaces in neighbouring columns; a bigger rise or drop is a climb; a ladder
 // or the like joins two places; and a creature that can fly moves through the air in 5 ft steps.
-// `aerial`: a mover that drags a creature is offered the ground only (the engine drags along the ground; Decision 6, question Q6);
-// with `aerial` its flying, climbing and ladder ways are laid out too, so `move` can tell a place only they reach from one too far.
-export function moveOptions(s, e, aerial = false) {
+// A mover that drags creatures (docs/specs/grapple-shove.md, Decision 6) is offered the ground only (the engine drags along the ground;
+// question Q6), and only steps its held creatures could follow. Each place found carries the game as it would stand on the cheapest way
+// found to it (the grappler there, what it holds pulled behind it, as `walk` pulls them), and a step from there is offered only if
+// `dragStep` says the held creatures could follow it. That is exact on hexes; on squares the search's cost is approximated here (without
+// the diagonal rule), so a place may be judged by a way that is not quite the one `route` takes. `walk` asks each step again, exactly,
+// and stops where one cannot be dragged.
+// `opts.aerial`: lay out flying, climbing and ladder ways too, so `move` can tell a place only they reach from one too far.
+// `opts.unchecked`: do not ask whether the held creatures could follow (so `move` can tell that from "too far").
+export function moveOptions(s, e, opts = {}) {
   // A rider goes where its mount goes (stage C6a): its ways are the mount's, and `move` sent for it moves the mount.
   const steed = mountOf(s, e);
-  if (steed && !steed.riding) return moveOptions(s, steed, aerial);
+  if (steed && !steed.riding) return moveOptions(s, steed, opts);
   const walk = e && up(e) ? speedOf(s, e) : 0, flying = !!e && aloft(s, e), flySpeed = flying ? speedOf(s, e, 'fly') : 0;
   if (!e || !up(e) || (walk === 0 && !flying)) return new Map();
   // What it drags: every step of the route costs 1 extra foot a foot for each creature held that is not exempt (dragExtra), added to
   // the step's own cost as the SRD adds such extras ("1 extra foot (2 extra feet in Difficult Terrain)", Crawling, Climbing).
-  const dragged = draggedBy(s, e), toll = dragged.reduce((n, { g, t }) => n + (g ? dragExtra(g, t) : 0), 0), grounded = dragged.length > 0 && !aerial;
+  const dragged = draggedBy(s, e), toll = dragged.reduce((n, { g, t }) => n + (g ? dragExtra(g, t) : 0), 0), dragging = dragged.length > 0, grounded = dragging && !opts.aerial, checked = dragging && !opts.unchecked;
   const enc = s.encounter, fighting = inFight(s, e.id);
   // In a fight it moves on its turn from the turn's budget; a controlled mount on its rider's turn, from `budget.mount`.
   const bud = fighting ? turnBudget(s, e) : null;
@@ -280,8 +345,11 @@ export function moveOptions(s, e, aerial = false) {
     const def = objectDef(o);
     if (def.triggers?.some((t) => t.on === 'enter' && t.effects && t.from.includes(o.state)) && (e.side !== 'party' || !def.states[o.state].hidden)) hazards.add(`${o.level}|${col(o.at)}`);
   }
+  // The cheapest way found to each place, and the game as it would stand there (the approximation above).
+  const dist = new Map([[key(e.pos), 0]]), layout = new Map([[key(e.pos), s]]);
   const steps = (from) => {
     const out = [], here = ground(map, from)?.level;
+    const fromKey = key(from), there = checked ? layout.get(fromKey) : null;
     // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
     if (here && from !== e.pos && onHazard(here.id, from)) return out;
     if (here && walk > 0) {
@@ -301,7 +369,10 @@ export function moveOptions(s, e, aerial = false) {
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
             const flat = Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1) + toll;               // Difficult Terrain does not stack; dragging adds to it
+            let next = null;
+            if (checked) { const d = dragStep(there ?? s, e, h); if (d.blocked) continue; next = d.next; }                       // what it holds could not follow
             out.push({ h, cost: flat * FT, max: limit.walk, flat, extra: 0, diag, level: up_ <= STEP_FREE });     // a rise the cost does not count
+            if (checked) { const c = (dist.get(fromKey) ?? 0) + flat * FT, k = key(h); if (c < (dist.get(k) ?? Infinity)) { dist.set(k, c); layout.set(k, next); } }
           } else if (climbs && !grounded) {
             // Climbing: up a face to a ledge, or down from one. The way must be open above the lower
             // of the two places, and only a wall at the top counts: a wall below is what is climbed.

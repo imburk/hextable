@@ -18,7 +18,7 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
-import { aloft, below, creatureType, carry, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
@@ -71,40 +71,24 @@ export function fall(s, t, feet, ev) {
 // SRD gives no rule for (it is not the mount that is moved): the engine does not move it, and the DM is told.
 // It returns what became of it, for a caller that has to say: 'mount' (a riding creature: the DM is told, nothing moves), 'aloft' (the
 // creature stands on nothing, so no step is found), 'blocked' (a wall, a drop, a creature, or a boundary stops the first step),
-// 'moved'. `dry`: only find out whether the first step can be taken (answers 'moved' or why not), changing nothing and telling nothing
-// (the drag of a held creature asks it before its grappler steps, movement.js).
-function push(s, t, feet, dir, from, ev, dry = false) {
+// 'moved'. The step it takes is `forcedStep` (world.js), which the drag of a held creature asks too, before its grappler moves.
+function push(s, t, feet, dir, from, ev) {
   if (mountOf(s, t)) {
     ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
       text: `${t.name} would be ${dir === 'toward' ? 'pulled' : 'pushed'} ${feet} ft while riding ${mountOf(s, t).name}. The SRD has no rule for a rider moved off its mount this way, so the engine leaves ${t.name} riding: the DM moves ${t.name} (dismount, then place) if it should go.` });
     return 'mount';
   }
-  const B = barriers(s.map), G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = G.toWorld(from);
+  const G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1;
   const r0 = riderOf(s, t), was = { ...t.pos };
   let rider = r0, asked = false, fallen = null;
-  const square = G.kind === 'square', rule = s.settings.diagonals ?? 'real';
+  const square = G.kind === 'square';
   let left = feet, odd = false, why = 'blocked';
-  const stride = (a, b) => (!square || !G.beside(a, b).length ? FT : rule === 'real' ? FT * Math.SQRT2 : rule === 'alternate' && odd ? 2 * FT : FT);
   for (let i = 0; square ? left > 0 : i < Math.floor(feet / FT); i++) {
-    const here = ground(s.map, t.pos), d0 = G.dist(t.pos, from), w = G.toWorld(t.pos);
-    if (!here) { why = 'aloft'; break; }
-    let best = null;
-    for (const n of G.neighbors(t.pos)) {
-      if (G.dist(n, from) !== d0 + sign || (inFight(s, t.id) && !s.encounter.arena[col(n)])) continue;
-      const sf = surfaces(s.map, n).find((x) => Math.abs(x.z - t.pos.z) <= STEP_FREE);
-      if (!sf || TILES[sf.tile.t].cost === Infinity || B.solid(sf.level.id, n) || B.blocked(here.level.id, t.pos, n) || (sf.level !== here.level && B.blocked(sf.level.id, t.pos, n))) continue;
-      const h = { q: n.q, r: n.r, z: sf.z };
-      if (living(s).some((c) => c.id !== t.id && c.id !== r0?.id && overlapAt(c, c.pos, t, h, G)) || !fitsOn(s.map, t, h, B)) continue;
-      if (square && below(left, stride(t.pos, n))) continue;                                                              // not enough of the push left for this step
-      if (square && !footprint(t, t.pos, G).every((f, j) => { const g = footprint(t, h, G)[j]; return !B.blocked(here.level.id, f, g) && cornerFree(s.map, G, B, f, g, t.pos.z); })) continue;     // every part: no wall, no corner
-      const nw = G.toWorld(n), straight = ((nw.x - w.x) * (w.x - o.x) + (nw.z - w.z) * (w.z - o.z)) * sign;       // most nearly straight along the line from the source
-      if (!best || straight > best.straight + 1e-9) best = { h, straight };
-    }
-    if (!best) break;
-    if (dry) return 'moved';
+    const best = forcedStep(s, t, from, sign, left, odd);
+    if (!best.h) { if (best.why === 'aloft') why = 'aloft'; break; }
     // The save is made once a step is found (the effect is about to move it).
     if (rider && !asked) { asked = true; if (!staysOn(s, rider, ev)) { fallen = rider; rider = null; } }
-    if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= stride(t.pos, best.h); if (d) odd = !odd; }
+    if (square) { const d = G.beside(t.pos, best.h).length > 0; left -= forcedStride(s, t.pos, best.h, odd); if (d) odd = !odd; }
     const zonesBefore = snapshot(s);
     t.pos = best.h; path.push(best.h);
     if (rider) carry(s, t);
