@@ -322,3 +322,13 @@ test("homebrew may use the keys (strict mode lets them through, within ranges) a
   const ank = readEntry("monsters", { ...JSON.parse(JSON.stringify(MONSTERS.ankheg)), id: "hb-test-ank", source: "homebrew:test", checked: false }, { pack: "test" });
   assert.match(ank.lines.join("\n"), /Advantage if the target is Grappled by the attacker/);
 });
+
+test("a spell's step has no hold: the keys are for a creature's action", () => {
+  const spell = JSON.parse(JSON.stringify(CONTENT.spells["hold-person"]));
+  assert.deepEqual(lintEntry("spells", spell, { strict: false }), []);
+  spell.effects.push({ condition: "grappled", escape: 14 });
+  assert.match(lintEntry("spells", spell, { strict: false }).join(), /escape. is for a creature's action/);
+  const adv = JSON.parse(JSON.stringify(CONTENT.spells["fire-bolt"]));
+  adv.effects[0].advantageIf = ["target.prone"];
+  assert.match(lintEntry("spells", adv, { strict: false }).join(), /advantageIf. on an attack is for a creature's action/);
+});

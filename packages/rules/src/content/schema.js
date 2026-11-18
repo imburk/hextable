@@ -265,7 +265,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if ((kind === 'heal' || kind === 'tempHp') && step.atLeast !== undefined && !(isInt(step.atLeast) && step.atLeast > 0)) say('`atLeast` is the fewest Hit Points a heal (or Temporary Hit Points a tempHp step: Tireless) gives');
     if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
     if (kind === 'condition') lintHold(step, say, inMonster);
-    else for (const k of HOLD_KEYS) if (step[k] !== undefined) say(`\`${k}\` is for a condition step`);
+    else for (const k of HOLD_KEYS) if (step[k] !== undefined && !(k === 'largest' && kind === 'move')) say(`\`${k}\` is for a condition step`);
     // What ends a condition or a modifier on its own: a turn boundary of the target or the source
     // ("until the end of your next turn"), or a repeat save.
     if (kind === 'condition' || kind === 'modifier') {

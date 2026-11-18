@@ -298,7 +298,8 @@ test("the AI's approach goes through moveOptions, so a monster that holds a crea
   s.settings.autoEngage = false;
   s.entities.hero = makeEntity(derive(fighter(STR16)).record, { id: "hero", kind: "pc", side: "party", pos: { q: -6, r: 0, z: 0 } });
   const spawn = (monster, at) => { const id = ok(apply(s, { type: "spawn", monster, at }, DM)).events.find((e) => e.type === "spawned").id; Object.assign(s.entities[id], { hp: 500, maxHp: 500 }); return id; };
-  const bug = spawn("bugbear-warrior", { q: 0, r: 0 }), gob = spawn("goblin-warrior", { q: 1, r: 0 });
+  // A giant frog, not a bugbear: a bugbear has Abduct (`dragFree`, G4) and pays no extra, which is the point of the test in grapple-monsters.test.js.
+  const bug = spawn("giant-frog", { q: 0, r: 0 }), gob = spawn("goblin-warrior", { q: 1, r: 0 });
   ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 10 }, DM));
   s.entities[gob].hp = 0;                                                 // down: not a foe it fights, but still held
   hold(s, gob, bug);

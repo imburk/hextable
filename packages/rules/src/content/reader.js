@@ -952,6 +952,7 @@ export const STEP_SENTENCES = {
       if (!this.mon || !isInt(st.escape)) this.bad(`Step ${at}: a hold's escape DC is a whole number, in a creature's action.`);
       else {
         this.num(`${at}.escape`, st.escape, 'escape DC');
+        if (isInt(st.holds)) this.num(`${at}.holds`, st.holds, 'creatures');
         const big = typeof st.largest === 'string' && ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'].includes(st.largest) ? ` Only a creature that is ${cap1(st.largest)} or smaller is held; a bigger one is not, and nothing is said.` : '';
         const many = isInt(st.holds) && st.holds > 1 ? ` That action can hold ${st.holds} creatures at once; while it holds that many it cannot be used on another.` : ' That action holds one creature at a time, and cannot be used on another until it lets go.';
         this.line(`It is a hold the engine keeps: escape DC ${st.escape}.${big}${many}${st.escapeDis === true ? ' Ability checks to escape have Disadvantage.' : ''} It ends when the creature escapes (an action and a Strength (Athletics) or Dexterity (Acrobatics) check), when the one holding it lets go, is Incapacitated, or is farther away than the action reaches.`, depth + 1);
