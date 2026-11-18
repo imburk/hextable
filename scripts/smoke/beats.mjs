@@ -92,10 +92,8 @@ export async function beats(browser, url, label, opts) {
 
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=beats.
 export default async function (browser, url) {
-  // The default renderer is Three.js (R14 step 1), with shadows off as in three-parity (software GL makes the sun's pass slow, and these steps time things);
-  // the classic renderer is run as well, by address, until it is removed (R14 step 2).
-  for (const [how, q] of [['default renderer', '?shadows=off'], ['classic renderer', '?renderer=gl']]) {
-    await beats(browser, url + q, `beats at 1280x800, ${how}`, { viewport: { width: 1280, height: 800 } });
-    await beats(browser, url + q, `beats at 390x844 with touch, ${how}`, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
-  }
+  // The one renderer is Three.js (R14 step 2, #355), with shadows off as in three-parity (software GL makes the sun's pass slow, and these steps time things).
+  // The classic renderer's second run of the same steps went with it.
+  await beats(browser, `${url}?shadows=off`, 'beats at 1280x800', { viewport: { width: 1280, height: 800 } });
+  await beats(browser, `${url}?shadows=off`, 'beats at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 }
