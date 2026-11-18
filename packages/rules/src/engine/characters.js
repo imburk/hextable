@@ -12,6 +12,7 @@ import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, shieldEntry, validate } from '../derive.js';
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
+import { cure } from './rolls.js';
 import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet } from './sheets.js';
 import { handHolds } from '../weapons.js';
 
@@ -73,9 +74,10 @@ export const handlers = {
     const fresh = makeEntity(a.record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
     // What play has done to it stays, by the one list `remake` keeps too (sheets.js, `carryPlay`; DEBT C17). A record typed in has no sheet.
     carryPlay(e, fresh, a.record);
-    // The record the DM typed wins over old play state: a condition it is now immune to ends, as any condition does.
-    for (const c of a.record.conditionImmune ?? []) if (fresh.cond[c]) { delete fresh.cond[c]; ev.push({ type: 'condEnd', id: e.id, cond: c }); }
     s.entities[e.id] = fresh;
+    // The record the DM typed wins over old play state: a condition it is now immune to ends as a cure ends it (`condEnd`; the part
+    // of a lasting effect that held it is ended too).
+    cure(s, fresh, a.record.conditionImmune ?? [], ev);
     ev.push({ type: 'edited', id: e.id });
     donned(s, fresh, ev);
   },

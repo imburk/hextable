@@ -261,6 +261,18 @@ test("editCharacter: a condition the new record is immune to ends, with an event
   assert.deepEqual(res.events.filter((x) => x.type === "condEnd"), [{ type: "condEnd", id: "rogue", cond: "poisoned" }]);
 });
 
+test("editCharacter: the immune condition ends through the cure path, so the lasting effect's part that held it is marked ended", () => {
+  const s = newGame(5), r = s.entities.rogue;
+  const fx = { id: "fx9", name: "Test", spell: "test", source: "wizard", parts: [{ target: "rogue", cond: "poisoned" }, { target: "fighter", cond: "prone" }] };
+  (s.effects ??= []).push(fx);
+  r.cond.poisoned = { effect: "fx9" }; s.entities.fighter.cond.prone = { effect: "fx9" };
+  const res = ok(apply(s, { type: "editCharacter", actor: "rogue", record: { ...structuredClone(PREGENS.rogue), conditionImmune: ["poisoned"] } }, DM));
+  assert.equal(s.entities.rogue.cond.poisoned, undefined);
+  assert.equal(fx.parts[0].ended, true, "the rogue's part is ended");
+  assert.ok(!fx.parts[1].ended && s.effects.includes(fx) && s.entities.fighter.cond.prone, "the fighter's part and the effect go on");
+  assert.deepEqual(res.events.filter((x) => x.type === "condEnd"), [{ type: "condEnd", id: "rogue", cond: "poisoned" }]);
+});
+
 test("editCharacter: a lower level in the record takes the record's XP, not the larger old one; the same or a higher level keeps the larger", () => {
   const s = newGame(5), r = s.entities.rogue;
   Object.assign(r, { level: 5, xp: 6500 });
