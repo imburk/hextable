@@ -712,7 +712,7 @@ function build(root, ch, options) {
   const spellsOnSheet = (multi ? sheet.classes.flatMap((x) => x.spells ?? []) : sheet.spells ?? []).map((id) => CONTENT.spells[id]);
   R.imported = {
     class: c.id, level, subclass: (multi ? sheet.classes[0].subclass : sheet.subclass) ?? null,
-    ...(multi ? { classes: sheet.classes.map((x) => ({ class: x.class, level: x.level, subclass: x.subclass ?? null })) } : {}), armour: sheet.armour ?? null, shield: !!sheet.shield, weapons: sheet.weapons ?? [],
+    ...(multi ? { classes: sheet.classes.map((x) => ({ class: x.class, level: x.level, subclass: x.subclass ?? null })) } : {}), armour: sheet.armour ?? null, shield: typeof sheet.shield === 'string' ? sheet.shield : !!sheet.shield, weapons: sheet.weapons ?? [],
     skills: [...(sheet.skills ?? []), ...(sheet.extraSkills ?? [])].length, expertise: (sheet.expertise ?? []).length, tools: (sheet.tools ?? []).length, gear: (sheet.gear ?? []).length,
     cantrips: spellsOnSheet.filter((s) => s.level === 0).length, prepared: spellsOnSheet.filter((s) => s.level > 0).length,
     proficiencyBonus: proficiencyFor(level),
