@@ -7,7 +7,7 @@ Faithful Steed), Pact of the Chain, the Find Familiar, Find Steed, Summon and Co
 mounted combat (P3's "mounted"). Every number below is from `reference/srd52/srd52-flow.txt`;
 line numbers refer to that file.
 
-Built (as of 16 November): stages C1 to C8 and C10 and amendments A1 to A4 (#313, #317, #326, #330, #331, #335, #338, #341, #343, #361, #363, #368, #369, #375). Not built: C9 (the rest of the features; C9a, #411, built Faithful Steed and the Long Rest for a pocketed familiar; C9b, #414, built the `freeCast` keys and with them Wild Companion and Pact of the Chain's seven extra forms; still to build: the forgone attack, Investment of the Chain Master, Life Bond).
+Built (as of 16 November): stages C1 to C8 and C10 and amendments A1 to A4 (#313, #317, #326, #330, #331, #335, #338, #341, #343, #361, #363, #368, #369, #375). C9 is built in three parts: C9a (#411, Faithful Steed and the Long Rest for a pocketed familiar), C9b (#414, the `freeCast` keys and with them Wild Companion and Pact of the Chain's seven extra forms) and C9c (#464, the forgone attack, Investment of the Chain Master, Life Bond).
 
 ## Problem
 
@@ -475,7 +475,7 @@ and dropping fields it does not know.
 | Entry | Tier after this work | How | Still the DM's |
 |---|---|---|---|
 | Find Familiar | assist (**C5c built, #343**) | `summon` with `forms` (the 10 listed that have blocks, plus any pack Beast of CR 0), `types`, `one: 'reform'`, `turn: 'own'`, `at0: 'vanish'`, `noAttack`; dismiss and recall; touch delivery (C5) | telepathy and hearing, seeing through its eyes; Octopus (no block) |
-| Find Steed | auto (with C6); **C4 set assist**; **C5c added `one: 'replace'` (#343)**, still assist: `mount` (C6) is not in the vocabulary yet, nor Life Bond's healing hook (C9) | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | Life Bond until healing is hooked (C9); the steed's look |
+| Find Steed | auto (with C6); **C4 set assist**; **C5c added `one: 'replace'` (#343)**; **C9c built Life Bond (#464)**, still assist: the steed protecting its rider beyond the companion brain, and its look | `summon: 'otherworldly-steed'`, `types`, `one: 'replace'`, `turn: 'after'` with `order` before or after by the master's choice each round, `ends: ['masterDies']`, `mount: 'controlled'` | the steed's look; protecting its rider beyond C7's brain |
 | Summon Dragon | auto | `summon: 'draconic-spirit'`, Concentration part; Shared Resistances as a `modifier` step on `self` with the spell's `choice` | its "verbal commands" |
 | Giant Insect | auto | `summon: 'giant-insect'`, `variants` | as above |
 | Animate Dead | assist (**C5b built, #341**) | `on: 'corpse'`, Zombie; 24-hour bond; `orders: 'command'`, range 60; reassert (`reassert`, up to four and two more a slot level); commanded this turn the player plays it, otherwise the DM on its standing order | bones and the Skeleton; whether orders are kept |
@@ -485,8 +485,8 @@ and dropping fields it does not know.
 | Unseen Servant | assist; **C4 left manual**: `turn: 'none'`, commands and a block of one score are not in the vocabulary | a block built from the spell's numbers (AC 10, HP 1, Str 2), `turn: 'none'`, `orders: 'command'`, `leash: 60`, `noAttack`, Invisible | its other ability scores (none in the SRD), the tasks |
 | Wild Companion | auto (**C9b built, #414**; was manual) | feature casting Find Familiar through `freeCast`-like spending of a slot or a Wild Shape use, `types: ['fey']`, `ends: ['longRest']` | as Find Familiar |
 | Faithful Steed | auto (**C9a built, #411**) | `freeCast { spells: ['find-steed'] }`, one use per Long Rest, and always prepared | the spell's own leftovers (Life Bond, the steed acting to protect its rider) are Find Steed's tier, not the feature's |
-| Pact of the Chain | assist (**C9a: the casting part was already entered (#232) and is now tested; C9b, #414: the seven extra forms built as `freeCast.forms`**; the forgone attack is left) | Find Familiar learned, Magic action, no slot; the seven extra forms; forgo an attack for the familiar's Reaction attack (C9) | — |
-| Investment of the Chain Master | assist (C9) | bake options (Fly or Swim 40, the master's DC); the Bonus Action command to Attack; the damage type swap; the Reaction Resistance as a reaction instruction | — |
+| Pact of the Chain | auto (**C9a: the casting part was already entered (#232) and is now tested; C9b, #414: the seven extra forms built as `freeCast.forms`; C9c, #464: the forgone attack, `forgoAttack`**) | Find Familiar learned, Magic action, no slot; the seven extra forms; forgo an attack for the familiar's Reaction attack (C9) | — |
+| Investment of the Chain Master | auto (**C9c built, #464**: `invest`; the damage type is chosen at the casting) | bake options (Fly or Swim 40, the master's DC); the Bonus Action command to Attack; the damage type swap; the Reaction Resistance as a reaction instruction | — |
 | Conjure Animals, Woodland Beings, Minor Elementals, Celestial, Elemental, Fey | manual (zones work, not this spec) | they are spirits with no block: areas that move with or apart from the caster (S4's "moving a zone after casting") | everything until then |
 | Faithful Hound | manual | seen by its caster only | everything |
 | Planar Ally, Planar Binding, Gate | manual | bargains and other planes | everything; the DM may `bond` what arrives |
@@ -530,7 +530,7 @@ familiars; after C4 the summon spells play; after C6 riding does.
 - "Appropriate anatomy" and willingness for anything not on the mounts list or bonded as a mount.
 - Phantom Steed's travel pace, tack and minute to dismount; the Unseen Servant's tasks and its
   saving throws.
-- Life Bond until C9, Pact of the Chain's forgone attack until C9.
+- ~~Life Bond until C9, Pact of the Chain's forgone attack until C9.~~ (C9c, #464.)
 - The Conjure spells (zones work), Faithful Hound, Planar Ally, Planar Binding, Gate, and the
   summoning magic items.
 
@@ -1112,6 +1112,43 @@ class entries; tested in `test/freecast-keys.test.js`. What was settled where th
   `cost.uses` must name an SRD feature with uses. `lintPack` never throws on a malformed `freeCast`; each bad shape is told with its own key.
   `pay` sent to a feature with no `cost` is refused (it used to be ignored): a client never sends it.
 - Not done: the chooser for `pay` and the extra forms (client), the forgone attack, Investment of the Chain Master, Life Bond.
+
+### Amendment C9c, the forgone attack, Investment of the Chain Master and Life Bond (#464)
+
+The last of C9. Three new words in the closed vocabulary (`content/schema.js`), each with the one mechanic that reads it; the SRD
+lines (srd52-flow.txt) are 16619-16631 (Pact of the Chain), 16521-16535 (Investment of the Chain Master) and 26875-26877 (Life Bond).
+
+| Key | Where | Shape | What the engine does with it |
+|---|---|---|---|
+| `forgoAttack` | a feature's `grants` | `{ spell }` | When its creature takes the Attack action it may give one of its attacks to its familiar made by `spell` (bond kind `familiar`, `source` that spell), which makes one attack with its Reaction: `{ type: 'attack', actor: master, familiar, via: feature id, target, attack: the familiar's action id }` (attacks.js, `familiarAttack`). One attack of the Attack action is spent: one Extra Attack left this turn (`budget.attacks`, an entry for any attack), or else the action itself, which starts the Attack action (its other attacks wait in the pool as for any Attack action). The familiar's Reaction is spent. |
+| `invest` | a feature's `grants` | `{ spell, speed?: { feet, of }, damage?: { from, to }, saveDc?: true, bonusAttack?: true, ward?: true }`, `spell` and at least one other | For a casting of `spell` by its creature: `cast.summon.invest: { move, damage? }` picks a way of moving in `speed.of` and, optionally, a type in `damage.to`; both are baked into the familiar made or reformed (summons.js, `investIn`): the Speed (a faster one it has is kept), damage of a type in `from` becomes the type picked, and with `saveDc` every save its actions force is against the master's spell save DC. `bonusAttack`: `attack` with `familiar` and `via` the feature spends the master's Bonus Action and the familiar makes one attack at once (the Attack action's one attack; a Multiattack is another action). `ward`: a reaction of the master's (`reactions.js`, trigger `familiarDamaged`, default `always`, also `never` or `ask`): when the familiar takes damage the master's Reaction gives it Resistance to all of that damage (resolve.js, `wardFor`, in `damage`). |
+| `masterHeal` | a trait of a monster or a summon block | `{ within }` (feet) | When its master regains Hit Points from a spell of level 1 or higher while within `within` feet of it, it regains the same number (rolls.js, `heal` and `spellHealed`, the healing hook). |
+
+Homebrew may not use `forgoAttack` or `invest` ("A homebrew feature cannot change a familiar or let it attack yet."), as it may not use
+`freeCast.forms`; the strict trait shape has no `masterHeal`, so homebrew cannot say it either.
+
+**C9c build notes (#464).** Built as amended above; tested in `test/companions-c9c.test.js`. What was settled where the text left room:
+- **One action, on `attack`.** The familiar's attack is `attack` with two more fields, `familiar` (its id) and `via` (the feature: Pact of the
+  Chain for the forgone attack, Investment of the Chain Master for Quick Attack). The actor is the master: it is the master's turn and the
+  master's resource that is spent. `familiar` is checked in the handler first, as `dismiss` checks its `id`: to a player a creature the
+  party does not know of is "No such creature." (engine.js walks `actor` and `target` only). Everything is checked before anything is spent.
+- **Only in a fight**, on the master's turn: both are refused outside one ("works in a fight"). The familiar must be up, able to act and in
+  the fight; for the forgone attack, able to take a Reaction. Its attack is one of its own actions that makes an attack roll (not a
+  Multiattack, not a save action such as the Pseudodragon's Sting), aimed and ranged as any. Its `noAttack` stands for everything else.
+- **Quick Attack is read as at once**: "command the familiar to take the Attack action" is taken on the master's turn, and spends no action
+  or Reaction of the familiar's. Its own turn is unchanged.
+- **The damage swap is chosen at the casting** (the issue's words), not hit by hit. A casting without `invest` by a caster with the feature
+  makes the plain familiar and tells the DM what was left out (a `manual` event), so a client with no chooser still casts.
+- **Resistance is not spent for nothing:** not taken when every part of the damage is of a type the familiar already resists or is immune
+  to. One instance of damage, every type in it.
+- **Life Bond** counts what the master actually regained (its maximum caps it; at full Hit Points it regained nothing and the steed gets
+  nothing), from a spell's own `heal` step (the step's frame names the spell, `src.spell`; `effects.js` now hands the frame to `kit.heal`).
+  The DM's `mend`, a feature or a potion is not a spell. The hook is shared in shape with Blessed Healer (DEBT C8), which is not built.
+- **What players are sent.** No new event types and no new record fields. A note naming the feature is sent only for the party's own
+  master; the familiar's Reaction is a `reaction` event named "Attack with its Reaction", which says nothing of a master; the ward's
+  `reaction` event is the master's, with `for` (the familiar), which `viewEvents` does not pass on. Life Bond's note is the party's own only.
+- **No state version bump.** The baked numbers are ordinary record numbers; nothing new is stored.
+- **Not done** (DEBT C18): the client's chooser and buttons, the brain's use of them, a character saved before keeping its old features.
 
 ### C6a, riding, the first half (#346)
 
