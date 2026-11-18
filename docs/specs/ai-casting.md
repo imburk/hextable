@@ -356,3 +356,45 @@ Each has the default the jobs above are written to.
   waits; that is an engine change in `reactions.js` and would be its own job.
 - **Q6. Healing threshold.** Default: an ally is "badly hurt" at a quarter of its maximum or less, and healed with
   an action only when that beats the best damage. The alternative is half, which heals more and attacks less.
+
+## Build notes (AC1, #487)
+
+Built to the decisions above, on the owner questions' defaults (Q1 to Q6 as written). What was settled in building, where the spec
+was silent or a choice had to be made; none of it changes a decision.
+
+- **Where it lives.** `casterStep(s, e, foes, lim)` and `aiCastable(sp)` in `packages/rules/src/ai.js`. `withAttacks` calls
+  `casterStep` first and takes a `lim` as `withActions` does; the companion brain's `free` mode passes `{ noAttack }` through to it (a
+  sheet companion that can't attack casts only spells with no attack roll, and its weapon scores 0). `engine.js` re-exports `aimArea`.
+  `aimArea` throws the engine's `RuleError`, which engine.js does not export, so the AI recognises it by its class name and rethrows
+  anything else.
+- **`aiStep` reads the party's copy for every unbonded party creature**, not only for casters (`knownTo`, as the brain does). A foe still
+  reads the true state, so the monster AI's choices are unchanged (`ai-casting-replay.test.js`).
+- **The candidate list** is `aiCastable(sp)`: 30 damage spells and 4 healing spells on the pack as it is, pinned in
+  `ai-casting.test.js`. `Number.isFinite` of the spell's worth is part of the test, so a spell whose dice the AI cannot read is not cast.
+- **Score.** The score of a step is worked out by walking its steps: `damage` (times `times`), `heal` (plus the modifier for `addMod`),
+  `attack` (0.65 of `onHit`, the rest of `onMiss`) and `save` (0.5 of `onFail` on no damage on a success, 0.75 with `half`, the rest of
+  `onSuccess`). The Disadvantage factor (0.65 x 0.65) applies to a `ranged` attack step while an enemy that sees the caster and is not
+  Incapacitated is within 5 ft (the engine's own test, `rolls.js`); a `melee` spell attack (Inflict Wounds) is not reduced.
+- **The weapon**, to compare, is worth 0.65 of its average damage times `1 + extraAttack`; a melee weapon counts when a foe is beside the
+  caster or a place to stop beside one is in reach this turn; a ranged weapon with an enemy within 5 ft gets the same Disadvantage
+  factor as a ranged spell (the spec gave the flat 0.65 for weapons; the same rule applies to a bow, and a bow must not beat a cantrip
+  on a factor the cantrip is denied). The spare Unarmed Strike counts for nothing. On a tie the weapon wins (nothing is cast, and
+  `withAttacks` attacks as it did before).
+- **Step 1** tries every downed creature (dying first, then Stable, nearest first) for a cast that reaches it now (a Bonus Action spell,
+  else an action spell) before it moves toward any of them; the move is to the cheapest place within Touch, never to the place it stands
+  on, and only where the Touch spell would then reach (wall and sight checked from that place).
+- **Step 2** takes the creature with the lowest share of its Hit Points first, then the nearest. Its action spell is cast only where it
+  reaches now (no move) and heals more than step 3's best (the weapon included).
+- **Healing several**: `Mass Healing Word` takes the creature to heal first and then those that are missing most; `Mass Cure Wounds`
+  (an area that chooses) is aimed at each creature that is hurt in turn and picks hurt creatures of its own side only.
+- **Rays** (`repeat`) are sent as `targets` listing the one foe once per ray (`target` when there is one ray).
+- **The slot kept back** is counted over all slots of a level that can cast the lowest-level healing spell the caster knows: a damage
+  spell may spend a slot of that kind only while another is left.
+- **Found in building, left as the spec has it:** after a cast, `withAttacks` plays on (Decision 5, step 4), so a caster with a melee
+  weapon and a move left walks toward the nearest foe, since `approach` is how a melee creature closes in. DEBT T75 (4).
+- **Tests.** `ai-casting.test.js` (the spec's list, on both grids, plus the gates, a badly hurt ally, and every spell of the list sent to
+  the engine); `ai-casting-replay.test.js` with `fixtures/ai-casting-replay.json` (re-record with `HEXTABLE_RECORD=1`);
+  `ai-casting-stress.test.js` (200 rounds a grid, 2,400 with `HEXTABLE_STRESS=full`); `ai-casting-kit.js`. `companions-brain-replay.test.js`
+  puts the casters' spells away while it plays (and back for the end state): the casters now cast, so the recorded fights would
+  otherwise go another way; every other creature chooses as recorded.
+- **Not done here:** AC2 (the DM's screen calls `aiStep` for a stand-in; `autoPlays` is unchanged), buffs and control (AC3).
