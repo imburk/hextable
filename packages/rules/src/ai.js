@@ -5,7 +5,7 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
+import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { actionProfile } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
@@ -267,14 +267,17 @@ export function companionStep(s, id, opts = {}) {
   const k = knownTo(s, e), m = masterOf(s, e);
   const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
   const leash = typeof e.bond.leash === 'number' && m && (e.side === 'party' || !unknown(s, m)) ? { m, feet: e.bond.leash } : null;
-  if (mode === 'guard') return guard(k, e, foes, leash);
+  // A creature it holds goes where it goes (docs/specs/grapple-shove.md, Decision 6): stepping away from it is no escape, so it is
+  // not a foe to step away from. Read from the true state: it knows what it holds. It still walks, paying the cost, for any other.
+  const held = new Set(holdsOf(s, e).map((x) => x.t.id)), others = foes.filter((f) => !held.has(f.id));
+  if (mode === 'guard') return guard(k, e, others, leash);
   if (mode === 'protect') return protect(k, e, m, foes);
   // 'free': as a monster plays, but never an attack for one that can't attack.
   const end = { type: 'endTurn', actor: id }, b = k.encounter.budget, noAttack = e.bond.noAttack === true;
   if (k.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(k, e)) return { type: 'hide', actor: id };
   if (!foes.length) return end;
   const a = e.actions ? withActions(k, e, foes, { noAttack }) : noAttack ? end : withAttacks(k, e, foes);
-  return noAttack && a.type === 'endTurn' ? guard(k, e, foes, leash) : a;
+  return noAttack && a.type === 'endTurn' ? guard(k, e, others, leash) : a;
 }
 const rolled = (p) => p.roll === 'melee' || p.roll === 'ranged' || p.aim === 'multi';
 

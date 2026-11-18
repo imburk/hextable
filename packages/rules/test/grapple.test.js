@@ -182,6 +182,7 @@ test("the held creature taken 30 ft away ends the hold (distance); within the ra
 test("a creature that holds another may move and Dash: it drags what it holds (G3 removes G2's refusal; the drag is in grapple-drag.test.js)", () => {
   const s = field(fighter(STR16));
   ok(grapple(s));
+  ok(apply(s, { type: "feature", actor: "hero", feature: "action-surge" }, DM));
   ok(apply(s, { type: "dash", actor: "hero" }, DM));
   ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, DM));
   assert.ok(s.entities[s.foe].cond.grappled, "still held");

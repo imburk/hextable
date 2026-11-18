@@ -79,6 +79,7 @@ function notice(s, e, ev, before) {
 // A pull is one step of the grid: 5 ft, or on squares by the real diagonal rule the 7.07 ft a diagonal is.
 const pullFeet = (s) => (gridOf(s.map).kind === 'square' && (s.settings.diagonals ?? 'real') === 'real' ? FT * Math.SQRT2 : FT);
 const outOfReach = ({ g, t, hold }, s) => !!g && !t.dead && apart(s, g, t) * FT > hold.range;
+const outOfReachAt = (s, g, at, t, hold) => !!g && !t.dead && apartAt(s, g, at, t, t.pos) * FT > hold.range;     // were `g` at `at`
 const cantDrag = (s, e, t) => `${e.name} can't drag ${t.name} any further.`;
 // Could every creature `e` holds that would fall out of reach follow if `e` stepped to `step`? Changes nothing. Returns the first that
 // could not, or null. It is asked before the step, so that no Opportunity Attack is provoked by a step that is not taken.
@@ -144,9 +145,11 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
     // the walk stops here, before an Opportunity Attack is provoked by a step that is not taken.
     const stuck = dragStuck(s, e, step);
     if (stuck) { stopsDragging(s, e, stuck, ev); break; }
+    // A creature it holds that this step pulls along stays within its reach: the grappler leaves no reach it does not take with it.
+    const along = new Set(draggedBy(s, e).filter(({ g, t, hold }) => outOfReachAt(s, g, step, t, hold)).map((x) => x.t.id));
     if (fighting && s.encounter && !e.cond.disengaged) {
       for (const o of threatsAt(s, e, prev, true)) {
-        if (apartAt(s, o, o.pos, e, step) <= 1) continue;
+        if (apartAt(s, o, o.pos, e, step) <= 1 || along.has(o.id)) continue;
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
         // happens and nothing is said. `ask`: its player is asked, and the walk waits; for one of
         // the DM's creatures the DM alone is told and decides by hand.
