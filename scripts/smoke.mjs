@@ -57,6 +57,7 @@ const REGISTRY = {
   keys: ['keys'],
   homebrew: ['homebrew'],
   grapple: ['grapple'],
+  standin: ['standin'],
 };
 
 const only = process.env.SMOKE_ONLY;

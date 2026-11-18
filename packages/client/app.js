@@ -271,6 +271,10 @@ function words(ev) {
     case 'encounterStart': return ['Roll initiative! ' + ev.order.map((o) => (o.init === undefined ? n(o.id) : `${n(o.id)} ${o.init}`)).join(', '), 'head'];
     case 'encounterEnd': return [{ victory: 'The fight is won.', defeat: 'The party has fallen.', ended: 'The DM ends the fight.', stalemate: 'The fight ends.' }[ev.result] + ` (${ev.rounds} round${ev.rounds > 1 ? 's' : ''})`, 'head'];
     case 'turn': return [ev.someone ? `Round ${ev.round}: something moves where you cannot see` : `Round ${ev.round}: ${n(ev.id)}'s turn`, 'head'];
+    // Stepping away (E20), as the table is told of it (the view sends these for a party creature only). Set aside under `standIn` on its own turn there is no
+    // `awayTurn` until its next one, so this is the line that says the DM's screen plays from now.
+    case 'away': return [ev.asked ? `${n(ev.id)} asks to step away.` : ev.how === 'standIn' ? `${n(ev.id)} steps away: the stand-in plays ${n(ev.id)}'s turns.` : `${n(ev.id)} steps away.`];
+    case 'back': return [ev.asked ? `${n(ev.id)} takes back asking to step away.` : `${n(ev.id)} is back.`];
     // A character set aside under `standIn` (E20): its turn starts as any does and the DM's screen plays it with the AI (ai-casting.md, AC2). The other
     // ways to set a turn aside are the engine's alone, and say nothing here.
     case 'awayTurn': return ev.how === 'standIn' ? [`${n(ev.id)} is played by the stand-in.`] : null;
@@ -482,7 +486,7 @@ function idled() {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
     // server never waits. Otherwise as before, 800 ms after the update. The table's homebrew is installed around the call (standin.js).
-    aiTimer = setTimeout(() => { const a = aiAction(S, cur.id, { offline }, PK.installed()); if (a) { aiSent = cur.id; act(a, true); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
+    aiTimer = setTimeout(() => { const a = aiAction(S, cur.id, { offline }, PK.store.installed()); if (a) { aiSent = cur.id; act(a, true); } }, TL.pace === 'wait' ? AI_PAUSE : 800);
   }
 }
 
