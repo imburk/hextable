@@ -7,7 +7,7 @@
 // A sheet records choices only (docs/specs/rules-expansion.md, decision 1 and "Built characters"):
 //   { name, class, subclass?, level, abilities: { str, dex, con, int, wis, cha },
 //     skills: [class skill picks and skills from features], extraSkills?: [from background or species],
-//     expertise?: [skills], choices?: { featureId: optionId }, armour?: id, shield?: true, shieldStowed?: true (the Shield is carried, not held),
+//     expertise?: [skills], choices?: { featureId: optionId }, armour?: id, shield?: true | armourId (a Shield entry), shieldStowed?: true (the Shield is carried, not held),
 //     weapons?: [ids, "unarmed-strike"], spells?: [cantrips and prepared spells],
 //     size?, speed?, senses?, tools?, gear?, look? }
 // Ability scores are entered as they stand after background and feats; class features that raise
@@ -173,6 +173,14 @@ export function itemBase(def, x) {
   if (x?.base !== undefined) return fits(x.base) ? pool[x.base] : null;
   return Array.isArray(want) && want.length === 1 ? pool[want[0]] : null;
 }
+// The Shield entry a sheet holds: `shield: true` is the SRD Shield, a string is the id of an armour entry (a table's own Shield).
+// A Shield item worn is its base entry, else the SRD Shield. Null when the entry is missing or is not a Shield with a usable `ac`.
+const usableShield = (a) => (a && a.category === 'shield' && Number.isInteger(a.ac) && a.ac >= 0 ? a : null);
+export function shieldEntry(sheet, item) {
+  if (item) return usableShield(itemBase(item.def, item.x)) ?? CONTENT.armour.shield ?? null;
+  const v = sheet?.shield;
+  return v === true ? usableShield(CONTENT.armour.shield) : typeof v === 'string' && Object.hasOwn(CONTENT.armour, v) ? usableShield(CONTENT.armour[v]) : null;
+}
 // "Spear +1" for a Weapon, +1 made from a Spear; a named item keeps its name.
 export function itemName(def, x) {
   if (!def) return '';
@@ -280,7 +288,8 @@ export function derive(sheet) {
   const multi = ks.length > 1;
   const why = {};
   // Magic armour or a magic Shield worn is the armour or Shield (validate refuses a second); its bonus only with the Attunement it needs.
-  const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, shield = (!!sheet.shield && !sheet.shieldStowed) || !!shieldItem;
+  const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, gone = typeof sheet.shield === 'string' && !sheet.shieldStowed && !shieldEntry(sheet),
+    shield = (!!sheet.shield && !sheet.shieldStowed && !gone) || !!shieldItem;   // a Shield id whose entry is not loaded (a pack removed) is no Shield held
   const shieldOk = shield && armourWords.has('shield');
   const unarmoured = !armour, bare = unarmoured && !shield;
   const sum = (k) => G.reduce((n, g) => n + (typeof g[k] === 'number' ? g[k] : 0), 0);
@@ -300,7 +309,7 @@ export function derive(sheet) {
   why.hp.push(`Constitution ${signed(con)} a level`);
   for (const x of feats) if (x.f.grants?.hp) { const n = amount(x.f.grants.hp, x.cls.c, x.cls.level, abil); hp += n; why.hp.push(`${x.f.name} ${signed(n)}`); }
 
-  // Armor Class: the armour's, or 10 + Dexterity, or the best Unarmored Defense; a Shield adds 2 if
+  // Armor Class: the armour's, or 10 + Dexterity, or the best Unarmored Defense; a Shield adds its entry's number if
   // trained (and not for a formula that forbids it); Defense adds 1 in armour.
   const dex = mod(abil.dex);
   let ac, acWhy;
@@ -316,7 +325,11 @@ export function derive(sheet) {
       if (n > ac) { ac = n; acWhy = [`${x.f.name}: ${f.base}`, ...f.abilities.map((a) => `${nice(a)} ${signed(mod(abil[a]))}`)]; }
     }
   }
-  if (shieldOk) { ac += 2; acWhy.push('Shield +2'); }
+  if (gone && !shieldItem) acWhy.push(`Shield "${sheet.shield.slice(0, 60)}": its entry is not loaded at this table, so it gives no Armor Class`);
+  if (shieldOk) {
+    const se = shieldEntry(sheet, shieldItem);
+    if (se) { ac += se.ac; acWhy.push(`${se.name} +${se.ac}`); }
+  }
   if (armour && sum('armouredAc')) { ac += sum('armouredAc'); acWhy.push(`Defense ${signed(sum('armouredAc'))}`); }
   // Magic armour and Shields, items that add to AC (Ring of Protection), and those that add only with no armour and no Shield (Bracers of Defense).
   for (const y of [suit, shieldItem]) if (y && y.def.bonus && itemActive(y)) { ac += y.def.bonus; acWhy.push(`Magic +${y.def.bonus} (${itemName(y.def, y.x)})`); }
@@ -398,7 +411,7 @@ export function derive(sheet) {
   // no weapon, so weapons.js never refuses it. A sheet that lists it or has Martial Arts gets what it always did.
   {
     const ab = maDie && abil.dex > abil.str ? 'dex' : 'str', m = mod(abil[ab]);
-    const u = { name: 'Unarmed Strike', type: 'melee', bonus: m + pb, damage: maDie ? dice(maDie, m) : signed(1 + m), dtype: 'bludgeoning', reach: 5, abil: ab };
+    const u = { name: 'Unarmed Strike', type: 'melee', bonus: m + pb, damage: maDie ? dice(maDie, m) : signed(1 + m), dtype: 'bludgeoning', reach: 5, abil: ab, dc: 8 + m + pb };
     add({ id: 'unarmed-strike', ...u });
     if (maDie) add({ id: 'unarmed-strike-bonus', ...u, name: 'Unarmed Strike (Bonus Action)', time: 'bonus' });
   }
@@ -666,14 +679,15 @@ export function validate(sheet) {
   // Armour and weapons.
   if (sheet.armour !== undefined && sheet.armour !== null) {
     const a = CONTENT.armour[sheet.armour];
-    if (!a || a.category === 'shield') say(`"${sheet.armour}" is not armour in the equipment tables.`);
+    if (!a) say(`"${sheet.armour}" is not armour in the equipment tables.`);
+    else if (a.category === 'shield') say(`"${sheet.armour}" is a Shield, not armour: use the Shield field of the sheet.`);
     else if (!armourWords.has(a.category) && trainedSuit !== a.category) say(`${multi ? 'This character' : `A ${c.name}`} has no training with ${a.category} armour: wearing ${a.name} gives Disadvantage on Strength and Dexterity D20 Tests and stops spellcasting. The engine does not apply that; choose other armour.`);
   }
   if (sheet.shield && !sheet.shieldStowed && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, and the engine does not yet apply the rules for holding one untrained, so it is refused.`);
   for (const id of sheet.weapons ?? []) {
     if (id === 'unarmed-strike') continue;
     if (!CONTENT.weapons[id]) say(`"${id}" is not a weapon in the equipment tables.`);
-    else if (!weaponTrained(CONTENT.weapons[id], [...weaponWords])) say(`${multi ? 'This character' : `A ${c.name}`} is not proficient with the ${CONTENT.weapons[id].name}: it is added without the Proficiency Bonus.`);
+    else if (!weaponTrained(CONTENT.weapons[id], [...weaponWords])) say(`${multi ? 'This character' : `A ${c.name}`} is not proficient with the ${CONTENT.weapons[id].name}, and the engine does not yet apply attacking without proficiency, so choose another weapon.`);
   }
 
   // Spells, for each class by its own level, as if it were the only one (Multiclassing, Spells Prepared).
@@ -703,8 +717,9 @@ export function validate(sheet) {
   // The same option twice across features that pick from one list (Metamagic at 2 and at 10).
   const picked = feats.filter((x) => x.f.pick).flatMap((x) => [sheet.choices?.[x.f.id] ?? []].flat().map((o) => `${x.f.name}:${o}`));
   if (new Set(picked).size !== picked.length) say('An option is chosen twice.');
-  if (sheet.shield !== undefined && typeof sheet.shield !== 'boolean') say('Shield is true or false.');
-  if (sheet.shieldStowed !== undefined && (sheet.shieldStowed !== true || sheet.shield !== true)) say('A Shield put away (shieldStowed) is true, and only for a sheet that has a Shield.');
+  if (sheet.shield !== undefined && typeof sheet.shield !== 'boolean' && typeof sheet.shield !== 'string') say('Shield is true, false or the id of a Shield in the equipment tables.');
+  else if (typeof sheet.shield === 'string' && !shieldEntry(sheet)) say(`"${sheet.shield.slice(0, 60)}" is not a Shield in the equipment tables.`);
+  if (sheet.shieldStowed !== undefined && (sheet.shieldStowed !== true || !(sheet.shield === true || typeof sheet.shield === 'string'))) say('A Shield put away (shieldStowed) is true, and only for a sheet that has a Shield.');
   void abil;
   return bad;
 }
@@ -847,7 +862,7 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
       if (b && !armourWords.has(b.category) && trainedSuit !== b.category) say(`${multi ? 'This character' : who} has no training with ${b.category} armour, so can't wear ${name}. Take it off.`);
     }
     if (x.equipped === true && def.wear === 'shield' && !armourWords.has('shield')) say(`${name}: no training with Shields. Take it off.`);
-    if (x.equipped === true && def.base?.weapon !== undefined) { const b = itemBase(def, x); if (b && !weaponTrained(b, [...weaponWords])) say(`${multi ? 'This character' : who} is not proficient with the ${b.name}, so ${name} would attack without the Proficiency Bonus. Leave it unequipped.`); }
+    if (x.equipped === true && def.base?.weapon !== undefined) { const b = itemBase(def, x); if (b && !weaponTrained(b, [...weaponWords])) say(`${multi ? 'This character' : who} is not proficient with the ${b.name}, and the engine does not yet apply attacking without proficiency, so leave ${name} unequipped.`); }
     // Attunement.
     if (x.attuned === true) {
       const why = attuneProblem(sheet, def);

@@ -16,6 +16,7 @@ test("a single-class caster imports as a sheet the engine loads", () => {
   const { character, report } = importFgxml(fixture("cleric"));
   assert.equal(report.ok, true);
   assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.equal(report.imported.shield, true, "the report keeps the Shield (a Shield id of a sheet would be kept as the id; Fantasy Grounds data gives only true)");
   assert.deepEqual(validate(character), []);
   assert.deepEqual([character.class, character.level, character.subclass, character.armour, character.shield, character.weapons], ["cleric", 5, "life", "chain-mail", true, ["mace"]]);
   assert.deepEqual(character.abilities, { str: 14, dex: 10, con: 14, int: 10, wis: 16, cha: 12 });

@@ -8,10 +8,10 @@ import { able, control, current, ent, fail, featOf, ft, inFight, need, steering,
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
-import { attackRefusal, freshAction, isLoading } from '../weapons.js';
+import { attackRefusal, freshAction, isLoading, isUnarmed } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter, strikeOption } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 
@@ -148,6 +148,30 @@ function isAttack(def) {
   return hit;
 }
 
+// Fields only the Unarmed Strike reads: a pack monster's action has none of them (its stat block says how it grapples).
+function noStrikeFields(a) {
+  ((a.option ?? 'damage') === 'damage' && a.shove === undefined && !a.grab) || fail('Grapple and Shove are options of the Unarmed Strike, and Punch and Grab goes with it.');
+}
+
+// The option an Unarmed Strike is used for (SRD "Unarmed Strike": Damage, Grapple or Shove; docs/specs/grapple-shove.md, Decision 1).
+// Checked before anything is spent or started. Only Damage and Shove are built (stage G1): a Grapple is refused for now, not
+// quietly made into something else. Returns 'damage' or 'shove'.
+const OPTIONS = ['damage', 'grapple', 'shove'];
+function optionOf(e, t, atk, a) {
+  !a.grab || fail('Punch and Grab is not in the game yet.');
+  const o = a.option ?? 'damage';
+  (typeof o === 'string' && OPTIONS.includes(o)) || fail('Choose an option for the Unarmed Strike: damage, grapple or shove.');
+  (o === 'damage' || isUnarmed(atk)) || fail('Grapple and Shove are options of the Unarmed Strike.');
+  (o === 'damage' || (a.brutal === undefined && a.cunning === undefined && a.prey === undefined)) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey need a hit, so they go with the Damage option.`);
+  (o === 'shove' ? a.shove !== undefined : a.shove === undefined) || fail(o === 'shove' ? 'Choose what the Shove does: push the target 5 feet away, or knock it Prone.' : 'A Shove option goes with the Shove.');
+  if (o === 'grapple') fail('The Grapple option is not in the game yet: the DM applies a grapple by hand.');
+  if (o === 'shove') {
+    (a.shove === 'push' || a.shove === 'prone') || fail('A Shove pushes the target ("push") or knocks it Prone ("prone").');
+    SIZES.indexOf(t.size ?? 'medium') <= SIZES.indexOf(e.size ?? 'medium') + 1 || fail(`${e.name} can shove a creature no more than one size larger than itself; ${t.name} is ${t.size ?? 'medium'}.`);
+  }
+  return o;
+}
+
 export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
@@ -157,6 +181,7 @@ export const handlers = {
     !e.bond?.noAttack || fail(`${e.name} can't attack.`);          // a familiar (docs/specs/companions.md, Decision 1)
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
+      noStrikeFields(a);
       (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
@@ -171,6 +196,7 @@ export const handlers = {
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
     walled(s, e, t);
+    const option = optionOf(e, t, atk, a);
     showPlace(s, e, ev); showPlace(s, t, ev);
     if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
     const b = s.encounter.budget;
@@ -202,7 +228,7 @@ export const handlers = {
     if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
     const from = ev.length;
-    resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
+    if (option === 'shove') strikeOption(s, e, t, atk, a.shove, ev); else resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
     // Superior Hunter's Prey: when the attack damaged the marked target, the mark's extra damage to the other one.
     if (prey && ev.slice(from).some((x) => x.type === 'damage' && x.target === t.id && x.amount > 0) && !prey.o.dead) {
       s.encounter.flags[`prey:${e.id}`] = true;
@@ -218,6 +244,7 @@ export const handlers = {
   act(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const def = e.actions?.find((x) => x.id === a.action) || fail(`${e.name} has no such action.`);
+    noStrikeFields(a);
     !e.bond?.noAttack || !isAttack(def) || fail(`${e.name} can't attack.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
