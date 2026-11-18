@@ -36,7 +36,7 @@ function field(sh, gap = 1) {
 
 test("a built character with no weapon listed has one Unarmed Strike: Strength modifier plus Proficiency Bonus, 1 plus Strength", () => {
   const a = punch(fighter(STR16, []));
-  assert.deepEqual(a, [{ id: "unarmed-strike", name: "Unarmed Strike", type: "melee", bonus: 6, damage: "+4", dtype: "bludgeoning", reach: 5, abil: "str" }]);
+  assert.deepEqual(a, [{ id: "unarmed-strike", name: "Unarmed Strike", type: "melee", bonus: 6, damage: "+4", dtype: "bludgeoning", reach: 5, abil: "str", dc: 14 }]);
   const w = punch(fighter(STR8, ["rapier"]));                      // Strength 8 (-1): +2 to hit, 1 - 1 = 0 damage, Dexterity unused
   assert.equal(w[0].bonus, 2);
   assert.equal(w[0].damage, "+0");
@@ -49,7 +49,7 @@ test("it is last, there is one, and a sheet that lists it, or a Monk, is built a
   assert.equal(ids.filter((i) => i === "unarmed-strike").length, 1);
   assert.equal(punch(fighter(STR16, ["longsword", "unarmed-strike"])).length, 1);
   const monk = derive({ name: "Mo", class: "monk", level: 5, subclass: "open-hand", abilities: { str: 10, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, skills: ["acrobatics", "insight"], weapons: [] }).record.attacks;
-  assert.deepEqual(monk.find((a) => a.id === "unarmed-strike"), { id: "unarmed-strike", name: "Unarmed Strike", type: "melee", bonus: 6, damage: "1d8+3", dtype: "bludgeoning", reach: 5, abil: "dex" });
+  assert.deepEqual(monk.find((a) => a.id === "unarmed-strike"), { id: "unarmed-strike", name: "Unarmed Strike", type: "melee", bonus: 6, damage: "1d8+3", dtype: "bludgeoning", reach: 5, abil: "dex", dc: 14 });
   assert.equal(monk.filter((a) => a.id.startsWith("unarmed")).length, 2, "the strike and the Bonus Action one, nothing more");
 });
 

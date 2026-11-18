@@ -62,7 +62,7 @@ test("Armor Class by the SRD's rules: armour, Dexterity caps, Shield, Defense, U
   assert.equal(ac(monk), 15);                                                                           // 10 + Dex 3 + Wis 2
   assert.equal(ac({ ...monk, shield: true }), 13);                                                      // no Unarmored Defense with a Shield, and no Shield training
   const { record: m } = derive(monk);
-  assert.deepEqual(m.attacks.find((a) => a.id === "unarmed-strike"), { id: "unarmed-strike", name: "Unarmed Strike", type: "melee", bonus: 5, damage: "1d6+3", dtype: "bludgeoning", reach: 5, abil: "dex" });
+  assert.deepEqual(m.attacks.find((a) => a.id === "unarmed-strike"), { id: "unarmed-strike", name: "Unarmed Strike", type: "melee", bonus: 5, damage: "1d6+3", dtype: "bludgeoning", reach: 5, abil: "dex", dc: 13 });
   assert.equal(m.attacks.find((a) => a.id === "unarmed-strike-bonus").time, "bonus");
   assert.equal(m.attacks.find((a) => a.id === "quarterstaff").damage, "1d6+3");                        // a Monk weapon with Dexterity
   assert.equal(derive({ ...monk, level: 2 }).record.speed, 40);                                         // Unarmored Movement
