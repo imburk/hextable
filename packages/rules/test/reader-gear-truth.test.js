@@ -291,8 +291,8 @@ test('armour: training, the category on the table, and a Shield that is a mark o
   const item = { id: 'hb-t-buckler', name: 'Buckler Item', category: 'armor', rarity: 'common', wear: 'shield', base: { armour: [sh.id] }, tier: 'auto', source: 'homebrew:t', checked: false, text: 'x' };
   lend('items', [item], () => assert.equal(rec(fighter({ items: [{ id: 'i1', item: item.id, equipped: true }] })).ac, rec(fighter()).ac + sh.ac, 'a Shield item: its base entry\'s number (#454)'));
   const text = say('armour', sh);
-  assert.match(text, /Its Armor Class number is 3, and the engine never reads it/);
-  assert.ok(readEntry('armour', sh).doesNot.length === 1);
+  assert.match(text, /It adds 3 Armor Class to a wearer trained with Shields, when the sheet names it in its Shield field/);
+  assert.ok(readEntry('armour', sh).doesNot.length === 0);
   assert.ok(!say('armour', AR['hb-rk-barkplate']).includes('never reads it'));
 }));
 

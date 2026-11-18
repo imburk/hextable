@@ -2531,8 +2531,7 @@ class ArmourReading extends GearReading {
     if (!isInt(a)) return this.bad('`ac` is not a whole number.');
     this.num('ac', a, 'Armor Class');
     if (this.isShield) {
-      this.line(`Its Armor Class number is ${a}, and the engine never reads it: a Shield is a mark on the sheet that always adds +2 Armor Class (to a wearer trained with Shields), and the engine refuses a sheet that names a Shield as body armor. So this number changes nothing.`);
-      this.dm('Giving the Armor Class this Shield was written with.');
+      this.line(`It adds ${a} Armor Class to a wearer trained with Shields, when the sheet names it in its Shield field (a sheet's Shield field holds this entry's id). The SRD Shield, written as true in that field, is a different entry, with its own number, and the engine refuses a sheet that names a Shield as body armor.`);
       return;
     }
     this.line(`Worn, it sets the Armor Class to ${a}, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.`);
