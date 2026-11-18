@@ -476,3 +476,37 @@ Fix round 1 of #468 (decided by the coordinator):
   carrying a holder) gets the "does not drag yet" note.
 - `shield` and `equip` refuse to take up a Shield when both hands hold creatures.
 - `describeStep` labels an Unarmed Strike by its option: "grappled", "shoved".
+
+**G3 (Dragging), #473.** Built to Decision 6 and the default of Q6. G2's refusal of `move` and `dash` for a holder is gone (the
+"Until G3" note above is superseded). What the build settled:
+
+- **The cost.** `moveOptions(s, e)` (`engine/world.js`) adds one foot a foot for each held creature that is not exempt (`dragExtra`: Tiny,
+  two or more sizes smaller than the grappler, or, with the Grappler feat's Fast Wrestler, the grappler's size or smaller). It is
+  *added* to the step's own cost, not multiplied by it, as the SRD adds such extras ("1 extra foot (2 extra feet in Difficult Terrain)",
+  Crawling and Climbing): with one held creature, level ground costs 10 ft a step and Difficult Terrain 15 ft. Decision 6's "`1 + n`
+  times its cost" and this differ only on Difficult Terrain. The trait `dragFree` (Abduct) is not read: the schema key comes with G4.
+- **Who counts as dragging.** The creatures the mover holds, and those held by the rider its mount carries (`draggedBy`): the mount
+  pays the cost and the pull is toward the rider.
+- **Ground only.** A mover that drags is offered the ground only by `moveOptions` (no flying, climbing or ladder steps; a third
+  argument, `aerial`, lays them out), so the preview and the AI see what the engine will do. `move` to a place only those would reach
+  is refused with "The engine drags along the ground only. Release X first, or the DM moves both."
+- **The pull** is `push(s, t, feet, 'toward', grappler.pos, ev)` (through `KIT`), one grid step after each step of the grappler, for each
+  held creature then beyond its hold's range (`apart` x 5 ft, as `settleHolds` measures). `feet` is 5, or on squares by the real diagonal
+  rule 7.07, so one step is taken whichever way it goes. Its `moved` event is `forced`, told after the grappler's own step. Zones the
+  held creature is pulled into go off once; the walk's own zone check is told not to count it again.
+- **The stop.** Before each step, `dragStuck` asks each held creature, with `push`'s new `dry` argument (`engine/resolve.js`: find the
+  first step, change and tell nothing), whether it could follow. If not, the walk stops before the step, so no Opportunity Attack is
+  provoked by a step not taken, and the party (or, for a monster, the DM alone, as a `manual`) is told "X can't drag Y any further."
+  A move whose first step cannot be dragged is refused outright, before anything changes (otherwise a monster's AI would send the same
+  no-op move forever). When two held creatures want the same cell the check passes and the second pull fails: that step is undone
+  (positions put back, the pull's `moved` events dropped, the step not paid for) and the walk stops. Zone effects of the undone pull
+  are still told and stay.
+- **Opportunity Attacks.** The pulled creature provokes none (it uses none of its own movement). A held creature that this step pulls
+  along makes none on its grappler either: the grappler never leaves a reach it takes with it. A held creature that is not pulled (a
+  hold of more than 5 ft) is an attacker as any other. The grappler provokes as usual.
+- **`march`** leaves a holder where it is, with a note (`manual` for the DM if it is not the party's); `catchUp` already did.
+- **AI.** `approach` and the companion brain's `guard` and `protect` may move a holder, through `moveOptions`, so they pay the cost. The
+  guard does not step away from a creature it holds (it would come along); another foe beside it is still a reason.
+- **Left as it was.** The Grappled condition's `also` (the drag sentence) stays: a Grappled condition with no holds (the DM's) is still
+  the DM's to drag, and `conditions.js` was not in this job. The Grappler feat is `auto`. A hold with a reach beyond 5 ft (G4's monsters)
+  costs the extra foot on every step, pulled or not; the spec has no finer rule.
