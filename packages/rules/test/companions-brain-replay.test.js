@@ -10,6 +10,7 @@ import { aiStep } from "../src/ai.js";
 import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 import { squareRoom } from "./fixtures/square-room.js";
+import { bringBackSpells, putAwaySpells } from "./ai-casting-kit.js";
 
 const FIX = JSON.parse(readFileSync(new URL("./fixtures/c7-ai-replay.json", import.meta.url), "utf8"));
 const sha = (x) => createHash("sha256").update(JSON.stringify(x)).digest("hex");
@@ -47,7 +48,11 @@ test("the monster AI is byte-identical to main for creatures with no bond: the r
   const list = scenarios();
   assert.equal(list.length, FIX.runs.length);
   for (const [i, sc] of list.entries()) {
-    const want = FIX.runs[i], s = sc.make(), actions = playAll(s);
+    // The casting AI (ai-casting.md, AC1) plays the pregenerated casters' spells since this was recorded, so they cast and the fight goes
+    // another way. Played with their spells put away (and put back for the end state) every creature with no spells chooses as recorded;
+    // ai-casting-replay.test.js records the fights with the spells.
+    const want = FIX.runs[i], s = sc.make(), kept = putAwaySpells(s), actions = playAll(s);
+    bringBackSpells(s, kept);
     delete s.timeline;
     assert.equal(sc.name, want.name);
     assert.equal(actions.length, want.steps, `${sc.name}: steps`);
