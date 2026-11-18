@@ -1,5 +1,5 @@
 // Two facts docs/PATH-TO-0.2.md found by reading (#380, part D; docs/DEBT.md C17, T34).
-// These tests pinned the gaps. When a gap is fixed, flip its assertions (T34 was, in #404; C17 (editCharacter) was, in #475).
+// These tests pinned the gaps. When a gap is fixed, flip its assertions (T34 was, in #404; C17 (editCharacter) was, in #476).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
@@ -13,9 +13,9 @@ const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 
 // `editCharacter` (engine/characters.js) once carried a shorter list of play state than `remake` (engine/sheets.js): tempHp,
-// tempFx, follow, march, light, hiding and hidden were dropped. Since #475 both use one list (`carryPlay`, sheets.js), and a
+// tempFx, follow, march, light, hiding and hidden were dropped. Since #476 both use one list (`carryPlay`, sheets.js), and a
 // character who hid stays hidden through an edit.
-test("DEBT C17 fixed (#475): editCharacter keeps what remake keeps, hiding among it", () => {
+test("DEBT C17 fixed (#476): editCharacter keeps what remake keeps, hiding among it", () => {
   const s = newGame(5);
   ok(apply(s, { type: "setting", key: "sight", value: "light" }, DM));
   const r = s.entities.rogue;
@@ -47,7 +47,7 @@ test("editCharacter's kept `hidden` sends players nothing they were not sent: a 
   s.entities.rogue.hidden = true;
   assert.equal(sent(), true, "a forced `hidden` on a party member does not take it out of what players are sent");
   ok(apply(s, { type: "editCharacter", actor: "rogue", record: structuredClone(PREGENS.rogue) }, DM));
-  assert.equal(s.entities.rogue.hidden, true, "(since #475 the flag is kept through the edit, as `remake` keeps it)");
+  assert.equal(s.entities.rogue.hidden, true, "(since #476 the flag is kept through the edit, as `remake` keeps it)");
   assert.equal(sent(), true, "and after the edit players are sent the rogue, as before it: nothing becomes visible that was not");
 });
 
