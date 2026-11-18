@@ -12,7 +12,7 @@ const nice = (id) => cap(id.replace(/-/g, ' '));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const DEFAULT_COLOR = '#3a7d44';
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
-const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning'];
+const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed'];
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
 
 function el(tag, props = {}, ...kids) {
