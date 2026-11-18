@@ -22,6 +22,7 @@ import { aloft, below, creatureType, carry, catchUp, riderLanding, cornerFree, f
 import { acOf, passive, attackTypes, boundEffect, condition, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
+import { investIn } from '../summons.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -755,6 +756,8 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   const m = modifiers(s, t, 'damage.taken', { target: t });
   // A Reaction that gives Resistance to the damage being taken (Superior Hunter's Defense): the type it resists now.
   const braced = pierce || raw ? null : braceAgainst(s, t, parts, m, ev);     // not a DM setting Hit Points (`raw`)
+  // A familiar's master's Reaction that gives it Resistance to this damage (Investment of the Chain Master; C9c).
+  const warded = pierce || raw ? false : wardFor(s, t, parts, m, ev);
   const dying = t.hp <= 0, before = t.hp;
   // Amounts added to or taken off the damage (the Resistance cantrip's 1d4) come first, then
   // Resistance and Vulnerability (SRD "Order of Application"). Each applies once to the
@@ -779,7 +782,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
-    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced), vulnerable = applies(m.vulnerable, t.vuln);
+    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced || warded), vulnerable = applies(m.vulnerable, t.vuln);
     let n = base[pi];
     if (!pierce && applies(m.immune, t.immune)) n = 0;
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
@@ -851,6 +854,31 @@ function braceAgainst(s, t, parts, m, ev) {
     ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: t.id, conc: false, lasts: 'until the end of the current turn', targets: [t.id] });
   }
   return types[0];
+}
+
+// Investment of the Chain Master's Resistance (`invest.ward`; docs/specs/companions.md, C9c): "When the familiar takes damage,
+// you can take a Reaction to grant it Resistance against that damage." `t` is a familiar its master made with the feature's
+// spell; the master, able to take a Reaction, takes it by its instruction (reactions.js: always by default, never, or ask its
+// player; the DM is told for one of the DM's). Resistance then applies to every part of this damage. Not taken when there is
+// nothing to resist (no damage, or only damage of types it resists or is immune to already). Returns whether it was taken.
+function wardFor(s, t, parts, m, ev) {
+  const b = t.bond, mm = b?.kind === 'familiar' && typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
+  if (!mm || mm.id === t.id || mm.object || !canReact(mm)) return false;
+  const r = reactionsOf(mm).find((x) => x.on === 'familiarDamaged' && x.spell === b.source);
+  if (!r) return false;
+  const w = instruction(mm, r);
+  if (w === 'never') return false;
+  const has = (list, own, ty) => list === true || list.includes(ty) || (own ?? []).includes(ty);
+  if (!parts.some((p) => p.amount > 0 && !has(m.resist, t.resist, p.type) && !has(m.immune, t.immune, p.type))) return false;
+  if (w === 'ask') {
+    const types = [...new Set(parts.filter((p) => p.amount > 0).map((p) => p.type))];
+    const a = ask(s, mm, { trigger: 'familiarDamaged', ...(types.length === 1 && DAMAGE_TYPES.includes(types[0]) ? { dtype: types[0] } : {}) }, [{ reaction: r.id, name: `${r.name}: Resistance for ${t.name}` }]);
+    if (a === null) { tellDM(mm, r, `${t.name} takes damage.`, ev); return false; }
+    if (a.take !== r.id) return false;
+  }
+  mm.reactionUsed = true;
+  ev.push({ type: 'reaction', id: mm.id, reaction: r.id, name: r.name, trigger: 'familiarDamaged', for: t.id });
+  return true;
 }
 
 // When a creature hits one with `afterHit` (Multiattack Defense) with an attack roll, the attacker gets
@@ -1568,12 +1596,25 @@ function summon(s, m, step, src, ev) {
     const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
       ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: false };
     const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: at, side: m.side, ...(made.type ? { type: made.type } : {}), bond });
+    invested(m, e, pick, ev);
     s.entities[id] = e;
     if (fx) fx.parts.push({ target: id, summon: true });
     ev.push({ type: 'summoned', id, by: m.id, kind: b.kind, ...(fx ? { fx: fx.id } : {}) });
     if (e.side === 'party') lookAround(s, ev, [e]);                 // what a party member sees, the party sees
     if (s.encounter?.arena[col(at)]) joinEncounter(s, e, ev);
   }
+}
+
+// Investment of the Chain Master (docs/specs/companions.md, C9c): the casting's choices baked into the creature it made or
+// reformed (summons.js, investIn). A caster with the feature who left the choices out (a client with no chooser for them yet)
+// gets the creature as the spell alone makes it, and the DM is told what the feature would have given.
+function invested(m, e, pick, ev) {
+  if (pick.invest) return investIn(e, pick.invest, pick.caster.dc);
+  if (!pick.uninvested) return;
+  const f = (m.feats ?? []).find((x) => x.id === pick.uninvested), I = f?.invest;
+  if (!I) return;
+  ev.push({ type: 'manual', actor: m.id, name: f.name, partial: true,
+    text: `${m.name} cast without ${f.name}'s choices, so ${e.name} was made without them: ${[I.speed ? `a ${I.speed.of.join(' or ')} Speed of ${I.speed.feet} feet` : '', I.saveDc ? `${m.name}'s spell save DC (${pick.caster.dc}) for the saves it forces` : '', I.damage ? `${I.damage.to.join(' or ')} damage instead of ${I.damage.from.join(', ')}, if chosen` : ''].filter(Boolean).join('; ')}. Cast again with them, or the DM applies them.` });
 }
 
 // ---------- one per master, and the pocket dimension (Decisions 2 and 6; stage C5c) ----------
@@ -1603,6 +1644,7 @@ function reform(s, m, step, src, ev) {
   const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
     ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: old.bond?.auto === true };
   const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: { ...old.pos }, side: old.side, ...(made.type ? { type: made.type } : {}), bond });
+  invested(m, e, pick, ev);
   for (const k of KEPT_ON_REFORM) if (old[k] !== undefined) e[k] = structuredClone(old[k]);
   if (old.bond?.order !== undefined) e.bond.order = old.bond.order;
   if (inPocket) m.pocket[id] = e; else s.entities[id] = e;

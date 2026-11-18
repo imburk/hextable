@@ -24,6 +24,7 @@
 //   damaged  it takes damage from a hostile creature it can see within the spell's range (Hellish Rebuke)
 //   saveFailed  it or an ally within range fails a save against an effect that would apply one of
 //            some conditions (Countercharm: rolled again with Advantage; by instruction only)
+//   familiarDamaged  its familiar takes damage (Investment of the Chain Master: Resistance to it; #464, from `invest.ward`)
 // Shield's "targeted by Magic Missile" is the spell's `blocks` list, checked when a spell is cast.
 // Pure: no I/O, no randomness here.
 import { CONTENT, SPELLS } from './content/index.js';
@@ -93,6 +94,12 @@ export function reactionsOf(e) {
     if (!f.reaction) continue;
     // A reroll of an ally's failed save (Countercharm) is taken by instruction only: no prompt is built for it.
     out.push({ id: f.id, name: f.name, kind: 'feature', on: f.reaction.on, options: f.reaction.on === 'saveFailed' ? ['never', 'always'] : ['never', 'always', 'ask'], dflt: 'always', reaction: f.reaction, tier: f.tier, text: f.text });
+  }
+  // Investment of the Chain Master's Resistance (`invest.ward`; docs/specs/companions.md, C9c): its master's Reaction when its
+  // familiar made by `spell` takes damage (engine/resolve.js, wardFor). Like Superior Hunter's Defense it costs only the Reaction.
+  for (const f of e.feats ?? []) {
+    if (!f.invest?.ward) continue;
+    out.push({ id: f.id, name: f.name, kind: 'feature', on: 'familiarDamaged', spell: f.invest.spell, options: ['never', 'always', 'ask'], dflt: 'always', reaction: { on: 'familiarDamaged', resist: true }, tier: f.tier, text: f.text });
   }
   return out;
 }
