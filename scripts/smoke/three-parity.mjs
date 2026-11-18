@@ -1,3 +1,4 @@
+import { beats } from './beats.mjs';
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
@@ -194,7 +195,9 @@ async function threeParity(browser, url, label, opts) {
       });
     } finally { await ctx.close(); }
   });
-  // The doors-and-falls steps that used to run here are the `beats` pass (the same function, the same viewports, shadows off), which CI and SMOKE_ONLY=beats run.
+  // shadows off: this pass is about when things happen, and with software GL the sun's pass makes a frame three or four times as long on a computer, which the timing steps feel.
+  // The same function runs in the `beats` pass; it is kept here as well because CI's matrix (.github/workflows/smoke.yml) has `three-parity` and not `beats`.
+  await beats(browser, `${url}?shadows=off`, `${label}: doors and falls on the Three.js renderer`, opts);
 }
 
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=three-parity.
