@@ -941,6 +941,13 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
   const heavy = heavyWeak(from, atk);
   if (heavy) { dis = [...dis, heavy]; mode = adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal'; }
+  // `advantageIf` (a creature's attack step: "with Advantage if the target is Grappled by it"): Advantage when every tag holds; a tag the
+  // engine cannot judge leaves the roll without it and tells the DM.
+  if (atk.advantageIf?.length) {
+    const held = atk.advantageIf.map((tag) => judge(tag, { attacker: from, target: t, ranged: atk.type === 'ranged' }, s));
+    if (held.includes(null)) ev.push({ type: 'manual', actor: e.id, name: atk.name, partial: true, text: `${atk.name} has Advantage on the attack roll against ${t.name} if "${atk.advantageIf.join('", "')}", which the engine cannot judge. The DM decides.` });
+    else if (held.every(Boolean)) { adv = [...adv, atk.advantageIf.length === 1 && atk.advantageIf[0] === 'target.grappledBySelf' ? `${t.name} is Grappled by ${e.name}` : `${atk.name}'s own Advantage`]; mode = dis.length ? 'normal' : 'adv'; }
+  }
   if (forgo && mode === 'adv') { mode = 'normal'; adv = []; }
   if (!keepHidden) unhide(s, e, ev, 'attack');                                           // an attack roll gives away where it is, hit or miss
   const r1 = die(s, 20), r2 = mode === 'normal' ? null : die(s, 20);
@@ -1303,7 +1310,7 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
   endingsTakeSaveDc(steps);
   begin(s, {
     steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
-    src: { name: def.name, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}), ...(fx ? { fx: fx.id } : {}) },
+    src: { name: def.name, action: def.id, ...(c ? { reach: c.reach, rangeBand: c.range, range: c.range?.[1] ?? c.reach } : {}), ...(origin ? { origin } : {}), ...(tag ? { tag } : {}), ...(fx ? { fx: fx.id } : {}) },
     shared: def.target.area && targets ? sharedRolls(s, def.effects) : null,
   });
   resolve(s, ev);
@@ -1390,6 +1397,29 @@ export function endHold(s, t, by, why, ev) {
   else { delete t.cond.grappled; ev.push({ type: 'condEnd', id: t.id, cond: 'grappled', by, why }); }
   for (const [c, v] of Object.entries(t.cond)) if (v?.grapple === by) { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
   return true;
+}
+// A creature's hold put on by a condition step with `escape` (docs/specs/grapple-shove.md, Decision 7): `e` is the grappler, `src` the
+// action running (its id is the part that holds, its reach or range the hold's range), `step` the Grappled step. A target above
+// `largest` is not grappled, and nothing is said. One part holds `holds` creatures (1 if left out): while it holds that many it
+// holds no other (`takeAction` refuses the action; this is for a way round it, an Opportunity Attack).
+function hold(s, e, t, src, step, ev) {
+  if (step.largest && rank(t) > rank({ size: step.largest })) return;
+  const part = src.action ?? src.name, mine = holdsOf(s, e).filter((x) => x.hold.with === part);
+  if (!mine.some((x) => x.t.id === t.id) && mine.length >= (step.holds ?? 1)) {
+    return ev.push({ type: 'note', id: e.id, text: `${src.name} already holds ${mine.length === 1 ? mine[0].t.name : `${mine.length} creatures`}, so it can't hold ${t.name} too` });
+  }
+  grip(s, t, { by: e.id, with: part, escape: step.escape, range: src.range ?? src.reach ?? 5, ...(step.escapeDis ? { escapeDis: true } : {}) }, ev);
+}
+// A condition of the same action that lasts only as long as the grapple (`whileHeld`: the Restrained of a kraken's Tentacle): it goes on
+// only if `e` holds `t`, is tied to that hold (`grapple`), and ends with it (`endHold`). One `t` already has is left as it was.
+function heldCondition(s, e, t, step, f, ev) {
+  if (!(t.cond.grappled?.holds ?? []).some((h) => h.by === e.id)) return;
+  const had = !!t.cond[step.condition];
+  condition(s, t, step.condition, ev, f, step, undefined, true);
+  if (had || !t.cond[step.condition]) return;
+  t.cond[step.condition].grapple = e.id;
+  const also = CONTENT.conditions[step.condition]?.also;
+  if (also) ev.push({ type: 'manual', actor: e.id, name: f.src.name, partial: true, text: `${t.name} is ${conditionName(step.condition)}. The engine applies what it can; the DM applies the rest: ${also}` });
 }
 // What the DM is told when a hold ends by distance: what moved the two apart. A grappler's own walk never ends a hold, for it drags
 // (movement.js); so it is a teleport, or a push, a fall or the DM's placing, said for what it was.
@@ -1901,5 +1931,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 
