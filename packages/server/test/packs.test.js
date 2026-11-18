@@ -11,7 +11,8 @@ import { aiStep } from "../../rules/src/ai.js";
 import { CONTENT, HOMEBREW_LOOKUPS, MONSTERS, SPELLS } from "../../rules/src/content/index.js";
 import { hashOf } from "../../rules/src/content/packs.js";
 import { installed } from "../../rules/src/content/registry.js";
-import { current } from "../../rules/src/engine.js";
+import { derive } from "../../rules/src/derive.js";
+import { current, makeEntity } from "../../rules/src/engine.js";
 import { createReceiver } from "../../rules/src/patch.js";
 import { createTables, MAX_PACK_BYTES, MAX_PACK_TEXT_BYTES, packForPlayer, PLAYER_PACK_KINDS, sanitizePacks, usesIn, vetPacks } from "../src/tables.js";
 import { startServer, stopAll } from "./helpers.js";
@@ -712,7 +713,14 @@ test("M1: a table file with a bad `packs` value does not stop the server or anot
 
 // A homebrew spell that summons a homebrew creature of the same pack (allowed, #457; the server refused it under #400).
 const CALL = "hb-ember-folk-call-wraith";
-const callPack = () => doc("ember-folk", { spells: [spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon: WRAITH, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" } }] })], monsters: [monster("ember-folk", "quillwraith")] });
+// The numbers of the blocks below are found nowhere else in a game, so a search of what a player was sent finds a leak and nothing else.
+const OWLET = "hb-ember-folk-owlet", WOLFLING = "hb-ember-folk-wolfling";
+const own = (id, base, name, over) => ({ ...structuredClone(CONTENT.monsters[base]), id, name, source: "homebrew:ember-folk", checked: false, text: `The ${name}.`, ...over });
+const abilities = (base, dex) => ({ ...CONTENT.monsters[base].abilities, dex });
+const BLOCKS = [monster("ember-folk", "quillwraith", { ac: 23, hp: 77, abilities: abilities("goblin-warrior", 23) }),
+  own(OWLET, "owl", "Ember owlet", { ac: 21, abilities: abilities("owl", 25) }), own(WOLFLING, "wolf", "Ember wolfling", { ac: 22, hp: 66, abilities: abilities("wolf", 27) })];
+const NUMBERS = ['"ac":23', '"maxHp":77', '"dex":23', '"ac":21', '"dex":25', '"ac":22', '"maxHp":66', '"dex":27'];
+const callPack = () => doc("ember-folk", { spells: [spell("ember-folk", "call-wraith", { level: 1, target: { self: true }, effects: [{ summon: WRAITH, bond: { kind: "summon", turn: "after", orders: "free", at0: "vanish" } }] })], monsters: BLOCKS });
 const second = (tables, dm, code, name) => {
   const p = client(tables);
   p.say({ t: "join", code, name });
@@ -761,6 +769,12 @@ test("a player's homebrew summon: its block goes to its controller alone, in the
   assert.ok(open(pat.last("update").state.entities[id]), "its controller is sent it whole");
   assert.ok(seenOnly(bo.last("update").state.entities[id]), JSON.stringify(Object.keys(bo.last("update").state.entities[id] ?? {})));
   assert.ok(open(dm.last("update").state.entities[id]));
+  // What it does: its controller is told its roll, another player is told nothing of it.
+  const errs = pat.count("error");
+  pat.say({ t: "act", action: { type: "check", actor: id, skill: "stealth" } });
+  assert.equal(pat.count("error"), errs, pat.last("error")?.error);
+  assert.ok(pat.last("update").events.some((e) => e.type === "check" && e.id === id && Number.isInteger(e.total)));
+  assert.equal(bo.last("update").events.some((e) => e.type === "check"), false);
   // What changes about it afterwards reaches the other player as a patch of its seen record, never the open one.
   const frames = bo.raw.length;
   dm.say({ t: "act", action: { type: "setHp", actor: id, hp: 1 } });
@@ -778,9 +792,111 @@ test("a player's homebrew summon: its block goes to its controller alone, in the
   assert.ok(seenOnly(bo.last("update").state.entities[id]) && open(pat.last("update").state.entities[id]));
   // Nothing the other player was sent holds the block's own text, on the wire.
   const wire = bo.raw.join("\n");
-  for (const secret of [TEXT, ATTACK]) assert.equal(wire.includes(secret), false, secret);
+  for (const secret of [TEXT, ATTACK, '"skill":"stealth"', ...NUMBERS.slice(0, 3)]) assert.equal(wire.includes(secret), false, secret);
   assert.ok(pat.raw.join("\n").includes(ATTACK), "the controller was sent its attacks, so the search is not passing by accident");
+  for (const n of NUMBERS.slice(0, 3)) assert.ok(pat.raw.join("\n").includes(n), `its controller was sent ${n}`);
   assert.equal(dm.raw.join("\n").includes(ATTACK), true);
+  clean();
+});
+
+// What a player is told when they ask for the record later, or come back: once the creature is gone or its form has ended (review of #461).
+const asks = (c, fight) => { c.say({ t: "history", limit: 200 }); c.say({ t: "history", types: ["check", "attack", "form", "effectStart"], limit: 200 }); c.say({ t: "sync" }); if (fight !== undefined) c.say({ t: "history", fight }); };
+const noBlock = (c, extra = []) => {
+  const wire = c.raw.join("\n");
+  for (const secret of [TEXT, ATTACK, '"skill":"stealth"', '"skill":"perception"', WOLFLING, "Ember wolfling", ...NUMBERS, ...extra]) assert.equal(wire.includes(secret), false, `${secret} reached a player`);
+};
+function bothSeated() {
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player: pat, code } = seated(tables);
+  const bo = second(tables, dm, code, "Bo");
+  add(dm, callPack());
+  const t = tables.get(code);
+  t.state.entities.wizard.spells.push(CALL, "find-familiar");
+  pat.say({ t: "act", action: { type: "claim", entity: "wizard" } });
+  bo.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  return { tables, dm, pat, bo, code, t };
+}
+function summonWraith(t, pat) {
+  const p = t.state.entities.wizard.pos;
+  for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2], [1, 1], [-1, -1]]) {
+    pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: CALL, slot: 1, summon: { at: [{ q: p.q + dq, r: p.r + dr }] } } });
+    const id = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === WRAITH);
+    if (id) return id;
+  }
+  assert.fail(pat.last("error")?.error);
+}
+
+test("the record and a return: a summon removed, in a fight and out of it, tells another player nothing of its block, by history, sync, per-fight history and a new connection", () => {
+  const { tables, dm, pat, bo, code, t } = bothSeated();
+  const id = summonWraith(t, pat);
+  pat.say({ t: "act", action: { type: "check", actor: id, skill: "stealth" } });
+  dm.say({ t: "act", action: { type: "startEncounter", center: t.state.entities[id].pos, radius: 30 } });
+  const fight = t.state.timeline.find((e) => e.type === "encounterStart")?.fight;
+  assert.ok(t.state.encounter, dm.last("error")?.error);
+  pat.say({ t: "act", action: { type: "check", actor: id, skill: "perception" } });
+  dm.say({ t: "act", action: { type: "endEncounter" } });
+  dm.say({ t: "act", action: { type: "remove", actor: id } });
+  assert.equal(t.state.entities[id], undefined, dm.last("error")?.error);
+  asks(bo, fight);
+  const hist = bo.all("history");
+  assert.ok(hist.length >= 3, "the other player was sent the record");
+  assert.ok(bo.all("history").flatMap((h) => h.entries ?? []).every((e) => !("hb" in e)), "the stamp is not sent");
+  // A player who comes back (the same member, a new connection) is sent the recent log again.
+  const again = client(tables);
+  again.say({ t: "resume", code, token: bo.last("welcome").token });
+  asks(again, fight);
+  noBlock(bo); noBlock(again);
+  // The controller is sent its checks and its block; the search can find them.
+  asks(pat, fight);
+  const patWire = pat.raw.join("\n");
+  assert.ok(patWire.includes('"skill":"stealth"') && patWire.includes('"ac":23'));
+  assert.ok(pat.all("history").flatMap((h) => h.entries ?? []).some((e) => e.type === "check" && e.id === id));
+  clean();
+});
+
+test("the record: a familiar dismissed to the pocket dimension, then re-formed there, tells another player nothing of its homebrew form", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  t.state.entities.wizard.slots[1] = 4;
+  const p = t.state.entities.wizard.pos;
+  let fam = null;
+  for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) {
+    pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "find-familiar", slot: 1, summon: { form: OWLET, type: "fey", at: [{ q: p.q + dq, r: p.r + dr }] } } });
+    fam = Object.keys(t.state.entities).find((k) => t.state.entities[k].tpl === OWLET);
+    if (fam) break;
+  }
+  assert.ok(fam, pat.last("error")?.error);
+  pat.say({ t: "act", action: { type: "check", actor: fam, skill: "perception" } });
+  pat.say({ t: "act", action: { type: "dismiss", actor: "wizard", id: fam } });
+  assert.equal(t.state.entities[fam], undefined, pat.last("error")?.error);
+  pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "find-familiar", slot: 1, summon: { form: "owl", type: "fey" } } });
+  pat.say({ t: "act", action: { type: "cast", actor: "wizard", spell: "find-familiar", slot: 1, summon: { form: OWLET, type: "fey" } } });
+  asks(bo);
+  noBlock(bo);
+  assert.ok(pat.raw.join("\n").includes('"ac":21'), "the controller was sent it");
+  clean();
+});
+
+test("the record: a druid in a homebrew form, after the form has ended, tells another player nothing of the form, and shows the druid as the party's own throughout", () => {
+  const { dm, pat, bo, t } = bothSeated();
+  const A = { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 };
+  const druid = { name: "Ven", class: "druid", level: 2, abilities: A, skills: ["nature", "perception"], choices: { "primal-order": "warden" }, armour: "leather-armor", shield: true, weapons: ["quarterstaff"], spells: ["produce-flame", "cure-wounds"] };
+  t.state.entities.hero = makeEntity(derive(druid).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  pat.say({ t: "act", action: { type: "release", entity: "wizard" } });
+  pat.say({ t: "act", action: { type: "claim", entity: "hero" } });
+  assert.ok(t.state.entities.hero.owner, pat.last("error")?.error);
+  const hp = t.state.entities.hero.hp;
+  pat.say({ t: "act", action: { type: "feature", actor: "hero", feature: "wild-shape", form: WOLFLING } });
+  assert.equal(t.state.entities.hero.form?.block, WOLFLING, pat.last("error")?.error);
+  pat.say({ t: "act", action: { type: "check", actor: "hero", skill: "stealth" } });
+  // In the form: another player is sent the druid, with its own Hit Points, and nothing the form gave it.
+  const seen = bo.last("update").state.entities.hero;
+  assert.ok(seen && seen.form === undefined && seen.hp === hp && seen.abil?.dex === 14, JSON.stringify(seen));
+  noBlock(bo, ['"block":', "Wild Shape (Ember"]);
+  pat.say({ t: "act", action: { type: "feature", actor: "hero", feature: "wild-shape" } });
+  assert.equal(t.state.entities.hero.form, undefined, pat.last("error")?.error);
+  asks(bo);
+  noBlock(bo, ['"block":', "Wild Shape (Ember"]);
+  assert.ok(pat.raw.join("\n").includes('"dex":27'), "the druid's player was sent the form");
   clean();
 });
 
