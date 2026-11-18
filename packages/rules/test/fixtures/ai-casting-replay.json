@@ -1,0 +1,109 @@
+{
+ "runs": [
+  {
+   "name": "hex valley seed 1",
+   "steps": 86,
+   "actions": "dc93d59b2160a7ba9edff33eecacef9bc58fdbf9240bdd8a40c35aba9a61ebcb",
+   "casts": {
+    "wizard": {
+     "magic-missile": 2,
+     "fire-bolt": 3
+    },
+    "cleric": {
+     "healing-word": 2,
+     "sacred-flame": 1
+    }
+   },
+   "end": "2c2c95b22b063b852489290541cb1573fc6dc5932f716365445fcf36da288df6",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 2",
+   "steps": 65,
+   "actions": "4627fa299a4b47d0c27d082c4791527f4eb5a9cdb8fc65d5f59648f7984ad755",
+   "casts": {
+    "wizard": {
+     "magic-missile": 2,
+     "fire-bolt": 1
+    },
+    "cleric": {
+     "healing-word": 2
+    }
+   },
+   "end": "836f148195f8045015949a387f0777c9ae5a3b0f171f091a045f4d9435a27977",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 3",
+   "steps": 58,
+   "actions": "4d8c44067bb3ec06a80ab665692dbc7accc1b0dbae32b7ac764a3b52bef1982e",
+   "casts": {
+    "wizard": {
+     "magic-missile": 1
+    }
+   },
+   "end": "d52b702f52f51e594baf98a409bfd69dda0fb0ebe2f87d8f526e956543aaf4f1",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 5, sight los",
+   "steps": 117,
+   "actions": "edd473fbc4bbcaa350299c3bad8067765dba3c94356ba237a847cb9dcbc95597",
+   "casts": {
+    "wizard": {
+     "magic-missile": 2,
+     "fire-bolt": 3
+    },
+    "cleric": {
+     "healing-word": 2
+    }
+   },
+   "end": "79f5e4e27b979462594fdac5a8b0f351c57613a1312203d36e1e2539c42a32c6",
+   "ended": true
+  },
+  {
+   "name": "square valley seed 1",
+   "steps": 106,
+   "actions": "df261b0078b1ec72d621c154109453ae4dd3f8db41d6e9c00f00e98ee77095c7",
+   "casts": {
+    "wizard": {
+     "magic-missile": 2
+    }
+   },
+   "end": "bae9e9d15b61887eb01abdebaa94e8db602bb866661b4393073b311216ab53c9",
+   "ended": true
+  },
+  {
+   "name": "square valley seed 7",
+   "steps": 95,
+   "actions": "1c40618bf7dd227ba5dc8c99e24abdcc8e03f6e315351adedcdc3ea13f7262d3",
+   "casts": {
+    "cleric": {
+     "sacred-flame": 1,
+     "healing-word": 2
+    },
+    "wizard": {
+     "magic-missile": 2
+    }
+   },
+   "end": "bbb65a34b430532f9575b2de986d819953257cbd3deaf05d4b697c905e2dc393",
+   "ended": true
+  },
+  {
+   "name": "square-room",
+   "steps": 43,
+   "actions": "01e02f922812ebdf4ff4cb8e0a9247ed16fa18a4d32306a30e35b17b32a131a1",
+   "casts": {
+    "wizard": {
+     "fire-bolt": 2,
+     "magic-missile": 1
+    },
+    "cleric": {
+     "healing-word": 1
+    }
+   },
+   "end": "5f93d91905e09f01ec2eb9b20aff394e0c4e5983ace008177edb051a6adc41ad",
+   "ended": true
+  }
+ ]
+}

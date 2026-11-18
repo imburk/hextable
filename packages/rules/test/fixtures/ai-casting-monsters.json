@@ -1,0 +1,61 @@
+{
+ "made": "origin/main c513cd8 ai.js (before AC1), party creatures passive, by scenarios() in ai-casting-kit.js",
+ "runs": [
+  {
+   "name": "hex valley seed 1",
+   "steps": 117,
+   "refused": 0,
+   "actions": "fc779ca140f038b1615da3f78453cc3b52c1a8eaed5687ee47c38e866b7f9102",
+   "end": "8dea9c7a6e04917d1497bee02d063aa0eb82a2780960c30e7b7f73e8022c010b",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 2",
+   "steps": 98,
+   "refused": 0,
+   "actions": "e265f7472f411b52bca46a31e85d24dfd6059378577d64defd3aec6f43dfcc15",
+   "end": "c33cdee1aec21072dcc3832d138b965871f9bf1ddcc5a0d9e7934bc4711d7016",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 3",
+   "steps": 79,
+   "refused": 0,
+   "actions": "f036eabb7938a508e6629bf60f28ed3d4d1630ec0199158fca9904dd604412d4",
+   "end": "49c4c0617681371eb1b1368c928ee42abbefb9f32b1190d5019c7503c57f82d6",
+   "ended": true
+  },
+  {
+   "name": "hex valley seed 5, sight los",
+   "steps": 73,
+   "refused": 0,
+   "actions": "0174fab3c48232942bca1814469c0ffbc4bc6c8ae26d41aa8c9add0514691ea4",
+   "end": "177f0afd1db8ccf550301c8f8de0c7f23cad22e82367ff85da43afff2d665461",
+   "ended": true
+  },
+  {
+   "name": "square valley seed 1",
+   "steps": 108,
+   "refused": 0,
+   "actions": "9e73923f7a9ce3cf747563aaf21fbc37b38e9f18d3e16f035f29b534c3d9a5d2",
+   "end": "eebdbea528c2ffaacbf8c849c128c410fe8e74e26792c55a1625f98651cabe97",
+   "ended": true
+  },
+  {
+   "name": "square valley seed 7",
+   "steps": 80,
+   "refused": 0,
+   "actions": "0c0bbec7ce01b9a086e9c5913343cca02b4a68410972c1654c070e9740133373",
+   "end": "861fed65e5fa6c92e197f4f239cfdb6b584830301586539aabc05122251fafb3",
+   "ended": true
+  },
+  {
+   "name": "square-room",
+   "steps": 68,
+   "refused": 0,
+   "actions": "e8400296d6bffc2e8c8f6cf802bef93e2283a77365ad047dea7a4dff49ba4218",
+   "end": "f56b65ace4e5204a39ce30df6744fbba79e0c0f3629874c9a4213a14852eae3f",
+   "ended": true
+  }
+ ]
+}

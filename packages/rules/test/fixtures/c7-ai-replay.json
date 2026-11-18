@@ -1,5 +1,6 @@
 {
  "made": "origin/main 191d556 (before C7), by the scenarios in companions-brain-replay.test.js",
+ "remade": "this head (AC1 fix round 1), spells put away, party played by aiStep; the party's tie rule changed by design (ai-casting.md, amendment 4)",
  "runs": [
   {
    "name": "hex valley seed 1",
@@ -19,26 +20,26 @@
   },
   {
    "name": "hex valley seed 3",
-   "steps": 92,
+   "steps": 99,
    "refused": 0,
-   "actions": "4bfd82a51183c6cdca6f311f111427625de61ef140658907713993d813ca9355",
-   "state": "89ec18f4284cc0afe205bf5e0f4c0d37b1b72d8ad00d688f5928aa26eca05b16",
+   "actions": "db08a3e5629dd743c89235310ff7673eb757345918acfaa3cca9ce076f6eaab4",
+   "state": "21fe1563a0b58a44a42935a1b44798eb0ee33bcbca799d18a21f91623a21e27a",
    "ended": true
   },
   {
    "name": "hex valley seed 5, sight los",
-   "steps": 118,
+   "steps": 119,
    "refused": 0,
-   "actions": "f47a6d8d78761c14a6ac8771db4804b211cb86e4f1b88cffeb62993e87b68d70",
-   "state": "92ec0e6d967cf421ed8e59574beb050c5d6fdce5b345dfa7675100ff0cea06a7",
+   "actions": "b45568a80dbfb5b0c38f626410f0a203cc4ee2e5319a2117eda7c0f9fa401847",
+   "state": "1d9fe6093051e2e7438f26947cdcde238d073ed3ede0c599e18aa61350468aa8",
    "ended": true
   },
   {
    "name": "square valley seed 1",
-   "steps": 94,
+   "steps": 97,
    "refused": 0,
-   "actions": "44c26360d39d170a3cbf10544bb4ff114eefff8fe5c531de655b37bf2215ef08",
-   "state": "24971632ff7e54ca775760f927f273c4b8d0e3a91b76e5df9120d9ec87c025e1",
+   "actions": "58ef3eff7689ddd977849fbf15cf9422f3ccafc906ea06b62c1bedf9eb051db6",
+   "state": "44464b0eff98b00ecf9098e12d9691b182cd329c86dfec6f7278a7a46e3d4d87",
    "ended": true
   },
   {
@@ -51,10 +52,10 @@
   },
   {
    "name": "square-room",
-   "steps": 34,
+   "steps": 47,
    "refused": 0,
-   "actions": "245eb18f1334020d9198546cd2b57de455b3707753db348925b73a1ed8b6de49",
-   "state": "c2710fdd4399af85b3a9e5b14df719f7dfd28f79ae8ec38e5d3fa240ed0ff873",
+   "actions": "28343c424b66c10165837292e1eaf6a1939ef93cc826fcc09fad64958aaf8fb5",
+   "state": "ae5a018d70024edb2be60f1e95120b13b2e30bf2f8d91a832ed09db51c070945",
    "ended": true
   }
  ]
