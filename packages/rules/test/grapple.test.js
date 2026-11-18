@@ -482,7 +482,7 @@ test("G6: a creature that asks is offered Grapple instead as a third answer, and
   const r = ok(apply(s, away, DM));
   const asked = r.events.find((e) => e.type === "reactionAsked");
   assert.ok(asked, "Ann is asked");
-  assert.deepEqual(asked.ask.options, [{ reaction: OPPORTUNITY, name: "Opportunity Attack" }, { reaction: OPPORTUNITY_GRAPPLE, name: "Grapple instead" }]);
+  assert.deepEqual(asked.ask.options, [{ reaction: OPPORTUNITY, name: "Opportunity Attack" }, { reaction: OPPORTUNITY_GRAPPLE, name: "Grapple Goblin Warrior 1 instead (it stops)" }]);
   assert.deepEqual(view(s, U1).prompt.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_GRAPPLE], "and she is sent it");
   const t = react(s, OPPORTUNITY_GRAPPLE);
   ok(t);
@@ -496,7 +496,7 @@ test("G6: a creature that asks is offered Grapple instead as a third answer, and
   assert.equal(speedOf(s, foe), 0);
   assert.equal(s.entities.hero.reactionUsed, true, "it cost the Reaction");
   assert.equal(s.encounter.budget.move, move, "and none of the mover's movement");
-  assert.ok(t.events.some((e) => e.type === "note" && /can't go on/.test(e.text)));
+  assert.ok(t.events.some((e) => e.type === "manual" && e.partial && /can't go on/.test(e.text)), "a foe's stop is the DM's alone");
   const seen = viewEvents(t.events, s, U1).map((e) => e.type);
   assert.ok(seen.includes("strikeOption") && seen.includes("cond"));
   // Move again: Speed 0.
@@ -622,4 +622,67 @@ test("G6, DEBT T74: a monster whose Bite is full makes no Opportunity Attack on 
   assert.ok(b.events.some((e) => e.type === "manual" && e.actor === full.g && /can't make one/.test(e.text)), "the DM is told why");
   assert.equal(full.s.entities[full.g].reactionUsed, false, "and the Reaction is kept");
   assert.ok(b.events.some((e) => e.type === "moved" && e.id === "pal"), "the pal walked on");
+});
+
+test("G6 review L1: a mover the question does not name is offered the Grapple whatever its size; too big when taken, it is refused with the Reaction spent", () => {
+  for (const size of ["medium", "huge"]) {
+    const { s, away } = leaving(fighter(STR16), { size });
+    s.entities.hero.senses = { ...s.entities.hero.senses, blindsight: 60 };
+    s.entities[s.foe].hiding = { dc: 30 };
+    const r = ok(apply(s, away, DM));
+    const asked = r.events.find((e) => e.type === "reactionAsked");
+    assert.ok(asked, size);
+    assert.equal(asked.ask.by, undefined, "the mover is not named");
+    assert.deepEqual(asked.ask.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_GRAPPLE], `${size}: the same list`);
+    assert.equal(asked.ask.options[1].name, "Grapple it instead (it stops)");
+    const t = ok(react(s, OPPORTUNITY_GRAPPLE));
+    assert.equal(s.entities.hero.reactionUsed, true);
+    if (size === "huge") {
+      assert.equal(s.entities[s.foe].cond.grappled, undefined, "refused: too big");
+      assert.ok(!t.events.some((e) => e.type === "strikeOption" || e.type === "save"));
+      assert.ok(t.events.some((e) => e.type === "note" && e.id === "hero" && /too big to grapple/.test(e.text)));
+      assert.deepEqual(s.entities[s.foe].pos, { q: 3, r: 0, z: 0 }, "it walks on");
+    } else assert.ok(s.entities[s.foe].cond.grappled);
+  }
+});
+
+test("G6 review L2, L3: a foe's stop is told to the DM alone and the option names it by the name the party knows; a party mover's stop is a note", () => {
+  const { s, away } = leaving();
+  const foe = s.entities[s.foe];
+  foe.name = "Archdruid Veyra"; foe.form = { name: "Brown Bear" };
+  const r = ok(apply(s, away, DM));
+  assert.equal(r.events.find((e) => e.type === "reactionAsked").ask.options[1].name, "Grapple Brown Bear instead (it stops)");
+  const t = ok(react(s, OPPORTUNITY_GRAPPLE));
+  assert.ok(t.events.some((e) => e.type === "manual" && e.partial && /can't go on/.test(e.text)));
+  assert.ok(!t.events.some((e) => e.type === "note" && /can't go on/.test(e.text)));
+  assert.ok(!JSON.stringify(viewEvents(t.events, s, U1)).includes("Archdruid"), "no player is sent the name");
+});
+
+test("G6 review L5: two foes beside the mover: the first to grapple stops the walk and the second keeps its Reaction; a grapple on a later step keeps the steps taken", () => {
+  const s = field(fighter(STR16), { foes: 1, ally: fighter(STR16) });
+  ok(apply(s, { type: "claim", entity: "hero", user: "u1", userName: "Ann" }, U1));
+  ok(apply(s, { type: "reactions", actor: "hero", set: { [OPPORTUNITY]: "ask" } }, U1));
+  const U2 = { role: "player", userId: "u2" };
+  ok(apply(s, { type: "claim", entity: "ally", user: "u2", userName: "Bo" }, U2));
+  ok(apply(s, { type: "reactions", actor: "ally", set: { [OPPORTUNITY]: "ask" } }, U2));
+  s.entities.ally.pos = { q: 1, r: -1, z: 0 };
+  turnOf(s, s.foe);
+  const r = ok(apply(s, { type: "move", actor: s.foe, to: { q: 3, r: 0 } }, DM));
+  assert.equal(r.events.filter((e) => e.type === "reactionAsked").length, 1);
+  ok(react(s, OPPORTUNITY_GRAPPLE, s.entities[s.pending.ask.reactor].owner === "u2" ? U2 : U1));
+  assert.ok(s.entities.hero.reactionUsed || s.entities.ally.reactionUsed);
+  assert.equal(!!s.entities.hero.reactionUsed + !!s.entities.ally.reactionUsed, 1, "only one Reaction spent");
+  assert.ok(!s.pending, "the second is not asked");
+  assert.deepEqual(s.entities[s.foe].pos, { q: 1, r: 0, z: 0 }, "stopped where it was");
+  // A later step: the goblin walks past the hero, and is grappled where it would leave the hero's reach.
+  const u = leaving();
+  const start = { q: 2, r: -1, z: 0 };
+  u.s.entities[u.s.foe].pos = { ...start };
+  const move0 = u.s.encounter.budget.move;
+  ok(apply(u.s, { type: "move", actor: u.s.foe, to: { q: -3, r: 1 } }, DM));
+  ok(react(u.s, OPPORTUNITY_GRAPPLE));
+  const p = u.s.entities[u.s.foe].pos, dist = (a, b) => Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.q + a.r - b.q - b.r));
+  assert.ok(u.s.entities[u.s.foe].cond.grappled);
+  assert.ok(dist(p, start) >= 2, "the steps already taken stay taken");
+  assert.equal(u.s.encounter.budget.move, move0 - 5 * dist(p, start), "and are spent; the step not taken is not");
 });

@@ -4,12 +4,13 @@ import { gridOf, col, key } from '../grid.js';
 import { apart, apartAt, concealed, footprint, FT, ground, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
 import { entered, holds, snapshot, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
-import { sightRule, unknown } from '../vision.js';
+import { seenName, sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
 import { canReact, grappleInstead, instruction, OPPORTUNITY, OPPORTUNITY_GRAPPLE, opportunityAttack, opportunityAttacks, reactionsOf } from '../reactions.js';
 import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
+import { SIZES as SIZE_LIST } from '../content/schema.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
@@ -178,11 +179,11 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         if (w === 'ask') {
           // Grapple instead of the damage (stage G6): a third answer, only when it asks, from a creature with an Unarmed Strike and a hand
           // free, against the mover itself (grappleInstead). It is offered after the others, so what asked before still asks the same.
-          const gr = grappleInstead(s, o, e);
+          const named = seesFor(s, o, e), gr = grappleInstead(s, o, e, named);
           // A mover the party is not told of is not named in the question (fix round 1 of #378, L3).
-          const answer = ask(s, o, { trigger: 'leave', ...(seesFor(s, o, e) ? { by: e.id } : {}) }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' },
+          const answer = ask(s, o, { trigger: 'leave', ...(named ? { by: e.id } : {}) }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' },
             ...(alt ? [{ reaction: OPPORTUNITY_RIDER, name: `Opportunity Attack on ${alt.name}`, against: alt.id }] : []),
-            ...(gr ? [{ reaction: OPPORTUNITY_GRAPPLE, name: 'Grapple instead' }] : [])]);
+            ...(gr ? [{ reaction: OPPORTUNITY_GRAPPLE, name: `Grapple ${named ? seenName(e) : 'it'} instead (it stops)` }] : [])]);
           if (answer === null) {
             ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
               text: `${e.name} leaves ${o.name}'s reach${alt ? `, carrying ${alt.name}` : ''}. ${o.name}'s instruction is to ask the DM: if it takes the Opportunity Attack${alt ? ` (against ${e.name} or ${alt.name})` : ''}, the DM makes it and marks its Reaction used.` });
@@ -198,7 +199,8 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         o.reactionUsed = true;
         ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
         const oa = o.actions ? opportunityAttacks(o).find((a) => !partRefusal(s, o, a, [t])) ?? opportunityAttack(o, s) : opportunityAttack(o, s);
-        if (grab) strikeOption(s, o, e, grab, 'grapple', undefined, ev);
+        if (grab && SIZE_LIST.indexOf(e.size ?? 'medium') > SIZE_LIST.indexOf(o.size ?? 'medium') + 1) ev.push({ type: 'note', id: o.id, text: `${o.name} can't grapple it: too big to grapple. The Reaction is spent.` });
+        else if (grab) strikeOption(s, o, e, grab, 'grapple', undefined, ev);
         else if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
         else resolveAttack(s, o, t, oa, ev, { opportunity: true });
         // A rider knocked down or Prone by it may fall off here, before the mount goes on (settleRide).
@@ -210,7 +212,12 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         if (speedOf(s, e) <= 0 && !aloft(s, e)) { rooted = true; break; }
       }
       if (!up(e)) break;
-      if (rooted) { flush(); ev.push({ type: 'note', id: e.id, text: `${e.name} can't go on: its Speed is 0.` }); break; }
+      if (rooted) {
+        flush();
+        const text = `${e.name} can't go on: its Speed is 0.`;
+        ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: 'Grapple', partial: true, text });
+        break;
+      }
     }
     const k = key(step);
     const was = e.pos, zonesBefore = snapshot(s);

@@ -71,12 +71,14 @@ export function opportunityAttacks(o, s = null) {
 // "Unarmed Strike", Grapple: no more than one size larger, a hand free), or null. A creature that plays from actions (a pack monster)
 // has no Unarmed Strike (docs/specs/grapple-shove.md, Q5), and one that already holds `t` has nothing to grab. Offered only where the
 // engine would take it, so a refusal never tells a player anything about `t`: a target immune to Grappled is not left out.
-export function grappleInstead(s, o, t) {
+export function grappleInstead(s, o, t, named = true) {
   if (!s?.entities || o.bond?.noAttack || o.actions || t.dead) return null;
   const strikes = (o.attacks ?? []).filter((a) => a.type === 'melee' && isUnarmed(a));
   const atk = strikes.find((a) => a.id === 'unarmed-strike') ?? strikes[0];
   if (!atk || handsFull(s, o, atk, true)) return null;
-  if (SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(o.size ?? 'medium') + 1) return null;
+  // A mover the question does not name (one only its senses found) is offered it whatever its size, so the list tells nothing of it; if
+  // it is too big when the answer comes, the Grapple is refused then, with the Reaction spent (engine/movement.js).
+  if (named && SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(o.size ?? 'medium') + 1) return null;
   return (t.cond?.grappled?.holds ?? []).some((h) => h.by === o.id) ? null : atk;
 }
 

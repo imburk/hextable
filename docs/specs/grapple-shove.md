@@ -584,4 +584,5 @@ What the build settled:
 - **`source` (the Low of #481).** `endHold` and `settleHolds` set the `source` of a condition tied to holds (`whileHeld`) to the first grappler that still holds
   it when the one it named lets go.
 - **State.** No new state, no version bump.
+- **Fix round 1 of #484.** The option is labelled "Grapple <name> instead (it stops)" (the name the party knows, `seenName`; "it" when the question does not name the mover). When the question has no `by`, the option is offered whatever the mover's size, so the list tells nothing of it; if the mover is too big when the answer comes, the Reaction is spent, a note says so, and nothing else happens. The stop is a `note` for a party mover and a partial `manual` (DM only) for any other.
 
