@@ -214,10 +214,11 @@ function walkSteps(steps, visit) {
 const HOLD_KEYS = ['escape', 'largest', 'holds', 'escapeDis', 'whileHeld'];
 function lintHold(step, say, inMonster) {
   const used = HOLD_KEYS.filter((k) => step[k] !== undefined);
-  if (!used.length) return;
+  if (!used.length && !(inMonster && step.condition === 'grappled')) return;
   if (!inMonster) return say(`\`${used[0]}\` is for a creature's action`);
   if (step.condition === 'grappled') {
     if (step.whileHeld !== undefined) say('`whileHeld` goes on a condition that ends with the grapple, not on Grappled');
+    if (step.ends !== undefined) say('a hold has no `ends`: the grapple decides when it ends');
     if (step.escape === undefined) { say('a Grappled step needs `escape`, the escape DC'); return; }
     if (!(isInt(step.escape) && step.escape >= 1 && step.escape <= 40)) say('`escape` is a whole number from 1 to 40');
     if (step.largest !== undefined && !SIZES.includes(step.largest)) say(`\`largest\` is one of ${SIZES.join(', ')}`);
@@ -226,6 +227,7 @@ function lintHold(step, say, inMonster) {
   } else {
     for (const k of ['escape', 'largest', 'holds', 'escapeDis']) if (step[k] !== undefined) say(`\`${k}\` is for a Grappled step`);
     if (step.whileHeld !== undefined && step.whileHeld !== true) say('`whileHeld` is true or left out');
+    if (step.whileHeld !== undefined && step.ends !== undefined) say('a `whileHeld` step has no `ends`: the grapple decides when it ends');
   }
 }
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {

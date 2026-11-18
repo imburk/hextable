@@ -5,7 +5,7 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
+import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { actionProfile } from './effects.js';
 import { incapacitatedBy } from './modifiers.js';
@@ -72,7 +72,7 @@ function withActions(s, e, foes, lim = {}) {
   // Nearest first, then the most hurt, then by id, so the order never depends on anything else.
   const order = [...foes].sort((x, y) => apart(s, e, x) - apart(s, e, y) || x.hp - y.hp || (x.id < y.id ? -1 : 1));
   const all = profiled(e.actions).filter((x) => x.p.harmful && !actionSpent(e, x.def) && (x.p.time === 'action' || b.bonus > 0) && !(lim.noAttack && rolled(x.p)));
-  const reaches = (x, t) => x.p.aim === 'creature' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t);
+  const reaches = (x, t) => x.p.aim === 'creature' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t) && !partRefusal(s, e, x.def, [t]);
   const act = (x, extra) => ({ type: 'act', actor: id, action: x.def.id, ...extra });
   // The best attack it can make right now among `list`: at the nearest foe it can reach, melee
   // if that reaches, else ranged, else anything aimed at one creature.

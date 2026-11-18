@@ -3149,7 +3149,7 @@ export const monsters = [
         name: "Engulf (Carrying)",
         modifiers: [],
         dragFree: true,
-        text: "Moving a creature it has engulfed costs it no extra movement. This comes from the Engulf action."
+        text: "Not an SRD trait: the SRD's Engulf action says the creature moves with the engulfer, and this carries that sentence as a trait. Moving a creature it has engulfed costs it no extra movement."
       },
     ],
     actions: [

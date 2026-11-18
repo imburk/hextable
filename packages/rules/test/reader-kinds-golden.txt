@@ -365,7 +365,7 @@ Tier: auto. The engine runs every trait and action of this creature as listed ab
 Not checked against any rulebook.
 
 == monster hb-rk-flawed
-REFUSED: this entry breaks the rules a table checks (4 problems, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.
+REFUSED: this entry breaks the rules a table checks (5 problems, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.
 "Flawed Reaver" (Medium, fiend, challenge rating 3, 700 XP when defeated).
 The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
 Armor Class 14: one fixed number. Modifiers from its traits and from effects on it change it for an attack.

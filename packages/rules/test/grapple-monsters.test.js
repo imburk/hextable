@@ -19,6 +19,7 @@ import { footprint } from "../src/space.js";
 import { gridOf } from "../src/grid.js";
 import * as H from "../src/hex.js";
 import { dragExtra } from "../src/engine/world.js";
+import { aiStep } from "../src/ai.js";
 
 const DM = { role: "dm", userId: "dm" };
 const U1 = { role: "player", userId: "u1" };
@@ -152,7 +153,7 @@ test("the kraken holds ten with its Tentacle, Restrains each until its grapple e
   for (const id of targets.slice(0, 10)) {
     const c = s.entities[id].cond;
     assert.deepEqual(c.grappled.holds, [{ by: g, with: "tentacle", escape: 20, range: 30 }]);
-    assert.equal(c.restrained.grapple, g, "Restrained until this grapple ends");
+    assert.deepEqual(c.restrained.grapples, [g], "Restrained until this grapple ends");
   }
   assert.equal(s.entities[targets[10]].cond.grappled, undefined);
   refused(s, { type: "act", actor: g, action: "tentacle", target: targets[10] }, /Tentacle holds .*; it can't be used on .* until one is let go/);
@@ -283,6 +284,12 @@ test("the linter: a Grappled step of a creature's action needs `escape`; the new
   const step = (h) => h.find((x) => x.condition === "grappled");
   assert.deepEqual(lint(() => {}), []);
   assert.match(lint((h) => { delete step(h).escape; }).join(), /needs `escape`/);
+  // A bare step, with none of the hold keys at all, is refused too.
+  assert.match(lint((h) => { h.splice(h.indexOf(step(h)), 1, { condition: "grappled" }); }).join(), /needs `escape`/);
+  assert.match(lintEntry("monsters", (() => { const m = JSON.parse(JSON.stringify(base)); m.actions[0].effects[0].onHit = [{ condition: "grappled" }]; return m; })(), { pack: "test" }).join(), /needs `escape`/);
+  // A hold and a whileHeld step end with the grapple: no `ends`.
+  assert.match(lint((h) => { step(h).ends = "endOfTurn"; }).join(), /no `ends`/);
+  assert.match(lint((h) => { h.push({ condition: "restrained", whileHeld: true, ends: "endOfTurn" }); }).join(), /whileHeld. step has no `ends`/);
   assert.match(lint((h) => { step(h).escape = 0; }).join(), /1 to 40/);
   assert.match(lint((h) => { step(h).escape = 41; }).join(), /1 to 40/);
   assert.match(lint((h) => { step(h).largest = "enormous"; }).join(), /largest/);
@@ -331,4 +338,66 @@ test("a spell's step has no hold: the keys are for a creature's action", () => {
   const adv = JSON.parse(JSON.stringify(CONTENT.spells["fire-bolt"]));
   adv.effects[0].advantageIf = ["target.prone"];
   assert.match(lintEntry("spells", adv, { strict: false }).join(), /advantageIf. on an attack is for a creature's action/);
+});
+
+test("two couatls Constrict one target: its Restrained stays until both have let go", () => {
+  const { s, g, targets: [t] } = field("couatl", [{ q: -1, r: 0, size: "medium" }]);
+  const g2 = spawn(s, "couatl", { q: -1, r: 1 }, { side: s.entities[g].side });
+  const grab = (who) => { turnOf(s, who); s.encounter.budget.action = 30; for (let i = 0; i < 40; i++) { if (s.entities[t].cond.grappled?.holds.some((h) => h.by === who)) return; const r = apply(s, { type: "act", actor: who, action: "constrict", target: t }, DM); assert.ok(r.ok, r.error); } assert.fail("never held"); };
+  grab(g); grab(g2);
+  assert.deepEqual([...s.entities[t].cond.restrained.grapples].sort(), [g, g2].sort());
+  ok(apply(s, { type: "letGo", actor: g2, target: t }, DM));
+  assert.ok(s.entities[t].cond.grappled, "the first still holds");
+  assert.deepEqual(s.entities[t].cond.restrained.grapples, [g], "Restrained stays");
+  ok(apply(s, { type: "letGo", actor: g, target: t }, DM));
+  assert.equal(s.entities[t].cond.grappled, undefined);
+  assert.equal(s.entities[t].cond.restrained, undefined, "the last one let go: it ends");
+});
+
+test("a Restrained the target had from another source is not ended by a grapple, and an old single `grapple` id still reads as a list", () => {
+  const { s, g, targets: [t] } = field("couatl", [{ q: -1, r: 0, size: "medium" }]);
+  s.entities[t].cond.restrained = { source: "web" };
+  for (let i = 0; i < 40 && !s.entities[t].cond.grappled; i++) ok(apply(s, { type: "act", actor: g, action: "constrict", target: t }, DM));
+  assert.ok(s.entities[t].cond.grappled);
+  assert.equal(s.entities[t].cond.restrained.grapples, undefined, "untagged");
+  ok(apply(s, { type: "letGo", actor: g, target: t }, DM));
+  assert.ok(s.entities[t].cond.restrained, "not ended by the grapple");
+  // An older save: one `grapple` id.
+  s.entities[t].cond.grappled = { source: g, holds: [{ by: g, with: "constrict", escape: 13, range: 5 }] };
+  s.entities[t].cond.restrained = { source: g, grapple: g };
+  ok(apply(s, { type: "letGo", actor: g, target: t }, DM));
+  assert.equal(s.entities[t].cond.restrained, undefined);
+});
+
+test("the monster AI does not bite a creature the ankheg's full Bite would refuse: it bites the one it holds", () => {
+  const f = hits((seed) => field("ankheg", [{ q: -1, r: 0, size: "large" }, { q: -1, r: 1, size: "medium" }], { seed }), (x) => ({ type: "act", actor: x.g, action: "bite", target: x.targets[0] }));
+  const { s, g, targets: [a, b] } = f;
+  assert.ok(s.entities[a].cond.grappled);
+  s.entities[a].hp = 900; s.entities[b].hp = 1;                       // the most hurt, and so the one it would pick first, is B
+  s.encounter.budget.action = 1;
+  const bites = [];
+  for (let i = 0; i < 6 && current(s) === g; i++) {
+    const act = aiStep(s, g);
+    if (!act || act.type === "endTurn") break;
+    const r = apply(s, act, DM);
+    assert.ok(r.ok, `the AI chose a refused action: ${r.error}`);
+    if (act.action === "bite") bites.push(act.target);
+  }
+  assert.ok(bites.length >= 1 && bites.every((x) => x === a), `bites: ${bites.join()}`);
+});
+
+test("the player's view: a grappler the party does not know of is only 'someone', with no part and no range", () => {
+  const sheet = { name: "Fi", class: "fighter", level: 5, subclass: "champion", abilities: { str: 16, dex: 14, con: 14, int: 10, wis: 8, cha: 8 },
+    skills: ["athletics", "perception"], choices: { "fighting-style": "defense" }, weapons: [] };
+  const { s, g } = field("ankheg", [], { fight: false });
+  s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: -1, r: 0, z: 0 } });
+  ok(apply(s, { type: "claim", entity: "hero", user: "u1", userName: "Ann" }, U1));
+  s.entities.hero.cond.grappled = { source: g, holds: [{ by: g, with: "bite", escape: 13, range: 5 }] };
+  s.entities[g].hidden = true;
+  const v = view(s, U1);
+  assert.deepEqual(v.entities.hero.heldBy, ["someone"]);
+  const holds = v.entities.hero.cond.grappled.holds;
+  assert.equal(holds.length, 1);
+  assert.deepEqual(Object.keys(holds[0]), ["by"]);
+  assert.equal(holds[0].by, "someone");
 });

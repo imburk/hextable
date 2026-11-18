@@ -1375,7 +1375,7 @@ function settleSeen(s, e, ev, went = 'vanished') {
     if (x.id === e.id || !x.cond) continue;
     for (const [c, v] of Object.entries(x.cond)) {
       if (v?.source !== e.id || v.effect !== undefined) continue;
-      if ((c === 'grappled' && Array.isArray(v.holds)) || v.grapple === e.id) continue;      // holds, and what ends with them: below
+      if ((c === 'grappled' && Array.isArray(v.holds)) || tiedTo(v).includes(e.id)) continue;      // holds, and what ends with them: below
       if (c === 'grappled') { delete x.cond[c]; ev.push({ type: 'condEnd', id: x.id, cond: c }); continue; }
       delete v.source;
       ev.push({ type: 'manual', actor: null, name, partial: true, text: `${x.name} is still ${conditionName(c)} from ${name}, which has ${went === 'vanished' ? 'vanished' : 'gone'}. Whether that ends is the DM's.` });
@@ -1389,13 +1389,21 @@ function settleSeen(s, e, ev, went = 'vanished') {
 // One hold on `t`, the one `by` has, ends: it leaves the list, `source` names the first hold left, and the Grappled condition
 // goes when none is left (`condEnd` with `by` and `why`), or stays (`holdEnd`). A condition tied to the hold (`grapple: by`, a
 // stat block's "Restrained until the grapple ends") ends with it. `why`: 'escaped', 'released', 'incapacitated', 'distance', 'gone'.
+// The grapples that hold a `whileHeld` condition: `grapples` (every grappler's id); an older entry has a single `grapple`.
+const tiedTo = (v) => (Array.isArray(v?.grapples) ? v.grapples : typeof v?.grapple === 'string' ? [v.grapple] : []);
 export function endHold(s, t, by, why, ev) {
   const g = t.cond.grappled;
   if (!Array.isArray(g?.holds) || !g.holds.some((h) => h.by === by)) return false;
   g.holds = g.holds.filter((h) => h.by !== by);
   if (g.holds.length) { g.source = g.holds[0].by; ev.push({ type: 'holdEnd', id: t.id, by, why }); }
   else { delete t.cond.grappled; ev.push({ type: 'condEnd', id: t.id, cond: 'grappled', by, why }); }
-  for (const [c, v] of Object.entries(t.cond)) if (v?.grapple === by) { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
+  for (const [c, v] of Object.entries(t.cond)) {
+    const list = tiedTo(v);
+    if (!list.includes(by)) continue;
+    const rest = list.filter((x) => x !== by);
+    if (rest.length) { v.grapples = rest; delete v.grapple; }                       // another grapple still holds it
+    else { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
+  }
   return true;
 }
 // A creature's hold put on by a condition step with `escape` (docs/specs/grapple-shove.md, Decision 7): `e` is the grappler, `src` the
@@ -1414,10 +1422,15 @@ function hold(s, e, t, src, step, ev) {
 // only if `e` holds `t`, is tied to that hold (`grapple`), and ends with it (`endHold`). One `t` already has is left as it was.
 function heldCondition(s, e, t, step, f, ev) {
   if (!(t.cond.grappled?.holds ?? []).some((h) => h.by === e.id)) return;
-  const had = !!t.cond[step.condition];
+  const was = t.cond[step.condition];
+  if (was) {                                                                          // from another grapple: this one holds it too; from another source: untagged, left alone
+    const list = tiedTo(was);
+    if (list.length && !list.includes(e.id)) { was.grapples = [...list, e.id]; delete was.grapple; }
+    return;
+  }
   condition(s, t, step.condition, ev, f, step, undefined, true);
-  if (had || !t.cond[step.condition]) return;
-  t.cond[step.condition].grapple = e.id;
+  if (!t.cond[step.condition]) return;
+  t.cond[step.condition].grapples = [e.id];
   const also = CONTENT.conditions[step.condition]?.also;
   if (also) ev.push({ type: 'manual', actor: e.id, name: f.src.name, partial: true, text: `${t.name} is ${conditionName(step.condition)}. The engine applies what it can; the DM applies the rest: ${also}` });
 }
@@ -1442,9 +1455,13 @@ export function settleHolds(s, ev) {
       if (why === 'distance') holdNote(s, g, t, h, ev);
     }
     for (const [c, v] of Object.entries(t.cond ?? {})) {
-      if (typeof v?.grapple !== 'string' || (t.cond.grappled?.holds ?? []).some((h) => h.by === v.grapple)) continue;
+      const list = tiedTo(v);
+      if (!list.length) continue;
+      const live = list.filter((id) => (t.cond.grappled?.holds ?? []).some((h) => h.by === id));
+      if (live.length === list.length) continue;
+      if (live.length) { v.grapples = live; delete v.grapple; continue; }
       delete t.cond[c];
-      ev.push({ type: 'condEnd', id: t.id, cond: c, by: v.grapple, why: 'released' });
+      ev.push({ type: 'condEnd', id: t.id, cond: c, by: list[0], why: 'released' });
     }
   }
 }

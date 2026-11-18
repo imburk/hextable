@@ -2060,7 +2060,7 @@ export const monsters = [
                 largest: "large"
               },
               {
-                manual: "While Grappled the target cannot cast spells with a Verbal component and takes 2d6 Thunder damage at the start of each of the stalker's turns."
+                manual: "The target is one Large or smaller creature in the stalker's space. While Grappled the target cannot cast spells with a Verbal component and takes 2d6 Thunder damage at the start of each of the stalker's turns."
               }
             ]
           }

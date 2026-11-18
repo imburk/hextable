@@ -34,7 +34,7 @@ export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './e
 export { checkBonus, passive, rollMode } from './engine/rolls.js';
 export { makeEntity } from './engine/sheets.js';
 export { ENGAGE_RANGE } from './engine/movement.js';
-export { actionSpent, attacksLeft, fromPool } from './engine/attacks.js';
+export { actionSpent, attacksLeft, fromPool, partRefusal } from './engine/attacks.js';
 export { teleportSpot } from './engine/casting.js';
 export { HIDE_DC, hideProblem, itemUsesFor, scrollStats, usesFor } from './engine/features.js';
 export { SETTINGS, SETTING_TEXT } from './engine/dm.js';
