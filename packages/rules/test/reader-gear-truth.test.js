@@ -283,16 +283,16 @@ test('armour: training, the category on the table, and a Shield that is a mark o
     if (cat !== 'shield') assert.equal(rec(fighter({ armour: a.id })).armour, cat, `${a.id}: the wearer's armor category on the table`);
   }
   assert.equal(apply(newGame(3), { type: 'setSheet', sheet: wizard({ armour: 'hb-rk-barkplate' }) }, DM).ok, false);
-  // A Shield: +2 whatever the entry says; named as body armor it is refused; made an item's base it is +2 too.
+  // A Shield: `shield: true` is the SRD Shield, +2 whatever this entry says; named as body armor it is refused; made an item's base it is the entry's number (#454).
   const sh = AR['hb-rk-lantern-shield'];
   assert.equal(rec(fighter({ shield: true })).ac, rec(fighter()).ac + 2, 'a Shield adds 2, not the entry\'s number');
   assert.notEqual(sh.ac, 2);
-  assert.deepEqual(problems(fighter({ armour: sh.id }), /not armour/), ['"hb-rk-lantern-shield" is not armour in the equipment tables.']);
+  assert.deepEqual(problems(fighter({ armour: sh.id }), /not armour/), ['"hb-rk-lantern-shield" is a Shield, not armour: use the Shield field of the sheet.']);
   const item = { id: 'hb-t-buckler', name: 'Buckler Item', category: 'armor', rarity: 'common', wear: 'shield', base: { armour: [sh.id] }, tier: 'auto', source: 'homebrew:t', checked: false, text: 'x' };
-  lend('items', [item], () => assert.equal(rec(fighter({ items: [{ id: 'i1', item: item.id, equipped: true }] })).ac, rec(fighter()).ac + 2, 'a Shield item: +2'));
+  lend('items', [item], () => assert.equal(rec(fighter({ items: [{ id: 'i1', item: item.id, equipped: true }] })).ac, rec(fighter()).ac + sh.ac, 'a Shield item: its base entry\'s number (#454)'));
   const text = say('armour', sh);
-  assert.match(text, /Its Armor Class number is 3, and the engine never reads it/);
-  assert.ok(readEntry('armour', sh).doesNot.length === 1);
+  assert.match(text, /It adds 3 Armor Class to a wearer trained with Shields, when the sheet names it in its Shield field/);
+  assert.ok(readEntry('armour', sh).doesNot.length === 0);
   assert.ok(!say('armour', AR['hb-rk-barkplate']).includes('never reads it'));
 }));
 
