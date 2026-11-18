@@ -110,6 +110,7 @@ export const SAMPLES = {
   cunning: { max: 2, options: [{ id: 'trip', name: 'Trip', cost: 1, effects: [{ condition: 'prone' }] }] }, attune: 4, empowered: { school: 'evocation', list: 'wizard', ability: 'int' },
   overchannel: { list: 'wizard', maxSlot: 5, die: 12 }, afterHit: { modifier: { on: 'attack.roll', op: 'disadvantage' } }, markSpread: { spell: 'hunters-mark', range: 30 }, steadfast: { spell: 'hunters-mark' },
   restExhaustion: 'short', spellRange: { spell: 'eldritch-blast', perLevel: 5 }, repel: { spell: 'eldritch-blast', feet: 10 },
+  forgoAttack: { spell: 'find-familiar' }, invest: { spell: 'find-familiar', speed: { feet: 40, of: ['fly', 'swim'] }, damage: { from: ['piercing'], to: ['radiant'] }, saveDc: true, bonusAttack: true, ward: true },
 };
 const featWith = (k, v) => ({ ...base('t', 'T', 'assist', 'x'), category: 'general', grants: { [k]: structuredClone(v) } });
 test('each grants key: a sample the feat linter takes, read with words, no problem; an item refuses exactly the class-only keys', () => {
