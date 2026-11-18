@@ -18,6 +18,8 @@ import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { isPile, openContents, ownerOf, pileOpen } from './engine.js';
+import { CONTENT } from './content/index.js';
+import { isHomebrew } from './summons.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -66,6 +68,58 @@ function seenRecord(e, state) {
     ...(e.remains ? { remains: e.remains } : {}),                                    // a frozen statue or dust where it fell is plain to see
     ...(state ? rideSeen(state, e) : {}),
   };
+}
+
+// ---------- a homebrew creature's block is its controller's alone (#457; docs/specs/homebrew.md) ----------
+// The party sees as one, so every creature of the party is sent whole to every player. That is right for a creature of the standard
+// rules, whose block every player may read. A homebrew monster's block is never sent to a player who does not run it: a player is sent
+// the whole record of a homebrew creature (a summon, a familiar, a character in a homebrew Wild Shape form) only if the creature is theirs.
+// For every other player it is what a foe they can see is: `seenRecord`.
+
+// Does this creature carry a homebrew monster's block: made from one (`tpl`) or in the form of one (`form.block`)? Homebrew entries are told
+// by their id (the strict linter requires `hb-`) and, where a table's packs are lent, by their `source`.
+const hbId = (id) => typeof id === 'string' && (id.startsWith('hb-') || isHomebrew(CONTENT.monsters[id]));
+export const homebrewBlock = (e) => !!e && (hbId(e.tpl) || hbId(typeof e.form === 'string' ? e.form : e.form?.block));
+
+// Is this creature the viewer's to run: its player's own (`owner`), or a companion of a creature that is (a bond's master, followed up
+// the chain; the engine allows one level and a few more are looked at). The master's player runs it also on a turn a commanded creature
+// is the DM's (`ownerOf`), so what a player is sent does not change with the turn.
+export function controlledBy(state, e, userId, depth = 0) {
+  if (!e || typeof userId !== 'string' || !userId) return false;
+  if (e.owner === userId || ownerOf(state, e) === userId) return true;
+  const to = e.bond?.to;
+  return depth < 4 && typeof to === 'string' && Object.hasOwn(state.entities, to) && controlledBy(state, state.entities[to], userId, depth + 1);
+}
+
+// A shared player's view `base` (`playerView(state)`, the same for every player) made this viewer's: every creature of the party that
+// carries a homebrew block and is not theirs is its `seenRecord` (its `side` kept), is left out of its master's pocket dimension, and
+// shows no initiative, Dexterity or turn budget in the fight (a budget's `move` is its Speed). The DM's is the state itself. Returns
+// `base` itself when nothing changes, which is every game with no homebrew creature in the party. Pure; `base` is not changed.
+export function forViewer(base, state, viewer) {
+  if (isDM(viewer)) return base;
+  const uid = viewer?.userId, hide = new Set();
+  let replaced = null;
+  const put = (id, rec) => { (replaced ??= { ...base.entities })[id] = rec; };
+  for (const [id, e] of Object.entries(state.entities)) {
+    if (e.side !== 'party' || !base.entities[id]) continue;
+    if (homebrewBlock(e) && !controlledBy(state, e, uid)) { hide.add(id); put(id, seenRecord(e, state)); }
+    else if (e.pocket && typeof e.pocket === 'object') {
+      // A familiar in its master's pocket dimension is in the master's record: not a homebrew one, to a player it is not theirs.
+      const keep = Object.entries(e.pocket).filter(([, c]) => !(homebrewBlock(c) && !controlledBy(state, c, uid)));
+      if (keep.length !== Object.keys(e.pocket).length) {
+        const rec = structuredClone(base.entities[id]);
+        rec.pocket = Object.fromEntries(keep.map(([k, c]) => [k, rec.pocket[k]]));
+        put(id, rec);
+      }
+    }
+  }
+  if (!replaced) return base;
+  const out = { ...base, entities: replaced }, enc = base.encounter;
+  if (enc && hide.size) {
+    const active = state.encounter?.order[state.encounter.turn]?.id;
+    out.encounter = { ...enc, order: enc.order.map((o) => (hide.has(o.id) ? { id: o.id } : o)), ...(hide.has(active) ? { budget: { move: 0, action: 0, bonus: 0 } } : {}) };
+  }
+  return out;
 }
 
 // A creature the party cannot see takes its turn. Under the table rule `unseenTurns: 'say'` (the
@@ -142,7 +196,7 @@ const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...playerView(state), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
+  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
 }
 
 // An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
@@ -443,7 +497,14 @@ export function viewEvents(events, state, viewer) {
     const g = events.find((e) => GONE.includes(e?.type) && e.id === id);
     return g?.name ? [g.name] : [];
   };
-  const cls = (id) => (was?.includes(id) ? 'hidden' : gone.get(id) ?? classify(state, id));
+  // A creature of the party that carries a homebrew block and is not this viewer's is told as a foe they can see (forViewer): none of the
+  // numbers an event gives about "one of ours" (a roll's dice, a save's DC, a check, what a hand-applied action says) go to them.
+  const cls = (id) => {
+    if (was?.includes(id)) return 'hidden';
+    if (gone.has(id)) return gone.get(id);
+    const c = classify(state, id), e = state.entities[id];
+    return c === 'open' && e && e.side === 'party' && homebrewBlock(e) && !controlledBy(state, e, viewer?.userId) ? 'seen' : c;
+  };
   // A copy of an order entry or a `joined` of one of theirs, with `after` only where its master is theirs too.
   const afterOpen = (o) => { const { after, before, ...rest } = o; return { ...rest, ...tiedOpen({ after, before }, (id) => cls(id) === 'open') }; };
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
