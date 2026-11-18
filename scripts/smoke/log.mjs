@@ -118,8 +118,9 @@ async function table(browser, url) {
       });
       await run.do('fifty more entries push the fight out of what a reload is sent', async () => {
         const c0 = await state(host, (S) => S.clock);
-        await host.evaluate(async () => { for (let i = 0; i < 60; i++) { window.hextable.act({ type: 'advanceTime', minutes: 1 }); await new Promise((r) => setTimeout(r, 60)); } });
-        await wait(host, (c) => window.hextable.state.clock >= c + 60, c0, 30000);
+        // The server lets one connection sustain 5 messages a second (20 at once): 4 a second stays under it on a fast machine too.
+        await host.evaluate(async () => { for (let i = 0; i < 60; i++) { window.hextable.act({ type: 'advanceTime', minutes: 1 }); await new Promise((r) => setTimeout(r, 250)); } });
+        await wait(host, (c) => window.hextable.state.clock >= c + 60, c0, 45000);
         await calm(host); await calm(phone);
       });
       await run.do('the phone reloads: the fight is still one collapsed entry; opening it asks for its rounds', async () => {
