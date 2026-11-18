@@ -81,12 +81,12 @@ function seenRecord(e, state) {
 const hbId = (id) => typeof id === 'string' && (id.startsWith('hb-') || isHomebrew(CONTENT.monsters[id]));
 export const homebrewBlock = (e) => !!e && (hbId(e.tpl) || hbId(typeof e.form === 'string' ? e.form : e.form?.block));
 
-// Is this creature the viewer's to run: its player's own (`owner`), or a companion of a creature that is (a bond's master, followed up
-// the chain; the engine allows one level and a few more are looked at). The master's player runs it also on a turn a commanded creature
-// is the DM's (`ownerOf`), so what a player is sent does not change with the turn.
+// Is this creature the viewer's to run: its player's own (`ownerOf`), or a companion of a creature that is (a bond's master, followed up
+// the chain; the engine allows one level and a few more are looked at). The master's player is followed up the bond as well as `ownerOf` goes, because
+// a commanded creature is the DM's on a turn its master did not command it, and what a player is sent must not change with the turn.
 export function controlledBy(state, e, userId, depth = 0) {
   if (!e || typeof userId !== 'string' || !userId) return false;
-  if (e.owner === userId || ownerOf(state, e) === userId) return true;
+  if (ownerOf(state, e) === userId) return true;
   const to = e.bond?.to;
   return depth < 4 && typeof to === 'string' && Object.hasOwn(state.entities, to) && controlledBy(state, state.entities[to], userId, depth + 1);
 }

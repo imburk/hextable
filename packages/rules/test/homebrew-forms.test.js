@@ -7,7 +7,7 @@ import { loadPack, overlayOf, using } from "../src/content/registry.js";
 import { apply, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
-import { forViewer, playerView, view, viewEvents } from "../src/view.js";
+import { controlledBy, forViewer, homebrewBlock, playerView, view, viewEvents } from "../src/view.js";
 import { spellProfile } from "../src/effects.js";
 import { isHomebrew } from "../src/summons.js";
 
@@ -125,6 +125,28 @@ test("what a homebrew familiar does is told to its controller as ever and to ano
     assert.equal(theirs[0].dc, undefined, "nor the DC of a save, nor what it rolled");
     assert.equal(theirs[0].total, undefined);
     assert.equal(viewEvents(structuredClone(evs), s, DM).length, 3);
+  });
+});
+
+test("controlledBy and homebrewBlock: the master's player runs its companion even on a turn the DM does, and only an id of a homebrew monster counts", () => {
+  const ov = OV(), s = wizardTable(), at = spot(s);
+  using(ov, () => {
+    const f = familiarOf(s, ok(cast(s, OWLET, at)));
+    assert.equal(controlledBy(s, f, "pat"), true);
+    assert.equal(controlledBy(s, f, "bo"), false);
+    assert.equal(controlledBy(s, f, undefined), false);
+    assert.equal(controlledBy(s, null, "pat"), false);
+    // A commanded creature is the DM's on a turn its master did not command it (ownerOf is null); its master's player still is sent it whole.
+    f.bond.orders = "command";
+    ok(apply(s, { type: "startEncounter", center: at }, DM));
+    assert.equal(controlledBy(s, f, "pat"), true);
+    assert.ok(isOpen(view(s, PAT).entities[f.id]) && isSeenOnly(view(s, BO).entities[f.id]));
+    assert.equal(homebrewBlock(f), true);
+    assert.equal(homebrewBlock(s.entities.wizard), false);
+    assert.equal(homebrewBlock({ tpl: "owl" }), false);
+    assert.equal(homebrewBlock({ tpl: "wolf", form: { block: WOLFLING } }), true);
+    assert.equal(homebrewBlock({ tpl: "wolf", form: { block: "wolf" } }), false);
+    assert.equal(homebrewBlock(undefined), false);
   });
 });
 
