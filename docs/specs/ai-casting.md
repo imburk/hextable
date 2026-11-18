@@ -178,9 +178,11 @@ spell's place in `e.spells`, then the target order. So the same state gives the 
 
 ### Decision 5: the order of a turn, and the slots
 
-`aiStep` calls `casterStep(k, e, foes)` for a creature that qualifies (Decision 1) when its action or Bonus Action
-is still unspent and it is not in the middle of an Attack action (`budget.attacks`); otherwise, and whenever
-`casterStep` returns null, `withAttacks` plays on as now. Each call returns one action, as every AI step does.
+`withAttacks` calls `casterStep(s, e, foes, lim)` first, for a creature that qualifies (Decision 1), when its
+action or Bonus Action is still unspent and it is not in the middle of an Attack action (`budget.attacks`);
+otherwise, and whenever `casterStep` returns null, `withAttacks` plays on as now. Being inside `withAttacks`, it is
+reached both from `aiStep` (with the party's copy of Decision 2) and from the companion brain's `free` mode (with
+`lim.noAttack`). Each call returns one action, as every AI step does.
 
 **Free and paid.** A cantrip and a weapon attack are free. A levelled spell spends a slot, and slots come back
 only with rests, so a player who comes back should not find them thrown away on one goblin.
