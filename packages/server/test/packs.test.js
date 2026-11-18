@@ -904,6 +904,7 @@ test("a homebrew party creature's lasting condition on another player's hero: it
   bo.say({ t: "sync" }); pat.say({ t: "sync" });
   assert.equal(bo.raw.slice(before[2]).join("\n").includes(DCS), false, "nor in the state, in the effects of the table");
   assert.ok(pat.raw.slice(before[1]).join("\n").includes(DCS));
+  delete t.state.entities.wizard.tpl;     // its block is gone by the time of the repeated save (a form that ended): the effect remembers who ran it
   to("rogue");
   const mid = [pat, bo].map((c) => c.raw.length);
   dm.say({ t: "act", action: { type: "endTurn", actor: "rogue" } });

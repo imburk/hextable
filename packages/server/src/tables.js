@@ -174,7 +174,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const snapFor = (t, m, state) => {
     if (m.role === "dm") return snapshot(state);
     const { snap, base } = forPlayers(t);
-    if (state.entities !== base.entities || state.encounter !== base.encounter) return snapshot(state);
+    if (state.entities !== base.entities || state.encounter !== base.encounter || state.effects !== base.effects) return snapshot(state);
     return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt) } };
   };
   const eventsFor = (t, m, events) => engine.viewEvents(t, events, t.state, { role: m.role, userId: m.id });

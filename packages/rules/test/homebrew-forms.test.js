@@ -272,7 +272,7 @@ function fight(homebrew) {
   ok(apply(s, { type: "claim", entity: "wizard", user: "pat", userName: "Pat" }, PAT));
   ok(apply(s, { type: "claim", entity: "fighter", user: "bo", userName: "Bo" }, BOP));
   if (homebrew) Object.assign(s.entities.wizard, { tpl: "hb-ember-folk-mage", abil: { ...s.entities.wizard.abil, int: 30 } });
-  s.entities.wizard.spells.push("moonbeam", "hold-person");
+  s.entities.wizard.spells.push("moonbeam", "hold-person", "blindness-deafness");
   s.entities.wizard.slots = { 1: 4, 2: 4, 3: 4 }; s.entities.wizard.slotsMax = { 1: 4, 2: 4, 3: 4 };
   s.entities.fighter.abil.wis = 1;    // a fighter that fails its saves, whatever the dice
   s.entities.wizard.pos = { q: 1, r: 0, z: 0 }; s.entities.fighter.pos = { q: 3, r: -1, z: 0 };
@@ -281,7 +281,7 @@ function fight(homebrew) {
 }
 const turnTo = (s, id) => { s.encounter.turn = s.encounter.order.findIndex((o) => o.id === id); assert.equal(current(s), id); };
 // The turns pass as they do in play (a turn's own budget is spent and renewed), as far as the one that is named.
-const passTo = (s, id) => { for (let i = 0; i < 12 && current(s) !== id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); assert.equal(current(s), id); };
+const passTo = (s, id) => { for (let i = 0; i < 12 && current(s) !== id; i++) { const r = apply(s, { type: "endTurn", actor: current(s) }, DM); assert.ok(r.ok, `${current(s)} ${r.error}`); } assert.equal(current(s), id); };
 const dcsIn = (evs) => evs.filter((e) => e.type === "save").map((e) => e.dc).filter((d) => d !== undefined);
 const told = (evs, s, v, dc) => sees(viewEvents(structuredClone(evs), s, v), `"dc":${dc}`);
 
@@ -349,6 +349,105 @@ test("an SRD creature's cast and lasting effect keep showing their DC to the par
   const end = ok(apply(s, { type: "endTurn", actor: "fighter" }, BOP));
   assert.equal(end.events.some((e) => "src" in e || "hb" in e), false);
   assert.ok(told(end.events, s, BOP, dc), "the repeated save keeps its DC, as before");
+});
+
+// ---------- an effect that outlives the block of the creature that made it (DEBT T68; round 4 of #461) ----------
+const fxOf = (s, name) => s.effects.find((x) => x.name === name);
+const noDcIn = (fx) => fx.parts.every((p) => p.dc === undefined && p.ends?.dc === undefined);
+
+test("a lasting condition made by a homebrew creature remembers it (`hbSrc`); a creature of the SRD leaves none; players are never sent it", () => {
+  const s = fight(true);
+  turnTo(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "blindness-deafness", slot: 2, target: "fighter" }, PAT));
+  const fx = fxOf(s, "Blindness/Deafness");
+  assert.deepEqual(fx.hbSrc, { id: "wizard", by: "pat" });
+  assert.equal(JSON.stringify(view(s, BOP).effects).includes("hbSrc"), false);
+  assert.equal(JSON.stringify(view(s, PAT).effects).includes("hbSrc"), false);
+  const plain = fight(false);
+  turnTo(plain, "wizard");
+  ok(apply(plain, { type: "cast", actor: "wizard", spell: "blindness-deafness", slot: 2, target: "fighter" }, PAT));
+  assert.equal("hbSrc" in fxOf(plain, "Blindness/Deafness"), false);
+});
+
+test("the creature has since lost the block (its form ended): the repeated save still names it and is told as its runner's, live, in the record and in the effects", () => {
+  const s = fight(true);
+  s.entities.fighter.abil.con = 1;
+  turnTo(s, "wizard");
+  const cast1 = ok(apply(s, { type: "cast", actor: "wizard", spell: "blindness-deafness", slot: 2, target: "fighter" }, PAT));
+  const dc = dcsIn(cast1.events)[0];
+  assert.ok(Number.isInteger(dc) && dc >= 19, JSON.stringify(cast1.events.map((e) => [e.type, e.dc])));
+  assert.equal(told(cast1.events, s, BOP, dc), false);
+  delete s.entities.wizard.tpl;                                           // it is no longer a creature that carries a homebrew block
+  assert.equal(homebrewBlock(s.entities.wizard), false);
+  assert.ok(view(s, PAT).effects.flatMap((f) => f.parts).some((p) => p.dc === dc || p.ends?.dc === dc), "its runner has the DC in the effects");
+  const bo = view(s, BOP).effects.find((f) => f.name === "Blindness/Deafness");
+  assert.ok(bo && noDcIn(bo), "another player's effects do not");
+  passTo(s, "fighter");
+  const end = ok(apply(s, { type: "endTurn", actor: "fighter" }, BOP));
+  const again = end.events.filter((e) => e.type === "save");
+  assert.ok(again.length > 0 && again.every((e) => e.dc === dc && e.src === "wizard"), JSON.stringify(again));
+  assert.equal(told(end.events, s, BOP, dc), false, "live, another player");
+  assert.equal(told(end.events, s, PAT, dc), true, "live, its runner");
+  const tl = record(s);
+  assert.equal(sees(viewEvents(tl, s, BOP), `"dc":${dc}`), false, "in the record");
+  assert.equal(sees(viewEvents(tl, s, PAT), `"dc":${dc}`), true);
+  // What else names the creature that lost the block is still told as before: the stamp is for that save alone.
+  const other = viewEvents(tl, s, BOP).filter((e) => e.type === "cast");
+  assert.ok(other.length > 0);
+});
+
+test("the creature is removed: what it made ends with it, and a state that kept it anyway still hides its DC (the effects remember who ran it)", () => {
+  // The engine ends a creature's effects as it leaves (remove, pocket): no save follows.
+  const a = fight(true);
+  a.entities.fighter.abil.con = 1;
+  turnTo(a, "wizard");
+  ok(apply(a, { type: "cast", actor: "wizard", spell: "blindness-deafness", slot: 2, target: "fighter" }, PAT));
+  ok(apply(a, { type: "endEncounter" }, DM));
+  ok(apply(a, { type: "remove", actor: "wizard" }, DM));
+  assert.equal(fxOf(a, "Blindness/Deafness"), undefined, "the effect went with it");
+  assert.equal(JSON.stringify(view(a, BOP).effects).includes('"dc"'), false);
+  // A state in which one is left behind anyway (an old table, a hand-edited one): the effects say who ran it, so no other player is sent its DC.
+  const s = fight(true);
+  s.entities.fighter.abil.con = 1;
+  turnTo(s, "wizard");
+  const cast1 = ok(apply(s, { type: "cast", actor: "wizard", spell: "blindness-deafness", slot: 2, target: "fighter" }, PAT));
+  const dc = dcsIn(cast1.events)[0];
+  s.encounter.order = s.encounter.order.filter((o) => o.id !== "wizard"); s.encounter.turn = s.encounter.order.findIndex((o) => o.id === "m2");
+  delete s.entities.wizard;
+  assert.deepEqual(fxOf(s, "Blindness/Deafness").hbSrc, { id: "wizard", by: "pat" });
+  const bo = view(s, BOP).effects.find((f) => f.name === "Blindness/Deafness");
+  assert.ok(bo && noDcIn(bo), "its DC is not sent to another player");
+  passTo(s, "fighter");
+  const end = ok(apply(s, { type: "endTurn", actor: "fighter" }, BOP));
+  const again = end.events.filter((e) => e.type === "save");
+  assert.ok(again.length > 0 && again.every((e) => e.src === "wizard" && e.hb?.wizard === "pat"), JSON.stringify(again));
+  assert.equal(told(end.events, s, BOP, dc), false);
+  assert.equal(told(end.events, s, PAT, dc), true);
+  const tl = record(s);
+  assert.equal(sees(viewEvents(tl, s, BOP), `"dc":${dc}`), false);
+  assert.equal(sees(viewEvents(tl, s, PAT), `"dc":${dc}`), true);
+});
+
+test("a zone whose caster has lost the block (its form ended): its saves still name it and are told as its runner's", () => {
+  const s = fight(true);
+  s.entities.m1.hp = s.entities.m1.maxHp = 500;
+  turnTo(s, "wizard");
+  const cast1 = ok(apply(s, { type: "cast", actor: "wizard", spell: "moonbeam", slot: 2, hex: s.entities.m1.pos }, PAT));
+  const zone = s.effects.find((x) => x.zone);
+  assert.deepEqual(zone.hbSrc, { id: "wizard", by: "pat" });
+  delete s.entities.wizard.tpl;                                          // it carries no homebrew block now
+  passTo(s, "m1");
+  const end = ok(apply(s, { type: "endTurn", actor: "m1" }, DM));
+  const zoned = end.events.filter((e) => e.type === "save" && e.id === "m1");
+  assert.ok(zoned.length > 0, JSON.stringify(end.events.map((e) => e.type)));
+  const dc = zoned[0].dc;
+  assert.ok(Number.isInteger(dc) && dc >= 19 && zoned.every((e) => e.src === "wizard"), JSON.stringify(zoned));
+  assert.equal(told(end.events, s, BOP, dc), false, "live, another player");
+  assert.equal(told(end.events, s, PAT, dc), true, "live, its runner");
+  const tl = record(s);
+  assert.equal(sees(viewEvents(tl, s, BOP), `"dc":${dc}`), false, "in the record");
+  assert.equal(sees(viewEvents(tl, s, PAT), `"dc":${dc}`), true);
+  void cast1;
 });
 
 test("a start of fight too large to be read through is stamped with every homebrew creature there is", () => {

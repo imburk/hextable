@@ -75,6 +75,15 @@ export function homebrewCreatures(s) {
   return out;
 }
 
+// The creatures whose lasting effects remember them (`hbSrc`, durations.js startEffect), with who ran each then: Map { id -> user id | null },
+// or null when there is none. The saves of such an effect name their creature (`src`) and are stamped from this, whether it is still on the
+// map or still carries the block, or not.
+export function homebrewSources(s) {
+  let out = null;
+  for (const fx of s.effects ?? []) if (fx.hbSrc && typeof fx.hbSrc.id === 'string') (out ??= new Map()).set(fx.hbSrc.id, fx.hbSrc.by ?? null);
+  return out;
+}
+
 // Is this its turn, and did its master command it for this turn? (A2.) `commanded.turn` is the turn the command was
 // taken up for, set at the start of the creature's first turn after the command (resolve.js, takeCommand).
 export const commandedNow = (s, e) => {

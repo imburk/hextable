@@ -119,7 +119,13 @@ export function forViewer(base, state, viewer) {
   // A lasting effect whose source is a homebrew creature that is not the viewer's: the Difficulty Class it carries is a number of that
   // creature's block (a repeated save, a condition's end), and is not sent, on a target of the party or any other.
   const noDc = (fx) => fx.parts.some((q) => q.dc !== undefined || q.ends?.dc !== undefined);
-  const theirDc = (fx) => { const src = state.entities[(state.effects ?? []).find((x) => x.id === fx.id)?.source]; return !!src && homebrewBlock(src) && !controlledBy(state, src, uid) && noDc(fx); };
+  // An effect of a homebrew creature the viewer does not run: by the creature as it is now if it still carries the block, else by what the effect
+  // remembered of it (`hbSrc`: who ran it then), which holds when the creature has left the map or its form has ended.
+  const theirDc = (fx) => {
+    const raw = (state.effects ?? []).find((x) => x.id === fx.id), src = state.entities[raw?.source];
+    const theirs = src && homebrewBlock(src) ? !controlledBy(state, src, uid) : !!raw?.hbSrc && raw.hbSrc.by !== uid;
+    return theirs && noDc(fx);
+  };
   const dcless = (fx) => ({ ...fx, parts: fx.parts.map((q) => { const { dc, ...p } = q; if (p.ends && p.ends.dc !== undefined) { const { dc: d2, ...ends } = p.ends; p.ends = ends; } return p; }) });
   const stripDc = base.effects?.some(theirDc);
   if (!replaced && !stripDc) return base;

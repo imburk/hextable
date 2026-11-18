@@ -10,7 +10,7 @@ import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
 import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
-import { control, controllerOf, current, fail, homebrewBlock, homebrewCreatures, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
+import { control, controllerOf, current, fail, homebrewBlock, homebrewCreatures, homebrewSources, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, settleBonds } from './engine/resolve.js';
@@ -186,11 +186,11 @@ function thaw(s, snap) {
 // Hold `s` itself and read through it each time. (The solo transport keeps only `state`; the server only `table.state`: neither holds more.)
 // The homebrew creatures as the action found them, for `record`: one that leaves the state during the action (a summon that
 // goes down, a form that ends) is named by events of the same action, and is no longer there to be asked afterwards.
-let BEFORE = null;
+let BEFORE = null, BEFORE_SRC = null;
 export function apply(s, action, ctx = { role: 'dm' }) {
-  const outer = BEFORE;
-  BEFORE = homebrewCreatures(s);
-  try { return applyInner(s, action, ctx); } finally { BEFORE = outer; stopWork(); }
+  const outer = BEFORE, outerSrc = BEFORE_SRC;
+  BEFORE = homebrewCreatures(s); BEFORE_SRC = homebrewSources(s);
+  try { return applyInner(s, action, ctx); } finally { BEFORE = outer; BEFORE_SRC = outerSrc; stopWork(); }
 }
 function applyInner(s, action, ctx) {
   let ev = [];
@@ -296,9 +296,11 @@ function overWork(s, snap, err, ev, action, was) {
 // never by the creature as it is later, when it may be gone or out of its form (view.js, viewEvents; #457). An event with no stamp names
 // no such creature: a game could not have one before #457. The stamp is never sent to a player.
 function stampHomebrew(s, ev) {
-  const now = homebrewCreatures(s);
-  if (!now && !BEFORE) return;
+  const now = homebrewCreatures(s), fromFx = homebrewSources(s);
+  if (!now && !BEFORE && !fromFx && !BEFORE_SRC) return;
   const who = new Map([...(BEFORE ?? []), ...(now ?? [])]);
+  // The source of a lasting effect, as found before the action or after it (the effect may have ended in it).
+  const sources = new Map([...(BEFORE_SRC ?? []), ...(fromFx ?? [])]);
   for (const e of ev) {
     const hb = {}, stack = [e];
     let n = 0;
@@ -311,6 +313,9 @@ function stampHomebrew(s, ev) {
     // An event too large to be read through (a start of fight with hundreds in the order) is stamped with every such creature there is:
     // the safe side, since a stamp only ever makes an event less told.
     if (stack.length) for (const [id, who1] of who) hb[id] = who1;
+    // A save of such an effect names its source (`src`), which may be on the map and no longer carry the block, or gone: stamped for that
+    // event alone, as the one who ran it then, so that the rest of what names a creature that lost the block stays as it was told.
+    if (e.type === 'save' && typeof e.src === 'string' && hb[e.src] === undefined && sources.has(e.src)) hb[e.src] = sources.get(e.src);
     if (Object.keys(hb).length) e.hb = hb;
   }
 }

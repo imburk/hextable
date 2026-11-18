@@ -21,7 +21,8 @@
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { has, incapacitated } from './modifiers.js';
 import { leaveForm } from './forms.js';
-import { srcOf } from './homebrew.js';
+import { homebrewBlock, srcOf } from './homebrew.js';
+import { controllerOf } from './engine/shared.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
 const EPS = 1e-6;                         // rounds are added as 0.1, which does not sum exactly
@@ -46,6 +47,9 @@ export function startEffect(s, { name, spell, source, conc, duration }) {
       : inFight(s, source) ? { enc: s.encounter.id, round: s.encounter.round + Math.round(minutes / ROUND) }
       : { clock: s.clock + minutes },
   };
+  // Made by a creature that carries a homebrew block: it is remembered, and who ran the creature then (null: the DM), so that the effect's
+  // saves, and what is sent of it, stay told as the creature's even when it has left the map or lost the block (view.js, homebrew.js).
+  if (homebrewBlock(s.entities[source])) fx.hbSrc = { id: source, by: controllerOf(s, s.entities[source]) };
   effectsOf(s).push(fx);
   return fx;
 }
@@ -138,7 +142,7 @@ function boundary(s, ev, e, kit, when) {
       if (p.ends.on === when && whose(fx, p) === e.id && !(when === 'turnEnd' && thisTurn(s, p.born))) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === when && p.target === e.id) {
         const { used, ...sv } = kit.savingThrow(s, e, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
-        ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source) });
+        ev.push({ type: 'save', id: e.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) });
         useUp(s, ev, used ?? []);
         if (sv.success) endPart(s, ev, fx, p);
       }
@@ -173,7 +177,7 @@ export function damaged(s, ev, t, by = null, kit = null) {
       if ((p.ends.on === 'damaged' || p.ends.orDamaged) && (p.ends.by !== 'source' || (by !== null && side(by) !== undefined && side(by) === side(fx.source)))) endPart(s, ev, fx, p);
       else if (p.ends.on === 'save' && p.ends.at === 'damaged' && kit && !t.dead) {
         const { used, ...sv } = kit.savingThrow(s, t, p.ends.save, p.dc, null, null, null, null, null, p.cond ? [p.cond] : null);
-        ev.push({ type: 'save', id: t.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source) });
+        ev.push({ type: 'save', id: t.id, abil: p.ends.save, dc: p.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) });
         useUp(s, ev, used ?? []);
         if (sv.success) endPart(s, ev, fx, p);
       }
