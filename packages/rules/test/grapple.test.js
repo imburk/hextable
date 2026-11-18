@@ -179,14 +179,14 @@ test("the held creature taken 30 ft away ends the hold (distance); within the ra
   assert.ok(t.entities[t.foe].cond.grappled, "still beside the grappler");
 });
 
-test("until dragging is built (G3), a creature that holds another is refused move and Dash, and may move once it lets go (M3)", () => {
+test("a creature that holds another may move and Dash: it drags what it holds (G3 removes G2's refusal; the drag is in grapple-drag.test.js)", () => {
   const s = field(fighter(STR16));
   ok(grapple(s));
-  const name = s.entities[s.foe].name;
-  refused(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, new RegExp(`Fi is holding ${name}\\. Dragging is not in the game yet: let go first\\.`));
-  refused(s, { type: "dash", actor: "hero" }, /Dragging is not in the game yet/);
-  ok(apply(s, { type: "letGo", actor: "hero", target: s.foe }, DM));
+  ok(apply(s, { type: "feature", actor: "hero", feature: "action-surge" }, DM));
+  ok(apply(s, { type: "dash", actor: "hero" }, DM));
   ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, DM));
+  assert.ok(s.entities[s.foe].cond.grappled, "still held");
+  assert.ok(s.entities[s.foe].pos.q <= -1, "dragged along");
 });
 
 test("a follower that holds a creature stays where it is when the column walks, and its hold does not end (M3)", () => {

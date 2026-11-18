@@ -203,7 +203,7 @@ function ending(s, step, f, ev, t) {
 // a lasting effect the condition is tied to it and ends when it does; otherwise only the DM
 // (or standing up, for Prone) ends it, and the DM is told so.
 // `ended`: a grapple's hold (`grip`): the engine ends it and runs what `also` hands the DM for a Grappled condition with no hold
-// (the Disadvantage is a modifier for a hold; a holder may not walk until dragging is built), so the DM is told neither.
+// (the Disadvantage is a modifier for a hold; a holder drags what it holds when it walks, movement.js), so the DM is told neither.
 export function condition(s, t, id, ev, f = null, step = null, level = undefined, ended = false) {
   if (!up(t) || t.cond[id]) return;
   if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });

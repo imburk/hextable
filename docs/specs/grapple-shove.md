@@ -207,18 +207,19 @@ release is also how a creature lets go to free a hand.
 
 `move` needs no new field. When the mover holds creatures:
 
-- **Cost.** Every step of the route costs `1 + n` times its cost, where `n` counts the held creatures that are
-  not exempt: a held creature is exempt when it is Tiny, or two or more sizes smaller than the grappler (33428), or
-  the grappler's size or smaller and the grappler has the Grappler feat (Fast Wrestler), or the grappler has the
-  trait `dragFree` (the bugbears' Abduct). `moveOptions` in `engine/world.js` takes the factor, so the move preview,
-  the AI and the "Too far" message all see the same cost. One extra foot for each creature dragged is a reading of
-  "every foot of movement costs it 1 extra foot" for each condition (question Q3).
+- **Cost.** Every foot of a step costs `n` extra feet, added to the step's own cost (so level ground costs `1 + n` ft a foot and Difficult
+  Terrain `2 + n`), where `n` counts the held creatures that are not exempt: a held creature is exempt when it is Tiny, or two or more
+  sizes smaller than the grappler (33428), or the grappler's size or smaller and the grappler has the Grappler feat (Fast Wrestler), or the
+  grappler has the trait `dragFree` (the bugbears' Abduct). The extras add because the SRD adds them ("1 extra foot (2 extra feet in
+  Difficult Terrain)", Crawling and Climbing, 32967). `moveOptions` in `engine/world.js` takes the cost, so the move preview, the AI and
+  the "Too far" message all see the same number. One extra foot for each creature dragged is a reading of "every foot of movement costs it
+  1 extra foot" for each condition (question Q3).
 - **The drag.** After each step of the grappler, each held creature now beyond its hold's range is pulled toward
   the grappler with `push(s, t, feet, 'toward', e.pos, ev)` until it is back in range. It is moved without its own
   movement, so it provokes no Opportunity Attack (2088-2090); a zone it is pulled into goes off, as for any push.
-  If the pull cannot bring it back into range (a wall, a door, a creature, a drop), the grappler's step is undone
-  and the walk stops there: "Brenna can't drag the goblin any further." The hold is never ended by a move the
-  grappler chose.
+  If the pull cannot bring it back into range (a wall, a door, a creature, a drop), the grappler's step is not taken
+  (it is asked before anything of the step happens) and the walk stops there: "Brenna can't drag the goblin any further."
+  The hold is never ended by a move the grappler chose.
 - **Off the ground.** A grappler whose route leaves the ground (flying or climbing) while it holds a creature is
   refused: "The engine drags along the ground only. Release the goblin first, or the DM moves both." (question Q6)
 - **Walking together.** A creature that holds another does not follow a leader or keep a marching place; `march`
@@ -476,3 +477,45 @@ Fix round 1 of #468 (decided by the coordinator):
   carrying a holder) gets the "does not drag yet" note.
 - `shield` and `equip` refuse to take up a Shield when both hands hold creatures.
 - `describeStep` labels an Unarmed Strike by its option: "grappled", "shoved".
+
+**G3 (Dragging), #473.** Built to Decision 6 and the default of Q6. G2's refusal of `move` and `dash` for a holder is gone (the
+"Until G3" note above is superseded). What the build settled:
+
+- **The cost.** `moveOptions(s, e)` (`engine/world.js`) adds one foot a foot for each held creature that is not exempt (`dragExtra`: Tiny,
+  two or more sizes smaller than the grappler, or, with the Grappler feat's Fast Wrestler, the grappler's size or smaller). It is
+  *added* to the step's own cost, not multiplied by it, as the SRD adds such extras ("1 extra foot (2 extra feet in Difficult Terrain)",
+  Crawling and Climbing): with one held creature, level ground costs 10 ft a step and Difficult Terrain 15 ft. Decision 6 said "`1 + n`
+  times its cost" until fix round 1 of #474 amended it to this; they differ only on Difficult Terrain. The trait `dragFree` (Abduct) is not read: the schema key comes with G4.
+- **Who counts as dragging.** The creatures the mover holds, and those held by the rider its mount carries (`draggedBy`): the mount
+  pays the cost and the pull is toward the rider.
+- **Ground only.** A mover that drags is offered the ground only by `moveOptions` (no flying, climbing or ladder steps; a third
+  argument, `aerial`, lays them out), so the preview and the AI see what the engine will do. `move` to a place only those would reach
+  is refused with "The engine drags along the ground only. Release X first, or the DM moves both."
+- **The pull** is `push(s, t, feet, 'toward', grappler.pos, ev)` (through `KIT`), one grid step after each step of the grappler, for each
+  held creature then beyond its hold's range (`apart` x 5 ft, as `settleHolds` measures). `feet` is 5, or on squares by the real diagonal
+  rule 7.07, so one step is taken whichever way it goes. Its `moved` event is `forced`, told after the grappler's own step. Zones the
+  held creature is pulled into go off once; the walk's own zone check is told not to count it again. A pulled creature that lands on a
+  thing that goes off when stepped on is handed to the DM as `manual`, as a teleport onto one is.
+- **Asking before moving.** The step a push takes is `forcedStep` (`engine/world.js`; `push` uses it too). Before a step has any effect
+  (an Opportunity Attack, a zone, a reveal), `dragStep` plays the whole step on copies of the creatures: the grappler's move and each pull
+  in turn, each held creature taking its cell before the next is asked. If one could not follow, the step is not taken and nothing of it
+  happens, and the party (or, for a monster, the DM alone, as a `manual`) is told "X can't drag Y any further." A move whose first step
+  fails is refused outright. No step is ever undone.
+- **What `moveOptions` offers.** For a mover that drags, a step is offered only if `dragStep` passes from the layout found on the cheapest
+  way to the place it starts from (the grappler there, what it holds pulled behind it). That is exact on hexes; on squares the search's
+  cost is approximated for this (without the diagonal rule), so a place may be judged by a way that is not quite the one `move` takes;
+  `walk` asks each step again and stops before one that cannot be dragged. So the preview, `move` and the AI agree, and a move the AI is
+  sent never fails its first step. A hidden creature the mover holds is dragged from the true state, in `knownWays` and the companion
+  brain's `knownTo` as in `walk`.
+- **Opportunity Attacks.** The pulled creature provokes none (it uses none of its own movement). A held creature that this step pulls
+  along makes none on its grappler either: the grappler never leaves a reach it takes with it. A held creature that is not pulled (a
+  hold of more than 5 ft) is an attacker as any other. The grappler provokes as usual.
+- **`march`** leaves a holder where it is, with a note (`manual` for the DM if it is not the party's); `catchUp` already did.
+- **AI.** `approach` and the companion brain's `guard` and `protect` may move a holder, through `moveOptions`, so they pay the cost. The
+  guard does not step away from a creature it holds (it would come along); another foe beside it is still a reason.
+- **Left as it was.** The Grappled condition's `also` (the drag sentence) stays: a Grappled condition with no holds (the DM's) is still
+  the DM's to drag, and `conditions.js` was not in this job. The Grappler feat is `auto`. A hold with a reach beyond 5 ft (G4's monsters)
+  costs the extra foot on every step, pulled or not; the spec has no finer rule.
+- **Fix round 1 of #474 (decided by the coordinator).** The pull's first version checked each held creature alone and undid a step when a
+  later pull failed; that left an Opportunity Attack spent and a zone entered for a step not taken. It is gone: the step is asked as a
+  whole first (above). `moveOptions` takes `opts` (`{ aerial, unchecked }`) in place of the old boolean.

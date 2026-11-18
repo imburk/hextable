@@ -11,7 +11,7 @@ import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
-import { airspace, aloft, along, holdsOf, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
 
@@ -72,12 +72,72 @@ function notice(s, e, ev, before) {
 
 // ---------- walking ----------
 
+// ---------- dragging (docs/specs/grapple-shove.md, Decision 6) ----------
+// A grappler that walks pulls what it holds along: after each step, a held creature now beyond its hold's range is pulled toward it,
+// the forced move `push` already is (it provokes no Opportunity Attack, being moved without its own movement, 2088-2090; a zone it is
+// pulled into goes off). The cost is in `moveOptions`. Before a step has any effect (an Opportunity Attack, a zone, a reveal) the whole
+// step is asked, the grappler's move and every pull in turn (`dragBlocked`, world.js): if a held creature could not follow, the step is
+// not taken, and nothing of it happens.
+const cantDrag = (s, e, t) => `${e.name} can't drag ${t.name} any further.`;
+// The game as the party knows it: creatures it does not know of (`lurkers`) left out, but not the ones the mover holds (it knows those).
+const without = (s, e, lurkers) => { const mine = new Set(draggedBy(s, e).map((x) => x.t.id)); return { ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !lurkers.includes(o) || mine.has(o.id))) }; };
+// Could the step be taken, dragging what `e` holds? A party mover asks it as the party knows the place (`unseen`: the creatures it does
+// not know of left out), so a refusal or a stop never says that something stands where nothing seems to. Returns the held creature that
+// could not follow (the step is refused or the walk stopped, naming it), or null; or 'found': only a creature the party did not know of
+// is in the way, and it has been found (as walking into it would), so the step is not taken.
+function dragCheck(s, e, step, unseen, ev) {
+  if (!draggedBy(s, e).length) return null;
+  const lurk = unseen ? living(s).filter((o) => o.id !== e.id && unseen(o)) : [];
+  const t = dragBlocked(lurk.length ? without(s, e, lurk) : s, e, step);
+  if (t || !lurk.length || !dragBlocked(s, e, step)) return t;
+  const alone = lurk.filter((o) => !dragBlocked(without(s, e, [o]), e, step)), held = draggedBy(s, e);
+  for (const o of alone.length ? alone : lurk.filter((o) => held.some((x) => apart(s, o, x.t) <= 1))) bumped(s, o, e, ev);
+  return 'found';
+}
+// The first step of a move: refused outright if what `e` holds could not follow it (before anything changed: a refused action changes
+// nothing). Returns true if it only found a creature in the way: the move is then over.
+function dragFirst(s, e, steps, unseen, ev) {
+  const t = steps.length ? dragCheck(s, e, steps[0].h, unseen, ev) : null;
+  if (t === 'found') return true;
+  if (t) fail(`${e.name} can't drag ${t.name} that way.`);
+  return false;
+}
+// `e` has stepped: pull each creature it holds that is now out of reach. The step was asked beforehand, so each pull is expected to
+// go; if one does not (something changed between: an Opportunity Attack), the DM is told, and the hold ends by distance after the action.
+// A pulled creature sets nothing off but a zone: like a teleport onto a thing that goes off when stepped on, that is handed to the DM.
+function pullAlong(s, e, flush, ev) {
+  const owed = draggedBy(s, e).filter((x) => beyond(s, x.g, x.t, x.hold));
+  if (!owed.length) return [];
+  const pev = [], G = gridOf(s.map);
+  for (const x of owed) {
+    for (let i = 0; i < 4 && beyond(s, x.g, x.t, x.hold); i++) {
+      if (KIT.push(s, x.t, pullFeet(s), 'toward', x.g.pos, pev) !== 'moved') {
+        pev.push({ type: 'manual', actor: e.id, name: 'Grapple', partial: true, text: `${e.name} could not drag ${x.t.name} along: something changed on the way. The hold ends if they are now more than ${x.hold.range} ft apart; the DM places ${x.t.name} if it should have come.` });
+        break;
+      }
+    }
+  }
+  flush();                                               // the grappler's step is told before the creatures it pulled
+  ev.push(...pev);
+  for (const { t } of owed) {
+    const cells = pev.filter((x) => x.type === 'moved' && x.id === t.id).flatMap((x) => x.path);
+    for (const o of s.map.objects) {
+      const def = objectDef(o);
+      if (def.triggers?.some((x) => x.on === 'enter' && x.from.includes(o.state)) && cells.some((c) => Math.abs(objectZ(s, o) - c.z) <= STEP_MAX && footprint(t, c, G).some((f) => G.dist(f, o.at) === 0)))
+        ev.push({ type: 'manual', actor: t.id, name: objectName(o), partial: true, text: `${t.name} was dragged onto ${objectName(o)}. Whether it goes off is the DM's call.` });
+    }
+  }
+  return owed.map((x) => x.t);
+}
+// The walk stops where it is: said to the party if the mover is the party's, else to the DM alone.
+const stopsDragging = (s, e, t, ev) => ev.push(e.side === 'party' ? { type: 'note', id: e.id, text: cantDrag(s, e, t) } : { type: 'manual', actor: e.id, name: 'Grapple', partial: true, text: cantDrag(s, e, t) });
+
 // Walk a creature to `tk` along the way `reach` found for it. Every step can set something off,
 // catch an eye, or (outside a fight) start one. Returns the positions it stood on, from where it
 // set off, or null if it noticed something before taking a step and so did not go at all.
 // A mount walks with its rider on it (stage C6a): the rider is carried step by step, and is told of as moving too.
 // `bud`: the budget the walk is spent from (a controlled mount's is `budget.mount`, its rider's turn's).
-function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
+function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen = null) {
   let seg = [], prev = e.pos;
   const walked = [e.pos], found = [];
   let rider = riderOf(s, e);
@@ -90,9 +150,16 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
   const square = gridOf(s.map).kind === 'square', base = bud?.move;
   let spent = 0;
   for (const { h: step, cost, p } of route(reach, tk)) {
+    // A creature it holds must be able to follow this step (`move` has already refused a first step none can follow): if one cannot,
+    // the walk stops here, before an Opportunity Attack is provoked by a step that is not taken.
+    const stuck = dragCheck(s, e, step, unseen, ev);
+    if (stuck === 'found') break;
+    if (stuck) { stopsDragging(s, e, stuck, ev); break; }
+    // A creature it holds that this step pulls along stays within its reach: the grappler leaves no reach it does not take with it.
+    const comes = new Set(draggedBy(s, e).filter(({ g, t, hold }) => (!!g && !t.dead && apartAt(s, g, step, t, t.pos) * FT > hold.range)).map((x) => x.t.id));
     if (fighting && s.encounter && !e.cond.disengaged) {
       for (const o of threatsAt(s, e, prev, true)) {
-        if (apartAt(s, o, o.pos, e, step) <= 1) continue;
+        if (apartAt(s, o, o.pos, e, step) <= 1 || comes.has(o.id)) continue;
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
         // happens and nothing is said. `ask`: its player is asked, and the walk waits; for one of
         // the DM's creatures the DM alone is told and decides by hand.
@@ -128,15 +195,18 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget) {
       if (!up(e)) break;
     }
     const k = key(step);
+    const was = e.pos, zonesBefore = snapshot(s);
+    e.pos = step; seg.push(step); prev = step; walked.push(step);
+    carry(s, e);
+    // What it holds comes along (the step was asked above, so each can).
+    const pulled = pullAlong(s, e, flush, ev);
+    if (pulled.length && zonesBefore) { const now = snapshot(s); for (const t of pulled) zonesBefore[t.id] = now[t.id]; }       // a zone it was pulled into has gone off already
     if (fighting && s.encounter && bud) {
       const b = bud;
       if (square) b.move = base - cost; else b.move -= cost - spent;
       if (p !== undefined) b.diagonals = p;                              // 'alternate': is the next diagonal a second one?
     }
     spent = cost;
-    const was = e.pos, zonesBefore = snapshot(s);
-    e.pos = step; seg.push(step); prev = step; walked.push(step);
-    carry(s, e);
     lookAround(s, ev, rider ? [e, rider] : [e], flush);
     if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
     // So does a zone it walks into (Web, Moonbeam), for it or its rider; one that moves with it may catch others.
@@ -179,18 +249,22 @@ const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.
 // following them, walks after it: those with a slot in its formation to their slots, if every one
 // of them has room there; the rest, and everyone when there is no room, in marching order along the
 // leader's trail (the column).
-// Until dragging is built (docs/specs/grapple-shove.md, stage G3), a creature that holds another does not walk: `move` and `dash` are
-// refused with the reason, and a follower that holds one stays where it is when the column walks (its hold does not end).
-function notHolding(s, e) {
-  const held = holdsOf(s, e);
-  if (held.length) fail(`${e.name} is holding ${held.map((x) => x.t.name).join(' and ')}. Dragging is not in the game yet: let go first.`);
-}
+// A creature that holds another does not follow a leader or keep a marching place (docs/specs/grapple-shove.md, Decision 6): it stays
+// where it is when the column walks, with its hold, and a note says so.
 function march(s, leader, walked, ev) {
   if (leader.side !== 'party') return;
   const G = gridOf(s.map), trail = trailOf(walked.slice().reverse(), null, G);
   const moved = new Set([leader.id]);
   let front = leader;
-  const pending = living(s).filter((x) => x.follow && x.id !== leader.id && !holdsOf(s, x).length).sort(byMarch);
+  const pending = living(s).filter((x) => x.follow && x.id !== leader.id && !draggedBy(s, x).length).sort(byMarch);
+  // The holders the column leaves behind: those whose leader walks (is the leader, or follows one who does).
+  const walking = new Set([leader.id]);
+  for (let grew = true; grew;) { grew = false; for (const x of pending) if (!walking.has(x.id) && walking.has(x.follow)) { walking.add(x.id); grew = true; } }
+  for (const x of living(s)) {
+    if (!x.follow || x.id === leader.id || !walking.has(x.follow) || !draggedBy(s, x).length || (s.encounter && inFight(s, x.id))) continue;
+    const text = `${x.name} is holding ${draggedBy(s, x).map((d) => d.t.name).join(' and ')}, so it stays where it is while the party walks on.`;
+    ev.push(x.side === 'party' ? { type: 'note', id: x.id, text } : { type: 'manual', actor: x.id, name: 'Grapple', partial: true, text });
+  }
   const fell = formation(s, leader, walked, pending, ev);
   if (fell === 'fight') return;                          // it walked into a fight: the rest were brought up when it started
   for (const f of fell) { pending.splice(pending.indexOf(f), 1); moved.add(f.id); front = f; }
@@ -365,7 +439,8 @@ function capture(s, leader, followers, fresh) {
 }
 
 // The ways a party mover has, laid out as if the creatures it does not know of (`lurkers`) were not there.
-const knownWays = (s, e, lurkers) => moveOptions({ ...s, entities: Object.fromEntries(Object.entries(s.entities).filter(([, o]) => !lurkers.includes(o))) }, e);
+// What a grappler holds is known to it, however hidden: its drag (cost, ground only, what can follow) is worked out from what is true.
+const knownWays = (s, e, lurkers) => moveOptions(without(s, e, lurkers), e);
 // A party mover's move laid out on what the party knows (stage C7, review of #368, M2; the re-review, N1 to N3): the route
 // is the one the party can see, as if a creature it does not know of were not there. Refusing the move ("Too far"), or
 // bending the route round it, would tell the players something stands there without saying what. Where that route runs
@@ -386,7 +461,7 @@ function walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers, follower
   const go = (k) => {
     if (!left && !fighting && e.follow) unfollow(s, e, ev);
     left = true;
-    const w = walk(s, e, known, k, ev, fighting, bud ?? undefined);
+    const w = walk(s, e, known, k, ev, fighting, bud ?? undefined, unseen);
     if (w) path.push(...w.slice(1));
     return w;
   };
@@ -441,7 +516,6 @@ export const handlers = {
     if (steed && steering(s, steed) !== actor) fail(actor.riding.controlled && steed.bond?.orders !== 'command'
       ? `${actor.name} can't direct ${steed.name} now.` : `${steed.name} lets ${actor.name} ride but goes where it likes: ${actor.name} dismounts to move on foot.`);
     const e = steed ?? actor;
-    notHolding(s, actor); if (steed) notHolding(s, steed);
     up(actor) || fail(`${actor.name} can't move.`);
     up(e) || fail(`${e.name} can't move.`);
     (speedOf(s, e) > 0 || aloft(s, e)) || fail(`${e.name} can't move: its Speed is 0.`);
@@ -469,7 +543,7 @@ export const handlers = {
       const lurkers = living(s).filter((o) => o.id !== e.id && unseen(o));
       if (lurkers.length) {
         const known = knownWays(s, e, lurkers);
-        if (known.get(tk)?.canStop) return walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers);
+        if (known.get(tk)?.canStop) { if (dragFirst(s, e, route(known, tk), unseen, ev)) return; return walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers); }
       }
     }
     if (lurker) {
@@ -482,11 +556,19 @@ export const handlers = {
     if (!node || !node.canStop) {
       if (fighting && !s.encounter.arena[col(to)]) fail("The arena is locked until the fight ends.");
       if (node) fail(`That ${gridOf(s.map).word.one} is occupied.`);
+      // A mover that drags goes along the ground only (Decision 6, question Q6): a place only flying or climbing reaches is refused as such.
+      const dragging = draggedBy(s, e);
+      if (dragging.length) {
+        const names = dragging.map((d) => d.t.name).join(' and ');
+        if (moveOptions(s, e, { unchecked: true }).get(tk)?.canStop) fail(`${e.name} can't drag ${names} that way.`);
+        if (moveOptions(s, e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
+      }
       fail(fighting ? `Too far. ${e.name} has ${feetLeft(s, bud.move)} ft of movement left.` : "Can't get there.");
     }
+    if (dragFirst(s, e, route(reach, tk), e.side === 'party' ? unseen : null, ev)) return;
     // Moved on its own, it walks on its own: it no longer follows anyone.
     if (!fighting && e.follow) unfollow(s, e, ev);
-    const had = !!s.encounter, walked = walk(s, e, reach, tk, ev, fighting, bud ?? undefined);
+    const had = !!s.encounter, walked = walk(s, e, reach, tk, ev, fighting, bud ?? undefined, e.side === 'party' ? unseen : null);
     if (!walked) return;                                 // something caught the eye before a step was taken: the walk waits
     if (lurker) bumped(s, lurker, e, ev);
     // Whoever follows it comes after, unless a fight broke out on the way: then they were brought up when it did.
@@ -498,7 +580,6 @@ export const handlers = {
   dash(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
-    notHolding(s, e);
     if (steering(s, e)) return mountAct(s, e, a, 'Dash', ev);
     const time = actTime(e, 'dash', a);
     // A monk's Dash as a Bonus Action is Step of the Wind; with Fleet Step it may follow another Bonus Action.
