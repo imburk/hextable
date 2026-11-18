@@ -55,7 +55,7 @@ const swing = (s) => apply(s, { type: "attack", actor: "hero", target: s.foe, at
 test("Greatsword and Shield in a fight: refused, then Shield away (the action), next turn the Greatsword; AC down by the Shield's 2; back on", () => {
   const s = field(fighter());
   const ac = s.entities.hero.ac;
-  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "greatsword" }, /put the Shield away with the shield action/);
+  refused(s, { type: "attack", actor: "hero", target: s.foe, attack: "greatsword" }, /put the Shield away first \(Put Shield away/);
   const turn = [{ type: "shield", actor: "hero", on: false }];
   const out = exact(s, turn);
   assert.deepEqual(out[0].find((e) => e.type === "shield"), { type: "shield", id: "hero", on: false });

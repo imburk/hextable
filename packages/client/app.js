@@ -37,7 +37,7 @@ import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
-import { initTableControls, importLine, gridWords } from './tablecontrols.js';
+import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
@@ -357,6 +357,7 @@ function words(ev) {
     case 'unhidden': return [ev.why === 'found' ? `${n(ev.id)} has been found${ev.by ? ` by ${n(ev.by)}` : ''}!` : ev.why === 'attack' ? `${n(ev.id)} gives itself away by attacking!` : ev.why === 'spell' ? `${n(ev.id)} gives itself away by casting!` : `${n(ev.id)} is heard and no longer hidden.`, 'head'];
     // Magic items (E18): a use, putting on and taking off, Attunement. A creature the viewer does not control is told what was used, never its charges.
     case 'item': return [`${n(ev.id)} uses ${ev.item}: ${ev.use}${ev.target ? ` on ${n(ev.target)}` : ''}${ev.charges !== undefined ? ` (${ev.charges}/${ev.max} charges left)` : ''}${ev.consumed ? ', used up' : ''}.`];
+    case 'shield': return [`${n(ev.id)} ${ev.on ? 'takes up' : 'puts away'} their ${ev.item ?? 'Shield'}.`];
     case 'equip': return [`${n(ev.id)} ${ev.on ? 'readies' : 'puts away'} ${ev.item}.`];
     case 'attuning': return [ev.cleared ? `${n(ev.id)} no longer means to attune to anything.` : ev.end ? `${n(ev.id)} will end their Attunement to ${ev.item} at the next Short Rest.` : `${n(ev.id)} will attune to ${ev.item} at the next Short Rest.`];
     case 'attuned': return [ev.failed ? `${n(ev.id)} couldn't ${ev.end ? 'end the Attunement to' : 'attune to'} ${ev.item}: ${ev.failed}` : `${n(ev.id)} ${ev.end ? 'is no longer attuned to' : 'is now attuned to'} ${ev.item}.`];
@@ -538,7 +539,7 @@ function actionAim(e, hl) {
   hl.area = aimed ? areaHexes(S, e, { area: p.area }, mode.aim).map(cellKey) : [];
   const caught = aimed ? areaTargets(S, e, def, mode.aim) ?? [] : [];
   const how = aimHow(p.area, p.range);
-  return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
+  return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
 function sizeDock() {
@@ -608,7 +609,7 @@ function refresh() {
           // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
           if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, mode.item ? spellMost(e, sp) : targetCount(sp.def, e.level)).map((x) => x.id);
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
-          hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}` : `${sp.name}: ${how}`;
+          hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
         } else {
           const ids = targetsFor(S, e, { spell: mode.id });
@@ -820,12 +821,12 @@ R.onTap = ({ hex, id }) => {
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id, ...(mode.extra ?? {}) }) : setMode(MOVE);
   if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
   if (mode.kind === 'action') {
-    if (mode.area) { mode.aim = hex; return refresh(); }
+    if (mode.area) { mode.aim = hex; mode.pinned = true; return refresh(); }
     return tapped && tapped.id !== selId ? act({ type: 'act', actor: selId, action: mode.id, target: id }) : setMode(MOVE);
   }
   if (mode.kind === 'spell') {
     const sp = SPELLS[mode.id];
-    if (sp.area) { mode.aim = hex; return refresh(); }
+    if (sp.area) { mode.aim = hex; mode.pinned = true; return refresh(); }
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
     const most = spellMost(e, sp);
