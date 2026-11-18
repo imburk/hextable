@@ -212,6 +212,7 @@ test("the forgone attack is refused, changing nothing: not Mor's turn, no action
   refused(s, forgo(f, g, { familiar: g }), PAT, /Goblin Warrior 1 is not bonded to Mor\./);
   refused(s, forgo(f, g, { familiar: "m999" }), PAT, /No such creature/);
   refused(s, forgo(f, g, { brutal: "x" }), PAT, /not for a familiar/);
+  for (const x of [{ option: "grapple" }, { option: "shove", shove: "prone" }, { grab: true }]) refused(s, forgo(f, g, x), PAT, /options of the Unarmed Strike/);
   // Out of the sting's reach: the goblin steps away.
   const far = structuredClone(s);
   far.entities[g].pos = { q: 5, r: -2, z: 0 };

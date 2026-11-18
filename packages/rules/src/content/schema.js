@@ -58,7 +58,11 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
   // The attack is an Opportunity Attack (Escape the Horde).
   'attack.opportunity',
   // The target is not a Fiend (Hurl Through Hell's damage).
-  'target.notFiend'];
+  'target.notFiend',
+  // Grapples (docs/specs/grapple-shove.md, Decisions 2, 5 and 7): the target is not one of the creatures that hold the attacker
+  // (the Grappled condition's Disadvantage); the target is held by the attacker (the Grappler feat's Advantage); the check is
+  // one made to escape a grapple (Powerful Build).
+  'target.notGrappler', 'target.grappledBySelf', 'check.escape'];
 
 // The SRD's creature types, for a target limited to some of them (Turn Undead: `area.types`).
 export const CREATURE_TYPES = ['aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend', 'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead'];

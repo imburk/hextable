@@ -11,7 +11,7 @@ import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
-import { airspace, aloft, along, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { airspace, aloft, along, holdsOf, landingFits, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
 
@@ -179,12 +179,18 @@ const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.
 // following them, walks after it: those with a slot in its formation to their slots, if every one
 // of them has room there; the rest, and everyone when there is no room, in marching order along the
 // leader's trail (the column).
+// Until dragging is built (docs/specs/grapple-shove.md, stage G3), a creature that holds another does not walk: `move` and `dash` are
+// refused with the reason, and a follower that holds one stays where it is when the column walks (its hold does not end).
+function notHolding(s, e) {
+  const held = holdsOf(s, e);
+  if (held.length) fail(`${e.name} is holding ${held.map((x) => x.t.name).join(' and ')}. Dragging is not in the game yet: let go first.`);
+}
 function march(s, leader, walked, ev) {
   if (leader.side !== 'party') return;
   const G = gridOf(s.map), trail = trailOf(walked.slice().reverse(), null, G);
   const moved = new Set([leader.id]);
   let front = leader;
-  const pending = living(s).filter((x) => x.follow && x.id !== leader.id).sort(byMarch);
+  const pending = living(s).filter((x) => x.follow && x.id !== leader.id && !holdsOf(s, x).length).sort(byMarch);
   const fell = formation(s, leader, walked, pending, ev);
   if (fell === 'fight') return;                          // it walked into a fight: the rest were brought up when it started
   for (const f of fell) { pending.splice(pending.indexOf(f), 1); moved.add(f.id); front = f; }
@@ -435,6 +441,7 @@ export const handlers = {
     if (steed && steering(s, steed) !== actor) fail(actor.riding.controlled && steed.bond?.orders !== 'command'
       ? `${actor.name} can't direct ${steed.name} now.` : `${steed.name} lets ${actor.name} ride but goes where it likes: ${actor.name} dismounts to move on foot.`);
     const e = steed ?? actor;
+    notHolding(s, actor); if (steed) notHolding(s, steed);
     up(actor) || fail(`${actor.name} can't move.`);
     up(e) || fail(`${e.name} can't move.`);
     (speedOf(s, e) > 0 || aloft(s, e)) || fail(`${e.name} can't move: its Speed is 0.`);
@@ -491,6 +498,7 @@ export const handlers = {
   dash(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
+    notHolding(s, e);
     if (steering(s, e)) return mountAct(s, e, a, 'Dash', ev);
     const time = actTime(e, 'dash', a);
     // A monk's Dash as a Bonus Action is Step of the Wind; with Fleet Step it may follow another Bonus Action.
