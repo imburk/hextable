@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, spawnNear, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
 
 // ---------- Grapple, Shove, Escape and Let go; the familiar's attacks and Investment; Refresh from sheet (issue #486, stage G7 of docs/specs/grapple-shove.md) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Part 1: on the fighter's turn the Unarmed Strike has Grapple, Shove away and Shove Prone rows; a tap arms
@@ -178,7 +178,109 @@ async function part1(browser, url, label, opts) {
   });
 }
 
+// Part 3: a warlock with Pact of the Chain and Investment of the Chain Master casts Find Familiar through the chooser (Speed required, damage type optional), and
+// in a fight the familiar attacks through the Attacks tab (the forgone attack) and the Bonus tab (Quick Attack).
+const toastText = (page) => page.evaluate(() => { const t = document.getElementById('toast'); return t && !t.hidden ? t.textContent : ''; });
+async function part3(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, phone = opts.viewport.width <= 600;
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const tap = (sel) => (touch ? page.locator(sel).tap() : page.click(sel));
+      const tapHex = (hex, id) => page.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i ?? null }), [hex, id ?? null]);
+      const shot = (n) => (process.env.SMOKE_SHOTS ? (mkdirSync(process.env.SMOKE_SHOTS, { recursive: true }), page.screenshot({ path: `${process.env.SMOKE_SHOTS}/grapple-${n}-${phone ? 'phone' : 'wide'}.png` }).catch(() => {})) : null);
+      let mor = null, fam = null, gob = null;
+      const rowFor = (tab, via) => `#ap-${tab} [data-row^="comp:fatk:"][data-row*="${via}"]`;
+
+      await run.do('a warlock with Pact of the Chain and Investment casts Find Familiar: the chooser asks for the Speed first, the damage type is optional', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(async () => {
+          const { derive } = await import('./shared/derive.js'), h = window.hextable;
+          document.getElementById('dm-auto').checked = false;
+          h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' });
+          const r = derive({ name: 'Mor', class: 'warlock', level: 5, subclass: 'fiend', abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 18 }, skills: ['arcana', 'deception'], weapons: ['dagger'],
+            spells: ['eldritch-blast', 'chill-touch', 'hex'], choices: { 'eldritch-invocations': ['pact-of-the-chain', 'investment-of-the-chain-master'] } });
+          if (!r.record) throw new Error(JSON.stringify(r));
+          h.act({ type: 'addCharacter', record: r.record });
+        });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Mor'));
+        mor = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Mor').id);
+        await closePanels(page); await page.evaluate((m) => { window.hextable.select(m); window.hextable.R.focus(m, true); }, mor);
+        await waitShown(page, '#card'); await idle(page);
+        // Find Familiar is cast through the invocation (a Magic action with no spell slot: a Pact slot is level 3, which the Spells tab's own level 1 check does not count).
+        await panelTab(page, 'features');
+        await tap('#ap-features [data-row="feat:eldritch-invocations-pact-of-the-chain"]');
+        await page.waitForSelector('#cp #cp-use', { timeout: 5000 });
+        await tap('#cp #cp-use');
+        await page.waitForSelector('#cc-chooser:not([hidden])', { timeout: 5000 });
+        const moves = await page.$$eval('#cc-chooser [data-cc-pick^="move|"]', (b) => b.map((x) => x.textContent.trim()));
+        const dmg = await page.$$eval('#cc-chooser [data-cc-pick^="damage|"]', (b) => b.map((x) => x.textContent.trim()));
+        if (moves.join() !== 'Fly 40 ft,Swim 40 ft') throw new Error(`the Speed choice: ${moves}`);
+        if (dmg.join() !== 'Necrotic,Radiant') throw new Error(`the damage choice: ${dmg}`);
+        await page.selectOption('#cc-sel-form', 'owl'); await tap('#cc-chooser [data-cc-pick="type|fey"]');
+        const spots = (await spotsFor(page, 'wolf', { near: mor, radius: 2 })).spots;
+        await tapHex(spots[0]);
+        await page.click('#cc-chooser [data-cc-cast="picks"]', { force: true });            // no Speed picked: refused in words, nothing sent
+        await wait(page, () => /speed/i.test(document.getElementById('toast')?.textContent ?? ''));
+        if (await page.evaluate(() => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'find-familiar'))) throw new Error('the cast went without a Speed');
+        await tap('#cc-chooser [data-cc-pick="move|swim"]'); await tap('#cc-chooser [data-cc-pick="damage|radiant"]');
+        if (!(await page.$eval('#cc-chooser [data-cc-pick="damage|radiant"]', (b) => b.getAttribute('aria-pressed') === 'true'))) throw new Error('the damage choice is not shown as picked');
+        const small = await page.$$eval('#cc-chooser button', (b) => b.filter((x) => x.getBoundingClientRect().height < 43).map((x) => x.textContent));
+        if (touch && small.length) throw new Error(`under 44 px: ${small}`);
+        await shot('invest-chooser');
+        await tap('#cc-chooser [data-cc-cast="picks"]');
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.source === 'find-familiar'), null, 10000);
+        fam = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.bond?.source === 'find-familiar').id);
+        const f = await state(page, (S, i) => ({ swim: S.entities[i].speeds?.swim, types: JSON.stringify(S.entities[i].actions) }), fam);
+        if (f.swim !== 40) throw new Error(`no Swim Speed of 40: ${JSON.stringify(f)}`);
+        if (!/radiant/.test(f.types)) throw new Error('the Radiant damage was not baked into its attacks');
+      });
+
+      await run.do('in a fight on Mor\'s turn: the Attacks tab has the familiar\'s attack through Pact of the Chain, the Bonus tab Quick Attack; a tap on the goblin sends the familiar\'s attack', async () => {
+        gob = await spawnNear(page, 'goblin-warrior', { near: fam, min: 1, radius: 1 });
+        await page.evaluate((g) => { const h = window.hextable; h.act({ type: 'startEncounter', center: h.state.entities[g].pos, radius: 8 }); }, gob);
+        await wait(page, () => !!window.hextable.state.encounter, null, 20000); await idle(page);
+        await turnOf(page, mor); await select(page, mor);
+        await panelTab(page, 'attacks');
+        await waitShown(page, rowFor('attacks', 'pact-of-the-chain'));
+        const t = await text(page, rowFor('attacks', 'pact-of-the-chain'));
+        if (!/attacks: Talons/.test(t) || !/give up one of your attacks/.test(t) || !/Familiar/.test(t)) throw new Error(`the row says: ${t}`);
+        await shot('familiar-rows');
+        await tap(rowFor('attacks', 'pact-of-the-chain'));
+        await wait(page, () => window.hextable.mode.kind === 'famAttack');
+        if (!/tap a target/.test(await text(page, '#hint-text'))) throw new Error(`the hint: ${await text(page, '#hint-text')}`);
+        const n = await state(page, (S) => S.timeline.length);
+        await tapHex(await state(page, (S, g) => S.entities[g].pos, gob), gob);
+        await wait(page, ([k, f]) => window.hextable.state.timeline.some((e, i) => i >= k && e.type === 'attack' && e.actor === f), [n, fam]);
+        await idle(page);
+        const used = await state(page, (S, f) => S.entities[f].reactionUsed, fam);
+        if (!used) throw new Error('the familiar\'s Reaction was not spent');
+        if (!(await lines(page)).some((x) => /Pact of the Chain: Mor gives up an attack/.test(x))) throw new Error(`the log: ${(await lines(page)).slice(-5)}`);
+      });
+
+      await run.do('Quick Attack is a Bonus tab row: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
+        await panelTab(page, 'bonus');
+        await waitShown(page, rowFor('bonus', 'investment-of-the-chain-master'));
+        const t = await text(page, rowFor('bonus', 'investment-of-the-chain-master'));
+        if (!/Quick Attack|Investment/.test(t) || !/Bonus/.test(t)) throw new Error(`the row says: ${t}`);
+        await tap(rowFor('bonus', 'investment-of-the-chain-master'));
+        await wait(page, () => window.hextable.mode.kind === 'famAttack');
+        const n = await state(page, (S) => S.timeline.length);
+        await tapHex(await state(page, (S, g) => S.entities[g].pos, gob), gob);
+        await wait(page, ([k, f]) => window.hextable.state.timeline.some((e, i) => i >= k && e.type === 'attack' && e.actor === f), [n, fam]);
+        await idle(page);
+        if ((await state(page, (S) => S.encounter.budget.bonus)) !== 0) throw new Error('the Bonus Action was not spent');
+        await shot('quick-attack');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   await part1(browser, url, 'grapple, shove, escape and let go at 1280x800', { viewport: { width: 1280, height: 800 } });
   await part1(browser, url, 'grapple, shove, escape and let go at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await part3(browser, url, 'the familiar\'s attacks and Investment at 1280x800', { viewport: { width: 1280, height: 800 } });
+  await part3(browser, url, 'the familiar\'s attacks and Investment at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 }

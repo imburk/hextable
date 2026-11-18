@@ -439,7 +439,7 @@ function onUpdate(state, events, fresh) {
     selId = own?.id ?? null;
   }
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
-  if (mode.kind === 'attack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
+  if (mode.kind === 'attack' || mode.kind === 'famAttack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
   clearTimeout(aiTimer);
   aiSent = null;
   tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
@@ -635,7 +635,7 @@ function refresh() {
   if (mode.kind === 'place') hint = gridWords(`Tap a hex to place ${name(selId)}`, gridOf(S.map));
   if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
-  if (mode.kind === 'recall') hint = CP.hintFor(mode);
+  if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   showPick();
@@ -1107,7 +1107,7 @@ function syncCards() {
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   armAttack: (m) => setMode({ kind: 'attack', ...m }),
-  castSpell: (e, id) => { const sp = SPELLS[id]; if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
+  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,

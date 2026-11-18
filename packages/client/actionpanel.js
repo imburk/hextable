@@ -873,7 +873,7 @@ export function initActionPanel(ctx) {
       const dm = ctx.isDM();
       ctxNow = panelContext(S, e, { mine: my, dm });
       const fly = ctx.flyInfo(e);
-      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: tabRows(S, e, 'attacks').length > 0, features: featureRows(S, e).length > 0 || holdRows(S, e).letGo.length > 0 || (ctx.comp?.rows(e).features.length ?? 0) + (ctx.comp?.rows(e).move.length ?? 0) > 0, items: itemRows(S, e, { dm }).any };
+      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: tabRows(S, e, 'attacks').length > 0 || (ctx.comp?.rows(e).attacks.length ?? 0) > 0, features: featureRows(S, e).length > 0 || holdRows(S, e).letGo.length > 0 || (ctx.comp?.rows(e).features.length ?? 0) + (ctx.comp?.rows(e).move.length ?? 0) > 0, items: itemRows(S, e, { dm }).any };
       tabsNow = visibleTabs(ctxNow, has);
       const react = ctxNow.tabs.find((t) => t.id === 'reactions');
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
@@ -899,8 +899,9 @@ export function initActionPanel(ctx) {
         // Companions (companions.js): rows beside the others, and the picker one of them opened.
         const cr = ctx.comp?.rows(e);
         if (cr) {
+          if (tab === 'attacks') list = [...list, ...cr.attacks];
           if (tab === 'features') list = [...list, ...cr.features, ...cr.move];       // riding is also a Move-tab row, but the Move tab is there only on a turn
-          if (tab === 'bonus') { const have = new Set(list.map((r) => r.id)); list = [...list, ...cr.features.filter((r) => r.time === 'bonus' && !have.has(r.id))]; if (list.length && !/ap-why-line/.test(head)) head = head.replace('Nothing this creature has costs a Bonus Action.', ''); }
+          if (tab === 'bonus') { const have = new Set(list.map((r) => r.id)); list = [...list, ...[...cr.features, ...cr.attacks].filter((r) => r.time === 'bonus' && !have.has(r.id))]; if (list.length && !/ap-why-line/.test(head)) head = head.replace('Nothing this creature has costs a Bonus Action.', ''); }
           if (tab === 'move') list = [...list, ...cr.move];
           head += ctx.comp.picker(e);
         }
