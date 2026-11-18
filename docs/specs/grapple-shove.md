@@ -423,3 +423,9 @@ Each has the default the jobs above are written to.
   that carries it.
 - A Shove at a ridden mount runs the existing `push`: the rider's DC 10 Dexterity save comes first; a push of the rider itself
   is handed to the DM as `push` already does.
+- Fix round 1 of #463: `push()` now returns what became of it (`moved`, `blocked`, `aloft`, `mount`). A failed Shove-push that is blocked by a
+  wall, a drop or a creature logs a note saying so; one on a creature standing on nothing (a flyer) hands the DM a `manual` event, since
+  the engine cannot move it and the SRD lets it be pushed. The save and the spent attack stay. `grab` is refused ("Punch and Grab is not in
+  the game yet") until G2; `option`, `shove` and `grab` are refused on a pack monster's action by `attack` and by `act`; `dc` is allowed
+  only on an Unarmed Strike record; a Shove for Prone at a target already Prone is allowed and logged as such. The client log line for
+  `strikeOption` is left for G7.

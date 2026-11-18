@@ -69,21 +69,24 @@ export function fall(s, t, feet, ev) {
 // fall: it is worked out with the rider out of the way, and the rider then lands within 5 ft of where the mount stood,
 // in a space the mount did not go to (fix round 1 of #363, M2). A push of the rider itself the
 // SRD gives no rule for (it is not the mount that is moved): the engine does not move it, and the DM is told.
+// It returns what became of it, for a caller that has to say: 'mount' (a riding creature: the DM is told, nothing moves), 'aloft' (the
+// creature stands on nothing, so no step is found), 'blocked' (a wall, a drop, a creature, or a boundary stops the first step),
+// 'moved'.
 function push(s, t, feet, dir, from, ev) {
   if (mountOf(s, t)) {
     ev.push({ type: 'manual', actor: null, name: 'Mounted combat', partial: true,
       text: `${t.name} would be ${dir === 'toward' ? 'pulled' : 'pushed'} ${feet} ft while riding ${mountOf(s, t).name}. The SRD has no rule for a rider moved off its mount this way, so the engine leaves ${t.name} riding: the DM moves ${t.name} (dismount, then place) if it should go.` });
-    return;
+    return 'mount';
   }
   const B = barriers(s.map), G = gridOf(s.map), path = [], sign = dir === 'toward' ? -1 : 1, o = G.toWorld(from);
   const r0 = riderOf(s, t), was = { ...t.pos };
   let rider = r0, asked = false, fallen = null;
   const square = G.kind === 'square', rule = s.settings.diagonals ?? 'real';
-  let left = feet, odd = false;
+  let left = feet, odd = false, why = 'blocked';
   const stride = (a, b) => (!square || !G.beside(a, b).length ? FT : rule === 'real' ? FT * Math.SQRT2 : rule === 'alternate' && odd ? 2 * FT : FT);
   for (let i = 0; square ? left > 0 : i < Math.floor(feet / FT); i++) {
     const here = ground(s.map, t.pos), d0 = G.dist(t.pos, from), w = G.toWorld(t.pos);
-    if (!here) break;
+    if (!here) { why = 'aloft'; break; }
     let best = null;
     for (const n of G.neighbors(t.pos)) {
       if (G.dist(n, from) !== d0 + sign || (inFight(s, t.id) && !s.encounter.arena[col(n)])) continue;
@@ -105,7 +108,7 @@ function push(s, t, feet, dir, from, ev) {
     if (rider) carry(s, t);
     entered(s, ev, KIT, zonesBefore);                                    // pushed into a zone: it goes off once this effect is done
   }
-  if (!path.length) return;
+  if (!path.length) return why;
   ev.push({ type: 'moved', id: t.id, path, forced: true });
   if (rider) ev.push({ type: 'moved', id: rider.id, path: path.map((h) => ({ ...h })), forced: true });
   lookAround(s, ev, rider ? [t, rider] : [t]);
@@ -113,6 +116,7 @@ function push(s, t, feet, dir, from, ev) {
     carry(s, t);                                                         // nowhere to land: it stays on, carried along
     ev.push({ type: 'moved', id: fallen.id, path: path.map((h) => ({ ...h })), forced: true });
   }
+  return 'moved';
 }
 // The effect step: `t` goes to `to` (from teleportSpot). Returns false if it could not go, which
 // runs the step's `blocked` steps instead when it has them.
@@ -1223,8 +1227,16 @@ export function strikeOption(s, e, t, atk, shove, ev) {
   ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv });
   useUp(s, ev, used ?? []);
   if (sv.success) return;
-  if (shove === 'push') push(s, t, 5, 'away', e.pos, ev);
-  else condition(s, t, 'prone', ev);
+  if (shove === 'prone') {
+    if (t.cond.prone) ev.push({ type: 'note', id: t.id, text: `${t.name} is already Prone` });      // allowed: the attack is spent, nothing changes
+    else condition(s, t, 'prone', ev);
+    return;
+  }
+  const went = push(s, t, 5, 'away', e.pos, ev);
+  if (went === 'blocked') ev.push({ type: 'note', id: t.id, text: `${t.name} is not pushed: something is in the way` });
+  // A creature off the ground has no step the engine can take it along (a flyer, a creature in the air), and the SRD lets it be pushed.
+  else if (went === 'aloft') ev.push({ type: 'manual', actor: e.id, name: 'Shove', partial: true,
+    text: `${t.name} failed the save against ${e.name}'s Shove and is not standing on anything, so the engine cannot push it. The DM moves ${t.name} 5 ft away from ${e.name}.` });
 }
 
 // What a choice made for a hit does to its target after the damage (a Brutal Strike option): its

@@ -1695,7 +1695,8 @@ export function lintRecord(r, { spells = {} } = {}) {
     if (a.type === 'ranged' && !(Array.isArray(a.range) && a.range.length === 2 && a.range.every((n) => within(n, 5, 2000)) && a.range[0] <= a.range[1])) sub('a ranged attack needs a range of [normal, long] in feet.');
     if (a.finesse !== undefined && typeof a.finesse !== 'boolean') sub('finesse is true or false.');
     if (a.abil !== undefined && !['str', 'dex'].includes(a.abil)) sub('it uses Strength or Dexterity.');
-    if (a.dc !== undefined && !within(a.dc, 1, 40)) sub('its save DC is a whole number.');
+    if (a.dc !== undefined && !['unarmed-strike', 'unarmed-strike-bonus'].includes(a.id)) sub('only an Unarmed Strike has a save DC.');
+    else if (a.dc !== undefined && !within(a.dc, 1, 40)) sub('its save DC is a whole number from 1 to 40.');
     if (a.weapon !== undefined && !ID.test(a.weapon)) sub('its weapon is an id.');
     if (a.time !== undefined && a.time !== 'bonus') sub('its time is "bonus" or left out.');
   }

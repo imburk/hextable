@@ -148,11 +148,17 @@ function isAttack(def) {
   return hit;
 }
 
+// Fields only the Unarmed Strike reads: a pack monster's action has none of them (its stat block says how it grapples).
+function noStrikeFields(a) {
+  ((a.option ?? 'damage') === 'damage' && a.shove === undefined && !a.grab) || fail('Grapple and Shove are options of the Unarmed Strike, and Punch and Grab goes with it.');
+}
+
 // The option an Unarmed Strike is used for (SRD "Unarmed Strike": Damage, Grapple or Shove; docs/specs/grapple-shove.md, Decision 1).
 // Checked before anything is spent or started. Only Damage and Shove are built (stage G1): a Grapple is refused for now, not
 // quietly made into something else. Returns 'damage' or 'shove'.
 const OPTIONS = ['damage', 'grapple', 'shove'];
 function optionOf(e, t, atk, a) {
+  !a.grab || fail('Punch and Grab is not in the game yet.');
   const o = a.option ?? 'damage';
   (typeof o === 'string' && OPTIONS.includes(o)) || fail('Choose an option for the Unarmed Strike: damage, grapple or shove.');
   (o === 'damage' || isUnarmed(atk)) || fail('Grapple and Shove are options of the Unarmed Strike.');
@@ -175,7 +181,7 @@ export const handlers = {
     !e.bond?.noAttack || fail(`${e.name} can't attack.`);          // a familiar (docs/specs/companions.md, Decision 1)
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
-      (a.option ?? 'damage') === 'damage' && a.shove === undefined || fail('Grapple and Shove are options of the Unarmed Strike.');
+      noStrikeFields(a);
       (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
@@ -238,6 +244,7 @@ export const handlers = {
   act(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const def = e.actions?.find((x) => x.id === a.action) || fail(`${e.name} has no such action.`);
+    noStrikeFields(a);
     !e.bond?.noAttack || !isAttack(def) || fail(`${e.name} can't attack.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
