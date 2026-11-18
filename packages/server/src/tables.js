@@ -17,8 +17,8 @@ import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate as rawMigrate } from "../../rules/src/migrate.js";
 import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
-import { playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
-import { forPlayers as packFilteredCopy, HOMEBREW_SUMMON_SENTENCE, packForPlayer, packsMatch, PLAYER_PACK_KINDS, cleanPacks, summonsHomebrew, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
+import { forViewer as rawForViewer, playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
+import { forPlayers as packFilteredCopy, packForPlayer, packsMatch, PLAYER_PACK_KINDS, cleanPacks, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
 import { installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
 import { LIMIT_MESSAGE } from "./limits.js";
@@ -52,7 +52,7 @@ export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
 // characters), so the text is read only up to twice the pack limit; the rules' own budget then bounds the pack itself at
 // MAX_PACK_BYTES of canonical JSON, whatever form it came in. The frame it travels in is held to the DM's frame limit (index.js).
 export const MAX_PACK_TEXT_BYTES = 2 * MAX_PACK_BYTES;
-export { cleanPacks as sanitizePacks, HOMEBREW_SUMMON_SENTENCE, summonsHomebrew, usesIn, vetPacks };
+export { cleanPacks as sanitizePacks, usesIn, vetPacks };
 export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
 
@@ -90,6 +90,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     describeStep: (t, action, events, before, state) => scoped(t, () => rawDescribeStep(action, events, before, state)),
     view: (t, state, ctx) => scoped(t, () => rawView(state, ctx)),
     playerView: (t, state) => scoped(t, () => rawPlayerView(state)),
+    forViewer: (t, base, state, ctx) => scoped(t, () => rawForViewer(base, state, ctx)),
     viewEvents: (t, events, state, ctx) => scoped(t, () => rawViewEvents(events, state, ctx)),
     viewHandouts: (t, state, ctx) => scoped(t, () => rawViewHandouts(state, ctx)),
     viewPrompt: (t, state, ctx) => scoped(t, () => rawViewPrompt(state, ctx)),
@@ -160,15 +161,20 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     shared.set(t, out);
     return out;
   };
+  // The shared view made one player's: a creature of the party that carries a homebrew monster's block is theirs alone to be sent whole
+  // (rules view.js, forViewer; #457). The shared base itself when nothing changes, which is every table with no such creature.
+  const baseFor = (t, m) => engine.forViewer(t, forPlayers(t).base, t.state, { role: m.role, userId: m.id });
   const stateFor = (t, m) => (m.role === "dm" ? { ...engine.view(t, t.state, { role: m.role, userId: m.id }), timeline: undefined }
-    : { ...forPlayers(t).base, handouts: engine.viewHandouts(t, t.state, { role: m.role, userId: m.id }), reactions: engine.viewReactions(t, t.state, { role: m.role, userId: m.id }),
+    : { ...baseFor(t, m), handouts: engine.viewHandouts(t, t.state, { role: m.role, userId: m.id }), reactions: engine.viewReactions(t, t.state, { role: m.role, userId: m.id }),
       prompt: engine.viewPrompt(t, t.state, { role: m.role, userId: m.id }) });
   // What was sent, for the next difference: a player's is the shared one with their handouts, their
   // own creatures' standing instructions for reactions, and a reaction they are asked about (or
-  // only that the table is waiting).
+  // only that the table is waiting). A player who was sent a creature as a seen record in place of the open one
+  // (forViewer) has their own snapshot, taken of what they were sent, so a patch never compares against the shared record.
   const snapFor = (t, m, state) => {
     if (m.role === "dm") return snapshot(state);
-    const { snap } = forPlayers(t);
+    const { snap, base } = forPlayers(t);
+    if (state.entities !== base.entities || state.encounter !== base.encounter) return snapshot(state);
     return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt) } };
   };
   const eventsFor = (t, m, events) => engine.viewEvents(t, events, t.state, { role: m.role, userId: m.id });
@@ -501,7 +507,6 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // The checks themselves are the rules package's (content/packs.js vetAdd / vetUpdate); how a refusal is sent is the server's.
         const v = (op === "add" ? vetAdd : vetUpdate)(t.packs, data, { loaded: cache.loaded });
         if (!v.ok) {
-          if (v.form === "summon") return conn.send({ t: "error", error: v.problems[0], problems: v.problems });
           if (v.form === "error") return error(v.problems[0]);
           return refuse(v.problems);
         }
