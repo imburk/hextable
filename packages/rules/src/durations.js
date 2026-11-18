@@ -22,7 +22,6 @@
 import { has, incapacitated } from './modifiers.js';
 import { leaveForm } from './forms.js';
 import { homebrewBlock, srcOf } from './homebrew.js';
-import { controllerOf } from './engine/shared.js';
 
 export const ROUND = 0.1;                 // one round is six seconds; the world clock counts minutes
 const EPS = 1e-6;                         // rounds are added as 0.1, which does not sum exactly
@@ -47,9 +46,10 @@ export function startEffect(s, { name, spell, source, conc, duration }) {
       : inFight(s, source) ? { enc: s.encounter.id, round: s.encounter.round + Math.round(minutes / ROUND) }
       : { clock: s.clock + minutes },
   };
-  // Made by a creature that carries a homebrew block: it is remembered, and who ran the creature then (null: the DM), so that the effect's
-  // saves, and what is sent of it, stay told as the creature's even when it has left the map or lost the block (view.js, homebrew.js).
-  if (homebrewBlock(s.entities[source])) fx.hbSrc = { id: source, by: controllerOf(s, s.entities[source]) };
+  // Made by a creature that carries a homebrew block: it is remembered, so that the effect's saves, and what is sent of it, stay told as the
+  // creature's even when it has left the map or lost the block (view.js, homebrew.js). Who ran the creature (`by`; null: the DM) is put to
+  // it at the end of the action (engine.js, stampHomebrew): the rules of who runs it are in engine/shared.js, which this module may not import.
+  if (homebrewBlock(s.entities[source])) fx.hbSrc = { id: source };
   effectsOf(s).push(fx);
   return fx;
 }

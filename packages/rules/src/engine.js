@@ -296,6 +296,8 @@ function overWork(s, snap, err, ev, action, was) {
 // never by the creature as it is later, when it may be gone or out of its form (view.js, viewEvents; #457). An event with no stamp names
 // no such creature: a game could not have one before #457. The stamp is never sent to a player.
 function stampHomebrew(s, ev) {
+  // An effect made in this action by a creature with a homebrew block is told who runs it now (`hbSrc.by`; null: the DM's).
+  for (const fx of s.effects ?? []) if (fx.hbSrc && fx.hbSrc.by === undefined) fx.hbSrc.by = s.entities[fx.hbSrc.id] ? controllerOf(s, s.entities[fx.hbSrc.id]) : (BEFORE?.get(fx.hbSrc.id) ?? null);
   const now = homebrewCreatures(s), fromFx = homebrewSources(s);
   if (!now && !BEFORE && !fromFx && !BEFORE_SRC) return;
   const who = new Map([...(BEFORE ?? []), ...(now ?? [])]);
