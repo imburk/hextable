@@ -359,6 +359,26 @@ export function savingThrow(s, t, abil, dc, extra = null, from = null, dis = nul
   return { roll: rolled, total, success: total >= dc, ...(again ? { reroll: rerolled } : {}), ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), dice: [...faces, ...more.dice], bonus: base + m.add, ...(cover !== 'none' && cover !== 'total' ? { cover } : {}), ...(rolledTwo === null ? {} : { rolls: rolledTwo, mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}), used };
 }
 
+// Of several abilities a creature may save with, the one it has the best chance with (the SRD lets the target of a Grapple or a
+// Shove "choose which" of Strength or Dexterity, and the engine chooses for it; docs/specs/grapple-shove.md, Decision 1). Judged as
+// savingThrow() judges a save, without rolling: an automatic success first (never an automatic failure when another ability has
+// none), then Advantage over neither over Disadvantage, then the higher bonus, then the first listed. `from` is where the effect
+// comes from, for cover on a Dexterity save.
+export function bestSave(s, t, abils, from = null, about = null) {
+  let best = null;
+  for (const abil of abils) {
+    const sit = { target: t, ability: abil, ...(about?.length ? { conditions: about } : {}) };
+    const m = modifiers(s, t, `save.${abil}`, sit, ''), x = modifiers(s, t, 'save', sit, '');
+    const cover = abil === 'dex' && from && !from.object ? coverOf(s, from, t, living(s)) : 'none';
+    const fail = m.autoFail || x.autoFail, win = m.autoSucceed || x.autoSucceed;
+    const adv = m.advantage.length + x.advantage.length > 0, dis = m.disadvantage.length + x.disadvantage.length > 0;
+    const base = t.saveBonus?.[abil] ?? mod(t.abil[abil]) + (t.saveProf.includes(abil) ? t.prof : 0);
+    const rank = [fail ? 0 : win ? 2 : 1, adv && !dis ? 2 : dis && !adv ? 0 : 1, base + m.add + x.add + (COVER[cover] ?? 0)];
+    if (!best || rank[0] > best.rank[0] || (rank[0] === best.rank[0] && (rank[1] > best.rank[1] || (rank[1] === best.rank[1] && rank[2] > best.rank[2])))) best = { abil, rank };
+  }
+  return best.abil;
+}
+
 // ---------- ability checks ----------
 // What a creature adds to a d20 for a check: its ability modifier, its Proficiency Bonus if it
 // is proficient in the skill or with the tool (twice for Expertise), or a monster's listed bonus.
