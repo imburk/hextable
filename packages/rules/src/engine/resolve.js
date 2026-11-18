@@ -944,7 +944,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   // `advantageIf` (a creature's attack step: "with Advantage if the target is Grappled by it"): Advantage when every tag holds; a tag the
   // engine cannot judge leaves the roll without it and tells the DM.
   if (atk.advantageIf?.length) {
-    const held = atk.advantageIf.map((tag) => judge(tag, { attacker: from, target: t, ranged: atk.type === 'ranged' }, s));
+    const held = atk.advantageIf.map((tag) => judge(tag, { attacker: from, target: t }, s));
     if (held.includes(null)) ev.push({ type: 'manual', actor: e.id, name: atk.name, partial: true, text: `${atk.name} has Advantage on the attack roll against ${t.name} if "${atk.advantageIf.join('", "')}", which the engine cannot judge. The DM decides.` });
     else if (held.every(Boolean)) { adv = [...adv, atk.advantageIf.length === 1 && atk.advantageIf[0] === 'target.grappledBySelf' ? `${t.name} is Grappled by ${e.name}` : `${atk.name}'s own Advantage`]; mode = dis.length ? 'normal' : 'adv'; }
   }
