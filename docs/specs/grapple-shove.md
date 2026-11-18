@@ -559,3 +559,30 @@ What the build settled:
   actions no longer says the escape DC or the size limit, since the data does.
 - **Not built here.** Swallow, Fling, Reel, Swoop, Pummel, the Vortex's and the Engulf's damage over time and the Mimic Bite's extra
   damage stay `manual` or text; the AI's use of any of it is G5.
+
+**G5 (the AI) and G6 (Grapple as an Opportunity Attack), #482.** Built to Decisions 8 and 10 and the default of Q1. What the build settled:
+
+- **Escape (G5).** `escaping` in `ai.js`: a creature that is Grappled by a hold with an escape DC, holds no one, has its action left and has no
+  attack or area that reaches a foe from where it stands, sends `{ type: 'escape', from }` for the hold with the lowest escape DC (`skill` left out:
+  the engine takes the better of Athletics and Acrobatics). It is asked after the Multiattack branch and before it walks in, in `withActions` and in
+  `withAttacks`; the companion brain's free mode plays through `withActions`, so a companion escapes the same way. A Grappled condition with no `holds`
+  (the DM's) has no escape DC and is left as it was. The AI sends no `letGo`, and no `option`, `shove` or `grab`; "a full part is not offered" and
+  "drags as it walks" were already so (`partRefusal` in `reaches`, G4; `moveOptions` carries the cost, G3) and are now pinned in `ai-grapple.test.js`.
+- **The answer (G6).** `OPPORTUNITY_GRAPPLE` (`'opportunity-attack-grapple'`, "Grapple instead") in `reactions.js` is a third option of the Opportunity
+  Attack prompt, listed after the others so a prompt that had two answers still lists them first. `grappleInstead(s, o, t)` says whether it is offered:
+  `o` plays from attack records (not a pack monster, Q5), may attack (`bond.noAttack`), has an Unarmed Strike and a hand free (`handsFull`), `t` is no more
+  than one size larger and not already held by `o`. A target immune to Grappled is not left out. Only against the mover itself, never the rider of a mount.
+  Taking it spends the Reaction and runs `strikeOption(..., 'grapple')` in place of the attack: the same save, DC and hold as the option on a turn.
+  The `reaction` event is the one an Opportunity Attack makes; `strikeOption`, `save` and `cond` follow; no view change was needed (the prompt's options
+  are passed as they are). There is no standing instruction for it.
+- **The stop.** In `walk` (`engine/movement.js`), after an Opportunity Attack, a mover with no Speed (`speedOf` is 0 and it is not aloft) takes no more
+  steps: the step it was taking is not taken, the other foes' Opportunity Attacks (for that step) are not made, and a note says it can't go on. Applied
+  at once, since the condition is on before the walk looks. It holds for any cause, so a monster's Opportunity Attack that grapples (DEBT T74) follows it
+  too. The mover's movement is not spent.
+- **A full part (T74, 3).** `opportunityAttacks(o, s)` (`reactions.js`) lists every melee action it could use; the walk takes the first whose part is not
+  full (`partRefusal`), and a monster with none makes no Opportunity Attack and keeps its Reaction; the DM is told.
+- **`source` (the Low of #481).** `endHold` and `settleHolds` set the `source` of a condition tied to holds (`whileHeld`) to the first grappler that still holds
+  it when the one it named lets go.
+- **State.** No new state, no version bump.
+- **Fix round 1 of #484.** The option is labelled "Grapple <name> instead (it stops)" (the name the party knows, `seenName`; "it" when the question does not name the mover). When the question has no `by`, the option is offered whatever the mover's size, so the list tells nothing of it; if the mover is too big when the answer comes, the Reaction is spent, a note says so, and nothing else happens. The stop is a `note` for a party mover and a partial `manual` (DM only) for any other.
+
