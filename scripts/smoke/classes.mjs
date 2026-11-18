@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { martial } from './paneltabs.mjs';
-import { scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab } from './lib.mjs';
+import { placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
@@ -77,7 +77,7 @@ async function classes(browser, url, label, opts) {
       for (const [mode, what] of [['heal', 'an ally'], ['radiant', 'a goblin'], ['necrotic', 'a goblin']]) {
         await run.do(`Divine Spark in ${mode} mode: armed with the mode, then a tap on ${what} sends it`, async () => {
           const target = what === 'an ally' ? ids.Dru : await state(page, (S) => Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden).id);
-          if (what !== 'an ally') await page.evaluate(([f, c]) => { const h = window.hextable; const S = h.state, e = S.entities[c]; h.act({ type: 'place', actor: f, to: { q: e.pos.q + 1, r: e.pos.r - 1 } }); }, [target, ids.Cleo]);
+          if (what !== 'an ally') await placeBeside(page, target, ids.Cleo);
           const before = await uses('Cleo', 'channel-divinity'), tl = await state(page, (S) => S.timeline.length);
           await pick('Cleo'); await feat('Divine Spark');
           await tap(page, `#cp .cp-mode[data-mode="${mode}"]`);
@@ -137,7 +137,7 @@ async function classes(browser, url, label, opts) {
 
       await run.do('the sorcerer casts Fire Bolt with Quickened Spell: the Metamagic panel shows the cost, the points go down', async () => {
         const foe = await state(page, (S) => Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden).id);
-        await page.evaluate(([f, c]) => { const h = window.hextable, e = h.state.entities[c]; h.act({ type: 'place', actor: f, to: { q: e.pos.q + 1, r: e.pos.r - 1 } }); }, [foe, ids.Sorsha]);
+        await placeBeside(page, foe, ids.Sorsha);
         // A goblin beside her: the fight starts now, and her first action waits for her turn.
         await page.evaluate((c) => window.hextable.act({ type: 'startEncounter', center: window.hextable.state.entities[c].pos }), ids.Sorsha);
         for (let k = 0; k < 40; k++) {
