@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside } from './lib.mjs';
 
 // ---------- armed class features ----------
 // Stunning Strike, a row of the Features tab (packages/client/actionpanel.js, features.js): arm it, then tap a creature. A monk
@@ -35,22 +35,21 @@ async function armed(browser, url, label, opts) {
         });
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Lo'));
         lo = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Lo').id);
-        const setup = await page.evaluate((LO) => {
-          const h = window.hextable, S = h.state;
+        const nearId = await page.evaluate(() => {
           document.getElementById('dm-auto').checked = false;
+          return Object.values(window.hextable.state.entities).filter((e) => e.side === 'foe' && e.hp > 0 && !e.hidden)[0].id;
+        });
+        await placeBeside(page, lo, nearId);
+        const setup = await page.evaluate(([LO, NEAR]) => {
+          const h = window.hextable, S = h.state;
           const foes = Object.values(S.entities).filter((e) => e.side === 'foe' && e.hp > 0 && !e.hidden);
-          const near = foes[0];
-          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
-            h.act({ type: 'place', actor: LO, to: { q: near.pos.q + dq, r: near.pos.r + dr } });
-            const p = h.state.entities[LO].pos, d = Math.max(Math.abs(p.q - near.pos.q), Math.abs(p.r - near.pos.r), Math.abs(p.q + p.r - near.pos.q - near.pos.r));
-            if (d === 1) break;
-          }
+          const near = S.entities[NEAR];
           const lo = h.state.entities[LO];
           const dist = (a, b) => Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.q + a.r - b.q - b.r));
           const farthest = foes.slice().sort((a, b) => dist(b.pos, lo.pos) - dist(a.pos, lo.pos))[0];
           h.act({ type: 'startEncounter', center: near.pos });
           return { foe: near.id, far: farthest.id, d: dist(farthest.pos, lo.pos) };
-        }, lo);
+        }, [lo, nearId]);
         foe = setup.foe; far = setup.far;
         if (setup.d < 2) throw new Error('no creature out of reach to tap');
         await wait(page, () => window.hextable.waiting === 0, null, 20000);

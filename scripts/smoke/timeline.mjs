@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, openTab, calm, setPace } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, openTab, calm, setPace, placeBeside } from './lib.mjs';
 
 // ---------- timeline and pace ----------
 // At pace `wait` (the default of a table with no setting): a goblin's attack, damage and fall play in order and the player's
@@ -18,14 +18,10 @@ async function foeTurn(page, hp) {
     for (const e of Object.values(h.state.entities)) if (e.kind === 'pc' && (e.dead || e.hp < e.maxHp)) h.act({ type: 'setHp', actor: e.id, hp: e.maxHp });
     const pc = Object.values(h.state.entities).find((e) => e.kind === 'pc' && alive(e));
     h.act({ type: 'setHp', actor: pc.id, hp: hp0 ?? pc.maxHp });
-    for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
-      h.act({ type: 'place', actor: pc.id, to: { q: foe.pos.q + dq, r: foe.pos.r + dr } });
-      const p = h.state.entities[pc.id].pos;
-      if (Math.max(Math.abs(p.q - foe.pos.q), Math.abs(p.r - foe.pos.r), Math.abs(p.q + p.r - foe.pos.q - foe.pos.r)) === 1) break;
-    }
-    h.act({ type: 'startEncounter', center: foe.pos });
     return { pc: pc.id, foe: foe.id };
   }, hp);
+  await placeBeside(page, ids.pc, ids.foe);
+  await page.evaluate((f) => window.hextable.act({ type: 'startEncounter', center: window.hextable.state.entities[f].pos }), ids.foe);
   await calm(page);
   for (let i = 0; i < 20; i++) {
     const cur = await page.evaluate(() => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id; });
@@ -185,16 +181,9 @@ async function pacingTable(browser, url) {
       });
       await run.do('a fight is started at instant pace on the DM and the phone', async () => {
         await setPace(host, 'instant'); await setPace(phone, 'instant');
-        await host.evaluate((pc) => {
-          const h = window.hextable, alive = (e) => e.hp > 0 && !e.dead;
-          const foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && alive(e) && !e.hidden);
-          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
-            h.act({ type: 'place', actor: pc, to: { q: foe.pos.q + dq, r: foe.pos.r + dr } });
-            const p = h.state.entities[pc].pos;
-            if (Math.max(Math.abs(p.q - foe.pos.q), Math.abs(p.r - foe.pos.r), Math.abs(p.q + p.r - foe.pos.q - foe.pos.r)) === 1) break;
-          }
-          h.act({ type: 'startEncounter', center: foe.pos });
-        }, id);
+        const foe0 = await host.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.dead && !e.hidden).id);
+        await placeBeside(host, id, foe0);
+        await host.evaluate((f) => window.hextable.act({ type: 'startEncounter', center: window.hextable.state.entities[f].pos }), foe0);
         await wait(phone, () => !!window.hextable.state.encounter);
       });
       await run.do('at wait, the DM\'s monsters act only once the picture is still; the phone follows without being held up', async () => {

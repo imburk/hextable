@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, placeBeside } from './lib.mjs';
 
 // ---------- the reaction question ----------
 // A DM, a phone player (Wren, a wizard who knows Shield) and a second player who watches. Wren's Shield is set to
@@ -45,16 +45,12 @@ async function prompt(browser, url) {
         wren = await state(host, (S) => Object.values(S.entities).find((e) => e.name === 'Wren').id);
         await phone.locator('#party button:has-text("Play as Wren")').tap();
         await wait(host, (W) => !!window.hextable.state.entities[W].owner, wren);
-        foe = await host.evaluate((W) => {
-          const h = window.hextable, near = Object.values(h.state.entities).filter((e) => e.side === 'foe' && e.hp > 0 && !e.hidden && e.actions?.length)[0];
+        foe = await host.evaluate(() => {
+          const h = window.hextable;
           document.getElementById('dm-auto').checked = false;
-          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
-            h.act({ type: 'place', actor: W, to: { q: near.pos.q + dq, r: near.pos.r + dr } });
-            const p = h.state.entities[W].pos, d = Math.max(Math.abs(p.q - near.pos.q), Math.abs(p.r - near.pos.r), Math.abs(p.q + p.r - near.pos.q - near.pos.r));
-            if (d === 1) break;
-          }
-          return near.id;
-        }, wren);
+          return Object.values(h.state.entities).filter((e) => e.side === 'foe' && e.hp > 0 && !e.hidden && e.actions?.length)[0].id;
+        });
+        await placeBeside(host, wren, foe);
       });
 
       await run.do("the phone sets Wren's Shield to ask on her sheet", async () => {
