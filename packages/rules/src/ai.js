@@ -45,6 +45,21 @@ export function aiStep(s, id, opts) {
   return e.actions ? withActions(s, e, foes) : withAttacks(s, e, foes);
 }
 
+// A creature held by someone, with nothing it can hit from where it stands and no one of its own held, takes the Escape action
+// (docs/specs/grapple-shove.md, Decision 8; SRD "Grappling": the held creature uses its action for a Strength (Athletics) or Dexterity
+// (Acrobatics) check against the escape DC). `canHit`: it has an attack or an area that reaches a foe now, so it fights as it does
+// without a hold (its attacks on anyone but the grappler have Disadvantage by the Grappled condition, and it does not weigh that). A
+// hold with no escape DC in the game (the DM's) cannot be escaped by the engine, so it is left to the DM and the creature fights on.
+// With more than one hold it escapes the one with the lowest DC; `skill` is left out, so the engine takes the better of the two.
+// It never releases a creature it holds: nothing here sends `letGo`.
+function escaping(s, e, canHit) {
+  if (canHit || holdsOf(s, e).length || s.encounter?.budget.action < 1) return null;
+  const holds = (e.cond.grappled?.holds ?? []).filter((h) => Number.isInteger(h.escape));
+  if (!holds.length) return null;
+  const easiest = holds.reduce((a, h) => (h.escape < a.escape ? h : a));
+  return { type: 'escape', actor: e.id, from: easiest.by };
+}
+
 // Move to the spot that brings it nearest to any foe, if that is nearer than where it stands.
 function approach(s, e, foes) {
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));       // between the nearest parts of the two, whatever their size
@@ -121,6 +136,9 @@ function withActions(s, e, foes, lim = {}) {
   if (quick) return act(quick.x, quick.at.extra);
   if (b.action < 1) return end;
   const main = (list) => list.filter((x) => x.p.time === 'action');
+  // Held, and nothing to hit from here: it gets out (escaping).
+  const freed = escaping(s, e, order.some((t) => main(all).some((x) => x.p.aim === 'creature' && reaches(x, t))) || areas.some((z) => z.x.p.time === 'action'));
+  if (freed) return freed;
 
   // A breath weapon or the like, when it would catch two or more.
   const big = areas.find((z) => z.x.p.time === 'action') ?? null;
@@ -160,6 +178,11 @@ function withAttacks(s, e, foes) {
   // With none, it punches a foe beside it (and does not walk in to punch: that is the Dodge it took before).
   if (!melee && !ranged && d <= 1 && open(target)) melee = e.attacks.find((a) => spare(a) && allowed(a));
   const can = b.action > 0 || !!b.attacks;
+  // Held, with nothing to hit from here: it gets out (escaping).
+  if (b.action > 0 && !b.attacks) {
+    const freed = escaping(s, e, !!(melee && d <= 1 && open(target)) || !!(ranged && d * FT <= ranged.range[1] && open(target)));
+    if (freed) return freed;
+  }
   // Attacks it has but may not make now (a Shield and nothing but a Two-Handed weapon): it takes the Dodge action rather than lose the turn.
   if (b.action > 0 && !b.attacks && !melee && !ranged && e.attacks.some((a) => !spare(a)) && !e.cond?.dodging) return { type: 'dodge', actor: id };
   if (can && melee && d <= 1 && open(target)) return { type: 'attack', actor: id, target: target.id, attack: melee.id };
