@@ -8,6 +8,7 @@ import { able, control, current, ent, fail, featOf, ft, inFight, need, steering,
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
+import { SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, isLoading, isUnarmed } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
@@ -163,12 +164,17 @@ function familiarAttack(s, a, ctx, ev) {
   // The familiar named, as `dismiss` names one: to a player a creature the party does not know of is no creature at all.
   typeof a.familiar === 'string' || fail('Name the familiar ({ familiar }).');
   const f = Object.hasOwn(s.entities, a.familiar) ? s.entities[a.familiar] : null;
+  // One in its master's pocket dimension is said so to the DM, and to players for the party's own (whose pocket they are sent).
+  const pocketed = !f && m.pocket && typeof m.pocket === 'object' && Object.hasOwn(m.pocket, a.familiar);
+  if (pocketed && (ctx.role === 'dm' || m.side === 'party')) fail('That familiar is in its pocket dimension.');
   (f && (ctx.role === 'dm' || !unknown(s, f))) || fail('No such creature.');
   control(s, m, ctx);
   const via = typeof a.via === 'string' ? featOf(m, a.via) : null;
   const forgo = via?.forgoAttack ?? null, quick = via?.invest?.bonusAttack ? via.invest : null;
   (forgo || quick) || fail(`Say which feature of ${m.name}'s lets the familiar attack (\`via\`).`);
-  (f.bond?.to === m.id && f.bond.kind === 'familiar' && f.bond.source === (forgo ?? quick).spell) || fail(`${f.name} is not ${m.name}'s familiar.`);
+  f.bond?.to === m.id || fail(`${f.name} is not bonded to ${m.name}.`);
+  const spell = (forgo ?? quick).spell;
+  (f.bond.kind === 'familiar' && f.bond.source === spell) || fail(`${f.name} is bonded to ${m.name}, but is not a familiar from ${SPELLS[spell]?.name ?? spell}, which ${via.name} needs.`);
   (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey are not for a familiar's attack.`);
   noStrikeFields(a);                                                // its attacks are a pack monster's actions
   s.encounter || fail(`${via.name} works in a fight. Start one first.`);
@@ -346,7 +352,9 @@ export const handlers = {
     const bad = checkInstructions(e, a.set);
     if (bad) fail(bad);
     const mine = reactionsOf(e), out = { ...(e.reactions ?? {}) };
-    for (const [k, w] of Object.entries(a.set)) { if (w === mine.find((r) => r.id === k).dflt) delete out[k]; else out[k] = w; }
+    // A reaction whose default depends on who runs the creature (`dfltPlayer`) keeps what was set, whatever it is, so that a claim or a
+    // release does not turn a choice into the other default.
+    for (const [k, w] of Object.entries(a.set)) { const r = mine.find((x) => x.id === k); if (w === r.dflt && !r.dfltPlayer) delete out[k]; else out[k] = w; }
     if (Object.keys(out).length) e.reactions = out; else delete e.reactions;
     ev.push({ type: 'reactionsSet', id: e.id, set: { ...a.set } });
   },

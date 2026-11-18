@@ -786,7 +786,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
-    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced || warded), vulnerable = applies(m.vulnerable, t.vuln);
+    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced || (warded && DAMAGE_TYPES.includes(p.type))), vulnerable = applies(m.vulnerable, t.vuln);
     let n = base[pi];
     if (!pierce && applies(m.immune, t.immune)) n = 0;
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
@@ -870,10 +870,11 @@ function wardFor(s, t, parts, m, ev) {
   if (!mm || mm.id === t.id || mm.object || !canReact(mm)) return false;
   const r = reactionsOf(mm).find((x) => x.on === 'familiarDamaged' && x.spell === b.source);
   if (!r) return false;
-  const w = instruction(mm, r);
+  const w = instruction(mm, r, s);             // `ask` by default for a master a player runs (reactions.js, defaultOf)
   if (w === 'never') return false;
   const has = (list, own, ty) => list === true || list.includes(ty) || (own ?? []).includes(ty);
-  if (!parts.some((p) => p.amount > 0 && !has(m.resist, t.resist, p.type) && !has(m.immune, t.immune, p.type))) return false;
+  // Only damage of a type, as Superior Hunter's Defense (the DM's untyped damage is none; review of #467, 4).
+  if (!parts.some((p) => p.amount > 0 && DAMAGE_TYPES.includes(p.type) && !has(m.resist, t.resist, p.type) && !has(m.immune, t.immune, p.type))) return false;
   if (w === 'ask') {
     const types = [...new Set(parts.filter((p) => p.amount > 0).map((p) => p.type))];
     const a = ask(s, mm, { trigger: 'familiarDamaged', ...(types.length === 1 && DAMAGE_TYPES.includes(types[0]) ? { dtype: types[0] } : {}) }, [{ reaction: r.id, name: `${r.name}: Resistance for ${t.name}` }]);
@@ -1307,6 +1308,7 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
   // An attack roll says what it is in its own event; anything else (a breath, a gaze) is announced.
   if (!('attack' in def.effects[0])) ev.push({ type: 'act', actor: e.id, action: def.id, name: def.name, hexes, targets: (targets ?? []).map((t) => t.id) });
   const steps = structuredClone(def.effects), fx = boundEffect(s, def.name, e.id, steps);
+  masterDc(s, e, steps);
   endingsTakeSaveDc(steps);
   begin(s, {
     steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
@@ -1640,12 +1642,23 @@ function summon(s, m, step, src, ev) {
 // reformed (summons.js, investIn). A caster with the feature who left the choices out (a client with no chooser for them yet)
 // gets the creature as the spell alone makes it, and the DM is told what the feature would have given.
 function invested(m, e, pick, ev) {
-  if (pick.invest) return investIn(e, pick.invest, pick.caster.dc);
+  if (pick.invest) investIn(e, pick.invest, pick.caster.dc);
   if (!pick.uninvested) return;
   const f = (m.feats ?? []).find((x) => x.id === pick.uninvested), I = f?.invest;
   if (!I) return;
   ev.push({ type: 'manual', actor: m.id, name: f.name, partial: true,
-    text: `${m.name} cast without ${f.name}'s choices, so ${e.name} was made without them: ${[I.speed ? `a ${I.speed.of.join(' or ')} Speed of ${I.speed.feet} feet` : '', I.saveDc ? `${m.name}'s spell save DC (${pick.caster.dc}) for the saves it forces` : '', I.damage ? `${I.damage.to.join(' or ')} damage instead of ${I.damage.from.join(', ')}, if chosen` : ''].filter(Boolean).join('; ')}. Cast again with them, or the DM applies them.` });
+    text: `${m.name} cast without ${f.name}'s choices, so ${e.name} was made without them: ${[I.speed ? `a ${I.speed.of.join(' or ')} Speed of ${I.speed.feet} feet` : '', I.damage ? `${I.damage.to.join(' or ')} damage instead of ${I.damage.from.join(', ')}, if chosen` : ''].filter(Boolean).join('; ')}. Cast again with them, or the DM applies them.${I.saveDc ? ` It uses ${m.name}'s spell save DC all the same.` : ''}` });
+}
+// The save DC of a familiar's action (Investment of the Chain Master's `saveDc`; review of #467, 2): "If the familiar forces a
+// creature to make a saving throw, it uses your spell save DC" is a standing rule, so while its master is on the map and has the
+// feature for the spell that made it, every save its actions force is against the master's spell save DC now (a level gained or a
+// Charisma raised counts). The number baked at the casting stays as the fallback for a master who is gone. `steps` is a copy.
+function masterDc(s, e, steps) {
+  const b = e.bond, m = b?.kind === 'familiar' && typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
+  const f = m && (m.feats ?? []).find((x) => x.invest?.saveDc && x.invest.spell === b.source);
+  if (!f) return;
+  const dc = spellStats(m, s, f.invest.spell).dc;
+  if (Number.isInteger(dc)) walkSteps(steps, (st) => { if (typeof st.save === 'string' && typeof st.dc === 'number') st.dc = dc; });
 }
 
 // ---------- one per master, and the pocket dimension (Decisions 2 and 6; stage C5c) ----------

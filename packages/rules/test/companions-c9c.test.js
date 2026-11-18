@@ -170,7 +170,7 @@ test("Investment: a cast without the choices makes the plain familiar and tells 
   assert.equal(f.speeds.swim, undefined);
   assert.equal(f.actions.find((a) => a.id === "sting").effects[0].onHit[0].type, "piercing");
   const m = r.events.find((e) => e.type === "manual" && /Investment of the Chain Master/.test(e.name));
-  assert.ok(m && /fly or swim Speed of 40 feet/.test(m.text) && /spell save DC \(15\)/.test(m.text), m?.text);
+  assert.ok(m && /fly or swim Speed of 40 feet/.test(m.text) && /spell save DC all the same/.test(m.text), m?.text);
 });
 
 // ---------- Pact of the Chain: the forgone attack ----------
@@ -209,7 +209,7 @@ test("the forgone attack is refused, changing nothing: not Mor's turn, no action
   refused(s, forgo(f, g, { attack: "invisibility" }), PAT, /no such attack/);
   refused(s, forgo(f, g, { via: "pact-of-the-blade" }), PAT, /Say which feature/);
   refused(s, forgo(f, g, { via: undefined }), PAT, /Say which feature/);
-  refused(s, forgo(f, g, { familiar: g }), PAT, /not Mor's familiar/);
+  refused(s, forgo(f, g, { familiar: g }), PAT, /Goblin Warrior 1 is not bonded to Mor\./);
   refused(s, forgo(f, g, { familiar: "m999" }), PAT, /No such creature/);
   refused(s, forgo(f, g, { brutal: "x" }), PAT, /not for a familiar/);
   // Out of the sting's reach: the goblin steps away.
@@ -270,10 +270,11 @@ test("players are told nothing of a foe master's familiar attack beyond the atta
 
 // ---------- Investment: the Reaction that gives Resistance ----------
 
-test("Investment's Resistance: when the familiar takes damage Mor's Reaction halves it (always, by default)", () => {
+test("Investment's Resistance: when the familiar takes damage Mor's Reaction halves it (by the DM's default, Always)", () => {
   const { s, f } = fight();
+  ok(apply(s, { type: "release", entity: "mor" }, DM));                       // a master the DM runs
   const hp = f.hp;
-  assert.ok(reactionsOf(s.entities.mor).some((x) => x.id === INVEST && x.on === "familiarDamaged" && x.dflt === "always"));
+  assert.ok(reactionsOf(s.entities.mor).some((x) => x.id === INVEST && x.on === "familiarDamaged" && x.dflt === "always" && x.dfltPlayer === "ask"));
   const r = ok(apply(s, { type: "harm", actor: f.id, amount: 10, dtype: "acid" }, DM));
   assert.equal(s.entities[f.id].hp, hp - 5, "Resistance: 10 acid becomes 5");
   assert.equal(s.entities.mor.reactionUsed, true, "Mor's Reaction is spent");
@@ -381,4 +382,79 @@ test("Find Steed's entry no longer leaves Life Bond to the DM", () => {
   const fs = PACKS[0].spells.find((x) => x.id === "find-steed");
   assert.ok(!/DM handles Life Bond/.test(fs.text));
   assert.equal(fs.tier, "assist", "the steed protecting its rider and its look are still the DM's");
+});
+
+// ---------- fix round 1 of #467 ----------
+
+test("Investment's Resistance: for a master a player runs the default is Ask, and it really pauses (nothing stored)", () => {
+  const { s, f } = fight();
+  assert.equal(s.entities.mor.reactions, undefined, "no instruction stored");
+  const hp = s.entities[f.id].hp;
+  apply(s, { type: "harm", actor: f.id, amount: 10, dtype: "acid" }, DM);
+  assert.ok(s.pending, "the damage waits for Mor's player");
+  const q = viewPrompt(s, PAT);
+  assert.equal(q.trigger, "familiarDamaged");
+  ok(apply(s, { type: "react", prompt: q.n, take: INVEST }, PAT));
+  assert.equal(s.entities[f.id].hp, hp - 5);
+  // Set to Always by the player, it is kept (not dropped as a default) and no longer asks.
+  const t = fight();
+  ok(apply(t.s, { type: "reactions", actor: "mor", set: { [INVEST]: "always" } }, PAT));
+  assert.equal(t.s.entities.mor.reactions[INVEST], "always");
+  ok(apply(t.s, { type: "harm", actor: t.f.id, amount: 10, dtype: "acid" }, DM));
+  assert.equal(t.s.pending ?? null, null);
+  assert.equal(t.s.entities.mor.reactionUsed, true);
+});
+
+test("Investment's Resistance: the DM's untyped damage does not set it off, as for Superior Hunter's Defense", () => {
+  const { s, f } = fight();
+  ok(apply(s, { type: "reactions", actor: "mor", set: { [INVEST]: "always" } }, PAT));
+  const hp = s.entities[f.id].hp;
+  ok(apply(s, { type: "harm", actor: f.id, amount: 6 }, DM));
+  assert.equal(s.entities[f.id].hp, hp - 6);
+  assert.equal(s.entities.mor.reactionUsed, false);
+});
+
+test("Investment's save DC follows the master's own: a level or a Charisma gained counts; the baked number stays for a master who is gone", () => {
+  const { s, f, g } = fight(warlock(), { move: "fly" }, "pseudodragon");
+  for (let i = 0; i < 20 && current(s) !== f.id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  const sting = (ctx = PAT) => ok(apply(s, { type: "act", actor: f.id, action: "sting", target: g }, ctx)).events.find((e) => e.type === "save" && e.id === g).dc;
+  assert.equal(sting(), 15, "8 + 3 + Charisma 4");
+  const mor = s.entities.mor;
+  mor.abil.cha = 20; mor.prof = 4;                                            // as at level 9 with Charisma 20
+  for (let i = 0; i < 20 && current(s) !== f.id || i === 0; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  assert.equal(sting(), 17, "the master's DC now");
+  for (let i = 0; i < 20 && current(s) !== f.id || i === 0; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  const gone = structuredClone(s);
+  delete gone.entities.mor;
+  const dc = ok(apply(gone, { type: "act", actor: f.id, action: "sting", target: g }, DM)).events.find((e) => e.type === "save" && e.id === g).dc;
+  assert.equal(dc, 15, "the number baked at the casting");
+});
+
+test("messages: a familiar in the pocket dimension is said so; a creature bonded to someone else, or bonded but not as the familiar, says which", () => {
+  const s = table("mor", warlock());
+  const { f } = castFamiliar(s, "imp", { move: "fly" });
+  ok(apply(s, { type: "dismiss", actor: "mor", id: f.id }, PAT));
+  for (const ctx of [PAT, DM]) refused(s, { type: "attack", actor: "mor", familiar: f.id, via: PACT, target: "mor", attack: "sting" }, ctx, /^That familiar is in its pocket dimension\.$/);
+  const { s: t, g } = fight();
+  const wolf = spawnBeside(t, "wolf", t.entities.mor.pos);
+  t.entities[wolf].side = "party";
+  ok(apply(t, { type: "bond", actor: wolf, to: "mor" }, DM));
+  refused(t, { type: "attack", actor: "mor", familiar: wolf, via: PACT, target: g, attack: "bite" }, PAT, /is bonded to Mor, but is not a familiar from Find Familiar/);
+});
+
+test("players are sent a foe's familiar Reaction attack and its master's Resistance as a Reaction taken, with no feature name or trigger", () => {
+  const { s, f, g } = fight();
+  ok(apply(s, { type: "release", entity: "mor" }, DM));                       // the DM's master: Always by default
+  for (const id of ["mor", f.id]) s.entities[id].side = "foe";
+  s.entities[g].side = "party";
+  const r1 = ok(apply(s, forgo(f, g), DM));
+  const r2 = ok(apply(s, { type: "harm", actor: f.id, amount: 6, dtype: "acid" }, DM));
+  const sent = viewEvents([...r1.events, ...r2.events], s, PAT).filter((e) => e.type === "reaction");
+  assert.equal(sent.length, 2);
+  for (const e of sent) assert.deepEqual(Object.keys(e).sort(), ["id", "type"]);
+  assert.ok(!json(sent).includes("Investment") && !json(sent).includes("familiar"));
+  // The party's own are told whole.
+  const { s: p, f: pf, g: pg } = fight();
+  const mine = viewEvents(ok(apply(p, forgo(pf, pg), PAT)).events, p, PAT).find((e) => e.type === "reaction");
+  assert.equal(mine.trigger, "forgo");
 });

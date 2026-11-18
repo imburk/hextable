@@ -273,7 +273,11 @@ function summonFor(s, e, sp, a, slot, range, ctx, fc) {
     else x.move === undefined || fail(`${inv.name} gives no Speed to choose.`);
     if (x.damage !== undefined) (I.damage && I.damage.to.includes(x.damage)) || fail(I.damage ? `${inv.name} turns damage into ${I.damage.to.join(' or ')}.` : `${inv.name} changes no damage type.`);
     out.invest = { by: inv.id, ...(I.speed ? { move: x.move, feet: I.speed.feet } : {}), ...(x.damage !== undefined ? { damage: x.damage, from: [...I.damage.from] } : {}), ...(I.saveDc ? { saveDc: true } : {}) };
-  } else if (inv && (inv.invest.speed || inv.invest.saveDc)) out.uninvested = inv.id;      // left out: the DM is told what was not given (resolve.js)
+  } else if (inv) {
+    // Left out: what needs no choice is given all the same (the master's save DC); the DM is told what was not (resolve.js).
+    out.invest = { by: inv.id, ...(inv.invest.saveDc ? { saveDc: true } : {}) };
+    if (inv.invest.speed) out.uninvested = inv.id;
+  }
   if (step.variants) { step.variants.includes(p.variant) || fail(`Choose what ${sp.name} summons: ${step.variants.join(', ')}.`); out.variant = p.variant; }
   else p.variant === undefined || fail(`${sp.name} has no choice of that kind.`);
   if (step.types) {

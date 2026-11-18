@@ -1121,7 +1121,7 @@ lines (srd52-flow.txt) are 16619-16631 (Pact of the Chain), 16521-16535 (Investm
 | Key | Where | Shape | What the engine does with it |
 |---|---|---|---|
 | `forgoAttack` | a feature's `grants` | `{ spell }` | When its creature takes the Attack action it may give one of its attacks to its familiar made by `spell` (bond kind `familiar`, `source` that spell), which makes one attack with its Reaction: `{ type: 'attack', actor: master, familiar, via: feature id, target, attack: the familiar's action id }` (attacks.js, `familiarAttack`). One attack of the Attack action is spent: one Extra Attack left this turn (`budget.attacks`, an entry for any attack), or else the action itself, which starts the Attack action (its other attacks wait in the pool as for any Attack action). The familiar's Reaction is spent. |
-| `invest` | a feature's `grants` | `{ spell, speed?: { feet, of }, damage?: { from, to }, saveDc?: true, bonusAttack?: true, ward?: true }`, `spell` and at least one other | For a casting of `spell` by its creature: `cast.summon.invest: { move, damage? }` picks a way of moving in `speed.of` and, optionally, a type in `damage.to`; both are baked into the familiar made or reformed (summons.js, `investIn`): the Speed (a faster one it has is kept), damage of a type in `from` becomes the type picked, and with `saveDc` every save its actions force is against the master's spell save DC. `bonusAttack`: `attack` with `familiar` and `via` the feature spends the master's Bonus Action and the familiar makes one attack at once (the Attack action's one attack; a Multiattack is another action). `ward`: a reaction of the master's (`reactions.js`, trigger `familiarDamaged`, default `always`, also `never` or `ask`): when the familiar takes damage the master's Reaction gives it Resistance to all of that damage (resolve.js, `wardFor`, in `damage`). |
+| `invest` | a feature's `grants` | `{ spell, speed?: { feet, of }, damage?: { from, to }, saveDc?: true, bonusAttack?: true, ward?: true }`, `spell` and at least one other | For a casting of `spell` by its creature: `cast.summon.invest: { move, damage? }` picks a way of moving in `speed.of` and, optionally, a type in `damage.to`; both are baked into the familiar made or reformed (summons.js, `investIn`): the Speed (a faster one it has is kept), damage of a type in `from` becomes the type picked, and with `saveDc` every save its actions force is against the master's spell save DC: the master's DC at the time of the save while the master is on the map with the feature (a level or a Charisma gained counts), the number baked at the casting only for a master who is gone. `bonusAttack`: `attack` with `familiar` and `via` the feature spends the master's Bonus Action and the familiar makes one attack at once (the Attack action's one attack; a Multiattack is another action). `ward`: a reaction of the master's (`reactions.js`, trigger `familiarDamaged`; default `ask` for a master a player runs and `always` for the DM's, worked out from who runs it, nothing stored; also `never`): when the familiar takes damage the master's Reaction gives it Resistance to all of that damage (resolve.js, `wardFor`, in `damage`). |
 | `masterHeal` | a trait of a monster or a summon block | `{ within }` (feet) | When its master regains Hit Points from a spell of level 1 or higher while within `within` feet of it, it regains the same number (rolls.js, `heal` and `spellHealed`, the healing hook). |
 
 Homebrew may not use `forgoAttack` or `invest` ("A homebrew feature cannot change a familiar or let it attack yet."), as it may not use
@@ -1140,13 +1140,20 @@ Homebrew may not use `forgoAttack` or `invest` ("A homebrew feature cannot chang
 - **The damage swap is chosen at the casting** (the issue's words), not hit by hit. A casting without `invest` by a caster with the feature
   makes the plain familiar and tells the DM what was left out (a `manual` event), so a client with no chooser still casts.
 - **Resistance is not spent for nothing:** not taken when every part of the damage is of a type the familiar already resists or is immune
-  to. One instance of damage, every type in it.
+  to, or is the DM's untyped damage (as Superior Hunter's Defense). One instance of damage, every typed part in it.
+- **Its default (fix round 1, review of #467):** `ask` when a player runs the master, `always` for the DM's (`dfltPlayer` on the reaction,
+  `defaultOf` in reactions.js); `mayAsk` counts that default so the action really pauses. What a player sets is kept even when it equals
+  `dflt`, so a claim or a release does not turn it into the other default. The client's reaction sheet and prompt have words for the trigger.
 - **Life Bond** counts what the master actually regained (its maximum caps it; at full Hit Points it regained nothing and the steed gets
   nothing), from a spell's own `heal` step (the step's frame names the spell, `src.spell`; `effects.js` now hands the frame to `kit.heal`).
   The DM's `mend`, a feature or a potion is not a spell. The hook is shared in shape with Blessed Healer (DEBT C8), which is not built.
 - **What players are sent.** No new event types and no new record fields. A note naming the feature is sent only for the party's own
-  master; the familiar's Reaction is a `reaction` event named "Attack with its Reaction", which says nothing of a master; the ward's
-  `reaction` event is the master's, with `for` (the familiar), which `viewEvents` does not pass on. Life Bond's note is the party's own only.
+  master. The two `reaction` events (the familiar's, trigger `forgo`; the master's, trigger `familiarDamaged`, with `for`, never passed on)
+  are sent whole for the party's own; for a creature not of the party `viewEvents` sends them as `{ type, id }` only, a Reaction taken, with
+  no name or trigger (fix round 1). Life Bond's note is the party's own only.
+- **Messages.** A familiar in its master's pocket dimension: "That familiar is in its pocket dimension." (to the DM, and to players for
+  the party's own); a creature not bonded to the master: "X is not bonded to Mor."; one bonded but not as that spell's familiar says so.
+- **Without the choices** a cast still gives what needs no choice (the master's save DC) and tells the DM what was left out.
 - **No state version bump.** The baked numbers are ordinary record numbers; nothing new is stored.
 - **Not done** (DEBT C18): the client's chooser and buttons, the brain's use of them, a character saved before keeping its old features.
 
