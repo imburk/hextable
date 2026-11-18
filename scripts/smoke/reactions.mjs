@@ -1,5 +1,5 @@
 
-import { scenario, wait, state, waitShown, open, playSolo, closePanels } from './lib.mjs';
+import { scenario, wait, state, waitShown, open, playSolo, closePanels, placeBeside } from './lib.mjs';
 
 // ---------- reactions on the sheet ----------
 // A wizard who knows Shield stands beside a goblin. Her sheet lists her reactions (and only those she has),
@@ -29,16 +29,12 @@ async function reactions(browser, url, label, opts) {
         });
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Wren'));
         wren = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Wren').id);
-        foe = await page.evaluate((W) => {
-          const h = window.hextable, near = Object.values(h.state.entities).filter((e) => e.side === 'foe' && e.hp > 0 && !e.hidden && e.actions?.length)[0];
+        foe = await page.evaluate(() => {
+          const h = window.hextable;
           document.getElementById('dm-auto').checked = false;
-          for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]]) {
-            h.act({ type: 'place', actor: W, to: { q: near.pos.q + dq, r: near.pos.r + dr } });
-            const p = h.state.entities[W].pos, d = Math.max(Math.abs(p.q - near.pos.q), Math.abs(p.r - near.pos.r), Math.abs(p.q + p.r - near.pos.q - near.pos.r));
-            if (d === 1) break;
-          }
-          return near.id;
-        }, wren);
+          return Object.values(h.state.entities).filter((e) => e.side === 'foe' && e.hp > 0 && !e.hidden && e.actions?.length)[0].id;
+        });
+        await placeBeside(page, wren, foe);
       });
 
       await run.do('the sheet lists her reactions and no others', async () => {
