@@ -1994,6 +1994,20 @@ export const GRANT_WORDS = {
     this.num(`${at}.feet`, v.feet, 'feet');
     this.line(`A Large or smaller creature that ${nameOf('spells', v.spell)} hits with an attack roll may be pushed up to ${v.feet} feet straight away.`, 1);
   },
+  forgoAttack(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { spell }.`);
+    this.line(`When the holder takes the Attack action it may give up one of its attacks so that its familiar from ${nameOf('spells', v.spell)} makes one attack with its Reaction.`, 1);
+  },
+  invest(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { spell, speed?, damage?, saveDc?, bonusAttack?, ward? }.`);
+    const s = isObj(v.speed) ? v.speed : null, d = isObj(v.damage) ? v.damage : null;
+    if (s) this.num(`${at}.speed.feet`, s.feet, 'feet');
+    const list = (xs) => (Array.isArray(xs) ? xs.map(shown).join(' or ') : '?');
+    const parts = [s ? `a ${list(s.of)} Speed of ${s.feet} feet (chosen at each casting)` : '', d ? `${list(d.to)} damage instead of ${list(d.from)}, if chosen at the casting` : '',
+      v.saveDc ? "the holder's spell save DC for the saves it forces" : '', v.bonusAttack ? "the Attack action when the holder commands it with a Bonus Action" : '',
+      v.ward ? "Resistance to damage it takes, for the holder's Reaction" : ''].filter(Boolean);
+    this.line(`The familiar the holder makes with ${nameOf('spells', v.spell)} gains ${parts.length ? parts.join('; ') : 'nothing the reader can read'}.`, 1);
+  },
 };
 
 class GrantReading extends Reading {

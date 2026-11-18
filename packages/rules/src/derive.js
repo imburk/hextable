@@ -514,6 +514,7 @@ export function derive(sheet) {
     if (g.restExhaustion) out.restExhaustion = g.restExhaustion;
     if (g.spellRange) out.spellRange = { spell: g.spellRange.spell, add: g.spellRange.perLevel * level };     // Eldritch Spear: 30 feet a Warlock level
     if (g.repel) out.repel = { ...g.repel };
+    for (const k of ['forgoAttack', 'invest']) if (g[k]) out[k] = structuredClone(g[k]);      // since #464: Pact of the Chain, Investment of the Chain Master
     if (g.cunning) out.cunning = { ...(g.cunning.max ? { max: g.cunning.max } : {}), ...(g.cunning.options ? { options: g.cunning.options.map((o) => ({ ...o, ...(o.effects ? { effects: bake(o.effects) } : {}) })) } : {}) };
     if (g.extraAttack) legacy.extraAttack = Math.max(legacy.extraAttack ?? 0, g.extraAttack);
     if (g.sneak) legacy.sneak = amount(g.sneak, c, level, abil);

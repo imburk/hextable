@@ -537,6 +537,9 @@ export function viewEvents(events, state, viewer) {
         else out.push(pick(ev, ['type', 'id', 'abil', 'success', ...(caster !== null && cls(caster) === 'open' ? ['dc'] : [])]));
         break;
       case 'reaction':                                 // a creature took a Reaction: who, what, and against whom, as anyone watching would see
+        // A familiar's Reaction attack and its master's Resistance for it (companions.md, C9c) say that a creature has a familiar and
+        // what it gives it: for a creature not of the party they are told as a Reaction taken, and no more (review of #467, 3).
+        if ((ev.trigger === 'familiarDamaged' || ev.trigger === 'forgo') && state.entities[ev.id]?.side !== 'party') { out.push(pick(ev, ['type', 'id'])); break; }
         out.push({ ...pick(ev, ['type', 'id', 'reaction', 'name', 'trigger']),
           ...(ev.against !== undefined && cls(ev.against) !== 'hidden' ? { against: ev.against } : {}),
           ...(ev.amount !== undefined && cls(ev.id) === 'open' ? { amount: ev.amount, ...facesFor(ev) } : {}) });

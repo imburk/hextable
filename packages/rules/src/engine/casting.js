@@ -260,8 +260,24 @@ function summonFor(s, e, sp, a, slot, range, ctx, fc) {
     return { count, ...(old.length ? { had: old.map((x) => x.id) } : {}) };
   }
   (p && typeof p === 'object' && !Array.isArray(p)) || fail(`Pick where ${sp.name} summons: { at: [a space] }.`);
-  for (const k of Object.keys(p)) ['variant', 'type', 'form', 'at'].includes(k) || fail(`A summon names variant, type, form and at, not "${k}".`);
+  for (const k of Object.keys(p)) ['variant', 'type', 'form', 'at', 'invest'].includes(k) || fail(`A summon names variant, type, form, at and invest, not "${k}".`);
   const out = {};
+  // Investment of the Chain Master (`invest` on a feature of the caster's for this spell; docs/specs/companions.md, C9c): the
+  // choices of this casting, `summon.invest: { move, damage? }`, baked into the creature it makes or reforms (resolve.js).
+  const inv = (e.feats ?? []).find((f) => f.invest?.spell === sp.id);
+  if (p.invest !== undefined) {
+    inv || fail(`${e.name} has nothing that invests what ${sp.name} summons.`);
+    const x = p.invest, I = inv.invest;
+    (x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).every((k) => ['move', 'damage'].includes(k))) || fail(`${inv.name}'s choices are { move, damage? }.`);
+    if (I.speed) I.speed.of.includes(x.move) || fail(`Choose ${inv.name}'s Speed of ${I.speed.feet} feet: ${I.speed.of.join(' or ')}.`);
+    else x.move === undefined || fail(`${inv.name} gives no Speed to choose.`);
+    if (x.damage !== undefined) (I.damage && I.damage.to.includes(x.damage)) || fail(I.damage ? `${inv.name} turns damage into ${I.damage.to.join(' or ')}.` : `${inv.name} changes no damage type.`);
+    out.invest = { by: inv.id, ...(I.speed ? { move: x.move, feet: I.speed.feet } : {}), ...(x.damage !== undefined ? { damage: x.damage, from: [...I.damage.from] } : {}), ...(I.saveDc ? { saveDc: true } : {}) };
+  } else if (inv) {
+    // Left out: what needs no choice is given all the same (the master's save DC); the DM is told what was not (resolve.js).
+    out.invest = { by: inv.id, ...(inv.invest.saveDc ? { saveDc: true } : {}) };
+    if (inv.invest.speed) out.uninvested = inv.id;
+  }
   if (step.variants) { step.variants.includes(p.variant) || fail(`Choose what ${sp.name} summons: ${step.variants.join(', ')}.`); out.variant = p.variant; }
   else p.variant === undefined || fail(`${sp.name} has no choice of that kind.`);
   if (step.types) {

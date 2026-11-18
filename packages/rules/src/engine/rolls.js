@@ -3,6 +3,7 @@
 // lasting effects an action leaves behind.
 import { d20Faces, die, negate, roll } from '../rng.js';
 import { SKILLS } from '../content/schema.js';
+import { CONTENT, SPELLS } from '../content/index.js';
 import { walk as walkSteps } from '../effects.js';
 import { concentrationLost, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
 import { apart, FT } from '../space.js';
@@ -62,14 +63,36 @@ const noAmount = (t, amount, what, ev, f) => {
   ev.push({ type: 'manual', actor: f?.actor ?? t.id, name: f?.src?.name ?? what, partial: true, text: `${what} for ${t.name} has no amount the engine can work out, so none was applied. The DM applies it.` });
   return true;
 };
+// `f`, from an effect step, is its frame: a spell's healing says which spell (`f.src.spell`), for spellHealed below.
 export function heal(s, t, amount, ev, r = null, f = null) {
   if (noAmount(t, amount, 'Healing', ev, f)) return;
+  const was = Math.max(0, t.hp);
   if (t.hp <= 0) { delete t.cond.unconscious; delete t.cond.stable; t.death = { s: 0, f: 0 }; }
   t.hp = Math.min(t.maxHp, t.hp + amount);
   ev.push({ type: 'heal', target: t.id, amount, hp: t.hp, ...rolledOf(r, amount) });
   // In a fight a revived creature stays Prone until its turn, when standing costs half its Speed.
   // Outside one, movement isn't budgeted, so it simply gets up.
   if (t.cond.prone && !inFight(s, t.id)) { delete t.cond.prone; ev.push({ type: 'stood', id: t.id }); }
+  if (f) spellHealed(s, t, t.hp - was, f, ev);
+}
+
+// The healing hook (#464): what happens when a creature regains Hit Points from a spell of level 1 or higher. `gained` is the
+// number it regained (what its maximum let it take). Built: Life Bond (the Otherworldly Steed, SRD 26875-26877: "When you
+// regain Hit Points from a level 1+ spell, the steed regains the same number of Hit Points if you're within 5 feet of it"),
+// a companion's trait `masterHeal: { within }`. Blessed Healer (DEBT C8), healing another creature with a slot, would be
+// read here too; it is not built.
+function spellHealed(s, t, gained, f, ev) {
+  const sp = typeof f.src?.spell === 'string' && Object.hasOwn(SPELLS, f.src.spell) ? SPELLS[f.src.spell] : null;
+  if (!sp || !(sp.level >= 1) || !(gained > 0)) return;
+  for (const x of Object.values(s.entities)) {
+    if (x.bond?.to !== t.id || x.id === t.id || x.dead || !(x.hp > 0)) continue;
+    const block = (Object.hasOwn(CONTENT.summons, x.tpl ?? '') ? CONTENT.summons[x.tpl] : null) ?? (Object.hasOwn(CONTENT.monsters, x.tpl ?? '') ? CONTENT.monsters[x.tpl] : null);
+    const tr = (block?.traits ?? []).find((y) => y.masterHeal);
+    if (!tr || apart(s, t, x) * FT > tr.masterHeal.within) continue;
+    // Said by name for the party's own: a foe's bond is not told to players (docs/specs/companions.md, Decision 10).
+    if (x.side === 'party') ev.push({ type: 'note', id: x.id, text: `${tr.name}: ${t.name} regained ${gained} Hit Points from ${sp.name}` });
+    heal(s, x, gained, ev, { by: t.id });
+  }
 }
 
 const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'hidden', obscured: 'heavily obscured' };
