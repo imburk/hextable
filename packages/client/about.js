@@ -741,7 +741,7 @@ export function aboutHTML(info = {}) {
       <p>The source is available: ${linked(HEXTABLE_LICENCE.source)}</p>
       <details><summary>${esc(HEXTABLE_LICENCE.name)}</summary><pre class="ab-pre">${esc(HEXTABLE_LICENCE.text)}</pre></details></section>
     <section class="ab-sec"><h3>Three.js</h3>
-      <p>The 3D view uses Three.js, ${linked(THREE_LICENCE.site)}, under the MIT License; it is loaded when the table opens (about 458 KB, once). Adding <code>?renderer=gl</code> to the address uses the older, hand-written renderer instead. The copy kept with the game is unchanged but for its import lines; its licence file is <a href="${esc(THREE_LICENCE.where)}" target="_blank" rel="noopener">${esc(THREE_LICENCE.where)}</a>.</p>
+      <p>The 3D view uses Three.js, ${linked(THREE_LICENCE.site)}, under the MIT License; it is loaded when the table opens (about 458 KB, once). The copy kept with the game is unchanged but for its import lines; its licence file is <a href="${esc(THREE_LICENCE.where)}" target="_blank" rel="noopener">${esc(THREE_LICENCE.where)}</a>.</p>
       <details><summary>${esc(THREE_LICENCE.name)}</summary><pre class="ab-pre">${esc(THREE_LICENCE.text)}</pre></details></section>
     <section class="ab-sec"><h3>Fonts</h3>
       <p>The page loads these from Google Fonts. Each is under the ${linked(OFL.name)} (${linked(OFL.url)}).</p>
