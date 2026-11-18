@@ -12,7 +12,7 @@ import { coverOf } from './shared/sight.js';
 import { aiStep, autoPlays } from './shared/ai.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
-import { hpFraction } from './render.js';
+import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
 import { createTracker, shownName } from './tracker.js';
 import { mountDot } from './linkdot.js';
@@ -62,7 +62,7 @@ function applyTheme() {
   for (const [k, v] of Object.entries(THEMES[themeId].ui)) document.documentElement.style.setProperty(k, v);
 }
 applyTheme();
-const R = createRenderer(rendererKind(location.search, prefs.get('hextable.renderer')), $('gl'), $('labels'), THEMES[themeId]);      // 'three' (default), 'gl' (?renderer=gl) or 'none' (?renderer=none): renderer.js
+const R = createRenderer(rendererKind(location.search, prefs.get('hextable.renderer')), $('gl'), $('labels'), THEMES[themeId]);      // 'three' (the 3D view; the only one that draws) or 'none' (?renderer=none): renderer.js
 
 // The timeline (docs/specs/renderer.md, decisions 2 and 3): the events of an update play as beats, one after another. The log
 // line and the floating text of an event come on its beat, the picture is brought to what the beats have shown, and in `wait`
@@ -1149,7 +1149,7 @@ function start(transport, map = null) {
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
-    else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (render.js, arenaFlashCells)
+    else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (three-build.js, arenaFlashCells)
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);
       if (lastMove && Date.now() - lastMove.at < 4000) window.dispatchEvent(new CustomEvent('hextable-arena-flash', { detail: lastMove.hex }));
     } else toast(msg);

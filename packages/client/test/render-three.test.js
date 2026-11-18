@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url)), client = join(here, '..'), tmp = mkdtempSync(join(tmpdir(), 'render-three-'));
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
-for (const f of ['renderer.js', 'render.js', 'render-three.js', 'three-build.js', 'floors.js', 'governor.js']) cpSync(join(client, f), join(tmp, f));
+for (const f of ['renderer.js', 'render-three.js', 'three-build.js', 'floors.js', 'governor.js']) cpSync(join(client, f), join(tmp, f));
 cpSync(join(client, 'vendor'), join(tmp, 'vendor'), { recursive: true });
 writeFileSync(join(tmp, 'package.json'), '{"type":"module"}');
 after(() => rmSync(tmp, { recursive: true, force: true }));
@@ -29,9 +29,10 @@ test('three is a kind, chosen by the address then the preference', () => {
   assert.ok(KINDS.includes('three'));
   assert.equal(rendererKind('?renderer=three', undefined), 'three');
   assert.equal(rendererKind('', 'three'), 'three');
-  assert.equal(rendererKind('?renderer=gl', 'three'), 'gl');
+  assert.ok(!KINDS.includes('gl'), 'the hand-written renderer is gone (R14 step 2, #355)');
+  assert.equal(rendererKind('?renderer=gl', 'three'), 'three');
   assert.equal(rendererKind('', undefined), 'three');        // the default since R14 step 1 (#348)
-  assert.equal(rendererKind('', 'gl'), 'gl');
+  assert.equal(rendererKind('', 'gl'), 'three');
 });
 test('the stand-in reads the Three.js renderer\'s insides through, for the smoke script, and shows a loading state', async () => {
   const shown = [], el = (id) => ({ hidden: true, classList: { toggle() {} }, querySelector: () => ({ textContent: '', hidden: true }) });
@@ -44,6 +45,20 @@ test('the stand-in reads the Three.js renderer\'s insides through, for the smoke
     assert.equal(r.cam.dist, 3); assert.equal(r.G, 'grid'); assert.equal(typeof r.screenOf, 'function');
     r.onTap = () => 1; assert.equal(typeof r.inner.onTap, 'function');
   } finally { delete globalThis.document; }
+});
+test('a device with no WebGL 2 is told so in place of the picture, and the table is not blocked (R14 step 2, #355)', async () => {
+  const els = {}, el = (id) => (els[id] ??= { hidden: true, textContent: '', cls: new Set(), classList: { toggle(c, on) { on ? els[id].cls.add(c) : els[id].cls.delete(c); } }, querySelector: (q) => el(q) });
+  globalThis.document = { createElement: () => ({ getContext: () => null }), getElementById: (id) => el(id) };
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const r = createRenderer('three', {}, {}, theme);
+    await r.ready;
+    assert.equal(els['gl-status'].hidden, false); assert.ok(els['gl-status'].cls.has('failed'));
+    assert.match(els['#gl-status-text'].textContent, /WebGL 2/);
+    assert.equal(r.kind, null, 'no renderer took the canvas');
+    r.setState({ entities: {} }, []); r.focus('x', true); assert.equal(r.screenOf({ q: 0, r: 0 }), null);      // calls still answer
+    assert.equal(els['#gl-status-classic'], undefined, 'there is no classic renderer to offer');
+  } finally { console.warn = warn; delete globalThis.document; }
 });
 test('the Three.js renderer and its stand-in have every member of the interface', () => {
   for (const m of METHODS) { assert.equal(typeof ThreeRenderer.prototype[m], 'function', `ThreeRenderer.${m}`); assert.equal(typeof LazyThree.prototype[m], 'function', `LazyThree.${m}`); }
@@ -188,7 +203,7 @@ function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b
 function norm3(a) { const l = Math.hypot(...a); return a.map((v) => v / l); }
 
 // ---------- the edge of a fight (#305) ----------
-const R = await load('render.js');
+const R = B;                         // the helpers were render.js's until R14 step 2 (#355)
 const arenaWorld = () => {
   const S = world(null), c = Object.values(S.entities)[0].pos, arena = {};
   for (const h of [c, { q: c.q + 1, r: c.r }, { q: c.q, r: c.r + 1 }, { q: c.q - 1, r: c.r + 1 }]) arena[`${h.q},${h.r}`] = true;

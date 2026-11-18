@@ -350,7 +350,7 @@ against monsters of CR 4 or lower, online and on phones (ROADMAP milestone 6), w
 
 | # | What must be true | Jobs | From |
 |---|---|---|---|
-| 1 | `v0.1.0` is cut: Three.js is the default and the old renderer is gone | 1 (R14 step 2, #355, waits for the owner's go) | ROADMAP; DEBT P23, P25, P30 |
+| 1 | `v0.1.0` is cut: Three.js is the default and the old renderer is gone | 1 (R14 step 2, #355: built; the owner said go on 18 November; the lead tags after the merge) | ROADMAP; DEBT P23, P25, P30 |
 | 2 | A DM can add a homebrew spell and cast it, online, with the server's safety check | 5 (B1, B3, B4, B5, B7) | homebrew.md |
 | 3 | The screens players need to cast what the engine runs: aim a teleport, draw a spell's terrain or fog, level up a multiclass character | 3 | DEBT Spells (after #165); C12 |
 | 4 | "On weapon hit": the smites, Shillelagh, True Strike, and the same hook for features and items | 1 | owner's question 4; section 2 |

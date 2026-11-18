@@ -27,7 +27,7 @@ It runs on a computer, a tablet and a phone.
 - **Hidden information.** Players see only what their characters can see. They are never sent the dice seed, monster numbers or creatures that are hidden. Hiding, searching, line of sight and light are in the rules.
 - **DM tools.** Undo and redo, **rewind to the start of the fight or the last rest**, a combat tracker, a chronicle, table rules (cover, climbing, passive Perception and more), handouts and private notes, and a saved copy of the whole table with its pictures.
 - **When the fight ends.** A defeat card if the party falls, and experience and loot to review and hand out when it is won.
-- **Two renderers.** The 3D view (Three.js) is the default; the older classic one is still there (add `?renderer=gl` to the address). Several colour themes.
+- **A 3D view** drawn with Three.js (needs WebGL 2, which current Chrome, Safari and Firefox have), and several colour themes.
 
 ## Not there yet
 

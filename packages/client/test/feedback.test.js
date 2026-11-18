@@ -16,7 +16,7 @@ const { REPORT } = await import(pathToFileURL(join(here, '../../server/src/feedb
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { view } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
 
-const FACTS = { build: 'state-v1', mode: 'solo', role: 'dm', renderer: 'gl', theme: 'classic', grid: 'hex', viewport: { w: 390, h: 844 }, touch: true, ua: 'UA', lang: 'en', fight: { on: false }, character: null, map: 'valley' };
+const FACTS = { build: 'state-v1', mode: 'solo', role: 'dm', renderer: 'three', theme: 'classic', grid: 'hex', viewport: { w: 390, h: 844 }, touch: true, ua: 'UA', lang: 'en', fight: { on: false }, character: null, map: 'valley' };
 
 test("the log keeps the last 30 shown lines, as shown, and never talk", () => {
   const rec = createRecorder();
@@ -63,7 +63,7 @@ test("what is gathered from a player's own view holds no seed, no names of peopl
   const fighter = Object.values(S.entities).find((e) => e.kind === 'pc');
   const T = { solo: false, you: { role: 'player', userId: 'pat', name: 'Patricia Secretname', code: 'ABC123' } };
   const win = { innerWidth: 390, innerHeight: 844, navigator: { userAgent: 'UA', maxTouchPoints: 1 }, document: { documentElement: { lang: 'en-GB' }, querySelector: () => null } };
-  const f = gather(() => ({ S, T, selId: fighter.id, themeId: 'classic', renderer: 'gl', mine: () => true }), win);
+  const f = gather(() => ({ S, T, selId: fighter.id, themeId: 'classic', renderer: 'three', mine: () => true }), win);
   assert.equal(f.mode, 'table'); assert.equal(f.role, 'player'); assert.equal(f.touch, true);
   assert.equal(f.character.cls, fighter.cls); assert.equal(f.character.level, fighter.level);
   assert.equal('code' in f, false);
@@ -114,7 +114,7 @@ test("a recorder scrubs lines, answers and errors, and never keeps chat, notes, 
 
 test("whose turn it is, as the viewer sees it: mine, someone else's or unseen", () => {
   const base = { entities: { a: { id: 'a', kind: 'pc' } }, map: { id: 'valley' } };
-  const f = (slot) => gather(() => ({ S: { ...base, encounter: { round: 2, turn: 0, order: [slot] } }, T: { solo: true, you: { role: 'dm' } }, selId: 'a', themeId: 'classic', renderer: 'gl', mine: (e) => e?.id === 'a' }), { innerWidth: 1, innerHeight: 1, navigator: {}, document: { querySelector: () => null } }).fight;
+  const f = (slot) => gather(() => ({ S: { ...base, encounter: { round: 2, turn: 0, order: [slot] } }, T: { solo: true, you: { role: 'dm' } }, selId: 'a', themeId: 'classic', renderer: 'three', mine: (e) => e?.id === 'a' }), { innerWidth: 1, innerHeight: 1, navigator: {}, document: { querySelector: () => null } }).fight;
   assert.deepEqual(f({ id: 'a' }), { on: true, round: 2, turn: 'mine' });
   assert.equal(f({ id: 'b' }).turn, 'other');
   assert.equal(f({ someone: true }).turn, 'unseen');

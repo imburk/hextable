@@ -279,41 +279,6 @@ async function desktop(browser, url) {
   });
 }
 
-async function classic(browser, url) {
-  await scenario('keyboard movement on the classic renderer (?renderer=gl)', async (run) => {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    try {
-      const page = await ctx.newPage();
-      run.watch(page);
-      await run.do('W walks one step to the neighbour keys.js names, and Space runs without an error', async () => {
-        await open(page, `${url}?renderer=gl`); await playSolo(page);
-        await wait(page, () => window.hextable.state.entities.fighter && window.hextable.R.constructor.name === 'Renderer');
-        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }));
-        await closePanels(page); await page.evaluate(() => window.hextable.select('fighter')); await calm(page); await blur(page);
-        // The classic view cannot be turned to face a free hex, so the key is chosen instead: of W, D, S and A the first whose hex keys.js
-        // names is one the fighter can stand on and no one is on. The map is random; a hex ahead can be a tree or water (#406).
-        let key = null, want = null;
-        for (const [k, f, r] of [['w', 1, 0], ['d', 0, 1], ['s', -1, 0], ['a', 0, -1]]) {
-          const w = await expected(page, 'fighter', f, r);
-          const ok = await page.evaluate(async (w0) => {
-            const S = window.hextable.state, { moveOptions } = await import('./shared/engine.js');
-            return [...moveOptions(S, S.entities.fighter).values()].some((o) => o.canStop && o.h.q === w0.q && o.h.r === w0.r) && !Object.values(S.entities).some((e) => e.pos.q === w0.q && e.pos.r === w0.r);
-          }, w);
-          if (ok) { key = k; want = w; break; }
-        }
-        if (!key) throw new Error('no hex next to the fighter is free to walk to on this map');
-        const got = await press(page, key, 'fighter');
-        if (!same(got, want)) throw new Error(`${key} walked to ${JSON.stringify(got)}, keys.js says ${JSON.stringify(want)}`);
-        await page.evaluate(() => { window.hextable.R.rotate(1); });
-        await page.keyboard.press('Space'); await sleep(1500);
-        const r = await page.evaluate(async (w) => { const K = await import('./keys.js'), R = window.hextable.R, S = window.hextable.state, e = S.entities.fighter;
-          return { yaw: R.cameraAngles().yaw, moved: e.pos.q === w.q && e.pos.r === w.r }; }, want);
-        if (!r.moved) throw new Error('not where it walked');
-      });
-    } finally { await ctx.close(); }
-  });
-}
-
 async function phone(browser, url) {
   await scenario('keyboard movement leaves the phone as it was (390x844, touch)', async (run) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
@@ -335,6 +300,5 @@ async function phone(browser, url) {
 
 export default async function (browser, url) {
   await desktop(browser, url);
-  await classic(browser, url);
   await phone(browser, url);
 }

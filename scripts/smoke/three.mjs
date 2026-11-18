@@ -16,10 +16,10 @@ async function threePass(browser, url, label, opts) {
       const asked = [], got = [];
       page.on('request', (r) => asked.push(r.url()));
       page.on('response', (r) => { if (r.url().includes('/vendor/')) got.push({ url: r.url(), enc: r.headers()['content-encoding'], vary: r.headers()['vary'], status: r.status() }); });
-      // Since R14 step 1 (#348) the default renderer is Three.js, so a normal page load fetches the library; a page that chose another renderer
-      // (`?renderer=gl`) still fetches nothing under vendor/.
-      await run.do('a page and a solo game on ?renderer=gl fetch nothing under vendor/', async () => {
-        await open(page, `${url}?renderer=gl`); await playSolo(page); await sleep(1000);
+      // The library is fetched by a page that draws (the default since R14 step 1, #348; the only one since step 2, #355). A page that chose
+      // the renderer that draws nothing (`?renderer=none`) still fetches nothing under vendor/: this was the check for the old renderer's page.
+      await run.do('a page and a solo game on ?renderer=none fetch nothing under vendor/', async () => {
+        await open(page, `${url}?renderer=none`); await playSolo(page); await sleep(1000);
         const v = asked.filter((u) => u.includes('/vendor/'));
         if (v.length) throw new Error(`the page fetched ${v.join(', ')}`);
       });
@@ -29,7 +29,7 @@ async function threePass(browser, url, label, opts) {
         if (!asked.some((u) => u.endsWith('/vendor/three/three.module.js'))) throw new Error('the default page did not fetch the library');
         if (await page.evaluate(() => !document.getElementById('gl-status').hidden)) throw new Error('the loading message is still up');
       });
-      await run.do('while the library loads the table says so; if it cannot load, a message offers the classic renderer, and the button reaches it', async () => {
+      await run.do('while the library loads the table says so; if it cannot load, a message says that, offers nothing else, and the table still plays', async () => {
         const ctx2 = await browser.newContext(opts);
         try {
           const p2 = await ctx2.newPage();
@@ -38,18 +38,32 @@ async function threePass(browser, url, label, opts) {
           let hold = true; await p2.route('**/vendor/**', async (route) => { while (hold) await sleep(100); route.continue(); });
           await open(p2, url); await playSolo(p2);
           await wait(p2, () => !document.getElementById('gl-status').hidden && /Loading the 3D view/.test(document.getElementById('gl-status-text').textContent), null, 10000);
-          if (await p2.evaluate(() => !document.getElementById('gl-status-classic').hidden)) throw new Error('the loading message offers the classic renderer');
           hold = false; await wait(p2, () => window.hextable.R.kind === 'three' && document.getElementById('gl-status').hidden, null, 30000);
           await p2.unroute('**/vendor/**'); await p2.route('**/vendor/**', (route) => route.abort());
           await p2.goto(url); await playSolo(p2);
-          await wait(p2, () => document.getElementById('gl-status').classList.contains('failed') && !document.getElementById('gl-status-classic').hidden, null, 15000);
+          await wait(p2, () => document.getElementById('gl-status').classList.contains('failed'), null, 15000);
           const msg = await p2.evaluate(() => document.getElementById('gl-status-text').textContent);
           if (!/could not be loaded/.test(msg)) throw new Error(`the failure message reads: ${msg}`);
-          await p2.unroute('**/vendor/**');
-          await p2.click('#gl-status-classic'); await p2.waitForLoadState('load'); await playSolo(p2);
-          await wait(p2, () => window.hextable.R.constructor.name === 'Renderer' && window.hextable.state.entities.fighter, null, 20000);
-          if ((await p2.evaluate(() => localStorage.getItem('hextable.renderer'))) !== '"gl"') throw new Error('the preference was not stored');
+          if (await p2.evaluate(() => !!document.getElementById('gl-status-classic') || document.querySelector('#gl-status button'))) throw new Error('the failure message offers a button: there is no other renderer to offer');
+          if ((await p2.evaluate(() => window.hextable.R.kind)) !== null) throw new Error('a renderer holds the canvas');
+          await wait(p2, () => window.hextable.state.entities.fighter, null, 20000);      // the rest of the table is there
+          await p2.evaluate(() => window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }));
         } finally { await ctx2.close(); }
+      });
+      await run.do('a device with no WebGL 2 sees a message in place of the picture, no page error, and the table still plays (R14 step 2)', async () => {
+        const ctx3 = await browser.newContext(opts);
+        try {
+          const p3 = await ctx3.newPage(); run.watch(p3);
+          await ctx3.addInitScript(() => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (kind, ...a) { return kind === 'webgl2' ? null : g.call(this, kind, ...a); }; });
+          await open(p3, url); await playSolo(p3);
+          await wait(p3, () => document.getElementById('gl-status').classList.contains('failed') && /WebGL 2/.test(document.getElementById('gl-status-text').textContent), null, 15000);
+          if ((await p3.evaluate(() => window.hextable.R.kind)) !== null) throw new Error('a renderer holds the canvas');
+          const asked = await p3.evaluate(() => performance.getEntriesByType('resource').map((r) => r.name).filter((n) => n.includes('/vendor/')));
+          if (asked.length) throw new Error(`the page fetched ${asked.join(', ')} though the picture cannot start`);
+          await wait(p3, () => window.hextable.state.entities.fighter, null, 20000);
+          await p3.evaluate(() => window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }));
+          if (process.env.SMOKE_SHOTS) await p3.screenshot({ path: join(process.env.SMOKE_SHOTS, `three-no-webgl2-${opts.hasTouch ? 'phone' : 'desk'}.png`) }).catch(() => {});
+        } finally { await ctx3.close(); }
       });
       await run.do('the vendored module loads, draws a cube on an offscreen canvas, GLTFLoader and SkeletonUtils import', async () => {
         const r = await page.evaluate(async () => (await import('/three-check.js')).checkThree());
@@ -137,21 +151,21 @@ async function threeShadows(browser, url, label, opts) {
 
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=three.
 // ---------- the edge of a fight (#305) ----------
-// Both renderers, hexes and squares, a computer and a phone with touch. Before a fight there is no edge; when it starts the default look dims
+// Hexes and squares, a computer and a phone with touch (`three` runs the hexes, `square` the squares; the classic renderer's runs went with it, R14 step 2, #355). Before a fight there is no edge; when it starts the default look dims
 // everything outside the arena and draws no glowing edge; a move out of it is refused with the rule in words and the border cells nearest the
 // tap flash (in either look); the Settings control (stored per device) brings the glowing edge back; when the fight ends the edge is gone.
 // Screenshots go to SMOKE_SHOTS.
-export async function arenaEdge(browser, url, label, { three, grid, ...opts }) {
+export async function arenaEdge(browser, url, label, { grid, ...opts }) {
   await scenario(label, async (run) => {
-    const touch = !!opts.hasTouch, tag = `${three ? 'three' : 'gl'}-${grid}-${touch ? 'phone' : 'desk'}`, shots = process.env.SMOKE_SHOTS, ctx = await browser.newContext(opts);
+    const touch = !!opts.hasTouch, tag = `${grid}-${touch ? 'phone' : 'desk'}`, shots = process.env.SMOKE_SHOTS, ctx = await browser.newContext(opts);
     try {
       const page = await ctx.newPage(); run.watch(page);
       const R = (fn, arg) => page.evaluate(`((a) => { const R = window.hextable.R.inner ?? window.hextable.R; return (${fn})(R, a); })(${JSON.stringify(arg ?? null)})`);
       const act = async (a) => { await page.evaluate((x) => window.hextable.act(x), a); await sleep(350); await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000); };
       const shot = async (n) => { if (shots) await page.screenshot({ path: join(shots, `arena-edge-${tag}-${n}.png`) }); };
       await run.do('open a solo game and wait for the renderer', async () => {
-        await open(page, `${url}?renderer=${three ? 'three' : 'gl'}`, { grid }); await playSolo(page);
-        if (three) await wait(page, () => window.hextable.R.kind === 'three', null, 30000);
+        await open(page, url, { grid }); await playSolo(page);
+        await wait(page, () => window.hextable.R.kind === 'three', null, 30000);
         await act({ type: 'setting', key: 'autoEngage', value: false });
         if (grid === 'square') { await act({ type: 'loadMap', map: squareRoom() }); await wait(page, () => window.hextable.state.map.id === 'square-room'); }
         await sleep(800); await shot('1-before');
@@ -226,9 +240,6 @@ export default async function (browser, url) {
   await threeShadows(browser, url, 'three: real shadows at 1280x800', { viewport: { width: 1280, height: 800 } });
   await threeShadows(browser, url, 'three: real shadows at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const D = { viewport: { width: 1280, height: 800 } }, P = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
-  // The default renderer's runs are in square.mjs (squares) and interface.mjs (hexes).
-  await arenaEdge(browser, url, 'arena edge: Three.js renderer, hexes, 1280x800', { ...D, three: true, grid: 'hex' });
-  await arenaEdge(browser, url, 'arena edge: Three.js renderer, hexes, 390x844 with touch', { ...P, three: true, grid: 'hex' });
-  await arenaEdge(browser, url, 'arena edge: Three.js renderer, squares, 1280x800', { ...D, three: true, grid: 'square' });
-  await arenaEdge(browser, url, 'arena edge: Three.js renderer, squares, 390x844 with touch', { ...P, three: true, grid: 'square' });
+  await arenaEdge(browser, url, 'arena edge: hexes, 1280x800', { ...D, grid: 'hex' });
+  await arenaEdge(browser, url, 'arena edge: hexes, 390x844 with touch', { ...P, grid: 'hex' });
 }
