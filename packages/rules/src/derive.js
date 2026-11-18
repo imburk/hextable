@@ -288,7 +288,8 @@ export function derive(sheet) {
   const multi = ks.length > 1;
   const why = {};
   // Magic armour or a magic Shield worn is the armour or Shield (validate refuses a second); its bonus only with the Attunement it needs.
-  const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, shield = (!!sheet.shield && !sheet.shieldStowed) || !!shieldItem;
+  const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, gone = typeof sheet.shield === 'string' && !sheet.shieldStowed && !shieldEntry(sheet),
+    shield = (!!sheet.shield && !sheet.shieldStowed && !gone) || !!shieldItem;   // a Shield id whose entry is not loaded (a pack removed) is no Shield held
   const shieldOk = shield && armourWords.has('shield');
   const unarmoured = !armour, bare = unarmoured && !shield;
   const sum = (k) => G.reduce((n, g) => n + (typeof g[k] === 'number' ? g[k] : 0), 0);
@@ -324,6 +325,7 @@ export function derive(sheet) {
       if (n > ac) { ac = n; acWhy = [`${x.f.name}: ${f.base}`, ...f.abilities.map((a) => `${nice(a)} ${signed(mod(abil[a]))}`)]; }
     }
   }
+  if (gone && !shieldItem) acWhy.push(`Shield "${sheet.shield.slice(0, 60)}": its entry is not loaded at this table, so it gives no Armor Class`);
   if (shieldOk) {
     const se = shieldEntry(sheet, shieldItem);
     if (se) { ac += se.ac; acWhy.push(`${se.name} +${se.ac}`); }

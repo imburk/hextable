@@ -9,7 +9,7 @@ import { incapacitatedBy } from '../modifiers.js';
 import { partyView, sightRule, unknown } from '../vision.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
-import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
+import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, shieldEntry, validate } from '../derive.js';
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, remake, resheet } from './sheets.js';
@@ -196,6 +196,7 @@ export const handlers = {
     const e = ent(s, a.actor); control(s, e, ctx);
     e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
     typeof a.on === 'boolean' || fail('On is true or false.');
+    typeof e.sheet.shield !== 'string' || shieldEntry(e.sheet) || fail("That Shield's entry is not loaded at this table.");
     (a.item === undefined || typeof a.item === 'string') || fail('Item is the key of a magic Shield on the sheet.');
     const fight = !!s.encounter && inFight(s, e.id);
     if (fight) need(s, e, 'action');
