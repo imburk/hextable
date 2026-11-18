@@ -1401,7 +1401,7 @@ export function endHold(s, t, by, why, ev) {
     const list = tiedTo(v);
     if (!list.includes(by)) continue;
     const rest = list.filter((x) => x !== by);
-    if (rest.length) { v.grapples = rest; delete v.grapple; }                       // another grapple still holds it
+    if (rest.length) { v.grapples = rest; delete v.grapple; if (v.source === by) v.source = rest[0]; }       // another grapple still holds it: `source` follows
     else { delete t.cond[c]; ev.push({ type: 'condEnd', id: t.id, cond: c, by, why }); }
   }
   return true;
@@ -1459,7 +1459,7 @@ export function settleHolds(s, ev) {
       if (!list.length) continue;
       const live = list.filter((id) => (t.cond.grappled?.holds ?? []).some((h) => h.by === id));
       if (live.length === list.length) continue;
-      if (live.length) { v.grapples = live; delete v.grapple; continue; }
+      if (live.length) { v.grapples = live; delete v.grapple; if (v.source !== undefined && !live.includes(v.source)) v.source = live[0]; continue; }
       delete t.cond[c];
       ev.push({ type: 'condEnd', id: t.id, cond: c, by: list[0], why: 'released' });
     }

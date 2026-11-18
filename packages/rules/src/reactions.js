@@ -28,11 +28,16 @@
 // Shield's "targeted by Magic Missile" is the spell's `blocks` list, checked when a spell is cast.
 // Pure: no I/O, no randomness here.
 import { CONTENT, SPELLS } from './content/index.js';
-import { handsFull, steadiest } from './weapons.js';
+import { handsFull, isUnarmed, steadiest } from './weapons.js';
 import { incapacitated } from './modifiers.js';
+import { SIZES } from './content/sizes.js';
 import { ownerOf } from './engine/shared.js';
 
 export const OPPORTUNITY = 'opportunity-attack';
+// The answer to an Opportunity Attack prompt that Grapples with the Unarmed Strike instead of making its damage (stage G6 of
+// docs/specs/grapple-shove.md, Decision 10). Only an answer, like OPPORTUNITY_RIDER (engine/movement.js): there is no standing
+// instruction for it, so it is offered only to a creature whose instruction for the Opportunity Attack is `ask`.
+export const OPPORTUNITY_GRAPPLE = 'opportunity-attack-grapple';
 // What an instruction can say. `miss`: only when the reaction would turn the hit into a miss
 // (for one that adds to Armor Class). `ask`: a player is asked in the moment; for the DM's own
 // creatures the DM is told and decides by hand.
@@ -53,6 +58,19 @@ export function opportunityAttack(o, s = null) {
   if (o.bond?.noAttack) return null;
   if (o.actions) return o.actions.find((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee') ?? null;
   return steadiest(o, (o.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, o, a))) ?? null;
+}
+
+// The Unarmed Strike `o` may Grapple `t` with as its Opportunity Attack (SRD "Opportunity Attacks": "a weapon or an Unarmed Strike";
+// "Unarmed Strike", Grapple: no more than one size larger, a hand free), or null. A creature that plays from actions (a pack monster)
+// has no Unarmed Strike (docs/specs/grapple-shove.md, Q5), and one that already holds `t` has nothing to grab. Offered only where the
+// engine would take it, so a refusal never tells a player anything about `t`: a target immune to Grappled is not left out.
+export function grappleInstead(s, o, t) {
+  if (!s?.entities || o.bond?.noAttack || o.actions || t.dead) return null;
+  const strikes = (o.attacks ?? []).filter((a) => a.type === 'melee' && isUnarmed(a));
+  const atk = strikes.find((a) => a.id === 'unarmed-strike') ?? strikes[0];
+  if (!atk || handsFull(s, o, atk, true)) return null;
+  if (SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(o.size ?? 'medium') + 1) return null;
+  return (t.cond?.grappled?.holds ?? []).some((h) => h.by === o.id) ? null : atk;
 }
 
 // How much a spell's own steps add to Armor Class (Shield: 5), or 0.

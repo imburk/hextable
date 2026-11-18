@@ -6,14 +6,14 @@ import { entered, holds, snapshot, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
-import { canReact, instruction, OPPORTUNITY, opportunityAttack, reactionsOf } from '../reactions.js';
+import { canReact, grappleInstead, instruction, OPPORTUNITY, OPPORTUNITY_GRAPPLE, opportunityAttack, reactionsOf } from '../reactions.js';
 import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
-import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter } from './resolve.js';
+import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -148,7 +148,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
   // route's cost so far, one subtraction, so fractions of a foot never pile up; on hexes, step by
   // step as it always was (the same numbers: there every cost is whole or half feet).
   const square = gridOf(s.map).kind === 'square', base = bud?.move;
-  let spent = 0;
+  let spent = 0, rooted = false;
   for (const { h: step, cost, p } of route(reach, tk)) {
     // A creature it holds must be able to follow this step (`move` has already refused a first step none can follow): if one cannot,
     // the walk stops here, before an Opportunity Attack is provoked by a step that is not taken.
@@ -167,17 +167,22 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         // (stage C6b, Decision 8). The rider is offered only where the attacker could attack it (riderTarget).
         const w = instruction(o, reactionsOf(o).find((r) => r.id === OPPORTUNITY)), alt = riderTarget(s, o, rider, prev);
         if (w === 'never') continue;
-        let t = e;
+        let t = e, grab = null;
         if (w === 'ask') {
+          // Grapple instead of the damage (stage G6): a third answer, only when it asks, from a creature with an Unarmed Strike and a hand
+          // free, against the mover itself (grappleInstead). It is offered after the others, so what asked before still asks the same.
+          const gr = grappleInstead(s, o, e);
           // A mover the party is not told of is not named in the question (fix round 1 of #378, L3).
           const answer = ask(s, o, { trigger: 'leave', ...(seesFor(s, o, e) ? { by: e.id } : {}) }, [{ reaction: OPPORTUNITY, name: 'Opportunity Attack' },
-            ...(alt ? [{ reaction: OPPORTUNITY_RIDER, name: `Opportunity Attack on ${alt.name}`, against: alt.id }] : [])]);
+            ...(alt ? [{ reaction: OPPORTUNITY_RIDER, name: `Opportunity Attack on ${alt.name}`, against: alt.id }] : []),
+            ...(gr ? [{ reaction: OPPORTUNITY_GRAPPLE, name: 'Grapple instead' }] : [])]);
           if (answer === null) {
             ev.push({ type: 'manual', actor: o.id, name: 'Opportunity Attack', partial: true,
               text: `${e.name} leaves ${o.name}'s reach${alt ? `, carrying ${alt.name}` : ''}. ${o.name}'s instruction is to ask the DM: if it takes the Opportunity Attack${alt ? ` (against ${e.name} or ${alt.name})` : ''}, the DM makes it and marks its Reaction used.` });
             continue;
           }
-          if (answer.take === OPPORTUNITY_RIDER && alt) t = alt;
+          if (answer.take === OPPORTUNITY_GRAPPLE && gr) grab = gr;
+          else if (answer.take === OPPORTUNITY_RIDER && alt) t = alt;
           else if (answer.take !== OPPORTUNITY) continue;
         }
         flush();
@@ -186,13 +191,19 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         o.reactionUsed = true;
         ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
         const oa = opportunityAttack(o, s);
-        if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
+        if (grab) strikeOption(s, o, e, grab, 'grapple', undefined, ev);
+        else if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
         else resolveAttack(s, o, t, oa, ev, { opportunity: true });
         // A rider knocked down or Prone by it may fall off here, before the mount goes on (settleRide).
         if (t === rider) { settleRide(s, rider, ev); rider = riderOf(s, e); }
         if (!up(e)) break;
+        // Left with no Speed by it (a Grapple: Grappled has Speed 0; a monster's attack that grapples likewise), the mover goes no further:
+        // the step it was taking is not taken (docs/specs/grapple-shove.md, Decision 10; DEBT T74). The rest of the foes' Opportunity
+        // Attacks were for that step, so none is made.
+        if (speedOf(s, e) <= 0 && !aloft(s, e)) { rooted = true; break; }
       }
       if (!up(e)) break;
+      if (rooted) { flush(); ev.push({ type: 'note', id: e.id, text: `${e.name} can't go on: its Speed is 0.` }); break; }
     }
     const k = key(step);
     const was = e.pos, zonesBefore = snapshot(s);
