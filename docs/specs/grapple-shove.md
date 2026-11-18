@@ -403,3 +403,23 @@ Each has the default the jobs above are written to.
   a migration that refreshes the actions of every creature made from a pack monster, which would also bring in every
   other content fix since it was made.
 - **Q8. Shove's choice.** Default: Push or Prone is chosen when the Shove is declared, not after the save fails.
+
+## Build notes
+
+**G1 (Shove), #462.** Built to Decisions 1 and 9 and the defaults of Q2 and Q8. What the build settled:
+
+- `option` and `shove` are checked in `optionOf` (`engine/attacks.js`), after the range and wall checks and before anything is shown,
+  spent or started, so a refusal (and a size refusal outside a fight) changes nothing. A pack monster's action refuses both fields.
+  `option: 'grapple'` is refused with "not in the game yet" until G2 builds it; `grab` is not read yet.
+- `strikeOption()` is in `engine/resolve.js` beside `resolveAttack` because it needs `push`, which stays private to that module.
+  It makes no attack roll, so it does not end hiding (the SRD's Hide ends on an attack roll) and sets no `attacked` flag; it does
+  renew Rage, as any save forced on an enemy does. The `save` event carries `by` (the actor), as Decision 1 says; `view.js` drops
+  `by` where the actor is not one the player knows.
+- `bestSave(s, t, abils, from, about)` in `engine/rolls.js` judges the abilities as `savingThrow` does and rolls nothing.
+- The DC is `atk.dc` when the record has it; otherwise `8 + the modifier of the ability the attack uses (atk.abil, Strength if none) +
+  Proficiency Bonus`. This differs from Decision 1's "from `abil.str`" only for a Monk's record saved before `dc` existed, where it
+  keeps Dexterous Attacks.
+- `dc` had to be added to `ATTACK_FIELDS` in `content/schema.js` (a whole number 1 to 40), or `lintRecord` would refuse a record
+  that carries it.
+- A Shove at a ridden mount runs the existing `push`: the rider's DC 10 Dexterity save comes first; a push of the rider itself
+  is handed to the DM as `push` already does.
