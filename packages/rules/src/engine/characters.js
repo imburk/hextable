@@ -9,7 +9,7 @@ import { incapacitatedBy } from '../modifiers.js';
 import { partyView, sightRule, unknown } from '../vision.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
-import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, validate } from '../derive.js';
+import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, shieldEntry, validate } from '../derive.js';
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, remake, resheet } from './sheets.js';
@@ -189,20 +189,21 @@ export const handlers = {
   },
   // Put a Shield away or take it up (SRD "Armor": "Shield (Utilize Action to Don or Doff)"). { type: 'shield', actor, on: true | false,
   // item? } By its controller or the DM, for a built character. In a fight it takes the creature's action (Utilize) on its own turn;
-  // outside one it is free. A Shield of the sheet (`shield: true`) put away is `shieldStowed: true` beside it: carried, not held,
+  // outside one it is free. A Shield of the sheet (`shield: true` or a Shield id) put away is `shieldStowed: true` beside it: carried, not held,
   // no Armor Class from it and a hand free; a magic Shield item toggles its `equipped` (an Attunement stays). `item` names which
   // magic Shield to take up when the character carries more than one. The creature is made again from the sheet, as `equip` does.
   shield(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     e.sheet || fail(`${e.name} was typed in by hand. Build a sheet for them first.`);
     typeof a.on === 'boolean' || fail('On is true or false.');
+    typeof e.sheet.shield !== 'string' || shieldEntry(e.sheet) || fail("That Shield's entry is not loaded at this table.");
     (a.item === undefined || typeof a.item === 'string') || fail('Item is the key of a magic Shield on the sheet.');
     const fight = !!s.encounter && inFight(s, e.id);
     if (fight) need(s, e, 'action');
     else { up(e) || fail(`${e.name} is down.`); able(e); }
     const sheet = structuredClone(e.sheet), on = a.on;
     const items = (sheet.items ?? []).filter((y) => CONTENT.items[y?.item]?.wear === 'shield');
-    const plain = sheet.shield === true, held = items.find((y) => y.equipped === true) ?? (plain && sheet.shieldStowed !== true ? 'plain' : null);
+    const plain = sheet.shield === true || typeof sheet.shield === 'string', held = items.find((y) => y.equipped === true) ?? (plain && sheet.shieldStowed !== true ? 'plain' : null);
     let name = 'Shield', key;
     if (!on) {
       held || fail(plain || items.length ? `${e.name} has no Shield in hand.` : `${e.name} has no Shield.`);
