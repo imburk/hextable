@@ -10,7 +10,7 @@ import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
 import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
-import { control, current, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
+import { control, controllerOf, current, fail, homebrewBlock, homebrewCreatures, homebrewSources, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, settleBonds, settleHolds } from './engine/resolve.js';
@@ -25,7 +25,7 @@ import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
-export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, FLY_CEILING, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
+export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, controllerOf, FLY_CEILING, hbId, homebrewBlock, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
 export { BOND_KINDS, BOND_MAX } from './engine/companions.js';   // companions (docs/specs/companions.md, C1)
 export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
@@ -184,8 +184,13 @@ function thaw(s, snap) {
 // something that is not a rule refusal, or stops to ask, or meets the work ceiling, the game is put back by replacing the top-level
 // values of `s` with the copy, so those are new objects afterwards (as they already were for `act`, `cast` and the actions that might ask).
 // Hold `s` itself and read through it each time. (The solo transport keeps only `state`; the server only `table.state`: neither holds more.)
+// The homebrew creatures as the action found them, for `record`: one that leaves the state during the action (a summon that
+// goes down, a form that ends) is named by events of the same action, and is no longer there to be asked afterwards.
+let BEFORE = null, BEFORE_SRC = null;
 export function apply(s, action, ctx = { role: 'dm' }) {
-  try { return applyInner(s, action, ctx); } finally { stopWork(); }
+  const outer = BEFORE, outerSrc = BEFORE_SRC;
+  BEFORE = homebrewCreatures(s); BEFORE_SRC = homebrewSources(s);
+  try { return applyInner(s, action, ctx); } finally { BEFORE = outer; BEFORE_SRC = outerSrc; stopWork(); }
 }
 function applyInner(s, action, ctx) {
   let ev = [];
@@ -287,13 +292,45 @@ function overWork(s, snap, err, ev, action, was) {
   return record(s, first || type !== 'endTurn' ? [...ev, note] : [...ev]);
 }
 
+// An event that names a creature that carries a homebrew block (in any field, at any depth) is stamped `hb: { [id]: the user who ran it | null }`,
+// as the action left the game (as it found it, for one that is gone by then). What a player is told of that event is settled by the stamp,
+// never by the creature as it is later, when it may be gone or out of its form (view.js, viewEvents; #457). An event with no stamp names
+// no such creature: a game could not have one before #457. The stamp is never sent to a player.
+function stampHomebrew(s, ev) {
+  // An effect made in this action by a creature with a homebrew block is told who runs it now (`hbSrc.by`; null: the DM's).
+  for (const fx of s.effects ?? []) if (fx.hbSrc && fx.hbSrc.by === undefined) fx.hbSrc.by = s.entities[fx.hbSrc.id] ? controllerOf(s, s.entities[fx.hbSrc.id]) : (BEFORE?.get(fx.hbSrc.id) ?? null);
+  const now = homebrewCreatures(s), fromFx = homebrewSources(s);
+  if (!now && !BEFORE && !fromFx && !BEFORE_SRC) return;
+  const who = new Map([...(BEFORE ?? []), ...(now ?? [])]);
+  // The source of a lasting effect, as found before the action or after it (the effect may have ended in it).
+  const sources = new Map([...(BEFORE_SRC ?? []), ...(fromFx ?? [])]);
+  for (const e of ev) {
+    const hb = {}, stack = [e];
+    let n = 0;
+    for (; stack.length && n < 2000; n++) {
+      const x = stack.pop();
+      if (typeof x === 'string') { if (who.has(x)) hb[x] = who.get(x); continue; }
+      if (x === null || typeof x !== 'object') continue;
+      for (const [k, v] of Object.entries(x)) if (k !== 'hb') { if (who.has(k)) hb[k] = who.get(k); stack.push(v); }
+    }
+    // An event too large to be read through (a start of fight with hundreds in the order) is stamped with every such creature there is:
+    // the safe side, since a stamp only ever makes an event less told.
+    if (stack.length) for (const [id, who1] of who) hb[id] = who1;
+    // A save of such an effect names its source (`src`), which may be on the map and no longer carry the block, or gone: stamped for that
+    // event alone, as the one who ran it then, so that the rest of what names a creature that lost the block stays as it was told.
+    if (e.type === 'save' && typeof e.src === 'string' && hb[e.src] === undefined && sources.has(e.src)) hb[e.src] = sources.get(e.src);
+    if (Object.keys(hb).length) e.hb = hb;
+  }
+}
+
 // The record keeps, with each entry, the creatures the party did not know of when it happened,
 // so that reading the record later never tells players about what they could not see then.
 function record(s, ev) {
+  stampHomebrew(s, ev);
   const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
   for (const e of ev) {
     if (e.type === 'moved') continue;
-    const ids = [e.id, e.actor, e.target, e.by, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
+    const ids = [e.id, e.actor, e.target, e.by, e.src, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
     // A copy all through: an event may hold an object of the state itself (`placed` its creature's `pos`), and
     // an entry sharing it would change with it; undo and redo, which put the state back field by field, then
     // could not give the record back as it was (#320).

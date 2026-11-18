@@ -316,7 +316,10 @@ export function describeStep(action, events, before, after) {
   // A companion that vanished in this step where the party could see it is one players knew of (view.js, viewEvents).
   const gone = new Set(events.filter((e) => (e.type === 'vanished' || e.type === 'pocketed') && e.seen === true).map((e) => e.id));
   const known = named.every((id) => gone.has(id) || classify(after, id) !== 'hidden');
-  const heard = viewEvents(events, after, { role: 'player' }).length > 0;
+  // Heard by some player: by any, or by the one who runs a homebrew creature the step is about (an event stamped `hb`, engine.js), who
+  // is told what no other player is.
+  const runners = [...new Set(events.flatMap((e) => (e.hb ? Object.values(e.hb) : [])).filter((u) => typeof u === 'string'))];
+  const heard = [{ role: 'player' }, ...runners.map((userId) => ({ role: 'player', userId }))].some((v) => viewEvents(events, after, v).length > 0);
   const { label: text, shown } = typeof label === 'string' ? { label, shown: label } : label;
   // An action that stopped to ask about a reaction did nothing yet: players are told nothing of it.
   const asked = events.find((e) => e.type === 'reactionAsked');
