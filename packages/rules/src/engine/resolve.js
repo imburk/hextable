@@ -1383,7 +1383,12 @@ export function settleHolds(s, ev) {
     for (const h of [...(t.cond?.grappled?.holds ?? [])]) {
       const g = Object.hasOwn(s.entities, h.by) ? s.entities[h.by] : null;
       const why = !g ? 'gone' : g.dead || !up(g) || incapacitated(g) ? 'incapacitated' : apart(s, g, t) * FT > h.range ? 'distance' : null;
-      if (why) endHold(s, t, h.by, why, ev);
+      if (!why) continue;
+      // Dragging is stage G3: until it is built, a grappler that walks off leaves its catch behind, and the DM is told so.
+      const walked = why === 'distance' && ev.some((x) => x.type === 'moved' && x.id === g.id && !x.forced);
+      endHold(s, t, h.by, why, ev);
+      if (walked) ev.push({ type: 'manual', actor: g.id, name: 'Grapple', partial: true,
+        text: `${g.name} moved away from ${t.name}, so the grapple ended: the engine does not drag a held creature yet. If ${g.name} meant to drag ${t.name} (each foot costing 1 extra foot unless ${t.name} is Tiny or two or more sizes smaller), the DM places ${t.name} and ${g.name} grapples again.` });
     }
     for (const [c, v] of Object.entries(t.cond ?? {})) {
       if (typeof v?.grapple !== 'string' || (t.cond.grappled?.holds ?? []).some((h) => h.by === v.grapple)) continue;

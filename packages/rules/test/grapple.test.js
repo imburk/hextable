@@ -178,6 +178,15 @@ test("the held creature taken 30 ft away ends the hold (distance); within the ra
   assert.ok(t.entities[t.foe].cond.grappled, "still beside the grappler");
 });
 
+test("until dragging is built (G3), a grappler that walks away ends its hold, and the DM is told", () => {
+  const s = field(fighter(STR16));
+  ok(grapple(s));
+  const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, DM));
+  assert.equal(s.entities[s.foe].cond.grappled, undefined);
+  assert.ok(r.events.some((e) => e.type === "condEnd" && e.why === "distance"));
+  assert.ok(r.events.some((e) => e.type === "manual" && /does not drag a held creature yet/.test(e.text)));
+});
+
 test("the grappler pushed away ends the hold; the other grappler's stays", () => {
   const s = field(fighter(STR16), { ally: fighter(STR16) });
   ok(grapple(s));
