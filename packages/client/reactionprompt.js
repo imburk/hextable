@@ -10,6 +10,21 @@ import { SPELLS } from './shared/content/index.js';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const ARM_MS = 600;      // a tap meant for the map, a moment before the question came, must not answer it
 
+// What set a question off, in words (`q` as the view sends it; `whom` the creature asked, for the DM; `nameOf` an id's name).
+export function triggerText(q, whom, nameOf = () => undefined) {
+  const by = q.by !== undefined ? (nameOf(q.by) ?? 'A creature') : 'Something you cannot see';
+  const you = whom ?? 'you';
+  switch (q.trigger) {
+    case 'hit': return `${by} attacks ${you}${q.attack ? ` with ${q.attack}` : ''}${q.total !== undefined ? `: ${q.total}${q.ac !== undefined ? ` against Armor Class ${q.ac}` : ''}` : ''}${q.crit ? ', a critical hit' : ''}.`;
+    case 'targeted': return `${by} casts ${q.spell ? SPELLS[q.spell]?.name ?? 'a spell' : 'a spell'} and ${you === 'you' ? 'you are' : `${you} is`} a target.`;
+    case 'leave': return `${by} is leaving ${you === 'you' ? 'your' : `${you}'s`} reach.`;
+    case 'cast': return `${by} is casting a spell.`;
+    case 'damaged': return `${by} has just damaged ${you}.`;
+    case 'familiarDamaged': return `${you === 'you' ? 'Your' : `${you}'s`} familiar is taking ${q.dtype ? `${q.dtype} ` : ''}damage. ${you === 'you' ? 'Your' : 'Its'} Reaction can give it Resistance to it.`;
+    default: return 'Something has happened that a reaction answers.';
+  }
+}
+
 export function initReactionPrompt({ act, state, isDM }) {
   const modal = document.createElement('div');
   modal.id = 'rp'; modal.hidden = true;
@@ -22,18 +37,8 @@ export function initReactionPrompt({ act, state, isDM }) {
   const nameOf = (id) => S()?.entities[id]?.name;
 
   // What set it off, as far as the view says, in words. `me` is the creature asked.
-  function trigger(q, whom) {
-    const by = q.by !== undefined ? (nameOf(q.by) ?? 'A creature') : 'Something you cannot see';
-    const you = whom ?? 'you';
-    switch (q.trigger) {
-      case 'hit': return `${by} attacks ${you}${q.attack ? ` with ${q.attack}` : ''}${q.total !== undefined ? `: ${q.total}${q.ac !== undefined ? ` against Armor Class ${q.ac}` : ''}` : ''}${q.crit ? ', a critical hit' : ''}.`;
-      case 'targeted': return `${by} casts ${q.spell ? SPELLS[q.spell]?.name ?? 'a spell' : 'a spell'} and ${you === 'you' ? 'you are' : `${you} is`} a target.`;
-      case 'leave': return `${by} is leaving ${you === 'you' ? 'your' : `${you}'s`} reach.`;
-      case 'cast': return `${by} is casting a spell.`;
-      case 'damaged': return `${by} has just damaged ${you}.`;
-      default: return 'Something has happened that a reaction answers.';
-    }
-  }
+  const trigger = (q, whom) => triggerText(q, whom, nameOf);
+
   const cost = (o) => [o.slots?.length ? (o.slots.length === 1 ? `Spends a level ${o.slots[0]} spell slot` : `Spends a spell slot (level ${o.slots[0]} to ${o.slots.at(-1)})`) : '', o.ac !== undefined ? `Adds ${o.ac} to Armor Class` : '', 'Uses your Reaction'].filter(Boolean).join(' · ');
 
   function answer(n, take, slot) {
