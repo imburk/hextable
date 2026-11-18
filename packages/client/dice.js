@@ -215,10 +215,10 @@ export const topScale = (nz, others) => 1 + (0.35 + Math.min(1.5, 1 / Math.sqrt(
 
 // ---------- the board's plane, seen from the camera ----------
 // The board is the plane y = 0 of the renderer's world, y up. The camera looks at it from `pitch` radians above it and
-// turned `yaw` about it (render.js: the eye is at (cos p sin yaw, sin p, cos p cos yaw) from the target). The turn from
+// turned `yaw` about it (render-three.js: the eye is at (cos p sin yaw, sin p, cos p cos yaw) from the target). The turn from
 // world to camera axes (x right, y up, z toward the viewer) is Rx(pitch) after Ry(-yaw); it takes the board's up
 // direction to (0, cos pitch, sin pitch): straight at the viewer from above, edge-on at pitch 0.
-export const MIN_PITCH = 0.45;           // the shallowest the cameras allow (render.js, render-three.js)
+export const MIN_PITCH = 0.45;           // the shallowest the cameras allow (render-three.js)
 const UP = [0, 1, 0];
 export function boardView(cam) {
   return qmul(qaxis([1, 0, 0], cam.pitch), qaxis([0, 1, 0], -cam.yaw));

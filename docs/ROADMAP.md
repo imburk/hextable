@@ -14,7 +14,7 @@ A deep dive with counts (what the engine runs, the spell gap by mechanism, homeb
 - **Maps.** Levels, height, walls, doors, regions, objects and traps, creature sizes; six stock maps (five on hexes, one on squares); a map editor with tracing and Universal VTT import.
 - **Sharing.** Handouts, private notes, table files, export of a table with its files.
 - **DM tools.** Undo and redo, rewind to the start of a fight or rest, a chronicle, a marching order and followers, defeat and rewards at the end of a fight.
-- **Two renderers.** The default view and a Three.js one at parity, with the Three.js library vendored. Three.js is now the default renderer (R14 step 1, #354); removing the older renderer (step 2) waits for the owner's go ([spec](specs/renderer.md), R14); see the first release below.
+- **One renderer.** The 3D view is drawn by Three.js, vendored; it became the default in R14 step 1 (#354) and the hand-written renderer was removed in step 2 (#355) ([spec](specs/renderer.md), R14); see the first release below.
 - **Table UI, first part.** A drawer with settings, About and the tracker; the defeat card; the rewards form and card.
 - **Table UI, the action panel and the log.** The action panel with its tabs (spells with slots, sorting and filters; items), the combat log by fight, and the caster class-feature and feat screens (#283, #289, #288, #314).
 - **Items in use.** Potions, scrolls, wands and staffs with charges, spells cast from items, and items passed, dropped and picked up (#282, #287, #291).
@@ -40,7 +40,7 @@ In this order:
 Alongside the milestones, not renumbering them: **R14, Three.js as the default
 and removal of the hand-written renderer** (the owner, 15 November 2026), a
 renderer job that touches no rules and can run any time. **The first release tag,
-`v0.1.0`, is cut when Three.js is the default.** It has been the default since #354; no tag exists yet.
+`v0.1.0`, is cut when Three.js is the default.** It has been the default since #354 and the old renderer is gone (#355); the lead tags it after that merges.
 
 **`v0.2` is a proposal, not a decision:** "ready for game testing", with its must and should jobs, is laid out in [PATH-TO-0.2.md](PATH-TO-0.2.md) and waits for the owner.
 

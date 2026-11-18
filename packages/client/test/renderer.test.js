@@ -10,12 +10,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url)), client = join(here, '..'), tmp = mkdtempSync(join(tmpdir(), 'renderer-'));
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
-for (const f of ['renderer.js', 'render.js', 'floors.js', 'governor.js']) cpSync(join(client, f), join(tmp, f));
+for (const f of ['renderer.js', 'floors.js', 'governor.js']) cpSync(join(client, f), join(tmp, f));
 writeFileSync(join(tmp, 'package.json'), '{"type":"module"}');
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const load = (f) => import(pathToFileURL(join(tmp, f)).href);
 const { MEMBERS, METHODS, PROPS, EmptyRenderer, createRenderer, rendererKind } = await load('renderer.js');
-const { Renderer } = await load('render.js');
 const { createGovernor, pixelLevels } = await load('governor.js');
 
 // ---------- the interface ----------
@@ -62,16 +61,14 @@ test('the empty renderer implements every member and nothing throws', () => {
   assert.deepEqual(Object.keys(r.stats()).sort(), ['drawCalls', 'frameMs', 'pixelRatio', 'quality']);
   r.dispose();
 });
-test('the WebGL renderer has every method of the interface', () => {
-  for (const m of METHODS) assert.equal(typeof Renderer.prototype[m], 'function', m);
-});
 test('the renderer is chosen by the address, then the preference', () => {
   assert.equal(rendererKind('', undefined), 'three');           // R14 step 1 (#348): Three.js is the default
   assert.equal(rendererKind('?renderer=none', undefined), 'none');
   assert.equal(rendererKind('', 'none'), 'none');
-  assert.equal(rendererKind('?renderer=gl', 'none'), 'gl');
-  assert.equal(rendererKind('', 'gl'), 'gl');                   // the stored preference still reaches the hand-written renderer
+  assert.equal(rendererKind('?renderer=gl', 'none'), 'three');  // R14 step 2 (#355): the hand-written renderer is gone, so its address is an unknown word
+  assert.equal(rendererKind('', 'gl'), 'three');                // a device that stored 'gl' while it existed gets the 3D view
   assert.equal(rendererKind('?renderer=three', 'gl'), 'three');
+  assert.equal(rendererKind('?renderer=three', 'none'), 'three');
   assert.equal(rendererKind('?renderer=nonsense', 'none'), 'three');
 });
 

@@ -9,7 +9,7 @@ import { startServer, stopAll } from "./helpers.js";
 import { issueBody, issueTitle, fence } from "../src/feedback.js";
 
 after(stopAll);
-const GOOD = () => ({ v: 1, kind: "bug", comment: "The door will not open.", sentAt: "2026-11-15T10:00:00.000Z", build: "v12", mode: "solo", role: "dm", renderer: "gl", theme: "classic", grid: "hex", viewport: { w: 390, h: 844 }, touch: true, ua: "Mozilla/5.0 test", lang: "en-GB",
+const GOOD = () => ({ v: 1, kind: "bug", comment: "The door will not open.", sentAt: "2026-11-15T10:00:00.000Z", build: "v12", mode: "solo", role: "dm", renderer: "three", theme: "classic", grid: "hex", viewport: { w: 390, h: 844 }, touch: true, ua: "Mozilla/5.0 test", lang: "en-GB",
   context: { log: ["Round 1: Tor's turn"], actions: [{ type: "move", args: { actor: "fighter", to: { q: 1, r: 2 } }, answer: "accepted" }], fight: { on: true, round: 1, turn: "mine" }, character: { cls: "Fighter", level: 1, conditions: [] }, map: "valley", errors: [] } });
 const post = (port, body, headers = {}) => fetch(`http://localhost:${port}/feedback`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body) });
 const lines = (data) => (existsSync(join(data, "feedback.jsonl")) ? readFileSync(join(data, "feedback.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : []);

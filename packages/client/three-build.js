@@ -1,17 +1,17 @@
 // What the Three.js renderer draws, as plain arrays (docs/specs/renderer.md, R11). Pure: no Three.js, no DOM, so it can be tested in Node.
 // A Builder collects triangles as 10 floats a vertex (position, normal, colour with alpha), which render-three.js turns into one
-// BufferGeometry per kind. The shapes follow render.js's (the reference for what is drawn) and the geometry comes from floors.js.
+// BufferGeometry per kind. The geometry comes from floors.js. This is the only place the table's picture is built (the hand-written
+// renderer that once had its own copy was removed by R14 step 2, #355).
 import { HEX, gridOf, col as cellCol, key as cellKey, parse as cellParse } from './shared/grid.js';
 import { allTiles, footprint, ground, shown, surfaces, under } from './shared/space.js';
 import { objectBlocks, objectDef, objectSegment } from './shared/walls.js';
 import { buildFloors, caveLevels, caveOf, cellParts, cutaway } from './floors.js';
-import { edgeLook, zoneHexes } from './render.js';
 
 export const UNIT = Math.sqrt(3) / 5;                       // drawing units per foot: a hex is 5 ft across
 export const surfY = (z, tile) => z * UNIT + (tile?.lift ?? 0.6);
 const FT = UNIT, FULL = 10 * FT, SILL = 3 * FT, WINDOW_TOP = 7 * FT, DOOR_TALL = 7 * FT, SLAB = 0.35;
 export const GIRTH = { tiny: 0.55, small: 0.8, medium: 1, large: 1.7, huge: 2.5, gargantuan: 3.2 };
-// On squares a Large creature fills 2 by 2 squares, Huge 3 by 3, Gargantuan 4 by 4 (SRD), so its base is drawn wider to fill them (as render.js does).
+// On squares a Large creature fills 2 by 2 squares, Huge 3 by 3, Gargantuan 4 by 4 (SRD),, so its base is drawn wider to fill them.
 const GIRTH_SQUARE = { ...GIRTH, large: 2, huge: 3, gargantuan: 4 };
 export const girth = (e, G = HEX) => (G.kind === 'square' ? GIRTH_SQUARE : GIRTH)[e?.size] ?? 1;
 
@@ -25,6 +25,49 @@ const zoneType = (steps) => {
   };
   return walk(steps);
 };
+
+// ---- Helpers the renderer, the tracker and the app share (moved here when the hand-written renderer was removed, R14 step 2, #355) ----
+// The hexes a zone covers now, as [{ q, r }] with the height it lies at: laid out ones as they were, an Emanation around whoever it follows.
+export function zoneHexes(state, fx) {
+  const z = fx.zone; if (!z) return null;
+  if (z.follows) {
+    const c = state.entities[z.follows]; if (!c || c.dead) return null;
+    return { at: c.pos.z ?? 0, hexes: gridOf(state.map).range(c.pos, z.area.size / 5) };
+  }
+  return { at: z.origin?.z ?? 0, hexes: (z.hexes ?? []).map((k) => cellParse(k)) };
+}
+// The edge of a fight (docs/specs/renderer.md, arena-edge notes): the lighting change (everything outside the arena dimmed) is always drawn;
+// the glowing edge (the light wall, the bright rim and grid) only when the device's `hextable.arenaEdge` is 'edge' (themes.js carries it
+// as `arenaEdge`). A refused move flashes the edge cells nearest the hex it aimed at, whichever look is chosen.
+export const edgeLook = (th) => th?.arenaEdge === 'edge';
+// The cells ([col, ...]) on the border of the arena (a side faces outside it) nearest `hex`: the nearest ring and the one after it, at most eight.
+export function arenaFlashCells(map, enc, hex, ceiling = Infinity) {
+  if (!enc?.arena || !hex) return [];
+  const G = gridOf(map), seen = new Map();
+  for (const h of allTiles(map)) {
+    const k = cellCol(h);
+    if (h.z > ceiling || !enc.arena[k] || seen.has(k) || G.neighbors(h).every((n) => enc.arena[cellCol(n)])) continue;
+    seen.set(k, G.dist(h, hex));
+  }
+  const best = Math.min(...seen.values());
+  return [...seen].filter(([, d]) => d <= best + 1).sort((a, b) => a[1] - b[1]).slice(0, 8).map(([k]) => k);
+}
+// Light through the day, by hour: [hour, light colour that multiplies the scene, how much of the sky colour is left].
+// Daytime is left exactly as it always looked; dusk is warm, night is blue and dimmer but never dark enough to hide a hex.
+const DAY = [[0, [0.56, 0.63, 0.86], 0.34], [4.5, [0.58, 0.64, 0.86], 0.36], [6, [1.1, 0.84, 0.74], 0.78], [8, [1, 1, 1], 1], [17, [1, 1, 1], 1],
+  [18.5, [1.12, 0.82, 0.66], 0.8], [20, [0.74, 0.64, 0.8], 0.5], [21.5, [0.56, 0.63, 0.86], 0.34], [24, [0.56, 0.63, 0.86], 0.34]];
+export function lightAt(clock) {
+  const h = (((clock % 1440) + 1440) % 1440) / 60;
+  let i = 1; while (i < DAY.length - 1 && DAY[i][0] < h) i++;
+  const [h0, c0, s0] = DAY[i - 1], [h1, c1, s1] = DAY[i], k = (h - h0) / (h1 - h0 || 1);
+  return { light: c0.map((v, j) => v + (c1[j] - v) * k), sky: s0 + (s1 - s0) * k };
+}
+// How full to draw a health bar. Players are not sent a monster's numbers, only a
+// word for how it looks, so a record without maxHp is drawn from that word.
+export function hpFraction(e) {
+  if (e.maxHp > 0) return Math.max(0, Math.min(1, e.hp / e.maxHp));
+  return { healthy: 1, bloodied: 0.45, down: 0, dead: 0 }[e.health] ?? (e.hp > 0 ? 1 : 0);
+}
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -334,7 +377,7 @@ export function swingDoor(b, info, f) {
 }
 
 // The glowing curtain round the arena of a fight. `base` is the mean height it grows from. The curtain is made only in the 'edge' look
-// (render.js, edgeLook); in the 'dim' look it is empty, but `base` is still found. `only` (a Set of cols) and `tall` make the flash of a
+// (edgeLook); in the 'dim' look it is empty, but `base` is still found. `only` (a Set of cols) and `tall` make the flash of a
 // refused move, which is drawn in either look.
 export function buildEdge({ map, enc, theme: th, ceiling, only = null, tall = 2.1 }) {
   const G = gridOf(map), eb = new Builder(G);
