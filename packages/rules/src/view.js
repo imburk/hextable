@@ -17,9 +17,7 @@ import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
-import { isPile, openContents, ownerOf, pileOpen } from './engine.js';
-import { CONTENT } from './content/index.js';
-import { isHomebrew } from './summons.js';
+import { controllerOf, hbId, homebrewBlock, isPile, openContents, ownerOf, pileOpen } from './engine.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -72,54 +70,60 @@ function seenRecord(e, state) {
 
 // ---------- a homebrew creature's block is its controller's alone (#457; docs/specs/homebrew.md) ----------
 // The party sees as one, so every creature of the party is sent whole to every player. That is right for a creature of the standard
-// rules, whose block every player may read. A homebrew monster's block is never sent to a player who does not run it: a player is sent
-// the whole record of a homebrew creature (a summon, a familiar, a character in a homebrew Wild Shape form) only if the creature is theirs.
-// For every other player it is what a foe they can see is: `seenRecord`.
+// rules, whose block every player may read. A homebrew monster's block is never sent to a player who does not run it. Of a summon or a
+// familiar made from one, every other player is sent what a foe they can see is: `seenRecord`. Of a character in a homebrew Wild Shape
+// form, they are sent the character itself as it is out of the form (its Hit Points, conditions and place are its own; SRD 5.2 keeps its
+// Hit Points) and nothing the form gave it. What the events say of such a creature is settled by the stamp `hb` that `apply()` put on
+// each event at the time (engine.js, `stampHomebrew`), never by the creature as it is now, when it may be gone or out of its form.
+export { controllerOf, homebrewBlock };
 
-// Does this creature carry a homebrew monster's block: made from one (`tpl`) or in the form of one (`form.block`)? Homebrew entries are told
-// by their id (the strict linter requires `hb-`) and, where a table's packs are lent, by their `source`.
-const hbId = (id) => typeof id === 'string' && (id.startsWith('hb-') || isHomebrew(CONTENT.monsters[id]));
-export const homebrewBlock = (e) => !!e && (hbId(e.tpl) || hbId(typeof e.form === 'string' ? e.form : e.form?.block));
+// Is this creature the viewer's to run: the user `controllerOf` gives (its player, or its master's, up the bond).
+export const controlledBy = (state, e, userId) => typeof userId === 'string' && userId !== '' && controllerOf(state, e) === userId;
 
-// Is this creature the viewer's to run: its player's own (`ownerOf`), or a companion of a creature that is (a bond's master, followed up
-// the chain; the engine allows one level and a few more are looked at). The master's player is followed up the bond as well as `ownerOf` goes, because
-// a commanded creature is the DM's on a turn its master did not command it, and what a player is sent must not change with the turn.
-export function controlledBy(state, e, userId, depth = 0) {
-  if (!e || typeof userId !== 'string' || !userId) return false;
-  if (ownerOf(state, e) === userId) return true;
-  const to = e.bond?.to;
-  return depth < 4 && typeof to === 'string' && Object.hasOwn(state.entities, to) && controlledBy(state, state.entities[to], userId, depth + 1);
+// A character as it is out of its homebrew form, as the other players are sent it: the fields the form replaced are the character's own
+// again (`form.kept`), and there is no `form`. Its size stays the form's: it is plain to see.
+function unformed(e, rec) {
+  const out = structuredClone(rec), { kept, absent } = e.form;
+  for (const [k, v] of Object.entries(kept)) out[k] = structuredClone(v);
+  for (const k of absent) delete out[k];
+  delete out.form;
+  out.size = rec.size;
+  return out;
 }
 
 // A shared player's view `base` (`playerView(state)`, the same for every player) made this viewer's: every creature of the party that
-// carries a homebrew block and is not theirs is its `seenRecord` (its `side` kept), is left out of its master's pocket dimension, and
-// shows no initiative, Dexterity or turn budget in the fight (a budget's `move` is its Speed). The DM's is the state itself. Returns
-// `base` itself when nothing changes, which is every game with no homebrew creature in the party. Pure; `base` is not changed.
+// carries a homebrew block and is not theirs is sent as said above; it is left out of its master's pocket dimension; and in the fight it
+// shows no initiative, Dexterity, or turn budget (a budget's `move` is its Speed), and the effect that keeps a form (named for it) is not
+// sent. The DM's is the state itself. Returns `base` itself when nothing changes, which is every game with no homebrew creature in the
+// party. Pure; `base` is not changed.
 export function forViewer(base, state, viewer) {
   if (isDM(viewer)) return base;
-  const uid = viewer?.userId, hide = new Set();
+  const uid = viewer?.userId, seen = new Set(), formed = new Set();
   let replaced = null;
   const put = (id, rec) => { (replaced ??= { ...base.entities })[id] = rec; };
   for (const [id, e] of Object.entries(state.entities)) {
     if (e.side !== 'party' || !base.entities[id]) continue;
-    if (homebrewBlock(e) && !controlledBy(state, e, uid)) { hide.add(id); put(id, seenRecord(e, state)); }
-    else if (e.pocket && typeof e.pocket === 'object') {
+    if (homebrewBlock(e) && !controlledBy(state, e, uid)) {
+      if (e.form && !hbId(e.tpl)) { formed.add(id); put(id, unformed(e, base.entities[id])); }
+      else { seen.add(id); put(id, seenRecord(e, state)); }
+    } else if (e.pocket && typeof e.pocket === 'object') {
       // A familiar in its master's pocket dimension is in the master's record: not a homebrew one, to a player it is not theirs.
       const keep = Object.entries(e.pocket).filter(([, c]) => !(homebrewBlock(c) && !controlledBy(state, c, uid)));
       if (keep.length !== Object.keys(e.pocket).length) {
         const rec = structuredClone(base.entities[id]);
-        rec.pocket = Object.fromEntries(keep.map(([k, c]) => [k, rec.pocket[k]]));
+        rec.pocket = Object.fromEntries(keep.map(([k]) => [k, rec.pocket[k]]));
         put(id, rec);
       }
     }
   }
   if (!replaced) return base;
-  const out = { ...base, entities: replaced }, enc = base.encounter;
-  // The lasting effect that keeps a form is named for it ("Wild Shape (Ember wolf)"): not told for a creature that is sent as a seen record.
-  if (hide.size && base.effects?.some((fx) => fx.parts.some((q) => q.form && hide.has(q.target)))) out.effects = base.effects.filter((fx) => !fx.parts.some((q) => q.form && hide.has(q.target)));
-  if (enc && hide.size) {
+  const out = { ...base, entities: replaced }, enc = base.encounter, held = (id) => seen.has(id) || formed.has(id);
+  const form = (fx) => fx.parts.some((q) => q.form && formed.has(q.target));
+  if (formed.size && base.effects?.some(form)) out.effects = base.effects.filter((fx) => !form(fx));
+  if (enc && (seen.size || formed.size)) {
     const active = state.encounter?.order[state.encounter.turn]?.id;
-    out.encounter = { ...enc, order: enc.order.map((o) => (hide.has(o.id) ? { id: o.id } : o)), ...(hide.has(active) ? { budget: { move: 0, action: 0, bonus: 0 } } : {}) };
+    out.encounter = { ...enc, order: enc.order.map((o) => (seen.has(o.id) ? { id: o.id } : formed.has(o.id) ? Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'dex')) : o)),
+      ...(held(active) ? { budget: { move: 0, action: 0, bonus: 0 } } : {}) };
   }
   return out;
 }
@@ -499,17 +503,15 @@ export function viewEvents(events, state, viewer) {
     const g = events.find((e) => GONE.includes(e?.type) && e.id === id);
     return g?.name ? [g.name] : [];
   };
-  // A creature of the party that carries a homebrew block and is not this viewer's is told as a foe they can see (forViewer): none of the
-  // numbers an event gives about "one of ours" (a roll's dice, a save's DC, a check, what a hand-applied action says) go to them.
-  const masked = (id) => { const e = Object.hasOwn(state.entities, id) ? state.entities[id] : null; return !!e && e.side === 'party' && homebrewBlock(e) && !controlledBy(state, e, viewer?.userId); };
+  // An event that names a homebrew creature of the party carries a stamp (`hb`, engine.js): who ran each such creature when it happened.
+  // A creature the viewer did not run is told as a foe they can see, whatever it is now (gone, or out of its form): no dice, DC, check or
+  // hand-applied action text of it. The stamp is read from the event being told, and is never sent.
+  const theirs = (id) => { const hb = out.ev?.hb; return !!hb && Object.hasOwn(hb, id) && !(typeof viewer?.userId === 'string' && hb[id] === viewer.userId); };
   const cls = (id) => {
     if (was?.includes(id)) return 'hidden';
-    if (gone.has(id)) return gone.get(id);
-    const c = classify(state, id);
-    return c === 'open' && masked(id) ? 'seen' : c;
+    if (theirs(id)) return 'seen';
+    return gone.get(id) ?? classify(state, id);
   };
-  // Of a form: a creature sent as a seen record is not told to be in one, nor which (its effect is named for the form).
-  const formName = (name) => { const m = /\((.+)\)$/.exec(String(name ?? '')); return !!m && Object.values(CONTENT.monsters).some((x) => isHomebrew(x) && x.name === m[1]); };
   // A copy of an order entry or a `joined` of one of theirs, with `after` only where its master is theirs too.
   const afterOpen = (o) => { const { after, before, ...rest } = o; return { ...rest, ...tiedOpen({ after, before }, (id) => cls(id) === 'open') }; };
   const sm = shownMap(state), byRule = sightRule(state) !== 'rooms';
@@ -518,7 +520,7 @@ export function viewEvents(events, state, viewer) {
   const hexesOf = (hs) => (!hs ? hs : hs.filter((h) => sm.cols.has(col(h))).map((h) => ({ q: h.q, r: h.r })));
   const kept = [];
   // Timeline entries are events with the in-world time `t` added; the time survives redaction.
-  const out = { push(e) { delete e.unseen; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
+  const out = { push(e) { delete e.unseen; delete e.hb; if (this.ev.t !== undefined) e.t = this.ev.t; kept.push(e); }, ev: null };
   let lastTurnHidden = null;               // whether the last turn in this list was unseen (null: none yet)
   let caster = null;                       // who cast the spell (or used the action) that the following saves answer
   for (const ev of events) {
@@ -550,7 +552,7 @@ export function viewEvents(events, state, viewer) {
     // A familiar takes a new form (Find Familiar cast again, `one: 'reform'`): the party's own only. One in the pocket
     // dimension is not in the state, but the party's pocket is in their master's record.
     if (ev.type === 'reformed') {
-      if (cls(ev.by) === 'open' && (ev.pocket === true || cls(ev.id) === 'open')) out.push(pick(ev, ['type', 'id', 'by', 'form', 'name', 'pocket']));
+      if (cls(ev.by) === 'open' && !theirs(ev.id) && (ev.pocket === true || cls(ev.id) === 'open')) out.push(pick(ev, ['type', 'id', 'by', 'form', 'name', 'pocket']));
       continue;
     }
     if ([ev.id, ev.actor, ev.target].some((id) => id !== undefined && id !== null && cls(id) === 'hidden')) continue;      // a null actor is a thing on the map, not a creature
@@ -648,7 +650,6 @@ export function viewEvents(events, state, viewer) {
         // The same for a creature it was on that they do not know of ("Zorblax left"; review of #313, round 4, L1).
         const unknownCaster = typeof ev.source === 'string' && cls(ev.source) === 'hidden';
         const unknownIds = [...(unknownCaster ? [ev.source] : []), ...(ev.targets || []).filter((id) => typeof id === 'string' && cls(id) === 'hidden')];
-        if (formName(ev.name) && typeof ev.source === 'string' && Object.hasOwn(state.entities, ev.source) && !controlledBy(state, state.entities[ev.source], viewer?.userId)) break;   // the form's own effect, a creature's not theirs
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
           const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source']), ...(unknownIds.length ? [] : ['why'])]), targets };
           if (unknownIds.length && ev.why !== undefined) e.why = unknownIds.some((id) => !namesOf(id).length || namesOf(id).some((n) => n && String(ev.why).includes(n))) ? 'it ended' : ev.why;
@@ -657,7 +658,7 @@ export function viewEvents(events, state, viewer) {
         break;
       }
       case 'form':                                     // a creature takes a shape or leaves it (Wild Shape): told where the creature is known
-        if (cls(ev.id) !== 'hidden' && !(masked(ev.id) && hbId(ev.form))) out.push(pick(ev, ['type', 'id', 'form', 'name']));
+        if (cls(ev.id) !== 'hidden' && !theirs(ev.id)) out.push(pick(ev, ['type', 'id', 'form', 'name']));      // not for a creature in or out of a homebrew form that is not theirs
         break;
       // Bonds (docs/specs/companions.md, Decision 10): the party's own only, so players never learn that a
       // creature not of theirs belongs to another.
@@ -796,12 +797,17 @@ export function viewEvents(events, state, viewer) {
       case 'handoutShown':                             // that a handout was shown, to those it was shown to; never who else
         if (ev.to === 'all' || (Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId))) out.push(pick(ev, ['type', 'handout', 'title']));
         break;
+      // A number about a creature (its Speed, a death save's roll) is not told of a homebrew creature that is not the viewer's.
+      case 'speed':
+      case 'deathSave':
+        if (!theirs(ev.id)) out.push(structuredClone(ev));
+        break;
       default:
         if (AS_IS.has(ev.type)) out.push(structuredClone(ev));
     }
   }
   // A creature is introduced before anything is said about it.
-  was = null;
+  was = null; out.ev = null;
   const intro = (e) => e.type === 'revealed' || (e.type === 'unhidden' && cls(e.id) !== 'open');       // one of theirs needs no introduction
   return [...kept.filter(intro), ...kept.filter((e) => !intro(e))];
 }

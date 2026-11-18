@@ -48,6 +48,33 @@ export const ownerOf = (s, e) => {
   if (who && e.bond.orders === 'command' && s?.encounter && inFight(s, e.id) && !commandedNow(s, e)) return null;
   return who;
 };
+// ---------- homebrew creatures of the party (#457; docs/specs/homebrew.md, the build notes on #457) ----------
+// A homebrew monster's block is sent only to the player who runs the creature made from it. These say which creatures those are and who
+// runs them. Homebrew is told by the id, which the strict linter makes begin `hb-` for every entry of a pack; nothing here reads a pack.
+export const hbId = (id) => typeof id === 'string' && id.startsWith('hb-');
+// Does this creature carry a homebrew monster's block: made from one (`tpl`) or in the form of one (`form.block`)?
+export const homebrewBlock = (e) => !!e && (hbId(e.tpl) || hbId(typeof e.form === 'string' ? e.form : e.form?.block));
+// The user who runs a creature: its player (`ownerOf`), or, for a companion, its master's, up the bond (not turn by turn: a commanded
+// creature is the DM's on a turn its master did not command it, and what a player is sent must not change with the turn). null: the DM's.
+export function controllerOf(s, e, depth = 0) {
+  if (!e) return null;
+  const who = ownerOf(s, e);
+  if (who) return who;
+  const to = e.bond?.to;
+  return depth < 4 && typeof to === 'string' && Object.hasOwn(s?.entities ?? {}, to) ? controllerOf(s, s.entities[to], depth + 1) : null;
+}
+// The creatures of the party that carry a homebrew block, on the map or in a master's pocket dimension, with who runs each:
+// Map { id -> user id | null }, or null when there is none (nearly always: this is read by every action).
+export function homebrewParty(s) {
+  let out = null;
+  for (const e of Object.values(s.entities)) {
+    if (e.side !== 'party') continue;
+    if (homebrewBlock(e)) (out ??= new Map()).set(e.id, controllerOf(s, e));
+    if (e.pocket && typeof e.pocket === 'object') for (const [k, c] of Object.entries(e.pocket)) if (homebrewBlock(c)) (out ??= new Map()).set(k, controllerOf(s, c));
+  }
+  return out;
+}
+
 // Is this its turn, and did its master command it for this turn? (A2.) `commanded.turn` is the turn the command was
 // taken up for, set at the start of the creature's first turn after the command (resolve.js, takeCommand).
 export const commandedNow = (s, e) => {

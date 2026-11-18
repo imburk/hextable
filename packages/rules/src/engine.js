@@ -10,7 +10,7 @@ import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
 import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
-import { control, current, fail, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
+import { control, controllerOf, current, fail, homebrewBlock, homebrewParty, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, settleBonds } from './engine/resolve.js';
@@ -25,7 +25,7 @@ import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
-export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, FLY_CEILING, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
+export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, controllerOf, FLY_CEILING, hbId, homebrewBlock, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
 export { BOND_KINDS, BOND_MAX } from './engine/companions.js';   // companions (docs/specs/companions.md, C1)
 export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
@@ -184,8 +184,13 @@ function thaw(s, snap) {
 // something that is not a rule refusal, or stops to ask, or meets the work ceiling, the game is put back by replacing the top-level
 // values of `s` with the copy, so those are new objects afterwards (as they already were for `act`, `cast` and the actions that might ask).
 // Hold `s` itself and read through it each time. (The solo transport keeps only `state`; the server only `table.state`: neither holds more.)
+// The homebrew creatures of the party as the action found them, for `record`: one that leaves the state during the action (a summon that
+// goes down, a form that ends) is named by events of the same action, and is no longer there to be asked afterwards.
+let BEFORE = null;
 export function apply(s, action, ctx = { role: 'dm' }) {
-  try { return applyInner(s, action, ctx); } finally { stopWork(); }
+  const outer = BEFORE;
+  BEFORE = homebrewParty(s);
+  try { return applyInner(s, action, ctx); } finally { BEFORE = outer; stopWork(); }
 }
 function applyInner(s, action, ctx) {
   let ev = [];
@@ -286,9 +291,30 @@ function overWork(s, snap, err, ev, action, was) {
   return record(s, first || type !== 'endTurn' ? [...ev, note] : [...ev]);
 }
 
+// An event that names a homebrew creature of the party (in any field, at any depth) is stamped `hb: { [id]: the user who ran it | null }`,
+// as the action left the game (as it found it, for one that is gone by then). What a player is told of that event is settled by the stamp,
+// never by the creature as it is later, when it may be gone or out of its form (view.js, viewEvents; #457). An event with no stamp names
+// no such creature: a game could not have one before #457. The stamp is never sent to a player.
+function stampHomebrew(s, ev) {
+  const now = homebrewParty(s);
+  if (!now && !BEFORE) return;
+  const who = new Map([...(BEFORE ?? []), ...(now ?? [])]);
+  for (const e of ev) {
+    const hb = {}, stack = [e];
+    for (let n = 0; stack.length && n < 2000; n++) {
+      const x = stack.pop();
+      if (typeof x === 'string') { if (who.has(x)) hb[x] = who.get(x); continue; }
+      if (x === null || typeof x !== 'object') continue;
+      for (const [k, v] of Object.entries(x)) if (k !== 'hb') { if (who.has(k)) hb[k] = who.get(k); stack.push(v); }
+    }
+    if (Object.keys(hb).length) e.hb = hb;
+  }
+}
+
 // The record keeps, with each entry, the creatures the party did not know of when it happened,
 // so that reading the record later never tells players about what they could not see then.
 function record(s, ev) {
+  stampHomebrew(s, ev);
   const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
   for (const e of ev) {
     if (e.type === 'moved') continue;

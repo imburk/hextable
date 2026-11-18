@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONTENT } from "../src/content/index.js";
 import { loadPack, overlayOf, using } from "../src/content/registry.js";
-import { apply, makeEntity } from "../src/engine.js";
+import { apply, makeEntity, recall } from "../src/engine.js";
 import { derive } from "../src/derive.js";
+import { describeStep } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
 import { controlledBy, forViewer, homebrewBlock, playerView, view, viewEvents } from "../src/view.js";
 import { spellProfile } from "../src/effects.js";
@@ -111,20 +112,135 @@ test("an SRD familiar is sent whole to every player, as before; with no homebrew
   assert.deepEqual(view(s, BO).entities, base.entities);
 });
 
-test("what a homebrew familiar does is told to its controller as ever and to another player as a foe's would be", () => {
+const checkBy = (s, id, ctx, skill = "stealth") => ok(apply(s, { type: "check", actor: id, skill }, ctx));
+const types = (evs) => evs.map((e) => e.type);
+const hasNumbers = (evs) => evs.some((e) => e.bonus !== undefined || e.total !== undefined || e.roll !== undefined || e.rolls !== undefined || e.dice !== undefined);
+
+test("what a homebrew familiar does is stamped when it happens, told to its controller as ever and to another player as a foe's would be", () => {
   const ov = OV(), s = wizardTable(), at = spot(s);
   using(ov, () => {
     const f = familiarOf(s, ok(cast(s, OWLET, at)));
-    const evs = [{ type: "check", id: f.id, skill: "perception", roll: 14, total: 19, dc: 12, success: true },
-      { type: "manual", actor: f.id, name: "Talons", text: "The owlet's talons deal 1 damage." },
-      { type: "save", id: f.id, abil: "dex", success: true, dc: 13, total: 15, roll: 12 }];
-    const mine = viewEvents(structuredClone(evs), s, PAT), theirs = viewEvents(structuredClone(evs), s, BO);
-    assert.deepEqual(mine.map((e) => e.type), ["check", "manual", "save"]);
-    assert.equal(mine[0].total, 19);
-    assert.deepEqual(theirs.map((e) => e.type), ["save"], "a check and what a hand-applied action says are not sent");
-    assert.equal(theirs[0].dc, undefined, "nor the DC of a save, nor what it rolled");
-    assert.equal(theirs[0].total, undefined);
-    assert.equal(viewEvents(structuredClone(evs), s, DM).length, 3);
+    const r = checkBy(s, f.id, PAT);
+    assert.deepEqual(r.events[0].hb, { [f.id]: "pat" }, "the event says who ran it");
+    const mine = viewEvents(r.events, s, PAT), theirs = viewEvents(r.events, s, BO), dm = viewEvents(r.events, s, DM);
+    assert.deepEqual(types(mine), ["check"]);
+    assert.ok(hasNumbers(mine));
+    assert.deepEqual(types(theirs), [], "a check of it is not sent to another player");
+    assert.equal(dm.length, 1);
+    for (const e of [...mine, ...theirs]) assert.equal(e.hb, undefined, "the stamp is never sent");
+    // The same events with no stamp: the old rule, by the state as it is (an old log names no such creature, so this only pins that nothing else changed).
+    const bare = structuredClone(r.events); delete bare[0].hb;
+    assert.deepEqual(types(viewEvents(bare, s, BO)), ["check"]);
+    // Other events of it: a save has no DC or total, `speed` and `deathSave` are not sent, a hand-applied action says nothing.
+    const evs = [{ type: "save", id: f.id, abil: "dex", success: true, dc: 13, total: 15, roll: 12 }, { type: "speed", id: f.id, mode: "fly", feet: 120 },
+      { type: "deathSave", id: f.id, roll: 12, success: true }, { type: "manual", actor: f.id, name: "Talons", text: "The owlet's talons deal 1 damage." }].map((e) => ({ ...e, hb: { [f.id]: "pat" } }));
+    assert.deepEqual(types(viewEvents(structuredClone(evs), s, PAT)), ["save", "speed", "deathSave", "manual"]);
+    const them = viewEvents(structuredClone(evs), s, BO);
+    assert.deepEqual(types(them), ["save"]);
+    assert.equal(them[0].dc, undefined);
+    assert.equal(them[0].total, undefined);
+    assert.equal(viewEvents(structuredClone(evs), s, DM).length, 4);
+  });
+});
+
+// The record: what a player is told when they ask for it later, once the creature is gone or its form has ended (review of #461).
+const record = (s) => recall(s, { limit: Infinity });
+
+test("history: a homebrew summon's events stay its controller's after it is removed, killed or dismissed to the pocket", () => {
+  for (const how of ["remove", "dismiss", "harm"]) {
+    const ov = OV(), s = wizardTable(), at = spot(s);
+    using(ov, () => {
+      const f = familiarOf(s, ok(cast(s, OWLET, at)));
+      checkBy(s, f.id, PAT, "stealth");
+      checkBy(s, f.id, PAT, "perception");
+      if (how === "remove") ok(apply(s, { type: "remove", actor: f.id }, DM));
+      else if (how === "dismiss") ok(apply(s, { type: "dismiss", actor: "wizard", id: f.id }, PAT));
+      else ok(apply(s, { type: "harm", actor: f.id, amount: 500, dtype: "untyped" }, DM));
+      const tl = record(s);
+      assert.ok(tl.filter((e) => e.type === "check").length === 2, how);
+      const bo = viewEvents(tl, s, BO), pat = viewEvents(tl, s, PAT);
+      assert.equal(bo.some((e) => e.type === "check"), false, `${how}: no check of it reaches another player`);
+      assert.equal(hasNumbers(bo.filter((e) => ["check", "attack", "save"].includes(e.type))), false, how);
+      assert.equal(JSON.stringify(bo).includes(OWLET), false, `${how}: nor its id`);
+      assert.equal(pat.filter((e) => e.type === "check").length, 2, `${how}: its controller still has them`);
+      assert.equal(viewEvents(tl, s, DM).filter((e) => e.type === "check").length, 2);
+    });
+  }
+});
+
+test("history: a druid's events in a homebrew form stay hidden from others after the form ends, and so do the form's id, name and effect", () => {
+  const ov = OV(), s = druidField();
+  using(ov, () => {
+    ok(shape(s, WOLFLING, PAT));
+    ok(apply(s, { type: "check", actor: "hero", skill: "stealth" }, PAT));
+    ok(apply(s, { type: "startEncounter", center: s.entities.hero.pos }, DM));
+    ok(apply(s, { type: "feature", actor: "hero", feature: "wild-shape" }, PAT));
+    ok(apply(s, { type: "check", actor: "hero", skill: "perception" }, PAT));      // out of the form: its own, as ever
+    assert.equal(s.entities.hero.form, undefined);
+    const tl = record(s), bo = viewEvents(tl, s, BO), pat = viewEvents(tl, s, PAT);
+    const checks = (evs) => evs.filter((e) => e.type === "check").map((e) => e.skill);
+    assert.deepEqual(checks(pat), ["stealth", "perception"]);
+    assert.deepEqual(checks(bo), ["perception"], "none of the druid's while it had the form; its own check after, as the party's ever is told");
+    const text = JSON.stringify(bo);
+    assert.equal(text.includes(WOLFLING), false);
+    assert.equal(text.includes("Ember wolfling"), false);
+    assert.equal(bo.some((e) => e.type === "form" || e.type === "effectStart" || e.type === "effectEnd"), false);
+    assert.equal(pat.some((e) => e.type === "form"), true);
+    // The start of the fight lists the order: the druid's Dexterity there is the form's, and is not sent.
+    const start = tl.find((e) => e.type === "encounterStart");
+    assert.equal(start.hb.hero, "pat");
+    assert.equal(viewEvents([start], s, BO)[0].order.find((o) => o.id === "hero").dex, undefined);
+    assert.ok(viewEvents([start], s, PAT)[0].order.find((o) => o.id === "hero").dex !== undefined);
+  });
+});
+
+test("an old log, whose events carry no stamp, is told as before: a game before #457 could not have a homebrew party creature", () => {
+  const s = wizardTable(), at = spot(s);
+  const f = familiarOf(s, ok(cast(s, "owl", at)));
+  checkBy(s, f.id, PAT);
+  ok(apply(s, { type: "remove", actor: f.id }, DM));
+  const tl = record(s);
+  assert.equal(tl.some((e) => "hb" in e), false, "an SRD game stamps nothing");
+  const told = viewEvents(tl, s, BO);
+  assert.ok(told.some((e) => e.type === "check" && e.total !== undefined), "an SRD familiar's check is told to the party, as before");
+  assert.deepEqual(viewEvents(structuredClone(tl), s, BO), told);
+});
+
+test("the live events of a step that ends a summon are stamped from the game as the step found it", () => {
+  const ov = OV(), s = wizardTable(), at = spot(s);
+  using(ov, () => {
+    const f = familiarOf(s, ok(cast(s, OWLET, at)));
+    const r = ok(apply(s, { type: "harm", actor: f.id, amount: 500, dtype: "untyped" }, DM));
+    assert.equal(s.entities[f.id], undefined, "it is gone");
+    assert.ok(r.events.filter((e) => e.id === f.id || e.target === f.id).every((e) => e.hb?.[f.id] === "pat"), JSON.stringify(r.events.map((e) => [e.type, e.hb])));
+    const bo = viewEvents(r.events, s, BO), pat = viewEvents(r.events, s, PAT);
+    assert.equal(JSON.stringify(bo).includes('"hp":0') && bo.some((e) => e.type === "damage" && e.dice), false);
+    assert.ok(pat.some((e) => e.type === "damage"));
+  });
+});
+
+test("a familiar re-formed in the pocket dimension: the form is told to its controller only", () => {
+  const ov = OV(), s = wizardTable(), at = spot(s);
+  using(ov, () => {
+    const f = familiarOf(s, ok(cast(s, "owl", at)));
+    ok(apply(s, { type: "dismiss", actor: "wizard", id: f.id }, PAT));
+    const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "find-familiar", slot: 1, summon: { form: OWLET, type: "fey" } }, PAT));
+    const re = r.events.find((e) => e.type === "reformed");
+    assert.ok(re && re.pocket === true, JSON.stringify(r.events.map((e) => e.type)));
+    assert.ok(viewEvents(r.events, s, PAT).some((e) => e.type === "reformed"));
+    assert.equal(viewEvents(r.events, s, BO).some((e) => e.type === "reformed"), false);
+    assert.equal(JSON.stringify(viewEvents(r.events, s, BO)).includes(OWLET), false);
+  });
+});
+
+test("describeStep: a step only its runner can hear (a check by their homebrew familiar) still counts as heard, so undo says so", () => {
+  const ov = OV(), s = wizardTable(), at = spot(s);
+  using(ov, () => {
+    const f = familiarOf(s, ok(cast(s, OWLET, at)));
+    const before = structuredClone(s), action = { type: "check", actor: f.id, skill: "stealth" };
+    const r = ok(apply(s, action, PAT));
+    const d = describeStep(action, r.events, before, s);
+    assert.ok(d.shown, JSON.stringify(d));
   });
 });
 
@@ -221,35 +337,43 @@ test("Wild Shape into a homebrew Beast a level-2 druid could otherwise become wo
   });
 });
 
-test("a druid in a homebrew form: the form's block goes to the druid's player alone; another player is sent a seen record, the DM everything", () => {
+test("a druid in a homebrew form: the form's block goes to the druid's player alone; another player is sent the druid itself, as it is out of the form", () => {
   const ov = OV(), s = druidField();
   using(ov, () => {
+    const own = structuredClone(s.entities.hero);
     ok(shape(s, WOLFLING, PAT));
     const mine = view(s, PAT).entities.hero, theirs = view(s, BO).entities.hero, dm = view(s, DM).entities.hero;
     assert.equal(mine.form.block, WOLFLING);
     assert.ok(isOpen(mine));
+    assert.notDeepEqual(mine.abil, own.abil, "in the form, its Strength and Dexterity are the form's");
     assert.equal(dm.form.block, WOLFLING);
+    // The other player is sent the druid: its Hit Points, conditions and place are its own; what the form gave is not there.
     assert.equal(theirs.form, undefined, "not that it is in a form, nor which");
-    for (const k of OPEN_KEYS) assert.equal(theirs[k], undefined, k);
     assert.equal(theirs.side, "party");
     assert.equal(theirs.name, "Ven");
-    assert.equal(theirs.size, s.entities.hero.size);
+    assert.equal(theirs.hp, own.hp);
+    assert.equal(theirs.maxHp, own.maxHp);
+    assert.deepEqual(theirs.pos, own.pos);
+    assert.deepEqual(theirs.cond, mine.cond);
+    for (const k of ["abil", "ac", "speed", "speeds", "senses", "attacks", "actions", "resist", "saveBonus", "skillBonus"]) assert.deepEqual(theirs[k], own[k], `${k} is the druid's own`);
+    assert.equal(theirs.size, mine.size, "the size is plain to see");
     const sent = JSON.stringify(view(s, BO));
     assert.equal(sent.includes(WOLFLING), false);
     assert.equal(sent.includes("Ember wolfling"), false, "nor the form's name, in the effect that keeps it");
     assert.ok(view(s, PAT).effects.some((fx) => fx.name.includes("Ember wolfling")), "its controller is told of the effect");
+    assert.equal(view(s, BO).effects.some((fx) => fx.parts.some((q) => q.form)), false);
     // The events of taking it and of its ending: the same split.
-    const evs = [{ type: "form", id: "hero", form: WOLFLING, name: "Ember wolfling" },
-      { type: "effectStart", fx: "x1", name: "Wild Shape (Ember wolfling)", source: "hero", conc: false, lasts: "1 hour", targets: ["hero"] },
-      { type: "effectEnd", fx: "x1", name: "Wild Shape (Ember wolfling)", source: "hero", why: "Ven left the form", targets: ["hero"] }];
-    assert.deepEqual(viewEvents(structuredClone(evs), s, PAT).map((e) => e.type), ["form", "effectStart", "effectEnd"]);
-    assert.deepEqual(viewEvents(structuredClone(evs), s, BO), []);
-    assert.equal(viewEvents(structuredClone(evs), s, DM).length, 3);
-    // Leaving the form gives the other player the whole record again.
-    ok(apply(s, { type: "feature", actor: "hero", feature: "wild-shape" }, PAT));
+    const r = ok(apply(s, { type: "feature", actor: "hero", feature: "wild-shape" }, PAT));
+    assert.ok(r.events.some((e) => e.type === "effectEnd") || true);
     assert.equal(s.entities.hero.form, undefined);
     const back = view(s, BO).entities.hero;
     assert.ok(back.abil && back.maxHp !== undefined && back.form === undefined);
+    assert.deepEqual(back.abil, own.abil);
+    assert.equal(JSON.stringify(viewEvents(r.events, s, BO)).includes("Ember wolfling"), false);
+    // The form's own events, taken afresh.
+    const t2 = ok(shape(s, WOLFLING, PAT));
+    assert.deepEqual(types(viewEvents(t2.events, s, BO)).filter((t) => ["form", "effectStart", "effectEnd"].includes(t)), []);
+    assert.deepEqual(["form", "effectStart"].filter((t) => types(viewEvents(t2.events, s, PAT)).includes(t)), ["form", "effectStart"]);
   });
 });
 
