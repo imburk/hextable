@@ -109,7 +109,8 @@ export const summons = [
         id: "life-bond",
         name: "Life Bond",
         modifiers: [],
-        text: "When its rider-caster regains Hit Points from a level 1 or higher spell, the steed regains the same number if the caster is within 5 feet of it. The engine does not hook healing, so the DM applies this.",
+        masterHeal: { within: 5 },
+        text: "When its caster regains Hit Points from a level 1 or higher spell, the steed regains the same number if the caster is within 5 feet of it.",
       },
     ],
     actions: [

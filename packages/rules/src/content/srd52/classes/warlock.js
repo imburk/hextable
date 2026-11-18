@@ -420,11 +420,37 @@ export const warlock = {
         {
           "id": "investment-of-the-chain-master",
           "name": "Investment of the Chain Master",
-          "tier": "manual",
-          "text": "Your familiar from Find Familiar gains a 40-foot Fly or Swim Speed, attacks as your Bonus Action, may deal Necrotic or Radiant damage, uses your spell save DC, and can be given Resistance with your Reaction. Needs Warlock level 5 and Pact of the Chain. Familiars are not built; the DM applies it.",
+          "tier": "auto",
+          "text": "When you cast Find Familiar, the familiar gains a Fly or Swim Speed of 40 feet (your choice at the casting), uses your spell save DC for the saves it forces, and, if you choose at the casting, deals Necrotic or Radiant damage instead of Bludgeoning, Piercing or Slashing. As a Bonus Action you command it to take the Attack action (one attack, at once). When it takes damage, your Reaction can give it Resistance to that damage. Needs Warlock level 5 and Pact of the Chain.",
           "requires": {
             "level": 5,
             "option": "pact-of-the-chain"
+          },
+          "grants": {
+            "invest": {
+              "spell": "find-familiar",
+              "speed": {
+                "feet": 40,
+                "of": [
+                  "fly",
+                  "swim"
+                ]
+              },
+              "damage": {
+                "from": [
+                  "bludgeoning",
+                  "piercing",
+                  "slashing"
+                ],
+                "to": [
+                  "necrotic",
+                  "radiant"
+                ]
+              },
+              "saveDc": true,
+              "bonusAttack": true,
+              "ward": true
+            }
           }
         },
         {
@@ -543,9 +569,12 @@ export const warlock = {
         {
           "id": "pact-of-the-chain",
           "name": "Pact of the Chain",
-          "tier": "assist",
-          "text": "You know Find Familiar and cast it as a Magic action without a spell slot (applied), with the seven special forms besides the normal ones: Imp, Pseudodragon, Quasit, Skeleton, Sphinx of Wonder, Sprite or Venomous Snake (applied). Giving up one of your attacks for the familiar to attack is the DM's.",
+          "tier": "auto",
+          "text": "You know Find Familiar and cast it as a Magic action without a spell slot, with the seven special forms besides the normal ones: Imp, Pseudodragon, Quasit, Skeleton, Sphinx of Wonder, Sprite or Venomous Snake. When you take the Attack action you may give up one of its attacks for your familiar to make one attack with its Reaction.",
           "grants": {
+            "forgoAttack": {
+              "spell": "find-familiar"
+            },
             "spells": [
               "find-familiar"
             ],

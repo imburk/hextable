@@ -5,6 +5,7 @@ import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
+import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
@@ -22,6 +23,7 @@ import { aloft, below, creatureType, carry, holdsOf, catchUp, riderLanding, corn
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
+import { investIn } from '../summons.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -759,6 +761,8 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   const m = modifiers(s, t, 'damage.taken', { target: t });
   // A Reaction that gives Resistance to the damage being taken (Superior Hunter's Defense): the type it resists now.
   const braced = pierce || raw ? null : braceAgainst(s, t, parts, m, ev);     // not a DM setting Hit Points (`raw`)
+  // A familiar's master's Reaction that gives it Resistance to this damage (Investment of the Chain Master; C9c).
+  const warded = pierce || raw ? false : wardFor(s, t, parts, m, ev);
   const dying = t.hp <= 0, before = t.hp;
   // Amounts added to or taken off the damage (the Resistance cantrip's 1d4) come first, then
   // Resistance and Vulnerability (SRD "Order of Application"). Each applies once to the
@@ -783,7 +787,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
-    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced), vulnerable = applies(m.vulnerable, t.vuln);
+    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced || (warded && DAMAGE_TYPES.includes(p.type))), vulnerable = applies(m.vulnerable, t.vuln);
     let n = base[pi];
     if (!pierce && applies(m.immune, t.immune)) n = 0;
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
@@ -857,6 +861,32 @@ function braceAgainst(s, t, parts, m, ev) {
   return types[0];
 }
 
+// Investment of the Chain Master's Resistance (`invest.ward`; docs/specs/companions.md, C9c): "When the familiar takes damage,
+// you can take a Reaction to grant it Resistance against that damage." `t` is a familiar its master made with the feature's
+// spell; the master, able to take a Reaction, takes it by its instruction (reactions.js: always by default, never, or ask its
+// player; the DM is told for one of the DM's). Resistance then applies to every part of this damage. Not taken when there is
+// nothing to resist (no damage, or only damage of types it resists or is immune to already). Returns whether it was taken.
+function wardFor(s, t, parts, m, ev) {
+  const b = t.bond, mm = b?.kind === 'familiar' && typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
+  if (!mm || mm.id === t.id || mm.object || !canReact(mm)) return false;
+  const r = reactionsOf(mm).find((x) => x.on === 'familiarDamaged' && x.spell === b.source);
+  if (!r) return false;
+  const w = instruction(mm, r, s);             // `ask` by default for a master a player runs (reactions.js, defaultOf)
+  if (w === 'never') return false;
+  const has = (list, own, ty) => list === true || list.includes(ty) || (own ?? []).includes(ty);
+  // Only damage of a type, as Superior Hunter's Defense (the DM's untyped damage is none; review of #467, 4).
+  if (!parts.some((p) => p.amount > 0 && DAMAGE_TYPES.includes(p.type) && !has(m.resist, t.resist, p.type) && !has(m.immune, t.immune, p.type))) return false;
+  if (w === 'ask') {
+    const types = [...new Set(parts.filter((p) => p.amount > 0).map((p) => p.type))];
+    const a = ask(s, mm, { trigger: 'familiarDamaged', ...(types.length === 1 && DAMAGE_TYPES.includes(types[0]) ? { dtype: types[0] } : {}) }, [{ reaction: r.id, name: `${r.name}: Resistance for ${t.name}` }]);
+    if (a === null) { tellDM(mm, r, `${t.name} takes damage.`, ev); return false; }
+    if (a.take !== r.id) return false;
+  }
+  mm.reactionUsed = true;
+  ev.push({ type: 'reaction', id: mm.id, reaction: r.id, name: r.name, trigger: 'familiarDamaged', for: t.id });
+  return true;
+}
+
 // When a creature hits one with `afterHit` (Multiattack Defense) with an attack roll, the attacker gets
 // that modifier against it until the end of the current turn, once a turn.
 function afterHit(s, e, t, ev) {
@@ -882,7 +912,7 @@ function relentless(s, t, ev) {
   const r = f.relentless, n = t.uses?.[f.id] ?? 0, dc = r.dc + r.step * n;
   (t.uses ??= {})[f.id] = n + 1;
   const { used, ...sv } = savingThrow(s, t, 'con', dc, null, null, null, null, ev);
-  ev.push({ type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name });
+  ev.push({ type: 'save', id: t.id, abil: 'con', dc, ...sv, against: f.name, ...srcOf(s, t.id) });
   useUp(s, ev, used ?? []);
   if (!sv.success) return;
   t.hp = Math.min(t.maxHp, r.hp);
@@ -1227,7 +1257,7 @@ export function strikeOption(s, e, t, atk, option, shove, ev) {
   renew(s, e, t);                                                       // making an enemy save keeps a Rage going
   const about = option === 'grapple' ? ['grappled'] : shove === 'prone' ? ['prone'] : null, abil = bestSave(s, t, ['str', 'dex'], e, about);
   const { used, ...sv } = savingThrow(s, t, abil, dc, null, e, null, null, ev, about);
-  ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv });
+  ev.push({ type: 'save', id: t.id, abil, dc, by: e.id, ...sv, ...srcOf(s, e.id) });
   useUp(s, ev, used ?? []);
   if (sv.success) return;
   if (option === 'grapple') { grip(s, t, { by: e.id, with: 'hand', escape: dc, range: 5 }, ev); return; }
@@ -1283,6 +1313,7 @@ export function runAction(s, e, def, targets, hexes, origin, ev, tag = null) {
   // An attack roll says what it is in its own event; anything else (a breath, a gaze) is announced.
   if (!('attack' in def.effects[0])) ev.push({ type: 'act', actor: e.id, action: def.id, name: def.name, hexes, targets: (targets ?? []).map((t) => t.id) });
   const steps = structuredClone(def.effects), fx = boundEffect(s, def.name, e.id, steps);
+  masterDc(s, e, steps);
   endingsTakeSaveDc(steps);
   begin(s, {
     steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
@@ -1651,12 +1682,36 @@ function summon(s, m, step, src, ev) {
     const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
       ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: false };
     const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: at, side: m.side, ...(made.type ? { type: made.type } : {}), bond });
+    invested(m, e, pick, ev);
     s.entities[id] = e;
     if (fx) fx.parts.push({ target: id, summon: true });
     ev.push({ type: 'summoned', id, by: m.id, kind: b.kind, ...(fx ? { fx: fx.id } : {}) });
     if (e.side === 'party') lookAround(s, ev, [e]);                 // what a party member sees, the party sees
     if (s.encounter?.arena[col(at)]) joinEncounter(s, e, ev);
   }
+}
+
+// Investment of the Chain Master (docs/specs/companions.md, C9c): the casting's choices baked into the creature it made or
+// reformed (summons.js, investIn). A caster with the feature who left the choices out (a client with no chooser for them yet)
+// gets the creature as the spell alone makes it, and the DM is told what the feature would have given.
+function invested(m, e, pick, ev) {
+  if (pick.invest) investIn(e, pick.invest, pick.caster.dc);
+  if (!pick.uninvested) return;
+  const f = (m.feats ?? []).find((x) => x.id === pick.uninvested), I = f?.invest;
+  if (!I) return;
+  ev.push({ type: 'manual', actor: m.id, name: f.name, partial: true,
+    text: `${m.name} cast without ${f.name}'s choices, so ${e.name} was made without them: ${[I.speed ? `a ${I.speed.of.join(' or ')} Speed of ${I.speed.feet} feet` : '', I.damage ? `${I.damage.to.join(' or ')} damage instead of ${I.damage.from.join(', ')}, if chosen` : ''].filter(Boolean).join('; ')}. Cast again with them, or the DM applies them.${I.saveDc ? ` It uses ${m.name}'s spell save DC all the same.` : ''}` });
+}
+// The save DC of a familiar's action (Investment of the Chain Master's `saveDc`; review of #467, 2): "If the familiar forces a
+// creature to make a saving throw, it uses your spell save DC" is a standing rule, so while its master is on the map and has the
+// feature for the spell that made it, every save its actions force is against the master's spell save DC now (a level gained or a
+// Charisma raised counts). The number baked at the casting stays as the fallback for a master who is gone. `steps` is a copy.
+function masterDc(s, e, steps) {
+  const b = e.bond, m = b?.kind === 'familiar' && typeof b.to === 'string' && Object.hasOwn(s.entities, b.to) ? s.entities[b.to] : null;
+  const f = m && (m.feats ?? []).find((x) => x.invest?.saveDc && x.invest.spell === b.source);
+  if (!f) return;
+  const dc = spellStats(m, s, f.invest.spell).dc;
+  if (Number.isInteger(dc)) walkSteps(steps, (st) => { if (typeof st.save === 'string' && typeof st.dc === 'number') st.dc = dc; });
 }
 
 // ---------- one per master, and the pocket dimension (Decisions 2 and 6; stage C5c) ----------
@@ -1686,6 +1741,7 @@ function reform(s, m, step, src, ev) {
   const bond = { to: m.id, kind: b.kind, source: src.spell ?? null, fx: fx ? fx.id : null, turn: b.turn, orders: b.orders ?? 'free', at0: b.at0, ends: [...(b.ends ?? [])],
     ...(b.range !== undefined ? { range: b.range } : {}), ...(b.leash ? { leash: b.leash } : {}), ...(b.noAttack ? { noAttack: true } : {}), ...(b.mount ? { mount: b.mount } : {}), slot: pick.slot, commanded: null, auto: old.bond?.auto === true };
   const e = makeEntity(record, { id, tpl: made.tplId, name: m.side === 'party' ? `${m.name}'s ${made.name}` : `${made.name} ${n}`, pos: { ...old.pos }, side: old.side, ...(made.type ? { type: made.type } : {}), bond });
+  invested(m, e, pick, ev);
   for (const k of KEPT_ON_REFORM) if (old[k] !== undefined) e[k] = structuredClone(old[k]);
   if (old.bond?.order !== undefined) e.bond.order = old.bond.order;
   if (inPocket) m.pocket[id] = e; else s.entities[id] = e;

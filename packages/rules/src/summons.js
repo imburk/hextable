@@ -20,11 +20,10 @@ const SLOT_KEYS = ['slot', 'base', 'above', 'round'];
 export const CASTER_AMOUNTS = ['attack', 'dc', 'pb', 'mod'];
 export const BY = ['variant', 'type'];
 
-// A homebrew monster cannot be chosen as a form yet (#402; owner's ruling pending, #193): a player's stat block of one is
-// never sent. Homebrew is told by the entry's `source` ("homebrew:<pack id>", which the strict linter requires). Every
-// place where an action's own field or a spell's filter picks a creature by id to summon or to become asks this.
+// A homebrew monster may be summoned or chosen as a form (#457, the owner's ruling on #193), but its stat block is sent only to the
+// player who runs the creature (view.js, forViewer). Homebrew is told by the entry's `source` ("homebrew:<pack id>", which the strict
+// linter requires).
 export const isHomebrew = (m) => !!m && typeof m.source === 'string' && m.source.startsWith('homebrew:');
-export const HOMEBREW_FORM = 'A homebrew creature cannot be chosen as a form yet.';
 
 const plain = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
 // Is this value a summon amount?
@@ -120,4 +119,29 @@ export function castings(block) {
     for (const variant of block.variants ?? [undefined])
       for (const type of block.types ?? [undefined]) out.push({ slot, ...(variant !== undefined ? { variant } : {}), ...(type !== undefined ? { type } : {}) });
   return out;
+}
+
+// Investment of the Chain Master (docs/specs/companions.md, amendment C9c): what a casting's `invest` choices give the creature
+// it makes, written onto the made record `e` (a familiar from a pack monster's block), so the rest of the engine sees plain
+// numbers, as `bake` gives them. `inv`: { move?, feet?, damage?, from?, saveDc? } (engine/casting.js, summonFor); `dc`: the
+// master's spell save DC.
+//   move, feet   a Speed of `feet` in that way of moving; one it already has that is faster is kept ("gains a Fly Speed")
+//   damage, from damage of a type in `from` that its actions or attacks deal is of type `damage` instead
+//   saveDc       every save its actions force is against `dc`
+// Changes `e` in place; returns it.
+export function investIn(e, inv, dc) {
+  if (inv.move) {
+    if (inv.move === 'walk') e.speed = Math.max(e.speed ?? 0, inv.feet);
+    else e.speeds = { ...(e.speeds ?? {}), [inv.move]: Math.max(e.speeds?.[inv.move] ?? 0, inv.feet) };
+  }
+  const walkIn = (v) => {
+    if (Array.isArray(v)) { for (const x of v) walkIn(x); return; }
+    if (!plain(v)) return;
+    if (inv.damage && 'damage' in v && typeof v.type === 'string' && inv.from.includes(v.type)) v.type = inv.damage;
+    if (inv.saveDc && typeof v.save === 'string' && typeof v.dc === 'number') v.dc = dc;
+    for (const x of Object.values(v)) walkIn(x);
+  };
+  walkIn(e.actions ?? []);
+  if (inv.damage) for (const a of e.attacks ?? []) if (inv.from.includes(a.dtype)) a.dtype = inv.damage;
+  return e;
 }

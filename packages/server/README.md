@@ -82,11 +82,18 @@ as an action: it is refused, and the server keeps `state.packs` in step with the
   only up to 512 KB (twice the pack limit); the rules' budget then holds the pack to 256 KB of canonical JSON, whatever form it came in.
   Nothing reads the start of the frame.
 - The checks, in order: who; the operation; the table's pack budget; the size; the registry's `loadPack` (budget, then strict lint); a
-  spell that summons a homebrew creature is refused (`A homebrew spell cannot summon a homebrew creature yet; it can summon creatures from the standard rules.`);
   `add` needs a new id and `update` the same id and a higher version; an update may add and change entries but not drop one the
   earlier version had (remove the pack, when nothing uses it, and add it again); the set the table would have goes through `overlayOf`
   (at most four packs, no id in two packs, no SRD id); a removal is refused while anything in the game uses the pack; the hash
   (`hashOf`); `setPacks` through `apply`; and only then the record changes and the table is told. A refusal changes nothing and tells no one but the sender.
+- A homebrew spell may summon a homebrew creature of the table's packs, and a homebrew creature may be a familiar's form or a Wild Shape form
+  (#457). The creature's block is sent only to the player who runs it (its player, or its master's): the shared player view is built once per
+  change, and each player's copy then has every other player's homebrew summon or familiar as the record of a foe they can see (name, size,
+  place, a word for its health; its `side` kept), a character in a homebrew form as the character itself without the form, no entry of it in its
+  master's pocket dimension, and no initiative, Dexterity or turn budget of it in the fight. A player's patch is computed against what that
+  player was sent. Every event that names such a creature carries a stamp of who ran it when it happened (`hb`, never sent), and the record
+  (`history`, the recent log, a fight's history) is told from the stamps: a creature that has since gone, or ended its form, stays its runner's.
+  The monster entries are still not in a player's copy of a pack. The DM is sent everything.
 - A refusal is `{t:"error", error, problems?, blockers?}`: `problems` are the linter's sentences (at most 20), `blockers` say where a
   pack is in use (`entities.m3 (Name): hb-ember-folk-quillwraith`). Removing a pack clears the DM's undo history, since an undo step could bring back a creature made from it.
 - What members are sent. `{t:"packs", packs:[{id, name, version, hash}]}` is only the list (the DM's `hash` is the pack's own; everyone else's is the hash of the filtered data they are sent, so no one holds a fingerprint of what they are not sent): it is sent to every member let in after a change, and

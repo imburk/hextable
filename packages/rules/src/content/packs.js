@@ -133,25 +133,6 @@ export function forPlayers(pack) {
   return { data, hash: hashOf(data) };
 }
 
-// ---------- a spell that summons a homebrew creature (moved from the server, #428) ----------
-export const HOMEBREW_SUMMON_SENTENCE = 'A homebrew spell cannot summon a homebrew creature yet; it can summon creatures from the standard rules.';
-
-// Does any spell of this pack summon a creature that comes from a homebrew pack, at any depth: a `summon` step naming a pack monster,
-// or a `forms` list holding one? Until the owner rules on what a player is sent of a summoned homebrew creature, such a pack is refused.
-// (A `forms` filter by type and challenge rating is not looked at: DEBT T48.) One iterative walk over the loaded, budgeted document.
-export function summonsHomebrew(data) {
-  const hb = (x) => typeof x === 'string' && x.startsWith('hb-');
-  const stack = (Array.isArray(data?.spells) ? data.spells : []).map((sp) => sp?.effects);
-  while (stack.length) {
-    const x = stack.pop();
-    if (Array.isArray(x)) { for (const y of x) stack.push(y); continue; }
-    if (x === null || typeof x !== 'object') continue;
-    if (hb(x.summon) || (Array.isArray(x.forms) && x.forms.some(hb))) return true;
-    for (const k of Object.keys(x)) stack.push(x[k]);
-  }
-  return false;
-}
-
 // ---------- checking stored packs, and a pack offered to a table (moved from the server, #428) ----------
 // Check a list of stored packs `[{ id, version, hash, data }]` the way a pack that was just uploaded is checked: each one through the
 // registry's own budget and strict lint, the id and version it claims, the hash of its data, and the whole set through `overlayOf`
@@ -170,7 +151,6 @@ export function vetPacks(list) {
     if (r.pack.id !== p.id) problems.push(`${at}: its id is "${p.id}" but the pack inside is "${r.pack.id}".`);
     else if (r.pack.version !== p.version) problems.push(`${p.id}: its version is ${p.version} but the pack inside is version ${r.pack.version}.`);
     else if (hash !== p.hash) problems.push(`${p.id}: its hash does not match its contents.`);
-    else if (summonsHomebrew(p.data)) problems.push(`${p.id}: ${HOMEBREW_SUMMON_SENTENCE}`);
     else loaded.push(r.pack);
   }
   if (problems.length) return { ok: false, problems };
@@ -179,7 +159,7 @@ export function vetPacks(list) {
 }
 
 // Everything a table checks before it stores a pack it was offered, in the order the server has always checked it: the registry's budget
-// and strict lint (`loadPack`); a spell that summons a homebrew creature; the id and, for an update, the version; for an update, that no
+// and strict lint (`loadPack`); the id and, for an update, the version; for an update, that no
 // entry the stored version had is dropped; the cross-pack rules (`overlayOf` on the set the table would then have); the hash.
 //   tablePacks  the table's stored packs `[{ id, version, hash, data }]`
 //   pack        the pack document as an object (a caller that was sent JSON text parses it first, and sets its own size limit)
@@ -187,13 +167,12 @@ export function vetPacks(list) {
 //               set that does not pass counts as none loaded, as it does for the server
 // Returns { ok: true, pack: <the loaded pack>, hash, record: { id, version, hash, data }, problems: [] } or
 // { ok: false, problems: [sentences], form }, where `form` says how the server tells the DM, so that no sentence changes:
-//   'error'   the one sentence is the whole message ({ error })            'summon'  the sentence is the message and the only problem
+//   'error'   the one sentence is the whole message ({ error })
 //   'refuse'  the problems are listed under a "The homebrew was refused: ..." message
 // Pure: nothing is stored, and a refusal changes nothing.
 function vetOffered(op, tablePacks, pack, opts = {}) {
   const r = loadPack(pack);
   if (!r.ok) return { ok: false, problems: r.problems, form: 'refuse' };
-  if (summonsHomebrew(pack)) return { ok: false, problems: [HOMEBREW_SUMMON_SENTENCE], form: 'summon' };
   const id = r.pack.id;
   const cur = (tablePacks ?? []).find((p) => p.id === id);
   const plainError = (sentence) => ({ ok: false, problems: [sentence], form: 'error' });
@@ -256,8 +235,7 @@ export const inUse = (state, packId) => usesIn(state, (x) => x.startsWith(`hb-${
 
 // ---------- a table file's packs at load (moved from the server, #428) ----------
 // What a table file's `packs` may keep. Never throws, whatever the file holds: a value that is not a list, a record that is not exactly
-// { id, version, hash, data }, data that fails the registry's check or whose hash is not the one written, a pack that summons a homebrew
-// creature, or a set the registry refuses (five packs, ids in two packs) is dropped, with a sentence saying why. Returns
+// { id, version, hash, data }, data that fails the registry's check or whose hash is not the one written, or a set the registry refuses (five packs, ids in two packs) is dropped, with a sentence saying why. Returns
 // { packs: [the records that pass, as new objects], dropped: [{ id, reason }] }. Nothing dropped is ever sent to anyone.
 export function cleanPacks(records) {
   try {

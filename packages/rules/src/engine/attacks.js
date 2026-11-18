@@ -3,11 +3,12 @@
 import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf } from '../durations.js';
 import { apart, FT } from '../space.js';
-import { checkInstructions, reactionsOf } from '../reactions.js';
+import { canReact, checkInstructions, reactionsOf } from '../reactions.js';
 import { able, control, current, ent, fail, featOf, ft, inFight, need, steering, up, walled } from './shared.js';
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
+import { SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
@@ -148,6 +149,66 @@ function isAttack(def) {
   return hit;
 }
 
+// A familiar's attack through its master's feature (docs/specs/companions.md, amendment C9c):
+//   { type: 'attack', actor: master, familiar: id, via: feature id, target, attack: the familiar's action id }
+// `via` a feature with `forgoAttack` (Pact of the Chain, SRD 16627-16631: "when you take the Attack action, you can forgo one
+// of your own attacks to allow your familiar to make one attack of its own with its Reaction"): one attack of the master's
+// Attack action is spent (one left this turn, or the action itself, which starts the Attack action), and the familiar's
+// Reaction. `via` a feature with `invest.bonusAttack` (Investment of the Chain Master, 16521-16535: "As a Bonus Action, you can
+// command the familiar to take the Attack action"): the master's Bonus Action, and the familiar makes one attack at once (the
+// Attack action's one attack; a Multiattack is another action). Either way it is the master's turn in a fight, the familiar
+// is the master's, made by the feature's spell, up, able to act, in the fight, and the attack is one of its actions that makes
+// an attack roll, aimed as any is. A familiar "can't attack" (`noAttack`) save in these two ways. Everything is checked first.
+function familiarAttack(s, a, ctx, ev) {
+  const m = ent(s, a.actor);
+  // The familiar named, as `dismiss` names one: to a player a creature the party does not know of is no creature at all.
+  typeof a.familiar === 'string' || fail('Name the familiar ({ familiar }).');
+  const f = Object.hasOwn(s.entities, a.familiar) ? s.entities[a.familiar] : null;
+  // One in its master's pocket dimension is said so to the DM, and to players for the party's own (whose pocket they are sent).
+  const pocketed = !f && m.pocket && typeof m.pocket === 'object' && Object.hasOwn(m.pocket, a.familiar);
+  if (pocketed && (ctx.role === 'dm' || m.side === 'party')) fail('That familiar is in its pocket dimension.');
+  (f && (ctx.role === 'dm' || !unknown(s, f))) || fail('No such creature.');
+  control(s, m, ctx);
+  const via = typeof a.via === 'string' ? featOf(m, a.via) : null;
+  const forgo = via?.forgoAttack ?? null, quick = via?.invest?.bonusAttack ? via.invest : null;
+  (forgo || quick) || fail(`Say which feature of ${m.name}'s lets the familiar attack (\`via\`).`);
+  f.bond?.to === m.id || fail(`${f.name} is not bonded to ${m.name}.`);
+  const spell = (forgo ?? quick).spell;
+  (f.bond.kind === 'familiar' && f.bond.source === spell) || fail(`${f.name} is bonded to ${m.name}, but is not a familiar from ${SPELLS[spell]?.name ?? spell}, which ${via.name} needs.`);
+  (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey are not for a familiar's attack.`);
+  noStrikeFields(a);                                                // its attacks are a pack monster's actions
+  s.encounter || fail(`${via.name} works in a fight. Start one first.`);
+  need(s, m, quick ? 'bonus' : null);
+  up(f) || fail(`${f.name} is down.`);
+  able(f);
+  inFight(s, f.id) || fail(`${f.name} is outside the battle.`);
+  if (forgo) canReact(f) || fail(`${f.name} has already used its Reaction.`);
+  const def = f.actions?.find((x) => x.id === a.attack && !x.multiattack && isAttack(x)) || fail(`${f.name} has no such attack.`);
+  const why = actionSpent(f, def);
+  if (why) fail(why);
+  const b = s.encounter.budget, pooled = !!forgo && fromPool(b, null);
+  if (forgo && !pooled) b.action >= 1 || fail(`${m.name} has no attack of the Attack action left to give up.`);
+  const { targets } = aimAction(s, f, def, { target: a.target }, false, ctx);
+  for (const t of targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+  if (quick) b.bonus--;
+  else if (pooled) fromPool(b, null, true);
+  else {
+    b.action--;
+    if (b.loaded) { b.loaded = b.loaded.filter((k) => !k.startsWith('action:')); if (!b.loaded.length) delete b.loaded; }      // a new action loads afresh
+    if (m.features?.extraAttack) b.attacks = [[{ action: null, left: m.features.extraAttack }]];      // the Attack action's other attacks
+  }
+  if (forgo) {
+    f.reactionUsed = true;
+    ev.push({ type: 'reaction', id: f.id, reaction: 'familiar-attack', name: 'Attack with its Reaction', trigger: 'forgo' });
+  }
+  // Said by name for the party's own; a foe's bond is not told (Decision 10), and its attack shows for itself.
+  if (m.side === 'party') ev.push({ type: 'note', id: m.id, text: forgo ? `${via.name}: ${m.name} gives up an attack, and ${f.name} attacks with its Reaction` : `${via.name}: ${m.name} commands ${f.name} to take the Attack action` });
+  if (def.recharge) (f.spent ??= {})[def.id] = true;
+  if (def.uses) (f.charges ??= {})[def.id] = (f.charges[def.id] ?? def.uses.n) - 1;
+  runAction(s, f, def, targets, null, null, ev);
+  checkEnd(s, ev);
+}
+
 // Fields only the Unarmed Strike reads: a pack monster's action has none of them (its stat block says how it grapples).
 function noStrikeFields(a) {
   ((a.option ?? 'damage') === 'damage' && a.shove === undefined && !a.grab) || fail('Grapple and Shove are options of the Unarmed Strike, and Punch and Grab goes with it.');
@@ -195,7 +256,9 @@ export const handlers = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
   // monster) attacks with the action of that id; others with their flat attack records.
+  // With `familiar` and `via`: the master's familiar attacks (familiarAttack, above).
   attack(s, a, ctx, ev) {
+    if (a.familiar !== undefined) return familiarAttack(s, a, ctx, ev);
     const e = ent(s, a.actor), t = ent(s, a.target); control(s, e, ctx);
     !e.bond?.noAttack || fail(`${e.name} can't attack.`);          // a familiar (docs/specs/companions.md, Decision 1)
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
@@ -319,7 +382,9 @@ export const handlers = {
     const bad = checkInstructions(e, a.set);
     if (bad) fail(bad);
     const mine = reactionsOf(e), out = { ...(e.reactions ?? {}) };
-    for (const [k, w] of Object.entries(a.set)) { if (w === mine.find((r) => r.id === k).dflt) delete out[k]; else out[k] = w; }
+    // A reaction whose default depends on who runs the creature (`dfltPlayer`) keeps what was set, whatever it is, so that a claim or a
+    // release does not turn a choice into the other default.
+    for (const [k, w] of Object.entries(a.set)) { const r = mine.find((x) => x.id === k); if (w === r.dflt && !r.dfltPlayer) delete out[k]; else out[k] = w; }
     if (Object.keys(out).length) e.reactions = out; else delete e.reactions;
     ev.push({ type: 'reactionsSet', id: e.id, set: { ...a.set } });
   },

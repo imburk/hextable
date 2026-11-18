@@ -37,11 +37,11 @@ async function reactions(browser, url, label, opts) {
         await placeBeside(page, wren, foe);
       });
 
-      await run.do('the sheet lists her reactions and no others', async () => {
+      await run.do('the sheet lists her reactions and no others (the Opportunity Attack, for her Unarmed Strike, and Shield)', async () => {
         await openSheet();
         await waitShown(page, '#sheet-reactions');
         const ids = await page.$$eval('#sheet-reactions [data-rx-set]', (els) => els.map((x) => x.dataset.rxSet));
-        if (ids.join() !== 'shield') throw new Error(`reactions listed: ${ids.join() || 'none'}`);
+        if (ids.join() !== 'opportunity-attack,shield') throw new Error(`reactions listed: ${ids.join() || 'none'}`);
         const now = await page.$eval('#rx-shield', (x) => x.value);
         if (now !== 'never') throw new Error(`Shield should start on never, not ${now}`);
         const box = await page.$eval('#sheet-reactions .rx select', (x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, innerWidth, r.height]; });
