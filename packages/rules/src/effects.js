@@ -11,6 +11,7 @@
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
 import { BRANCHES, SIZES, SPELL_KINDS, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
+import { srcOf } from './homebrew.js';
 import { effectsOf, useUp } from './durations.js';
 
 export const stepKind = (step) => STEPS.find((k) => k in step);
@@ -382,11 +383,11 @@ function exec(s, ev, kit, f, step, at) {
     // Careful Spell: a creature its caster protects succeeds, and takes nothing where it would take half.
     // `sure`: creatures that succeed on this effect's saves without rolling (Contact Patron: its caster).
     if (f.src.sure?.includes(t.id)) {
-      ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, sure: true });
+      ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, sure: true, ...srcOf(s, f.actor, f.src?.fx) });
       return step.half ? branch('onFail', { half: true }) : branch('onSuccess', { half: false });
     }
     if (f.src.careful?.includes(t.id)) {
-      ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true });
+      ev.push({ type: 'save', id: t.id, abil: step.save, dc, success: true, careful: true, ...srcOf(s, f.actor, f.src?.fx) });
       return step.half ? undefined : branch('onSuccess', { half: false });
     }
     // The conditions a failure would bring, for a modifier on saves to avoid one (Protection from Poison).
@@ -399,12 +400,12 @@ function exec(s, ev, kit, f, step, at) {
       else if (holds.every(Boolean)) adv = 'fighting the caster\'s side';
     }
     let { used, ...sv } = kit.savingThrow(s, t, step.save, dc, null, f.src.origin ?? e, f.src.heightened === t.id ? 'Heightened Spell' : null, adv, ev, about);      // cover is judged from where the effect starts
-    ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv });
+    ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, ...srcOf(s, f.actor, f.src?.fx) });
     useUp(s, ev, used ?? []);                                            // a single-use modifier the save took ends now, after it
     // A failed save against Charmed or Frightened may be rolled again (Countercharm).
     if (!sv.success && kit.rerollSave) {
       const again = kit.rerollSave(s, t, step.save, dc, step.onFail, f.src.origin ?? e, ev);
-      if (again) { const { used: u2, ...sv2 } = again; sv = sv2; ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true }); useUp(s, ev, u2 ?? []); }
+      if (again) { const { used: u2, ...sv2 } = again; sv = sv2; ev.push({ type: 'save', id: t.id, abil: step.save, dc, ...sv, reroll: true, ...srcOf(s, f.actor, f.src?.fx) }); useUp(s, ev, u2 ?? []); }
     }
 
     // Evasion: a Dexterity save for half damage does none on a success and half on a failure (the

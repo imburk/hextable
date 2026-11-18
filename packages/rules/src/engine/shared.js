@@ -6,6 +6,7 @@ import { coverOf, inSight } from '../sight.js';
 import { bounded, incapacitatedBy, modifiers } from '../modifiers.js';
 import { SUMMON_MOST } from '../content/schema.js';
 import { turnKey } from '../durations.js';
+import { hbId, homebrewBlock } from '../homebrew.js';
 
 export const ARENA_RADIUS = 6;       // hexes locked around the start of a fight
 export const EXPLORE_BUDGET = 300;   // feet per tap while free roaming
@@ -48,6 +49,41 @@ export const ownerOf = (s, e) => {
   if (who && e.bond.orders === 'command' && s?.encounter && inFight(s, e.id) && !commandedNow(s, e)) return null;
   return who;
 };
+// ---------- homebrew creatures of the party (#457; docs/specs/homebrew.md, the build notes on #457) ----------
+// A homebrew monster's block is sent only to the player who runs the creature made from it. These say which creatures those are and who
+// runs them. Homebrew is told by the id, which the strict linter makes begin `hb-` for every entry of a pack; nothing here reads a pack.
+export { hbId, homebrewBlock };
+// The user who runs a creature: its player (`ownerOf`), or, for a companion, its master's, up the bond (not turn by turn: a commanded
+// creature is the DM's on a turn its master did not command it, and what a player is sent must not change with the turn). null: the DM's.
+export function controllerOf(s, e, depth = 0) {
+  if (!e) return null;
+  const who = ownerOf(s, e);
+  if (who) return who;
+  const to = e.bond?.to;
+  return depth < 4 && typeof to === 'string' && Object.hasOwn(s?.entities ?? {}, to) ? controllerOf(s, s.entities[to], depth + 1) : null;
+}
+// The creatures that carry a homebrew block, of either side, on the map or in a master's pocket dimension, with who runs each:
+// Map { id -> user id | null } (null: the DM's, which every foe is), or null when there is none (nearly always: this is read by every
+// action). A foe is included because the DM may bond it to a party master later, and the record must not turn what it did as a foe into
+// the party's own.
+export function homebrewCreatures(s) {
+  let out = null;
+  for (const e of Object.values(s.entities)) {
+    if (homebrewBlock(e)) (out ??= new Map()).set(e.id, controllerOf(s, e));
+    if (e.pocket && typeof e.pocket === 'object') for (const [k, c] of Object.entries(e.pocket)) if (homebrewBlock(c)) (out ??= new Map()).set(k, controllerOf(s, c));
+  }
+  return out;
+}
+
+// The creatures whose lasting effects remember them (`hbSrc`, durations.js startEffect), with who ran each then: Map { id -> user id | null },
+// or null when there is none. The saves of such an effect name their creature (`src`) and are stamped from this, whether it is still on the
+// map or still carries the block, or not.
+export function homebrewSources(s) {
+  let out = null;
+  for (const fx of s.effects ?? []) if (fx.hbSrc && typeof fx.hbSrc.id === 'string') (out ??= new Map()).set(fx.hbSrc.id, fx.hbSrc.by ?? null);
+  return out;
+}
+
 // Is this its turn, and did its master command it for this turn? (A2.) `commanded.turn` is the turn the command was
 // taken up for, set at the start of the creature's first turn after the command (resolve.js, takeCommand).
 export const commandedNow = (s, e) => {

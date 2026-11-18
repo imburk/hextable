@@ -188,7 +188,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
               try { data = JSON.parse(data); } catch (err) { return refuse([`pack: is not JSON (${err.message})`]); }
             } else if (data === null || typeof data !== 'object') return reject({ error: 'Give the pack as a JSON document.' });
             const v = (op === 'add' ? vetAdd : vetUpdate)(records, data, { loaded });
-            if (!v.ok) return v.form === 'summon' ? reject({ error: v.problems[0], problems: v.problems }) : v.form === 'error' ? reject({ error: v.problems[0] }) : refuse(v.problems);
+            if (!v.ok) return v.form === 'error' ? reject({ error: v.problems[0] }) : refuse(v.problems);
             id = v.pack.id; record = v.record;
           }
           const next = op === 'remove' ? records.filter((p) => p.id !== id) : op === 'update' ? records.map((p) => (p.id === id ? record : p)) : [...records, record];
