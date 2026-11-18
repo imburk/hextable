@@ -187,7 +187,7 @@ Tier: none. Armor has no tier: the engine works out the Armor Class and the Spee
 == armour hb-rk-lantern-shield
 "Lantern Shield" (a Shield).
 A sheet that has a wearer in it who is not trained in Shields is refused by the engine.
-It adds 3 Armor Class to a wearer trained with Shields, when the sheet names it in its Shield field (a sheet's Shield field holds this entry's id). The SRD Shield, written as true in that field, is a different entry, with its own number, and the engine refuses a sheet that names a Shield as body armor.
+It adds 3 Armor Class to a wearer trained with Shields, when the sheet names it in its Shield field (a sheet's Shield field holds this entry's id). The plain Shield, written as true in that field, is a different entry with its own number, and the engine refuses a sheet that names a Shield as body armor.
 It asks for no Strength: a weak wearer loses nothing.
 It puts no penalty on Stealth.
 It weighs 5 pounds. The engine uses no weight for anything: carrying capacity is not counted.
