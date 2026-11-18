@@ -73,6 +73,8 @@ export const handlers = {
     const fresh = makeEntity(a.record, { id: e.id, kind: 'pc', side: e.side, pos: e.pos, owner: e.owner, ownerName: e.ownerName });
     // What play has done to it stays, by the one list `remake` keeps too (sheets.js, `carryPlay`; DEBT C17). A record typed in has no sheet.
     carryPlay(e, fresh, a.record);
+    // The record the DM typed wins over old play state: a condition it is now immune to ends, as any condition does.
+    for (const c of a.record.conditionImmune ?? []) if (fresh.cond[c]) { delete fresh.cond[c]; ev.push({ type: 'condEnd', id: e.id, cond: c }); }
     s.entities[e.id] = fresh;
     ev.push({ type: 'edited', id: e.id });
     donned(s, fresh, ev);
@@ -101,7 +103,11 @@ export const handlers = {
   // can't be is skipped with a DM-only `manual` event, and each remake is all or nothing. In a fight or out of one.
   refresh(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can refresh a character.');
-    if (a.actor !== undefined) { refreshOne(s, ent(s, a.actor), ev); return; }
+    if (a.actor !== undefined) {
+      typeof a.actor === 'string' || fail('Name the character to refresh.');
+      refreshOne(s, ent(s, a.actor), ev); return;
+    }
+    Object.values(s.entities).some((e) => e.kind === 'pc' && e.side === 'party' && e.sheet) || fail('No party character has a sheet to refresh from.');
     for (const e of Object.values(s.entities)) {
       if (e.kind !== 'pc' || e.side !== 'party' || !e.sheet) continue;
       const mark = ev.length;

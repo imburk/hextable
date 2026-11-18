@@ -119,11 +119,27 @@ test("refresh-all: a bad sheet is skipped with one note, none of it changes, the
   assert.ok(!json(viewEvents(r.events, s, PAT)).includes("Not refreshed"));
 });
 
-test("refresh-all with nothing to refresh still succeeds", () => {
+test("refresh-all with no party character that has a sheet is refused, and so is an actor that is not a name", () => {
   const s = newGame(5), before = json(s);
-  const r = ok(apply(s, { type: "refresh" }, DM));
-  assert.deepEqual(r.events, []);
+  assert.equal(apply(s, { type: "refresh" }, DM).error, "No party character has a sheet to refresh from.");
+  assert.match(apply(s, { type: "refresh", actor: ["fighter"] }, DM).error, /Name the character/);
+  assert.match(apply(s, { type: "refresh", actor: null }, DM).error, /Name the character/);
   assert.equal(json(s), before);
+});
+
+test("a stored sheet that makes validate throw is a problem with the sheet, not a crash: one actor refused, refresh-all skips it", () => {
+  const s = newGame(5, { party: [{ sheet: druid() }, { sheet: SHEETS.fighter }] });
+  s.entities.pc1.feats = s.entities.pc1.feats.filter((f) => f.id !== "wild-companion");
+  s.entities.pc2.sheet.skills = 5;                                         // validate: skills.includes is not a function
+  const bad = json(s.entities.pc2), all = json(s);
+  assert.match(apply(s, { type: "refresh", actor: "pc2" }, DM).error, /^Its sheet could not be read: \S/);
+  assert.equal(json(s), all);
+  const r = ok(apply(s, { type: "refresh" }, DM));
+  assert.ok(has(s.entities.pc1, "wild-companion"), "the other character is refreshed");
+  assert.equal(json(s.entities.pc2), bad);
+  const m = r.events.filter((x) => x.type === "manual");
+  assert.equal(m.length, 1);
+  assert.match(m[0].text, /^Not refreshed from its sheet\. Its sheet could not be read: /);
 });
 
 test("only the DM can send it", () => {
@@ -149,7 +165,8 @@ test("editCharacter keeps the same list as every remake: the seven fields it dro
   Object.assign(r, structuredClone(fields), { xp: 900 });
   const speedSet = structuredClone(r.speedSet);
   assert.ok(speedSet, "the DM's grant is recorded");
-  ok(apply(s, { type: "editCharacter", actor: "rogue", record: structuredClone(PREGENS.rogue) }, DM));
+  // The record as the form sends it back: what the creature shows, the DM's fly Speed included.
+  ok(apply(s, { type: "editCharacter", actor: "rogue", record: { ...structuredClone(PREGENS.rogue), speeds: { fly: 40 } } }, DM));
   const e = s.entities.rogue;
   for (const [k, v] of Object.entries(fields)) assert.deepEqual(e[k], v, `${k} stays`);
   assert.deepEqual(e.speedSet, speedSet);
@@ -166,4 +183,91 @@ test("editCharacter and a remake from a sheet keep the same fields: one list, tr
   ok(apply(b, { type: "refresh", actor: "pc1" }, DM));
   delete b.entities.pc1.sheet;
   assert.equal(json(a.entities.pc1), json(b.entities.pc1));
+});
+
+// ---------- a creature at 0 Hit Points or dead stays so, whatever its new maximum ----------
+const down = (s, id, extra = {}) => {
+  const e = s.entities[id];
+  e.maxHp = e.maxHp - 2; e.hp = 0;                                         // a stored maximum below the sheet's (an old save), at 0
+  Object.assign(e, { cond: { unconscious: { by: "x" } }, death: { s: 1, f: 1 } }, extra);
+  return e;
+};
+
+test("a character at 0 Hit Points stays at 0 through setSheet, refresh and editCharacter, even when its new maximum is higher", () => {
+  for (const how of ["setSheet", "refresh", "editCharacter", "refresh-all"]) {
+    const s = newGame(5, { party: [{ sheet: SHEETS.fighter }] });
+    down(s, "pc1");
+    const act = { setSheet: { type: "setSheet", actor: "pc1", sheet: SHEETS.fighter }, refresh: { type: "refresh", actor: "pc1" }, "refresh-all": { type: "refresh" },
+      editCharacter: { type: "editCharacter", actor: "pc1", record: derive(SHEETS.fighter).record } }[how];
+    ok(apply(s, act, DM));
+    const e = s.entities.pc1;
+    assert.equal(e.hp, 0, `${how}: still at 0`);
+    assert.ok(e.maxHp > 0 && e.cond.unconscious, `${how}: still unconscious`);
+    assert.deepEqual(e.death, { s: 1, f: 1 }, `${how}: death saves kept`);
+  }
+});
+
+test("a dead character stays dead at 0 through setSheet, refresh and editCharacter", () => {
+  for (const how of ["setSheet", "refresh", "editCharacter"]) {
+    const s = newGame(5, { party: [{ sheet: SHEETS.fighter }] });
+    down(s, "pc1", { dead: true });
+    const act = { setSheet: { type: "setSheet", actor: "pc1", sheet: SHEETS.fighter }, refresh: { type: "refresh", actor: "pc1" },
+      editCharacter: { type: "editCharacter", actor: "pc1", record: derive(SHEETS.fighter).record } }[how];
+    ok(apply(s, act, DM));
+    assert.equal(s.entities.pc1.hp, 0, `${how}: hp`);
+    assert.equal(s.entities.pc1.dead, true, `${how}: dead`);
+  }
+});
+
+test("a hurt character above 0 keeps its damage and is never below 1", () => {
+  const s = newGame(5, { party: [{ sheet: SHEETS.fighter }] });
+  const e = s.entities.pc1, max = e.maxHp;
+  e.hp = max - 3;
+  ok(apply(s, { type: "refresh", actor: "pc1" }, DM));
+  assert.equal(s.entities.pc1.hp, max - 3);
+  s.entities.pc1.hp = 1; s.entities.pc1.maxHp = max + 40;                   // 41 down: the sheet's maximum less the damage is below 1
+  ok(apply(s, { type: "refresh", actor: "pc1" }, DM));
+  assert.equal(s.entities.pc1.hp, 1);
+});
+
+// ---------- editCharacter: the record the DM types wins over old play state ----------
+test("editCharacter: a Speed grant stays only for a way of moving the record leaves as the creature has it", () => {
+  const s = newGame(5), rec = () => structuredClone(PREGENS.rogue);
+  ok(apply(s, { type: "setSpeed", actor: "rogue", mode: "walk", feet: 0 }, DM));
+  ok(apply(s, { type: "setSpeed", actor: "rogue", mode: "fly", feet: 40, hover: true }, DM));
+  assert.equal(s.entities.rogue.speed, 0);
+  // The form sends back what it shows: walk 0, fly 40. Both grants stay.
+  const shown = { ...rec(), speed: 0, speeds: { fly: 40 } };
+  ok(apply(s, { type: "editCharacter", actor: "rogue", record: shown }, DM));
+  assert.deepEqual([s.entities.rogue.speed, s.entities.rogue.speeds.fly, s.entities.rogue.hover], [0, 40, true]);
+  assert.deepEqual(s.entities.rogue.speedSet, { walk: 0, fly: 40, hover: true });
+  // The DM types a walking Speed of 35: the record wins for walking, the fly grant (left alone) stays.
+  ok(apply(s, { type: "editCharacter", actor: "rogue", record: { ...rec(), speed: 35, speeds: { fly: 40 } } }, DM));
+  assert.equal(s.entities.rogue.speed, 35);
+  assert.deepEqual(s.entities.rogue.speedSet, { fly: 40, hover: true });
+  // And a record with no flying Speed drops that grant and its hover.
+  ok(apply(s, { type: "editCharacter", actor: "rogue", record: { ...rec(), speed: 35 } }, DM));
+  assert.equal(s.entities.rogue.speeds.fly, undefined);
+  assert.equal(s.entities.rogue.hover, undefined);
+  assert.equal(s.entities.rogue.speedSet, undefined);
+});
+
+test("editCharacter: a condition the new record is immune to ends, with an event; the others stay", () => {
+  const s = newGame(5), r = s.entities.rogue;
+  r.cond.poisoned = { by: "x" }; r.cond.prone = {};
+  const res = ok(apply(s, { type: "editCharacter", actor: "rogue", record: { ...structuredClone(PREGENS.rogue), conditionImmune: ["poisoned"] } }, DM));
+  assert.equal(s.entities.rogue.cond.poisoned, undefined);
+  assert.ok(s.entities.rogue.cond.prone);
+  assert.deepEqual(res.events.filter((x) => x.type === "condEnd"), [{ type: "condEnd", id: "rogue", cond: "poisoned" }]);
+});
+
+test("editCharacter: a lower level in the record takes the record's XP, not the larger old one; the same or a higher level keeps the larger", () => {
+  const s = newGame(5), r = s.entities.rogue;
+  Object.assign(r, { level: 5, xp: 6500 });
+  ok(apply(s, { type: "editCharacter", actor: "rogue", record: { ...structuredClone(PREGENS.rogue), level: 1 } }, DM));
+  assert.equal(s.entities.rogue.level, 1);
+  assert.equal(s.entities.rogue.xp, 0, "level 1 starts at 0 XP");
+  s.entities.rogue.xp = 400;
+  ok(apply(s, { type: "editCharacter", actor: "rogue", record: { ...structuredClone(PREGENS.rogue), level: 1 } }, DM));
+  assert.equal(s.entities.rogue.xp, 400, "the same level keeps what was earned");
 });

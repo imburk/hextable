@@ -56,9 +56,12 @@ export function refreshOne(s, e, ev) {
   e.kind === 'pc' || fail(`${e.name} is not a character.`);
   e.sheet || fail(`${e.name} was typed in by hand and has no sheet to refresh from.`);
   !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
-  const sheet = structuredClone(e.sheet), problems = validate(sheet);
+  // A stored sheet is old data and may be malformed in ways `validate` does not expect: any throw is a problem with the sheet.
+  let sheet, problems, record;
+  try { sheet = structuredClone(e.sheet); problems = validate(sheet); if (problems.length === 0) record = derive(sheet).record; }
+  catch (err) { fail(`Its sheet could not be read: ${err instanceof Error ? err.message : String(err)}`); }
   problems.length === 0 || fail(`${e.name}'s sheet can't be played as it is. ${problems[0]}`);
-  remake(s, e, derive(sheet).record, sheet, ev);
+  remake(s, e, record, sheet, ev);
 }
 // Magic items of the pack onto a built character's sheet, carried and not worn, each with the next free key ("i3").
 // Returns the sheet entries. Refused (a variant missing, too many items), nothing changes.
@@ -115,13 +118,24 @@ function regrant(fresh, rec) {
   if (out.hover && fresh.speeds.fly) fresh.hover = true;
   if (Object.keys(out).length) fresh.speedSet = out;
 }
+// For `editCharacter`: the part of a creature's `speedSet` still wanted by the record typed in. A creature typed in by hand keeps no
+// record of what it was made with, so what it has now (its record and the grant together) stands for it.
+function untouchedGrants(e, record) {
+  const rec = cleanSpeedSet(e.speedSet), out = {};
+  const now = (x, m) => (m === 'walk' ? x.speed : x.speeds?.[m]) ?? 0;
+  for (const m of WAYS) if (rec[m] !== undefined && now(record, m) === now(e, m)) out[m] = rec[m];
+  if (rec.hover && out.fly !== undefined) out.hover = true;
+  return out;
+}
 // The play state of a creature that its sheet or record does not hold, carried from the creature `e` onto `fresh`, the same
 // creature made again (DEBT C17). ONE list, for every remake: `remake` below (a sheet changed, a level, a rest, `refresh`)
 // and `editCharacter` (a record typed in). A new kind of play state is added here and nowhere else.
 // `sheet` is the new sheet, or undefined for a hand-typed record (it has no sheet, and its own gear stands).
 export function carryPlay(e, fresh, record, sheet) {
+  // A creature at 0 Hit Points, or dead, stays at 0 (and `dead` is carried below): a new maximum does not stand it up. One above 0 keeps
+  // its damage, and at least 1.
   const lost = e.maxHp - e.hp;
-  fresh.hp = Math.max(e.hp > 0 ? 1 : 0, fresh.maxHp - lost);
+  fresh.hp = e.hp > 0 && !e.dead ? Math.max(1, fresh.maxHp - lost) : 0;
   // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13).
   for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
   for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
@@ -138,12 +152,16 @@ export function carryPlay(e, fresh, record, sheet) {
     for (const d of Object.keys(fresh.hdBy)) fresh.hdBy[d] = Math.max(0, fresh.hitDice[d] - Math.max(0, (had[d] ?? 0) - (left[d] ?? 0)));
     fresh.hd = Object.values(fresh.hdBy).reduce((a, b) => a + b, 0);
   }
-  fresh.xp = Math.max(e.xp ?? 0, fresh.xp ?? 0);                     // XP earned is kept; a level given by hand starts at least at its threshold
+  // XP earned is kept; a level given by hand starts at least at its threshold. A record typed in with a LOWER level than the
+  // creature had is the DM's word: its XP is the record's own.
+  if (sheet !== undefined || (record.level ?? 0) >= (e.level ?? 0)) fresh.xp = Math.max(e.xp ?? 0, fresh.xp ?? 0);
   // Gear handed over in play (give, loot) is kept, unless the new sheet changes the gear list itself.
   // A hand-typed record (`sheet` undefined, `editCharacter`) is the DM's word on the gear: it stands.
   if (sheet && Array.isArray(e.gear) && JSON.stringify(sheet.gear ?? []) === JSON.stringify(e.sheet?.gear ?? [])) fresh.gear = [...e.gear];
   // What the DM set with `setSpeed` is laid over what the sheet gives (a creature with no record is made exactly as before).
-  if (e.speedSet !== undefined) regrant(fresh, e.speedSet);
+  // A record typed in wins: a grant stays only for a way of moving where the record's Speed is what the creature has now (the form sends
+  // back what it shows, so an untouched Speed keeps the grant; a Speed the DM typed differently drops it).
+  if (e.speedSet !== undefined) regrant(fresh, sheet !== undefined ? e.speedSet : untouchedGrants(e, record));
   // A familiar in its pocket dimension (companions.md, stage C5c) is still this creature's: it comes with it, and only that.
   delete fresh.pocket;
   if (e.pocket !== undefined) fresh.pocket = e.pocket;
