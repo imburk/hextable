@@ -15,7 +15,7 @@ import { able, actTime, castAbilOf, control, current, ent, fail, featOf, fleetFr
 import { instruction, reactionsOf } from '../reactions.js';
 import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
 import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
-import { checkEnd, objectEffects, resolve } from './resolve.js';
+import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
 import { castFromItem } from './casting.js';
@@ -117,11 +117,14 @@ function initiativeFeatures(s, ev) {
 
 // `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
 // (Search uses it for what it can see only dimly); it is not part of what is shown.
-function abilityCheck(s, e, what, dimToo = false) {
+// `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
+const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}) });
+function abilityCheck(s, e, what, dimToo = false, dis = []) {
   const ability = what.ability ?? SKILLS[what.skill];
   // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
   const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
-  const m = modifiers(s, e, 'check', { target: e, ability, proficient, ...(what.skill ? { skill: what.skill } : {}) }, ''), bonus = checkBonus(e, what) + m.add;
+  const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what) + m.add;
+  if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
   if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
@@ -137,6 +140,20 @@ function abilityCheck(s, e, what, dimToo = false) {
   const shown = pickOf(mode) === r1 ? raw1 : raw2;
   return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
     ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
+}
+// Of Athletics and Acrobatics, the one `e` has the better chance with to escape `hold` (docs/specs/grapple-shove.md, Decision 5),
+// judged as abilityCheck judges a check, without rolling: no automatic failure first, then Advantage over neither over
+// Disadvantage, then the higher bonus, then Athletics.
+function escapeSkill(s, e, hold) {
+  let best = null;
+  for (const skill of ['athletics', 'acrobatics']) {
+    const ability = SKILLS[skill], proficient = !!(e.skills?.includes(skill) || e.skillBonus?.[skill] !== undefined);
+    const m = modifiers(s, e, 'check', checkSit(e, { skill, escape: true }, ability, proficient), '');
+    const adv = m.advantage.length > 0, dis = m.disadvantage.length > 0 || !!hold.escapeDis;
+    const rank = [m.autoFail ? 0 : 1, adv && !dis ? 2 : dis && !adv ? 0 : 1, checkBonus(e, { skill }) + m.add];
+    if (!best || rank[0] > best.rank[0] || (rank[0] === best.rank[0] && (rank[1] > best.rank[1] || (rank[1] === best.rank[1] && rank[2] > best.rank[2])))) best = { skill, rank };
+  }
+  return best.skill;
 }
 // A hand-typed character (no sheet: the four starters) lists what it carries in `gear`, and the engine cannot tell worn
 // from carried. If that lists armour with Disadvantage on Stealth, the DM is told on the check, to apply it if it is worn.
@@ -362,6 +379,39 @@ export const handlers = {
     const r = abilityCheck(s, e, { ability, skill });
     ev.push({ type: 'check', id: e.id, ability, ...(skill ? { skill } : {}), ...r, ...(a.dc !== undefined ? { dc: a.dc, success: r.total >= a.dc, secret: true } : {}) });
     if (skill === 'stealth') stealthGearNote(e, ev);
+  },
+  // Escaping a grapple (SRD "Grappling", Ending a Grapple; docs/specs/grapple-shove.md, Decision 5):
+  // { type: 'escape', actor, from?: grapplerId, skill?: 'athletics' | 'acrobatics' }. A Strength (Athletics) or Dexterity
+  // (Acrobatics) check against the hold's escape DC, which in a fight takes the actor's action ("use its action"); out of one it
+  // costs nothing. `from` may be left out when one creature holds it; `skill` left out, the engine takes the one with the better
+  // chance, as for the Grapple's save. Disadvantage from the hold's `escapeDis` (a mimic's); a `check` modifier with the tag
+  // `check.escape` (Powerful Build) applies. A Grappled condition with no holds (the DM's, or a game saved before) has no escape DC.
+  escape(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    const g = e.cond.grappled || fail(`${e.name} isn't Grappled.`);
+    Array.isArray(g.holds) || fail('This grapple has no escape DC in the game; the DM ends it.');
+    const hold = a.from === undefined ? (g.holds.length === 1 ? g.holds[0] : fail(`${e.name} is held by more than one creature: say which grapple to escape (from).`))
+      : g.holds.find((h) => h.by === a.from) || fail(`${e.name} isn't held by that creature.`);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    (a.skill === undefined || a.skill === 'athletics' || a.skill === 'acrobatics') || fail('An escape is a Strength (Athletics) or Dexterity (Acrobatics) check.');
+    Number.isInteger(hold.escape) || fail('This grapple has no escape DC in the game; the DM ends it.');
+    const fighting = !!s.encounter && inFight(s, e.id);
+    if (fighting) { current(s) === e.id || fail(`It isn't ${e.name}'s turn.`); need(s, e, 'action'); }
+    const skill = a.skill ?? escapeSkill(s, e, hold);
+    if (fighting) s.encounter.budget.action--;
+    const r = abilityCheck(s, e, { skill, escape: true }, false, hold.escapeDis ? ['escape at Disadvantage'] : []);
+    const success = r.total >= hold.escape;
+    ev.push({ type: 'check', id: e.id, ability: SKILLS[skill], skill, ...r, escape: hold.by, dc: hold.escape, success });
+    if (success) endHold(s, e, hold.by, 'escaped', ev);
+  },
+  // Letting go (SRD: "the grappler can release the target at any time (no action required)"): { type: 'letGo', actor, target }.
+  // No action and no turn needed, in a fight or out of one. Also how a creature frees a hand. The spec's name, `release`, is
+  // already the lobby's action that gives a character up (engine/dm.js), and two actions must not share a name.
+  letGo(s, a, ctx, ev) {
+    const e = ent(s, a.actor), t = ent(s, a.target); control(s, e, ctx);
+    (t.cond.grappled?.holds ?? []).some((h) => h.by === e.id) || fail(`${e.name} isn't grappling ${t.name}.`);
+    endHold(s, t, e.id, 'released', ev);
   },
   // The Search action: one Wisdom (Perception) check against everything hidden within 15 feet, and
   // against every enemy hiding where the searcher could see it but for its hiding (its Stealth total

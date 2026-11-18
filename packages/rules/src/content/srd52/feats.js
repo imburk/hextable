@@ -41,8 +41,9 @@ export const feats = [
   },
   {
     id: "grappler", name: "Grappler", category: "general", prerequisite: { level: 4, abilities: { any: ["str", "dex"], min: 13 } }, tier: "assist", source: "SRD 5.2.1", checked: true,
-    text: "Strength or Dexterity +1 (to 20). Once a turn, an Unarmed Strike that hits during the Attack action can both deal damage and grapple; Advantage on attack rolls against a creature you are grappling; moving a grappled creature your size or smaller costs no extra movement. The engine raises the score; grappling is the DM's.",
+    text: "Strength or Dexterity +1 (to 20). Once a turn, an Unarmed Strike that hits during the Attack action can both deal damage and grapple; Advantage on attack rolls against a creature you are grappling; moving a grappled creature your size or smaller costs no extra movement. The engine raises the score, gives the Advantage, and lets an Unarmed Strike of the Attack action grab (`grab`); moving a held creature is the DM's.",
     increase: { from: ["str", "dex"], points: 1, max: 20 },
+    grants: { modifiers: [{ on: "attack.roll", op: "advantage", when: ["target.grappledBySelf"] }] },
   },
   // ---------- Fighting Style ----------
   {

@@ -16,6 +16,15 @@ import { effectsOf, restamp } from '../durations.js';
 import { incapacitated, modifiers, speedOf } from '../modifiers.js';
 import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, mountOf, riderOf, RuleError, spellStats, steering, turnBudget, unblocked, up, walled } from './shared.js';
 
+// ---------- grapples ----------
+// The holds `e` has on others (docs/specs/grapple-shove.md, Decision 2): each lives on the held creature's `cond.grappled.holds`,
+// and the grappler carries nothing, so this is a pass over the creatures, in the order they are kept. [{ t, hold }].
+export function holdsOf(s, e) {
+  const out = [];
+  for (const t of Object.values(s.entities)) for (const h of t.cond?.grappled?.holds ?? []) if (h.by === e.id) out.push({ t, hold: h });
+  return out;
+}
+
 // ---------- movement ----------
 
 // Can this creature stay up without anything under it? It needs a Fly Speed that is not 0, and
@@ -1201,7 +1210,7 @@ export function catchUp(s, arena, walked, ev) {
   const G = gridOf(s.map);
   const inArena = (e) => !!arena[col(e.pos)];
   const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
-  const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e)).sort(byMarch);
+  const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e) && !holdsOf(s, e).length).sort(byMarch);      // one that holds a creature does not walk (stage G2)
   const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));
   for (;;) {
     const f = pending.find((x) => party.has(x.follow));

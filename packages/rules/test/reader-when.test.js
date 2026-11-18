@@ -87,6 +87,8 @@ const MAKE = {
   'attack.advantage': (c) => { c.tgt.cond.prone = {}; },
   'attack.disadvantage': (c) => { c.atk.cond.poisoned = {}; },
   'ally.adjacentToTarget': (c) => c.ally(),
+  // The target held by the attacker (docs/specs/grapple-shove.md, Decision 2), with a range the scene's gaps never pass.
+  'target.grappledBySelf': (c) => { c.tgt.cond.grappled = { source: c.atk.id, holds: [{ by: c.atk.id, with: 'hand', escape: 10, range: 60 }] }; },
 };
 const probes = [
   ...['str', 'dex', 'con', 'int', 'wis', 'cha'].map((a) => ({ id: `probe-${a}`, name: `Probe ${a}`, target: { creature: { reach: 60 } }, effects: [{ save: a, dc: 10, onFail: [{ damage: '1d4', type: 'fire' }] }] })),
@@ -145,6 +147,11 @@ function play(hook, tag, withMod, how = {}) {
   }
   fight(s);
   if (hook === 'speed') { turnOf(s, 'fighter'); setUp(); apply(s, { type: 'endTurn', actor: 'fighter' }, DM); turnOf(s, 'fighter'); return s.encounter.budget.move; }
+  if (hook === 'check' && tag === 'check.escape') {
+    // A check made to escape a grapple is the `escape` action's: the fighter held by the goblin, escaping on its turn.
+    turnOf(s, 'fighter'); setUp(); F.cond.grappled = { source: M.id, holds: [{ by: M.id, with: 'probe-hit', escape: 10, range: 60 }] };
+    const r = apply(s, { type: 'escape', actor: 'fighter', skill: 'athletics' }, DM); return r.ok ? r.events.find((e) => e.type === 'check').bonus : `refused: ${r.error}`;
+  }
   if (hook === 'check') { turnOf(s, 'fighter'); setUp(); const r = apply(s, { type: 'check', actor: 'fighter', skill: 'perception' }, DM); return r.ok ? r.events.find((e) => e.type === 'check').bonus : `refused: ${r.error}`; }
   if (hook === 'concentration') {
     turnOf(s, 'cleric');

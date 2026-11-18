@@ -8,7 +8,7 @@ import { able, control, current, ent, fail, featOf, ft, inFight, need, steering,
 import { rollMode } from './rolls.js';
 import { aimAction, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
-import { attackRefusal, freshAction, isLoading, isUnarmed } from '../weapons.js';
+import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName } from '../modifiers.js';
 import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter, strikeOption } from './resolve.js';
@@ -154,22 +154,41 @@ function noStrikeFields(a) {
 }
 
 // The option an Unarmed Strike is used for (SRD "Unarmed Strike": Damage, Grapple or Shove; docs/specs/grapple-shove.md, Decision 1).
-// Checked before anything is spent or started. Only Damage and Shove are built (stage G1): a Grapple is refused for now, not
-// quietly made into something else. Returns 'damage' or 'shove'.
+// Checked before anything is spent or started. Returns 'damage', 'grapple' or 'shove'. Punch and Grab (`grab`, the Grappler feat)
+// is checked here as far as it can be outside a fight; what needs the fight's budget (its own turn, the Attack action, once a turn)
+// is checked when the attack is spent (grabFor).
 const OPTIONS = ['damage', 'grapple', 'shove'];
-function optionOf(e, t, atk, a) {
-  !a.grab || fail('Punch and Grab is not in the game yet.');
+function optionOf(s, e, t, atk, a) {
   const o = a.option ?? 'damage';
   (typeof o === 'string' && OPTIONS.includes(o)) || fail('Choose an option for the Unarmed Strike: damage, grapple or shove.');
   (o === 'damage' || isUnarmed(atk)) || fail('Grapple and Shove are options of the Unarmed Strike.');
   (o === 'damage' || (a.brutal === undefined && a.cunning === undefined && a.prey === undefined)) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey need a hit, so they go with the Damage option.`);
   (o === 'shove' ? a.shove !== undefined : a.shove === undefined) || fail(o === 'shove' ? 'Choose what the Shove does: push the target 5 feet away, or knock it Prone.' : 'A Shove option goes with the Shove.');
-  if (o === 'grapple') fail('The Grapple option is not in the game yet: the DM applies a grapple by hand.');
-  if (o === 'shove') {
-    (a.shove === 'push' || a.shove === 'prone') || fail('A Shove pushes the target ("push") or knocks it Prone ("prone").');
-    SIZES.indexOf(t.size ?? 'medium') <= SIZES.indexOf(e.size ?? 'medium') + 1 || fail(`${e.name} can shove a creature no more than one size larger than itself; ${t.name} is ${t.size ?? 'medium'}.`);
+  if (a.grab !== undefined) {
+    a.grab === true || fail('Punch and Grab is `grab: true`.');
+    o === 'damage' || fail('Punch and Grab goes with the Damage option: on a hit, the target is grappled as well.');
+    isUnarmed(atk) || fail('Punch and Grab goes with an Unarmed Strike.');
+    (e.feats ?? []).some((f) => f.id === 'feat-grappler') || fail(`${e.name} doesn't have the Grappler feat, which Punch and Grab comes from.`);
+  }
+  if (o === 'shove') (a.shove === 'push' || a.shove === 'prone') || fail('A Shove pushes the target ("push") or knocks it Prone ("prone").');
+  if (o !== 'damage' || a.grab) {
+    const what = o === 'shove' ? 'shove' : 'grapple';
+    SIZES.indexOf(t.size ?? 'medium') <= SIZES.indexOf(e.size ?? 'medium') + 1 || fail(`${e.name} can ${what} a creature no more than one size larger than itself; ${t.name} is ${t.size ?? 'medium'}.`);
+  }
+  if (o === 'grapple' || a.grab) {
+    !(t.cond.grappled?.holds ?? []).some((h) => h.by === e.id) || fail(`${e.name} is already grappling ${t.name}.`);
+    const hands = handsFull(s, e, atk, true);
+    if (hands) fail(hands);
   }
   return o;
+}
+// Punch and Grab in a fight (SRD Grappler: "When you hit a creature with an Unarmed Strike as part of the Attack action on your
+// turn ... only once per turn"): on its own turn, from the Attack action or the attacks it left, not used yet this turn.
+function grabFor(s, e, pooled, flurry, bonusTime) {
+  current(s) === e.id || fail('Punch and Grab is used on your own turn.');
+  !(flurry || bonusTime) || fail('Punch and Grab goes with an Unarmed Strike of the Attack action, not a Bonus Action one.');
+  !s.encounter.flags[`grab:${e.id}`] || fail('Punch and Grab is used once a turn, and it has been used this turn.');
+  return true;
 }
 
 export const handlers = {
@@ -196,7 +215,7 @@ export const handlers = {
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
     walled(s, e, t);
-    const option = optionOf(e, t, atk, a);
+    const option = optionOf(s, e, t, atk, a);
     showPlace(s, e, ev); showPlace(s, t, ev);
     if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
     const b = s.encounter.budget;
@@ -216,6 +235,7 @@ export const handlers = {
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
     const cunning = a.cunning === undefined ? null : cunningFor(s, e, t, atk, a.cunning);
     const prey = a.prey === undefined ? null : preyFor(s, e, t, a.prey);
+    const grab = !!a.grab && grabFor(s, e, pooled, flurry, bonusTime);
     if (flurry) { if (--b.bonusAttacks.left <= 0) delete b.bonusAttacks; }
     else if (bonusTime) b.bonus--;
     else if (pooled) fromPool(b, atk.id, true);
@@ -228,7 +248,17 @@ export const handlers = {
     if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
     const from = ev.length;
-    if (option === 'shove') strikeOption(s, e, t, atk, a.shove, ev); else resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
+    if (option !== 'damage') strikeOption(s, e, t, atk, option, a.shove, ev);
+    else {
+      resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
+      // Punch and Grab: the Grapple option too, only if the Damage hit, and only then is it used for the turn.
+      const last = ev.slice(from).findLast((x) => x.type === 'attack' && x.actor === e.id && x.target === t.id);
+      if (grab && last?.hit) {
+        s.encounter.flags[`grab:${e.id}`] = true;
+        if (up(t) && up(e)) strikeOption(s, e, t, atk, 'grapple', undefined, ev);
+        else ev.push({ type: 'note', id: t.id, text: `Punch and Grab: ${t.name} is down, so there is no grapple` });
+      }
+    }
     // Superior Hunter's Prey: when the attack damaged the marked target, the mark's extra damage to the other one.
     if (prey && ev.slice(from).some((x) => x.type === 'damage' && x.target === t.id && x.amount > 0) && !prey.o.dead) {
       s.encounter.flags[`prey:${e.id}`] = true;

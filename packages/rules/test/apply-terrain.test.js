@@ -74,6 +74,9 @@ const turnOf = (s, id) => { for (let i = 0; i < 30 && s.encounter && current(s) 
 const lastObj = (s) => s.map.objects.at(-1)?.id;
 const lasting = (s) => s.effects?.[0]?.id;
 const SENSE2 = [
+  // A hold (docs/specs/grapple-shove.md, stage G2): the fighter holds the goblin, or the goblin the fighter, with a range no base passes.
+  { pre: (s) => { s.entities[GOB].cond.grappled = { source: "fighter", holds: [{ by: "fighter", with: "hand", escape: 10, range: 300 }] }; }, a: { type: "letGo", actor: "fighter", target: GOB } },
+  { pre: (s) => { s.entities.fighter.cond.grappled = { source: GOB, holds: [{ by: GOB, with: "hand", escape: 10, range: 300 }] }; }, a: { type: "escape", actor: "fighter" } },
   { pre: (s) => apply(s, { type: "condition", actor: "fighter", condition: "prone", on: true }, DM), a: { type: "stand", actor: "fighter" } },
   { pre: (s) => apply(s, { type: "setSize", actor: GOB, size: "large" }, DM), a: { type: "mount", actor: "fighter", mount: GOB } },
   { pre: (s) => { apply(s, { type: "setSize", actor: GOB, size: "large" }, DM); apply(s, { type: "mount", actor: "fighter", mount: GOB }, DM); }, a: { type: "dismount", actor: "fighter" } },

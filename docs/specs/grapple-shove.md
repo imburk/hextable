@@ -429,3 +429,50 @@ Each has the default the jobs above are written to.
   the game yet") until G2; `option`, `shove` and `grab` are refused on a pack monster's action by `attack` and by `act`; `dc` is allowed
   only on an Unarmed Strike record; a Shove for Prone at a target already Prone is allowed and logged as such. The client log line for
   `strikeOption` is left for G7.
+
+**G2 (Grapple and the hold), #466.** Built to Decisions 1 to 5, 9 and 10 as they apply to G2, and the defaults of Q2 and Q4. What the
+build settled:
+
+- **`release` is `letGo`.** `release` is already the lobby's action that gives a character up (`engine/dm.js`, and it is in
+  `WHILE_WAITING`), and two actions must not share a name. `{ type: 'letGo', actor, target }` does what Decision 5's `release` says.
+- **A second hold has its own event**, `{ type: 'hold', id, by }`, since `condition()` is not called again and no `cond` event comes.
+  The first hold's `cond` event carries `by`. `view.js` passes `hold` and `holdEnd` as it passes `cond`, with `by` dropped where the
+  party does not know of the grappler; `condEnd` drops an unknown `by` the same way.
+- `grip(s, t, hold, ev)` calls `condition()` with a new last argument, `ended`, so the DM is not told "Nothing ends it yet" for a
+  hold; the condition's `also` (the drag) is still told until G3. A Grapple on a creature whose Grappled condition has no `holds` (the
+  DM's) adds nothing to it and tells the DM, so a hold never ends a grapple the engine does not keep.
+- `strikeOption(s, e, t, atk, option, shove, ev)` takes the option; its DC is `strikeDC(e, atk)`. The save names `grappled` as what
+  it avoids, for a modifier scoped to a condition.
+- Punch and Grab: `grab: true` with the Damage option, the Grappler feat (`feat-grappler` among the record's features), the size
+  limit, a free hand and a target not already held, all checked before anything is started; its own turn, not a Flurry or Bonus
+  Action strike, and once a turn are checked when the attack is spent. `encounter.flags['grab:<id>']` is set only on a hit, since the
+  benefit is "when you hit"; the Grapple part is then the same save and hold as the option.
+- Hands (`handsFull(s, e, atk, grapple)` in `weapons.js`): it counts the holds `with: 'hand'` itself, from the state, so `weapons.js`
+  needs nothing from `engine/`. A Versatile weapon's two-handed attack is the record whose id ends `-two-handed` (`derive.js`).
+- `settleHolds` runs after `settleBonds` in the after-pass, so a companion that vanished has already ended its holds (`settleSeen`,
+  `gone`). A dead or 0 Hit Point grappler ends its hold with `why: 'incapacitated'`. It also ends a condition tied to a hold
+  (`grapple: by`) whose hold is no longer there, for G4's `whileHeld`. Until G3, a grappler whose own walk takes it out of range ends
+  the hold (`distance`) and the DM is told the engine does not drag yet.
+- `escape` takes the action only in a fight and only on the actor's turn; the check is made with `escape: true` in the situation, read
+  by the tag `check.escape`. Without `skill` the engine takes the better of Athletics and Acrobatics (no automatic failure, then
+  Advantage, then the bonus, then Athletics). A hold's `escapeDis` adds Disadvantage. The `check` event carries `escape: by`, `dc`
+  and `success`; a player is sent the DC only when the grappler is the party's, and a seen creature's escape as who, the skill and
+  whether it worked.
+- `heldBy` is on every creature record a player is sent (open and seen) that has holds. On the party's own records the holds are
+  sent, with `escape` and `escapeDis` taken off any hold whose grappler is not the party's.
+- `target.notGrappler` reads the holds, or `source` of a grapple from before holds; a Grappled condition naming no grappler gives no
+  Disadvantage (DEBT T67). The Grappler feat stays `assist` until G3 brings Fast Wrestler.
+
+Fix round 1 of #468 (decided by the coordinator):
+- A hold on a creature that is dead ends after the action (`why: 'released'`); a removed one takes its holds with it. `handHolds`
+  (`weapons.js`) does not count a dead creature, so a corpse never fills a hand even before the after-pass.
+- A Grappled condition with no `holds` (the DM's, or a monster action's with only a `source`) is exactly as before G2: its `also`
+  keeps the Disadvantage sentence (word for word as on main), and `target.notGrappler` and `target.grappledBySelf` do not judge it.
+  Only a hold the engine keeps gets the modifier; `grip` tells the DM nothing of `also`.
+- Until G3, Decision 6 is kept by refusing: a creature that holds another is refused `move` (as the rider or the mount) and `dash`
+  ("Brenna is holding Goblin 2. Dragging is not in the game yet: let go first."), and a follower that holds one is left out of the
+  column's walk and of the catch-up when a fight starts (it stays, its hold stays). Teleports and forced moves still end a hold by
+  distance; the DM's note says a teleport is one, and otherwise how far apart they are. Only a walk the refusal does not cover (a mount
+  carrying a holder) gets the "does not drag yet" note.
+- `shield` and `equip` refuse to take up a Shield when both hands hold creatures.
+- `describeStep` labels an Unarmed Strike by its option: "grappled", "shoved".

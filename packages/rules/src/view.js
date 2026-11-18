@@ -54,6 +54,19 @@ function rideSeen(state, e) {
   return out;
 }
 
+// Grapples (docs/specs/grapple-shove.md, Decision 9): a creature in a player's view shows who holds it, `heldBy`, with a grappler
+// the party does not know of as 'someone'. Only a hold has a grappler to name; a Grappled condition without holds shows as the
+// condition alone.
+function heldBy(state, e) {
+  const holds = e.cond?.grappled?.holds;
+  if (!Array.isArray(holds) || !holds.length) return {};
+  return { heldBy: holds.map((h) => (classify(state, h.by) === 'hidden' ? 'someone' : h.by)) };
+}
+// A hold's escape DC is the party's own number only when its grappler is the party's: a monster's is a monster number, kept from
+// players (hidden-information.md), as is its Disadvantage on escaping.
+function holdsShown(state, rec) {
+  for (const h of rec.cond?.grappled?.holds ?? []) if (state.entities[h.by]?.side !== 'party') { delete h.escape; delete h.escapeDis; }
+}
 function seenRecord(e, state) {
   const cond = {};
   for (const c of visibleConditions(e)) cond[c] = true;         // which conditions show is decided by their data
@@ -65,6 +78,7 @@ function seenRecord(e, state) {
     ...(e.light ? { light: { bright: e.light.bright, dim: e.light.dim } } : {}),     // a carried light is plain to see
     ...(e.remains ? { remains: e.remains } : {}),                                    // a frozen statue or dust where it fell is plain to see
     ...(state ? rideSeen(state, e) : {}),
+    ...(state ? heldBy(state, e) : {}),
   };
 }
 
@@ -309,6 +323,8 @@ export function playerView(state) {
       // only where both are known (stage C6a).
       if (e.riding && !(typeof e.riding.on === 'string' && classify(state, e.riding.on) !== 'hidden')) delete entities[id].riding;
       if (e.rider !== undefined && !(typeof e.rider === 'string' && classify(state, e.rider) !== 'hidden')) delete entities[id].rider;
+      holdsShown(state, entities[id]);
+      Object.assign(entities[id], heldBy(state, e));
       scrub(entities[id], hidden);
     }
     else if (c === 'seen') entities[id] = seenRecord(e, state);
@@ -669,7 +685,12 @@ export function viewEvents(events, state, viewer) {
         break;
       case 'cond':
       case 'condEnd':                                  // gaining or losing a condition, if it is one you could see
-        if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) out.push(structuredClone(ev));
+        // A grapple's: who held it (`by`) only where they know of the grappler (docs/specs/grapple-shove.md, Decision 9).
+        if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) { const e = structuredClone(ev); if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by; out.push(e); }
+        break;
+      case 'hold':
+      case 'holdEnd':                                  // another grappler takes hold of a creature already Grappled, or one of two lets go: as the condition is seen
+        if (conditionDef('grappled')?.visible || cls(ev.id) === 'open') out.push(pick(ev, ['type', 'id', ...(cls(ev.by) === 'hidden' ? [] : ['by']), 'why']));
         break;
       case 'effectStart':
       case 'effectEnd': {                              // a lasting effect that involves one of ours
@@ -747,7 +768,14 @@ export function viewEvents(events, state, viewer) {
         if (!ev.partial && (ev.actor === null || ev.actor === undefined || cls(ev.actor) === 'open')) out.push(pick(ev, ['type', 'actor', 'name', 'text']));
         break;
       case 'check':                                    // a check by one of ours: the roll, never the DC; the outcome only where it will show anyway
-        if (cls(ev.id) === 'open') { const e = structuredClone(ev); delete e.dc; if (e.secret) delete e.success; out.push(e); }
+        if (cls(ev.id) === 'open') {
+          const e = structuredClone(ev);
+          // An escape from a grapple (Decision 9): the DC only when the grappler is the party's own; whose grapple, where they know of it.
+          if (!(e.escape !== undefined && state.entities[e.escape]?.side === 'party')) delete e.dc;
+          if (e.escape !== undefined && cls(e.escape) === 'hidden') e.escape = 'someone';
+          if (e.secret) delete e.success;
+          out.push(e);
+        } else if (ev.escape !== undefined) out.push({ ...pick(ev, ['type', 'id', 'skill', 'success']), escape: cls(ev.escape) === 'hidden' ? 'someone' : ev.escape });   // one they see tries to break free
         break;
       case 'noticed':
       case 'triggered':

@@ -351,7 +351,7 @@ test("an SRD creature's cast and lasting effect keep showing their DC to the par
   assert.ok(told(end.events, s, BOP, dc), "the repeated save keeps its DC, as before");
 });
 
-// ---------- an effect that outlives the block of the creature that made it (DEBT T68; round 4 of #461) ----------
+// ---------- an effect that outlives the block of the creature that made it (DEBT T71; round 4 of #461) ----------
 const fxOf = (s, name) => s.effects.find((x) => x.name === name);
 const noDcIn = (fx) => fx.parts.every((p) => p.dc === undefined && p.ends?.dc === undefined);
 

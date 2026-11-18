@@ -56,6 +56,8 @@ const FIXTURES = [
       { modifier: { on: 'check', op: 'add', value: '1d4', scope: { skill: 'chosen' } } },
       { modifier: { on: 'check', op: 'advantage', scope: { skill: 'athletics' } } },
       { modifier: { on: 'check', op: 'floor', value: 10, when: ['check.proficient'] } },
+      { modifier: { on: 'check', op: 'advantage', when: ['check.escape'] } },
+      { modifier: { on: 'attack.roll', op: 'disadvantage', when: ['target.notGrappler'] } }, { modifier: { on: 'attack.roll', op: 'advantage', when: ['target.grappledBySelf'] } },
       { modifier: { on: 'save', op: 'add', value: 1, scope: { ability: 'wis' } } },
       { modifier: { on: 'save', op: 'advantage', scope: { condition: 'poisoned' } } },
       { modifier: { on: 'attack.roll', op: 'add', value: 2, when: ['melee', 'within5', 'attack.weapon', 'attack.weaponOrUnarmed', 'attack.str'] } },
