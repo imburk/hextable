@@ -17,25 +17,32 @@ const STAND = /Tavin is played by the stand-in\./, ASIDE = /Tavin steps away: th
 
 // Ends the turn of every character that is not the one we wait for (the DM's Skip turn), until it is `id`'s turn; monsters play themselves. Returns when it is.
 async function toTurn(dm, id, all = false) {
-  for (let i = 0; i < 60; i++) {
+  // Monsters play at 800 ms a step, so a round takes a while: wait by the clock, not by the count.
+  for (const t0 = Date.now(); Date.now() - t0 < 150000;) {
     await calm(dm, 20000);
+    // The DM tends the party between turns so a long fight does not lose it: this pass is about who plays Tavin, not about surviving zombies.
+    await dm.evaluate(() => { const h = window.hextable; for (const e of Object.values(h.state.entities)) if (e.kind === 'pc' && !e.dead && e.hp < e.maxHp) h.act({ type: 'mend', actor: e.id, amount: e.maxHp }); });
     const cur = await turnOf(dm);
     if (cur === id) return;
     // A character that is not `id` and is not set aside is ended by the DM's hand; monsters and stand-ins play themselves (`all`: with auto-play off, everyone's is).
     if (cur && (await dm.evaluate(([c, every]) => { const e = window.hextable.state.entities[c]; return every || (e.kind === 'pc' && !e.away); }, [cur, all]))) await dm.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
     else await sleep(400);
   }
-  throw new Error(`it did not become ${id}'s turn (it is ${await turnOf(dm)}'s)`);
+  const why = await dm.evaluate(() => { const S = window.hextable.state, c = S.encounter?.order[S.encounter.turn].id, e = S.entities[c]; return JSON.stringify({ c, hp: e?.hp, hidden: e?.hidden, pending: S.pending ? Object.keys(S.pending) : null, prompt: !!document.querySelector('#prompt:not([hidden])'), auto: document.getElementById('dm-auto').checked, waiting: window.hextable.waiting, busy: window.hextable.timeline.busy(), budget: S.encounter?.budget, toast: document.getElementById('toast')?.textContent, log: window.hextable.played.slice(-6).map((x) => x.type) }); });
+  throw new Error(`it did not become ${id}'s turn (it is ${await turnOf(dm)}'s): ${why}`);
 }
 
 // The foe is put where Tavin has a line to it and can cast at it (Fire Bolt reaches 120 ft); the fight starts around the party.
 async function setFight(dm) {
   await dm.evaluate(() => { const h = window.hextable; h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' }); h.act({ type: 'setting', key: 'away', value: 'standIn' }); });
   await calm(dm);
-  const foe = await spawnNear(dm, 'goblin-warrior', { near: 'wizard', sightFrom: 'wizard', min: 4, radius: 10, range: 60, name: 'Smoke Goblin' });
-  await dm.evaluate((f) => { const h = window.hextable; h.act({ type: 'startEncounter', center: h.state.entities.wizard.pos, radius: 40 }); }, foe);
+  // Zombies: slow to kill and weak, so the fight lasts as many rounds as the steps need and the party is not lost.
+  const foes = [];
+  for (let i = 0; i < 3; i++) foes.push(await spawnNear(dm, 'zombie', { near: 'wizard', sightFrom: 'wizard', min: 4, radius: 10, range: 60, name: `Smoke Zombie ${i + 1}` }));
+  // A small arena (hexes): the party and the zombies, as few of the valley's own creatures as the map allows, so the party is not lost before the steps are checked.
+  await dm.evaluate(async (f) => { const { gridOf } = await import('./shared/grid.js'); const h = window.hextable, G = gridOf(h.state.map), w = h.state.entities.wizard.pos; h.act({ type: 'startEncounter', center: w, radius: Math.max(4, ...f.map((x) => G.dist(w, h.state.entities[x].pos) + 2)) }); }, foes);
   await wait(dm, () => window.hextable.state.encounter);
-  return foe;
+  return foes;
 }
 
 async function solo(browser, url, label, opts, tag) {
@@ -44,7 +51,7 @@ async function solo(browser, url, label, opts, tag) {
     try {
       const page = await ctx.newPage();
       run.watch(page);
-      await run.do('a fight with a goblin in Tavin\'s sight; "Run monsters automatically" is on', async () => {
+      await run.do('a fight with zombies in Tavin\'s sight; "Run monsters automatically" is on', async () => {
         await open(page, url); await page.click('#lobby-solo');
         await wait(page, () => window.hextable.state?.entities?.wizard);
         await calm(page);
@@ -113,7 +120,7 @@ async function hosted(browser, url) {
       const sent = { host: [], phone: [] };
       const track = (page, who) => page.on('websocket', (ws) => ws.on('framesent', (f) => { try { const m = JSON.parse(String(f.payload)); if (m.t === 'act') sent[who].push(m.action); } catch { /* not JSON */ } }));
       track(host, 'host'); track(phone, 'phone');
-      const forTavin = (who) => sent[who].filter((a) => a.actor === 'wizard' && a.type !== 'stepAway' && a.type !== 'stepBack');
+      const forTavin = (who) => sent[who].filter((a) => a.actor === 'wizard' && a.type !== 'stepAway' && a.type !== 'stepBack' && a.type !== 'mend');
       let code;
       await run.do('the DM hosts, the phone joins and plays Tavin', async () => {
         await open(host, url);
@@ -133,7 +140,7 @@ async function hosted(browser, url) {
         await phone.locator('#party button:has-text("Play as Tavin")').tap();
         await wait(host, () => !!window.hextable.state.entities.wizard.owner);
       });
-      await run.do('a fight with a goblin in Tavin\'s sight; it is the phone player\'s turn to play Tavin', async () => {
+      await run.do('a fight with zombies in Tavin\'s sight; it is the phone player\'s turn to play Tavin', async () => {
         await setFight(host);
         await wait(phone, () => window.hextable.state.encounter);
         await toTurn(host, 'wizard');
