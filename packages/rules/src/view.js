@@ -116,23 +116,27 @@ export function forViewer(base, state, viewer) {
       }
     }
   }
-  // A lasting effect whose source is a homebrew creature that is not the viewer's: the Difficulty Class it carries is a number of that
-  // creature's block (a repeated save, a condition's end), and is not sent, on a target of the party or any other.
-  const noDc = (fx) => fx.parts.some((q) => q.dc !== undefined || q.ends?.dc !== undefined);
-  // An effect of a homebrew creature the viewer does not run: by the creature as it is now if it still carries the block, else by what the effect
-  // remembered of it (`hbSrc`: who ran it then), which holds when the creature has left the map or its form has ended.
-  const theirDc = (fx) => {
+  // A lasting effect whose source is a homebrew creature that is not the viewer's: every number it carries is of that creature's block (a
+  // Difficulty Class, a modifier's value or dice, Hit Points it raises), and none is sent, on a target of the party or any other. What is
+  // left is what an effect of a creature they can only see would show: its name and what it is on, the conditions and what ends them. On a
+  // target that is itself a homebrew creature of another player's, only a condition they could see by looking.
+  // By the creature as it is now if it still carries the block, else by what the effect remembered of it (`hbSrc`: who ran it then), which
+  // holds when the creature has left the map or its form has ended.
+  const theirFx = (fx) => {
     const raw = (state.effects ?? []).find((x) => x.id === fx.id), src = state.entities[raw?.source];
-    const theirs = src && homebrewBlock(src) ? !controlledBy(state, src, uid) : !!raw?.hbSrc && raw.hbSrc.by !== uid;
-    return theirs && noDc(fx);
+    return src && homebrewBlock(src) ? !controlledBy(state, src, uid) : !!raw?.hbSrc && raw.hbSrc.by !== uid;
   };
-  const dcless = (fx) => ({ ...fx, parts: fx.parts.map((q) => { const { dc, ...p } = q; if (p.ends && p.ends.dc !== undefined) { const { dc: d2, ...ends } = p.ends; p.ends = ends; } return p; }) });
-  const stripDc = base.effects?.some(theirDc);
-  if (!replaced && !stripDc) return base;
+  const NUMBERS = new Set(['value', 'dice', 'dc', 'hpMax', 'amount', 'bonus', 'perLevel', 'min', 'max']);
+  const bare = (x) => (Array.isArray(x) ? x.map(bare) : x && typeof x === 'object' ? Object.fromEntries(Object.entries(x).filter(([k]) => !NUMBERS.has(k)).map(([k, v]) => [k, bare(v)])) : x);
+  const cleaned = (fx) => ({ ...fx, parts: fx.parts.flatMap((q) => (seen.has(q.target)
+    ? (q.cond && conditionDef(q.cond)?.visible ? [{ target: q.target, cond: q.cond, ...(q.ended ? { ended: true } : {}) }] : [])
+    : [bare(q)])) });
+  const sentWhole = base.effects?.some(theirFx);
+  if (!replaced && !sentWhole) return base;
   const out = { ...base, entities: replaced ?? base.entities }, enc = base.encounter, held = (id) => seen.has(id) || formed.has(id);
   const form = (fx) => fx.parts.some((q) => q.form && formed.has(q.target));
   if (formed.size && base.effects?.some(form)) out.effects = base.effects.filter((fx) => !form(fx));
-  if (stripDc) out.effects = (out.effects ?? base.effects).map((fx) => (theirDc(fx) ? dcless(fx) : fx));
+  if (sentWhole) out.effects = (out.effects ?? base.effects).map((fx) => (theirFx(fx) ? cleaned(fx) : fx));
   if (enc && (seen.size || formed.size)) {
     const active = state.encounter?.order[state.encounter.turn]?.id;
     out.encounter = { ...enc, order: enc.order.map((o) => (seen.has(o.id) ? { id: o.id } : formed.has(o.id) ? Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'dex')) : o)),

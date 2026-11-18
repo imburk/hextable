@@ -450,6 +450,41 @@ test("a zone whose caster has lost the block (its form ended): its saves still n
   void cast1;
 });
 
+test("a lasting effect of another player's homebrew creature carries none of its numbers to a player who does not run it; its runner has them", () => {
+  const s = fight(true);
+  s.entities.wizard.spells.push("shield-of-faith");
+  turnTo(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "shield-of-faith", slot: 1, target: "wizard" }, PAT));
+  const fx = fxOf(s, "Shield of Faith");
+  assert.ok(fx, "the self-buff is an effect");
+  // The block's own numbers: +7 AC and +4 to attack on itself, +7 AC on Bo's fighter.
+  fx.parts.find((p) => p.modifier?.on === "ac").modifier.value = 7;
+  fx.parts.push({ target: "wizard", modifier: { on: "attack.roll", op: "add", value: 4 } }, { target: "fighter", modifier: { on: "ac", op: "add", value: 7 }, ends: { on: "save", save: "wis", at: "turnEnd", dc: 21 }, dc: 21 });
+  const bo = view(s, BOP).effects.find((f) => f.name === "Shield of Faith"), pat = view(s, PAT).effects.find((f) => f.name === "Shield of Faith");
+  assert.ok(bo && bo.name && bo.parts.some((p) => p.target === "fighter" && p.modifier?.on === "ac"), "what it is on stays");
+  assert.equal(/"(value|dice|dc|hpMax|amount|bonus)":/.test(JSON.stringify(bo)), false, "no number: " + JSON.stringify(bo));
+  assert.equal(bo.parts.some((p) => p.target === "wizard"), false, "nothing of what is on the creature itself, which they can only see");
+  const sent = JSON.stringify(pat);
+  assert.ok(sent.includes('"value":7') && sent.includes('"value":4') && sent.includes('"dc":21'), "its runner has all: " + sent);
+  assert.equal(/"value":7|"value":4/.test(JSON.stringify(view(s, BOP).effects)), false);
+  assert.ok(JSON.stringify(view(s, DM).effects).includes('"value":7'));
+});
+
+test("the record's unseen list holds the source of a save like any other id", () => {
+  const s = fight(true);
+  // A homebrew caster the party cannot see: a foe far off, its spell reaching a hero.
+  Object.assign(s.entities.wizard, { side: "foe", hidden: true, pos: s.entities.m5.pos });
+  s.entities.fighter.pos = { q: s.entities.m5.pos.q + 1, r: s.entities.m5.pos.r, z: 0 };
+  const evs = [];
+  s.encounter.order.push({ id: "wizard", init: 1, dex: 1 }); turnTo(s, "wizard");
+  const r = apply(s, { type: "cast", actor: "wizard", spell: "hold-person", slot: 2, target: "fighter" }, DM);
+  if (!r.ok) assert.fail(r.error);
+  const save = s.timeline.filter((e) => e.type === "save" && e.src === "wizard").pop();
+  assert.ok(save, "the save names the caster");
+  void evs;
+  assert.ok(Array.isArray(save.unseen) && save.unseen.includes("wizard"), "the record keeps it unseen: " + JSON.stringify(s.timeline.slice(-8).map((e) => [e.type, e.unseen])));
+});
+
 test("a start of fight too large to be read through is stamped with every homebrew creature there is", () => {
   const ov = OV();
   using(ov, () => {
