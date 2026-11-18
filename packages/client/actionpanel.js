@@ -491,7 +491,7 @@ export function handRows(S, e, { dm = false } = {}) {
 
 // The rows of the tab `id` for `e` ('' for a tab with none). One place for the shell and the tests.
 export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
-  if (id === 'attacks') { const h = holdRows(S, e); return [...attackRows(S, e, { mode }), ...h.escape, ...h.letGo]; }
+  if (id === 'attacks') { const h = holdRows(S, e); return [...h.escape, ...attackRows(S, e, { mode }), ...h.letGo]; }       // breaking free comes first for a held creature: nothing else is likely worth its action
   if (id === 'bonus') return bonusRows(S, e, { mode, fly }).rows;
   if (id === 'move') return moveRows(S, e, { fly });
   if (id === 'features') return [...featureRows(S, e, { mode }), ...holdRows(S, e).letGo];
