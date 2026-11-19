@@ -43,8 +43,10 @@ const FLOURISH = { action: { time: "free", after: "weaponHit", target: aim, cost
 ] } };
 // Fan: no modes; the second creature may be 10 feet from the first; the first alone is knocked Prone.
 const FAN = { action: { time: "free", after: "weaponHit", target: { ...aim, near: 10 }, cost: { resource: "bardic-inspiration" }, effects: [STEP, { condition: "prone" }] } };
+// Burst: a Bonus Action that spends a spell slot (the lowest level 1, a d8 more for each level above), and burns a creature and one within 5 feet of it, one roll for both.
+const BURST = { action: { time: "bonus", target: { creature: { range: [30, 30] }, near: 5 }, cost: { slot: 1, higher: { damage: "1d8" } }, effects: [{ damage: "1d8", type: "fire" }] } };
 const SILVER = sub("college-of-the-silver-fan", "College of the Silver Fan", "bard", [
-  feature("fan-flourish", 3, FLOURISH), feature("fan-sweep", 3, FAN),
+  feature("fan-flourish", 3, FLOURISH), feature("fan-sweep", 3, FAN), feature("fan-burst", 3, BURST),
   feature("fan-reserve", 3, undefined, { tier: "manual", uses: { max: 2, recharge: "long" } }),
 ]);
 const pack = (d) => { const r = loadPack(d); assert.ok(r.ok, (r.problems ?? []).join("; ")); return r.pack; };
@@ -103,7 +105,7 @@ test("the pack loads in strict mode, its entries lint, and `near`, `free` and a 
   const read = readEntry("subclasses", SILVER, { spells: [] });
   assert.deepEqual(read.problems, []);
   const lines = read.lines.join("\n");
-  assert.match(lines, /In the "Slash" way, a second creature within 5 feet of the first target may be named as well, by the holder \(a second name in `targets`\)\. It must be another creature than the holder and the first target\. It takes the damage steps the action begins with, rolled once for the two of them \(the same roll, not a new one\), and nothing else: every step after those is done to the first target alone\./);
+  assert.match(lines, /In the "Slash" way, a second creature within 5 feet of the first target may be named as well, by the holder \(a second name in `targets`\)\. It must be another creature than the holder and the first target; nothing says it must be a foe, so an ally may be named\. It takes the damage steps the action begins with, rolled once for the two of them \(the same roll, not a new one\), and nothing else: every step after those is done to the first target alone\./);
   assert.match(lines, /The "Master" way costs nothing: it spends no use of anything, whatever the action costs otherwise\./);
   assert.match(lines, /The "Heavy" way spends 2 uses of the holder's feature "bardic-inspiration" instead of what the action costs otherwise\./);
   assert.match(lines, /The "Reserve" way spends 1 use of the holder's feature "hb-silver-fan-folk-fan-reserve" instead of/);
@@ -489,5 +491,101 @@ test("`{ rolled: true }`: a second creature near the first shares the one roll a
     const before = json(s);
     no(flourish(s, "guard", { targets: [s.gob, s.bo] }), /it reaches 2 creatures, which would each roll their own/);
     assert.equal(json(s), before);
+  });
+});
+
+// ---------- the review of #532 ----------
+// A list inside a list, an object or a number in a field that names creatures: to a player, an id that is nothing, answered the same and changing nothing (the first target too).
+test("H1: an id that is not a string, or a list of ids that is not flat, is 'No such creature.' to a player, for the first target and the second, and changes nothing", () => {
+  using(ON, () => {
+    const s = hitFight();
+    const lurker = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 1 }, name: "Lurker", hidden: true }, DM)).events[0].id;
+    Object.assign(s.entities[lurker], { hp: 300, maxHp: 300, ac: 1, hidden: true });
+    const bad = (x) => [[[x]], { id: x }, 7, [x, [x]], [s.gob, [x]], [s.gob, { id: x }], [s.gob, 7], [s.gob, [x, x]]];
+    const before = json(s);
+    for (const x of [lurker, s.bo, "nobody"]) for (const v of bad(x)) {
+      for (const [label, more] of [["targets", { targets: v }], ["target", { target: v }]]) {
+        if (label === "target" && Array.isArray(v) && v.length === 2 && v[0] === s.gob) continue;
+        const r = no(flourish(s, "slash", { target: undefined, ...more }), /^No such creature\.$/);
+        assert.equal(r.error, "No such creature.", `${label}: ${json(v)}`);
+        assert.equal(json(s), before, `${label} ${json(v)}: nothing changed`);
+      }
+    }
+    // the engine's own guard, for whoever is not filtered by the dispatch (the DM): a list inside a list is no creature
+    const dm = flourish(s, "slash", { targets: [s.gob, [s.bo]] }, DM);
+    no(dm, /No such creature/); assert.equal(json(s), before);
+  });
+});
+
+test("L1: the second creature may be an ally", () => {
+  using(ON, () => {
+    const s = hitFight(bard(), { tweak: (t) => { t.entities[t.bo].side = "party"; } });
+    const r = ok(flourish(s, "slash", { targets: [s.gob, s.bo] }));
+    assert.equal(dealt(r, s.bo).length, 1, "the ally takes it: the feature says another creature, and nothing asks for a foe");
+    assert.deepEqual(dealt(r, s.bo)[0].dice, dealt(r, s.gob)[0].dice);
+  });
+});
+
+test("L2: the engine holds `near` to 5 to 60 feet and to a creature to be the first, as the gate does; L3: a record's `near` is linted", () => {
+  using(ON, () => {
+    const act = (s) => s.entities.hero.feats.find((x) => x.id === ID("fan-flourish")).action;
+    for (const [change, label] of [[(a) => { a.modes[0].target.near = 65; }, "65"], [(a) => { a.modes[0].target.near = 0; }, "0"], [(a) => { a.target = { self: true }; }, "the holder"], [(a) => { a.target = { area: { shape: "sphere", size: 10, range: 30 } }; }, "an area"]]) {
+      const s = hitFight();
+      change(act(s));
+      const before = json(s);
+      const r = flourish(s, "slash", { targets: [s.gob, s.bo] });
+      no(r); assert.doesNotMatch(r.error, /Cannot read|undefined is not/, label);
+      assert.equal(json(s), before, `${label}: nothing paid`);
+    }
+    const r1 = derive(bard()).record;
+    feat(r1, ID("fan-flourish")).action.modes[0].target.near = 65;
+    assert.match(lintRecord(r1, { spells: CONTENT.spells }).join("\n"), /near is feet, a multiple of 5, 5 to 60/);
+    const r2 = derive(bard()).record;
+    feat(r2, ID("fan-flourish")).action.modes[0].effects = [{ condition: "prone" }];
+    assert.match(lintRecord(r2, { spells: CONTENT.spells }).join("\n"), /its first step is not a damage step/, "the leading-damage check, on a record");
+    const r3 = derive(bard()).record;
+    feat(r3, ID("fan-sweep")).action.target = { self: true, near: 10 };
+    assert.match(lintRecord(r3, { spells: CONTENT.spells }).join("\n"), /needs a creature to be the first/);
+  });
+});
+
+test("L4: a critical weapon hit does not double the flourish's dice, on either creature", () => {
+  using(ON, () => {
+    let crit = null;
+    for (let seed = 1; seed < 800 && !crit; seed++) {
+      const s = field(bard(), { seed });
+      fight(s); turnOf(s, "hero");
+      if (swing(s).crit) crit = s;
+    }
+    assert.ok(crit, "a critical hit was found");
+    const r = ok(flourish(crit, "slash", { targets: [crit.gob, crit.bo] }));
+    for (const id of [crit.gob, crit.bo]) { const d = dealt(r, id)[0]; assert.equal(d.dice.length, 1, "one die, not two"); assert.equal(d.dice[0].sides, 8); }
+  });
+});
+
+test("L4: a mode's own pool pays while the action's pool is empty; and the action's pool is not touched", () => {
+  using(ON, () => {
+    const s = hitFight();
+    s.entities.hero.uses["bardic-inspiration"] = 0;
+    ok(flourish(s, "reserve"));
+    assert.equal(s.entities.hero.uses[RESERVE], 1); assert.equal(pool(s), 0);
+  });
+});
+
+test("L4: a spell slot cost beside `near`: the slot grows the damage, both creatures take the same grown roll", () => {
+  using(ON, () => {
+    assert.deepEqual(lintEntry("subclasses", SILVER, { pack: P, srd: CONTENT }), []);
+    const s = hitFight();
+    const slots = { ...s.entities.hero.slots };
+    const r = ok(apply(s, { type: "feature", actor: "hero", feature: ID("fan-burst"), targets: [s.gob, s.bo], slot: 3 }, PAT));
+    const [g, b] = [dealt(r, s.gob)[0], dealt(r, s.bo)[0]];
+    assert.equal(g.dice.length, 3, "1d8 at level 1, and a d8 more for each level above: 3d8 at level 3");
+    assert.deepEqual(g.dice, b.dice); assert.equal(g.amount, b.amount);
+    assert.equal(s.entities.hero.slots[3], slots[3] - 1);
+    // the second creature still has to be near the first
+    const t = hitFight();
+    const before = json(t);
+    no(apply(t, { type: "feature", actor: "hero", feature: ID("fan-burst"), targets: [t.gob, t.cy] }, PAT), /Cy is more than 5 ft from Gob/);
+    assert.equal(json(t), before, "no slot spent");
   });
 });

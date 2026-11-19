@@ -132,8 +132,12 @@ function dispatch(s, action, ctx, ev) {
     for (const k of CREATURE_FIELDS) {
       if (k === 'order' && (action?.type === 'companionOrder' || action?.type === 'command')) continue;    // there `order` is 'before' or 'after', or a command's words, not creatures; companionOrder's `id` is looked at in companions.js
       const v = action?.[k];
-      for (const id of Array.isArray(v) ? v : [v]) {
-        if (typeof id !== 'string') continue;
+      // A field that names creatures is an id or a flat list of ids, or it is not there (undefined or null). Anything else (a number, an object, a list inside a list,
+      // a list with a non-id in it) is refused as an id that is nothing, before a handler can coerce it: `s.entities[['m15']]` is `s.entities.m15` (review of #532, H1).
+      if (v === undefined || v === null) continue;
+      const ids = Array.isArray(v) ? v : [v];
+      if (!ids.every((id) => typeof id === 'string')) fail('No such creature.');
+      for (const id of ids) {
         const e = Object.hasOwn(s.entities, id) ? s.entities[id] : null;
         if (!e || unknown(s, e)) fail('No such creature.');
       }

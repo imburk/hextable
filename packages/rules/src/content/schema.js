@@ -1077,7 +1077,7 @@ const DICE_GROWS = /^(?:(\d+)d(\d+))?([+-]\d+)?$/;
 // A mode of a feature's action may have a price of its own (`cost: { resource, n? }`, in place of the action's) or none (`free: true`), and may aim a second
 // target (`target: { near }`, in place of the action's own `near`): addition G of docs/specs/homebrew-subclasses.md. `lintModeOwn` checks one mode's three keys.
 const MODE_KEYS = ['id', 'name', 'effects', 'target', 'cost', 'free'];
-const isNearFeet = (n) => isInt(n) && n > 0 && n % 5 === 0;
+const isNearFeet = (n) => isInt(n) && n >= 5 && n <= 60 && n % 5 === 0;
 function lintModeOwn(m, a, say) {
   if (!m || typeof m !== 'object' || Array.isArray(m)) return;
   const at = typeof m.id === 'string' ? `mode ${m.id}: ` : 'a mode: ';
@@ -1089,7 +1089,7 @@ function lintModeOwn(m, a, say) {
   if (m.free === true && m.cost !== undefined) say(`${at}a mode costs nothing (\`free\`) or has a price of its own (\`cost\`), not both`);
   if ((m.free !== undefined || m.cost !== undefined) && (a.orCost !== undefined || a.orSlot !== undefined)) say(`${at}a mode with a price of its own (or none) cannot be on an action with \`orCost\` or \`orSlot\`: those are about the action's own price`);
   if (m.target !== undefined && !(m.target && typeof m.target === 'object' && !Array.isArray(m.target) && Object.keys(m.target).length === 1 && 'near' in m.target)) say(`${at}a mode's target is { near }, and nothing else: who the action is aimed at is the action's`);
-  else if (m.target !== undefined && !isNearFeet(m.target.near)) say(`${at}near is feet, a multiple of 5`);
+  else if (m.target !== undefined && !isNearFeet(m.target.near)) say(`${at}near is feet, a multiple of 5, 5 to 60`);
 }
 // `near` (addition G), on the action's `target` or on a mode's: the second creature takes the damage the action begins with. One place for every refusal of it.
 function lintNear(a, cls, say) {
@@ -1102,7 +1102,7 @@ function lintNear(a, cls, say) {
   if (!c || typeof c !== 'object') return say('a second target near the first (`near`) needs a creature to be the first: the action is aimed at one creature, not at the holder or at an area');
   if (c.count !== undefined && c.count !== 1) say('a second target near the first (`near`) is for an action with one target: `count` and `within` are how an action names several');
   if (c.repeat !== undefined || c.within !== undefined) say('a second target near the first (`near`) is for an action with one target: `repeat` and `within` are how an action names several');
-  if (own !== undefined && !isNearFeet(own)) say('near is feet, a multiple of 5');
+  if (own !== undefined && !isNearFeet(own)) say('near is feet, a multiple of 5, 5 to 60');
   if (own !== undefined && aimed.length) say('`near` is said on the action or on its modes, not both');
   const lists = own !== undefined ? (modes.length ? modes.map((m) => m.effects) : [a.effects]) : aimed.map((m) => m.effects);
   for (const l of lists) { const p = Array.isArray(l) ? nearProblem(l) : null; if (p) { say(p); break; } }
@@ -2069,6 +2069,8 @@ function lintFeat(f, say) {
       else for (const m of a.modes) { lintModeOwn(m, a, sub); lintSteps(m.effects, sub, { manual: false, rolledOk: true }); }
     }
     if (a?.cost !== undefined) lintActionCost(a, (m) => sub(`${m}.`));
+    // A record's `near` is held to what the gate holds a pack's to (the record may have been made by another build): a creature to be the first, one target, 5 to 60 feet, and damage to begin with.
+    if (a && typeof a === 'object') lintNear(a, null, (m) => sub(`${m}.`));
     if (a?.gain?.attacks !== undefined && !(ID.test(a.gain.attacks.with ?? '') && isInt(a.gain.attacks.n) && a.gain.attacks.n > 0 && a.gain.attacks.n <= 5)) sub('it gains attacks { with, n }.');
     if (a?.duration !== undefined && !isDuration(a.duration)) sub('its duration is a duration.');
     if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');

@@ -279,8 +279,10 @@ export const handlers = {
     const nearFeet = act.gain || act.pool || act.form ? undefined : mode?.target?.near ?? act.target?.near;
     let ask = a, nearId = null;
     if (nearFeet !== undefined) {
-      (Number.isInteger(nearFeet) && nearFeet > 0 && nearFeet % 5 === 0 && (act.target?.creature?.count ?? 1) === 1 && !act.target?.creature?.within && !act.target?.creature?.repeat) || fail(`${f.name} cannot be used: its data for a second target near the first is wrong (near is feet, a multiple of 5, on an action with one target). The DM can apply it.`);
+      (Number.isInteger(nearFeet) && nearFeet >= 5 && nearFeet <= 60 && nearFeet % 5 === 0 && act.target?.creature && typeof act.target.creature === 'object' && (act.target.creature.count ?? 1) === 1 && !act.target.creature.within && !act.target.creature.repeat) || fail(`${f.name} cannot be used: its data for a second target near the first is wrong (near is 5 to 60 feet, a multiple of 5, on an action aimed at one creature). The DM can apply it.`);
       const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
+      // An id is a string and a list of ids is flat: a player's are checked before any handler runs (engine.js, dispatch), and this answers the same for anyone else (a list inside a list is `s.entities[['m15']]`).
+      if (Array.isArray(ids) && !ids.every((id) => typeof id === 'string')) fail('No such creature.');
       if (Array.isArray(ids) && ids.length > 2) fail(`${f.name} reaches a creature and one more within ${nearFeet} ft of it.`);
       if (Array.isArray(ids) && ids.length === 2) { nearId = ids[1]; ask = { ...a, targets: [ids[0]] }; }
     }

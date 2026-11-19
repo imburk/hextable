@@ -114,7 +114,7 @@ for (const grid of [null, "square"]) {
     s = structuredClone(base); s.entities.ven.spells.push("fire-bolt");
     refused(s, { type: "cast", actor: "ven", spell: "fire-bolt", target: gob, deliver: owl }, PAT, /range of Touch/);
     refused(structuredClone(base), { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: "fighter" }, PAT, /is not Ven's familiar/);
-    refused(structuredClone(base), { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: 7 }, PAT, /Name the familiar/);
+    refused(structuredClone(base), { type: "cast", actor: "ven", spell: "shocking-grasp", target: gob, deliver: 7 }, PAT, /No such creature/);      // a number is no id: refused before the handler, as an id that is nothing (#532, H1)
     // 105 ft: refused, changing nothing.
     const far = field(grid), owl2 = familiar(far, "owl", DM), gob2 = reach(far, owl2, 105);
     ok(apply(far, { type: "startEncounter", center: far.entities[owl2].pos, radius: 24 }, DM));
