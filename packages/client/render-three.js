@@ -840,12 +840,19 @@ export class ThreeRenderer {
 
   // ---------- picking and input ----------
   // The hex-column march, as the old renderer had it (Decision 8); only the ray comes from Three.
+  // A creature the ray meets as it is wins; only where it meets none, a finger's width is allowed (a widened cylinder in front must not steal a tap that is on another creature).
   #pick(px, py) {
+    const exact = this.#march(px, py, false);
+    if (exact?.id || !this.phone) return exact;
+    const wide = this.#march(px, py, true);
+    return wide?.id ? wide : exact;
+  }
+  #march(px, py, widen) {
     const C = this.C; if (!C || !this.state) return null;
     const d = this.#dir(C, px, py);
     const acts = [...this.actors].filter(([id]) => !this.state.entities[id]?.dead);
     // On a phone a creature is never narrower than 44 CSS pixels to a finger (Decision 4): its cylinder is widened to that where it is smaller.
-    const pxUnit = this.canvas.clientHeight / (2 * Math.tan((this.camera.fov * Math.PI) / 360)), minR = this.phone ? (a) => 22 * Math.hypot(a.x - C.eye[0], a.y - C.eye[1], a.z - C.eye[2]) / pxUnit : () => 0;
+    const pxUnit = this.canvas.clientHeight / (2 * Math.tan((this.camera.fov * Math.PI) / 360)), minR = widen ? (a) => 22 * Math.hypot(a.x - C.eye[0], a.y - C.eye[1], a.z - C.eye[2]) / pxUnit : () => 0;
     for (let t = 1; t < 140; t += 0.08) {
       const x = C.eye[0] + d[0] * t, y = C.eye[1] + d[1] * t, z = C.eye[2] + d[2] * t;
       // A ridden pair stands on one spot: the rider's pawn is the higher, so where both are met the rider is the one tapped.
