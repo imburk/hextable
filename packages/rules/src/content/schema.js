@@ -1810,10 +1810,22 @@ function lintSubclass(e, say, ctx = {}) {
       if (optionIds.has(o.id)) say(`feature ${f.id}: option ${o.id} is used twice in the subclass`);
       optionIds.add(o.id);
       if (o.feat === undefined) continue;
-      // An option that is a feat is a Fighting Style feat of the SRD (a feat of the pack is not allowed yet, addition B of the survey).
-      const ft = ref?.feats && typeof o.feat === 'string' && !o.feat.startsWith('hb-') && Object.hasOwn(ref.feats, o.feat) ? ref.feats[o.feat] : null;
+      // An option that is a feat is a Fighting Style feat of the SRD, or (#550, addition B of the survey) one of this same pack: `ctx.feat` tells which.
+      if (typeof o.feat === 'string' && o.feat.startsWith('hb-')) {
+        const at = `feature ${f.id}: option ${o.id}`, ft = ctx.feat ? ctx.feat(o.feat) : undefined;
+        if (ft === false) say(`${at} names the feat "${o.feat}" of another pack: an option can only be a feat of this same pack`);
+        else if (ft === null) say(`${at} names the feat "${o.feat}", which is not a feat of this pack: add it to the pack's feats`);
+        else if (ft && typeof ft === 'object') {
+          if (ft.category !== 'fighting-style') say(`${at} names the feat "${o.feat}", which is not a Fighting Style feat (its category is ${typeof ft.category === 'string' ? ft.category : 'missing'}): an option can only be one`);
+          if (ft.increase !== undefined || ft.proficiencies !== undefined || ft.spellPick !== undefined) say(`${at} names the feat "${o.feat}", which gives ability points, skills or spells to choose: an option gives only what the feat's \`grants\` give, so the character would lose them`);
+          if (ft.prerequisite && (ft.prerequisite.level !== undefined || ft.prerequisite.abilities !== undefined)) say(`${at} names the feat "${o.feat}", which has a level or ability prerequisite: an option is not checked against one`);
+          if (ft.category === 'fighting-style' && (ft.name !== o.name || ft.tier !== o.tier)) say(`${at} has another name or tier than the feat ${typeof ft.name === 'string' ? ft.name : o.feat}`);
+        }
+        continue;
+      }
+      const ft = ref?.feats && typeof o.feat === 'string' && Object.hasOwn(ref.feats, o.feat) ? ref.feats[o.feat] : null;
       if (!ref?.feats) say(`feature ${f.id}: option ${o.id} is a feat, which cannot be checked here: the SRD feats are not known to the linter`);
-      else if (!ft || ft.category !== 'fighting-style') say(`feature ${f.id}: option ${o.id} is a feat that is not a Fighting Style feat of the SRD (an option cannot be a feat of the pack yet)`);
+      else if (!ft || ft.category !== 'fighting-style') say(`feature ${f.id}: option ${o.id} is a feat that is not a Fighting Style feat of the SRD (an option is also a Fighting Style feat of the same pack)`);
       else if (ft.name !== o.name || ft.tier !== o.tier) say(`feature ${f.id}: option ${o.id} has another name or tier than the feat ${ft.name}`);
     }
   }
@@ -1939,6 +1951,16 @@ function weaponLookup(ref, packId, ids) {
     if (id.startsWith('hb-')) { if (ids) return ids.has(id); return packId && !id.startsWith(`hb-${packId}-`) ? false : undefined; }
     if (!ref?.weapons) return undefined;
     return Object.hasOwn(ref.weapons, id);
+  };
+}
+
+// What a feat id is, for the Fighting Style feat an option of a subclass may be (#550): the feat's record in the pack (`feats`: a Map by id, or a list of feats), `false` for a homebrew id
+// of another pack, `null` for an id of this pack that is not among the pack's feats, undefined when it cannot be told (no list of the pack's feats, or no pack id to tell the packs by).
+function featLookup(packId, feats) {
+  const map = feats instanceof Map ? feats : Array.isArray(feats) ? new Map(feats.filter((x) => x && typeof x === 'object').map((x) => [x.id, x])) : null;
+  return (id) => {
+    if (packId && !id.startsWith(`hb-${packId}-`)) return false;
+    return map ? map.get(id) ?? null : undefined;
   };
 }
 
@@ -2083,7 +2105,7 @@ function lintPackCore(doc, opts) {
   if (strict && problems.length) return problems;               // the document's own shape is wrong: nothing below can be read
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
   // What a subclass reads of the pack and of the SRD: a spell id is a spell of this pack (with its level) or of the SRD.
-  const subclassCtx = { srd: opts.srd, weapon: weaponLookup(opts.srd ?? SRD_REF, pack?.id, new Set((Array.isArray(weapons) ? weapons : []).filter((w) => w && typeof w === 'object').map((w) => w.id))), spell: spellLookup(opts.srd ?? SRD_REF, pack?.id, new Map((Array.isArray(spells) ? spells : []).filter((x) => x && typeof x === 'object').map((x) => [x.id, x]))),
+  const subclassCtx = { srd: opts.srd, feat: featLookup(pack?.id, Array.isArray(feats) ? feats : []), weapon: weaponLookup(opts.srd ?? SRD_REF, pack?.id, new Set((Array.isArray(weapons) ? weapons : []).filter((w) => w && typeof w === 'object').map((w) => w.id))), spell: spellLookup(opts.srd ?? SRD_REF, pack?.id, new Map((Array.isArray(spells) ? spells : []).filter((x) => x && typeof x === 'object').map((x) => [x.id, x]))),
     monster: monsterLookup(opts.srd ?? SRD_REF, pack?.id, new Map((Array.isArray(monsters) ? monsters : []).filter((x) => x && typeof x === 'object').map((x) => [x.id, x]))) };
   const itemCtx = { weapons: new Set(weapons.map((w) => w.id)), armour: new Set(armour.filter((a) => a.category !== 'shield').map((a) => a.id)), spells: spells.length ? new Set(spells.map((x) => x.id)) : null };
   for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['summons', summons ?? [], lintSummonBlock], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef], ['items', items ?? [], (e, say) => lintItem(e, say, itemCtx)],
@@ -3256,7 +3278,7 @@ function lintRules(kind, e, say, { homebrew, pack, srd }) {
 const ENTRY_LINTERS = {
   spells: lintSpell, monsters: (e, say) => lintMonster(e, say), summons: lintSummonBlock, conditions: lintCondition, objects: lintObject, classes: lintClass,
   weapons: lintWeapon, armour: lintArmour, feats: lintFeatDef, items: lintItem,
-  subclasses: (e, say, c) => lintSubclass(e, say, { srd: c?.srd, weapon: weaponLookup(c?.srd ?? SRD_REF, c?.pack, c?.weapons), spell: spellLookup(c?.srd ?? SRD_REF, c?.pack, c?.spells), monster: monsterLookup(c?.srd ?? SRD_REF, c?.pack, undefined) }),
+  subclasses: (e, say, c) => lintSubclass(e, say, { srd: c?.srd, feat: featLookup(c?.pack, c?.feats), weapon: weaponLookup(c?.srd ?? SRD_REF, c?.pack, c?.weapons), spell: spellLookup(c?.srd ?? SRD_REF, c?.pack, c?.spells), monster: monsterLookup(c?.srd ?? SRD_REF, c?.pack, undefined) }),
 };
 const asSet = (x) => (x === undefined || x === null ? undefined : x instanceof Set ? x : new Set(x));
 export function lintEntry(kind, entry, ctx = {}) {
@@ -3273,7 +3295,7 @@ function lintEntryCore(kind, entry, ctx) {
   const problems = [], say = (m) => problems.push(`${kind}/${shortId(entry)}: ${m}`);
   const o = { homebrew: strict, pack: ctx.pack, srd: ctx.srd };
   if ((strict || ctx.keys) && lintShape(kind, entry, say, o) && strict) return problems;
-  ENTRY_LINTERS[kind](entry, say, { weapons: asSet(ctx.weapons), armour: asSet(ctx.armour), spells: asSet(ctx.spells) ?? null, srd: ctx.srd, pack: ctx.pack });
+  ENTRY_LINTERS[kind](entry, say, { feats: ctx.feats, weapons: asSet(ctx.weapons), armour: asSet(ctx.armour), spells: asSet(ctx.spells) ?? null, srd: ctx.srd, pack: ctx.pack });
   if (strict || ctx.keys) lintRules(kind, entry, say, o);
   return problems;
 }

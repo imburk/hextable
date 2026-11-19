@@ -239,7 +239,8 @@ test("an option that is a feat is a Fighting Style feat of the SRD, with its nam
   const opt = (o = {}) => ({ id: style.id, name: style.name, text: style.text, tier: style.tier, feat: style.id, ...o });
   const withOptions = (options) => oath({ class: "paladin", spells: undefined, features: [feature(1, { options })] });
   assert.deepEqual(lint(withOptions([opt(), opt({ id: "blessed-warrior", feat: "blessed-warrior", name: "Blessed Warrior" })])).filter((x) => !/blessed-warrior/.test(x)), []);
-  refused(lint(withOptions([opt(), { id: hb("x"), name: "X", text: "x", tier: "manual", feat: hb("x") }])), /option hb-ember-folk-x is a feat that is not a Fighting Style feat of the SRD \(an option cannot be a feat of the pack yet\)/);
+  // A feat of the pack is allowed since #550 (addition B; homebrew-subclass-style.test.js): with the pack's feats given, one the pack lacks is refused.
+  refused(lint(withOptions([opt(), { id: hb("x"), name: "X", text: "x", tier: "manual", feat: hb("x") }]), { feats: [] }), /option hb-ember-folk-x names the feat "hb-ember-folk-x", which is not a feat of this pack: add it to the pack's feats/);
   refused(lint(withOptions([opt({ name: "Another" }), { id: hb("y"), name: "Y", text: "x", tier: "manual" }])), /has another name or tier than the feat/);
   const goodOnly = withOptions([opt(), { id: hb("y"), name: "Y", text: "x", tier: "manual" }]);
   assert.deepEqual(lint(goodOnly), []);
