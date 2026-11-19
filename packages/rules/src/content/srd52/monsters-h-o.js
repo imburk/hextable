@@ -544,12 +544,13 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A reach attack that knocks a Large or smaller target Prone."
+        text: "A reach attack that knocks a Large or smaller target Prone; a bigger one is not, and the table is told."
       },
       {
         id: "trash-lob",
@@ -585,7 +586,7 @@ export const monsters = [
         text: "A thrown attack that also Poisons the target until the end of its next turn."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A huge, brutish giant who clubs foes or hurls refuse at them."
   },
@@ -3998,12 +3999,13 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "A bite that knocks a Medium or smaller target Prone."
+        text: "A bite that knocks a Medium or smaller target Prone; a bigger one is not, and the table is told."
       }
     ],
     tier: "auto",
