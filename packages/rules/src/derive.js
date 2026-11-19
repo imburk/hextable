@@ -533,7 +533,13 @@ export function derive(sheet) {
     if (g.fleet) out.fleet = { ...g.fleet };
     for (const k of ['empowered', 'overchannel', 'markSpread', 'steadfast']) if (g[k]) out[k] = { ...g[k] };      // since #232: the Evoker, the Hunter
     if (g.afterHit) out.afterHit = structuredClone(g.afterHit);
-    if (g.triggers && x.cls.i >= 0) out.triggers = structuredClone(g.triggers);      // addition H: only a class's own or a subclass's feature (a feat or an item has no class: `cls.i` is -1)
+    if (g.triggers && x.cls.i >= 0) {
+      out.triggers = structuredClone(g.triggers);
+      // The numbers of an attackAction modifier are put in as a grant's modifiers are (`{ mod }`, `{ column }`, `{ byLevel }`...); one with no number at this level (a `byLevel` not yet reached) is left out.
+      const t = out.triggers.attackAction;
+      if (t) { t.modifiers = bake(t.modifiers).filter((m) => m.value !== null && m.value !== undefined); if (!t.modifiers.length) delete out.triggers.attackAction; }
+      if (!Object.keys(out.triggers).length) delete out.triggers;
+    }      // addition H: only a class's own or a subclass's feature (a feat or an item has no class: `cls.i` is -1)
     if (g.restExhaustion) out.restExhaustion = g.restExhaustion;
     if (g.spellRange) out.spellRange = { spell: g.spellRange.spell, add: g.spellRange.perLevel * level };     // Eldritch Spear: 30 feet a Warlock level
     if (g.repel) out.repel = { ...g.repel };

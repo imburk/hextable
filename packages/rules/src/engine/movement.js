@@ -152,7 +152,11 @@ function opportunityRider(s, o, ev) {
 // The feet of such movement `e` has now, or 0.
 const owedFeet = (s, e) => { const n = s.encounter?.flags?.[`${OWED_MOVE}:${e.id}`]; return Number.isFinite(n) && n > 0 ? n : 0; };
 // What `moveOptions` should see for such a move: the game as it would stand if it were `e`'s turn with only that movement. Read only (nothing of it is kept).
-const asItsTurn = (s, e, bud) => (bud?.free ? { ...s, encounter: { ...s.encounter, turn: s.encounter.order.findIndex((o) => o.id === e.id), budget: bud } } : s);
+// No Dash is counted (`dashes: -1`), so that every way of moving (climbing, flying: `moveOptions` adds what its Speed has over walking) is held to the feet given.
+const asItsTurn = (s, e, bud) => (bud?.free ? { ...s, encounter: { ...s.encounter, turn: s.encounter.order.findIndex((o) => o.id === e.id), budget: { ...bud, dashes: -1 } } } : s);
+// Which diagonal of a square map comes next ('alternate' diagonals), kept with the feet (`rdiag:<creature>`) so that a move in steps counts as one.
+const DIAG = 'rdiag';
+const owedDiag = (s, e) => (s.encounter?.flags?.[`${DIAG}:${e.id}`] ? 1 : 0);
 
 // Walk a creature to `tk` along the way `reach` found for it. Every step can set something off,
 // catch an eye, or (outside a fight) start one. Returns the positions it stood on, from where it
@@ -574,7 +578,7 @@ function moveOn(s, a, ctx, ev, own) {
     let bud = fighting ? turnBudget(s, e) : null;
     // Out of its turn, only the movement an Opportunity Attack's rider gave (`triggers.opportunityHit`, kept as `rmove:<creature>`) lets it move, from that alone and
     // provoking nothing (`free`). It is a move and nothing more: no other action reads it, and a creature that rides or is ridden never has any (opportunityRider).
-    if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, free: true };
+    if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, diagonals: owedDiag(s, e), free: true };
     if (fighting && !bud) fail(steering(s, e) ? `${e.name} moves on ${steering(s, e).name}'s turn.` : `It isn't ${e.name}'s turn.`);
     const reach = moveOptions(asItsTurn(s, e, bud), e);
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
@@ -638,9 +642,20 @@ export const handlers = {
     moveOn(s, a, ctx, ev, own);
     // What is left of the movement an Opportunity Attack's rider gave is kept for another step; none left, the flag goes.
     if (own.bud && s.encounter) {
-      const k = `${OWED_MOVE}:${a.actor}`;
-      if (own.bud.move > 0) s.encounter.flags[k] = own.bud.move; else delete s.encounter.flags[k];
+      const k = `${OWED_MOVE}:${a.actor}`, d = `${DIAG}:${a.actor}`;
+      if (own.bud.move > 0) { s.encounter.flags[k] = own.bud.move; if ((own.bud.diagonals | 0) & 1) s.encounter.flags[d] = true; else delete s.encounter.flags[d]; }
+      else { delete s.encounter.flags[k]; delete s.encounter.flags[d]; }
     }
+  },
+
+  // Gives up the movement an Opportunity Attack's rider gave (`triggers.opportunityHit`): the creature's player says it is done with it, so whoever waits to end the turn
+  // (a client playing the foes) need not wait out the rest. Only the creature's own controller or the DM; refused, and nothing changed, when there is none to give up.
+  forgoMove(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    const feet = owedFeet(s, e);
+    feet > 0 || fail(`${e.name} has no movement from an Opportunity Attack to give up.`);
+    delete s.encounter.flags[`${OWED_MOVE}:${e.id}`]; delete s.encounter.flags[`${DIAG}:${e.id}`];
+    ev.push({ type: 'note', id: e.id, text: `${e.name} gives up the ${feet} ft of movement the Opportunity Attack gave.` });
   },
 
   dash(s, a, ctx, ev) {

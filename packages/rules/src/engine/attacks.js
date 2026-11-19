@@ -98,7 +98,7 @@ function takeAction(s, e, def, a, ev, ctx = null) {
 
 // Addition H (docs/specs/homebrew-subclasses.md, `triggers.attackAction`): `e` has just taken the Attack action on its own turn in a fight (the action is spent; called at
 // the two places that spend it, below). Each feature of it that states the trigger puts its modifiers on it until the end of the turn, once a turn for the feature (the mark is
-// the one `after:` uses, `after:<feature>:<creature>`, so a second Attack action in the turn, Action Surge, adds nothing). What a Speed modifier raises is also added to the
+// `trig:<feature>:<creature>`, not the `after:` one a feature's own `after:` action uses, so a second Attack action in the turn, Action Surge, adds nothing). What a Speed modifier raises is also added to the
 // walking feet left (`budget.move` is set at the turn's start and does not follow Speed), as Instinctive Pounce adds its half. Nothing is read from data that is not
 // whole: the gate checks it, and a record that skipped the gate is told to the DM and left alone, before anything changes.
 function attackActionTaken(s, e, ev) {
@@ -108,11 +108,11 @@ function attackActionTaken(s, e, ev) {
     const t = f.triggers?.attackAction;
     if (!t) continue;
     const mods = Array.isArray(t.modifiers) ? t.modifiers : null;
-    if (!mods?.length || mods.length > 5 || !mods.every((m) => m && typeof m === 'object' && !Array.isArray(m) && typeof m.on === 'string' && typeof m.op === 'string')) {
-      ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `${e.name} took the Attack action, which ${f.name} follows, but its data is wrong (its modifiers are not a list of modifiers). The DM can apply it.` });
+    if (!mods?.length || mods.length > 5 || !mods.every((m) => m && typeof m === 'object' && !Array.isArray(m) && typeof m.on === 'string' && typeof m.op === 'string' && (!m.on.startsWith('speed') || Number.isFinite(m.value)))) {
+      ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `${e.name} took the Attack action, which ${f.name} follows, but its data is wrong (its modifiers are not a list of modifiers with their numbers in). The DM can apply it.` });
       continue;
     }
-    const mark = `after:${f.id}:${e.id}`;
+    const mark = `trig:${f.id}:${e.id}`;
     if (enc.flags[mark]) continue;
     enc.flags[mark] = true;
     const before = speedOf(s, e);

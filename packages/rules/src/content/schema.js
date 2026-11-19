@@ -1434,9 +1434,13 @@ export function triggersProblems(x, cls, say) {
   if (a !== undefined) {
     if (!isObj(a) || !Object.keys(a).every((k) => k === 'modifiers')) say('triggers.attackAction is { modifiers }');
     else if (!Array.isArray(a.modifiers) || !a.modifiers.length || a.modifiers.length > 5) say('triggers.attackAction.modifiers is a list of 1 to 5 modifiers');
-    else for (const m of bakeValues(a.modifiers, cls, say)) {
+    else for (const [i, m] of bakeValues(a.modifiers, cls, say).entries()) {
       if (!isObj(m)) { say('a modifier of triggers.attackAction is { on, op, value, ... }'); continue; }
       lintModifier(m, say);
+      // Feet are whole numbers: not dice, nor a column of the class table that holds dice (the bard's Bardic Inspiration die), however the linter stood the amount in.
+      const raw = a.modifiers[i]?.value, col = raw && typeof raw === 'object' ? cls?.table?.[raw.column] : undefined;
+      if (typeof m.on === 'string' && m.on.startsWith('speed') && (typeof m.value !== 'number' || (raw && typeof raw === 'object' && raw.die !== undefined) || (Array.isArray(col) && !col.every((v) => v === null || typeof v === 'number'))))
+        say('a Speed modifier of triggers.attackAction is a number of feet (dice, and a class table of dice, are not feet)');
       for (const k of ['against', 'except', 'uses', 'onFail', 'cost']) if (m[k] !== undefined) say(`a modifier of triggers.attackAction lasts for the turn and is the holder's own: \`${k}\` is not for it`);
     }
   }

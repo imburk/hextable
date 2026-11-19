@@ -14,6 +14,7 @@ import { forPlayers } from "../src/content/packs.js";
 import { speedOf } from "../src/modifiers.js";
 import { effectsOf } from "../src/durations.js";
 import { view, viewEvents } from "../src/view.js";
+import { squareRoom } from "./fixtures/square-room.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -34,7 +35,14 @@ const CHASE = { triggers: { opportunityHit: { move: "half" } } };
 const NEEDLE = sub("college-of-the-swift-needle", "College of the Swift Needle", "bard", [feature("needle-dance", 3, DANCE), feature("needle-ward", 3, WARD)]);
 const BELL = sub("oath-of-the-hollow-bell", "Oath of the Hollow Bell", "paladin", [feature("bell-chase", 3, CHASE)]);
 const pack = (d) => { const r = loadPack(d); assert.ok(r.ok, (r.problems ?? []).join("; ")); return r.pack; };
-const PACK = pack(doc({ subclasses: [NEEDLE, BELL] })), ON = overlayOf([PACK]), OFF = overlayOf([]);
+// Every form of an amount a modifier value may take (derive puts the number in, as it does for a grant's modifiers): at Bard level 5 (Proficiency Bonus 3, Charisma 16, Intelligence 10), and the oath's `{ column }`.
+const at = (n, value) => feature(n, 3, { triggers: { attackAction: { modifiers: [{ on: "speed", op: "add", value }] } } });
+const FORMS = sub("college-of-the-forms", "College of the Forms", "bard", [at("form-prof", { prof: 1 }), at("form-mod", { mod: "cha" }), at("form-min", { mod: "int", min: 2 }), at("form-per", { perLevel: 2 }),
+  at("form-by", { byLevel: { 3: 10, 6: 15 } }), at("form-late", { byLevel: { 6: 15 } }),
+  feature("form-flourish", 3, { triggers: { attackAction: { modifiers: [SPEED] } },
+    action: { time: "free", after: "weaponHit", target: { creature: { range: [5, 5] } }, cost: { resource: "bardic-inspiration" }, effects: [{ damage: { column: "bardic-die" }, type: "slashing" }] } })]);
+const VOWS = sub("oath-of-the-forms", "Oath of the Forms", "paladin", [at("vow-column", { column: "channel-divinity" })]);
+const PACK = pack(doc({ subclasses: [NEEDLE, BELL, FORMS, VOWS] })), ON = overlayOf([PACK]), OFF = overlayOf([]);
 const problems = (...subs) => (loadPack(doc({ subclasses: subs })).problems ?? []).join("\n");
 const bardOne = (grants, more = {}) => problems(sub("college-x", "College of X", "bard", [feature("x-feature", 3, grants, more)]));
 
@@ -192,7 +200,7 @@ test("on taking the Attack action: the modifiers until the end of the turn, the 
     assert.equal(s.encounter.budget.move, 30, "10 feet more walking left than before the attack");
     assert.equal(speedOf(s, s.entities.hero), 40);
     assert.equal(effectNamed(s, DANCE_ID).length, 1);
-    assert.equal(s.encounter.flags[`after:${DANCE_ID}:hero`], true, "the mark `after:` uses");
+    assert.equal(s.encounter.flags[`trig:${DANCE_ID}:hero`], true, "its own mark, not the `after:` one");
     assert.ok(r.events.some((x) => x.type === "effectStart" && x.name === "Needle dance" && x.lasts === "until the end of the current turn"));
     // Armor Class +1 from the second feature, as a modifier only: no feet
     assert.equal(effectNamed(s, WARD_ID).length, 1);
@@ -210,7 +218,7 @@ test("on taking the Attack action: the modifiers until the end of the turn, the 
     assert.equal(speedOf(s, s.entities.hero), 30);
     turnOf(s, "hero");
     assert.equal(s.encounter.budget.move, 30);
-    assert.equal(s.encounter.flags[`after:${DANCE_ID}:hero`], undefined, "a new turn, a new mark");
+    assert.equal(s.encounter.flags[`trig:${DANCE_ID}:hero`], undefined, "a new turn, a new mark");
     s.entities[s.gob].pos = { q: -2, r: 5, z: 0 };
     ok(swing(s));
     assert.equal(s.encounter.budget.move, 40, "and it works again on the next turn");
@@ -235,7 +243,7 @@ test("what is not the Attack action does not set it off: an attack of the Attack
     const s1 = field(bard());
     ok(apply(s1, { type: "attack", actor: "hero", attack: "dagger", target: s1.gob }, PAT));
     assert.ok(s1.encounter, "a fight began");
-    assert.equal(effectNamed(s1, DANCE_ID).length, 0); assert.equal(s1.encounter.flags[`after:${DANCE_ID}:hero`], undefined);
+    assert.equal(effectNamed(s1, DANCE_ID).length, 0); assert.equal(s1.encounter.flags[`trig:${DANCE_ID}:hero`], undefined);
     // an Extra Attack's later attack: the Attack action was taken once
     const s = field(bard(5, { subclass: hb("college-of-the-swift-needle") }));
     s.entities.hero.features.extraAttack = 1;
@@ -280,7 +288,7 @@ test("an Opportunity Attack on someone else's turn is not the Attack action", ()
     }
     assert.ok(seen, "the hero made an Opportunity Attack");
     assert.equal(effectNamed(seen, DANCE_ID).length, 0); assert.equal(speedOf(seen, seen.entities.hero), 30);
-    assert.equal(Object.keys(seen.encounter.flags).some((k) => k.startsWith("after:")), false);
+    assert.equal(Object.keys(seen.encounter.flags).some((k) => k.startsWith("trig:")), false);
   });
 });
 
@@ -528,5 +536,207 @@ test("replay: the same actions give the same game", () => {
       return json(s);
     };
     assert.equal(run(), run());
+  });
+});
+
+// ---------- the fix round of #535: baked amounts, the turn's own mark, the free budget's limits, giving the movement up ----------
+const FORM = (n) => hb(`form-${n}`);
+const forms = (over = {}) => bard(5, { subclass: hb("college-of-the-forms"), ...over });
+
+test("an amount in an attackAction modifier is put in as a grant's modifier is: prof, mod (with min), perLevel, byLevel, and the oath's column", () => {
+  using(ON, () => {
+    const r = derive(forms()).record, v = (n) => feat(r, FORM(n)).triggers?.attackAction.modifiers[0].value;
+    assert.equal(v("prof"), 3, "{ prof: 1 } at Bard level 5");
+    assert.equal(v("mod"), 3, "Charisma 16");
+    assert.equal(v("min"), 2, "Intelligence 10 gives 0, the minimum 2");
+    assert.equal(v("per"), 10, "2 a level");
+    assert.equal(v("by"), 10, "the highest level reached, 3");
+    assert.equal(feat(r, FORM("late")).triggers, undefined, "a byLevel not yet reached gives no modifier, and so no trigger");
+    assert.ok(!json(r).includes("byLevel") && !json(r).includes("perLevel"), "no amount is left on the record");
+    assert.deepEqual(lintRecord(JSON.parse(json(r)), { spells: CONTENT.spells }), [], "the record lints");
+    // at level 6 the byLevel's second step is reached; at level 3 the Proficiency Bonus is 2
+    assert.equal(feat(derive(forms({ level: 6 })).record, FORM("late")).triggers.attackAction.modifiers[0].value, 15);
+    assert.equal(feat(derive(forms({ level: 3 })).record, FORM("prof")).triggers.attackAction.modifiers[0].value, 2);
+    // the oath's column of the class table (Channel Divinity uses, a number): 2 at level 5
+    assert.equal(feat(derive(paladin(5, { subclass: hb("oath-of-the-forms") })).record, hb("vow-column")).triggers.attackAction.modifiers[0].value, 2);
+    // the amounts do not change what the other features of the pack are
+    assert.deepEqual(feat(r, DANCE_ID), undefined);
+  });
+});
+
+test("the amounts reach the engine as numbers: the Speed it gives is the sum, the holder moves, and nothing is NaN", () => {
+  using(ON, () => {
+    const s = field(forms());
+    fight(s); turnOf(s, "hero");
+    ok(swing(s));
+    const gain = 3 + 3 + 2 + 10 + 10 + 10;                             // prof, mod, min, per, by, and the flourish's own +10
+    const h = s.entities.hero;
+    assert.equal(speedOf(s, h), 30 + gain);
+    assert.equal(s.encounter.budget.move, 30 + gain);
+    assert.ok(Number.isFinite(speedOf(s, h)));
+    for (const fx of effectsOf(s)) for (const p of fx.parts) assert.ok(typeof p.modifier.value === "number", `${fx.name}: a number`);
+    s.entities[s.gob].pos = { q: 9, r: 9, z: 0 };
+    ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, PAT));
+    assert.equal(s.encounter.budget.move, 20 + gain);
+  });
+});
+
+test("a Speed amount that is dice is refused by the gate, and data that skipped it is told to the DM", () => {
+  const speed = (value) => bardOne({ triggers: { attackAction: { modifiers: [{ on: "speed", op: "add", value }] } } });
+  assert.equal(speed({ mod: "cha", min: 1 }), "");
+  assert.equal(speed({ byLevel: { 3: 5, 6: 10 } }), "");
+  assert.match(speed("1d4"), /a Speed modifier of triggers\.attackAction is a number of feet/);
+  assert.match(speed({ column: "bardic-die" }), /a Speed modifier of triggers\.attackAction is a number of feet/, "the bard's column holds dice");
+  assert.notEqual(speed({ mod: "cha", die: 6 }), "", "dice from a modifier are refused (by the shapes in a pack, by the feet sentence in a record)");
+  assert.match(speed({ byLevel: { 3: "1d6" } }), /a Speed modifier of triggers\.attackAction is a number of feet/);
+  assert.equal(bardOne({ triggers: { attackAction: { modifiers: [{ on: "ac", op: "add", value: "1d4" }] } } }), "", "only Speed needs feet: a die on Armor Class is a die");
+  using(ON, () => {
+    const s = field(bard());
+    feat(s.entities.hero, DANCE_ID).triggers = { attackAction: { modifiers: [{ on: "speed", op: "add", value: "d8" }] } };
+    fight(s); turnOf(s, "hero");
+    const r = ok(swing(s));
+    assert.ok(r.events.some((x) => x.type === "manual" && /its data is wrong/.test(x.text)));
+    assert.equal(effectNamed(s, DANCE_ID).length, 0);
+    assert.equal(s.encounter.flags[`trig:${DANCE_ID}:hero`], undefined);
+    assert.equal(s.encounter.budget.move, 30);
+  });
+});
+
+test("a feature with the trigger and an `after:` action of its own: neither takes the other's once a turn", () => {
+  using(ON, () => {
+    let s = null;
+    for (let seed = 1; seed < 60 && !s; seed++) {
+      const g = field(forms(), { seed });
+      fight(g); turnOf(g, "hero");
+      const r = swing(g);
+      if (r.ok && r.events.some((x) => x.type === "attack" && x.hit)) s = g;
+    }
+    assert.ok(s, "a weapon hit");
+    const F = FORM("flourish");
+    assert.equal(s.encounter.flags[`trig:${F}:hero`], true, "the trigger's mark");
+    assert.equal(s.encounter.flags[`after:${F}:hero`], undefined, "the action's mark is not set by it");
+    const r = ok(apply(s, { type: "feature", actor: "hero", feature: F, target: s.gob }, PAT));
+    assert.ok(r.events.some((x) => x.type === "damage"), "the flourish was not refused 'already used'");
+    assert.equal(s.encounter.flags[`after:${F}:hero`], true);
+    assert.equal(s.encounter.flags[`trig:${F}:hero`], true, "and the trigger's mark is still its own");
+    no(apply(s, { type: "feature", actor: "hero", feature: F, target: s.gob }, PAT), /already used/);
+  });
+});
+
+test("the turn's mark is filtered from players as the other flags are: `trig:` names a creature", () => {
+  using(ON, () => {
+    const s = field(bard());
+    s.entities.foe = makeEntity(derive(bard(5, { name: "Foe" })).record, { id: "foe", kind: "pc", side: "foe", pos: { q: 0, r: 3, z: 0 } });
+    fight(s);
+    s.entities.foe.hidden = true;
+    s.encounter.flags[`trig:${DANCE_ID}:foe`] = true; s.encounter.flags[`trig:${DANCE_ID}:hero`] = true;
+    const keys = Object.keys(view(s, PAT).encounter.flags);
+    assert.ok(keys.includes(`trig:${DANCE_ID}:hero`), "its own party's are sent");
+    assert.ok(!keys.includes(`trig:${DANCE_ID}:foe`), "a creature the party does not know of: not sent");
+    assert.ok(Object.keys(view(s, DM).encounter.flags).includes(`trig:${DANCE_ID}:foe`));
+  });
+});
+
+test("a free budget is held to the feet given, whatever other Speeds the holder has: Fly 60 and Climb 40 go no further than 15 feet", () => {
+  for (const speeds of [{ fly: 60 }, { climb: 40 }, { fly: 60, climb: 40, swim: 30 }]) {
+    using(ON, () => {
+      const { s } = chase({ tweak: (t) => { t.entities.hero.speeds = speeds; } });
+      assert.equal(flagOf(s), 15, json(speeds));
+      const was = json(s);
+      no(apply(s, { type: "move", actor: "hero", to: { q: 0, r: 4 } }, PAT), /Too far|reach|get there/, `${json(speeds)}: 20 feet`);
+      assert.equal(json(s), was, "a refused move changes nothing");
+      ok(apply(s, { type: "move", actor: "hero", to: { q: 0, r: 3 } }, PAT));
+      assert.equal(flagOf(s), undefined, "15 feet spent");
+    });
+  }
+});
+
+test("the free budget carries the diagonals on squares ('alternate'): the second diagonal costs 10 across separate moves", () => {
+  using(ON, () => {
+    const s = newGame(14), map = squareRoom();
+    ok(apply(s, { type: "loadMap", map }, DM));
+    ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+    ok(apply(s, { type: "setting", key: "diagonals", value: "alternate" }, DM));
+    for (const id of Object.keys(s.entities)) delete s.entities[id];
+    s.entities.hero = makeEntity(derive(paladin()).record, { id: "hero", kind: "pc", side: "party", pos: { q: 6, r: 6, z: 0 } });
+    s.entities.hero.sheet = structuredClone(paladin());
+    ok(apply(s, { type: "claim", entity: "hero", user: "pat", userName: "Pat" }, PAT));
+    const gob = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 11, r: 11 }, name: "Gob" }, DM)).events[0].id;
+    ok(apply(s, { type: "startEncounter", center: { q: 7, r: 7 }, radius: 6 }, DM));
+    turnOf(s, gob);
+    s.encounter.flags["rmove:hero"] = 30;
+    ok(apply(s, { type: "move", actor: "hero", to: { q: 7, r: 7 } }, PAT));
+    assert.equal(s.encounter.flags["rmove:hero"], 25, "the first diagonal: 5 feet");
+    assert.equal(s.encounter.flags["rdiag:hero"], true, "and the next one is a second");
+    ok(apply(s, { type: "move", actor: "hero", to: { q: 8, r: 8 } }, PAT));
+    assert.equal(s.encounter.flags["rmove:hero"], 15, "the second diagonal: 10 feet, as in one move");
+    assert.equal(s.encounter.flags["rdiag:hero"], undefined);
+    ok(apply(s, { type: "move", actor: "hero", to: { q: 9, r: 9 } }, PAT));
+    assert.equal(s.encounter.flags["rmove:hero"], 10);
+    // given up, both go
+    ok(apply(s, { type: "forgoMove", actor: "hero" }, PAT));
+    assert.equal(s.encounter.flags["rmove:hero"], undefined); assert.equal(s.encounter.flags["rdiag:hero"], undefined);
+  });
+});
+
+test("forgoMove: the holder's controller gives the movement up; refused (and nothing changed) when there is none or it is not theirs", () => {
+  using(ON, () => {
+    const { s } = chase();
+    assert.equal(flagOf(s), 15);
+    const refuse = (a, ctx, re) => { const was = json(s); no(apply(s, a, ctx), re); assert.equal(json(s), was, "nothing changed"); };
+    refuse({ type: "forgoMove", actor: "hero" }, { role: "player", userId: "lena" }, /isn't yours to control/);
+    refuse({ type: "forgoMove", actor: s.gob }, DM, /Gob has no movement from an Opportunity Attack to give up/);
+    refuse({ type: "forgoMove", actor: s.bo }, DM, /has no movement/);
+    refuse({ type: "forgoMove" }, PAT, /./);
+    refuse({ type: "forgoMove", actor: "nobody" }, PAT, /./);
+    const r = ok(apply(s, { type: "forgoMove", actor: "hero" }, PAT));
+    assert.equal(flagOf(s), undefined);
+    assert.ok(r.events.some((x) => x.type === "note" && x.id === "hero" && /Sir Bell gives up the 15 ft of movement/.test(x.text)));
+    assert.ok(json(viewEvents(r.events, s, PAT)).includes("gives up"), "the party is told of its own");
+    refuse({ type: "forgoMove", actor: "hero" }, PAT, /has no movement from an Opportunity Attack to give up/);
+    refuse({ type: "move", actor: "hero", to: { q: 1, r: 0 } }, PAT, /isn't Sir Bell's turn|moves on/);
+    // the DM may give it up for the hero too
+    const g = chase().s;
+    ok(apply(g, { type: "forgoMove", actor: "hero" }, DM));
+    assert.equal(flagOf(g), undefined);
+    // some of it spent first: the rest goes
+    const h = chase().s;
+    ok(apply(h, { type: "move", actor: "hero", to: { q: 1, r: 0 } }, PAT));
+    assert.equal(flagOf(h), 10);
+    ok(apply(h, { type: "forgoMove", actor: "hero" }, PAT));
+    assert.equal(flagOf(h), undefined);
+  });
+});
+
+test("forgoMove outside a fight, and for a creature that is not a fighter, is refused and changes nothing", () => {
+  using(ON, () => {
+    const s = field(paladin());
+    const was = json(s);
+    no(apply(s, { type: "forgoMove", actor: "hero" }, PAT), /has no movement from an Opportunity Attack to give up/);
+    assert.equal(json(s), was);
+  });
+});
+
+test("forgoMove for a foe the party is not told of: the DM's alone, and the note is not sent to players", () => {
+  using(ON, () => {
+    let made = null;
+    for (let seed = 1; seed < 120 && !made; seed++) {
+      const s = field(bard(), { seed });
+      s.settings.sight = "light"; s.map.levels[0].light = "dark";
+      s.entities.foe = makeEntity(derive(paladin()).record, { id: "foe", kind: "pc", side: "foe", pos: { q: 0, r: 1, z: 0 } });
+      s.entities.foe.senses = { darkvision: 120 };
+      Object.assign(s.entities.hero, { ac: 1 });
+      fight(s); turnOf(s, "hero");
+      const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -3, r: 0 } }, PAT));
+      if (r.events.some((x) => x.type === "attack" && x.actor === "foe" && x.opportunity && x.hit)) made = { s };
+    }
+    assert.ok(made);
+    const { s } = made;
+    assert.equal(s.encounter.flags["rmove:foe"], 15);
+    no(apply(s, { type: "forgoMove", actor: "foe" }, PAT), /No such creature|isn't yours to control/);
+    const r = ok(apply(s, { type: "forgoMove", actor: "foe" }, DM));
+    assert.equal(s.encounter.flags["rmove:foe"], undefined);
+    const seen = view(s, PAT);
+    if (seen.entities.foe === undefined) assert.ok(!json(viewEvents(r.events, s, PAT)).includes("gives up"), "not sent");
   });
 });
