@@ -13,6 +13,7 @@ import { autoPlays } from './shared/ai.js';
 import { aiAction } from './standin.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { holdWords, heldEndText, noteText, previewState, targetRefusals } from './grapple.js';
+import { offerOf, offers, waitingFor, reachOf, moveLabel, forgoLabel, offerWords, waitWords, giveUpLabel } from './allowance.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
@@ -52,6 +53,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const MOVE = { kind: 'move' };
+const OWED = { kind: 'owed' };     // the Move button of an Opportunity Attack's movement was pressed (allowance.js): the next tap on a shaded place is the move
 // How high above the floor each flyer's next move will end, in feet. Chosen with the Higher and Lower buttons.
 const flyAlt = {};
 const heightOf = (pos) => { const sf = under(S.map, pos); return sf ? Math.floor((pos.z - sf.z) / FT) * FT : 0; };
@@ -175,6 +177,7 @@ function preview(e, a) {
 }
 const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
 let flick = null, closeTray = null, armed = null;
+let owedUi = null, owedWho = [];      // what the hint bar is saying about an Opportunity Attack's movement: 'offer' (to its holder) or 'wait' (to the DM, whose auto-play waits for owedWho)
 let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh the party: the next update says what was remade (refresh.js)
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action, byAI = false) {
@@ -431,6 +434,7 @@ function beat(ev, ctx) {
 function onUpdate(state, events, fresh) {
   const first = !S || fresh;
   if (first) known.clear();
+  const hadOffer = new Set(first ? [] : offers(S).map((o) => o.id));      // who held movement from an Opportunity Attack before this update
   for (const e of Object.values(S?.entities ?? {})) known.set(e.id, shownName(S, e));      // what a creature that vanishes in these events was called
   S = state; stamp++; dryCache.clear();
   if (refreshAsk && Date.now() - refreshAsk.at > 8000) refreshAsk = null;
@@ -454,6 +458,9 @@ function onUpdate(state, events, fresh) {
     selId = own?.id ?? null;
   }
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
+  if (mode.kind === 'owed' && !offerOf(S, S.entities[selId])) mode = MOVE;
+  // A player is shown the movement an Opportunity Attack gave as soon as it comes: their creature is selected and looked at (the DM keeps their own choice; solo is both).
+  if (!isDM() || T.solo) { const o = offers(S).find((x) => !hadOffer.has(x.id) && mine(S.entities[x.id])); if (o) { select(o.id); R.focus(o.id); } }
   if (mode.kind === 'attack' || mode.kind === 'famAttack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
   clearTimeout(aiTimer);
   aiSent = null;
@@ -469,6 +476,13 @@ function onUpdate(state, events, fresh) {
   snapping = false;
   syncPlaying();
 }
+const offlineOf = (uid) => !!T && !T.solo && (T.lobby?.members ?? []).some((m) => m.id === uid && m.online === false);
+// The party creatures the DM's auto-play is waiting for now (allowance.js): none unless this screen would play the current turn.
+function autoWaits() {
+  const cur = S?.encounter ? current(S) : null;
+  if (!cur || !isDM() || !$('dm-auto').checked || !autoPlays(S, cur, { offline: offlineOf })) return [];
+  return waitingFor(S, { offline: offlineOf });
+}
 // The beats of everything received have played: the screen is in line with the table.
 function idled() {
   if (!S || !T) return;
@@ -481,9 +495,11 @@ function idled() {
   // when the brain plays it (the DM's own, `bond.auto`, never commanded, its master's player offline or stepped away, its master Incapacitated), and a
   // character set aside under the table rule `standIn`; otherwise it waits for its player or the DM. This screen is the DM's alone (`isDM()`), so a
   // stand-in is never played from two screens; what it does is only an action sent to the table, which the engine answers as for anyone.
-  const offline = (uid) => !T.solo && (T.lobby?.members ?? []).some((m) => m.id === uid && m.online === false);
+  const offline = offlineOf;
   const plays = cur && autoPlays(S, cur.id, { offline });
-  if (plays && isDM() && $('dm-auto').checked && !tookBack) {
+  // It also waits while a party creature holds movement from an Opportunity Attack (DEBT T93 4b): ending the mover's turn would lapse it before its player can act.
+  // The DM's screen says who it waits for and can give the movement up for them (refresh, below).
+  if (plays && isDM() && $('dm-auto').checked && !tookBack && !autoWaits().length) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
     // server never waits. Otherwise as before, 800 ms after the update. The table's homebrew is installed around the call (standin.js).
@@ -560,6 +576,17 @@ function actionAim(e, hl) {
   return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
+// The hint bar's two buttons, put to the words of the movement an Opportunity Attack gave (and back to the aiming ones, 'Cast' and 'Cancel', when it is not that).
+// 44 px high, the size of a thumb: the bar's own are smaller.
+function hintWords(offer, waits) {
+  const go = $('hint-go'), cancel = $('hint-cancel'), big = owedUi ? '44px' : '';
+  go.style.minHeight = cancel.style.minHeight = big;
+  cancel.hidden = owedUi === 'wait';
+  cancel.textContent = owedUi === 'offer' ? forgoLabel : 'Cancel';
+  go.textContent = owedUi === 'offer' ? moveLabel(offer) : owedUi === 'wait' ? giveUpLabel(waits) : 'Cast';
+  if (owedUi === 'offer') go.hidden = mode.kind === 'owed';       // pressed: the next tap on a shaded place is the move
+  else if (owedUi === 'wait') go.hidden = false;
+}
 function sizeDock() {
   R.inset = $('dock').offsetHeight * 0.85;
   document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray and the drawer sit above the dock
@@ -647,6 +674,14 @@ function refresh() {
       }
     }
   }
+  // Movement an Opportunity Attack gave (allowance.js): to its holder, the reach shaded with Move and Don't move; to the DM whose auto-play waits for it, who is waiting
+  // and a button to give it up. A line in the hint bar today; the one-token menu will show it as a prompt arriving while it is closed.
+  const waits = autoWaits(), offer = !hint && e && mine(e) && (mode === MOVE || mode.kind === 'owed') ? offerOf(S, e) : null;
+  owedUi = null;
+  if (offer) {
+    owedUi = 'offer'; hint = offerWords(offer, { armed: mode.kind === 'owed', waiting: waits.some((w) => w.id === offer.id) });
+    hl.move = reachOf(S, e, (v) => !aloft(S, e) || heightOf(v.h) === altOf(e));
+  } else if (!hint && mode === MOVE && waits.length) { owedUi = 'wait'; owedWho = waits.map((w) => w.id); hint = waitWords(waits); }
   if (hint && mode.kind === 'spell' && S.entities[selId]) hint += CLS.hint(S.entities[selId], mode.id);
   if (mode.kind === 'spawn') hint = gridWords(`Tap a hex to add a ${MONSTERS[mode.monster].name}`, gridOf(S.map));
   if (mode.kind === 'place') hint = gridWords(`Tap a hex to place ${name(selId)}`, gridOf(S.map));
@@ -655,6 +690,7 @@ function refresh() {
   if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
+  hintWords(offer, waits);
   showPick();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
@@ -879,6 +915,8 @@ R.onTap = ({ hex, id }) => {
     select(tapped.id); return refresh();
   }
   if (e && mine(e) && hex) {
+    // Movement an Opportunity Attack gave is spent only once the Move button was pressed (allowance.js), so that a tap that meant something else does not spend it.
+    if (offerOf(S, e) && mode.kind !== 'owed') return toast(`Press Move up to ${offerOf(S, e).feet} ft first, or Don't move.`);
     // A flyer goes to the tapped hex at its chosen height; if it cannot stop there, say so.
     if (aloft(S, e) && altOf(e) > 0) {
       const spot = [...moveOptions(previewState(S, e), e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
@@ -892,8 +930,10 @@ R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (
 
 // ---------- controls ----------
 $('btn-end').onclick = () => { if (CLS.askCure(S.entities[selId])) return; act({ type: 'endTurn', actor: selId }); };       // Self-Restoration with a choice asks first
-$('hint-cancel').onclick = () => setMode(MOVE);
+$('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
 $('hint-go').onclick = () => {
+  if (owedUi === 'offer') return setMode(OWED);
+  if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));      // the DM gives it up for them; the engine lets the DM
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
   else if (SPELLS[mode.id].area) {
     const sp = SPELLS[mode.id], me = S.entities[selId];
