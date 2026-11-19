@@ -285,7 +285,7 @@ export const handlers = {
     const wants = act.choice, mine = [...(act.modes ? act.modes.flatMap((m) => m?.effects ?? []) : act.effects ?? [])];
     let chosenHere = null;
     if (wants !== undefined) {
-      (wants && typeof wants === 'object' && ['skill', 'tool'].includes(wants.of) && (wants.from === undefined || (Array.isArray(wants.from) && wants.from.length > 1)) && !act.form && !act.gain && !act.pool && (Array.isArray(act.effects) || Array.isArray(act.modes)))
+      (wants && typeof wants === 'object' && ['skill', 'tool'].includes(wants.of) && (wants.from === undefined ? wants.of === 'skill' : Array.isArray(wants.from) && wants.from.length > 1) && !act.form && !act.gain && !act.pool && !act.renew && !act.zone && (Array.isArray(act.effects) || Array.isArray(act.modes)))
         || fail(`${f.name} cannot be used: its data for the choice made when it is used is wrong (a skill or a tool, on an action with plain steps). The DM can apply it.`);
       if (a.choice !== undefined) {
         const what = wants.of === 'skill' ? 'skill' : 'tool', names = wants.from ?? (wants.of === 'skill' ? Object.keys(SKILLS) : null);
@@ -300,7 +300,17 @@ export const handlers = {
       walkSteps(mine, (st) => { if (st?.modifier?.scope?.skill === 'chosen' || st?.modifier?.scope?.tool === 'chosen') lost = true; });
       !lost || fail(`${f.name} cannot be used: a step takes a chosen skill or tool, but its action makes no choice. The DM can apply it.`);
     }
-    const byHand = (act.modes && !mode) || act.form || (wants !== undefined && chosenHere === null) ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
+    // A proficiency lent for a time is the holder's: an action aimed at another creature that lends one is not played (the gate says so; data that skipped it is refused here).
+    let lendsHere = false;
+    walkSteps(mine, (st) => { if (st?.modifier?.op === 'proficient') lendsHere = true; });
+    if (lendsHere && act.target?.self !== true) fail(`${f.name} cannot be used: it lends proficiency to a creature other than its holder, which the engine does not do. The DM can apply it.`);
+    // What the DM is handed says what is missing: no mode named, or no skill or tool sent. With no skill or tool sent, the use is spent and no effect is started (it would hold nothing).
+    const noMode = !!act.modes && !mode, noPick = wants !== undefined && chosenHere === null;
+    const forDm = noPick && !noMode
+      ? `${f.name}: ask which ${wants.of}${Array.isArray(wants.from) ? ` (${wants.from.join(', ')})` : ''} it is for, then ${lendsHere ? 'apply proficiency in it' : `apply what ${f.name} does with it`}${act.duration && act.duration !== 'instant' ? ` for ${act.duration}` : ''}. (The use is spent; no ${wants.of} was sent, so the DM applies it.)`
+      : noMode && wants !== undefined ? `${f.name}: ${f.text} (No mode was named, so the DM applies it${noPick ? `; ask which ${wants.of} too` : ''}.)`
+      : `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)`;
+    const byHand = noMode || act.form || noPick ? [{ manual: forDm }] : null;
     // `near` (addition G of docs/specs/homebrew-subclasses.md), on the action's target or on the mode's: a second creature within that many feet of the first target takes the
     // damage steps the action begins with, the roll shared. It is named as a second id in `targets` (`target` alone is the first creature only), so the creature ids a player
     // sends are checked as they always are (engine.js, CREATURE_FIELDS). The first creature is the action's target as ever: `aimAction` is asked about it alone.
@@ -435,7 +445,7 @@ export const handlers = {
     }
     if (!steps.length) return ev.push({ type: 'std', id: e.id, action: f.name });     // nothing more (Patient Defense below level 10)
     let fx = null;
-    if (act.duration && act.duration !== 'instant') {
+    if (act.duration && act.duration !== 'instant' && !(byHand && wants !== undefined)) {
       fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });
       // A zone's effect also ends when its holder dies or drops to 0 Hit Points or falls Unconscious (`fragile`: durations.js), whatever else the action says:
       // a zone that follows a creature that is gone must not wait to come back with it. Incapacitated ends it only where the action says so.

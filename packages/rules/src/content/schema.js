@@ -133,6 +133,9 @@ function lintModifier(m, say, rolledOk = false) {      // `rolledOk`: the modifi
     else {
       if (sc.tool !== undefined && !((typeof sc.tool === 'string' && sc.tool.length <= 40 && ID.test(sc.tool)) || sc.tool === 'chosen')) say('`scope.tool` is a tool id in kebab-case, such as thieves-tools');
       if (sc.tool !== undefined && m.on !== 'check') say('`scope.tool` is for checks');
+      // Nothing fills a chosen tool in but a feature's action that makes the choice (`choice: { of: 'tool', from }`, which `lintActionChoice` holds to it): not a spell, a monster, a feat's grant or an aura.
+      if (sc.tool === 'chosen' && !rolledOk) say('`scope.tool: "chosen"` is for a modifier step of a subclass feature\'s action that has a `choice` of a tool: nothing else fills it in');
+      if (sc.skill !== undefined && sc.tool !== undefined) say('`scope` names a skill or a tool, not both');
       if (sc.condition !== undefined && !(CONDITIONS.includes(sc.condition) && (m.on === 'save' || m.on.startsWith('save.')))) say('`scope.condition` names a condition, on a save');
       if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
       if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
@@ -1134,6 +1137,7 @@ function lintActionChoice(a, cls, say) {
     if (st?.modifier?.op === 'proficient') lends = true;
   });
   if (lends && (!a.duration || a.duration === 'instant')) say('an action with a `proficient` step lends proficiency for a time, so it needs a duration that is not `instant`');
+  if (lends && !(a.target && a.target.self === true)) say('an action with a `proficient` step is aimed at its holder (`target: { self: true }`): the skill or tool picked is the holder\'s, and lending proficiency to another creature is not said');
   const c = a?.choice;
   if (c === undefined) {
     if (chosenSkill || chosenTool) say(`a step uses the chosen ${chosenSkill ? 'skill' : 'tool'}, but the action has no \`choice: { of: "${chosenSkill ? 'skill' : 'tool'}" }\``);
@@ -1141,6 +1145,8 @@ function lintActionChoice(a, cls, say) {
   }
   if (cls === FEAT_CLASS) say('a feat or an item cannot ask its holder to choose a skill or tool when it is used: only a feature of a subclass can');
   if (!c || typeof c !== 'object' || Array.isArray(c) || Object.keys(c).some((k) => !['of', 'from'].includes(k)) || !['skill', 'tool'].includes(c.of)) return say('an action\'s `choice` is { of: "skill" or "tool", from? }');
+  if (c.of === 'tool' && c.from === undefined) say('an action\'s `choice` of a tool needs `from`, the tool ids it offers: the engine has no list of tools to take any from');
+  if (a.renew !== undefined || a.zone !== undefined) say(`an action with a \`choice\` cannot also have \`${a.renew !== undefined ? 'renew' : 'zone'}\`: ${a.renew !== undefined ? 'a use that extends the effect it made has no new choice to take' : 'the zone runs the action\'s steps later, on each creature that enters, and not on the holder\'s pick'}`);
   const fine = c.of === 'skill' ? (x) => Object.hasOwn(SKILLS, x) : (x) => typeof x === 'string' && x.length <= 40 && ID.test(x);
   if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && new Set(c.from).size === c.from.length && c.from.every(fine))) say(`an action's \`choice.from\` lists two or more different ${c.of === 'skill' ? 'skills' : 'tool ids in kebab-case, such as thieves-tools'}`);
   if (c.of === 'skill' ? !chosenSkill : !chosenTool) say(`an action's \`choice\` of a ${c.of} that no step uses (a modifier with \`scope: { ${c.of}: "chosen" }\` takes it)`);

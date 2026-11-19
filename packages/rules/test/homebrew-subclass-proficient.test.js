@@ -158,6 +158,45 @@ test("where it may not be: a feat, an item, a spell, a monster, an always-on gra
   assert.equal(problems(sub("domain-y", "Domain of Y", "cleric", [feature("y-pick", 3, undefined, { tier: "assist", options: [opt("y-one"), opt("y-two")] })])), "");
 });
 
+test("a chosen tool is for a subclass feature's action that makes the choice: a spell, a feat's grant, a monster's trait and an aura are refused", () => {
+  const SENT = /`scope.tool: "chosen"` is for a modifier step of a subclass feature's action that has a `choice` of a tool: nothing else fills it in/;
+  const m = { on: "check", op: "add", value: 1, scope: { tool: "chosen" } };
+  const spell = { id: hb("a-spell"), name: "A Spell", source: SRC, level: 1, school: "divination", classes: ["cleric"], time: "action", range: "self", components: ["v"], duration: "1 hour", concentration: false, target: { self: true }, effects: [{ modifier: m }], tier: "auto", checked: false, text: "t" };
+  assert.match((loadPack(doc({ spells: [spell] })).problems ?? []).join("\n"), SENT);
+  const grants = { modifiers: [m] };
+  const feat = { id: hb("a-feat"), name: "A Feat", category: "general", tier: "assist", source: SRC, checked: false, text: "t", grants };
+  assert.match((loadPack(doc({ feats: [feat] })).problems ?? []).join("\n"), SENT);
+  assert.match((loadPack(doc({ feats: [{ ...feat, id: hb("b-feat"), grants: { aura: { range: 10, modifiers: [m] } } }] })).problems ?? []).join("\n"), SENT);
+  const mon = { id: hb("a-monster"), name: "A Monster", source: SRC, size: "medium", type: "humanoid", cr: 1, xp: 200, pb: 2, ac: 12, hp: 20, speed: { walk: 30 }, senses: {}, abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+    traits: [{ id: "t", name: "T", text: "t", modifiers: [m] }], actions: [], tier: "auto", checked: false, text: "t" };
+  assert.match((loadPack(doc({ monsters: [mon] })).problems ?? []).join("\n"), SENT);
+  assert.match(one(grants), SENT, "a subclass's always-on grant");
+  assert.match(one({ aura: { range: 10, modifiers: [m] } }), SENT, "a subclass's aura");
+  // a feat's action step too (rolledOk is false for a feat)
+  assert.match((loadPack(doc({ feats: [{ ...feat, id: hb("c-feat"), grants: { action: { time: "action", target: { self: true }, duration: "1 hour", effects: [{ modifier: m }] } } }] })).problems ?? []).join("\n"), SENT);
+  // where it belongs: a subclass feature's action with the choice
+  assert.equal(one(act([{ modifier: m }], { choice: { of: "tool", from: ["thieves-tools", "herbalism-kit"] } })), "");
+  // a fixed tool is not a "chosen" one: anywhere a tool scope may be
+  assert.equal((loadPack(doc({ feats: [{ ...feat, id: hb("d-feat"), grants: { modifiers: [{ ...m, scope: { tool: "thieves-tools" } }] } }] })).problems ?? []).join("\n"), "");
+});
+
+test("a choice of a tool names the tools it offers, a scope is a skill or a tool and not both, and a choice cannot go with `renew` or `zone`; a proficiency is lent to the holder only", () => {
+  const c = (choice, steps = [lend({ tool: "chosen" })], more = {}) => one(act(steps, { choice, ...more }));
+  assert.match(c({ of: "tool" }), /an action's `choice` of a tool needs `from`, the tool ids it offers: the engine has no list of tools to take any from/);
+  assert.equal(c({ of: "tool", from: ["thieves-tools", "herbalism-kit"] }), "");
+  assert.equal(c({ of: "skill" }, [lend({ skill: "chosen" })]), "", "a skill needs no list: the engine has the skills");
+  // both
+  assert.match(one(act([{ modifier: { on: "check", op: "add", value: 1, scope: { skill: "arcana", tool: "thieves-tools" } } }])), /`scope` names a skill or a tool, not both/);
+  assert.match(one(act([lend({ skill: "arcana", tool: "thieves-tools" })])), /`scope` names a skill or a tool, not both/);
+  // renew, zone
+  assert.match(c({ of: "skill" }, [lend({ skill: "chosen" })], { renew: true }), /an action with a `choice` cannot also have `renew`/);
+  assert.match(c({ of: "skill" }, [lend({ skill: "chosen" })], { zone: { on: ["enter"] }, target: { area: { shape: "emanation", size: 10 } } }), /an action with a `choice` cannot also have `zone`/);
+  // the holder only
+  assert.match(one(act([lend({ skill: "arcana" })], { target: { creature: { range: [30, 30] } } })), /an action with a `proficient` step is aimed at its holder \(`target: { self: true }`\)/);
+  assert.match(one(act([lend({ skill: "chosen" })], { choice: { of: "skill" }, target: { creature: { range: [30, 30] } } })), /is aimed at its holder/);
+  assert.match(one({ action: { time: "action", duration: "1 hour", target: { area: { shape: "sphere", size: 10, range: 30 } }, effects: [lend({ skill: "arcana" })] } }), /is aimed at its holder/);
+});
+
 test("the gate says why for each refusal of a choice", () => {
   const c = (choice, steps = [lend({ skill: "chosen" })], more = {}) => one(act(steps, { choice, ...more }));
   assert.equal(c({ of: "skill" }), "");
@@ -169,10 +208,10 @@ test("the gate says why for each refusal of a choice", () => {
   assert.match(c({ of: "skill", from: ["arcana", "arcana"] }), /`choice.from` lists two or more different skills/);
   assert.match(c({ of: "skill", from: ["arcana", "lore"] }), /`choice.from` lists two or more different skills/);
   assert.match(c({ of: "tool", from: ["thieves-tools", "Herbalism Kit"] }, [lend({ tool: "chosen" })]), /`choice.from` lists two or more different tool ids in kebab-case, such as thieves-tools/);
-  assert.match(c({ of: "tool" }), /a step uses the chosen skill, but the action's choice is of a tool/);
+  assert.match(c({ of: "tool", from: ["thieves-tools", "herbalism-kit"] }), /a step uses the chosen skill, but the action's choice is of a tool/);
   assert.match(c({ of: "skill" }, [lend({ tool: "chosen" })]), /a step uses the chosen tool, but the action's choice is of a skill/);
   assert.match(c({ of: "skill" }, [lend({ skill: "arcana" })]), /`choice` of a skill that no step uses/);
-  assert.match(c({ of: "tool" }, [lend({ skill: "arcana" })]), /`choice` of a tool that no step uses/);
+  assert.match(c({ of: "tool", from: ["thieves-tools", "herbalism-kit"] }, [lend({ skill: "arcana" })]), /`choice` of a tool that no step uses/);
   assert.match(one(act([lend({ skill: "chosen" })])), /a step uses the chosen skill, but the action has no `choice: { of: "skill" }`/);
   assert.match(one(act([lend({ tool: "chosen" })])), /a step uses the chosen tool, but the action has no `choice: { of: "tool" }`/);
   assert.match(c({ of: "skill" }, undefined, { time: "reaction" }), /an action with a `choice` needs plain `effects` or `modes`/);
@@ -407,6 +446,15 @@ test("a refused use changes nothing: no use, no action, no effect, no event, wha
     for (const bad of [{ of: "ability" }, { of: "skill", from: ["arcana"] }, "skill", null]) { feat(e, ID("quiet-reading")).action = { ...original, choice: bad }; snap = json(s); refused(use(s, "quiet-reading", { choice: "arcana" }), /cannot be used: its data for the choice made when it is used is wrong/); }
     feat(e, ID("quiet-reading")).action = { ...original, form: { types: ["beast"], maxCr: 1, fly: 0, hours: 1 } }; snap = json(s);
     refused(use(s, "quiet-reading", { choice: "arcana" }), /./);
+    // a tool with no list, a renewing action, a zone, and a proficiency for another creature, all from data that skipped the gate
+    const shelf = structuredClone(feat(e, ID("quiet-shelf")).action);
+    feat(e, ID("quiet-shelf")).action = { ...shelf, choice: { of: "tool" } }; snap = json(s);
+    refused(use(s, "quiet-shelf", { choice: "thieves-tools" }), /cannot be used: its data for the choice made when it is used is wrong/);
+    for (const extra of [{ renew: true }, { zone: { on: ["enter"] } }]) { feat(e, ID("quiet-reading")).action = { ...original, ...extra }; snap = json(s); refused(use(s, "quiet-reading", { choice: "arcana" }), /cannot be used: its data for the choice made when it is used is wrong/); }
+    feat(e, ID("quiet-reading")).action = { ...original, target: { creature: { range: [30, 30] } } }; snap = json(s);
+    refused(use(s, "quiet-reading", { choice: "arcana", target: "hero" }), /cannot be used: it lends proficiency to a creature other than its holder, which the engine does not do\. The DM can apply it\./);
+    feat(e, ID("quiet-shelf")).action = shelf; feat(e, ID("quiet-reading")).action = original;
+    snap = json(s);
     const { choice, ...bare } = original;
     feat(e, ID("quiet-reading")).action = bare; snap = json(s);
     refused(use(s, "quiet-reading"), /a step takes a chosen skill or tool, but its action makes no choice\. The DM can apply it\./);
@@ -423,10 +471,31 @@ test("no choice sent: as with no mode, the use is spent and the DM is handed the
     assert.equal(s.entities.hero.uses["channel-divinity"], 1, "the price is paid");
     const manual = used.events.find((x) => x.type === "manual");
     assert.ok(manual, "the DM is told");
-    assert.match(manual.text, /No choice was sent, so the DM applies it\./);
+    assert.equal(manual.text, "Quiet reading: ask which skill it is for, then apply proficiency in it for 10 minutes. (The use is spent; no skill was sent, so the DM applies it.)");
     assert.equal(check(s, "arcana").bonus, 1, "nothing was lent");
-    // the players are not sent a manual event meant for the DM's table? they are the holder's own: as every feature with a mode and no mode named
-    assert.equal(used.events.some((x) => x.type === "effectStart" && x.name === "Quiet reading"), true);
+    assert.equal(used.events.some((x) => x.type === "effectStart"), false, "no effect is started: it would hold nothing");
+    assert.equal(effectsOf(s).length, 0);
+    // a tool from a list says which; a fixed duration is the action's own
+    const t = ok(use(s, "quiet-shelf")).events.find((x) => x.type === "manual");
+    assert.equal(t.text, "Quiet shelf: ask which tool (thieves-tools, herbalism-kit) it is for, then apply proficiency in it for 10 minutes. (The use is spent; no tool was sent, so the DM applies it.)");
+    assert.equal(effectsOf(s).length, 0);
+    assert.equal(s.entities.hero.uses[ID("quiet-shelf")], 1);
+  });
+});
+
+test("a moded action with a choice: no mode named is said so, and never \"No choice was sent\"; a mode named with no choice is the choice that is missing", () => {
+  using(ON, () => {
+    const s = field();
+    const a = ok(use(s, "quiet-margin", { choice: "arcana" })).events.find((x) => x.type === "manual");
+    assert.match(a.text, /No mode was named, so the DM applies it\./);
+    assert.doesNotMatch(a.text, /No choice was sent/);
+    const b = ok(use(s, "quiet-margin")).events.find((x) => x.type === "manual");
+    assert.match(b.text, /No mode was named, so the DM applies it; ask which skill too\./);
+    assert.doesNotMatch(b.text, /No choice was sent/);
+    const c = ok(use(s, "quiet-margin", { mode: "quick" })).events.find((x) => x.type === "manual");
+    assert.match(c.text, /^Quiet margin: ask which skill it is for, then apply proficiency in it for 10 minutes\./);
+    assert.equal(effectsOf(s).length, 0, "none of the three started an effect");
+    assert.equal(check(s, "arcana").bonus, 1);
   });
 });
 
