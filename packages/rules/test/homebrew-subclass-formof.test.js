@@ -131,6 +131,23 @@ test("the gate refuses a formOf that is not whole, each with a sentence", () => 
   assert.match(problems(circle("c-x", "Circle of X", [feature("a-shape", 3, { formOf: { of: "wild-shape", cost: { resource: "wild-shape" } } }), feature("b-shape", 4, { formOf: { of: "wild-shape", cost: { resource: "wild-shape", n: 2 } } })])),
     /gives Wild Shape a second price: a subclass has one price for its forms/);
   assert.equal(problems(circle("c-x", "Circle of X", [feature("a-shape", 3, { formOf: { of: "wild-shape", maxCr: 2 } }), feature("b-shape", 4, { formOf: { of: "wild-shape", tempHp: 3 } })])), "", "two grants, one price at most");
+  // the pool the price names comes in by the level of the feature that gives the price, and holds the uses the price asks
+  const pooled = (poolLevel, formLevel, n, max = 2) => problems(circle("c-x", "Circle of X", [feature("x-pool", poolLevel, undefined, { tier: "manual", uses: { max, recharge: "long" } }),
+    feature("x-shape", formLevel, { formOf: { of: "wild-shape", types: ["elemental"], cost: { resource: hb("x-pool"), ...(n ? { n } : {}) } } })]));
+  assert.equal(pooled(3, 3), "", "the same level is fine");
+  assert.equal(pooled(3, 5), "", "a pool that comes first is fine");
+  assert.match(pooled(5, 3), /feature hb-ember-folk-x-shape: formOf prices the forms in X pool, which the Druid gains at level 5, after this feature's level 3: a character would have a price for a pool it lacks/);
+  assert.equal(pooled(3, 3, 2), ""); assert.match(pooled(3, 3, 3), /formOf prices the forms at 3 uses of X pool, which has 2: no form could ever be taken/);
+  assert.equal(pooled(3, 3, 3, 3), "");
+  assert.equal(one({ of: "wild-shape", cost: { resource: "wild-shape", n: 2 } }), "", "a pool whose maximum is the class's own table is not held to a number");
+  // each number of the Temporary Hit Points is at least 1
+  assert.match(one({ of: "wild-shape", tempHp: 0 }), /formOf.tempHp: 0 is not allowed; a whole number from 1 to 100/);
+  assert.match(one({ of: "wild-shape", tempHp: { perLevel: 0 } }), /tempHp.perLevel: 0 is not allowed; a whole number from 1 to 10/);
+  assert.match(one({ of: "wild-shape", tempHp: { byLevel: { 3: 2, 10: 0 } } }), /formOf.tempHp is at least 1 in every number it gives/);
+  assert.match(one({ of: "wild-shape", tempHp: { byLevel: { 3: -1 } } }), /formOf.tempHp is at least 1 in every number it gives/);
+  assert.equal(one({ of: "wild-shape", tempHp: { byLevel: { 3: 1, 10: 4 } } }), "");
+  // the lint outside strict mode says the same of a number below 1
+  assert.ok(lintEntry("subclasses", circle("c-y", "Circle of Y", [feature("y-shape", 3, { formOf: { of: "wild-shape", tempHp: { perLevel: 0 } } })]), { pack: P, srd: CONTENT, strict: false }).some((m) => /at least 1/.test(m)));
   // a subclass feature may be below level 3 only as the gate already says
   assert.match(one({ of: "wild-shape", maxCr: 2 }, 2), /a whole number from 3 to 20/);
 });
@@ -253,7 +270,7 @@ test("a price in another pool: an elemental form spends that pool and not Wild S
     // The pool is empty: refused with its name and the price, nothing changes, and Wild Shape's uses are not the way round it.
     leave(s);
     const before = json(s);
-    no(shape(s, "azer-sentinel"), /Ven has 0 uses of Ember store left; the form of a Azer Sentinel costs 1\./);
+    no(shape(s, "azer-sentinel"), /Ven has 0 uses of Ember store left; the form of an Azer Sentinel costs 1\./);
     assert.equal(json(s), before);
     ok(shape(s, "wolf")); assert.equal(e.uses["wild-shape"], 1, "a beast still costs Wild Shape's");
   });
@@ -266,7 +283,7 @@ test("a price of two uses of Wild Shape itself: an elemental form costs two, a b
     ok(shape(s, "azer-sentinel")); assert.equal(e.uses["wild-shape"], 1);
     leave(s);
     const before = json(s);
-    no(shape(s, "azer-sentinel"), /Ven has 1 use of Wild Shape left; the form of a Azer Sentinel costs 2\./);
+    no(shape(s, "azer-sentinel"), /Ven has 1 use of Wild Shape left; the form of an Azer Sentinel costs 2\./);
     assert.equal(json(s), before);
     ok(shape(s, "wolf")); assert.equal(e.uses["wild-shape"], 0);
     leave(s);
@@ -324,26 +341,39 @@ test("the overlay removed: forms are the class's own again; the overlay back: th
 });
 
 // ---------- what players are sent ----------
-test("what a player is sent about another's form is what it was: the event and an enemy's form are the same with a circle as without", () => {
+test("what a player is sent about another's form is what it was: the event and an enemy's form are the same with a circle as without, for a beast and for the circle's own elemental", () => {
   using(ON, () => {
-    const seen = (sheet) => {
+    const seen = (sheet, into) => {
       const s = field(sheet);
-      const r = ok(shape(s, "wolf"));
+      s.entities.hero.uses[EMBERS] ??= 1;
+      const r = ok(shape(s, into));
       const ev = viewEvents(r.events, s, KIM).find((x) => x.type === "form");
       // An enemy in a form shows only as the creature it has become (seenRecord).
       s.entities.foe = { ...structuredClone(s.entities.hero), id: "foe", side: "foe", kind: "npc", owner: null, pos: { q: -1, r: 1, z: 0 } };
       const foe = view(s, PAT).entities.foe;
-      return { ev, foe, party: view(s, KIM).entities.hero.form };
+      return { s, ev, foe, party: view(s, KIM).entities.hero };
     };
-    const mine = seen(druid(6, hb("circle-of-the-ember"))), theirs = seen(land(6));
+    // A wolf: the same with the circle as with the SRD circle.
+    const mine = seen(druid(6, hb("circle-of-the-ember")), "wolf"), theirs = seen(land(6), "wolf");
     assert.deepEqual(mine.ev, { type: "form", id: "hero", form: "wolf", name: "Wolf" });
     assert.deepEqual(mine.ev, theirs.ev);
     assert.equal(mine.foe?.tpl, "wolf"); assert.equal(mine.foe?.name, "Wolf");
     assert.equal(json(Object.keys(mine.foe).sort()), json(Object.keys(theirs.foe).sort()), "the same fields of an enemy in a form");
-    assert.equal(json(mine.foe.feats ?? null), json(theirs.foe.feats ?? null), "an enemy's features are not sent either way");
-    assert.deepEqual(Object.keys(mine.party).sort(), Object.keys(theirs.party).sort());
-    assert.equal(json(mine.foe).includes("azer"), false);
-    assert.equal(json(mine.foe).includes("cost"), false, "no price in what an enemy shows");
+    assert.equal(json(mine.foe), json(theirs.foe), "an enemy in a form is the same to a player, circle or not");
+    // The circle's own elemental, which the SRD circle cannot take, on an enemy with a price: nothing of the circle reaches a player.
+    for (const circleId of ["circle-of-the-ember", "circle-of-the-store", "circle-of-the-two"]) {
+      const el = seen(druid(6, hb(circleId)), "azer-sentinel");
+      assert.deepEqual(el.ev, { type: "form", id: "hero", form: "azer-sentinel", name: "Azer Sentinel" }, circleId);
+      assert.equal(el.foe?.tpl, "azer-sentinel"); assert.equal(el.foe?.name, "Azer Sentinel");
+      const sent = json(el.foe);
+      for (const word of ["feats", "uses", "cost", "formOf", "wild-shape", "maxCr", "sheet", "hb-ember-folk", "Circle"]) assert.equal(sent.includes(`"${word}"`) || sent.includes(word), false, `${circleId}: an enemy shows no "${word}"`);
+      assert.deepEqual(Object.keys(el.foe).sort(), Object.keys(mine.foe).sort(), "the same fields as the wolf's");
+    }
+    // A party member's own record is the party's: it carries the merged form, and the price where there is one.
+    const own = seen(druid(6, hb("circle-of-the-store")), "azer-sentinel").party;
+    assert.equal(own.form.block, "azer-sentinel");
+    assert.deepEqual(own.feats.find((f) => f.id === "wild-shape").action.form, { types: ["beast", "elemental"], maxCr: 2, fly: 0, hours: 3, tempHp: 6, cost: { resource: EMBERS, n: 1, types: ["elemental"] } });
+    assert.deepEqual(seen(druid(6, hb("circle-of-the-ember")), "wolf").party.feats.find((f) => f.id === "wild-shape").action.form, { types: ["beast", "elemental"], maxCr: 2, fly: 0, hours: 3, tempHp: 8 });
   });
 });
 

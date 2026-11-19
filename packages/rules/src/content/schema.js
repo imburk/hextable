@@ -1268,6 +1268,9 @@ export function formOfProblem(x, cls) {
     let why = null;
     lintAmount(x.tempHp, cls, (m) => { why ??= m; }, 'formOf.tempHp');
     if (why) return why;
+    // More Temporary Hit Points: every number it states (a number, a perLevel, a byLevel's values) is at least 1.
+    const t = x.tempHp, low = typeof t === 'number' ? t < 1 : t && typeof t === 'object' && (t.perLevel < 1 || (t.byLevel && Object.values(t.byLevel).some((v) => v < 1)));
+    if (low) return 'formOf.tempHp is at least 1 in every number it gives (a number, a perLevel, a value of byLevel)';
   }
   if (x.cost !== undefined && !(x.cost && typeof x.cost === 'object' && !Array.isArray(x.cost) && Object.keys(x.cost).every((k) => ['resource', 'n'].includes(k)) && ID.test(x.cost.resource ?? '')
     && (x.cost.n === undefined || (isInt(x.cost.n) && x.cost.n > 0 && x.cost.n <= 10)))) return 'formOf.cost is { resource, n? }, n from 1 to 10';
@@ -1546,7 +1549,16 @@ function lintSubclass(e, say, ctx = {}) {
     const base = own.find((x) => x?.id === fo.of), F = base?.grants?.action?.form;
     if (!F) { say(`feature ${f.id}: formOf names "${fo.of}", which does not take a form (a form is what Wild Shape gives)`); continue; }
     if (Array.isArray(fo.types)) for (const t of fo.types) if (Array.isArray(F.types) && F.types.includes(t)) say(`feature ${f.id}: formOf.types lists "${t}", a type ${base.name} already takes`);
-    if (fo.cost !== undefined) { if (priced.has(fo.of)) say(`feature ${f.id}: formOf gives ${base.name} a second price: a subclass has one price for its forms`); priced.add(fo.of); }
+    if (fo.cost !== undefined) {
+      if (priced.has(fo.of)) say(`feature ${f.id}: formOf gives ${base.name} a second price: a subclass has one price for its forms`);
+      priced.add(fo.of);
+      // The pool the price names is one the character has by the level this feature gives the price, and holds as many uses as the price asks (where its maximum is a plain number).
+      const owner = own.find((x) => x?.id === fo.cost.resource || (Array.isArray(x?.options) && x.options.some((o) => o?.id === fo.cost.resource)));
+      const pool = owner?.id === fo.cost.resource ? owner : owner?.options?.find((o) => o?.id === fo.cost.resource), name = owner?.name ?? fo.cost.resource;
+      if (owner && isInt(owner.level) && isInt(f.level) && owner.level > f.level) say(`feature ${f.id}: formOf prices the forms in ${name}, which the ${cls.name} gains at level ${owner.level}, after this feature's level ${f.level}: a character would have a price for a pool it lacks`);
+      const max = pool?.uses?.max;
+      if (isInt(max) && isInt(fo.cost.n) && fo.cost.n > max) say(`feature ${f.id}: formOf prices the forms at ${fo.cost.n} uses of ${name}, which has ${max}: no form could ever be taken`);
+    }
   }
   // Always-prepared spells, by class level (3 to 20): the class must cast, and a spell must be one a caster of that level has slots for.
   const sp = e.spells;

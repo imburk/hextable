@@ -503,7 +503,7 @@ function shapeShift(s, e, f, act, a, ev) {
   const price = F.cost && (!F.cost.types || F.cost.types.includes(m.type)) ? { res: F.cost.resource, n: F.cost.n ?? 1 } : { res: f.id, n: 1 };
   const pool = featOf(e, price.res)?.name ?? price.res;
   (e.uses[price.res] ?? 0) >= price.n || fail(price.res === f.id && price.n === 1 ? `${e.name} has no uses of ${f.name} left.`
-    : `${e.name} has ${e.uses[price.res] ?? 0} use${(e.uses[price.res] ?? 0) === 1 ? '' : 's'} of ${pool} left; the form of a ${m.name} costs ${price.n}.`);
+    : `${e.name} has ${e.uses[price.res] ?? 0} use${(e.uses[price.res] ?? 0) === 1 ? '' : 's'} of ${pool} left; the form of ${/^[aeiou]/i.test(m.name) ? 'an' : 'a'} ${m.name} costs ${price.n}.`);
   if (time && fighting) need(s, e, time);
   // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
   // its way (space.js, `paired`; DEBT W13).

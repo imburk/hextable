@@ -557,11 +557,11 @@ Built to addition J, the owner's questions on their defaults. What was settled i
 - **The price.** `cost: { resource, n? }`, one price a subclass for a feature (a second is refused). `shapeShift` spends `n` uses (1 if left out) of `e.uses[resource]` instead of one use of
   the feature, for a form of a type the grant adds; with no `types` in the grant, for every form. A type the class already takes is the class's price (so "another creature type for
   two uses" leaves the beasts at one). The pool is a feature of the class or the subclass that has uses (the gate's existing cost rule, so `channel-divinity` of another class is
-  refused); naming `wild-shape` itself with `n: 2` is allowed. When the pool has too few: "Ven has 1 use of Wild Shape left; the form of a Azer Sentinel costs 2.", and nothing
+  refused); naming `wild-shape` itself with `n: 2` is allowed. When the pool has too few: "Ven has 1 use of Wild Shape left; the form of an Azer Sentinel costs 2.", and nothing
   changes; all is checked before anything is paid, so a refused form leaves the Bonus Action too. The sentence for the feature's own single use is the one it was.
 - **The gate.** Strict and closed: `of` must name a feature of the class or of the subclass whose action takes a form ("neither a feature of the Druid nor of this subclass" for a
   paladin's circle or a misspelt id; "which does not take a form" for another druid feature); `types` lists creature types, each once, none the feature already takes; `maxCr` is 0 to
-  30 in eighths; `tempHp` is a number or an amount of the class, never dice; the cost's resource has uses; one price. A **feat or an item** that holds the key is refused (`Only a
+  30 in eighths; `tempHp` is a number or an amount of the class, never dice; the cost's resource has uses, comes in at a level no later than the feature that gives the price (else a character would have a price for a pool it lacks), and holds at least `n` uses where its maximum is a plain number; one price; every number of `tempHp` is at least 1. A **feat or an item** that holds the key is refused (`Only a
   subclass's feature can change the form of a class feature`), and `derive` ignores it all the same (only a feature of the same class changes a form).
 - **The reading.** "Changes the form of the feature "wild-shape": it lets its forms be of a Challenge Rating that grows with the class level (1 from level 3, 2 from level 6), where
   that is higher than they already may be, adds elemental creatures to the forms it may take and gives ... more Temporary Hit Points on taking a form." and a line for the price. The golden
