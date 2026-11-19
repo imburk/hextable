@@ -8,7 +8,7 @@ import { derive, validate } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { CONTENT } from "../src/content/index.js";
 import { loadPack, overlayOf, using } from "../src/content/registry.js";
-import { lintEntry, lintRecord, rolledIn } from "../src/content/schema.js";
+import { lintEntry, lintRecord, rolledIn, rolledProblem } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { forPlayers } from "../src/content/packs.js";
 import { modifiers, speedOf } from "../src/modifiers.js";
@@ -398,4 +398,147 @@ test("replay: the same actions from the same seed give the same state and the sa
   const a = run(), b = run();
   assert.deepEqual(a, b);
   assert.ok(a.some((e) => e.type === "damage"));
+});
+
+// ---------- the review's fix round ----------
+test("the gate refuses `{ rolled: true }` under an attack step (a Critical Hit doubles the dice), and the engine refuses the same from data that skipped the gate", () => {
+  const RO = { modifier: { on: "ac", op: "add", value: { rolled: true } }, to: "caster", ends: till };
+  const atk = (...onHit) => effects({ attack: "melee", kind: "weapon", bonus: 5, onHit });
+  assert.match(one(atk({ damage: "1d8", type: "slashing" }, RO)), /cannot be under an `attack` step: a Critical Hit doubles the dice it takes the number from/);
+  assert.match(one(effects({ attack: "melee", kind: "weapon", bonus: 5, onHit: [{ save: "dex", dc: 12, onFail: [{ damage: "1d8", type: "slashing" }, RO] }] })), /cannot be under an `attack` step/, "deeper in a branch");
+  assert.equal(one(atk({ damage: "1d8", type: "slashing" })), "", "the attack step alone is as it was");
+  assert.equal(one(effects({ damage: "1d8", type: "slashing" }, RO)), "", "beside an attack step and not under it is fine");
+  const bad = [{ attack: "melee", kind: "weapon", bonus: 5, onHit: [{ damage: "1d8", type: "slashing" }, RO] }];
+  assert.match(rolledProblem(bad), /cannot be under an `attack` step/);
+  using(ON, () => {
+    const s = hitFight();
+    const f = s.entities.hero.feats.find((x) => x.id === ID("whirl-guard"));
+    f.action.effects = bad;
+    const before = json(s);
+    no(use(s, "whirl-guard"), /its data is wrong \(a modifier whose value is `\{ rolled: true \}` cannot be under an `attack` step/);
+    assert.equal(json(s), before, "nothing was paid");
+  });
+});
+
+test("`after` with `pool` or `gain`: the gate refuses it, and the engine refuses with a sentence where it used to throw, for 'hit' and 'weaponHit'", () => {
+  for (const after of ["hit", "weaponHit"]) {
+    assert.match(one(acts({ after, effects: undefined, pool: true })), /an action with `after` follows a hit on the creature it is aimed at, and cannot also have `pool` or `gain`/, `${after} pool`);
+    assert.match(one(acts({ after, effects: undefined, gain: { action: 1 } })), /cannot also have `pool` or `gain`/, `${after} gain`);
+  }
+  using(ON, () => {
+    for (const [feature, after] of [["whirl-any", "hit"], ["whirl-guard", "weaponHit"]]) for (const extra of [{ pool: true }, { gain: { action: 1 } }]) {
+      const s = hitFight();
+      const f = s.entities.hero.feats.find((x) => x.id === ID(feature));
+      assert.equal(f.action.after, after);
+      Object.assign(f.action, extra);
+      const before = json(s);
+      const r = no(use(s, feature, { amount: 1 }), /follows a hit on the creature it is aimed at, but its data also gives (a pool of healing|an extra action), which has no creature to have hit/);
+      assert.doesNotMatch(r.error, /Cannot read|undefined/);
+      assert.equal(json(s), before, `${feature} ${Object.keys(extra)}: nothing changed`);
+    }
+  });
+});
+
+test("the number rolled is held to the range a number written out has: 40, or 120 on a speed", () => {
+  const RO = (on) => ({ modifier: { on, op: "add", value: { rolled: true } }, to: "caster", ends: till });
+  const die = (damage, on) => one(effects({ damage, type: "slashing" }, RO(on)));
+  assert.equal(die("4d10", "ac"), "", "up to 40");
+  assert.match(die("5d10", "ac"), /a modifier on "ac" takes the number 5d10 rolls, up to 50; only a speed may go past 40 \(up to 120\), as for a number written out/);
+  assert.match(die("6d8", "check"), /takes the number 6d8 rolls, up to 48/);
+  assert.equal(die("8d8", "speed"), "", "64 on a speed");
+  assert.equal(die("10d12", "speed"), "", "120 on a speed");
+  assert.match(die("11d12", "speed"), /a modifier on "speed" takes the number 11d12 rolls, up to 132; a speed may go up to 120/);
+  assert.equal(die("1d8", "ac"), "", "the invented college's own die");
+  // a number written out is as it was
+  assert.match(one(effects({ modifier: { on: "ac", op: "add", value: 41 }, to: "caster", ends: till })), /only a speed may go past 40/);
+});
+
+test("`{ rolled: true }` is for one target, and not with a slot that grows the damage", () => {
+  const RO = { modifier: { on: "ac", op: "add", value: { rolled: true } }, to: "caster", ends: till };
+  const many = (target) => one(acts({ target }));
+  assert.equal(many({ creature: { range: [5, 5] } }), "");
+  assert.equal(many({ creature: { range: [5, 5], count: 1 } }), "");
+  assert.match(many({ creature: { range: [5, 5], count: 2 } }), /is for an action with one target: several creatures would each roll their own number \(a second target is addition G\)/);
+  assert.match(one(acts({ after: undefined, target: { area: { shape: "sphere", size: 10, range: 30 } } })), /is for an action with one target/);
+  assert.equal(one({ action: { time: "bonus", target: { self: true }, effects: [{ damage: "1d8", type: "slashing" }, RO], duration: "1 round" } }), "", "the holder itself is one target");
+  const slot = (higher) => one(acts({ cost: { slot: 1, higher } }));
+  assert.match(slot({ damage: "1d8" }), /takes the number of a damage step that a slot would grow/);
+  assert.match(slot({ times: 1 }), /takes the number of a damage step that a slot would grow/);
+  assert.equal(slot({ value: 1 }).includes("a damage step that a slot would grow"), false);
+  // the engine: a record that skipped the gate and reaches two creatures
+  using(ON, () => {
+    const s = hitFight();
+    const other = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 0, r: 1 }, name: "Other" }, DM)).events[0].id;
+    s.encounter.flags[`whit:hero:${other}`] = true;
+    s.entities.hero.feats.find((x) => x.id === ID("whirl-guard")).action.target = { creature: { range: [5, 5], count: 2 } };
+    const before = json(s);
+    no(use(s, "whirl-guard", { targets: [s.gob, other] }), /it reaches 2 creatures, which would each roll their own/);
+    assert.equal(json(s), before);
+  });
+});
+
+// A caster with Fire Bolt, a real cast (a spell attack of the engine's own, not a record put in by the test).
+const WIZ = { name: "Vex", class: "wizard", level: 5, subclass: "evoker", abilities: { str: 8, dex: 14, con: 14, int: 18, wis: 12, cha: 10 }, skills: ["arcana", "history"], weapons: ["dagger"],
+  spells: ["fire-bolt", "ray-of-sickness", "magic-missile", "scorching-ray", "fireball", "ice-storm", "hold-person", "cone-of-cold", "lightning-bolt"] };
+
+test("a real Fire Bolt hits and sets `hit:` and not `whit:`; a weapon Opportunity Attack and a monster's weapon attack set `whit:`", () => {
+  // Fire Bolt, cast through the engine
+  let cast = null;
+  for (let seed = 1; seed < 80 && !cast; seed++) {
+    const s = field(WIZ, { seed, foe: [3, 0] });
+    s.entities.hero.attacks = s.entities.hero.attacks.filter((a) => a.id !== "zap");
+    fight(s); turnOf(s, "hero");
+    const r = ok(apply(s, { type: "cast", actor: "hero", spell: "fire-bolt", target: s.gob }, PAT));
+    if (r.events.some((x) => x.type === "attack" && x.hit)) cast = s;
+  }
+  assert.ok(cast, "a Fire Bolt hit");
+  assert.equal(cast.encounter.flags[`hit:hero:${cast.gob}`], true);
+  assert.equal(cast.encounter.flags[`whit:hero:${cast.gob}`], undefined, "a spell attack is not a weapon hit");
+  // a weapon Opportunity Attack: the goblin walks away from the hero on its own turn
+  let oa = null;
+  for (let seed = 1; seed < 80 && !oa; seed++) {
+    const s = field(bard(), { seed });
+    fight(s); turnOf(s, s.gob);
+    const r = ok(apply(s, { type: "move", actor: s.gob, to: { q: 4, r: 0 } }, DM));
+    if (r.events.some((x) => x.type === "attack" && x.actor === "hero" && x.opportunity && x.hit)) oa = s;
+  }
+  assert.ok(oa, "an Opportunity Attack hit");
+  assert.equal(oa.encounter.flags[`hit:hero:${oa.gob}`], true);
+  assert.equal(oa.encounter.flags[`whit:hero:${oa.gob}`], true, "a weapon Opportunity Attack is a weapon hit");
+  // a monster's stat-block weapon attack on the hero
+  let mon = null;
+  for (let seed = 1; seed < 80 && !mon; seed++) {
+    const s = field(bard(), { seed });
+    Object.assign(s.entities.hero, { ac: 1 });
+    s.entities[s.gob].attacks.find((a) => a.id === "scimitar").bonus = 30;
+    fight(s); turnOf(s, s.gob);
+    const r = ok(apply(s, { type: "attack", actor: s.gob, attack: "scimitar", target: "hero" }, DM));
+    if (r.events.some((x) => x.type === "attack" && x.hit)) mon = s;
+  }
+  assert.ok(mon, "the goblin's scimitar hit");
+  assert.equal(mon.encounter.flags[`whit:${mon.gob}:hero`], true, "a stat-block weapon attack is a weapon hit");
+  assert.equal(mon.encounter.flags[`hit:${mon.gob}:hero`], true);
+});
+
+test("the flags the engine itself makes for the DM's hidden creature are sent to players exactly as `hit:` is, `whit:` too", () => {
+  // The DM has the goblin hidden beside the hero; the hero walks away on its own turn and the goblin's Opportunity Attack hits: the flags are made by the engine, not put in.
+  let made = null;
+  for (let seed = 1; seed < 120 && !made; seed++) {
+    const s = field(bard(), { seed });
+    Object.assign(s.entities.hero, { ac: 1 });
+    s.entities[s.gob].attacks.find((a) => a.id === "scimitar").bonus = 30;
+    s.entities[s.gob].hidden = true;
+    fight(s); turnOf(s, "hero");
+    const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -3, r: 0 } }, PAT));
+    if (r.events.some((x) => x.type === "attack" && x.actor === s.gob && x.opportunity && x.hit)) made = s;
+  }
+  assert.ok(made, "the hidden goblin's Opportunity Attack hit");
+  const s = made, g = s.gob;
+  assert.equal(s.encounter.flags[`hit:${g}:hero`], true); assert.equal(s.encounter.flags[`whit:${g}:hero`], true, "made by the engine, not put in by the test");
+  // An attack gives away where a creature is, so after it the party is told of the goblin (the view's own rule, not this feature's); what is held is that the flags that name it
+  // go to players exactly when the creature does, `whit:` as `hit:` and `attacked:`. (While it is unknown the flags are left out: the hand-made flags of the test above.)
+  const pv = view(s, PAT), seen = Object.keys(pv.encounter.flags), known = !!pv.entities[g];
+  for (const k of [`hit:${g}:hero`, `whit:${g}:hero`, `attacked:${g}`]) assert.equal(seen.includes(k), known, `${k} is sent exactly when the party is told of ${g}`);
+  const dv = Object.keys(view(s, DM).encounter.flags);
+  for (const k of [`hit:${g}:hero`, `whit:${g}:hero`]) assert.ok(dv.includes(k), `the DM keeps ${k}`);
 });

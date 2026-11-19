@@ -261,6 +261,19 @@ export function rolledIn(steps) {
   }
   return null;
 }
+// Under an `attack` step a Critical Hit doubles the dice of its damage, so the number rolled would be two dice: refused (`rolledProblem` below, `lintSteps`).
+const ROLLED_IN_ATTACK = 'a modifier whose value is `{ rolled: true }` cannot be under an `attack` step: a Critical Hit doubles the dice it takes the number from, so it would be two dice, not the one';
+// Every rule about where `{ rolled: true }` sits in a list of steps and its branches, for the engine to check data that skipped the gate (engine/features.js): null or a sentence.
+export function rolledProblem(steps, inAttack = false) {
+  const own = rolledIn(steps);
+  if (own || !Array.isArray(steps)) return own;
+  for (const st of steps) {
+    if (!st || typeof st !== 'object') continue;
+    if (inAttack && isRolled(st.modifier?.value)) return ROLLED_IN_ATTACK;
+    for (const b of BRANCHES) if (Array.isArray(st[b])) { const p = rolledProblem(st[b], inAttack || 'attack' in st); if (p) return p; }
+  }
+  return null;
+}
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   { const p = rolledIn(steps); if (p) say(p); }
@@ -318,6 +331,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     }
     if (kind === 'modifier') {
       lintModifier(step.modifier ?? {}, say, seen.rolledOk === true);
+      if (seen.inAttack && isRolled(step.modifier?.value)) say(ROLLED_IN_ATTACK);
       if (step.to !== undefined && step.to !== 'caster') say('a modifier step\'s `to` is "caster" or left out');
       if (step.modifier?.against !== undefined && step.to !== 'caster') say('`against: "target"` is for a modifier put on the caster (`to: "caster"`)');
     }
@@ -360,7 +374,10 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     // `endConcentration: true`: the creature loses Concentration on whatever it holds (Sleet Storm).
     if (kind === 'endConcentration' && step.endConcentration !== true) say('`endConcentration` is true');
     if (kind === 'remains' && !REMAINS.includes(step.remains)) say(`\`remains\` is one of ${REMAINS.join(', ')}`);
+    const was = seen.inAttack;
+    if (kind === 'attack') seen.inAttack = true;
     for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill', inMonster);
+    seen.inAttack = was;
   }
   return seen;
 }
@@ -1067,6 +1084,8 @@ function lintGrants(g, cls, say) {
     // its uses spent, a spell slot (a Pact Magic slot for a Warlock) restores one (Hurl Through Hell; addition E of docs/specs/homebrew-subclasses.md for any caster).
     // `after: 'weaponHit'` (addition F): the same, after a hit with a weapon (a spell attack and an Unarmed Strike are not one).
     if (a?.after !== undefined && !(['hit', 'weaponHit'].includes(a.after) && a.target?.creature)) say('action after is "hit" or "weaponHit", on a creature');
+    // A feature's `after` is a hit on the creature the action is aimed at: a pool of healing or an extra action (`pool`, `gain`) has no creature to have hit.
+    if (a?.after !== undefined && (a.pool !== undefined || a.gain !== undefined)) say('an action with `after` follows a hit on the creature it is aimed at, and cannot also have `pool` or `gain`: neither has a creature to have hit');
     if (a?.orSlot !== undefined && !(a.orSlot === true)) say('action orSlot is true or left out');
     // `acts`: the feature's action also takes these actions (Patient Defense with a Focus Point: Disengage and Dodge).
     if (a?.acts !== undefined && !(Array.isArray(a.acts) && a.acts.length && allOf(['dash', 'disengage', 'dodge'])(a.acts) && new Set(a.acts).size === a.acts.length && a.target?.self)) say('action acts lists dash, disengage or dodge, on the creature itself');
@@ -1625,6 +1644,33 @@ function lintSubclass(e, say, ctx = {}) {
   }
   for (const id of optionIds) if (ids.has(id)) say(`"${id}" is the id of a feature and of an option: an id names one thing`);
   for (const id of [...ids, ...optionIds]) if (id === e.id) say(`"${id}" is the id of the subclass itself and of one of its features: an id names one thing`);
+  // `{ rolled: true }` takes the number of the damage step before it, so it is held to what a literal number of the same modifier is, at the most the dice can roll
+  // (40, or 120 for a speed), and to one target (several creatures would each roll their own number; a second target is addition G).
+  for (const f of features) {
+    for (const g of [f?.grants, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.grants) : [])]) {
+      const a = g && typeof g === 'object' ? g.action : null;
+      if (!a || typeof a !== 'object') continue;
+      const found = [];
+      const look = (list) => { if (!Array.isArray(list)) return; list.forEach((st, i) => {
+        if (!st || typeof st !== 'object') return;
+        if (isRolled(st.modifier?.value)) found.push([st.modifier, list[i - 1]?.damage]);
+        for (const b of BRANCHES) look(st[b]);
+      }); };
+      look(a.effects); for (const m of Array.isArray(a.modes) ? a.modes : []) look(m?.effects);
+      if (!found.length) continue;
+      const sub = (m) => say(`feature ${typeof f.id === 'string' ? f.id : '(without an id)'}: ${m}`);
+      for (const [m, dice] of found) {
+        // The die is a plain one, or the class's own column ({ column }: the largest die of the class table, at its highest level); anything else the dice check above says.
+        const dice1 = typeof dice === 'string' ? [dice] : dice && typeof dice === 'object' && typeof dice.column === 'string' ? (cls?.table?.[dice.column] ?? []).filter((x) => typeof x === 'string') : [];
+        const mostOf = (t) => { const d = /^(\d+)d(\d+)$/.exec(t); return d ? +d[1] * +d[2] : 0; };
+        const top = dice1.reduce((a, t) => (mostOf(t) > mostOf(a) ? t : a), dice1[0] ?? ''), most = mostOf(top), limit = SPEED_HOOKS.includes(m.on) ? 120 : 40;
+        if (most > limit) sub(`a modifier on "${m.on}" takes the number ${top} rolls, up to ${most}; ${SPEED_HOOKS.includes(m.on) ? 'a speed may go up to 120' : 'only a speed may go past 40 (up to 120)'}, as for a number written out`);
+      }
+      const c = a.target?.creature?.count;
+      if (a.target?.area || (c !== undefined && c !== 1)) sub('a modifier of `{ rolled: true }` is for an action with one target: several creatures would each roll their own number (a second target is addition G)');
+      if (a.cost?.higher && (a.cost.higher.damage !== undefined || a.cost.higher.times !== undefined)) sub('a modifier of `{ rolled: true }` takes the number of a damage step that a slot would grow (`cost.higher` damage or times), so the number could pass what is checked here');
+    }
+  }
   // A number in a modifier may pass 40 only on a speed (a Fly Speed of 60); on any other hook it is held to the 40 a feat's is.
   for (const m of modifiersIn(features)) if (!SPEED_HOOKS.includes(m.on) && Math.abs(m.value) > 40) say(`a modifier on "${m.on}" has the value ${m.value}; only a speed may go past 40 (up to 120)`);
   // What a cost, `with`, `of` or `while` names is a feature of the class or of this subclass (a cost: one with uses).
