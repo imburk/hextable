@@ -1760,7 +1760,7 @@ export const FEAT_TIER_WORDS = {
 };
 // The keys the item linter refuses in an item's `grants` (a class's own: lintItem). A test holds this equal to the linter's refusals.
 export const ITEM_NO_GRANTS = ['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips',
-  'spellLists', 'spells', 'proficiency', 'hp'];
+  'spellLists', 'spells', 'proficiency', 'hp', 'formOf'];
 // Where the engine looks for a grant, apart from what a feature does for a class: features of a class only (derive.js reads them through `classFeatures`, or by the class a feature belongs to,
 // and a feat's or an item's feature belongs to none), so a feat or an item that holds the key changes nothing. A test runs derive to hold this to the engine.
 export const GRANTS_CLASS_ONLY = ['attune', 'spells', 'spellLists', 'cantrips'];
@@ -1992,6 +1992,25 @@ export const GRANT_WORDS = {
     if (isInt(v.upTo)) this.num(`${at}.upTo`, v.upTo, 'uses');
     if (v.heal !== undefined) amountNums(this, v.heal, `${at}.heal`, 'Hit Points');
     this.line(`When the holder rolls Initiative, the feature ${shown(v.regain)} gets back ${isInt(v.upTo) ? `uses up to ${v.upTo}` : 'all its uses'}${v.heal !== undefined ? ` and the holder regains ${amountWord(v.heal)} Hit Points${v.addLevel === true ? ' plus its class level' : ''}` : ''}. ${featureNote(v.regain)}`, 1);
+  },
+  formOf(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { of, maxCr, types, tempHp, cost }.`);
+    this.odd(v, ['of', 'maxCr', 'types', 'tempHp', 'cost'], 'The form grant');
+    const parts = [];
+    if (v.maxCr !== undefined) {
+      const crs = typeof v.maxCr === 'number' ? [[null, v.maxCr]] : isObj(v.maxCr) && isObj(v.maxCr.byLevel) ? Object.entries(v.maxCr.byLevel).filter(([, x]) => typeof x === 'number') : [];
+      for (const [l, x] of crs) this.num(l === null ? `${at}.maxCr` : `${at}.maxCr.byLevel.${l}`, x, 'Challenge Rating');
+      parts.push(typeof v.maxCr === 'number' ? `lets its forms be of Challenge Rating ${crText(v.maxCr)} or lower where that is higher than they already may be`
+        : `lets its forms be of a Challenge Rating that grows with the class level (${list(crs.slice(0, 20).map(([l, x]) => `${crText(x)} from level ${l}`))}), where that is higher than they already may be`);
+    }
+    if (v.types !== undefined) parts.push(`adds ${list((Array.isArray(v.types) ? v.types : []).slice(0, 15).map((t) => (CREATURE_TYPES.includes(t) ? `${t} creatures` : 'a creature type the engine does not know')))} to the forms it may take`);
+    if (v.tempHp !== undefined) { amountNums(this, v.tempHp, `${at}.tempHp`, 'Temporary Hit Points'); parts.push(`gives ${amountWord(v.tempHp)} more Temporary Hit Points on taking a form`); }
+    this.line(`Changes the form of the feature ${shown(v.of)}: it ${parts.length ? list(parts) : 'changes nothing the reader knows'}.${this.kind === 'subclass' ? '' : ' A feat or an item belongs to no class, so the engine adds nothing.'}`, 1);
+    if (isObj(v.cost)) {
+      if (isInt(v.cost.n)) this.num(`${at}.cost.n`, v.cost.n, 'uses');
+      this.line(`${Array.isArray(v.types) ? 'A form of a type it adds' : 'Every form'} spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the feature ${shown(v.cost.resource)} instead of a use of ${shown(v.of)}, and is refused when the holder has too few. ${featureNote(v.of)}`, 2);
+    }
+    if (this.kind !== 'subclass') this.dm('Changing the form of a feature: the engine does not.');
   },
   persist(v) { this.line(`The lasting effect of the feature ${shown(v?.of)} lasts its whole time without being renewed, and ends early only when the holder is Unconscious. ${featureNote(v?.of)}`, 1); },
   reroll(v, at) {

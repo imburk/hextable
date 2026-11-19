@@ -896,7 +896,10 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   'spellRange', 'repel',
   // Since #464 (docs/specs/companions.md, amendment C9c): one of its attacks given up for its familiar's Reaction attack
   // (Pact of the Chain), and what it gives the familiar that spell makes (Investment of the Chain Master).
-  'forgoAttack', 'invest'];
+  'forgoAttack', 'invest',
+  // Since #516 (docs/specs/homebrew-subclasses.md, addition J): what a subclass's feature changes about another feature's form (Wild Shape):
+  // the highest Challenge Rating, more creature types, more Temporary Hit Points, and a price in another pool.
+  'formOf'];
 // Investment of the Chain Master's `invest` (C9c): the keys it may hold, and the damage types it may turn into others.
 export const INVEST_KEYS = ['spell', 'speed', 'damage', 'saveDc', 'bonusAttack', 'ward'];
 const LEVELS = 20;
@@ -1242,6 +1245,36 @@ function lintGrants(g, cls, say) {
   if (g.invest !== undefined) { const why = investProblem(g.invest); if (why) say(why); }
   if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
+  if (g.formOf !== undefined) { const why = formOfProblem(g.formOf, cls); if (why) say(why); }
+}
+// `formOf: { of, maxCr?, types?, tempHp?, cost? }` (#516, addition J of homebrew-subclasses.md): a feature of a subclass changes the form of the feature `of`
+// (Wild Shape: a feature whose action has a `form`), as the class's own `form` says it, and at the class's own level:
+//   maxCr   the highest Challenge Rating of a form (a number, or `{ byLevel }`); the higher of this and the feature's own stands
+//   types   creature types the feature may also take the form of (not one it already takes)
+//   tempHp  Temporary Hit Points more on taking a form (an amount of the class: a number, `{ perLevel }`, `{ byLevel }`, `{ column }`)
+//   cost    `{ resource, n? }`: what a form of one of the `types` it adds spends (n uses of that pool, 1 if n is left out), in place of a use of the feature itself;
+//           with no `types`, what every form spends
+// At least one of the four. Null if it is whole, or what is wrong.
+export const FORM_OF_KEYS = ['of', 'maxCr', 'types', 'tempHp', 'cost'];
+export function formOfProblem(x, cls) {
+  if (!x || typeof x !== 'object' || Array.isArray(x) || !Object.keys(x).every((k) => FORM_OF_KEYS.includes(k))) return `formOf is { ${FORM_OF_KEYS.join(', ')} }, with only of required`;
+  if (!ID.test(x.of ?? '')) return 'formOf names the feature whose form it changes (of: a feature id)';
+  if (Object.keys(x).length < 2) return 'formOf changes something: maxCr, types, tempHp or cost';
+  const cr = (v) => typeof v === 'number' && v >= 0 && v <= 30 && Number.isInteger(v * 8);
+  if (x.maxCr !== undefined && !(cr(x.maxCr) || (x.maxCr && typeof x.maxCr === 'object' && !Array.isArray(x.maxCr) && Object.keys(x.maxCr).length === 1 && x.maxCr.byLevel && typeof x.maxCr.byLevel === 'object'
+    && Object.keys(x.maxCr.byLevel).length > 0 && Object.entries(x.maxCr.byLevel).every(([l, v]) => isInt(+l) && String(+l) === l && +l >= 1 && +l <= LEVELS && cr(v))))) return 'formOf.maxCr is a Challenge Rating (a whole number, or a fraction in eighths), or { byLevel } of them';
+  if (x.types !== undefined && !(Array.isArray(x.types) && x.types.length && allOf(CREATURE_TYPES)(x.types) && new Set(x.types).size === x.types.length)) return 'formOf.types lists creature types, each once';
+  if (x.tempHp !== undefined) {
+    let why = null;
+    lintAmount(x.tempHp, cls, (m) => { why ??= m; }, 'formOf.tempHp');
+    if (why) return why;
+    // More Temporary Hit Points: every number it states (a number, a perLevel, a byLevel's values) is at least 1.
+    const t = x.tempHp, low = typeof t === 'number' ? t < 1 : t && typeof t === 'object' && (t.perLevel < 1 || (t.byLevel && Object.values(t.byLevel).some((v) => v < 1)));
+    if (low) return 'formOf.tempHp is at least 1 in every number it gives (a number, a perLevel, a value of byLevel)';
+  }
+  if (x.cost !== undefined && !(x.cost && typeof x.cost === 'object' && !Array.isArray(x.cost) && Object.keys(x.cost).every((k) => ['resource', 'n'].includes(k)) && ID.test(x.cost.resource ?? '')
+    && (x.cost.n === undefined || (isInt(x.cost.n) && x.cost.n > 0 && x.cost.n <= 10)))) return 'formOf.cost is { resource, n? }, n from 1 to 10';
+  return null;
 }
 // A freeCast of named spells may also say (#232): `atWill` (no uses), `self` (on its caster only), `dark` (only in
 // Dim Light or Darkness), `sureSave` (its caster succeeds on the spell's saves), `maxTemp` (Temporary Hit Point
@@ -1445,6 +1478,7 @@ function featureRefs(g) {
   add('ref', g.metamagicMax?.while); add('ref', g.relentless?.while);
   add('cost', g.freeCast?.cost?.uses); add('cost', g.reroll?.cost); add('cost', g.metamagic?.pool);
   add('ref', g.initiative?.regain); add('ref', g.initiative?.unless); add('ref', g.brutal?.after);
+  add('ref', g.formOf?.of); add('cost', g.formOf?.cost?.resource);
   return out;
 }
 // Every modifier (an object with a hook, an op and a number) in a list of features: in grants, auras and the steps of actions.
@@ -1506,6 +1540,25 @@ function lintSubclass(e, say, ctx = {}) {
   for (const g of grantsOf(features)) for (const [what, id] of featureRefs(g)) {
     if (what === 'cost' && !pools.has(id)) say(`a cost names "${id}", which is not a feature with uses of the ${cls.name} or of this subclass`);
     else if (what === 'ref' && !known.has(id)) say(`a grant names "${id}", which is neither a feature of the ${cls.name} nor of this subclass`);
+  }
+  // `formOf` changes the form of a feature that takes one (Wild Shape); it adds no creature type the feature already takes, and a subclass gives one price for a feature's forms.
+  const priced = new Set();
+  for (const f of features) {
+    const fo = f?.grants?.formOf;
+    if (!fo || typeof fo !== 'object' || typeof fo.of !== 'string' || !known.has(fo.of)) continue;
+    const base = own.find((x) => x?.id === fo.of), F = base?.grants?.action?.form;
+    if (!F) { say(`feature ${f.id}: formOf names "${fo.of}", which does not take a form (a form is what Wild Shape gives)`); continue; }
+    if (Array.isArray(fo.types)) for (const t of fo.types) if (Array.isArray(F.types) && F.types.includes(t)) say(`feature ${f.id}: formOf.types lists "${t}", a type ${base.name} already takes`);
+    if (fo.cost !== undefined) {
+      if (priced.has(fo.of)) say(`feature ${f.id}: formOf gives ${base.name} a second price: a subclass has one price for its forms`);
+      priced.add(fo.of);
+      // The pool the price names is one the character has by the level this feature gives the price, and holds as many uses as the price asks (where its maximum is a plain number).
+      const owner = own.find((x) => x?.id === fo.cost.resource || (Array.isArray(x?.options) && x.options.some((o) => o?.id === fo.cost.resource)));
+      const pool = owner?.id === fo.cost.resource ? owner : owner?.options?.find((o) => o?.id === fo.cost.resource), name = owner?.name ?? fo.cost.resource;
+      if (owner && isInt(owner.level) && isInt(f.level) && owner.level > f.level) say(`feature ${f.id}: formOf prices the forms in ${name}, which the ${cls.name} gains at level ${owner.level}, after this feature's level ${f.level}: a character would have a price for a pool it lacks`);
+      const max = pool?.uses?.max;
+      if (isInt(max) && isInt(fo.cost.n) && fo.cost.n > max) say(`feature ${f.id}: formOf prices the forms at ${fo.cost.n} uses of ${name}, which has ${max}: no form could ever be taken`);
+    }
   }
   // Always-prepared spells, by class level (3 to 20): the class must cast, and a spell must be one a caster of that level has slots for.
   const sp = e.spells;
@@ -1621,7 +1674,7 @@ function lintItem(e, say, ctx = {}) {
   if (e.charges !== undefined && !(e.charges && isInt(e.charges.max) && e.charges.max > 0 && e.charges.max <= 50 && Object.keys(e.charges).every((k) => ['max', 'regain'].includes(k)) && (e.charges.regain === undefined || isDice(e.charges.regain)))) say('charges is { max, regain? }');
   if (e.grants !== undefined) {
     lintGrants(e.grants, FEAT_CLASS, say);
-    for (const k of Object.keys(e.grants ?? {})) if (['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips', 'spellLists', 'spells', 'proficiency', 'hp'].includes(k)) say(`an item does not grant "${k}" (a class feature's)`);
+    for (const k of Object.keys(e.grants ?? {})) if (['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips', 'spellLists', 'spells', 'proficiency', 'hp', 'formOf'].includes(k)) say(`an item does not grant "${k}" (a class feature's)`);
     const chosen = JSON.stringify(e.grants).includes('"chosen"');
     if (chosen !== (e.variant === 'damageType' && !!e.grants)) say('a modifier\'s "chosen" damage type goes with variant "damageType"');
   }
@@ -2225,6 +2278,8 @@ const SHAPES = {
   freeCast: { what: 'a freeCast', keys: ['list', 'maxLevel', 'spells', ...FREE_CAST_FLAGS, 'time', ...Object.keys(FREE_CAST_LISTS), 'cost', 'components'] },
   freeCastCost: { what: 'a freeCast cost', keys: ['slot', 'uses'] },
   aura: { what: 'an aura', keys: ['range', 'modifiers', 'immune'] },
+  formOf: { what: 'a form grant', keys: FORM_OF_KEYS },
+  formCost: { what: 'the price of a form', keys: ['resource', 'n'] },
   map: { what: 'a map', keys: null },
   speedMap: { what: 'speeds', keys: null }, senseMap: { what: 'senses', keys: null }, skillMap: { what: 'skills', keys: null }, saveMap: { what: 'saves', keys: null },
   abilityMap: { what: 'ability scores', keys: null }, levelMap: { what: 'a table by level', keys: null },
@@ -2250,8 +2305,9 @@ const CHILD = {
   state: { light: 'light' },
   trigger: { effects: 'steps' }, use: { check: 'check', effects: 'steps' }, activate: { effects: 'steps' },
   prerequisite: { abilities: 'anyAbility' },
-  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap', freeCast: 'freeCast' },
+  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap', freeCast: 'freeCast', formOf: 'formOf' },
   freeCast: { cost: 'freeCastCost' },
+  formOf: { maxCr: 'value', tempHp: 'value', cost: 'formCost' },
   aura: { range: 'value', modifiers: 'modifier[]' },
   bond: {}, over: { speed: 'speedMap' },
 };
@@ -2363,12 +2419,16 @@ export const HOMEBREW_RANGES = Object.freeze({
   'features.level': [3, 20], 'features.pick': [2, 12], 'requires.level': [3, 20], 'uses.max': [1, 20], 'uses.short': [1, 20], 'max.min': [0, 20], 'max.perLevel': [1, 10], 'max.prof': [1, 4],
   // the numbers of such an amount in a step (`damage: { mod: 'wis', min: 1, die: 6 }`)
   'damage.min': [0, 20], 'heal.min': [0, 20], 'tempHp.min': [0, 20], 'damage.die': [4, 12], 'heal.die': [4, 12], 'tempHp.die': [4, 12],
+  // a subclass's `formOf` (#516): a Challenge Rating (a fraction of eighths, as a monster's), more Temporary Hit Points
+  'formOf.maxCr': [0, 30, 8], 'formOf.tempHp': [1, 100],
   'damage.perLevel': [1, 10], 'heal.perLevel': [1, 10], 'tempHp.perLevel': [1, 10], 'damage.prof': [1, 4], 'heal.prof': [1, 4], 'tempHp.prof': [1, 4],
 });
 // Where a subclass's number may go further than the range every kind has: the SRD's own Draconic Sorcerer sets a Fly Speed of 60 by a modifier (a speed).
 // (A modifier of a subclass may reach 120 here, but `lintSubclass` holds every hook but a speed to 40, as a feat's are.)
 const SUBCLASS_RANGES = Object.freeze({ 'modifier.value': [-120, 120] });
 const SPEED_HOOKS = ['speed', 'speed.fly'];
+// A Challenge Rating of a subclass's `formOf` by level (`byLevel` takes whole numbers elsewhere) may be a fraction of eighths, as the plain one's is (`formOf.maxCr`).
+const FORM_CR = Object.freeze([0, 30, 8]), FORM_CR_PATH = /\.formOf\.maxCr\.byLevel\.\d+$/;
 // What a `grants` may hold beyond the fields above (a feature's grants are many shapes; none needs a big number).
 const GRANTS_ANY = [-100, 100];
 // Dice written as a string, one roll: how many, how many sides, and the flat part. The SRD pack's largest, measured over every
@@ -2584,7 +2644,7 @@ function lintNumbers(kind, e, say) {
   else if (work > HOMEBREW_WORK.steps) say(`one use (its ${what}) can run ${thousands(work)} steps, counting every branch, every repeat and every creature it reaches (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${HOMEBREW_WORK.steps}`);
   else if (dice > HOMEBREW_WORK.dice) say(`one use (its ${diceWhat}) can roll ${thousands(dice)} dice, counting every repeat, the double dice of a critical hit and every creature that rolls its own (up to ${HOMEBREW_WORK.creatures} at a table); the most is ${thousands(HOMEBREW_WORK.dice)}`);
   for (const [ctx, v, path, g, owner, key] of numbersOf(kind, e)) {
-    const r = (kind === 'subclasses' && SUBCLASS_RANGES[`${owner}.${key}`]) || rangeOf(owner, key, g);
+    const r = (kind === 'subclasses' && (FORM_CR_PATH.test(path) ? FORM_CR : SUBCLASS_RANGES[`${owner}.${key}`])) || rangeOf(owner, key, g);
     if (!r) { say(`${path}: a number is not allowed here (no range is set for "${ctx}")`); continue; }
     const [lo, hi, frac] = r;
     if (!(frac ? Number.isInteger(v * frac) : Number.isInteger(v)) || v < lo || v > hi) say(`${path}: ${v} is not allowed; ${frac ? 'a number' : 'a whole number'} from ${thousands(lo)} to ${thousands(hi)}`);
@@ -2667,6 +2727,8 @@ export const HOMEBREW_TYPES = Object.freeze({
   spellPick: { lists: 's[]', abilities: 's[]', cantrips: 'i', level1: 'i' },
   freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]', types: 's[]', ends: 's[]', cost: 'o', components: 's' },
   freeCastCost: { slot: 't', uses: 'id' },
+  formOf: { of: 'id', maxCr: 'n|o', types: 's[]', tempHp: 'i|o', cost: 'o' },
+  formCost: { resource: 'id', n: 'i' },
   grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
   aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
   speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },
@@ -2754,6 +2816,8 @@ function lintShape(kind, e, say, { homebrew }) {
     if (homebrew && shape === 'freeCast' && key === 'forms') { bad++; say('A homebrew feature cannot add familiar forms yet.'); return; }
     // Nor what changes a familiar or lets it attack (#464): a feat could otherwise arm any caster's familiar.
     if (homebrew && shape === 'grants' && (key === 'invest' || key === 'forgoAttack')) { bad++; say('A homebrew feature cannot change a familiar or let it attack yet.'); return; }
+    // Nor may a feat or an item change what a class feature's form is (#516): `formOf` is for the features of a subclass.
+    if (homebrew && shape === 'grants' && key === 'formOf' && kind !== 'subclasses') { bad++; say('Only a subclass\'s feature can change the form of a class feature (formOf).'); return; }
     // The spells of a subclass are by class level: a whole number from 3 to 20.
     if (shape === 'spellMap' && !/^(?:[3-9]|1\d|20)$/.test(String(key))) { bad++; say(`spells: "${String(key).slice(0, 20)}" is not a class level from ${SUBCLASS_FIRST} to ${LEVELS}`); return; }
     // A subclass's damage, healing or Temporary Hit Points may be an amount of its class (`{ column: 'bardic-die' }`, `{ mod, min, die }`): the feature linter checks it

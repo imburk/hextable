@@ -568,6 +568,23 @@ export function derive(sheet) {
     to.endsOn = p.endsOn;
   }
 
+  // What a feature of a subclass changes about another feature's form (Wild Shape; `formOf`, homebrew-subclasses.md addition J), the class's own numbers put in at the
+  // class's level as its own are: the higher Challenge Rating stands, the types are added, the Temporary Hit Points are added to the form's own, and a price replaces
+  // the use of the feature itself for the forms it covers (`form.cost`: { resource, n, types? }; `types`, when there, the ones this grant added). Only a feature of the
+  // same class changes it, so a feat or an item that holds the key changes nothing.
+  for (const x of feats) {
+    const fo = x.f.grants?.formOf, base = fo && feats.find((y) => y.f.id === fo.of && y.cls.c === x.cls.c), F = base && feat.find((o) => o.id === fo.of)?.action?.form;
+    if (!F) continue;
+    const c = x.cls.c, level = x.cls.level, was = base.f.grants?.action?.form?.types ?? [];
+    const cr = fo.maxCr === undefined ? null : amount(fo.maxCr, c, level, abil);
+    if (typeof cr === 'number' && cr > F.maxCr) F.maxCr = cr;
+    const added = (fo.types ?? []).filter((t) => !was.includes(t));
+    for (const t of added) if (!F.types.includes(t)) F.types.push(t);
+    const more = fo.tempHp === undefined ? null : amount(fo.tempHp, c, level, abil);
+    if (typeof more === 'number' && more > 0) F.tempHp = (typeof F.tempHp === 'number' ? F.tempHp : 0) + more;
+    if (fo.cost) F.cost = { resource: fo.cost.resource, n: fo.cost.n ?? 1, ...(fo.types ? { types: added } : {}) };
+  }
+
   const named = (k) => { const sc = subclassOf(k); return k.level >= 3 && sc ? `${k.c.name} (${sc.name})` : missingSubclass(k) ? `${k.c.name} (subclass not loaded)` : k.c.name; };
   const cls = multi ? [ks.map((k) => `${named(k)} ${k.level}`), ks.map((k) => `${k.c.name} ${k.level}`)].map((l) => l.join(' / ')).find((t) => t.length <= 40) ?? ks.map((k) => `${k.c.name} ${k.level}`).join(' / ').slice(0, 40)
     : named(ks[0]).length <= 40 ? named(ks[0]) : c.name;
