@@ -681,6 +681,26 @@ How the prompt fits each table rule:
 | Dice screen | Last rolls · (each: the title, the faces, the result) |
 | Log and chat | Say as Wren · Out of character · Note to the DM · Send |
 
+## The mockup
+
+[`mockups/one-token-menu.html`](mockups/one-token-menu.html) is one page with no game code.
+Its own controls (top left, "Mockup controls", not part of the design) switch the frame
+(phone 390 x 844, desktop 1280 x 800), the theme (Classic, Sunlit, Pocket), the state
+(exploring, another's turn, my turn, down), the motion (slide, just appear) and the table's
+dice rule (`auto`, `throw`), and make a reaction question or a call for initiative arrive.
+It shows: the clean screen with the token and the turn line; the menu sliding in and out,
+and one tap on the map clearing it; the first level; the character cascade with the status
+block on top, the turn bar, the action groups, inventory and sheet; Cast and the other
+groups; Turns; Dice with "Rolls stay on the board"; Setup; aiming Burning Hands with the
+aim bar; Fire Bolt thrown from the throw zone; the initiative prompt with a press, spin and
+fling that lands on the (made-up) engine result; a reaction question folding the menu
+away. The address can set a picture, for screenshots: for example
+`#bare&theme=sunlit&state=mine&open=cast`, `#bare&frame=desktop&open=turns`,
+`#bare&prompt=initiative` (the names are listed at the top of the file).
+
+Screenshots of the mockup and of today's game at both sizes were taken for the pull request
+(today's: `today-*.png`; the mockup's: `mock-*.png`).
+
 ## Build plan
 
 Each stage is one client pull request unless marked engine; each is useful alone, checked
