@@ -1,0 +1,125 @@
+== subclass hb-ember-folk-oath-of-the-ember
+"Oath of the Ember", a Paladin subclass.
+It belongs to the Paladin and to no other class: a character names it as the subclass of its Paladin levels, and its features come in at the class levels given below.
+Spells always prepared, from the class level shown. They are added to what the character prepares and do not count against the number the class prepares; a spell the table does not have is left out.
+  Class level 3: "Burning Hands" and "Shield of Faith".
+  Class level 5: "hb-ember-folk-ember-ward".
+4 features, in the order of the class level at which each comes in:
+Level 3: "Kindle" (tier auto: the engine plays all of it).
+  The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+  Gives the holder an action to use with the feature action. It takes a Bonus Action.
+    It spends 1 use of the holder's feature "channel-divinity". Only a holder who has the feature "channel-divinity" gets anything from this.
+    What it does lasts up to 1 minute.
+    The holder gets Advantage on its attack rolls.
+      It holds only against the action's target.
+      It lasts as long as the action.
+Level 7: "Hearth Aura" (tier auto: the engine plays all of it).
+  The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+  An aura of a range that grows with the class level out from the holder. The holder, and every creature on the holder's side in range with no Total Cover between, get what is listed below, for as long as the holder is up and not Incapacitated. Two of the same aura do not add up.
+    Resistance to cold damage.
+Level 9: "Cinder Step" (tier assist: the engine plays what is listed here, and the DM plays the rest).
+  It has 2 uses, which all come back on a Short Rest or a Long Rest.
+  The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+  Changes to rolls and numbers:
+  +10 feet to its Speed.
+  Using it spends one use. It has no action of its own, so the engine sends its text to the DM, who applies it.
+  Beyond the lines above, the DM does this: "You leave a trail of warm ash; the DM decides what it lights."
+Level 15: "Ash Memory" (tier manual: the DM plays it, and the engine only shows its text).
+  It has 1 use, which all come back on a Long Rest.
+  Using it spends one use. It has no action of its own, so the engine sends its text to the DM, who applies it.
+  The engine does not do this; the DM does this: "Once per Long Rest you may ask the DM one question about what the fire saw."
+2 of 4 features are played entirely by the engine (2 auto, 1 assist, 1 manual).
+Not checked against any rulebook.
+"Cinder Step" comes in at class level 9. The Paladin's own subclass features come in at class levels 3, 7, 15 and 20, so this is not a level a Paladin subclass usually gives something at. The engine allows it.
+DM: Applying "Cinder Step" when it is used.
+DM: "Cinder Step": "You leave a trail of warm ash; the DM decides what it lights."
+DM: Applying "Ash Memory" when it is used.
+DM: "Ash Memory": "Once per Long Rest you may ask the DM one question about what the fire saw."
+
+== subclass hb-ember-folk-college-of-the-lantern
+"College of the Lantern", a Bard subclass.
+It belongs to the Bard and to no other class: a character names it as the subclass of its Bard levels, and its features come in at the class levels given below.
+Spells always prepared, from the class level shown. They are added to what the character prepares and do not count against the number the class prepares; a spell the table does not have is left out.
+  Class level 3: "Faerie Fire".
+  Class level 5: "Light".
+4 features, in the order of the class level at which each comes in:
+Level 3: "Lantern Lore" (tier auto: the engine plays all of it).
+  The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+  3 more skills, chosen on the holder's sheet from any skill.
+Level 3: "Dazzling Glow" (tier assist: the engine plays what is listed here, and the DM plays the rest).
+  It has the Charisma modifier (at least 1) uses, which all come back on a Long Rest.
+    Where they come back on a Long Rest, 1 of them also comes back on a Short Rest.
+  The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+  Gives the holder an action to use with the feature action. It takes a Bonus Action.
+    It spends 1 use of the holder's feature "bardic-inspiration". Only a holder who has the feature "bardic-inspiration" gets anything from this.
+    The target makes a Wisdom saving throw.
+    On a failure:
+      It has the Blinded condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
+        It ends at the end of its next turn, or when the fight ends.
+        The engine applies part of what Blinded does; the DM applies the rest.
+      The engine does not do this; the DM does this: "Dazzling Glow: the creature squints against the light."
+  Beyond the lines above, the DM does this: "Spend Bardic Inspiration to dazzle a creature; the DM decides how long."
+Level 6: "Borrowed Tune" (tier manual: the DM plays it, and the engine only shows its text).
+  The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+  Gives the holder an action to use with the feature action. It takes a Bonus Action.
+    It spends 1 use of the holder's feature "bardic-inspiration". Only a holder who has the feature "bardic-inspiration" gets anything from this.
+    The engine does not do this; the DM does this: "Borrowed Tune: a friend remembers something."
+  The engine does not do this; the DM does this: "Spend Bardic Inspiration to hum a tune a friend half remembers; the DM says what comes back to them."
+Level 14: "Wick Choice" (tier assist: the engine plays what is listed here, and the DM plays the rest).
+  It has 1 use, which all come back on a Long Rest from class level 14 and on a Short Rest or a Long Rest from class level 18 (the engine takes the last one the class has reached).
+  Using it spends one use. It has no action of its own, so the engine sends its text to the DM, who applies it.
+  The player chooses up to 2 different options of 3. Options left unchosen are simply not known yet.
+  Option "Slow Wick" (tier manual: the DM plays it, and the engine only shows its text):
+    The engine does not do this; the DM does this: "A flame that burns a long time."
+  Option "Bright Wick" (tier auto: the engine plays all of it):
+    Needs class level 15. A sheet that picks it without that is refused.
+    The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+    Changes to rolls and numbers:
+    +2 to its Initiative.
+  Option "Spark Wick" (tier auto: the engine plays all of it):
+    Needs the option "Slow Wick" chosen with it and the spell "Produce Flame" among the spells the class knows. A sheet that picks it without that is refused.
+    It has 1 use, which all come back on a Short Rest or a Long Rest.
+    The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+    Lets the holder cast spells without a slot, through this feature, with the cast action naming it (a "via" cast). The save DC and attack bonus are the holder's own spellcasting ones; a holder with no spellcasting uses a modifier of 0.
+      Only "Produce Flame", each at its own level and its own casting time, with no slot.
+      It is cast as a Magic action, whatever its own casting time.
+      Each cast spends one use of the feature itself.
+  Beyond the lines above, the DM does this: "Choose two wicks to trim; the DM plays what the engine cannot."
+1 of 4 features is played entirely by the engine (1 auto, 2 assist, 1 manual).
+Not checked against any rulebook.
+DM: "Dazzling Glow: the creature squints against the light."
+DM: "Dazzling Glow": "Spend Bardic Inspiration to dazzle a creature; the DM decides how long."
+DM: "Borrowed Tune: a friend remembers something."
+DM: "Borrowed Tune": "Spend Bardic Inspiration to hum a tune a friend half remembers; the DM says what comes back to them."
+DM: Applying "Wick Choice" when it is used.
+DM: "Slow Wick": "A flame that burns a long time."
+DM: "Wick Choice": "Choose two wicks to trim; the DM plays what the engine cannot."
+
+== subclass hb-ember-folk-banner-knight
+"Banner Knight", a Fighter subclass.
+It belongs to the Fighter and to no other class: a character names it as the subclass of its Fighter levels, and its features come in at the class levels given below.
+It names no spells the class always has prepared.
+3 features, in the order of the class level at which each comes in:
+Level 3: "Raised Standard" (tier auto: the engine plays all of it).
+  The character gets what follows (the engine makes these a feature of the character, as for a class's own features).
+  An aura 10 feet out from the holder. The holder, and every creature on the holder's side in range with no Total Cover between, get what is listed below, for as long as the holder is up and not Incapacitated. Two of the same aura do not add up.
+    +1 to its Initiative.
+Level 4: "Steady Grip" (tier manual: the DM plays it, and the engine only shows its text).
+  It is always on. The engine applies nothing for it.
+  The engine does not do this; the DM does this: "Your grip on the pole never slips, the DM says when it matters."
+Level 7: "Second Colours" (tier assist: the engine plays what is listed here, and the DM plays the rest).
+  The player chooses one of 3 options; a sheet that does not choose is refused.
+  Option "Archery" (tier auto: the engine plays all of it):
+    It is the feat "Archery": the character gets what that feat grants.
+  Option "Defense" (tier auto: the engine plays all of it):
+    It is the feat "Defense": the character gets what that feat grants.
+  Option "Great Weapon Fighting" (tier manual: the DM plays it, and the engine only shows its text):
+    It is the feat "Great Weapon Fighting": the character gets what that feat grants.
+    The engine does not do this; the DM does this: "Treat a 1 or 2 on a damage die as a 3 with a Melee weapon held in two hands (Two-Handed or Versatile). The engine does not change damage dice; the DM applies it."
+  Beyond the lines above, the DM does this: "Pick a second style; the DM plays what the engine cannot."
+1 of 3 features is played entirely by the engine (1 auto, 1 assist, 1 manual).
+Not checked against any rulebook.
+"Steady Grip" comes in at class level 4. The Fighter's own subclass features come in at class levels 3, 7, 10, 15 and 18, so this is not a level a Fighter subclass usually gives something at. The engine allows it.
+DM: "Steady Grip": "Your grip on the pole never slips, the DM says when it matters."
+DM: "Great Weapon Fighting": "Treat a 1 or 2 on a damage die as a 3 with a Melee weapon held in two hands (Two-Handed or Versatile). The engine does not change damage dice; the DM applies it."
+DM: "Second Colours": "Pick a second style; the DM plays what the engine cannot."

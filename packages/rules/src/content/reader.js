@@ -375,6 +375,21 @@ class Reading {
       if (nv) this.line('Parts of this entry never take effect, as said above: the engine does not apply them and tells nobody.');
     }
   }
+  // An amount of dice in a step: dice, or (in a subclass, which has the class table behind it) what derive.js puts in from the class: a column of the table,
+  // a modifier's worth of dice, a die by class level. Words, or null when it is neither.
+  amt(v, at) {
+    if (isDice(v)) return v;
+    if (!this.sub || !isObj(v)) return null;
+    if (typeof v.mod === 'string' && isInt(v.die) && ABILITY_WORDS[v.mod]) { this.num(`${at}.die`, v.die, 'die'); if (isInt(v.min)) this.num(`${at}.min`, v.min, 'dice'); return `as many d${v.die} as the ${ABILITY_WORDS[v.mod]} modifier${isInt(v.min) ? ` (at least ${v.min})` : ''}`; }
+    if (typeof v.column === 'string') return `the die the class table gives in its column ${shown(v.column)} at the class level`;
+    if (isObj(v.byLevel) && Object.keys(v.byLevel).length && Object.values(v.byLevel).every(isDice)) {
+      for (const [l, x] of Object.entries(v.byLevel)) this.num(`${at}.byLevel.${l}`, x, 'dice');
+      return list(Object.entries(v.byLevel).sort((a, b) => a[0] - b[0]).map(([l, x]) => `${x} from class level ${l}`));
+    }
+    return null;
+  }
+  // `addMod: "wis"` on a step of a subclass: the modifier is added where derive.js bakes the step.
+  plusMod(st) { return this.sub && typeof st.addMod === 'string' && ABILITY_WORDS[st.addMod] ? ` plus the ${ABILITY_WORDS[st.addMod]} modifier` : ''; }
   // The subject of a step inside a branch.
   it() { return this.aim === 'self' ? this.actor : 'it'; }
   result(hash) {
@@ -848,7 +863,7 @@ function saveSentence({ st, at, depth, Who, say }) {
   const ab = ABILITY_WORDS[st.save];
   if (!ab) this.bad(`Step ${at}: the save names no ability.`);
   let dc = '';
-  if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
+  if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else if (this.sub && typeof st.dc === 'string' && Object.hasOwn(ABILITY_WORDS, st.dc)) dc = ` against the holder's own DC for this class: 8 plus the Proficiency Bonus plus the ${ABILITY_WORDS[st.dc]} modifier`; else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
   say(`${Who} makes ${ab ? `${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw` : 'a saving throw of an unreadable ability'}${dc}.`);
   if (this.obj && st.dc === undefined) this.line(`No DC is written in for this save, so the engine uses the thing's own save DC: the one the DM set where it was placed, else ${isInt(this.objDc) ? `its entry's ${this.objDc}` : 'its entry has none, so 10'}.`, depth);
   if (this.itm && st.dc === undefined) { this.line('No DC is written in for this save, and an item\'s own steps have no spell save DC: the engine does not roll it, it tells the DM, who applies it.', depth); this.dm(`The save of step ${at}: it has no DC.`); }
@@ -919,26 +934,29 @@ export const STEP_SENTENCES = {
   // A save's DC is kept while its branches are read, for an ending that repeats it (`ending`, above).
   save(o) { this.saveDcs.push(isInt(o.st.dc) ? o.st.dc : null); try { return saveSentence.call(this, o); } finally { this.saveDcs.pop(); } },
   damage({ st, at, depth, Who, say, o }) {
-    if (!isDice(st.damage)) this.bad(`Step ${at}: the damage is not dice like 2d6+3.`); else this.num(`${at}.damage`, st.damage, 'dice');
+    const dmg = this.amt(st.damage, `${at}.damage`);
+    if (dmg === null) this.bad(`Step ${at}: the damage is not dice like 2d6+3.`); else if (isDice(st.damage)) this.num(`${at}.damage`, st.damage, 'dice');
     const type = st.type === 'chosen' ? 'damage of the chosen type' : DAMAGE_TYPES.includes(st.type) ? `${st.type} damage` : 'damage of an unreadable type';
     if (st.type !== 'chosen' && !DAMAGE_TYPES.includes(st.type)) this.bad(`Step ${at}: the damage type is not one the engine knows.`);
     let times = '';
     if (st.times !== undefined) { if (isInt(st.times) && st.times > 0) { this.num(`${at}.times`, st.times, 'rolls'); if (st.times > 1) times = `, rolled ${st.times} times and added up`; } else this.bad(`Step ${at}: \`times\` is not a positive whole number.`); }
-    say(`${Who} takes ${isDice(st.damage) ? st.damage : '(unreadable dice)'} ${type}${times}.${o.afterDamage ? ' It lands together with the damage before it, as one instance of damage.' : ''}`);
+    say(`${Who} takes ${dmg ?? '(unreadable dice)'}${this.plusMod(st)} ${type}${times}.${o.afterDamage ? ' It lands together with the damage before it, as one instance of damage.' : ''}`);
     if (st.onZero !== undefined) { this.line('If this damage drops it to 0 Hit Points:', depth); this.steps(st.onZero, `${at}.onZero`, depth + 1, this.it()); }
     if (st.onKill !== undefined) { this.line('If this damage kills it:', depth); this.steps(st.onKill, `${at}.onKill`, depth + 1, this.it()); }
   },
   heal({ st, at, Who, say }) {
-    if (!isDice(st.heal)) this.bad(`Step ${at}: the healing is not dice.`); else this.num(`${at}.heal`, st.heal, 'dice');
+    const hl = this.amt(st.heal, `${at}.heal`);
+    if (hl === null) this.bad(`Step ${at}: the healing is not dice.`); else if (isDice(st.heal)) this.num(`${at}.heal`, st.heal, 'dice');
     const least = isInt(st.atLeast) ? (this.num(`${at}.atLeast`, st.atLeast, 'Hit Points'), `, and at least ${st.atLeast}`) : '';
-    say(`${Who} regains ${isDice(st.heal) ? st.heal : '(unreadable dice)'}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}.`);
+    say(`${Who} regains ${hl ?? '(unreadable dice)'}${this.plusMod(st)}${st.addLevel === true && this.sub ? ' plus the class level' : ''}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}.`);
     if (this.mon && st.addMod === true) this.noMod(at);
     if (this.obj && st.addMod === true) this.noObjMod(at, 'healing');
   },
   tempHp({ st, at, Who, say }) {
-    if (!isDice(st.tempHp)) this.bad(`Step ${at}: the Temporary Hit Points are not dice.`); else this.num(`${at}.tempHp`, st.tempHp, 'dice');
+    const th = this.amt(st.tempHp, `${at}.tempHp`);
+    if (th === null) this.bad(`Step ${at}: the Temporary Hit Points are not dice.`); else if (isDice(st.tempHp)) this.num(`${at}.tempHp`, st.tempHp, 'dice');
     const least = isInt(st.atLeast) ? (this.num(`${at}.atLeast`, st.atLeast, 'Temporary Hit Points'), `, at least ${st.atLeast}`) : '';
-    say(`${Who} gains ${isDice(st.tempHp) ? st.tempHp : '(unreadable dice)'}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}; they replace what it has only if they are more${this.fx ? ', and they vanish when the spell ends' : ''}.`);
+    say(`${Who} gains ${th ?? '(unreadable dice)'}${this.plusMod(st)}${st.addLevel === true && this.sub ? ' plus the class level' : ''}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}; they replace what it has only if they are more${this.fx ? ', and they vanish when the spell ends' : ''}.`);
     if (this.mon && st.addMod === true) this.noMod(at);
     if (this.obj && st.addMod === true) this.noObjMod(at, 'Temporary Hit Points');
   },
@@ -2406,7 +2424,7 @@ const SUBCLASS_OPTIONS_SHOWN = 30;
 class SubclassReading extends GrantReading {
   constructor(def, problems) {
     super(def, problems);
-    this.kind = 'subclass'; this.fields = SUBCLASS_FIELDS;
+    this.kind = 'subclass'; this.fields = SUBCLASS_FIELDS; this.sub = true;
     this.tally = { auto: 0, assist: 0, manual: 0, played: 0, all: 0 };
     this.cls = null;
   }
@@ -2505,11 +2523,11 @@ class SubclassReading extends GrantReading {
     let back;
     if (typeof r === 'string' && Object.hasOwn(SUBCLASS_RECHARGE_WORDS, r)) back = SUBCLASS_RECHARGE_WORDS[r];
     else if (isObj(r) && Object.keys(r).length && Object.entries(r).every(([l, x]) => isInt(+l) && Object.hasOwn(SUBCLASS_RECHARGE_WORDS, x))) {
-      back = `${list(Object.entries(r).sort((a, b) => a[0] - b[0]).map(([l, x]) => `${SUBCLASS_RECHARGE_WORDS[x]} from class level ${l}`), 'and')}`;
+      back = `${list(Object.entries(r).sort((a, b) => a[0] - b[0]).map(([l, x]) => `${SUBCLASS_RECHARGE_WORDS[x]} from class level ${l}`), 'and')} (the engine takes the last one the class has reached)`;
       for (const l of Object.keys(r)) this.num(`${at}.recharge.${l}`, +l, 'class level');
     } else { this.bad(`${at}.recharge is not short, long or a rest for each class level.`); back = 'at a time the reader cannot read'; }
     this.line(`It has ${n}, which all come back ${back}.`, depth);
-    if (u.short !== undefined) { if (isInt(u.short)) { this.num(`${at}.short`, u.short, 'uses'); this.line(`${u.short} of them also come back on a Short Rest.`, depth + 1); } else this.bad(`${at}.short is not a whole number.`); }
+    if (u.short !== undefined) { if (isInt(u.short)) { this.num(`${at}.short`, u.short, 'uses'); this.line(r === 'short' ? `Its "short" number, ${u.short}, is not used: all of its uses come back on a Short Rest anyway.` : `Where they come back on a Long Rest, ${u.short} of them also come${u.short === 1 ? 's' : ''} back on a Short Rest.`, depth + 1); } else this.bad(`${at}.short is not a whole number.`); }
   }
   // `grants`: each key in the order of GRANTS, by the same sentence makers a feat uses.
   sGrants(g, at) {
@@ -2530,9 +2548,9 @@ class SubclassReading extends GrantReading {
     else if (isObj(pk) && typeof pk.column === 'string') this.line(`The player chooses up to as many different options of ${os.length} as the column ${shown(pk.column)} of the class table gives at the class level.`, 1);
     else this.bad(`${at}.pick is not a number or { column }.`);
     if (os.length > SUBCLASS_OPTIONS_SHOWN) this.bad(`The feature has ${os.length} options; the reader shows ${SUBCLASS_OPTIONS_SHOWN}.`);
-    os.slice(0, SUBCLASS_OPTIONS_SHOWN).forEach((o, j) => this.sOption(o, `${at}.options.${j}`, pk !== undefined));
+    os.slice(0, SUBCLASS_OPTIONS_SHOWN).forEach((o, j) => this.sOption(o, `${at}.options.${j}`, pk !== undefined, os));
   }
-  sOption(o, at, listed) {
+  sOption(o, at, listed, siblings) {
     if (!isObj(o)) { this.bad(`${at} is not an option.`); return this.line('(An option the reader cannot read.)', 1); }
     this.odd(o, SUBCLASS_OPTION_FIELDS, 'The option');
     const name = typeof o.name === 'string' && o.name.trim() ? qt(o.name, 60) : '(no name)';
@@ -2542,7 +2560,7 @@ class SubclassReading extends GrantReading {
     const dm0 = this.doesNot.length, never0 = this.never;
     this.base = 1;
     try {
-      if (o.requires !== undefined) this.sRequires(o.requires, `${at}.requires`, listed);
+      if (o.requires !== undefined) this.sRequires(o.requires, `${at}.requires`, listed, siblings);
       if (o.uses !== undefined) this.sUses(o.uses, `${at}.uses`, 1);
       if (o.feat !== undefined) {
         const ft = typeof o.feat === 'string' && Object.hasOwn(CONTENT.feats ?? {}, o.feat) ? CONTENT.feats[o.feat] : null;
@@ -2561,12 +2579,12 @@ class SubclassReading extends GrantReading {
     if (this.lines.length > head) this.lines[head] = `  Option ${name} (tier ${TIERS.includes(o.tier) ? this.tierWords(o.tier, dm0, never0) : 'unreadable'}):`;
   }
   // An option's prerequisite: checked by `validate` only for a feature whose player picks a list (derive.js).
-  sRequires(q, at, listed) {
+  sRequires(q, at, listed, siblings = []) {
     if (!isObj(q)) return this.bad(`${at} is not { level, option, spell }.`);
     this.odd(q, SUBCLASS_REQUIRES_FIELDS, 'The prerequisite');
     const bits = [];
     if (isInt(q.level)) { this.num(`${at}.level`, q.level, 'class level'); bits.push(`class level ${q.level}`); } else if (q.level !== undefined) this.bad(`${at}.level is not a whole number.`);
-    if (q.option !== undefined) bits.push(`the option ${shown(q.option)} chosen with it`);
+    if (q.option !== undefined) { const sib = siblings.find((x) => isObj(x) && x.id === q.option); bits.push(`the option ${sib && typeof sib.name === 'string' && sib.name.trim() ? qt(sib.name, 60) : shown(q.option)} chosen with it`); }
     if (q.spell !== undefined) bits.push(`the spell ${nameOf('spells', q.spell)} among the spells the class knows`);
     this.line(`Needs ${bits.length ? list(bits) : 'something the reader cannot read'}.${listed ? ' A sheet that picks it without that is refused.' : ' The engine checks this only for a feature whose player picks a list, so for a single choice the DM sees to it.'}`, 1);
     if (!listed) this.dm('Seeing that the option is chosen only by a character that meets its prerequisite.');
@@ -2574,7 +2592,7 @@ class SubclassReading extends GrantReading {
   sTiers() {
     const t = this.tally;
     if (!t.all) return;
-    this.line(`${t.played} of ${t.all} feature${t.all === 1 ? ' is' : 's are'} played entirely by the engine (${t.auto} auto, ${t.assist} assist, ${t.manual} manual).`);
+    this.line(`${t.played} of ${t.all} feature${t.all === 1 ? '' : 's'} ${t.played === 1 ? 'is' : 'are'} played entirely by the engine (${t.auto} auto, ${t.assist} assist, ${t.manual} manual).`);
   }
   sChecked() { this.fChecked(); }
   // A feature level that is not one of the class's own subclass levels: allowed, and said (question 1 of the spec).
