@@ -1758,13 +1758,12 @@ function lintSubclass(e, say, ctx = {}) {
     const base = own.find((x) => x?.id === fo.of), F = base?.grants?.action?.form;
     if (!F) { say(`feature ${f.id}: formOf names "${fo.of}", which does not take a form (a form is what Wild Shape gives)`); continue; }
     if (Array.isArray(fo.types)) for (const t of fo.types) if (Array.isArray(F.types) && F.types.includes(t)) say(`feature ${f.id}: formOf.types lists "${t}", a type ${base.name} already takes`);
-    // A named form is a monster of the SRD or of this pack, of a type the feature does not already take (nor one this grant adds as a whole type): else the name changes nothing.
+    // A named form is a monster of the SRD or of this pack, of a type the feature does not already take (else the name changes nothing). A form of a type the same grant adds is allowed: it is how a type with a rating of its own has one form above it.
     if (Array.isArray(fo.forms) && ctx.monster) for (const id of fo.forms) {
       if (typeof id !== 'string') continue;
       const m = ctx.monster(id);
       if (m === null) say(`feature ${f.id}: formOf.forms names "${id}", which is not a monster of the SRD or of this pack`);
       else if (m && typeof m.type === 'string' && Array.isArray(F.types) && F.types.includes(m.type)) say(`feature ${f.id}: formOf.forms names "${id}", a ${m.type}, a type ${base.name} already takes`);
-      else if (m && typeof m.type === 'string' && Array.isArray(fo.types) && fo.types.includes(m.type)) say(`feature ${f.id}: formOf.forms names "${id}", a ${m.type}, a type this grant already adds as a whole (name the type or the forms, not both)`);
     }
     if (fo.cost !== undefined) {
       if (priced.has(fo.of)) say(`feature ${f.id}: formOf gives ${base.name} a second price: a subclass has one price for its forms`);

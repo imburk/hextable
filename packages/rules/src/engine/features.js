@@ -611,7 +611,7 @@ function shapeShift(s, e, f, act, a, ev) {
   // A form a subclass names (`form.forms`, addition J) is allowed whatever its type and rating; any other is of a type the feature takes (`types`, with those a subclass added),
   // within its rating: the feature's own, or the rating a subclass gave an added type alone (`form.typeMaxCr`).
   if (!F.forms?.includes(a.form)) {
-    const named = (F.forms ?? []).map((id) => CONTENT.monsters[id]?.name ?? id);
+    const named = (F.forms ?? []).map((id) => `the ${CONTENT.monsters[id]?.name ?? id}`);
     F.types.includes(m.type) || fail(`${f.name} takes the form of a ${F.types.join(' or ')}${named.length ? `, or of ${named.join(', ')}` : ''}; the ${m.name} is not one.`);
     const cap = F.typeMaxCr?.[m.type];
     if (cap === undefined) m.cr <= F.maxCr || fail(`At ${e.name}'s level ${f.name} takes forms of Challenge Rating ${crText(F.maxCr)} or lower; the ${m.name} is ${crText(m.cr)}.`);
