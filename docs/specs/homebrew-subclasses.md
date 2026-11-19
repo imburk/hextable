@@ -252,7 +252,7 @@ test; none is part of this spec's jobs. The letters in the last column are the a
 | 11 | An ability modifier added to cantrip damage | the domain | **Says it**: `modifiers` on `damage.dealt` with `when: ['spell.cantrip']` and `value: { mod }`, as the SRD's Potent Spellcasting. | none |
 | 12 | A friendly aura: the holder and allies near it gain a modifier or an immunity, wider at a higher level | any oath (listed for completeness; the class's own auras already do this) | **Says it**: `aura` with `range: { byLevel }`, `modifiers`, `immune`. | none |
 | 13 | A hostile aura: foes near the holder must save or suffer a condition, while a feature lasts | the oath | **Does not**: an `aura` gives only to the holder and its allies, and a feature's action cannot make a zone. | D |
-| 14 | A once-per-rest Bonus Action that changes the holder for a time (a Fly Speed, with the aura of 13), with a spell slot to use it again | the oath | **Partly**: `time: 'bonus'`, `uses: { max: 1, recharge: 'long' }`, a Fly Speed by a modifier step for the action's `duration`. **Does not**: paying again with a spell slot (`orSlot` is for Pact Magic only), and the aura (13). | D, E |
+| 14 | A once-per-rest Bonus Action that changes the holder for a time (a Fly Speed, with the aura of 13), with a spell slot to use it again | the oath | **Partly**: `time: 'bonus'`, `uses: { max: 1, recharge: 'long' }`, a Fly Speed by a modifier step for the action's `duration`. **Now also** (E): paying again with a spell slot (`orSlot` for any caster). **Does not**: the aura (13). | D, E |
 | 15 | An attack rider: on a hit, spend a use for extra damage and one effect of a few (a push, a bonus to the holder's AC, damage to another creature nearby) | the college | **Partly**: an action with `after: 'hit'` (Hurl Through Hell), `cost: { resource: 'bardic-inspiration' }`, `modes`, a `damage` step of `{ column: 'bardic-die' }`, a `move` step for the push. **Does not**: a bonus whose value is the die just rolled; a second target beside the first; "a hit with a weapon" (`after: 'hit'` follows any attack roll). The extra damage is a separate roll, not added to the hit's, which the reading must say. | F, G |
 | 16 | The same rider at a higher level without spending a use, with a fixed die | the college | **Does not**: a mode has no cost of its own. | G |
 | 17 | More Speed when the holder takes the Attack action | the college | **Does not**: no trigger on taking an action. | H |
@@ -261,7 +261,7 @@ test; none is part of this spec's jobs. The letters in the last column are the a
 | 20 | Wild Shape into forms of a higher Challenge Rating than the class feature allows, by level | the circle | **Does not**: the rating is the class feature's own `form.maxCr`; a subclass cannot raise it. | J |
 | 21 | Wild Shape into another creature type for two uses | the circle | **Does not**: a second form action would spend its own uses, not Wild Shape's (`shapeShift` spends `e.uses[f.id]`, ignoring `cost`). | J |
 | 22 | More Temporary Hit Points, or another Armor Class, while in a form | the circle | **Does not** for the same reason as 20; an Armor Class formula is already queued (homebrew.md, question 4). | J, and the AC formula |
-| 23 | Healing in a form by spending a spell slot, as a Bonus Action | the circle | **Does not**: no action is paid for with a spell slot. | E |
+| 23 | Healing in a form by spending a spell slot, as a Bonus Action | the circle | **Partly** (E): `cost: { slot: 1, higher: { heal: '1d8' } }` on a Bonus Action that heals the holder. **Not** the "in a form" condition (the DM's). | E |
 | 24 | A spell cast at will without a slot | the circle | **Says it**: `freeCast` with `atWill`. | none |
 | 25 | Attacks in a form count as magical | the circle | SRD 5.2 monsters have almost no such distinction; `manual` text (likely nothing to do). | none |
 
@@ -278,8 +278,8 @@ named):
   it or starts or ends its turn there, exactly the spell `zone` that `zones.js` already plays, ended with the action's
   duration, by the holder, and by the holder's death or falling Unconscious. `content/schema.js`, `content/reader.js`,
   `engine/features.js`, `zones.js`.
-- **E. A spell slot as a cost**: `cost: { slot: minLevel }` on a feature's action (and `orSlot` for any caster),
-  with an amount that may grow with the slot spent. `engine/features.js`.
+- **E. A spell slot as a cost** (built, #520; see "Build notes: E"): `cost: { slot: minLevel }` on a feature's action (and `orSlot` for any caster),
+  with an amount that may grow with the slot spent. `content/schema.js`, `content/reader.js`, `engine/features.js`.
 - **F. "The die just rolled"**: a modifier value `{ rolled: true }` that takes the result of the step before
   (a damage die), and `after: 'weaponHit'`. `effects.js`, `engine/features.js`.
 - **G. A second target near the first** (`target: { near: 5 }` on a mode), and a mode with its own cost or none.
@@ -620,3 +620,43 @@ Built to addition D, the owner's questions on their defaults (question 7: after 
   away and back; replay. No existing test was changed. No file outside the issue's list was touched.
 - **Left (DEBT T87).** See there: `casting.js` still makes its own zone record (the same fields) and should call `startZone`; the size of the Emanation is a number (the friendly `aura`'s grows by level); only an Emanation;
   the client offers no spare list for a feature and has not been looked at for a feature's zone; no replace-on-reuse.
+
+## Build notes: E, a spell slot as a feature's cost (#520)
+
+Built to addition E, building on `orSlot`, which Hurl Through Hell already had (with its use spent, `feature` with `slot` spends a Pact Magic slot of that level to restore it). What was settled:
+
+- **Where.** `content/schema.js`: `lintActionCost` (one function, called by `lintGrants` and by `lintFeat` for the record a character holds), the `workOf` estimate for a subclass's action, and three
+  places that took a cost to name a resource (a cost with only a `slot` names none). `content/reader.js`: `slotCost`, and a line for `orSlot`. `engine/features.js`: `feature`. State shape: no change,
+  no version bump (the creature's `slots` was already there, and the cost is data of a feature's action).
+- **Two things, one argument.** `orSlot: true` restores a spent use with a slot (now for any caster: a Pact Magic slot of the level named for a Warlock, as before, any spell slot the creature has for another);
+  `cost: { slot: n }` makes a slot part of the price of the action. Both are named by `slot` on the `feature` action, so the two cannot be on one action ("a slot is spent for its cost or to restore a use,
+  not both"). `orSlot` has no lowest level (DEBT T88).
+- **The shape.** `cost: { resource?, n?, slot?, higher? }`: at least one of `resource` and `slot`; `n` only with a `resource`; `slot` is the lowest level that pays, 1 to 9; `higher` is what each level above `slot` adds,
+  in a spell's own vocabulary (`higher.slot`): `damage`, `heal` or `tempHp` dice added to the first step of that kind, `times` more repeats of the first damage step, `value` more to the number of the first modifier
+  step. (`targets` is not offered: G.) The action's own step is the amount at the lowest level, so `heal: '1d8'` with `slot: 1` and `higher: { heal: '1d8' }` is 1d8 per slot level. `scaleSteps` (`effects.js`) does the
+  growing, the same code that grows a spell, so the first step of the kind is found as it is for a spell (inside a branch too); what it cannot add (different dice) is handed to the DM with a `manual` event.
+- **The gate, a sentence for each refusal.** A slot of 1 to 9; `n` without a resource; `higher` without a slot, empty, with a key a slot level cannot add, with something that is not dice or a positive whole number
+  (`times` up to 10, `value` up to 40), or growing a step the action does not have, or one `scaleSteps` cannot grow: it grows the FIRST step of its kind (a step, then its branches), so the gate checks that one
+  (its amount is plain dice, of the same size as the die added or without dice; a `{ mod }` or `{ column }` amount is refused; a modifier step's `value` is a plain number, and a later numeric modifier does not do), and says so in a sentence instead of a note to the DM on every use; and the action may not also have `modes`, `form`, `gain`, `pool`, `cure`, `renew` or `orSlot`, may not be a Reaction, and must have
+  `effects` ("an action with a slot cost cannot also have `renew`"). **Only a subclass's feature may carry one**: a feat or an item with a slot cost is refused, as for `zone` and `formOf` (a feat or an item may
+  still have `orSlot`). A slot cost may sit beside a zone, an `uses` of the feature itself, `cost.resource` (Channel Divinity), `acts`, `after` and `firstAttack`. The work estimate counts the action at a 9th-level
+  slot (as a spell's is), so a use that passes at the lowest level cannot pass the dice ceiling at the highest; a zone's term (each creature that enters rolls) is counted with the grown steps too.
+- **Played.** `feature` checks everything before it pays: the level (named by `a.slot`; with none named, the lowest level at or above `slot` that the creature has a slot of left), that the level is `slot` or higher and
+  1 to 9, that a slot of it is left, and the data (an action with a slot cost and no plain steps, which skipped the gate, is refused with a sentence). Then it pays together: the Action or Bonus Action, the feature's own
+  use or `cost.resource`, and the slot (`e.slots[level]--`, with a `std` event "Lantern mend: spent a level 3 spell slot", or "Pact Magic slot" for a Warlock). A refusal changes nothing (tests hold the state equal
+  before and after each one, including the refusal of a second price after the first would have been fine).
+- **Slots as spells have them.** The slots are the creature's `slots`, whatever made them: a Warlock's one level (Pact Magic), a multiclass caster's from the Multiclass Spellcaster table. The one difference from `cast`:
+  with no level named, `cast` takes the spell's own level; a feature takes the lowest level at or above its `slot` that the creature has a slot of, so a Warlock whose only slot is level 3 can use a level 1 feature without naming
+  it. Slots do not count for "only one spell slot can be spent per turn" (SRD: "to cast a spell"): a feature is not a spell, and neither flag is set or read. Outside a fight the slot is spent just the same.
+- **What players are sent: no change.** The view and the events are untouched in kind: a use makes the events any feature does (a `std` for the feature, one `std` for the slot, the `heal` or `damage`), and the slots a player is sent are the creature's own, as they
+  were. The pack's copy carries `cost` as data inside the action, as every other key.
+- **The reading.** "It also spends a spell slot of level 1 or higher (a Pact Magic slot for a Warlock): the lowest one the holder has left, unless a level is named when using it. It is refused, and nothing is spent, if no slot of that level or higher is left.
+  A slot spent this way is not spent to cast a spell, so it is outside the rule that only one spell slot can be spent to cast a spell on a turn. +1d8 healing for each level of the slot above 1 (to the first healing step, 1d8 at level 1)." The lowest level goes to the numbers the owner checks against the source.
+- **The #519 follow-ups.** The gate refuses an `attack` step anywhere in a feature's zone ("an attack step cannot be one of them"; a zone's steps run on a creature the zone caught, with no reach or range to roll against; a save does
+  the work). `feature` checks `zone.on` before it pays, beside the duration, the area and the effects ("its zone does not say when it goes off"). Both are held in `homebrew-subclass-zone.test.js`.
+- **Tests** (`homebrew-subclass-slotcost.test.js`): the invented Oath of the Lantern (a heal that grows by 1d8 a level, a damage with a use of its own and a lowest level of 2, a Temporary Hit Points that also spends Channel Divinity, a
+  use restored by a slot, a plain feature, a repeating bolt) and a Lantern Patron for a Warlock; the strict load, the reading, each refusal of the gate, the work at the highest slot, a feat and an item refused, derive and the
+  record lint, an SRD-only sheet identical; what players are sent; the lowest, a higher and a named slot; none named; a multiclass paladin/cleric; Pact Magic; Channel Divinity, a use and a slot together and each short;
+  a refused use changes nothing (each reason); outside a fight and a rest; `times`; a zone that costs a slot (its steps are the grown ones); `orSlot` for a creature that is not Pact Magic's; replay. No existing test was changed.
+  The two #519 follow-ups are added to `homebrew-subclass-zone.test.js`.
+- **Not verified.** Whether the client can pick the slot level for a feature (see DEBT T88): the engine takes `slot` on the `feature` action, but the screen was not looked at, and no browser was run.
