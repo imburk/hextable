@@ -49,6 +49,11 @@ export const WHEN = {
 // what changes nothing the waiting action could depend on (talk, notes, handouts, seats).
 export const WHILE_WAITING = new Set(['react', 'say', 'note', 'claim', 'release', 'handout', 'showHandout', 'hideHandout', 'removeHandout', 'askCheck']);
 
+// Addition H of docs/specs/homebrew-subclasses.md: the feature of `o` that lets it move after its Opportunity Attack hits (`triggers.opportunityHit`), or null.
+// What it gives is feet of movement, kept on the fight's turn flags as `rmove:<creature>` until the next turn begins (engine/movement.js).
+export const OWED_MOVE = 'rmove';
+export const afterOpportunity = (o) => (o?.feats ?? []).find((f) => f.triggers?.opportunityHit?.move === 'half') ?? null;
+
 // What a creature makes an Opportunity Attack with: its first melee attack action, or for a
 // creature with flat attack records, its first melee attack.
 // A companion that can't attack (`bond.noAttack`, a familiar) has none, so nobody walking away from it is threatened.

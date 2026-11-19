@@ -958,7 +958,9 @@ export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune
   'forgoAttack', 'invest',
   // Since #516 (docs/specs/homebrew-subclasses.md, addition J): what a subclass's feature changes about another feature's form (Wild Shape):
   // the highest Challenge Rating, more creature types, more Temporary Hit Points, and a price in another pool.
-  'formOf'];
+  'formOf',
+  // What the holder does sets something off (addition H of docs/specs/homebrew-subclasses.md): taking the Attack action, and an Opportunity Attack that hits.
+  'triggers'];
 // Investment of the Chain Master's `invest` (C9c): the keys it may hold, and the damage types it may turn into others.
 export const INVEST_KEYS = ['spell', 'speed', 'damage', 'saveDc', 'bonusAttack', 'ward'];
 const LEVELS = 20;
@@ -1418,6 +1420,27 @@ function lintGrants(g, cls, say) {
   if (g.attune !== undefined && !(isInt(g.attune) && g.attune >= 4 && g.attune <= 6)) say('attune is how many magic items it may be attuned to, 4 to 6');
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
   if (g.formOf !== undefined) { const why = formOfProblem(g.formOf, cls); if (why) say(why); }
+  if (g.triggers !== undefined) triggersProblems(g.triggers, cls, say);
+}
+// `triggers: { attackAction?, opportunityHit? }` (#534, addition H of homebrew-subclasses.md): what the holder does sets something off. Only a subclass's feature has one.
+//   attackAction: { modifiers }   when it takes the Attack action on its turn in a fight: these modifiers go on it until the end of that turn, once a turn (Blade Flourish)
+//   opportunityHit: { move: 'half' }   when its Opportunity Attack hits: up to half its Speed to move, without provoking (Relentless Avenger); spent with a `move` of its own
+export const TRIGGER_KEYS = ['attackAction', 'opportunityHit'];
+const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+export function triggersProblems(x, cls, say) {
+  if (!isObj(x) || !Object.keys(x).length) return say('triggers is { attackAction?, opportunityHit? }, with at least one');
+  for (const k of Object.keys(x)) if (!TRIGGER_KEYS.includes(k)) say(`"${k}" is not a trigger a feature can state (${TRIGGER_KEYS.join(', ')})`);
+  const a = x.attackAction, o = x.opportunityHit;
+  if (a !== undefined) {
+    if (!isObj(a) || !Object.keys(a).every((k) => k === 'modifiers')) say('triggers.attackAction is { modifiers }');
+    else if (!Array.isArray(a.modifiers) || !a.modifiers.length || a.modifiers.length > 5) say('triggers.attackAction.modifiers is a list of 1 to 5 modifiers');
+    else for (const m of bakeValues(a.modifiers, cls, say)) {
+      if (!isObj(m)) { say('a modifier of triggers.attackAction is { on, op, value, ... }'); continue; }
+      lintModifier(m, say);
+      for (const k of ['against', 'except', 'uses', 'onFail', 'cost']) if (m[k] !== undefined) say(`a modifier of triggers.attackAction lasts for the turn and is the holder's own: \`${k}\` is not for it`);
+    }
+  }
+  if (o !== undefined && !(isObj(o) && Object.keys(o).length === 1 && o.move === 'half')) say('triggers.opportunityHit is { move: "half" }');
 }
 // `formOf: { of, maxCr?, types?, typesMaxCr?, forms?, tempHp?, cost? }` (#516 and #525, addition J of homebrew-subclasses.md): a feature of a subclass changes the form
 // of the feature `of` (Wild Shape: a feature whose action has a `form`), as the class's own `form` says it, and at the class's own level:
@@ -1909,7 +1932,7 @@ function lintItem(e, say, ctx = {}) {
   if (e.charges !== undefined && !(e.charges && isInt(e.charges.max) && e.charges.max > 0 && e.charges.max <= 50 && Object.keys(e.charges).every((k) => ['max', 'regain'].includes(k)) && (e.charges.regain === undefined || isDice(e.charges.regain)))) say('charges is { max, regain? }');
   if (e.grants !== undefined) {
     lintGrants(e.grants, FEAT_CLASS, say);
-    for (const k of Object.keys(e.grants ?? {})) if (['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips', 'spellLists', 'spells', 'proficiency', 'hp', 'formOf'].includes(k)) say(`an item does not grant "${k}" (a class feature's)`);
+    for (const k of Object.keys(e.grants ?? {})) if (['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips', 'spellLists', 'spells', 'proficiency', 'hp', 'formOf', 'triggers'].includes(k)) say(`an item does not grant "${k}" (a class feature's)`);
     const chosen = JSON.stringify(e.grants).includes('"chosen"');
     if (chosen !== (e.variant === 'damageType' && !!e.grants)) say('a modifier\'s "chosen" damage type goes with variant "damageType"');
   }
@@ -2087,7 +2110,7 @@ const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach'
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
   'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
-  'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion', 'spellRange', 'repel', 'forgoAttack', 'invest'];
+  'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion', 'spellRange', 'repel', 'forgoAttack', 'invest', 'triggers'];
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -2162,6 +2185,7 @@ function lintFeat(f, say) {
   if (f.action?.acts !== undefined && !(Array.isArray(f.action.acts) && allOf(['dash', 'disengage', 'dodge'])(f.action.acts))) sub('its action acts lists dash, disengage or dodge.');
   if (f.reroll !== undefined && !(f.reroll && ID.test(f.reroll.cost ?? '') && (f.reroll.add === undefined || (isInt(f.reroll.add) && f.reroll.add >= 0 && f.reroll.add <= 30)))) sub('its reroll is { cost, add? }.');
   if (f.missed !== undefined) { if (!(f.missed && f.missed.modifier && ['turnStart', 'turnEnd'].includes(f.missed.ends?.on))) sub('its missed is { modifier, ends }.'); else lintModifier(f.missed.modifier, sub); }
+  if (f.triggers !== undefined) triggersProblems(f.triggers, FEAT_CLASS, (m) => sub(`its ${m}.`));
   if (f.reaction?.on === 'saveFailed') {
     const r = f.reaction;
     if (!(allOf(CONDITIONS)(r.conditions) && r.conditions.length && isInt(r.range) && r.range > 0 && r.range <= 300)) sub('its saveFailed reaction is { on, conditions, range }.');
@@ -2518,6 +2542,9 @@ const SHAPES = {
   freeCastCost: { what: 'a freeCast cost', keys: ['slot', 'uses'] },
   aura: { what: 'an aura', keys: ['range', 'modifiers', 'immune'] },
   formOf: { what: 'a form grant', keys: FORM_OF_KEYS },
+  triggers: { what: 'a trigger list', keys: TRIGGER_KEYS },
+  attackTrigger: { what: 'the trigger on taking the Attack action', keys: ['modifiers'] },
+  hitTrigger: { what: 'the trigger after an Opportunity Attack hits', keys: ['move'] },
   formCost: { what: 'the price of a form', keys: ['resource', 'n'] },
   map: { what: 'a map', keys: null },
   speedMap: { what: 'speeds', keys: null }, senseMap: { what: 'senses', keys: null }, skillMap: { what: 'skills', keys: null }, saveMap: { what: 'saves', keys: null },
@@ -2544,7 +2571,9 @@ const CHILD = {
   state: { light: 'light' },
   trigger: { effects: 'steps' }, use: { check: 'check', effects: 'steps' }, activate: { effects: 'steps' },
   prerequisite: { abilities: 'anyAbility' },
-  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap', freeCast: 'freeCast', formOf: 'formOf' },
+  grants: { modifiers: 'modifier[]', aura: 'aura', abilityBonus: 'abilityMap', setAbility: 'abilityMap', senses: 'senseMap', senseRange: 'senseMap', freeCast: 'freeCast', formOf: 'formOf', triggers: 'triggers' },
+  triggers: { attackAction: 'attackTrigger', opportunityHit: 'hitTrigger' },
+  attackTrigger: { modifiers: 'modifier[]' },
   freeCast: { cost: 'freeCastCost' },
   formOf: { maxCr: 'value', typesMaxCr: 'value', tempHp: 'value', cost: 'formCost' },
   aura: { range: 'value', modifiers: 'modifier[]' },
@@ -2975,6 +3004,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   spellPick: { lists: 's[]', abilities: 's[]', cantrips: 'i', level1: 'i' },
   freeCast: { list: 'id', maxLevel: 'i', spells: 'id[]', atWill: 'b', self: 'b', dark: 'b', sureSave: 'b', maxTemp: 'b', time: 's', forms: 'id[]', types: 's[]', ends: 's[]', cost: 'o', components: 's' },
   freeCastCost: { slot: 't', uses: 'id' },
+  triggers: { attackAction: 'o', opportunityHit: 'o' }, attackTrigger: { modifiers: 'a' }, hitTrigger: { move: 's' },
   formOf: { of: 'id', maxCr: 'n|o', types: 's[]', typesMaxCr: 'n|o', forms: 'id[]', tempHp: 'i|o', cost: 'o' },
   formCost: { resource: 'id', n: 'i' },
   grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
@@ -3066,6 +3096,8 @@ function lintShape(kind, e, say, { homebrew }) {
     if (homebrew && shape === 'grants' && (key === 'invest' || key === 'forgoAttack')) { bad++; say('A homebrew feature cannot change a familiar or let it attack yet.'); return; }
     // Nor may a feat or an item change what a class feature's form is (#516): `formOf` is for the features of a subclass.
     if (homebrew && shape === 'grants' && key === 'formOf' && kind !== 'subclasses') { bad++; say('Only a subclass\'s feature can change the form of a class feature (formOf).'); return; }
+    // Nor may a feat or an item state a trigger on what its holder does (#534): `triggers` is for the features of a subclass.
+    if (homebrew && shape === 'grants' && key === 'triggers' && kind !== 'subclasses') { bad++; say('Only a subclass\'s feature can state a trigger on what its holder does (triggers).'); return; }
     // The spells of a subclass are by class level: a whole number from 3 to 20.
     if (shape === 'spellMap' && !/^(?:[3-9]|1\d|20)$/.test(String(key))) { bad++; say(`spells: "${String(key).slice(0, 20)}" is not a class level from ${SUBCLASS_FIRST} to ${LEVELS}`); return; }
     // A subclass's damage, healing or Temporary Hit Points may be an amount of its class (`{ column: 'bardic-die' }`, `{ mod, min, die }`): the feature linter checks it

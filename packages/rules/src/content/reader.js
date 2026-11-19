@@ -1762,7 +1762,7 @@ export const FEAT_TIER_WORDS = {
 };
 // The keys the item linter refuses in an item's `grants` (a class's own: lintItem). A test holds this equal to the linter's refusals.
 export const ITEM_NO_GRANTS = ['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips',
-  'spellLists', 'spells', 'proficiency', 'hp', 'formOf'];
+  'spellLists', 'spells', 'proficiency', 'hp', 'formOf', 'triggers'];
 // Where the engine looks for a grant, apart from what a feature does for a class: features of a class only (derive.js reads them through `classFeatures`, or by the class a feature belongs to,
 // and a feat's or an item's feature belongs to none), so a feat or an item that holds the key changes nothing. A test runs derive to hold this to the engine.
 export const GRANTS_CLASS_ONLY = ['attune', 'spells', 'spellLists', 'cantrips'];
@@ -2022,6 +2022,24 @@ export const GRANT_WORDS = {
       this.line(`${Array.isArray(v.types) || Array.isArray(v.forms) ? `A form ${Array.isArray(v.types) && Array.isArray(v.forms) ? 'of a type it adds or one it names' : Array.isArray(v.types) ? 'of a type it adds' : 'it names'}` : 'Every form'} spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the feature ${shown(v.cost.resource)} instead of a use of ${shown(v.of)}, and is refused when the holder has too few. ${featureNote(v.of)}`, 2);
     }
     if (this.kind !== 'subclass') this.dm('Changing the form of a feature: the engine does not.');
+  },
+  triggers(v, at) {
+    if (!isObj(v)) return this.bad(`${at} is not { attackAction, opportunityHit }.`);
+    this.odd(v, ['attackAction', 'opportunityHit'], 'The trigger list');
+    const off = this.kind === 'subclass' ? '' : ' A feat or an item belongs to no class, so the engine adds nothing.';
+    if (v.attackAction !== undefined) {
+      const a = v.attackAction, mods = isObj(a) && Array.isArray(a.modifiers) ? a.modifiers.slice(0, 5) : null;
+      if (!mods) this.bad(`${at}.attackAction is not { modifiers }.`);
+      else {
+        const said = mods.map((m, i) => (isObj(m) ? modPhrase.call(this, m, `${at}.attackAction.modifiers[${i}]`) : 'a change the reader cannot read'));
+        this.line(`When the holder takes the Attack action on its own turn in a fight, it gets ${list(said)} until the end of that turn, once a turn. A second Attack action in the turn (Action Surge) adds nothing more.${mods.some((m) => isObj(m) && m.on === 'speed' && m.op === 'add') ? ' A Speed it adds is also added to the movement it has left, at once.' : ''}${off}`, 1);
+      }
+    }
+    if (v.opportunityHit !== undefined) {
+      if (!isObj(v.opportunityHit) || v.opportunityHit.move !== 'half') this.bad(`${at}.opportunityHit is not { move: "half" }.`);
+      else this.line(`When the holder's Opportunity Attack hits, it may move up to half its Speed (rounded down to 5 feet), and that movement provokes no Opportunity Attacks. The engine finishes the mover's whole move first, so the holder spends this movement afterwards, with a move of its own, before that turn ends; it does not move in between the mover's steps, and it can do nothing else with it. A holder that rides or is ridden is moved by the DM.${off}`, 1);
+    }
+    if (this.kind !== 'subclass') this.dm('Giving the holder what these triggers give: the engine does not.');
   },
   persist(v) { this.line(`The lasting effect of the feature ${shown(v?.of)} lasts its whole time without being renewed, and ends early only when the holder is Unconscious. ${featureNote(v?.of)}`, 1); },
   reroll(v, at) {

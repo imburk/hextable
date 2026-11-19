@@ -1,7 +1,7 @@
 // Attacks and a creature's turn (engine.js): attack, act (a monster's actions), dodge, reaction
 // instructions, endTurn; and the attacks a turn allows (Multiattack, Extra Attack).
 import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
-import { effectsOf } from '../durations.js';
+import { effectsOf, startEffect } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { canReact, checkInstructions, reactionsOf } from '../reactions.js';
 import { able, control, current, ent, fail, featOf, ft, inFight, need, steering, up, walled } from './shared.js';
@@ -11,7 +11,7 @@ import { SIZES } from '../content/schema.js';
 import { SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed } from '../weapons.js';
 import { canSee } from '../sight.js';
-import { conditionName } from '../modifiers.js';
+import { conditionName, speedOf } from '../modifiers.js';
 import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter, strikeOption } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
@@ -94,6 +94,35 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   if (def.uses) (e.charges ??= {})[def.id] = (e.charges[def.id] ?? def.uses.n) - 1;
   runAction(s, e, def, targets, hexes, origin, ev);
   checkEnd(s, ev);
+}
+
+// Addition H (docs/specs/homebrew-subclasses.md, `triggers.attackAction`): `e` has just taken the Attack action on its own turn in a fight (the action is spent; called at
+// the two places that spend it, below). Each feature of it that states the trigger puts its modifiers on it until the end of the turn, once a turn for the feature (the mark is
+// the one `after:` uses, `after:<feature>:<creature>`, so a second Attack action in the turn, Action Surge, adds nothing). What a Speed modifier raises is also added to the
+// walking feet left (`budget.move` is set at the turn's start and does not follow Speed), as Instinctive Pounce adds its half. Nothing is read from data that is not
+// whole: the gate checks it, and a record that skipped the gate is told to the DM and left alone, before anything changes.
+function attackActionTaken(s, e, ev) {
+  const enc = s.encounter;
+  if (!enc || current(s) !== e.id || e.object) return;
+  for (const f of e.feats ?? []) {
+    const t = f.triggers?.attackAction;
+    if (!t) continue;
+    const mods = Array.isArray(t.modifiers) ? t.modifiers : null;
+    if (!mods?.length || mods.length > 5 || !mods.every((m) => m && typeof m === 'object' && !Array.isArray(m) && typeof m.on === 'string' && typeof m.op === 'string')) {
+      ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `${e.name} took the Attack action, which ${f.name} follows, but its data is wrong (its modifiers are not a list of modifiers). The DM can apply it.` });
+      continue;
+    }
+    const mark = `after:${f.id}:${e.id}`;
+    if (enc.flags[mark]) continue;
+    enc.flags[mark] = true;
+    const before = speedOf(s, e);
+    const fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: 'special' });
+    Object.assign(fx, { bound: true, feature: f.id });
+    for (const m of mods) fx.parts.push({ target: e.id, modifier: structuredClone(m), ends: { on: 'turnEnd', who: e.id } });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of the current turn', targets: [e.id] });
+    const gain = speedOf(s, e) - before;
+    if (gain > 0 && enc.budget) enc.budget.move += gain;
+  }
 }
 
 // Brutal Strike (`brutal` on a built character's features): on its own turn, after the feature named
@@ -214,6 +243,7 @@ function familiarAttack(s, a, ctx, ev) {
     b.action--;
     if (b.loaded) { b.loaded = b.loaded.filter((k) => !k.startsWith('action:')); if (!b.loaded.length) delete b.loaded; }      // a new action loads afresh
     if (m.features?.extraAttack) b.attacks = [[{ action: null, left: m.features.extraAttack }]];      // the Attack action's other attacks
+    attackActionTaken(s, m, ev);
   }
   if (forgo) {
     f.reactionUsed = true;
@@ -325,6 +355,7 @@ export const handlers = {
       if (b.loaded) { b.loaded = b.loaded.filter((k) => !k.startsWith('action:')); if (!b.loaded.length) delete b.loaded; }      // a new action loads afresh
       // Extra Attack: the Attack action makes more than one attack. The rest wait in the budget.
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack + (surged ? b.attacks[0][0].left : 0) }]];
+      attackActionTaken(s, e, ev);
     }
     if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;

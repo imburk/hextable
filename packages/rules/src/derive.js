@@ -533,6 +533,7 @@ export function derive(sheet) {
     if (g.fleet) out.fleet = { ...g.fleet };
     for (const k of ['empowered', 'overchannel', 'markSpread', 'steadfast']) if (g[k]) out[k] = { ...g[k] };      // since #232: the Evoker, the Hunter
     if (g.afterHit) out.afterHit = structuredClone(g.afterHit);
+    if (g.triggers && x.cls.i >= 0) out.triggers = structuredClone(g.triggers);      // addition H: only a class's own or a subclass's feature (a feat or an item has no class: `cls.i` is -1)
     if (g.restExhaustion) out.restExhaustion = g.restExhaustion;
     if (g.spellRange) out.spellRange = { spell: g.spellRange.spell, add: g.spellRange.perLevel * level };     // Eldritch Spear: 30 feet a Warlock level
     if (g.repel) out.repel = { ...g.repel };
