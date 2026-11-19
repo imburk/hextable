@@ -101,6 +101,8 @@ const SENSE2 = [
   { pre: (s) => apply(s, { type: "bond", actor: GOB, to: "wizard", kind: "familiar" }, DM), a: { type: "companion", actor: GOB, auto: true } },
   { pre: (s) => apply(s, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: 3, r: -1 } }, DM), a: (s) => ({ type: "endEffect", effect: lasting(s) }) },
   { pre: (s) => apply(s, { type: "scene", scene: { title: "S" } }, DM), a: { type: "endScene" } },
+  // Movement an Opportunity Attack's rider gave (docs/specs/homebrew-subclasses.md, addition H), kept as a turn flag, given up (a fight only: the first base has none, and the setup is skipped there).
+  { pre: (s) => { s.encounter.flags["rmove:fighter"] = 15; }, a: { type: "forgoMove", actor: "fighter" } },
 ];
 const lcg = (n) => () => (n = (Math.imul(n, 1103515245) + 12345) >>> 0) / 4294967296;
 const HEX = [{ q: 0, r: 0 }, { q: 2, r: 1 }, { q: -1, r: 0 }, { q: 2, r: 0 }, { q: 4, r: -1 }, { q: 1, r: 1, z: 0 }];
