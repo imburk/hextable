@@ -432,9 +432,12 @@ function build(root, ch, options) {
   const extra = profs.filter((k) => !sheet.skills.includes(k));
   if (extra.length) sheet.extraSkills = extra;
   // A feature that gives skills from a short list (#544): where the sheet's proficiencies already hold exactly its `n` of them, those are its picks (the sheet records them under the feature's id).
+  // The picks are a guess, so the report says so (#548). A feature that gives Expertise reads only the skills the sheet marks at proficiency 2: a proficiency-1 skill would gain Expertise the sheet never had. Short of `n`, nothing is written and `validate` asks.
   for (const x of featuresOf(sheet)) {
-    const g = x.f.grants?.skills, held = Array.isArray(g?.from) ? g.from.filter((k) => profs.includes(k)) : [];
-    if (held.length && held.length === g.n) sheet.choices = { ...(sheet.choices ?? {}), [x.f.id]: held };
+    const g = x.f.grants?.skills, from = Array.isArray(g?.from) ? g.from.filter((k) => (g.expertise ? expert : profs).includes(k)) : [];
+    if (!from.length || from.length !== g.n) continue;
+    sheet.choices = { ...(sheet.choices ?? {}), [x.f.id]: from };
+    note('features', x.f.name, `Picks inferred: ${from.map((k) => k.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')).join(', ')} \u2014 check them.`, { level: x.f.level });
   }
   if (sheet.skills.length < wantClass() + wantAny()) {
     adjust('skills', undefined, `${sheet.skills.length} of ${wantClass() + wantAny()}`, `The sheet has fewer skill proficiencies the ${c.name} list allows than a level ${level} ${multi ? 'character with these classes' : c.name} chooses, so the sheet cannot load until the DM picks the rest.`);
