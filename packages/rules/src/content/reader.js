@@ -1870,7 +1870,15 @@ export const GRANT_WORDS = {
       if (isInt(v.within)) this.num(`${at}.within`, v.within, 'feet');
       return this.line(`A Reaction, taken by a standing instruction: when a hostile creature within ${isInt(v.within) ? v.within : '?'} feet damages the holder, the holder makes one melee attack against it.`, 1);
     }
-    if (v.on !== 'hit') { dm(`The reaction at ${at}.`); return this.bad(`${at}: a reaction is set off by a hit, a failed save or damage.`); }
+    if (v.on === 'attacks') {
+      if (typeof v.of !== 'string') this.bad(`${at}.of is not a feature id.`);
+      if (v.attack !== 'melee') this.bad(`${at}.attack is not "melee".`);
+      if (this.kind !== 'subclass') dm('Making a Reaction attack when a creature under an effect attacks: the engine does not.');
+      this.line(`A Reaction, taken by a standing instruction: when a hostile creature that is under the lasting effect of the feature ${shown(v.of)}, which this holder made, makes an attack with the Attack action or with one of its own actions (each attack of a Multiattack), the holder makes one melee weapon attack against it first, before that attack is rolled.`, 1);
+      this.line(`The creature is under the effect when the effect holds something on it, or on the holder against it alone. The holder must sense that creature, and it must be within the reach of one of the holder's melee weapons with no wall between (an Unarmed Strike is not a weapon attack here). ${featureNote(v.of)}`, 2);
+      return this.line('If that attack drops the creature, its attack is not made. It is not set off by a spell attack, an Opportunity Attack or another Reaction attack, a Grapple or a Shove, or an attack that only starts the fight.', 2);
+    }
+    if (v.on !== 'hit') { dm(`The reaction at ${at}.`); return this.bad(`${at}: a reaction is set off by a hit, a failed save, damage or an attack by a creature under the holder's effect.`); }
     let cut = 'half';
     if (v.cut !== 'half') {
       if (isObj(v.cut) && isDice(v.cut.dice)) { this.num(`${at}.cut.dice`, v.cut.dice, 'dice'); cut = `${v.cut.dice}${Array.isArray(v.cut.add) && v.cut.add.length ? ' plus an amount that grows with the class' : ''}`; if (Array.isArray(v.cut.add)) v.cut.add.forEach((x, j) => amountNums(this, x, `${at}.cut.add.${j}`, 'amount')); } else this.bad(`${at}.cut is not "half" or { dice, add }.`);

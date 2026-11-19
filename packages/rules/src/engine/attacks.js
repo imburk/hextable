@@ -3,16 +3,16 @@
 import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf, startEffect } from '../durations.js';
 import { apart, FT } from '../space.js';
-import { canReact, checkInstructions, reactionsOf } from '../reactions.js';
-import { able, control, current, ent, fail, featOf, ft, inFight, need, steering, up, walled } from './shared.js';
+import { canReact, checkInstructions, instruction, reactionsOf, underEffect } from '../reactions.js';
+import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, need, steering, tellDM, unblocked, up, walled } from './shared.js';
 import { rollMode } from './rolls.js';
 import { aimAction, holdsOf, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
 import { SPELLS } from '../content/index.js';
-import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed } from '../weapons.js';
+import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, startEncounter, strikeOption } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 
@@ -70,6 +70,40 @@ function partFull(s, e, def, targets) {
   if (why) fail(why);
 }
 
+// Addition I (docs/specs/homebrew-subclasses.md, `reaction: { on: 'attacks', of, attack: 'melee' }`): `e` is about to make an attack (the action and the attack are paid for, the roll is not
+// made). Each hostile creature in the fight whose feature `of` put a lasting effect on `e` (reactions.js, `underEffect`) may use its Reaction for one melee weapon attack against it first: it
+// must be up and able to react, sense `e` (a creature its side does not know is there is never asked and never reacts), have `e` within the reach of a melee weapon attack of its own that is not
+// an Unarmed Strike or a spell, with no wall between, and have its instruction not `never`. `ask` asks its player (the same waiting as every reaction), or tells the DM for the DM's creature.
+// Nothing is changed by a reaction that is not offered, declined or answered `never`. Returns whether `e` can still make the attack (a reaction attack that drops it ends it).
+function reactToAttacker(s, e, ev) {
+  if (!s.encounter || e.object || !up(e) || !inFight(s, e.id)) return true;
+  for (const t of Object.values(s.entities)) {
+    if (t.id === e.id || t.object || t.actions || !hostile(t, e) || !canReact(t) || !inFight(s, t.id)) continue;
+    for (const r of reactionsOf(t)) {
+      if (r.kind !== 'feature' || r.on !== 'attacks' || !underEffect(s, t, r.reaction.of, e)) continue;
+      const w = instruction(t, r, s);
+      if (w === 'never') continue;
+      const d = apart(s, t, e) * FT;
+      const atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !a.spell && !isUnarmed(a) && !handsFull(s, t, a) && d <= (a.reach ?? 5)));
+      if (!atk || !unblocked(s, t, e) || !sensesFor(s, t, e)) continue;
+      if (w === 'ask') {
+        // An attacker the party is not told of is not named in the question.
+        const a = ask(s, t, { trigger: 'attacks', ...(seesFor(s, t, e) ? { by: e.id } : {}) }, [{ reaction: r.id, name: r.name }]);
+        if (a === null) { tellDM(t, r, `${e.name} is about to attack.`, ev); continue; }
+        if (a.take !== r.id) continue;
+      }
+      const found = findFor(s, t, e, ev);                              // taken against a creature its senses found: the party is told first
+      if (found) unfind(s, found);
+      t.reactionUsed = true;
+      ev.push({ type: 'reaction', id: t.id, reaction: r.id, name: r.name, trigger: 'attacks', against: e.id });
+      resolveAttack(s, t, e, atk, ev, { reaction: r.id });
+      if (!up(e)) return false;
+      break;                                                           // one Reaction a round
+    }
+  }
+  return true;
+}
+
 // Use an action: aim it, pay for it, run it. In a fight it costs the creature's action (or its
 // Bonus Action, for one with `time: 'bonus'`), unless it is one of the attacks a Multiattack
 // left this turn, which it spends instead.
@@ -92,6 +126,7 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   }
   if (def.recharge) (e.spent ??= {})[def.id] = true;
   if (def.uses) (e.charges ??= {})[def.id] = (e.charges[def.id] ?? def.uses.n) - 1;
+  if (s.encounter && isAttack(def) && !reactToAttacker(s, e, ev)) return checkEnd(s, ev);        // addition I: a creature under an effect of a foe's attacks
   runAction(s, e, def, targets, hexes, origin, ev);
   checkEnd(s, ev);
 }
@@ -362,6 +397,7 @@ export const handlers = {
     }
     if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
+    if (option === 'damage' && !reactToAttacker(s, e, ev)) return checkEnd(s, ev);              // addition I: a creature under an effect of a foe's attacks
     const from = ev.length;
     if (option !== 'damage') strikeOption(s, e, t, atk, option, a.shove, ev);
     else {
