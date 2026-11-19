@@ -87,7 +87,8 @@ test("the pack loads in strict mode, its entries lint, and a slot cost is read i
   const read = readEntry("subclasses", LANTERN, { spells: [] });
   assert.deepEqual(read.problems, []);
   const lines = read.lines.join("\n");
-  assert.match(lines, /It also spends a spell slot, which the holder picks when using it: of level 1 or higher \(a Pact Magic slot for a Warlock\)\. It is refused, and nothing is spent, if no slot of that level or higher is left\./);
+  assert.match(lines, /It also spends a spell slot of level 1 or higher \(a Pact Magic slot for a Warlock\): the lowest one the holder has left, unless a level is named when using it\. It is refused, and nothing is spent, if no slot of that level or higher is left\. A slot spent this way is not spent to cast a spell, so it is outside the rule that only one spell slot can be spent to cast a spell on a turn\./);
+  assert.doesNotMatch(lines, /which the holder picks/);
   assert.match(lines, /\+1d8 healing for each level of the slot above 1 \(to the first healing step, 1d8 at level 1\)\./);
   assert.match(lines, /\+1d6 damage for each level of the slot above 2/);
   assert.match(lines, /The first damage step is rolled 1 more time for each level of the slot above 1\./);
@@ -121,6 +122,16 @@ test("the gate refuses a slot cost that is not whole, each with a sentence", () 
   assert.match(cost({ slot: 1, higher: { tempHp: "1d6" } }), /cost.higher.tempHp grows a tempHp step, and the action has none/);
   assert.match(cost({ slot: 1, higher: { times: 1 } }), /cost.higher.times repeats a damage step, and the action has none/);
   assert.match(cost({ slot: 1, higher: { value: 1 } }), /cost.higher.value adds to a modifier step's number, and the action has none/);
+  // it must grow the step `scaleSteps` grows: the first of its kind, so a later numeric modifier does not do, and nothing is left for a note on every use
+  const mods = [{ modifier: { on: "ac", op: "add", value: "1d4" } }, { modifier: { on: "speed", op: "add", value: 5 } }];
+  assert.match(cost({ slot: 1, higher: { value: 1 } }, { duration: "1 minute", effects: mods }), /cost.higher.value adds to the number of the first modifier step, and that one has no plain number/);
+  assert.equal(cost({ slot: 1, higher: { value: 1 } }, { duration: "1 minute", effects: [mods[1], mods[0]] }), "", "the first one is the plain number");
+  assert.match(cost({ slot: 1, higher: { heal: "1d6" } }), /cost.higher.heal adds 1d6 to the first heal step, whose amount is "1d8": it can only add dice of the same size to plain dice/);
+  assert.match(cost({ slot: 1, higher: { heal: "1d8" } }, { effects: [{ heal: { mod: "cha", min: 1 } }] }), /whose amount is not plain dice/);
+  assert.match(cost({ slot: 1, higher: { damage: "1d6" } }, { target: { creature: { range: [30, 30] } }, effects: [{ damage: { column: "x" }, type: "fire" }] }), /cost.higher.damage adds 1d6 to the first damage step, whose amount is not plain dice/);
+  // the first of the kind is the one checked, even when a later one would grow
+  assert.match(cost({ slot: 1, higher: { heal: "1d8" } }, { effects: [{ heal: "1d6" }, { heal: "1d8" }] }), /whose amount is "1d6"/);
+  assert.equal(cost({ slot: 1, higher: { heal: "1d8" } }, { effects: [{ heal: "1d8+2" }] }), "", "dice with a flat part grow");
   // a step of the kind inside a branch is found, as `scaleSteps` finds it
   assert.equal(cost({ slot: 1, higher: { damage: "1d6" } }, { target: { creature: { range: [30, 30] } }, effects: [{ save: "dex", dc: "cha", onFail: [{ damage: "2d6", type: "fire" }] }] }), "");
   assert.equal(cost({ slot: 1, higher: { value: 1 } }, { duration: "1 minute", effects: [{ modifier: { on: "ac", op: "add", value: 1 } }] }), "");
@@ -153,6 +164,12 @@ test("the work of a slot cost is counted at the highest slot: a use that is too 
   assert.equal(big(), "", "500 dice at the lowest slot is under the ceiling");
   assert.match(big({ damage: "10d6" }), /dice|the most is/, "grown by 8 levels it is not");
   assert.match(big({ times: 2 }), /dice|steps|the most is/);
+});
+
+test("a zone's dice are counted at the highest slot too", () => {
+  const zone = (higher) => one({ action: { time: "bonus", duration: "1 minute", target: { area: { shape: "emanation", size: 10 } }, zone: { on: ["enter"] }, effects: [{ save: "wis", dc: "cha", onFail: [{ damage: "2d6", type: "fire" }] }], cost: { slot: 1, higher } } });
+  assert.equal(zone({ damage: "1d6" }), "", "a zone that grows a little is fine");
+  assert.match(zone({ damage: "40d6" }), /dice|the most is/, "322d6 for each creature that enters at a 9th-level slot is not");
 });
 
 test("a zone may cost a slot", () => {

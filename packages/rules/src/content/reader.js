@@ -2171,7 +2171,7 @@ class GrantReading extends Reading {
     const c = v.cost;
     if (!isInt(c.slot)) return this.bad(`${at}.cost.slot is not a whole number.`);
     this.num(`${at}.cost.slot`, c.slot, 'slot level');
-    this.line(`It also spends a spell slot, which the holder picks when using it: of level ${c.slot} or higher (a Pact Magic slot for a Warlock). It is refused, and nothing is spent, if no slot of that level or higher is left.`, 2);
+    this.line(`It also spends a spell slot of level ${c.slot} or higher (a Pact Magic slot for a Warlock): the lowest one the holder has left, unless a level is named when using it. It is refused, and nothing is spent, if no slot of that level or higher is left. A slot spent this way is not spent to cast a spell, so it is outside the rule that only one spell slot can be spent to cast a spell on a turn.`, 2);
     if (c.higher === undefined) return;
     if (!isObj(c.higher)) return this.bad(`${at}.cost.higher is not an object.`);
     this.odd(c.higher, ['damage', 'heal', 'tempHp', 'times', 'value'], 'The slot cost\'s `higher`');

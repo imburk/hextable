@@ -995,14 +995,29 @@ function lintActionCost(a, say) {
   for (const k of Object.keys(h)) if (!SLOT_GROWS.includes(k)) say(`cost.higher.${k} is not something a slot level can add (${SLOT_GROWS.join(', ')})`);
   for (const k of ['damage', 'heal', 'tempHp']) if (h[k] !== undefined && !isDice(h[k])) say(`cost.higher.${k} must be dice`);
   for (const k of ['times', 'value']) if (h[k] !== undefined && !(isInt(h[k]) && h[k] > 0 && h[k] <= (k === 'times' ? 10 : 40))) say(`cost.higher.${k} must be a positive whole number${k === 'times' ? ' up to 10' : ' up to 40'}`);
-  // It grows a step the action has, as `scaleSteps` finds it: the first step of that kind.
+  // It grows the step `scaleSteps` grows: the FIRST step of that kind, in the same order (a step, then its branches), and says in a sentence what it cannot grow, instead of a
+  // note to the DM on every use. Dice grow by dice of the same size (`addDice`); a modifier's number must be a plain number.
   if (Array.isArray(a.effects)) {
-    const has = (key, ok = () => true) => { let found = false; walkSteps(a.effects, (st) => { if (st && typeof st === 'object' && key in st && ok(st)) found = true; }); return found; };
-    for (const k of ['damage', 'heal', 'tempHp']) if (h[k] !== undefined && !has(k)) say(`cost.higher.${k} grows a ${k === 'tempHp' ? 'tempHp' : k} step, and the action has none`);
-    if (h.times !== undefined && !has('damage')) say('cost.higher.times repeats a damage step, and the action has none');
-    if (h.value !== undefined && !has('modifier', (st) => typeof st.modifier?.value === 'number')) say('cost.higher.value adds to a modifier step\'s number, and the action has none');
+    const first = (key) => { let found = null; walkSteps(a.effects, (st) => { if (!found && st && typeof st === 'object' && key in st) found = st; }); return found; };
+    const grows = (base, extra) => {
+      const x = typeof base === 'string' && base ? DICE_GROWS.exec(base) : null, y = DICE_GROWS.exec(extra);
+      return !!x && !!y && !(x[2] && y[2] && x[2] !== y[2]);
+    };
+    for (const k of ['damage', 'heal', 'tempHp']) {
+      if (h[k] === undefined || !isDice(h[k])) continue;
+      const st = first(k);
+      if (!st) say(`cost.higher.${k} grows a ${k} step, and the action has none`);
+      else if (!grows(st[k], h[k])) say(`cost.higher.${k} adds ${h[k]} to the first ${k} step, whose amount is ${typeof st[k] === 'string' ? `"${st[k]}"` : 'not plain dice'}: it can only add dice of the same size to plain dice`);
+    }
+    if (h.times !== undefined && !first('damage')) say('cost.higher.times repeats a damage step, and the action has none');
+    if (h.value !== undefined) {
+      const st = first('modifier');
+      if (!st) say('cost.higher.value adds to a modifier step\'s number, and the action has none');
+      else if (typeof st.modifier?.value !== 'number') say('cost.higher.value adds to the number of the first modifier step, and that one has no plain number');
+    }
   }
 }
+const DICE_GROWS = /^(?:(\d+)d(\d+))?([+-]\d+)?$/;
 function lintGrants(g, cls, say) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
   for (const k of Object.keys(g)) if (!GRANTS.includes(k)) say(`"${k}" is not something a feature can grant`);
@@ -2620,13 +2635,14 @@ export function workOf(kind, e) {
     if (!a || typeof a !== 'object') continue;
     // A slot that pays for it (addition E): estimated at a 9th-level slot, as a spell's is, so a use the gate admits at the lowest level cannot pass the ceiling at the highest.
     const slot = a.cost && typeof a.cost === 'object' && isInt(a.cost.slot) && a.cost.slot >= 1 && a.cost.slot < 9 && a.cost.higher && typeof a.cost.higher === 'object' ? { up: 9 - a.cost.slot, hs: a.cost.higher } : null;
+    const grownEffects = slot && Array.isArray(a.effects) ? scaledSteps({ effects: a.effects, higher: { slot: slot.hs } }, slot.up) : a.effects;
     for (const steps of [a.effects, ...(Array.isArray(a.modes) ? a.modes.map((m) => m?.effects) : [])]) {
-      const grown = slot && steps === a.effects ? scaledSteps({ effects: steps, higher: { slot: slot.hs } }, slot.up) : steps;
+      const grown = slot && steps === a.effects ? grownEffects : steps;
       take(targetsOf(a.target) * listWork(grown, slot && steps === a.effects && isN(slot.hs.times) ? slot.up * slot.hs.times : 0), `action of the feature "${shortId(f)}"`);
       takeDice(diceFor(grown, targetsOf(a.target), !!a.target?.area), `action of the feature "${shortId(f)}"`);
     }
     // A zone goes off for one creature at a time, as a spell's does (above): one that moves into it, or two ticks in one end of turn.
-    if (a.zone && typeof a.zone === 'object' && Array.isArray(a.effects)) takeDice((Array.isArray(a.zone.on) && a.zone.on.includes('enter') ? HOMEBREW_WORK.creatures : 2) * diceFor(a.effects, 1, false), `zone of the feature "${shortId(f)}", going off`);
+    if (a.zone && typeof a.zone === 'object' && Array.isArray(a.effects)) takeDice((Array.isArray(a.zone.on) && a.zone.on.includes('enter') ? HOMEBREW_WORK.creatures : 2) * diceFor(grownEffects, 1, false), `zone of the feature "${shortId(f)}", going off`);
   }
   return { work, attacks, what, dice, diceWhat };
 }
