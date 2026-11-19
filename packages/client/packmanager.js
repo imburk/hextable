@@ -212,7 +212,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   }
   function summary() {
     const intro = $('pm-intro');
-    if (intro) intro.textContent = solo() ? 'Spells, items and more that this game adds to the rules, from a file. They are kept in this browser, beside the saved game, and checked again each time the game opens.' : 'Spells, items and more that this table adds to the rules, from a file. Players are sent the spells, items, feats, weapons, armour and objects, never a monster.';
+    if (intro) intro.textContent = solo() ? 'Spells, items and more that this game adds to the rules, from a file. They are kept in this browser, beside the saved game, and checked again each time the game opens.' : 'Spells, items and more that this table adds to the rules, from a file. Players are sent the spells, items, feats, weapons, armour, objects and subclasses, never a monster.';
     const s = $('pm-summary'); if (!s) return;
     const l = store.list();
     const gone = store.info().dropped.length;

@@ -12,8 +12,13 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
+const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus, subclassChoices, subclassNote, classTitle, missingText } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
 const { featuresOf } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
+const { loadPack, overlayOf, using } = await import(pathToFileURL(join(tmp, 'shared/content/registry.js')));
+const { derive, validate } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
+const { apply } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
+const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
+const { CONTENT } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
 
 const of = (sheet, id) => featuresOf(sheet).find((x) => x.f.id === id && !x.option);
 test('pickLimit: the Invocations column for a warlock, a plain number for Metamagic', () => {
@@ -74,4 +79,69 @@ test('the DM score bonus is said in words and can be taken off the kept fields (
   const rest = withoutBonus(keep);
   assert.deepEqual(rest, { items: [{ id: 'i1', item: 'x' }], speed: 35 }, 'everything else is kept');
   assert.ok('scoreBonus' in keep, 'the original is not changed');
+});
+
+// ---------- homebrew subclasses (B5, docs/specs/homebrew-subclasses.md): invented fixtures only ----------
+const oath = (id, name, cls, extra = {}) => ({ id: `hb-ember-folk-${id}`, name, class: cls, source: 'homebrew:ember-folk', checked: false, text: 'Paladins sworn to keep a hearth-fire burning.',
+  features: [{ id: `hb-ember-folk-${id}-vow`, name: 'Hearth Vow', level: 3, tier: 'manual', checked: false, text: 'A vow the DM keeps track of.' }], ...extra });
+const EMBER = loadPack({ format: 'hextable-pack', v: 1, pack: { id: 'ember-folk', name: 'Ember Folk', version: 1, license: 'Invented for the tests', attribution: 'Invented for the tests' },
+  subclasses: [oath('oath-of-the-ember', 'Oath of the Ember', 'paladin'), oath('ash-oath', 'Ash & Oath', 'paladin'), oath('ember-college', 'College of Embers', 'bard')] });
+assert.ok(EMBER.ok, JSON.stringify(EMBER.problems));
+const OVER = overlayOf([EMBER.pack]);
+const PAL = CONTENT.classes.paladin;
+const palSheet = (subclass) => ({ name: 'Tavin', class: 'paladin', level: 5, subclass, abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 10, cha: 14 }, skills: ['athletics', 'persuasion'], choices: { 'fighting-style': 'defense' } });
+
+test('the Subclass list: the SRD subclass, then this table\'s homebrew ones of the class, by name; none of another class', () => {
+  assert.deepEqual(subclassChoices(PAL, 5, undefined), [['', 'Choose a subclass'], ['devotion', 'Oath of Devotion']], 'an SRD-only game is unchanged');
+  assert.deepEqual(subclassChoices(PAL, 2, undefined)[0], ['', 'None yet (level 3)']);
+  using(OVER, () => {
+    assert.deepEqual(subclassChoices(PAL, 5, 'devotion'), [['', 'Choose a subclass'], ['devotion', 'Oath of Devotion'], ['hb-ember-folk-ash-oath', 'Ash & Oath (homebrew)'], ['hb-ember-folk-oath-of-the-ember', 'Oath of the Ember (homebrew)']]);
+    assert.deepEqual(subclassChoices(CONTENT.classes.bard, 5, undefined).map((o) => o[1]), ['Choose a subclass', 'College of Lore', 'College of Embers (homebrew)']);
+    assert.equal(subclassChoices(CONTENT.classes.fighter, 5, undefined).length, 2, 'no homebrew subclass of the fighter');
+  });
+});
+
+test('a sheet whose subclass pack is not loaded keeps its id in the list, and says so; a loaded one says where it is from', () => {
+  const id = 'hb-ember-folk-oath-of-the-ember';
+  assert.deepEqual(subclassChoices(PAL, 5, id).at(-1), [id, `${id} (not loaded at this table)`]);
+  assert.match(subclassNote(PAL, id), /not loaded at this table.*plays without its features/);
+  assert.equal(subclassNote(PAL, 'devotion'), '');
+  assert.equal(subclassNote(PAL, undefined), '');
+  using(OVER, () => {
+    assert.deepEqual(subclassChoices(PAL, 5, id).filter((o) => o[0] === id), [[id, 'Oath of the Ember (homebrew)']], 'listed once');
+    assert.match(subclassNote(PAL, id), /^Homebrew subclass of this table, from the pack ember-folk\. Paladins sworn/);
+    assert.match(subclassChoices(PAL, 5, 'hb-ember-folk-ember-college').at(-1)[1], /not a Paladin subclass here/, 'a loaded subclass of another class is shown as that');
+    assert.equal(subclassNote(PAL, 'hb-ember-folk-ember-college'), '');
+  });
+  assert.match(subclassChoices(PAL, 5, 'nonsense').at(-1)[1], /not a Paladin subclass here/);
+});
+
+test('a header says "subclass not loaded" for a sheet the page cannot play with its subclass, as the engine reads the sheet (missingOf), and for nothing else', () => {
+  const sheet = palSheet('hb-ember-folk-oath-of-the-ember');
+  assert.equal(classTitle({ cls: 'Paladin (Oath of the Ember)', sheet }), 'Paladin (subclass not loaded)', 'a record made with the pack, shown without it');
+  assert.equal(classTitle({ cls: 'Paladin (subclass not loaded)', sheet }), 'Paladin (subclass not loaded)', 'a record made without it says it once');
+  assert.equal(classTitle({ cls: 'Paladin (Oath of Devotion)', sheet: palSheet('devotion') }), 'Paladin (Oath of Devotion)');
+  assert.equal(classTitle({ cls: 'Paladin' , sheet: { ...palSheet(undefined), level: 2 } }), 'Paladin', 'below level 3 there is no subclass to miss');
+  assert.equal(classTitle({ cls: 'Fighter' }), 'Fighter', 'a hand-typed character has no sheet');
+  assert.equal(classTitle({ cls: 'Paladin 5', sheet: 'not a sheet' }), 'Paladin 5', 'a sheet that cannot be read changes nothing');
+  assert.equal(classTitle(null), '');
+  const multi = { name: 'Tavin', classes: [{ class: 'paladin', level: 5, subclass: 'hb-ember-folk-oath-of-the-ember' }, { class: 'bard', level: 3, subclass: 'lore' }], abilities: palSheet().abilities, skills: [] };
+  assert.equal(classTitle({ cls: 'Paladin (Oath of the Ember) / Bard (College of Lore)', sheet: multi }), 'Paladin (Oath of the Ember) / Bard (College of Lore) (subclass not loaded)');
+  using(OVER, () => assert.equal(classTitle({ cls: 'Paladin (Oath of the Ember)', sheet }), 'Paladin (Oath of the Ember)', 'loaded: as the record says'));
+  assert.equal(missingText({ name: 'Tavin', sheet }), 'Tavin: its subclass "hb-ember-folk-oath-of-the-ember" is not loaded at this table, so its subclass features and spells are absent until its pack is added again. Refresh from sheet brings them back then.');
+  assert.equal(missingText({ name: 'Tavin', sheet: palSheet('devotion') }), '');
+  assert.equal(missingText({ name: 'Tavin' }), '');
+});
+
+test('what the engine makes of a character with the pack away is what the header shows: the record says "subclass not loaded" and the DM is told', () => {
+  const s = newGame(11), DM = { role: 'dm', userId: 'dm' };
+  let id;
+  using(OVER, () => { const r = apply(s, { type: 'setSheet', sheet: palSheet('hb-ember-folk-oath-of-the-ember') }, DM); assert.ok(r.ok, r.error); id = r.events.findLast((x) => x.type === 'spawned').id; });
+  assert.equal(s.entities[id].cls, 'Paladin (Oath of the Ember)');
+  assert.equal(classTitle(s.entities[id]), 'Paladin (subclass not loaded)', 'the pack has gone: the old record still names it, the header does not');
+  const r = apply(s, { type: 'refresh', actor: id }, DM); assert.ok(r.ok, r.error);
+  assert.equal(s.entities[id].cls, 'Paladin (subclass not loaded)');
+  assert.equal(classTitle(s.entities[id]), 'Paladin (subclass not loaded)');
+  assert.deepEqual(validate(palSheet('hb-ember-folk-oath-of-the-ember')), []);
+  assert.ok(derive(palSheet('hb-ember-folk-oath-of-the-ember')).missing.length === 1);
 });

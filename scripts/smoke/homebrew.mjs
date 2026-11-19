@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT } from './lib.mjs';
 
 // ---------- homebrew packs, the client side (issue #404, docs/specs/homebrew.md, row B7) ----------
@@ -623,9 +623,166 @@ async function solo(browser, url, label0, opts, tag) {
   });
 }
 
+// ---------- homebrew subclasses, the client side (issue #512, docs/specs/homebrew-subclasses.md, B5) ----------
+// A DM hosts and a player joins. An invented pack ("ember-folk": an Oath of the Ember for the paladin, a College of Embers for the bard). Before the pack is on the
+// table, a paladin whose sheet names the oath is made: the header says "subclass not loaded" on both screens, the DM's sheet says why and the player is told nothing
+// of the DM's note. The DM reads the pack in the manager (subclasses listed with readings and tiers) and adds it; Refresh from sheet brings the oath in. The build sheet's
+// Subclass list holds the SRD subclass and the table's, of that class only. The import report names the homebrew subclass the importer matched. A player's page that loses
+// the pack says "subclass not loaded" again, with no page error. Run twice: DM at desktop size with a phone player, then the other way round.
+function emberSubclassPack() {
+  const f = (id, name, level, tier, text, extra = {}) => ({ id: `hb-ember-folk-${id}`, name, level, tier, checked: false, text, ...extra });
+  const oath = { id: 'hb-ember-folk-oath-of-the-ember', name: 'Oath of the Ember', class: 'paladin', source: 'homebrew:ember-folk', checked: false, text: 'Paladins sworn to keep a hearth-fire burning.',
+    spells: { 3: ['burning-hands', 'shield-of-faith'] },
+    features: [f('kindle', 'Kindle', 3, 'auto', 'Spend Channel Divinity to wreathe one foe in sparks: Advantage on attack rolls against it for 1 minute.',
+      { grants: { action: { time: 'bonus', cost: { resource: 'channel-divinity' }, duration: '1 minute', target: { creature: { range: [30, 30] } }, effects: [{ modifier: { on: 'attack.roll', op: 'advantage', against: 'target' }, to: 'caster' }] } } }),
+      f('hearth-vow', 'Hearth Vow', 7, 'manual', 'A vow the DM keeps track of.')] };
+  const college = { id: 'hb-ember-folk-college-of-embers', name: 'College of Embers', class: 'bard', source: 'homebrew:ember-folk', checked: false, text: 'Bards who sing by firelight.',
+    features: [f('ash-song', 'Ash Song', 3, 'manual', 'A song the DM judges.')] };
+  return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'ember-folk', name: 'Ember Folk', version: 1, license: 'CC0, by the author', attribution: 'Written for the smoke test.' }, subclasses: [oath, college] });
+}
+const OATH = 'hb-ember-folk-oath-of-the-ember';
+const TAVIN = { name: 'Tavin', class: 'paladin', level: 5, subclass: OATH, abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 10, cha: 14 }, skills: ['athletics', 'persuasion'], choices: { 'fighting-style': 'defense' } };
+const EMBER_FIXTURE = fileURLToPath(new URL('../../packages/rules/test/fixtures/fgxml-paladin-ember.xml', import.meta.url));
+
+export async function subclassTable(browser, url, label, hostOpts, playerOpts, tag) {
+  await scenario(label, async (run) => {
+    const hostCtx = await browser.newContext(hostOpts), playerCtx = await browser.newContext(playerOpts);
+    try {
+      const host = await hostCtx.newPage(), player = await playerCtx.newPage();
+      run.watch(host, ' (DM)'); run.watch(player, ' (player)');
+      const got = [];
+      let inject = null;
+      await player.routeWebSocket(/\/ws$/, (ws) => { const up = ws.connectToServer(); ws.onMessage((m) => up.send(m)); up.onMessage((m) => ws.send(m)); inject = (text) => ws.send(text); });
+      player.on('websocket', (ws) => ws.on('framereceived', (f) => got.push(String(f.payload))));
+      const idOf = (page) => page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Tavin')?.id ?? null);
+      const sub = (page) => page.textContent('#c-sub');
+      const chip = async (page) => { await closeMenu(page); await page.click('#party button:has-text("Tavin")'); await wait(page, () => !document.querySelector('#card').hidden && /Tavin/.test(document.querySelector('#c-name').textContent)); };
+      const noSideways = (page, sel) => page.$eval(sel, (e) => ({ sx: e.scrollWidth, cx: e.clientWidth, r: e.getBoundingClientRect().right, iw: innerWidth })).then((m) => { if (m.sx > m.cx + 1 || m.r > m.iw + 1) throw new Error(`${sel} overflows sideways: ${JSON.stringify(m)}`); });
+      const openManager = async () => { if (!(await shown(host, '#pm'))) { await openTab(host, 'dm'); await host.click('#pm-open'); await waitShown(host, '#pm'); } };
+      const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
+
+      await run.do('the DM hosts, the player joins and is let in', async () => {
+        await open(host, url);
+        await host.fill('#lobby-name', 'Smoke DM'); await host.click('#lobby-host');
+        await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
+        const code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
+        await open(player, url);
+        await player.fill('#lobby-name', 'Smoke Player'); await player.fill('#lobby-code', code); await player.click('#lobby-join');
+        await wait(player, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
+        await openTab(host, 'dm');
+        await host.click('#dm-table button:has-text("Let in")');
+        await waitShown(player, '#lobby', false);
+        await wait(player, () => window.hextable.state?.entities?.fighter);
+        await closeMenu(host);
+      });
+      await run.do('a paladin whose subclass the table does not have is made: both headers say "subclass not loaded", the DM\'s sheet says why, the player is not told the DM\'s note', async () => {
+        await host.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet }), TAVIN);
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin'), null, 10000).catch(async () => { throw new Error(`no Tavin: ${await host.evaluate(() => document.getElementById('toast')?.textContent)}`); });
+        await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin'), null, 10000);
+        await chip(host); await chip(player);
+        for (const [who, page] of [['DM', host], ['player', player]]) if (!/Level 5 Paladin \(subclass not loaded\)/.test(await sub(page))) throw new Error(`${who}'s header: ${await sub(page)}`);
+        await host.click('#btn-sheet'); await waitShown(host, '#sheet-body');
+        const t = await host.textContent('#sheet-subclass-missing');
+        if (!t.includes(OATH) || !/is not loaded at this table/.test(t)) throw new Error(t);
+        await noSideways(host, '#sheet-body');
+        await shot(host, `subclass-missing-dm-${tag}`);
+        await closeMenu(host);
+        if (/is not loaded at this table/.test(await player.evaluate(() => document.body.innerText))) throw new Error('the player was shown the DM\'s note');
+        if (got.some((f) => /is not loaded at this table/.test(f))) throw new Error('the DM\'s note was sent to the player');
+        await shot(player, `subclass-missing-player-${tag}`);
+      });
+      await run.do('the manager reads the pack: subclasses listed with a reading and a tier each, then Add', async () => {
+        await openManager();
+        await host.setInputFiles('#pm-file', { name: 'ember-folk.json', mimeType: 'application/json', buffer: Buffer.from(emberSubclassPack()) }); await waitShown(host, '#pm-review');
+        const t = await host.textContent('#pm-review');
+        if (!/Holds 2 subclasses/.test(t) || !/Subclasses \(2\)/.test(t) || !/Subclasses by tier: 0 auto, 1 assist, 1 manual/.test(t)) throw new Error(t.slice(0, 500));
+        if (/not read/.test(t)) throw new Error(`a subclass is listed as not read: ${t.slice(0, 400)}`);
+        const names = await host.$$eval('#pm-review .pm-entry.pm-subclass[data-entry] .pm-name', (l) => l.map((n) => n.textContent));
+        if (names.length !== 2 || !names.some((n) => /Oath of the Ember/.test(n)) || !names.some((n) => /College of Embers/.test(n))) throw new Error(`entries: ${names.join(' | ')}`);
+        await host.evaluate(() => document.querySelector('#pm-review .pm-entry.pm-subclass[data-entry]').open = true);
+        const r = await host.textContent('#pm-review .pm-entry.pm-subclass[data-entry]');
+        if (!/Kindle/.test(r) || !/Hearth Vow/.test(r) || !/The DM does this|DM/.test(r)) throw new Error(`the reading: ${r.slice(0, 500)}`);
+        await noSideways(host, '#pm .pm-body');
+        await shot(host, `subclass-review-${tag}`);
+        await host.click('#pm-go');
+        await waitShown(host, '.pm-pack[data-pack="ember-folk"]');
+        await wait(player, () => window.hextable.packs.built.includes('ember-folk'), null, 10000);
+        const l = await host.textContent('.pm-pack[data-pack="ember-folk"]');
+        if (!/2 subclasses/.test(l)) throw new Error(l);
+        await host.evaluate(() => { const d = document.querySelector('.pm-pack[data-pack="ember-folk"] details.pm-entries'); if (d) d.open = true; });
+        await shot(host, `subclass-manager-${tag}`);
+        const pp = await player.evaluate(() => window.hextable.packs.built);
+        if (!pp.includes('ember-folk')) throw new Error('the player did not build the pack');
+        await host.click('#pm .pm-close'); await waitShown(host, '#pm', false); await closeMenu(host);
+      });
+      await run.do('Refresh from sheet brings the oath in: the DM\'s note is gone and both headers name it', async () => {
+        await chip(host); await host.click('#btn-sheet'); await waitShown(host, '#sheet-body');
+        await host.click('#sheet-refresh');
+        await wait(host, () => /Paladin \(Oath of the Ember\)/.test(document.querySelector('#c-sub').textContent), null, 10000);
+        await wait(player, () => !document.querySelector('#card').hidden && /Paladin \(Oath of the Ember\)/.test(document.querySelector('#c-sub').textContent), null, 10000);
+        if (await shown(host, '#sheet-subclass-missing')) throw new Error('the note stayed');
+        const t = await host.textContent('#sheet-body');
+        if (!/Kindle/.test(t)) throw new Error('the oath\'s feature is not on the sheet');
+        await closeMenu(host);
+      });
+      await run.do('the build sheet\'s Subclass list: the SRD subclass and the table\'s of this class (not the bard\'s), names as text, the chosen one explained', async () => {
+        await chip(host); await openTab(host, 'dm'); await host.click('#qe-edit'); await waitShown(host, '#qb');
+        const opts = await host.$$eval('#qb-subclass option', (l) => l.map((o) => [o.value, o.textContent]));
+        const want = [['', 'Choose a subclass'], ['devotion', 'Oath of Devotion'], [OATH, 'Oath of the Ember (homebrew)']];
+        if (JSON.stringify(opts) !== JSON.stringify(want)) throw new Error(`the list: ${JSON.stringify(opts)}`);
+        if (await host.$eval('#qb-subclass', (s) => s.value) !== OATH) throw new Error('the character\'s own subclass is not the selected one');
+        const note = await host.textContent('#qb-subclass-note');
+        if (!/from the pack ember-folk/.test(note) || !/hearth-fire/.test(note)) throw new Error(note);
+        await noSideways(host, '#qb');
+        const bb = await (await host.$('#qb-subclass')).boundingBox();
+        if (bb.height < 30) throw new Error(`the list is ${bb.height}px tall`);
+        await shot(host, `subclass-build-edit-${tag}`);
+        await host.click('#qb-close'); await waitShown(host, '#qb', false);
+        await host.click('#qb-add'); await waitShown(host, '#qb');
+        await host.selectOption('#qb-class', 'bard'); await host.selectOption('#qb-levelsel', '3');
+        const bard = await host.$$eval('#qb-subclass option', (l) => l.map((o) => o.textContent));
+        if (JSON.stringify(bard) !== JSON.stringify(['Choose a subclass', 'College of Lore', 'College of Embers (homebrew)'])) throw new Error(`the bard's list: ${JSON.stringify(bard)}`);
+        await host.selectOption('#qb-subclass', 'hb-ember-folk-college-of-embers');
+        await wait(host, () => /College of Embers/.test(document.querySelector('#qb-subclass-note')?.textContent ?? '') || /Bards who sing/.test(document.querySelector('#qb-subclass-note')?.textContent ?? ''));
+        await shot(host, `subclass-build-new-${tag}`);
+        await host.click('#qb-close'); await waitShown(host, '#qb', false); await closeMenu(host);
+      });
+      await run.do('the import report names the homebrew subclass the importer matched, before anything changes', async () => {
+        const before = await host.evaluate(() => Object.keys(window.hextable.state.entities).length);
+        await openTab(host, 'dm'); await waitShown(host, '#dm-qe .fgi-open');
+        await host.evaluate(() => { document.querySelector('#fgi-file').value = ''; });
+        await host.setInputFiles('#fgi-file', EMBER_FIXTURE); await waitShown(host, '#fgi-summary');
+        const t = await host.textContent('#fgi-homebrew-subclass');
+        if (!/matched the table's homebrew subclass Oath of the Ember \(pack ember-folk\)/.test(t)) throw new Error(t);
+        const sum = await host.textContent('#fgi-summary');
+        if (sum.includes('hb-ember-folk') || !/\(Oath of the Ember\)/.test(sum) || !/a homebrew subclass: Oath of the Ember/.test(sum)) throw new Error(sum.slice(0, 500));
+        if (await shown(host, '#fgi-adjustments') && /subclass/i.test(await host.textContent('#fgi-adjustments'))) throw new Error('a stand-in is listed beside the match');
+        await noSideways(host, '#fgi');
+        await shot(host, `subclass-import-${tag}`);
+        if (await host.evaluate(() => Object.keys(window.hextable.state.entities).length) !== before) throw new Error('the table changed before the DM confirmed');
+        await host.click('#fgi-cancel'); await waitShown(host, '#fgi', false); await closeMenu(host);
+      });
+      await run.do('a player\'s page that loses the pack says "subclass not loaded" again, with no page error, and the pack coming back names the oath', async () => {
+        if (!inject) throw new Error('the player\'s socket is not routed');
+        const lastPacks = [...got].reverse().find((f) => /"t":"packs"/.test(f));
+        if (!lastPacks) throw new Error('the player was sent no packs message');
+        await chip(player);
+        inject(JSON.stringify({ t: 'packs', packs: [] }));
+        await wait(player, () => /Paladin \(subclass not loaded\)/.test(document.querySelector('#c-sub').textContent), null, 10000).catch(async () => { throw new Error(`header: ${await sub(player)}`); });
+        await shot(player, `subclass-lost-player-${tag}`);
+        inject(lastPacks);
+        await wait(player, () => window.hextable.packs.built.includes('ember-folk'), null, 10000);
+        await wait(player, () => /Paladin \(Oath of the Ember\)/.test(document.querySelector('#c-sub').textContent), null, 10000).catch(async () => { throw new Error(`header after: ${await sub(player)}`); });
+      });
+    } finally { await hostCtx.close(); await playerCtx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   await solo(browser, url, 'homebrew solo: on a phone, with touch', PHONE, 'phone');
   await solo(browser, url, 'homebrew solo: at desktop size', DESKTOP, 'desktop');
   await table(browser, url, 'homebrew: the DM at desktop size, a phone player', DESKTOP, PHONE, 'desktop');
   await table(browser, url, 'homebrew: the DM on a phone, a desktop player', PHONE, DESKTOP, 'phone');
+  await subclassTable(browser, url, 'homebrew subclasses: the DM at desktop size, a phone player', DESKTOP, PHONE, 'desktop');
+  await subclassTable(browser, url, 'homebrew subclasses: the DM on a phone, a desktop player', PHONE, DESKTOP, 'phone');
 }
