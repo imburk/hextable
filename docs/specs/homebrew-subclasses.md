@@ -573,6 +573,7 @@ Built to addition J, the owner's questions on their defaults. What was settled i
   is below the class's, a price in the circle's own pool, a price of two uses of Wild Shape, a price on every form; the gate's refusals; derive in a druid 4 / fighter 3; the forms played
   (accepted, past the rating, the wrong type, a Fly Speed, nothing changed on refusal, in a fight); the overlay removed (`refresh`: the class's own forms) and back; an SRD-only game
   unchanged; what a player is sent.
+- **A file beyond the issue's list.** `packages/rules/test/reader-items.test.js`: one line in `SAMPLES` (a sample of `formOf`), because that test holds the sample keys equal to `GRANTS`, as it did for #464. The owner's coordinator approved it. `tempHp` being *added* to the form's own, not the higher of the two, was confirmed in the same review.
 - **Not built (DEBT T86).** The client's form list and its note read `action.form` as the merged record gives it (types, rating, Temporary Hit Points) and say "N of M uses left" for
   Wild Shape's own pool, which is not the pool a priced form spends; the engine refuses a form with too few uses and says why, but the screen does not yet show the price.
 
