@@ -11,7 +11,7 @@
 // weapons and armour. Whatever it cannot is reported, and where a sheet needs a value to load at all (an SRD
 // subclass at level 3, an option of a feature), the stand-in is listed under `adjustments`.
 import { CONTENT, SPELLS } from './content/index.js';
-import { ABILITIES, SKILLS, lintRecord } from './content/schema.js';
+import { ABILITIES, SKILLS, lintRecord, nameKey } from './content/schema.js';
 import { derive, featSlots, featuresOf, itemName, mod, proficiencyFor, validate } from './derive.js';
 
 // ---------- a small XML reader ----------
@@ -269,6 +269,7 @@ function build(root, ch, options) {
   if (classes.length > 1 && level !== totalLevel) R.ruleDifferences.push({ name: 'Total level', why: `The sheet is level ${totalLevel}; the engine's sheet is level ${level} (${multi ? order.map((o) => `${o.def.name} ${o.level}`).join(' / ') : c.name}), so its Proficiency Bonus, Hit Points and slots follow that level.` });
 
   const sheet = multi ? { name, classes: order.map((o) => ({ class: o.def.id, level: o.level })), abilities: {}, skills: [] } : { name, class: c.id, level, abilities: {}, skills: [] };
+  const hbTaken = [];                     // homebrew subclasses of the table that the sheet's names matched, for `imported`
   const standIns = new Set();             // classes whose subclass is a stand-in, so what it always prepares is not the character's
 
   // Subclass, for each class
@@ -277,7 +278,17 @@ function build(root, ch, options) {
   order.filter((o) => multi || o === main).forEach((o, i) => {
     const at = multi ? sheet.classes[i] : sheet, lv = multi ? o.level : level, cd = o.def, sub = cd.subclass, specKey = norm(o.spec);
     const isSrdSub = !!specKey && (specKey === norm(sub.name) || words(specKey, norm(sub.id)) || (SUB_ALIAS[sub.id] ?? []).some((a) => words(specKey, a)));
-    if (lv >= 3) {
+    // A homebrew subclass of this class that the sheet's name matches (homebrew-subclasses.md, Decision 5): the whole name, or the sheet's words
+    // inside its name or its name's words inside the sheet's ("Ember" for "Oath of the Ember"). Only when the sheet names it and the SRD's is not meant.
+    const hbMatches = lv >= 3 && !isSrdSub && specKey && options.homebrewSubclass !== false
+      ? Object.values(CONTENT.subclasses).filter((h) => h.class === cd.id && typeof h.name === 'string' && (nameKey(h.name) === nameKey(o.spec) || words(norm(h.name), specKey) || words(specKey, norm(h.name)))) : [];
+    const hbOne = hbMatches.length === 1 ? hbMatches[0] : null;
+    const packOf = (h) => String(h.source ?? '').replace(/^homebrew:/, '') || 'unknown';
+    if (hbOne) {
+      at.subclass = hbOne.id;
+      const text = `matched the table's homebrew subclass ${hbOne.name} (pack ${packOf(hbOne)})`;
+      hbTaken.push({ class: cd.id, id: hbOne.id, name: hbOne.name, pack: packOf(hbOne), sheet: show(o.spec), text });
+    } else if (lv >= 3) {
       at.subclass = sub.id;
       if (isSrdSub) {
         if (specKey !== norm(sub.name)) R.ruleDifferences.push({ name: o.spec, why: `The 2014 name of the SRD subclass ${sub.name}; its features are built as the 5.2 ones.` });
@@ -286,6 +297,7 @@ function build(root, ch, options) {
       } else {
         standIns.add(cd.id);
         note('subclass', o.spec || '(none named)', `Not an SRD 5.2 subclass, so none of its features exist in the pack. ${o.name} subclass features are not built.`);
+        if (hbMatches.length > 1) note('subclass', o.spec, `More than one homebrew subclass of this table matches it (${hbMatches.map((h) => `${h.name}, pack ${packOf(h)}`).join('; ')}), so none was taken: the DM edits the sheet's subclass to name one.`);
         adjust('subclass', o.spec || '(none named)', sub.name, `A level ${lv} ${multi ? `${cd.name} ` : ''}sheet cannot load without the SRD subclass. ${sub.name} is a stand-in: its features are NOT this character's.`);
       }
     } else if (o.spec && !isSrdSub) note('subclass', o.spec, 'Not an SRD 5.2 subclass.');
@@ -791,6 +803,7 @@ function build(root, ch, options) {
     skills: [...(sheet.skills ?? []), ...(sheet.extraSkills ?? [])].length, expertise: (sheet.expertise ?? []).length, tools: (sheet.tools ?? []).length, gear: (sheet.gear ?? []).length,
     cantrips: spellsOnSheet.filter((s) => s.level === 0).length, prepared: spellsOnSheet.filter((s) => s.level > 0).length,
     proficiencyBonus: proficiencyFor(level),
+    ...(hbTaken.length ? { homebrewSubclasses: hbTaken } : {}),
   };
   return { character: sheet, report: count(R) };
 }

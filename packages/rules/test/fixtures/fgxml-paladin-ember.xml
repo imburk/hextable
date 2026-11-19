@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!-- A made-up Paladin 5 sworn to an invented "Oath of the Ember" (the homebrew subclass of the test pack "ember-folk"). Every name here is SRD or invented for the test. -->
+<root version="5.1" dataversion="20260101" release="11|CoreRPG:8">
+	<character>
+		<name type="string">Ash Kindlewick</name>
+		<size type="string">Medium</size>
+		<level type="number">5</level>
+		<profbonus type="number">3</profbonus>
+		<abilities>
+			<strength><score type="number">16</score><save type="number">3</save></strength>
+			<dexterity><score type="number">10</score><save type="number">0</save></dexterity>
+			<constitution><score type="number">14</score><save type="number">2</save></constitution>
+			<intelligence><score type="number">10</score><save type="number">0</save></intelligence>
+			<wisdom><score type="number">12</score><save type="number">4</save></wisdom>
+			<charisma><score type="number">16</score><save type="number">6</save></charisma>
+		</abilities>
+		<classes>
+			<id-00001><name type="string">Paladin</name><level type="number">5</level><specialization type="string">Ember</specialization></id-00001>
+		</classes>
+		<speed><base type="number">30</base><total type="number">30</total></speed>
+		<featurelist>
+			<id-00001><name type="string">Kindle</name><level type="number">3</level></id-00001>
+			<id-00002><name type="string">Hearth Vow</name><level type="number">3</level></id-00002>
+			<id-00003><name type="string">Extra Attack</name><level type="number">5</level></id-00003>
+		</featurelist>
+		<powergroup>
+			<id-00001><name type="string">Spells (Paladin)</name><castertype type="string">memorization</castertype><stat type="string">charisma</stat><prepared type="number">5</prepared></id-00001>
+		</powergroup>
+		<powers>
+			<id-00001><name type="string">Bless</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00001>
+			<id-00002><name type="string">Cure Wounds</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00002>
+			<id-00003><name type="string">Burning Hands</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00003>
+			<id-00004><name type="string">Ember Ward</name><group type="string">Spells (Paladin)</group><level type="number">2</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00004>
+			<id-00005><name type="string">Aid</name><group type="string">Spells (Paladin)</group><level type="number">2</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00005>
+		</powers>
+	</character>
+</root>
