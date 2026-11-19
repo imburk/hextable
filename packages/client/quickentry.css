@@ -46,3 +46,4 @@
 .fgi-error { margin: 0 0 8px; padding: 8px 10px; border-radius: var(--radius); background: var(--bad); color: #fff; font-weight: 600; overflow-wrap: anywhere; }
 .fgi-keep .row { margin-top: 6px; } .fgi-keep .check input { width: 22px; height: 22px; }
 .fgi .qe-foot .row button { flex: 1 1 140px; }
+.qb-bonus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } .qb-bonus-remove { min-height: 44px; min-width: 44px; }

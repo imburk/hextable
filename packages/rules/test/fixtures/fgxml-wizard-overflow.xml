@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!-- A made-up level 2 Wizard whose sheet flags more spells as prepared than a Wizard prepares, in an order that is neither alphabetical nor by level. Every name here is SRD or invented for the test. -->
+<root version="5.1" dataversion="20260101" release="11|CoreRPG:8">
+	<character>
+		<name type="string">Orin Overflow [Zed]</name>
+		<size type="string">Medium</size>
+		<level type="number">2</level>
+		<profbonus type="number">2</profbonus>
+		<abilities>
+			<strength><score type="number">8</score><save type="number">-1</save></strength>
+			<dexterity><score type="number">14</score><save type="number">2</save></dexterity>
+			<constitution><score type="number">14</score><save type="number">2</save></constitution>
+			<intelligence><score type="number">16</score><save type="number">5</save></intelligence>
+			<wisdom><score type="number">12</score><save type="number">1</save></wisdom>
+			<charisma><score type="number">10</score><save type="number">0</save></charisma>
+		</abilities>
+		<classes>
+			<id-00001><name type="string">Wizard</name><level type="number">2</level></id-00001>
+		</classes>
+		<speed><base type="number">30</base><total type="number">30</total></speed>
+		<skilllist>
+			<id-00001><name type="string">Arcana</name><prof type="number">1</prof></id-00001>
+			<id-00002><name type="string">History</name><prof type="number">1</prof></id-00002>
+		</skilllist>
+		<powergroup>
+			<id-00001><name type="string">Spells (Wizard)</name><castertype type="string">memorization</castertype><stat type="string">intelligence</stat><prepared type="number">5</prepared></id-00001>
+		</powergroup>
+		<powers>
+			<id-00001><name type="string">Fire Bolt</name><group type="string">Spells (Wizard)</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00001>
+			<id-00002><name type="string">Mage Hand</name><group type="string">Spells (Wizard)</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Conjuration</school></id-00002>
+			<id-00003><name type="string">Light</name><group type="string">Spells (Wizard)</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00003>
+			<id-00004><name type="string">Sleep</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00004>
+			<id-00005><name type="string">Shield</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00005>
+			<id-00006><name type="string">Moon Dart</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00006>
+			<id-00007><name type="string">Mage Armor</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00007>
+			<id-00008><name type="string">Cure Wounds</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00008>
+			<id-00009><name type="string">Detect Magic (RIT) (30) (C)</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Divination</school></id-00009>
+			<id-00010><name type="string">Magic Missile</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00010>
+			<id-00011><name type="string">Burning Hands</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00011>
+			<id-00012><name type="string">Thunderwave</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00012>
+			<id-00013><name type="string">Find Familiar (RIT)</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Conjuration</school></id-00013>
+			<id-00014><name type="string">Feather Fall</name><group type="string">Spells (Wizard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Transmutation</school></id-00014>
+			<id-00015><name type="string">Invisibility</name><group type="string">Spells (Wizard)</group><level type="number">2</level><prepared type="number">1</prepared><school type="string">Illusion</school></id-00015>
+		</powers>
+	</character>
+</root>

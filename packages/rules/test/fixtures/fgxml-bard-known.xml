@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!-- A made-up level 2 Bard (spells known): its own group "Spells (Bard)" is empty and the spells are kept in a group of another name; Charisma is 22. Every name here is SRD or invented for the test. -->
+<root version="5.1" dataversion="20260101" release="11|CoreRPG:8">
+	<character>
+		<name type="string">Pell Ballad</name>
+		<size type="string">Medium</size>
+		<level type="number">2</level>
+		<profbonus type="number">2</profbonus>
+		<abilities>
+			<strength><score type="number">8</score><save type="number">-1</save></strength>
+			<dexterity><score type="number">14</score><save type="number">2</save></dexterity>
+			<constitution><score type="number">12</score><save type="number">1</save></constitution>
+			<intelligence><score type="number">10</score><save type="number">0</save></intelligence>
+			<wisdom><score type="number">12</score><save type="number">1</save></wisdom>
+			<charisma><score type="number">22</score><save type="number">8</save></charisma>
+		</abilities>
+		<classes>
+			<id-00001><name type="string">Bard</name><level type="number">2</level></id-00001>
+		</classes>
+		<speed><base type="number">30</base><total type="number">30</total></speed>
+		<skilllist>
+			<id-00001><name type="string">Performance</name><prof type="number">1</prof></id-00001>
+			<id-00002><name type="string">Persuasion</name><prof type="number">1</prof></id-00002>
+			<id-00003><name type="string">Deception</name><prof type="number">1</prof></id-00003>
+		</skilllist>
+		<powergroup>
+			<id-00001><name type="string">Spells (Bard)</name><castertype type="string">memorization</castertype><stat type="string">charisma</stat><prepared type="number">5</prepared></id-00001>
+		</powergroup>
+		<powers>
+			<id-00001><name type="string">Vicious Mockery</name><group type="string">Spells Known</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Enchantment</school></id-00001>
+			<id-00002><name type="string">Minor Illusion</name><group type="string">Spells Known</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Illusion</school></id-00002>
+			<id-00003><name type="string">Faerie Fire</name><group type="string">Spells Known</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00003>
+			<id-00004><name type="string">Healing Word</name><group type="string">Spells Known</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00004>
+			<id-00005><name type="string">Sleep</name><group type="string">Spells Known</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Enchantment</school></id-00005>
+			<id-00006><name type="string">Thunderwave</name><group type="string">Spells Known</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Evocation</school></id-00006>
+			<id-00007><name type="string">Heroism</name><group type="string">Spells Known</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Enchantment</school></id-00007>
+			<id-00008><name type="string">Bardic Trick</name><group type="string">Spells Known</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Illusion</school></id-00008>
+		</powers>
+	</character>
+</root>

@@ -284,6 +284,10 @@ function gather(sheet) {
   for (const g of G) if (g.abilityBonus) for (const a of ABILITIES) if (g.abilityBonus[a]) abil[a] = Math.max(abil[a], Math.min(g.abilityBonus.max ?? 30, abil[a] + g.abilityBonus[a]));
   // A score an item sets (Amulet of Health: Constitution 19) holds unless the score is already as high; of two, the higher.
   for (const g of G) for (const [a, v] of Object.entries(g.setAbility ?? {})) abil[a] = Math.max(abil[a], v);
+  // The DM's score bonus (a sheet's `scoreBonus`, e.g. what an import could not place: a score of 22 on another system's sheet) comes last,
+  // after every cap above, and never takes a score past 30. `abilBase` is the score before it, which validate checks the bonus against.
+  const abilBase = { ...abil }, bonus = sheet.scoreBonus && typeof sheet.scoreBonus === 'object' && !Array.isArray(sheet.scoreBonus) ? sheet.scoreBonus : {};
+  for (const a of ABILITIES) if (Number.isInteger(bonus[a]) && bonus[a] > 0) abil[a] = Math.min(30, abil[a] + Math.min(10, bonus[a]));
   const armourWords = new Set(c.armour), weaponWords = new Set(c.weapons);
   for (const k of ks.slice(1)) { for (const a of k.c.multiclass.armour) armourWords.add(a); for (const w of k.c.multiclass.weapons) weaponWords.add(w); }
   for (const g of G) { for (const a of g.proficiency?.armour ?? []) armourWords.add(a); for (const w of g.proficiency?.weapons ?? []) weaponWords.add(w); }
@@ -293,7 +297,7 @@ function gather(sheet) {
   // Skills and tools a feat gives (Skilled).
   const featSkills = chosen.flatMap((y) => (y.def.proficiencies ? listOf(y.x.skills).filter((k) => Object.hasOwn(SKILLS, k)) : []));
   const featTools = chosen.flatMap((y) => (y.def.proficiencies ? listOf(y.x.tools) : []));
-  return { ks, c, level, cf, chosen, before, typed, feats, G, abil, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, pb: proficiencyFor(level) };
+  return { ks, c, level, cf, chosen, before, typed, feats, G, abil, abilBase, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, pb: proficiencyFor(level) };
 }
 
 // ---------- the record ----------
@@ -321,7 +325,7 @@ export function derive(sheet) {
     hp += n * Math.max(1, fixed + con);
     if (n) why.hp.push(multi ? `${fixed} for each of ${n} ${k.c.name} level${n === 1 ? '' : 's'}${i === 0 ? ' after the first' : ''}` : `${fixed} for each of ${n} more levels`);
   });
-  why.hp.push(`Constitution ${signed(con)} a level`);
+  why.hp.push(`Constitution ${signed(con)} a level${scoreBonusOf(sheet, 'con') ? ` (score includes the DM's bonus of +${scoreBonusOf(sheet, 'con')})` : ''}`);
   for (const x of feats) if (x.f.grants?.hp) { const n = amount(x.f.grants.hp, x.cls.c, x.cls.level, abil); hp += n; why.hp.push(`${x.f.name} ${signed(n)}`); }
 
   // Armor Class: the armour's, or 10 + Dexterity, or the best Unarmored Defense; a Shield adds its entry's number if
@@ -350,6 +354,7 @@ export function derive(sheet) {
   for (const y of [suit, shieldItem]) if (y && y.def.bonus && itemActive(y)) { ac += y.def.bonus; acWhy.push(`Magic +${y.def.bonus} (${itemName(y.def, y.x)})`); }
   for (const x of feats) if (x.f.acBonus) { ac += x.f.acBonus; acWhy.push(`${x.f.name} ${signed(x.f.acBonus)}`); }
   if (!armour && !shield) for (const x of feats) if (x.f.grants?.bareAc) { ac += x.f.grants.bareAc; acWhy.push(`${x.f.name} +${x.f.grants.bareAc}`); }
+  if (scoreBonusOf(sheet, 'dex') && acWhy.some((t) => /^Dexterity/.test(t))) acWhy.push(`Dexterity score includes the DM's bonus of +${scoreBonusOf(sheet, 'dex')}`);
   why.ac = acWhy;
 
   // Speed: the sheet's (from species, 30 if not given), heavy armour too heavy for the wearer
@@ -593,13 +598,17 @@ export function derive(sheet) {
   if (featCast.length) why.spells = [...(why.spells ?? []), ...featCast];
   // Ability scores: as typed, and what each feat added.
   why.abil = chosen.filter((y) => points(y).length).map((y) => `${y.def.name}: ${points(y).map(([a, n]) => `${nice(a)} +${n}`).join(', ')}`);
+  const dm = ABILITIES.filter((a) => scoreBonusOf(sheet, a));
+  if (dm.length) why.abil.push(`DM bonus: ${dm.map((a) => `${ABILITY_NAMES[a]} +${scoreBonusOf(sheet, a)}`).join(', ')}`);
   return { record, why, missing: missingOf(sheet) };
 }
 
 // ---------- what is wrong with a sheet ----------
 
+// What the DM's score bonus adds to one ability (0 where there is none); the sheet's field is checked by validate, this only reads it.
+const scoreBonusOf = (sheet, a) => (sheet.scoreBonus && Number.isInteger(sheet.scoreBonus[a]) && sheet.scoreBonus[a] > 0 ? Math.min(10, sheet.scoreBonus[a]) : 0);
 const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'shieldStowed', 'weapons', 'spells',
-  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning'];
+  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning', 'scoreBonus'];
 export function validate(sheet) {
   const bad = [], say = (m) => bad.push(m);
   if (!sheet || typeof sheet !== 'object') return ['A sheet is a record of choices.'];
@@ -644,7 +653,12 @@ export function validate(sheet) {
     const ok = rq.all ? rq.all.every((a) => sheet.abilities[a] >= 13) : rq.any.some((a) => sheet.abilities[a] >= 13);
     if (!ok) say(`A character with levels in ${k.c.name} and another class needs ${(rq.all ?? rq.any).map((a) => ABILITY_NAMES[a]).join(rq.all ? ' and ' : ' or ')} of 13 or more.`);
   }
-  const { feats, G, abil, armourWords, weaponWords, cf, chosen, before, featSkills, trainedSuit } = gather(sheet);
+  const { feats, G, abil, abilBase, armourWords, weaponWords, cf, chosen, before, featSkills, trainedSuit } = gather(sheet);
+  if (sheet.scoreBonus !== undefined) {
+    const sb = sheet.scoreBonus;
+    if (!(sb && typeof sb === 'object' && !Array.isArray(sb) && Object.keys(sb).length && Object.keys(sb).every((a) => ABILITIES.includes(a) && Number.isInteger(sb[a]) && sb[a] >= 1 && sb[a] <= 10))) say('A score bonus (scoreBonus) is { ability: n } for one or more of the six abilities, each n a whole number from 1 to 10.');
+    else for (const a of Object.keys(sb)) if (abilBase[a] + sb[a] > 30) say(`The DM's bonus of +${sb[a]} would take ${ABILITY_NAMES[a]} past 30 (it is ${abilBase[a]} before the bonus).`);
+  }
 
   // Skills: the class's choices plus any a feature gives.
   const fromClass = c.skills.from === 'any' ? Object.keys(SKILLS) : c.skills.from;

@@ -47,10 +47,10 @@ export const monsters = [
     actions: [
       { id: "bite", name: "Bite", target: { creature: { reach: 5 } },
         effects: [{ attack: "melee", kind: "weapon", bonus: 4,
-          onHit: [{ damage: "1d6+2", type: "piercing" }, { condition: "prone" }] }],
-        text: "A melee attack that knocks the target Prone. The SRD limits this by the target's size; the engine does not apply that limit yet." },
+          onHit: [{ damage: "1d6+2", type: "piercing" }, { condition: "prone", largest: "medium" }] }],
+        text: "A melee attack that knocks a Medium or smaller target Prone; a bigger one is not, and the table is told." },
     ],
-    tier: "assist", checked: true,
+    tier: "auto", checked: true,
     text: "A pack hunter that drags prey down.",
   },
   {

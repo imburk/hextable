@@ -281,15 +281,17 @@ export const monsters = [
               },
               {
                 move: 20,
-                dir: "away"
+                dir: "away",
+                largest: "medium"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "Recharge 4-6. One Medium or smaller creature within 5 feet is hurled away and knocked Prone."
+        text: "Recharge 4-6. One Medium or smaller creature within 5 feet is hurled away and knocked Prone. A bigger creature is not moved or knocked Prone (the table is told); the engine does not stop it being chosen, so the DM does not choose one."
       }
     ],
     tier: "assist",
@@ -1120,12 +1122,18 @@ export const monsters = [
                 type: "fire"
               },
               {
-                manual: "A Huge or smaller target is pulled up to 25 feet toward the balor and knocked Prone."
+                move: 25,
+                dir: "toward",
+                largest: "huge"
+              },
+              {
+                condition: "prone",
+                largest: "huge"
               }
             ]
           }
         ],
-        text: "A long melee attack that pulls the target in."
+        text: "A long melee attack that pulls a Huge or smaller target 25 feet toward the balor (the engine pulls the full distance) and knocks it Prone; a bigger one is not, and the table is told."
       },
       {
         id: "lightning-blade",
@@ -3411,12 +3419,13 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "A melee attack that knocks a Medium or smaller target Prone; the engine does not apply the size limit."
+        text: "A melee attack that knocks a Medium or smaller target Prone; a bigger one is not, and the table is told."
       },
       {
         id: "fire-breath",
@@ -3764,7 +3773,8 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "blinded"
+                condition: "blinded",
+                largest: "large"
               },
               {
                 manual: "A Large or smaller target is attached: Blinded, and the cloaker takes half the damage dealt to it while the target takes the other half. Detaching takes 5 feet of movement; the target or a creature within 5 feet can use an action for a Strength (Athletics) check, DC 14."
@@ -3772,7 +3782,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A melee attack that clamps onto the target."
+        text: "A melee attack that clamps onto a Large or smaller target, who is Blinded (a bigger one is not, and the table is told); the DM applies the sharing of damage."
       },
       {
         id: "tail",
@@ -4481,15 +4491,16 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "huge"
               }
             ]
           }
         ],
-        text: "A reach attack that knocks a Huge or smaller target Prone; the engine does not apply the size limit."
+        text: "A reach attack that knocks a Huge or smaller target Prone; a bigger one is not, and the table is told."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "An armored, club-tailed dinosaur."
   },
@@ -5155,15 +5166,16 @@ export const monsters = [
                 type: "slashing"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A melee attack that knocks a Large or smaller target Prone; the engine does not apply the size limit."
+        text: "A melee attack that knocks a Large or smaller target Prone; a bigger one is not, and the table is told."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A big, strong bear."
   },

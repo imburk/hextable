@@ -202,6 +202,7 @@ const SPECIES_TRAITS_MAPPED = ['speed', 'darkvision', 'size', 'age', 'alignment'
 const TOOL_WORDS = /(kit|supplies|tools?|instrument|flute|lute|lyre|drum|horn|viol|bagpipes|dulcimer|shawm|pan flute|dice set|playing card|chess|vehicles)/i;
 const SENSE_NAMES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
 
+const ABILITY_WORDS = { str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' };
 const CATEGORIES = ['multiclass', 'subclass', 'species', 'background', 'feats', 'features', 'spells', 'magicItems', 'gear', 'proficiencies', 'ruleDifferences', 'numbers'];
 
 function newReport() {
@@ -290,12 +291,14 @@ function build(root, ch, options) {
     } else if (o.spec && !isSrdSub) note('subclass', o.spec, 'Not an SRD 5.2 subclass.');
   });
 
-  // Abilities
+  // Abilities. A score above 20 is typed as 20; what the engine does not already derive for it (from the items, feats and boons on the
+  // sheet) is kept as the DM's `scoreBonus` (derive.js), worked out at the end, once those are on the sheet.
+  const over = {};
   for (const a of ABILITIES) {
     const word = { str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' }[a];
     let v = int(kid(kid(ch, 'abilities'), word), 'score');
     if (v === null) { adjust(`${a.toUpperCase()} score`, undefined, 10, 'The sheet has no score for it.'); v = 10; }
-    if (v > 20) { adjust(`${a.toUpperCase()} score`, v, 20, 'Above what the engine derives: a sheet\'s scores are 1 to 20 before its feats, and only an Epic Boon (level 19+) or a magic item takes one past 20. Set to 20; the DM should check what raised it.'); v = 20; }
+    if (v > 20) { over[a] = v; v = 20; }
     if (v < 1) { adjust(`${a.toUpperCase()} score`, v, 1, 'A sheet holds scores of 1 to 20.'); v = 1; }
     sheet.abilities[a] = v;
   }
@@ -591,15 +594,17 @@ function build(root, ch, options) {
   // Spells, for each class that casts, from the sheet's group for that class ("Spells (Bard)"); spells in a group
   // that names no class go to the first class that casts.
   const castGroups = new Map();         // class id -> entries { name, key, level, prepared }
-  const generic = [];
+  const generic = [], loose = [];       // loose: spells in a group that names no class ("Spells Known"), where a class's own group is empty
+  let seq = 0;
   for (const p of kids(kid(ch, 'powers'))) {
     if (!txt(p, 'school') && !txt(p, 'castingtime')) continue;
     const grp = txt(p, 'group'), pname = txt(p, 'name');
     if (!pname || /innate/i.test(grp)) continue;
-    const e = { name: pname.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim(), key: spellKey(pname), level: int(p, 'level') ?? 0, prepared: int(p, 'prepared') === 1 };
+    const e = { name: pname.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim(), key: spellKey(pname), level: int(p, 'level') ?? 0, prepared: int(p, 'prepared') === 1, seq: seq++ };
     const m = /^spells\s*\(\s*([^)]+?)\s*\)$/i.exec(grp);           // "Spells (Druid)"; a copy such as "Spells (Druid) (Name)" is left out
     if (m) { const cd = classByKey.get(norm(m[1])); if (cd) { if (!castGroups.has(cd.id)) castGroups.set(cd.id, []); castGroups.get(cd.id).push(e); continue; } }
     if (/^spells$/i.test(grp)) generic.push(e);
+    else if (/^spells known$/i.test(norm(grp)) || classByKey.has(norm(grp))) loose.push({ ...e, group: show(grp), owner: classByKey.get(norm(grp))?.id ?? null });
   }
   const uniq = (list) => { const seen = new Set(); return list.filter((e) => !seen.has(e.key) && seen.add(e.key)); };
   const built = multi ? order.map((o) => o.def) : [c];
@@ -611,7 +616,29 @@ function build(root, ch, options) {
   // The spells of class `i` (its entry in a sheet with several classes), as a patch for tryAdd.
   const spellsPatch = (i, list) => (multi ? { classes: sheet.classes.map((x, j) => (j === i ? { ...x, spells: list } : x)) } : { spells: list });
   const casting = built.map((d, i) => ({ d, i })).filter(({ d }) => d.casting);
+  // A sheet with several classes may keep all its spells in one class's group (a Paladin group holding the Bard's spells, "Spells (Bard)" a
+  // header with nothing under it). A built class that gets no spells from its own group (or, the first, the generic group) takes from the other
+  // built classes' groups the spells on its list and not on that group's own class list; a spell on both stays with the group's class. Cantrips
+  // go whether flagged or not (the limits are checked below, as for any list). The moved are removed from the group they were in.
+  if (multi) {
+    casting.forEach(({ d: cc }, n) => {
+      if ((castGroups.get(cc.id) ?? []).length || (n === 0 && generic.length)) return;
+      const got = [];
+      for (const [cid, list] of castGroups) {
+        if (cid === cc.id || !built.some((d) => d.id === cid)) continue;
+        const go = list.filter((e) => { const sp = spellByKey.get(e.key); return sp && sp.classes.includes(cc.id) && !sp.classes.includes(cid) && (e.prepared || e.level === 0); });
+        if (!go.length) continue;
+        castGroups.set(cid, list.filter((e) => !go.includes(e)));
+        got.push(...go.map((e) => ({ ...e, from: CONTENT.classes[cid].name })));
+      }
+      if (!got.length) return;
+      castGroups.set(cc.id, got);
+      const from = [...new Set(got.map((e) => e.from))];
+      note('spells', `Spells moved to the ${cc.name}`, `The sheet lists no spells under "Spells (${cc.name})" and keeps ${got.length} spells on the ${cc.name} list in ${from.map((f) => `"Spells (${f})"`).join(' and ')}: they were read as the ${cc.name}'s (flagged spells and cantrips on the ${cc.name} list and not on that class's list; a spell on both lists stays with the class whose group it is in). The DM should check them.`, { items: got.map((e) => e.name) });
+    });
+  }
   const have = [];
+  let looseTaken = false;
   casting.forEach(({ d: cc, i }, n) => {
     const cast = cc.casting, lv = multi ? order[i].level : level, mineGrants = featuresOf(sheet).filter((x) => !multi || x.cls.i === i).map((x) => x.f.grants).filter(Boolean);
     const mineList = castGroups.get(cc.id) ?? [], gen = n === 0 ? generic : [];
@@ -619,35 +646,60 @@ function build(root, ch, options) {
     const classCantrips = uniq(mineList.filter((e) => e.level === 0));
     // Cantrips: a sheet that lists no more than the class knows is a list of known cantrips; a longer one lists the class's
     // spells and flags the chosen, so only the flagged count.
-    const wanted = classCantrips.length <= maxC
+    let wanted = classCantrips.length <= maxC
       ? uniq([...classCantrips, ...gen.filter((e) => e.level === 0 && e.prepared)])
       : uniq([...mineList, ...gen].filter((e) => e.level === 0 && e.prepared));
-    if (classCantrips.length > maxC) adjust('cantrips', `${classCantrips.length} listed, ${maxC} known`, `${wanted.length} used`, `The sheet lists more cantrips than the ${multi ? `${cc.name} class` : 'class'} knows; only those flagged as prepared were taken.`);
-    const always = new Set(derive({ ...sheet, ...spellsPatch(i, []) }).record.spells ?? []);
-    let preparedList = uniq([...mineList, ...gen].filter((e) => e.level > 0 && e.prepared)).sort((a, z) => z.level - a.level || a.name.localeCompare(z.name));
-    // A sheet's "prepared" flags are a list only when they are about as many as the sheet says it prepares (plus the oath or
-    // domain spells the subclass always has). A class that flags its whole list (clerics, druids) says nothing about the choice.
-    const groupCount = kids(kid(ch, 'powergroup')).filter((g) => norm(txt(g, 'name')) === `spells ${norm(cc.name)}`).map((g) => int(g, 'prepared')).find((v) => v !== null) ?? cast.prepared[lv - 1];
-    if (preparedList.length > groupCount + 10) {
-      note('spells', multi ? `Prepared ${cc.name} spells` : 'Prepared spells', `The sheet flags ${preparedList.length} spells as prepared but says it prepares ${groupCount}, so its flags are not a list of the choice. No leveled spells were imported; the DM chooses ${cast.prepared[lv - 1]} from the ${cc.name} list.`, { items: preparedList.map((e) => e.name) });
-      preparedList = [];
+    // What the subclass always prepares (oath, domain, circle spells): worked out with every class's own spells left out, so a spell another class
+    // of this character chose is not mistaken for one.
+    const bare = multi ? { ...sheet, classes: sheet.classes.map((x) => ({ ...x, spells: [] })) } : { ...sheet, spells: [] };
+    const always = new Set(derive(bare).record.spells ?? []);
+    // Where the class's spells are: its own group, else the generic "Spells" group (first class that casts); a class with neither
+    // (a Bard's "spells known" kept in a group of another name) reads the spells of such a group, flagged or, if none is flagged, all of them.
+    // A group named "Spells Known" belongs to the first class that has none; one named for a class ("Bard") to that class.
+    let source = [...mineList, ...gen], looseUsed = null;
+    const mineLoose = source.length ? [] : loose.filter((e) => (e.owner ? e.owner === cc.id : !looseTaken));
+    if (mineLoose.length) {
+      if (mineLoose.some((e) => !e.owner)) looseTaken = true;
+      const flagged = mineLoose.filter((e) => e.prepared), grp = mineLoose[0].group;
+      source = flagged.length ? flagged : mineLoose;
+      looseUsed = { group: grp, all: !flagged.length };
+      adjust('spells', undefined, `read from "${grp}"`, `The sheet has no spells under "Spells (${cc.name})"; the ${mineLoose.length} spells it keeps in "${grp}" were read as the ${cc.name}'s${looseUsed.all ? ' (none is flagged as prepared, so all were taken as known)' : ' (those flagged as prepared)'}. The DM should check them.`);
     }
+    if (looseUsed) wanted = uniq(source.filter((e) => e.level === 0));      // known cantrips in that group; the limits are checked below
+    wanted = [...wanted].sort((a, z) => a.seq - z.seq);                     // the sheet's own order
+    // The flagged leveled spells, in the sheet's own order. A sheet that flags more than the class prepares is not an error: the always-prepared
+    // spells (derive adds them) do not count, and the first spells in this order fill the class's count; the rest are listed as left.
+    const flaggedList = uniq(source.filter((e) => e.level > 0 && (e.prepared || looseUsed))).sort((a, z) => a.seq - z.seq);
+    const preparedList = flaggedList, left = [];
     const chosen = [];
-    const pool = [...wanted.sort((a, z) => a.name.localeCompare(z.name)), ...preparedList];
+    const pool = [...wanted, ...preparedList];
     for (const e of pool) {
       const sp = spellByKey.get(e.key);
       if (!sp) { note('spells', e.name, `Level ${e.level}: not in the SRD 5.2 pack.`, { level: e.level }); continue; }
-      if (always.has(sp.id)) continue;                                  // an oath or domain spell the subclass always has prepared
+      if (always.has(sp.id)) {                                          // an oath or domain spell the subclass always has prepared
+        if (multi) note('spells', sp.name, `A spell one of this character's subclasses always has prepared; it is not added to the ${cc.name}'s list and takes no place in its count.`, { level: sp.level, inPack: true });
+        continue;
+      }
       const t = tryAdd(spellsPatch(i, [...chosen, sp.id]));
       if (!t.ok) {
         const why = /prepares \d+ spells/.test(t.why) ? `Over the 5.2 limit of prepared spells at ${multi ? `${cc.name} ` : ''}level ${lv}.` : /cantrip/.test(t.why) ? `Over the 5.2 limit of cantrips at ${multi ? `${cc.name} ` : ''}level ${lv}.` : /is not on the/.test(t.why) ? `Not on the 5.2 ${cc.name} spell list (an oath or domain spell of a non-SRD subclass, or from another class).` : t.why;
+        if (sp.level > 0 && /prepares \d+ spells/.test(t.why)) { left.push(sp.name); continue; }        // listed together below
         note('spells', sp.name, why, { level: sp.level, inPack: true });
         continue;
       }
       chosen.push(sp.id);
     }
+    if (classCantrips.length > maxC) {
+      const took = chosen.filter((id) => CONTENT.spells[id].level === 0).length;
+      adjust('cantrips', `${classCantrips.length} listed, ${maxC} known`, `${took} used`, `The sheet lists more cantrips than the ${multi ? `${cc.name} class` : 'class'} knows; only those flagged as prepared were taken, in the sheet's order.`);
+    }
+    // More spells flagged than the class prepares: say which were taken (the first in the sheet's order) and which were left.
+    if (left.length) {
+      const maxP = cast.prepared[lv - 1], took = chosen.map((id) => CONTENT.spells[id]).filter((x) => x.level > 0).map((x) => x.name);
+      note('spells', multi ? `Prepared ${cc.name} spells` : 'Prepared spells', `The sheet flags ${took.length + left.length} spells it can take as prepared (not counting always-prepared, non-SRD or off-list ones); a level ${lv} ${cc.name} prepares ${maxP}. The first ${took.length} in the sheet's order were taken: ${took.join(', ')}. Left out: ${left.join(', ')}. The DM can change them.`, { items: left });
+    }
     if (chosen.length) { if (multi) sheet.classes[i].spells = chosen; else sheet.spells = chosen; }
-    if (multi && !chosen.length && !mineList.length && !gen.length) note('spells', `${cc.name} spells`, `The sheet lists no spells under "Spells (${cc.name})", so none were imported for the ${cc.name}; the DM chooses ${cast.cantrips[lv - 1]} cantrips and ${cast.prepared[lv - 1]} spells from the ${cc.name} list.`);
+    if (multi && !chosen.length && !mineList.length && !gen.length && !looseUsed) note('spells', `${cc.name} spells`, `The sheet lists no spells under "Spells (${cc.name})", so none were imported for the ${cc.name}; the DM chooses ${cast.cantrips[lv - 1]} cantrips and ${cast.prepared[lv - 1]} spells from the ${cc.name} list.`);
     if (standIns.has(cc.id)) have.push(...chosen);
   });
   if (casting.length) {
@@ -663,6 +715,29 @@ function build(root, ch, options) {
   const slotsUsed = {};
   for (let l = 1; l <= 9; l++) { const u = int(kid(kid(ch, 'powermeta'), `spellslots${l}`), 'used'); if (u) slotsUsed[l] = u; }
   R.state = { hp: int(kid(ch, 'hp'), 'total'), hpCurrent: (int(kid(ch, 'hp'), 'total') ?? 0) - (int(kid(ch, 'hp'), 'wounds') ?? 0), tempHp: int(kid(ch, 'hp'), 'temporary') ?? 0, slotsUsed, languages: R.languages.length };
+
+  // The DM's score bonus (derive.js): the sheet's score minus the score the engine derives for the sheet without a bonus (its items, feats and
+  // boons included, so a Belt of Giant Strength the engine already applies adds none), only when positive and at most +10. A bonus never takes a
+  // score past 30, so what does not fit is trimmed. Each is said in `report.adjustments`.
+  if (Object.keys(over).length) {
+    let engine = null;
+    try { engine = derive(sheet).record.abil; } catch { engine = null; }
+    for (const a of Object.keys(over)) {
+      const v = over[a], word = ABILITY_WORDS[a][0].toUpperCase() + ABILITY_WORDS[a].slice(1), have = engine ? engine[a] : 20;
+      const gap = v - have, kept = Math.max(0, Math.min(10, gap));
+      const already = have > sheet.abilities[a] ? ` The engine already counts ${have} for it (from the items, feats or boons on the sheet).` : '';
+      if (kept === 0) { adjust(`${a.toUpperCase()} score`, v, `${have}, no DM bonus`, `${word} ${v} on the sheet; no DM bonus is needed.${already}`); continue; }
+      (sheet.scoreBonus ??= {})[a] = kept;
+      const cut = [];
+      while (sheet.scoreBonus[a] > 0 && validate(sheet).some((p) => p.startsWith("The DM's bonus") && p.includes(word))) { sheet.scoreBonus[a]--; }
+      if (sheet.scoreBonus[a] < kept) cut.push(`a score is at most 30, so the bonus was trimmed from +${kept} to +${sheet.scoreBonus[a]}`);
+      const left = gap - kept;
+      adjust(`${a.toUpperCase()} score`, v, sheet.scoreBonus[a] ? `${have} and a DM bonus of +${sheet.scoreBonus[a]}` : `${have}, no DM bonus`,
+        `${word} ${v} on the sheet: +${sheet.scoreBonus[a]} kept as a DM bonus; check what gives it (only an Epic Boon at level 19 or a magic item takes a score past 20 in the engine).${already}${left > 0 ? ` A bonus is at most +10, so ${left} more is not kept.` : ''}${cut.length ? ` ${cut[0][0].toUpperCase()}${cut[0].slice(1)}.` : ''} The DM can remove it in the build sheet.`);
+      if (!sheet.scoreBonus[a]) delete sheet.scoreBonus[a];
+    }
+    if (sheet.scoreBonus && !Object.keys(sheet.scoreBonus).length) delete sheet.scoreBonus;
+  }
 
   // Numbers on the sheet against what the engine derives from it
   let record = null;

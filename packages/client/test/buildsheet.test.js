@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { pickLimit, optionWhy, featPoints } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
+const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
 const { featuresOf } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
 
 const of = (sheet, id) => featuresOf(sheet).find((x) => x.f.id === id && !x.option);
@@ -44,4 +44,34 @@ test('featPoints: +2 to one ability or +1 to two (an Ability Score Improvement),
   assert.deepEqual(featPoints(two, 'dex', 'dex'), { dex: 2 }, 'the same ability twice is +2');
   assert.deepEqual(featPoints(one, 'str', 'dex'), { str: 1 });
   assert.equal(featPoints(two, ''), undefined);
+});
+
+test('editing a character keeps every sheet field the screen has no control for, the DM score bonus too (#498)', async () => {
+  const { importFgxml } = await import(pathToFileURL(join(tmp, 'shared/import-fgxml.js')));
+  const { validate, derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
+  const { readFileSync } = await import('node:fs');
+  const xml = readFileSync(join(here, '../../rules/test/fixtures/fgxml-cleric.xml'), 'utf8').replace('<score type="number">16</score>', '<score type="number">24</score>');
+  const { character } = importFgxml(xml);
+  assert.deepEqual(character.scoreBonus, { wis: 4 });
+  // What the screen controls itself; every other field of an imported sheet must be in KEEP or an edit would drop it.
+  const own = ['name', 'class', 'subclass', 'level', 'abilities', 'skills', 'expertise', 'choices', 'feats', 'armour', 'shield', 'weapons', 'spells', 'look'];
+  assert.deepEqual(Object.keys(character).filter((k) => !own.includes(k) && !KEEP.includes(k)), [], 'a field of the sheet the screen would lose');
+  assert.deepEqual(keptOf(character).scoreBonus, { wis: 4 });
+  assert.notEqual(keptOf(character).scoreBonus, character.scoreBonus, 'a copy, not the sheet\'s own object');
+  assert.equal(keptOf({ name: 'x' }).scoreBonus, undefined);
+  // Put back on a sheet the way Save does, it still validates and plays the same score.
+  const back = { ...character, scoreBonus: undefined, ...keptOf(character) };
+  assert.deepEqual(validate(back), []);
+  assert.equal(derive(back).record.abil.wis, 24);
+});
+
+test('the DM score bonus is said in words and can be taken off the kept fields (#498)', () => {
+  assert.equal(bonusText({ cha: 2 }), 'DM bonus: +2 Charisma');
+  assert.equal(bonusText({ str: 1, cha: 2 }), 'DM bonus: +1 Strength, +2 Charisma');
+  assert.equal(bonusText(undefined), '');
+  assert.equal(bonusText({}), '');
+  const keep = { items: [{ id: 'i1', item: 'x' }], scoreBonus: { cha: 2 }, speed: 35 };
+  const rest = withoutBonus(keep);
+  assert.deepEqual(rest, { items: [{ id: 'i1', item: 'x' }], speed: 35 }, 'everything else is kept');
+  assert.ok('scoreBonus' in keep, 'the original is not changed');
 });
