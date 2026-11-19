@@ -5,7 +5,7 @@ SRD 5.2 species as content, a `species` field on the sheet, what `derive` does w
 the vocabulary can say today and which need a small addition (each one an amendment named here), homebrew species
 in a table's pack, the Fantasy Grounds importer, the species picker of the build screen, the job split and the
 owner's questions. Every rule below is from `reference/srd52/srd52-flow.txt`; line numbers refer to that file. It
-sits beside `docs/specs/homebrew-subclasses.md` (#492, written at the same time); "Where this meets the subclass
+sits beside `docs/specs/homebrew-subclasses.md` (#492, merged in #496); "Where this meets the subclass
 spec" says what the two share.
 
 **No rules text or numbers from outside the SRD are in this spec, and none may enter the repo.** Where the owner's
@@ -384,7 +384,7 @@ goes.
 
 ## Where this meets the subclass spec (#492)
 
-The two notes were written at the same time (#492 is PR #496) and should be read together. They agree on:
+The two notes were written at the same time; the subclass note is on main (#492, PR #496). Read them together. They agree on:
 
 - **Entry shape.** Both are lists of class-shaped features (`{ id, name, level, tier, checked, text, uses?, grants?,
   options? }`) checked by `lintFeature`, with no vocabulary of their own and the same strict key lists for a feature
