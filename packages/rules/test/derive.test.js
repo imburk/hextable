@@ -131,3 +131,35 @@ test("every class derives a playable record at every level", () => {
     }
   }
 });
+
+test("a DM score bonus is added after the 20 cap, shown in the explanations, and checked (#498)", () => {
+  const base = { ...SHEETS.fighter, armour: undefined, shield: undefined, abilities: { str: 20, dex: 14, con: 20, int: 8, wis: 12, cha: 10 } };
+  const plain = derive(base);
+  assert.deepEqual([plain.record.abil.str, plain.record.abil.dex, plain.record.abil.con], [20, 14, 20]);
+  assert.deepEqual(plain.why.abil, []);
+  const sheet = { ...base, scoreBonus: { str: 2, dex: 2, con: 4 } };
+  assert.deepEqual(validate(sheet), []);
+  const { record, why } = derive(sheet);
+  assert.deepEqual([record.abil.str, record.abil.dex, record.abil.con], [22, 16, 24], "above 20, past what a feat or the class could give");
+  assert.equal(record.hp, plain.record.hp + 2, "Hit Points follow the Constitution modifier: 20 to 24 is +2 a level, at level 1 the die plus it");
+  assert.equal(record.ac, plain.record.ac + 1, "unarmoured: 10 + Dexterity, 14 to 16 is +1");
+  assert.deepEqual(why.abil, ["DM bonus: Strength +2, Dexterity +2, Constitution +4"]);
+  assert.ok(why.ac.some((t) => /Dexterity score includes the DM's bonus of \+2/.test(t)), why.ac.join("; "));
+  assert.ok(why.hp.some((t) => /Constitution.*DM's bonus of \+4/.test(t)), why.hp.join("; "));
+  assert.deepEqual(lintRecord(record, { spells: SPELLS }), []);
+  // The sheet is a sheet: the field is optional and stays on it.
+  assert.deepEqual(validate({ ...base, scoreBonus: undefined }).length, 0);
+});
+
+test("a score bonus is whole, 1 to 10, for the six abilities, and never takes a score past 30 (#498)", () => {
+  const base = { ...SHEETS.fighter };
+  const bad = (sb, re, on = base) => { const p = validate({ ...on, scoreBonus: sb }); assert.ok(p.some((m) => re.test(m)), JSON.stringify(sb) + " -> " + p.join("; ")); };
+  for (const sb of [{ cha: 0 }, { cha: 11 }, { cha: 1.5 }, { cha: "2" }, { luck: 1 }, {}, [], "cha", null]) bad(sb, /score bonus/);
+  assert.deepEqual(validate({ ...base, scoreBonus: { cha: 10 } }), [], "20 and +10 is the most a typed score can reach");
+  const belt = { ...base, abilities: { ...base.abilities, str: 17 }, items: [{ id: "i1", item: "belt-of-giant-strength-storm", equipped: true, attuned: true }] };
+  assert.deepEqual(validate(belt), []);
+  assert.equal(derive(belt).record.abil.str, 29);
+  bad({ str: 2 }, /would take Strength past 30 \(it is 29 before the bonus\)/, belt);
+  assert.deepEqual(validate({ ...belt, scoreBonus: { str: 1 } }), []);
+  assert.equal(derive({ ...belt, scoreBonus: { str: 1 } }).record.abil.str, 30);
+});

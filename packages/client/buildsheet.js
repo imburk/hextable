@@ -12,7 +12,12 @@ const nice = (id) => cap(id.replace(/-/g, ' '));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const DEFAULT_COLOR = '#3a7d44';
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
-const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed'];
+// (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20.)
+export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus'];
+// The DM's score bonus as a line ("DM bonus: +2 Charisma"), or '' when there is none; and a kept-fields object without it.
+export const bonusText = (sb) => { const l = ABILITIES.filter((a) => Number.isInteger(sb?.[a]) && sb[a] > 0).map((a) => `+${sb[a]} ${ABIL_NAME[a]}`); return l.length ? `DM bonus: ${l.join(', ')}` : ''; };
+export const withoutBonus = (keep) => { const { scoreBonus, ...rest } = keep; void scoreBonus; return rest; };
+export const keptOf = (s) => Object.fromEntries(KEEP.filter((k) => s[k] !== undefined).map((k) => [k, structuredClone(s[k])]));
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
 
 function el(tag, props = {}, ...kids) {
@@ -98,7 +103,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     Object.assign(x, { name: s.name ?? '', subclass: s.subclass, level: s.level, abilities: { ...x.abilities, ...s.abilities }, skills: [...(s.skills ?? [])],
       expertise: [...(s.expertise ?? [])], choices: { ...(s.choices ?? {}) }, feats: structuredClone(s.feats ?? []), armour: s.armour ?? null, shield: !!s.shield, weapons: [...(s.weapons ?? [])],
       spells: [...(s.spells ?? [])], color: s.look?.color ?? DEFAULT_COLOR });
-    for (const k of KEEP) if (s[k] !== undefined) x.keep[k] = structuredClone(s[k]);
+    x.keep = keptOf(s);
     return x;
   }
   const safeDerive = (s) => { try { return derive(s); } catch { return null; } };
@@ -162,8 +167,12 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       ab.append(el('div', { class: 'qe-ab' }, el('label', { class: 'qe-f qe-ab-in' }, el('span', { text: a.toUpperCase() }), input), out,
         el('small', { class: 'note', text: c.saves.includes(a) ? 'Save proficiency' : '' })));
     }
+    // The DM's score bonus (an import keeps what a score above 20 had that the engine does not derive): said, and the DM can take it off.
+    const bonus = bonusText(b.keep.scoreBonus);
     parts.push(el('section', {}, el('h3', { text: 'Ability scores' }), ab,
-      el('p', { class: 'note', text: 'Enter each score as it stands after background. A feat chosen below that raises a score adds its points, and so do features that raise one (Primal Champion).' })));
+      el('p', { class: 'note', text: 'Enter each score as it stands after background. A feat chosen below that raises a score adds its points, and so do features that raise one (Primal Champion).' }),
+      bonus ? el('p', { class: 'note qb-bonus', id: 'qb-scorebonus' }, el('span', { id: 'qb-scorebonus-text', text: `${bonus}. Added after the scores above, up to 30.` }),
+        mode === 'mine' ? null : el('button', { type: 'button', id: 'qb-scorebonus-remove', class: 'qb-bonus-remove', text: 'Remove', 'aria-label': `Remove the ${bonus}`, onclick: () => { b.keep = withoutBonus(b.keep); build(); } })) : null));
 
     // Features that ask for a choice
     const asks = L.feats.filter((x) => x.f.options && !x.option);
