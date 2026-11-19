@@ -8,7 +8,7 @@
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import { gridOf, col as cellCol } from './shared/grid.js';
-import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, checkBonus, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile } from './shared/effects.js';
 import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
 import { LIGHTS } from './shared/content/lights.js';
@@ -19,7 +19,7 @@ import { lightAt } from './shared/sight.js';
 import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
-import { strikeChoices, slotAim, slotSub } from './classes.js';
+import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
 import { shownName } from './tracker.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
@@ -159,14 +159,14 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
     row({ id: 'longRest', kind: 'send', label: 'Long rest', sub: 'The party', send: { type: 'rest' } })] : [];
   const weary = wearyParty(S);
   // 5. Search is always offered. Where nothing else finds things it is in the top four; where passive Perception does part of the work it drops below.
-  const search = row({ id: 'search', kind: 'send', label: 'Search', sub: `${enc ? 'Action · ' : ''}Perception ${signed(checkBonus(e, { skill: 'perception' }))} · secret doors, traps, things hiding · 15 ft`,
+  const search = row({ id: 'search', kind: 'send', label: 'Search', sub: `${enc ? 'Action · ' : ''}Perception ${signed(skillBonus(S, e, 'perception'))} · secret doors, traps, things hiding · 15 ft`,
     why: blocked(S, e, 'action'), send: { type: 'search', actor: e.id } });
   // 6. Light, when the party sees by light and it is not Bright here and this creature carries none.
   const dark = !e.light && dimHere(S, e) ? [row({ id: 'light', kind: 'send', label: 'Light a torch', sub: 'It is not bright here', why: dm ? '' : 'Only the DM hands out light.', send: { type: 'setLight', actor: e.id, item: 'torch' } })] : [];
   // 7. Hide, with the engine's reason when it cannot be done.
   const hideTime = e.features?.nimbleEscape ? 'bonus' : 'action';
   const hide = e.hiding ? row({ id: 'hide', kind: 'none', armed: true, label: 'Hidden', sub: `Stealth ${e.hiding.dc} to find`, why: 'Already hidden: an attack, a spoken spell or a noise gives it away.' })
-    : row({ id: 'hide', kind: 'send', label: 'Hide', sub: `${enc ? (hideTime === 'bonus' ? 'Bonus · ' : 'Action · ') : ''}Stealth ${signed(checkBonus(e, { skill: 'stealth' }))} · DC 15`,
+    : row({ id: 'hide', kind: 'send', label: 'Hide', sub: `${enc ? (hideTime === 'bonus' ? 'Bonus · ' : 'Action · ') : ''}Stealth ${signed(skillBonus(S, e, 'stealth'))} · DC 15`,
       why: (enc && inFight(S, e.id) ? blocked(S, e, hideTime) : '') || hideProblem(S, e), send: { type: 'hide', actor: e.id } });
   // 8. Rituals: cast like any spell today (ritual casting is an engine item, E15).
   const rituals = (e.spells ?? []).filter((id) => SPELLS[id]?.def.ritual).map((id) => {
@@ -274,7 +274,7 @@ export function moveRows(S, e, { fly = null } = {}) {
   rows.push(row({ id: 'disengage', kind: 'send', label: 'Disengage', sub: 'No Opportunity Attacks', chip: CHIP[dt], time: dt, why: blocked(S, e, dt), send: { type: 'disengage', actor: e.id } }));
   rows.push(row({ id: 'dodge', kind: 'send', label: 'Dodge', sub: 'Attackers roll with Disadvantage', chip: CHIP.action, time: 'action', why: blocked(S, e, 'action'), send: { type: 'dodge', actor: e.id } }));
   rows.push(hideRow(S, e, row));
-  rows.push(row({ id: 'search', kind: 'send', label: 'Search', sub: `Perception ${signed(checkBonus(e, { skill: 'perception' }))} · secret doors, traps, things hiding · 15 ft`, chip: CHIP.action, time: 'action',
+  rows.push(row({ id: 'search', kind: 'send', label: 'Search', sub: `Perception ${signed(skillBonus(S, e, 'perception'))} · secret doors, traps, things hiding · 15 ft`, chip: CHIP.action, time: 'action',
     why: blocked(S, e, 'action'), send: { type: 'search', actor: e.id } }));
   const sh = shieldRow(S, e, row);
   if (sh) rows.push(sh);
@@ -306,7 +306,7 @@ export function shieldRow(S, e, row = (r) => r) {
 const hideRow = (S, e, row = (r) => r) => {
   const enc = S.encounter, time = e.features?.nimbleEscape ? 'bonus' : 'action';
   return e.hiding ? row({ id: 'hide', kind: 'none', armed: true, label: 'Hidden', sub: `Stealth ${e.hiding.dc} to find`, why: 'Already hidden: an attack, a spoken spell or a noise gives it away.', time: null })
-    : row({ id: 'hide', kind: 'send', label: 'Hide', sub: `Stealth ${signed(checkBonus(e, { skill: 'stealth' }))} · DC 15`, chip: CHIP[time], time, why: (enc && inFight(S, e.id) ? blocked(S, e, time) : '') || hideProblem(S, e), send: { type: 'hide', actor: e.id } });
+    : row({ id: 'hide', kind: 'send', label: 'Hide', sub: `Stealth ${signed(skillBonus(S, e, 'stealth'))} · DC 15`, chip: CHIP[time], time, why: (enc && inFight(S, e.id) ? blocked(S, e, time) : '') || hideProblem(S, e), send: { type: 'hide', actor: e.id } });
 };
 // Feet of movement as shown: on a square map the engine keeps fractions (a diagonal is 5 x √2 ft) and the table sees the whole
 // feet left, rounded down, as the engine's own messages say them (`feetLeft`); hex maps show the number as it is.

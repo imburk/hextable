@@ -4,7 +4,7 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
-import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, checkBonus, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
+import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
@@ -35,7 +35,7 @@ import { initHandouts } from './handouts.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
-import { initClasses, formOf, formName } from './classes.js';
+import { initClasses, formOf, formName, skillBonus, isLent, lentList, nice as niceId } from './classes.js';
 import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
 import { createTimeline, paceFor } from './timeline.js';
 import { initLogView, kindOf } from './logview.js';
@@ -724,6 +724,9 @@ const LV = initLogView({
 });
 function renderLog() { LV.render(); }
 
+// What is lent to the creature for a time (a feature of a subclass: DEBT T96): the skills and tools, and what lent them. The sheet itself is not changed.
+const lentLine = (e) => { const l = lentList(S, e); return l.length ? `<p class="note" id="sheet-lent">Proficiency lent for a time: ${l.map((x) => `${esc(niceId(x.skill ?? x.tool))} (${esc(x.name)}${x.lasts ? `, ${esc(x.lasts)}` : ''})`).join('; ')}.</p>` : ''; };
+
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
   const st = e.castAbil ? spellStats(e, S) : null;
@@ -750,7 +753,7 @@ function renderSheet() {
     ${mine(e) ? reactionsHtml(S, e) : ''}
     ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
     ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
-    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}" data-skill="${k}">${k.replace(/-/g, ' ')} ${signed(checkBonus(e, { skill: k }))}</button>`).join('')}</div><p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
+    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
   if ($('sheet-refresh')) $('sheet-refresh').onclick = () => { refreshAsk = { party: false, at: Date.now() }; act({ type: 'refresh', actor: e.id }); };

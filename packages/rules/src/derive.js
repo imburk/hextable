@@ -738,8 +738,9 @@ export function validate(sheet) {
     if (exp.some((k) => !skills.includes(k) && !extra.includes(k) && !featSkills.includes(k) && !listed.includes(k))) say('Expertise needs proficiency in the same skill.');
   }
 
-  // Skills a subclass's feature gives from a short list: the sheet's `choices` for the feature names exactly n of them, each on the list, none the character already has.
-  const had = new Set([...(Array.isArray(skills) ? skills : []), ...(Array.isArray(extra) ? extra : []), ...featSkills]);
+  // Skills a subclass's feature gives from a short list: the sheet's `choices` for the feature names exactly n of them, each on the list and each once. A skill the character already has
+  // (from its class, its background, a feat or another feature) may be named: it gives no second proficiency, and `expertise: true` still gives the Expertise (a sheet imported from
+  // another system lists every skill the character has, the feature's among them).
   for (const { x, g } of picks) {
     const f = x.f, raw = sheet.choices?.[f.id], named = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw : raw === undefined ? [] : null;
     if (named === null || named.some((k) => typeof k !== 'string')) continue;                       // "Its choices name options." says so
@@ -748,12 +749,10 @@ export function validate(sheet) {
       const word = Object.hasOwn(SKILLS, k) ? nice(k) : `"${k.slice(0, 30)}"`;
       if (!g.from.includes(k)) say(`${f.name}: ${word} is not one of the skills it offers (${names}).`);
       else if (seen.has(k)) say(`${f.name}: ${word} is chosen twice.`);
-      else if (had.has(k)) say(`${f.name}: the character is already proficient in ${word}; choose another of ${names}.`);
       seen.add(k);
     }
     if (named.length > g.n) say(`${f.name} gives ${g.n} skill${plural}; ${named.length} are chosen.`);
     else if (named.length < g.n) say(`Choose ${g.n} skill${plural} for ${f.name}: ${names}; ${named.length ? `${named.length} ${named.length === 1 ? 'is' : 'are'} chosen` : 'none is chosen'}.`);
-    for (const k of x.f.grants.skills.from) if (seen.has(k)) had.add(k);
   }
 
   // Choices a feature asks for.

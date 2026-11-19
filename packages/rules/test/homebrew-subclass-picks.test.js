@@ -11,6 +11,8 @@ import { loadPack, overlayOf, using } from "../src/content/registry.js";
 import { lintEntry, lintPack } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { forPlayers } from "../src/content/packs.js";
+import { importFgxml } from "../src/import-fgxml.js";
+import { readFileSync } from "node:fs";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -65,7 +67,7 @@ test("a sheet with its picks is valid and derive gives the skills, with Expertis
 test("one pick may be given as a word, and the order of the picks does not matter", () => {
   using(ON, () => {
     const one = L6({ choices: choose(["religion", "arcana"], "medicine") });
-    assert.match(validate(one).join(" "), /already proficient in Medicine/, "medicine is the sheet's class skill here");
+    assert.deepEqual(validate(one), [], "medicine is the sheet's class skill here: a skill already held may be picked");
     const fine = L6({ choices: choose(["religion", "arcana"], "survival") });
     assert.deepEqual(validate(fine), []);
     const asWord = L6({ choices: { ...choose(["religion", "arcana"]), [hb("field-notes")]: "investigation" } });
@@ -84,7 +86,7 @@ test("a feature below its level asks nothing; a sheet with no pick for a feature
   });
 });
 
-test("validate says each fault in a sentence: missing, too many, off the list, twice, already held", () => {
+test("validate says each fault in a sentence: missing, too many, off the list, twice", () => {
   using(ON, () => {
     const o = (picks, more = {}) => cleric(3, { choices: { "divine-order": "protector", [hb("open-page")]: picks }, ...more });
     assert.equal(only(o(["arcana"]), /Choose 2 skills/), "Choose 2 skills for Open page: Arcana, History, Nature, Religion; 1 is chosen.");
@@ -93,12 +95,47 @@ test("validate says each fault in a sentence: missing, too many, off the list, t
     assert.equal(only(o(["arcana", "stealth"]), /not one of the skills/), "Open page: Stealth is not one of the skills it offers (Arcana, History, Nature, Religion).");
     assert.equal(only(o(["arcana", "arcana"]), /twice/), "Open page: Arcana is chosen twice.");
     assert.match(said(o(["arcana", "mugwump"])).join(" "), /"mugwump" is not one of the skills it offers/);
-    // A skill the character already has from its class or its background: the SRD's "choose another".
-    assert.equal(only(o(["history", "arcana"], { skills: ["history", "medicine"] }), /already proficient/), "Open page: the character is already proficient in History; choose another of Arcana, History, Nature, Religion.");
-    assert.match(said(o(["nature", "arcana"], { extraSkills: ["nature"] })).join(" "), /already proficient in Nature/);
-    // Two features' picks may not name the same skill either.
+    // A second feature's pick must be on its own list too.
     const twice = L6({ choices: { ...choose(["arcana", "religion"]), [hb("field-notes")]: ["arcana"] } });
     assert.match(said(twice).join(" "), /Field notes: .*not one of the skills it offers/);
+  });
+});
+
+test("a skill the character already has may be picked: no second proficiency, and the Expertise is given once", () => {
+  using(ON, () => {
+    // From the background (a sheet's extraSkills) and from the class's own list, and the feature's own pick of the same skill twice over.
+    const bg = cleric(3, { extraSkills: ["nature"], choices: { "divine-order": "protector", [hb("open-page")]: ["nature", "arcana"] } });
+    assert.deepEqual(validate(bg), []);
+    const r = derive(bg).record;
+    assert.equal(r.skills.filter((k) => k === "nature").length, 1, "one proficiency");
+    assert.deepEqual(r.expertise.slice().sort(), ["arcana", "nature"], "Expertise in it, once");
+    const cls = cleric(3, { skills: ["history", "medicine"], choices: { "divine-order": "protector", [hb("open-page")]: ["history", "arcana"] } });
+    assert.deepEqual(validate(cls), []);
+    const rc = derive(cls).record;
+    assert.equal(rc.skills.filter((k) => k === "history").length, 1);
+    assert.deepEqual(rc.expertise.slice().sort(), ["arcana", "history"]);
+    // The same skill named twice in one feature is still a fault; a pick off the list still is.
+    assert.match(validate(cleric(3, { skills: ["history", "medicine"], choices: { "divine-order": "protector", [hb("open-page")]: ["history", "history"] } })).join(" "), /History is chosen twice/);
+  });
+});
+
+test("a sheet from another system, which lists every skill the character has, validates once the picks are named", () => {
+  using(ON, () => {
+    // Its class picks are History and Religion, and the domain's two are the same: the sheet holds them once, in `skills`.
+    const fg = cleric(3, { skills: ["history", "religion"], choices: { "divine-order": "protector" } });
+    assert.match(validate(fg).join(" "), /Choose 2 skills for Open page/, "the picks are asked for, not read from `skills`");
+    const named = { ...fg, choices: { ...fg.choices, [hb("open-page")]: ["history", "religion"] } };
+    assert.deepEqual(validate(named), []);
+    const r = derive(named).record;
+    assert.deepEqual(r.skills.slice().sort(), ["history", "religion"], "no skill twice");
+    assert.deepEqual(r.expertise.slice().sort(), ["history", "religion"], "doubled once, not twice");
+    // And a sheet whose own expertise names one of them as well gives it once.
+    const bard = { name: "Ink", class: "bard", level: 3, subclass: hb("college-of-quiet-pages"), abilities: { str: 8, dex: 14, con: 12, int: 12, wis: 10, cha: 16 }, skills: ["performance", "persuasion", "history"],
+      expertise: ["history"], choices: { [hb("quiet-reading")]: ["history"] }, spells: ["vicious-mockery", "minor-illusion", "healing-word", "faerie-fire", "hold-person", "dissonant-whispers"], armour: "leather-armor", weapons: ["dagger"] };
+    assert.deepEqual(validate(bard), []);
+    const rb = derive(bard).record;
+    assert.equal(rb.skills.filter((k) => k === "history").length, 1);
+    assert.deepEqual(rb.expertise, ["history"]);
   });
 });
 
@@ -248,8 +285,9 @@ test("setSheet in a game: the picks make the character, and a sheet missing one 
     assert.deepEqual([...pc.skills].sort(), ["arcana", "insight", "medicine", "religion"]);
     assert.deepEqual([...pc.expertise].sort(), ["arcana", "religion"]);
     assert.deepEqual(pc.sheet.choices[hb("open-page")], ["arcana", "religion"], "the sheet keeps the picks as given");
-    const bad = no(apply(s, { type: "setSheet", sheet: cleric(3, { choices: { "divine-order": "protector", [hb("open-page")]: ["arcana"] } }) }, DM), /Choose 2 skills for Open page/);
-    assert.equal(json(bad.state ?? s), json(s), "nothing changed");
+    const before = json(s);
+    no(apply(s, { type: "setSheet", sheet: cleric(3, { choices: { "divine-order": "protector", [hb("open-page")]: ["arcana"] } }) }, DM), /Choose 2 skills for Open page/);
+    assert.equal(json(s), before, "a refused action changes nothing");
     ok(apply(s, { type: "setSheet", sheet: cleric(3, { name: "Sister Ink", choices: { "divine-order": "protector", [hb("open-page")]: ["nature", "history"] } }) }, DM));
   });
 });
@@ -271,4 +309,28 @@ test("an SRD character and a sheet of the SRD's own are validated and derived as
   assert.deepEqual(r.expertise.sort(), ["sleight-of-hand", "stealth"]);
   assert.deepEqual(derive(rogue).missing, []);
   using(ON, () => assert.equal(json(derive(rogue).record), json(r), "the overlay changes nothing for it"));
+});
+
+// ---------- the importer names the picks a sheet already holds ----------
+test("an imported sheet whose skills hold exactly the feature's n of its list gets them as the picks, and loads", () => {
+  // The cleric fixture (History, Insight, Medicine, Religion) with its domain renamed to the invented one: History and Religion are two of the list.
+  const xml = readFileSync(new URL("./fixtures/fgxml-cleric.xml", import.meta.url), "utf8").replace("Life Domain", "Domain of the Open Page");
+  const { character, report } = using(ON, () => importFgxml(xml));
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.equal(character.subclass, SUB);
+  assert.deepEqual(character.choices[hb("open-page")], ["history", "religion"]);
+  using(ON, () => {
+    assert.deepEqual(validate(character), []);
+    const r = derive(character).record;
+    assert.deepEqual(r.skills.slice().sort(), ["history", "insight", "medicine", "religion"], "the same four skills as the sheet");
+    assert.deepEqual(r.expertise.slice().sort(), ["history", "religion"]);
+    assert.ok(apply(newGame(7), { type: "setSheet", sheet: character }, DM).ok);
+  });
+  // Without the pack it is the stand-in, as before, and no pick is invented.
+  const bare = importFgxml(xml);
+  assert.equal(bare.character.choices?.[hb("open-page")], undefined);
+  // A sheet that holds only one of the list gets no pick (the DM names the other).
+  const one = using(ON, () => importFgxml(xml.replace(/<name type="string">History<\/name><prof type="number">1<\/prof>/, '<name type="string">History</name><prof type="number">0</prof>')));
+  assert.equal(one.character.choices?.[hb("open-page")], undefined);
+  using(ON, () => assert.match(validate(one.character).join(" "), /Choose 2 skills for Open page/));
 });
