@@ -657,7 +657,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
       const idOf = (page) => page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Orsolya')?.id ?? null);
       const sub = (page) => page.textContent('#c-sub');
       const chip = async (page) => { await closeMenu(page); await page.click('#party button:has-text("Orsolya")'); await wait(page, () => !document.querySelector('#card').hidden && /Orsolya/.test(document.querySelector('#c-name').textContent)); };
-      const noSideways = (page, sel) => page.$eval(sel, (e) => ({ sx: e.scrollWidth, cx: e.clientWidth, r: e.getBoundingClientRect().right, iw: innerWidth })).then((m) => { if (m.sx > m.cx + 1 || m.r > m.iw + 1) throw new Error(`${sel} overflows sideways: ${JSON.stringify(m)}`); });
+      const noSideways = async (page, sel) => { await sleep(500); return page.$eval(sel, (e) => ({ sx: e.scrollWidth, cx: e.clientWidth, r: e.getBoundingClientRect().right, iw: innerWidth })).then((m) => { if (m.sx > m.cx + 1 || m.r > m.iw + 1) throw new Error(`${sel} overflows sideways: ${JSON.stringify(m)}`); }); };
       const openManager = async () => { if (!(await shown(host, '#pm'))) { await openTab(host, 'dm'); await host.click('#pm-open'); await waitShown(host, '#pm'); } };
       const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
 
