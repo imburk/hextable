@@ -110,7 +110,7 @@ export function packsMatch(statePacks, overlayPacks) {
 // ---------- what a player is sent of a pack (docs/specs/homebrew.md, Decision 5; moved from the server, #428) ----------
 // What a member who is not the DM is sent of a pack: the pack's id, name and version and these lists. Never monsters. A new kind of
 // homebrew is withheld from players until it is added here on purpose.
-export const PLAYER_PACK_KINDS = ['spells', 'items', 'feats', 'weapons', 'armour', 'objects'];
+export const PLAYER_PACK_KINDS = ['spells', 'items', 'feats', 'weapons', 'armour', 'objects', 'subclasses'];
 
 // One pack as a player may know it: id, name, version, the lists above, and no `dmNotes` at any depth.
 function withoutNotes(x) {

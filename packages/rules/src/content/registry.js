@@ -12,8 +12,8 @@
 // promise, and refuses a second, different overlay while one is installed (the same overlay again is a no-op).
 //
 // Pure: no I/O, no clock, no randomness. What `using` changes is a registry of derived lookups, never game state.
-import { budget, budgetTable, HOMEBREW_LIMITS, lintPack, useSrdReference } from './schema.js';
-import { HOMEBREW_LOOKUPS, SRD_PACK_ID } from './index.js';
+import { budget, budgetTable, HOMEBREW_LIMITS, lintPack, packKeyProblem, srdSubclassesOf, useSrdReference } from './schema.js';
+import { CONTENT, HOMEBREW_LOOKUPS, SRD_PACK_ID } from './index.js';
 
 export const HOMEBREW_KINDS = Object.keys(HOMEBREW_LOOKUPS);
 const PACK_KEYS = ['format', 'v', 'pack', ...HOMEBREW_KINDS];
@@ -32,7 +32,9 @@ function budgetHomebrew(raw) {
 // The lint runs on the plain copy, the same data that is then built and played: strict, so every key is in its kind's
 // list, every id carries the pack's prefix (an SRD id is named as one), the source is `homebrew:<pack id>` and nothing
 // claims `checked: true`. The SRD ids are this module's own lookups (`HOMEBREW_LOOKUPS[kind][0]` is `CONTENT[kind]`).
-const SRD_IDS = { pack: SRD_PACK_ID, ...Object.fromEntries(HOMEBREW_KINDS.map((k) => [k, HOMEBREW_LOOKUPS[k][0][0]])) };
+// The SRD's subclasses are not in `CONTENT.subclasses` (which is the table's homebrew), so they are read from the twelve classes, by id and name; the class
+// table and the feats are what a subclass's features are linted against (`classTable`: not `classes`, which would also change what a feat's freeCast cost may name).
+const SRD_IDS = { pack: SRD_PACK_ID, ...Object.fromEntries(HOMEBREW_KINDS.map((k) => [k, HOMEBREW_LOOKUPS[k][0][0]])), subclasses: srdSubclassesOf(CONTENT.classes), classTable: CONTENT.classes };
 useSrdReference(SRD_IDS);                      // lintPack and lintEntry then refuse the SRD's pack id, ids and names without being told
 function lintHomebrew(data) {
   try { return lintPack(data, { strict: true, srd: SRD_IDS }); } catch (err) { return [`pack: could not be checked (${err.message})`]; }
@@ -66,7 +68,7 @@ export function loadPack(input) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['pack: is not a pack document'] };
   const problems = [];
   if (data.format !== 'hextable-pack' || data.v !== 1) problems.push('pack: format must be "hextable-pack", v 1');
-  for (const k of Object.keys(data)) if (!PACK_KEYS.includes(k)) problems.push(`pack: "${k}" cannot be homebrew (the kinds are ${HOMEBREW_KINDS.join(', ')})`);
+  for (const k of Object.keys(data)) if (!PACK_KEYS.includes(k)) problems.push(packKeyProblem(k));
   for (const k of HOMEBREW_KINDS) if (data[k] !== undefined && !Array.isArray(data[k])) problems.push(`${k}: must be a list`);
   if (problems.length) return { ok: false, problems };
   const id = data.pack?.id;

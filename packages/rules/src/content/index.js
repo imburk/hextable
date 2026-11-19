@@ -54,7 +54,10 @@ export const PACKS = [{ pack, spells, monsters, summons, pregens, conditions, ob
 export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
 export const CONTENT = { spells: byId(spells), monsters: byId(monsters), summons: byId(summons), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects),
-  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId(items), multiclass: multiclassSpellcaster, advancement };
+  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId(items), multiclass: multiclassSpellcaster, advancement,
+  // A table's homebrew subclasses, by id (docs/specs/homebrew-subclasses.md, Decision 3). Empty for the SRD, whose subclasses stay inside their
+  // classes (`CONTENT.classes[id].subclass`), so nothing the SRD prints, counts or tests changes; the registry adds a table's.
+  subclasses: {} };
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));
@@ -121,6 +124,7 @@ export const HOMEBREW_LOOKUPS = {
   objects: [[CONTENT.objects, same]],
   weapons: [[CONTENT.weapons, same]],
   armour: [[CONTENT.armour, same]],
+  subclasses: [[CONTENT.subclasses, same]],
 };
 // The SRD pack's id: a homebrew pack may not take it.
 export const SRD_PACK_ID = pack.id;
