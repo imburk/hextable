@@ -16,7 +16,9 @@ const C = await import(pathToFileURL(join(tmp, 'classes.js')));
 const { apply, current, makeEntity } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
-const { SPELLS } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
+const { SPELLS, CONTENT } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
+const { loadPack, overlayOf, using } = await import(pathToFileURL(join(tmp, 'shared/content/registry.js')));
+const AP = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 
 const DM = { role: 'dm', userId: 'dm' };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -149,4 +151,162 @@ test('Natural Recovery: the druid has the same row', () => {
   e.slots[2] -= 1;
   const r = C.recoverOf(e);
   assert.equal(r.f.name, 'Natural Recovery'); assert.deepEqual(r.rows, [{ level: 2, spent: 1 }]);
+});
+
+// ---------- a feature that costs a spell slot, priced Wild Shape forms, `orSlot` for any caster (#522, DEBT T86 and T88) ----------
+// The subclasses are invented for this test: an Oath of the Lantern (paladin) with a feature for each shape of a slot cost, and three circles of druids whose forms are priced.
+const P = 'lantern-folk', hb = (n) => `hb-${P}-${n}`;
+const doc = (lists) => ({ format: 'hextable-pack', v: 1, pack: { id: P, name: 'Lantern Folk', version: 1, license: 'CC0, by the author', attribution: 'Written for a test.' }, ...lists });
+const feature = (id, level, grants, more = {}) => ({ id: hb(id), name: id.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()), level, tier: 'auto', checked: false, text: `The ${id}, in the pack's own words.`, ...(grants ? { grants } : {}), ...more });
+const sub = (id, name, cls, features) => ({ id: hb(id), name, class: cls, source: `homebrew:${P}`, checked: false, text: 'Sworn to keep a lamp lit.', features });
+const MEND = { action: { time: 'bonus', target: { self: true }, effects: [{ heal: '1d8' }], cost: { slot: 1, higher: { heal: '1d8' } } } };
+const FLARE = { action: { time: 'action', target: { creature: { range: [30, 30] } }, effects: [{ damage: '2d6', type: 'radiant' }], cost: { slot: 2, higher: { damage: '1d6' } } } };
+const WARD = { action: { time: 'bonus', target: { self: true }, effects: [{ tempHp: '1d6' }], cost: { resource: 'channel-divinity', slot: 1, higher: { tempHp: '1d6' } } } };
+const VOLLEY = { action: { time: 'action', target: { creature: { range: [30, 30] } }, effects: [{ damage: '1d4', type: 'fire' }], cost: { slot: 1, higher: { times: 1 } } } };
+const RELIGHT = { action: { time: 'bonus', target: { self: true }, effects: [{ tempHp: '2d4' }], orSlot: true } };
+const PLAIN = { action: { time: 'bonus', target: { self: true }, effects: [{ heal: '1d4' }] } };
+const LANTERN = sub('oath-of-the-lantern', 'Oath of the Lantern', 'paladin', [
+  feature('lantern-mend', 3, MEND), feature('lantern-flare', 3, FLARE, { uses: { max: 2, recharge: 'long' } }), feature('lantern-ward', 3, WARD),
+  feature('lantern-volley', 3, VOLLEY), feature('lantern-relight', 3, RELIGHT, { uses: { max: 1, recharge: 'long' } }), feature('lantern-plain', 3, PLAIN)]);
+const circle = (id, name, features) => sub(id, name, 'druid', features);
+const STORE = circle('circle-of-the-store', 'Circle of the Store', [feature('ember-store', 3, undefined, { tier: 'manual', uses: { max: 3, recharge: 'long' } }),
+  feature('store-shape', 3, { formOf: { of: 'wild-shape', maxCr: 2, types: ['elemental'], cost: { resource: hb('ember-store') } } })]);
+const TWO = circle('circle-of-the-two', 'Circle of the Two', [feature('twofold-shape', 3, { formOf: { of: 'wild-shape', maxCr: 2, types: ['elemental'], cost: { resource: 'wild-shape', n: 2 } } })]);
+const EVERY = circle('circle-of-the-every', 'Circle of the Every', [feature('every-store', 3, undefined, { tier: 'manual', uses: { max: 2, recharge: 'long' } }),
+  feature('every-shape', 3, { formOf: { of: 'wild-shape', cost: { resource: hb('every-store') } } })]);
+const built = loadPack(doc({ subclasses: [LANTERN, STORE, TWO, EVERY] })); assert.ok(built.ok, (built.problems ?? []).join('; '));
+const ON = overlayOf([built.pack]);
+const A = { str: 16, dex: 10, con: 14, int: 12, wis: 16, cha: 16 };
+const paladin = (level = 9) => ({ name: 'Sir Wick', class: 'paladin', level, subclass: hb('oath-of-the-lantern'), abilities: A, skills: ['athletics', 'religion'], choices: { 'fighting-style': 'defense' }, armour: 'chain-mail', shield: true, weapons: ['longsword'], spells: ['bless', 'cure-wounds', 'aid'] });
+const druid = (level, circleId) => ({ name: 'Ven', class: 'druid', level, subclass: hb(circleId), abilities: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 }, skills: ['nature', 'perception'],
+  choices: { 'primal-order': 'warden' }, armour: 'leather-armor', shield: true, weapons: ['quarterstaff'], spells: ['produce-flame', 'cure-wounds'] });
+const homebrew = (sheet, fn) => using(ON, () => fn(hero(sheet)));
+const feat = (s, id) => s.entities.hero.feats.find((f) => f.id === id);
+
+test('a feature with a spell slot cost has a chooser: its row says it spends a slot, the lowest level, what a higher one adds and the uses left', () => {
+  homebrew(paladin(), (s) => {
+    const rows = rowsOf(s);
+    assert.equal(rows[hb('lantern-mend')].kind, 'slot');
+    assert.equal(rows[hb('lantern-mend')].sub, 'Bonus Action · spends a spell slot (level 1+) · +1d8 healing per level above 1');
+    assert.equal(rows[hb('lantern-flare')].sub, 'Action · spends a spell slot (level 2+) · +1d6 damage per level above 2 · 2 left');
+    assert.equal(rows[hb('lantern-ward')].sub, 'Bonus Action · spends a spell slot (level 1+) · +1d6 Temporary Hit Points per level above 1 · 2 Channel divinity left');
+    assert.equal(rows[hb('lantern-volley')].sub, 'Action · spends a spell slot (level 1+) · 1 more damage roll per level above 1');
+    for (const id of ['lantern-mend', 'lantern-flare', 'lantern-ward', 'lantern-volley']) assert.equal(rows[hb(id)].why, '', id);
+    assert.equal(rows[hb('lantern-relight')].kind, 'hurl', 'a use a slot restores is Hurl Through Hell\'s chooser');
+    assert.equal(rows[hb('lantern-plain')], undefined, 'a feature with no slot cost is a plain button, as before');
+    for (const f of s.entities.hero.feats) if (C.needsChoice(f)) assert.ok(C.kindOf(f));
+    assert.equal(C.kindOf(feat(s, 'lay-on-hands')), 'pool'); assert.equal(C.slotAim(feat(s, 'lay-on-hands')), null);
+  });
+});
+
+test('the Features tab row of the feature says the same (the sub line features.js leaves out for a chooser)', () => {
+  homebrew(paladin(), (s) => {
+    const row = AP.featureRows(s, s.entities.hero).find((r) => r.id === `feat:${hb('lantern-mend')}`);
+    assert.equal(row.kind, 'chooser'); assert.equal(row.sub, C.slotSub(s.entities.hero, feat(s, hb('lantern-mend'))));
+    assert.equal(row.why, '');
+    assert.equal(AP.featureRows(s, s.entities.hero).find((r) => r.id === 'feat:lay-on-hands').sub, '', 'the rows of other choosers are as they were');
+  });
+});
+
+test('the levels offered are those at or above the lowest with a slot left, and every one is taken by the engine as `slot`; one below the lowest is not offered', () => {
+  homebrew(paladin(), (s) => {
+    const e = s.entities.hero;
+    assert.deepEqual(C.slotLevels(e, 1), [1, 2, 3].filter((l) => (e.slots[l] ?? 0) > 0));
+    assert.deepEqual(C.slotLevels(e, 2), C.slotLevels(e, 1).filter((l) => l >= 2));
+    e.hp = 1;
+    for (const l of C.slotLevels(e, 1)) {
+      const t = structuredClone(s), before = t.entities.hero.slots[l];
+      const r = ok(using(ON, () => apply(t, { type: 'feature', actor: 'hero', feature: hb('lantern-mend'), slot: l }, DM)));
+      assert.equal(t.entities.hero.slots[l], before - 1, `level ${l} was spent`);
+      assert.ok(r.events.some((x) => x.type === 'heal'));
+    }
+    const t = structuredClone(s);
+    assert.equal(using(ON, () => apply(t, { type: 'feature', actor: 'hero', feature: hb('lantern-flare'), target: 'x', slot: 1 }, DM)).ok, false, 'a slot below the lowest is refused');
+  });
+});
+
+test('what a higher slot adds is worked out per level, in the words of the spell vocabulary', () => {
+  assert.equal(C.higherText({ heal: '1d8' }, 1), '+1d8 healing');
+  assert.equal(C.higherText({ heal: '1d8' }, 3), '+3d8 healing');
+  assert.equal(C.higherText({ damage: '1d6', tempHp: '2d4' }, 2), '+2d6 damage, +4d4 Temporary Hit Points');
+  assert.equal(C.higherText({ times: 1 }, 2), '2 more damage rolls');
+  assert.equal(C.higherText({ value: 2 }, 3), '+6 to its number');
+  assert.equal(C.higherText(undefined, 2), '');
+});
+
+test('with no slot left the row is greyed with the engine\'s reason, and so is one whose pool is empty', () => {
+  homebrew(paladin(), (s) => {
+    const e = s.entities.hero;
+    for (const l of Object.keys(e.slots)) e.slots[l] = 0;
+    const rows = rowsOf(s);
+    assert.equal(rows[hb('lantern-mend')].why, 'Sir Wick has no spell slot of level 1 or higher left for Lantern mend.');
+    const r = using(ON, () => apply(structuredClone(s), { type: 'feature', actor: 'hero', feature: hb('lantern-mend') }, DM));
+    assert.equal(r.ok, false); assert.equal(r.error, rows[hb('lantern-mend')].why, 'the words are the engine\'s own');
+    // only a level above the lowest is gone: level 2 is the flare's lowest, and a creature with slots of level 1 only cannot use it
+    for (const l of Object.keys(e.slots)) e.slots[l] = l === '1' ? 2 : 0;
+    assert.equal(rowsOf(s)[hb('lantern-flare')].why, 'Sir Wick has no spell slot of level 2 or higher left for Lantern flare.');
+    assert.equal(rowsOf(s)[hb('lantern-mend')].why, '');
+    // the pool: Channel Divinity
+    for (const l of Object.keys(e.slots)) e.slots[l] = 2;
+    e.uses['channel-divinity'] = 0; e.uses[hb('lantern-flare')] = 0;
+    assert.equal(rowsOf(s)[hb('lantern-ward')].why, 'Sir Wick has no uses of Channel Divinity left.');
+    assert.equal(rowsOf(s)[hb('lantern-flare')].why, 'Sir Wick has no uses of Lantern flare left.');
+  });
+});
+
+test('a priced form says what it costs and what is left in its own pool, and the words for one that cannot be paid are the engine\'s', () => {
+  using(ON, () => {
+    const s = hero(druid(6, 'circle-of-the-store')), e = s.entities.hero, wild = feat(s, 'wild-shape'), mon = (id) => CONTENT.monsters[id];
+    assert.deepEqual(wild.action.form.cost, { resource: hb('ember-store'), n: 1, types: ['elemental'] });
+    const az = C.formPrice(e, wild, mon('azer-sentinel')), wolf = C.formPrice(e, wild, mon('wolf'));
+    assert.deepEqual([az.priced, az.pool, az.n, az.left, az.ok, az.text], [true, 'Ember store', 1, 3, true, '1 use of Ember store']);
+    assert.deepEqual([wolf.priced, wolf.pool, wolf.n, wolf.left, wolf.ok, wolf.text], [false, 'Wild Shape', 1, e.uses['wild-shape'], true, '1 use of Wild Shape'], 'a form the circle does not price is the class\'s');
+    assert.ok(C.formsFor(wild).some((m) => m.id === 'azer-sentinel') && C.formsFor(wild).some((m) => m.id === 'wolf'));
+    // each pool empty in turn: the card's reason is the engine's sentence
+    for (const [pool, form] of [[hb('ember-store'), 'azer-sentinel'], ['wild-shape', 'wolf']]) {
+      const t = structuredClone(s); t.entities.hero.uses[pool] = 0;
+      const p = C.formPrice(t.entities.hero, feat(t, 'wild-shape'), mon(form)), r = apply(t, { type: 'feature', actor: 'hero', feature: 'wild-shape', form }, DM);
+      assert.equal(p.ok, false, form); assert.equal(r.ok, false); assert.equal(r.error, p.why, form);
+    }
+    // a pool of the SRD Wild Shape is not touched by a priced form: the beasts are still available with the circle's pool empty
+    const t = structuredClone(s); t.entities.hero.uses[hb('ember-store')] = 0;
+    assert.equal(C.formPrice(t.entities.hero, feat(t, 'wild-shape'), mon('wolf')).ok, true);
+    ok(apply(t, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: 'wolf' }, DM));
+  });
+});
+
+test('a price of two uses of Wild Shape itself, and a price on every form (no types)', () => {
+  using(ON, () => {
+    const s = hero(druid(6, 'circle-of-the-two')), e = s.entities.hero, wild = feat(s, 'wild-shape'), mon = (id) => CONTENT.monsters[id];
+    e.uses['wild-shape'] = 1;
+    const az = C.formPrice(e, wild, mon('azer-sentinel'));
+    assert.deepEqual([az.n, az.left, az.ok, az.text], [2, 1, false, '2 uses of Wild Shape']);
+    assert.equal(az.why, 'Ven has 1 use of Wild Shape left; the form of an Azer Sentinel costs 2.');
+    assert.equal(apply(structuredClone(s), { type: 'feature', actor: 'hero', feature: 'wild-shape', form: 'azer-sentinel' }, DM).error, az.why);
+    assert.equal(C.formPrice(e, wild, mon('wolf')).ok, true);
+    const v = hero(druid(6, 'circle-of-the-every')), ev = v.entities.hero, wv = feat(v, 'wild-shape');
+    assert.deepEqual([C.formPrice(ev, wv, CONTENT.monsters.wolf).priced, C.formPrice(ev, wv, CONTENT.monsters.wolf).pool], [true, 'Every store'], 'with no types every form is priced');
+    ev.uses[hb('every-store')] = 0;
+    assert.equal(C.formPrice(ev, wv, CONTENT.monsters.wolf).why, 'Ven has 0 uses of Every store left; the form of a Wolf costs 1.');
+  });
+});
+
+test('an SRD druid\'s forms are not priced: its price is the feature\'s own use, as before', () => {
+  const s = hero({ ...druid(6, 'x'), subclass: 'land' }), e = s.entities.hero, wild = feat(s, 'wild-shape');
+  assert.equal(wild.action.form.cost, undefined);
+  const p = C.formPrice(e, wild, CONTENT.monsters.wolf);
+  assert.deepEqual([p.priced, p.n, p.ok], [false, 1, true]);
+});
+
+test('Hurl Through Hell\'s slot choice is for any caster: a paladin with a use spent lists its spell slots, a warlock its Pact Magic slot, and the engine takes `slot`', () => {
+  homebrew(paladin(), (s) => {
+    const e = s.entities.hero, f = feat(s, hb('lantern-relight'));
+    assert.equal(C.kindOf(f), 'hurl');
+    assert.deepEqual(C.slotLevels(e), [1, 2, 3].filter((l) => (e.slots[l] ?? 0) > 0));
+    e.uses[hb('lantern-relight')] = 0;
+    const lv = C.slotLevels(e).at(-1), before = e.slots[lv], r = ok(apply(s, { type: 'feature', actor: 'hero', feature: hb('lantern-relight'), slot: lv }, DM));
+    assert.equal(e.slots[lv], before - 1); assert.ok(r.events.some((x) => /restored with a level \d spell slot/.test(x.action ?? '')));
+  });
+  const w = hero(WL).entities.hero; assert.equal(w.pact, true);
+  assert.deepEqual(C.slotLevels(w), Object.keys(w.slots).map(Number).filter((l) => w.slots[l] > 0).sort((a, b) => a - b));
 });
