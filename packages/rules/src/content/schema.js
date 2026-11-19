@@ -1328,9 +1328,25 @@ function lintGrants(g, cls, say) {
   if (g.spells !== undefined && !(Array.isArray(g.spells) && g.spells.every((x) => ID.test(x)))) say('spells lists spell ids');
   if (g.hp !== undefined) lintAmount(g.hp, cls, say, 'hp');
   if (g.bonusActs !== undefined && !(allOf(BONUS_ACTS)(g.bonusActs) && g.bonusActs.length)) say(`bonusActs lists ${BONUS_ACTS.join(', ')}`);
-  if (g.skills !== undefined && !(g.skills && isInt(g.skills.n) && g.skills.n > 0 && ['class', 'any'].includes(g.skills.from))) say('skills is { n, from: class | any }');
+  // `skills`: so many more, from the class's list or any (picked on the sheet's `skills`), or (#544, addition A of homebrew-subclasses.md) from a short list of skill ids,
+  // picked on the sheet's `choices` for the feature, with `expertise: true` to have Expertise in them too. Only a subclass's feature may name a list.
+  if (g.skills !== undefined) {
+    const s = g.skills;
+    if (s && typeof s === 'object' && Array.isArray(s.from)) {
+      if (cls === FEAT_CLASS) say('a feat or an item cannot give skills from a list: only a feature of a subclass can');
+      else if (!(isInt(s.n) && s.n > 0 && s.n <= 5 && Object.keys(s).every((k) => ['n', 'from', 'expertise'].includes(k)) && allOf(Object.keys(SKILLS))(s.from) && new Set(s.from).size === s.from.length && s.from.length >= 2 && s.n <= s.from.length)) say('skills from a list is { n, from: [skills], expertise? }: n is 1 to 5, the list has 2 or more different skills and at least n of them');
+      else if (s.expertise !== undefined && s.expertise !== true) say('skills.expertise is true or left out');
+    } else if (!(s && isInt(s.n) && s.n > 0 && ['class', 'any'].includes(s.from))) say('skills is { n, from: class | any }, or { n, from: [skills] }');
+    else if (s.expertise !== undefined) say('skills.expertise is for skills chosen from a list');
+  }
   if (g.abilityBonus !== undefined && !(g.abilityBonus && Object.entries(g.abilityBonus).every(([k, v]) => (ABILITIES.includes(k) && isInt(v)) || (k === 'max' && isInt(v))))) say('abilityBonus gives numbers for abilities and a max');
-  if (g.proficiency !== undefined && !(g.proficiency && Object.keys(g.proficiency).every((k) => ['weapons', 'armour'].includes(k)) && allOf(['martial'])(g.proficiency.weapons ?? []) && allOf(ARMOUR_CATEGORIES)(g.proficiency.armour ?? []))) say('proficiency gives weapons (martial) and armour categories');
+  // `proficiency.weapons`: `martial`, or (#544) weapons named by id, up to 12 (the id is checked against the SRD's and the pack's weapons for a subclass, in `lintSubclass`). Only a subclass's feature may name one.
+  if (g.proficiency !== undefined) {
+    const named = (x) => typeof x === 'string' && x !== 'martial';
+    const ws = g.proficiency?.weapons;
+    if (!(g.proficiency && Object.keys(g.proficiency).every((k) => ['weapons', 'armour'].includes(k)) && (ws === undefined || (Array.isArray(ws) && ws.every((x) => x === 'martial' || (named(x) && ID.test(x))) && new Set(ws).size === ws.length && ws.length <= 12)) && allOf(ARMOUR_CATEGORIES)(g.proficiency.armour ?? []))) say('proficiency gives weapons (martial, or up to 12 different weapons named by id) and armour categories');
+    else if (ws?.some(named) && cls === FEAT_CLASS) say('a feat or an item cannot name the weapons it trains: only a feature of a subclass can');
+  }
   if (g.recover !== undefined && !(g.recover && g.recover.levels === 'half-up' && isInt(g.recover.max))) say('recover is { levels: "half-up", max }');
   if (g.resist !== undefined && !allOf(DAMAGE_TYPES)(g.resist)) say('resist lists damage types');
   if (g.conditionImmune !== undefined && !(allOf(CONDITIONS)(g.conditionImmune) && g.conditionImmune.length)) say('conditionImmune lists conditions');
@@ -1599,6 +1615,8 @@ function lintFeature(f, cls, say, ids) {
     }
   }
   if (f.grants !== undefined) lintGrants(f.grants, cls, sub);
+  // Skills from a list are picked on the sheet's `choices` for the feature, which a feature with options already uses for its option: so a feature has one or the other, and an option has no list (#544).
+  if (Array.isArray(f.grants?.skills?.from) && f.options !== undefined) sub('skills from a list are picked on the same sheet entry as an option: a feature with options cannot also give them');
   if (f.grants?.action?.cost && !f.grants.action.cost.resource && f.grants.action.cost.slot === undefined) sub('a cost names a resource');
   // `feat: "any"`: the feature is a place for a feat of the player's choice, of any category, whose
   // prerequisites the character meets (Ability Score Improvement, Epic Boon). The feat is the sheet's
@@ -1614,6 +1632,7 @@ function lintFeature(f, cls, say, ids) {
       const os = (m) => sub(`option ${o?.id}: ${m}`);
       if (!ID.test(o?.id ?? '') || !isText(o.name) || !isText(o.text) || !TIERS.includes(o.tier)) os('needs an id, a name, text and a tier');
       if (o?.grants !== undefined) lintGrants(o.grants, cls, os);
+      if (Array.isArray(o?.grants?.skills?.from)) os('an option cannot give skills from a list: the sheet\'s one choice for the feature is the option');
       // `requires` (#232): a class level, another option of this feature, or a spell the character knows (an Eldritch
       // Invocation's prerequisite). `uses`: the option's own uses, as a feature's (Gift of the Depths' Water Breathing).
       if (o?.requires !== undefined && !(o.requires && typeof o.requires === 'object' && Object.keys(o.requires).length && Object.keys(o.requires).every((k) => ['level', 'option', 'spell'].includes(k))
@@ -1837,6 +1856,11 @@ function lintSubclass(e, say, ctx = {}) {
     if (what === 'cost' && !pools.has(id)) say(`a cost names "${id}", which is not a feature with uses of the ${cls.name} or of this subclass`);
     else if (what === 'ref' && !known.has(id)) say(`a grant names "${id}", which is neither a feature of the ${cls.name} nor of this subclass`);
   }
+  // `proficiency.weapons` names weapons of the SRD or of this pack (#544).
+  if (ctx.weapon) for (const f of features) for (const g of [f?.grants, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.grants) : [])]) {
+    const ws = g && typeof g === 'object' && g.proficiency && typeof g.proficiency === 'object' ? g.proficiency.weapons : undefined;
+    if (Array.isArray(ws)) for (const id of ws) if (typeof id === 'string' && id !== 'martial' && ctx.weapon(id) === false) say(`feature ${typeof f.id === 'string' ? f.id : '(without an id)'}: proficiency names "${id}", which is not a weapon of the SRD or of this pack`);
+  }
   // `formOf` changes the form of a feature that takes one (Wild Shape); it adds no creature type the feature already takes, and a subclass gives one price for a feature's forms.
   const priced = new Set();
   for (const f of features) {
@@ -1905,6 +1929,16 @@ function spellLookup(ref, packId, pack) {
     }
     if (!ref?.spells) return undefined;
     return Object.hasOwn(ref.spells, id) ? ref.spells[id] : null;
+  };
+}
+
+// What a weapon id is, for the weapons a subclass trains (#544): true for a weapon of the SRD or (`ids`, the pack's weapon ids) of the pack, false for an id that is neither (an id of any
+// other homebrew is not), undefined when it cannot be told (no SRD reference; a homebrew id and no pack to look in).
+function weaponLookup(ref, packId, ids) {
+  return (id) => {
+    if (id.startsWith('hb-')) { if (ids) return ids.has(id); return packId && !id.startsWith(`hb-${packId}-`) ? false : undefined; }
+    if (!ref?.weapons) return undefined;
+    return Object.hasOwn(ref.weapons, id);
   };
 }
 
@@ -2049,7 +2083,7 @@ function lintPackCore(doc, opts) {
   if (strict && problems.length) return problems;               // the document's own shape is wrong: nothing below can be read
   if (!pack || !ID.test(pack.id ?? '') || !isText(pack.name) || !isText(pack.license) || !isText(pack.attribution)) problems.push('pack: needs id, name, license and attribution');
   // What a subclass reads of the pack and of the SRD: a spell id is a spell of this pack (with its level) or of the SRD.
-  const subclassCtx = { srd: opts.srd, spell: spellLookup(opts.srd ?? SRD_REF, pack?.id, new Map((Array.isArray(spells) ? spells : []).filter((x) => x && typeof x === 'object').map((x) => [x.id, x]))),
+  const subclassCtx = { srd: opts.srd, weapon: weaponLookup(opts.srd ?? SRD_REF, pack?.id, new Set((Array.isArray(weapons) ? weapons : []).filter((w) => w && typeof w === 'object').map((w) => w.id))), spell: spellLookup(opts.srd ?? SRD_REF, pack?.id, new Map((Array.isArray(spells) ? spells : []).filter((x) => x && typeof x === 'object').map((x) => [x.id, x]))),
     monster: monsterLookup(opts.srd ?? SRD_REF, pack?.id, new Map((Array.isArray(monsters) ? monsters : []).filter((x) => x && typeof x === 'object').map((x) => [x.id, x]))) };
   const itemCtx = { weapons: new Set(weapons.map((w) => w.id)), armour: new Set(armour.filter((a) => a.category !== 'shield').map((a) => a.id)), spells: spells.length ? new Set(spells.map((x) => x.id)) : null };
   for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['summons', summons ?? [], lintSummonBlock], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef], ['items', items ?? [], (e, say) => lintItem(e, say, itemCtx)],
@@ -3222,7 +3256,7 @@ function lintRules(kind, e, say, { homebrew, pack, srd }) {
 const ENTRY_LINTERS = {
   spells: lintSpell, monsters: (e, say) => lintMonster(e, say), summons: lintSummonBlock, conditions: lintCondition, objects: lintObject, classes: lintClass,
   weapons: lintWeapon, armour: lintArmour, feats: lintFeatDef, items: lintItem,
-  subclasses: (e, say, c) => lintSubclass(e, say, { srd: c?.srd, spell: spellLookup(c?.srd ?? SRD_REF, c?.pack, c?.spells), monster: monsterLookup(c?.srd ?? SRD_REF, c?.pack, undefined) }),
+  subclasses: (e, say, c) => lintSubclass(e, say, { srd: c?.srd, weapon: weaponLookup(c?.srd ?? SRD_REF, c?.pack, c?.weapons), spell: spellLookup(c?.srd ?? SRD_REF, c?.pack, c?.spells), monster: monsterLookup(c?.srd ?? SRD_REF, c?.pack, undefined) }),
 };
 const asSet = (x) => (x === undefined || x === null ? undefined : x instanceof Set ? x : new Set(x));
 export function lintEntry(kind, entry, ctx = {}) {
