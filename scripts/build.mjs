@@ -6,10 +6,15 @@ import { execFileSync } from "node:child_process";
 rmSync("dist", { recursive: true, force: true });
 cpSync("packages/client", "dist", { recursive: true });
 cpSync("packages/rules/src", "dist/shared", { recursive: true });
+// assets/models/ (the CC0 creature models, CREDITS.md there) arrives as dist/models/, not dist/assets/: the table server keeps /assets/ for a table's own files.
+// The script that made them is not part of the game.
+cpSync("assets/models", "dist/models", { recursive: true, filter: (src) => !src.endsWith("pack-models.mjs") });
 // packages/client/vendor/ (pinned third-party code, see its README) arrives in dist/vendor/ with the rest of the client.
 // Nothing imports it by default; only the Three.js renderer and the load check do. Fail the build if it did not arrive.
 for (const f of ["three.module.js", "three.core.js", "GLTFLoader.js", "BufferGeometryUtils.js", "SkeletonUtils.js", "LICENSE"])
   if (!existsSync(`dist/vendor/three/${f}`)) throw new Error(`dist/vendor/three/${f} is missing: the vendored Three.js did not build in`);
+for (const f of ["kaykit-adventurers/Knight.glb", "kaykit-rig-medium/Rig_Medium.glb", "quaternius-monsters/Big_Orc.glb", "CREDITS.md"])
+  if (!existsSync(`dist/models/${f}`)) throw new Error(`dist/models/${f} is missing: the creature models did not build in`);
 console.log("Built dist/");
 
 // dist/build.json says which change this build is: { commit, when, pr?, subject?, source }. The game reads it for About and the feedback

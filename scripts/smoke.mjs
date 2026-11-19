@@ -59,6 +59,7 @@ const REGISTRY = {
   grapple: ['grapple'],
   standin: ['standin'],
   slotforms: ['slotforms'],
+  models: ['models'],
 };
 
 const only = process.env.SMOKE_ONLY;
