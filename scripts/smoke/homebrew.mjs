@@ -717,6 +717,8 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
       });
       await run.do('Refresh from sheet brings the oath in: the DM\'s note is gone and both headers name it', async () => {
         await chip(host); await host.click('#btn-sheet'); await waitShown(host, '#sheet-body');
+        const back = await host.textContent('#sheet-subclass-missing');
+        if (!/the table has it again/.test(back) || !/Refresh from sheet/.test(back)) throw new Error(`with the pack back and the record not remade: ${back}`);
         await host.click('#sheet-refresh');
         await wait(host, () => /Paladin \(Oath of the Ember\)/.test(document.querySelector('#c-sub').textContent), null, 10000);
         await wait(player, () => !document.querySelector('#card').hidden && /Paladin \(Oath of the Ember\)/.test(document.querySelector('#c-sub').textContent), null, 10000);

@@ -95,6 +95,7 @@ export function missingText(e) {
   if (!e?.sheet) return '';
   let gone = [];
   try { gone = missingOf(e.sheet); } catch { return ''; }
+  if (!gone.length) return /subclass not loaded/.test(String(e.cls ?? '')) ? `${e.name} was made while its subclass was not loaded, and the table has it again. Refresh from sheet brings the subclass features and spells in.` : '';
   return gone.map((m) => `${e.name}: its subclass "${m.id}" is not loaded at this table, so its subclass features and spells are absent until its pack is added again. Refresh from sheet brings them back then.`).join(' ');
 }
 

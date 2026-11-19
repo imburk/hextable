@@ -500,3 +500,37 @@ Built to Decision 5. What was settled in building:
   takes it); no pack, or a pack with no match, gives the stand-in; two packs give the stand-in and the note; the option off; a subclass of another class and the SRD
   name. No existing test was changed.
 - **Not done:** the client's import report does not show the new `imported` key (T84).
+
+## Build notes: B5, the client (#512)
+
+Built to the job split's B5. The client computes no rule: every sentence below is read from content (`CONTENT.subclasses`, which holds the table's own while the
+page's overlay is installed) or from the engine's own `missingOf` (B2), and the engine checks every sheet again. What was settled in building:
+
+- **The build sheet's Subclass list** (`buildsheet.js`, `subclassChoices`): the choose line, the SRD subclass, then each loaded homebrew subclass of the sheet's class by
+  name, labelled "(homebrew)"; a subclass of another class is not listed. A sheet that names a subclass the list does not hold (its pack is not loaded here, or it is not this
+  class's) keeps its id as an entry, "hb-... (not loaded at this table)", so editing the character does not drop it unseen; `validate` still says what may be saved
+  (an unloaded `hb-` id is accepted, B2). A line under the list (`subclassNote`) says where a loaded subclass is from ("from the pack ember-folk", then the pack's own
+  `text`) or that an unloaded one is kept and plays without its features. Names are put on the page as text, never as HTML (a pack name cannot hold `<` anyway: B1's rule).
+  The field is full width, so a long name is not cut on a phone.
+- **The sheet header** (`classTitle`, used by the character card in `actionpanel.js` and the sheet in `app.js`): where the record says "subclass not loaded" it is shown as
+  it is; where the record was made with the pack and the page no longer has it (a player's page that lost the pack, a solo browser that lost it: DEBT T63), `missingOf(e.sheet)`
+  says so and the header reads "Paladin (subclass not loaded)". It needs the sheet, which the page has for a built party character (the DM and the party's players);
+  a character without a sheet shows its record's own class line. The DM's sheet also has a note (`missingText`, `#sheet-subclass-missing`) with the id and what to do;
+  it is not sent to players (the engine's event is DM-only, and the note is made only in `isDM()` pages). When the pack is back and the record is not remade, the DM's
+  note says to Refresh from sheet.
+- **The pack manager** (`packmanager.js`): B3's reader reads the kind, so the manager already listed a pack's subclasses with readings and no "not read" line; this job adds
+  one line under each subclass's name, from its own data (`subclassBrief`: "Paladin subclass · 2 features: 1 auto, 1 manual"; the tiers the author declared, not what the
+  engine plays, which the reading says), the DM's intro says players are sent subclasses, and a small CSS rule (`packmanager.css`) puts the line on its own row. A subclass has
+  no tier of its own (B3), so there is no tier line for the kind and no pill.
+- **The import report** (`importfg.js`): the summary lists the importer's own sentence for each `imported.homebrewSubclasses` entry ("Paladin: the sheet's "Ember" matched
+  the table's homebrew subclass Oath of the Ember (pack ember-folk)."), the "Mapped" line names it, the summary gives the subclass's name instead of its `hb-` id, and the
+  saved text and the chronicle entry hold the same lines (DEBT T84 (1)).
+- **Tests.** `packages/client/test/buildsheet.test.js` (the list with and without the overlay, an unloaded id kept, the header and the DM's note, and a game played through
+  the engine's own `setSheet` and `refresh` with the pack away), `importfg.test.js` (new: the real importer with an invented pack), `packmanager.test.js` (the reading, the line).
+  The smoke pass `homebrew` has a scenario, run twice (DM at 1280x800 with a phone player, DM on a 390x844 touch phone with a desktop player): the character made before the
+  pack, both headers, the DM's note and the player not seeing it, the manager's review and list, Refresh, the build sheet's list (Edit and Build from class), the import report,
+  and the player's page losing and regaining the pack. Fixtures are invented (the Oath of the Ember, the College of Embers, `fgxml-paladin-ember.xml`).
+- **Files beyond the issue's list.** `packages/client/app.js` and `actionpanel.js` (the sheet view: the header), `packages/client/packmanager.css` (one rule), and
+  `docs/DEBT.md` as listed. No other file; the CI matrix is unchanged (the scenario is in an existing pass).
+- **Left** (DEBT T85): the header reads as the record does once the pack is back until Refresh (only the DM's note says so), a character with several classes cannot be opened in the
+  build screen, and the manager's line counts the author's tiers.

@@ -130,6 +130,10 @@ test('a header says "subclass not loaded" for a sheet the page cannot play with 
   using(OVER, () => assert.equal(classTitle({ cls: 'Paladin (Oath of the Ember)', sheet }), 'Paladin (Oath of the Ember)', 'loaded: as the record says'));
   assert.equal(missingText({ name: 'Tavin', sheet }), 'Tavin: its subclass "hb-ember-folk-oath-of-the-ember" is not loaded at this table, so its subclass features and spells are absent until its pack is added again. Refresh from sheet brings them back then.');
   assert.equal(missingText({ name: 'Tavin', sheet: palSheet('devotion') }), '');
+  const stale = { name: 'Tavin', cls: 'Paladin (subclass not loaded)', sheet };
+  assert.equal(missingText(stale).includes('is not loaded'), true, 'the pack is still away');
+  using(OVER, () => assert.equal(missingText(stale), 'Tavin was made while its subclass was not loaded, and the table has it again. Refresh from sheet brings the subclass features and spells in.', 'the pack is back, the record is not remade'));
+  assert.equal(missingText({ name: 'Tavin', cls: 'Paladin (Oath of Devotion)', sheet: palSheet('devotion') }), '');
   assert.equal(missingText({ name: 'Tavin' }), '');
 });
 
