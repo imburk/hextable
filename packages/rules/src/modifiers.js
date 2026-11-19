@@ -152,6 +152,8 @@ function inScope(m, sit) {
   if (!m.scope) return true;
   if (m.scope.skill !== undefined && m.scope.skill !== sit.skill) return false;
   if (m.scope.ability !== undefined && m.scope.ability !== sit.ability) return false;
+  // A check made with that tool (`sit.tool`); a check with no tool is not in the scope of a tool.
+  if (m.scope.tool !== undefined && m.scope.tool !== sit.tool) return false;
   // A save to avoid or end a condition: `sit.conditions` are those the save is about.
   if (m.scope.condition !== undefined && !(sit.conditions ?? []).includes(m.scope.condition)) return false;
   return true;
@@ -183,13 +185,29 @@ export function armourWorn(e) {
 //     dealt: [{ value, types, name }]   for damage.dealt: extra damage of those types, or added to the damage
 //     used: [parts]                 single-use modifiers that applied, for the roll's maker to use up
 //     floor, floorBy                a d20 lower than `floor` counts as it (Reliable Talent), and whose it is
+//     lent: [{ name, skill? | tool? }]  for a check: the skill or tool a `proficient` modifier makes it proficient with (docs/specs/homebrew-subclasses.md, addition C);
+//                                   `checkBonus` adds the Proficiency Bonus for it once, and only if the creature is not proficient already
 //     taken: [{ value, types, name, once, key }] }   for damage.taken: an amount (or dice) added
 //                                   to damage of those types (all, if none), at most once a turn if `once`
 // `side` says which end of an attack `e` is on, for wording the reasons as the log always has
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [] };
+  // Proficiency for a time (addition C): found first, so that a modifier that asks `check.proficient` (Reliable Talent) counts it, whichever comes first.
+  if (hook === 'check') {
+    for (const src of sources(s, e)) {
+      if (src.against && sit.target?.id !== src.against) continue;
+      for (const m of src.modifiers) {
+        if (m.on !== 'check' || m.op !== 'proficient' || !inScope(m, sit)) continue;
+        // A proficiency names its skill or its tool (the gate says so); `chosen` that was never filled in matches nothing, and anything else that skipped the gate is not read.
+        const skill = typeof m.scope?.skill === 'string' && m.scope.skill === sit.skill ? m.scope.skill : undefined, tool = typeof m.scope?.tool === 'string' && m.scope.tool === sit.tool ? m.scope.tool : undefined;
+        if ((skill === undefined) === (tool === undefined)) continue;
+        out.lent.push({ name: src.name, ...(skill !== undefined ? { skill } : { tool }) });
+      }
+    }
+    if (out.lent.length) sit = { ...sit, proficient: true };
+  }
   // SRD "Armor": if the Armor table shows Disadvantage in the Stealth column, the wearer has Disadvantage on Dexterity (Stealth) checks.
   if (hook === 'check' && sit.skill === 'stealth') { const suit = armourWorn(e); if (suit?.stealth === 'disadvantage') out.disadvantage.push(suit.name); }
   const once = new Set();

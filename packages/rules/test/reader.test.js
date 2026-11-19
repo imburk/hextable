@@ -56,6 +56,8 @@ const FIXTURES = [
       { modifier: { on: 'check', op: 'add', value: '1d4', scope: { skill: 'chosen' } } },
       { modifier: { on: 'check', op: 'advantage', scope: { skill: 'athletics' } } },
       { modifier: { on: 'check', op: 'floor', value: 10, when: ['check.proficient'] } },
+      // The reader reads the whole vocabulary: a spell may not carry `proficient` (only a modifier step of a subclass feature's action may; homebrew-subclass-proficient.test.js), but its reading is held here.
+      { modifier: { on: 'check', op: 'proficient', scope: { skill: 'chosen' } } }, { modifier: { on: 'check', op: 'proficient', scope: { tool: 'thieves-tools' } } },
       { modifier: { on: 'check', op: 'advantage', when: ['check.escape'] } },
       { modifier: { on: 'attack.roll', op: 'disadvantage', when: ['target.notGrappler'] } }, { modifier: { on: 'attack.roll', op: 'advantage', when: ['target.grappledBySelf'] } },
       { modifier: { on: 'save', op: 'add', value: 1, scope: { ability: 'wis' } } },

@@ -46,7 +46,10 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'opportunity'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
-  'floor'];
+  'floor',
+  // `proficient` (addition C of docs/specs/homebrew-subclasses.md): proficiency with the one skill or tool its `scope` names, for as long as the lasting effect it is part of
+  // holds; the Proficiency Bonus, once, on a check that is not already proficient. Only a modifier step of a subclass feature's action may have it.
+  'proficient'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
   'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
@@ -107,7 +110,7 @@ function lintWhen(when, say) {
 // A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
 // `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
 export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion') };
-function lintModifier(m, say, rolledOk = false) {
+function lintModifier(m, say, rolledOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
@@ -125,9 +128,14 @@ function lintModifier(m, say, rolledOk = false) {
   // `scope` limits a check or a save to one skill or ability; "chosen" is the caster's choice.
   if (m.scope !== undefined) {
     const sc = m.scope;
-    // `scope.condition`: a save to avoid or end that condition (Protection from Poison).
-    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition'].includes(k))) say('`scope` gives a skill, an ability or a condition');
+    // `scope.condition`: a save to avoid or end that condition (Protection from Poison). `scope.tool`: a check made with that tool (addition C: a tool is a kebab-case id such as thieves-tools).
+    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition', 'tool'].includes(k))) say('`scope` gives a skill, an ability, a tool or a condition');
     else {
+      if (sc.tool !== undefined && !((typeof sc.tool === 'string' && sc.tool.length <= 40 && ID.test(sc.tool)) || sc.tool === 'chosen')) say('`scope.tool` is a tool id in kebab-case, such as thieves-tools');
+      if (sc.tool !== undefined && m.on !== 'check') say('`scope.tool` is for checks');
+      // Nothing fills a chosen tool in but a feature's action that makes the choice (`choice: { of: 'tool', from }`, which `lintActionChoice` holds to it): not a spell, a monster, a feat's grant or an aura.
+      if (sc.tool === 'chosen' && !rolledOk) say('`scope.tool: "chosen"` is for a modifier step of a subclass feature\'s action that has a `choice` of a tool: nothing else fills it in');
+      if (sc.skill !== undefined && sc.tool !== undefined) say('`scope` names a skill or a tool, not both');
       if (sc.condition !== undefined && !(CONDITIONS.includes(sc.condition) && (m.on === 'save' || m.on.startsWith('save.')))) say('`scope.condition` names a condition, on a save');
       if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
       if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
@@ -157,6 +165,14 @@ function lintModifier(m, say, rolledOk = false) {
   if (m.stack !== undefined && m.stack !== false) say('`stack` is false or left out');
   // `spell`: it holds only for that spell's damage (Agonizing Blast).
   if (m.spell !== undefined && !(ID.test(m.spell) && m.on === 'damage.dealt')) say('`spell` names a spell, on damage.dealt');
+  // `proficient` (addition C): proficiency with one skill or tool for as long as the effect lasts. It is nothing but that: no value, no condition, no limit of its own.
+  if (m.op === 'proficient') {
+    if (!rolledOk) say('the op `proficient` is for a modifier step of a subclass feature\'s action (a feat, an item, a spell, a monster or an always-on grant cannot give proficiency for a time)');
+    if (m.on !== 'check') say('`proficient` is on check');
+    const sc = m.scope, named = sc && typeof sc === 'object' ? ['skill', 'tool'].filter((k) => sc[k] !== undefined) : [];
+    if (!(named.length === 1 && Object.keys(sc).length === 1)) say('`proficient` needs a `scope` that names one skill or one tool (and nothing else)');
+    for (const k of Object.keys(m)) if (!['on', 'op', 'scope'].includes(k)) say(`\`proficient\` has no \`${k}\`: it gives proficiency with one skill or tool for as long as its effect lasts`);
+  }
   lintWhen(m.when, say);
 }
 // A zone: the spell's area stays for its duration and its steps go off on a creature that enters
@@ -1109,6 +1125,34 @@ function lintNear(a, cls, say) {
   const lists = own !== undefined ? (modes.length ? modes.map((m) => m.effects) : [a.effects]) : aimed.map((m) => m.effects);
   for (const l of lists) { const p = Array.isArray(l) ? nearProblem(l) : null; if (p) { say(p); break; } }
 }
+// `choice: { of: 'skill' | 'tool', from? }` on a feature's action: the holder names a skill or a tool when it uses the feature (`choice: 'arcana'` on the `feature` action), and the
+// modifier steps that say `scope: { skill: 'chosen' }` or `{ tool: 'chosen' }` take it. A `proficient` step lasts: its action needs a duration.
+function lintActionChoice(a, cls, say) {
+  const lists = Array.isArray(a?.modes) ? a.modes.map((m) => m?.effects) : [a?.effects];
+  let chosenSkill = false, chosenTool = false, lends = false;
+  for (const l of lists) walkSteps(l, (st) => {
+    const sc = st?.modifier?.scope;
+    if (sc?.skill === 'chosen') chosenSkill = true;
+    if (sc?.tool === 'chosen') chosenTool = true;
+    if (st?.modifier?.op === 'proficient') lends = true;
+  });
+  if (lends && (!a.duration || a.duration === 'instant')) say('an action with a `proficient` step lends proficiency for a time, so it needs a duration that is not `instant`');
+  if (lends && !(a.target && a.target.self === true)) say('an action with a `proficient` step is aimed at its holder (`target: { self: true }`): the skill or tool picked is the holder\'s, and lending proficiency to another creature is not said');
+  const c = a?.choice;
+  if (c === undefined) {
+    if (chosenSkill || chosenTool) say(`a step uses the chosen ${chosenSkill ? 'skill' : 'tool'}, but the action has no \`choice: { of: "${chosenSkill ? 'skill' : 'tool'}" }\``);
+    return;
+  }
+  if (cls === FEAT_CLASS) say('a feat or an item cannot ask its holder to choose a skill or tool when it is used: only a feature of a subclass can');
+  if (!c || typeof c !== 'object' || Array.isArray(c) || Object.keys(c).some((k) => !['of', 'from'].includes(k)) || !['skill', 'tool'].includes(c.of)) return say('an action\'s `choice` is { of: "skill" or "tool", from? }');
+  if (c.of === 'tool' && c.from === undefined) say('an action\'s `choice` of a tool needs `from`, the tool ids it offers: the engine has no list of tools to take any from');
+  if (a.renew !== undefined || a.zone !== undefined) say(`an action with a \`choice\` cannot also have \`${a.renew !== undefined ? 'renew' : 'zone'}\`: ${a.renew !== undefined ? 'a use that extends the effect it made has no new choice to take' : 'the zone runs the action\'s steps later, on each creature that enters, and not on the holder\'s pick'}`);
+  const fine = c.of === 'skill' ? (x) => Object.hasOwn(SKILLS, x) : (x) => typeof x === 'string' && x.length <= 40 && ID.test(x);
+  if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && new Set(c.from).size === c.from.length && c.from.every(fine))) say(`an action's \`choice.from\` lists two or more different ${c.of === 'skill' ? 'skills' : 'tool ids in kebab-case, such as thieves-tools'}`);
+  if (c.of === 'skill' ? !chosenSkill : !chosenTool) say(`an action's \`choice\` of a ${c.of} that no step uses (a modifier with \`scope: { ${c.of}: "chosen" }\` takes it)`);
+  if (c.of === 'skill' ? chosenTool : chosenSkill) say(`a step uses the chosen ${c.of === 'skill' ? 'tool' : 'skill'}, but the action's choice is of a ${c.of}`);
+  if (a.form !== undefined || a.gain !== undefined || a.pool !== undefined || a.time === 'reaction' || (!Array.isArray(a.effects) && !Array.isArray(a.modes))) say('an action with a `choice` needs plain `effects` or `modes`: it cannot also take a form, gain an action or be a pool or a Reaction');
+}
 function lintGrants(g, cls, say) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
   for (const k of Object.keys(g)) if (!GRANTS.includes(k)) say(`"${k}" is not something a feature can grant`);
@@ -1131,7 +1175,7 @@ function lintGrants(g, cls, say) {
   if (g.action !== undefined && !(g.action && typeof g.action === 'object' && !Array.isArray(g.action))) say('action is { time, target, effects, ... }');
   else if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     // `after: 'hit'`: used on a creature its creature hit with an attack roll this turn, once a turn; `orSlot`: with
     // its uses spent, a spell slot (a Pact Magic slot for a Warlock) restores one (Hurl Through Hell; addition E of docs/specs/homebrew-subclasses.md for any caster).
     // `after: 'weaponHit'` (addition F): the same, after a hit with a weapon (a spell attack and an Unarmed Strike are not one).
@@ -1146,6 +1190,8 @@ function lintGrants(g, cls, say) {
       if (a.form !== undefined) say('an action that takes a form cannot also say `inForm`: it is how a form is taken');
       if (a.time === 'reaction') say('an action with `inForm` is used by its holder: a Reaction is taken by a standing instruction, which does not look at a form');
     }
+    // `choice` and the proficiency a feature's action lends for a time (addition C of docs/specs/homebrew-subclasses.md).
+    lintActionChoice(a, cls, say);
     // `acts`: the feature's action also takes these actions (Patient Defense with a Focus Point: Disengage and Dodge).
     if (a?.acts !== undefined && !(Array.isArray(a.acts) && a.acts.length && allOf(['dash', 'disengage', 'dodge'])(a.acts) && new Set(a.acts).size === a.acts.length && a.target?.self)) say('action acts lists dash, disengage or dodge, on the creature itself');
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
@@ -2196,6 +2242,7 @@ function lintFeat(f, say) {
     if (a?.cost !== undefined) lintActionCost(a, (m) => sub(`${m}.`));
     // A record's `near` is held to what the gate holds a pack's to (the record may have been made by another build): a creature to be the first, one target, 5 to 60 feet, and damage to begin with.
     if (a && typeof a === 'object') lintNear(a, null, (m) => sub(`${m}.`));
+    if (a && typeof a === 'object') lintActionChoice(a, null, (m) => sub(`${m}.`));
     if (a?.gain?.attacks !== undefined && !(ID.test(a.gain.attacks.with ?? '') && isInt(a.gain.attacks.n) && a.gain.attacks.n > 0 && a.gain.attacks.n <= 5)) sub('it gains attacks { with, n }.');
     if (a?.duration !== undefined && !isDuration(a.duration)) sub('its duration is a duration.');
     if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');
@@ -2564,7 +2611,7 @@ const SHAPES = {
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled'] },
-  scope: { what: 'a scope', keys: ['skill', 'ability', 'condition'] },
+  scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged'] },
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
@@ -2642,7 +2689,7 @@ const CHILD = {
 };
 // Inside a shape the linter closes in its own way (grants' many parts, a map's values), steps and modifiers are still
 // found by their key and held to their lists.
-const BY_KEY = { effects: 'steps', modifiers: 'modifier[]', modifier: 'modifier', target: 'target', zone: 'zone' };
+const BY_KEY = { effects: 'steps', modifiers: 'modifier[]', modifier: 'modifier', target: 'target', zone: 'zone', choice: 'choice' };
 
 // `visit(shape, key, value, path, owner)` (optional) is called for every key of every shape the walk meets; a step's shape
 // is `step.<kind>`. The value checks of strict mode ride on it.
@@ -3029,7 +3076,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i' },
-  scope: { skill: 's', ability: 's', condition: 's' },
+  scope: { skill: 's', ability: 's', condition: 's', tool: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b' },
   higher: { level: 'o', targets: 'o', slot: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
