@@ -24,6 +24,7 @@ details.pm-entries > summary, details.pm-entry > summary { cursor: pointer; min-
 .pm-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 10px 8px; background: var(--panel-2); }
 .pm-entry.pm-plain { padding: 8px 10px; }
 .pm-name { font-weight: 700; }
+.pm-brief { display: block; font-size: 12px; font-weight: 400; margin-top: 2px; }
 .pm-tier { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); }
 .pm-auto { border-color: var(--good); color: var(--good); } .pm-assist { border-color: var(--accent); color: var(--accent); } .pm-manual { border-color: var(--bad); color: var(--bad); }
 .pm-reading { display: grid; gap: 4px; margin: 6px 0; overflow-wrap: anywhere; }

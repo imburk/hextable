@@ -641,7 +641,7 @@ function emberSubclassPack() {
   return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'ember-folk', name: 'Ember Folk', version: 1, license: 'CC0, by the author', attribution: 'Written for the smoke test.' }, subclasses: [oath, college] });
 }
 const OATH = 'hb-ember-folk-oath-of-the-ember';
-const TAVIN = { name: 'Tavin', class: 'paladin', level: 5, subclass: OATH, abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 10, cha: 14 }, skills: ['athletics', 'persuasion'], choices: { 'fighting-style': 'defense' } };
+const TAVIN = { name: 'Orsolya', class: 'paladin', level: 5, subclass: OATH, abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 10, cha: 14 }, skills: ['athletics', 'persuasion'], choices: { 'fighting-style': 'defense' } };
 const EMBER_FIXTURE = fileURLToPath(new URL('../../packages/rules/test/fixtures/fgxml-paladin-ember.xml', import.meta.url));
 
 export async function subclassTable(browser, url, label, hostOpts, playerOpts, tag) {
@@ -654,9 +654,9 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
       let inject = null;
       await player.routeWebSocket(/\/ws$/, (ws) => { const up = ws.connectToServer(); ws.onMessage((m) => up.send(m)); up.onMessage((m) => ws.send(m)); inject = (text) => ws.send(text); });
       player.on('websocket', (ws) => ws.on('framereceived', (f) => got.push(String(f.payload))));
-      const idOf = (page) => page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Tavin')?.id ?? null);
+      const idOf = (page) => page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Orsolya')?.id ?? null);
       const sub = (page) => page.textContent('#c-sub');
-      const chip = async (page) => { await closeMenu(page); await page.click('#party button:has-text("Tavin")'); await wait(page, () => !document.querySelector('#card').hidden && /Tavin/.test(document.querySelector('#c-name').textContent)); };
+      const chip = async (page) => { await closeMenu(page); await page.click('#party button:has-text("Orsolya")'); await wait(page, () => !document.querySelector('#card').hidden && /Orsolya/.test(document.querySelector('#c-name').textContent)); };
       const noSideways = (page, sel) => page.$eval(sel, (e) => ({ sx: e.scrollWidth, cx: e.clientWidth, r: e.getBoundingClientRect().right, iw: innerWidth })).then((m) => { if (m.sx > m.cx + 1 || m.r > m.iw + 1) throw new Error(`${sel} overflows sideways: ${JSON.stringify(m)}`); });
       const openManager = async () => { if (!(await shown(host, '#pm'))) { await openTab(host, 'dm'); await host.click('#pm-open'); await waitShown(host, '#pm'); } };
       const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
@@ -677,8 +677,8 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
       });
       await run.do('a paladin whose subclass the table does not have is made: both headers say "subclass not loaded", the DM\'s sheet says why, the player is not told the DM\'s note', async () => {
         await host.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet }), TAVIN);
-        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin'), null, 10000).catch(async () => { throw new Error(`no Tavin: ${await host.evaluate(() => document.getElementById('toast')?.textContent)}`); });
-        await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin'), null, 10000);
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Orsolya'), null, 10000).catch(async () => { throw new Error(`no Orsolya: ${await host.evaluate(() => document.getElementById('toast')?.textContent)}`); });
+        await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Orsolya'), null, 10000);
         await chip(host); await chip(player);
         for (const [who, page] of [['DM', host], ['player', player]]) if (!/Level 5 Paladin \(subclass not loaded\)/.test(await sub(page))) throw new Error(`${who}'s header: ${await sub(page)}`);
         await host.click('#btn-sheet'); await waitShown(host, '#sheet-body');
@@ -695,7 +695,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
         await openManager();
         await host.setInputFiles('#pm-file', { name: 'ember-folk.json', mimeType: 'application/json', buffer: Buffer.from(emberSubclassPack()) }); await waitShown(host, '#pm-review');
         const t = await host.textContent('#pm-review');
-        if (!/Holds 2 subclasses/.test(t) || !/Subclasses \(2\)/.test(t) || !/Subclasses by tier: 0 auto, 1 assist, 1 manual/.test(t)) throw new Error(t.slice(0, 500));
+        if (!/Holds 2 subclasses/.test(t) || !/Subclasses \(2\)/.test(t) || !/Paladin subclass · 2 features: 1 auto, 1 manual/.test(t) || !/Bard subclass · 1 feature: 1 manual/.test(t)) throw new Error(t.slice(0, 500));
         if (/not read/.test(t)) throw new Error(`a subclass is listed as not read: ${t.slice(0, 400)}`);
         const names = await host.$$eval('#pm-review .pm-entry.pm-subclass[data-entry] .pm-name', (l) => l.map((n) => n.textContent));
         if (names.length !== 2 || !names.some((n) => /Oath of the Ember/.test(n)) || !names.some((n) => /College of Embers/.test(n))) throw new Error(`entries: ${names.join(' | ')}`);

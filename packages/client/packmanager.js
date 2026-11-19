@@ -19,6 +19,7 @@ import { loadPack, overlayOf, install, uninstall } from './shared/content/regist
 import { hashOf } from './shared/content/packs.js';
 import { readEntry, READ_KINDS, KIND_NAMES } from './shared/content/reader.js';
 import { dryRun } from './shared/content/dryrun.js';
+import { CONTENT } from './shared/content/index.js';
 
 const $ = (id) => document.getElementById(id);
 export const KINDS = ['spells', 'monsters', 'items', 'feats', 'weapons', 'armour', 'objects', 'subclasses'];
@@ -162,6 +163,14 @@ export function readingNode(r) {
   if (r.problems?.length) { box.append(el('h5', '', 'What the reader could not read')); for (const l of r.problems) box.append(el('p', 'pm-line bad', l)); }
   if (r.text) box.append(el('p', 'pm-author', `The author's description: “${r.text}”`));
   return box;
+}
+// A subclass in one line, from its own data, for the list that shows names only: "Paladin subclass · 2 features: 1 auto, 1 manual". The reading under it is the reader's; this only counts the
+// tiers the entry itself declares, and says nothing of what the engine plays (a feature's tier is the author's claim until the reading says what its grants do).
+export function subclassBrief(e) {
+  const fs = plain(e) && Array.isArray(e.features) ? e.features.filter(plain) : [];
+  const by = ['auto', 'assist', 'manual'].map((t) => [t, fs.filter((f) => f.tier === t).length]).filter(([, n]) => n);
+  const cls = typeof e?.class === 'string' ? (CONTENT.classes[e.class]?.name ?? e.class) : '';
+  return `${cls ? `${cls} subclass \u00b7 ` : ''}${fs.length} feature${fs.length === 1 ? '' : 's'}${by.length ? `: ${by.map(([t, n]) => `${n} ${t}`).join(', ')}` : ''}`;
 }
 // The pill beside an entry: its tier, "refused", or "unreadable"; null for an entry the reader gives no tier (a weapon, a piece of armour).
 export const tierChip = (r) => (r.refused ? el('span', 'pm-tier pm-refused', 'refused') : r.tier ? el('span', `pm-tier pm-${r.tier}`, r.tier) : r.title === '(unreadable entry)' ? el('span', 'pm-tier pm-none', 'unreadable') : null);
@@ -348,7 +357,7 @@ export function initPacks({ transport, isDM, toast, changed = () => {} }) {
   function readNode(kind, e, scope) {
     const r = readOf(kind, e), k = `${scope}:${e.id}`;
     const d = el('details', `pm-entry pm-${KIND_NAMES[kind]}`); d.dataset.key = k; d.dataset.entry = String(e.id);
-    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ...(tierChip(r) ? [' ', tierChip(r)] : [])); d.append(sum);
+    const sum = el('summary'); sum.append(el('span', 'pm-name', r.title === '(unreadable entry)' ? String(e.name ?? e.id) : r.title), ...(tierChip(r) ? [' ', tierChip(r)] : []), ...(KIND_NAMES[kind] === 'subclass' && r.title !== '(unreadable entry)' ? [' ', el('span', 'note pm-brief', subclassBrief(e))] : [])); d.append(sum);
     let built = false;
     const fill = () => { if (!built) { built = true; d.append(readingNode(r)); } };
     d.open = keep.has(k); if (d.open) fill();
