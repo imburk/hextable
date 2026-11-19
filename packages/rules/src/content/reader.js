@@ -100,6 +100,7 @@ export const OP_WORDS = {
   immune: (v, h) => `Immunity to ${h}`,
   crit: (v, h) => `a Critical Hit on every hit, among ${h}`,
   floor: (v, h) => `any d20 roll lower than ${v} counting as ${v} on ${h}`,
+  proficient: (v, h) => `proficiency on ${h}`,
 };
 // Situations the engine tests (`when`, `advantageIf`).
 export const TAG_WORDS = {
@@ -1084,10 +1085,17 @@ function modPhrase(m, at) {
   if (!hook || !op) return 'a change the reader cannot read';
   if (hook === 'opportunity' && op === 'autoFail') return 'no Opportunity Attacks (it cannot make them)';
   if (op === 'crit') return `${OP_WORDS.crit('', HOOK_WORDS[hook])}`;
+  // Addition C of docs/specs/homebrew-subclasses.md: proficiency with one skill or tool, for as long as the effect lasts.
+  if (op === 'proficient') {
+    const sc = isObj(m.scope) ? m.scope : {}, skill = typeof sc.skill === 'string' && (sc.skill === 'chosen' || Object.hasOwn(SKILLS, sc.skill)) ? sc.skill : null, tool = typeof sc.tool === 'string' && /^(chosen|[a-z0-9]+(-[a-z0-9]+)*)$/.test(sc.tool) ? sc.tool : null;
+    if (hook !== 'check' || (skill === null) === (tool === null) || Object.keys(sc).length !== 1) { this.bad(`${at}: \`proficient\` is on check and names one skill or one tool.`); return 'proficiency the reader cannot read'; }
+    return skill !== null ? `proficiency in ${skill === 'chosen' ? 'the chosen skill' : `the ${skill.replace(/-/g, ' ')} skill`}` : `proficiency with ${tool === 'chosen' ? 'the chosen tool' : `the tool ${tool.replace(/-/g, ' ')}`}`;
+  }
   let noun = HOOK_WORDS[hook];
   // What a check or save is scoped to.
   if (isObj(m.scope)) {
     const sc = m.scope;
+    if (sc.tool !== undefined) noun = sc.tool === 'chosen' ? 'checks made with the chosen tool' : typeof sc.tool === 'string' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(sc.tool) ? `checks made with the tool ${sc.tool.replace(/-/g, ' ')}` : 'checks made with an unreadable tool';
     if (sc.skill !== undefined) noun = `${sc.skill === 'chosen' ? 'checks with the chosen skill' : typeof sc.skill === 'string' && Object.hasOwn(SKILLS, sc.skill) ? `${cap1(sc.skill.replace(/-/g, ' '))} checks` : 'checks with an unreadable skill'}`;
     else if (sc.ability !== undefined) noun = `${sc.ability === 'chosen' ? 'the chosen ability\'s' : ABILITY_WORDS[sc.ability] ?? 'an unreadable ability\'s'} ${hook === 'check' ? 'checks' : 'saving throws'}`;
     if (sc.condition !== undefined) noun = `${noun} to avoid or end the ${cond(sc.condition)} condition`;
@@ -1121,6 +1129,7 @@ function modExtras(m, at, toCaster) {
   if (m.against === 'target') bits.push(toCaster ? 'it holds only against the spell\'s target' : 'it holds only against the spell\'s target');
   if (m.uses === 1) { this.num(`${at}.uses`, 1, 'use'); bits.push(this.inTrait ? 'a trait has no use to spend, so it applies every time' : 'the first roll it applies to uses it up'); }
   if (m.once === 'turn') bits.push('it applies at most once a turn');
+  if (m.op === 'proficient') bits.push('while the effect lasts, a check with that skill or tool adds the Proficiency Bonus, once, if the creature is not proficient in it already (Expertise included, which is not doubled again), and counts as a check that uses a proficiency; the creature\'s sheet is not changed');
   if (m.onFail === true) bits.push('the dice are added only to a roll that failed, where they could turn it');
   if (typeof m.cost === 'string') bits.push(`it spends a use of ${shown(m.cost)} when it turns a roll`);
   if (m.except === 'source') bits.push('it does not hold for rolls the caster makes');
@@ -2181,7 +2190,7 @@ class GrantReading extends Reading {
   // `action`: a use the feature gives (engine/features.js, `feature`).
   actionLines(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not an action.`);
-    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm'], 'The action');
+    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice'], 'The action');
     if (!ACTION_TIMES.includes(v.time)) this.bad(`${at}.time is not one the engine knows.`);
     this.line(`Gives the holder an action to use with the feature action. It takes ${ACTION_TIME_WORDS[v.time] ?? 'an unreadable time'}${v.time === 'reaction' ? '; the engine does not take Reactions from features, so using it is refused and the DM applies it' : ''}.`, 1);
     if (isObj(v.cost)) {
@@ -2212,8 +2221,19 @@ class GrantReading extends Reading {
     // Addition J of docs/specs/homebrew-subclasses.md (#525): only while the holder is in a form that feature gave.
     if (v.inForm !== undefined) this.line(`It can be used only while the holder is in a form that the feature ${shown(v.inForm)} gave; otherwise it is refused and nothing is spent. ${featureNote(v.inForm)}`, 2);
     if (v.zone !== undefined) this.actionZone(v, at);
+    // Addition C of docs/specs/homebrew-subclasses.md: a skill or a tool named when the feature is used.
+    if (v.choice !== undefined) this.actionChoice(v.choice, at);
     const groups = Array.isArray(v.effects) ? [[v.effects, `${at}.effects`]] : Array.isArray(v.modes) ? v.modes.filter(isObj).map((m, j) => [m.effects, `${at}.modes.${j}.effects`]) : [];
     for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : v.zone !== undefined ? 'that creature' : 'the target', v.duration, 2);
+  }
+  // `choice` on an action (addition C of docs/specs/homebrew-subclasses.md; engine/features.js): the holder names a skill or a tool in `choice` when it uses the feature.
+  actionChoice(c, at) {
+    if (!isObj(c) || !['skill', 'tool'].includes(c.of)) return this.bad(`${at}.choice is not { of: "skill" or "tool", from? }.`);
+    this.odd(c, ['of', 'from'], 'The action\'s choice');
+    const from = Array.isArray(c.from) ? c.from.filter((x) => (c.of === 'skill' ? typeof x === 'string' && Object.hasOwn(SKILLS, x) : typeof x === 'string' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(x))) : null;
+    if (Array.isArray(c.from) && from.length !== c.from.length) this.bad(`${at}.choice.from names something that is not a ${c.of}.`);
+    const word = (x) => x.replace(/-/g, ' ');
+    this.line(`When the holder uses it, it names ${c.of === 'skill' ? 'a skill' : 'a tool'}${from?.length ? ` (${list(from.map(word), 'or')})` : ''}, in \`choice\` on the action; each step below that says "chosen" uses it. A name that is not ${from?.length ? 'one of those' : c.of === 'skill' ? 'a skill' : 'a tool id'} is refused and nothing is spent. If none is sent, the use is spent and the DM applies the rest.`, 2);
   }
   // `near` (addition G of docs/specs/homebrew-subclasses.md; engine/features.js): a second creature within so many feet of the first target takes the damage steps the action begins with.
   nearLine(feet, at, before) {

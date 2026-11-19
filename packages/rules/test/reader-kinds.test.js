@@ -115,7 +115,8 @@ test('the golden monsters use every field, shape, step, hook and op the strict l
   assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter').sort(), 'a creature\'s action cannot hold a summon or a counter step');
   assert.deepEqual([...branches].sort(), [...BRANCHES].sort());
   assert.deepEqual([...hooks].sort(), [...HOOKS].sort());
-  assert.deepEqual([...ops].sort(), [...OPS].sort());
+  // `proficient` (addition C of docs/specs/homebrew-subclasses.md) is for a modifier step of a subclass feature's action: the linter refuses it in a monster's trait or action, so no golden monster uses it.
+  assert.deepEqual([...ops].sort(), OPS.filter((o) => o !== 'proficient').sort());
   assert.deepEqual([...moves].sort(), [...MOVE_MODES].sort());
   assert.deepEqual([...sensesUsed].sort(), keysOf(SENSE_WORDS));
   assert.ok(['tiny', 'large', 'huge', 'medium'].every((s) => sizes.has(s)));
