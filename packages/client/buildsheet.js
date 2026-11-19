@@ -4,7 +4,7 @@
 // character) or `levelUp`, and the engine checks the sheet again.
 import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
-import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices } from './shared/derive.js';
+import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -59,6 +59,44 @@ export function usesText(u) {
   const n = `${u.max} use${u.max === 1 ? '' : 's'}`;
   if (u.recharge === 'short') return `${n}, back on a Short Rest`;
   return `${n}, back on a Long Rest${u.short ? ` (${u.short} on a Short Rest)` : ''}`;
+}
+
+// The Subclass list of a class (docs/specs/homebrew-subclasses.md, B5): the choose line, the SRD subclass, and every subclass of this class that the
+// table's packs hold (CONTENT.subclasses holds them while the page's overlay is installed), by name. `current` is the id the sheet names: if the list has
+// no such entry (its pack is not loaded here, or it is not this class's) it is kept as an entry, so editing the character does not drop it unseen.
+// Pure reading of content: which subclass a sheet may take is `validate`'s word, not this list's. Names are put on the page as text.
+export function subclassChoices(c, level, current) {
+  const own = Object.values(CONTENT.subclasses).filter((h) => h.class === c.id).sort((a, b) => a.name.localeCompare(b.name));
+  const list = [['', level >= 3 ? 'Choose a subclass' : 'None yet (level 3)'], [c.subclass.id, c.subclass.name], ...own.map((h) => [h.id, `${h.name} (homebrew)`])];
+  if (typeof current === 'string' && current && !list.some(([v]) => v === current)) list.push([current, `${current} (${current.startsWith('hb-') && !Object.hasOwn(CONTENT.subclasses, current) ? 'not loaded at this table' : `not a ${c.name} subclass here`})`]);
+  return list;
+}
+// What to say under the list about the subclass the sheet names: the pack's own line for a loaded homebrew one, the plain fact for one that is not loaded; '' otherwise.
+export function subclassNote(c, current) {
+  if (typeof current !== 'string' || !current || current === c.subclass.id) return '';
+  const h = Object.hasOwn(CONTENT.subclasses, current) ? CONTENT.subclasses[current] : null;
+  if (h && h.class === c.id) return `Homebrew subclass of this table${typeof h.source === 'string' && h.source.startsWith('homebrew:') ? `, from the pack ${h.source.slice(9)}` : ''}.${typeof h.text === 'string' && h.text ? ` ${h.text}` : ''}`;
+  if (!h && current.startsWith('hb-')) return 'This subclass is not loaded at this table. The sheet keeps it, and the character plays without its features and spells until its pack is added again.';
+  return '';
+}
+// The class line of a character in a header ("Paladin (Oath of the Ember)"), saying "subclass not loaded" when the sheet names a homebrew subclass this page does not
+// have. The record already says it when it was made without the pack; this also says it for one made with the pack and shown after the pack went (`missingOf` is the
+// engine's own reading of the sheet). A character with no sheet (hand-typed, or not sent to this page) is shown as its record says.
+export function classTitle(e) {
+  const cls = String(e?.cls ?? '');
+  if (!e?.sheet || /subclass not loaded/.test(cls)) return cls;
+  let gone = [];
+  try { gone = missingOf(e.sheet); } catch { return cls; }
+  if (!gone.length) return cls;
+  return `${e.sheet.classes ? cls : cls.replace(/ \([^)]*\)$/, '')} (subclass not loaded)`;
+}
+// For the DM's sheet: the sentence for each homebrew subclass the sheet names that this page does not have ('' if none). The ids are the sheet's own text.
+export function missingText(e) {
+  if (!e?.sheet) return '';
+  let gone = [];
+  try { gone = missingOf(e.sheet); } catch { return ''; }
+  if (!gone.length) return /subclass not loaded/.test(String(e.cls ?? '')) ? `${e.name} was made while its subclass was not loaded, and the table has it again. Refresh from sheet brings the subclass features and spells in.` : '';
+  return gone.map((m) => `${e.name}: its subclass "${m.id}" is not loaded at this table, so its subclass features and spells are absent until its pack is added again. Refresh from sheet brings them back then.`).join(' ');
 }
 
 // The build screen is one panel for the page. `openBuild` opens it for My characters (mycharacters.js, #308): no game is attached, and
@@ -137,10 +175,10 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     if (mode === 'add' && importButton) parts.push(el('div', { class: 'row' }, importButton(), el('small', { class: 'note', text: 'Or start from a Fantasy Grounds export.' })));
 
     // Who: name, colour, class, subclass, level
-    const sel = (label, id, options, value, onchange, disabled) => {
+    const sel = (label, id, options, value, onchange, disabled, wide) => {
       const s = el('select', { id: `qb-${id}`, disabled }, ...options.map(([v, t]) => el('option', { value: v, text: t })));
       s.value = value; s.onchange = () => onchange(s.value);
-      return el('label', { class: 'qe-f' }, el('span', { text: label }), s);
+      return el('label', { class: wide ? 'qe-f wide' : 'qe-f' }, el('span', { text: label }), s);
     };
     const name = el('input', { id: 'qb-name', type: 'text', value: b.name, maxLength: 40, autocomplete: 'off', autocapitalize: 'words', spellcheck: false, oninput: (ev) => { b.name = ev.target.value; update(); } });
     const color = el('input', { id: 'qb-color', type: 'color', value: b.color, oninput: (ev) => { b.color = ev.target.value; update(); } });
@@ -151,8 +189,9 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
         b = Object.assign(fresh(v), keep); autoSubclass(); build();
       }, locked || mode === 'edit'),
       sel('Level', 'levelsel', Array.from({ length: 20 }, (_, i) => [String(i + 1), String(i + 1)]), String(b.level), (v) => { b.level = +v; autoSubclass(); build(); }, locked),
-      sel('Subclass', 'subclass', [['', b.level >= 3 ? 'Choose a subclass' : 'None yet (level 3)'], [c.subclass.id, c.subclass.name]], b.subclass ?? '', (v) => { b.subclass = v || undefined; build(); }),
-      el('label', { class: 'qe-f' }, el('span', { text: 'Colour' }), color))));
+      sel('Subclass', 'subclass', subclassChoices(c, b.level, b.subclass), b.subclass ?? '', (v) => { b.subclass = v || undefined; build(); }, false, true),
+      el('label', { class: 'qe-f' }, el('span', { text: 'Colour' }), color)),
+      ...(subclassNote(c, b.subclass) ? [el('p', { class: 'note', id: 'qb-subclass-note', text: subclassNote(c, b.subclass) })] : [])));
 
     // Abilities
     const ab = el('div', { class: 'qe-abil' });

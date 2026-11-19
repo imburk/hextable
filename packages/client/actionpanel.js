@@ -21,6 +21,7 @@ import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices } from './classes.js';
 import { shownName } from './tracker.js';
+import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
 
@@ -849,7 +850,7 @@ export function initActionPanel(ctx) {
       card.hidden = !e;
       if (!e) { tabsEl.hidden = true; return; }
       $('c-name').textContent = shownName(S, e);
-      $('c-sub').textContent = e.bond && ctx.comp?.subLine(e) ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)} · ${ctx.comp.subLine(e)}` : e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${e.cls}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
+      $('c-sub').textContent = e.bond && ctx.comp?.subLine(e) ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)} · ${ctx.comp.subLine(e)}` : e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${classTitle(e)}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
       $('c-hp').querySelector('i').style.width = `${ctx.hpFraction(e) * 100}%`;
       const showNumbers = full && (my || e.side === 'party');
       const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');

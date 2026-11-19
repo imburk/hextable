@@ -14,7 +14,7 @@ after(() => rmSync(tmp, { recursive: true, force: true }));
 // a small stand-in for the page: enough of a node to see what text and which classes the manager builds
 globalThis.document = { createElement: (tag) => { const n = { tag, className: '', textContent: '', children: [], style: {}, dataset: {}, attrs: {}, append(...k) { for (const c of k) this.children.push(typeof c === 'string' ? { tag: '#text', textContent: c, children: [] } : c); }, setAttribute(k, v) { this.attrs[k] = v; } }; return n; } };
 const textOf = (n) => (n.children.length ? n.children.map(textOf).join(' ') : n.textContent);
-const { createPackStore, documentOf, countWords, isRead, UNREAD_SAY, readingNode, refusalNode, unreadBody, tierChip } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
+const { createPackStore, documentOf, countWords, isRead, UNREAD_SAY, readingNode, refusalNode, unreadBody, tierChip, subclassBrief } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
 const { answersPack } = await import(pathToFileURL(join(tmp, 'transport.js')));
 const { SPELLS, MONSTERS, CONTENT } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
 const { hashOf, forPlayers } = await import(pathToFileURL(join(tmp, 'shared/content/packs.js')));
@@ -221,3 +221,20 @@ for (const [what, build, expectSubclass] of [['a pack without subclasses', () =>
     assert.equal(CONTENT.subclasses[SUBCLASS.id], undefined);
   });
 }
+
+// B5: the manager lists a pack's subclasses with their readings (B3's reader), one line each from the entry's own data.
+test('a subclass is read by the reader, and listed with one line of its own data: its class and the tiers its features declare', async () => {
+  const { readEntry } = await import(pathToFileURL(join(tmp, 'shared/content/reader.js')));
+  assert.equal(isRead('subclasses'), true, 'the reader reads the kind, so the manager lists readings, not "not read"');
+  const r = readEntry('subclasses', SUBCLASS);
+  assert.equal(r.title, 'Oath of the Ember', r.title);
+  assert.equal(tierChip(r), null, 'a subclass has no tier of its own');
+  assert.match(readingNode(r).children.map(textOf).join(' '), /Ash Memory/);
+  assert.equal(subclassBrief(SUBCLASS), 'Paladin subclass \u00b7 1 feature: 1 manual');
+  const two = { ...SUBCLASS, features: [{ tier: 'auto' }, { tier: 'auto' }, { tier: 'assist' }, { tier: 'manual' }] };
+  assert.equal(subclassBrief(two), 'Paladin subclass \u00b7 4 features: 2 auto, 1 assist, 1 manual');
+  assert.equal(subclassBrief({ class: 'paladin', features: [] }), 'Paladin subclass \u00b7 0 features');
+  assert.equal(subclassBrief({ name: 'x' }), '0 features', 'an entry that is not a subclass\'s shape says no more than it can');
+  assert.equal(subclassBrief(null), '0 features');
+  assert.equal(subclassBrief({ class: 'nonsense', features: [{ tier: 'auto' }, 5] }), 'nonsense subclass \u00b7 1 feature: 1 auto');
+});

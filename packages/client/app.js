@@ -40,6 +40,7 @@ import { createTimeline, paceFor } from './timeline.js';
 import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
 import { refreshReport, refreshNote } from './refresh.js';
+import { classTitle, missingText } from './buildsheet.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters } from './mycharacters.js';
 import { initDefeat } from './defeat.js';
@@ -695,7 +696,8 @@ function renderSheet() {
   $('sheet-body').innerHTML = `
     <h2>${esc(e.name)}</h2>
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
-    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(e.cls)}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
+    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(classTitle(e))}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
+    ${isDM() && missingText(e) ? `<p class="note" id="sheet-subclass-missing">${esc(missingText(e))}</p>` : ''}
     ${CLS.sheetBanner(e)}
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
