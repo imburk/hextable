@@ -1237,6 +1237,12 @@ function lintGrants(g, cls, say) {
       if (!(r.resist === true && Object.keys(r).length === 2)) say('a damaged reaction that resists is { on, resist: true }');
     } else if (r?.on === 'damaged') {
       if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within % 5 === 0 && Object.keys(r).length === 3)) say('a damaged reaction is { on, attack: "melee", within }');
+    // Or `{ on: 'attacks', of, attack: 'melee' }` (#537, addition I of homebrew-subclasses.md): a hostile creature under the lasting effect of this holder's feature `of` makes an attack,
+    // and the holder makes one melee weapon attack against it first. Only a subclass's feature may state one.
+    } else if (r?.on === 'attacks') {
+      const why = attacksReactionProblem(r);
+      if (why) say(why);
+      if (cls === FEAT_CLASS) say('a feat or an item cannot state a reaction to a creature under its effect (`attacks`): only a feature of a subclass can');
     } else if (!r || typeof r !== 'object' || !Object.keys(r).every((k) => ['on', 'cut', 'seen', 'types'].includes(k))) say('reaction is { on, cut, seen?, types? }');
     else {
       if (r.on !== 'hit') say('reaction.on is "hit" (a feature that cuts the damage of a hit)');
@@ -1421,6 +1427,13 @@ function lintGrants(g, cls, say) {
   if (g.persist !== undefined && !(g.persist && ID.test(g.persist.of ?? '') && g.persist.endsOn === 'unconscious' && Object.keys(g.persist).length === 2)) say('persist is { of, endsOn: "unconscious" }');
   if (g.formOf !== undefined) { const why = formOfProblem(g.formOf, cls); if (why) say(why); }
   if (g.triggers !== undefined) triggersProblems(g.triggers, cls, say);
+}
+// `reaction: { on: 'attacks', of, attack: 'melee' }` (#537, addition I of homebrew-subclasses.md): when a hostile creature under the lasting effect of the holder's feature `of` makes an attack,
+// the holder's Reaction is one melee weapon attack against it (Soul of Vengeance). Null if it is whole, or what is wrong. Which feature `of` may name is checked in the subclass (`lintSubclass`).
+export const ATTACKS_REACTION_KEYS = ['on', 'of', 'attack'];
+export function attacksReactionProblem(r) {
+  if (!r || typeof r !== 'object' || Array.isArray(r) || Object.keys(r).length !== 3 || !ATTACKS_REACTION_KEYS.every((k) => Object.hasOwn(r, k)) || !ID.test(r.of ?? '') || r.attack !== 'melee') return 'an attacks reaction is { on: "attacks", of: a feature id, attack: "melee" }';
+  return null;
 }
 // `triggers: { attackAction?, opportunityHit? }` (#534, addition H of homebrew-subclasses.md): what the holder does sets something off. Only a subclass's feature has one.
 //   attackAction: { modifiers }   when it takes the Attack action on its turn in a fight: these modifiers go on it until the end of that turn, once a turn (Blade Flourish)
@@ -1688,6 +1701,7 @@ function featureRefs(g) {
   add('cost', g.freeCast?.cost?.uses); add('cost', g.reroll?.cost); add('cost', g.metamagic?.pool);
   add('ref', g.initiative?.regain); add('ref', g.initiative?.unless); add('ref', g.brutal?.after);
   add('ref', g.formOf?.of); add('cost', g.formOf?.cost?.resource); add('ref', a?.inForm);
+  if (g.reaction?.on === 'attacks') add('ref', g.reaction.of);
   return out;
 }
 // Every modifier (an object with a hook, an op and a number) in a list of features: in grants, auras and the steps of actions.
@@ -1802,6 +1816,13 @@ function lintSubclass(e, say, ctx = {}) {
       const max = pool?.uses?.max;
       if (isInt(max) && isInt(fo.cost.n) && fo.cost.n > max) say(`feature ${f.id}: formOf prices the forms at ${fo.cost.n} uses of ${name}, which has ${max}: no form could ever be taken`);
     }
+  }
+  // `reaction: { on: 'attacks', of }` (#537): the feature `of` is one whose action lasts and is aimed at a creature, which is what puts an effect on a creature for the holder to react to.
+  for (const f of features) for (const g of [f?.grants, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.grants) : [])]) {
+    const id = g && typeof g === 'object' && g.reaction?.on === 'attacks' ? g.reaction.of : undefined;
+    if (typeof id !== 'string' || !known.has(id)) continue;
+    const base = own.find((x) => x?.id === id) ?? own.flatMap((x) => (Array.isArray(x?.options) ? x.options : [])).find((o) => o?.id === id), a = base?.grants?.action;
+    if (!(a && typeof a === 'object' && typeof a.duration === 'string' && a.duration !== 'instant' && a.target?.creature && a.time !== 'reaction')) say(`feature ${f.id}: reaction.of names "${id}", which has no action that lasts and is aimed at a creature (what the reaction answers is a lasting effect that action puts on a creature)`);
   }
   // `inForm` on a feature's action (#525): the holder must be in a form of the feature it names, which must be one that takes a form (Wild Shape).
   for (const f of features) for (const g of [f?.grants, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.grants) : [])]) {
@@ -2198,6 +2219,8 @@ function lintFeat(f, say) {
   } else if (f.reaction?.on === 'damaged') {
     const r = f.reaction;
     if (!(r.attack === 'melee' && isInt(r.within) && r.within > 0 && r.within <= 30 && Object.keys(r).length === 3)) sub('its damaged reaction is { on, attack: "melee", within }.');
+  } else if (f.reaction?.on === 'attacks') {
+    if (attacksReactionProblem(f.reaction)) sub('its attacks reaction is { on: "attacks", of: a feature id, attack: "melee" }.');
   } else if (f.reaction !== undefined) {
     const r = f.reaction;
     if (!(r && r.on === 'hit' && (r.cut === 'half' || (r.cut && isDice(r.cut.dice) && Object.keys(r.cut).length === 1))
