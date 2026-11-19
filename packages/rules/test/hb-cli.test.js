@@ -150,3 +150,13 @@ test("wrong use prints the usage and exits 2", () => {
     assert.match(r.err, /Usage:/);
   }
 });
+
+test("read: reads a pack's subclasses (the list is named \"subclasses\", not \"subclasss\")", () => {
+  const pack = { format: "hextable-pack", v: 1, pack: { id: "ember-folk", name: "Ember Folk", version: 1, license: "CC0, by the author", attribution: "Written for a test." },
+    subclasses: [{ id: "hb-ember-folk-oath-of-the-ember", name: "Oath of the Ember", class: "paladin", source: "homebrew:ember-folk", checked: false, text: "Paladins sworn to keep a hearth-fire burning.",
+      features: [{ id: "hb-ember-folk-warm", name: "Warm Heart", level: 3, tier: "manual", checked: false, text: "You do not suffer from cold weather." }] }] };
+  const r = hb("read", file("subclasses.json", JSON.stringify(pack)));
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /Oath of the Ember/);
+  assert.match(r.out, /Warm Heart/);
+});
