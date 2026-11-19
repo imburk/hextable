@@ -411,11 +411,14 @@ export function bestSave(s, t, abils, from = null, about = null) {
 // ---------- ability checks ----------
 // What a creature adds to a d20 for a check: its ability modifier, its Proficiency Bonus if it
 // is proficient in the skill or with the tool (twice for Expertise), or a monster's listed bonus.
-export function checkBonus(e, { ability, skill, tool }) {
+// `lent`: the proficiencies a lasting effect gives for a time (`modifiers(...).lent`, addition C of docs/specs/homebrew-subclasses.md). One lends the Proficiency Bonus once, to a
+// skill or tool the creature is not proficient in; a skill or tool it has already (Expertise too) takes nothing more, and a monster's listed bonus stands as it is.
+export function checkBonus(e, { ability, skill, tool }, lent = []) {
   if (skill && e.skillBonus?.[skill] !== undefined) return e.skillBonus[skill];
   let b = mod(e.abil[ability ?? SKILLS[skill]] ?? 10);
-  if (skill && e.skills?.includes(skill)) b += e.prof * (e.expertise?.includes(skill) ? 2 : 1);
-  else if (tool && e.tools?.includes(tool)) b += e.prof;
+  const own = skill && e.skills?.includes(skill);
+  if (own || (skill && lent.some((x) => x.skill === skill))) b += e.prof * (own && e.expertise?.includes(skill) ? 2 : 1);
+  else if (tool && (e.tools?.includes(tool) || lent.some((x) => x.tool === tool))) b += e.prof;
   return b;
 }
 // A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
@@ -424,7 +427,7 @@ export function checkBonus(e, { ability, skill, tool }) {
 export function passive(s, e, skill, dis = []) {
   const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill] }, '');
   m.disadvantage = [...m.disadvantage, ...dis];
-  return 10 + checkBonus(e, { skill }) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
+  return 10 + checkBonus(e, { skill }, m.lent) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
 }
 // At the start of its turn a creature rolls for each spent action with a recharge.
 export function recharge(s, e, ev) {

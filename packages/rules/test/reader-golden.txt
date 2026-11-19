@@ -168,6 +168,12 @@ The caster gets Advantage on Athletics checks.
 The caster gets any d20 roll lower than 10 counting as 10 on ability checks.
   It holds only when the check uses one of its proficiencies.
   It lasts as long as the spell.
+The caster gets proficiency in the chosen skill.
+  While the effect lasts, a check with that skill or tool adds the Proficiency Bonus, once, if the creature is not proficient in it already (Expertise included, which is not doubled again), and counts as a check that uses a proficiency; the creature's sheet is not changed.
+  It lasts as long as the spell.
+The caster gets proficiency with the tool thieves tools.
+  While the effect lasts, a check with that skill or tool adds the Proficiency Bonus, once, if the creature is not proficient in it already (Expertise included, which is not doubled again), and counts as a check that uses a proficiency; the creature's sheet is not changed.
+  It lasts as long as the spell.
 The caster gets Advantage on ability checks.
   It holds only when the check is made to escape a grapple.
   It lasts as long as the spell.

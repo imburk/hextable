@@ -119,16 +119,17 @@ function initiativeFeatures(s, ev) {
 // `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
 // (Search uses it for what it can see only dimly); it is not part of what is shown.
 // `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
-const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}) });
+const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}), ...(what.tool ? { tool: what.tool } : {}) });
 function abilityCheck(s, e, what, dimToo = false, dis = []) {
   const ability = what.ability ?? SKILLS[what.skill];
   // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
   const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
-  const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what) + m.add;
+  const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what, m.lent) + m.add;
   if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
-  if (what.tool && what.skill && e.tools?.includes(what.tool) && e.skills?.includes(what.skill)) m.advantage = [...m.advantage, 'tool and skill'];
+  const lends = (k, v) => m.lent.some((x) => x[k] === v);      // a proficiency lent for a time counts as one (addition C of docs/specs/homebrew-subclasses.md)
+  if (what.tool && what.skill && (e.tools?.includes(what.tool) || lends('tool', what.tool)) && (e.skills?.includes(what.skill) || lends('skill', what.skill))) m.advantage = [...m.advantage, 'tool and skill'];
   const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
   const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
   // Reliable Talent: each d20 under its `floor` counts as it.
@@ -151,7 +152,7 @@ function escapeSkill(s, e, hold) {
     const ability = SKILLS[skill], proficient = !!(e.skills?.includes(skill) || e.skillBonus?.[skill] !== undefined);
     const m = modifiers(s, e, 'check', checkSit(e, { skill, escape: true }, ability, proficient), '');
     const adv = m.advantage.length > 0, dis = m.disadvantage.length > 0 || !!hold.escapeDis;
-    const rank = [m.autoFail ? 0 : 1, adv && !dis ? 2 : dis && !adv ? 0 : 1, checkBonus(e, { skill }) + m.add];
+    const rank = [m.autoFail ? 0 : 1, adv && !dis ? 2 : dis && !adv ? 0 : 1, checkBonus(e, { skill }, m.lent) + m.add];
     if (!best || rank[0] > best.rank[0] || (rank[0] === best.rank[0] && (rank[1] > best.rank[1] || (rank[1] === best.rank[1] && rank[2] > best.rank[2])))) best = { skill, rank };
   }
   return best.skill;
@@ -278,7 +279,38 @@ export const handlers = {
       const cost = amount + cures.length * (act.cure?.cost ?? 0);
       cost <= (e.uses[res] ?? 0) || fail(`${f.name} has ${e.uses[res] ?? 0} Hit Points left.`);
     }
-    const byHand = (act.modes && !mode) || act.form ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
+    // `choice` (addition C of docs/specs/homebrew-subclasses.md): a skill or a tool the holder names when using the feature (`a.choice`, a string), which the action's modifier steps that say
+    // "chosen" take (`scope: { skill: 'chosen' }`, `{ tool: 'chosen' }`). Checked here with the rest, before anything is paid. With none sent, as with no mode, the use is spent
+    // and the DM is handed the rest (below): a screen that does not yet offer the choice still works the way it did. A choice sent to an action that makes none is refused.
+    const wants = act.choice, mine = [...(act.modes ? act.modes.flatMap((m) => m?.effects ?? []) : act.effects ?? [])];
+    let chosenHere = null;
+    if (wants !== undefined) {
+      (wants && typeof wants === 'object' && ['skill', 'tool'].includes(wants.of) && (wants.from === undefined ? wants.of === 'skill' : Array.isArray(wants.from) && wants.from.length > 1) && !act.form && !act.gain && !act.pool && !act.renew && !act.zone && (Array.isArray(act.effects) || Array.isArray(act.modes)))
+        || fail(`${f.name} cannot be used: its data for the choice made when it is used is wrong (a skill or a tool, on an action with plain steps). The DM can apply it.`);
+      if (a.choice !== undefined) {
+        const what = wants.of === 'skill' ? 'skill' : 'tool', names = wants.from ?? (wants.of === 'skill' ? Object.keys(SKILLS) : null);
+        (typeof a.choice === 'string' && (wants.of === 'skill' ? Object.hasOwn(SKILLS, a.choice) : /^[a-z0-9]+(-[a-z0-9]+)*$/.test(a.choice) && a.choice.length <= 40))
+          || fail(`${f.name} asks for ${what === 'skill' ? 'a skill' : 'a tool'}: ${what === 'skill' ? 'name a skill, such as arcana' : 'name a tool by its id, such as thieves-tools'}.`);
+        !names || names.includes(a.choice) || fail(`${f.name} lends proficiency with ${names.length > 6 ? `a ${what}` : `one of ${names.join(', ')}`}; ${a.choice} is not one.`);
+        chosenHere = a.choice;
+      }
+    } else {
+      a.choice === undefined || fail(`${f.name} makes no choice of a skill or a tool.`);
+      let lost = false;
+      walkSteps(mine, (st) => { if (st?.modifier?.scope?.skill === 'chosen' || st?.modifier?.scope?.tool === 'chosen') lost = true; });
+      !lost || fail(`${f.name} cannot be used: a step takes a chosen skill or tool, but its action makes no choice. The DM can apply it.`);
+    }
+    // A proficiency lent for a time is the holder's: an action aimed at another creature that lends one is not played (the gate says so; data that skipped it is refused here).
+    let lendsHere = false;
+    walkSteps(mine, (st) => { if (st?.modifier?.op === 'proficient') lendsHere = true; });
+    if (lendsHere && act.target?.self !== true) fail(`${f.name} cannot be used: it lends proficiency to a creature other than its holder, which the engine does not do. The DM can apply it.`);
+    // What the DM is handed says what is missing: no mode named, or no skill or tool sent. With no skill or tool sent, the use is spent and no effect is started (it would hold nothing).
+    const noMode = !!act.modes && !mode, noPick = wants !== undefined && chosenHere === null;
+    const forDm = noPick && !noMode
+      ? `${f.name}: ask which ${wants.of}${Array.isArray(wants.from) ? ` (${wants.from.join(', ')})` : ''} it is for, then ${lendsHere ? 'apply proficiency in it' : `apply what ${f.name} does with it`}${act.duration && act.duration !== 'instant' ? ` for ${act.duration}` : ''}. (The use is spent; no ${wants.of} was sent, so the DM applies it.)`
+      : noMode && wants !== undefined ? `${f.name}: ${f.text} (No mode was named, so the DM applies it${noPick ? `; ask which ${wants.of} too` : ''}.)`
+      : `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)`;
+    const byHand = noMode || act.form || noPick ? [{ manual: forDm }] : null;
     // `near` (addition G of docs/specs/homebrew-subclasses.md), on the action's target or on the mode's: a second creature within that many feet of the first target takes the
     // damage steps the action begins with, the roll shared. It is named as a second id in `targets` (`target` alone is the first creature only), so the creature ids a player
     // sends are checked as they always are (engine.js, CREATURE_FIELDS). The first creature is the action's target as ever: `aimAction` is asked about it alone.
@@ -403,6 +435,7 @@ export const handlers = {
       else if (x === 'dash') { enc.budget.move += speedOf(s, e); enc.budget.dashes = (enc.budget.dashes | 0) + 1; }
     }
     let steps = structuredClone(byHand ?? (mode ? mode.effects : act.effects));
+    if (chosenHere !== null) walkSteps(steps, (st) => { const sc = st?.modifier?.scope; if (sc?.skill === 'chosen') sc.skill = chosenHere; if (sc?.tool === 'chosen') sc.tool = chosenHere; });
     const targets = aimed.targets;
     // The slot grows the steps as a higher slot grows a spell's (`scaleSteps`): what `cost.higher` adds for each level above the lowest. What it cannot add, the DM is told.
     if (slotSpent !== null && act.cost.higher) {
@@ -412,7 +445,7 @@ export const handlers = {
     }
     if (!steps.length) return ev.push({ type: 'std', id: e.id, action: f.name });     // nothing more (Patient Defense below level 10)
     let fx = null;
-    if (act.duration && act.duration !== 'instant') {
+    if (act.duration && act.duration !== 'instant' && !(byHand && wants !== undefined)) {
       fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });
       // A zone's effect also ends when its holder dies or drops to 0 Hit Points or falls Unconscious (`fragile`: durations.js), whatever else the action says:
       // a zone that follows a creature that is gone must not wait to come back with it. Incapacitated ends it only where the action says so.
