@@ -14,7 +14,7 @@ const { character, report } = importFgxml(text);     // never throws; a bad file
 A **sheet**, the shape `setSheet` takes and "Build from class and level" produces (`derive.js`): class, level,
 subclass, ability scores, skills, `extraSkills`, expertise, `choices`, armour, shield, weapons, spells, tools, gear,
 senses, speed, size. The engine makes the record from it, so the numbers it plays are the engine's, not the file's.
-Nothing new is added to the sheet and the engine is not changed to accept it.
+Nothing new is invented: the one field beyond what "Build from class and level" makes is the optional `scoreBonus` (see "Scores above 20").
 
 `report.loadable` is true when `validate(sheet)` and `lintRecord(derive(sheet).record)` find nothing; `report.problems`
 says why when it is not.
@@ -73,23 +73,27 @@ flags the whole list, a wizard who flags the spellbook) is not refused any more:
 the left ones in `items`, so the DM can change them. A flagged spell that is not in the pack, not on the class list or above the
 level the class casts keeps its own line and is not counted as left.
 
-On a multiclass sheet, a class with an empty group takes the spells it finds in another class's group (see the limits below). A class with no spells in its own group (`Spells (Bard)`) and none in the generic `Spells` group reads the spells of a group named
-like "Spells Known" or "Bard", when the sheet has one: the flagged leveled spells, or, when none is flagged, every spell in it (known
+On a multiclass sheet, a class with an empty group takes the spells it finds in another class's group (see the limits below). A class with no spells in its own group (`Spells (Bard)`) and none in the generic `Spells` group reads the spells of a group named exactly "Spells Known" (for the first class that has none) or by a bare class name ("Bard", for that class); a group with another name, such as a feat's "Magic Initiate Spells", is not read as class spells. It takes the flagged leveled spells, or, when none is flagged, every spell in it (known
 spells carry no flag), and every cantrip in it. `report.adjustments` says which group was read ("The DM should check them"). Which group
 name Fantasy Grounds uses for a Bard's known spells is not settled by the exports seen so far; a sheet that keeps them nowhere gets none,
 as before.
 
+Limits of the move between classes: it goes by the spell lists alone, so a non-SRD subclass's own spell (a 2014 Oath spell that is on the
+Wizard list but not on the SRD Paladin list) in the Paladin's group moves to a Wizard whose group is empty, and takes a place in its count.
+The "Spells moved to the <Class>" entry lists every spell moved, so the DM can put it back. A spell a subclass always prepares is not added
+to a class's list on a multiclass sheet; it gets one entry saying so.
+
 ## Scores above 20
 
 A sheet's scores are 1 to 20 before its feats, and in the engine only an Epic Boon (level 19 or above) or a magic item takes one past
-20. A score of 22 on a file is imported as 20 with `scoreBonus: { cha: 2 }`: an optional field of the sheet (character data, not
+20. A score of 22 on a file is imported as 20 with `scoreBonus: { cha: 2 }`: the bonus is the sheet's score minus the score the engine derives for the sheet without one (its items, feats and boons included, so a Belt of Giant Strength the engine applies adds none, and a belt that gives 21 with a sheet score of 22 leaves +1), when that is positive, and at most +10. It is an optional field of the sheet (character data, not
 homebrew content; no state version change), `{ <ability>: n }` with each n a whole number from 1 to 10. `derive` adds it after every
 cap and every feat or item that raises the score, so the engine plays the score the file shows; the result is at most 30, and
 `validate` refuses a bonus that would pass 30. The explanations name it: `why.abil` ("DM bonus: Charisma +2"), and `why.ac` and
 `why.hp` where the Dexterity or Constitution score they use includes it. The importer puts a line in `report.adjustments`
 ("Charisma 22 on the sheet: +2 kept as a DM bonus; check what gives it"); a score over 30 keeps +10 and says how much is left out, and
-a bonus on top of an item that already raises the score (a Belt of Giant Strength) is trimmed to fit 30, and says so. The DM removes
-a bonus by sending the sheet without `scoreBonus` (`setSheet`, or `refresh` after editing the stored sheet).
+a bonus that would pass 30 on top of an item is trimmed to fit, and says so. The adjustment names what the engine already counts.
+The DM removes a bonus with the "Remove" control beside "DM bonus" in the build sheet, or by sending the sheet without `scoreBonus` (`setSheet`).
 
 ## Stand-ins
 

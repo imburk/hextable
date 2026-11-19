@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { pickLimit, optionWhy, featPoints, KEEP, keptOf } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
+const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
 const { featuresOf } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
 
 const of = (sheet, id) => featuresOf(sheet).find((x) => x.f.id === id && !x.option);
@@ -63,4 +63,15 @@ test('editing a character keeps every sheet field the screen has no control for,
   const back = { ...character, scoreBonus: undefined, ...keptOf(character) };
   assert.deepEqual(validate(back), []);
   assert.equal(derive(back).record.abil.wis, 24);
+});
+
+test('the DM score bonus is said in words and can be taken off the kept fields (#498)', () => {
+  assert.equal(bonusText({ cha: 2 }), 'DM bonus: +2 Charisma');
+  assert.equal(bonusText({ str: 1, cha: 2 }), 'DM bonus: +1 Strength, +2 Charisma');
+  assert.equal(bonusText(undefined), '');
+  assert.equal(bonusText({}), '');
+  const keep = { items: [{ id: 'i1', item: 'x' }], scoreBonus: { cha: 2 }, speed: 35 };
+  const rest = withoutBonus(keep);
+  assert.deepEqual(rest, { items: [{ id: 'i1', item: 'x' }], speed: 35 }, 'everything else is kept');
+  assert.ok('scoreBonus' in keep, 'the original is not changed');
 });
