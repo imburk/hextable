@@ -41,7 +41,10 @@ async function prompt(browser, url) {
           const D = await import('./shared/derive.js'), h = window.hextable;
           h.act({ type: 'addCharacter', record: D.derive({ name: 'Wren', class: 'wizard', level: 5, abilities: { str: 8, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, skills: ['arcana', 'history'], spells: ['shield'] }).record, at: { q: 0, r: 0, z: 0 } });
         });
-        await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Wren'));
+        // The host's own state, by the clock: the phone seeing her first says nothing about the host page, which the next read is of.
+        const hasWren = () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Wren');
+        await wait(host, hasWren, null, 20000);
+        await wait(phone, hasWren, null, 20000);
         wren = await state(host, (S) => Object.values(S.entities).find((e) => e.name === 'Wren').id);
         await phone.locator('#party button:has-text("Play as Wren")').tap();
         await wait(host, (W) => !!window.hextable.state.entities[W].owner, wren);
