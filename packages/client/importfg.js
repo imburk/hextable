@@ -16,6 +16,21 @@ const MAX_BYTES = 6_000_000;               // the importer reads 4,000,000 chara
 const CHRONICLE_MAX = 8000;
 const cap = (s) => s.replace(/^./, (c) => c.toUpperCase());
 
+// The homebrew subclasses the importer matched to the sheet's names (`report.imported.homebrewSubclasses`, docs/specs/homebrew-subclasses.md, Decision 5; DEBT T84):
+// one plain sentence each, "Paladin: the sheet's "Ember" matched the table's homebrew subclass Oath of the Ember (pack ember-folk)." The importer's own words
+// are used; nothing is matched here. Entries that are not the shape the importer makes are left out.
+export function homebrewSubclassLines(rep) {
+  const list = Array.isArray(rep?.imported?.homebrewSubclasses) ? rep.imported.homebrewSubclasses : [];
+  return list.filter((x) => x && typeof x === 'object' && typeof x.name === 'string' && typeof x.text === 'string')
+    .map((x) => `${typeof x.class === 'string' && x.class ? `${cap(x.class)}: ` : ''}${typeof x.sheet === 'string' && x.sheet ? `the sheet's "${x.sheet}" ` : 'it '}${x.text}.`);
+}
+// The name the summary gives the sheet's subclass: the matched homebrew subclass's own name (its id is "hb-pack-name"), else the SRD id as words.
+export const subclassShown = (rep, id) => {
+  if (!id) return '';
+  const hb = (Array.isArray(rep?.imported?.homebrewSubclasses) ? rep.imported.homebrewSubclasses : []).find((x) => x && x.id === id && typeof x.name === 'string');
+  return hb ? hb.name : cap(String(id).replace(/-/g, ' '));
+};
+
 // The lists of what was not mapped, in the order they are shown: [key, heading, what it holds].
 const LISTS = [
   ['multiclass', 'Other classes', 'Only one class is built; these levels are not on the sheet.'],
@@ -34,8 +49,9 @@ const LISTS = [
 // The whole report as plain text, for the file and the chronicle.
 export function reportText(rep, sheet) {
   const L = [`Import from Fantasy Grounds: ${rep.name || 'a character'}`];
-  if (sheet) L.push(`Built as: level ${sheet.level} ${sheet.class}${sheet.subclass ? ` (${sheet.subclass})` : ''}.`);
+  if (sheet) L.push(`Built as: level ${sheet.level} ${sheet.class}${sheet.subclass ? ` (${subclassShown(rep, sheet.subclass)})` : ''}.`);
   const im = rep.imported ?? {};
+  for (const l of homebrewSubclassLines(rep)) L.push(`Homebrew subclass: ${l}`);
   if (im.class) L.push(`Imported: ${[`${im.skills ?? 0} skills`, im.armour && `armour ${im.armour}`, im.shield && 'shield', im.weapons?.length && `weapons ${im.weapons.join(', ')}`, im.cantrips && `${im.cantrips} cantrips`, im.prepared && `${im.prepared} prepared spells`].filter(Boolean).join('; ')}.`);
   if (rep.adjustments?.length) { L.push('', 'ADJUSTMENTS (set so the sheet loads; the DM should check these):'); for (const a of rep.adjustments) L.push(`- ${a.what}${a.from !== undefined ? `: ${a.from} to ${a.to}` : `: ${a.to}`}. ${a.why}`); }
   for (const [k, head] of LISTS) if (rep[k]?.length) { L.push('', `${head.toUpperCase()} (${rep[k].length}):`); for (const x of rep[k]) L.push(`- ${x.name}${x.level !== undefined ? ` (level ${x.level})` : ''}: ${x.why}${x.items?.length ? ` [${x.items.join(', ')}]` : ''}`); }
@@ -98,15 +114,17 @@ export function initImport({ act, toast, getState, getSelected }) {
     cur.target = canReplace ? sel.id : null;      // the one the button names, even if the selection moves while this is open
     const adj = rep.adjustments ?? [];
     const lists = LISTS.filter(([k]) => rep[k]?.length);
+    const hbLines = homebrewSubclassLines(rep), hbNames = (im.homebrewSubclasses ?? []).filter((x) => x && typeof x.name === 'string').map((x) => x.name);
     const imported = [`${im.skills ?? 0} skill${im.skills === 1 ? '' : 's'}`, im.expertise && `${im.expertise} with expertise`, im.armour && `armour: ${im.armour}`, im.shield && 'a shield', im.weapons?.length && `weapons: ${im.weapons.join(', ')}`,
-      im.cantrips && `${im.cantrips} cantrips`, im.prepared && `${im.prepared} prepared spells`, im.tools && `${im.tools} tool${im.tools === 1 ? '' : 's'}`, im.gear && `${im.gear} gear name${im.gear === 1 ? '' : 's'}`].filter(Boolean);
+      im.cantrips && `${im.cantrips} cantrips`, im.prepared && `${im.prepared} prepared spells`, im.tools && `${im.tools} tool${im.tools === 1 ? '' : 's'}`, hbLines.length && `${hbLines.length === 1 ? 'a homebrew subclass' : `${hbLines.length} homebrew subclasses`}: ${hbNames.join(', ')}`, im.gear && `${im.gear} gear name${im.gear === 1 ? '' : 's'}`].filter(Boolean);
     const spellTiers = Object.entries(rep.spellTiers ?? {}).filter(([, v]) => v.length).map(([t, v]) => `${v.length} ${t}`).join(', ');
     const st = rep.state ?? {};
     const body = [
       `<p class="note">${esc(cur.name)} · ${Math.max(1, Math.round(cur.size / 1024))} KB. Nothing has been changed yet: read this, then choose.</p>
       <p class="note" id="fgi-dm-only">Only the DM can import a character: the table refuses a sheet from anyone else.</p>`,
       `<section class="fgi-sum" id="fgi-summary"><h3>What will be set up</h3>
-        <p><b>${esc(sh.name)}</b>, level ${esc(sh.level)} ${esc(cap(String(sh.class)))}${sh.subclass ? ` (${esc(cap(String(sh.subclass).replace(/-/g, ' ')))})` : ''}</p>
+        <p><b>${esc(sh.name)}</b>, level ${esc(sh.level)} ${esc(cap(String(sh.class)))}${sh.subclass ? ` (${esc(subclassShown(rep, sh.subclass))})` : ''}</p>
+        ${hbLines.length ? `<ul class="fgi-list" id="fgi-homebrew-subclass">${hbLines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
         <p class="note">Mapped: ${esc(imported.join(' · ') || 'nothing besides class, level and ability scores')}.${spellTiers ? ` Spells by how far the engine plays them: ${esc(spellTiers)}.` : ''} The engine works out Hit Points, Armor Class and the rest from this sheet; they are not copied from the file.</p>
         ${rep.loadable ? '' : `<p class="fgi-error" role="alert">This sheet cannot be played yet: ${esc((rep.problems ?? []).join(' '))}</p>`}</section>`,
       adj.length ? `<section class="fgi-adj" id="fgi-adjustments"><h3>Adjustments and stand-ins (${adj.length})</h3><p class="note">The file could not give these, so the nearest value was set so the sheet loads. Check them.</p><ul class="fgi-list">${adj.map((a) => `<li><b>${esc(a.what)}</b>${a.from !== undefined ? ` ${esc(a.from)} &rarr; ${esc(a.to)}` : ` &rarr; ${esc(a.to)}`}<br>${esc(a.why)}</li>`).join('')}</ul></section>` : `<section id="fgi-adjustments"><h3>Adjustments and stand-ins</h3><p class="note">None.</p></section>`,
