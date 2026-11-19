@@ -409,3 +409,39 @@ the sketch:
   the whole pack: not any entry's id (a spell, a feat, an item, a subclass, the subclass itself) and not another feature's. The
   `dmNotes` of a subclass or a feature are at most 500 letters (homebrew.md, Decision 5). A refusal is a plain sentence for a
   non-text id, a feature without an id, a `spells` key that is not a class level, and a grant `action` that is not an object.
+
+## Build notes: B3, the reading (#508)
+
+Built to Decision 2's last bullet. What was settled in building, and what differs from the sketch:
+
+- **Where.** `content/reader.js`: `readEntry('subclass' | 'subclasses', e)`, a `SubclassReading` that extends the feat and item reading (`GrantReading`), so a
+  feature's `grants` are said by the same sentence makers (`GRANT_WORDS`). `READ_KINDS`, `KIND_NAMES` and the strict-mode names know the kind. The
+  exports `SUBCLASS_FIELDS`, `SUBCLASS_FEATURE_FIELDS`, `SUBCLASS_OPTION_FIELDS`, `SUBCLASS_USES_FIELDS`, `SUBCLASS_REQUIRES_FIELDS`,
+  `SUBCLASS_TIER_WORDS` and `SUBCLASS_RECHARGE_WORDS` are held by a test to the linter's own key lists. Test: `test/reader-subclass.test.js`, golden
+  text `test/reader-subclass-golden.txt` (three invented subclasses: a paladin oath, a bard college, a fighter archetype).
+- **The order of the reading.** The title ("Oath of the Ember", a Paladin subclass), the spells by class level with their names, then each feature in
+  level order (a heading with its level and its tier in words, its uses and recharge, its cost and `grants`, its options, and for an assist or a manual
+  feature the author's text in quotes: "the DM does this"), then the tier count, "Not checked against any rulebook", and a line for each feature
+  level that is not one of the class's own subclass levels (question 1: said, not refused). `dmNotes` is not read.
+- **No tier for the entry.** The reading's `tier` is `null`, as for a weapon. The count is "N of M features are played entirely by the engine (a auto,
+  b assist, c manual)": *entirely* is an auto feature that hands nothing to the DM. An auto feature that does (a manual step, a prerequisite the engine
+  does not check) says "auto, but the engine hands the parts listed for the DM to the DM" in its heading.
+- **A feature's steps are read with its class behind them.** An SRD subclass's steps use amounts `derive.js` puts in from the class (`bakeAt`): a save
+  `dc` that is an ability, a `damage`, `heal` or `tempHp` that is `{ column }`, `{ mod, min, die }` or `{ byLevel }`, an `addMod` that is an ability,
+  `addLevel`. The feat and item readings flag these as not dice and not a whole number; for a subclass the reading says them in words (a `sub` flag on
+  the reading, so no other kind's reading changes). The sentences for `grants.spells`, `cantrips`, `spellLists` and `attune` said "a feat or an item
+  belongs to no class, so the engine adds nothing"; for a subclass's feature, which belongs to a class, they say what the engine does. A feature's
+  `freeCast` says "through this feature". `stepsUnder` indents by the base the caller has (it was reset to its own depth; the same for every kind that
+  had no base).
+- **Found in the engine and said, not changed.** A feature with `uses` and no action of its own is used by `feature`: it spends one use and sends its
+  text to the DM (the reading says so; a test plays it). An option's `requires` is checked by `validate` only for a feature whose player picks a list
+  (`pick`), never for a single choice; the reading says which, and hands the single-choice check to the DM (DEBT T83). `uses.short` counts only where the
+  rest that brings the uses back is a Long Rest (`derive.js`); where it is `short` the reading says the number is not used. A test plays a Short Rest and
+  a Long Rest for each reading of `recharge`.
+- **What is read from the SRD.** A test reads each of the twelve SRD subclasses, made homebrew as B1's test makes them: no problem, each feature once, the
+  tiers add up, every manual feature's words are the DM's, and no level is flagged (they are the class's own).
+- **The pack manager** (`packmanager.js`, not changed) asks the reader's own `READ_KINDS`, so a pack's subclasses are now listed with readings and tiers
+  by feature, not as "not read". The build sheet, the sheet header and a smoke pass stay B5's.
+- **Not proved by a test, because B2 is a separate job.** The sentences "a character names it as the subclass of its levels" and "the engine makes these a
+  feature of the character" describe what B2's `derive` does. B3 plays the engine where it already works for a feature (uses, rests, the cost, the
+  action); it does not play a homebrew subclass through `derive`.
