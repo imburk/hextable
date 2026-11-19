@@ -3,7 +3,7 @@
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTER_ACTIONS, MONSTERS, SPELLS } from '../content/index.js';
-import { ABILITIES, rolledProblem, SKILLS } from '../content/schema.js';
+import { ABILITIES, nearProblem, nearRun, rolledProblem, SKILLS } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
 import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
@@ -220,7 +220,15 @@ export const handlers = {
       for (const p of live.parts) if (!p.ended && p.ends?.on === 'turnEnd') p.born = now;
       return ev.push({ type: 'std', id: e.id, action: `${f.name} (extended)` });
     }
-    let res = act.cost?.resource ?? (f.uses ? f.id : null), n = act.cost?.n ?? 1;
+    // A feature with `modes` does one of several things, named by `a.mode` (Divine Spark: heal, or radiant or necrotic harm).
+    const mode = act.modes && a.mode !== undefined ? act.modes.find((m) => m.id === a.mode) || fail(`Choose what ${f.name} does: ${act.modes.map((m) => m.name).join(', ')}.`) : null;
+    // A mode may have a price of its own (`cost: { resource, n? }`, the pool it spends in place of the action's) or none (`free`; addition G of docs/specs/homebrew-subclasses.md).
+    // It is the mode's price alone: `orCost` and `orSlot` are the action's own, so an action that has them and a mode with its own price is refused here (the gate says so too), before anything is paid.
+    const noCost = mode?.free === true, modeCost = mode?.cost;
+    if (modeCost !== undefined && !(modeCost && typeof modeCost.resource === 'string' && modeCost.resource && (modeCost.n === undefined || (Number.isInteger(modeCost.n) && modeCost.n > 0)))) fail(`${f.name} cannot be used: the price of its ${mode.name} mode is not a pool and a number of uses. The DM can apply it.`);
+    if ((noCost || modeCost) && (act.orCost || act.orSlot)) fail(`${f.name} cannot be used: its ${mode.name} mode has a price of its own (or none), and the action also has orCost or orSlot, which are about the action's own price. The DM can apply it.`);
+    if (noCost && modeCost !== undefined) fail(`${f.name} cannot be used: its ${mode.name} mode is both free and priced. The DM can apply it.`);
+    let res = noCost ? null : modeCost ? modeCost.resource : act.cost?.resource ?? (f.uses ? f.id : null), n = noCost ? 0 : modeCost ? modeCost.n ?? 1 : act.cost?.n ?? 1;
     // `orCost`: with none of its own uses left, it may be paid for from another pool instead
     // (Dragon Wings for 3 Sorcery Points; Innate Sorcery for 2 with Sorcery Incarnate).
     if (res && !act.pool && (e.uses[res] ?? 0) < n && act.orCost && (e.uses[act.orCost.resource] ?? 0) >= act.orCost.n) { res = act.orCost.resource; n = act.orCost.n; }
@@ -264,11 +272,35 @@ export const handlers = {
       const cost = amount + cures.length * (act.cure?.cost ?? 0);
       cost <= (e.uses[res] ?? 0) || fail(`${f.name} has ${e.uses[res] ?? 0} Hit Points left.`);
     }
-    // A feature with `modes` does one of several things, named by `a.mode` (Divine Spark: heal, or radiant or necrotic harm).
-    const mode = act.modes && a.mode !== undefined ? act.modes.find((m) => m.id === a.mode) || fail(`Choose what ${f.name} does: ${act.modes.map((m) => m.name).join(', ')}.`) : null;
     const byHand = (act.modes && !mode) || act.form ? [{ manual: `${f.name}: ${f.text} (No choice was sent, so the DM applies it.)` }] : null;
-    const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: byHand ?? (mode ? mode.effects : act.effects) }, a);
+    // `near` (addition G of docs/specs/homebrew-subclasses.md), on the action's target or on the mode's: a second creature within that many feet of the first target takes the
+    // damage steps the action begins with, the roll shared. It is named as a second id in `targets` (`target` alone is the first creature only), so the creature ids a player
+    // sends are checked as they always are (engine.js, CREATURE_FIELDS). The first creature is the action's target as ever: `aimAction` is asked about it alone.
+    const nearFeet = act.gain || act.pool || act.form ? undefined : mode?.target?.near ?? act.target?.near;
+    let ask = a, nearId = null;
+    if (nearFeet !== undefined) {
+      (Number.isInteger(nearFeet) && nearFeet > 0 && nearFeet % 5 === 0 && (act.target?.creature?.count ?? 1) === 1 && !act.target?.creature?.within && !act.target?.creature?.repeat) || fail(`${f.name} cannot be used: its data for a second target near the first is wrong (near is feet, a multiple of 5, on an action with one target). The DM can apply it.`);
+      const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
+      if (Array.isArray(ids) && ids.length > 2) fail(`${f.name} reaches a creature and one more within ${nearFeet} ft of it.`);
+      if (Array.isArray(ids) && ids.length === 2) { nearId = ids[1]; ask = { ...a, targets: [ids[0]] }; }
+    }
+    // No mode named on an action whose modes may aim a second creature: the DM is handed it (`byHand`), and a second creature cannot be named.
+    if (act.modes && !mode && !act.pool && !act.gain && !act.form && act.modes.some((m) => m?.target?.near !== undefined) && (a.targets?.length ?? 0) > 1) fail(`Choose what ${f.name} does before naming a second creature: ${act.modes.map((m) => m.name).join(', ')}.`);
+    const aimed = act.gain || act.pool ? null : aimAction(s, e, { name: f.name, target: act.target, effects: byHand ?? (mode ? mode.effects : act.effects) }, ask);
     if (aimed?.targets && fighting) for (const t of aimed.targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    let near = null;
+    if (nearId !== null) {
+      byHand && fail(`Choose what ${f.name} does before naming a second creature: ${act.modes.map((m) => m.name).join(', ')}.`);
+      near = ent(s, nearId);
+      const first = aimed.targets[0];
+      !near.dead || fail(`${near.name} is dead.`);
+      near.id !== e.id || fail(`${f.name} needs a second creature other than ${e.name}.`);
+      near.id !== first.id || fail(`${f.name} can't target the same creature twice.`);
+      if (fighting) inFight(s, near.id) || fail(`${near.name} is outside the battle.`);
+      apart(s, first, near) * FT <= nearFeet || fail(`${near.name} is more than ${nearFeet} ft from ${first.name}.`);
+      const problem = nearProblem(mode ? mode.effects : act.effects);
+      if (problem) fail(`${f.name} cannot be used: its data is wrong (${problem}). The DM can apply it.`);
+    }
     // `after: 'hit'` (Hurl Through Hell): on a creature this one hit with an attack roll this turn, once a turn.
     if (act.after === 'hit') {
       fighting || fail(`${f.name} follows a hit in a fight.`);
@@ -388,10 +420,19 @@ export const handlers = {
     const src = { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10) };
     // The zone is made as a spell's is (zones.js startZone); unless it says `atCast`, nobody is affected as it appears.
     const hit = zoneDef && fx ? startZone(s, fx, { def: zoneDef, area: act.target.area, holder: e, hexes: aimed.hexes, origin: aimed.origin, spare: a.spare ?? [], steps, src }, targets) : targets;
+    // A second creature near the first (`near`) takes the leading damage steps, rolled once for the two of them: the roll is made here and both read it (`shared`), so the
+    // first creature's own steps after it (a `{ rolled: true }` modifier on the holder, a push) see the same number, and are done for the first creature alone. The second
+    // creature's steps are pushed first, so the first creature's go first (the stack runs the last pushed).
+    let sharedNear = null;
+    if (near) {
+      const lead = nearRun(steps);
+      sharedNear = sharedRolls(s, steps.slice(0, lead));
+      begin(s, { steps: steps.slice(0, lead), actor: e.id, targets: [near.id], src: { ...src, ...(fx ? { fx: fx.id } : {}) }, shared: sharedNear });
+    }
     begin(s, { steps, actor: e.id, targets: hit === null ? null : hit.map((t) => t.id),
       src: { ...src, ...(fx ? { fx: fx.id } : {}) },
       // Damage an area feature deals is rolled once for everyone in it (Sear Undead), as a spell's is.
-      shared: aimed.hexes ? sharedRolls(s, steps) : null });
+      shared: sharedNear ?? (aimed.hexes ? sharedRolls(s, steps) : null) });
     resolve(s, ev);
     if (fx?.bound) settle(s, ev, fx, targets ?? []);
     checkEnd(s, ev);
