@@ -6,7 +6,7 @@ import { entered, holds, snapshot, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { seenName, sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
-import { canReact, grappleInstead, instruction, OPPORTUNITY, OPPORTUNITY_GRAPPLE, opportunityAttack, opportunityAttacks, reactionsOf } from '../reactions.js';
+import { afterOpportunity, canReact, grappleInstead, instruction, OPPORTUNITY, OWED_MOVE, OPPORTUNITY_GRAPPLE, opportunityAttack, opportunityAttacks, reactionsOf } from '../reactions.js';
 import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
@@ -134,6 +134,30 @@ function pullAlong(s, e, flush, ev) {
 // The walk stops where it is: said to the party if the mover is the party's, else to the DM alone.
 const stopsDragging = (s, e, t, ev) => ev.push(e.side === 'party' ? { type: 'note', id: e.id, text: cantDrag(s, e, t) } : { type: 'manual', actor: e.id, name: 'Grapple', partial: true, text: cantDrag(s, e, t) });
 
+// Addition H (docs/specs/homebrew-subclasses.md, `triggers.opportunityHit`): `o`'s Opportunity Attack has hit, and it may move up to half its Speed, provoking nothing.
+// The engine runs the mover's whole move before anything else, so `o` cannot be asked where to go in the middle of it: the feet are kept on the turn's flags
+// (`rmove:<o>`) and `o` spends them with a `move` of its own, once the mover is done and before the turn ends (the next turn clears the flags). It is for
+// moving and nothing else: only `move` reads it. A rider or a mount is moved by the DM, so the DM is told and nothing is kept.
+function opportunityRider(s, o, ev) {
+  const f = afterOpportunity(o);
+  if (!f || !s.encounter || !up(o) || current(s) === o.id) return;
+  const feet = Math.floor(speedOf(s, o) / 2 / FT) * FT;
+  if (feet <= 0) return;
+  const tell = (text) => ev.push(o.side === 'party' ? { type: 'note', id: o.id, text } : { type: 'manual', actor: o.id, name: f.name, partial: true, text });
+  if (mountOf(s, o) || riderOf(s, o)) return void ev.push({ type: 'manual', actor: o.id, name: f.name, partial: true, text: `${o.name}'s Opportunity Attack hit. ${f.name} lets it move up to ${feet} ft without provoking Opportunity Attacks; the engine does not move a creature that rides or is ridden this way, so the DM does.` });
+  const flags = s.encounter.flags, k = `${OWED_MOVE}:${o.id}`;
+  flags[k] = Math.max(Number.isFinite(flags[k]) ? flags[k] : 0, feet);
+  tell(`${f.name}: ${o.name} may move up to ${feet} ft without provoking Opportunity Attacks. The engine finishes the other creature's move first, so ${o.name} moves afterwards, before this turn ends.`);
+}
+// The feet of such movement `e` has now, or 0.
+const owedFeet = (s, e) => { const n = s.encounter?.flags?.[`${OWED_MOVE}:${e.id}`]; return Number.isFinite(n) && n > 0 ? n : 0; };
+// What `moveOptions` should see for such a move: the game as it would stand if it were `e`'s turn with only that movement. Read only (nothing of it is kept).
+// No Dash is counted (`dashes: -1`), so that every way of moving (climbing, flying: `moveOptions` adds what its Speed has over walking) is held to the feet given.
+const asItsTurn = (s, e, bud) => (bud?.free ? { ...s, encounter: { ...s.encounter, turn: s.encounter.order.findIndex((o) => o.id === e.id), budget: { ...bud, dashes: -1 } } } : s);
+// Which diagonal of a square map comes next ('alternate' diagonals), kept with the feet (`rdiag:<creature>`) so that a move in steps counts as one.
+const DIAG = 'rdiag';
+const owedDiag = (s, e) => (s.encounter?.flags?.[`${DIAG}:${e.id}`] ? 1 : 0);
+
 // Walk a creature to `tk` along the way `reach` found for it. Every step can set something off,
 // catch an eye, or (outside a fight) start one. Returns the positions it stood on, from where it
 // set off, or null if it noticed something before taking a step and so did not go at all.
@@ -159,7 +183,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
     if (stuck) { stopsDragging(s, e, stuck, ev); break; }
     // A creature it holds that this step pulls along stays within its reach: the grappler leaves no reach it does not take with it.
     const comes = new Set(draggedBy(s, e).filter(({ g, t, hold }) => (!!g && !t.dead && apartAt(s, g, step, t, t.pos) * FT > hold.range)).map((x) => x.t.id));
-    if (fighting && s.encounter && !e.cond.disengaged) {
+    if (fighting && s.encounter && !e.cond.disengaged && !bud?.free) {         // `bud.free`: movement an Opportunity Attack's rider gave (below): it provokes nothing
       for (const o of threatsAt(s, e, prev, true)) {
         if (apartAt(s, o, o.pos, e, step) <= 1 || comes.has(o.id)) continue;
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
@@ -198,6 +222,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         if (t === e && !seesFor(s, o, e)) found.push(findFor(s, o, e, ev));
         o.reactionUsed = true;
         ev.push({ type: 'reaction', id: o.id, reaction: OPPORTUNITY, name: 'Opportunity Attack', trigger: 'leave', against: t.id });
+        const struck = ev.length;
         const oa = o.actions ? opportunityAttacks(o).find((a) => !partRefusal(s, o, a, [t])) ?? opportunityAttack(o, s) : opportunityAttack(o, s);
         if (grab && SIZE_LIST.indexOf(e.size ?? 'medium') > SIZE_LIST.indexOf(o.size ?? 'medium') + 1) {
           const text = `${o.name} can't grapple it: too big to grapple. The Reaction is spent.`;
@@ -206,6 +231,8 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         else if (grab) strikeOption(s, o, e, grab, 'grapple', undefined, ev);
         else if (o.actions) runAction(s, o, oa, [t], null, null, ev, { opportunity: true });
         else resolveAttack(s, o, t, oa, ev, { opportunity: true });
+        // Addition H (homebrew-subclasses.md): an Opportunity Attack that hit lets a holder of `triggers.opportunityHit` move afterwards.
+        if (!grab && ev.slice(struck).some((x) => x.type === 'attack' && x.actor === o.id && x.hit === true)) opportunityRider(s, o, ev);
         // A rider knocked down or Prone by it may fall off here, before the mount goes on (settleRide).
         if (t === rider) { settleRide(s, rider, ev); rider = riderOf(s, e); }
         if (!up(e)) break;
@@ -510,7 +537,7 @@ function walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers, follower
       if (!o.dead && !unseen(o)) {                                     // found in passing: the rest of the way, on what is known now
         if (key(e.pos) === tk) break;
         lurkers = living(s).filter((x) => x.id !== e.id && unseen(x));
-        known = lurkers.length ? knownWays(s, e, lurkers) : moveOptions(s, e);
+        known = lurkers.length ? knownWays(asItsTurn(s, e, bud), e, lurkers) : moveOptions(asItsTurn(s, e, bud), e);
         if (!known.get(tk)?.canStop) break;
         continue;
       }
@@ -535,8 +562,8 @@ function besideIt(s, e, o, known, lurkers, G) {
   return best?.h ?? null;
 }
 
-export const handlers = {
-  move(s, a, ctx, ev) {
+// `move`, below. `own` is told what it spends when it is the movement an Opportunity Attack's rider gave (`own.bud`), so the caller can keep what is left.
+function moveOn(s, a, ctx, ev, own) {
     const actor = ent(s, a.actor); control(s, actor, ctx);
     // A rider moves by moving its mount (stage C6a): a controlled one as it directs, from the mount's movement on the
     // rider's turn (its own movement is left for dismounting); an independent one moves as it likes, on its own turn.
@@ -547,9 +574,13 @@ export const handlers = {
     up(actor) || fail(`${actor.name} can't move.`);
     up(e) || fail(`${e.name} can't move.`);
     (speedOf(s, e) > 0 || aloft(s, e)) || fail(`${e.name} can't move: its Speed is 0.`);
-    const fighting = inFight(s, e.id), bud = fighting ? turnBudget(s, e) : null;
+    const fighting = inFight(s, e.id);
+    let bud = fighting ? turnBudget(s, e) : null;
+    // Out of its turn, only the movement an Opportunity Attack's rider gave (`triggers.opportunityHit`, kept as `rmove:<creature>`) lets it move, from that alone and
+    // provoking nothing (`free`). It is a move and nothing more: no other action reads it, and a creature that rides or is ridden never has any (opportunityRider).
+    if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, diagonals: owedDiag(s, e), free: true };
     if (fighting && !bud) fail(steering(s, e) ? `${e.name} moves on ${steering(s, e).name}'s turn.` : `It isn't ${e.name}'s turn.`);
-    const reach = moveOptions(s, e);
+    const reach = moveOptions(asItsTurn(s, e, bud), e);
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
     const column = [...reach.values()].filter((n) => col(n.h) === col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
@@ -570,7 +601,7 @@ export const handlers = {
     if (!lurker && e.side === 'party') {
       const lurkers = living(s).filter((o) => o.id !== e.id && unseen(o));
       if (lurkers.length) {
-        const known = knownWays(s, e, lurkers);
+        const known = knownWays(asItsTurn(s, e, bud), e, lurkers);
         if (known.get(tk)?.canStop) { if (dragFirst(s, e, route(known, tk), unseen, ev)) return; return walkKnown(s, e, tk, ev, fighting, bud, unseen, known, lurkers); }
       }
     }
@@ -588,8 +619,8 @@ export const handlers = {
       const dragging = draggedBy(s, e);
       if (dragging.length) {
         const names = dragging.map((d) => d.t.name).join(' and ');
-        if (moveOptions(s, e, { unchecked: true }).get(tk)?.canStop) fail(`${e.name} can't drag ${names} that way.`);
-        if (moveOptions(s, e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
+        if (moveOptions(asItsTurn(s, e, bud), e, { unchecked: true }).get(tk)?.canStop) fail(`${e.name} can't drag ${names} that way.`);
+        if (moveOptions(asItsTurn(s, e, bud), e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
       }
       fail(fighting ? `Too far. ${e.name} has ${feetLeft(s, bud.move)} ft of movement left.` : "Can't get there.");
     }
@@ -603,6 +634,29 @@ export const handlers = {
     // Those following its rider too: the rider walked the same way.
     if (!fighting && (had || !s.encounter) && walked.length > 1) { march(s, e, walked, ev); const r = riderOf(s, e); if (r) march(s, r, walked, ev); }
     checkEnd(s, ev);
+}
+
+export const handlers = {
+  move(s, a, ctx, ev) {
+    const own = {};
+    moveOn(s, a, ctx, ev, own);
+    // What is left of the movement an Opportunity Attack's rider gave is kept for another step; none left, the flag goes.
+    if (own.bud && s.encounter) {
+      const k = `${OWED_MOVE}:${a.actor}`, d = `${DIAG}:${a.actor}`;
+      if (own.bud.move > 0) { s.encounter.flags[k] = own.bud.move; if ((own.bud.diagonals | 0) & 1) s.encounter.flags[d] = true; else delete s.encounter.flags[d]; }
+      else { delete s.encounter.flags[k]; delete s.encounter.flags[d]; }
+    }
+  },
+
+  // Gives up the movement an Opportunity Attack's rider gave (`triggers.opportunityHit`): the creature's player says it is done with it, so whoever waits to end the turn
+  // (a client playing the foes) need not wait out the rest. Only the creature's own controller or the DM; refused, and nothing changed, when there is none to give up.
+  forgoMove(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    const feet = owedFeet(s, e);
+    feet > 0 || fail(`${e.name} has no movement from an Opportunity Attack to give up.`);
+    delete s.encounter.flags[`${OWED_MOVE}:${e.id}`]; delete s.encounter.flags[`${DIAG}:${e.id}`];
+    const text = `${e.name} gives up the ${feet} ft of movement the Opportunity Attack gave.`;
+    ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: afterOpportunity(e)?.name ?? 'Opportunity Attack', partial: true, text });   // the DM's creature's is the DM's, as the allowance's was
   },
 
   dash(s, a, ctx, ev) {
