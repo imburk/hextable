@@ -370,7 +370,8 @@ test("a sheet naming 'Ember' loads with the table's homebrew subclass, inside `u
 });
 
 test("without the pack the sheet gets the SRD stand-in and the report line, as before (B4)", () => {
-  for (const overlay of [overlayOf([]), overlayOf([KILN])]) {
+  const lantern = hbPack(hbDoc("lamp-folk", { subclasses: [{ ...kilnCourt, id: "hb-lamp-folk-oath-of-the-lantern", name: "Oath of the Lantern", source: "homebrew:lamp-folk", features: [{ id: "hb-lamp-folk-glow", name: "Glow", level: 3, tier: "manual", checked: false, text: "A glow." }] }] }));
+  for (const overlay of [overlayOf([]), overlayOf([lantern])]) {
     const { character, report } = emberImport(overlay);
     assert.equal(character.subclass, "devotion");
     assert.deepEqual(report.adjustments.filter((a) => a.what === "subclass").map((a) => [a.from, a.to]), [["Ember", "Oath of Devotion"]]);

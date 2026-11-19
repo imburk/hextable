@@ -18,6 +18,10 @@
 			<id-00001><name type="string">Paladin</name><level type="number">5</level><specialization type="string">Ember</specialization></id-00001>
 		</classes>
 		<speed><base type="number">30</base><total type="number">30</total></speed>
+		<skilllist>
+			<id-00001><name type="string">Athletics</name><prof type="number">1</prof><total type="number">6</total></id-00001>
+			<id-00002><name type="string">Religion</name><prof type="number">1</prof><total type="number">3</total></id-00002>
+		</skilllist>
 		<featurelist>
 			<id-00001><name type="string">Kindle</name><level type="number">3</level></id-00001>
 			<id-00002><name type="string">Hearth Vow</name><level type="number">3</level></id-00002>
