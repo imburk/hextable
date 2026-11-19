@@ -26,7 +26,7 @@ says why when it is not.
 | `name` | the name with the player's name dropped: one trailing `[...]` or `(...)` is removed and never kept (the files seen so far use parentheses) |
 | `classes` | every SRD 5.2 class, by name. One class gives a sheet with `class` and `level`; two or more give a multiclass sheet, `classes: [{ class, level, subclass?, spells? }]` (#175). The first class taken is the one whose saving throw proficiencies the sheet shows (only the first class gives them), else the sheet's first; when that cannot be told, `report.adjustments` says which was taken. A class that is not SRD 5.2 goes to `report.multiclass` and is not built (the SRD ones still are) |
 | `classes/*/specialization` | for each class, the SRD subclass when the name matches it (the 2014 "Draconic Bloodline" is the SRD Draconic subclass). Otherwise see "Stand-ins" |
-| `abilities/*/score` | `abilities`, clamped to 20 (reported) |
+| `abilities/*/score` | `abilities`, at most 20; what is above 20 goes to `scoreBonus` (at most +10 for each ability) and is reported. See "Scores above 20" |
 | `skilllist` (`prof` 1 or 2) | `skills` (the class's picks) and `extraSkills` (the rest); 2 is expertise as far as the class has it; 3 (half proficiency) is not proficiency |
 | `inventorylist` armour carried 2 (equipped), Shield | `armour`, `shield`, only if the class is trained in it |
 | `weaponlist` carried 1 or 2 (through its link to the inventory item) | `weapons`, by name against the pack ("Crossbow, Heavy" is a Heavy Crossbow; "Greatsword, +2" is a Greatsword), only if the class is proficient and the character holds twelve attacks at most |
@@ -36,7 +36,8 @@ says why when it is not.
 | other carried non-magic items | `gear`, names only |
 | `languagelist`, `hp` damage, spent slots | `report.languages` and `report.state`, because a sheet has no field for them |
 
-Spells the subclass always prepares (oath, domain, Draconic) are added by `derive` and are not listed twice.
+Spells the subclass always prepares (oath, domain, Draconic) are added by `derive` and are not listed twice, and they do
+not count against the class's prepared count. See "Prepared spells" for what happens when the sheet flags too many.
 
 ## What is not mapped, and the report
 
@@ -62,20 +63,48 @@ replaced by `[a long entry, N characters]`.
 
 `report.spellTiers` and `report.builtFeatures` count what was imported by tier (`auto`, `assist`, `manual`).
 
+## Prepared spells
+
+The file's "prepared" flags are read in the sheet's own order (the order of its `powers`), not alphabetically and not by level.
+The always-prepared spells of the SRD subclass are added by `derive`. Then the flagged SRD spells on the class list fill the class's
+prepared count at its level, the earliest in the sheet's order first. A sheet that flags more than the class prepares (a cleric or druid who
+flags the whole list, a wizard who flags the spellbook) is not refused any more: `report.spells` has one entry, "Prepared spells"
+(on a multiclass sheet "Prepared <Class> spells"), that says how many the class prepares, which were taken and which were left, with
+the left ones in `items`, so the DM can change them. A flagged spell that is not in the pack, not on the class list or above the
+level the class casts keeps its own line and is not counted as left.
+
+A class with no spells in its own group (`Spells (Bard)`) and none in the generic `Spells` group reads the spells of a group named
+like "Spells Known" or "Bard", when the sheet has one: the flagged leveled spells, or, when none is flagged, every spell in it (known
+spells carry no flag), and every cantrip in it. `report.adjustments` says which group was read ("The DM should check them"). Which group
+name Fantasy Grounds uses for a Bard's known spells is not settled by the exports seen so far; a sheet that keeps them nowhere gets none,
+as before.
+
+## Scores above 20
+
+A sheet's scores are 1 to 20 before its feats, and in the engine only an Epic Boon (level 19 or above) or a magic item takes one past
+20. A score of 22 on a file is imported as 20 with `scoreBonus: { cha: 2 }`: an optional field of the sheet (character data, not
+homebrew content; no state version change), `{ <ability>: n }` with each n a whole number from 1 to 10. `derive` adds it after every
+cap and every feat or item that raises the score, so the engine plays the score the file shows; the result is at most 30, and
+`validate` refuses a bonus that would pass 30. The explanations name it: `why.abil` ("DM bonus: Charisma +2"), and `why.ac` and
+`why.hp` where the Dexterity or Constitution score they use includes it. The importer puts a line in `report.adjustments`
+("Charisma 22 on the sheet: +2 kept as a DM bonus; check what gives it"); a score over 30 keeps +10 and says how much is left out, and
+a bonus on top of an item that already raises the score (a Belt of Giant Strength) is trimmed to fit 30, and says so. The DM removes
+a bonus by sending the sheet without `scoreBonus` (`setSheet`, or `refresh` after editing the stored sheet).
+
 ## Stand-ins
 
-A sheet at level 3 or more must name the SRD subclass, a feature with options needs a chosen option, and a score is
-1 to 20. Where the file cannot supply that, the importer sets the nearest value and lists it in `report.adjustments`
+A sheet at level 3 or more must name the SRD subclass and a feature with options needs a chosen option; a score is
+1 to 20 (see above for what is over). Where the file cannot supply that, the importer sets the nearest value and lists it in `report.adjustments`
 (`what`, `from`, `to`, `why`): a non-SRD subclass becomes the SRD one ("its features are NOT this character's"), a
-2014 sheet has no Divine Order or Primal Order (the option the gear fits is taken, else the first), a score of 22 is 20
-(above what the engine derives: only an Epic Boon or a magic item takes a score past 20, and the file does not say
-which raised it, so the DM is told rather than the score kept).
+2014 sheet has no Divine Order or Primal Order (the option the gear fits is taken, else the first). A score of 22 is 20
+with a DM bonus of +2 (the file does not say what raised it, so the DM is told).
 `importFgxml(text, { substituteSubclass: false })` leaves the subclass out; the sheet then cannot load.
 
 ## Known limits of the format
 
-- The file's "prepared" flags are a list only when about as many spells are flagged as the sheet says it prepares. A cleric
-  or druid whose sheet flags the whole class list is not read as a choice: no leveled spells are imported, one entry says so.
+- The file's "prepared" flags are read in the sheet's order and cut at the class's prepared count. A cleric or druid whose sheet
+  flags the whole class list gets the first spells of its list that the class can take, and one entry lists those taken and left; the
+  DM changes them.
 - A multiclass sheet may keep another class's spells in the group of its first class. They are read as that class's, so
   they may be refused as not on its list or over its limit, and the other class may get none (one entry says so); the DM
   moves them. The prerequisites (13 in each class's primary ability) are checked: a sheet that misses one does not load.
