@@ -12,7 +12,9 @@ const nice = (id) => cap(id.replace(/-/g, ' '));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const DEFAULT_COLOR = '#3a7d44';
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
-const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed'];
+// (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20.)
+export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus'];
+export const keptOf = (s) => Object.fromEntries(KEEP.filter((k) => s[k] !== undefined).map((k) => [k, structuredClone(s[k])]));
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
 
 function el(tag, props = {}, ...kids) {
@@ -98,7 +100,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     Object.assign(x, { name: s.name ?? '', subclass: s.subclass, level: s.level, abilities: { ...x.abilities, ...s.abilities }, skills: [...(s.skills ?? [])],
       expertise: [...(s.expertise ?? [])], choices: { ...(s.choices ?? {}) }, feats: structuredClone(s.feats ?? []), armour: s.armour ?? null, shield: !!s.shield, weapons: [...(s.weapons ?? [])],
       spells: [...(s.spells ?? [])], color: s.look?.color ?? DEFAULT_COLOR });
-    for (const k of KEEP) if (s[k] !== undefined) x.keep[k] = structuredClone(s[k]);
+    x.keep = keptOf(s);
     return x;
   }
   const safeDerive = (s) => { try { return derive(s); } catch { return null; } };

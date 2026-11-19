@@ -622,6 +622,27 @@ function build(root, ch, options) {
   // The spells of class `i` (its entry in a sheet with several classes), as a patch for tryAdd.
   const spellsPatch = (i, list) => (multi ? { classes: sheet.classes.map((x, j) => (j === i ? { ...x, spells: list } : x)) } : { spells: list });
   const casting = built.map((d, i) => ({ d, i })).filter(({ d }) => d.casting);
+  // A sheet with several classes may keep all its spells in one class's group (a Paladin group holding the Bard's spells, "Spells (Bard)" a
+  // header with nothing under it). A built class that gets no spells from its own group (or, the first, the generic group) takes from the other
+  // built classes' groups the spells on its list and not on that group's own class list; a spell on both stays with the group's class. Cantrips
+  // go whether flagged or not (the limits are checked below, as for any list). The moved are removed from the group they were in.
+  if (multi) {
+    casting.forEach(({ d: cc }, n) => {
+      if ((castGroups.get(cc.id) ?? []).length || (n === 0 && generic.length)) return;
+      const got = [];
+      for (const [cid, list] of castGroups) {
+        if (cid === cc.id || !built.some((d) => d.id === cid)) continue;
+        const go = list.filter((e) => { const sp = spellByKey.get(e.key); return sp && sp.classes.includes(cc.id) && !sp.classes.includes(cid) && (e.prepared || e.level === 0); });
+        if (!go.length) continue;
+        castGroups.set(cid, list.filter((e) => !go.includes(e)));
+        got.push(...go.map((e) => ({ ...e, from: CONTENT.classes[cid].name })));
+      }
+      if (!got.length) return;
+      castGroups.set(cc.id, got);
+      const from = [...new Set(got.map((e) => e.from))];
+      note('spells', `Spells moved to the ${cc.name}`, `The sheet lists no spells under "Spells (${cc.name})" and keeps ${got.length} spells on the ${cc.name} list in ${from.map((f) => `"Spells (${f})"`).join(' and ')}: they were read as the ${cc.name}'s (flagged spells and cantrips on the ${cc.name} list and not on that class's list; a spell on both lists stays with the class whose group it is in). The DM should check them.`, { items: got.map((e) => e.name) });
+    });
+  }
   const have = [];
   casting.forEach(({ d: cc, i }, n) => {
     const cast = cc.casting, lv = multi ? order[i].level : level, mineGrants = featuresOf(sheet).filter((x) => !multi || x.cls.i === i).map((x) => x.f.grants).filter(Boolean);

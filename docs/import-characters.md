@@ -73,7 +73,7 @@ flags the whole list, a wizard who flags the spellbook) is not refused any more:
 the left ones in `items`, so the DM can change them. A flagged spell that is not in the pack, not on the class list or above the
 level the class casts keeps its own line and is not counted as left.
 
-A class with no spells in its own group (`Spells (Bard)`) and none in the generic `Spells` group reads the spells of a group named
+On a multiclass sheet, a class with an empty group takes the spells it finds in another class's group (see the limits below). A class with no spells in its own group (`Spells (Bard)`) and none in the generic `Spells` group reads the spells of a group named
 like "Spells Known" or "Bard", when the sheet has one: the flagged leveled spells, or, when none is flagged, every spell in it (known
 spells carry no flag), and every cantrip in it. `report.adjustments` says which group was read ("The DM should check them"). Which group
 name Fantasy Grounds uses for a Bard's known spells is not settled by the exports seen so far; a sheet that keeps them nowhere gets none,
@@ -105,9 +105,11 @@ with a DM bonus of +2 (the file does not say what raised it, so the DM is told).
 - The file's "prepared" flags are read in the sheet's order and cut at the class's prepared count. A cleric or druid whose sheet
   flags the whole class list gets the first spells of its list that the class can take, and one entry lists those taken and left; the
   DM changes them.
-- A multiclass sheet may keep another class's spells in the group of its first class. They are read as that class's, so
-  they may be refused as not on its list or over its limit, and the other class may get none (one entry says so); the DM
-  moves them. The prerequisites (13 in each class's primary ability) are checked: a sheet that misses one does not load.
+- A multiclass sheet may keep another class's spells in the group of its first class (all of a Paladin/Bard's spells under
+  "Spells (Paladin)", "Spells (Bard)" only a header). A built class that gets no spells from its own group takes, from the other
+  built classes' groups, the spells on its list that are not on that group's class list (flagged spells, and cantrips flagged or
+  not); a spell on both lists stays with the group's class. One entry, "Spells moved to the <Class>", lists those moved; each
+  class then fills its own count in sheet order. A class that still gets none has one entry saying so; the DM moves them. The prerequisites (13 in each class's primary ability) are checked: a sheet that misses one does not load.
 - A feat's choices (which scores an Ability Score Improvement raised, Skilled's skills, Magic Initiate's spells) are not
   in the file: the feat is put on the sheet with them left open, so the scores and skills imported stand as they are.
 - Magic items the pack holds are put on the sheet's `items` (by name, including the 2014 names of SRD items such as

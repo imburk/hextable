@@ -231,6 +231,28 @@ test("a Bard whose own group is empty reads the spells from the group the sheet 
   assert.deepEqual(character.scoreBonus, { cha: 2 }, "Charisma 22 on the same sheet");
 });
 
+test("a multiclass sheet that keeps all its spells under the first class's group: the other class takes the ones on its list, and the report says so (#498)", () => {
+  const { character, report } = importFgxml(fixture("paladin-bard-one-group"));
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  const [paladin, bard] = character.classes;
+  // Bless, Searing Smite and Divine Favor are Paladin-only; Heroism, Command and Shield of Faith are on the Paladin list too (and Heroism and Command on the Bard's) so they stay with the group's class.
+  assert.deepEqual(paladin.spells, ["bless", "searing-smite", "divine-favor"], "its count of 3 filled in the sheet's order");
+  assert.deepEqual(bard.spells.filter((id) => !["vicious-mockery", "minor-illusion"].includes(id)), ["faerie-fire", "healing-word", "sleep", "thunderwave", "bane"], "its count of 5, in the sheet's order");
+  assert.deepEqual(bard.spells.filter((id) => ["vicious-mockery", "minor-illusion"].includes(id)).sort(), ["minor-illusion", "vicious-mockery"], "cantrips go with it, flagged or not");
+  assert.ok(!bard.spells.includes("heroism") && !bard.spells.includes("command"), "a spell on both lists stays with the group's class");
+  const moved = report.spells.find((x) => x.name === "Spells moved to the Bard");
+  assert.deepEqual(moved.items, ["Faerie Fire", "Healing Word", "Sleep", "Thunderwave", "Bane", "Dissonant Whispers", "Vicious Mockery", "Minor Illusion"]);
+  assert.match(moved.why, /no spells under "Spells \(Bard\)" and keeps 8 spells on the Bard list in "Spells \(Paladin\)"/);
+  assert.deepEqual(report.spells.find((x) => x.name === "Prepared Paladin spells").items, ["Heroism", "Command", "Shield of Faith"]);
+  assert.deepEqual(report.spells.find((x) => x.name === "Prepared Bard spells").items, ["Dissonant Whispers"]);
+  assert.ok(!report.spells.some((x) => x.name === "Cure Wounds"), "an unflagged spell is simply not taken");
+});
+
+test("a multiclass sheet whose casting class has its own spells moves nothing (#498)", () => {
+  const { report } = importFgxml(fixture("multiclass"));
+  assert.ok(!report.spells.some((x) => /moved/.test(x.name)));
+});
+
 test("a Bard with no spells anywhere on the sheet imports none, as before (#498)", () => {
   const xml = fixture("bard-known").replace(/<id-\d+><name type="string">[^<]*<\/name><group type="string">Spells Known<\/group>.*?<\/id-\d+>\n/g, "");
   const { character, report } = importFgxml(xml);

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!-- A made-up Paladin 2 / Bard 2 whose sheet keeps all its spells under "Spells (Paladin)"; "Spells (Bard)" is only a header. Every name here is SRD or invented for the test. -->
+<root version="5.1" dataversion="20260101" release="11|CoreRPG:8">
+	<character>
+		<name type="string">Rue Twogroups</name>
+		<size type="string">Medium</size>
+		<level type="number">4</level>
+		<profbonus type="number">2</profbonus>
+		<abilities>
+			<strength><score type="number">15</score><save type="number">2</save></strength>
+			<dexterity><score type="number">10</score><save type="number">0</save></dexterity>
+			<constitution><score type="number">13</score><save type="number">1</save></constitution>
+			<intelligence><score type="number">8</score><save type="number">-1</save></intelligence>
+			<wisdom><score type="number">12</score><save type="number">1</save></wisdom>
+			<charisma><score type="number">16</score><save type="number">5</save></charisma>
+		</abilities>
+		<classes>
+			<id-00001><name type="string">Paladin</name><level type="number">2</level></id-00001>
+			<id-00002><name type="string">Bard</name><level type="number">2</level></id-00002>
+		</classes>
+		<speed><base type="number">30</base><total type="number">30</total></speed>
+		<skilllist>
+			<id-00001><name type="string">Athletics</name><prof type="number">1</prof></id-00001>
+			<id-00002><name type="string">Persuasion</name><prof type="number">1</prof></id-00002>
+			<id-00003><name type="string">Performance</name><prof type="number">1</prof></id-00003>
+		</skilllist>
+		<powergroup>
+			<id-00001><name type="string">Spells (Paladin)</name><castertype type="string">memorization</castertype><stat type="string">charisma</stat><prepared type="number">3</prepared></id-00001>
+			<id-00002><name type="string">Spells (Bard)</name><castertype type="string">memorization</castertype><stat type="string">charisma</stat><prepared type="number">5</prepared></id-00002>
+		</powergroup>
+		<powers>
+			<id-00001><name type="string">Bless</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00001>
+			<id-00002><name type="string">Faerie Fire</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00002>
+			<id-00003><name type="string">Searing Smite</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00003>
+			<id-00004><name type="string">Healing Word</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00004>
+			<id-00005><name type="string">Divine Favor</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00005>
+			<id-00006><name type="string">Sleep</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00006>
+			<id-00007><name type="string">Heroism (C)</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00007>
+			<id-00008><name type="string">Thunderwave</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-00008>
+			<id-00009><name type="string">Bane</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00009>
+			<id-00010><name type="string">Command</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00010>
+			<id-00011><name type="string">Dissonant Whispers</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00011>
+			<id-00012><name type="string">Vicious Mockery</name><group type="string">Spells (Paladin)</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Enchantment</school></id-00012>
+			<id-00013><name type="string">Minor Illusion</name><group type="string">Spells (Paladin)</group><level type="number">0</level><prepared type="number">0</prepared><school type="string">Illusion</school></id-00013>
+			<id-00014><name type="string">Shield of Faith</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Abjuration</school></id-00014>
+			<id-00015><name type="string">Cure Wounds</name><group type="string">Spells (Paladin)</group><level type="number">1</level><prepared type="number">0</prepared><school type="string">Abjuration</school></id-00015>
+		</powers>
+	</character>
+</root>
