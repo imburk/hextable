@@ -367,7 +367,7 @@ the sketch:
 
 - **Where.** `content/schema.js`: `subclasses` last in `HOMEBREW_ENTRY_KINDS`; `lintSubclass` (a wrapper over `lintFeature`,
   linted inside `{ ...class, subclass: entry }`); the key lists (`subclasses`, `feature`, `option`, `featureUses`,
-  `requires`, `spellMap`), their types, ranges (`features.level` 3 to 20 and a few more) and lengths (12 features, 8 options
+  `requires`, `spellMap`), their types, ranges (`features.level` 3 to 20 and a few more) and lengths (12 features, 13 options
   a feature, 5 spells a class level: `HOMEBREW_LENGTHS`); `HOMEBREW_LIMITS.subclassBytes` (16 KB; every other kind stays at
   8 KB: `budget` and `budgetEntry` take the limit by kind). `content/index.js`: `CONTENT.subclasses` (empty for the SRD) and
   `HOMEBREW_LOOKUPS.subclasses`. `content/registry.js`: the SRD reference gains `subclasses` (read from the twelve classes)
@@ -387,11 +387,25 @@ the sketch:
 - **Options that are feats.** Allowed only for an SRD Fighting Style feat (survey item 5), with its id, name and tier: so
   that option keeps the feat's id and is exempt from the prefix rule. A feat of the pack stays refused (addition B).
 - **Amounts in a subclass's steps.** A subclass's `damage`, `heal` and `tempHp` steps may be a class amount, a save's `dc` and
-  a heal's `addMod` an ability, and a modifier value may reach 100 (the SRD's Draconic Sorcerer's Fly Speed 60). All the SRD
-  subclasses, made homebrew, pass but one: a test holds them to it. The exception is the warlock's, whose Fiendish
-  Resilience has 12 options against the limit of 8 (DEBT T81 says what to set).
+  a heal's `addMod` an ability, and a modifier on a speed may reach 120 (the SRD's Draconic Sorcerer's Fly Speed 60; a modifier
+  on any other hook is held to 40, as a feat's is). All the SRD subclasses, made homebrew, pass: a test holds them to it. The
+  options limit is 13, not the sketch's 8 (question 2), because the Fiend's Fiendish Resilience has 12 (one for each damage type).
 - **Survey item 8 is true.** A feature's action with `to: 'caster'` and `against: 'target'` gives Advantage on attack rolls
   against the chosen creature only, spends the parent class's Channel Divinity use and a Bonus Action, and puts a lasting
   effect on the holder bound to the target (the test plays it in a game; the record is made as `derive` makes it, as `derive`
   does not read a homebrew subclass until B2). The reading may say it.
 - **Nothing else changes.** No state shape change, no version bump; `npm run content` is byte for byte what it was.
+
+**Fix round 1 (the review of #503).**
+
+- **What a player is sent.** A player's copy has `subclasses` only when the pack has any, so every existing pack's player copy
+  and hash are what they were (the DM's hash never changed). The client's pack manager (`packmanager.js`) knows the kind: a
+  player's data is rebuilt with it before its hash is checked, it is listed as entries "not read" until the reading (B3), and a
+  client test feeds the rules' own `forPlayers` output, with and without a subclass, to the store. Before this the client
+  refused every player's pack data on a hash mismatch.
+- **The work estimate.** `workOf` has a `subclasses` branch: each action of each feature and option, and each mode, counts as a
+  creature's action does (steps over every branch and creature, dice over every repeat), and is refused with the same sentence.
+- **A feature may not claim `checked: true`** (its `checked` must be false, as the entry's). A feature or option id is used once in
+  the whole pack: not any entry's id (a spell, a feat, an item, a subclass, the subclass itself) and not another feature's. The
+  `dmNotes` of a subclass or a feature are at most 500 letters (homebrew.md, Decision 5). A refusal is a plain sentence for a
+  non-text id, a feature without an id, a `spells` key that is not a class level, and a grant `action` that is not an object.

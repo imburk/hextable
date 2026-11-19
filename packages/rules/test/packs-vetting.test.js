@@ -26,7 +26,7 @@ test("forPlayers: never monsters, never dmNotes at any depth, and the hash is of
   data.spells[0].effects[0].onFail[0].dmNotes = "deeper secret";
   data.items = [{ id: "hb-ember-folk-bead", name: "Bead", dmNotes: "cursed" }];
   const f = forPlayers(data);
-  assert.deepEqual(Object.keys(f.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "subclasses", "version", "weapons"]);
+  assert.deepEqual(Object.keys(f.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "version", "weapons"]);
   assert.equal(f.data.monsters, undefined);
   const text = JSON.stringify(f.data);
   assert.ok(!text.includes("dmNotes") && !text.includes("Secret plan") && !text.includes("Quillwraith") && !text.includes("Gazeblight"));

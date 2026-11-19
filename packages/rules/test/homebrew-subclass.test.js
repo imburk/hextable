@@ -2,6 +2,7 @@
 // The subclass here is the spec's invented "Oath of the Ember" of an invented pack, "ember-folk". No published subclass is used.
 // `derive` does not read a homebrew subclass yet (stage B2); these tests are about what a pack may hold and how it is found.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
@@ -246,10 +247,10 @@ test("an option that is a feat is a Fighting Style feat of the SRD, with its nam
 });
 
 // ---------- the limits ----------
-test("the limits: an entry of a subclass may be 16 KB (others stay 8 KB); 12 features, 8 options, 5 spells a level, 40 steps", () => {
+test("the limits: an entry of a subclass may be 16 KB (others stay 8 KB); 12 features, 13 options, 5 spells a level, 40 steps", () => {
   assert.equal(HOMEBREW_LIMITS.subclassBytes, 16 * 1024);
   assert.equal(HOMEBREW_LIMITS.entryBytes, 8 * 1024);
-  assert.deepEqual([HOMEBREW_LENGTHS["subclasses.features"], HOMEBREW_LENGTHS["features.options"], HOMEBREW_LENGTHS["spells.#"]], [12, 8, 5]);
+  assert.deepEqual([HOMEBREW_LENGTHS["subclasses.features"], HOMEBREW_LENGTHS["features.options"], HOMEBREW_LENGTHS["spells.#"]], [12, 13, 5]);
   // Bytes: a subclass of about 12 KB passes, where a feat of the same size would not; past 16 KB is refused.
   const padded = (n) => oath({ spells: undefined, features: Array.from({ length: 12 }, (_, i) => feature(i, { text: "x".repeat(n) })) });
   assert.equal(bytes(padded(900)) > HOMEBREW_LIMITS.entryBytes && bytes(padded(900)) < HOMEBREW_LIMITS.subclassBytes, true);
@@ -272,15 +273,15 @@ test("the limits: an entry of a subclass may be 16 KB (others stay 8 KB); 12 fea
   refused(budgetEntry("subclasses", exact), /is over 16,384 bytes/);
 });
 
-test("12 features pass and 13 are refused; 8 options pass and 9 are refused; 5 spells at a class level pass and 6 are refused", () => {
+test("12 features pass and 13 are refused; 13 options pass and 14 are refused; 5 spells at a class level pass and 6 are refused", () => {
   const n = (k) => Array.from({ length: k }, (_, i) => feature(i));
   assert.deepEqual(lintPack(doc({ subclasses: [oath({ spells: undefined, features: n(12) })] }), { strict: true }), []);
   refused(lintPack(doc({ subclasses: [oath({ spells: undefined, features: n(13) })] }), { strict: true }), /features: a list of 13; the most is 12/);
   const options = (k) => Array.from({ length: k }, (_, i) => ({ id: hb(`o-${i}`), name: `Option ${i}`, text: "x", tier: "manual" }));
   const withOpts = (k, more = {}) => oath({ spells: undefined, features: [feature(1, { options: options(k), ...more })] });
-  assert.deepEqual(lintPack(doc({ subclasses: [withOpts(8)] }), { strict: true }), []);
-  refused(lintPack(doc({ subclasses: [withOpts(9)] }), { strict: true }), /features\[0\]\.options: a list of 9; the most is 8/);
-  assert.deepEqual(lintPack(doc({ subclasses: [withOpts(8, { pick: 7 })] }), { strict: true }), []);
+  assert.deepEqual(lintPack(doc({ subclasses: [withOpts(13)] }), { strict: true }), []);
+  refused(lintPack(doc({ subclasses: [withOpts(14)] }), { strict: true }), /features\[0\]\.options: a list of 14; the most is 13/);
+  assert.deepEqual(lintPack(doc({ subclasses: [withOpts(13, { pick: 12 })] }), { strict: true }), []);
   const five = ["burning-hands", "shield-of-faith", "bless", "command", "cure-wounds"], six = [...five, "heroism"];
   assert.deepEqual(lintPack(doc({ subclasses: [oath({ spells: { 3: five } })] }), { strict: true }), []);
   refused(lintPack(doc({ subclasses: [oath({ spells: { 3: six } })] }), { strict: true }), /spells\.3: a list of 6; the most is 5/);
@@ -339,14 +340,6 @@ test("every SRD subclass, made homebrew, passes strict mode (the key lists, rang
   for (const c of Object.values(CONTENT.classes)) {
     const e = homebrewOf(c);
     const p = lint(e, { spells: undefined });
-    // The one SRD feature with more options than the limit of eight: the Fiend's Fiendish Resilience, one option for each of twelve damage types.
-    if (c.id === "warlock") {
-      assert.deepEqual(p.map((x) => x.replace(/^subclasses\/[^:]+: /, "")), ["features[2].options: a list of 12; the most is 8"], "the limit of 8 options a feature refuses the Fiend's 12");
-      const cut = structuredClone(e);
-      cut.features[2].options = cut.features[2].options.slice(0, 8);
-      assert.deepEqual(lint(cut, { spells: undefined }), [], "with eight options it passes");
-      continue;
-    }
     assert.deepEqual(p, [], c.id);
     measured.push(bytes(e));
     assert.deepEqual(budgetEntry("subclasses", e), [], c.id);
@@ -366,8 +359,10 @@ test("a player's copy of a pack has the subclasses, with no dmNotes at any depth
   assert.equal(out.subclasses[0].features[0].id, hb("f-1"));
   assert.equal(JSON.stringify(out).includes(NOTE) || JSON.stringify(out).includes("dmNotes"), false);
   assert.equal(JSON.stringify(data).includes(NOTE), true, "the DM's own copy is untouched");
-  // A pack with none sends an empty list; and a subclass no character takes is sent too, as an unused spell is.
-  assert.deepEqual(packForPlayer(doc({ spells: [ward()] })).subclasses, []);
+  // A pack with none sends no `subclasses` at all (so its player copy and hash are what they always were); a subclass no character takes is sent too, as an unused spell is.
+  assert.equal("subclasses" in packForPlayer(doc({ spells: [ward()] })), false);
+  assert.equal("subclasses" in packForPlayer(doc({ spells: [ward()], subclasses: [] })), false);
+  assert.deepEqual(Object.keys(packForPlayer(doc({ spells: [ward()] }))).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "version", "weapons"]);
   const { data: copy, hash } = forPlayers(data);
   assert.equal(hash, hashOf(copy));
   assert.notEqual(hash, hashOf(data));
@@ -411,4 +406,106 @@ test("survey item 8: a feature's action with `to: \"caster\"` and `against: \"ta
   const lasting = JSON.stringify(s.effects ?? {});
   assert.match(lasting, new RegExp(`"against":"${foe}"`), "bound to the target");
   assert.match(lasting, /"name":"Kindle"/);
+});
+
+// ---------- fix round 1 (review of #503) ----------
+test("a subclass's action has the same work and dice estimate as a homebrew spell's steps, refused in the same words", () => {
+  const steps = Array.from({ length: 20 }, () => ({ damage: "50d6", type: "fire", times: 10 }));
+  const target = { area: { shape: "sphere", size: 60 } };
+  const asSpell = ward({ level: 3, target, effects: [{ save: "dex", half: true, onFail: steps }] });
+  const spellWords = lint0("spells", asSpell);
+  assert.match(spellWords, /can run [\d,]+ steps, counting every branch.*the most is 600/);
+  const big = oath({ spells: undefined, features: [{ ...feature(1), tier: "auto", grants: { action: { time: "action", target, effects: [{ save: "dex", half: true, onFail: steps }] } } }] });
+  const words = lint(big).join("\n");
+  assert.match(words, /one use \(its action of the feature "hb-ember-folk-f-1"\) can run [\d,]+ steps, counting every branch, every repeat and every creature it reaches \(up to 30 at a table\); the most is 600/);
+  no(doc({ subclasses: [big] }), /can run [\d,]+ steps/);
+  // The dice: few steps, many dice; and a mode and an option's action count too.
+  const dice = (grants) => oath({ spells: undefined, features: [{ ...feature(1), tier: "auto", grants }] });
+  const rolls = [{ damage: "40d6", type: "fire", times: 2 }, { damage: "40d6", type: "cold", times: 2 }];
+  refused(lint(dice({ action: { time: "action", target: { creature: { count: 20, range: [30, 30] } }, effects: [{ attack: "ranged", kind: "spell", bonus: 5, onHit: rolls }] } })), /can roll [\d,]+ dice/);
+  refused(lint(dice({ action: { time: "action", target: { self: true }, modes: [{ id: "a", name: "A", effects: [{ manual: "x" }] }, { id: "b", name: "B", effects: steps }] } })), /can run [\d,]+ steps|can roll [\d,]+ dice/);
+  refused(lint(oath({ spells: undefined, features: [feature(1, { options: [{ id: hb("o1"), name: "O1", tier: "auto", text: "x", grants: { action: { time: "action", target, effects: [{ save: "dex", half: true, onFail: steps }] } } }, { id: hb("o2"), name: "O2", tier: "manual", text: "x" }] })] })), /can run [\d,]+ steps/);
+  // A modest action (the spec's Kindle) is far inside it.
+  assert.deepEqual(lint(oath()), []);
+});
+function lint0(kind, e) { return lintEntry(kind, e, { pack: P, srd: CONTENT }).join("\n"); }
+
+test("a feature may not claim `checked: true`", () => {
+  refused(lint(oath({ features: [feature(1, { checked: true })] })), /feature hb-ember-folk-f-1: homebrew is not checked against any rulebook: `checked` must be false/);
+  no(EMBER({ features: [feature(1, { checked: true })] }), /`checked` must be false/);
+});
+
+test("a modifier of a subclass may pass 40 only on a speed, up to 120; elsewhere it is held to 40, as a feat's is", () => {
+  const mod = (on, value) => oath({ spells: undefined, features: [{ ...feature(1), tier: "auto", grants: { modifiers: [{ on, op: "set", value }] } }] });
+  const action = (on, value) => oath({ spells: undefined, features: [{ ...feature(1), tier: "auto", grants: { action: { time: "bonus", duration: "1 minute", target: { self: true }, effects: [{ modifier: { on, op: "add", value } }] } } }] });
+  const aura = (on, value) => oath({ spells: undefined, features: [{ ...feature(1), tier: "auto", grants: { aura: { range: 10, modifiers: [{ on, op: "add", value }] } } }] });
+  for (const [on, v, ok] of [["speed.fly", 60, true], ["speed", 120, true], ["speed", 121, false], ["speed", 40, true], ["attack.roll", 40, true], ["attack.roll", 41, false], ["ac", 100, false], ["damage.dealt", 100, false], ["check", -41, false]]) {
+    for (const make of [mod, action, aura]) {
+      const p = lint(make(on, v));
+      if (ok) assert.deepEqual(p, [], `${make.name} ${on} ${v}`);
+      else refused(p, /only a speed may go past 40 \(up to 120\)|a whole number from -?40 to 40|from -120 to 120|not allowed/);
+    }
+  }
+  refused(lint(mod("ac", 100)), /a modifier on "ac" has the value 100; only a speed may go past 40 \(up to 120\)/);
+  refused(lint(mod("speed", 121)), /from -120 to 120/);
+  // As a feat's: 40.
+  const feat = { id: hb("ember-heart"), name: "Ember Heart", category: "general", tier: "auto", source: SRC, checked: false, text: "x", grants: { modifiers: [{ on: "ac", op: "add", value: 100 }] } };
+  refused(lintEntry("feats", feat, { pack: P, srd: CONTENT }), /from -40 to 40/);
+});
+
+test("a feature or option id is used once in the whole pack: not a spell's, a feat's, an item's, a subclass's or the subclass's own id", () => {
+  const feat = { id: hb("ember-heart"), name: "Ember Heart", category: "general", tier: "auto", source: SRC, checked: false, text: "x", increase: { from: ["con"], points: 1, max: 20 } };
+  const item = { id: hb("ember-ring"), name: "Ember Ring", category: "ring", rarity: "uncommon", wear: "ring", tier: "auto", source: SRC, checked: false, text: "x", grants: { modifiers: [{ on: "ac", op: "add", value: 1 }] } };
+  const second = oath({ id: hb("oath-two"), name: "Oath of the Hearth", spells: undefined, features: [feature(9)] });
+  const pack = (f, extra = {}) => doc({ spells: [ward()], feats: [feat], items: [item], subclasses: [oath({ features: [f] }), second], ...extra });
+  for (const [what, id, re] of [["a spell", hb("ember-ward"), /is also the id of spells\/hb-ember-folk-ember-ward/], ["a feat", hb("ember-heart"), /is also the id of feats\/hb-ember-folk-ember-heart/],
+    ["an item", hb("ember-ring"), /is also the id of items\/hb-ember-folk-ember-ring/], ["another subclass", hb("oath-two"), /is also the id of subclasses\/hb-ember-folk-oath-two/],
+    ["the subclass itself", hb("oath-of-the-ember"), /is also the id of subclasses\/hb-ember-folk-oath-of-the-ember/], ["a feature of another subclass", hb("f-9"), /"hb-ember-folk-f-9" is also used in hb-ember-folk-oath-of-the-ember/]]) {
+    const p = lintPack(pack(feature(1, { id })), { strict: true });
+    assert.match(p.join("\n"), re, what);
+    no(pack(feature(1, { id })), /a feature or option id is used once in the pack/);
+  }
+  // An option too.
+  const withOption = feature(1, { options: [{ id: hb("ember-ward"), name: "A", text: "x", tier: "manual" }, { id: hb("z"), name: "Z", text: "x", tier: "manual" }] });
+  refused(lintPack(pack(withOption), { strict: true }), /"hb-ember-folk-ember-ward" is also the id of spells/);
+  // The entry alone: its own id.
+  refused(lint(oath({ features: [feature(1, { id: hb("oath-of-the-ember") })] })), /is the id of the subclass itself and of one of its features/);
+  assert.deepEqual(lintPack(pack(feature(1)), { strict: true }), []);
+});
+
+test("`dmNotes` of a subclass or a feature is at most 500 letters", () => {
+  assert.deepEqual(lint(clean({ ...oath({ dmNotes: "n".repeat(500), features: [feature(1, { dmNotes: "n".repeat(500) })] }), spells: undefined })), []);
+  refused(lint(oath({ dmNotes: "n".repeat(501) })), /the notes for the DM are 501 letters long; the most is 500/);
+  refused(lint(oath({ features: [feature(1, { dmNotes: "n".repeat(501) })] })), /feature hb-ember-folk-f-1: the notes for the DM are 501 letters long; the most is 500/);
+  no(EMBER({ dmNotes: "n".repeat(1500) }), /notes for the DM are 1500 letters/);
+});
+
+test("every refusal is a plain sentence: a non-text id, a feature with no id, a spells key that is not a class level", () => {
+  const cases = [
+    [oath({ id: { a: 1 } }), /id must be text/],
+    [oath({ features: [{ ...feature(1), id: undefined }] }), /features\[0\]\.id must be text/],
+    [oath({ features: [clean({ ...feature(1), id: undefined })] }), /feature \(without an id\): needs a kebab-case id/],
+    [oath({ spells: { "1e1": ["burning-hands"] } }), /spells: "1e1" is not a class level from 3 to 20/],
+    [oath({ spells: { "03": ["burning-hands"] } }), /spells: "03" is not a class level from 3 to 20/],
+    [oath({ spells: { x: ["burning-hands"] } }), /spells: "x" is not a class level from 3 to 20/],
+    [oath({ features: [{ ...feature(1), tier: "auto", grants: { action: -1 } }] }), /feature hb-ember-folk-f-1: action is \{ time, target, effects/],
+  ];
+  for (const [e, re] of cases) {
+    const alone = lintEntry("subclasses", e, { pack: P, srd: CONTENT, spells: [hb("ember-ward")] }), packed = lintPack(doc({ spells: [ward()], subclasses: [e] }), { strict: true });
+    for (const p of [alone, packed]) {
+      refused(p, re);
+      const text = p.join("\n");
+      assert.doesNotMatch(text, /\[object Object\]|undefined|no length is set|NaN/, text);
+    }
+  }
+});
+
+test("a pack without subclasses is sent to players, and hashed for them, byte for byte as before (the hash is main's)", () => {
+  const sample = JSON.parse(readFileSync(new URL("./fixtures/sample-pack.json", import.meta.url), "utf8"));
+  const kinds = JSON.parse(readFileSync(new URL("./fixtures/reader-kinds-pack.json", import.meta.url), "utf8"));
+  // Measured on main before this change: the player hash of each fixture pack.
+  assert.equal(forPlayers(sample).hash.slice(0, 10), "931d80485c");
+  assert.equal(forPlayers(kinds).hash.slice(0, 10), "1040f94f12");
+  assert.equal(hashOf(sample).slice(0, 10), "6a06acee97", "and the DM's whole-pack hash");
+  assert.equal(Object.hasOwn(forPlayers(sample).data, "subclasses"), false);
 });

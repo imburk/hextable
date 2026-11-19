@@ -976,7 +976,8 @@ function lintGrants(g, cls, say) {
       if (!au.modifiers && !au.immune) say('an aura gives modifiers or immunities');
     }
   }
-  if (g.action !== undefined) {
+  if (g.action !== undefined && !(g.action && typeof g.action === 'object' && !Array.isArray(g.action))) say('action is { time, target, effects, ... }');
+  else if (g.action !== undefined) {
     const a = g.action;
     for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     // `after: 'hit'`: used on a creature its creature hit with an attack roll this turn, once a turn; `orSlot`: with
@@ -1272,7 +1273,7 @@ function freeCastProblems(x) {
 }
 const validFreeCast = (x) => freeCastProblems(x).length === 0;
 function lintFeature(f, cls, say, ids) {
-  const sub = (m) => say(`feature ${f?.id}: ${m}`);
+  const sub = (m) => say(`feature ${typeof f?.id === 'string' ? f.id : '(without an id)'}: ${m}`);
   if (!f || !ID.test(f.id ?? '') || ids.has(f.id)) return sub('needs a kebab-case id used once in the class');
   ids.add(f.id);
   if (!isText(f.name) || !isText(f.text)) sub('needs a name and text');
@@ -1409,6 +1410,7 @@ function lintClass(e, say) {
 // `classes`), `feats` and `spells`. `ctx.spell(id)` says what a spell id is: { level }, null (not a spell of the SRD or the pack) or
 // undefined (cannot be told here).
 const SUBCLASS_FIRST = 3;
+const SUBCLASS_NOTES = 500;                       // letters of `dmNotes` (homebrew.md, Decision 5)
 const classTableOf = (ref) => ref?.classTable ?? ref?.classes;
 // The SRD's subclasses by id, as `{ id, name, class }`, read from a table of classes (a homebrew one's id and name may not be theirs).
 export function srdSubclassesOf(classes) {
@@ -1437,6 +1439,17 @@ function featureRefs(g) {
   add('ref', g.initiative?.regain); add('ref', g.initiative?.unless); add('ref', g.brutal?.after);
   return out;
 }
+// Every modifier (an object with a hook, an op and a number) in a list of features: in grants, auras and the steps of actions.
+function modifiersIn(features) {
+  const out = [], stack = grantsOf(features);
+  while (stack.length) {
+    const v = stack.pop();
+    if (Array.isArray(v)) { for (const x of v) if (x && typeof x === 'object') stack.push(x); continue; }
+    if (typeof v.on === 'string' && typeof v.op === 'string' && typeof v.value === 'number') out.push(v);
+    for (const k of Object.keys(v)) if (v[k] && typeof v[k] === 'object') stack.push(v[k]);
+  }
+  return out;
+}
 // The grants of a list of features, options included.
 const grantsOf = (features) => features.flatMap((f) => [f?.grants, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.grants) : [])]).filter((g) => g && typeof g === 'object');
 function lintSubclass(e, say, ctx = {}) {
@@ -1454,6 +1467,9 @@ function lintSubclass(e, say, ctx = {}) {
   }
   const features = Array.isArray(e.features) ? e.features : [];
   if (!features.length) say('needs features');
+  for (const [what, x] of [['', e], ...(Array.isArray(e.features) ? e.features : []).map((f) => [`feature ${typeof f?.id === 'string' ? f.id : '(without an id)'}: `, f])]) {
+    if (x && typeof x.dmNotes === 'string' && letters(x.dmNotes) > SUBCLASS_NOTES) say(`${what}the notes for the DM are ${letters(x.dmNotes)} letters long; the most is ${SUBCLASS_NOTES}`);
+  }
   const host = { ...cls, subclass: e }, ids = new Set(), optionIds = new Set();
   for (const f of features) {
     lintFeature(f, host, say, ids);
@@ -1472,6 +1488,9 @@ function lintSubclass(e, say, ctx = {}) {
     }
   }
   for (const id of optionIds) if (ids.has(id)) say(`"${id}" is the id of a feature and of an option: an id names one thing`);
+  for (const id of [...ids, ...optionIds]) if (id === e.id) say(`"${id}" is the id of the subclass itself and of one of its features: an id names one thing`);
+  // A number in a modifier may pass 40 only on a speed (a Fly Speed of 60); on any other hook it is held to the 40 a feat's is.
+  for (const m of modifiersIn(features)) if (!SPEED_HOOKS.includes(m.on) && Math.abs(m.value) > 40) say(`a modifier on "${m.on}" has the value ${m.value}; only a speed may go past 40 (up to 120)`);
   // What a cost, `with`, `of` or `while` names is a feature of the class or of this subclass (a cost: one with uses).
   const own = [...cls.features ?? [], ...features];
   const known = new Set(own.flatMap((f) => [f?.id, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.id) : [])]));
@@ -1646,7 +1665,7 @@ function lintPackCore(doc, opts) {
     ['subclasses', subclasses ?? [], (e, say) => lintSubclass(e, say, subclassCtx)]]) {
     const seen = new Set();
     for (const e of list) {
-      const say = (m) => problems.push(`${kind}/${e?.id ?? '?'}: ${m}`);
+      const say = (m) => problems.push(`${kind}/${shortId(e)}: ${m}`);
       if (!e || typeof e !== 'object') { problems.push(`${kind}: an entry is not an object`); continue; }
       if (seen.has(e.id)) say('duplicate id');
       seen.add(e.id);
@@ -1656,13 +1675,19 @@ function lintPackCore(doc, opts) {
     }
   }
   const spellIds = new Set(spells.map((s) => s.id));
-  // A feature or an option id is used once in the pack, whichever subclass holds it (an id names one thing, and `uses` and `choices` are by id).
+  // A feature or an option id is used once in the pack: not by another feature or option of any subclass, and not by any entry of the pack (a spell, a feat,
+  // an item, a subclass ...): an id names one thing, and a feature's uses and a feat's free casts are kept by id.
+  const taken = new Map();
+  for (const [kind, list] of [['spells', spells], ['monsters', monsters], ['items', items ?? []], ['feats', feats ?? []], ['objects', objects], ['weapons', weapons], ['armour', armour], ['subclasses', subclasses ?? []]]) {
+    for (const x of Array.isArray(list) ? list : []) if (x && typeof x === 'object' && typeof x.id === 'string' && !taken.has(x.id)) taken.set(x.id, `${kind}/${x.id}`);
+  }
   const ownedBy = new Map();
   for (const sc of Array.isArray(subclasses) ? subclasses : []) {
     if (!sc || typeof sc !== 'object') continue;
     for (const f of Array.isArray(sc.features) ? sc.features : []) for (const x of [f, ...(Array.isArray(f?.options) ? f.options : [])]) {
       if (!x || typeof x !== 'object' || typeof x.id !== 'string' || (x !== f && x.feat !== undefined)) continue;
-      if (ownedBy.has(x.id) && ownedBy.get(x.id) !== sc.id) problems.push(`subclasses/${sc.id}: "${x.id}" is also used in ${ownedBy.get(x.id)}; a feature or option id is used once in the pack`);
+      if (taken.has(x.id)) problems.push(`subclasses/${shortId(sc)}: "${x.id}" is also the id of ${taken.get(x.id)}; a feature or option id is used once in the pack`);
+      else if (ownedBy.has(x.id) && ownedBy.get(x.id) !== sc.id) problems.push(`subclasses/${shortId(sc)}: "${x.id}" is also used in ${ownedBy.get(x.id)}; a feature or option id is used once in the pack`);
       else ownedBy.set(x.id, sc.id);
     }
   }
@@ -2327,13 +2352,15 @@ export const HOMEBREW_RANGES = Object.freeze({
   'weapons.range': [1, 1200], 'weapons.weight': [0, 40, 16], 'weapons.cost': [0, 3000], 'armour.ac': [1, 20], 'armour.dex': [0, 10], 'armour.strength': [1, 30],
   'armour.weight': [0, 130, 16], 'armour.cost': [0, 3000],
   // a subclass's features: a subclass comes at class level 3 (SRD 5.2), and `uses.max` may be a number or an amount (`max.*`)
-  'features.level': [3, 20], 'features.pick': [2, 8], 'requires.level': [3, 20], 'uses.max': [1, 20], 'uses.short': [1, 20], 'max.min': [0, 20], 'max.perLevel': [1, 10], 'max.prof': [1, 4],
+  'features.level': [3, 20], 'features.pick': [2, 12], 'requires.level': [3, 20], 'uses.max': [1, 20], 'uses.short': [1, 20], 'max.min': [0, 20], 'max.perLevel': [1, 10], 'max.prof': [1, 4],
   // the numbers of such an amount in a step (`damage: { mod: 'wis', min: 1, die: 6 }`)
   'damage.min': [0, 20], 'heal.min': [0, 20], 'tempHp.min': [0, 20], 'damage.die': [4, 12], 'heal.die': [4, 12], 'tempHp.die': [4, 12],
   'damage.perLevel': [1, 10], 'heal.perLevel': [1, 10], 'tempHp.perLevel': [1, 10], 'damage.prof': [1, 4], 'heal.prof': [1, 4], 'tempHp.prof': [1, 4],
 });
-// Where a subclass's number may go further than the range every kind has: the SRD's own Draconic Sorcerer sets a Fly Speed of 60 by a modifier.
-const SUBCLASS_RANGES = Object.freeze({ 'modifier.value': [-100, 100] });
+// Where a subclass's number may go further than the range every kind has: the SRD's own Draconic Sorcerer sets a Fly Speed of 60 by a modifier (a speed).
+// (A modifier of a subclass may reach 120 here, but `lintSubclass` holds every hook but a speed to 40, as a feat's are.)
+const SUBCLASS_RANGES = Object.freeze({ 'modifier.value': [-120, 120] });
+const SPEED_HOOKS = ['speed', 'speed.fly'];
 // What a `grants` may hold beyond the fields above (a feature's grants are many shapes; none needs a big number).
 const GRANTS_ANY = [-100, 100];
 // Dice written as a string, one roll: how many, how many sides, and the flat part. The SRD pack's largest, measured over every
@@ -2351,8 +2378,8 @@ export const HOMEBREW_LENGTHS = Object.freeze({
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
   'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
-  // a subclass: 12 features, 8 options to a feature, 5 spells at a class level (homebrew-subclasses.md, question 2)
-  'subclasses.features': 12, 'features.options': 8, 'spells.#': 5,
+  // a subclass: 12 features, 13 options to a feature (the SRD's own Fiendish Resilience has 12), 5 spells at a class level (homebrew-subclasses.md, question 2)
+  'subclasses.features': 12, 'features.options': 13, 'spells.#': 5,
   'objects.use': 12, 'reaction.blocks': 8, 'spellPick.abilities': 6, 'spellPick.lists': 8, 'spells.classes': 8, 'spells.components': 3, 'spells.kinds': 4, 'step.advantageIf': 4,
   'step.cure': 14, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 3,
 });
@@ -2464,6 +2491,15 @@ export function workOf(kind, e) {
     takeDice(diceFor(u?.effects, u?.area ? HOMEBREW_WORK.creatures : 1, !!u?.area), 'use');
   }
   else if (kind === 'items') for (const u of Array.isArray(e.activate) ? e.activate : []) { take(listWork(u?.effects), 'use'); takeDice(diceFor(u?.effects, 1, false), 'use'); }
+  // A subclass: each action of each feature and option (and each mode of one), as a creature's action is.
+  else if (kind === 'subclasses') for (const f of Array.isArray(e.features) ? e.features : []) for (const g of [f?.grants, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.grants) : [])]) {
+    const a = g && typeof g === 'object' ? g.action : null;
+    if (!a || typeof a !== 'object') continue;
+    for (const steps of [a.effects, ...(Array.isArray(a.modes) ? a.modes.map((m) => m?.effects) : [])]) {
+      take(targetsOf(a.target) * listWork(steps), `action of the feature "${shortId(f)}"`);
+      takeDice(diceFor(steps, targetsOf(a.target), !!a.target?.area), `action of the feature "${shortId(f)}"`);
+    }
+  }
   return { work, attacks, what, dice, diceWhat };
 }
 
@@ -2710,6 +2746,8 @@ function lintShape(kind, e, say, { homebrew }) {
     if (homebrew && shape === 'freeCast' && key === 'forms') { bad++; say('A homebrew feature cannot add familiar forms yet.'); return; }
     // Nor what changes a familiar or lets it attack (#464): a feat could otherwise arm any caster's familiar.
     if (homebrew && shape === 'grants' && (key === 'invest' || key === 'forgoAttack')) { bad++; say('A homebrew feature cannot change a familiar or let it attack yet.'); return; }
+    // The spells of a subclass are by class level: a whole number from 3 to 20.
+    if (shape === 'spellMap' && !/^(?:[3-9]|1\d|20)$/.test(String(key))) { bad++; say(`spells: "${String(key).slice(0, 20)}" is not a class level from ${SUBCLASS_FIRST} to ${LEVELS}`); return; }
     // A subclass's damage, healing or Temporary Hit Points may be an amount of its class (`{ column: 'bardic-die' }`, `{ mod, min, die }`): the feature linter checks it
     // against the class's table. Nothing else may carry one: the engine reads dice there.
     if (kind === 'subclasses' && (shape === 'step.damage' || shape === 'step.heal' || shape === 'step.tempHp') && key === shape.slice(5) && value && typeof value === 'object' && !Array.isArray(value)) return;
@@ -2735,7 +2773,8 @@ function lintRules(kind, e, say, { homebrew, pack, srd }) {
   const table = kind === 'subclasses' ? subclassReference(ref) : ref?.[kind];
   if (kind === 'subclasses') for (const f of Array.isArray(e.features) ? e.features : []) {
     const wrong = (x) => typeof x !== 'string' || !x.startsWith(prefix) || !ID.test(x.slice(prefix.length));
-    if (f && typeof f === 'object' && wrong(f.id)) say(`feature ${shortId(f)}: a feature id is "${prefix}" followed by a kebab-case name, so it can never be the id of a class feature (whose uses and choices it would share)`);
+    if (f && typeof f === 'object' && f.checked !== false && typeof f.checked === 'boolean') say(`feature ${shortId(f)}: homebrew is not checked against any rulebook: \`checked\` must be false`);
+    if (f && typeof f === 'object' && typeof f.id === 'string' && wrong(f.id)) say(`feature ${shortId(f)}: a feature id is "${prefix}" followed by a kebab-case name, so it can never be the id of a class feature (whose uses and choices it would share)`);
     for (const o of Array.isArray(f?.options) ? f.options : []) if (o && typeof o === 'object' && o.feat === undefined && wrong(o.id)) say(`feature ${shortId(f)}: option ${shortId(o)}: an option id is "${prefix}" followed by a kebab-case name`);
   }
   if (typeof e.id !== 'string' || !e.id.startsWith(prefix) || !ID.test(e.id.slice(prefix.length))) {

@@ -122,7 +122,8 @@ function withoutNotes(x) {
 }
 export function packForPlayer(data) {
   const out = { id: data.pack.id, name: data.pack.name, version: data.pack.version ?? 1 };
-  for (const k of PLAYER_PACK_KINDS) out[k] = withoutNotes(data[k] ?? []);
+  // `subclasses` is sent only when the pack has any, so a pack without them is sent (and hashed) exactly as it always was.
+  for (const k of PLAYER_PACK_KINDS) if (k !== 'subclasses' || data[k]?.length) out[k] = withoutNotes(data[k] ?? []);
   return out;
 }
 
