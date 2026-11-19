@@ -17,7 +17,7 @@ const textOf = (n) => (n.children.length ? n.children.map(textOf).join(' ') : n.
 const { createPackStore, documentOf, countWords, isRead, UNREAD_SAY, readingNode, refusalNode, unreadBody, tierChip } = await import(pathToFileURL(join(tmp, 'packmanager.js')));
 const { answersPack } = await import(pathToFileURL(join(tmp, 'transport.js')));
 const { SPELLS, MONSTERS, CONTENT } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
-const { hashOf } = await import(pathToFileURL(join(tmp, 'shared/content/packs.js')));
+const { hashOf, forPlayers } = await import(pathToFileURL(join(tmp, 'shared/content/packs.js')));
 const { installed } = await import(pathToFileURL(join(tmp, 'shared/content/registry.js')));
 
 const SAMPLE = JSON.parse(readFileSync(join(here, '../../rules/test/fixtures/sample-pack.json'), 'utf8'));
@@ -189,3 +189,35 @@ test('an entry with no tier (a weapon, armour) has no tier pill, and a refused o
   assert.equal(tierChip({ tier: 'auto', refused: true }).textContent, 'refused');
   assert.equal(tierChip(readEntry('monsters', 5)).textContent, 'unreadable');
 });
+
+// What a player is sent is what the rules package's own `forPlayers` makes (not a copy built here): the store accepts it, checks its hash and builds the pack.
+const SUBCLASS = {
+  id: 'hb-sample-oath-of-the-ember', name: 'Oath of the Ember', class: 'paladin', source: 'homebrew:sample', checked: false, text: 'Paladins sworn to keep a hearth-fire burning.', dmNotes: 'SECRETNOTE',
+  spells: { 3: ['burning-hands'] },
+  features: [{ id: 'hb-sample-ash-memory', name: 'Ash Memory', level: 15, tier: 'manual', checked: false, text: 'Ask the DM one question.', uses: { max: 1, recharge: 'long' }, dmNotes: 'SECRETNOTE' }],
+};
+for (const [what, build, expectSubclass] of [['a pack without subclasses', () => structuredClone(SAMPLE), false], ['a pack with a subclass', () => ({ ...structuredClone(SAMPLE), subclasses: [structuredClone(SUBCLASS)] }), true]]) {
+  test(`a player's store accepts what forPlayers makes of ${what}, checks its hash and installs it`, () => {
+    const pack = build(), { data, hash } = forPlayers(pack), { store } = make(false);
+    try {
+      assert.equal('subclasses' in data, expectSubclass, 'a copy has the kind only when the pack has any');
+      assert.equal(JSON.stringify(data).includes('SECRETNOTE'), false);
+      store.packs({ packs: [{ id: pack.pack.id, name: pack.pack.name, version: pack.pack.version, hash }] });
+      assert.equal(store.packData({ id: pack.pack.id, version: pack.pack.version, hash, data }), true, 'accepted');
+      assert.ok(installed(), 'the overlay is installed');
+      assert.ok(SPELLS[SPELL]);
+      assert.equal(store.waiting(), false);
+      const doc = store.docOf(pack.pack.id);
+      assert.ok(doc, 'the document is built');
+      if (expectSubclass) {
+        assert.equal(doc.subclasses.length, 1);
+        assert.equal(CONTENT.subclasses[SUBCLASS.id]?.name, 'Oath of the Ember', 'the page\'s lookups have the subclass');
+        assert.equal(store.entryOf(SUBCLASS.id).kind, 'subclasses');
+        assert.equal(documentOf(data, false).subclasses.length, 1);
+        assert.deepEqual(countWords(doc).slice(-1), ['1 subclass']);
+      } else assert.equal(doc.subclasses, undefined);
+    } finally { store.clear(); }
+    assert.equal(installed(), null);
+    assert.equal(CONTENT.subclasses[SUBCLASS.id], undefined);
+  });
+}

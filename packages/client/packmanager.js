@@ -21,9 +21,9 @@ import { readEntry, READ_KINDS, KIND_NAMES } from './shared/content/reader.js';
 import { dryRun } from './shared/content/dryrun.js';
 
 const $ = (id) => document.getElementById(id);
-export const KINDS = ['spells', 'monsters', 'items', 'feats', 'weapons', 'armour', 'objects'];
+export const KINDS = ['spells', 'monsters', 'items', 'feats', 'weapons', 'armour', 'objects', 'subclasses'];
 export const PLAYER_KINDS = KINDS.filter((k) => k !== 'monsters');         // what a player is sent (Decision 5)
-const KIND_NAME = { spells: ['spell', 'spells'], monsters: ['monster', 'monsters'], items: ['item', 'items'], feats: ['feat', 'feats'], weapons: ['weapon', 'weapons'], armour: ['piece of armour', 'pieces of armour'], objects: ['object', 'objects'] };
+const KIND_NAME = { spells: ['spell', 'spells'], monsters: ['monster', 'monsters'], items: ['item', 'items'], feats: ['feat', 'feats'], weapons: ['weapon', 'weapons'], armour: ['piece of armour', 'pieces of armour'], subclasses: ['subclass', 'subclasses'], objects: ['object', 'objects'] };
 const TOO_BIG = 2 * HOMEBREW_LIMITS.packBytes;                              // the table reads a pack sent as text up to twice its limit (README: "Sizes")
 const ASK_WAIT_MS = 4000;                                                    // how long an update waits for data that was asked for
 const KEEP_DATA = 8;                                                         // pack data kept by hash beside the table's own list (older ones are let go)
