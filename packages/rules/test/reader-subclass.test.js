@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { CONTENT } from '../src/content/index.js';
-import { loadPack } from '../src/content/registry.js';
+import { loadPack, overlayOf, using } from '../src/content/registry.js';
 import { GRANTS, HOMEBREW_TYPES, TIERS, lintEntry } from '../src/content/schema.js';
 import {
   GRANT_WORDS, KIND_NAMES, READER_LIMITS, READ_KINDS, SUBCLASS_FEATURE_FIELDS, SUBCLASS_FIELDS, SUBCLASS_OPTION_FIELDS, SUBCLASS_RECHARGE_WORDS, SUBCLASS_REQUIRES_FIELDS, SUBCLASS_TIER_WORDS,
@@ -364,4 +364,34 @@ test('every SRD subclass, made homebrew, is read with no problem, every feature 
     // Every number the reading records is a number in the entry.
     for (const n of r.numbers) assert.ok(typeof n.value === 'number' || typeof n.value === 'string', `${c.id}: ${n.at}`);
   }
+});
+
+// ---------- the reading and the character (B2, `derive`) ----------
+test('what the reading says of a subclass is what derive gives a paladin that names it', () => {
+  const loaded = loadPack(structuredClone(PACK));
+  assert.ok(loaded.ok, JSON.stringify(loaded.problems));
+  using(overlayOf([loaded.pack]), () => {
+    const read7 = read(OATH);
+    const level = (n) => ({ name: 'Sir Ember', class: 'paladin', level: n, subclass: OATH.id, abilities: { str: 16, dex: 10, con: 14, int: 10, wis: 12, cha: 14 }, skills: ['athletics', 'religion'], choices: { 'fighting-style': 'defense' }, armour: 'chain-mail', shield: true, weapons: ['longsword'] });
+    assert.deepEqual(validate(level(7)), []);
+    const { record, missing } = derive(level(7));
+    assert.deepEqual(missing, []);
+    const has = (rec, f) => rec.feats.some((x) => x.id === f.id);
+    // Each feature the reading heads with a level is the character's from that level, and not before.
+    for (const f of OATH.features) {
+      assert.ok(read7.lines.some((l) => l.startsWith(`Level ${f.level}: "${f.name}"`)), `${f.name} is in the reading`);
+      assert.equal(has(record, f), f.level <= 7, `${f.name} at level 7`);
+      assert.equal(has(derive(level(f.level)).record, f), true, `${f.name} at level ${f.level}`);
+    }
+    // The reading's cost and uses are the record's.
+    assert.equal(record.feats.find((x) => x.id === OATH.features[0].id).action.cost.resource, 'channel-divinity');
+    assert.equal(derive(level(9)).record.feats.find((x) => x.id === OATH.features[2].id).uses.max, 2);
+    // The spells the reading lists by class level are prepared from that level.
+    assert.ok(read7.lines.some((l) => /Class level 3: "Burning Hands" and "Shield of Faith"/.test(l)));
+    assert.ok(['burning-hands', 'shield-of-faith'].every((x) => record.spells.includes(x)));
+    assert.ok(record.spells.includes(hb('ember-ward')), 'class level 5');
+    assert.ok(!derive(level(3)).record.spells.includes(hb('ember-ward')), 'not at class level 3');
+    // A subclass of another class is refused when the sheet is checked, as the reading says it belongs to one class.
+    assert.ok(validate({ ...level(7), class: 'fighter', subclass: LANTERN.id, choices: {} }).length > 0);
+  });
 });

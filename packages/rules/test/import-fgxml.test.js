@@ -7,6 +7,7 @@ import { apply } from "../src/engine.js";
 import { characterName, importFgxml, parseXml } from "../src/import-fgxml.js";
 import { newGame } from "../src/scenario.js";
 import { derive, validate } from "../src/derive.js";
+import { loadPack, overlayOf, using } from "../src/content/registry.js";
 
 const DM = { role: "dm", userId: "dm" };
 const fixture = (n) => readFileSync(new URL(`./fixtures/fgxml-${n}.xml`, import.meta.url), "utf8");
@@ -325,4 +326,83 @@ test("a sheet that lists Metamagic more than once imports with each option once,
   assert.equal(bare.character.choices?.metamagic, undefined);
   assert.ok(bare.report.features.some((f) => f.name === "Metamagic (level 10)" && /left unchosen/.test(f.why)));
   assert.ok(apply(newGame(7), { type: "setSheet", sheet: bare.character }, DM).ok);
+});
+
+// ---------- a matching homebrew subclass (homebrew-subclasses.md, Decision 5, B4) ----------
+// The invented Oath of the Ember (pack "ember-folk") and, for the two-match case, an invented Ember Court (pack "kiln-folk").
+const hbDoc = (id, lists) => ({ format: "hextable-pack", v: 1, pack: { id, name: id, version: 1, license: "CC0, by the author", attribution: "Written for a test." }, ...lists });
+const hbPack = (d) => { const r = loadPack(d); assert.ok(r.ok, (r.problems ?? []).join("; ")); return r.pack; };
+const EH = (n) => `hb-ember-folk-${n}`;
+const emberWard = { id: EH("ember-ward"), name: "Ember Ward", source: "homebrew:ember-folk", level: 2, school: "abjuration", classes: ["paladin"], time: "action", range: 60, components: ["v", "s"], duration: "instant",
+  concentration: false, ritual: false, target: { area: { shape: "sphere", size: 10 } }, effects: [{ save: "dex", half: true, onFail: [{ damage: "3d6", type: "fire" }] }], tier: "auto", checked: false, text: "A ring of embers." };
+const emberOath = { id: EH("oath-of-the-ember"), name: "Oath of the Ember", class: "paladin", source: "homebrew:ember-folk", checked: false, text: "Paladins sworn to keep a hearth-fire burning.",
+  spells: { 3: ["burning-hands", "shield-of-faith"], 5: [EH("ember-ward")] },
+  features: [{ id: EH("kindle"), name: "Kindle", level: 3, tier: "auto", checked: false, text: "Spend Channel Divinity to wreathe one foe in sparks: Advantage on attack rolls against it for 1 minute.",
+    grants: { action: { time: "bonus", cost: { resource: "channel-divinity" }, duration: "1 minute", target: { creature: { range: [30, 30] } }, effects: [{ modifier: { on: "attack.roll", op: "advantage", against: "target" }, to: "caster" }] } } }] };
+const kilnCourt = { id: "hb-kiln-folk-ember-court", name: "Ember Court", class: "paladin", source: "homebrew:kiln-folk", checked: false, text: "Paladins of a kiln-lit court.",
+  features: [{ id: "hb-kiln-folk-court-rite", name: "Court Rite", level: 3, tier: "manual", checked: false, text: "A rite the DM adjudicates." }] };
+const EMBER = hbPack(hbDoc("ember-folk", { spells: [emberWard], subclasses: [emberOath] })), KILN = hbPack(hbDoc("kiln-folk", { subclasses: [kilnCourt] }));
+const emberImport = (overlay, options) => using(overlay, () => importFgxml(fixture("paladin-ember"), options));
+
+test("a sheet naming 'Ember' loads with the table's homebrew subclass, inside `using`, with no stand-in (B4)", () => {
+  const { character, report } = emberImport(overlayOf([EMBER]));
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.equal(character.subclass, EH("oath-of-the-ember"));
+  assert.deepEqual(report.adjustments.filter((a) => a.what === "subclass"), [], "not a stand-in");
+  assert.deepEqual(report.subclass, [], "nothing 'not an SRD subclass'");
+  assert.deepEqual(report.imported.homebrewSubclasses.map((h) => [h.class, h.id, h.name, h.pack, h.text]),
+    [["paladin", EH("oath-of-the-ember"), "Oath of the Ember", "ember-folk", "matched the table's homebrew subclass Oath of the Ember (pack ember-folk)"]]);
+  assert.equal(report.imported.subclass, EH("oath-of-the-ember"));
+  // What the oath always prepares is the oath's, not the sheet's list: Burning Hands and Ember Ward are not listed twice, and are not reported.
+  assert.ok(!character.spells.includes("burning-hands") && !character.spells.includes(EH("ember-ward")), character.spells.join(","));
+  assert.deepEqual(names(report.spells), [], "the oath's own spells are not left out");
+  // Its feature is the pack's now: not under "Not in the SRD 5.2 pack"; an unknown one still is.
+  assert.deepEqual(names(report.features).filter((n) => n === "Kindle"), []);
+  assert.ok(names(report.features).includes("Hearth Vow"));
+  using(overlayOf([EMBER]), () => {
+    assert.deepEqual(validate(character), []);
+    const r = derive(character).record;
+    assert.ok(r.feats.some((f) => f.id === EH("kindle")), "the feature is on the record");
+    assert.ok(r.spells.includes(EH("ember-ward")) && r.spells.includes("burning-hands"));
+    const s = newGame(7);
+    assert.ok(apply(s, { type: "setSheet", sheet: character }, DM).ok);
+  });
+});
+
+test("without the pack the sheet gets the SRD stand-in and the report line, as before (B4)", () => {
+  const lantern = hbPack(hbDoc("lamp-folk", { subclasses: [{ ...kilnCourt, id: "hb-lamp-folk-oath-of-the-lantern", name: "Oath of the Lantern", source: "homebrew:lamp-folk", features: [{ id: "hb-lamp-folk-glow", name: "Glow", level: 3, tier: "manual", checked: false, text: "A glow." }] }] }));
+  for (const overlay of [overlayOf([]), overlayOf([lantern])]) {
+    const { character, report } = emberImport(overlay);
+    assert.equal(character.subclass, "devotion");
+    assert.deepEqual(report.adjustments.filter((a) => a.what === "subclass").map((a) => [a.from, a.to]), [["Ember", "Oath of Devotion"]]);
+    assert.deepEqual(names(report.subclass), ["Ember"]);
+    assert.equal(report.imported.homebrewSubclasses, undefined);
+  }
+  const plain = importFgxml(fixture("paladin-ember"));
+  assert.equal(plain.character.subclass, "devotion", "outside `using` too");
+});
+
+test("two matching homebrew subclasses (two packs) give the stand-in and a note naming them (B4)", () => {
+  const { character, report } = emberImport(overlayOf([EMBER, KILN]));
+  assert.equal(character.subclass, "devotion");
+  assert.equal(report.adjustments.filter((a) => a.what === "subclass").length, 1);
+  const note = report.subclass.find((n) => /More than one/.test(n.why));
+  assert.ok(note, JSON.stringify(report.subclass));
+  assert.match(note.why, /Oath of the Ember, pack ember-folk/);
+  assert.match(note.why, /Ember Court, pack kiln-folk/);
+  assert.equal(report.imported.homebrewSubclasses, undefined);
+});
+
+test("`homebrewSubclass: false` turns the matching off", () => {
+  const { character, report } = emberImport(overlayOf([EMBER]), { homebrewSubclass: false });
+  assert.equal(character.subclass, "devotion");
+  assert.equal(report.adjustments.filter((a) => a.what === "subclass").length, 1);
+});
+
+test("a homebrew subclass of another class is not matched, and the SRD subclass name still wins (B4)", () => {
+  const bardOath = { ...kilnCourt, id: "hb-kiln-folk-ember-college", name: "College of Ember", class: "bard", features: [{ id: "hb-kiln-folk-song", name: "Ember Song", level: 3, tier: "manual", checked: false, text: "A song." }] };
+  const KB = hbPack(hbDoc("kiln-folk", { subclasses: [bardOath] }));
+  assert.equal(emberImport(overlayOf([KB])).character.subclass, "devotion", "a Bard subclass is not a Paladin's");
+  const xml = fixture("paladin-ember").replace("<specialization type=\"string\">Ember</specialization>", "<specialization type=\"string\">Oath of Devotion</specialization>");
+  assert.equal(using(overlayOf([EMBER]), () => importFgxml(xml)).character.subclass, "devotion");
 });
