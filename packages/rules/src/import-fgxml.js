@@ -686,7 +686,8 @@ function build(root, ch, options) {
     const chosen = [];
     const pool = [...wanted, ...preparedList];
     for (const e of pool) {
-      const sp = spellByKey.get(e.key);
+      // A spell of the table's pack is known only when the matched homebrew subclass always prepares it (the oath's own spell); the SRD map is made at load.
+      const sp = spellByKey.get(e.key) ?? [...always].map((id) => CONTENT.spells[id]).find((x) => x && (norm(x.name) === e.key || norm(x.id) === e.key));
       if (!sp) { note('spells', e.name, `Level ${e.level}: not in the SRD 5.2 pack.`, { level: e.level }); continue; }
       if (always.has(sp.id)) {                                          // an oath or domain spell the subclass always has prepared
         if (multi) note('spells', sp.name, `A spell one of this character's subclasses always has prepared; it is not added to the ${cc.name}'s list and takes no place in its count.`, { level: sp.level, inPack: true });
