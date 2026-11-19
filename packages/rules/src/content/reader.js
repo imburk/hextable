@@ -18,7 +18,7 @@
 //
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
-// weapons, armour and objects (task B13, three parts).
+// weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
 import { ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
@@ -283,7 +283,7 @@ export function readEntry(kind, entry, ctx = {}) {
     return { kind: (typeof kind === 'string' && Object.hasOwn(KIND_NAMES, kind) ? KIND_NAMES[kind] : typeof kind === 'string' ? kind.slice(0, 20) : ''), title: '(unreadable entry)', tier: null, lines: ['The reader could not read this entry. It cannot be approved.'], doesNot: [], numbers: [], text: null, problems: ['The entry could not be read.'], hash: null, refused: null, refusals: [] };
   }
 }
-const PLURAL = { spell: 'spells', monster: 'monsters', item: 'items', feat: 'feats', weapon: 'weapons', armour: 'armour', object: 'objects' };
+const PLURAL = { spell: 'spells', monster: 'monsters', item: 'items', feat: 'feats', weapon: 'weapons', armour: 'armour', object: 'objects', subclass: 'subclasses' };
 // Would a table load this entry? Strict mode's answer (schema.js `lintEntry`), asked for homebrew only.
 function refusal(kind, entry, ctx, r) {
   r.refused = null; r.refusals = [];
@@ -302,9 +302,9 @@ function refusal(kind, entry, ctx, r) {
 
 // The kinds of entry (the pack's list names, and the singular) and which of them are read so far.
 export const KIND_NAMES = { spell: 'spell', spells: 'spell', monster: 'monster', monsters: 'monster', item: 'item', items: 'item', feat: 'feat', feats: 'feat',
-  weapon: 'weapon', weapons: 'weapon', armour: 'armour', armor: 'armour', object: 'object', objects: 'object' };
-export const READ_KINDS = ['spell', 'monster', 'item', 'feat', 'weapon', 'armour', 'object'];
-const IS_THE = { spell: 'a spell', monster: 'a monster', item: 'an item', feat: 'a feat', weapon: 'a weapon', armour: 'an armour', object: 'an object' };
+  weapon: 'weapon', weapons: 'weapon', armour: 'armour', armor: 'armour', object: 'object', objects: 'object', subclass: 'subclass', subclasses: 'subclass' };
+export const READ_KINDS = ['spell', 'monster', 'item', 'feat', 'weapon', 'armour', 'object', 'subclass'];
+const IS_THE = { spell: 'a spell', monster: 'a monster', item: 'an item', feat: 'a feat', weapon: 'a weapon', armour: 'an armour', object: 'an object', subclass: 'a subclass' };
 
 function readOrThrow(kind, entry) {
   const problems = [];
@@ -318,7 +318,7 @@ function readOrThrow(kind, entry) {
     const why = over ? 'This entry is too large or too deeply nested to read. It cannot be approved.' : `This is not ${IS_THE[k]} entry (it is not an object). It cannot be approved.`;
     return { kind: k, title: '(unreadable entry)', tier: null, lines: [why], doesNot: [], numbers: [], text: null, problems: [...problems, why], hash: null, refused: null, refusals: [] };
   }
-  const MAKE = { monster: MonsterReading, item: ItemReading, feat: FeatReading, weapon: WeaponReading, armour: ArmourReading, object: ObjectReading };
+  const MAKE = { monster: MonsterReading, item: ItemReading, feat: FeatReading, weapon: WeaponReading, armour: ArmourReading, object: ObjectReading, subclass: SubclassReading };
   const R = new (MAKE[k] ?? Reading)(e, problems);
   R[MAKE[k] ? k : 'spell']();
   return R.result(sha256(canonical(e)));
@@ -375,6 +375,21 @@ class Reading {
       if (nv) this.line('Parts of this entry never take effect, as said above: the engine does not apply them and tells nobody.');
     }
   }
+  // An amount of dice in a step: dice, or (in a subclass, which has the class table behind it) what derive.js puts in from the class: a column of the table,
+  // a modifier's worth of dice, a die by class level. Words, or null when it is neither.
+  amt(v, at) {
+    if (isDice(v)) return v;
+    if (!this.sub || !isObj(v)) return null;
+    if (typeof v.mod === 'string' && isInt(v.die) && ABILITY_WORDS[v.mod]) { this.num(`${at}.die`, v.die, 'die'); if (isInt(v.min)) this.num(`${at}.min`, v.min, 'dice'); return `as many d${v.die} as the ${ABILITY_WORDS[v.mod]} modifier${isInt(v.min) ? ` (at least ${v.min})` : ''}`; }
+    if (typeof v.column === 'string') return `the die the class table gives in its column ${shown(v.column)} at the class level`;
+    if (isObj(v.byLevel) && Object.keys(v.byLevel).length && Object.values(v.byLevel).every(isDice)) {
+      for (const [l, x] of Object.entries(v.byLevel)) this.num(`${at}.byLevel.${l}`, x, 'dice');
+      return list(Object.entries(v.byLevel).sort((a, b) => a[0] - b[0]).map(([l, x]) => `${x} from class level ${l}`));
+    }
+    return null;
+  }
+  // `addMod: "wis"` on a step of a subclass: the modifier is added where derive.js bakes the step.
+  plusMod(st) { return this.sub && typeof st.addMod === 'string' && ABILITY_WORDS[st.addMod] ? ` plus the ${ABILITY_WORDS[st.addMod]} modifier` : ''; }
   // The subject of a step inside a branch.
   it() { return this.aim === 'self' ? this.actor : 'it'; }
   result(hash) {
@@ -848,7 +863,7 @@ function saveSentence({ st, at, depth, Who, say }) {
   const ab = ABILITY_WORDS[st.save];
   if (!ab) this.bad(`Step ${at}: the save names no ability.`);
   let dc = '';
-  if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
+  if (st.dc !== undefined) { if (isInt(st.dc)) { this.num(`${at}.dc`, st.dc, 'DC'); dc = ` against DC ${st.dc}`; } else if (this.sub && typeof st.dc === 'string' && Object.hasOwn(ABILITY_WORDS, st.dc)) dc = ` against the holder's own DC for this class: 8 plus the Proficiency Bonus plus the ${ABILITY_WORDS[st.dc]} modifier`; else this.bad(`Step ${at}: the save's DC is not a whole number.`); }
   say(`${Who} makes ${ab ? `${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw` : 'a saving throw of an unreadable ability'}${dc}.`);
   if (this.obj && st.dc === undefined) this.line(`No DC is written in for this save, so the engine uses the thing's own save DC: the one the DM set where it was placed, else ${isInt(this.objDc) ? `its entry's ${this.objDc}` : 'its entry has none, so 10'}.`, depth);
   if (this.itm && st.dc === undefined) { this.line('No DC is written in for this save, and an item\'s own steps have no spell save DC: the engine does not roll it, it tells the DM, who applies it.', depth); this.dm(`The save of step ${at}: it has no DC.`); }
@@ -919,26 +934,29 @@ export const STEP_SENTENCES = {
   // A save's DC is kept while its branches are read, for an ending that repeats it (`ending`, above).
   save(o) { this.saveDcs.push(isInt(o.st.dc) ? o.st.dc : null); try { return saveSentence.call(this, o); } finally { this.saveDcs.pop(); } },
   damage({ st, at, depth, Who, say, o }) {
-    if (!isDice(st.damage)) this.bad(`Step ${at}: the damage is not dice like 2d6+3.`); else this.num(`${at}.damage`, st.damage, 'dice');
+    const dmg = this.amt(st.damage, `${at}.damage`);
+    if (dmg === null) this.bad(`Step ${at}: the damage is not dice like 2d6+3.`); else if (isDice(st.damage)) this.num(`${at}.damage`, st.damage, 'dice');
     const type = st.type === 'chosen' ? 'damage of the chosen type' : DAMAGE_TYPES.includes(st.type) ? `${st.type} damage` : 'damage of an unreadable type';
     if (st.type !== 'chosen' && !DAMAGE_TYPES.includes(st.type)) this.bad(`Step ${at}: the damage type is not one the engine knows.`);
     let times = '';
     if (st.times !== undefined) { if (isInt(st.times) && st.times > 0) { this.num(`${at}.times`, st.times, 'rolls'); if (st.times > 1) times = `, rolled ${st.times} times and added up`; } else this.bad(`Step ${at}: \`times\` is not a positive whole number.`); }
-    say(`${Who} takes ${isDice(st.damage) ? st.damage : '(unreadable dice)'} ${type}${times}.${o.afterDamage ? ' It lands together with the damage before it, as one instance of damage.' : ''}`);
+    say(`${Who} takes ${dmg ?? '(unreadable dice)'}${this.plusMod(st)} ${type}${times}.${o.afterDamage ? ' It lands together with the damage before it, as one instance of damage.' : ''}`);
     if (st.onZero !== undefined) { this.line('If this damage drops it to 0 Hit Points:', depth); this.steps(st.onZero, `${at}.onZero`, depth + 1, this.it()); }
     if (st.onKill !== undefined) { this.line('If this damage kills it:', depth); this.steps(st.onKill, `${at}.onKill`, depth + 1, this.it()); }
   },
   heal({ st, at, Who, say }) {
-    if (!isDice(st.heal)) this.bad(`Step ${at}: the healing is not dice.`); else this.num(`${at}.heal`, st.heal, 'dice');
+    const hl = this.amt(st.heal, `${at}.heal`);
+    if (hl === null) this.bad(`Step ${at}: the healing is not dice.`); else if (isDice(st.heal)) this.num(`${at}.heal`, st.heal, 'dice');
     const least = isInt(st.atLeast) ? (this.num(`${at}.atLeast`, st.atLeast, 'Hit Points'), `, and at least ${st.atLeast}`) : '';
-    say(`${Who} regains ${isDice(st.heal) ? st.heal : '(unreadable dice)'}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}.`);
+    say(`${Who} regains ${hl ?? '(unreadable dice)'}${this.plusMod(st)}${st.addLevel === true && this.sub ? ' plus the class level' : ''}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}.`);
     if (this.mon && st.addMod === true) this.noMod(at);
     if (this.obj && st.addMod === true) this.noObjMod(at, 'healing');
   },
   tempHp({ st, at, Who, say }) {
-    if (!isDice(st.tempHp)) this.bad(`Step ${at}: the Temporary Hit Points are not dice.`); else this.num(`${at}.tempHp`, st.tempHp, 'dice');
+    const th = this.amt(st.tempHp, `${at}.tempHp`);
+    if (th === null) this.bad(`Step ${at}: the Temporary Hit Points are not dice.`); else if (isDice(st.tempHp)) this.num(`${at}.tempHp`, st.tempHp, 'dice');
     const least = isInt(st.atLeast) ? (this.num(`${at}.atLeast`, st.atLeast, 'Temporary Hit Points'), `, at least ${st.atLeast}`) : '';
-    say(`${Who} gains ${isDice(st.tempHp) ? st.tempHp : '(unreadable dice)'}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}; they replace what it has only if they are more${this.fx ? ', and they vanish when the spell ends' : ''}.`);
+    say(`${Who} gains ${th ?? '(unreadable dice)'}${this.plusMod(st)}${st.addLevel === true && this.sub ? ' plus the class level' : ''}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}; they replace what it has only if they are more${this.fx ? ', and they vanish when the spell ends' : ''}.`);
     if (this.mon && st.addMod === true) this.noMod(at);
     if (this.obj && st.addMod === true) this.noObjMod(at, 'Temporary Hit Points');
   },
@@ -1896,8 +1914,8 @@ export const GRANT_WORDS = {
   rangedAttack(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'to hit'); this.line(`+${v} to the holder's attack rolls with ranged weapons (not thrown ones).`, 1); },
   spells(v, at) {
     if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) return this.bad(`${at} is not a list of spell ids.`);
-    this.line(`Names ${list(v.slice(0, 30).map((x) => nameOf('spells', x)))} among the spells a class always has prepared. A feat or an item belongs to no class, so the engine adds nothing from it.`, 1);
-    this.dm(`Letting the holder cast ${list(v.slice(0, 30).map((x) => nameOf('spells', x)))}: the engine does not add them.`);
+    this.line(`Names ${list(v.slice(0, 30).map((x) => nameOf('spells', x)))} among the spells a class always has prepared.${this.kind === 'subclass' ? ' They do not count against the number the class prepares, and a spell the table does not have is left out.' : ' A feat or an item belongs to no class, so the engine adds nothing from it.'}`, 1);
+    if (this.kind !== 'subclass') this.dm(`Letting the holder cast ${list(v.slice(0, 30).map((x) => nameOf('spells', x)))}: the engine does not add them.`);
   },
   martialArts(v, at) { amountNums(this, v, at, 'die'); this.line(`A martial arts die of ${amountWord(v)} for unarmed strikes while the holder wears no armor and holds no Shield.`, 1); },
   hp(v, at) { amountNums(this, v, at, 'Hit Points'); this.line(`${amountWord(v)} Hit Points added to the holder's maximum.`, 1); },
@@ -1921,8 +1939,8 @@ export const GRANT_WORDS = {
   cantrips(v, at) {
     if (!isInt(v)) return this.bad(`${at} is not a whole number.`);
     this.num(at, v, 'cantrips');
-    this.line(`${v} more cantrip${v === 1 ? '' : 's'} known by a class that knows cantrips. A feat or an item belongs to no class, so the engine adds none.`, 1);
-    this.dm('Giving the holder the extra cantrips: the engine does not add them.');
+    this.line(`${v} more cantrip${v === 1 ? '' : 's'} known by a class that knows cantrips.${this.kind === 'subclass' ? ' The sheet is checked against the larger number.' : ' A feat or an item belongs to no class, so the engine adds none.'}`, 1);
+    if (this.kind !== 'subclass') this.dm('Giving the holder the extra cantrips: the engine does not add them.');
   },
   proficiency(v) {
     if (!isObj(v)) return this.bad('`proficiency` is not { weapons, armour }.');
@@ -1941,7 +1959,7 @@ export const GRANT_WORDS = {
     this.line(`Resistance to ${list(v)} damage: such damage is halved.`, 1);
   },
   critOn(v, at) { if (!isInt(v)) return this.bad(`${at} is not a whole number.`); this.num(at, v, 'd20 roll'); this.line(`The holder's attack rolls are Critical Hits on a roll of ${v} or more.`, 1); },
-  spellLists(v) { this.line(`Opens the spell list${Array.isArray(v) && v.length > 1 ? 's' : ''} of ${list((Array.isArray(v) ? v : []).slice(0, 20).map(shown))} to a class's spell picks. A feat or an item belongs to no class, so the engine adds nothing.`, 1); this.dm('Opening those spell lists: the engine does not.'); },
+  spellLists(v) { this.line(`Opens the spell list${Array.isArray(v) && v.length > 1 ? 's' : ''} of ${list((Array.isArray(v) ? v : []).slice(0, 20).map(shown))} to a class's spell picks.${this.kind === 'subclass' ? '' : ' A feat or an item belongs to no class, so the engine adds nothing.'}`, 1); if (this.kind !== 'subclass') this.dm('Opening those spell lists: the engine does not.'); },
   setAbility(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not a table of scores.`);
     const ok = Object.entries(v).filter(([k, x]) => ABILITIES.includes(k) && isInt(x));
@@ -1996,8 +2014,8 @@ export const GRANT_WORDS = {
   attune(v, at) {
     if (!isInt(v)) return this.bad(`${at} is not a whole number.`);
     this.num(at, v, 'items');
-    this.line(`Raises the number of magic items the holder may be attuned to to ${v}. Only a class feature does this in the engine: a feat or an item changes nothing.`, 1);
-    this.dm(`Letting the holder attune to ${v} items.`);
+    this.line(`Raises the number of magic items the holder may be attuned to to ${v}.${this.kind === 'subclass' ? '' : ' Only a class feature does this in the engine: a feat or an item changes nothing.'}`, 1);
+    if (this.kind !== 'subclass') this.dm(`Letting the holder attune to ${v} items.`);
   },
   empowered(v) { this.line(`A spell of the ${isObj(v) ? shown(v.school) : '?'} school on the ${isObj(v) ? shown(v.list) : '?'} list adds the holder's ${isObj(v) ? ABILITY_WORDS[v.ability] ?? 'unreadable' : '?'} modifier to one of its damage rolls, the caster's pick.`, 1); },
   overchannel(v, at) {
@@ -2083,7 +2101,7 @@ class GrantReading extends Reading {
     if (!named && !byList) return this.bad(`${at} names neither a list of spells nor a spell list with a highest level.`);
     if (named && byList) this.bad(`${at} names both a spell list and spells.`);
     if (isInt(v.maxLevel)) this.num(`${at}.maxLevel`, v.maxLevel, 'spell level'); else if (byList) this.bad(`${at}.maxLevel is not a spell level.`);
-    this.line(`Lets the holder cast spells without a slot, through this ${this.kind}, with the cast action naming it (a "via" cast). The save DC and attack bonus are the holder's own spellcasting ones; a holder with no spellcasting uses a modifier of 0.`, 1);
+    this.line(`Lets the holder cast spells without a slot, through this ${this.kind === 'subclass' ? 'feature' : this.kind}, with the cast action naming it (a "via" cast). The save DC and attack bonus are the holder's own spellcasting ones; a holder with no spellcasting uses a modifier of 0.`, 1);
     const asAction = byList || v.time === 'action';
     for (const k of Object.keys(FREECAST_WORDS)) {
       if (v[k] === undefined) continue;
@@ -2130,7 +2148,7 @@ class GrantReading extends Reading {
     this.def = { effects: steps, range: 0, duration: 'instant', tier: saved.def.tier };
     this.aim = who === 'the holder' ? 'self' : 'creature';
     this.lasting = this.bound(); this.fx = isDuration(duration) && duration !== 'instant' ? 'spell' : this.lasting ? 'bound' : null;
-    this.base = depth;
+    this.base = saved.base + depth;
     try { this.steps(steps, path, 0, who, { top: true }); } finally { Object.assign(this, saved); }
   }
   fChecked() { this.line(this.def.checked === true ? 'Marked as checked against the rules text.' : 'Not checked against any rulebook.'); }
@@ -2380,6 +2398,216 @@ class FeatReading extends GrantReading {
     if (!Array.isArray(s.lists) || s.lists.some((x) => typeof x !== 'string')) this.bad('`spellPick.lists` is not a list of class ids.');
   }
 }
+
+// ====================================================================================================
+// Subclasses (docs/specs/homebrew-subclasses.md, Decision 1 and 2, stage B3). A homebrew subclass of an SRD class holds what an SRD class's
+// `subclass` holds: `spells` the class always has prepared from a class level, and `features`, in the vocabulary of a class's own features. Read
+// from what `derive.js` does with a feature of a class (`classFeatures`: a feature from its level, each chosen option; the always-prepared
+// spells; `validate`: choices, `pick`, an option's `requires`), `engine/features.js` (`feature`: the action, the cost, a feature that has uses
+// and no action) and `engine/rests.js` (when uses come back). A feature's `grants` are read by the same sentence makers as a feat's
+// (GRANT_WORDS); a test reads every SRD subclass, made homebrew, and holds the reading to what the linter and the engine do.
+// ====================================================================================================
+export const SUBCLASS_FIELDS = { id: 'skip', name: 'skip', class: 'header', source: 'skip', checked: 'sChecked', text: 'skip', spells: 'sSpells', features: 'sFeatures', dmNotes: 'skip' };
+export const SUBCLASS_FEATURE_FIELDS = ['id', 'name', 'level', 'tier', 'checked', 'text', 'uses', 'grants', 'options', 'pick', 'dmNotes'];
+export const SUBCLASS_OPTION_FIELDS = ['id', 'name', 'text', 'tier', 'grants', 'requires', 'uses', 'feat'];
+export const SUBCLASS_USES_FIELDS = ['max', 'recharge', 'short'];
+export const SUBCLASS_REQUIRES_FIELDS = ['level', 'option', 'spell'];
+export const SUBCLASS_TIER_WORDS = {
+  auto: 'the engine plays all of it',
+  assist: 'the engine plays what is listed here, and the DM plays the rest',
+  manual: 'the DM plays it, and the engine only shows its text',
+};
+export const SUBCLASS_RECHARGE_WORDS = { short: 'on a Short Rest or a Long Rest', long: 'on a Long Rest' };
+const SUBCLASS_FEATURES_SHOWN = 30;
+const SUBCLASS_OPTIONS_SHOWN = 30;
+
+class SubclassReading extends GrantReading {
+  constructor(def, problems) {
+    super(def, problems);
+    this.kind = 'subclass'; this.fields = SUBCLASS_FIELDS; this.sub = true;
+    this.tally = { auto: 0, assist: 0, manual: 0, played: 0, all: 0 };
+    this.cls = null;
+  }
+  subclass() {
+    const d = this.def;
+    this.odd(d, Object.keys(SUBCLASS_FIELDS), 'The subclass');
+    const id = typeof d.class === 'string' && Object.hasOwn(CONTENT.classes ?? {}, d.class) ? d.class : null;
+    this.cls = id ? CONTENT.classes[id] : null;
+    if (!this.cls) this.bad('The subclass\'s class is not an SRD class the engine knows.');
+    this.line(`${this.titleQ()}, ${this.cls ? `${aAn(this.cls.name)} ${this.cls.name}` : 'a'} subclass${this.cls ? '' : ' of a class the engine does not know'}.`);
+    if (this.cls) this.line(`It belongs to the ${this.cls.name} and to no other class: a character names it as the subclass of its ${this.cls.name} levels, and its features come in at the class levels given below.`);
+    this.sSpells();
+    this.sFeatures();
+    this.sTiers();
+    this.sChecked();
+    this.sLevels();
+  }
+  // `spells`: always prepared, by class level (derive.js: the casters loop adds each list whose level the class has reached).
+  sSpells() {
+    const sp = this.def.spells;
+    if (sp === undefined) return this.line('It names no spells the class always has prepared.');
+    if (!isObj(sp)) return this.bad('`spells` is not lists of spell ids by class level.');
+    const levels = Object.keys(sp).filter((l) => /^\d+$/.test(l)).sort((a, b) => a - b);
+    for (const l of Object.keys(sp)) if (!levels.includes(l)) this.bad(`\`spells\` has a key ${shown(l)} that is not a class level.`);
+    if (!levels.length) return this.line('It names no spells the class always has prepared.');
+    this.line('Spells always prepared, from the class level shown. They are added to what the character prepares and do not count against the number the class prepares; a spell the table does not have is left out.');
+    if (this.cls && !this.cls.casting) {
+      this.line(`The ${this.cls.name} has no Spellcasting, so the engine never prepares these spells.`, 1);
+      this.dm('Letting the character cast the spells this subclass names: the class has no Spellcasting, so the engine does not prepare them.');
+    }
+    for (const l of levels) {
+      const ids = sp[l];
+      if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string')) { this.bad(`\`spells\` at class level ${l} is not a list of spell ids.`); continue; }
+      this.num(`spells.${l}`, +l, 'class level');
+      this.line(`Class level ${l}: ${list(ids.slice(0, 30).map((x) => nameOf('spells', x)))}.`, 1);
+    }
+  }
+  sFeatures() {
+    const fs = this.def.features;
+    if (!Array.isArray(fs) || !fs.length) return this.bad('`features` is not a list of features.');
+    const order = fs.map((f, i) => [f, i]).slice(0, SUBCLASS_FEATURES_SHOWN).sort((a, b) => (isInt(a[0]?.level) ? a[0].level : 99) - (isInt(b[0]?.level) ? b[0].level : 99));
+    this.line(`${fs.length} feature${fs.length === 1 ? '' : 's'}, in the order of the class level at which each comes in:`);
+    if (fs.length > SUBCLASS_FEATURES_SHOWN) { this.bad(`The subclass has ${fs.length} features; the reader shows ${SUBCLASS_FEATURES_SHOWN}.`); this.line(`Only the first ${SUBCLASS_FEATURES_SHOWN} features are shown here.`); }
+    for (const [f, i] of order) this.sFeature(f, i);
+  }
+  // The tier, said once the feature is read, because an auto feature that hands a part to the DM must say so.
+  tierWords(tier, dm0, never0) {
+    const dm = this.doesNot.length > dm0, nv = this.never > never0;
+    if (tier === 'auto' && (dm || nv)) return `auto, but ${list([dm ? 'the engine hands the parts listed for the DM to the DM' : null, nv ? 'the engine never applies the parts said to never take effect, and tells nobody' : null].filter(Boolean))}`;
+    return `${tier}: ${SUBCLASS_TIER_WORDS[tier]}`;
+  }
+  // One feature: what it is, its uses, what it grants, its options, and (assist or manual) what the DM does.
+  sFeature(f, i) {
+    const at = `features.${i}`;
+    if (!isObj(f)) { this.bad(`${at} is not a feature.`); return this.line('(A feature the reader cannot read.)', 1); }
+    this.odd(f, SUBCLASS_FEATURE_FIELDS, `Feature ${i + 1}`);
+    const lv = isInt(f.level) ? f.level : null;
+    if (lv === null) this.bad(`${at}.level is not a whole number.`); else this.num(`${at}.level`, lv, 'class level');
+    if (!TIERS.includes(f.tier)) this.bad(`${at}.tier is not auto, assist or manual.`);
+    const name = typeof f.name === 'string' && f.name.trim() ? qt(f.name, 60) : '(no name)';
+    const head = this.lines.length;
+    this.line('');
+    const dm0 = this.doesNot.length, never0 = this.never;
+    if (f.checked === true) { this.bad(`${at}.checked is true: a table refuses a feature that claims to be checked.`); this.line('It claims to be checked against the rules text. A table refuses that: only the DM marks content as checked.', 1); }
+    if (f.uses !== undefined) this.sUses(f.uses, `${at}.uses`, 1);
+    const g = f.grants;
+    if (g !== undefined) this.sGrants(g, `${at}.grants`);
+    // A feature with uses and no action of its own is spent by hand (engine/features.js, `feature`): its text goes to the DM.
+    if (isObj(f.uses) && !(isObj(g) && ['action', 'freeCast', 'initiative', 'exchange'].some((k) => g[k] !== undefined))) {
+      this.line('Using it spends one use. It has no action of its own, so the engine sends its text to the DM, who applies it.', 1);
+      this.dm(`Applying ${name} when it is used.`);
+    }
+    if (f.options !== undefined) this.sOptions(f, at);
+    else if (f.pick !== undefined) this.bad(`${at}.pick is given without options.`);
+    if (g === undefined && f.options === undefined && f.uses === undefined) this.line(f.tier === 'auto' ? 'It grants nothing, so the engine has nothing to apply: it should not be auto.' : 'It is always on. The engine applies nothing for it.', 1);
+    if (f.tier === 'assist' || f.tier === 'manual') {
+      const text = typeof f.text === 'string' && f.text.trim() ? plain(f.text, READER_LIMITS.quote) : null;
+      if (!text) this.bad(`${at}.text is missing.`);
+      this.line(`${f.tier === 'manual' ? 'The engine does not do this; the DM does this' : 'Beyond the lines above, the DM does this'}: "${text ?? '(no text)'}"`, 1);
+      this.dm(`${name}: "${text ?? '(no text)'}"`);
+    }
+    if (TIERS.includes(f.tier)) {
+      this.tally[f.tier]++; this.tally.all++;
+      if (f.tier === 'auto' && this.doesNot.length === dm0 && this.never === never0) this.tally.played++;
+    }
+    if (this.lines.length > head) this.lines[head] = `${lv === null ? 'Level ?' : `Level ${lv}`}: ${name} (tier ${TIERS.includes(f.tier) ? this.tierWords(f.tier, dm0, never0) : 'unreadable'}).`;
+  }
+  // `uses`: { max, recharge, short? } (derive.js builds the count; engine/rests.js brings it back).
+  sUses(u, at, depth) {
+    if (!isObj(u)) return this.bad(`${at} is not { max, recharge }.`);
+    this.odd(u, SUBCLASS_USES_FIELDS, 'The uses');
+    const m = u.max;
+    amountNums(this, m, `${at}.max`, 'uses');
+    const n = typeof m === 'number' ? `${m} use${m === 1 ? '' : 's'}` : `${amountWord(m)} uses`;
+    const r = u.recharge;
+    let back;
+    if (typeof r === 'string' && Object.hasOwn(SUBCLASS_RECHARGE_WORDS, r)) back = SUBCLASS_RECHARGE_WORDS[r];
+    else if (isObj(r) && Object.keys(r).length && Object.entries(r).every(([l, x]) => isInt(+l) && Object.hasOwn(SUBCLASS_RECHARGE_WORDS, x))) {
+      back = `${list(Object.entries(r).sort((a, b) => a[0] - b[0]).map(([l, x]) => `${SUBCLASS_RECHARGE_WORDS[x]} from class level ${l}`), 'and')} (the engine takes the last one the class has reached)`;
+      for (const l of Object.keys(r)) this.num(`${at}.recharge.${l}`, +l, 'class level');
+    } else { this.bad(`${at}.recharge is not short, long or a rest for each class level.`); back = 'at a time the reader cannot read'; }
+    this.line(`It has ${n}, which all come back ${back}.`, depth);
+    if (u.short !== undefined) { if (isInt(u.short)) { this.num(`${at}.short`, u.short, 'uses'); this.line(r === 'short' ? `Its "short" number, ${u.short}, is not used: all of its uses come back on a Short Rest anyway.` : `Where they come back on a Long Rest, ${u.short} of them also come${u.short === 1 ? 's' : ''} back on a Short Rest.`, depth + 1); } else this.bad(`${at}.short is not a whole number.`); }
+  }
+  // `grants`: each key in the order of GRANTS, by the same sentence makers a feat uses.
+  sGrants(g, at) {
+    if (!isObj(g)) return this.bad(`${at} is not an object.`);
+    this.odd(g, GRANTS, 'What it grants');
+    const keys = GRANTS.filter((k) => Object.hasOwn(g, k));
+    if (!keys.length) return this.bad(`${at} holds nothing.`);
+    this.line('The character gets what follows (the engine makes these a feature of the character, as for a class\'s own features).', 1);
+    for (const k of keys) GRANT_WORDS[k].call(this, g[k], `${at}.${k}`);
+  }
+  // `options` and `pick` (derive.js, `validate`).
+  sOptions(f, at) {
+    const os = f.options;
+    if (!Array.isArray(os) || os.length < 2) return this.bad(`${at}.options is not a list of two or more options.`);
+    const pk = f.pick;
+    if (pk === undefined) this.line(`The player chooses one of ${os.length} options; a sheet that does not choose is refused.`, 1);
+    else if (isInt(pk)) { this.num(`${at}.pick`, pk, 'options'); this.line(`The player chooses up to ${pk} different options of ${os.length}. Options left unchosen are simply not known yet.`, 1); }
+    else if (isObj(pk) && typeof pk.column === 'string') this.line(`The player chooses up to as many different options of ${os.length} as the column ${shown(pk.column)} of the class table gives at the class level.`, 1);
+    else this.bad(`${at}.pick is not a number or { column }.`);
+    if (os.length > SUBCLASS_OPTIONS_SHOWN) this.bad(`The feature has ${os.length} options; the reader shows ${SUBCLASS_OPTIONS_SHOWN}.`);
+    os.slice(0, SUBCLASS_OPTIONS_SHOWN).forEach((o, j) => this.sOption(o, `${at}.options.${j}`, pk !== undefined, os));
+  }
+  sOption(o, at, listed, siblings) {
+    if (!isObj(o)) { this.bad(`${at} is not an option.`); return this.line('(An option the reader cannot read.)', 1); }
+    this.odd(o, SUBCLASS_OPTION_FIELDS, 'The option');
+    const name = typeof o.name === 'string' && o.name.trim() ? qt(o.name, 60) : '(no name)';
+    if (!TIERS.includes(o.tier)) this.bad(`${at}.tier is not auto, assist or manual.`);
+    const head = this.lines.length;
+    this.line('', 1);
+    const dm0 = this.doesNot.length, never0 = this.never;
+    this.base = 1;
+    try {
+      if (o.requires !== undefined) this.sRequires(o.requires, `${at}.requires`, listed, siblings);
+      if (o.uses !== undefined) this.sUses(o.uses, `${at}.uses`, 1);
+      if (o.feat !== undefined) {
+        const ft = typeof o.feat === 'string' && Object.hasOwn(CONTENT.feats ?? {}, o.feat) ? CONTENT.feats[o.feat] : null;
+        if (!ft) this.bad(`${at}.feat is not an SRD feat the engine knows.`);
+        this.line(`It is the feat ${nameOf('feats', o.feat)}: the character gets what that feat grants.`, 1);
+      }
+      if (o.grants !== undefined) this.sGrants(o.grants, `${at}.grants`);
+      if (o.grants === undefined && o.feat === undefined && o.tier === 'auto') this.line('It grants nothing, so the engine has nothing to apply: it should not be auto.', 1);
+      if (o.tier === 'assist' || o.tier === 'manual') {
+        const text = typeof o.text === 'string' && o.text.trim() ? plain(o.text, READER_LIMITS.quote) : null;
+        if (!text) this.bad(`${at}.text is missing.`);
+        this.line(`${o.tier === 'manual' ? 'The engine does not do this; the DM does this' : 'Beyond the lines above, the DM does this'}: "${text ?? '(no text)'}"`, 1);
+        this.dm(`${name}: "${text ?? '(no text)'}"`);
+      }
+    } finally { this.base = 0; }
+    if (this.lines.length > head) this.lines[head] = `  Option ${name} (tier ${TIERS.includes(o.tier) ? this.tierWords(o.tier, dm0, never0) : 'unreadable'}):`;
+  }
+  // An option's prerequisite: checked by `validate` only for a feature whose player picks a list (derive.js).
+  sRequires(q, at, listed, siblings = []) {
+    if (!isObj(q)) return this.bad(`${at} is not { level, option, spell }.`);
+    this.odd(q, SUBCLASS_REQUIRES_FIELDS, 'The prerequisite');
+    const bits = [];
+    if (isInt(q.level)) { this.num(`${at}.level`, q.level, 'class level'); bits.push(`class level ${q.level}`); } else if (q.level !== undefined) this.bad(`${at}.level is not a whole number.`);
+    if (q.option !== undefined) { const sib = siblings.find((x) => isObj(x) && x.id === q.option); bits.push(`the option ${sib && typeof sib.name === 'string' && sib.name.trim() ? qt(sib.name, 60) : shown(q.option)} chosen with it`); }
+    if (q.spell !== undefined) bits.push(`the spell ${nameOf('spells', q.spell)} among the spells the class knows`);
+    this.line(`Needs ${bits.length ? list(bits) : 'something the reader cannot read'}.${listed ? ' A sheet that picks it without that is refused.' : ' The engine checks this only for a feature whose player picks a list, so for a single choice the DM sees to it.'}`, 1);
+    if (!listed) this.dm('Seeing that the option is chosen only by a character that meets its prerequisite.');
+  }
+  sTiers() {
+    const t = this.tally;
+    if (!t.all) return;
+    this.line(`${t.played} of ${t.all} feature${t.all === 1 ? '' : 's'} ${t.played === 1 ? 'is' : 'are'} played entirely by the engine (${t.auto} auto, ${t.assist} assist, ${t.manual} manual).`);
+  }
+  sChecked() { this.fChecked(); }
+  // A feature level that is not one of the class's own subclass levels: allowed, and said (question 1 of the spec).
+  sLevels() {
+    const fs = this.def.features;
+    if (!this.cls || !Array.isArray(fs)) return;
+    const usual = [...new Set((this.cls.subclass?.features ?? []).map((x) => x.level))].sort((a, b) => a - b);
+    if (!usual.length) return;
+    for (const f of fs.slice(0, SUBCLASS_FEATURES_SHOWN)) {
+      if (!isObj(f) || !isInt(f.level) || usual.includes(f.level)) continue;
+      this.line(`${typeof f.name === 'string' && f.name.trim() ? qt(f.name, 60) : '(no name)'} comes in at class level ${f.level}. The ${this.cls.name}'s own subclass features come in at class levels ${list(usual.map(String))}, so this is not a level a ${this.cls.name} subclass usually gives something at. The engine allows it.`);
+    }
+  }
+}
+const aAn = (w) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
 
 // ====================================================================================================
 // Weapons, armour and objects (task B13, third part; docs/specs/homebrew.md, #419). Read from what the engine does with them:
