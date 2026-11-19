@@ -240,8 +240,8 @@ test; none is part of this spec's jobs. The letters in the last column are the a
 | # | Kind of feature | Needed by | Today | Addition |
 |---|---|---|---|---|
 | 1 | Always-prepared spells by class level | the oath, the circle, the domain | **Says it**: `spells`, as the SRD subclasses. A spell that is not SRD must be in the pack as a homebrew spell. | none |
-| 2 | Proficiency in skills of the player's choice, and Expertise | the domain, the college | **Says it** for "any skills" (`skills: { n, from: 'any' }`) and Expertise picks (`expertise: n`). **Does not** when the choice is from a short list. | A |
-| 3 | Proficiency in an armour category, or martial weapons | the college | **Says it**: `proficiency`. **Does not** for one named weapon. | A |
+| 2 | Proficiency in skills of the player's choice, and Expertise | the domain, the college | **Says it** for "any skills" (`skills: { n, from: 'any' }`) and Expertise picks (`expertise: n`), and (A, built) for a choice from a short list: `skills: { n, from: [skill ids], expertise: true }`. | A |
+| 3 | Proficiency in an armour category, or martial weapons | the college | **Says it**: `proficiency`, and (A, built) for named weapons: `proficiency.weapons: ['martial'] or weapon ids`. | A |
 | 4 | Languages | the domain | **Does not**: a sheet has no languages (DEBT C9). `manual`. | none planned |
 | 5 | A Fighting Style chosen from a few | the college | **Says it**: `options` whose `feat` is an SRD Fighting Style feat. A style that is not an SRD feat would be a homebrew feat; `option.feat` naming a homebrew feat is not allowed today. | B |
 | 6 | Extra Attack | the college | **Says it**: `extraAttack`. | none |
@@ -268,8 +268,8 @@ test; none is part of this spec's jobs. The letters in the last column are the a
 **The additions** (names are proposals; each is one amendment and one job, in `content/schema.js` and the module
 named):
 
-- **A. Choices from a short list.** `skills: { n, from: [skill ids] }`, `expertise` limited to listed skills, and
-  `proficiency.weapons` naming weapon ids. `derive.js`, `validate`.
+- **A. Choices from a short list** (built, #544; see "Build notes: A"). `skills: { n, from: [skill ids], expertise? }`, with Expertise in the skills so picked, and
+  `proficiency.weapons` naming weapon ids. `content/schema.js`, `content/reader.js`, `derive.js`, `validate`.
 - **B. A Fighting Style option that is a homebrew feat** of the same pack. `schema.js` (lintPack cross-check),
   `derive.js`.
 - **C. Proficiency for a time**: a modifier op `proficient` on `check` with a scope, which `rolls.js` reads as
@@ -804,3 +804,27 @@ Built to addition I. What was settled in building:
   (found first, the question without `by`); the DM's creature asked; what players are sent; the overlay away; replay. No existing test was changed. No file outside the issue's list was touched.
 - **Left (DEBT T94).** See there.
 
+## Build notes: A, choices from a short list (#544)
+
+Built to addition A. What was settled in building, and what differs from the sketch:
+
+- **Where.** `content/schema.js` (`lintGrants`, `lintFeature`, `lintSubclass`, a `weaponLookup` for the pack's and the SRD's weapon ids, handed to `lintSubclass` by `lintPack` and `lintEntry`), `content/reader.js` (the `skills` and `proficiency` readings), `derive.js` (`skillPicks`, `gather`, `derive`, `validate`,
+  `weaponTrained`). **No file beyond the issue's list.** The importer (`import-fgxml.js`) and the client's build sheet read `grants.skills` only as `from: 'class' | 'any'`, so a list is skipped by both (DEBT T97).
+- **The shape: one key on `grants.skills`, and Expertise is a flag of it, not a second list.** `skills: { n, from: [skill ids], expertise?: true }`: `n` is 1 to 5, `from` 2 or more different skills and at least `n` of them (`n` equal to the length is allowed; the sheet then names them all). `expertise: true`
+  gives Expertise in the skills so picked, which is what the survey's domain asks (proficiency in two of a short list, with the Proficiency Bonus doubled for them). The sketch's "`expertise` limited to listed skills" as a separate list is **not built**: `grants.expertise` stays a whole number (`expertise: 2` of the Rogue's and Bard's)
+  because the importer and the client's build sheet add it up as a number. A feature that gives Expertise in skills the character already has, from a short list, is therefore not said (DEBT T97). `expertise` on a `skills` of `class` or `any` is refused, as is any key but `n`, `from`, `expertise`.
+- **What a sheet stores: the picks, in `choices`, under the feature's id.** `choices: { 'hb-paper-folk-open-page': ['arcana', 'religion'] }`: a list of skill ids (a bare string is accepted for one), the same field a feature with options records its pick in, so nothing is added to a sheet and `SHEET_FIELDS` and the state's shape are unchanged. A second class's
+  feature keeps the id it is played under (`cleric-...`), as options do. The picks are not in the sheet's `skills`, so the class's own count of skills (`choose`) is unchanged. A feature below its level, or of a subclass whose pack is away, asks for nothing and gives nothing.
+  A feature with `options` cannot also give a list (the one `choices` entry is its option's), and an option cannot (gate sentences).
+- **Only a subclass's feature may name a list or a weapon.** A feat or an item is refused ("a feat or an item cannot give skills from a list: only a feature of a subclass can", "... cannot name the weapons it trains ..."); `proficiency.weapons: ['martial']` stays as it was for all.
+- **`derive`.** The skills a feature's picks name are added to the record's `skills`, and to its `expertise` when the grant says so, each pick once, on the list, at most `n` (what is off the list or past `n` is skipped, not an error: `validate` is the refusal). A skill the sheet's own `expertise` names may be one a feature gave. An SRD
+  character, and a sheet with none of this, derive byte for byte as before (the party's characters and every SRD class at every level were compared against main).
+- **`validate`, a sentence for each.** Missing: "Choose 2 skills for Open page: Arcana, History, Nature, Religion; none is chosen." (or "1 is chosen"); too many: "Open page gives 2 skills; 3 are chosen."; off the list: "Open page: Stealth is not one of the skills it offers (Arcana, ...)." (a word that is no skill is quoted); twice: "Open page: Arcana is chosen twice.";
+  already held, from the class, the background, a feat or another feature: "Open page: the character is already proficient in History; choose another of ...", the SRD's own "choose another".
+- **Named weapons.** `proficiency.weapons` may hold weapon ids beside `martial`: up to 12, each once, kebab-case. The linter reads each in a subclass against the SRD's weapons and the pack's own (`weapons` of the same pack; with the whole pack or with `ctx.weapons`; an id of another pack, or neither, is refused:
+  "proficiency names \"x\", which is not a weapon of the SRD or of this pack"; a single entry linted with no weapon list cannot tell the pack's own id and lets it pass, as a spell id is). `derive`'s `weaponTrained` takes a weapon id as it takes a category, so the sheet may carry the weapon and its attack is a proficient one.
+  It is fixed training, not a pick: nothing is added to the sheet.
+- **The reading.** "2 skills, chosen on the holder's sheet from Arcana, History, Nature or Religion; one the holder already has cannot be chosen." and "The holder has Expertise in them: ...", and "Training with martial weapons and the "Rapier" and "Whip", which it names." (or without martial). The existing readings, and `reader-subclass-golden.txt`, are unchanged.
+- **State shape: no change, no version bump. What players are sent: the pack's copy carries the grants as written** (a subclass's data was already sent, B1; `dmNotes` stripped); a player's view of a character is unchanged in kind.
+- **Tests** (`homebrew-subclass-picks.test.js`, invented "Domain of the Open Page" and "College of Quiet Pages", pack "paper-folk"): the sheet and `derive` (Expertise only where the flag is, a second feature at level 6, one pick as a word, order, a second class); each validate sentence; the pack away; off-list and surplus picks in `derive`; Expertise on a feature's skill (a bard);
+  named weapons (valid, trained, a martial weapon not named refused, without the subclass and below its level refused, a weapon of the pack itself in a whole pack and not in another); the gate's shapes and refusals (list, `n`, extra keys, `expertise`, options, option, feat, item, weapons); the reading; `setSheet` (made, and refused with nothing changed), replay and `refresh`; an SRD sheet unchanged. No existing test was changed.

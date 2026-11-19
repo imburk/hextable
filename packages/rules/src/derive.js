@@ -7,7 +7,7 @@
 // A sheet records choices only (docs/specs/rules-expansion.md, decision 1 and "Built characters"):
 //   { name, class, subclass?, level, abilities: { str, dex, con, int, wis, cha },
 //     skills: [class skill picks and skills from features], extraSkills?: [from background or species],
-//     expertise?: [skills], choices?: { featureId: optionId }, armour?: id, shield?: true | armourId (a Shield entry), shieldStowed?: true (the Shield is carried, not held),
+//     expertise?: [skills], choices?: { featureId: optionId | [optionIds] | [skills] (the skills a subclass feature gives from a short list)}, armour?: id, shield?: true | armourId (a Shield entry), shieldStowed?: true (the Shield is carried, not held),
 //     weapons?: [ids, "unarmed-strike"], spells?: [cantrips and prepared spells],
 //     size?, speed?, senses?, tools?, gear?, look? }
 // Ability scores are entered as they stand after background and feats; class features that raise
@@ -267,8 +267,17 @@ function prune(steps, held) {
 
 // What a weapon category word in a class's list covers.
 function weaponTrained(w, words) {
-  return words.some((k) => k === w.category || (k === 'martial-light' && w.category === 'martial' && w.properties.includes('light'))
+  return words.some((k) => k === w.category || k === w.id || (k === 'martial-light' && w.category === 'martial' && w.properties.includes('light'))
     || (k === 'martial-finesse-or-light' && w.category === 'martial' && (w.properties.includes('light') || w.properties.includes('finesse'))));
+}
+// The skills a class feature gives from a short list (`grants.skills: { n, from: [skills], expertise? }`, a subclass's feature): the sheet's `choices` for the feature names
+// them. `got` is what counts: the skills named that are on the list, each once, at most n. A feature's option never gives one (the gate refuses it).
+function skillPicks(sheet, cf) {
+  return cf.filter((x) => !x.option && Array.isArray(x.f.grants?.skills?.from)).map((x) => {
+    const g = x.f.grants.skills, got = [];
+    for (const k of listOf([sheet.choices?.[x.f.id]].flat())) if (g.from.includes(k) && !got.includes(k) && got.length < g.n) got.push(k);
+    return { x, g, got };
+  });
 }
 const grantsOf = (feats) => feats.map((x) => x.f.grants).filter(Boolean);
 
@@ -299,13 +308,13 @@ function gather(sheet) {
   // Skills and tools a feat gives (Skilled).
   const featSkills = chosen.flatMap((y) => (y.def.proficiencies ? listOf(y.x.skills).filter((k) => Object.hasOwn(SKILLS, k)) : []));
   const featTools = chosen.flatMap((y) => (y.def.proficiencies ? listOf(y.x.tools) : []));
-  return { ks, c, level, cf, chosen, before, typed, feats, G, abil, abilBase, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, pb: proficiencyFor(level) };
+  return { ks, c, level, cf, chosen, before, typed, feats, G, abil, abilBase, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, picks: skillPicks(sheet, cf), pb: proficiencyFor(level) };
 }
 
 // ---------- the record ----------
 
 export function derive(sheet) {
-  const { ks, c, level, chosen, feats, G, abil, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, pb } = gather(sheet);
+  const { ks, c, level, chosen, feats, G, abil, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, picks, pb } = gather(sheet);
   const multi = ks.length > 1;
   const why = {};
   // Magic armour or a magic Shield worn is the armour or Shield (validate refuses a second); its bonus only with the Attunement it needs.
@@ -384,8 +393,9 @@ export function derive(sheet) {
   // Saves, skills, expertise.
   const saveProf = new Set(c.saves);
   for (const g of G) { if (g.saves === 'all') ABILITIES.forEach((a) => saveProf.add(a)); else for (const a of g.saves ?? []) saveProf.add(a); }
-  const skills = Object.keys(SKILLS).filter((k) => sheet.skills?.includes(k) || sheet.extraSkills?.includes(k) || featSkills.includes(k));
-  const expertise = skills.filter((k) => sheet.expertise?.includes(k));
+  const listed = picks.flatMap((p) => p.got), listedExpert = picks.filter((p) => p.g.expertise === true).flatMap((p) => p.got);       // skills a subclass feature gives from a list
+  const skills = Object.keys(SKILLS).filter((k) => sheet.skills?.includes(k) || sheet.extraSkills?.includes(k) || featSkills.includes(k) || listed.includes(k));
+  const expertise = skills.filter((k) => sheet.expertise?.includes(k) || listedExpert.includes(k));
 
   // Attacks, from the weapons carried.
   const maX = feats.find((x) => x.f.grants?.martialArts), maDie = maX && bare ? amount(maX.f.grants.martialArts, maX.cls.c, maX.cls.level, abil) : null;
@@ -696,7 +706,7 @@ export function validate(sheet) {
     const ok = rq.all ? rq.all.every((a) => sheet.abilities[a] >= 13) : rq.any.some((a) => sheet.abilities[a] >= 13);
     if (!ok) say(`A character with levels in ${k.c.name} and another class needs ${(rq.all ?? rq.any).map((a) => ABILITY_NAMES[a]).join(rq.all ? ' and ' : ' or ')} of 13 or more.`);
   }
-  const { feats, G, abil, abilBase, armourWords, weaponWords, cf, chosen, before, featSkills, trainedSuit } = gather(sheet);
+  const { feats, G, abil, abilBase, armourWords, weaponWords, cf, chosen, before, featSkills, trainedSuit, picks } = gather(sheet);
   if (sheet.scoreBonus !== undefined) {
     const sb = sheet.scoreBonus;
     if (!(sb && typeof sb === 'object' && !Array.isArray(sb) && Object.keys(sb).length && Object.keys(sb).every((a) => ABILITIES.includes(a) && Number.isInteger(sb[a]) && sb[a] >= 1 && sb[a] <= 10))) say('A score bonus (scoreBonus) is { ability: n } for one or more of the six abilities, each n a whole number from 1 to 10.');
@@ -720,11 +730,30 @@ export function validate(sheet) {
   const extra = sheet.extraSkills ?? [];
   if (!Array.isArray(extra) || extra.some((k) => !Object.hasOwn(SKILLS, k))) say('Its background skills must be skills.');
   else if (extra.some((k) => skills.includes(k))) say('A background skill is also ticked as a class skill; choose another class skill.');
+  const listed = picks.flatMap((p) => p.got);
   const exp = sheet.expertise ?? [], expMax = G.reduce((n, g) => n + (g.expertise ?? 0), 0);
   if (!Array.isArray(exp) || exp.some((k) => !Object.hasOwn(SKILLS, k))) say('Expertise must be in skills.');
   else {
     if (exp.length > expMax) say(`${who} has Expertise in ${expMax} skill${expMax === 1 ? '' : 's'}; ${exp.length} chosen.`);
-    if (exp.some((k) => !skills.includes(k) && !extra.includes(k) && !featSkills.includes(k))) say('Expertise needs proficiency in the same skill.');
+    if (exp.some((k) => !skills.includes(k) && !extra.includes(k) && !featSkills.includes(k) && !listed.includes(k))) say('Expertise needs proficiency in the same skill.');
+  }
+
+  // Skills a subclass's feature gives from a short list: the sheet's `choices` for the feature names exactly n of them, each on the list, none the character already has.
+  const had = new Set([...(Array.isArray(skills) ? skills : []), ...(Array.isArray(extra) ? extra : []), ...featSkills]);
+  for (const { x, g } of picks) {
+    const f = x.f, raw = sheet.choices?.[f.id], named = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw : raw === undefined ? [] : null;
+    if (named === null || named.some((k) => typeof k !== 'string')) continue;                       // "Its choices name options." says so
+    const names = g.from.map(nice).join(', '), plural = g.n === 1 ? '' : 's', seen = new Set();
+    for (const k of named) {
+      const word = Object.hasOwn(SKILLS, k) ? nice(k) : `"${k.slice(0, 30)}"`;
+      if (!g.from.includes(k)) say(`${f.name}: ${word} is not one of the skills it offers (${names}).`);
+      else if (seen.has(k)) say(`${f.name}: ${word} is chosen twice.`);
+      else if (had.has(k)) say(`${f.name}: the character is already proficient in ${word}; choose another of ${names}.`);
+      seen.add(k);
+    }
+    if (named.length > g.n) say(`${f.name} gives ${g.n} skill${plural}; ${named.length} are chosen.`);
+    else if (named.length < g.n) say(`Choose ${g.n} skill${plural} for ${f.name}: ${names}; ${named.length ? `${named.length} ${named.length === 1 ? 'is' : 'are'} chosen` : 'none is chosen'}.`);
+    for (const k of x.f.grants.skills.from) if (seen.has(k)) had.add(k);
   }
 
   // Choices a feature asks for.
