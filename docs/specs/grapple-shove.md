@@ -619,3 +619,14 @@ What the build settled:
 - **Checked.** `scripts/smoke/grapple.mjs` (a new pass, in the matrix) at 1280x800 and at 390x844 with touch: the rows, a Grapple on a Paralyzed
   goblin, the pill and card, the band on the map, Let go, Shove Prone, the too-big hint, Escape, a warlock's Find Familiar with Investment and its two
   attacks, and both Refresh buttons. Left over is DEBT T76.
+
+**Amendment of #495 (DEBT W9): `largest` on any condition step.** The key G4 added for a hold goes on any other condition step too, in any entry
+(a monster's action, a spell, a feature), as a size: "If the target is a Medium or smaller creature, it has the Prone condition" is
+`{ condition: 'prone', largest: 'medium' }`. `effects.js` passes over a target above it and, unlike a hold's `largest` (which says nothing), puts a
+`note` on the target ("<name> is bigger than Medium, so Bite does not give it the Prone condition"), so the table sees why nothing happened. The
+rest of the action (the damage, the push) is not affected. `content/schema.js` (`lintHold`) allows `largest` on a non-grapple condition step of any
+kind of entry; it still refuses it on a `whileHeld` step (the hold it follows has its own) and on a step that is not a condition or a move, and the
+other hold keys (`escape`, `holds`, `escapeDis`, `whileHeld`) are as before. `content/reader.js` says it in the condition's words. No state change.
+Data: 26 condition steps and 7 pushes or pulls of the SRD monster pack carry it (`test/size-limit.test.js` lists them and reads the SRD's
+"or smaller ... Prone condition" lines back). Left as text (DEBT W37): the Prone of a charge, the limit on who an action may choose, and the Chain
+Devil's pull.

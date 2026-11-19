@@ -4379,12 +4379,14 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                manual: "A Large or smaller target is pulled up to 15 feet straight toward the merrow."
+                move: 15,
+                dir: "toward",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A harpoon thrust that pulls the target closer."
+        text: "A harpoon thrust that pulls a Large or smaller target 15 feet closer (a bigger one is not; the engine pulls the full distance)."
       },
       {
         id: "harpoon-thrown",
@@ -4408,12 +4410,14 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                manual: "A Large or smaller target is pulled up to 15 feet straight toward the merrow."
+                move: 15,
+                dir: "toward",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "The same harpoon thrown."
+        text: "The same harpoon thrown: it pulls a Large or smaller target 15 feet closer (a bigger one is not; the engine pulls the full distance)."
       }
     ],
     tier: "assist",

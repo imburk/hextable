@@ -28,7 +28,7 @@ const SRD = [
   ["balor", "flame-whip", "prone", "huge"], ["cloaker", "attach", "blinded", "large"], ["ettercap", "web-strand", "restrained", "large"],
 ];
 // The pushes and pulls with a size limit (`largest` on a `move` step, from Repelling Blast on).
-const MOVES = [["air-elemental", "whirlwind", "medium"], ["balor", "flame-whip", "huge"], ["satyr", "hooves", "medium"], ["shambling-mound", "charged-tendril", "medium"], ["tough-boss", "warhammer", "large"]];
+const MOVES = [["air-elemental", "whirlwind", "medium"], ["balor", "flame-whip", "huge"], ["satyr", "hooves", "medium"], ["shambling-mound", "charged-tendril", "medium"], ["tough-boss", "warhammer", "large"], ["merrow", "harpoon", "large"], ["merrow", "harpoon-thrown", "large"]];
 
 const steps = (m, a, key) => { const out = []; walk(MONSTERS[m].actions.find((x) => x.id === a).effects, (st) => { if (st && key in st) out.push(st); }); return out; };
 const stepsOf = () => {
