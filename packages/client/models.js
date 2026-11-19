@@ -116,6 +116,32 @@ const LOOPS = new Set(['idle', 'walk', 'run', 'fly']);
 
 // One creature's model: a copy of the loaded model with its own skeleton, its own materials (the tint is its own) and its own mixer.
 // `root` is what is placed in the scene (render-three.js sets its matrix); `body` is the model inside it, lifted so its feet are on the floor.
+// One draw call for each material of a model instead of one for each part (a hero is seven to nine pieces of one material on one skeleton). Parts that share
+// a skeleton, a material and a bind matrix, and whose geometries have the same attributes, are joined; any other part is left as it is (nothing is lost).
+export function mergeSkinned(THREE, BGU, scene) {
+  const parts = [];
+  scene.traverse((o) => { if (o.isSkinnedMesh && !Array.isArray(o.material) && !o.geometry.morphAttributes?.position) parts.push(o); });
+  const groups = new Map();
+  for (const m of parts) {
+    const k = [...Object.keys(m.geometry.attributes), !!m.geometry.index, m.skeleton.uuid, m.material.uuid, m.parent.uuid, m.bindMatrix.elements.join(','), m.matrix.elements.join(',')].join('|');
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(m);
+  }
+  let joined = 0;
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const [first] = g, geometry = BGU.mergeGeometries(g.map((m) => m.geometry), false);
+    if (!geometry) continue;
+    const merged = new THREE.SkinnedMesh(geometry, first.material);
+    merged.name = first.name; merged.matrix.copy(first.matrix); merged.matrix.decompose(merged.position, merged.quaternion, merged.scale);
+    first.parent.add(merged);
+    merged.bind(first.skeleton, first.bindMatrix);
+    for (const m of g) { m.parent.remove(m); m.geometry.dispose(); }
+    joined++;
+  }
+  return joined;
+}
+
 export class Puppet {
   constructor(THREE, lib, entry, uniforms, pack, def) {
     this.THREE = THREE; this.entry = entry; this.def = def; this.pack = pack;
@@ -223,7 +249,7 @@ export class Models {
     this.entries = new Map(); this.rigs = new Map(); this.lib = null; this.libP = null;
   }
   #libs() {
-    return (this.libP ??= Promise.all([import('./vendor/three/GLTFLoader.js'), import('./vendor/three/SkeletonUtils.js')]).then(([g, s]) => { this.lib = { GLTFLoader: g.GLTFLoader, SkeletonUtils: s }; return this.lib; }));
+    return (this.libP ??= Promise.all([import('./vendor/three/GLTFLoader.js'), import('./vendor/three/SkeletonUtils.js'), import('./vendor/three/BufferGeometryUtils.js')]).then(([g, s, b]) => { this.lib = { GLTFLoader: g.GLTFLoader, SkeletonUtils: s, BufferGeometryUtils: b }; return this.lib; }));
   }
   state(id) { return this.entries.get(id)?.state ?? null; }
   want(id) {
@@ -250,6 +276,7 @@ export class Models {
     const clips = new Map();
     for (const c of [...rig, ...g.animations]) clips.set(c.name, c);
     g.scene.traverse((o) => { if (o.isMesh && o.material?.map) o.material.map.colorSpace = THREE.NoColorSpace; });      // read as they are
+    mergeSkinned(THREE, lib.BufferGeometryUtils, g.scene);
     // Its size, standing: the box of the idle pose (the file's own pose may be a T).
     const probe = lib.SkeletonUtils.clone(g.scene), holder = new THREE.Group(); holder.add(probe);
     const idle = def.clips?.idle && clips.get(def.clips.idle);

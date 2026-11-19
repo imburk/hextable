@@ -22,7 +22,8 @@ jobs:
   smoke:
     name: smoke (${{ matrix.pass }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # homebrew reloads the page many times and takes about 11 minutes on main; the models (R12) add to what each load and frame costs in SwiftShader.
+    timeout-minutes: ${{ matrix.pass == 'homebrew' && 30 || 15 }}
     strategy:
       fail-fast: false
       matrix:

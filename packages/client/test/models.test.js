@@ -98,3 +98,24 @@ test('only CC0 packs are here: no file of the Quaternius Asset License packs', (
   }
   for (const dir of ['bestiary', 'fantasy-races', 'fantasy-props', 'quaternius-bestiary']) assert.ok(!existsSync(join(root, 'assets/models', dir)));
 });
+
+test('the parts of a model that share a skeleton and a material are one draw; another material stays its own', async () => {
+  const THREE = await import(pathToFileURL(join(client, 'vendor/three/three.module.js')).href);
+  const BGU = await import(pathToFileURL(join(client, 'vendor/three/BufferGeometryUtils.js')).href);
+  const bone = new THREE.Bone(), skeleton = new THREE.Skeleton([bone]), skin = new THREE.Material();
+  const part = (mat, n) => {
+    const g = new THREE.BufferGeometry(), pos = new Float32Array(n * 9).map((_, i) => i % 7);
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(pos.slice(), 3));
+    g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Uint16Array(n * 12), 4)); g.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(n * 12).fill(0.25), 4));
+    const m = new THREE.SkinnedMesh(g, mat); return m;
+  };
+  const scene = new THREE.Group(); scene.add(bone);
+  const glow = new THREE.Material();
+  for (const m of [part(skin, 2), part(skin, 3), part(glow, 1), part(skin, 4)]) { scene.add(m); m.bind(skeleton); }
+  assert.equal(M.mergeSkinned(THREE, BGU, scene), 1, 'one group had more than one part');
+  const left = []; scene.traverse((o) => { if (o.isSkinnedMesh) left.push(o); });
+  assert.equal(left.length, 2);
+  const joined = left.find((m) => m.material === skin);
+  assert.equal(joined.geometry.attributes.position.count, (2 + 3 + 4) * 3, 'every vertex of the parts is kept');
+  assert.equal(joined.skeleton, skeleton);
+});
