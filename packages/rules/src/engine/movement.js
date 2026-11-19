@@ -655,7 +655,8 @@ export const handlers = {
     const feet = owedFeet(s, e);
     feet > 0 || fail(`${e.name} has no movement from an Opportunity Attack to give up.`);
     delete s.encounter.flags[`${OWED_MOVE}:${e.id}`]; delete s.encounter.flags[`${DIAG}:${e.id}`];
-    ev.push({ type: 'note', id: e.id, text: `${e.name} gives up the ${feet} ft of movement the Opportunity Attack gave.` });
+    const text = `${e.name} gives up the ${feet} ft of movement the Opportunity Attack gave.`;
+    ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: afterOpportunity(e)?.name ?? 'Opportunity Attack', partial: true, text });   // the DM's creature's is the DM's, as the allowance's was
   },
 
   dash(s, a, ctx, ev) {

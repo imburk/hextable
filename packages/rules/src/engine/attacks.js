@@ -101,6 +101,9 @@ function takeAction(s, e, def, a, ev, ctx = null) {
 // `trig:<feature>:<creature>`, not the `after:` one a feature's own `after:` action uses, so a second Attack action in the turn, Action Surge, adds nothing). What a Speed modifier raises is also added to the
 // walking feet left (`budget.move` is set at the turn's start and does not follow Speed), as Instinctive Pounce adds its half. Nothing is read from data that is not
 // whole: the gate checks it, and a record that skipped the gate is told to the DM and left alone, before anything changes.
+// A modifier that adds, sets or bounds a number carries a finite one (a Speed, only feet; an `add` elsewhere may also be dice such as 1d4); data made by hand may not.
+const DICE = /^[+-]?\d+d\d+([+-]\d+)?$/;
+const numberOk = (m) => !['add', 'set', 'min', 'max'].includes(m.op) || Number.isFinite(m.value) || (m.op === 'add' && !m.on.startsWith('speed') && typeof m.value === 'string' && DICE.test(m.value));
 function attackActionTaken(s, e, ev) {
   const enc = s.encounter;
   if (!enc || current(s) !== e.id || e.object) return;
@@ -108,7 +111,7 @@ function attackActionTaken(s, e, ev) {
     const t = f.triggers?.attackAction;
     if (!t) continue;
     const mods = Array.isArray(t.modifiers) ? t.modifiers : null;
-    if (!mods?.length || mods.length > 5 || !mods.every((m) => m && typeof m === 'object' && !Array.isArray(m) && typeof m.on === 'string' && typeof m.op === 'string' && (!m.on.startsWith('speed') || Number.isFinite(m.value)))) {
+    if (!mods?.length || mods.length > 5 || !mods.every((m) => m && typeof m === 'object' && !Array.isArray(m) && typeof m.on === 'string' && typeof m.op === 'string' && numberOk(m))) {
       ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `${e.name} took the Attack action, which ${f.name} follows, but its data is wrong (its modifiers are not a list of modifiers with their numbers in). The DM can apply it.` });
       continue;
     }

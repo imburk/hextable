@@ -39,6 +39,8 @@ const pack = (d) => { const r = loadPack(d); assert.ok(r.ok, (r.problems ?? []).
 const at = (n, value) => feature(n, 3, { triggers: { attackAction: { modifiers: [{ on: "speed", op: "add", value }] } } });
 const FORMS = sub("college-of-the-forms", "College of the Forms", "bard", [at("form-prof", { prof: 1 }), at("form-mod", { mod: "cha" }), at("form-min", { mod: "int", min: 2 }), at("form-per", { perLevel: 2 }),
   at("form-by", { byLevel: { 3: 10, 6: 15 } }), at("form-late", { byLevel: { 6: 15 } }),
+  feature("form-adv", 3, { triggers: { attackAction: { modifiers: [{ on: "attack.roll", op: "advantage" }] } } }),
+  feature("form-mix", 3, { triggers: { attackAction: { modifiers: [{ on: "attack.roll", op: "advantage" }, { on: "speed", op: "add", value: { byLevel: { 6: 15 } } }] } } }),
   feature("form-flourish", 3, { triggers: { attackAction: { modifiers: [SPEED] } },
     action: { time: "free", after: "weaponHit", target: { creature: { range: [5, 5] } }, cost: { resource: "bardic-inspiration" }, effects: [{ damage: { column: "bardic-die" }, type: "slashing" }] } })]);
 const VOWS = sub("oath-of-the-forms", "Oath of the Forms", "paladin", [at("vow-column", { column: "channel-divinity" })]);
@@ -552,6 +554,10 @@ test("an amount in an attackAction modifier is put in as a grant's modifier is: 
     assert.equal(v("per"), 10, "2 a level");
     assert.equal(v("by"), 10, "the highest level reached, 3");
     assert.equal(feat(r, FORM("late")).triggers, undefined, "a byLevel not yet reached gives no modifier, and so no trigger");
+    // a modifier with no value at all (advantage) never had an amount: it stays, alone or beside one that is dropped
+    assert.deepEqual(feat(r, FORM("adv")).triggers, { attackAction: { modifiers: [{ on: "attack.roll", op: "advantage" }] } });
+    assert.deepEqual(feat(r, FORM("mix")).triggers, { attackAction: { modifiers: [{ on: "attack.roll", op: "advantage" }] } }, "the advantage stays, the byLevel not yet reached goes");
+    assert.deepEqual(feat(derive(forms({ level: 6 })).record, FORM("mix")).triggers.attackAction.modifiers.map((m) => (m.op === "advantage" ? "adv" : m.value)), ["adv", 15]);
     assert.ok(!json(r).includes("byLevel") && !json(r).includes("perLevel"), "no amount is left on the record");
     assert.deepEqual(lintRecord(JSON.parse(json(r)), { spells: CONTENT.spells }), [], "the record lints");
     // at level 6 the byLevel's second step is reached; at level 3 the Proficiency Bonus is 2
@@ -574,7 +580,9 @@ test("the amounts reach the engine as numbers: the Speed it gives is the sum, th
     assert.equal(speedOf(s, h), 30 + gain);
     assert.equal(s.encounter.budget.move, 30 + gain);
     assert.ok(Number.isFinite(speedOf(s, h)));
-    for (const fx of effectsOf(s)) for (const p of fx.parts) assert.ok(typeof p.modifier.value === "number", `${fx.name}: a number`);
+    for (const fx of effectsOf(s)) for (const p of fx.parts) assert.ok(p.modifier.op === "advantage" || typeof p.modifier.value === "number", `${fx.name}: a number`);
+    assert.equal(effectNamed(s, FORM("adv")).length, 1, "the valueless modifier took effect");
+    assert.ok(effectNamed(s, FORM("mix")).length === 1 && effectNamed(s, FORM("mix"))[0].parts.some((p) => p.modifier.op === "advantage"));
     s.entities[s.gob].pos = { q: 9, r: 9, z: 0 };
     ok(apply(s, { type: "move", actor: "hero", to: { q: -2, r: 0 } }, PAT));
     assert.equal(s.encounter.budget.move, 20 + gain);
@@ -599,6 +607,28 @@ test("a Speed amount that is dice is refused by the gate, and data that skipped 
     assert.equal(effectNamed(s, DANCE_ID).length, 0);
     assert.equal(s.encounter.flags[`trig:${DANCE_ID}:hero`], undefined);
     assert.equal(s.encounter.budget.move, 30);
+  });
+});
+
+test("data made by hand: an add, set, min or max whose value is not a number is told to the DM and nothing changes; an `add` of dice outside Speed is fine", () => {
+  using(ON, () => {
+    for (const bad of [{ on: "ac", op: "add", value: { mod: "cha" } }, { on: "ac", op: "set", value: NaN }, { on: "ac", op: "min", value: "x" }, { on: "ac", op: "max", value: Infinity }, { on: "speed", op: "add", value: "1d4" }, { on: "ac", op: "add", value: null }]) {
+      const s = field(bard());
+      feat(s.entities.hero, DANCE_ID).triggers = { attackAction: { modifiers: [bad] } };
+      fight(s); turnOf(s, "hero");
+      const before = s.encounter.budget.move;
+      const r = ok(swing(s));
+      assert.ok(r.events.some((x) => x.type === "manual" && /its data is wrong/.test(x.text)), json(bad));
+      assert.equal(effectNamed(s, DANCE_ID).length, 0, json(bad));
+      assert.equal(s.encounter.budget.move, before);
+      assert.equal(json(s.encounter.flags).includes(`trig:${DANCE_ID}`), false, "no mark");
+    }
+    const s = field(bard());
+    feat(s.entities.hero, DANCE_ID).triggers = { attackAction: { modifiers: [{ on: "damage.dealt", op: "add", value: "1d4" }, { on: "attack.roll", op: "advantage" }] } };
+    fight(s); turnOf(s, "hero");
+    const r = ok(swing(s));
+    assert.ok(!r.events.some((x) => x.type === "manual" && /its data is wrong/.test(x.text)));
+    assert.equal(effectNamed(s, DANCE_ID).length, 1);
   });
 });
 
@@ -736,7 +766,23 @@ test("forgoMove for a foe the party is not told of: the DM's alone, and the note
     no(apply(s, { type: "forgoMove", actor: "foe" }, PAT), /No such creature|isn't yours to control/);
     const r = ok(apply(s, { type: "forgoMove", actor: "foe" }, DM));
     assert.equal(s.encounter.flags["rmove:foe"], undefined);
-    const seen = view(s, PAT);
-    if (seen.entities.foe === undefined) assert.ok(!json(viewEvents(r.events, s, PAT)).includes("gives up"), "not sent");
+    assert.ok(r.events.some((x) => x.type === "manual" && x.actor === "foe" && /gives up the 15 ft/.test(x.text)), "the DM is told by a manual event, as of the allowance");
+    assert.ok(!r.events.some((x) => x.type === "note"), "no note");
+    assert.ok(!json(viewEvents(r.events, s, PAT)).includes("gives up"), "not sent to players");
+  });
+});
+
+test("forgoMove for a foe the party can see: the DM is told by a manual event, players are sent no note", () => {
+  using(ON, () => {
+    const s = field(bard());
+    s.entities.foe = makeEntity(derive(paladin()).record, { id: "foe", kind: "pc", side: "foe", pos: { q: 0, r: 2, z: 0 } });
+    fight(s);
+    s.encounter.flags["rmove:foe"] = 15;
+    assert.ok(view(s, PAT).entities.foe, "the party sees it");
+    const r = ok(apply(s, { type: "forgoMove", actor: "foe" }, DM));
+    assert.equal(s.encounter.flags["rmove:foe"], undefined);
+    assert.ok(r.events.some((x) => x.type === "manual" && x.actor === "foe" && /Sir Bell gives up the 15 ft of movement/.test(x.text)));
+    assert.ok(!r.events.some((x) => x.type === "note"));
+    assert.ok(!json(viewEvents(r.events, s, PAT)).includes("gives up"), "players are not told of a foe's allowance");
   });
 });
