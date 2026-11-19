@@ -62,7 +62,12 @@ const HEARTH = circle("circle-of-the-hearth", "Circle of the Hearth", [
   EMBER_SKIN,
   feature("skin-sip", 3, { action: { time: "bonus", target: { self: true }, effects: [{ heal: "1d4" }], inForm: hb("ember-skin") } }),
 ]);
-const ALL = [CAIRN, ASH, BOTH, TWICE, ABOVE, FOUR, PRICED, MANY, HEARTH];
+// One grant raises the rating of every form (maxCr 5), another gives the elementals a rating of their own (2): the elementals keep 2 and the beasts get 5, in either order.
+// A grant that adds the same type with no rating of its own gives it the higher of the two (so 5).
+const CROSS = circle("circle-of-the-cross", "Circle of the Cross", [FO({ maxCr: 5 }, 3, "cross-a"), FO({ types: ["elemental"], typesMaxCr: 2 }, 3, "cross-b")]);
+const CROSS_BACK = circle("circle-of-the-crossed", "Circle of the Crossed", [FO({ types: ["elemental"], typesMaxCr: 2 }, 3, "crossed-a"), FO({ maxCr: 5 }, 3, "crossed-b")]);
+const CROSS_ADDS = circle("circle-of-the-crosser", "Circle of the Crosser", [FO({ maxCr: 5, types: ["elemental"] }, 3, "crosser-a"), FO({ types: ["elemental"], typesMaxCr: 2 }, 3, "crosser-b")]);
+const ALL = [CROSS, CROSS_BACK, CROSS_ADDS, CAIRN, ASH, BOTH, TWICE, ABOVE, FOUR, PRICED, MANY, HEARTH];
 const pack = (d) => { const r = loadPack(d); assert.ok(r.ok, (r.problems ?? []).join("; ")); return r.pack; };
 const PACK = pack(doc({ subclasses: ALL, monsters: [PEBBLE] })), ON = overlayOf([PACK]);
 const problems = (...subs) => (loadPack(doc({ subclasses: subs, monsters: [PEBBLE] })).problems ?? []).join("\n");
@@ -101,6 +106,7 @@ test("the reading says a rating for the added types alone, the named forms, the 
   assert.match(lines(CAIRN), /adds elemental creatures to the forms it may take/);
   assert.match(lines(CAIRN), /lets the forms of those added types alone be of a Challenge Rating that grows with the class level \(2 from level 6 and 5 from level 10\), whatever the feature's own limit is, and adds none of them before the first of those levels/);
   assert.match(lines(ASH), /lets the forms of those added types alone be of Challenge Rating 1\/2 or lower, whatever the feature's own limit is/);
+  assert.match(lines(ASH), /Another grant of the same subclass that raises the limit of every form does not lift these types above this rating; another that adds the same types with no rating of its own gives them the higher of its limit and this one\./);
   assert.match(lines(FOUR), /adds "air-elemental", "earth-elemental", "fire-elemental" and "water-elemental" to the forms it may take, each by name, of any type and any Challenge Rating/);
   assert.match(lines(PRICED), /A form it names spends 1 use of the feature "hb-cairn-folk-four-store" instead of a use of "wild-shape"/);
   assert.match(lines(MANY), /A form of a type it adds or one it names spends 2 uses of the feature "hb-cairn-folk-many-store"/);
@@ -251,6 +257,21 @@ test("`maxCr` and `typesMaxCr` together, and two grants of one type", () => {
     ok(shape(t, "azer-sentinel"));
     // above it, the type's own rating stands
     ok(shape(field(druid(10, "circle-of-the-above")), "fire-elemental"));
+  });
+});
+
+test("two grants of one feature, one for every form and one for an added type: the type keeps its own rating, in either order", () => {
+  using(ON, () => {
+    for (const c of ["circle-of-the-cross", "circle-of-the-crossed"]) {
+      assert.deepEqual(form(druid(10, c)), { types: ["beast", "elemental"], maxCr: 5, fly: 1, hours: 5, tempHp: 10, typeMaxCr: { elemental: 2 } }, c);
+      const s = field(druid(10, c));
+      ok(shape(s, "azer-sentinel")); ok(shape(s, "ankylosaurus"));                // elementals up to 2, beasts up to 5
+      no(shape(s, "fire-elemental"), /takes elemental forms of Challenge Rating 2 or lower; the Fire Elemental is 5\./);
+    }
+    // the same type added by a grant with no rating of its own: the higher of the two ratings stands
+    const f = form(druid(10, "circle-of-the-crosser"));
+    assert.equal(f.typeMaxCr, undefined); assert.equal(f.maxCr, 5);
+    ok(shape(field(druid(10, "circle-of-the-crosser")), "fire-elemental"));
   });
 });
 
