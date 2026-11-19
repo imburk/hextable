@@ -4,7 +4,7 @@ import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTER_ACTIONS, MONSTERS, SPELLS } from '../content/index.js';
 import { ABILITIES, SKILLS } from '../content/schema.js';
-import { begin, sharedRolls, walk as walkSteps } from '../effects.js';
+import { begin, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
 import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
 import { apart, FT, ground, overlapAt } from '../space.js';
@@ -222,14 +222,16 @@ export const handlers = {
     // `orCost`: with none of its own uses left, it may be paid for from another pool instead
     // (Dragon Wings for 3 Sorcery Points; Innate Sorcery for 2 with Sorcery Incarnate).
     if (res && !act.pool && (e.uses[res] ?? 0) < n && act.orCost && (e.uses[act.orCost.resource] ?? 0) >= act.orCost.n) { res = act.orCost.resource; n = act.orCost.n; }
-    // `orSlot` (Hurl Through Hell): with its use spent, a Pact Magic slot of the level `a.slot` names restores it.
+    // `orSlot` (Hurl Through Hell; any caster, addition E of docs/specs/homebrew-subclasses.md): with its use spent, a spell slot of the level `a.slot`
+    // names restores it (a Pact Magic slot, for a Warlock: its slots are Pact Magic's). `cost.slot` is another thing: a slot that pays for the action (below).
     let slotPaid = null;
+    const hasSlots = Object.values(e.slots ?? {}).some((n) => n > 0), slotWord = e.pact ? 'Pact Magic' : 'spell';
     if (act.orSlot && a.slot !== undefined) {
       (e.uses[res] ?? 0) < n || fail(`${e.name} has a use of ${f.name} left; a spell slot restores it only once it is spent.`);
-      (e.pact && Number.isInteger(a.slot) && (e.slots?.[a.slot] ?? 0) > 0) || fail(`${e.name} has no Pact Magic slot of level ${a.slot} to spend.`);
+      (Number.isInteger(a.slot) && (e.slots?.[a.slot] ?? 0) > 0) || fail(`${e.name} has no ${slotWord} slot of level ${a.slot} to spend.`);
       slotPaid = a.slot; res = null;
-    } else if (a.slot !== undefined) fail(`${f.name} is not paid for with a spell slot.`);
-    if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.${act.orSlot && e.pact ? ' A Pact Magic slot can restore it: name the slot.' : ''}`);
+    } else if (a.slot !== undefined && act.cost?.slot === undefined) fail(`${f.name} is not paid for with a spell slot.`);
+    if (res && !act.pool) (e.uses[res] ?? 0) >= n || fail(`${e.name} has no uses of ${featOf(e, res)?.name ?? res} left.${act.orSlot && (e.pact || hasSlots) ? ` A ${slotWord} slot can restore it: name the slot.` : ''}`);
     // Fleet Step: Step of the Wind right after another Bonus Action, without one of its own.
     const free = time === 'bonus' && fighting && fleetFree(s, e, f.id);
     if (time && fighting) need(s, e, free ? null : time);
@@ -284,6 +286,7 @@ export const handlers = {
     const zoneDef = act.zone;
     if (zoneDef) {
       (act.duration && act.duration !== 'instant' && act.target?.area && Array.isArray(act.effects)) || fail(`${f.name} makes an area that lasts, but its data gives no duration, area or effects to lay out. The DM can apply it.`);
+      (Array.isArray(zoneDef.on) && zoneDef.on.length) || fail(`${f.name} makes an area that lasts, but its zone does not say when it goes off (\`zone.on\`). The DM can apply it.`);
       effectsOf(s).some((fx) => fx.source === e.id && fx.feature === f.id && fx.zone) && fail(`${e.name}'s ${f.name} is already going: end it first to use it again.`);
       // As for a spell's zone, the user may name creatures it leaves alone (`a.spare`), where the zone says it spares.
       if (a.spare !== undefined) {
@@ -292,10 +295,26 @@ export const handlers = {
       }
     }
 
+    // `cost.slot` (addition E of docs/specs/homebrew-subclasses.md): a spell slot pays for the action too, of the level `a.slot` names, which is the action's lowest or higher, as
+    // a spell's is. With no level named, the lowest level at or above the action's that the creature has a slot of: a Warlock's one slot level is Pact Magic's, a multiclass
+    // caster's levels are the table's, and both are the creature's `slots` (`cast` reads the same). Checked here, with the rest, before anything is paid.
+    let slotSpent = null;
+    const lowest = act.cost?.slot;
+    if (lowest !== undefined) {
+      (Array.isArray(act.effects) && act.effects.length && !act.modes && !act.form && !act.pool && !act.gain && !act.renew && !act.orSlot) || fail(`${f.name} costs a spell slot, but its data gives no plain steps for the slot to pay for. The DM can apply it.`);
+      const left = Object.entries(e.slots ?? {}).filter(([l, n]) => +l >= lowest && n > 0).map(([l]) => +l).sort((x, y) => x - y);
+      const slot = a.slot ?? left[0];
+      if (slot === undefined) fail(`${e.name} has no spell slot of level ${lowest} or higher left for ${f.name}.`);
+      (Number.isInteger(slot) && slot >= lowest && slot <= 9) || fail(`${f.name} needs a spell slot of level ${lowest} or higher.`);
+      (e.slots?.[slot] ?? 0) > 0 || fail(left.length ? `${e.name} has no level ${slot} spell slots left.` : `${e.name} has no spell slot of level ${lowest} or higher left for ${f.name}.`);
+      slotSpent = slot;
+    }
+
     // Paid for: from here it happens.
     if (time && fighting) { if (free) enc.flags[`fleet:${e.id}`] = true; else enc.budget[time]--; if (time === 'bonus') enc.flags[`used:${f.id}:${e.id}`] = true; }
     if (res) e.uses[res] -= act.pool ? amount + cures.length * (act.cure?.cost ?? 0) : n;
-    if (slotPaid !== null) { e.slots[slotPaid]--; ev.push({ type: 'std', id: e.id, action: `${f.name}: restored with a level ${slotPaid} Pact Magic slot` }); }
+    if (slotPaid !== null) { e.slots[slotPaid]--; ev.push({ type: 'std', id: e.id, action: `${f.name}: restored with a level ${slotPaid} ${slotWord} slot` }); }
+    if (slotSpent !== null) { e.slots[slotSpent]--; ev.push({ type: 'std', id: e.id, action: `${f.name}: spent a level ${slotSpent} ${slotWord} slot` }); }
     if (act.after === 'hit') enc.flags[`after:${f.id}:${e.id}`] = true;
     if (act.firstAttack) enc.flags[`${f.id}:${e.id}`] = true;
     if (act.pool) {
@@ -325,7 +344,14 @@ export const handlers = {
       else if (x === 'disengage') e.cond.disengaged = {};
       else if (x === 'dash') { enc.budget.move += speedOf(s, e); enc.budget.dashes = (enc.budget.dashes | 0) + 1; }
     }
-    const steps = structuredClone(byHand ?? (mode ? mode.effects : act.effects)), targets = aimed.targets;
+    let steps = structuredClone(byHand ?? (mode ? mode.effects : act.effects));
+    const targets = aimed.targets;
+    // The slot grows the steps as a higher slot grows a spell's (`scaleSteps`): what `cost.higher` adds for each level above the lowest. What it cannot add, the DM is told.
+    if (slotSpent !== null && act.cost.higher) {
+      const grown = scaleSteps({ level: lowest, effects: steps, higher: { slot: act.cost.higher } }, e.level, slotSpent);
+      steps = grown.steps;
+      if (grown.unscaled) ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `Used with a level ${slotSpent} slot. The engine could not add ${grown.unscaled}; the DM does.` });
+    }
     if (!steps.length) return ev.push({ type: 'std', id: e.id, action: f.name });     // nothing more (Patient Defense below level 10)
     let fx = null;
     if (act.duration && act.duration !== 'instant') {

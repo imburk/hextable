@@ -971,6 +971,38 @@ export function investProblem(x) {
   for (const k of ['saveDc', 'bonusAttack', 'ward']) if (x[k] !== undefined && x[k] !== true) return `invest.${k} is true or left out`;
   return null;
 }
+// A feature's action may cost a pool (`resource`, `n` uses of it), a spell slot (`slot`: its lowest level; the holder picks the level when using it, and any
+// higher slot will do), or both (addition E of docs/specs/homebrew-subclasses.md). `higher`: what one level of slot above `slot` adds to the action's first
+// step of that kind, as a spell's `higher.slot` does (`damage`, `heal` or `tempHp` dice, `times` more damage rolls, `value` more to a modifier's number).
+const SLOT_COST_KEYS = ['resource', 'n', 'slot', 'higher'], SLOT_GROWS = ['damage', 'heal', 'tempHp', 'times', 'value'];
+const SLOT_NOT_WITH = ['modes', 'form', 'gain', 'pool', 'cure', 'renew', 'orSlot'];
+function lintActionCost(a, say) {
+  const c = a.cost;
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return say('cost is { resource, n?, slot?, higher? }');
+  for (const k of Object.keys(c)) if (!SLOT_COST_KEYS.includes(k)) say(`cost: "${k}" is not something a cost has`);
+  if (c.resource === undefined && c.slot === undefined) return say('cost is { resource, n? } or { slot, higher? }, or both');
+  if (c.resource !== undefined && !ID.test(c.resource ?? '')) say('cost.resource names a feature, in kebab-case');
+  if (c.n !== undefined && !(c.resource !== undefined && isInt(c.n) && c.n > 0)) say('cost.n is a number of uses, with a resource');
+  if (c.slot === undefined) { if (c.higher !== undefined) say('cost.higher is for a cost with a `slot`'); return; }
+  if (!(isInt(c.slot) && c.slot >= 1 && c.slot <= 9)) return say('cost.slot is the lowest spell slot level that pays for it, from 1 to 9');
+  // What a slot pays for is one plain action: its own steps, grown by the level of the slot. Not a form, a pool, a mode, a Reaction or a restored use (the slot of `orSlot` is the same argument).
+  for (const k of SLOT_NOT_WITH) if (a[k] !== undefined) say(`an action with a slot cost cannot also have \`${k}\`${k === 'orSlot' ? ': a slot is spent for its cost or to restore a use, not both' : ''}`);
+  if (a.time === 'reaction') say('an action with a slot cost is used by an action, a Bonus Action or a free use, not by a Reaction');
+  if (!(Array.isArray(a.effects) && a.effects.length)) say('an action with a slot cost has `effects`: the steps the slot pays for');
+  if (c.higher === undefined) return;
+  const h = c.higher;
+  if (!h || typeof h !== 'object' || Array.isArray(h) || !Object.keys(h).length) return say('cost.higher is { damage?, heal?, tempHp?, times?, value? }, what each slot level above the lowest adds');
+  for (const k of Object.keys(h)) if (!SLOT_GROWS.includes(k)) say(`cost.higher.${k} is not something a slot level can add (${SLOT_GROWS.join(', ')})`);
+  for (const k of ['damage', 'heal', 'tempHp']) if (h[k] !== undefined && !isDice(h[k])) say(`cost.higher.${k} must be dice`);
+  for (const k of ['times', 'value']) if (h[k] !== undefined && !(isInt(h[k]) && h[k] > 0 && h[k] <= (k === 'times' ? 10 : 40))) say(`cost.higher.${k} must be a positive whole number${k === 'times' ? ' up to 10' : ' up to 40'}`);
+  // It grows a step the action has, as `scaleSteps` finds it: the first step of that kind.
+  if (Array.isArray(a.effects)) {
+    const has = (key, ok = () => true) => { let found = false; walkSteps(a.effects, (st) => { if (st && typeof st === 'object' && key in st && ok(st)) found = true; }); return found; };
+    for (const k of ['damage', 'heal', 'tempHp']) if (h[k] !== undefined && !has(k)) say(`cost.higher.${k} grows a ${k === 'tempHp' ? 'tempHp' : k} step, and the action has none`);
+    if (h.times !== undefined && !has('damage')) say('cost.higher.times repeats a damage step, and the action has none');
+    if (h.value !== undefined && !has('modifier', (st) => typeof st.modifier?.value === 'number')) say('cost.higher.value adds to a modifier step\'s number, and the action has none');
+  }
+}
 function lintGrants(g, cls, say) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
   for (const k of Object.keys(g)) if (!GRANTS.includes(k)) say(`"${k}" is not something a feature can grant`);
@@ -995,7 +1027,7 @@ function lintGrants(g, cls, say) {
     const a = g.action;
     for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     // `after: 'hit'`: used on a creature its creature hit with an attack roll this turn, once a turn; `orSlot`: with
-    // its uses spent, a Pact Magic spell slot restores one (Hurl Through Hell).
+    // its uses spent, a spell slot (a Pact Magic slot for a Warlock) restores one (Hurl Through Hell; addition E of docs/specs/homebrew-subclasses.md for any caster).
     if (a?.after !== undefined && !(a.after === 'hit' && a.target?.creature)) say('action after is "hit", on a creature');
     if (a?.orSlot !== undefined && !(a.orSlot === true)) say('action orSlot is true or left out');
     // `acts`: the feature's action also takes these actions (Patient Defense with a Focus Point: Disengage and Dodge).
@@ -1003,7 +1035,10 @@ function lintGrants(g, cls, say) {
     if (a?.unless !== undefined && a.unless !== 'heavy') say('action unless is "heavy" (not usable in Heavy armor) or left out');
     if (!ACTION_TIMES.includes(a?.time)) say(`action time is one of ${ACTION_TIMES.join(', ')}`);
     if (a?.duration !== undefined && !isDuration(a.duration)) say('action duration is a duration');
-    if (a?.cost !== undefined && !(a.cost && ID.test(a.cost.resource ?? '') && (a.cost.n === undefined || (isInt(a.cost.n) && a.cost.n > 0)))) say('cost is { resource, n? }');
+    if (a?.cost !== undefined) {
+      lintActionCost(a, say);
+      if (a.cost && typeof a.cost === 'object' && a.cost.slot !== undefined && cls === FEAT_CLASS) say('a feat or an item cannot have a slot cost: only a feature of a subclass can');
+    }
     // `orCost`: paid from another pool when the feature's own uses are gone; `with`: only for a character that has that feature.
     if (a?.orCost !== undefined && !(a.orCost && ID.test(a.orCost.resource ?? '') && isInt(a.orCost.n) && a.orCost.n > 0 && Object.keys(a.orCost).every((k) => ['resource', 'n', 'with'].includes(k)) && (a.orCost.with === undefined || ID.test(a.orCost.with)))) say('orCost is { resource, n, with? }');
     if (a?.gain !== undefined) {
@@ -1049,6 +1084,8 @@ function lintGrants(g, cls, say) {
         if (seen.counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
         // A zone's steps go off on one creature at a time, whenever it enters or starts or ends its turn there: not a creature made or moved by the holder.
         if (a.zone !== undefined && (seen.summons || seen.teleport)) say('the steps of a zone run on each creature that enters it: a summon or teleport step cannot be one of them');
+        // An attack roll in a zone has no reach or range to check against: the steps run on the creature the zone caught, so an `attack` step is refused (a save step does the work).
+        if (a.zone !== undefined) { let rolls = false; walkSteps(a.effects, (st) => { if (st && typeof st === 'object' && 'attack' in st) rolls = true; }); if (rolls) say('the steps of a zone run on each creature that enters it, with no reach or range to roll an attack against: an attack step cannot be one of them (a save does the work)'); }
       }
     }
     for (const k of ['renew', 'noSpells', 'pool', 'firstAttack', 'endsWhenIncapacitated']) if (a?.[k] !== undefined && a[k] !== true) say(`action ${k} is true or left out`);
@@ -1350,7 +1387,7 @@ function lintFeature(f, cls, say, ids) {
     }
   }
   if (f.grants !== undefined) lintGrants(f.grants, cls, sub);
-  if (f.grants?.action?.cost && !f.grants.action.cost.resource) sub('a cost names a resource');
+  if (f.grants?.action?.cost && !f.grants.action.cost.resource && f.grants.action.cost.slot === undefined) sub('a cost names a resource');
   // `feat: "any"`: the feature is a place for a feat of the player's choice, of any category, whose
   // prerequisites the character meets (Ability Score Improvement, Epic Boon). The feat is the sheet's
   // (derive.js, sheet `feats`); the feature grants nothing itself.
@@ -1810,7 +1847,7 @@ function lintPackCore(doc, opts) {
       else if (ft.name !== o.name || ft.tier !== o.tier) say(`option ${o.id} of ${f.id} has another name or tier than the feat ${ft.name}`);
     }
     const pools = new Set(all.filter((f) => f.uses).map((f) => f.id));
-    for (const g of grants) if (g.action?.cost && !pools.has(g.action.cost.resource)) say(`a cost names "${g.action.cost.resource}", which is not a feature with uses`);
+    for (const g of grants) if (g.action?.cost?.resource !== undefined && !pools.has(g.action.cost.resource)) say(`a cost names "${g.action.cost.resource}", which is not a feature with uses`);
     // A freeCast's extra keys (#414) need what they change: a summon step of forms, of types, and pack monsters for the forms.
     if (spells.length) for (const g of grants) {
       const fc = g.freeCast;
@@ -1893,7 +1930,7 @@ function lintFeat(f, say) {
       else if (!(Array.isArray(a.modes) && a.modes.length >= 2 && a.modes.length <= 10 && a.modes.every((m) => m && ID.test(m.id ?? '') && isText(m.name)))) sub('its modes are a list of { id, name, effects }.');
       else for (const m of a.modes) lintSteps(m.effects, sub);
     }
-    if (a?.cost !== undefined && !(a.cost && ID.test(a.cost.resource ?? '') && (a.cost.n === undefined || (isInt(a.cost.n) && a.cost.n > 0)))) sub('its cost is { resource, n? }.');
+    if (a?.cost !== undefined) lintActionCost(a, (m) => sub(`${m}.`));
     if (a?.gain?.attacks !== undefined && !(ID.test(a.gain.attacks.with ?? '') && isInt(a.gain.attacks.n) && a.gain.attacks.n > 0 && a.gain.attacks.n <= 5)) sub('it gains attacks { with, n }.');
     if (a?.duration !== undefined && !isDuration(a.duration)) sub('its duration is a duration.');
     if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');
@@ -2018,7 +2055,7 @@ export function lintRecord(r, { spells = {} } = {}) {
     if (!Array.isArray(r.feats) || r.feats.length > 60) say('Its features are a list.');
     else { const seen = new Set(); for (const f of r.feats) { lintFeat(f, say); if (seen.has(f?.id)) say(`Feature ${f?.name} is listed twice.`); seen.add(f?.id); } }
     const pools = new Set((Array.isArray(r.feats) ? r.feats : []).filter((f) => f?.uses).map((f) => f.id));
-    for (const f of Array.isArray(r.feats) ? r.feats : []) if (f?.action?.cost && !pools.has(f.action.cost.resource)) say(`Feature ${f.name} costs "${f.action.cost.resource}", which it does not have.`);
+    for (const f of Array.isArray(r.feats) ? r.feats : []) if (f?.action?.cost?.resource !== undefined && !pools.has(f.action.cost.resource)) say(`Feature ${f.name} costs "${f.action.cost.resource}", which it does not have.`);
   }
   if (r.hitDie !== undefined && ![6, 8, 10, 12].includes(r.hitDie)) say('Its Hit Die is d6, d8, d10 or d12.');
   if (r.classes !== undefined && !(Array.isArray(r.classes) && r.classes.length >= 2 && r.classes.length <= 12 && r.classes.every((c) => c && ID.test(c.id ?? '') && within(c.level, 1, 19) && (c.subclass === undefined || ID.test(c.subclass)))
@@ -2581,9 +2618,12 @@ export function workOf(kind, e) {
   else if (kind === 'subclasses') for (const f of Array.isArray(e.features) ? e.features : []) for (const g of [f?.grants, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.grants) : [])]) {
     const a = g && typeof g === 'object' ? g.action : null;
     if (!a || typeof a !== 'object') continue;
+    // A slot that pays for it (addition E): estimated at a 9th-level slot, as a spell's is, so a use the gate admits at the lowest level cannot pass the ceiling at the highest.
+    const slot = a.cost && typeof a.cost === 'object' && isInt(a.cost.slot) && a.cost.slot >= 1 && a.cost.slot < 9 && a.cost.higher && typeof a.cost.higher === 'object' ? { up: 9 - a.cost.slot, hs: a.cost.higher } : null;
     for (const steps of [a.effects, ...(Array.isArray(a.modes) ? a.modes.map((m) => m?.effects) : [])]) {
-      take(targetsOf(a.target) * listWork(steps), `action of the feature "${shortId(f)}"`);
-      takeDice(diceFor(steps, targetsOf(a.target), !!a.target?.area), `action of the feature "${shortId(f)}"`);
+      const grown = slot && steps === a.effects ? scaledSteps({ effects: steps, higher: { slot: slot.hs } }, slot.up) : steps;
+      take(targetsOf(a.target) * listWork(grown, slot && steps === a.effects && isN(slot.hs.times) ? slot.up * slot.hs.times : 0), `action of the feature "${shortId(f)}"`);
+      takeDice(diceFor(grown, targetsOf(a.target), !!a.target?.area), `action of the feature "${shortId(f)}"`);
     }
     // A zone goes off for one creature at a time, as a spell's does (above): one that moves into it, or two ticks in one end of turn.
     if (a.zone && typeof a.zone === 'object' && Array.isArray(a.effects)) takeDice((Array.isArray(a.zone.on) && a.zone.on.includes('enter') ? HOMEBREW_WORK.creatures : 2) * diceFor(a.effects, 1, false), `zone of the feature "${shortId(f)}", going off`);

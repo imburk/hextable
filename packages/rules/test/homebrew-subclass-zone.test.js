@@ -116,6 +116,11 @@ test("the gate refuses a zone that is not whole, each with a sentence", () => {
   // the steps: there must be some, and a creature made or moved by the holder cannot be done once for each creature that enters
   assert.match(one(AURA({ effects: undefined })), /an action with a zone has `effects`: the steps that go off on each creature/);
   assert.match(one(AURA({ effects: [{ teleport: 30 }] })), /the steps of a zone run on each creature that enters it: a summon or teleport step cannot be one of them/);
+  // an attack roll has no reach or range to be made against inside a zone (the #519 review): refused, even inside a branch of a save
+  const hit = { attack: "melee", kind: "spell", bonus: 5, onHit: [{ damage: "1d6", type: "fire" }] };
+  assert.match(one(AURA({ effects: [hit] })), /an attack step cannot be one of them/);
+  assert.match(one(AURA({ effects: [{ save: "wis", dc: "cha", onFail: [hit] }] })), /an attack step cannot be one of them/);
+  assert.equal(one({ action: { ...AURA().action, zone: undefined, target: { creature: { range: [30, 30] } }, effects: [hit], duration: undefined } }), "", "the same attack step outside a zone is as it was");
   // what an action with a zone cannot also do
   for (const k of ["renew", "noSpells", "pool", "firstAttack", "after"]) assert.match(one(AURA({ [k]: k === "after" ? "hit" : true })), new RegExp(`an action with a zone cannot also have \`${k}\``), k);
   assert.match(one(AURA({ acts: ["dodge"] })), /an action with a zone cannot also have `acts`/);
@@ -429,6 +434,15 @@ test("a rejected use changes nothing: no use, no action, no effect, no event, wh
     const bare = json(s);
     no(use(s, AURA_ID), /makes an area that lasts, but its data gives no duration, area or effects to lay out/);
     assert.equal(json(s), bare);
+    // and a zone that does not say when it goes off (`zone.on`): refused before anything is paid, as the duration is
+    feat(s.entities.hero, AURA_ID).action.duration = "1 minute";
+    for (const on of [undefined, []]) {
+      feat(s.entities.hero, AURA_ID).action.zone = { ...(on ? { on } : {}), once: "turn" };
+      const noOn = json(s);
+      no(use(s, AURA_ID), /makes an area that lasts, but its zone does not say when it goes off \(`zone.on`\)/);
+      assert.equal(json(s), noOn);
+    }
+    assert.equal(s.entities.hero.uses["channel-divinity"], 2); assert.equal(s.encounter.budget.bonus, 1); assert.equal(zoneFx(s).length, 0);
   });
 });
 

@@ -2147,7 +2147,12 @@ class GrantReading extends Reading {
     this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone'], 'The action');
     if (!ACTION_TIMES.includes(v.time)) this.bad(`${at}.time is not one the engine knows.`);
     this.line(`Gives the holder an action to use with the feature action. It takes ${ACTION_TIME_WORDS[v.time] ?? 'an unreadable time'}${v.time === 'reaction' ? '; the engine does not take Reactions from features, so using it is refused and the DM applies it' : ''}.`, 1);
-    if (isObj(v.cost)) { if (isInt(v.cost.n)) this.num(`${at}.cost.n`, v.cost.n, 'uses'); this.line(`It spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the holder's feature ${shown(v.cost.resource)}. ${featureNote(v.cost.resource)}`, 2); }
+    if (isObj(v.cost)) {
+      if (isInt(v.cost.n)) this.num(`${at}.cost.n`, v.cost.n, 'uses');
+      if (v.cost.resource !== undefined || v.cost.slot === undefined) this.line(`It spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the holder's feature ${shown(v.cost.resource)}. ${featureNote(v.cost.resource)}`, 2);
+      if (v.cost.slot !== undefined) this.slotCost(v, at);
+    }
+    if (v.orSlot === true) this.line('With its uses spent, the holder may spend a spell slot instead (a Pact Magic slot for a Warlock), and the use comes back.', 2);
     if (v.duration !== undefined) { if (isDuration(v.duration)) { this.line(`What it does lasts ${v.duration === 'instant' ? 'no time' : `up to ${v.duration}`}.`, 2); if (/^\d/.test(v.duration)) this.num(`${at}.duration`, v.duration, 'duration'); } else this.bad(`${at}.duration is not a duration.`); }
     for (const k of ['form', 'gain', 'pool', 'modes', 'orCost', 'acts', 'after', 'orSlot', 'cure', 'unless', 'renew', 'noSpells', 'firstAttack', 'endsWhenIncapacitated']) if (v[k] !== undefined) deepNums(this, v[k], `${at}.${k}`, 'amount');
     if (v.form !== undefined) this.line('It lets the holder take the shape of a creature of the pack, as the entry limits it.', 2);
@@ -2159,6 +2164,29 @@ class GrantReading extends Reading {
     if (v.zone !== undefined) this.actionZone(v, at);
     const groups = Array.isArray(v.effects) ? [[v.effects, `${at}.effects`]] : Array.isArray(v.modes) ? v.modes.filter(isObj).map((m, j) => [m.effects, `${at}.modes.${j}.effects`]) : [];
     for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : v.zone !== undefined ? 'that creature' : 'the target', v.duration, 2);
+  }
+  // `cost.slot` on an action (addition E of docs/specs/homebrew-subclasses.md; engine/features.js): a spell slot of the level the holder picks, from the lowest
+  // the action names up, spent with the action; `cost.higher` grows its first damage, healing or Temporary Hit Points step by what each level above the lowest adds.
+  slotCost(v, at) {
+    const c = v.cost;
+    if (!isInt(c.slot)) return this.bad(`${at}.cost.slot is not a whole number.`);
+    this.num(`${at}.cost.slot`, c.slot, 'slot level');
+    this.line(`It also spends a spell slot, which the holder picks when using it: of level ${c.slot} or higher (a Pact Magic slot for a Warlock). It is refused, and nothing is spent, if no slot of that level or higher is left.`, 2);
+    if (c.higher === undefined) return;
+    if (!isObj(c.higher)) return this.bad(`${at}.cost.higher is not an object.`);
+    this.odd(c.higher, ['damage', 'heal', 'tempHp', 'times', 'value'], 'The slot cost\'s `higher`');
+    const per = `for each level of the slot above ${c.slot}`, effects = Array.isArray(v.effects) ? v.effects : [];
+    const first = (key, list = effects) => { for (const st of list) { if (!isObj(st)) continue; if (key in st) return st; for (const b of BRANCHES) { const f = Array.isArray(st[b]) ? first(key, st[b]) : null; if (f) return f; } } return null; };
+    for (const [key, word] of [['damage', 'damage'], ['heal', 'healing'], ['tempHp', 'Temporary Hit Points']]) {
+      if (c.higher[key] === undefined) continue;
+      if (!isDice(c.higher[key])) { this.bad(`${at}.cost.higher.${key} is not dice.`); continue; }
+      this.num(`${at}.cost.higher.${key}`, c.higher[key], 'dice');
+      const f = first(key);
+      if (!f) this.line(`It adds ${c.higher[key]} ${word} ${per}, but the action has no ${key} step: nothing grows.`, 2);
+      else this.line(`${signed(c.higher[key])} ${word} ${per} (to the first ${word} step, ${typeof f[key] === 'string' ? f[key] : 'its amount'} at level ${c.slot}).`, 2);
+    }
+    if (c.higher.times !== undefined) { if (isInt(c.higher.times)) { this.num(`${at}.cost.higher.times`, c.higher.times, 'rolls'); this.line(`The first damage step is rolled ${c.higher.times} more time${c.higher.times > 1 ? 's' : ''} ${per}.`, 2); } else this.bad(`${at}.cost.higher.times is not a whole number.`); }
+    if (c.higher.value !== undefined) { if (isInt(c.higher.value)) { this.num(`${at}.cost.higher.value`, c.higher.value, 'modifier'); this.line(`The number of the first modifier step grows by ${c.higher.value} ${per}.`, 2); } else this.bad(`${at}.cost.higher.value is not a whole number.`); }
   }
   // `zone` on an action (addition D of docs/specs/homebrew-subclasses.md; engine/features.js, zones.js): an area that stays for the action's
   // duration and works on a creature that enters it or starts or ends its turn there, as a spell's zone does.
