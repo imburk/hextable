@@ -21,6 +21,7 @@ export function triggerText(q, whom, nameOf = () => undefined) {
     case 'cast': return `${by} is casting a spell.`;
     case 'damaged': return `${by} has just damaged ${you}.`;
     case 'familiarDamaged': return `${you === 'you' ? 'Your' : `${you}'s`} familiar is taking ${q.dtype ? `${q.dtype} ` : ''}damage. ${you === 'you' ? 'Your' : 'Its'} Reaction can give it Resistance to it.`;
+    case 'attacks': return q.by !== undefined ? `${by}, under ${you === 'you' ? 'your' : `${you}'s`} effect, is making an attack.` : `A creature under ${you === 'you' ? 'your' : `${you}'s`} effect is making an attack.`;       // `by` only where the party is told of the attacker
     default: return 'Something has happened that a reaction answers.';
   }
 }
