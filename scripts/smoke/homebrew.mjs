@@ -26,6 +26,122 @@ async function monsterPack() {
   return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'ember-folk', name: 'Ember Folk', version: 1, license: 'CC0, by the author', attribution: 'Written for the smoke test.' }, monsters: [m] });
 }
 
+// ---------- a feature that asks for a skill or a tool, the client side (issue #543, docs/specs/homebrew-subclasses.md addition C, DEBT T96) ----------
+// A solo game with an invented pack ("quill-folk": an Order of the Quill for the cleric, three features that lend proficiency for a time: any skill for Channel Divinity,
+// a tool from two, a fixed skill). The cleric's Features tab has a row for each that asks; the card holds a menu of the eighteen skills (or two buttons for the tools) and
+// the Use button waits for the pick; the use sends `choice`, an effect starts that holds the real skill, nothing is handed to the DM, and the sheet shows the lent skill
+// (its bonus, "lent", and a line saying what lent it) and the lent tool. The card fits the screen. Run on a phone with touch and at desktop size.
+function quillPack() {
+  const lend = (scope) => ({ modifier: { on: 'check', op: 'proficient', scope } });
+  const f = (id, name, grants, extra = {}) => ({ id: `hb-quill-folk-${id}`, name, level: 3, tier: 'auto', checked: false, text: `${name}, in the pack's own words.`, grants, ...extra });
+  const act = (steps, more = {}) => ({ action: { time: 'action', target: { self: true }, duration: '10 minutes', effects: steps, ...more } });
+  const order = { id: 'hb-quill-folk-order-of-the-quill', name: 'Order of the Quill', class: 'cleric', source: 'homebrew:quill-folk', checked: false, text: 'Scribes of a hushed archive.', features: [
+    f('quill-any', 'Quill Any', act([lend({ skill: 'chosen' })], { cost: { resource: 'channel-divinity' }, choice: { of: 'skill' } })),
+    f('quill-tool', 'Quill Tool', act([lend({ tool: 'chosen' })], { choice: { of: 'tool', from: ['thieves-tools', 'herbalism-kit'] } }), { uses: { max: 2, recharge: 'long' } }),
+    f('quill-fixed', 'Quill Fixed', act([lend({ skill: 'history' })], { duration: '1 hour' }), { uses: { max: 1, recharge: 'long' } })] };
+  return JSON.stringify({ format: 'hextable-pack', v: 1, pack: { id: 'quill-folk', name: 'Quill Folk', version: 1, license: 'CC0, by the author', attribution: 'Written for the smoke test.' }, subclasses: [order] });
+}
+const ILSE = { name: 'Ilse', class: 'cleric', level: 5, subclass: 'hb-quill-folk-order-of-the-quill', abilities: { str: 10, dex: 14, con: 14, int: 12, wis: 16, cha: 10 }, skills: ['religion', 'history'], choices: { 'divine-order': 'protector' },
+  armour: 'chain-mail', shield: true, weapons: ['mace'], spells: ['guidance', 'sacred-flame', 'bless', 'cure-wounds'] };
+
+export async function choiceSolo(browser, url, label, opts, tag) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const tap = (sel) => (touch ? page.locator(sel).tap() : page.click(sel));
+      const fits = async (sel) => { const b = await page.$eval(sel, (x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom, innerWidth, innerHeight]; }); if (b[0] < 0 || b[1] > b[4] + 1 || b[2] < 0 || b[3] > b[5] + 1) throw new Error(`${sel} does not fit the screen: ${JSON.stringify(b)}`); };
+      const noSideways = (sel) => page.$eval(sel, (e) => ({ sx: e.scrollWidth, cx: e.clientWidth })).then((m) => { if (m.sx > m.cx + 1) throw new Error(`${sel} overflows sideways: ${JSON.stringify(m)}`); });
+      const hero = () => page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Ilse').id);
+      const lentParts = () => page.evaluate(() => (window.hextable.state.effects ?? []).flatMap((fx) => (fx.parts ?? []).filter((p) => p.modifier?.op === 'proficient').map((p) => p.modifier.scope)));
+      const toastText = () => page.evaluate(() => { const t = document.getElementById('toast'); return t && !t.hidden && t.getClientRects().length ? t.textContent : ''; });
+      const feat = async (name) => { await panelTab(page, 'features'); await tap(`#ap-features [data-row]:has-text("${name}")`); await waitShown(page, '#cp .cp-card'); };
+
+      await run.do('the pack is added and a cleric of the Order of the Quill joins; her Features tab has a row for each feature that asks', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }));
+        await openTab(page, 'dm'); await waitShown(page, '#pm-open'); await page.click('#pm-open'); await waitShown(page, '#pm');
+        await page.setInputFiles('#pm-file', file('quill-folk.json', quillPack())); await waitShown(page, '#pm-review');
+        await page.click('#pm-go'); await waitShown(page, '.pm-pack[data-pack="quill-folk"]');
+        await page.click('#pm .pm-close'); await waitShown(page, '#pm', false); await closeMenu(page);
+        await page.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet }), ILSE);
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ilse'), null, 10000);
+        await page.click('#party button:has-text("Ilse")'); await wait(page, () => !document.querySelector('#card').hidden && /Ilse/.test(document.querySelector('#c-name').textContent));
+        await panelTab(page, 'features');
+        const rows = await page.$$eval('#ap-features [data-row]', (l) => l.map((x) => x.textContent));
+        for (const n of ['Quill Any', 'Quill Tool', 'Quill Fixed']) if (!rows.some((t) => t.includes(n))) throw new Error(`no row for ${n}: ${rows.join(' | ')}`);
+      });
+      await run.do('Quill Any: the card holds a menu of the skills and Use waits for the pick; the menu shows what each would be', async () => {
+        await feat('Quill Any');
+        await fits('#cp .cp-card');
+        if (!(await page.$eval('#cp-use', (b) => b.disabled))) throw new Error('Use is open before a skill is chosen');
+        const opts2 = await page.$$eval('#cp-choice option', (o) => o.map((x) => [x.value, x.textContent]));
+        if (opts2.length !== 19) throw new Error(`options: ${opts2.length}`);
+        const arcana = opts2.find(([v]) => v === 'arcana')?.[1], hist = opts2.find(([v]) => v === 'history')?.[1];
+        if (arcana !== 'Arcana +1, +4 with it' || hist !== 'History +4 (already proficient)') throw new Error(`${arcana} | ${hist}`);
+        const small = await page.$eval('#cp-choice', (x) => x.getBoundingClientRect().height < 40);
+        if (small) throw new Error('the menu is too small to touch');
+        await shot(page, `choice-card-any-${tag}`);
+        if (await toastText()) throw new Error(`a toast floats over the card: ${await toastText()}`);
+      });
+      await run.do('choosing Arcana and using it sends the pick: an effect holds the real skill, the Channel Divinity use is spent, and the DM is handed nothing', async () => {
+        const id = await hero(), before = await page.evaluate((i) => window.hextable.state.entities[i].uses['channel-divinity'], id), tl = await page.evaluate(() => window.hextable.state.timeline.length);
+        await page.selectOption('#cp-choice', 'arcana');
+        await wait(page, () => !document.querySelector('#cp-use').disabled);
+        if (!/Quill Any: Arcana/.test(await page.textContent('#cp-use'))) throw new Error(await page.textContent('#cp-use'));
+        await shot(page, `choice-card-picked-${tag}`);
+        await tap('#cp-use');
+        await wait(page, () => (window.hextable.state.effects ?? []).some((fx) => fx.parts?.some((p) => p.modifier?.op === 'proficient')), null, 10000);
+        const parts = await lentParts();
+        if (JSON.stringify(parts) !== JSON.stringify([{ skill: 'arcana' }])) throw new Error(`the effect: ${JSON.stringify(parts)}`);
+        const types = await page.evaluate((n) => window.hextable.state.timeline.slice(n).map((e) => e.type), tl);
+        if (types.includes('manual')) throw new Error(`the DM was handed it: ${types}`);
+        if (await page.evaluate((i) => window.hextable.state.entities[i].uses['channel-divinity'], id) !== before - 1) throw new Error('Channel Divinity was not spent');
+        if (await shown(page, '#cp')) throw new Error('the card stayed open after the use');
+      });
+      await run.do('the sheet shows Arcana as lent with its bonus (+4), says what lent it, and Perception is as it was', async () => {
+        await calm(page);
+        await tap('#btn-sheet'); await waitShown(page, '#sheet-body');
+        const arcana = await page.textContent('#sheet-body [data-skill="arcana"]'), perc = await page.textContent('#sheet-body [data-skill="perception"]');
+        if (!/arcana \+4 · lent/.test(arcana)) throw new Error(`Arcana: ${arcana}`);
+        if (/lent/.test(perc) || !/perception \+3/.test(perc)) throw new Error(`Perception: ${perc}`);
+        if (await page.$eval('#sheet-body [data-skill="arcana"]', (b) => !b.classList.contains('prof'))) throw new Error('a lent skill is not marked as one the creature is proficient in');
+        const line = await page.textContent('#sheet-lent');
+        if (!/Arcana \(Quill Any/.test(line) || !/10 minutes/.test(line)) throw new Error(line);
+        await noSideways('#sheet-body');
+        await page.$eval('#sheet-body [data-skill="arcana"]', (x) => x.scrollIntoView({ block: 'center' }));
+        await shot(page, `choice-sheet-${tag}`);
+        await closeMenu(page);
+      });
+      await run.do('Quill Tool: two buttons, none chosen; Use waits; choosing the herbalism kit and using it lends the tool', async () => {
+        await feat('Quill Tool');
+        await fits('#cp .cp-card');
+        const names = await page.$$eval('#cp [data-choice]', (b) => b.map((x) => x.dataset.choice));
+        if (names.join() !== 'thieves-tools,herbalism-kit') throw new Error(names.join());
+        if (!(await page.$eval('#cp-use', (b) => b.disabled)) || (await page.$$eval('#cp [data-choice][aria-pressed="true"]', (b) => b.length))) throw new Error('something is chosen before the player chose it');
+        if (await page.$$eval('#cp [data-choice]', (b) => b.some((x) => x.getBoundingClientRect().height < 40))) throw new Error('a button is too small to touch');
+        await tap('#cp [data-choice="herbalism-kit"]');
+        await wait(page, () => !document.querySelector('#cp-use').disabled && document.querySelector('#cp [data-choice="herbalism-kit"]').getAttribute('aria-pressed') === 'true');
+        await shot(page, `choice-card-tool-${tag}`);
+        await tap('#cp-use');
+        await wait(page, () => (window.hextable.state.effects ?? []).some((fx) => fx.parts?.some((p) => p.modifier?.scope?.tool === 'herbalism-kit')), null, 10000);
+        await calm(page);
+        await tap('#btn-sheet'); await waitShown(page, '#sheet-body');
+        const line = await page.textContent('#sheet-lent');
+        if (!/Herbalism kit \(Quill Tool/.test(line) || !/Arcana \(Quill Any/.test(line)) throw new Error(line);
+        await closeMenu(page);
+      });
+      await run.do('a fixed feature is still one tap: no card opens and its effect starts at once', async () => {
+        await panelTab(page, 'features');
+        await tap('#ap-features [data-row]:has-text("Quill Fixed")');
+        await wait(page, () => (window.hextable.state.effects ?? []).some((fx) => fx.parts?.some((p) => p.modifier?.scope?.skill === 'history')), null, 10000);
+        if (await shown(page, '#cp')) throw new Error('a card opened for a feature that asks for nothing');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 const KINDS_PACK = readFileSync(new URL('../../packages/rules/test/fixtures/reader-kinds-pack.json', import.meta.url), 'utf8');
 async function tierLineOf(doc) {                                          // what the manager should say, worked out from the reader's own tiers
   const { readEntry } = await import(pathToFileURL(`${ROOT}packages/rules/src/content/reader.js`));
@@ -787,4 +903,6 @@ export default async function (browser, url) {
   await table(browser, url, 'homebrew: the DM on a phone, a desktop player', PHONE, DESKTOP, 'phone');
   await subclassTable(browser, url, 'homebrew subclasses: the DM at desktop size, a phone player', DESKTOP, PHONE, 'desktop');
   await subclassTable(browser, url, 'homebrew subclasses: the DM on a phone, a desktop player', PHONE, DESKTOP, 'phone');
+  await choiceSolo(browser, url, 'a feature that asks for a skill or a tool: on a phone, with touch', PHONE, 'phone');
+  await choiceSolo(browser, url, 'a feature that asks for a skill or a tool: at desktop size', DESKTOP, 'desktop');
 }

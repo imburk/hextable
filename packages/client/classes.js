@@ -9,15 +9,16 @@
 // It shows only what the view gives; a creature's controller and the DM see these controls.
 import { CONTENT, SPELLS } from './shared/content/index.js';
 import { targetCount } from './shared/effects.js';
-import { blocked, current, FT } from './shared/engine.js';
+import { blocked, current, FT, checkBonus } from './shared/engine.js';
+import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gridOf } from './shared/grid.js';
-import { conditionName } from './shared/modifiers.js';
+import { conditionName, modifiers } from './shared/modifiers.js';
 import { mod } from './shared/derive.js';
 
 const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', free: 'No action' };
 export const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[cr] ?? String(cr);
 const signedN = (n) => (n >= 0 ? `+${n}` : `${n}`);
-const nice = (id) => String(id).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
+export const nice = (id) => String(id).replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -35,7 +36,7 @@ function h(tag, attrs = {}, ...kids) {
 // ---------- what a feature needs, by what its record says ----------
 export const formOf = (e) => (typeof e.form === 'string' ? e.form : e.form?.block) ?? null;
 export const formName = (e) => { const id = formOf(e); return id ? CONTENT.monsters[id]?.name ?? nice(id) : ''; };
-// Which chooser a feature has: 'modes', 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'free' (casts through it),
+// Which chooser a feature has: 'modes', 'choice' (a skill or a tool to name, DEBT T96), 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'free' (casts through it),
 // 'evoker', 'repel' (with a cast), 'prey' (with an attack), 'hurl' (a slot may pay), 'slot' (a spell slot is part of its price), or null.
 const manyTargets = (f) => typeof f.action?.target?.creature?.count === 'number' && f.action.target.creature.count > 1;
 export function kindOf(f) {
@@ -47,6 +48,7 @@ export function kindOf(f) {
   if (f.action?.modes?.length) return 'modes';
   if (f.action?.form) return 'form';
   if (f.action?.pool) return 'pool';
+  if (f.action?.choice) return 'choice';                        // `choice: { of: 'skill' | 'tool', from? }`: proficiency for a time with the one the holder names (addition C)
   if (manyTargets(f) && !f.action.gain) return 'targets';
   if (f.exchange) return 'exchange';
   if (f.freeCast) return 'free';
@@ -56,6 +58,32 @@ export const needsChoice = (f) => kindOf(f) !== null;
 // What is left of the thing a feature spends: its own uses, or those of the resource it names (Divine Spark spends Channel Divinity); null if it spends none.
 export const usesLeft = (e, f) => (f.uses ? e.uses?.[f.id] ?? 0 : f.action?.cost?.resource ? e.uses?.[f.action.cost.resource] ?? 0 : null);
 export const usesName = (f) => (f.uses ? '' : f.action?.cost?.resource ? ` ${nice(f.action.cost.resource)}` : '');
+
+// ---------- a feature that asks for a skill or a tool (`action.choice`, addition C of docs/specs/homebrew-subclasses.md; DEBT T96) ----------
+// `choice: { of: 'skill' | 'tool', from? }`: the holder names one when it uses the feature, sent as `choice: '<id>'` on the `feature` action, and the steps that say `chosen` lend
+// proficiency with it for as long as the action's effect lasts. With no `from`, a skill may be any skill; a tool always has a list (the pack names the tools it offers).
+export const choiceList = (c) => c.from ?? (c.of === 'skill' ? CHOICES.skill : []);
+// One option as the card words it: the name and, for a skill, what a check with it would be and what it would be with the proficiency lent.
+export function choiceOption(e, c, id) {
+  const name = nice(id);
+  if (c.of === 'tool') return { id, name, own: (e.tools ?? []).includes(id), text: (e.tools ?? []).includes(id) ? `${name} (already proficient)` : name };
+  const own = (e.skills ?? []).includes(id), b = checkBonus(e, { skill: id });
+  return { id, name, own, text: own || e.skillBonus?.[id] !== undefined ? `${name} ${signedN(b)} (already proficient)` : `${name} ${signedN(b)}, ${signedN(b + e.prof)} with it` };
+}
+// What a lent proficiency does to a skill: the creature's bonus with the lent ones counted, and whether the proficiency is a lent one (the creature has none of its own).
+export const lentOf = (st, e, skill) => modifiers(st, e, 'check', { target: e, skill, ability: SKILLS[skill] }, '').lent;
+export const skillBonus = (st, e, skill) => checkBonus(e, { skill }, lentOf(st, e, skill));
+export const isLent = (st, e, skill) => !(e.skills ?? []).includes(skill) && lentOf(st, e, skill).length > 0;
+// The proficiencies lent to `e` that last now, from the lasting effects the view shows: [{ name (of the effect), skill | tool, lasts }].
+export function lentList(st, e) {
+  const out = [];
+  for (const fx of st.effects ?? []) for (const p of fx.parts ?? []) {
+    const m = p.modifier, what = m?.scope?.skill ?? m?.scope?.tool;
+    if (p.ended || p.target !== e.id || m?.op !== 'proficient' || typeof what !== 'string' || what === 'chosen') continue;
+    out.push({ name: fx.name, ...(m.scope.skill ? { skill: what } : { tool: what }), lasts: fx.lasts ?? '' });
+  }
+  return out;
+}
 
 // ---------- a feature that costs a spell slot (`action.cost.slot`, addition E of docs/specs/homebrew-subclasses.md; DEBT T88) ----------
 // `cost: { slot: lowest, higher?, resource?, n? }`: the creature spends a spell slot of level `lowest` or higher with the use, and `higher` says what each level above `lowest` adds.
@@ -103,7 +131,7 @@ export function chooserButtons(st, e) {
     if (kind === 'repel') { sub = `Pushes up to ${f.repel.feet} ft · with ${spellName(f.repel.spell)}`; why = (e.spells ?? []).includes(f.repel.spell) ? '' : `${e.name} doesn't know ${spellName(f.repel.spell)}.`; out.push({ label, sub, cls: '', why, feature: f.id, kind, time: null, f }); continue; }
     if (kind === 'prey') { sub = 'Once a turn · with a weapon attack'; out.push({ label, sub, cls: '', why: preyWhy(st, e, f), feature: f.id, kind, time: null, f }); continue; }
     if (kind === 'hurl') { sub = ['No action', 'after a hit', `${left} left`].join(' · '); out.push({ label, sub, cls: 'bonus', why: '', feature: f.id, kind, time: 'free', f }); continue; }
-    if (kind === 'modes') sub = [TIME[a.time], left === null ? '' : `${left}${usesName(f)} left`].filter(Boolean).join(' · ');
+    if (kind === 'modes' || kind === 'choice') sub = [TIME[a.time], a.choice ? `choose a ${a.choice.of}` : '', left === null ? '' : `${left}${usesName(f)} left`].filter(Boolean).join(' · ');
     else if (kind === 'pool') sub = [TIME[a.time], `${left} HP left`].join(' · ');
     else if (kind === 'targets') {
       const p = payFor(e, f);
@@ -122,7 +150,7 @@ export function chooserButtons(st, e) {
     }
     if (time) why = blocked(st, e, time) || '';
     if (kind === 'slot') why ||= slotWhy(e, f);
-    if (kind === 'modes' || kind === 'pool') { const cost = a.cost?.n ?? 1; if (left !== null && !a.pool && left < cost) why ||= `${e.name} has no uses of ${f.name} left.`; if (a.pool && left < 1) why ||= `${f.name} has no Hit Points left.`; }
+    if (kind === 'modes' || kind === 'pool' || kind === 'choice') { const cost = a.cost?.n ?? 1; if (left !== null && !a.pool && left < cost) why ||= `${e.name} has no uses of ${f.name} left.`; if (a.pool && left < 1) why ||= `${f.name} has no Hit Points left.`; }
     out.push({ label, sub, cls, why: kind === 'exchange' || kind === 'free' ? '' : why, feature: f.id, kind, time: a ? a.time : null, f });
   }
   return out;
@@ -329,17 +357,44 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   const seen = (x) => (x.abil ? ` (${x.hp}/${x.maxHp} HP)` : '');
 
   // ---------- Divine Spark and the like: one of several modes ----------
+  // The pick of a feature with `choice` (a skill or a tool): up to six options are buttons, a longer list (all the skills) a menu. `st.choice` is the pick, null until one is made.
+  // It goes as `choice` on the `feature` action; the engine checks it again and says why it refuses (a skill not on the list, a tool that is not one).
+  function choiceField(e, f, st, draw) {
+    const c = f.action.choice, list = choiceList(c).map((id) => choiceOption(e, c, id));
+    if (!list.some((o) => o.id === st.choice)) st.choice = null;
+    const label = `Choose a ${c.of}`;
+    const pick = list.length > 6
+      ? h('select', { id: 'cp-choice', 'aria-label': label, onchange: (ev) => { st.choice = ev.target.value || null; draw(); } }, h('option', { value: '', text: `${label}…` }), ...list.map((o) => h('option', { value: o.id, text: o.text, selected: o.id === st.choice })))
+      : h('div', { class: 'cp-levels', id: 'cp-choice', role: 'group', 'aria-label': label }, ...list.map((o) => h('button', { type: 'button', 'data-choice': o.id, 'aria-pressed': String(st.choice === o.id), text: o.text, onclick: () => { st.choice = o.id; draw(); } })));
+    return h('div', { class: 'cp-f', 'data-part': 'choice' }, h('span', { text: `${label}: it is yours for ${f.action.duration ?? 'a time'}, if you are not proficient already` }), pick);
+  }
+  const choiceExtra = (st) => (st.choice ? { choice: st.choice } : {});
+
   function modesPanel(e, f) {
-    const a = f.action, aimed = !!a.target?.creature || !!a.target?.area;
+    const a = f.action, aimed = !!a.target?.creature || !!a.target?.area, st = mem(`${e.id}:${f.id}`, () => ({ choice: null })), draw = () => show(modesPanel(e, f));
+    const field = a.choice ? choiceField(e, f, st, draw) : null, wait = !!a.choice && !st.choice;
     return {
       key: `${e.id}:${f.id}`, title: f.name, note: `${[TIME[a.time], usesLeft(e, f) !== null ? `${usesLeft(e, f)}${usesName(f)} left` : ''].filter(Boolean).join(' · ')}. ${f.text}`,
-      body: [h('div', { class: 'cp-modes', role: 'group', 'aria-label': `${f.name}: choose` }, ...a.modes.map((m) => h('button', { type: 'button', class: 'cp-mode', 'data-mode': m.id, text: m.name,
+      body: [field, wait ? h('p', { class: 'cp-note', id: 'cp-choice-note', text: `Choose a ${a.choice.of} first, then the mode.` }) : null,
+        h('div', { class: 'cp-modes', role: 'group', 'aria-label': `${f.name}: choose` }, ...a.modes.map((m) => h('button', { type: 'button', class: 'cp-mode', 'data-mode': m.id, text: m.name, disabled: wait,
         onclick: () => {
-          if (aimed) { close(); arm({ id: f.id, name: `${f.name} (${m.name})`, extra: { mode: m.id } }); }
-          else go(null, { send: { type: 'feature', actor: e.id, feature: f.id, mode: m.id } });
+          if (aimed) { close(); arm({ id: f.id, name: `${f.name} (${m.name})`, extra: { mode: m.id, ...choiceExtra(st) } }); }
+          else go(null, { send: { type: 'feature', actor: e.id, feature: f.id, mode: m.id, ...choiceExtra(st) } });
         } })))],
       buttons: [],
       reopen: () => modesPanel(e, f),
+    };
+  }
+
+  // ---------- a feature that lends proficiency with a skill or a tool the holder names (addition C; DEBT T96) ----------
+  function choicePanel(e, f) {
+    const a = f.action, st = mem(`${e.id}:${f.id}`, () => ({ choice: null })), draw = () => show(choicePanel(e, f));
+    const field = choiceField(e, f, st, draw), left = usesLeft(e, f);
+    return {
+      key: `${e.id}:${f.id}`, title: f.name, note: `${[TIME[a.time], left !== null ? `${left}${usesName(f)} left` : ''].filter(Boolean).join(' · ')}. ${f.text}`,
+      body: [field],
+      buttons: [{ label: st.choice ? `Use ${f.name}: ${nice(st.choice)}` : `Use ${f.name}`, primary: true, id: 'cp-use', disabled: !st.choice, send: () => ({ type: 'feature', actor: e.id, feature: f.id, ...choiceExtra(st) }) }],
+      reopen: () => choicePanel(e, f),
     };
   }
 
@@ -553,9 +608,9 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   // (a tap on the creature sends it, as Hurl Through Hell's is); one on the caster is sent at once. The engine checks again and says why it refuses.
   function slotPanel(e, f) {
     const a = f.action, lowest = a.cost.slot, aimed = slotAim(f) === 'creature', levels = slotLevels(e, lowest), word = slotWord(e);
-    const st = mem(`${e.id}:${f.id}`, () => ({ slot: null })), usesWhy = usesLeft(e, f) !== null && usesLeft(e, f) < (a.cost.n ?? 1) ? slotWhy(e, f) : '';
+    const st = mem(`${e.id}:${f.id}`, () => ({ slot: null, choice: null })), usesWhy = usesLeft(e, f) !== null && usesLeft(e, f) < (a.cost.n ?? 1) ? slotWhy(e, f) : '';
     if (!levels.includes(st.slot)) st.slot = levels[0] ?? null;
-    const draw = () => show(slotPanel(e, f));
+    const draw = () => show(slotPanel(e, f)), field = a.choice ? choiceField(e, f, st, draw) : null;
     const more = (l) => (a.cost.higher && l > lowest ? higherText(a.cost.higher, l - lowest) : '');
     const body = [
       h('p', { class: 'cp-note', id: 'cp-slot-sub', text: slotSub(e, f) }),
@@ -563,14 +618,15 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
         h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Slot level' }, ...levels.map((l) => h('button', { type: 'button', 'data-level': l, 'aria-pressed': String(st.slot === l),
           text: `Level ${l} (${e.slots[l]} left)${more(l) ? ` · ${more(l)}` : ''}`, onclick: () => { st.slot = l; draw(); } }))))
         : h('p', { class: 'cp-note cp-why', id: 'cp-slot-why', text: `${e.name} has no spell slot of level ${lowest} or higher left for ${f.name}.` }),
+      field,
       usesWhy ? h('p', { class: 'cp-note cp-why', id: 'cp-uses-why', text: usesWhy }) : null,
       aimed ? h('p', { class: 'cp-note', text: 'Then tap the creature. The engine checks the range and sight, and says why if it refuses.' }) : null];
-    const off = !st.slot || !!usesWhy;
+    const off = !st.slot || !!usesWhy || (!!a.choice && !st.choice);
     return {
       key: `${e.id}:${f.id}`, title: f.name, note: f.text, body,
       buttons: [{ label: aimed ? 'Choose target' : `Use ${f.name}`, primary: true, id: 'cp-use', disabled: off,
-        ...(aimed ? { run: () => { close(); arm({ id: f.id, name: `${f.name} (level ${st.slot} slot)`, extra: { slot: st.slot } }); } }
-          : { send: () => ({ type: 'feature', actor: e.id, feature: f.id, slot: st.slot }) }) }],
+        ...(aimed ? { run: () => { close(); arm({ id: f.id, name: `${f.name} (level ${st.slot} slot)`, extra: { slot: st.slot, ...choiceExtra(st) } }); } }
+          : { send: () => ({ type: 'feature', actor: e.id, feature: f.id, slot: st.slot, ...choiceExtra(st) }) }) }],
       reopen: () => slotPanel(e, f),
     };
   }
@@ -782,7 +838,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   };
 
   // ---------- the buttons of the action bar ----------
-  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel, slot: slotPanel })[kindOf(f)](e, f);
+  const panelOf = (e, f) => ({ modes: modesPanel, choice: choicePanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel, slot: slotPanel })[kindOf(f)](e, f);
   function buttons(e) {
     const out = chooserButtons(S(), e).map(({ label, sub, cls, why, feature, f }) => ({ label, sub, cls, why, feature, onClick: () => show(panelOf(e, f)) }));
     if (metamagicKnown(e).length && spellsToCast(e).length) {
