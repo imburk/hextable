@@ -70,10 +70,10 @@ export function main(argv) {
     out(`${pack.pack?.name ?? pack.pack?.id}: ok (${kinds.join(", ") || "no entries"})`);
     return 0;
   }
-  // `read` reads every kind of entry a pack can hold, in the order of READ_KINDS (a pack names armour "armour", the rest in the plural).
-  const listOf = (k) => (k === "armour" ? "armour" : `${k}s`);
+  // `read` reads every kind of entry a pack can hold, in the order of READ_KINDS (a pack names armour "armour", subclasses "subclasses", the rest with an s).
+  const listOf = (k) => (k === "armour" ? "armour" : k.endsWith("s") ? `${k}es` : `${k}s`);
   const readable = READ_KINDS.flatMap((k) => (Array.isArray(pack[listOf(k)]) ? pack[listOf(k)].map((e) => [k, e]) : []));
-  if (cmd === "read" ? !readable.length : !spells.length) { err("problem: the pack has no " + (cmd === "read" ? "spells, monsters, items, feats, weapons, armour or objects to read" : "spells to try")); return 1; }
+  if (cmd === "read" ? !readable.length : !spells.length) { err("problem: the pack has no " + (cmd === "read" ? "spells, monsters, items, feats, weapons, armour, objects or subclasses to read" : "spells to try")); return 1; }
   let bads = 0;
   if (cmd === "read") {
     for (const [kind, e] of readable) {
