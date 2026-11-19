@@ -36,13 +36,14 @@ function h(tag, attrs = {}, ...kids) {
 export const formOf = (e) => (typeof e.form === 'string' ? e.form : e.form?.block) ?? null;
 export const formName = (e) => { const id = formOf(e); return id ? CONTENT.monsters[id]?.name ?? nice(id) : ''; };
 // Which chooser a feature has: 'modes', 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'free' (casts through it),
-// 'evoker', 'repel' (with a cast), 'prey' (with an attack), 'hurl' (a slot may pay), or null.
+// 'evoker', 'repel' (with a cast), 'prey' (with an attack), 'hurl' (a slot may pay), 'slot' (a spell slot is part of its price), or null.
 const manyTargets = (f) => typeof f.action?.target?.creature?.count === 'number' && f.action.target.creature.count > 1;
 export function kindOf(f) {
   if (f.empowered || f.overchannel) return 'evoker';           // Empowered Evocation, Overchannel: chosen with a cast (#302)
   if (f.repel) return 'repel';                                  // Repelling Blast: how far, chosen with the cantrip
   if (f.markSpread) return 'prey';                              // Superior Hunter's Prey: chosen with an attack
-  if (f.action?.orSlot) return 'hurl';                          // Hurl Through Hell: a Pact Magic slot may pay for it
+  if (f.action?.orSlot) return 'hurl';                          // Hurl Through Hell: a spell slot may pay for it
+  if (slotAim(f)) return 'slot';                                // `cost.slot`: a spell slot pays for it, of a level the player chooses (addition E; DEBT T88)
   if (f.action?.modes?.length) return 'modes';
   if (f.action?.form) return 'form';
   if (f.action?.pool) return 'pool';
@@ -55,6 +56,39 @@ export const needsChoice = (f) => kindOf(f) !== null;
 // What is left of the thing a feature spends: its own uses, or those of the resource it names (Divine Spark spends Channel Divinity); null if it spends none.
 export const usesLeft = (e, f) => (f.uses ? e.uses?.[f.id] ?? 0 : f.action?.cost?.resource ? e.uses?.[f.action.cost.resource] ?? 0 : null);
 export const usesName = (f) => (f.uses ? '' : f.action?.cost?.resource ? ` ${nice(f.action.cost.resource)}` : '');
+
+// ---------- a feature that costs a spell slot (`action.cost.slot`, addition E of docs/specs/homebrew-subclasses.md; DEBT T88) ----------
+// `cost: { slot: lowest, higher?, resource?, n? }`: the creature spends a spell slot of level `lowest` or higher with the use, and `higher` says what each level above `lowest` adds.
+// The engine takes the level as `slot` on the `feature` action (with none named, the lowest it has left). Only a feature that aims at the caster or at one creature has a chooser
+// here (the gate forbids `modes`, `form`, `pool`, `gain`, `renew` and `orSlot` beside it); one that aims an area, or at several creatures, is as it was.
+export function slotAim(f) {
+  const a = f.action;
+  if (!a || typeof a.cost?.slot !== 'number' || a.orSlot) return null;
+  if (a.target?.self) return 'self';
+  const c = a.target?.creature;
+  return c && !(typeof c.count === 'number' && c.count > 1) ? 'creature' : null;
+}
+// The levels that may pay, lowest first: at or above `lowest`, with a slot left (what the engine reads: the creature's `slots`, a Warlock's being Pact Magic's).
+export const slotLevels = (e, lowest = 1) => Object.entries(e.slots ?? {}).filter(([l, n]) => +l >= lowest && n > 0).map(([l]) => +l).sort((x, y) => x - y);
+const slotWord = (e) => (e.pact ? 'Pact Magic' : 'spell');
+// What `k` levels above the lowest add, in words: `higher` is dice (damage, heal, tempHp) or whole numbers (times, value) per level.
+export function higherText(higher, k = 1) {
+  return Object.entries(higher ?? {}).map(([key, v]) => {
+    const m = /^(\d+)d(\d+)$/.exec(String(v)), amt = m ? `${+m[1] * k}d${m[2]}` : String((Number(v) || 0) * k);
+    return key === 'damage' ? `+${amt} damage` : key === 'heal' ? `+${amt} healing` : key === 'tempHp' ? `+${amt} Temporary Hit Points` : key === 'times' ? `${amt} more damage roll${amt === '1' ? '' : 's'}` : `+${amt} to its number`;
+  }).join(', ');
+}
+// The line under the feature's name: the action, that it spends a slot (the lowest level), what a higher one adds, what is left of its uses.
+export function slotSub(e, f) {
+  const a = f.action, lowest = a.cost.slot, left = usesLeft(e, f);
+  return [TIME[a.time], `spends a spell slot (level ${lowest}+)`, a.cost.higher ? `${higherText(a.cost.higher)} per level above ${lowest}` : '', left === null ? '' : `${left}${usesName(f)} left`].filter(Boolean).join(' · ');
+}
+// Why the feature cannot be paid for now ('' if it can), in the engine's words: its uses (or the pool it names), then a slot of the level or higher.
+export function slotWhy(e, f) {
+  const a = f.action, n = a.cost.n ?? 1, left = usesLeft(e, f);
+  if (left !== null && left < n) return `${e.name} has no uses of ${f.uses ? f.name : (e.feats ?? []).find((x) => x.id === a.cost.resource)?.name ?? nice(a.cost.resource)} left.`;
+  return slotLevels(e, a.cost.slot).length ? '' : `${e.name} has no spell slot of level ${a.cost.slot} or higher left for ${f.name}.`;
+}
 
 // The features that open a chooser first, as the buttons the panel lists (pure: no page). `st`: the state. Each: { label, sub, cls, why, feature, kind, time, f }.
 // `kind` is the chooser (kindOf); `time` the action it costs ('action', 'bonus', 'reaction', 'free', or null for none).
@@ -81,11 +115,13 @@ export function chooserButtons(st, e) {
     }
     else if (kind === 'exchange') { sub = `${left} of ${f.uses.max} points`; cls = ''; }
     else if (kind === 'free') sub = freeSub(f, left);
+    else if (kind === 'slot') sub = slotSub(e, f);
     else if (kind === 'form') {
       const now = formOf(e);
       label = now ? `${f.name}: ${formName(e)}` : f.name; sub = now ? `${TIME[a.time]} · leave or change` : `${TIME[a.time]} · ${left} left`; cls = `${cls} ${now ? 'armed' : ''}`;
     }
     if (time) why = blocked(st, e, time) || '';
+    if (kind === 'slot') why ||= slotWhy(e, f);
     if (kind === 'modes' || kind === 'pool') { const cost = a.cost?.n ?? 1; if (left !== null && !a.pool && left < cost) why ||= `${e.name} has no uses of ${f.name} left.`; if (a.pool && left < 1) why ||= `${f.name} has no Hit Points left.`; }
     out.push({ label, sub, cls, why: kind === 'exchange' || kind === 'free' ? '' : why, feature: f.id, kind, time: a ? a.time : null, f });
   }
@@ -230,6 +266,14 @@ export function formsFor(f) {
   return Object.values(CONTENT.monsters).filter((m) => F.types.includes(m.type) && m.cr <= F.maxCr && (F.fly || !m.speed?.fly))
     .sort((a, b) => a.cr - b.cr || a.name.localeCompare(b.name));
 }
+// What a form costs, as the engine prices it (`shapeShift`): the subclass's price (`action.form.cost`: { resource, n, types? }) for a form of a type it covers (all, with no `types`),
+// else one use of the feature itself. { n, pool (its name), left, ok, priced, text, why } with `why` the engine's sentence when the creature cannot pay ('' if it can).
+export function formPrice(e, f, m) {
+  const C = f.action.form.cost, priced = !!C && (!C.types || C.types.includes(m.type));
+  const res = priced ? C.resource : f.id, n = priced ? C.n ?? 1 : 1, pool = (e.feats ?? []).find((x) => x.id === res)?.name ?? res, left = e.uses?.[res] ?? 0, ok = left >= n;
+  return { n, pool, left, ok, priced, text: `${n} use${n === 1 ? '' : 's'} of ${pool}`,
+    why: ok ? '' : res === f.id && n === 1 ? `${e.name} has no uses of ${f.name} left.` : `${e.name} has ${left} use${left === 1 ? '' : 's'} of ${pool} left; the form of ${/^[aeiou]/i.test(m.name) ? 'an' : 'a'} ${m.name} costs ${n}.` };
+}
 const speedText = (m) => Object.entries(m.speed ?? {}).filter(([, v]) => typeof v === 'number').map(([k, v]) => (k === 'walk' ? `${v} ft` : `${k} ${v} ft`)).join(', ');
 
 // Spells Divine Intervention (a feature with `freeCast`) may cast: its list, up to its level, or named spells.
@@ -249,7 +293,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
 
   // ---------- the panel ----------
   function close() { open = null; root.hidden = true; root.textContent = ''; document.body.classList.remove('cp-open'); }
-  // spec: { key, title, note, body: [nodes], buttons: [{ label, primary, send?, run?, id }], reopen }
+  // spec: { key, title, note, body: [nodes], buttons: [{ label, primary, send?, run?, id, disabled? }], reopen }
   function show(spec, error = '') {
     open = spec;
     const err = h('p', { class: 'cp-err', id: 'cp-err', role: 'alert', hidden: !error, text: error });
@@ -258,7 +302,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
       spec.note ? h('p', { class: 'cp-note', text: spec.note }) : null,
       ...spec.body, err,
       h('div', { class: 'cp-go' },
-        ...spec.buttons.map((b) => h('button', { type: 'button', class: b.primary ? 'cp-primary' : '', id: b.id, text: b.label, onclick: () => go(spec, b) })),
+        ...spec.buttons.map((b) => h('button', { type: 'button', class: b.primary ? 'cp-primary' : '', id: b.id, text: b.label, disabled: !!b.disabled, onclick: () => go(spec, b) })),
         h('button', { type: 'button', class: 'cp-close', id: 'cp-close', text: 'Close', onclick: close })));
     root.textContent = ''; root.append(card); root.hidden = false; document.body.classList.add('cp-open');
     card.querySelector('.cp-primary, button')?.focus({ preventScroll: true });
@@ -336,22 +380,30 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   // ---------- Wild Shape: choose a form, or leave it ----------
   function formPanel(e, f) {
     const F = f.action.form, now = formOf(e), forms = formsFor(f), st = mem(`${e.id}:${f.id}`, () => ({ form: null }));
-    if (!forms.some((m) => m.id === st.form)) st.form = forms.find((m) => m.id !== now)?.id ?? forms[0]?.id ?? null;
-    const info = h('p', { class: 'cp-note', id: 'cp-form-info' });
+    // A subclass may price some forms in another pool (`F.cost`, DEBT T86): then each form says what it costs and how many are left, and one the creature cannot pay is
+    // marked not available (still chosen to read why; its button is off). With no price the card is what it was: the engine says no to a feature with no uses left.
+    const priced = !!F.cost, price = (m) => (priced ? formPrice(e, f, m) : null);
+    if (!forms.some((m) => m.id === st.form)) st.form = (priced ? forms.find((m) => m.id !== now && price(m).ok) : null)?.id ?? forms.find((m) => m.id !== now)?.id ?? forms[0]?.id ?? null;
+    const info = h('p', { class: 'cp-note', id: 'cp-form-info' }), cost = h('p', { class: 'cp-note', id: 'cp-form-price', hidden: true });
     const fill = () => {
-      const m = CONTENT.monsters[st.form];
+      const m = CONTENT.monsters[st.form], p = m && price(m);
       info.textContent = m ? `${m.name}: Challenge ${crText(m.cr)} · ${nice(m.size)} · AC ${m.ac} · ${m.hp} HP (yours stay) · Speed ${speedText(m)}` : '';
+      cost.hidden = !p; cost.className = p && !p.ok ? 'cp-note cp-why' : 'cp-note';
+      cost.textContent = p ? (p.ok ? `Costs ${p.text}; ${e.name} has ${p.left} left.` : `Not available: ${p.why}`) : '';
+      const go1 = root.querySelector('#cp-use'); if (go1) go1.disabled = !!p && !p.ok;          // the card is already open when the form is changed
     };
     const sel = h('select', { id: 'cp-form', 'aria-label': 'Form', onchange: () => { st.form = sel.value; fill(); } });
-    for (const cr of [...new Set(forms.map((m) => m.cr))]) sel.append(h('optgroup', { label: `Challenge ${crText(cr)}` }, ...forms.filter((m) => m.cr === cr).map((m) => h('option', { value: m.id, text: m.name, selected: m.id === st.form }))));
+    const label = (m) => { const p = price(m); return !p ? m.name : p.ok ? `${m.name} · ${p.text} (${p.left} left)` : `${m.name} · not available`; };
+    for (const cr of [...new Set(forms.map((m) => m.cr))]) sel.append(h('optgroup', { label: `Challenge ${crText(cr)}` }, ...forms.filter((m) => m.cr === cr).map((m) => h('option', { value: m.id, text: label(m), selected: m.id === st.form, 'data-ok': priced ? String(price(m).ok) : false }))));
     fill();
+    const m0 = CONTENT.monsters[st.form], p0 = m0 && price(m0), off = !!p0 && !p0.ok;       // the form chosen at first: its button starts off if it cannot be paid
     const hrs = `${F.hours} hour${F.hours === 1 ? '' : 's'}`;
     return {
       key: `${e.id}:${f.id}`, title: f.name,
       note: `${usesLeft(e, f)} of ${f.uses.max} uses left. ${TIME[f.action.time]}. A form of Challenge ${crText(F.maxCr)} or lower${F.fly ? '' : ', with no Fly Speed'}, for up to ${hrs}${F.tempHp ? `, with ${F.tempHp} Temporary Hit Points` : ''}.`,
       body: [now ? h('p', { class: 'cp-form-now', id: 'cp-form-now', text: `${e.name} is in the form of a ${formName(e)}.` }) : null,
-        h('label', { class: 'cp-f' }, h('span', { text: now ? 'Change to' : 'Take the form of' }), sel), info],
-      buttons: [{ label: now ? 'Change form' : 'Take the form', primary: true, id: 'cp-use', send: () => (st.form ? { type: 'feature', actor: e.id, feature: f.id, form: st.form } : null) },
+        h('label', { class: 'cp-f' }, h('span', { text: now ? 'Change to' : 'Take the form of' }), sel), info, cost],
+      buttons: [{ label: now ? 'Change form' : 'Take the form', primary: true, id: 'cp-use', disabled: off, send: () => (st.form ? { type: 'feature', actor: e.id, feature: f.id, form: st.form } : null) },
         ...(now ? [{ label: 'Leave the form', id: 'cp-leave', send: { type: 'feature', actor: e.id, feature: f.id } }] : [])],
       reopen: () => formPanel(e, f),
     };
@@ -467,24 +519,51 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     };
   }
 
-  // ---------- Hurl Through Hell: with its use spent, a Pact Magic slot restores it ----------
+  // ---------- Hurl Through Hell: with its use spent, a spell slot restores it (a Pact Magic slot for a Warlock, any slot for another caster: DEBT T88) ----------
   function hurlPanel(e, f) {
-    const left = usesLeft(e, f) ?? 0, st = mem(`${e.id}:${f.id}`, () => ({ slot: 0 })), levels = e.pact ? Object.keys(e.slotsMax ?? {}).map(Number).filter((l) => (e.slots?.[l] ?? 0) > 0).sort((a, b) => a - b) : [];
+    const left = usesLeft(e, f) ?? 0, st = mem(`${e.id}:${f.id}`, () => ({ slot: 0 })), levels = slotLevels(e), word = slotWord(e);
     if (st.slot && !levels.includes(st.slot)) st.slot = 0;
     if (left > 0) st.slot = 0;
     const draw = () => show(hurlPanel(e, f));
-    const body = [h('p', { class: 'cp-note', text: left > 0 ? `${left} use left. It follows an attack that hit this turn, once a turn, and takes no action.` : `No use left. A Pact Magic slot can restore it: choose its level.` }),
-      left > 0 ? null : h('div', { class: 'cp-f', 'data-part': 'slot' }, h('span', { text: 'Pact Magic slot to spend' }),
+    const body = [h('p', { class: 'cp-note', text: left > 0 ? `${left} use left. It follows an attack that hit this turn, once a turn, and takes no action.` : `No use left. A ${word} slot can restore it: choose its level.` }),
+      left > 0 ? null : h('div', { class: 'cp-f', 'data-part': 'slot' }, h('span', { text: `${word === 'spell' ? 'Spell' : word} slot to spend` }),
         levels.length ? h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Slot level' }, ...levels.map((l) => h('button', { type: 'button', 'data-level': l, 'aria-pressed': String(st.slot === l), text: `Level ${l} (${e.slots[l]} left)`, onclick: () => { st.slot = l; draw(); } })))
-          : h('p', { class: 'cp-note cp-why', text: `${e.name} has no Pact Magic slot left.` })),
+          : h('p', { class: 'cp-note cp-why', text: `${e.name} has no ${word} slot left.` })),
       h('p', { class: 'cp-note', text: 'Then tap a creature you hit with an attack roll this turn.' })];
     return {
       key: `${e.id}:${f.id}`, title: f.name, note: f.text, body,
       buttons: [{ label: 'Choose target', primary: true, id: 'cp-use', run: () => {
-        if (left < 1 && !st.slot) return show(hurlPanel(e, f), levels.length ? 'Choose the Pact Magic slot that restores it.' : `${e.name} has no use or slot left.`);
+        if (left < 1 && !st.slot) return show(hurlPanel(e, f), levels.length ? `Choose the ${word} slot that restores it.` : `${e.name} has no use or slot left.`);
         close(); arm({ id: f.id, name: st.slot ? `${f.name} (level ${st.slot} slot)` : f.name, ...(st.slot ? { extra: { slot: st.slot } } : {}) });
       } }],
       reopen: () => hurlPanel(e, f),
+    };
+  }
+
+  // ---------- a feature that costs a spell slot: choose its level (DEBT T88) ----------
+  // The levels are those at or above `cost.slot` with a slot left; the choice goes as `slot` on the `feature` action. A feature that aims at one creature is armed with it
+  // (a tap on the creature sends it, as Hurl Through Hell's is); one on the caster is sent at once. The engine checks again and says why it refuses.
+  function slotPanel(e, f) {
+    const a = f.action, lowest = a.cost.slot, aimed = slotAim(f) === 'creature', levels = slotLevels(e, lowest), word = slotWord(e);
+    const st = mem(`${e.id}:${f.id}`, () => ({ slot: null })), usesWhy = usesLeft(e, f) !== null && usesLeft(e, f) < (a.cost.n ?? 1) ? slotWhy(e, f) : '';
+    if (!levels.includes(st.slot)) st.slot = levels[0] ?? null;
+    const draw = () => show(slotPanel(e, f));
+    const more = (l) => (a.cost.higher && l > lowest ? higherText(a.cost.higher, l - lowest) : '');
+    const body = [
+      h('p', { class: 'cp-note', id: 'cp-slot-sub', text: slotSub(e, f) }),
+      levels.length ? h('div', { class: 'cp-f', 'data-part': 'slot' }, h('span', { text: `${word === 'spell' ? 'Spell' : word} slot to spend` }),
+        h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Slot level' }, ...levels.map((l) => h('button', { type: 'button', 'data-level': l, 'aria-pressed': String(st.slot === l),
+          text: `Level ${l} (${e.slots[l]} left)${more(l) ? ` · ${more(l)}` : ''}`, onclick: () => { st.slot = l; draw(); } }))))
+        : h('p', { class: 'cp-note cp-why', id: 'cp-slot-why', text: `${e.name} has no spell slot of level ${lowest} or higher left for ${f.name}.` }),
+      usesWhy ? h('p', { class: 'cp-note cp-why', id: 'cp-uses-why', text: usesWhy }) : null,
+      aimed ? h('p', { class: 'cp-note', text: 'Then tap the creature. The engine checks the range and sight, and says why if it refuses.' }) : null];
+    const off = !st.slot || !!usesWhy;
+    return {
+      key: `${e.id}:${f.id}`, title: f.name, note: f.text, body,
+      buttons: [{ label: aimed ? 'Choose target' : `Use ${f.name}`, primary: true, id: 'cp-use', disabled: off,
+        ...(aimed ? { run: () => { close(); arm({ id: f.id, name: `${f.name} (level ${st.slot} slot)`, extra: { slot: st.slot } }); } }
+          : { send: () => ({ type: 'feature', actor: e.id, feature: f.id, slot: st.slot }) }) }],
+      reopen: () => slotPanel(e, f),
     };
   }
 
@@ -695,7 +774,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   };
 
   // ---------- the buttons of the action bar ----------
-  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel })[kindOf(f)](e, f);
+  const panelOf = (e, f) => ({ modes: modesPanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel, slot: slotPanel })[kindOf(f)](e, f);
   function buttons(e) {
     const out = chooserButtons(S(), e).map(({ label, sub, cls, why, feature, f }) => ({ label, sub, cls, why, feature, onClick: () => show(panelOf(e, f)) }));
     if (metamagicKnown(e).length && spellsToCast(e).length) {

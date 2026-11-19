@@ -19,7 +19,7 @@ import { lightAt } from './shared/sight.js';
 import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
-import { strikeChoices } from './classes.js';
+import { strikeChoices, slotAim, slotSub } from './classes.js';
 import { shownName } from './tracker.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
@@ -199,6 +199,8 @@ export function featureRows(S, e, { mode = null } = {}) {
     const f = (e.feats ?? []).find((x) => `feat:${x.id}` === r.id);
     if (!f) return r;
     const a = f.action, fr = free.find((x) => x.id === f.id);
+    // A feature that costs a spell slot (`cost.slot`): the row says so, with the lowest level and what a higher slot adds (the chooser of classes.js lets the player pick the level).
+    if (r.kind === 'chooser' && slotAim(f)) return { ...r, sub: slotSub(e, f) };
     if (fr && r.kind === 'none') {
       return { ...r, chip: 'Not a Reaction', sub: `Standing instruction: ${WHEN[fr.now] ?? fr.now}${fr.now === 'always' ? '' : '. Does nothing until set to Always'}. Set it on the Sheet or the Reactions tab` };
     }
