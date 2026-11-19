@@ -174,7 +174,11 @@ const STORE = circle('circle-of-the-store', 'Circle of the Store', [feature('emb
 const TWO = circle('circle-of-the-two', 'Circle of the Two', [feature('twofold-shape', 3, { formOf: { of: 'wild-shape', maxCr: 2, types: ['elemental'], cost: { resource: 'wild-shape', n: 2 } } })]);
 const EVERY = circle('circle-of-the-every', 'Circle of the Every', [feature('every-store', 3, undefined, { tier: 'manual', uses: { max: 2, recharge: 'long' } }),
   feature('every-shape', 3, { formOf: { of: 'wild-shape', cost: { resource: hb('every-store') } } })]);
-const built = loadPack(doc({ subclasses: [LANTERN, STORE, TWO, EVERY] })); assert.ok(built.ok, (built.problems ?? []).join('; '));
+// #525: the four elementals by name, priced in a pool of their own (a beast is Wild Shape's); elementals up to CR 2 by a rating of their own.
+const NAMED = circle('circle-of-the-named', 'Circle of the Named', [feature('named-store', 3, undefined, { tier: 'manual', uses: { max: 2, recharge: 'long' } }),
+  feature('named-shape', 3, { formOf: { of: 'wild-shape', forms: ['air-elemental', 'fire-elemental'], cost: { resource: hb('named-store') } } })]);
+const RATED = circle('circle-of-the-rated', 'Circle of the Rated', [feature('rated-shape', 3, { formOf: { of: 'wild-shape', types: ['elemental'], typesMaxCr: 2 } })]);
+const built = loadPack(doc({ subclasses: [LANTERN, STORE, TWO, EVERY, NAMED, RATED] })); assert.ok(built.ok, (built.problems ?? []).join('; '));
 const ON = overlayOf([built.pack]);
 const A = { str: 16, dex: 10, con: 14, int: 12, wis: 16, cha: 16 };
 const paladin = (level = 9) => ({ name: 'Sir Wick', class: 'paladin', level, subclass: hb('oath-of-the-lantern'), abilities: A, skills: ['athletics', 'religion'], choices: { 'fighting-style': 'defense' }, armour: 'chain-mail', shield: true, weapons: ['longsword'], spells: ['bless', 'cure-wounds', 'aid'] });
@@ -288,6 +292,44 @@ test('a price of two uses of Wild Shape itself, and a price on every form (no ty
     assert.deepEqual([C.formPrice(ev, wv, CONTENT.monsters.wolf).priced, C.formPrice(ev, wv, CONTENT.monsters.wolf).pool], [true, 'Every store'], 'with no types every form is priced');
     ev.uses[hb('every-store')] = 0;
     assert.equal(C.formPrice(ev, wv, CONTENT.monsters.wolf).why, 'Ven has 0 uses of Every store left; the form of a Wolf costs 1.');
+  });
+});
+
+test('a price on named forms alone prices exactly those forms, as shapeShift does, and the card lists the named forms', () => {
+  using(ON, () => {
+    const s = hero(druid(8, 'circle-of-the-named')), e = s.entities.hero, wild = feat(s, 'wild-shape'), mon = (id) => CONTENT.monsters[id];
+    assert.deepEqual(wild.action.form.cost, { resource: hb('named-store'), n: 1, forms: ['air-elemental', 'fire-elemental'] }, 'no `types`: the price is not every form\'s');
+    // the card prices as the engine does, for a beast (Wild Shape's), a named form (the pool) and a form not named (not offered)
+    const wolf = C.formPrice(e, wild, mon('wolf')), fire = C.formPrice(e, wild, mon('fire-elemental'));
+    assert.deepEqual([wolf.priced, wolf.pool, wolf.ok], [false, 'Wild Shape', true], 'a beast is not marked unavailable by a price on named forms');
+    assert.deepEqual([fire.priced, fire.pool, fire.n, fire.text], [true, 'Named store', 1, '1 use of Named store']);
+    const ids = C.formsFor(wild).map((m) => m.id);
+    assert.ok(ids.includes('fire-elemental') && ids.includes('air-elemental') && ids.includes('wolf'), 'the named forms are listed, at their rating above the class\'s');
+    assert.equal(ids.includes('earth-elemental'), false); assert.equal(ids.includes('azer-sentinel'), false, 'an elemental that is not named');
+    // the pool empty: the named form is not available with the engine's sentence, the beast is
+    const t = structuredClone(s); t.entities.hero.uses[hb('named-store')] = 0;
+    const p = C.formPrice(t.entities.hero, feat(t, 'wild-shape'), mon('fire-elemental')), r = apply(t, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: 'fire-elemental' }, DM);
+    assert.equal(p.ok, false); assert.equal(r.ok, false); assert.equal(r.error, p.why);
+    assert.equal(C.formPrice(t.entities.hero, feat(t, 'wild-shape'), mon('wolf')).ok, true);
+    ok(apply(t, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: 'wolf' }, DM));
+    // every form the card lists is one the engine takes (a fresh creature each), and the card lists nothing the engine refuses for rating or type
+    for (const id of ids) { const u = structuredClone(s); assert.equal(apply(u, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: id }, DM).ok, true, id); }
+    // a monster the client has no content for (a table's pack monster): listed by its id, and the engine decides
+    const w2 = structuredClone(wild); w2.action.form.forms = [...w2.action.form.forms, 'hb-elsewhere-ember-wisp']; w2.action.form.cost.forms = [...w2.action.form.cost.forms, 'hb-elsewhere-ember-wisp'];
+    const stub = C.formsFor(w2).find((m) => m.id === 'hb-elsewhere-ember-wisp');
+    assert.ok(stub); assert.equal(stub.name, 'hb-elsewhere-ember-wisp'); assert.equal(C.formPrice(e, w2, stub).priced, true, 'a named form is priced by its name');
+    assert.equal(C.formsFor(w2).at(-1).id, 'hb-elsewhere-ember-wisp', 'listed last');
+  });
+});
+
+test('an added type with a rating of its own is listed up to that rating, and not above it', () => {
+  using(ON, () => {
+    const s = hero(druid(8, 'circle-of-the-rated')), wild = feat(s, 'wild-shape'), ids = C.formsFor(wild).map((m) => m.id);
+    assert.deepEqual(wild.action.form.typeMaxCr, { elemental: 2 });
+    assert.ok(ids.includes('azer-sentinel') && ids.includes('gargoyle') && ids.includes('wolf'));
+    assert.equal(ids.includes('fire-elemental'), false, 'CR 5 is above the elementals\' own rating');
+    for (const id of ids) { const u = structuredClone(s); assert.equal(apply(u, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: id }, DM).ok, true, id); }
+    for (const id of ['fire-elemental', 'goblin-warrior']) { const u = structuredClone(s); assert.equal(apply(u, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: id }, DM).ok, false, id); }
   });
 });
 
