@@ -8,6 +8,7 @@ import { classesOf, derive, missingOf, subclassOf, validate } from "../src/deriv
 import { newGame } from "../src/scenario.js";
 import { CONTENT } from "../src/content/index.js";
 import { loadPack, overlayOf, using } from "../src/content/registry.js";
+import { vetAdd, vetUpdate } from "../src/content/packs.js";
 import { viewEvents } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -239,6 +240,8 @@ test("the overlay removed: refresh keeps the id, drops the features and tells th
   assert.equal(e.cls, "Paladin (subclass not loaded)");
   assert.equal(e.hp, hp, "play state stays");
   assert.equal(e.uses["channel-divinity"], spentCD, "the class's own spent use stays spent");
+  assert.deepEqual(e.usesAway, { [OATH]: { [eh("ash-memory")]: 1 } }, "what the absent feature had spent waits, by subclass and feature, as SPENT uses");
+  assert.equal(e.uses[eh("ash-memory")], undefined, "and is not among the uses of the features it has");
   const told = gone.events.filter((x) => x.type === "manual");
   assert.equal(told.length, 1);
   assert.equal(told[0].partial, true);
@@ -258,6 +261,7 @@ test("the overlay removed: refresh keeps the id, drops the features and tells th
     assert.ok(h.spells.includes("burning-hands") && h.spells.includes(eh("ember-ward")));
     assert.equal(h.cls, "Paladin (Oath of the Ember)");
     assert.equal(h.uses[eh("ash-memory")], 0, "Ash Memory is still spent");
+    assert.equal(h.usesAway, undefined, "the waiting entry is gone");
     assert.equal(h.uses["channel-divinity"], spentCD);
     assert.equal(h.hp, hp);
     // And a refresh that finds the pack present changes nothing further.
@@ -291,4 +295,103 @@ test("an SRD-only sheet derives as before, with nothing missing and no event", (
   const s = newGame(5, { party: [{ sheet }] });
   const r = ok(apply(s, { type: "refresh", actor: "pc1" }, DM));
   assert.deepEqual(r.events, [{ type: "edited", id: "pc1" }]);
+});
+
+// ---------- spent uses that wait (the review of #505) ----------
+const { spells: _no, ...oathNoSpells } = oath;
+const EMBER_NESTED = pack(doc("ember", { subclasses: [{ ...oathNoSpells, id: "hb-ember-oath-of-ash", name: "Oath of Ash", source: "homebrew:ember",
+  features: [{ id: "hb-ember-folk-ash-memory", name: "Ash Memory", level: 3, tier: "manual", checked: false, text: "The DM decides.", uses: { max: 3, recharge: "long" } }] }] }));
+const L15 = (over = {}) => paladin(15, { spells: ["bless", "cure-wounds", "aid", "find-steed", "lesser-restoration"], ...over });
+const away = () => {
+  const s = newGame(5, { party: [{ sheet: paladin(2, { subclass: undefined }) }] });
+  let hero;
+  using(ONE, () => { hero = ok(apply(s, { type: "setSheet", sheet: L15() }, DM)).events.find((e) => e.type === "spawned").id; });
+  s.entities[hero].uses[eh("ash-memory")] = 0;
+  ok(apply(s, { type: "refresh", actor: hero }, DM));      // the pack is away
+  return { s, hero };
+};
+
+test("a waiting count is SPENT uses of that subclass's features: another subclass with a feature of the same id is not touched (a pack whose id begins with the first's)", () => {
+  const { s, hero } = away();
+  assert.deepEqual(s.entities[hero].usesAway, { [OATH]: { [eh("ash-memory")]: 1 } });
+  // The character is given the nested pack's subclass, whose feature has the same id and 3 uses: it starts with 3 of 3, and nothing waits.
+  using(overlayOf([EMBER_NESTED]), () => {
+    ok(apply(s, { type: "setSheet", actor: hero, sheet: L15({ subclass: "hb-ember-oath-of-ash" }) }, DM));
+    const h = s.entities[hero];
+    assert.equal(h.uses["hb-ember-folk-ash-memory"], 3, "3 of 3");
+    assert.equal(h.usesAway, undefined, "the entry of a subclass the sheet no longer names is dropped");
+  });
+});
+
+test("a feature whose maximum grew while the pack was away comes back with its spent uses taken from the new maximum", () => {
+  const { s, hero } = away();
+  const bigger = JSON.parse(JSON.stringify(EMBER_DATA()));
+  bigger.pack.version = 2;
+  bigger.subclasses[0].features[2].uses = { max: 3, recharge: "long" };
+  using(overlayOf([pack(bigger)]), () => {
+    ok(apply(s, { type: "refresh", actor: hero }, DM));
+    assert.equal(s.entities[hero].uses[eh("ash-memory")], 2, "3 less the 1 spent, not the 0 left of the old maximum");
+    assert.equal(s.entities[hero].usesAway, undefined);
+  });
+});
+function EMBER_DATA() { return structuredClone(doc(E, { spells: [ward], subclasses: [oath] })); }
+
+test("a Long Rest while the pack is away clears the waiting counts: the uses would have recharged", () => {
+  const { s, hero } = away();
+  assert.ok(s.entities[hero].usesAway);
+  ok(apply(s, { type: "rest" }, DM));
+  assert.equal(s.entities[hero].usesAway, undefined);
+  using(ONE, () => {
+    ok(apply(s, { type: "refresh", actor: hero }, DM));
+    assert.equal(s.entities[hero].uses[eh("ash-memory")], 1, "full again");
+  });
+});
+
+test("two subclasses away at once keep each one's own count, and a Paladin 6 / Bard 8 gets both back", () => {
+  const withUses = doc(L, { subclasses: [{ ...college, features: [...college.features, { id: lh("lantern-rest"), name: "Lantern Rest", level: 3, tier: "manual", checked: false, text: "The DM decides.", uses: { max: 2, recharge: "long" } }] }, circle] });
+  const both = overlayOf([EMBER, pack(withUses)]);
+  const sheet = palBard();
+  const s = newGame(5, { party: [{ sheet: paladin(2, { subclass: undefined }) }] });
+  let hero;
+  using(both, () => {
+    hero = ok(apply(s, { type: "setSheet", sheet }, DM)).events.find((e) => e.type === "spawned").id;
+    s.entities[hero].uses[lh("lantern-rest")] = 0;
+  });
+  ok(apply(s, { type: "refresh", actor: hero }, DM));
+  assert.deepEqual(s.entities[hero].usesAway, { [COLLEGE]: { [lh("lantern-rest")]: 2 } }, "only the college had a feature with uses, and it is the college's");
+  using(both, () => {
+    ok(apply(s, { type: "refresh", actor: hero }, DM));
+    assert.equal(s.entities[hero].uses[lh("lantern-rest")], 0);
+    assert.equal(s.entities[hero].usesAway, undefined);
+  });
+});
+
+// ---------- an update may not move a subclass to another class ----------
+test("a pack update that moves a subclass to another class is refused at the gate with a sentence; one that keeps the class is allowed", () => {
+  const added = vetAdd([], EMBER_DATA());
+  assert.ok(added.ok, added.problems?.join());
+  const table = [added.record];
+  const v2 = (f) => { const d = EMBER_DATA(); d.pack.version = 2; f(d); return d; };
+  const moved = vetUpdate(table, v2((d) => { d.subclasses[0].class = "cleric"; delete d.subclasses[0].spells; }));
+  assert.equal(moved.ok, false);
+  assert.equal(moved.form, "refuse");
+  assert.match(moved.problems[0], /^Version 2 of "ember-folk" moves the subclass "hb-ember-folk-oath-of-the-ember" from the paladin class to the cleric class\./);
+  const same = vetUpdate(table, v2((d) => { d.subclasses[0].features[0].text = "Changed."; }));
+  assert.ok(same.ok, same.problems?.join());
+});
+
+// ---------- the shape of a subclass id ----------
+test("a subclass id has the shape of a pack entry's id: anything else is refused by validate, loaded or not", () => {
+  const base = paladin(5, { subclass: undefined });
+  const bad = ["hb-", "hb-a", `${OATH} `, "hb-ember-folk-Oath", "hb--x-y", "hb-a\nb-c", "hb-a-b<img src=x>", "HB-ember-folk-oath"];
+  for (const id of ["hb-", "hb-a", `${OATH} `, "hb-ember-folk-Oath", "hb-a\nb-c", "hb-a-b<img src=x>"]) {
+    const p = validate({ ...base, subclass: id });
+    assert.ok(p[0].startsWith("The Paladin's subclass is not the id of a homebrew subclass"), `${JSON.stringify(id)}: ${p[0]}`);
+    assert.ok(!p.some((m) => m.includes(id) && id.length > 3), "the text is not repeated in a sentence");
+    assert.deepEqual(missingOf({ ...base, subclass: id }), [], "and is never told to the DM as a missing pack");
+    assert.ok(validate({ ...base, level: 2, subclass: id }).length, "below level 3 as well");
+  }
+  assert.ok(bad.length);
+  assert.deepEqual(validate({ ...base, subclass: "hb-nobody-oath" }), [], "the shape of an id of a pack that is not loaded is accepted");
+  using(ONE, () => assert.ok(validate({ ...base, subclass: `${OATH} ` }).length));
 });

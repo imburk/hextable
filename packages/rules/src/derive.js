@@ -52,7 +52,9 @@ export function subclassOf(k) {
 }
 // A homebrew subclass the sheet names for a class of level 3 or more that is not loaded at this table (Decision 4): the pack was removed,
 // switched off, or the character came from another table. [{ kind: 'subclass', id, class }]. Its id stays on the sheet; its features are absent.
-const missingSubclass = (k) => !!k.c && k.level >= 3 && typeof k.subclass === 'string' && k.subclass !== k.c.subclass.id && k.subclass.startsWith('hb-') && !Object.hasOwn(CONTENT.subclasses, k.subclass);
+// A homebrew id has the shape of a pack entry's id, "hb-<pack>-<name>" (the registry's own: lower case letters, digits and single dashes); any other text is no subclass.
+export const HB_ID = /^hb-[a-z0-9]+(-[a-z0-9]+)+$/;
+const missingSubclass = (k) => !!k.c && k.level >= 3 && typeof k.subclass === 'string' && k.subclass !== k.c.subclass.id && HB_ID.test(k.subclass) && !Object.hasOwn(CONTENT.subclasses, k.subclass);
 export const missingOf = (sheet) => classesOf(sheet).filter(missingSubclass).map((k) => ({ kind: 'subclass', id: k.subclass, class: k.c.id }));
 // The character's level: the sum of its class levels.
 export const levelOf = (sheet) => classesOf(sheet).reduce((n, k) => n + k.level, 0);
@@ -635,8 +637,9 @@ export function validate(sheet) {
     // its features and the DM is told, where an unloaded Shield id is refused: a level 3 sheet cannot be valid without a subclass).
     const sc = subclassOf(k), own = Object.values(CONTENT.subclasses).filter((h) => h.class === k.c.id);
     const there = typeof k.subclass === 'string' && Object.hasOwn(CONTENT.subclasses, k.subclass) ? CONTENT.subclasses[k.subclass] : null;
-    const fine = sc !== null || missingSubclass({ ...k, level: 3 });
+    const fine = sc !== null || missingSubclass({ ...k, level: 3 });   // `missingSubclass` checks the id's shape
     if (there && there.class !== k.c.id) say(`${k.subclass} is a ${CONTENT.classes[there.class]?.name ?? there.class} subclass, not a ${k.c.name} one.`);
+    else if (typeof k.subclass === 'string' && k.subclass.startsWith('hb-') && !HB_ID.test(k.subclass)) say(`The ${k.c.name}'s subclass is not the id of a homebrew subclass: that is "hb-", the pack's id, a dash and a name, in lower case letters, digits and dashes (hb-ember-folk-oath-of-the-ember).`);
     else if (k.subclass !== undefined && !fine) say(`The ${k.c.name} subclass in the SRD is ${k.c.subclass.name} (${k.c.subclass.id}).${own.length ? ` This table also has ${own.map((h) => `${h.name} (${h.id})`).join(', ')}.` : ''}`);
     if (k.level >= 3 && !fine) say(`A level ${k.level} ${k.c.name} has a subclass: choose ${k.c.subclass.name}${own.length ? ` or one of this table's (${own.map((h) => h.name).join(', ')})` : ''}.`);
   }

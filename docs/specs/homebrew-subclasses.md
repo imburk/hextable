@@ -430,11 +430,20 @@ Built to Decisions 3 and 4, the owner's questions on their defaults. What was se
 - **The class name** is "Paladin (Oath of the Ember)", "Paladin (subclass not loaded)", and for several classes the class names alone when the long form is over 40
   letters, as for SRD subclasses (the two-class example is 52 letters long).
 - **The event** is `{ type: 'manual', actor, name, partial: true, text }` per missing subclass, as the spec wrote it, and a player's view of events drops it.
-- **Spent uses (differs from the sketch).** The sketch says spent uses of the subclass's features are "kept by id (`remake`)" when the pack returns. `remake` as it
-  stood would lose a count the moment a refresh ran while the pack was away, as the feature is then not on the record. `carryPlay` now keeps such a count in
-  `uses` by its `hb-` id while the sheet names a missing subclass, and takes it back (not above the feature's maximum) when the feature is there again. A Rest in the
-  meantime does not recharge it (DEBT T82).
+- **Spent uses (differs from the sketch; reworked after the review of #505).** The sketch says spent uses of the subclass's features are "kept by id (`remake`)"
+  when the pack returns. As `remake` stood, a `refresh` run while the pack was away would lose the count, as the feature is then not on the record. So the creature
+  gets an optional field `usesAway: { <subclass id>: { <feature id>: spent } }` (no version bump), written by `carryPlay` (`keepAway`, sheets.js) only while that
+  subclass is missing: the spent count of each `hb-` feature the old record had and the new one lacks goes to the missing subclass whose id shares the longest pack
+  prefix with the feature's id. When the subclass is loaded again and still the sheet's, the features of that same subclass come back with `max - spent` (not below
+  0), from the new maximum, and the entry is deleted; an entry for a subclass the sheet no longer names is dropped, and a feature of another subclass is never
+  touched, whatever its id. A Long Rest (`rests.js`) deletes `usesAway`: the uses would have recharged. A Short Rest does not (DEBT T82).
+- **The shape of a subclass id.** `validate` refuses a subclass id that begins `hb-` and is not `hb-<pack>-<name>` (lower case letters, digits, single dashes), with
+  a sentence that does not repeat the text; only an id of that shape is "a subclass this table does not have". Below class level 3 a well-formed unloaded id is
+  accepted and nothing is told to the DM until level 3 (no subclass features exist before it).
+- **A pack update may not move a subclass to another class.** `vetUpdate` (`content/packs.js`) refuses it: "Version 2 of "ember-folk" moves the subclass "..." from
+  the paladin class to the cleric class. ...". Two files beyond the issue's list were touched for the review round: `content/packs.js` for this, and
+  `engine/rests.js` (one line) for the Long Rest.
 - **Tests** (`homebrew-subclass-derive.test.js`): the example at level 7 inside `using`; a Paladin 6 / Bard 8 with a subclass from each of two packs, and the
-  subclasses swapped; a Cleric taken after a Paladin; the validate sentences with and without the overlay; `setSheet` with the wrong class (nothing changes), the
+  subclasses swapped; a Cleric taken after a Paladin; waiting counts (a pack whose id begins with the first's, a maximum that grew while away, a Long Rest, two subclasses away at once); the gate's refusal of a moved subclass; the shape of an id; the validate sentences with and without the overlay; `setSheet` with the wrong class (nothing changes), the
   right one, and a missing pack; `refresh` with the overlay removed, all characters refreshed, and the overlay back; `levelUp`; an SRD-only sheet and game unchanged.
   No existing test was changed.

@@ -1,12 +1,12 @@
 // Making creatures from templates and character sheets, and remaking one when its sheet changes
 // (engine.js).
-import { MONSTER_ACTIONS, SPELLS } from '../content/index.js';
+import { CONTENT, MONSTER_ACTIONS, SPELLS } from '../content/index.js';
 import { lintRecord } from '../content/schema.js';
 import { gridOf } from '../grid.js';
 import { ground, overlapAt } from '../space.js';
 import { xpFor } from '../rewards.js';
 import { barriers } from '../walls.js';
-import { derive, missingOf, validate } from '../derive.js';
+import { classesOf, derive, missingOf, validate } from '../derive.js';
 import { fail, featOf, living, RuleError } from './shared.js';
 import { fitsOn } from './world.js';
 import { effectsOf, endEffect } from '../durations.js';
@@ -131,6 +131,33 @@ function untouchedGrants(e, record) {
 // creature made again (DEBT C17). ONE list, for every remake: `remake` below (a sheet changed, a level, a rest, `refresh`)
 // and `editCharacter` (a record typed in). A new kind of play state is added here and nowhere else.
 // `sheet` is the new sheet, or undefined for a hand-typed record (it has no sheet, and its own gear stands).
+// The spent uses of the features of a homebrew subclass whose pack is not loaded (homebrew-subclasses.md, Decision 4). Such a feature is not on the
+// record, so its count waits on the creature: `usesAway: { <subclass id>: { <feature id>: spent } }`, written only while that subclass is missing.
+// When it is loaded again, the features of that same subclass come back with `max - spent` uses (not below 0) and the entry is deleted. A Long
+// Rest clears `usesAway` (rests.js): the uses would have recharged. A feature is the missing subclass's when its id and the subclass id share the
+// longest pack prefix ("hb-<pack>-"), so a feature of another subclass, even of a pack whose id begins with this one's, is not touched.
+const sharedPrefix = (a, b) => { let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n++; const cut = a.slice(0, n).lastIndexOf('-'); return cut >= 0 ? a.slice(0, cut + 1) : ''; };
+function keepAway(e, fresh, sheet) {
+  if (!sheet) return;
+  const gone = missingOf(sheet).map((m) => m.id), had = e.usesAway ?? {}, out = {};
+  for (const id of gone) if (had[id]) out[id] = { ...had[id] };
+  // What the old record had that the new one lacks (its pack just went away): the spent count of each, to the missing subclass whose id shares most of its prefix.
+  const now = new Set((fresh.feats ?? []).map((f) => f.id));
+  for (const f of e.feats ?? []) {
+    if (!f.uses || !f.id.startsWith('hb-') || now.has(f.id)) continue;
+    const best = gone.map((id) => [id, sharedPrefix(id, f.id).length]).filter(([, n]) => n >= 5);
+    const top = Math.max(0, ...best.map(([, n]) => n));
+    for (const [id, n] of best) if (n === top) (out[id] ??= {})[f.id] = Math.max(0, f.uses.max - Math.max(0, e.uses?.[f.id] ?? 0));
+  }
+  // A subclass that is loaded again, and still the sheet's: the features of that same subclass take back what was spent. An entry for a subclass the
+  // sheet no longer names (or that is not loaded and not missing) is dropped, and a feature of another subclass is never touched, whatever its id.
+  for (const [id, spent] of Object.entries(had)) {
+    if (gone.includes(id) || !classesOf(sheet).some((k) => k.subclass === id) || !Object.hasOwn(CONTENT.subclasses, id)) continue;
+    const own = new Set(CONTENT.subclasses[id].features.flatMap((f) => [f.id, ...(f.options ?? []).map((o) => `${f.id}-${o.id}`)]));
+    for (const f of fresh.feats ?? []) if (f.uses && own.has(f.id) && Object.hasOwn(spent, f.id)) fresh.uses[f.id] = Math.max(0, f.uses.max - spent[f.id]);
+  }
+  if (Object.keys(out).length) fresh.usesAway = out;
+}
 export function carryPlay(e, fresh, record, sheet) {
   // A creature at 0 Hit Points, or dead, stays at 0 (and `dead` is carried below): a new maximum does not stand it up. One above 0 keeps
   // its damage, and at least 1.
@@ -142,14 +169,10 @@ export function carryPlay(e, fresh, record, sheet) {
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);
     if (f.uses && was?.uses) fresh.uses[f.id] = Math.max(0, f.uses.max - Math.max(0, was.uses.max - (e.uses[f.id] ?? 0)));
-    // A feature of a homebrew subclass whose pack was away while the character was made again: its spent count was kept in `uses` by id below.
-    else if (f.uses && !was && f.id.startsWith('hb-') && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = Math.min(f.uses.max, Math.max(0, e.uses[f.id]));
     if (f.relentless && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = e.uses[f.id];      // Relentless Rage's uses since the last rest
     if (f.overchannel && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = e.uses[f.id];     // Overchannel's uses since the last Long Rest
   }
-  // A subclass whose pack is not loaded (homebrew-subclasses.md, Decision 4) has no feature to hold its uses: what its features had spent waits
-  // in `uses` by id (`hb-…`) for the pack's return, when the lines above take it back. A Rest while it waits does not recharge it.
-  if (sheet && missingOf(sheet).length) for (const [id, n] of Object.entries(e.uses ?? {})) if (id.startsWith('hb-') && fresh.uses[id] === undefined) fresh.uses[id] = n;
+  keepAway(e, fresh, sheet);
   if (fresh.hitDie && e.hd !== undefined) fresh.hd = Math.max(0, fresh.level - Math.max(0, (e.level ?? 0) - e.hd));
   // Hit Dice of several sizes: what was spent of each size stays spent.
   if (fresh.hdBy && e.hd !== undefined) {
