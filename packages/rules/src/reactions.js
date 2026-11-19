@@ -24,6 +24,8 @@
 //   damaged  it takes damage from a hostile creature it can see within the spell's range (Hellish Rebuke)
 //   saveFailed  it or an ally within range fails a save against an effect that would apply one of
 //            some conditions (Countercharm: rolled again with Advantage; by instruction only)
+//   attacks  a hostile creature under a lasting effect the holder's feature made makes an attack (#537, addition I of docs/specs/homebrew-subclasses.md:
+//            `reaction: { on: 'attacks', of, attack: 'melee' }`, Soul of Vengeance); one melee weapon attack against it, before its roll (engine/attacks.js, `reactToAttacker`)
 //   familiarDamaged  its familiar takes damage (Investment of the Chain Master: Resistance to it; #464, from `invest.ward`)
 // Shield's "targeted by Magic Missile" is the spell's `blocks` list, checked when a spell is cast.
 // Pure: no I/O, no randomness here.
@@ -90,6 +92,13 @@ export function grappleInstead(s, o, t, named = true) {
 // How much a spell's own steps add to Armor Class (Shield: 5), or 0.
 function acGain(def) {
   return (def.effects ?? []).reduce((n, st) => n + (st.modifier?.on === 'ac' && st.modifier.op === 'add' && typeof st.modifier.value === 'number' ? st.modifier.value : 0), 0);
+}
+
+// Addition I: is `c` under a lasting effect that `holder` made with its feature `of`? The effect is the holder's own, from that feature, and still holds something on `c`: a part
+// put on it, or a part put on the holder against it only (a modifier `against: 'target'`). Reads the state without touching it (`effectsOf` would make the list).
+export function underEffect(s, holder, of, c) {
+  if (!c || !holder || c.id === holder.id) return false;
+  return (s.effects ?? []).some((fx) => fx.source === holder.id && fx.feature === of && (fx.parts ?? []).some((p) => !p.ended && (p.target === c.id || p.against === c.id)));
 }
 
 // Every reaction this creature has, in the order the engine considers them at a trigger:
