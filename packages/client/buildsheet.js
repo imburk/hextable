@@ -174,10 +174,10 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     if (mode === 'add' && importButton) parts.push(el('div', { class: 'row' }, importButton(), el('small', { class: 'note', text: 'Or start from a Fantasy Grounds export.' })));
 
     // Who: name, colour, class, subclass, level
-    const sel = (label, id, options, value, onchange, disabled) => {
+    const sel = (label, id, options, value, onchange, disabled, wide) => {
       const s = el('select', { id: `qb-${id}`, disabled }, ...options.map(([v, t]) => el('option', { value: v, text: t })));
       s.value = value; s.onchange = () => onchange(s.value);
-      return el('label', { class: 'qe-f' }, el('span', { text: label }), s);
+      return el('label', { class: wide ? 'qe-f wide' : 'qe-f' }, el('span', { text: label }), s);
     };
     const name = el('input', { id: 'qb-name', type: 'text', value: b.name, maxLength: 40, autocomplete: 'off', autocapitalize: 'words', spellcheck: false, oninput: (ev) => { b.name = ev.target.value; update(); } });
     const color = el('input', { id: 'qb-color', type: 'color', value: b.color, oninput: (ev) => { b.color = ev.target.value; update(); } });
@@ -188,7 +188,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
         b = Object.assign(fresh(v), keep); autoSubclass(); build();
       }, locked || mode === 'edit'),
       sel('Level', 'levelsel', Array.from({ length: 20 }, (_, i) => [String(i + 1), String(i + 1)]), String(b.level), (v) => { b.level = +v; autoSubclass(); build(); }, locked),
-      sel('Subclass', 'subclass', subclassChoices(c, b.level, b.subclass), b.subclass ?? '', (v) => { b.subclass = v || undefined; build(); }),
+      sel('Subclass', 'subclass', subclassChoices(c, b.level, b.subclass), b.subclass ?? '', (v) => { b.subclass = v || undefined; build(); }, false, true),
       el('label', { class: 'qe-f' }, el('span', { text: 'Colour' }), color)),
       ...(subclassNote(c, b.subclass) ? [el('p', { class: 'note', id: 'qb-subclass-note', text: subclassNote(c, b.subclass) })] : [])));
 
