@@ -40,6 +40,20 @@ export function classesOf(sheet) {
   const list = multiclassed(sheet) ? sheet.classes : [{ class: sheet?.class, level: sheet?.level, subclass: sheet?.subclass, spells: sheet?.spells }];
   return list.map((x, i) => ({ c: CONTENT.classes[x?.class] ?? null, level: x?.level | 0, subclass: x?.subclass, spells: x?.spells, first: i === 0, i }));
 }
+// The subclass a class of the sheet plays: the SRD one, a loaded homebrew one of that class, or none
+// (docs/specs/homebrew-subclasses.md, Decision 3). `k` is an entry of `classesOf`. A homebrew subclass is
+// found in `CONTENT.subclasses`, which holds a table's own while its packs are lent to the content lookups
+// (`using`, `install`); with none loaded the answer is the SRD's or null.
+export function subclassOf(k) {
+  if (k.subclass === undefined || !k.c) return null;
+  if (k.subclass === k.c.subclass.id) return k.c.subclass;
+  const h = typeof k.subclass === 'string' && Object.hasOwn(CONTENT.subclasses, k.subclass) ? CONTENT.subclasses[k.subclass] : null;
+  return h && h.class === k.c.id ? h : null;
+}
+// A homebrew subclass the sheet names for a class of level 3 or more that is not loaded at this table (Decision 4): the pack was removed,
+// switched off, or the character came from another table. [{ kind: 'subclass', id, class }]. Its id stays on the sheet; its features are absent.
+const missingSubclass = (k) => !!k.c && k.level >= 3 && typeof k.subclass === 'string' && k.subclass !== k.c.subclass.id && k.subclass.startsWith('hb-') && !Object.hasOwn(CONTENT.subclasses, k.subclass);
+export const missingOf = (sheet) => classesOf(sheet).filter(missingSubclass).map((k) => ({ kind: 'subclass', id: k.subclass, class: k.c.id }));
 // The character's level: the sum of its class levels.
 export const levelOf = (sheet) => classesOf(sheet).reduce((n, k) => n + k.level, 0);
 
@@ -64,10 +78,11 @@ function classFeatures(sheet) {
   for (const k of classesOf(sheet)) {
     const c = k.c;
     if (!c) continue;
-    const own = [...c.features, ...c.subclass.features];
+    const sc = subclassOf(k);
+    const own = [...c.features, ...c.subclass.features, ...(sc && sc !== c.subclass ? sc.features : [])];
     const map = new Map(own.filter((f) => taken.has(f.id)).map((f) => [f.id, `${c.id}-${f.id}`]));
     for (const f of own) taken.add(f.id);
-    const sub = k.subclass === c.subclass.id ? c.subclass.features : [];
+    const sub = sc?.features ?? [];
     for (const f0 of [...c.features, ...sub].filter((x) => x.level <= k.level).sort((a, b) => a.level - b.level)) {
       const f = map.size ? relabel(f0, map) : f0;
       out.push({ f, cls: k });
@@ -425,7 +440,7 @@ export function derive(sheet) {
   for (const k of casters) {
     const always = new Set(), ab = k.c.casting.ability;
     for (const x of feats) if (x.cls.i === k.i) for (const id of x.f.grants?.spells ?? []) always.add(id);
-    for (const [l, list] of Object.entries(k.subclass === k.c.subclass.id ? k.c.subclass.spells ?? {} : {})) if (+l <= k.level) list.forEach((id) => always.add(id));
+    for (const [l, list] of Object.entries(subclassOf(k)?.spells ?? {})) if (+l <= k.level) list.forEach((id) => always.add(id));
     for (const id of [...(k.spells ?? []), ...always]) {
       if (!CONTENT.spells[id]) continue;
       // A spell two classes prepare is cast with the better of their abilities.
@@ -546,7 +561,7 @@ export function derive(sheet) {
     to.endsOn = p.endsOn;
   }
 
-  const named = (k) => (k.subclass === k.c.subclass.id && k.level >= 3 ? `${k.c.name} (${k.c.subclass.name})` : k.c.name);
+  const named = (k) => { const sc = subclassOf(k); return k.level >= 3 && sc ? `${k.c.name} (${sc.name})` : missingSubclass(k) ? `${k.c.name} (subclass not loaded)` : k.c.name; };
   const cls = multi ? [ks.map((k) => `${named(k)} ${k.level}`), ks.map((k) => `${k.c.name} ${k.level}`)].map((l) => l.join(' / ')).find((t) => t.length <= 40) ?? ks.map((k) => `${k.c.name} ${k.level}`).join(' / ').slice(0, 40)
     : named(ks[0]).length <= 40 ? named(ks[0]) : c.name;
   // Hit Dice of more than one size are counted apart (Multiclassing, Hit Points and Hit Point Dice).
@@ -578,7 +593,7 @@ export function derive(sheet) {
   if (featCast.length) why.spells = [...(why.spells ?? []), ...featCast];
   // Ability scores: as typed, and what each feat added.
   why.abil = chosen.filter((y) => points(y).length).map((y) => `${y.def.name}: ${points(y).map(([a, n]) => `${nice(a)} +${n}`).join(', ')}`);
-  return { record, why };
+  return { record, why, missing: missingOf(sheet) };
 }
 
 // ---------- what is wrong with a sheet ----------
@@ -607,8 +622,14 @@ export function validate(sheet) {
   const level = multi ? levelOf(sheet) : sheet.level;
   if (!(Number.isInteger(level) && level >= 1 && level <= 20)) return [...bad, multi ? 'Its class levels add up to 1 to 20.' : 'Its level is 1 to 20.'];
   for (const k of ks) {
-    if (k.subclass !== undefined && k.subclass !== k.c.subclass.id) say(`The ${k.c.name} subclass in the SRD is ${k.c.subclass.name} (${k.c.subclass.id}).`);
-    if (k.level >= 3 && k.subclass !== k.c.subclass.id) say(`A level ${k.level} ${k.c.name} has a subclass: choose ${k.c.subclass.name}.`);
+    // The SRD subclass, a loaded homebrew one of this class, or a homebrew id whose pack is not loaded (Decision 4: it plays without
+    // its features and the DM is told, where an unloaded Shield id is refused: a level 3 sheet cannot be valid without a subclass).
+    const sc = subclassOf(k), own = Object.values(CONTENT.subclasses).filter((h) => h.class === k.c.id);
+    const there = typeof k.subclass === 'string' && Object.hasOwn(CONTENT.subclasses, k.subclass) ? CONTENT.subclasses[k.subclass] : null;
+    const fine = sc !== null || missingSubclass({ ...k, level: 3 });
+    if (there && there.class !== k.c.id) say(`${k.subclass} is a ${CONTENT.classes[there.class]?.name ?? there.class} subclass, not a ${k.c.name} one.`);
+    else if (k.subclass !== undefined && !fine) say(`The ${k.c.name} subclass in the SRD is ${k.c.subclass.name} (${k.c.subclass.id}).${own.length ? ` This table also has ${own.map((h) => `${h.name} (${h.id})`).join(', ')}.` : ''}`);
+    if (k.level >= 3 && !fine) say(`A level ${k.level} ${k.c.name} has a subclass: choose ${k.c.subclass.name}${own.length ? ` or one of this table's (${own.map((h) => h.name).join(', ')})` : ''}.`);
   }
   // Who a message is about: "A level 5 Fighter", or for several classes "This character".
   const who = multi ? 'This character' : `A level ${level} ${c.name}`;
