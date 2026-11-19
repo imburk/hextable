@@ -383,7 +383,9 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     // A subclass may price some forms in another pool (`F.cost`, DEBT T86): then each form says what it costs and how many are left, and one the creature cannot pay is
     // marked not available (still chosen to read why; its button is off). With no price the card is what it was: the engine says no to a feature with no uses left.
     const priced = !!F.cost, price = (m) => (priced ? formPrice(e, f, m) : null);
-    if (!forms.some((m) => m.id === st.form)) st.form = (priced ? forms.find((m) => m.id !== now && price(m).ok) : null)?.id ?? forms.find((m) => m.id !== now)?.id ?? forms[0]?.id ?? null;
+    // The form chosen last time is kept, unless the card is priced and it can no longer be paid: then the first form that can (not the one the creature is in).
+    const stale = priced && forms.some((m) => m.id === st.form) && !price(CONTENT.monsters[st.form]).ok;
+    if (stale || !forms.some((m) => m.id === st.form)) st.form = (priced ? forms.find((m) => m.id !== now && price(m).ok) : null)?.id ?? (stale ? st.form : null) ?? forms.find((m) => m.id !== now)?.id ?? forms[0]?.id ?? null;
     const info = h('p', { class: 'cp-note', id: 'cp-form-info' }), cost = h('p', { class: 'cp-note', id: 'cp-form-price', hidden: true });
     const fill = () => {
       const m = CONTENT.monsters[st.form], p = m && price(m);
@@ -521,15 +523,15 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
 
   // ---------- Hurl Through Hell: with its use spent, a spell slot restores it (a Pact Magic slot for a Warlock, any slot for another caster: DEBT T88) ----------
   function hurlPanel(e, f) {
-    const left = usesLeft(e, f) ?? 0, st = mem(`${e.id}:${f.id}`, () => ({ slot: 0 })), levels = slotLevels(e), word = slotWord(e);
+    const left = usesLeft(e, f) ?? 0, st = mem(`${e.id}:${f.id}`, () => ({ slot: 0 })), levels = slotLevels(e), word = slotWord(e), hell = f.id === 'hurl-through-hell';       // the words about an attack that hit are Hurl Through Hell's; another feature a slot restores is not about attacks
     if (st.slot && !levels.includes(st.slot)) st.slot = 0;
     if (left > 0) st.slot = 0;
     const draw = () => show(hurlPanel(e, f));
-    const body = [h('p', { class: 'cp-note', text: left > 0 ? `${left} use left. It follows an attack that hit this turn, once a turn, and takes no action.` : `No use left. A ${word} slot can restore it: choose its level.` }),
+    const body = [h('p', { class: 'cp-note', text: left > 0 ? `${left} use left.${hell ? ' It follows an attack that hit this turn, once a turn, and takes no action.' : ` ${TIME[f.action.time]}.`}` : `No use left. A ${word} slot can restore it: choose its level.` }),
       left > 0 ? null : h('div', { class: 'cp-f', 'data-part': 'slot' }, h('span', { text: `${word === 'spell' ? 'Spell' : word} slot to spend` }),
         levels.length ? h('div', { class: 'cp-levels', role: 'group', 'aria-label': 'Slot level' }, ...levels.map((l) => h('button', { type: 'button', 'data-level': l, 'aria-pressed': String(st.slot === l), text: `Level ${l} (${e.slots[l]} left)`, onclick: () => { st.slot = l; draw(); } })))
           : h('p', { class: 'cp-note cp-why', text: `${e.name} has no ${word} slot left.` })),
-      h('p', { class: 'cp-note', text: 'Then tap a creature you hit with an attack roll this turn.' })];
+      h('p', { class: 'cp-note', text: hell ? 'Then tap a creature you hit with an attack roll this turn.' : 'Then tap the creature it is for.' })];
     return {
       key: `${e.id}:${f.id}`, title: f.name, note: f.text, body,
       buttons: [{ label: 'Choose target', primary: true, id: 'cp-use', run: () => {

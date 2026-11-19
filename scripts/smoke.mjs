@@ -58,6 +58,7 @@ const REGISTRY = {
   homebrew: ['homebrew'],
   grapple: ['grapple'],
   standin: ['standin'],
+  slotforms: ['slotforms'],
 };
 
 const only = process.env.SMOKE_ONLY;
