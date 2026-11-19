@@ -2161,6 +2161,15 @@ class GrantReading extends Reading {
     if (v.gain !== undefined) this.line('It gives the holder an extra action, or extra attacks, as the entry says.', 2);
     if (v.pool === true) this.line('It spends points from a pool of healing on a creature.', 2);
     if (Array.isArray(v.modes)) this.line(`It does one of ${v.modes.length} things, picked when it is used.`, 2);
+    // Addition G of docs/specs/homebrew-subclasses.md: a mode may have a price of its own, or none, and a second creature near the first may take the damage.
+    if (Array.isArray(v.modes)) for (const m of v.modes) {
+      if (!isObj(m)) continue;
+      const nm = typeof m.name === 'string' && m.name.trim() ? qt(m.name, 60) : 'a mode';
+      if (m.free === true) this.line(`The ${nm} way costs nothing: it spends no use of anything, whatever the action costs otherwise.`, 3);
+      else if (isObj(m.cost)) this.line(`The ${nm} way spends ${isInt(m.cost.n) ? m.cost.n : 1} use${m.cost.n > 1 ? 's' : ''} of the holder's feature ${shown(m.cost.resource)} instead of what the action costs otherwise. ${featureNote(m.cost.resource)}`, 3);
+      if (isObj(m.target) && m.target.near !== undefined) this.nearLine(m.target.near, `${at}.modes.${v.modes.indexOf(m)}.target.near`, `In the ${nm} way, `);
+    }
+    if (isObj(v.target) && v.target.near !== undefined) this.nearLine(v.target.near, `${at}.target.near`, '');
     if (v.acts !== undefined) this.line('It also takes the actions named in the entry.', 2);
     if (v.after === 'hit') this.line('It follows a hit the holder made this turn, once a turn.', 2);
     // Addition F of docs/specs/homebrew-subclasses.md: the same, but only a hit made with a weapon counts.
@@ -2168,6 +2177,12 @@ class GrantReading extends Reading {
     if (v.zone !== undefined) this.actionZone(v, at);
     const groups = Array.isArray(v.effects) ? [[v.effects, `${at}.effects`]] : Array.isArray(v.modes) ? v.modes.filter(isObj).map((m, j) => [m.effects, `${at}.modes.${j}.effects`]) : [];
     for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : v.zone !== undefined ? 'that creature' : 'the target', v.duration, 2);
+  }
+  // `near` (addition G of docs/specs/homebrew-subclasses.md; engine/features.js): a second creature within so many feet of the first target takes the damage steps the action begins with.
+  nearLine(feet, at, before) {
+    if (!isInt(feet)) return this.bad(`${at} is not feet.`);
+    this.num(at, feet, 'feet');
+    this.line(`${before}${before ? 'a' : 'A'} second creature within ${feet} feet of the first target may be named as well, by the holder (a second name in \`targets\`). It must be another creature than the holder and the first target; nothing says it must be a foe, so an ally may be named. It takes the damage steps the action begins with, rolled once for the two of them (the same roll, not a new one), and nothing else: every step after those is done to the first target alone.`, 2);
   }
   // `cost.slot` on an action (addition E of docs/specs/homebrew-subclasses.md; engine/features.js): a spell slot of the level the holder picks, from the lowest
   // the action names up, spent with the action; `cost.higher` grows its first damage, healing or Temporary Hit Points step by what each level above the lowest adds.

@@ -274,6 +274,21 @@ export function rolledProblem(steps, inAttack = false) {
   }
   return null;
 }
+// Addition G (docs/specs/homebrew-subclasses.md): `target: { near: N }`, a second creature within N feet of the first target takes the damage steps the action
+// BEGINS with: the leading run of damage steps, each plain (no `when`, no `onKill`, no `onZero`), rolled once and shared by the two. What comes after (a modifier on
+// the holder, a push, a condition) is for the first target alone. `nearRun` is how many steps that run has; `nearProblem` is null when the list begins with one, or the
+// sentence of what is wrong. The gate and the engine (engine/features.js, which checks before it pays) read the same two.
+export function nearRun(steps) {
+  let n = 0;
+  if (Array.isArray(steps)) while (n < steps.length && steps[n] && typeof steps[n] === 'object' && 'damage' in steps[n]) n++;
+  return n;
+}
+export function nearProblem(steps) {
+  const n = nearRun(steps);
+  if (!n) return 'a second target near the first takes the damage steps the action begins with, and its first step is not a damage step';
+  for (let i = 0; i < n; i++) if (steps[i].when !== undefined || steps[i].onKill !== undefined || steps[i].onZero !== undefined) return 'a second target near the first takes the damage steps the action begins with, and those must have no `when`, `onKill` or `onZero`';
+  return null;
+}
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   { const p = rolledIn(steps); if (p) say(p); }
@@ -518,10 +533,12 @@ function lintNoSummonAmounts(e, say) {
   });
 }
 
-function lintTarget(target, say) {
+function lintTarget(target, say, nearOk = false) {
   if (!target || typeof target !== 'object') return say('needs a target');
   const kinds = ['self', 'creature', 'area'].filter((k) => k in target);
   if (kinds.length !== 1) return say('target needs exactly one of self, creature, area');
+  // `near` (addition G): a second creature near the first target, for the action of a subclass's feature alone (`lintNear` holds the rest).
+  if (target.near !== undefined && !nearOk) say('`near` (a second target near the first) is for the action of a subclass\'s feature, not a spell, a monster or an object');
   if (target.area) {
     if (!AREA_SHAPES.includes(target.area.shape)) say(`unknown area shape "${target.area.shape}"`);
     if (!(target.area.size > 0)) say('an area needs a size in feet');
@@ -1057,6 +1074,39 @@ function lintActionCost(a, say) {
   }
 }
 const DICE_GROWS = /^(?:(\d+)d(\d+))?([+-]\d+)?$/;
+// A mode of a feature's action may have a price of its own (`cost: { resource, n? }`, in place of the action's) or none (`free: true`), and may aim a second
+// target (`target: { near }`, in place of the action's own `near`): addition G of docs/specs/homebrew-subclasses.md. `lintModeOwn` checks one mode's three keys.
+const MODE_KEYS = ['id', 'name', 'effects', 'target', 'cost', 'free'];
+const isNearFeet = (n) => isInt(n) && n >= 5 && n <= 60 && n % 5 === 0;
+function lintModeOwn(m, a, say) {
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return;
+  const at = typeof m.id === 'string' ? `mode ${m.id}: ` : 'a mode: ';
+  if (m.free !== undefined && m.free !== true) say(`${at}\`free\` is true or left out`);
+  if (m.cost !== undefined) {
+    const c = m.cost;
+    if (!(c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).every((k) => ['resource', 'n'].includes(k)) && ID.test(c.resource ?? '') && (c.n === undefined || (isInt(c.n) && c.n > 0)))) say(`${at}cost is { resource, n? }: the pool this mode spends instead of the action's own price`);
+  }
+  if (m.free === true && m.cost !== undefined) say(`${at}a mode costs nothing (\`free\`) or has a price of its own (\`cost\`), not both`);
+  if ((m.free !== undefined || m.cost !== undefined) && (a.orCost !== undefined || a.orSlot !== undefined)) say(`${at}a mode with a price of its own (or none) cannot be on an action with \`orCost\` or \`orSlot\`: those are about the action's own price`);
+  if (m.target !== undefined && !(m.target && typeof m.target === 'object' && !Array.isArray(m.target) && Object.keys(m.target).length === 1 && 'near' in m.target)) say(`${at}a mode's target is { near }, and nothing else: who the action is aimed at is the action's`);
+  else if (m.target !== undefined && !isNearFeet(m.target.near)) say(`${at}near is feet, a multiple of 5, 5 to 60`);
+}
+// `near` (addition G), on the action's `target` or on a mode's: the second creature takes the damage the action begins with. One place for every refusal of it.
+function lintNear(a, cls, say) {
+  const modes = Array.isArray(a.modes) ? a.modes.filter((m) => m && typeof m === 'object' && !Array.isArray(m)) : [];
+  const own = a.target && typeof a.target === 'object' ? a.target.near : undefined, aimed = modes.filter((m) => m.target !== undefined && typeof m.target === 'object' && m.target && 'near' in m.target);
+  if (own === undefined && !aimed.length) return;
+  if (cls === FEAT_CLASS) return say('a feat or an item cannot have a second target near the first (`near`): only a feature of a subclass can');
+  if (a.pool !== undefined || a.gain !== undefined || a.form !== undefined) return say('a second target near the first (`near`) is for an action that does steps, not a pool of healing, an extra action or a form');
+  const c = a.target?.creature;
+  if (!c || typeof c !== 'object') return say('a second target near the first (`near`) needs a creature to be the first: the action is aimed at one creature, not at the holder or at an area');
+  if (c.count !== undefined && c.count !== 1) say('a second target near the first (`near`) is for an action with one target: `count` and `within` are how an action names several');
+  if (c.repeat !== undefined || c.within !== undefined) say('a second target near the first (`near`) is for an action with one target: `repeat` and `within` are how an action names several');
+  if (own !== undefined && !isNearFeet(own)) say('near is feet, a multiple of 5, 5 to 60');
+  if (own !== undefined && aimed.length) say('`near` is said on the action or on its modes, not both');
+  const lists = own !== undefined ? (modes.length ? modes.map((m) => m.effects) : [a.effects]) : aimed.map((m) => m.effects);
+  for (const l of lists) { const p = Array.isArray(l) ? nearProblem(l) : null; if (p) { say(p); break; } }
+}
 function lintGrants(g, cls, say) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
   for (const k of Object.keys(g)) if (!GRANTS.includes(k)) say(`"${k}" is not something a feature can grant`);
@@ -1127,13 +1177,14 @@ function lintGrants(g, cls, say) {
       // In class content a target's count may grow with the class ({ mod, min }: Abjure Foes); derive() puts in the number.
       const count = a.target?.creature?.count;
       if (amountish(count)) lintAmount(count, cls, say, 'target count');
-      lintTarget(amountish(count) ? { ...a.target, creature: { ...a.target.creature, count: 1 } } : a.target, say);
+      lintTarget(amountish(count) ? { ...a.target, creature: { ...a.target.creature, count: 1 } } : a.target, say, true);
       // `modes`: the feature does one of these, chosen when it is used ({ id, name, effects }), in place of `effects`.
       if (a.modes !== undefined) {
         if (a.effects !== undefined) say('an action has effects or modes, not both');
         if (!(Array.isArray(a.modes) && a.modes.length >= 2)) say('modes lists two or more');
         else for (const m of a.modes) {
-          if (!(m && ID.test(m.id ?? '') && isText(m.name) && Object.keys(m).every((k) => ['id', 'name', 'effects'].includes(k)))) say('a mode is { id, name, effects }');
+          if (!(m && ID.test(m.id ?? '') && isText(m.name) && Object.keys(m).every((k) => MODE_KEYS.includes(k)))) say('a mode is { id, name, effects, target?, cost?, free? }');
+          lintModeOwn(m, a, say);
           if (lintSteps(bakeValues(m?.effects, cls, say), say, { manual: false, rolledOk: cls !== FEAT_CLASS }).counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
         }
       } else {
@@ -1146,6 +1197,7 @@ function lintGrants(g, cls, say) {
         if (a.zone !== undefined) { let rolls = false; walkSteps(a.effects, (st) => { if (st && typeof st === 'object' && 'attack' in st) rolls = true; }); if (rolls) say('the steps of a zone run on each creature that enters it, with no reach or range to roll an attack against: an attack step cannot be one of them (a save does the work)'); }
       }
     }
+    lintNear(a, cls, say);
     for (const k of ['renew', 'noSpells', 'pool', 'firstAttack', 'endsWhenIncapacitated']) if (a?.[k] !== undefined && a[k] !== true) say(`action ${k} is true or left out`);
     // `zone` (addition D of docs/specs/homebrew-subclasses.md): the action's Emanation stays for its duration, moves with the holder, and its
     // `effects` go off on a creature that enters it or starts or ends its turn there, as a spell's zone (zones.js). Only a subclass's feature has one.
@@ -1586,6 +1638,7 @@ function featureRefs(g) {
   const add = (what, id) => { if (typeof id === 'string') out.push([what, id]); };
   const a = g.action;
   add('cost', a?.cost?.resource); add('cost', a?.orCost?.resource); add('ref', a?.orCost?.with);
+  for (const m of Array.isArray(a?.modes) ? a.modes : []) add('cost', m?.cost?.resource);
   for (const list of [a?.effects, ...(Array.isArray(a?.modes) ? a.modes.map((m) => m?.effects) : [])]) walkSteps(list, (st) => { if (st && typeof st === 'object') add('ref', st.with); });
   add('ref', g.moveWith?.of); add('ref', g.restore?.of); add('ref', g.persist?.of); add('ref', g.fleet?.of);
   add('ref', g.metamagicMax?.while); add('ref', g.relentless?.while);
@@ -1667,7 +1720,7 @@ function lintSubclass(e, say, ctx = {}) {
         if (most > limit) sub(`a modifier on "${m.on}" takes the number ${top} rolls, up to ${most}; ${SPEED_HOOKS.includes(m.on) ? 'a speed may go up to 120' : 'only a speed may go past 40 (up to 120)'}, as for a number written out`);
       }
       const c = a.target?.creature?.count;
-      if (a.target?.area || (c !== undefined && c !== 1)) sub('a modifier of `{ rolled: true }` is for an action with one target: several creatures would each roll their own number (a second target is addition G)');
+      if (a.target?.area || (c !== undefined && c !== 1)) sub('a modifier of `{ rolled: true }` is for an action with one target: several creatures would each roll their own number, and the modifier would be put once for each (a second creature near the first, `near`, shares the one roll: that is the way to a second target)');
       if (a.cost?.higher && (a.cost.higher.damage !== undefined || a.cost.higher.times !== undefined)) sub('a modifier of `{ rolled: true }` takes the number of a damage step that a slot would grow (`cost.higher` damage or times), so the number could pass what is checked here');
     }
   }
@@ -2009,13 +2062,15 @@ function lintFeat(f, say) {
       if (!(fm && allOf(CREATURE_TYPES)(fm.types) && typeof fm.maxCr === 'number' && [0, 1].includes(fm.fly) && isInt(fm.hours) && fm.hours >= 1 && fm.hours <= 24
         && (fm.tempHp === undefined || (isInt(fm.tempHp) && fm.tempHp >= 0 && fm.tempHp <= 100)))) sub('its form is { types, maxCr, fly, hours, tempHp? }.');
     } else if (!a.gain && !a.pool) {
-      lintTarget(a.target, sub);
+      lintTarget(a.target, sub, true);
       // An action that takes other actions may have no steps left for this character (Patient Defense below level 10).
       if (a.modes === undefined) { if (!(a.acts && Array.isArray(a.effects) && !a.effects.length)) lintSteps(a.effects, sub, { manual: false, rolledOk: true }); }
-      else if (!(Array.isArray(a.modes) && a.modes.length >= 2 && a.modes.length <= 10 && a.modes.every((m) => m && ID.test(m.id ?? '') && isText(m.name)))) sub('its modes are a list of { id, name, effects }.');
-      else for (const m of a.modes) lintSteps(m.effects, sub, { manual: false, rolledOk: true });
+      else if (!(Array.isArray(a.modes) && a.modes.length >= 2 && a.modes.length <= 10 && a.modes.every((m) => m && ID.test(m.id ?? '') && isText(m.name)))) sub('its modes are a list of { id, name, effects, target?, cost?, free? }.');
+      else for (const m of a.modes) { lintModeOwn(m, a, sub); lintSteps(m.effects, sub, { manual: false, rolledOk: true }); }
     }
     if (a?.cost !== undefined) lintActionCost(a, (m) => sub(`${m}.`));
+    // A record's `near` is held to what the gate holds a pack's to (the record may have been made by another build): a creature to be the first, one target, 5 to 60 feet, and damage to begin with.
+    if (a && typeof a === 'object') lintNear(a, null, (m) => sub(`${m}.`));
     if (a?.gain?.attacks !== undefined && !(ID.test(a.gain.attacks.with ?? '') && isInt(a.gain.attacks.n) && a.gain.attacks.n > 0 && a.gain.attacks.n <= 5)) sub('it gains attacks { with, n }.');
     if (a?.duration !== undefined && !isDuration(a.duration)) sub('its duration is a duration.');
     if (a?.cure !== undefined && !(a.pool && a.cure && allOf(CONDITIONS)(a.cure.conditions) && isInt(a.cure.cost) && a.cure.cost > 0)) sub('its cure is { conditions, cost }, on a pool.');
@@ -2141,6 +2196,7 @@ export function lintRecord(r, { spells = {} } = {}) {
     else { const seen = new Set(); for (const f of r.feats) { lintFeat(f, say); if (seen.has(f?.id)) say(`Feature ${f?.name} is listed twice.`); seen.add(f?.id); } }
     const pools = new Set((Array.isArray(r.feats) ? r.feats : []).filter((f) => f?.uses).map((f) => f.id));
     for (const f of Array.isArray(r.feats) ? r.feats : []) if (f?.action?.cost?.resource !== undefined && !pools.has(f.action.cost.resource)) say(`Feature ${f.name} costs "${f.action.cost.resource}", which it does not have.`);
+    for (const f of Array.isArray(r.feats) ? r.feats : []) for (const m of Array.isArray(f?.action?.modes) ? f.action.modes : []) if (m?.cost?.resource !== undefined && !pools.has(m.cost.resource)) say(`Feature ${f.name}: its mode ${m.id} costs "${m.cost.resource}", which it does not have.`);
   }
   if (r.hitDie !== undefined && ![6, 8, 10, 12].includes(r.hitDie)) say('Its Hit Die is d6, d8, d10 or d12.');
   if (r.classes !== undefined && !(Array.isArray(r.classes) && r.classes.length >= 2 && r.classes.length <= 12 && r.classes.every((c) => c && ID.test(c.id ?? '') && within(c.level, 1, 19) && (c.subclass === undefined || ID.test(c.subclass)))
@@ -2375,7 +2431,7 @@ const SHAPES = {
   featureUses: { what: 'a feature\'s uses', keys: ['max', 'recharge', 'short'] },
   requires: { what: 'what an option requires', keys: ['level', 'option', 'spell'] },
   spellMap: { what: 'spells by class level', keys: null },
-  target: { what: 'a target', keys: ['self', 'creature', 'area'] },
+  target: { what: 'a target', keys: ['self', 'creature', 'area', 'near'] },
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
@@ -2540,7 +2596,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
-  'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100],
+  'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
   'targets.#': [1, 20], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
@@ -2708,7 +2764,10 @@ export function workOf(kind, e) {
     const grownEffects = slot && Array.isArray(a.effects) ? scaledSteps({ effects: a.effects, higher: { slot: slot.hs } }, slot.up) : a.effects;
     for (const steps of [a.effects, ...(Array.isArray(a.modes) ? a.modes.map((m) => m?.effects) : [])]) {
       const grown = slot && steps === a.effects ? grownEffects : steps;
-      take(targetsOf(a.target) * listWork(grown, slot && steps === a.effects && isN(slot.hs.times) ? slot.up * slot.hs.times : 0), `action of the feature "${shortId(f)}"`);
+      // A second creature near the first (addition G) takes the damage steps the action begins with, on top of the first target's work (the roll is shared: no dice more).
+      const mode = Array.isArray(a.modes) ? a.modes.find((m) => m?.effects === steps) : null, near = mode?.target?.near ?? a.target?.near;
+      const second = near !== undefined ? listWork(grown?.slice?.(0, nearRun(grown)), slot && steps === a.effects && isN(slot.hs.times) ? slot.up * slot.hs.times : 0) : 0;
+      take(targetsOf(a.target) * listWork(grown, slot && steps === a.effects && isN(slot.hs.times) ? slot.up * slot.hs.times : 0) + second, `action of the feature "${shortId(f)}"`);
       takeDice(diceFor(grown, targetsOf(a.target), !!a.target?.area), `action of the feature "${shortId(f)}"`);
     }
     // A zone goes off for one creature at a time, as a spell's does (above): one that moves into it, or two ticks in one end of turn.
@@ -2832,7 +2891,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   featureUses: { max: 'i|o', recharge: 's|o', short: 'i' },
   requires: { level: 'i', option: 's', spell: 's' },
   spellMap: { '*': 's[]' },
-  target: { self: 'b', creature: 'o', area: 'o' },
+  target: { self: 'b', creature: 'o', area: 'o', near: 'i' },
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },

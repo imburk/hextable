@@ -103,6 +103,43 @@ for (const fight of [false, true]) {
   });
 }
 
+// Review of #532, H1: the filter used to skip an element that is not a string, and a handler then coerced it (`s.entities[["m15"]]` is `s.entities.m15`), so a list inside a list,
+// an object or a number reached a hidden creature. A field that names creatures is an id or a flat list of ids; anything else is an id that is nothing.
+const SHAPES = (id) => [[[id]], [id, [id]], ["wizard", [id]], [[id], "wizard"], [[id, id]], { id }, { 0: id }, [{ id }], [[[id]]]];
+for (const fight of [false, true]) {
+  test(`an id that is not a string, or a list that is not flat, is an id that is nothing, in every field of every action${fight ? " (in a fight)" : ""}`, () => {
+    const { s, hidden } = base(fight);
+    const nothing = "m99";
+    const leaks = [];
+    let tried = 0;
+    for (const tpl of TEMPLATES) for (const k of reads(s, tpl)) {
+      for (const h of hidden) for (const i of SHAPES(h).keys()) {
+        const x = run(s, { ...tpl, [k]: SHAPES(h)[i] }), y = run(s, { ...tpl, [k]: SHAPES(nothing)[i] });
+        tried++;
+        const norm = (v) => JSON.stringify(v).replaceAll(h, "<id>").replaceAll(nothing, "<id>");
+        const same = norm(x.r) === norm(y.r) && (x.r.ok === false ? true : norm(x.c) === norm(y.c));
+        if (!same) leaks.push(`${tpl.type}.${k}=${JSON.stringify(SHAPES(h)[i])}: ${norm(x.r).slice(0, 160)} | nothing: ${norm(y.r).slice(0, 160)}`);
+      }
+    }
+    assert.ok(tried > 1000, `walked ${tried}`);
+    assert.deepEqual([...new Set(leaks)], []);
+  });
+}
+
+test("naming a hidden creature inside a list, an object or as a number is answered 'No such creature.', and nothing changes", () => {
+  const { s, hidden: [ogre] } = base(false);
+  const before = JSON.stringify(s);
+  for (const v of [[[ogre]], ["wizard", [ogre]], { id: ogre }, [{ id: ogre }], 7, ["wizard", 7], [null]]) {
+    for (const f of ["targets", "target"]) {
+      const r = apply(s, { type: "cast", actor: "wizard", spell: "magic-missile", [f]: v }, P);
+      assert.equal(r.ok, false); assert.equal(r.error, "No such creature.", `${f} ${JSON.stringify(v)}`);
+    }
+    assert.equal(apply(s, { type: "attack", actor: "wizard", attack: "dagger", target: v }, P).error, "No such creature.", `attack ${JSON.stringify(v)}`);
+  }
+  assert.equal(JSON.stringify(s), before);
+  assert.equal(s.encounter, null);
+});
+
 test("the review's case: naming a hidden ogre in `targets` neither reveals it nor starts a fight", () => {
   const { s, hidden: [ogre] } = base(false);
   const before = JSON.stringify(s);

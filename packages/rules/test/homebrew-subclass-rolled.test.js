@@ -458,7 +458,7 @@ test("`{ rolled: true }` is for one target, and not with a slot that grows the d
   const many = (target) => one(acts({ target }));
   assert.equal(many({ creature: { range: [5, 5] } }), "");
   assert.equal(many({ creature: { range: [5, 5], count: 1 } }), "");
-  assert.match(many({ creature: { range: [5, 5], count: 2 } }), /is for an action with one target: several creatures would each roll their own number \(a second target is addition G\)/);
+  assert.match(many({ creature: { range: [5, 5], count: 2 } }), /is for an action with one target: several creatures would each roll their own number, and the modifier would be put once for each \(a second creature near the first, `near`, shares the one roll/);
   assert.match(one(acts({ after: undefined, target: { area: { shape: "sphere", size: 10, range: 30 } } })), /is for an action with one target/);
   assert.equal(one({ action: { time: "bonus", target: { self: true }, effects: [{ damage: "1d8", type: "slashing" }, RO], duration: "1 round" } }), "", "the holder itself is one target");
   const slot = (higher) => one(acts({ cost: { slot: 1, higher } }));
@@ -536,9 +536,35 @@ test("the flags the engine itself makes for the DM's hidden creature are sent to
   const s = made, g = s.gob;
   assert.equal(s.encounter.flags[`hit:${g}:hero`], true); assert.equal(s.encounter.flags[`whit:${g}:hero`], true, "made by the engine, not put in by the test");
   // An attack gives away where a creature is, so after it the party is told of the goblin (the view's own rule, not this feature's); what is held is that the flags that name it
-  // go to players exactly when the creature does, `whit:` as `hit:` and `attacked:`. (While it is unknown the flags are left out: the hand-made flags of the test above.)
+  // go to players exactly when the creature does, `whit:` as `hit:` and `attacked:`. (While it is unknown the flags are left out; the next test makes them for a creature that stays unknown.)
   const pv = view(s, PAT), seen = Object.keys(pv.encounter.flags), known = !!pv.entities[g];
   for (const k of [`hit:${g}:hero`, `whit:${g}:hero`, `attacked:${g}`]) assert.equal(seen.includes(k), known, `${k} is sent exactly when the party is told of ${g}`);
+  const dv = Object.keys(view(s, DM).encounter.flags);
+  for (const k of [`hit:${g}:hero`, `whit:${g}:hero`]) assert.ok(dv.includes(k), `the DM keeps ${k}`);
+});
+
+test("the flags the engine makes for a creature that stays unknown to the party (an unseen goblin's Opportunity Attack, under the light rule) are kept from players, `whit:` as `hit:`", () => {
+  // The #524 re-review: a creature the party is not told of CAN have its flags made. The table plays the light rule in a dark field, the goblin (it has darkvision) stands beside the
+  // hero and the hero is not told of it; the hero walks away on its own turn and the goblin's Opportunity Attack hits, so the engine sets the flags itself, and the goblin stays unknown.
+  let made = null;
+  for (let seed = 1; seed < 120 && !made; seed++) {
+    const s = field(bard(), { seed });
+    s.settings.sight = "light"; s.map.levels[0].light = "dark";
+    Object.assign(s.entities.hero, { ac: 1 });
+    s.entities[s.gob].attacks.find((a) => a.id === "scimitar").bonus = 30;
+    fight(s); turnOf(s, "hero");
+    const r = ok(apply(s, { type: "move", actor: "hero", to: { q: -3, r: 0 } }, PAT));
+    if (r.events.some((x) => x.type === "attack" && x.actor === s.gob && x.opportunity && x.hit)) made = { s, events: r.events };
+  }
+  assert.ok(made, "the unseen goblin's Opportunity Attack hit");
+  const { s, events } = made, g = s.gob;
+  assert.equal(s.encounter.flags[`hit:${g}:hero`], true); assert.equal(s.encounter.flags[`whit:${g}:hero`], true, "made by the engine, not put in by the test");
+  const pv = view(s, PAT);
+  assert.equal(pv.entities[g], undefined, "the goblin is still unknown to the party: the flags were made for a creature the party is not told of");
+  const seen = Object.keys(pv.encounter.flags);
+  assert.ok(!seen.some((k) => k.includes(g)), `no flag that names it is sent: ${seen}`);
+  assert.ok(!json(pv).includes(`"${g}"`) && !json(pv).includes(`:${g}`), "no trace of it in what a player is sent");
+  assert.ok(!json(viewEvents(events, s, PAT)).includes(`"${g}"`), "nor in the events");
   const dv = Object.keys(view(s, DM).encounter.flags);
   for (const k of [`hit:${g}:hero`, `whit:${g}:hero`]) assert.ok(dv.includes(k), `the DM keeps ${k}`);
 });

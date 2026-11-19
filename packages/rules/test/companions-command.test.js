@@ -245,7 +245,8 @@ for (const grid of [null, "square"]) {
     refused(s, { type: "command", actor: "rogue", ids: [near] }, U2);
     refused(s, { type: "command", actor: "fighter", ids: ["nobody"] }, U1, /No such creature/);
     refused(s, { type: "command", actor: "fighter", ids: ["constructor"] }, U1, /No such creature/);
-    for (const ids of [undefined, [], near, [near, near], [1]]) refused(s, { type: "command", actor: "fighter", ids }, U1, /Name the creatures/);
+    for (const ids of [undefined, [], near, [near, near]]) refused(s, { type: "command", actor: "fighter", ids }, U1, /Name the creatures/);
+    refused(s, { type: "command", actor: "fighter", ids: [1] }, U1, /No such creature/);      // a number is no id: refused before the handler, as an id that is nothing (#532, H1)
     for (const order of ["", "   ", "x".repeat(81), 5, {}, "guard\nthe door", "guard\tthe door", "stop\u0007", "x\u0085"]) refused(s, { type: "command", actor: "fighter", ids: [near], order }, U1, /up to 80 characters/);
     ok(apply(structuredClone(s), { type: "command", actor: "fighter", ids: [near], order: "x".repeat(80) }, U1));
     // Trimmed before the cap, and kept trimmed.
