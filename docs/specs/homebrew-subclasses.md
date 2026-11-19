@@ -227,8 +227,9 @@ SRD match uses, so "Oath of the Ember" matches "Ember").
 - `options.homebrewSubclass === false` turns matching off (the test and a DM who wants the stand-in).
 
 The DM sees the report before confirming, as today; nothing is added to the table by the importer. A portable
-character file (portable-characters.md) names the subclass id in `needs.homebrew` like any homebrew piece, and its
-`homebrew.bundle` may carry the subclass entry (question 6); `compat.js` is not built yet.
+character file (portable-characters.md) names the subclass id in `needs.homebrew` like any homebrew piece, and **only the id**: carrying the
+entry itself in a character's file is not built and is not part of any job here; it waits for the owner's word (#349;
+question 6). `compat.js` is not built yet.
 
 ## Survey: what the owner's four subclasses need, and what says it
 
@@ -351,9 +352,9 @@ Each has the default the jobs above are written to.
    the subclasses a party character has, which hides the DM's unused ones but adds a per-player filter.
 5. **The importer picks a matching homebrew subclass by itself.** Default: yes when exactly one matches, shown in the
    report before the DM confirms. The alternative is to list it as a suggestion the DM ticks.
-6. **A character file may carry its homebrew subclass** in `homebrew.bundle` (portable-characters.md). Default: yes,
-   counted in the 12 entries and 24 KB, denied unless the DM allows it. A 16 KB subclass leaves little room for
-   anything else in a bundle.
+6. **A character file carrying its homebrew subclass** (`homebrew.bundle`, portable-characters.md). Default: **not
+   built**: the character file names the subclass id only; carrying the entry waits for the owner's word (#349). No
+   job in this spec builds it.
 7. **The order of the additions.** Default: J (Wild Shape forms, the circle's core), then D and E (the oath's
    transformation and hostile aura), then F and G (the college's rider), then H, I, C, A, B.
 8. **Spellcasting from a subclass** (a third-caster subclass of a non-caster class). Default: refused for now; none
