@@ -14,17 +14,17 @@ const DM = { role: "dm", userId: "dm" };
 const sha = (s) => createHash("sha256").update(JSON.stringify(s)).digest("hex");
 
 // The digest of JSON.stringify(newGame(seed)) as the hex valley made it before the square valley existed
-// (taken from origin/main, 14 November 2026).
+// (taken from origin/main, 14 November 2026; re-taken on 19 November 2026 for #495: the valley's wolf now carries `largest` on its Prone step and its new text in its copy of the action. Nothing else about the valley changed).
 const MAIN = {
-  1: "fd5a5e809010c8169bb8ae0f9db20814c6732b1ad52e7a4cd1492a1f651a44f5",
-  2: "8dd43f8308afa7bbfc50379734a0fb3ce13d2e57297d3631523425bac06db333",
-  3: "4a4fdab6984db86706643f4e44a3348a8fcbc70f8b0a230a90fbaf4e43dbdb6c",
-  5: "e051a1cf3d207d35aea6b47d1a0e72e13ee3e019935946054bdab48d4cb821ac",
-  7: "11e632ee2644bd049fda142a7af676f520a3d99ca92afcca38d23fb177ee30de",
-  11: "a7edc719d838e3f3e06d067d49dfa699e62594b115ca527e40ebb272c8059e7d",
-  42: "22f56c915274c0d72560cd3dcbf108965cfa85ac98f791e5023a581c0dee8f7c",
-  12345: "f09a96b1ce5e5529571fedb467998f8e9f969fdbaf594b0e3c2027e0b840b41a",
-  987654321: "49f08ecd5defefa977060d903bd1d78f9d9b481a770d36a14ceb7e58f5720519",
+  1: "e83c37a8ec42ce400f79ccb6a0e79a1e78e0eb3c46c97a94040d98b75e9c57f9",
+  2: "3201f116c585a28b38a16120a9c0fc0e4d78d5038348cf5c60fd29e6b535e3cc",
+  3: "1520d4ec33ca0b2dff870a5debd008ec375cafaad9403890da15784a9c305409",
+  5: "42ab84f4c5a7231c3892b41106024b7204cf27c6e8bf317f263e997a06e801f7",
+  7: "82bbe3185f47a9267d2cf880ae56c1aa73e5af44cab2a7bf6400555482ad5a0f",
+  11: "ab4a42b391fa8d07353597e413203533d8ca3c316a213e16958e3f9ab7290e75",
+  42: "725f928ecff3999b008209610460b1d951d0edc60991e01e6fd1998e44f969fa",
+  12345: "8b50231da8d5eb6a15f48d958f28c1bbb687c5609a42634f51969d6849fc8c2b",
+  987654321: "840a2473430014cbe33db6d95c6bdd27fb536fc3b6392a30f43b3f8fa356aa96",
 };
 
 // The digests were taken at state version 21; the version has moved since (22, #300) and nothing else.

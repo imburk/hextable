@@ -14,6 +14,10 @@ import { roll } from './rng.js';
 import { srcOf } from './homebrew.js';
 import { effectsOf, useUp } from './durations.js';
 
+// A target above a step's `largest` (#495). The note about it names the creature that acted (`actor`), so the player's view keeps it only where it
+// keeps that creature's own events (view.js drops an event whose actor the party cannot see, as it drops the attack): a hidden wolf's Bite says nothing.
+const tooBig = (t, step) => step.largest !== undefined && SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(step.largest);
+const cap = (x) => x[0].toUpperCase() + x.slice(1);
 export const stepKind = (step) => STEPS.find((k) => k in step);
 // Area shapes the engine can lay out on hexes (engine/world.js, layout()).
 // The largest cube the engine places (feet): the gate's own most. A cube is placed by trying blocks, so it cannot be cut to the map.
@@ -486,6 +490,9 @@ function exec(s, ev, kit, f, step, at) {
     // another condition of the same action with `whileHeld` goes on only if the grappler holds the target, and ends with that hold.
     if (step.escape !== undefined && step.condition === 'grappled') return kit.hold(s, e, t, f.src, step, ev);
     if (step.whileHeld) return kit.heldCondition(s, e, t, step, f, ev);
+    // `largest` ("if the target is a Medium or smaller creature, it has the Prone condition"): a bigger target is passed over and the
+    // table is told (docs/specs/grapple-shove.md, the amendment of #495). A hold's own `largest` is read in `hold` above and says nothing.
+    if (tooBig(t, step)) return ev.push({ type: 'note', id: t.id, actor: f.actor, text: `${t.name} is bigger than ${cap(step.largest)}, so ${f.src.name} does not give it the ${cap(step.condition)} condition` });
     return kit.condition(s, t, step.condition, ev, f, step);
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
@@ -505,7 +512,10 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'fall') return kit.fall(s, t, step.fall, ev);
   // `largest`: only a creature of that size or smaller is moved (Repelling Blast: Large).
-  if (kind === 'move') return step.largest && SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(step.largest) ? undefined : kit.push(s, t, step.move, step.dir, e.pos, ev);
+  if (kind === 'move') {
+    if (tooBig(t, step)) return ev.push({ type: 'note', id: t.id, actor: f.actor, text: `${t.name} is bigger than ${cap(step.largest)}, so ${f.src.name} does not ${step.dir === 'toward' ? 'pull' : 'push'} it` });
+    return kit.push(s, t, step.move, step.dir, e.pos, ev);
+  }
   if (kind === 'set' || kind === 'reveal') {
     if (kind === 'reveal' && step.reveal === 'target') return kit.reveal(s, t, ev);
     if (kit.objectStep(s, f.src.object, kind === 'set' ? step.of ?? 'self' : step.reveal, kind === 'set' ? step.set : null, ev)) return;

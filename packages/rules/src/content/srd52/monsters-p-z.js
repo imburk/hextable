@@ -82,7 +82,8 @@ export const monsters = [
                 type: "necrotic"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "medium"
               },
               {
                 manual: "While the swarm is Bloodied the necrotic hit does 11 (2d8+2) damage instead."
@@ -90,7 +91,7 @@ export const monsters = [
             ]
           }
         ],
-        text: "A melee attack that knocks a Medium or smaller target Prone (the engine does not check size); less damage when the swarm is Bloodied."
+        text: "A melee attack that knocks a Medium or smaller target Prone (a bigger one is not, and the table is told); less damage when the swarm is Bloodied."
       }
     ],
     tier: "assist",
@@ -2738,12 +2739,13 @@ export const monsters = [
               },
               {
                 move: 10,
-                dir: "away"
+                dir: "away",
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "A melee attack that pushes a Medium or smaller target 10 feet away (the engine does not check size and pushes the full distance)."
+        text: "A melee attack that pushes a Medium or smaller target 10 feet away (a bigger one is not pushed; the engine pushes the full distance)."
       },
       {
         id: "mockery",
@@ -3183,12 +3185,13 @@ export const monsters = [
               },
               {
                 move: 5,
-                dir: "toward"
+                dir: "toward",
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "A reach attack with extra lightning damage that pulls a Medium or smaller target 5 feet closer (the engine does not check size)."
+        text: "A reach attack with extra lightning damage that pulls a Medium or smaller target 5 feet closer (a bigger one is not)."
       },
       {
         id: "engulf",
@@ -4865,12 +4868,13 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A ranged attack, knocks the target Prone if it is Large or smaller."
+        text: "A ranged attack that knocks a Large or smaller target Prone; a bigger one is not, and the table is told."
       }
     ],
     tier: "assist",
@@ -5467,12 +5471,13 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "huge"
               }
             ]
           }
         ],
-        text: "A melee attack, knocks the target Prone if it is Huge or smaller."
+        text: "A reach attack that knocks a Huge or smaller target Prone; a bigger one is not, and the table is told."
       },
       {
         id: "thunderous-bellow",
@@ -5687,12 +5692,13 @@ export const monsters = [
               },
               {
                 move: 10,
-                dir: "away"
+                dir: "away",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A melee attack that pushes a Large or smaller target up to 10 feet away (the engine does not check size and pushes the full distance)."
+        text: "A melee attack that pushes a Large or smaller target 10 feet away (a bigger one is not pushed; the engine pushes the full distance)."
       },
       {
         id: "heavy-crossbow",
@@ -7023,12 +7029,13 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "A melee attack, knocks the target Prone if it is Medium or smaller."
+        text: "A melee attack that knocks a Medium or smaller target Prone; a bigger one is not, and the table is told."
       },
       {
         id: "whelm",
@@ -8319,12 +8326,13 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A melee attack, knocks the target Prone if it is Large or smaller."
+        text: "A melee attack that knocks a Large or smaller target Prone; a bigger one is not, and the table is told."
       },
       {
         id: "cold-breath",
@@ -8352,7 +8360,7 @@ export const monsters = [
         text: "Constitution save (DC 12) or take 4d8 cold damage, half on a success. Recharge 5-6."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A large frost wolf that breathes cold."
   },
@@ -10445,12 +10453,13 @@ export const monsters = [
                 type: "slashing"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A melee attack, knocks the target Prone if it is Large or smaller."
+        text: "A melee attack that knocks a Large or smaller target Prone; a bigger one is not, and the table is told."
       }
     ],
     tier: "assist",
@@ -10616,12 +10625,13 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "huge"
               }
             ]
           }
         ],
-        text: "A melee attack, knocks the target Prone if it is Huge or smaller."
+        text: "A reach attack that knocks a Huge or smaller target Prone; a bigger one is not, and the table is told."
       }
     ],
     tier: "assist",
