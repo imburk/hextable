@@ -212,8 +212,15 @@ function walkSteps(steps, visit) {
 // step), `largest` (the biggest size it holds), `holds` (how many creatures that action's part holds at once), `escapeDis` (Disadvantage
 // on the checks to escape), and `whileHeld` (on another condition of the same action: it ends with the hold).
 const HOLD_KEYS = ['escape', 'largest', 'holds', 'escapeDis', 'whileHeld'];
+// `largest` also goes on any other condition step, in any kind of entry ("if the target is a Medium or smaller creature, it has the
+// Prone condition", #495): a bigger target does not get the condition, and the table is told. It is not a hold's, so it is read here
+// apart from the rest; a `whileHeld` step takes none, for the hold it follows has its own.
 function lintHold(step, say, inMonster) {
-  const used = HOLD_KEYS.filter((k) => step[k] !== undefined);
+  if (step.condition !== 'grappled' && step.largest !== undefined) {
+    if (!SIZES.includes(step.largest)) say(`\`largest\` is one of ${SIZES.join(', ')}`);
+    if (step.whileHeld !== undefined) say('a `whileHeld` step has no `largest`: the hold it follows has its own');
+  }
+  const used = HOLD_KEYS.filter((k) => step[k] !== undefined && !(k === 'largest' && step.condition !== 'grappled'));
   if (!used.length && !(inMonster && step.condition === 'grappled')) return;
   if (!inMonster) return say(`\`${used[0]}\` is for a creature's action`);
   if (step.condition === 'grappled') {
@@ -225,7 +232,7 @@ function lintHold(step, say, inMonster) {
     if (step.holds !== undefined && !(isInt(step.holds) && step.holds >= 1 && step.holds <= 20)) say('`holds` is a whole number from 1 to 20');
     if (step.escapeDis !== undefined && step.escapeDis !== true) say('`escapeDis` is true or left out');
   } else {
-    for (const k of ['escape', 'largest', 'holds', 'escapeDis']) if (step[k] !== undefined) say(`\`${k}\` is for a Grappled step`);
+    for (const k of ['escape', 'holds', 'escapeDis']) if (step[k] !== undefined) say(`\`${k}\` is for a Grappled step`);
     if (step.whileHeld !== undefined && step.whileHeld !== true) say('`whileHeld` is true or left out');
     if (step.whileHeld !== undefined && step.ends !== undefined) say('a `whileHeld` step has no `ends`: the grapple decides when it ends');
   }

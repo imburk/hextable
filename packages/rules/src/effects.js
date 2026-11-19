@@ -486,6 +486,12 @@ function exec(s, ev, kit, f, step, at) {
     // another condition of the same action with `whileHeld` goes on only if the grappler holds the target, and ends with that hold.
     if (step.escape !== undefined && step.condition === 'grappled') return kit.hold(s, e, t, f.src, step, ev);
     if (step.whileHeld) return kit.heldCondition(s, e, t, step, f, ev);
+    // `largest` ("if the target is a Medium or smaller creature, it has the Prone condition"): a bigger target is passed over and the
+    // table is told (docs/specs/grapple-shove.md, the amendment of #495). A hold's own `largest` is read in `hold` above and says nothing.
+    if (step.largest && SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(step.largest)) {
+      const cap = (x) => x[0].toUpperCase() + x.slice(1);
+      return ev.push({ type: 'note', id: t.id, text: `${t.name} is bigger than ${cap(step.largest)}, so ${f.src.name} does not give it the ${cap(step.condition)} condition` });
+    }
     return kit.condition(s, t, step.condition, ev, f, step);
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);

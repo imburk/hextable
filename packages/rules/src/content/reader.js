@@ -944,7 +944,11 @@ export const STEP_SENTENCES = {
   },
   condition({ st, at, depth, Who, say }) {
     if (!CONDITIONS.includes(st.condition)) { this.bad(`Step ${at}: the condition is not one the engine knows.`); say(`${Who} gets a condition the engine does not know.`); return; }
-    say(`${Who} has the ${cond(st.condition)} condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)`);
+    const sizes = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
+    // `largest` on a condition that is not a hold (#495): "if the target is a Large or smaller creature, it has the Prone condition".
+    if (st.condition !== 'grappled' && st.largest !== undefined && !sizes.includes(st.largest)) this.bad(`Step ${at}: \`largest\` is a size.`);
+    const limit = st.condition !== 'grappled' && sizes.includes(st.largest) ? ` Only a creature that is ${cap1(st.largest)} or smaller gets it; a bigger one does not, and the table is told.` : '';
+    say(`${Who} has the ${cond(st.condition)} condition.${limit} (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)`);
     const prone = st.condition === 'prone' && !this.fx;
     // A creature's hold (docs/specs/grapple-shove.md, Decision 7): the engine keeps it, so the DM has nothing to remove by hand.
     const hold = this.mon && ((st.condition === 'grappled' && isInt(st.escape)) || (st.condition !== 'grappled' && st.whileHeld === true));
