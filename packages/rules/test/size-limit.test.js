@@ -9,6 +9,7 @@ import { CONTENT } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { walk } from "../src/effects.js";
+import { viewEvents } from "../src/view.js";
 
 const MONSTERS = CONTENT.monsters;
 const DM = { role: "dm", userId: "dm" };
@@ -184,4 +185,36 @@ test("homebrew may use it (strict mode), and the reader says what it does", () =
   assert.match(text, /Only a creature that is Medium or smaller gets it; a bigger one does not, and the table is told/);
   const none = clone(hb); delete none.actions[0].effects[0].onHit[1].largest;
   assert.doesNotMatch(readEntry("monsters", none, { pack: "test" }).lines.join("\n"), /or smaller gets it/);
+});
+
+test("the note names the creature that acted: a player is sent it when they can see that creature, and nothing when it is hidden", () => {
+  const U = { role: "player", userId: "u1" };
+  const bite = (hidden) => hits((seed) => { const f = field("wolf", [{ q: -1, r: 0, size: "large" }], seed); if (hidden) f.s.entities[f.g].hidden = true; return f; }, (f) => ({ type: "act", actor: f.g, action: "bite", target: f.targets[0] }));
+  const seen = bite(false);
+  assert.equal(seen.r.events.find((e) => e.type === "note").actor, seen.g);
+  const told = viewEvents(seen.r.events, seen.s, U).filter((e) => e.type === "note");
+  assert.equal(told.length, 1);
+  assert.match(told[0].text, /Bite does not give it the Prone condition/);
+  const hid = bite(true);
+  assert.ok(hid.r.events.some((e) => e.type === "note"), "the DM has it");
+  const sent = viewEvents(hid.r.events, hid.s, U);
+  assert.ok(!sent.some((e) => e.type === "note"), "no note for a creature they cannot see");
+  assert.ok(!JSON.stringify(sent).includes("Bite"), "nothing of its action's name");
+  assert.ok(sent.some((e) => e.type === "damage"), "the damage they feel is still told");
+});
+
+test("a push or pull that passes over a bigger target says so, as a condition does", () => {
+  const f = field("satyr", [{ q: -1, r: 0, size: "large" }]);
+  const t = f.targets[0];
+  const r = hits((seed) => field("satyr", [{ q: -1, r: 0, size: "large" }], seed), (x) => ({ type: "act", actor: x.g, action: "hooves", target: x.targets[0] }));
+  assert.ok(!r.r.events.some((e) => e.type === "moved" && e.id === r.targets[0]));
+  assert.deepEqual(notes(r.r, r.targets[0]), [`${r.s.entities[r.targets[0]].name} is bigger than Medium, so Hooves does not push it`]);
+  assert.ok(t);
+});
+
+test("`largest` is linted as a size on a move step too", () => {
+  const sat = clone(MONSTERS.satyr), st = () => sat.actions.find((a) => a.id === "hooves").effects[0].onHit.find((x) => "move" in x);
+  assert.deepEqual(lintEntry("monsters", sat, { strict: false }), []);
+  st().largest = "giant";
+  assert.match(lintEntry("monsters", sat, { strict: false }).join(), /largest. is one of/);
 });

@@ -275,6 +275,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'condition' && !CONDITIONS.includes(step.condition)) say(`unknown condition "${step.condition}"`);
     if (kind === 'condition') lintHold(step, say, inMonster);
     else for (const k of HOLD_KEYS) if (step[k] !== undefined && !(k === 'largest' && kind === 'move')) say(`\`${k}\` is for a condition step`);
+    if (kind === 'move' && step.largest !== undefined && !SIZES.includes(step.largest)) say(`\`largest\` is one of ${SIZES.join(', ')}`);
     // What ends a condition or a modifier on its own: a turn boundary of the target or the source
     // ("until the end of your next turn"), or a repeat save.
     if (kind === 'condition' || kind === 'modifier') {

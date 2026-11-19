@@ -623,7 +623,7 @@ What the build settled:
 **Amendment of #495 (DEBT W9): `largest` on any condition step.** The key G4 added for a hold goes on any other condition step too, in any entry
 (a monster's action, a spell, a feature), as a size: "If the target is a Medium or smaller creature, it has the Prone condition" is
 `{ condition: 'prone', largest: 'medium' }`. `effects.js` passes over a target above it and, unlike a hold's `largest` (which says nothing), puts a
-`note` on the target ("<name> is bigger than Medium, so Bite does not give it the Prone condition"), so the table sees why nothing happened. The
+`note` on the target ("<name> is bigger than Medium, so Bite does not give it the Prone condition"), so the table sees why nothing happened. A `move` step passes over a bigger target the same way ("... does not push it"). The note carries the acting creature as `actor`, so the player's view drops it whenever it drops that creature's own events (an unseen attacker says nothing; the DM sees it). The
 rest of the action (the damage, the push) is not affected. `content/schema.js` (`lintHold`) allows `largest` on a non-grapple condition step of any
 kind of entry; it still refuses it on a `whileHeld` step (the hold it follows has its own) and on a step that is not a condition or a move, and the
 other hold keys (`escape`, `holds`, `escapeDis`, `whileHeld`) are as before. `content/reader.js` says it in the condition's words. No state change.
