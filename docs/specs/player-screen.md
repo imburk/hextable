@@ -1,5 +1,14 @@
 # Spec: the player's screen at the table
 
+> **Superseded in part by [`one-token-menu.md`](one-token-menu.md) (#527).** The owner's
+> direction of 19 November 2026: a clean screen, one token that opens one menu, one overlay
+> at a time. Where the two differ, `one-token-menu.md` wins: the action panel at the foot of
+> the screen, the order strip and the top bar give way to the token, the turn line and the
+> menu. Kept from this spec: the turn bar (now at the top of the character screen), aiming
+> that locks and confirms at the thumb, the reach edge, the wait, down, dead and level-up
+> words, the offline bar, and reasons for greyed things. Its build stages fold into that
+> spec's stages as its build plan says.
+
 Status: draft by an agent, to be reviewed by the design owner. Issue #358. A design
 job: this spec and a clickable picture, [`mockups/player-screen.html`](mockups/player-screen.html)
 (open the file in a browser; nothing in it runs the game). No code is written by this
