@@ -13,7 +13,7 @@ import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, level
 import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { cure } from './rolls.js';
-import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet } from './sheets.js';
+import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing } from './sheets.js';
 import { handHolds } from '../weapons.js';
 
 // A Shield needs a hand: one holding a creature in each (docs/specs/grapple-shove.md, Decision 4) has none.
@@ -93,7 +93,9 @@ export const handlers = {
     const { record } = derive(a.sheet), sheet = structuredClone(a.sheet);
     if (a.actor === undefined) {
       handlers.addCharacter(s, { record, ...(a.at ? { at: a.at } : {}) }, ctx, ev);
-      s.entities[ev.findLast((x) => x.type === 'spawned').id].sheet = sheet;
+      const made = s.entities[ev.findLast((x) => x.type === 'spawned').id];
+      made.sheet = sheet;
+      tellMissing(ev, made, sheet);
       return;
     }
     remake(s, ent(s, a.actor), record, sheet, ev);

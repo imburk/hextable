@@ -189,6 +189,13 @@ function vetOffered(op, tablePacks, pack, opts = {}) {
     const now = new Set(r.pack.ids), dropped = old.ids.filter((x) => !now.has(x));
     if (dropped.length) return { ok: false, form: 'refuse', problems: [`Version ${r.pack.version} of "${id}" drops ${dropped.length} entr${dropped.length === 1 ? 'y' : 'ies'} that version ${cur.version} had (${dropped.slice(0, 5).join(', ')}${dropped.length > 5 ? ', and more' : ''}). An update may add and change entries but not drop them: remove the pack (when nothing uses it) and add it again instead.`] };
   }
+  // Nor may it move a subclass to another class: a character's sheet names the subclass for the class it was taken in, and one made again would
+  // quietly lose its features (homebrew-subclasses.md, B2).
+  if (op === 'update' && cur) {
+    const read = (d) => { try { return typeof d === 'string' ? JSON.parse(d) : d; } catch { return null; } };
+    const was = new Map((read(cur.data)?.subclasses ?? []).filter((x) => x && typeof x.id === 'string').map((x) => [x.id, x.class]));
+    for (const x of read(pack)?.subclasses ?? []) if (was.has(x.id) && was.get(x.id) !== x.class) return { ok: false, form: 'refuse', problems: [`Version ${r.pack.version} of "${id}" moves the subclass "${x.id}" from the ${was.get(x.id)} class to the ${x.class} class. An update may change a subclass's features but not the class it belongs to: add a new subclass for the other class instead.`] };
+  }
   try { overlayOf([...have.filter((p) => p.id !== id), r.pack]); }
   catch (err) { return { ok: false, form: 'refuse', problems: err instanceof PackError ? err.problems : [`The packs could not be put together (${err.message}).`] }; }
   let hash;
