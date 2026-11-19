@@ -50,7 +50,12 @@ async function models(browser, url, label, opts) {
       await run.do('a walk plays the run clip and ends in idle', async () => {
         const seen = await page.evaluate(async () => {
           const h = window.hextable, R1 = window.__R(), a = R1.actors.get('cleric'), from = h.state.entities.cleric.pos;
-          h.act({ type: 'move', actor: 'cleric', to: { q: from.q - 2, r: from.r + 1 } });
+          // The first goal that the engine takes (a hex may be held for a moment by something else): try a few.
+          for (const [dq, dr] of [[-2, 1], [2, -1], [-1, 2], [1, -2], [-2, 0]]) {
+            h.act({ type: 'move', actor: 'cleric', to: { q: from.q + dq, r: from.r + dr } });
+            const now = h.state.entities.cleric.pos;
+            if (now.q !== from.q || now.r !== from.r) break;
+          }
           const clips = [], t0 = performance.now();
           while (performance.now() - t0 < 4000) { if (clips.at(-1) !== a.pup.curKey) clips.push(a.pup.curKey); if (a.pup.base === 'idle' && !a.way.length && performance.now() - t0 > 300) break; await new Promise((x) => setTimeout(x, 40)); }
           return { clips, moved: h.state.entities.cleric.pos.q !== from.q || h.state.entities.cleric.pos.r !== from.r };
