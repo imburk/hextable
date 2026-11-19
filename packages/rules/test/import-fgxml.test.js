@@ -182,14 +182,55 @@ test("a score of 31 or more keeps +10 and says what is left out; a score of 20 o
   assert.equal(none.character.scoreBonus, undefined);
 });
 
-test("a score bonus on top of an item that already raises the score is trimmed to 30 and says so (#498)", () => {
+test("a score bonus is only what the engine does not already derive: an item that raises the score is not counted twice (#498)", () => {
   const xml = fixture("cleric").replace('<strength><score type="number">14</score>', '<strength><score type="number">32</score>').replace("</inventorylist>", '<id-00090><name type="string">Belt of Giant Strength (storm)</name><type type="string">Wondrous Item</type><rarity type="string">Legendary</rarity><carried type="number">2</carried><attune type="number">1</attune></id-00090></inventorylist>');
   const { character, report } = importFgxml(xml);
   assert.equal(report.loadable, true, report.problems.join("; "));
   assert.deepEqual(character.items, [{ id: "i1", item: "belt-of-giant-strength-storm", equipped: true, attuned: true }], "the belt is attuned as the sheet says");
   assert.equal(derive(character).record.abil.str, 30);
   assert.deepEqual(character.scoreBonus, { str: 1 });
-  assert.ok(report.adjustments.some((x) => /trimmed from \+10 to fit/.test(x.why)), "the trim is reported");
+  assert.ok(report.adjustments.some((x) => /already counts 29/.test(x.why) && /trimmed from \+3 to \+1/.test(x.why)), "what the engine already counts, and the trim, are reported");
+});
+
+test("a Belt of Giant Strength the engine applies adds no bonus of its own; only the rest of the sheet's score does (#498)", () => {
+  const belt = (n, score) => fixture("cleric").replace('<strength><score type="number">14</score>', `<strength><score type="number">${score}</score>`).replace("</inventorylist>", `<id-00090><name type="string">Belt of Giant Strength (${n})</name><type type="string">Wondrous Item</type><rarity type="string">Rare</rarity><carried type="number">2</carried><attune type="number">1</attune></id-00090></inventorylist>`);
+  // Hill giant: Strength 21 while worn. A sheet total of 21 is the belt alone: no bonus. 22 is one more than the engine derives.
+  const same = importFgxml(belt("hill", 21));
+  assert.equal(same.character.scoreBonus, undefined);
+  assert.equal(derive(same.character).record.abil.str, 21);
+  assert.match(same.report.adjustments.find((x) => x.what === "STR score").why, /no DM bonus is needed\. The engine already counts 21/);
+  const more = importFgxml(belt("hill", 22));
+  assert.deepEqual(more.character.scoreBonus, { str: 1 });
+  assert.equal(derive(more.character).record.abil.str, 22, "the sheet's own total, not 23");
+  assert.match(more.report.adjustments.find((x) => x.what === "STR score").why, /Strength 22 on the sheet: \+1 kept as a DM bonus.*The engine already counts 21/);
+});
+
+test("cantrips over the known count are taken in the sheet's order, and the report counts what was used (#498)", () => {
+  const G = "Spells (Wizard)";
+  const row = (n, i) => `<id-${String(200 + i).padStart(5, "0")}><name type="string">${n}</name><group type="string">${G}</group><level type="number">0</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-${String(200 + i).padStart(5, "0")}>`;
+  const extra = ["Prestidigitation", "Acid Splash"].map(row).join("");
+  const xml = fixture("wizard-overflow").replace(/(<level type="number">0<\/level><prepared type="number">)0/g, "$11").replace("</powers>", `${extra}</powers>`);
+  const { character, report } = importFgxml(xml);
+  assert.deepEqual(character.spells.filter((id) => ["fire-bolt", "mage-hand", "light", "prestidigitation", "acid-splash"].includes(id)), ["fire-bolt", "mage-hand", "light"], "Fire Bolt, Mage Hand, Light come first on the sheet; alphabetical would have taken Acid Splash");
+  const a = report.adjustments.find((x) => x.what === "cantrips");
+  assert.deepEqual([a.from, a.to], ["5 listed, 3 known", "3 used"]);
+});
+
+test("a spell both classes of a multiclass sheet may prepare is kept by both, not lost to the later one (#498)", () => {
+  // Command is on the Paladin and the Bard list. The Paladin group lists it first, and the Bard's own group lists it too.
+  const xml = fixture("paladin-bard-one-group").replace(">Bless<", ">Command<").replace("</powers>", '<id-00300><name type="string">Command</name><group type="string">Spells (Bard)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Enchantment</school></id-00300></powers>');
+  const { character, report } = importFgxml(xml);
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.ok(character.classes[0].spells.includes("command"), "the Paladin has it");
+  assert.ok(character.classes[1].spells.includes("command"), "and the Bard, whose own group lists it");
+});
+
+test("the group a Bard's spells are read from is named exactly: 'Spells Known' or the class name, not any group with 'spell' in it (#498)", () => {
+  const bard = fixture("bard-known");
+  assert.equal(importFgxml(bard.replaceAll("Spells Known", "Magic Initiate Spells")).character.spells, undefined, "a feat's group is not a class's spells");
+  assert.equal(importFgxml(bard.replaceAll("Spells Known", "Spell Notes")).character.spells, undefined);
+  assert.ok(importFgxml(bard.replaceAll("Spells Known", "Bard")).character.spells.includes("sleep"), "a bare class name is that class's");
+  assert.equal(importFgxml(bard.replaceAll("Spells Known", "Wizard")).character.spells, undefined, "another class's bare name is not the Bard's");
 });
 
 test("a sheet that flags more spells prepared than the class prepares: the first in the sheet's order fill the count, and the report says which (#498)", () => {
