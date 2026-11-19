@@ -1108,6 +1108,8 @@ function modPhrase(m, at) {
     else if (isObj(val) && typeof val.mod === 'string' && ABILITIES.includes(val.mod)) { if (isInt(val.min)) this.num(`${at}.value.min`, val.min, 'least'); v = `the ${ABILITY_WORDS[val.mod]} modifier${isInt(val.min) ? ` (at least ${val.min})` : ''}`; }
     else if (isObj(val) && isObj(val.byLevel)) { for (const [l, x] of Object.entries(val.byLevel)) if (typeof x === 'number' || isDice(x)) this.num(`${at}.value.byLevel.${l}`, x, 'by class level'); v = `an amount that grows with the class level (${list(Object.entries(val.byLevel).slice(0, 20).map(([l, x]) => `${x} from level ${l}`))})`; }
     else if (isObj(val) && typeof val.column === 'string') v = 'an amount from the class table';
+    // Addition F: the number the damage step just before it rolled (effects.js: the same roll, not another).
+    else if (isObj(val) && val.rolled === true && op === 'add') return `an addition to ${noun} equal to the number the damage step just before it rolled (the same roll, not a new one)`;
     else { this.bad(`${at}: the modifier's value is not a number${op === 'add' ? ' or dice' : ''}.`); v = '(an unreadable amount)'; }
   }
   if (op === 'add' && hook.startsWith('damage') && Array.isArray(m.types) && hook === 'damage.dealt') return `${v} ${list(m.types.map((t) => (t === 'chosen' ? 'damage of the chosen type' : `${t} damage`)), 'or')} added to the damage it deals`;
@@ -2161,6 +2163,8 @@ class GrantReading extends Reading {
     if (Array.isArray(v.modes)) this.line(`It does one of ${v.modes.length} things, picked when it is used.`, 2);
     if (v.acts !== undefined) this.line('It also takes the actions named in the entry.', 2);
     if (v.after === 'hit') this.line('It follows a hit the holder made this turn, once a turn.', 2);
+    // Addition F of docs/specs/homebrew-subclasses.md: the same, but only a hit made with a weapon counts.
+    if (v.after === 'weaponHit') this.line('It follows a hit the holder made with a weapon this turn, on the creature it hit, once a turn. A spell attack and an Unarmed Strike are not a weapon here.', 2);
     if (v.zone !== undefined) this.actionZone(v, at);
     const groups = Array.isArray(v.effects) ? [[v.effects, `${at}.effects`]] : Array.isArray(v.modes) ? v.modes.filter(isObj).map((m, j) => [m.effects, `${at}.modes.${j}.effects`]) : [];
     for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : v.zone !== undefined ? 'that creature' : 'the target', v.duration, 2);

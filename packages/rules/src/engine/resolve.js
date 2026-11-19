@@ -980,6 +980,8 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   else afterHit(s, e, t, ev);
   if (s.encounter) s.encounter.flags[`attacked:${e.id}`] = true;           // Reckless Attack is decided before the first attack roll of a turn
   if (hit && s.encounter && !e.object) s.encounter.flags[`hit:${e.id}:${t.id}`] = true;     // a feature that follows a hit this turn (Hurl Through Hell)
+  // A feature that follows a hit with a weapon (`after: 'weaponHit'`, addition F of docs/specs/homebrew-subclasses.md): a spell attack and an Unarmed Strike are not one (`weapon` of `resolveAttack`, below).
+  if (hit && s.encounter && !e.object && !atk.spell && !isUnarmed(atk)) s.encounter.flags[`whit:${e.id}:${t.id}`] = true;
   renew(s, e, t);
   return { hit, crit, mode, ...(cut ? { cut } : {}) };
 }
