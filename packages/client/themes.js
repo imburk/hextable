@@ -25,6 +25,29 @@ export const LOOK = (() => {
 })();
 const FLOORS = LOOK.floors, CUTAWAY = LOOK.cutaway, CAVES = LOOK.caves, ARENA_EDGE = LOOK.arenaEdge;
 
+// The starter model pack (docs/specs/renderer.md, Decision 4 and R12): CC0 models from KayKit and Quaternius, in assets/models/ (CREDITS.md there),
+// which the build puts in models/. A theme points at a pack by `models`; a theme with none draws pawns. A creature is drawn with the model
+// its monster's id names (byId), else its creature type (byType), else its look's own `model`, else its class (byClass); else a pawn.
+// `clips` says which clip of the model plays for which beat (a beat with none falls back, models.js); `speeds` plays a clip faster to fit the beat.
+// KayKit's free animation files hold no attack or cast: `attack` is its Throw and `cast` its Use_Item, played quicker.
+const KAYKIT = { rig: 'kaykit-medium', clips: { idle: 'Idle_A', walk: 'Walking_A', run: 'Running_A', hit: 'Hit_A', die: 'Death_A', attack: 'Throw', cast: 'Use_Item' }, speeds: { attack: 2, cast: 1.6, hit: 1.2, die: 1.2 } };
+const STARTER_MODELS = {
+  base: 'models/',
+  rigs: { 'kaykit-medium': 'kaykit-rig-medium/Rig_Medium.glb' },
+  models: {
+    barbarian: { file: 'kaykit-adventurers/Barbarian.glb', ...KAYKIT },
+    knight: { file: 'kaykit-adventurers/Knight.glb', ...KAYKIT },
+    mage: { file: 'kaykit-adventurers/Mage.glb', ...KAYKIT },
+    rogue: { file: 'kaykit-adventurers/Rogue.glb', ...KAYKIT },
+    skeleton: { file: 'kaykit-skeletons/Skeleton_Minion.glb', ...KAYKIT },
+    goblin: { file: 'quaternius-monsters/Blob_Orc.glb', clips: { idle: 'Idle', walk: 'Walk', attack: 'Bite_Front', hit: 'HitRecieve', die: 'Death' }, speeds: { attack: 1, walk: 2 } },
+    ogre: { file: 'quaternius-monsters/Big_Orc.glb', clips: { idle: 'Idle', walk: 'Walk', run: 'Run', attack: 'Punch', hit: 'HitReact', die: 'Death' } },
+  },
+  byId: { 'goblin-warrior': 'goblin', 'goblin-minion': 'goblin', 'goblin-boss': 'goblin', skeleton: 'skeleton', ogre: 'ogre' },
+  byType: {},
+  byClass: { fighter: 'barbarian', barbarian: 'barbarian', monk: 'barbarian', cleric: 'knight', paladin: 'knight', rogue: 'rogue', ranger: 'rogue', bard: 'rogue', wizard: 'mage', sorcerer: 'mage', warlock: 'mage', druid: 'mage' },
+};
+
 export const THEMES = {
   classic: {
     name: 'Classic Tabletop',
@@ -33,6 +56,7 @@ export const THEMES = {
       '--accent': '#d7a84a', '--accent-ink': '#1d2622', '--line': '#4a5a52', '--good': '#7fc48a', '--bad': '#e0685a',
       '--display': "'Vollkorn SC', Georgia, serif", '--body': "'Source Sans 3', 'Segoe UI', system-ui, sans-serif", '--radius': '6px',
     },
+    models: STARTER_MODELS,
     sky: rgb('#1d2622'), fog: [40, 34],
     tiles: { grass: rgb('#6f8f55'), forest: rgb('#4f7446'), stone: rgb('#9a978c'), water: rgb('#3f6f8c'), rock: rgb('#77736a') },
     tree: rgb('#2f5a35'), shadow: { a: 0.42 }, wall: rgb('#7d766a'), wallWindow: rgb('#8fb4c8'), door: rgb('#8a5a2b'), curtain: rgb('#6d4a7c'), rim: 0.8, side: 0.58, floors: FLOORS, cutaway: CUTAWAY, caves: CAVES, arenaEdge: ARENA_EDGE, grid: 0.95, arenaRim: rgb('#e9c46a'),
@@ -47,6 +71,7 @@ export const THEMES = {
       '--accent': '#2f9e6b', '--accent-ink': '#ffffff', '--line': '#c9dab5', '--good': '#2f9e6b', '--bad': '#d9483b',
       '--display': "'Baloo 2', 'Trebuchet MS', sans-serif", '--body': "'Nunito', 'Segoe UI', system-ui, sans-serif", '--radius': '14px',
     },
+    models: STARTER_MODELS,
     sky: rgb('#8fd0e8'), fog: [44, 40],
     tiles: { grass: rgb('#8ed65a'), forest: rgb('#58b558'), stone: rgb('#d8cfae'), water: rgb('#4fb5e6'), rock: rgb('#a89b84') },
     tree: rgb('#2f8f4c'), shadow: { a: 0.3 }, wall: rgb('#b89a72'), wallWindow: rgb('#b9e8f7'), door: rgb('#c27a38'), curtain: rgb('#ee7c9a'), rim: 0.9, side: 0.7, floors: FLOORS, cutaway: CUTAWAY, caves: CAVES, arenaEdge: ARENA_EDGE, grid: 0.95, arenaRim: rgb('#fff27a'),
@@ -61,6 +86,7 @@ export const THEMES = {
       '--accent': '#ffd23f', '--accent-ink': '#2b2d42', '--line': '#545880', '--good': '#8be28b', '--bad': '#ff6b6b',
       '--display': "'Silkscreen', 'Courier New', monospace", '--body': "'Nunito', 'Segoe UI', system-ui, sans-serif", '--radius': '2px',
     },
+    models: STARTER_MODELS,
     sky: rgb('#c7e8c1'), fog: [46, 40],
     tiles: { grass: rgb('#9bdc7c'), forest: rgb('#6cc070'), stone: rgb('#e6dcc2'), water: rgb('#6ac3f0'), rock: rgb('#b9a98f') },
     tree: rgb('#3f9a5a'), shadow: { a: 0.32, sides: 4, hard: true }, wall: rgb('#8d6e63'), wallWindow: rgb('#7fd1ff'), door: rgb('#ffa94d'), curtain: rgb('#b57edc'), rim: 0.86, side: 0.66, floors: FLOORS, cutaway: CUTAWAY, caves: CAVES, arenaEdge: ARENA_EDGE, grid: 0.95, arenaRim: rgb('#ffd23f'),

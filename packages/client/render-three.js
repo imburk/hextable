@@ -4,13 +4,15 @@
 // old renderer's. Terrain, walls, overlay and pawns are built by three-build.js (pure) into one BufferGeometry per kind and drawn
 // with one small ShaderMaterial that does what the old hand-written renderer's shader did (a colour per vertex, one directional light, fog, the hour's
 // grade, a tint per draw), so the pictures agree. Picking is still the hex-column march (Decision 8): only the camera ray is Three's.
-// No glTF here (R12). Real shadows (docs/specs/renderer.md, R15): a depth pass from the sun into a shadow map, read by the floors; the blobs
+// Creature models (R12, models.js): a creature with a model in its theme's pack is drawn with it, a pawn while it loads and when it has none. Real shadows (docs/specs/renderer.md, R15): a depth pass from the sun into a shadow map, read by the floors; the blobs
 // are drawn when it is off. The governor gives them up before it gives up any pixel ratio.
 import * as THREE from './vendor/three/three.module.js';
 import { HEX, gridOf } from './shared/grid.js';
 import { footprint, ground, surfaces, under } from './shared/space.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 import { createGovernor, shadowLevels } from './governor.js';
+import { CONTENT } from './shared/content/index.js';
+import { Models, fit, makeBase, modelFor, modelsMode } from './models.js';
 import { Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, hpFraction, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
@@ -91,7 +93,7 @@ void main() {
   gl_FragColor = vec4(mix(col, uSky, vFog * 0.8), 1.0);
 }`;
 // The depth pass: only where each triangle lands in the sun's view matters, so there is nothing to colour.
-const VS_DEPTH = 'void main() { gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0); }';
+const VS_DEPTH = '#include <common>\n#include <skinning_pars_vertex>\nvoid main() {\n#include <begin_vertex>\n#include <skinbase_vertex>\n#include <skinning_vertex>\ngl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(transformed, 1.0); }';
 const FS_DEPTH = 'void main() { gl_FragColor = vec4(1.0); }';
 
 // The shadow setting: the address (`?shadows=on|off|auto`) first, then the device preference `hextable.shadows`, else 'auto'.
@@ -179,7 +181,7 @@ export class ThreeRenderer {
     this.edge = new Piece(this, o(14)); this.edgeId = null; this.edgeBase = 0; this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.anim = 0;
     this.flash = new Piece(this, { flat: true, lit: 0, blend: true, order: 15 }); this.flashAt = null;       // a refused move lights the border cells nearest it (the page event `hextable-arena-flash`, from app.js)
     this.onFlash = (ev) => this.#flashEdge(ev.detail); window.addEventListener('hextable-arena-flash', this.onFlash);
-    this.actors = new Map();
+    this.actors = new Map(); this.models = null; this.modelMode = modelsMode(location.search, (() => { try { return JSON.parse(localStorage.getItem('hextable.models')); } catch { return null; } })());
     this.floorData = []; this.cutSig = ''; this.cutYaw = null; this.wallsDirty = false;
     this.doors = new Map(); this.doorInfo = new Map(); this.seenRegions = null; this.veils = new Map(); this.ghosts = []; this.fell = new Set(); this.now = clock();
     this.blobGeom = new Piece(this, o(12)); this.blobGeom.show(false); this.#makeBlob();
@@ -212,7 +214,7 @@ export class ThreeRenderer {
   }
 
   // ---------- public ----------
-  setTheme(theme) { this.theme = theme; this.#makeBlob(); this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
+  setTheme(theme) { this.theme = theme; this.#dropModels(); this.#makeBlob(); this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
 
   setState(state, events = [], opt = {}) {
     const prev = this.state, now = (this.now = clock());
@@ -234,7 +236,7 @@ export class ThreeRenderer {
     for (const [id, a] of this.actors) if (!state.entities[id]) {
       if (!snap && removed.has(id) && !a.unseen) { this.#ghost(a, { t0: now, dur: SECS.vanish, el: a.el, label: true }); a.piece.show(false); }      // a removed creature fades out
       else { a.el.remove(); a.piece.free(); }
-      a.blob.free(); a.dying?.piece.free();
+      a.blob.free(); a.dying?.piece.free(); a.pup?.dispose();
       this.actors.delete(id);
     }
     for (const e of Object.values(state.entities)) {
@@ -251,11 +253,19 @@ export class ThreeRenderer {
       a.unseen = !!e.hidden;
       if (snap) a.lift = undefined;
       if (a.hold && (calm || appeared.has(e.id))) { a.hold = false; if (calm) a.fade = 1; else a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.appear }; }
-      const key = `${e.dead}|${e.side}|${e.size}|${this.G.kind}`; a.k = girth(e, this.G);
+      const mid = this.#modelOf(e);
+      if (mid !== (a.pup?.id ?? null)) {
+        a.pup?.dispose(); a.pup = null;
+        if (mid) { a.pup = this.models.spawn(mid); a.pup.id = mid; this.scene.add(a.pup.root); a.pup.setBase(this.#base(a, e, a.pup), true); a.pup.update(0); }
+        a.key = '';
+      }
+      if (a.pup && snap) { const want = this.#base(a, e, a.pup); if (want !== a.pup.base) a.pup.setBase(want, true); }       // at pace instant (and on a new map) a fall or a getting up is not played, as a pawn's tilt is not
+      a.size = e.size; a.prone = !!e.cond.prone && e.hp > 0 && !e.dead;
+      const key = `${e.dead}|${e.side}|${e.size}|${this.G.kind}|${a.pup ? 1 : 0}`; a.k = girth(e, this.G);
       if (key !== a.key) {
         const dies = !calm && a.key !== '' && e.dead && a.wasDead === false;
         if (dies) { const gp = new Piece(this, { order: 5, cast: true }).set(makePawn({ ...e, dead: false }, this.theme, this.G)); a.dying?.piece.free(); a.dying = { piece: gp, t0: now, dur: SECS.fall }; }
-        a.key = key; a.piece.set(makePawn(e, this.theme, this.G));
+        a.key = key; a.piece.set(a.pup ? makeBase(e, this.theme, this.G) : makePawn(e, this.theme, this.G));
       }
       a.wasDead = !!e.dead;
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
@@ -286,7 +296,8 @@ export class ThreeRenderer {
         a.fade = 0; a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.placed };
       }
       const hurt = this.actors.get(ev.target);
-      if (ev.type === 'damage' && hurt && ev.amount > 0) hurt.flash = FLASH;
+      if (ev.type === 'damage' && hurt && ev.amount > 0) { hurt.flash = FLASH; if (!snap) hurt.pup?.once('hit'); }
+      if ((ev.type === 'attack' || ev.type === 'cast') && !snap) this.#strike(ev, state, now);
       if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {
@@ -301,6 +312,44 @@ export class ThreeRenderer {
       }
     }
     this.#buildOverlay();
+  }
+  // ---------- models (R12) ----------
+  // The model a creature is drawn with now: the first time one is wanted the loader is made and the load started. The id when it is ready,
+  // null while it loads (the pawn is drawn) and when the creature has none.
+  #modelOf(e) {
+    const pack = this.modelMode === 'off' ? null : this.theme.models;
+    if (!pack) return null;
+    const id = modelFor(pack, e, (tpl) => CONTENT.monsters[tpl]?.type);
+    if (!id) return null;
+    if (this.models?.pack !== pack) { this.#dropModels(); this.models = new Models(THREE, pack, this.u, { onReady: () => this.#modelsReady() }); }
+    return this.models.want(id) ? id : null;
+  }
+  // A model has loaded (or failed, and the pawn stays): the creatures that wait for it are drawn again.
+  #modelsReady() {
+    if (this.dead || !this.state) return;
+    for (const a of this.actors.values()) a.key = '';
+    this.setState(this.state, []);
+  }
+  #dropModels() {
+    for (const a of this.actors.values()) { a.pup?.dispose(); a.pup = null; a.key = ''; }
+    this.models = null;
+  }
+  // What a model does while nothing else is asked of it.
+  #base(a, e, p) {
+    if ((e.dead || e.hp <= 0) && p.has('die')) return 'die';
+    const air = a.air > 0 && !!p.def.clips?.fly;
+    return a.way.length ? (air ? 'fly' : p.has('run') ? 'run' : 'walk') : air ? 'fly' : 'idle';
+  }
+  // An attack or a spell: its maker turns to the target and plays the clip (a far target is shot at); a melee blow also steps in.
+  #strike(ev, state, now) {
+    const who = this.actors.get(ev.actor), p = who?.pup;
+    if (!p) return;
+    const tid = ev.type === 'attack' ? ev.target : ev.targets?.[0], t = this.actors.get(tid), te = state.entities[tid], me = state.entities[ev.actor];
+    let dx = 0, dz = 0, d = 0;
+    if (t && t !== who) { dx = t.x - who.x; dz = t.z - who.z; d = Math.hypot(dx, dz); if (d > 0.01 && !who.way.length) who.face = Math.atan2(dx, dz); }
+    const far = ev.type === 'attack' && me && te && this.G.dist(me.pos, te.pos) > 1;
+    const len = p.once(ev.type === 'cast' ? 'cast' : far ? 'shoot' : 'attack');
+    if (len > 0 && ev.type === 'attack' && !far && d > 0.01) who.lunge = { x: dx / d, z: dz / d, t0: now, dur: len };
   }
   // A creature that stays on screen a moment after it is gone from where it was: it fades out as a copy of its pawn (its geometry is shared).
   #ghost(a, g) {
@@ -429,7 +478,8 @@ export class ThreeRenderer {
   dispose() {
     if (this.dead) return;
     this.dead = true; cancelAnimationFrame(this.raf); this.ro.disconnect(); this.off?.(); window.removeEventListener('hextable-shadows', this.onShadows); window.removeEventListener('hextable-arena-flash', this.onFlash); this.#shadowFree();
-    for (const a of this.actors.values()) { a.el.remove(); a.piece.free(); a.blob.free(); a.dying?.piece.free(); }
+    for (const a of this.actors.values()) { a.el.remove(); a.piece.free(); a.blob.free(); a.dying?.piece.free(); a.pup?.dispose(); }
+    this.models = null;
     for (const g of this.ghosts) this.#dropGhost(g);
     for (const v of this.veils.values()) v.piece.free();
     for (const f of this.floaters) f.el.remove();
@@ -578,6 +628,7 @@ export class ThreeRenderer {
     let h = 17;
     const mix = (v) => { h = (Math.imul(h, 31) + Math.round(v * 1000)) | 0; };
     for (const m of this.scene.children) if (m.layers.isEnabled(1)) { mix(m.visible ? 1 : 0); mix(m.geometry.id); for (const e of m.matrixWorld.elements) mix(e); }
+    for (const a of this.actors.values()) if (a.pup) { mix(a.pup.sig()); for (const e of a.pup.root.matrix.elements) mix(e); }
     for (const e of this.u.sh.uSVP.value.elements) mix(e);
     if (h === sh.key) return;
     sh.key = h;
@@ -634,6 +685,7 @@ export class ThreeRenderer {
       a.hop = a.way.length && !a.air ? 0.13 * Math.abs(Math.sin((Math.PI * a.walk) / 1.732)) : 0;
     }
     this.#ride(dt);
+    this.#puppets(dt);
     const C = (this.C = this.#camera());
     const td = this.tod, k = Math.min(1, dt * 1.5);
     if (td) { const n = td.now, g = td.goal; td.now = { light: n.light.map((v, i) => v + (g.light[i] - v) * k), sky: n.sky + (g.sky - n.sky) * k }; }
@@ -647,6 +699,15 @@ export class ThreeRenderer {
     this.three.render(this.scene, this.camera);
     this.anim += dt;
     this.#labels(C, dt);
+  }
+  // Each model plays what its creature is doing: down, walking, flying, or standing; a blow or a hit has played once already (setState).
+  #puppets(dt) {
+    for (const [id, a] of this.actors) {
+      const p = a.pup, e = this.state?.entities[id];
+      if (!p || !e) continue;
+      p.setBase(this.#base(a, e, p));
+      p.update(dt);
+    }
   }
   // A rider is drawn on its mount (docs/specs/companions.md, C10): where the mount is drawn, so the pair moves as one with no frame between,
   // and its pawn raised by the height of the mount's (`lift`, a drawing offset like `hop`; it eases, so mounting, a reveal and getting down are not jumps).
@@ -677,10 +738,23 @@ export class ThreeRenderer {
       if (f) piece.tint(1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, alpha); else piece.tint(1, 1, 1, alpha);
       piece.mat.transparent = alpha < 1; piece.mat.depthWrite = true;
     };
+    const puppet = (a, alpha) => {
+      const p = a.pup, f = a.flash ? Math.min(1, a.flash / FLASH) : 0, sh = a.shake ? (a.shake / SHAKE) ** 2 * 0.16 * Math.sin(a.shake * 70) : 0;
+      const tl = p.has('die') ? (a.prone ? Math.min(a.tiltNow ?? 0, 0.9) : 0) : a.tiltNow ?? 0;       // a model with a fall lies down by it; one without is tipped as a pawn is
+      let lx = 0, lz = 0;
+      if (a.lunge) { const k = (this.now - a.lunge.t0) / a.lunge.dur; if (k >= 1) a.lunge = null; else { lx = a.lunge.x * 0.4 * Math.sin(Math.PI * k); lz = a.lunge.z * 0.4 * Math.sin(Math.PI * k); } }
+      const y = a.y + (a.lift ?? 0) + 0.15 * Math.min(1, tl / 0.5);
+      p.scale = fit(p.entry.dim, a.size, this.G.kind);
+      p.place(model(a.x + lx + sh * Math.cos(this.cam.yaw), y, a.z + lz - sh * Math.sin(this.cam.yaw), a.yaw, tl, p.scale));
+      if (f) p.tint(1 + f * 1.4, 1 - f * 0.55, 1 - f * 0.55, alpha); else p.tint(1, 1, 1, alpha);
+      p.show(true);
+      a.piece.place(model(a.x, a.y + (a.lift ?? 0), a.z, a.yaw, 0)); a.piece.tint(1, 1, 1, alpha); a.piece.show(true);       // the token it stands on
+    };
     for (const a of this.actors.values()) {
       const fading = a.fade < 1;
-      a.piece.show(!(a.dying && fading)); pawn(a, a.piece, fading ? a.fade : 1);
-      if (a.dying) { a.dying.piece.show(true); pawn(a, a.dying.piece, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur)); }
+      if (a.pup) { puppet(a, fading ? a.fade : 1); a.dying?.piece.show(false); }
+      else { a.piece.show(!(a.dying && fading)); pawn(a, a.piece, fading ? a.fade : 1); }
+      if (a.dying && !a.pup) { a.dying.piece.show(true); pawn(a, a.dying.piece, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur)); }
       const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);
       a.blob.show(!this.sh.on && !a.rides);       // a rider's shadow is its mount's
       a.blob.place(model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade))); a.blob.tint(1, 1, 1, fade * (a.fade ?? 1));
@@ -766,15 +840,27 @@ export class ThreeRenderer {
 
   // ---------- picking and input ----------
   // The hex-column march, as the old renderer had it (Decision 8); only the ray comes from Three.
+  // A creature the ray meets as it is wins; only where it meets none, a finger's width is allowed (a widened cylinder in front must not steal a tap that is on another creature).
   #pick(px, py) {
+    const exact = this.#march(px, py, false);
+    if (exact?.id || !this.phone) return exact;
+    const wide = this.#march(px, py, true);
+    return wide?.id ? wide : exact;
+  }
+  #march(px, py, widen) {
     const C = this.C; if (!C || !this.state) return null;
     const d = this.#dir(C, px, py);
     const acts = [...this.actors].filter(([id]) => !this.state.entities[id]?.dead);
+    // On a phone a creature is never narrower than 44 CSS pixels to a finger (Decision 4): its cylinder is widened to that where it is smaller.
+    const pxUnit = this.canvas.clientHeight / (2 * Math.tan((this.camera.fov * Math.PI) / 360)), minR = widen ? (a) => 22 * Math.hypot(a.x - C.eye[0], a.y - C.eye[1], a.z - C.eye[2]) / pxUnit : () => 0;
     for (let t = 1; t < 140; t += 0.08) {
       const x = C.eye[0] + d[0] * t, y = C.eye[1] + d[1] * t, z = C.eye[2] + d[2] * t;
       // A ridden pair stands on one spot: the rider's pawn is the higher, so where both are met the rider is the one tapped.
       let top = null;
-      for (const [id, a] of acts) { const y0 = a.y + (a.lift ?? 0); if (y > y0 && y < y0 + 1.7 * (a.k ?? 1) && Math.hypot(x - a.x, z - a.z) < 0.5 * (a.k ?? 1) && (!top || y0 > top.y0)) top = { id, y0 }; }
+      for (const [id, a] of acts) {
+        const y0 = a.y + (a.lift ?? 0);
+        if (y > y0 && y < y0 + 1.7 * (a.k ?? 1) && Math.hypot(x - a.x, z - a.z) < Math.max(0.5 * (a.k ?? 1), minR(a)) && (!top || y0 > top.y0)) top = { id, y0 };
+      }
       if (top) return { id: top.id, hex: this.state.entities[top.id].pos };
       const h = this.G.fromWorld(x, z), column = surfaces(this.state.map, h);
       for (let i = column.length - 1; i >= 0; i--) {
