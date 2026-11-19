@@ -3,7 +3,7 @@
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTER_ACTIONS, MONSTERS, SPELLS } from '../content/index.js';
-import { ABILITIES, SKILLS } from '../content/schema.js';
+import { ABILITIES, BRANCHES, rolledIn, SKILLS } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
 import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
@@ -273,6 +273,19 @@ export const handlers = {
       for (const t of aimed.targets ?? []) enc.flags[`hit:${e.id}:${t.id}`] || fail(`${f.name} follows a hit: ${e.name} has not hit ${t.name} with an attack roll this turn.`);
       !enc.flags[`after:${f.id}:${e.id}`] || fail(`${e.name} has already used ${f.name} this turn.`);
     }
+    // `after: 'weaponHit'` (addition F of docs/specs/homebrew-subclasses.md): the same, after a hit with a weapon (`whit:` is set where the attack is rolled,
+    // resolve.js `rollToHit`, for a weapon attack only: not a spell attack, not an Unarmed Strike). The use is the one a hit's is (`after:`), once a turn.
+    if (act.after === 'weaponHit') {
+      fighting || fail(`${f.name} follows a hit with a weapon in a fight.`);
+      for (const t of aimed.targets ?? []) enc.flags[`whit:${e.id}:${t.id}`] || fail(`${f.name} follows a hit with a weapon: ${e.name} has not hit ${t.name} with a weapon this turn.`);
+      !enc.flags[`after:${f.id}:${e.id}`] || fail(`${e.name} has already used ${f.name} this turn.`);
+    }
+    // A modifier of `{ rolled: true }` takes the number of the damage step just before it (the gate says so; data that skipped the gate is refused here, before anything is paid).
+    {
+      const bad = (list) => rolledIn(list) ?? (Array.isArray(list) ? list.flatMap((st) => BRANCHES.map((b) => (st && Array.isArray(st[b]) ? bad(st[b]) : null))).find(Boolean) ?? null : null);
+      const problem = bad(act.modes ? mode?.effects : act.effects);
+      if (problem) fail(`${f.name} cannot be used: its data is wrong (${problem}). The DM can apply it.`);
+    }
     // A die handed to another creature to spend later (Bardic Inspiration: "A creature can have only one
     // Bardic Inspiration die at a time"): not to one that still holds one from this feature, whoever gave it.
     const gives = act.duration && (act.effects ?? []).some((st) => st.modifier?.uses !== undefined);
@@ -315,7 +328,7 @@ export const handlers = {
     if (res) e.uses[res] -= act.pool ? amount + cures.length * (act.cure?.cost ?? 0) : n;
     if (slotPaid !== null) { e.slots[slotPaid]--; ev.push({ type: 'std', id: e.id, action: `${f.name}: restored with a level ${slotPaid} ${slotWord} slot` }); }
     if (slotSpent !== null) { e.slots[slotSpent]--; ev.push({ type: 'std', id: e.id, action: `${f.name}: spent a level ${slotSpent} ${slotWord} slot` }); }
-    if (act.after === 'hit') enc.flags[`after:${f.id}:${e.id}`] = true;
+    if (act.after === 'hit' || act.after === 'weaponHit') enc.flags[`after:${f.id}:${e.id}`] = true;
     if (act.firstAttack) enc.flags[`${f.id}:${e.id}`] = true;
     if (act.pool) {
       ev.push({ type: 'std', id: e.id, action: f.name });

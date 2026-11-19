@@ -438,6 +438,7 @@ function exec(s, ev, kit, f, step, at) {
         if (emp && !emp.done && emp.path === path && (emp.n === undefined || emp.n === f.n)) { emp.done = true; r0 = { ...r0, total: r0.total + emp.add, bonus: r0.bonus + emp.add }; ev.push({ type: 'note', id: f.actor, text: `${emp.name}: +${emp.add} damage` }); }
       }
       const r = typeof r0 === 'number' ? { total: r0 } : r0;
+      f.rolled = r.total;                                        // `{ rolled: true }` (below): the number this roll made, before a save halves it or a Resistance cuts it
       return { amount: f.half || f.evade ? Math.floor(r.total / 2) : r.total, ...(r.dice ? { dice: r.dice, bonus: r.bonus } : {}), by: f.actor ?? null }; };
     const holds = (st) => { let r = true; for (const tag of st.when ?? []) { const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s); if (ok === null) return null; if (!ok) r = false; } return r; };
     const parts = [{ ...amount(step, at), type: step.type }], landed = [[step, at]];
@@ -504,7 +505,12 @@ function exec(s, ev, kit, f, step, at) {
     return ev.push({ type: 'remains', id: t.id, remains: step.remains });
   }
   if (kind === 'modifier') {
-    if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
+    // `value: { rolled: true }` (addition F of docs/specs/homebrew-subclasses.md): the number the damage step just before rolled, taken as it is, so the
+    // modifier put on is a plain number from here on. The gate (schema.js `rolledIn`) and `feature` (before it pays) see that a damage step comes before it.
+    if (step.modifier?.value && typeof step.modifier.value === 'object' && 'rolled' in step.modifier.value) {
+      if (!Number.isFinite(f.rolled)) return handOver(`${f.src.name} adds the number its damage rolled, but no damage was rolled before this step, so the engine does not know the number. The DM applies it.`);
+      if (kit.modifier(s, t, { ...step.modifier, value: f.rolled }, ev, f, step)) return;
+    } else if (kit.modifier(s, t, step.modifier, ev, f, step)) return;
     const bound = f.src.fx && effectsOf(s).find((x) => x.id === f.src.fx)?.bound;
     return handOver(bound
       ? `${f.src.name} changes a number, but nothing in it says when that ends, and the engine keeps only what ends by itself. The DM applies it and ends it.`
