@@ -25,7 +25,7 @@ says why when it is not.
 |---|---|
 | `name` | the name with the player's name dropped: one trailing `[...]` or `(...)` is removed and never kept (the files seen so far use parentheses) |
 | `classes` | every SRD 5.2 class, by name. One class gives a sheet with `class` and `level`; two or more give a multiclass sheet, `classes: [{ class, level, subclass?, spells? }]` (#175). The first class taken is the one whose saving throw proficiencies the sheet shows (only the first class gives them), else the sheet's first; when that cannot be told, `report.adjustments` says which was taken. A class that is not SRD 5.2 goes to `report.multiclass` and is not built (the SRD ones still are) |
-| `classes/*/specialization` | for each class, the SRD subclass when the name matches it (the 2014 "Draconic Bloodline" is the SRD Draconic subclass). Otherwise see "Stand-ins" |
+| `classes/*/specialization` | for each class, the SRD subclass when the name matches it (the 2014 "Draconic Bloodline" is the SRD Draconic subclass). Else, at level 3 or more, the table's own homebrew subclass of that class when the name matches exactly one (see "A homebrew subclass of the table"). Otherwise see "Stand-ins" |
 | `abilities/*/score` | `abilities`, at most 20; what is above 20 goes to `scoreBonus` (at most +10 for each ability) and is reported. See "Scores above 20" |
 | `skilllist` (`prof` 1 or 2) | `skills` (the class's picks) and `extraSkills` (the rest); 2 is expertise as far as the class has it; 3 (half proficiency) is not proficiency |
 | `inventorylist` armour carried 2 (equipped), Shield | `armour`, `shield`, only if the class is trained in it |
@@ -94,6 +94,23 @@ cap and every feat or item that raises the score, so the engine plays the score 
 ("Charisma 22 on the sheet: +2 kept as a DM bonus; check what gives it"); a score over 30 keeps +10 and says how much is left out, and
 a bonus that would pass 30 on top of an item is trimmed to fit, and says so. The adjustment names what the engine already counts.
 The DM removes a bonus with the "Remove" control beside "DM bonus" in the build sheet, or by sending the sheet without `scoreBonus` (`setSheet`).
+
+## A homebrew subclass of the table
+
+When a class is level 3 or more and its subclass name is not the SRD's, the importer looks among the homebrew subclasses of that class
+that are loaded (`CONTENT.subclasses`; call `importFgxml` inside `using` with the table's packs, as the DM's page does). A subclass
+matches when its name is the sheet's name (case, accents and punctuation ignored) or one holds the other as whole words: "Ember" matches
+"Oath of the Ember".
+
+- **One match:** the sheet's subclass is its id. It is not a stand-in, so what it always prepares is the character's, not listed twice, and its
+  features are not reported under "not in the SRD 5.2 pack". `report.imported.homebrewSubclasses` lists it: `{ class, id, name, pack, sheet, text }`,
+  the text being "matched the table's homebrew subclass Oath of the Ember (pack ember-folk)".
+- **None:** the SRD stand-in, as below.
+- **Two or more** (two packs): the stand-in, and a `subclass` note naming the candidates and their packs, so the DM edits the sheet.
+- `importFgxml(text, { homebrewSubclass: false })` turns matching off.
+
+Nothing is added to the table by the importer: the DM sees the report before confirming. The pack is not read from the file; if the pack is not
+loaded when the sheet is imported, the stand-in is what the sheet gets.
 
 ## Stand-ins
 

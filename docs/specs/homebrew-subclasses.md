@@ -447,3 +447,20 @@ Built to Decisions 3 and 4, the owner's questions on their defaults. What was se
   subclasses swapped; a Cleric taken after a Paladin; waiting counts (a pack whose id begins with the first's, a maximum that grew while away, a Long Rest, two subclasses away at once); the gate's refusal of a moved subclass; the shape of an id; the validate sentences with and without the overlay; `setSheet` with the wrong class (nothing changes), the
   right one, and a missing pack; `refresh` with the overlay removed, all characters refreshed, and the overlay back; `levelUp`; an SRD-only sheet and game unchanged.
   No existing test was changed.
+
+## Build notes: B4, the importer (#509)
+
+Built to Decision 5. What was settled in building:
+
+- **Where.** `import-fgxml.js` only (plus this spec, `docs/import-characters.md`, `docs/DEBT.md` and the tests). Matching is for a class at level 3 or more whose
+  sheet name is not the SRD's; `nameKey` equality, or the `words()` test either way round ("Ember" in "Oath of the Ember"). One match sets `at.subclass`, is not in
+  `standIns`, and goes to `report.imported.homebrewSubclasses` (`{ class, id, name, pack, sheet, text }`, the pack from the entry's `source`); the key is absent
+  when nothing matched. Several: the stand-in and a `subclass` note naming them. `options.homebrewSubclass === false` turns it off. The feature-name loop needed no
+  change: it reads `featuresOf`, which reads the subclass through B2's `subclassOf`.
+- **A spell of the oath.** The importer's spell-name map is made from the SRD at load, so a homebrew spell was reported "not in the SRD 5.2 pack", even the oath's
+  own (Ember Ward). The importer now also knows a spell the matched subclass always prepares, found in the loaded content; any other homebrew spell on a sheet is
+  still reported as before (DEBT T84).
+- **Tests** (`import-fgxml.test.js`, fixture `fgxml-paladin-ember.xml`, invented): one match inside `using` (loadable, no stand-in, spells and feature, `setSheet`
+  takes it); no pack, or a pack with no match, gives the stand-in; two packs give the stand-in and the note; the option off; a subclass of another class and the SRD
+  name. No existing test was changed.
+- **Not done:** the client's import report does not show the new `imported` key (T84).
