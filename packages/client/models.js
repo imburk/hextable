@@ -204,8 +204,14 @@ export class Puppet {
   tint(r, g, b, a) { this.tintV.set(r, g, b, a); for (const m of this.mats.values()) { m.transparent = a < 1; m.depthWrite = true; } }
   place(matrix) { this.root.matrix.fromArray(matrix); this.root.matrixWorldNeedsUpdate = true; this.root.updateMatrixWorld(true); }
   show(v) { this.root.visible = v; }
-  // A number that changes when the picture of this model does, for the shadow pass to know it must draw again.
-  sig() { return this.root.visible ? Math.floor(this.time * 20) + 1 : 0; }
+  // A number that changes when the picture of this model does, for the shadow pass to know it must draw again. Standing and breathing do not count
+  // (a table at rest costs nothing there, as for a pawn): a strike, a walk, a hit, a fall or a getting up does, and for a moment after it.
+  sig() {
+    if (!this.root.visible) return 0;
+    const a = this.cur, down = this.base === 'die' && a && a.time >= a.getClip().duration - 0.001 && a.timeScale > 0;
+    if (this.shot || (this.base !== 'idle' && !down)) this.movedAt = this.time;
+    return this.movedAt !== undefined && this.time - this.movedAt < 0.4 ? Math.floor(this.time * 20) + 2 : 1;
+  }
   dispose() { for (const m of this.mats.values()) m.dispose(); this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.body); this.root.removeFromParent(); }
 }
 
