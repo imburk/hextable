@@ -34,7 +34,9 @@ function budgetHomebrew(raw) {
 // claims `checked: true`. The SRD ids are this module's own lookups (`HOMEBREW_LOOKUPS[kind][0]` is `CONTENT[kind]`).
 // The SRD's subclasses are not in `CONTENT.subclasses` (which is the table's homebrew), so they are read from the twelve classes, by id and name; the class
 // table and the feats are what a subclass's features are linted against (`classTable`: not `classes`, which would also change what a feat's freeCast cost may name).
-const SRD_IDS = { pack: SRD_PACK_ID, ...Object.fromEntries(HOMEBREW_KINDS.map((k) => [k, HOMEBREW_LOOKUPS[k][0][0]])), subclasses: srdSubclassesOf(CONTENT.classes), classTable: CONTENT.classes };
+// (Getters, so the classes are read when a pack is checked and not when this module loads: test/content-reads.test.js.)
+const SRD_IDS = { pack: SRD_PACK_ID, ...Object.fromEntries(HOMEBREW_KINDS.map((k) => [k, HOMEBREW_LOOKUPS[k][0][0]])),
+  get subclasses() { return srdSubclassesOf(CONTENT.classes); }, get classTable() { return CONTENT.classes; } };
 useSrdReference(SRD_IDS);                      // lintPack and lintEntry then refuse the SRD's pack id, ids and names without being told
 function lintHomebrew(data) {
   try { return lintPack(data, { strict: true, srd: SRD_IDS }); } catch (err) { return [`pack: could not be checked (${err.message})`]; }

@@ -359,3 +359,39 @@ Each has the default the jobs above are written to.
    transformation and hostile aura), then F and G (the college's rider), then H, I, C, A, B.
 8. **Spellcasting from a subclass** (a third-caster subclass of a non-caster class). Default: refused for now; none
    of the owner's characters needs it.
+
+## Build notes: B1, the kind, the gate and the lookup (#497)
+
+Built to the decisions above, the owner's questions on their defaults. What was settled in building, and what differs from
+the sketch:
+
+- **Where.** `content/schema.js`: `subclasses` last in `HOMEBREW_ENTRY_KINDS`; `lintSubclass` (a wrapper over `lintFeature`,
+  linted inside `{ ...class, subclass: entry }`); the key lists (`subclasses`, `feature`, `option`, `featureUses`,
+  `requires`, `spellMap`), their types, ranges (`features.level` 3 to 20 and a few more) and lengths (12 features, 8 options
+  a feature, 5 spells a class level: `HOMEBREW_LENGTHS`); `HOMEBREW_LIMITS.subclassBytes` (16 KB; every other kind stays at
+  8 KB: `budget` and `budgetEntry` take the limit by kind). `content/index.js`: `CONTENT.subclasses` (empty for the SRD) and
+  `HOMEBREW_LOOKUPS.subclasses`. `content/registry.js`: the SRD reference gains `subclasses` (read from the twelve classes)
+  and `classTable`. `content/packs.js`: `PLAYER_PACK_KINDS` gains `subclasses`, so a player's copy of any pack now has a
+  `subclasses` list (empty when there are none).
+- **The class table is `classTable`, not `classes`, in the registry's reference.** A key `classes` there would also change what
+  a homebrew feat's freeCast cost may name (the gap DEBT T56 and `reader-items.test.js` pin). `lintEntry` given `srd: CONTENT`
+  reads `classes`. The SRD subclass names are read from the classes in either case, so the name rule never depends on
+  `CONTENT.subclasses`, which holds the table's homebrew while it is installed.
+- **Refusal sentences.** A `classes` key: "a homebrew class is not possible yet; a subclass of an SRD class is (`subclasses`)"
+  (`packKeyProblem`, in the linter and the registry). `feat` on a feature and `casting` on a subclass are refused by the key
+  lists with a reason after "is not something ... has" (`NOT_HERE`). The prefix rule for feature and option ids and the name
+  rule are in `lintRules`; "used once in the pack" is across all the pack's subclasses.
+- **Spells** are 3 to 20 by class level (the spec said "by class level"; a level 1 or 2 key is a plain refusal, like a feature
+  below level 3). A spell id is an SRD spell or one of the pack's, never another pack's; its level is compared with the
+  highest slot the class has at that class level (Pact Magic by `slotLevel`).
+- **Options that are feats.** Allowed only for an SRD Fighting Style feat (survey item 5), with its id, name and tier: so
+  that option keeps the feat's id and is exempt from the prefix rule. A feat of the pack stays refused (addition B).
+- **Amounts in a subclass's steps.** A subclass's `damage`, `heal` and `tempHp` steps may be a class amount, a save's `dc` and
+  a heal's `addMod` an ability, and a modifier value may reach 100 (the SRD's Draconic Sorcerer's Fly Speed 60). All the SRD
+  subclasses, made homebrew, pass but one: a test holds them to it. The exception is the warlock's, whose Fiendish
+  Resilience has 12 options against the limit of 8 (DEBT T81 says what to set).
+- **Survey item 8 is true.** A feature's action with `to: 'caster'` and `against: 'target'` gives Advantage on attack rolls
+  against the chosen creature only, spends the parent class's Channel Divinity use and a Bonus Action, and puts a lasting
+  effect on the holder bound to the target (the test plays it in a game; the record is made as `derive` makes it, as `derive`
+  does not read a homebrew subclass until B2). The reading may say it.
+- **Nothing else changes.** No state shape change, no version bump; `npm run content` is byte for byte what it was.

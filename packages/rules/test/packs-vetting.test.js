@@ -26,7 +26,7 @@ test("forPlayers: never monsters, never dmNotes at any depth, and the hash is of
   data.spells[0].effects[0].onFail[0].dmNotes = "deeper secret";
   data.items = [{ id: "hb-ember-folk-bead", name: "Bead", dmNotes: "cursed" }];
   const f = forPlayers(data);
-  assert.deepEqual(Object.keys(f.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "version", "weapons"]);
+  assert.deepEqual(Object.keys(f.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "subclasses", "version", "weapons"]);
   assert.equal(f.data.monsters, undefined);
   const text = JSON.stringify(f.data);
   assert.ok(!text.includes("dmNotes") && !text.includes("Secret plan") && !text.includes("Quillwraith") && !text.includes("Gazeblight"));
@@ -34,7 +34,7 @@ test("forPlayers: never monsters, never dmNotes at any depth, and the hash is of
   assert.notEqual(f.hash, hashOf(data), "the whole pack's hash is never a player's");
   assert.deepEqual(f.data, packForPlayer(data));
   assert.equal(data.spells[0].dmNotes, "Secret plan", "the pack itself is not changed");
-  assert.deepEqual(PLAYER_PACK_KINDS, ["spells", "items", "feats", "weapons", "armour", "objects"]);
+  assert.deepEqual(PLAYER_PACK_KINDS, ["spells", "items", "feats", "weapons", "armour", "objects", "subclasses"]);
 });
 
 test("forPlayers: a pack without a version is sent as version 1", () => {

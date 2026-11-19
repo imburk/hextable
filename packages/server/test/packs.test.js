@@ -92,12 +92,12 @@ test("a DM adds a lint-clean pack: the table keeps it, the game names it, the DM
   assert.deepEqual([dd.id, dd.version, dd.hash], ["ember-folk", 1, hashOf(EMBER())]);
   assert.equal(dd.data.monsters[0].id, WRAITH);
   assert.deepEqual(dm.receiver.state.packs, t.state.packs, "the DM's view of the game says which packs it needs");
-  // A player: the list, and the filtered pack: id, name, version, the six lists. No monsters, no notes.
+  // A player: the list, and the filtered pack: id, name, version, the seven lists. No monsters, no notes.
   const mine = hashOf(packForPlayer(EMBER()));
   assert.notEqual(mine, hashOf(EMBER()));
   assert.deepEqual(player.last("packs").packs, [{ ...d.packs[0], hash: mine }], "a player's list carries the hash of what they are sent");
   const p = player.last("packData");
-  assert.deepEqual(Object.keys(p.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "version", "weapons"]);
+  assert.deepEqual(Object.keys(p.data).sort(), ["armour", "feats", "id", "items", "name", "objects", "spells", "subclasses", "version", "weapons"]);
   assert.deepEqual(p.data.spells, [spell("ember-folk", "cinder-lash")]);
   assert.equal(p.data.name, "The ember-folk pack");
   assert.equal(p.hash, mine);
