@@ -142,9 +142,14 @@ export function carryPlay(e, fresh, record, sheet) {
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);
     if (f.uses && was?.uses) fresh.uses[f.id] = Math.max(0, f.uses.max - Math.max(0, was.uses.max - (e.uses[f.id] ?? 0)));
+    // A feature of a homebrew subclass whose pack was away while the character was made again: its spent count was kept in `uses` by id below.
+    else if (f.uses && !was && f.id.startsWith('hb-') && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = Math.min(f.uses.max, Math.max(0, e.uses[f.id]));
     if (f.relentless && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = e.uses[f.id];      // Relentless Rage's uses since the last rest
     if (f.overchannel && e.uses?.[f.id] !== undefined) fresh.uses[f.id] = e.uses[f.id];     // Overchannel's uses since the last Long Rest
   }
+  // A subclass whose pack is not loaded (homebrew-subclasses.md, Decision 4) has no feature to hold its uses: what its features had spent waits
+  // in `uses` by id (`hb-…`) for the pack's return, when the lines above take it back. A Rest while it waits does not recharge it.
+  if (sheet && missingOf(sheet).length) for (const [id, n] of Object.entries(e.uses ?? {})) if (id.startsWith('hb-') && fresh.uses[id] === undefined) fresh.uses[id] = n;
   if (fresh.hitDie && e.hd !== undefined) fresh.hd = Math.max(0, fresh.level - Math.max(0, (e.level ?? 0) - e.hd));
   // Hit Dice of several sizes: what was spent of each size stays spent.
   if (fresh.hdBy && e.hd !== undefined) {
