@@ -499,7 +499,11 @@ function shapeShift(s, e, f, act, a, ev) {
   F.types.includes(m.type) || fail(`${f.name} takes the form of a ${F.types.join(' or ')}; the ${m.name} is not one.`);
   m.cr <= F.maxCr || fail(`At ${e.name}'s level ${f.name} takes forms of Challenge Rating ${crText(F.maxCr)} or lower; the ${m.name} is ${crText(m.cr)}.`);
   (!m.speed.fly || F.fly) || fail(`At ${e.name}'s level ${f.name} can't take a form with a Fly Speed.`);
-  (e.uses[f.id] ?? 0) >= 1 || fail(`${e.name} has no uses of ${f.name} left.`);
+  // What the form costs: a use of the feature itself, or what a subclass's `formOf` priced it at (derive.js: `form.cost`, for the forms it added, or for all).
+  const price = F.cost && (!F.cost.types || F.cost.types.includes(m.type)) ? { res: F.cost.resource, n: F.cost.n ?? 1 } : { res: f.id, n: 1 };
+  const pool = featOf(e, price.res)?.name ?? price.res;
+  (e.uses[price.res] ?? 0) >= price.n || fail(price.res === f.id && price.n === 1 ? `${e.name} has no uses of ${f.name} left.`
+    : `${e.name} has ${e.uses[price.res] ?? 0} use${(e.uses[price.res] ?? 0) === 1 ? '' : 's'} of ${pool} left; the form of a ${m.name} costs ${price.n}.`);
   if (time && fighting) need(s, e, time);
   // The creature itself at its new size (`...e`: its id and its ride), so the other half of a ridden pair is never in
   // its way (space.js, `paired`; DEBT W13).
@@ -509,7 +513,7 @@ function shapeShift(s, e, f, act, a, ev) {
 
   // Paid for: from here it happens.
   if (time && fighting) enc.budget[time]--;
-  e.uses[f.id]--;
+  e.uses[price.res] -= price.n;
   if (holding) endEffect(s, ev, holding, `${e.name} took another form`);
   else if (e.form) leaveForm(e);
   const fx = startEffect(s, { name: `${f.name} (${m.name})`, spell: null, source: e.id, conc: false, duration: `${F.hours} hour${F.hours === 1 ? '' : 's'}` });

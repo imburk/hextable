@@ -286,10 +286,12 @@ named):
 - **H. Triggers on what the holder does**: "on taking the Attack action" and "after an Opportunity Attack hits",
   with a move that provokes nothing. `engine/attacks.js`, `reactions.js`.
 - **I. A Reaction trigger "a creature under my effect attacks"** for a feature's Reaction attack. `reactions.js`.
-- **J. A grant that changes another feature's form**: `formOf: { of: 'wild-shape', maxCr?, types?, tempHp?, cost? }`
+- **J. A grant that changes another feature's form** (built, #516; see "Build notes: J"): `formOf: { of: 'wild-shape', maxCr?, types?, tempHp?, cost? }`
   (the `{ of: feature id }` pattern of `moveWith`, `persist` and `restore`), merged by `derive` into the named
   feature's `form`, the higher limit winning; and `shapeShift` spending from `cost.resource` when there is one.
-  `derive.js`, `engine/features.js`.
+  `derive.js`, `engine/features.js`. Settled shape: `maxCr` is a Challenge Rating or `{ byLevel }` of them (the class's own `form.maxCr` is
+  the same), `types` are creature types the feature does not already take, `tempHp` is a number or an amount of the class and is **added**
+  to the form's own, `cost` is `{ resource, n? }` and prices the forms of the types the grant adds (every form, when the grant lists no `types`).
 
 What this means for the owner's four, before any addition: each loads and its spells, proficiencies, Extra Attack,
 the save-and-condition Channel Divinity option, the cantrip bonus, a friendly aura and an at-will spell play; the
@@ -534,3 +536,43 @@ page's overlay is installed) or from the engine's own `missingOf` (B2), and the 
   `docs/DEBT.md` as listed. No other file; the CI matrix is unchanged (the scenario is in an existing pass).
 - **Left** (DEBT T85): the header reads as the record does once the pack is back until Refresh (only the DM's note says so), a character with several classes cannot be opened in the
   build screen, and the manager's line counts the author's tiers.
+
+## Build notes: J, `formOf` (#516)
+
+Built to addition J, the owner's questions on their defaults. What was settled in building, and what differs from the sketch:
+
+- **Where.** `content/schema.js`: `formOf` in `GRANTS`; `formOfProblem` (the shape, exported with `FORM_OF_KEYS`), `lintSubclass` (the named feature, the types, one price), the strict
+  shapes (`formOf`, `formCost`), `HOMEBREW_RANGES` (`formOf.maxCr`, a Challenge Rating in eighths; `formOf.tempHp`) and one rule for a Challenge Rating inside `byLevel`.
+  `content/reader.js`: `GRANT_WORDS.formOf`. `derive.js`: the merge, after every feature is made. `engine/features.js`: `shapeShift` spends the price. State shape: no change, no
+  version bump; a record's Wild Shape gains `action.form.cost` only when a circle prices it.
+- **The shape.** `formOf: { of, maxCr?, types?, tempHp?, cost? }`; `of` and at least one more key. A key the vocabulary lacks (`fly`, `hours`) is refused with the strict sentence
+  "is not something a form grant has".
+- **Where the level-dependent values live: in the grant, and by the class's level, as the class's own `form` does.** The class's `form.maxCr`, `fly`, `hours` and `tempHp` are
+  numbers or amounts (`{ byLevel }`, `{ perLevel }`) that `derive` puts in at the level of the class the feature is of. `formOf.maxCr` is a number or `{ byLevel: { 3: 1, 6: 2 } }`
+  and `formOf.tempHp` an amount, put in the same way, at the level of the class of the feature that holds the grant (the druid's level in a multiclass character, not the
+  character's). A `byLevel` with no entry reached yet gives nothing. The grant exists from its feature's own level (3 or more), so a type "from level 5" is a feature at level 5.
+- **The merge.** `maxCr`: the higher of the circle's and the class's stands (a circle that gives less changes nothing). `types`: added to the feature's list. `tempHp`: **added** to the
+  form's own (the survey says "more Temporary Hit Points"; the issue's "the higher limit winning" is about the rating). Two grants of one feature combine in the order of the
+  features: the highest rating, all the types, the sum of the Temporary Hit Points. `fly` and `hours` are the class's and are not changed.
+- **The price.** `cost: { resource, n? }`, one price a subclass for a feature (a second is refused). `shapeShift` spends `n` uses (1 if left out) of `e.uses[resource]` instead of one use of
+  the feature, for a form of a type the grant adds; with no `types` in the grant, for every form. A type the class already takes is the class's price (so "another creature type for
+  two uses" leaves the beasts at one). The pool is a feature of the class or the subclass that has uses (the gate's existing cost rule, so `channel-divinity` of another class is
+  refused); naming `wild-shape` itself with `n: 2` is allowed. When the pool has too few: "Ven has 1 use of Wild Shape left; the form of a Azer Sentinel costs 2.", and nothing
+  changes; all is checked before anything is paid, so a refused form leaves the Bonus Action too. The sentence for the feature's own single use is the one it was.
+- **The gate.** Strict and closed: `of` must name a feature of the class or of the subclass whose action takes a form ("neither a feature of the Druid nor of this subclass" for a
+  paladin's circle or a misspelt id; "which does not take a form" for another druid feature); `types` lists creature types, each once, none the feature already takes; `maxCr` is 0 to
+  30 in eighths; `tempHp` is a number or an amount of the class, never dice; the cost's resource has uses; one price. A **feat or an item** that holds the key is refused (`Only a
+  subclass's feature can change the form of a class feature`), and `derive` ignores it all the same (only a feature of the same class changes a form).
+- **The reading.** "Changes the form of the feature "wild-shape": it lets its forms be of a Challenge Rating that grows with the class level (1 from level 3, 2 from level 6), where
+  that is higher than they already may be, adds elemental creatures to the forms it may take and gives ... more Temporary Hit Points on taking a form." and a line for the price. The golden
+  file `reader-subclass-golden.txt` is unchanged: none of its three invented subclasses holds the grant (adding one needs a change in `reader-subclass.test.js`); the reading is held by
+  `homebrew-subclass-formof.test.js`.
+- **What players are sent: no change.** The circle is sent as any subclass is (B1). A character's own record, which its party sees, holds the merged `form` (and `cost`, where there is one);
+  an enemy in a form shows what it did (the form's name and template only), a `form` event is what it was; a test compares both with and without a circle.
+- **Tests** (`homebrew-subclass-formof.test.js`): the invented Circle of the Ember (rating by level 3, 6 and 10, an elemental type, Temporary Hit Points by level), a circle whose rating
+  is below the class's, a price in the circle's own pool, a price of two uses of Wild Shape, a price on every form; the gate's refusals; derive in a druid 4 / fighter 3; the forms played
+  (accepted, past the rating, the wrong type, a Fly Speed, nothing changed on refusal, in a fight); the overlay removed (`refresh`: the class's own forms) and back; an SRD-only game
+  unchanged; what a player is sent.
+- **Not built (DEBT T86).** The client's form list and its note read `action.form` as the merged record gives it (types, rating, Temporary Hit Points) and say "N of M uses left" for
+  Wild Shape's own pool, which is not the pool a priced form spends; the engine refuses a form with too few uses and says why, but the screen does not yet show the price.
+
