@@ -499,9 +499,11 @@ A table's homebrew is the DM's secret in part. The rule: **a player is sent
 what their character needs to play, never what it does not.**
 
 - **Sent to every approved member:** the pack's id, name and version, and
-  its spells, items, feats, weapons, armour, objects. These are needed to show
-  a spell list, a magic item on a sheet and a door's states, and are no more
-  secret than the SRD's.
+  its spells, items, feats, weapons, armour, objects, and, when the pack has
+  any, its subclasses (docs/specs/homebrew-subclasses.md, Decision 2; a pack
+  without them is sent, and hashed, as it always was). These are needed to show
+  a spell list, a magic item on a sheet, a door's states and a character's
+  subclass features, and are no more secret than the SRD's.
 - **Never sent:** monsters (the owner's decision, 14 November). The client draws a creature from the view's
   `seenRecord` (name, health word), and the SRD stat blocks in the client
   bundle are public SRD content; a homebrew monster's stats are a surprise and

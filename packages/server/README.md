@@ -102,7 +102,7 @@ as an action: it is refused, and the server keeps `state.packs` in step with the
   to every member let in when a pack is added or updated, and otherwise only to a member who asks with `{t:"packData", id}` (a client keeps
   packs by hash and asks only for what it lacks; rate limited per member, `LIMIT_PACK_DATA` per `LIMIT_PACK_DATA_WINDOW_MS`, 30 per minute; refused
   for a pending member, who is sent nothing of any pack). The DM's `data` is the whole pack; everyone else's is
-  `{id, name, version, spells, items, feats, weapons, armour, objects}`: no monsters, no `dmNotes`.
+  `{id, name, version, spells, items, feats, weapons, armour, objects}`, and `subclasses` when the pack has any (a pack without them is sent exactly as before): no monsters, no `dmNotes`.
 - Every call of the engine and the views for a table runs inside that table's overlay (`using(overlayOf(...))`) through one wrapper in
   `tables.js`; the overlay is built once and rebuilt only when the packs change.
 - Saved tables. At start-up (and for any table brought in from a file) a table's `packs` is checked as if uploaded: it must be a list of
