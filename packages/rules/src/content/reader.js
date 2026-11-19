@@ -2144,7 +2144,7 @@ class GrantReading extends Reading {
   // `action`: a use the feature gives (engine/features.js, `feature`).
   actionLines(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not an action.`);
-    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot'], 'The action');
+    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone'], 'The action');
     if (!ACTION_TIMES.includes(v.time)) this.bad(`${at}.time is not one the engine knows.`);
     this.line(`Gives the holder an action to use with the feature action. It takes ${ACTION_TIME_WORDS[v.time] ?? 'an unreadable time'}${v.time === 'reaction' ? '; the engine does not take Reactions from features, so using it is refused and the DM applies it' : ''}.`, 1);
     if (isObj(v.cost)) { if (isInt(v.cost.n)) this.num(`${at}.cost.n`, v.cost.n, 'uses'); this.line(`It spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the holder's feature ${shown(v.cost.resource)}. ${featureNote(v.cost.resource)}`, 2); }
@@ -2156,8 +2156,29 @@ class GrantReading extends Reading {
     if (Array.isArray(v.modes)) this.line(`It does one of ${v.modes.length} things, picked when it is used.`, 2);
     if (v.acts !== undefined) this.line('It also takes the actions named in the entry.', 2);
     if (v.after === 'hit') this.line('It follows a hit the holder made this turn, once a turn.', 2);
+    if (v.zone !== undefined) this.actionZone(v, at);
     const groups = Array.isArray(v.effects) ? [[v.effects, `${at}.effects`]] : Array.isArray(v.modes) ? v.modes.filter(isObj).map((m, j) => [m.effects, `${at}.modes.${j}.effects`]) : [];
-    for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : 'the target', v.duration, 2);
+    for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : v.zone !== undefined ? 'that creature' : 'the target', v.duration, 2);
+  }
+  // `zone` on an action (addition D of docs/specs/homebrew-subclasses.md; engine/features.js, zones.js): an area that stays for the action's
+  // duration and works on a creature that enters it or starts or ends its turn there, as a spell's zone does.
+  actionZone(v, at) {
+    const z = v.zone, a = v.target?.area;
+    if (!isObj(z) || !Array.isArray(z.on)) return this.bad(`${at}.zone is not an object with a list \`on\`.`);
+    this.odd(z, ['on', 'once', 'atCast', 'spare'], 'The zone');
+    if (!isObj(a) || !AREA_WORDS[a.shape] || !isDuration(v.duration) || v.duration === 'instant' || !Array.isArray(v.effects)) {
+      this.line('The action asks for an area that stays, but it has no area, duration or effects to lay out, so the engine refuses to use it: the DM runs it.', 2);
+      return this.dm('The lasting area: the engine cannot lay it out.');
+    }
+    const when = z.on.filter((x) => Object.hasOwn(ZONE_ON_WORDS, x)).map((x) => ZONE_ON_WORDS[x]);
+    this.line(`${cap1(AREA_WORDS[a.shape](a))} stays for as long as the action lasts. ${a.shape === 'emanation' ? 'It moves with the holder and never affects the holder.' : 'It stays where it was laid out.'}`, 2);
+    this.line(z.atCast === true ? 'As it appears, the steps below run on each creature in it.' : 'As it appears it affects nobody.', 2);
+    const was = this.def; this.def = { ...was, effects: v.effects };
+    const rolls = this.damageOutside();
+    this.def = was;
+    this.line(`From then on, the steps below run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : ''}.${rolls ? ' Each creature rolls its own damage.' : ''}`, 2);
+    if (z.spare === true) this.line('When using it, the holder may name creatures the area leaves alone.', 2);
+    this.line(`It ends when its duration does, when the holder ends it, and when the holder dies, drops to 0 Hit Points or falls Unconscious${v.endsWhenIncapacitated === true ? ', or is Incapacitated' : ''}. The holder cannot use it again while it lasts.`, 2);
   }
   // Steps read in the words of an item's use or a feature's action.
   stepsUnder(steps, path, who, duration, depth = 0) {

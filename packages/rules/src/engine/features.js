@@ -19,6 +19,7 @@ import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
 import { castFromItem } from './casting.js';
+import { startZone } from '../zones.js';
 
 const hasKey = (e, key) => e.gear.some((g) => String(g).toLowerCase() === key.toLowerCase());
 
@@ -278,6 +279,19 @@ export const handlers = {
       !holds || fail(`${t.name} already has a ${f.name} die.`);
     }
 
+    // A zone (addition D of docs/specs/homebrew-subclasses.md): the action's Emanation stays for its duration and moves with the holder, and its
+    // steps go off on a creature that enters it or starts or ends its turn there (zones.js), as a spell's zone does. One at a time for a holder.
+    const zoneDef = act.zone;
+    if (zoneDef) {
+      (act.duration && act.duration !== 'instant' && act.target?.area && Array.isArray(act.effects)) || fail(`${f.name} makes an area that lasts, but its data gives no duration, area or effects to lay out. The DM can apply it.`);
+      effectsOf(s).some((fx) => fx.source === e.id && fx.feature === f.id && fx.zone) && fail(`${e.name}'s ${f.name} is already going: end it first to use it again.`);
+      // As for a spell's zone, the user may name creatures it leaves alone (`a.spare`), where the zone says it spares.
+      if (a.spare !== undefined) {
+        zoneDef.spare || fail(`${f.name} spares nobody by choice.`);
+        (Array.isArray(a.spare) && a.spare.length <= 100 && a.spare.every((id) => typeof id === 'string' && s.entities[id])) || fail('Name the creatures it spares.');
+      }
+    }
+
     // Paid for: from here it happens.
     if (time && fighting) { if (free) enc.flags[`fleet:${e.id}`] = true; else enc.budget[time]--; if (time === 'bonus') enc.flags[`used:${f.id}:${e.id}`] = true; }
     if (res) e.uses[res] -= act.pool ? amount + cures.length * (act.cure?.cost ?? 0) : n;
@@ -316,7 +330,9 @@ export const handlers = {
     let fx = null;
     if (act.duration && act.duration !== 'instant') {
       fx = startEffect(s, { name: f.name, spell: null, source: e.id, conc: false, duration: act.duration });
-      Object.assign(fx, { feature: f.id, ...(act.renew ? { renew: true } : {}), ...(act.noSpells ? { noSpells: true } : {}), ...(act.endsWhenIncapacitated ? { fragile: true } : act.endsOn ? { fragile: act.endsOn } : {}) });
+      // A zone's effect also ends when its holder dies or drops to 0 Hit Points or falls Unconscious (`fragile`: durations.js), whatever else the action says:
+      // a zone that follows a creature that is gone must not wait to come back with it. Incapacitated ends it only where the action says so.
+      Object.assign(fx, { feature: f.id, ...(act.renew ? { renew: true } : {}), ...(act.noSpells ? { noSpells: true } : {}), ...(act.endsWhenIncapacitated ? { fragile: true } : act.endsOn ? { fragile: act.endsOn } : zoneDef ? { fragile: 'unconscious' } : {}) });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: fx.lasts, targets: (targets ?? []).map((t) => t.id) });
     } else fx = boundEffect(s, f.name, e.id, steps);
     if (!('attack' in steps[0])) ev.push({ type: 'std', id: e.id, action: f.name });
@@ -325,8 +341,11 @@ export const handlers = {
     // save that ends what it did; a feature whose save has none uses the spell save DC.
     let own;
     walkSteps(steps, (x) => { if (own === undefined && 'save' in x && typeof x.dc === 'number') own = x.dc; });
-    begin(s, { steps, actor: e.id, targets: targets === null ? null : targets.map((t) => t.id),
-      src: { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(fx ? { fx: fx.id } : {}) },
+    const src = { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10) };
+    // The zone is made as a spell's is (zones.js startZone); unless it says `atCast`, nobody is affected as it appears.
+    const hit = zoneDef && fx ? startZone(s, fx, { def: zoneDef, area: act.target.area, holder: e, hexes: aimed.hexes, origin: aimed.origin, spare: a.spare ?? [], steps, src }, targets) : targets;
+    begin(s, { steps, actor: e.id, targets: hit === null ? null : hit.map((t) => t.id),
+      src: { ...src, ...(fx ? { fx: fx.id } : {}) },
       // Damage an area feature deals is rolled once for everyone in it (Sear Undead), as a spell's is.
       shared: aimed.hexes ? sharedRolls(s, steps) : null });
     resolve(s, ev);

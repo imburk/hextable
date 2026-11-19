@@ -274,9 +274,10 @@ named):
   `derive.js`.
 - **C. Proficiency for a time**: a modifier op `proficient` on `check` with a scope, which `rolls.js` reads as
   proficiency, not as an add. `modifiers.js`, `engine/rolls.js`.
-- **D. A feature's action may carry a `zone`** (an Emanation that moves with the holder, steps on a foe that enters
-  it or starts its turn there), exactly the spell `zone` that `zones.js` already plays, ended with the action's
-  duration. `engine/features.js`, `zones.js`.
+- **D. A feature's action may carry a `zone`** (built, #518; see "Build notes: D"): an Emanation that moves with the holder, steps on a foe that enters
+  it or starts or ends its turn there, exactly the spell `zone` that `zones.js` already plays, ended with the action's
+  duration, by the holder, and by the holder's death or falling Unconscious. `content/schema.js`, `content/reader.js`,
+  `engine/features.js`, `zones.js`.
 - **E. A spell slot as a cost**: `cost: { slot: minLevel }` on a feature's action (and `orSlot` for any caster),
   with an amount that may grow with the slot spent. `engine/features.js`.
 - **F. "The die just rolled"**: a modifier value `{ rolled: true }` that takes the result of the step before
@@ -577,3 +578,45 @@ Built to addition J, the owner's questions on their defaults. What was settled i
 - **Not built (DEBT T86).** The client's form list and its note read `action.form` as the merged record gives it (types, rating, Temporary Hit Points) and say "N of M uses left" for
   Wild Shape's own pool, which is not the pool a priced form spends; the engine refuses a form with too few uses and says why, but the screen does not yet show the price.
 
+## Build notes: D, a feature's action carries a `zone` (#518)
+
+Built to addition D, the owner's questions on their defaults (question 7: after J). What was settled in building, and what differs from the sketch:
+
+- **Where.** `content/schema.js`: `zone` in the keys of a feature's action; `lintZone` takes an action (`lintZone(action, say, true)`); the rules below in `lintGrants`; `BY_KEY.zone` so
+  the strict shapes check the zone's own keys and types inside `grants.action`; `workOf` counts a zone's dice for a subclass. `content/reader.js`: the action's `odd` list and
+  `actionZone`. `zones.js`: `startZone`, the one place a zone record is made for a feature (see "Left"). `engine/features.js`: `feature` checks, pays and plays it. State shape: no change,
+  no version bump (an effect with `feature` and `zone` is the same record as a spell's zone with `feature` as any feature's effect has).
+- **The shape.** `grants.action.zone: { on: ['enter' | 'turnStart' | 'turnEnd', ...], once?: 'turn', atCast?: true, spare?: true }`, the spell's own, beside `target: { area: { shape: 'emanation', size } }`,
+  `duration` (not `instant`) and `effects` (the steps that go off on each creature). It is the action's, so its cost, its time (action, Bonus Action or free) and its `uses` are any action's.
+- **The gate, a sentence for each refusal.** The area must be an Emanation ("the zone of a feature's action is an Emanation, which moves with its holder": a spell may lay out any shape, a feature's moves
+  with its holder), a single one, with no `choose` or `count`; a duration that is not `instant`; the zone's keys, `on` (each of three, once), `once`, `atCast` and `spare` as for a spell; `effects` present;
+  no summon or teleport step among them (they run on each creature that enters); not a Reaction; and not together with `modes`, `form`, `gain`, `pool`, `cure`, `renew`, `after`, `firstAttack`, `acts`,
+  `noSpells` or `orSlot` ("an action with a zone cannot also have `renew`: the zone runs the action's own `effects` and nothing else"). **Only a subclass's feature may carry one**: a homebrew feat or item
+  that holds it is refused ("a feat or an item cannot carry a zone: only a feature of a subclass can"), as for `formOf`. An option of a subclass's feature may. A zone's work is held to the same limits as a spell zone's
+  (a creature that enters rolls its own dice: `workOf`).
+- **Played as the spell zone is, by the same code.** `feature` lays out the area as any area action does (`aimAction`), starts the lasting effect as it did, and calls `startZone` (`zones.js`), which makes `fx.zone`
+  (`follows` the holder, `steps` a copy of the action's, `src` the DC, attack and name the action's steps run with, `last` for once a turn) and returns who it goes off on as it appears (those caught, minus those
+  spared, if `atCast`; nobody otherwise). From there `entered`, `turnInZones`, `holds` and the queue of zones that wait for an effect to finish are the spell zone's own and are not changed: a foe the zone is moved onto
+  by the holder's walk, one that walks in, one that starts or ends its turn there, once a turn if the zone says so, hidden creatures, the `zone` event that only the DM is sent, the zone a player is not sent. No Concentration: a
+  feature's effect is not one.
+- **How it ends.** With its duration (`startEffect`: rounds in a fight, the clock outside; a fight that ends turns what is left into minutes, as for any effect); when its holder or the DM ends it (`endEffect`, as for a
+  spell); and when its holder dies, drops to 0 Hit Points or falls Unconscious: a zone's effect is `fragile: 'unconscious'` (`durations.js`, as Persistent Rage's), which the spell zone gets from Concentration. **Incapacitated** ends
+  it only if the action says `endsWhenIncapacitated` (a Stunned holder otherwise keeps it; the spec's "where the spell rules end it" is Concentration's, which a feature has none of). Healing the holder back does not bring it back.
+- **One at a time.** A holder with the feature's zone going cannot use the feature again until it has ended: "Sir Ember's Smoulder aura is already going: end it first to use it again.", checked before anything is paid. The
+  alternative, a second use that ends the first, was not chosen: a second zone of the same feature would give each creature a second go at its saves.
+- **A refusal changes nothing.** The zone's checks (a record that skipped the gate and has no duration, area or effects: "makes an area that lasts, but its data gives no duration, area or effects to lay out"; the
+  spare list; the second use) are before the use, the Bonus Action or the Channel Divinity is paid. A test holds the state equal before and after each.
+- **What players are sent: no change.** The view and the events are untouched. A zone in play is an effect as any feature's is (`view.js` sends its id, name, source, `lasts`, `parts`, no `zone`; `spell` is `null`), a
+  `zone` event goes to the DM only, and a player is told of a creature the zone touches exactly as for Spirit Guardians (a test plays both: a hidden creature that is reached is revealed by its save, one that is not stays hidden and
+  untold). The pack copy of a subclass carries `zone` inside the action as every other key of it (and `dmNotes` stripped, as ever).
+- **The reading.** "A 10-foot emanation stays for as long as the action lasts. It moves with the holder and never affects the holder. As it appears it affects nobody. From then on, the steps below run on a creature each
+  time it enters the area (or the area reaches it) or ends its turn there, at most once a turn for each creature. ... It ends when its duration does, when the holder ends it, and when the holder dies, drops to 0 Hit Points or
+  falls Unconscious. The holder cannot use it again while it lasts." The steps under it are read as done to "that creature". The golden file `reader-subclass-golden.txt` is unchanged (none of its three
+  subclasses carries a zone); the reading is held by `homebrew-subclass-zone.test.js`.
+- **Tests** (`homebrew-subclass-zone.test.js`): the invented Oath of the Ember (a Smoulder Aura that spends Channel Divinity; an Ember Pyre with its own use, `atCast`, `spare` and `endsWhenIncapacitated`); the strict
+  load and the reading; each refusal of the gate; a feat and an item refused; derive (DC put in, the class unchanged, an SRD-only sheet identical with the pack lent); what players are sent; the zone played (appears on
+  nobody, moves with the holder, a foe reached or walking in, once a turn, turn end, outside a fight, a failed save's damage, `atCast` and `spare`); the duration in a fight and on the clock; dismissal by the owner or
+  the DM and not by another player, and use again; death, 0 Hit Points and Unconscious, and Incapacitated only where it says; refusals that change nothing; hidden creatures against Spirit Guardians; a typed area; a fight that ends; the overlay
+  away and back; replay. No existing test was changed. No file outside the issue's list was touched.
+- **Left (DEBT T87).** See there: `casting.js` still makes its own zone record (the same fields) and should call `startZone`; the size of the Emanation is a number (the friendly `aura`'s grows by level); only an Emanation;
+  the client offers no spare list for a feature and has not been looked at for a feature's zone; no replace-on-reuse.

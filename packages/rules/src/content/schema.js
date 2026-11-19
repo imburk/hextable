@@ -157,16 +157,19 @@ function lintModifier(m, say) {
 // it (`enter`), or starts or ends its turn there; `once: 'turn'` at most once a turn for each
 // creature; `atCast` also on everyone in it as it appears; `spare` lets the caster name creatures
 // it leaves alone. An Emanation moves with its caster; other shapes stay where they were laid out.
-function lintZone(e, say) {
+// A feature's action may carry one too (addition D of docs/specs/homebrew-subclasses.md): `lintZone(action, say, true)`. Its area is
+// an Emanation, which moves with the holder, and it needs a duration (a spell's is always given; an action's may be left out).
+function lintZone(e, say, action = false) {
   const z = e.zone;
   if (z === undefined) return;
-  if (!z || typeof z !== 'object') return say('`zone` must be an object');
+  if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
   for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
   if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd');
   if (z.once !== undefined && z.once !== 'turn') say('`zone.once` is "turn" or left out');
   for (const k of ['atCast', 'spare']) if (z[k] !== undefined && z[k] !== true) say(`\`zone.${k}\` is true or left out`);
   if (!e.target?.area || e.target.area.count || e.target.area.choose) say('a zone needs a single area to lay out');
-  if (e.duration === 'instant') say('a zone needs a duration');
+  if (e.duration === 'instant' || (action && e.duration === undefined)) say('a zone needs a duration');
+  if (action && e.target?.area && e.target.area.shape !== 'emanation') say('the zone of a feature\'s action is an Emanation, which moves with its holder (a spell can lay out any shape)');
 }
 
 // `terrain`: the spell's area is Difficult Terrain (`difficult: true`) and/or Heavily or Lightly
@@ -990,7 +993,7 @@ function lintGrants(g, cls, say) {
   if (g.action !== undefined && !(g.action && typeof g.action === 'object' && !Array.isArray(g.action))) say('action is { time, target, effects, ... }');
   else if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     // `after: 'hit'`: used on a creature its creature hit with an attack roll this turn, once a turn; `orSlot`: with
     // its uses spent, a Pact Magic spell slot restores one (Hurl Through Hell).
     if (a?.after !== undefined && !(a.after === 'hit' && a.target?.creature)) say('action after is "hit", on a creature');
@@ -1041,10 +1044,25 @@ function lintGrants(g, cls, say) {
           if (!(m && ID.test(m.id ?? '') && isText(m.name) && Object.keys(m).every((k) => ['id', 'name', 'effects'].includes(k)))) say('a mode is { id, name, effects }');
           if (lintSteps(bakeValues(m?.effects, cls, say), say).counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
         }
-      } else
-      if (lintSteps(bakeValues(a.effects, cls, say), say).counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
+      } else {
+        const seen = Array.isArray(a.effects) || a.zone === undefined ? lintSteps(bakeValues(a.effects, cls, say), say) : {};      // a zone's missing `effects` is said below
+        if (seen.counter) say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
+        // A zone's steps go off on one creature at a time, whenever it enters or starts or ends its turn there: not a creature made or moved by the holder.
+        if (a.zone !== undefined && (seen.summons || seen.teleport)) say('the steps of a zone run on each creature that enters it: a summon or teleport step cannot be one of them');
+      }
     }
     for (const k of ['renew', 'noSpells', 'pool', 'firstAttack', 'endsWhenIncapacitated']) if (a?.[k] !== undefined && a[k] !== true) say(`action ${k} is true or left out`);
+    // `zone` (addition D of docs/specs/homebrew-subclasses.md): the action's Emanation stays for its duration, moves with the holder, and its
+    // `effects` go off on a creature that enters it or starts or ends its turn there, as a spell's zone (zones.js). Only a subclass's feature has one.
+    if (a?.zone !== undefined) {
+      if (cls === FEAT_CLASS) say('a feat or an item cannot carry a zone: only a feature of a subclass can');
+      lintZone(a, say, true);
+      if (a.time === 'reaction') say('a zone is set up by an action, a Bonus Action or a free use, not by a Reaction');
+      if (!(Array.isArray(a.effects) && a.effects.length)) say('an action with a zone has `effects`: the steps that go off on each creature');
+      for (const k of ['modes', 'form', 'gain', 'pool', 'cure', 'renew', 'after', 'firstAttack', 'acts', 'noSpells', 'orSlot']) {
+        if (a[k] !== undefined) say(`an action with a zone cannot also have \`${k}\`: the zone runs the action's own \`effects\` and nothing else`);
+      }
+    }
   }
   if (g.reaction !== undefined) {
     // A Reaction taken by standing instruction that cuts the damage of the attack that hit:
@@ -2313,7 +2331,7 @@ const CHILD = {
 };
 // Inside a shape the linter closes in its own way (grants' many parts, a map's values), steps and modifiers are still
 // found by their key and held to their lists.
-const BY_KEY = { effects: 'steps', modifiers: 'modifier[]', modifier: 'modifier', target: 'target' };
+const BY_KEY = { effects: 'steps', modifiers: 'modifier[]', modifier: 'modifier', target: 'target', zone: 'zone' };
 
 // `visit(shape, key, value, path, owner)` (optional) is called for every key of every shape the walk meets; a step's shape
 // is `step.<kind>`. The value checks of strict mode ride on it.
@@ -2567,6 +2585,8 @@ export function workOf(kind, e) {
       take(targetsOf(a.target) * listWork(steps), `action of the feature "${shortId(f)}"`);
       takeDice(diceFor(steps, targetsOf(a.target), !!a.target?.area), `action of the feature "${shortId(f)}"`);
     }
+    // A zone goes off for one creature at a time, as a spell's does (above): one that moves into it, or two ticks in one end of turn.
+    if (a.zone && typeof a.zone === 'object' && Array.isArray(a.effects)) takeDice((Array.isArray(a.zone.on) && a.zone.on.includes('enter') ? HOMEBREW_WORK.creatures : 2) * diceFor(a.effects, 1, false), `zone of the feature "${shortId(f)}", going off`);
   }
   return { work, attacks, what, dice, diceWhat };
 }
