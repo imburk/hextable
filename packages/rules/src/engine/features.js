@@ -206,6 +206,12 @@ export const handlers = {
     // `after` follows a hit on the creature the action is aimed at; a pool of healing or an extra action has none (the gate says so; data that skipped it is refused here, before anything is paid).
     if (act.after !== undefined && (act.gain || act.pool)) fail(`${f.name} follows a hit on the creature it is aimed at, but its data also gives ${act.pool ? 'a pool of healing' : 'an extra action'}, which has no creature to have hit. The DM can apply it.`);
     if (act.unless === 'heavy' && e.armour === 'heavy') fail(`${e.name} can't use ${f.name} while wearing Heavy armor.`);
+    // `inForm` (addition J of docs/specs/homebrew-subclasses.md): only while in a form the feature it names gave (Wild Shape), checked before anything is paid.
+    if (act.inForm !== undefined) {
+      (typeof act.inForm === 'string' && act.inForm && !act.form && act.time !== 'reaction') || fail(`${f.name} cannot be used: its data for "while in a form" is wrong (it names the feature that gave the form, on an action that does not take a form itself). The DM can apply it.`);
+      const into = e.form ? effectsOf(s).find((x) => x.id === e.form.fx) : null;
+      (into && into.feature === act.inForm) || fail(`${f.name} is used while ${e.name} is in a ${featOf(e, act.inForm)?.name ?? act.inForm} form${e.form ? ` (the ${e.form.name} form is from something else)` : ''}.`);
+    }
     // A feature that only takes other actions (Patient Defense below level 10) does nothing outside a fight.
     if (act.acts && !fighting && !(act.effects ?? []).length) fail(`${f.name} only matters in a fight.`);
     // A Rage already going is extended by its Bonus Action, without spending a use.
@@ -602,11 +608,18 @@ function shapeShift(s, e, f, act, a, ev) {
   }
   const F = act.form, m = typeof a.form === 'string' ? CONTENT.monsters[a.form] : null, tpl = m && MONSTERS[a.form];
   tpl || fail('No such creature.');
-  F.types.includes(m.type) || fail(`${f.name} takes the form of a ${F.types.join(' or ')}; the ${m.name} is not one.`);
-  m.cr <= F.maxCr || fail(`At ${e.name}'s level ${f.name} takes forms of Challenge Rating ${crText(F.maxCr)} or lower; the ${m.name} is ${crText(m.cr)}.`);
+  // A form a subclass names (`form.forms`, addition J) is allowed whatever its type and rating; any other is of a type the feature takes (`types`, with those a subclass added),
+  // within its rating: the feature's own, or the rating a subclass gave an added type alone (`form.typeMaxCr`).
+  if (!F.forms?.includes(a.form)) {
+    const named = (F.forms ?? []).map((id) => `the ${CONTENT.monsters[id]?.name ?? id}`);
+    F.types.includes(m.type) || fail(`${f.name} takes the form of a ${F.types.join(' or ')}${named.length ? `, or of ${named.join(', ')}` : ''}; the ${m.name} is not one.`);
+    const cap = F.typeMaxCr?.[m.type];
+    if (cap === undefined) m.cr <= F.maxCr || fail(`At ${e.name}'s level ${f.name} takes forms of Challenge Rating ${crText(F.maxCr)} or lower; the ${m.name} is ${crText(m.cr)}.`);
+    else m.cr <= cap || fail(`At ${e.name}'s level ${f.name} takes ${m.type} forms of Challenge Rating ${crText(cap)} or lower; the ${m.name} is ${crText(m.cr)}.`);
+  }
   (!m.speed.fly || F.fly) || fail(`At ${e.name}'s level ${f.name} can't take a form with a Fly Speed.`);
-  // What the form costs: a use of the feature itself, or what a subclass's `formOf` priced it at (derive.js: `form.cost`, for the forms it added, or for all).
-  const price = F.cost && (!F.cost.types || F.cost.types.includes(m.type)) ? { res: F.cost.resource, n: F.cost.n ?? 1 } : { res: f.id, n: 1 };
+  // What the form costs: a use of the feature itself, or what a subclass's `formOf` priced it at (derive.js: `form.cost`, for the types and the named forms it added, or for all).
+  const price = F.cost && ((!F.cost.types && !F.cost.forms) || F.cost.types?.includes(m.type) || F.cost.forms?.includes(a.form)) ? { res: F.cost.resource, n: F.cost.n ?? 1 } : { res: f.id, n: 1 };
   const pool = featOf(e, price.res)?.name ?? price.res;
   (e.uses[price.res] ?? 0) >= price.n || fail(price.res === f.id && price.n === 1 ? `${e.name} has no uses of ${f.name} left.`
     : `${e.name} has ${e.uses[price.res] ?? 0} use${(e.uses[price.res] ?? 0) === 1 ? '' : 's'} of ${pool} left; the form of ${/^[aeiou]/i.test(m.name) ? 'an' : 'a'} ${m.name} costs ${price.n}.`);

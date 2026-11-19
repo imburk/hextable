@@ -260,16 +260,22 @@ export function strikeChoices(st, e, a) {
 
 export const metamagicKnown = (e) => (e.feats ?? []).filter((f) => f.metamagic);
 
-// Forms the feature offers: pack Beasts within its limits (`action.form`: types, maxCr, fly). The engine checks again.
+// A monster by id; one the client's content lacks (a homebrew monster of a table's pack that a form names) is shown by its id, and the engine decides.
+const monOf = (id) => CONTENT.monsters[id] ?? { id, name: id, cr: null, type: null, size: null, speed: {}, unknown: true };
+// Forms the feature offers (`action.form`: types, maxCr, fly; `typeMaxCr`: the rating of an added type alone; `forms`: monsters named by a subclass, taken at any rating):
+// as `shapeShift` allows them. The engine checks again.
 export function formsFor(f) {
-  const F = f.action.form;
-  return Object.values(CONTENT.monsters).filter((m) => F.types.includes(m.type) && m.cr <= F.maxCr && (F.fly || !m.speed?.fly))
-    .sort((a, b) => a.cr - b.cr || a.name.localeCompare(b.name));
+  const F = f.action.form, named = F.forms ?? [];
+  const within = (m) => (named.includes(m.id) || (F.types.includes(m.type) && m.cr <= (F.typeMaxCr?.[m.type] ?? F.maxCr))) && (F.fly || !m.speed?.fly);
+  const list = Object.values(CONTENT.monsters).filter(within);
+  for (const id of named) if (!CONTENT.monsters[id]) list.push(monOf(id));
+  return list.sort((a, b) => (a.cr ?? 1e9) - (b.cr ?? 1e9) || a.name.localeCompare(b.name));
 }
-// What a form costs, as the engine prices it (`shapeShift`): the subclass's price (`action.form.cost`: { resource, n, types? }) for a form of a type it covers (all, with no `types`),
-// else one use of the feature itself. { n, pool (its name), left, ok, priced, text, why } with `why` the engine's sentence when the creature cannot pay ('' if it can).
+// What a form costs, as the engine prices it (`shapeShift`): the subclass's price (`action.form.cost`: { resource, n, types?, forms? }) for a form of a type it covers or a form it
+// names (with neither `types` nor `forms`, every form), else one use of the feature itself. { n, pool (its name), left, ok, priced, text, why } with `why` the engine's sentence when
+// the creature cannot pay ('' if it can).
 export function formPrice(e, f, m) {
-  const C = f.action.form.cost, priced = !!C && (!C.types || C.types.includes(m.type));
+  const C = f.action.form.cost, priced = !!C && ((!C.types && !C.forms) || !!C.types?.includes(m.type) || !!C.forms?.includes(m.id));
   const res = priced ? C.resource : f.id, n = priced ? C.n ?? 1 : 1, pool = (e.feats ?? []).find((x) => x.id === res)?.name ?? res, left = e.uses?.[res] ?? 0, ok = left >= n;
   return { n, pool, left, ok, priced, text: `${n} use${n === 1 ? '' : 's'} of ${pool}`,
     why: ok ? '' : res === f.id && n === 1 ? `${e.name} has no uses of ${f.name} left.` : `${e.name} has ${left} use${left === 1 ? '' : 's'} of ${pool} left; the form of ${/^[aeiou]/i.test(m.name) ? 'an' : 'a'} ${m.name} costs ${n}.` };
@@ -384,25 +390,25 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     // marked not available (still chosen to read why; its button is off). With no price the card is what it was: the engine says no to a feature with no uses left.
     const priced = !!F.cost, price = (m) => (priced ? formPrice(e, f, m) : null);
     // The form chosen last time is kept, unless the card is priced and it can no longer be paid: then the first form that can (not the one the creature is in).
-    const stale = priced && forms.some((m) => m.id === st.form) && !price(CONTENT.monsters[st.form]).ok;
+    const stale = priced && forms.some((m) => m.id === st.form) && !price(monOf(st.form)).ok;
     if (stale || !forms.some((m) => m.id === st.form)) st.form = (priced ? forms.find((m) => m.id !== now && price(m).ok) : null)?.id ?? (stale ? st.form : null) ?? forms.find((m) => m.id !== now)?.id ?? forms[0]?.id ?? null;
     const info = h('p', { class: 'cp-note', id: 'cp-form-info' }), cost = h('p', { class: 'cp-note', id: 'cp-form-price', hidden: true });
     const fill = () => {
-      const m = CONTENT.monsters[st.form], p = m && price(m);
-      info.textContent = m ? `${m.name}: Challenge ${crText(m.cr)} · ${nice(m.size)} · AC ${m.ac} · ${m.hp} HP (yours stay) · Speed ${speedText(m)}` : '';
+      const m = st.form ? monOf(st.form) : null, p = m && price(m);
+      info.textContent = m?.unknown ? `${m.name}: a form the DM named that this screen has no details of; the table decides if it can be taken.` : m ? `${m.name}: Challenge ${crText(m.cr)} · ${nice(m.size)} · AC ${m.ac} · ${m.hp} HP (yours stay) · Speed ${speedText(m)}` : '';
       cost.hidden = !p; cost.className = p && !p.ok ? 'cp-note cp-why' : 'cp-note';
       cost.textContent = p ? (p.ok ? `Costs ${p.text}; ${e.name} has ${p.left} left.` : `Not available: ${p.why}`) : '';
       const go1 = root.querySelector('#cp-use'); if (go1) go1.disabled = !!p && !p.ok;          // the card is already open when the form is changed
     };
     const sel = h('select', { id: 'cp-form', 'aria-label': 'Form', onchange: () => { st.form = sel.value; fill(); } });
     const label = (m) => { const p = price(m); return !p ? m.name : p.ok ? `${m.name} · ${p.text} (${p.left} left)` : `${m.name} · not available`; };
-    for (const cr of [...new Set(forms.map((m) => m.cr))]) sel.append(h('optgroup', { label: `Challenge ${crText(cr)}` }, ...forms.filter((m) => m.cr === cr).map((m) => h('option', { value: m.id, text: label(m), selected: m.id === st.form, 'data-ok': priced ? String(price(m).ok) : false }))));
+    for (const cr of [...new Set(forms.map((m) => m.cr))]) sel.append(h('optgroup', { label: cr === null ? 'Named forms' : `Challenge ${crText(cr)}` }, ...forms.filter((m) => m.cr === cr).map((m) => h('option', { value: m.id, text: label(m), selected: m.id === st.form, 'data-ok': priced ? String(price(m).ok) : false }))));
     fill();
-    const m0 = CONTENT.monsters[st.form], p0 = m0 && price(m0), off = !!p0 && !p0.ok;       // the form chosen at first: its button starts off if it cannot be paid
+    const m0 = st.form ? monOf(st.form) : null, p0 = m0 && price(m0), off = !!p0 && !p0.ok;       // the form chosen at first: its button starts off if it cannot be paid
     const hrs = `${F.hours} hour${F.hours === 1 ? '' : 's'}`;
     return {
       key: `${e.id}:${f.id}`, title: f.name,
-      note: `${usesLeft(e, f)} of ${f.uses.max} uses left. ${TIME[f.action.time]}. A form of Challenge ${crText(F.maxCr)} or lower${F.fly ? '' : ', with no Fly Speed'}, for up to ${hrs}${F.tempHp ? `, with ${F.tempHp} Temporary Hit Points` : ''}.`,
+      note: `${usesLeft(e, f)} of ${f.uses.max} uses left. ${TIME[f.action.time]}. A form of Challenge ${crText(F.maxCr)} or lower${Object.entries(F.typeMaxCr ?? {}).map(([t, n]) => `, a ${t} up to ${crText(n)}`).join('')}${F.forms?.length ? `, or one of the ${F.forms.length} the DM named` : ''}${F.fly ? '' : ', with no Fly Speed'}, for up to ${hrs}${F.tempHp ? `, with ${F.tempHp} Temporary Hit Points` : ''}.`,
       body: [now ? h('p', { class: 'cp-form-now', id: 'cp-form-now', text: `${e.name} is in the form of a ${formName(e)}.` }) : null,
         h('label', { class: 'cp-f' }, h('span', { text: now ? 'Change to' : 'Take the form of' }), sel), info, cost],
       buttons: [{ label: now ? 'Change form' : 'Take the form', primary: true, id: 'cp-use', disabled: off, send: () => (st.form ? { type: 'feature', actor: e.id, feature: f.id, form: st.form } : null) },

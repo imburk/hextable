@@ -1996,8 +1996,8 @@ export const GRANT_WORDS = {
     this.line(`When the holder rolls Initiative, the feature ${shown(v.regain)} gets back ${isInt(v.upTo) ? `uses up to ${v.upTo}` : 'all its uses'}${v.heal !== undefined ? ` and the holder regains ${amountWord(v.heal)} Hit Points${v.addLevel === true ? ' plus its class level' : ''}` : ''}. ${featureNote(v.regain)}`, 1);
   },
   formOf(v, at) {
-    if (!isObj(v)) return this.bad(`${at} is not { of, maxCr, types, tempHp, cost }.`);
-    this.odd(v, ['of', 'maxCr', 'types', 'tempHp', 'cost'], 'The form grant');
+    if (!isObj(v)) return this.bad(`${at} is not { of, maxCr, types, typesMaxCr, forms, tempHp, cost }.`);
+    this.odd(v, ['of', 'maxCr', 'types', 'typesMaxCr', 'forms', 'tempHp', 'cost'], 'The form grant');
     const parts = [];
     if (v.maxCr !== undefined) {
       const crs = typeof v.maxCr === 'number' ? [[null, v.maxCr]] : isObj(v.maxCr) && isObj(v.maxCr.byLevel) ? Object.entries(v.maxCr.byLevel).filter(([, x]) => typeof x === 'number') : [];
@@ -2006,11 +2006,20 @@ export const GRANT_WORDS = {
         : `lets its forms be of a Challenge Rating that grows with the class level (${list(crs.slice(0, 20).map(([l, x]) => `${crText(x)} from level ${l}`))}), where that is higher than they already may be`);
     }
     if (v.types !== undefined) parts.push(`adds ${list((Array.isArray(v.types) ? v.types : []).slice(0, 15).map((t) => (CREATURE_TYPES.includes(t) ? `${t} creatures` : 'a creature type the engine does not know')))} to the forms it may take`);
+    // #525: a rating for the added types alone, and named forms.
+    if (v.typesMaxCr !== undefined) {
+      const crs = typeof v.typesMaxCr === 'number' ? [[null, v.typesMaxCr]] : isObj(v.typesMaxCr) && isObj(v.typesMaxCr.byLevel) ? Object.entries(v.typesMaxCr.byLevel).filter(([, x]) => typeof x === 'number') : [];
+      for (const [l, x] of crs) this.num(l === null ? `${at}.typesMaxCr` : `${at}.typesMaxCr.byLevel.${l}`, x, 'Challenge Rating');
+      parts.push(typeof v.typesMaxCr === 'number' ? `lets the forms of those added types alone be of Challenge Rating ${crText(v.typesMaxCr)} or lower, whatever the feature's own limit is`
+        : `lets the forms of those added types alone be of a Challenge Rating that grows with the class level (${list(crs.slice(0, 20).map(([l, x]) => `${crText(x)} from level ${l}`))}), whatever the feature's own limit is, and adds none of them before the first of those levels`);
+    }
+    if (v.forms !== undefined) parts.push(`adds ${list((Array.isArray(v.forms) ? v.forms : []).slice(0, 20).map((m) => (typeof m === 'string' ? shown(m) : 'a form the engine cannot read')))} to the forms it may take, each by name, of any type and any Challenge Rating`);
     if (v.tempHp !== undefined) { amountNums(this, v.tempHp, `${at}.tempHp`, 'Temporary Hit Points'); parts.push(`gives ${amountWord(v.tempHp)} more Temporary Hit Points on taking a form`); }
     this.line(`Changes the form of the feature ${shown(v.of)}: it ${parts.length ? list(parts) : 'changes nothing the reader knows'}.${this.kind === 'subclass' ? '' : ' A feat or an item belongs to no class, so the engine adds nothing.'}`, 1);
+    if (v.typesMaxCr !== undefined) this.line('Another grant of the same subclass that raises the limit of every form does not lift these types above this rating; another that adds the same types with no rating of its own gives them the higher of its limit and this one.', 2);
     if (isObj(v.cost)) {
       if (isInt(v.cost.n)) this.num(`${at}.cost.n`, v.cost.n, 'uses');
-      this.line(`${Array.isArray(v.types) ? 'A form of a type it adds' : 'Every form'} spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the feature ${shown(v.cost.resource)} instead of a use of ${shown(v.of)}, and is refused when the holder has too few. ${featureNote(v.of)}`, 2);
+      this.line(`${Array.isArray(v.types) || Array.isArray(v.forms) ? `A form ${Array.isArray(v.types) && Array.isArray(v.forms) ? 'of a type it adds or one it names' : Array.isArray(v.types) ? 'of a type it adds' : 'it names'}` : 'Every form'} spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the feature ${shown(v.cost.resource)} instead of a use of ${shown(v.of)}, and is refused when the holder has too few. ${featureNote(v.of)}`, 2);
     }
     if (this.kind !== 'subclass') this.dm('Changing the form of a feature: the engine does not.');
   },
@@ -2146,7 +2155,7 @@ class GrantReading extends Reading {
   // `action`: a use the feature gives (engine/features.js, `feature`).
   actionLines(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not an action.`);
-    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone'], 'The action');
+    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm'], 'The action');
     if (!ACTION_TIMES.includes(v.time)) this.bad(`${at}.time is not one the engine knows.`);
     this.line(`Gives the holder an action to use with the feature action. It takes ${ACTION_TIME_WORDS[v.time] ?? 'an unreadable time'}${v.time === 'reaction' ? '; the engine does not take Reactions from features, so using it is refused and the DM applies it' : ''}.`, 1);
     if (isObj(v.cost)) {
@@ -2174,6 +2183,8 @@ class GrantReading extends Reading {
     if (v.after === 'hit') this.line('It follows a hit the holder made this turn, once a turn.', 2);
     // Addition F of docs/specs/homebrew-subclasses.md: the same, but only a hit made with a weapon counts.
     if (v.after === 'weaponHit') this.line('It follows a hit the holder made with a weapon this turn, on the creature it hit, once a turn. A spell attack and an Unarmed Strike are not a weapon here.', 2);
+    // Addition J of docs/specs/homebrew-subclasses.md (#525): only while the holder is in a form that feature gave.
+    if (v.inForm !== undefined) this.line(`It can be used only while the holder is in a form that the feature ${shown(v.inForm)} gave; otherwise it is refused and nothing is spent. ${featureNote(v.inForm)}`, 2);
     if (v.zone !== undefined) this.actionZone(v, at);
     const groups = Array.isArray(v.effects) ? [[v.effects, `${at}.effects`]] : Array.isArray(v.modes) ? v.modes.filter(isObj).map((m, j) => [m.effects, `${at}.modes.${j}.effects`]) : [];
     for (const [steps, path] of groups) this.stepsUnder(steps, path, isObj(v.target) && v.target.self ? 'the holder' : v.zone !== undefined ? 'that creature' : 'the target', v.duration, 2);
