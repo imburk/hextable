@@ -141,3 +141,11 @@ test('the words: the offer, the armed offer, the wait, and the buttons', () => {
   assert.equal(giveUpLabel([o]), 'Give it up');
   assert.equal(giveUpLabel([o, o]), 'Give them up');
 });
+
+test('the reaction prompt and the reactions list have words for `attacks`, naming the attacker only when the prompt carries `by` (DEBT T94 (1))', async () => {
+  const { triggerText } = await imp('reactionprompt.js'), { TRIGGER } = await imp('reactionsheet.js');
+  assert.equal(TRIGGER.attacks, 'when a creature under its effect makes an attack');
+  assert.equal(triggerText({ trigger: 'attacks' }), 'A creature under your effect is making an attack.');
+  assert.equal(triggerText({ trigger: 'attacks', by: 'gob' }, null, (id) => (id === 'gob' ? 'Gob' : undefined)), 'Gob, under your effect, is making an attack.');
+  assert.equal(triggerText({ trigger: 'attacks', by: 'zz' }, 'Sir Bell'), "A creature, under Sir Bell's effect, is making an attack.");
+});
