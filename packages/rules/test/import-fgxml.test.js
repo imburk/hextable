@@ -152,12 +152,90 @@ test("a class the engine has no subclass for is loaded with the SRD stand-in, an
   assert.equal(none.report.loadable, false, "without the stand-in the sheet cannot load, and the report says so");
 });
 
-test("scores above 20 and speeds the engine cannot hold are adjusted and reported", () => {
+test("a score above 20 is kept as a DM bonus and reported; the engine plays the score the sheet shows (#498)", () => {
   const xml = fixture("cleric").replace('<score type="number">16</score>', '<score type="number">24</score>');
   const { character, report } = importFgxml(xml);
-  assert.equal(character.abilities.wis, 20);
-  assert.ok(report.adjustments.some((a) => a.what === "WIS score" && a.from === "24"));
-  assert.equal(report.loadable, true);
+  assert.equal(character.abilities.wis, 20, "the typed score stays at the cap");
+  assert.deepEqual(character.scoreBonus, { wis: 4 });
+  const a = report.adjustments.find((x) => x.what === "WIS score");
+  assert.equal(a.from, "24");
+  assert.match(a.why, /^Wisdom 24 on the sheet: \+4 kept as a DM bonus; check what gives it/);
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.equal(derive(character).record.abil.wis, 24);
+  assert.ok(!report.numbers.some((n) => n.what === "Spell save DC"), "the save DC now matches the sheet's own");
+  // Taking the bonus off the sheet is the DM's way to remove it.
+  const { scoreBonus, ...without } = character;
+  assert.deepEqual(validate(without), []);
+  assert.equal(derive(without).record.abil.wis, 20);
+  // The engine takes the sheet with its bonus.
+  const s = newGame(7);
+  assert.ok(apply(s, { type: "setSheet", sheet: character }, DM).ok);
+  assert.equal(Object.values(s.entities).find((x) => x.name === "Mira Testwell").abil.wis, 24);
+});
+
+test("a score of 31 or more keeps +10 and says what is left out; a score of 20 or less has no bonus (#498)", () => {
+  const big = importFgxml(fixture("cleric").replace('<score type="number">16</score>', '<score type="number">33</score>'));
+  assert.deepEqual(big.character.scoreBonus, { wis: 10 });
+  assert.match(big.report.adjustments.find((x) => x.what === "WIS score").why, /at most \+10, so 3 more is not kept/);
+  assert.equal(big.report.loadable, true, big.report.problems.join("; "));
+  const none = importFgxml(fixture("cleric"));
+  assert.equal(none.character.scoreBonus, undefined);
+});
+
+test("a score bonus on top of an item that already raises the score is trimmed to 30 and says so (#498)", () => {
+  const xml = fixture("cleric").replace('<strength><score type="number">14</score>', '<strength><score type="number">32</score>').replace("</inventorylist>", '<id-00090><name type="string">Belt of Giant Strength (storm)</name><type type="string">Wondrous Item</type><rarity type="string">Legendary</rarity><carried type="number">2</carried><attune type="number">1</attune></id-00090></inventorylist>');
+  const { character, report } = importFgxml(xml);
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.deepEqual(character.items, [{ id: "i1", item: "belt-of-giant-strength-storm", equipped: true, attuned: true }], "the belt is attuned as the sheet says");
+  assert.equal(derive(character).record.abil.str, 30);
+  assert.deepEqual(character.scoreBonus, { str: 1 });
+  assert.ok(report.adjustments.some((x) => /trimmed from \+10 to fit/.test(x.why)), "the trim is reported");
+});
+
+test("a sheet that flags more spells prepared than the class prepares: the first in the sheet's order fill the count, and the report says which (#498)", () => {
+  const { character, report } = importFgxml(fixture("wizard-overflow"));
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  // Sheet order (Sleep, Shield, Mage Armor, Detect Magic, Magic Missile), not alphabetical and not highest level first; 5 are prepared at level 2.
+  assert.deepEqual(character.spells.filter((id) => !["fire-bolt", "light", "mage-hand"].includes(id)), ["sleep", "shield", "mage-armor", "detect-magic", "magic-missile"]);
+  assert.deepEqual(character.spells.filter((id) => ["fire-bolt", "light", "mage-hand"].includes(id)).sort(), ["fire-bolt", "light", "mage-hand"]);
+  assert.ok(!character.spells.includes("burning-hands"), "a spell not flagged is not taken");
+  const list = report.spells.find((x) => x.name === "Prepared spells");
+  assert.deepEqual(list.items, ["Thunderwave", "Find Familiar", "Feather Fall"]);
+  assert.match(list.why, /prepares 5\. The first 5 in the sheet's order were taken: Sleep, Shield, Mage Armor, Detect Magic, Magic Missile\. Left out: Thunderwave, Find Familiar, Feather Fall\. The DM can change them/);
+  // What is not an SRD spell, not on the list or too high a level keeps its own line, and is not counted as left.
+  assert.deepEqual(names(report.spells).filter((n) => n !== "Prepared spells").sort(), ["Cure Wounds", "Invisibility", "Moon Dart"]);
+  assert.ok(!list.items.includes("Moon Dart") && !list.items.includes("Cure Wounds") && !list.items.includes("Invisibility"));
+  assert.equal(report.imported.prepared, 5);
+});
+
+test("always-prepared spells of the subclass do not count against the prepared count, and keep their place (#498)", () => {
+  // The cleric fixture, with a Life domain's Bless and Cure Wounds always prepared, and 12 more flagged beyond the 9 a level 5 cleric prepares.
+  const extra = ["Healing Word", "Shield of Faith", "Command", "Detect Magic", "Lesser Restoration", "Protection from Evil and Good", "Sanctuary", "Aid", "Create Food and Water", "Dispel Magic", "Revivify", "Spirit Guardians"]
+    .map((n, i) => `<id-${String(100 + i).padStart(5, "0")}><name type="string">${n}</name><group type="string">Spells (Cleric)</group><level type="number">1</level><prepared type="number">1</prepared><school type="string">Evocation</school></id-${String(100 + i).padStart(5, "0")}>`).join("");
+  const { character, report } = importFgxml(fixture("cleric").replace("</powers>", `${extra}</powers>`));
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  const leveled = character.spells.filter((id) => !["guidance", "sacred-flame"].includes(id));
+  assert.equal(leveled.length, 9, "the class's own count, the always-prepared ones on top");
+  assert.ok(!leveled.includes("bless") && !leveled.includes("cure-wounds"), "the domain gives those; they are not listed twice");
+  assert.equal(leveled[0], "spiritual-weapon", "the first flagged spell in the sheet's order that the class can take");
+  assert.ok(report.spells.some((x) => x.name === "Prepared spells" && /Left out: /.test(x.why)));
+});
+
+test("a Bard whose own group is empty reads the spells from the group the sheet keeps them in (#498)", () => {
+  const { character, report } = importFgxml(fixture("bard-known"));
+  assert.equal(report.loadable, true, report.problems.join("; "));
+  assert.deepEqual([...character.spells].sort(), ["faerie-fire", "healing-word", "heroism", "minor-illusion", "sleep", "thunderwave", "vicious-mockery"]);
+  const a = report.adjustments.find((x) => x.what === "spells");
+  assert.match(a.why, /no spells under "Spells \(Bard\)"; the 8 spells it keeps in "Spells Known" were read as the Bard's/);
+  assert.deepEqual(names(report.spells), ["Bardic Trick"], "an invented spell is a note");
+  assert.deepEqual(character.scoreBonus, { cha: 2 }, "Charisma 22 on the same sheet");
+});
+
+test("a Bard with no spells anywhere on the sheet imports none, as before (#498)", () => {
+  const xml = fixture("bard-known").replace(/<id-\d+><name type="string">[^<]*<\/name><group type="string">Spells Known<\/group>.*?<\/id-\d+>\n/g, "");
+  const { character, report } = importFgxml(xml);
+  assert.equal(character.spells, undefined);
+  assert.equal(report.adjustments.some((x) => x.what === "spells"), false);
 });
 
 test("a sheet that lists Metamagic more than once imports with each option once, and reports what it left out", () => {

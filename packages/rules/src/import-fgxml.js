@@ -291,7 +291,8 @@ function build(root, ch, options) {
     } else if (o.spec && !isSrdSub) note('subclass', o.spec, 'Not an SRD 5.2 subclass.');
   });
 
-  // Abilities
+  // Abilities. A bonus is put on the sheet after its items, which can raise a score themselves (see below).
+  const bonusWant = {};
   for (const a of ABILITIES) {
     const word = { str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma' }[a];
     let v = int(kid(kid(ch, 'abilities'), word), 'score');
@@ -300,7 +301,7 @@ function build(root, ch, options) {
       // A sheet's scores are 1 to 20 before its feats; what is above 20 is kept as the DM's bonus (`scoreBonus`, derive.js), at most +10,
       // so the engine plays the score the sheet shows while the DM is told it is not one of the engine's own rules.
       const over = v - 20, kept = Math.min(10, over), word = ABILITY_WORDS[a][0].toUpperCase() + ABILITY_WORDS[a].slice(1);
-      (sheet.scoreBonus ??= {})[a] = kept;
+      bonusWant[a] = kept;
       adjust(`${a.toUpperCase()} score`, v, `20 and a DM bonus of +${kept}`, `${word} ${v} on the sheet: +${kept} kept as a DM bonus; check what gives it (only an Epic Boon at level 19 or a magic item takes a score past 20 in the engine).${over > kept ? ` A bonus is at most +10, so ${over - kept} more is not kept.` : ''} The DM can remove it: take \`scoreBonus\` off the sheet.`);
       v = 20;
     }
@@ -686,15 +687,18 @@ function build(root, ch, options) {
   for (let l = 1; l <= 9; l++) { const u = int(kid(kid(ch, 'powermeta'), `spellslots${l}`), 'used'); if (u) slotsUsed[l] = u; }
   R.state = { hp: int(kid(ch, 'hp'), 'total'), hpCurrent: (int(kid(ch, 'hp'), 'total') ?? 0) - (int(kid(ch, 'hp'), 'wounds') ?? 0), tempHp: int(kid(ch, 'hp'), 'temporary') ?? 0, slotsUsed, languages: R.languages.length };
 
-  // A DM bonus never takes a score past 30 (a magic item may already have raised it): trim what does not fit.
-  for (const a of Object.keys(sheet.scoreBonus ?? {})) {
-    while (sheet.scoreBonus[a] > 0 && validate(sheet).some((p) => p.startsWith("The DM's bonus") && p.includes(ABILITY_WORDS[a][0].toUpperCase() + ABILITY_WORDS[a].slice(1)))) {
-      sheet.scoreBonus[a]--;
-      adjust(`${a.toUpperCase()} score`, undefined, sheet.scoreBonus[a] ? `DM bonus +${sheet.scoreBonus[a]}` : 'no DM bonus', 'The sheet\'s items already raise this score, and a score is at most 30: the DM bonus was trimmed to fit.');
+  // The DM's score bonus (derive.js), put on after the items so that an item that already raises a score is attuned as the sheet says; a
+  // bonus never takes a score past 30, so what does not fit is trimmed, and said.
+  if (Object.keys(bonusWant).length) {
+    sheet.scoreBonus = { ...bonusWant };
+    for (const a of Object.keys(bonusWant)) {
+      const word = ABILITY_WORDS[a][0].toUpperCase() + ABILITY_WORDS[a].slice(1);
+      while (sheet.scoreBonus[a] > 0 && validate(sheet).some((p) => p.startsWith("The DM's bonus") && p.includes(word))) sheet.scoreBonus[a]--;
+      if (sheet.scoreBonus[a] < bonusWant[a]) adjust(`${a.toUpperCase()} score`, undefined, sheet.scoreBonus[a] ? `DM bonus +${sheet.scoreBonus[a]}` : 'no DM bonus', `A magic item on the sheet already raises ${word}, and a score is at most 30: the DM bonus was trimmed from +${bonusWant[a]} to fit.`);
+      if (!sheet.scoreBonus[a]) delete sheet.scoreBonus[a];
     }
-    if (!sheet.scoreBonus[a]) delete sheet.scoreBonus[a];
+    if (!Object.keys(sheet.scoreBonus).length) delete sheet.scoreBonus;
   }
-  if (sheet.scoreBonus && !Object.keys(sheet.scoreBonus).length) delete sheet.scoreBonus;
 
   // Numbers on the sheet against what the engine derives from it
   let record = null;
