@@ -1,7 +1,7 @@
 // Zones: an area that stays for a lasting effect's duration and works on a creature that enters
 // it, or starts or ends its turn there (Moonbeam, Spirit Guardians, Web).
 //
-// A zone is `fx.zone` on a lasting effect (durations.js), made when the spell is cast:
+// A zone is `fx.zone` on a lasting effect (durations.js), made when the spell is cast, or when a subclass feature's action that carries one is used:
 //   { area, on: ['enter' | 'turnStart' | 'turnEnd'], once: 'turn'?, follows: id?,
 //     hexes: [col keys]?, origin, spare: [ids], steps, src, last: { id: turnKey } }
 // `follows` names the creature an Emanation moves with (Spirit Guardians); otherwise the zone
@@ -19,6 +19,22 @@ import { effectsOf, thisTurn, turnKey } from './durations.js';
 import { FT, footprint, gap, rise, sizeOf } from './space.js';
 
 export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
+
+// Make the zone of a lasting effect just started: by a spell (engine/casting.js builds the same record inline) or by a feature's action
+// (engine/features.js, addition D of docs/specs/homebrew-subclasses.md). `def` is the `zone` of the spell or the action (`on`, `once`,
+// `atCast`); `area` its area as laid out; `holder` the creature that cast or used it; `hexes` and `origin` where it was laid out (an
+// Emanation keeps none: it follows `holder`); `steps` the steps as they are to run, scaled and with the choices made; `src` what they
+// run with (the DC, the attack, the name). `caught` are the creatures the area caught as it appeared. Returns those it goes off on now:
+// everyone caught that is not spared, if `atCast`, else nobody. A creature it goes off on now has had its turn's one go.
+export function startZone(s, fx, { def, area, holder, hexes, origin, spare = [], steps, src }, caught) {
+  fx.zone = { area: { ...area }, on: [...def.on], ...(def.once ? { once: def.once } : {}),
+    ...(area.shape === 'emanation' ? { follows: holder.id } : { hexes: hexes.map(col), origin: { ...(origin ?? holder.pos) } }),
+    spare, steps: structuredClone(steps), src, last: {} };
+  const hit = def.atCast ? caught.filter((t) => !spare.includes(t.id)) : [];
+  const now = turnKey(s);
+  if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts
+  return hit;
+}
 
 // Is creature `t` inside this zone now? Spared creatures and the dead never are.
 export function holds(s, fx, t) {
