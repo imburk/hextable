@@ -34,7 +34,7 @@ test("forPlayers: never monsters, never dmNotes at any depth, and the hash is of
   assert.notEqual(f.hash, hashOf(data), "the whole pack's hash is never a player's");
   assert.deepEqual(f.data, packForPlayer(data));
   assert.equal(data.spells[0].dmNotes, "Secret plan", "the pack itself is not changed");
-  assert.deepEqual(PLAYER_PACK_KINDS, ["spells", "items", "feats", "weapons", "armour", "objects"]);
+  assert.deepEqual(PLAYER_PACK_KINDS, ["spells", "items", "feats", "weapons", "armour", "objects", "subclasses"]);
 });
 
 test("forPlayers: a pack without a version is sent as version 1", () => {

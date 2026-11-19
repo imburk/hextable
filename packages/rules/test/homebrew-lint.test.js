@@ -33,7 +33,9 @@ const object = (over = {}) => ({ id: hb("ember-brazier"), name: "Ember brazier",
 const weapon = (over = {}) => ({ id: hb("ember-whip"), name: "Ember whip", category: "martial", kind: "melee", damage: "1d4", type: "fire", properties: ["finesse", "reach"],
   mastery: "slow", weight: 3, cost: "2 GP", source: SRC, checked: false, ...over });
 const armour = (over = {}) => ({ id: hb("ember-mail"), name: "Ember mail", category: "medium", ac: 14, dex: 2, weight: 20, cost: "50 GP", source: SRC, checked: false, ...over });
-const ENTRY = { spells: spell, monsters: monster, items: item, feats: feat, objects: object, weapons: weapon, armour };
+const subclass = (over = {}) => ({ id: hb("oath-of-the-ember"), name: "Oath of the Ember", class: "paladin", source: SRC, checked: false, text: "Paladins sworn to keep a hearth-fire burning.",
+  features: [{ id: hb("ash-memory"), name: "Ash Memory", level: 15, tier: "manual", checked: false, text: "Ask the DM one question about what the fire saw.", uses: { max: 1, recharge: "long" } }], ...over });
+const ENTRY = { spells: spell, monsters: monster, items: item, feats: feat, objects: object, weapons: weapon, armour, subclasses: subclass };
 const doc = (lists, head = {}) => ({ format: "hextable-pack", v: 1, pack: { id: P, name: "Ember Folk", version: 1, license: "CC0, by the author", attribution: "Written for a test.", ...head }, ...lists });
 const EMBER = doc(Object.fromEntries(HOMEBREW_ENTRY_KINDS.map((k) => [k, [ENTRY[k]()]])));
 const strict = (kind, e) => lintEntry(kind, e, { pack: P, srd: CONTENT });
@@ -47,17 +49,17 @@ test("lintPack on the SRD pack is unchanged, and the SRD pack passes strict mode
   assert.deepEqual(lintPack(SRD, {}), []);
   assert.deepEqual(lintPack(SRD, { keys: true }), []);
   // Every SRD entry of every homebrew kind, one by one: the key lists cover every key the SRD uses.
-  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind]) assert.deepEqual(lintEntry(kind, e, { strict: false, keys: true }), [], `${kind}/${e.id}`);
+  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind] ?? []) assert.deepEqual(lintEntry(kind, e, { strict: false, keys: true }), [], `${kind}/${e.id}`);
   // Not strict, lintEntry is the kind's own linter.
   assert.deepEqual(lintEntry("spells", CONTENT.spells["fire-bolt"], { strict: false }), []);
   assert.match(lintEntry("spells", { ...CONTENT.spells["fire-bolt"], level: 12 }, { strict: false }).join(), /spells\/fire-bolt: level must be 0 to 9/);
   // No SRD id starts with the reserved "hb-" (Decision 1), so a prefixed homebrew id can never be an SRD id.
   for (const [kind, list] of Object.entries(SRD)) if (Array.isArray(list)) for (const e of list) assert.ok(!String(e?.id).startsWith("hb-"), `${kind}/${e?.id}`);
   // Every SRD entry is well inside the budget of one entry (the limits are set so a generous table is never near them).
-  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind]) assert.deepEqual(budgetEntry(kind, e), [], `${kind}/${e.id}`);
+  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind] ?? []) assert.deepEqual(budgetEntry(kind, e), [], `${kind}/${e.id}`);
 });
 
-test("an invented entry of each of the seven kinds passes strict mode, alone and as a pack", () => {
+test("an invented entry of each of the eight kinds passes strict mode, alone and as a pack", () => {
   for (const kind of HOMEBREW_ENTRY_KINDS) assert.deepEqual(strict(kind, ENTRY[kind]()), [], kind);
   assert.deepEqual(budget(EMBER), []);
   assert.deepEqual(lintPack(EMBER, { strict: true, srd: { pack: "srd52", ...CONTENT } }), []);

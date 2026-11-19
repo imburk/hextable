@@ -544,12 +544,13 @@ export const monsters = [
                 type: "bludgeoning"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A reach attack that knocks a Large or smaller target Prone."
+        text: "A reach attack that knocks a Large or smaller target Prone; a bigger one is not, and the table is told."
       },
       {
         id: "trash-lob",
@@ -585,7 +586,7 @@ export const monsters = [
         text: "A thrown attack that also Poisons the target until the end of its next turn."
       }
     ],
-    tier: "assist",
+    tier: "auto",
     checked: true,
     text: "A huge, brutish giant who clubs foes or hurls refuse at them."
   },
@@ -3998,12 +3999,13 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                condition: "prone"
+                condition: "prone",
+                largest: "medium"
               }
             ]
           }
         ],
-        text: "A bite that knocks a Medium or smaller target Prone."
+        text: "A bite that knocks a Medium or smaller target Prone; a bigger one is not, and the table is told."
       }
     ],
     tier: "auto",
@@ -4377,12 +4379,14 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                manual: "A Large or smaller target is pulled up to 15 feet straight toward the merrow."
+                move: 15,
+                dir: "toward",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "A harpoon thrust that pulls the target closer."
+        text: "A harpoon thrust that pulls a Large or smaller target 15 feet closer (a bigger one is not; the engine pulls the full distance)."
       },
       {
         id: "harpoon-thrown",
@@ -4406,12 +4410,14 @@ export const monsters = [
                 type: "piercing"
               },
               {
-                manual: "A Large or smaller target is pulled up to 15 feet straight toward the merrow."
+                move: 15,
+                dir: "toward",
+                largest: "large"
               }
             ]
           }
         ],
-        text: "The same harpoon thrown."
+        text: "The same harpoon thrown: it pulls a Large or smaller target 15 feet closer (a bigger one is not; the engine pulls the full distance)."
       }
     ],
     tier: "assist",

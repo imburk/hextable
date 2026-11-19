@@ -29,7 +29,7 @@ function srdRolls() {
     } else if (Array.isArray(v)) v.forEach((x) => walk(x, where));
     else if (v && typeof v === "object") for (const k of Object.keys(v)) walk(v[k], where);
   };
-  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind]) walk(e, `${kind}/${e.id}`);
+  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind] ?? []) walk(e, `${kind}/${e.id}`);
   return most;
 }
 
@@ -110,7 +110,7 @@ test("#408 part 3: the estimate counts what the engine counts, kind by kind", ()
   assert.equal(dice("objects", thing([{ attack: "ranged", kind: "weapon", bonus: 5, onHit: [D(3, 2)] }])), 30 * 3 * 2 * 2);
   // The SRD: its dearest single cast, action, item and object (the ceiling is three times its dearest, a zone that goes off on entering).
   const most = {};
-  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind]) most[kind] = Math.max(most[kind] ?? 0, dice(kind, e));
+  for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind] ?? []) most[kind] = Math.max(most[kind] ?? 0, dice(kind, e));
   const noZone = Math.max(...SRD.spells.filter((e) => !e.zone).map((e) => dice("spells", e)));
   if (process.env.HB_PRINT) console.log(most, { noZone });
   assert.deepEqual([most.spells, noZone, most.monsters, most.items, most.objects], [300, 54, 26, 10, 2]);

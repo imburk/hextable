@@ -26,7 +26,7 @@ const spell = (over = {}) => ({
 });
 const monster = (over = {}) => homebrew("monsters", { ...CONTENT.monsters["goblin-warrior"], name: "Cinderling", ...over });
 const entries = [];
-for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind]) entries.push([kind, e]);
+for (const kind of HOMEBREW_ENTRY_KINDS) for (const e of SRD[kind] ?? []) entries.push([kind, e]);
 // The first entry that has each shape's key, with the path to it: what the enumerations replace.
 const nodes = new Map();
 for (const [kind, e] of entries) lintKeys(kind, e, () => {}, (shape, key, v, path) => { const k = `${shape}.${key}`; if (!nodes.has(k)) nodes.set(k, [kind, e, path, shape, key]); });
