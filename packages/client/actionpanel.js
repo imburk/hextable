@@ -257,7 +257,7 @@ export function attackRows(S, e, { mode = null } = {}) {
     const time = flurry || pooled ? null : bonusTime ? 'bonus' : 'action';
     const reach = a.type === 'melee' ? `reach ${a.reach ?? 5} ft` : a.range ? `range ${a.range[0]}/${a.range[1]} ft` : '';
     const row = { id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(a.bonus)} to hit`, `${a.damage} ${a.dtype}`, reach].filter(Boolean).join(' · '), why: blocked(S, e, time),
-      chip: flurry ? 'Flurry' : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed: armed && !mode.extra, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } };
+      chip: flurry ? `Flurry: ${b.bonusAttacks.left} left` : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed: armed && !mode.extra, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } };
     rows.push(row);
     const strike = strikeRow(S, e, a, row, mode);
     if (strike) rows.push(strike);
