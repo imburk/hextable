@@ -844,6 +844,11 @@ export function viewEvents(events, state, viewer) {
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));
         break;
+      case 'scoresRolled':                             // ability scores rolled (scores.js): the numbers are the roller's and the DM's; the others are told only that it happened
+      case 'scoreRerolled':
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(ev));
+        else out.push({ type: ev.type });
+        break;
       case 'sceneStart':
       case 'sceneEdit':
       case 'sceneEnd':                                 // a scene began, was renamed or ended: its title, as everyone sees it

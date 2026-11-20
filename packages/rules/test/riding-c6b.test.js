@@ -542,8 +542,8 @@ for (const grid of GRIDS) {
   test(`${grid}: an old save from main (C6a) loads and plays`, () => {
     const { horse, save } = OLD[grid];
     const s = migrate(structuredClone(save));
-    const { packs, ...rest } = s;                    // version 24 (#390) raises the version and adds `packs: []`
-    assert.deepEqual(packs, []);
+    const { packs, scoreRolls, ...rest } = s;                    // version 24 (#390) raises the version and adds `packs: []`
+    assert.deepEqual(packs, []); assert.deepEqual(scoreRolls, {});   // version 25 (#557) adds `scoreRolls`
     assert.equal(json({ ...rest, version: save.version }), json(save), "loads unchanged");
     assert.equal(s.entities.fighter.riding.on, horse);
     assert.equal(s.entities.fighter.riding.told, true);

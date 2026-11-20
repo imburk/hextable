@@ -28,7 +28,7 @@ const MAIN = {
 };
 
 // The digests were taken at state version 21; the version has moved since (22, #300) and nothing else.
-const asMain = (s) => { const { packs, ...rest } = s; return { ...rest, version: 21 }; };   // `packs: []` is new too (24, #390)
+const asMain = (s) => { const { packs, scoreRolls, ...rest } = s; return { ...rest, version: 21 }; };   // `packs: []` (24, #390) and `scoreRolls` (25, #557) are new too
 test("the default valley is the hex valley, byte for byte what main made, for several seeds", () => {
   for (const [seed, digest] of Object.entries(MAIN)) {
     assert.equal(sha(asMain(newGame(Number(seed)))), digest, `seed ${seed}`);
