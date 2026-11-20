@@ -109,7 +109,7 @@ function recordOf(e) {
 }
 
 // ---------- the screen ----------
-export function initQuickEntry({ act, toast, getState, getSelected }) {
+export function initQuickEntry({ act, toast, getState, getSelected, me = () => undefined }) {
   let m = blank(), editing = null, pending = null, sureTimer = null;
   const refs = {};
   const q = (id) => refs[id];
@@ -124,7 +124,7 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
   const bLevel = el('button', { type: 'button', id: 'qb-levelup', text: 'Level up', disabled: true });
   const IM = initImport({ act, toast, getState, getSelected });      // a Fantasy Grounds character, read and shown before it is set up
   host.append(el('h3', { text: 'Characters' }), el('div', { class: 'row' }, bAdd, bBuild, IM.button(), bEdit, bLevel, bRemove), sure);
-  const B = initBuild({ act, toast, getState, getSelected, importButton: () => IM.button() });
+  const B = initBuild({ act, toast, getState, getSelected, me, importButton: () => IM.button() });
   bBuild.onclick = () => B.open({ mode: 'add' });
   bLevel.onclick = () => { const e = getState()?.entities[getSelected()]; if (e?.sheet) B.open({ mode: 'levelup', entity: e }); };
 
@@ -307,7 +307,8 @@ export function initQuickEntry({ act, toast, getState, getSelected }) {
       const name = getState()?.entities[done.id]?.name ?? 'The character';
       close(); toast(pending === 'edited' ? `${name} corrected.` : `${name} joins the party.`, true);
     },
-    refused: (msg) => IM.refused(msg),
+    refused: (msg) => { B.refused(msg); IM.refused(msg); },
+    scoresChecked: () => B.scoresChecked(), fresh: () => B.fresh(),
     open, recordOf, toRecord, fromRecord,
   };
 }
