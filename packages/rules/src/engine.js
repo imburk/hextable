@@ -194,24 +194,38 @@ function thaw(s, snap) {
   for (const k of Object.keys(s)) delete s[k];
   for (const k of Object.keys(snap)) s[k] = k === 'timeline' ? tl : snap[k];
 }
-// A refusal puts the game back by mending it IN PLACE: whatever the refused action left changed is set back to what the copy holds, and every
-// object that was not changed stays the very same object. A refusal is the commonest way an action ends, and what holds a creature or a list
-// (a test, a view) keeps holding it, as it did while a refusal changed nothing; `thaw` (a throw that is not a refusal, a question) swaps whole objects.
+// A refusal (a RuleError out of the handler) puts the game back by mending it IN PLACE: whatever the refused action left changed is set back to
+// what the copy holds, and every object that was not changed stays the very same object. A refusal is the commonest way an action ends, and what
+// holds a creature or a list (a test, a view) keeps holding it, as it did while a refusal changed nothing. This keeps identity only for objects
+// the handler did not replace: one it swapped for another (or added, or removed) comes back as the copy's object. `thaw`, which swaps whole
+// objects, is still what a throw that is not a refusal, a question, the work ceiling (`overWork`) and `NotBattleMap` use.
 // Same key order as the copy, so the game's JSON is identical. Terrain held by reference in the copy is the same object and is skipped.
+// Aliasing: a handler may leave one live object at two paths (`a.pos = b.pos`) and then refuse. Mending it in place at the first path would
+// write one creature's values into the other's, so an object already mended once (`seen`) is replaced by the copy's own object at its second path.
 const plain = (x) => x !== null && typeof x === 'object' && (Array.isArray(x) || Object.getPrototypeOf(x) === Object.prototype);
-const set = (o, k, v) => { if (o[k] !== v) o[k] = v; };      // a write only where it differs (terrain that is unchanged may be frozen, apply-terrain.test.js)
-function back(t, c) {
+// A write only where it differs (unchanged terrain may be frozen, apply-terrain.test.js); an own `__proto__` key is defined, never assigned.
+const put = (o, k, v) => {
+  if (k === '__proto__') Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+  else if (o[k] !== v) o[k] = v;
+};
+function back(t, c, seen) {
   if (t === c) return t;
-  if (!plain(t) || !plain(c) || Array.isArray(t) !== Array.isArray(c)) return c;
-  if (Array.isArray(c)) { if (t.length !== c.length) t.length = c.length; for (let i = 0; i < c.length; i++) set(t, i, back(t[i], c[i])); return t; }
+  if (!plain(t) || !plain(c) || Array.isArray(t) !== Array.isArray(c) || seen.has(t)) return c;
+  seen.add(t);
+  if (Array.isArray(c)) { if (t.length !== c.length) t.length = c.length; for (let i = 0; i < c.length; i++) put(t, i, back(t[i], c[i], seen)); return t; }
   const tk = Object.keys(t), ck = Object.keys(c);
-  if (tk.length === ck.length && tk.every((k, i) => k === ck[i])) { for (const k of ck) set(t, k, back(t[k], c[k])); return t; }
-  const old = { ...t };                                   // the keys differ: take them all off and put them back in the copy's order
+  if (tk.length === ck.length && tk.every((k, i) => k === ck[i])) { for (const k of ck) put(t, k, back(t[k], c[k], seen)); return t; }
+  const old = new Map(tk.map((k) => [k, t[k]]));          // the keys differ: take them all off and put them back in the copy's order
   for (const k of tk) delete t[k];
-  for (const k of ck) t[k] = back(old[k], c[k]);
+  for (const k of ck) { const v = back(old.get(k), c[k], seen); if (k === '__proto__') put(t, k, v); else t[k] = v; }
   return t;
 }
-function mend(s, snap) { back(s, { ...snap, timeline: s.timeline }); }
+// The copy has no timeline (apply() does not restore it), so the game's own is kept; a game with no `timeline` key gets none.
+export function mend(s, snap) {      // exported for refusal-mend.test.js only
+  const c = { ...snap };
+  if (Object.hasOwn(s, 'timeline')) c.timeline = s.timeline; else delete c.timeline;
+  back(s, c, new WeakSet());
+}
 
 // The work count is switched off however the action ends, a throw included.
 //
@@ -287,7 +301,10 @@ function applyInner(s, action, ctx) {
   try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); checkEvents(ev); } catch (err) {
     if (err instanceof NotBattleMap) { stopWork(); delete s.stack; if (net) thaw(s, net); return { ok: false, error: err.message, events: [] }; }
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
-    if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
+    // A refusal here is not a refusal of the action: the handler is done and has changed the game. Letting it pass would leave that half-applied
+    // and tell nobody, so the game goes back as it was and it is thrown as a crash (the server answers "couldn't make sense"; review R3, L4).
+    stopWork(); delete s.stack;
+    throw restoreAfter(s, net, tlLen, err instanceof RuleError ? new Error(`The settle phase refused an action that had been applied: ${err.message}`) : err);
   }
   stopWork();
   try {

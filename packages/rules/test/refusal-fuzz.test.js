@@ -1,8 +1,9 @@
 // Review R3 (#617): a refused action, and one that throws, leave the game byte-identical. A short seeded fuzz: random action shapes
 // (well-formed and not) from random creatures and roles, against fresh games with and without a fight. Only 5 % of such actions succeed,
 // which is the point: this plays the refusal paths, where an engine once changed the game before it refused. Bounded by a time budget
-// (FUZZ_MS, default 4000 ms) and a cap on actions, so CI cannot run long; the sequence is seeded, so a failure is reproduced by the
-// action it prints. HEXTABLE_STRESS=full runs 60,000 actions.
+// (FUZZ_MS, default 30 s) as a safety stop only: it plays a fixed 3,000 actions, so a loaded machine gets the same run; the sequence is seeded,
+// so a failure is reproduced by the action it printed. HEXTABLE_STRESS=full runs 60,000 actions.
+// (3,000 actions does not reach the old cast-flag bug, which the full run found at about 9,300; the repro test below does.)
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, ACTION_TYPES, current } from "../src/engine.js";
@@ -58,10 +59,12 @@ function value(s, f) {
 const COMMON = ['move', 'attack', 'cast', 'act', 'endTurn', 'dash', 'use', 'feature', 'equip', 'give', 'pass', 'drop', 'pickUp', 'mount', 'dismount', 'hide', 'search', 'check', 'escape', 'levelUp', 'rest', 'shortRest', 'condition', 'setHp', 'harm', 'place', 'react', 'follow', 'formation', 'bond', 'command', 'attune', 'shield', 'editCharacter', 'setSize', 'remove', 'reveal', 'endEffect', 'secondWind', 'stand', 'disengage', 'dodge', 'stepAway', 'stepBack'];
 
 test("fuzz: a refused action, or one that throws, leaves the game byte-identical", () => {
-  const MAX = process.env.HEXTABLE_STRESS === "full" ? 60000 : 20000, BUDGET = Number(process.env.FUZZ_MS ?? 4000), t0 = Date.now();
+  const MAX = process.env.HEXTABLE_STRESS === "full" ? 60000 : 3000, BUDGET = Number(process.env.FUZZ_MS ?? 30000), t0 = Date.now();      // a fixed count: the same actions on every machine; the time is only a safety stop
   let refused = 0, okN = 0, thrown = 0, i = 0, s = fresh(0), k = 0;
   const bad = [];
-  for (; i < MAX && Date.now() - t0 < BUDGET && bad.length === 0; i++) {
+  let stopped = false;
+  for (; i < MAX && bad.length === 0; i++) {
+    if (Date.now() - t0 > BUDGET) { stopped = true; break; }
     if (i % 400 === 0) s = fresh(++k);
     const type = rnd() < 0.5 ? pick(COMMON) : pick(ACTION_TYPES);
     if (["loadMap", "mapEdit", "worldIndex", "setPacks"].includes(type)) continue;
@@ -82,7 +85,7 @@ test("fuzz: a refused action, or one that throws, leaves the game byte-identical
     if (JSON.stringify(s) !== before) { bad.push(`${how} | ${ctx.role} ${JSON.stringify(a).slice(0, 300)}`); }
   }
   assert.deepEqual(bad, [], `a refused or thrown action changed the game (after ${i} actions, seed run ${k})`);
-  assert.ok(refused > 500, `the fuzz refused only ${refused} of ${i} actions: it is not playing the refusal paths`);
+  if (!stopped) assert.ok(refused >= i / 2, `the fuzz refused only ${refused} of ${i} actions: it is not playing the refusal paths`);
   console.log(`# fuzz: ${i} actions, ${okN} ok, ${refused} refused, ${thrown} thrown, ${Date.now() - t0} ms`);
 });
 
