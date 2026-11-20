@@ -15,7 +15,7 @@ export function aimFeet(S, e, hex) {
 export const inReach = (S, e, hex, range) => !(range > 0) || aimFeet(S, e, hex) <= range;
 
 let memo = null;
-// The cells on the edge of the caster's reach: the cells within `range` that have a neighbour (or a map edge) outside it, as "q,r" keys.
+// The cells on the edge of the caster's reach: the cells within `range` that have a neighbour on the map outside it (the map's own edge is not the edge of a reach), as "q,r" keys.
 // Kept for the same caster place, range, map and rule, so a pointer moving about does not work it out again.
 export function reachEdge(S, e, range) {
   if (!(range > 0)) return [];
@@ -26,7 +26,7 @@ export function reachEdge(S, e, range) {
   const edge = [];
   for (const k of inside) {
     const [q, r] = k.split(',').map(Number);
-    if (G.neighbors({ q, r }).some((m) => !inside.has(cellKey(m)))) edge.push(k);
+    if (G.neighbors({ q, r }).some((m) => !inside.has(cellKey(m)) && hasColumn(S.map, m))) edge.push(k);
   }
   memo = { map: S.map, id, edge };
   return edge;
