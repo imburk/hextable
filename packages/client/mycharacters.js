@@ -8,6 +8,10 @@ import { scoresLine } from './shared/scores.js';
 import { PREGENS } from './shared/content/index.js';
 import { pack } from './shared/content/srd52/pack.js';
 import { openBuild } from './buildsheet.js';
+import { startBar } from './startflow.js';
+
+// Where My characters is reached from in the lobby (the party step of a new solo game): the first name of every trail on these pages.
+export const ROOT = 'New solo game';
 
 // What a party and a character may be, in one place so it can change (the owner asked for "some limits").
 export const LIMITS = { partyMin: 1, partyMax: 6, levelMin: 1, levelMax: 20, saved: 20, fileBytes: 96 * 1024, edits: 50 };
@@ -175,14 +179,17 @@ const readJson = (k) => { try { return JSON.parse(localStorage.getItem(k)); } ca
 export function initMyCharacters({ twoTap, toast }) {
   let { list, error } = loadList();
   let slots = [], picks = [], msg = '';
-  const remembered = readJson(PARTY_KEY);
-  const count0 = Number.isInteger(remembered?.count) ? Math.min(LIMITS.partyMax, Math.max(LIMITS.partyMin, remembered.count)) : STARTER_IDS.length;
-  picks = Array.isArray(remembered?.picks) ? remembered.picks.filter((p) => typeof p === 'string').slice(0, LIMITS.partyMax) : [];
-  while (picks.length < LIMITS.partyMax) picks.push(defaultPick(picks.filter(Boolean), list));
-  // A remembered pick that is gone or cannot be used gives its place to a starter or another character.
-  picks = picks.map((p, i) => (pickProblem(p, list, picks.slice(0, i)) ? '' : p));
-  picks = picks.map((p, i) => p || defaultPick(picks.slice(0, i).concat(picks.slice(i + 1)).filter(Boolean), list));
-  let count = count0;
+  let count = STARTER_IDS.length;
+  // The party the device remembers (or, with nothing remembered, the usual starters): its size and a pick for every place.
+  function loadPicks(remembered) {
+    count = Number.isInteger(remembered?.count) ? Math.min(LIMITS.partyMax, Math.max(LIMITS.partyMin, remembered.count)) : STARTER_IDS.length;
+    picks = Array.isArray(remembered?.picks) ? remembered.picks.filter((p) => typeof p === 'string').slice(0, LIMITS.partyMax) : [];
+    while (picks.length < LIMITS.partyMax) picks.push(defaultPick(picks.filter(Boolean), list));
+    // A remembered pick that is gone or cannot be used gives its place to a starter or another character.
+    picks = picks.map((p, i) => (pickProblem(p, list, picks.slice(0, i)) ? '' : p));
+    picks = picks.map((p, i) => p || defaultPick(picks.slice(0, i).concat(picks.slice(i + 1)).filter(Boolean), list));
+  }
+  loadPicks(readJson(PARTY_KEY));
   const keepParty = () => { try { localStorage.setItem(PARTY_KEY, JSON.stringify({ count, picks })); } catch { /* storage unavailable */ } };
   const commit = (r) => { if (!r.ok) { msg = r.error; return false; } const s = saveList(r.list); if (!s.ok) { msg = s.error; return false; } list = r.list; error = ''; return true; };
 
@@ -224,7 +231,7 @@ export function initMyCharacters({ twoTap, toast }) {
   };
   // "Create new…": the build screen, then back to the lobby with the new character saved and chosen for that place.
   function createNew(i) {
-    openBuild({ mode: 'mine', onSave: (sheet) => {
+    openBuild({ mode: 'mine', trail: [ROOT, 'Party', 'New character'], onSave: (sheet) => {
       const r = addFile(list, makeFile(sheet, { how: 'built' }));
       if (!commit(r)) return msg;
       picks[i] = `mine:${list[list.length - 1].cid}`; keepParty(); drawParty(); drawManager();
@@ -257,7 +264,9 @@ export function initMyCharacters({ twoTap, toast }) {
   };
   function drawManager() {
     const bad = (f) => sheetProblems(f.sheet)[0];
-    const head = el('div', { class: 'qe-head' }, el('h2', { text: 'My characters' }), el('button', { type: 'button', class: 'close', id: 'mc-close', text: 'Close', onclick: () => { panel.hidden = true; $('lobby-mychars').focus?.({ preventScroll: true }); } }));
+    const bar = startBar(el, { backId: 'mc-close', titleId: 'mc-title', onBack: () => { panel.hidden = true; $('lobby-mychars').focus?.({ preventScroll: true }); } });
+    bar.show([ROOT, 'Characters']);
+    const head = bar.bar;
     const row = (f) => {
       const edit = f.sheet.classes ? 'Several classes: the build screen cannot open this one yet.' : '';
       const b = (id, text, on, off) => el('button', { type: 'button', id: `mc-${id}-${f.cid}`, class: 'quiet', text, onclick: on, disabled: !!off, title: off || undefined });
@@ -269,12 +278,12 @@ export function initMyCharacters({ twoTap, toast }) {
         : el('strong', { text: f.sheet.name });
       return el('li', { class: 'mc-row', 'data-cid': f.cid }, title, el('small', { class: 'note', text: levelLine(f) }), scoresLine(f.sheet) ? el('small', { class: 'note mc-scores', text: `Scores: ${scoresLine(f.sheet)}` }) : null, bad(f) ? el('small', { class: 'note mc-bad', text: `Cannot be played: ${bad(f)}` }) : null,
         el('div', { class: 'row' },
-          b('edit', 'Edit', () => openBuild({ mode: 'mine', sheet: f.sheet, onSave: (sheet) => { const r = editFile(list, f.cid, sheet); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }), edit),
+          b('edit', 'Edit', () => openBuild({ mode: 'mine', sheet: f.sheet, cid: f.cid, trail: [ROOT, 'Characters', `Edit ${f.sheet.name}`], onSave: (sheet) => { const r = editFile(list, f.cid, sheet); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }), edit),
           b('rename', 'Rename', () => { renaming = f.cid; drawManager(); panel.querySelector('.mc-rename input')?.focus(); }),
           b('dup', 'Duplicate', () => { if (commit(duplicateFile(list, f.cid))) { msg = `A copy of ${f.sheet.name} was made.`; notes = []; } drawParty(); drawManager(); }, list.length >= LIMITS.saved ? full() : ''),
           b('export', 'Export', () => download(f)), del));
     };
-    const add = el('button', { type: 'button', id: 'mc-new', text: 'New character', disabled: list.length >= LIMITS.saved, onclick: () => openBuild({ mode: 'mine', onSave: (sheet) => { const r = addFile(list, makeFile(sheet, { how: 'built' })); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }) });
+    const add = el('button', { type: 'button', id: 'mc-new', text: 'New character', disabled: list.length >= LIMITS.saved, onclick: () => openBuild({ mode: 'mine', trail: [ROOT, 'Characters', 'New character'], onSave: (sheet) => { const r = addFile(list, makeFile(sheet, { how: 'built' })); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }) });
     const imp = el('button', { type: 'button', id: 'mc-import', text: 'Import a file', disabled: list.length >= LIMITS.saved, onclick: () => fileInput.click() });
     panel.replaceChildren(...[head,
       el('p', { class: 'note', text: `These characters are kept in this browser on this device (${list.length} of ${LIMITS.saved}). Clearing the browser's site data deletes them, so use Export to keep a file of each one you care about.` }),
@@ -291,5 +300,7 @@ export function initMyCharacters({ twoTap, toast }) {
     party: () => buildParty(shown(), list),
     list: () => list,
     refresh: () => { drawParty(); },
+    // Start over: the party goes back to the usual starters and the device forgets the one it remembered.
+    resetParty: () => { try { localStorage.removeItem(PARTY_KEY); } catch { /* storage unavailable */ } loadPicks(null); drawParty(); },
   };
 }

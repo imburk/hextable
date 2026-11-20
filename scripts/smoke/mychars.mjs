@@ -227,6 +227,72 @@ async function pass(browser, url, label, opts, grid) {
             if ((await pcs(p3)).length !== 4) throw new Error('the starters did not play');
           } finally { await ctx3.close(); }
         });
+
+        // The start flow says where you are, has a Back, and keeps what was filled in (issue #556, docs/specs/start-page.md).
+        await run.do('start flow: every page is titled, Back is a labelled 44 px button, a build in progress and the front page survive Back and a reload', async () => {
+          const ctx4 = await browser.newContext(opts);
+          try {
+            const p = await ctx4.newPage();
+            run.watch(p);
+            const tp = (sel) => (touch ? p.tap(sel) : p.click(sel));
+            const h44 = (sel) => p.$eval(sel, (e) => e.getBoundingClientRect().height >= 43.5);
+            const draft = () => p.evaluate(() => JSON.parse(localStorage.getItem('hextable.draft') ?? 'null'));
+            const sh = (n) => (dir ? p.screenshot({ path: `${dir}/startflow-${n}-${tag}.png` }).catch(() => {}) : null);
+            await open(p, url, { grid });
+            if ((await text(p, '#lobby-where')) !== 'Start a game' || (await shown(p, '#lobby-back'))) throw new Error('the front page does not say where it is');
+            await tp('#lobby-party > summary'); await waitShown(p, '#lobby-back');
+            if ((await text(p, '#lobby-where')) !== 'New solo game › Party') throw new Error(`party title: ${await text(p, '#lobby-where')}`);
+            if (!/^← Back/.test(await text(p, '#lobby-back')) || !(await h44('#lobby-back'))) throw new Error('lobby Back is not a labelled 44 px button');
+            await sh('1-party');
+            await tp('#lobby-back'); await waitShown(p, '#lobby-back', false);
+            if ((await text(p, '#lobby-where')) !== 'Start a game') throw new Error('Back did not return to the front page');
+            await tp('#lobby-party > summary'); await tp('#lobby-mychars'); await waitShown(p, '#mychars');
+            if ((await text(p, '#mc-title')) !== 'New solo game › Characters') throw new Error(`mychars title: ${await text(p, '#mc-title')}`);
+            if (!/^← Back/.test(await text(p, '#mc-close')) || !(await h44('#mc-close'))) throw new Error('My characters Back is not a labelled 44 px button');
+            await tp('#mc-new'); await waitShown(p, '#qb');
+            if ((await text(p, '#qb-title')) !== 'New solo game › Characters › New character') throw new Error(`build title: ${await text(p, '#qb-title')}`);
+            if (!/^← Back to Characters/.test(await text(p, '#qb-close')) || !(await h44('#qb-close'))) throw new Error('build Back is not a labelled 44 px button');
+            // the colour: swatches and a box in the page, never the browser's own colour dialog; every target 44 px
+            if (await p.$('#qb input[type="color"]')) throw new Error('the build screen still uses the browser colour dialog');
+            const sw = await p.$$eval('#qb .qb-swatch:not([hidden])', (b) => b.map((x) => { const r = x.getBoundingClientRect(); return [r.width, r.height]; }));
+            if (sw.length < 8 || sw.some(([w, h]) => w < 43.5 || h < 43.5)) throw new Error(`swatches: ${JSON.stringify(sw)}`);
+            await tp('#qb-color-8e5ba6');
+            if ((await p.getAttribute('#qb-color-8e5ba6', 'aria-checked')) !== 'true') throw new Error('the swatch is not marked chosen');
+            await tp('#qb-color-more'); await waitShown(p, '#qb-color-hex');
+            await p.fill('#qb-color-hex', 'nope'); await wait(p, () => /Type a colour/.test(document.querySelector('#qb-color-note').textContent));
+            if ((await p.getAttribute('#qb-color-8e5ba6', 'aria-checked')) !== 'true') throw new Error('a bad colour changed the choice');
+            await p.fill('#qb-color-hex', '12AB34'); await wait(p, () => document.querySelector('#qb-color .qb-swatch.on')?.dataset.color === '#12ab34');
+            await sh('2-colour');
+            await p.fill('#qb-name', 'Dara Flint'); await p.selectOption('#qb-class', 'fighter'); await p.selectOption('#qb-levelsel', '3');
+            await wait(p, () => document.querySelector('#qb-draft'));
+            if (!(await draft())?.build?.new) throw new Error('nothing was kept as a draft');
+            await tp('#qb-close'); await waitShown(p, '#qb', false);
+            await tp('#mc-new'); await waitShown(p, '#qb');
+            if ((await p.inputValue('#qb-name')) !== 'Dara Flint' || (await p.inputValue('#qb-levelsel')) !== '3') throw new Error('Back lost what was filled in');
+            if (!/Picked up where you left off/.test(await text(p, '#qb-draft-note'))) throw new Error('the sheet does not say it picked up a draft');
+            await sh('3-restored');
+            await p.reload(); await waitShown(p, '#lobby');
+            await tp('#lobby-party > summary'); await tp('#lobby-mychars'); await tp('#mc-new'); await waitShown(p, '#qb');
+            if ((await p.inputValue('#qb-name')) !== 'Dara Flint') throw new Error('a reload lost the draft');
+            if ((await p.evaluate(() => document.querySelector('.qb-swatch.on')?.dataset.color)) !== '#12ab34') throw new Error('the colour was lost');
+            await tp('#qb-startover'); await tp('#qb-startover'); await wait(p, () => document.querySelector('#qb-name').value === '');
+            if ((await draft())?.build?.new) throw new Error('Start over left the draft');
+            // saving keeps the colour as a #rrggbb and clears the draft
+            await buildFighter(p, 'Dara Flint', 1);
+            await waitShown(p, '#qb', false);
+            if ((await draft())?.build?.new) throw new Error('saving left the draft');
+            if (!/^#[0-9a-f]{6}$/.test((await stored(p)).at(-1)?.sheet?.look?.color ?? '')) throw new Error('the saved colour is not #rrggbb');
+            await tp('#mc-close'); await waitShown(p, '#mychars', false);
+            // the front page: name and code survive a reload; Start over clears them and leaves My characters alone
+            await p.fill('#lobby-name', 'Isaac'); await p.fill('#lobby-code', 'KX7Q2M');
+            await p.reload(); await waitShown(p, '#lobby');
+            if ((await p.inputValue('#lobby-name')) !== 'Isaac' || (await p.inputValue('#lobby-code')) !== 'KX7Q2M') throw new Error('a reload lost the front page');
+            await waitShown(p, '#lobby-startover'); await sh('4-front-draft');
+            await tp('#lobby-startover'); await tp('#lobby-startover'); await wait(p, () => document.querySelector('#lobby-name').value === '' && document.querySelector('#lobby-code').value === '');
+            if ((await stored(p)).length !== 1) throw new Error('Start over touched My characters');
+            if ((await draft()) !== null) throw new Error('Start over left a draft');
+          } finally { await ctx4.close(); }
+        });
       } finally { await ctx2.close(); }
     } finally { await ctx.close(); }
   });
