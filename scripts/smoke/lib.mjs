@@ -256,3 +256,25 @@ export async function spawnNear(page, tpl, opts = {}) {
   catch { throw new Error(`the ${tpl} was not made at ${JSON.stringify(spots[0])}: toast "${await page.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`); }
   return (await made())[0];
 }
+
+// Tap a creature on the map where the renderer says it is, and make sure the renderer picked IT: a party pawn between the camera and the target takes the
+// tap, so the view is turned and the creature focused again until a tap lands on it (the guard paneltabs.mjs has, DEBT T30). `fail` is told what was seen.
+export async function tapGuarded(page, touch, target) {
+  const ev = (f, a) => page.evaluate(f, a);
+  await ev((t) => { const R = window.hextable.R; window.__tap = R.onTap; window.__hits = []; R.onTap = (h) => { window.__hits.push(h.id ?? null); if (h.id === t) window.__tap(h); }; }, target);
+  try {
+    const turns = [0, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2, (2 * Math.PI) / 3, (-2 * Math.PI) / 3, Math.PI];
+    for (let k = 0; k < turns.length; k++) {
+      if (k > 0) await ev(([t, turn]) => { const R = window.hextable.R; R.focus(t, true); R.face((window.__yaw0 ??= R.cameraAngles().yaw) + turn, true); }, [target, turns[k]]);
+      await settle(page, target);
+      const pt = await ev((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), target);
+      if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;      // off screen or under a panel: another view
+      await ev(() => { window.__hits = []; });
+      await tapAt(page, touch, pt.x, pt.y);
+      await wait(page, () => window.__hits.length > 0, null, 3000).catch(() => {});
+      if ((await ev(() => window.__hits)).includes(target)) return;
+    }
+    throw new Error(`no view of the map puts ${target} where a tap reaches it (taps landed on ${JSON.stringify(await ev(() => window.__hits))})`);
+  } finally { await ev(() => { window.hextable.R.onTap = window.__tap; delete window.__yaw0; }); }
+}
+
