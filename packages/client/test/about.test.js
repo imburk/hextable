@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SRD_ATTRIBUTION, HEXTABLE_LICENCE, THREE_LICENCE, GAME_VERSION, FONTS, MODEL_PACKS, aboutHTML, linked } from '../about.js';
+import { SRD_ATTRIBUTION, HEXTABLE_LICENCE, THREE_LICENCE, ZIP_LICENCE, GAME_VERSION, FONTS, MODEL_PACKS, aboutHTML, linked } from '../about.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
@@ -24,6 +24,15 @@ test("Hextable's licence and Three.js's are the files that ship, and the version
   assert.equal(GAME_VERSION, JSON.parse(read('package.json')).version);
   assert.match(read('packages/client/vendor/README.md'), /r187/);
   assert.match(THREE_LICENCE.name, /r187/);
+});
+
+test("zip.js's licence is the file that ships, for the pinned release, and the page shows it", () => {
+  assert.equal(flat(ZIP_LICENCE.text), flat(read('packages/client/vendor/zip.js/LICENSE')));
+  assert.match(ZIP_LICENCE.name, /v2\.25\.0/);
+  assert.match(read('packages/client/vendor/README.md'), /\*\*v2\.25\.0\*\*/);
+  assert.match(read('packages/client/modulezip.js'), /LIBRARY_VERSION = '2\.25\.0'/);
+  const html = aboutHTML({ stateVersion: 18 });
+  assert.ok(html.includes('href="./vendor/zip.js/LICENSE"') && html.includes('Redistribution and use in source and binary forms'));
 });
 
 test('every font the page loads is credited', () => {

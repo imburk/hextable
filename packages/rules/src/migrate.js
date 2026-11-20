@@ -17,7 +17,7 @@ import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
 import { cleanPurse } from './market.js';
 
-export const VERSION = 27;
+export const VERSION = 28;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -183,12 +183,18 @@ export function migrate(state) {
   if (!(state.version >= 26)) Object.assign(state, { world: state.world ?? null, place: state.place ?? null, parked: state.parked ?? {}, journey: state.journey ?? null });
   if (state.world !== undefined && !(state.world === null || (isRec(state.world) && isRec(state.world.nodes)))) state.world = null;
   if (state.place !== undefined && !(state.place === null || (typeof state.place === 'string' && isRec(state.world?.nodes) && Object.hasOwn(state.world.nodes, state.place)))) state.place = null;
-  // Version 27: purses and shops (docs/specs/shops.md, X3; task P3). `markets` (the market packs the DM imported) and `shops` (the
-  // stores and loot packages of this game); a table saved before has none of either. A state already at 27 without them (one made by
+  // Version 27: the table rule `strikeFirst` (docs/specs/table-ui.md, E23 as amended by #585): 'off' (the SRD's way;
+  // absent means off), 'casts' or 'all'. A table saved before then had a DM's hostile cast at the party land first while
+  // `autoEngage` was on, and nothing else: it gets 'casts' (which still asks for `autoEngage` on, as before), or 'off'
+  // where `autoEngage` was off, so it plays exactly as it did. An unset `autoEngage` counts as on, as the table's rules
+  // are shown (settings.js). A state already at version 27 (one made by `newGame`, which does not set it) is left as it is.
+  if (!(state.version >= 27) && state.settings && typeof state.settings === 'object') state.settings.strikeFirst = state.settings.autoEngage !== false ? 'casts' : 'off';
+  // Version 28: purses and shops (docs/specs/shops.md, X3; task P3). `markets` (the market packs the DM imported) and `shops` (the
+  // stores and loot packages of this game); a table saved before has none of either. A state already at 28 without them (one made by
   // `newGame`) is left as it is: reading code takes an absent list as empty. A list that is not a list is put back to empty, and a shop
   // that is not whole (no id, kind or name) is let go; one missing a part the actions read gets it empty. A creature's purse (`coins`)
   // keeps only whole numbers of the five coins; one that is not a purse, or holds nothing, is taken away.
-  if (!(state.version >= 27)) Object.assign(state, { markets: Array.isArray(state.markets) ? state.markets : [], shops: Array.isArray(state.shops) ? state.shops : [] });
+  if (!(state.version >= 28)) Object.assign(state, { markets: Array.isArray(state.markets) ? state.markets : [], shops: Array.isArray(state.shops) ? state.shops : [] });
   if (state.markets !== undefined && !Array.isArray(state.markets)) state.markets = [];
   if (state.shops !== undefined) {
     if (!Array.isArray(state.shops)) state.shops = [];

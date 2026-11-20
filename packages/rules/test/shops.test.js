@@ -216,21 +216,21 @@ test("undo restores coins, stock and dice; redo rolls the same dice", () => {
   }
 });
 
-test("a table saved at version 26 migrates: no markets, no shops, purses cleaned", () => {
+test("a table saved at version 27 migrates to 28: no markets, no shops, purses cleaned", () => {
   const s = newGame(5);
-  Object.assign(s, { version: 26 });
+  Object.assign(s, { version: 27 });
   delete s.markets; delete s.shops;
   s.entities.fighter.coins = { gp: 12, sp: 0 };
   s.entities.rogue.coins = { gp: -1 };
   s.entities.cleric.coins = "35 gp";
   s.entities.wizard.coins = {};
   migrate(s);
-  assert.equal(VERSION, 27);
-  assert.equal(s.version, 27);
+  assert.equal(VERSION, 28);
+  assert.equal(s.version, 28);
   assert.deepEqual([s.markets, s.shops], [[], []]);
   assert.deepEqual(s.entities.fighter.coins, { gp: 12 });
   for (const id of ["rogue", "cleric", "wizard"]) assert.equal(s.entities[id].coins, undefined, id);
-  // Again: the same, byte for byte. A state at 27 made by newGame (no lists) stays as it is.
+  // Again: the same, byte for byte. A state at 28 made by newGame (no lists) stays as it is.
   const once = JSON.stringify(s);
   migrate(s);
   assert.equal(JSON.stringify(s), once);
@@ -238,7 +238,7 @@ test("a table saved at version 26 migrates: no markets, no shops, purses cleaned
   migrate(fresh);
   assert.equal(JSON.stringify(fresh), was);
   // A broken shop list.
-  const bad = { ...newGame(5), version: 27, shops: [{ id: "s1" }, null, { id: "s2", kind: "store", name: "Ok", shown: 7 }], markets: "x" };
+  const bad = { ...newGame(5), version: 28, shops: [{ id: "s1" }, null, { id: "s2", kind: "store", name: "Ok", shown: 7 }], markets: "x" };
   migrate(bad);
   assert.deepEqual(bad.markets, []);
   assert.deepEqual(bad.shops.map((x) => [x.id, x.shown, x.lines]), [["s2", "none", []]]);

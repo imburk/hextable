@@ -431,8 +431,8 @@ test("Intimidating Presence: a Bonus Action, Wisdom save against 8 + Strength + 
 test("a version 20 table saved before #224 loads and plays; its barbarian gets the new features when the DM makes it again from its sheet", () => {
   // Saved by the engine on main before this change: a level 11 berserker raging beside a goblin.
   const s = migrate(JSON.parse(readFileSync(new URL("./fixtures/v20-barbarian-224.json", import.meta.url), "utf8")));
-  assert.equal(VERSION, 27, "seven state version changes since: map format 2 (#249), turns named by creature (#300), companions (#311), the packs a table needs (#390), ability scores rolled at the table (#557), places of a world (#579) and purses and shops (#596)");
-  assert.equal(s.version, 27);
+  assert.equal(VERSION, 28, "eight state version changes since: map format 2 (#249), turns named by creature (#300), companions (#311), the packs a table needs (#390), ability scores rolled at the table (#557), places of a world (#579), the table rule strikeFirst (#585) and purses and shops (#596)");
+  assert.equal(s.version, 28);
   const e = s.entities.hero;
   assert.ok(raging(s), "the saved Rage is still going");
   assert.equal(e.feats.find((f) => f.id === "relentless-rage").relentless, undefined, "the saved record is the old one");
