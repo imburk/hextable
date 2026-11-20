@@ -117,7 +117,7 @@ function sameButHeader(was, now) {
   assert.equal(now.version, VERSION);
   isHexHeader(now.map);
   assert.deepEqual(lintMap(now.map), []);
-  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
+  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
   assert.deepEqual(now.packs, []);                  // version 24 (#390)
   assert.deepEqual(strip(now), strip(was));
 }
