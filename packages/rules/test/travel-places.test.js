@@ -243,16 +243,18 @@ test("undo of an arrival restores both places exactly; redo gives the same again
 });
 
 test("a valley table is unchanged by the migration but for the four new fields and its version (Done when 6)", () => {
-  assert.equal(VERSION, 26);
+  assert.equal(VERSION, 27);
   const old = newGame(5); old.version = 25;
   const was = structuredClone(old);
   migrate(old);
   const { world: w, place, parked, journey, ...rest } = old;
   assert.deepEqual({ w, place, parked, journey }, { w: null, place: null, parked: {}, journey: null });
-  assert.equal(json({ ...rest, version: 25 }), json(was));
+  const { strikeFirst, ...settings } = rest.settings;          // version 27 (#585) adds the table rule `strikeFirst`, as its `autoEngage` was
+  assert.equal(strikeFirst, true);
+  assert.equal(json({ ...rest, settings, version: 25 }), json(was));
   assert.deepEqual(Object.keys(old).slice(-4), ["world", "place", "parked", "journey"]);
   const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");
-  // A state at version 26 made by newGame (no fields) is left as it is.
+  // A state at the current version made by newGame (no fields) is left as it is.
   const fresh = newGame(5), f = json(fresh); migrate(fresh); assert.equal(json(fresh), f);
   // One that is not whole is put back to empty.
   const bad = newGame(5); Object.assign(bad, { world: [], place: "keep", parked: { keep: { map: 3 } } });
