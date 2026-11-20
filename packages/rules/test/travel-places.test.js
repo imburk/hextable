@@ -243,14 +243,15 @@ test("undo of an arrival restores both places exactly; redo gives the same again
 });
 
 test("a valley table is unchanged by the migration but for the four new fields and its version (Done when 6)", () => {
-  assert.equal(VERSION, 26);
+  assert.equal(VERSION, 27);
   const old = newGame(5); old.version = 25;
   const was = structuredClone(old);
   migrate(old);
-  const { world: w, place, parked, journey, ...rest } = old;
+  const { world: w, place, parked, journey, markets, shops, ...rest } = old;
   assert.deepEqual({ w, place, parked, journey }, { w: null, place: null, parked: {}, journey: null });
+  assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 27 (#596) adds the markets and shops, empty
   assert.equal(json({ ...rest, version: 25 }), json(was));
-  assert.deepEqual(Object.keys(old).slice(-4), ["world", "place", "parked", "journey"]);
+  assert.deepEqual(Object.keys(old).slice(-6), ["world", "place", "parked", "journey", "markets", "shops"]);
   const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");
   // A state at version 26 made by newGame (no fields) is left as it is.
   const fresh = newGame(5), f = json(fresh); migrate(fresh); assert.equal(json(fresh), f);

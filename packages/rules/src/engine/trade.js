@@ -18,7 +18,7 @@ import { shownTo } from '../handouts.js';
 import { inArea } from '../space.js';
 import { buysOf, change, cleanPurse, COINS, findLine, formatCoins, formatCp, haggle, haggleDc, haggleOf, lintMarket, listPrice,
   migrateMarket, parsePrice, pay, purseCp, sellOffer, settle } from '../market.js';
-import { able, control, ent, fail, up } from './shared.js';
+import { able, control, ent, fail, ownerOf, up } from './shared.js';
 import { nearObject } from './world.js';
 import { landItem, resheet } from './sheets.js';
 import { handlers as featureHandlers } from './features.js';
@@ -192,7 +192,7 @@ function endJoint(shop, j, why, ev) {
 export function settleShops(s, ev) {
   for (const shop of shopsOf(s)) {
     for (const j of [...(shop.joint ?? [])]) {
-      const b = s.entities[j.buyer], owner = b?.owner ?? null;
+      const b = s.entities[j.buyer], owner = b ? ownerOf(s, b) : null;
       const line = findLine(shop, marketOfShop(s, shop), j.line), left = line ? leftOf(shop, line) : 0;
       const why = s.encounter ? 'fight' : !b || !up(b) ? 'buyer' : !onShelf(shop, line) || (left !== undefined && left < j.qty) ? 'stock'
         : owner && !shownTo(shop, owner) ? 'hidden' : owner && placeProblem(s, shop, b) ? 'left' : null;
@@ -269,7 +269,9 @@ function carried(e, item) {
   if (x) return { key: x.id, x, name: itemName(CONTENT.items[x.item], x), thing: { item: x.item, base: x.base, spell: x.spell } };
   const g = (e.gear ?? []).find((n) => String(n).toLowerCase() === item.trim().toLowerCase());
   g !== undefined || fail(`${e.name} has no ${item.trim()}.`);
-  const pack = [...Object.values(CONTENT.weapons), ...Object.values(CONTENT.armour)].find((d) => d.name.toLowerCase() === String(g).toLowerCase());
+  // A name that is a pack item's own (a weapon, armour, or a magic item with no variant: "Potion of Healing" typed in or bought by a
+  // character with no sheet) is sold as that item, so it fetches what the item fetches.
+  const pack = [...Object.values(CONTENT.weapons), ...Object.values(CONTENT.armour), ...Object.values(CONTENT.items).filter((d) => !d.variant && !d.base)].find((d) => d.name.toLowerCase() === String(g).toLowerCase());
   return { key: String(g), name: String(g), thing: pack ? { item: pack.id } : { name: String(g) } };
 }
 
