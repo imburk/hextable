@@ -18,7 +18,7 @@ import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
-import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
+import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { makeEntity, tryLand } from './sheets.js';
@@ -191,6 +191,44 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
 export function engage(s, e, t, ev, walked = null, opts = null) {
   const G = gridOf(s.map), a = G.toWorld(e.pos), b = G.toWorld(t.pos), d = apart(s, e, t);
   startEncounter(s, G.fromWorld((a.x + b.x) / 2, (a.z + b.z) / 2), ev, Math.max(ARENA_RADIUS, Math.ceil(d / 2) + 1), walked, opts);
+}
+
+// ---------- Strike first (the table rule `strikeFirst`; docs/specs/table-ui.md, E23 as amended by #585) ----------
+// Off (the SRD's way; a new table has it off): an attack, a hostile cast or a creature's harmful action outside a fight
+// starts the fight and is not made. Everyone rolls Initiative (a surprised creature with Disadvantage), and the creature
+// makes it on its turn. On (a house rule; a table saved before #585 had it, for casts, while `autoEngage` was on): it
+// lands first, then the fight starts, in the same action, so one undo takes back both (casting.js, attacks.js).
+// Does `e`'s harmful act at `targets` land first? No fight on, the rule on, and one it is aimed at or catches is of
+// another side (the DM's creature at the party, or a party member at a foe).
+export const strikesFirst = (s, e, targets) => !s.encounter && s.settings?.strikeFirst === true && targets.some((t) => t && t.id !== e.id && hostile(e, t));
+// Taken before the act does anything: where its events begin, and whose Reaction was spent already.
+export const strikeStart = (s, ev) => ({ from: ev.length, used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)) });
+// The act has run (its rolls, saves, damage, conditions, the reactions it allowed, a Counterspell that undid it): now the
+// fight starts. Initiative is rolled as for any fight.
+//   - What the party did not know of while it acted stays unknown in its events (`unseen`, which view.js reads and
+//     apply()'s record keeps): a hidden creature's attack or spell is told as any unseen creature's is, and the fight's
+//     start then reveals it, as every fight does ("nobody fights unseen", hidden-information.md section 5).
+//   - A Reaction taken during the act stays spent until that creature's first turn in the fight (SRD "Reactions": "When
+//     you take a Reaction, you can't take another one until the start of your next turn"), where a fight starting would
+//     otherwise give it back.
+//   - The fight is placed as the act would have placed it: round the actor for an area (`area`), else round the actor and
+//     `target` (the first creature it was aimed at), where they stand now. If nobody is left to fight there, no fight
+//     starts (startEncounter refuses before it changes anything, and that refusal is caught).
+//   - `owed` (casting.js, CAST_TAKES_FIRST_ACTION): what the actor's first turn goes without.
+export function thenFight(s, e, ev, lands, { area = false, target = null, owed = null } = {}) {
+  const hid = (id) => typeof id === 'string' && Object.hasOwn(s.entities, id) && unknown(s, s.entities[id]);
+  const actor = hid(e.id) ? [e.id] : [];
+  for (const x of ev.slice(lands.from)) {
+    const ids = [...actor, ...[x.id, x.actor, x.target, x.by, x.against, x.source, ...(Array.isArray(x.targets) ? x.targets : [])].filter(hid)];
+    if (ids.length) x.unseen = [...new Set([...(Array.isArray(x.unseen) ? x.unseen : []), ...ids])];
+  }
+  const keep = new Set(living(s).filter((o) => o.reactionUsed && !lands.used.has(o.id)).map((o) => o.id));
+  const opts = { keep, ...(owed ? { owed } : {}) };
+  try {
+    if (area || !target) startEncounter(s, e.pos, ev, undefined, null, opts); else engage(s, e, target, ev, null, opts);
+  } catch (err) {
+    if (!(err instanceof RuleError)) throw err;                     // "Nobody is close enough to fight here.": refused before anything changed
+  }
 }
 
 export function endEncounter(s, ev, result) {

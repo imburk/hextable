@@ -359,6 +359,10 @@ export const SETTINGS = { sight: SIGHT_RULES,
   diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
+  // Strike first (resolve.js, strikesFirst; docs/specs/table-ui.md, E23 as amended by #585): whether an attack, a hostile
+  // cast or a creature's harmful action outside a fight lands before the fight starts. Absent means the first (off, the
+  // SRD's way); a table saved before state version 27 has it as its `autoEngage` was (migrate.js). Words in SETTING_TEXT.
+  strikeFirst: [false, true],
   // Square maps only: how cover is judged (sight.js); absent means the first. Words in SETTING_TEXT.
   squareCover: SQUARE_COVERS,
   // Stepping away (resolve.js, AWAY): what becomes of the turns of a creature set aside, and what a
@@ -368,6 +372,10 @@ export const SETTINGS = { sight: SIGHT_RULES,
   scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  strikeFirst: {
+    false: 'An attack, a hostile spell or a monster\'s action outside a fight starts the fight and is not made yet: everyone rolls Initiative (a surprised creature with Disadvantage), and the creature makes it on its turn. The SRD\'s rule, the default.',
+    true: 'An attack, a hostile spell or a monster\'s action at a creature of another side, outside a fight, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts and everyone rolls Initiative. The creature\'s first turn is still a whole turn. A table rule; it is not in the SRD.',
+  },
   scoreReroll: {
     none: 'Rolled ability scores stand as rolled: no score may be rolled again (the SRD\'s rule, the default).',
     below: 'A rolled score below the number set under it may be rolled again, once. "Below" is judged on the score first rolled.',
