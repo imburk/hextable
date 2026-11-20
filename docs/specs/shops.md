@@ -830,6 +830,37 @@ it is a weapon or armour of the table, and `landItem` checks the rest when the i
 bytes are the import action's. Sharing coins out of a loot package (Decision 7) is `take`'s, not X2's. `CLAUDE.md`'s layout paragraph does not list
 `market.js` yet; P3 adds it with `engine/trade.js`.
 
+## Build notes: P3 (purses and shops, engine; #596)
+
+Built in `packages/rules/src/engine/trade.js` (new; the eleven actions, the place rule `placeProblem`, the content lookups `marketEnv`, and
+`settleShops`), with `give { coins }` in `engine/characters.js`, `coins` kept by `carryPlay` in `engine/sheets.js`, `askCheck { about }` in
+`scenes.js`, `viewShops` and the trade events in `view.js`, the labels in `history.js`, and state version 28 in `migrate.js` (after #594's 27).
+`view()` and the table server's per-player view (`packages/server/src/tables.js`, `stateFor`) both carry `shops`, so a networked player sees
+the stores shown to them now, not at P4; P4 keeps `market` joining `MAP_ACTIONS` and the README. Tests: `packages/rules/test/shops.test.js`,
+`packages/server/test/shops.test.js`.
+
+**Settled here (each a reading of the spec; change it here and in the code together).**
+
+- **The audience of an event.** Every trade event carries the shop's `shown` when it happened (`to`, and `except` for "everyone but"), and
+  `viewEvents` passes it only to a player in it, live or from the record; the audience is never sent. `shopShown` goes to those newly shown,
+  `shopHidden` to those it is taken from.
+- **Pictures of a market (`assets`) are dropped on import**; `art` ids stay. Moving the bytes into the table's assets is the server's (P4, X7).
+  `hash` is FNV-1a of what is kept.
+- **A joint purchase's id is in `joint`, not `id`**, in `jointOpened`, `pledged`, `jointEnded` and a joint `bought`: `id` names creatures in the
+  view's filter, and a `j1` there would be read as a creature the party does not know of.
+- **Any fight ends open joint purchases** (`settleShops`, after every action), not only one its buyer is in, since players may not shop while
+  any fight goes on. A purchase also ends when its buyer is down, its line is off the shelf or short, its buyer's player is no longer shown
+  the store, or the buyer (a player's character, with a map in play) has left the shop area.
+- **A magic item whose `base` names exactly one item** (a Sun Blade is a longsword) needs no `base` on a line, and its value does not add that
+  item's cost (only a line's own `base` adds it). A table that wants the 15 GP gives the line its own `price`.
+- **The haggle's roll** is the engine's `check` action (`features.js`; `abilityCheck` is not exported from `engine/rolls.js` as the spec
+  supposed), run for the quoted character with no DC, so it is an ordinary open `check` event: players see the dice and total, never the DC.
+  A quote keeps its `steps` and `roleplay`, so the bonus can be pressed before or after the roll and applies once; a failed roll sets the
+  24-hour wait in world minutes (`waits`), which only a price set by hand gets round.
+- **Selling** pays in the largest coins first (`change`), so 35 GP is 3 PP 5 GP. A name in `gear` that is a pack item's own name (a weapon,
+  armour, or a magic item with no variant or base) sells as that item. A quote set for a name sells that name at that price.
+- **Shop ids** count up in `state.shopSeq` (`s1, s2, ...`), so a closed shop's id is never used again.
+
 ## Security and hidden-information review points
 
 1. **No price from a client.** `buy`, `sell` and `take` carry ids and counts only; a

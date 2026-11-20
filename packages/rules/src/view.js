@@ -237,7 +237,7 @@ const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
+  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
 }
 
 // An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
@@ -361,8 +361,7 @@ export function viewHandouts(state, viewer) {
 // being paid together that concern the party; the cells of its shop area that this player is sent (`viewShopArea`) and which of the party
 // stand in it now. Never a shop not shown to them, a hidden line (its id, name, price or how many there are), `haggle`, `notes`, `from`,
 // `waits`, `keeper`, `at`, a quote's steps or roleplaying bonus, or anything of `state.markets`. The DM is sent the state itself.
-// Not yet a part of `view()`: the table server builds each player's view itself (packages/server/src/tables.js), and the two must
-// gain `shops` together, so P4 (the server row of shops.md) adds it to both; until then the storefront reads `viewShops` directly.
+// A part of `view()`, and of the view the table server builds for each player itself (packages/server/src/tables.js, stateFor).
 export function viewShops(state, viewer) {
   if (isDM(viewer)) return structuredClone(Array.isArray(state.shops) ? state.shops : []);
   const env = marketEnv(), open = (id) => typeof id === 'string' && classify(state, id) === 'open', out = [];

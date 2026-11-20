@@ -860,7 +860,7 @@ test("the undo history is never sent to players or put in an export", () => {
   d.flush(tables, code);
   const pl = sitDM(tables, code, player.last("welcome").token);
   assert.equal(pl.count("undoable"), 0);
-  assert.ok(!JSON.stringify(pl.raw).includes("ops"));
+  assert.ok(!/"ops"/.test(JSON.stringify(pl.raw)));                       // the key of a step's changes (not the "ops" in "shops")
   dm.say({ t: "export" });
   assert.equal(dm.last("export").table.undos, undefined);
 });
