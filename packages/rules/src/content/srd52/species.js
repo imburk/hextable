@@ -24,7 +24,7 @@ export const species = [
     features: [
       { id: "darkvision", name: "Darkvision", level: 1, tier: "auto", checked: true, text: "You see in the dark out to 60 feet.", grants: { senses: { darkvision: 60 } } },
       { id: "draconic-flight", name: "Draconic Flight", level: 5, tier: "manual", checked: true,
-        text: "Once per Long Rest, as a Bonus Action, spectral wings give you a Fly Speed equal to your Speed for 10 minutes, until you retract them (no action) or until you have the Incapacitated condition. Using it spends the Bonus Action and the use; the DM gives the Fly Speed and ends it.",
+        text: "Once per Long Rest, as a Bonus Action, spectral wings give you a Fly Speed equal to your Speed for 10 minutes, until you retract them (no action) or until you have the Incapacitated condition. Using it spends the Bonus Action and the use; the engine does not give a Fly Speed equal to Speed yet, so the DM gives it and ends it.",
         uses: { max: 1, recharge: "long" },
         grants: { action: { time: "bonus", target: { self: true }, cost: { resource: "draconic-flight" },
           effects: [{ manual: "Draconic Flight: the creature has a Fly Speed equal to its Speed for 10 minutes, until it retracts the wings (no action) or has the Incapacitated condition. The engine does not give a Fly Speed equal to Speed yet; the DM sets it and ends it." }] } } },
@@ -82,7 +82,7 @@ export const species = [
         grants: { resist: ["poison"], modifiers: [{ on: "save", op: "advantage", scope: { condition: "poisoned" } }] } },
       { id: "dwarven-toughness", name: "Dwarven Toughness", level: 1, tier: "auto", checked: true, text: "Your Hit Point maximum is 1 higher for each character level.", grants: { hp: { perLevel: 1 } } },
       { id: "stonecunning", name: "Stonecunning", level: 1, tier: "manual", checked: true,
-        text: "As a Bonus Action, gain Tremorsense out to 60 feet for 10 minutes, usable only while on or touching stone (natural or worked). Uses equal to your Proficiency Bonus, all back on a Long Rest. Using it spends the Bonus Action and a use; Tremorsense plays no part in what the engine lets a creature perceive, so the DM applies it.",
+        text: "As a Bonus Action, gain Tremorsense out to 60 feet for 10 minutes, usable only while on or touching stone (natural or worked). Uses equal to your Proficiency Bonus, all back on a Long Rest. Using it spends the Bonus Action and a use; the engine does not use Tremorsense in what a creature perceives, so the DM applies it.",
         uses: { max: { prof: 1 }, recharge: "long" },
         grants: { action: { time: "bonus", target: { self: true }, cost: { resource: "stonecunning" },
           effects: [{ manual: "Stonecunning: the creature has Tremorsense out to 60 feet for 10 minutes while it is on or touching stone. The engine does not use Tremorsense; the DM tells it what it senses." }] } } },
@@ -155,14 +155,14 @@ export const species = [
     text: "Towering descendants of giants, with a boon of their giant forebear and, later, a giant's size.",
     features: [
       { id: "large-form", name: "Large Form", level: 5, tier: "assist", checked: true, uses: { max: 1, recharge: "long" },
-        text: "Once per Long Rest, as a Bonus Action, if there is room, you become Large for 10 minutes or until you end it (no action): Advantage on Strength checks and 10 feet more Speed. The engine gives the Advantage and the Speed for 10 minutes; the DM changes the size and checks the room.",
+        text: "Once per Long Rest, as a Bonus Action, if there is room, you become Large for 10 minutes or until you end it (no action): Advantage on Strength checks and 10 feet more Speed. The engine gives the Advantage and the Speed for 10 minutes but does not change a size, so the DM makes you Large and checks the room.",
         grants: { action: { time: "bonus", target: { self: true }, cost: { resource: "large-form" }, duration: "10 minutes",
           effects: [
             { modifier: { on: "check", op: "advantage", scope: { ability: "str" } } },
             { modifier: { on: "speed", op: "add", value: 10 } },
             { manual: "Large Form: the creature becomes Large if it is in a big enough space (it may not use the trait otherwise). The engine does not change a creature's size; the DM does, and sets it back when the effect ends." }] } } },
       { id: "powerful-build", name: "Powerful Build", level: 1, tier: "assist", checked: true,
-        text: "Advantage on ability checks to end the Grappled condition, and you count as one size larger for your carrying capacity. The engine gives the Advantage on a check to escape a grapple; it does not track carrying capacity.",
+        text: "Advantage on ability checks to end the Grappled condition, and you count as one size larger for your carrying capacity. The engine gives the Advantage on a check to escape a grapple; it does not track carrying capacity, which is the DM's.",
         grants: { modifiers: [{ on: "check", op: "advantage", when: ["check.escape"] }] } },
     ],
     lineage: { name: "Giant Ancestry", options: [
@@ -212,7 +212,7 @@ export const species = [
         text: "You gain Heroic Inspiration whenever you finish a Long Rest. The engine has no Heroic Inspiration yet; the DM keeps track of it." },
       { id: "skillful", name: "Skillful", level: 1, tier: "auto", checked: true, text: "Proficiency in one skill of your choice.", grants: { skills: { n: 1, from: "any" } } },
       { id: "versatile", name: "Versatile", level: 1, tier: "assist", checked: true,
-        text: "An Origin feat of your choice (Skilled is suggested). Take it in the sheet's place \"Species: Origin feat (Human)\", and the engine plays it as any feat; that place is on every sheet for now, whatever its species, so the DM checks that only a Human fills it." },
+        text: "An Origin feat of your choice (Skilled is suggested). Take it in the sheet's place \"Species: Origin feat (Human)\", and the engine plays it as any feat. The engine does not tie that place to this trait yet (it is on every sheet, whatever its species), so the DM checks that only a Human fills it." },
     ],
   },
   // ---------- Orc (19913-19930) ----------
