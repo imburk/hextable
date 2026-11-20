@@ -16,6 +16,9 @@ import { cure } from './rolls.js';
 import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing } from './sheets.js';
 import { handHolds } from '../weapons.js';
 import { rollScore, rollScores, mayReroll, tableRule, topThree } from '../scores.js';
+import { cleanPurse, COINS } from '../market.js';
+
+const COIN_MOST = 10_000_000;        // coins of one kind a purse holds (docs/specs/shops.md, Decision 4)
 
 // A Shield needs a hand: one holding a creature in each (docs/specs/grapple-shove.md, Decision 4) has none.
 function freeHandForShield(s, e) {
@@ -228,8 +231,23 @@ export const handlers = {
   // built character joins its sheet's `items` (carried, not worn), with `base`, `damageType` (the sheet's `type`) or `spell` where the item
   // asks for one; a character typed in by hand has no sheet, so it gets the item's name in `gear` only. To take a
   // magic item back, name its key on the sheet ("i1").
+  // { type: 'give', actor, coins: { gp: 35 }, take? } hands coins over or takes them away (docs/specs/shops.md, Decision 4): `e.coins`, only
+  // the kinds held, each kind at most 10,000,000; taking more than the purse holds of a kind is refused. Event `coins { why: 'dm' }`.
   give(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can hand out items.');
+    if (a.coins !== undefined) {
+      const e = ent(s, a.actor);
+      a.item === undefined || fail('Give coins or an item, one at a time.');
+      const want = cleanPurse(a.coins), had = cleanPurse(e.coins) ?? {};
+      (want && isRec(a.coins) && Object.keys(want).length && COINS.every((k) => (want[k] ?? 0) <= COIN_MOST)) || fail(`Name the coins: up to ${COIN_MOST.toLocaleString('en')} of each of cp, sp, ep, gp and pp.`);
+      const next = { ...had };
+      for (const k of Object.keys(want)) {
+        if (a.take) { want[k] <= (had[k] ?? 0) || fail(`${e.name} has no ${want[k].toLocaleString('en')} ${k.toUpperCase()} to take.`); next[k] -= want[k]; if (!next[k]) delete next[k]; }
+        else { next[k] = (next[k] ?? 0) + want[k]; next[k] <= COIN_MOST || fail(`A purse holds at most ${COIN_MOST.toLocaleString('en')} coins of a kind.`); }
+      }
+      if (Object.keys(next).length) e.coins = next; else delete e.coins;
+      return ev.push({ type: 'coins', id: e.id, coins: { ...next }, why: 'dm', ...(a.take ? { taken: want } : { given: want }) });
+    }
     const e = ent(s, a.actor), item = String(a.item ?? '').trim();
     (item && item.length <= 80) || fail('Name the item.');
     const held = e.sheet && Array.isArray(e.sheet.items) ? e.sheet.items.find((x) => x?.id === item) : null;

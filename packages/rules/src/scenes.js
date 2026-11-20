@@ -26,6 +26,8 @@
 import { ASSET_ID } from './map.js';
 import { SKILLS } from './content/schema.js';
 import { ownerOf } from './engine/shared.js';
+import { shownTo } from './handouts.js';
+import { findLine } from './market.js';
 
 export const SCENE_LIMITS = { title: 80, name: 60, notes: 2000, present: 20, say: 500, lines: 200, chronicle: 8000, said: 5000 };
 
@@ -178,11 +180,24 @@ export function sceneActions(fail) {
     // A player asks the DM to let their character make a check. { type: 'askCheck', actor, skill }
     // Whose: their own character, or a companion they play (`ownerOf`; a command-orders creature only on a turn commanded for it).
     // It is a request, not a roll: the DM answers with the `check` action and a DC of their own.
+    // `about: { shop, line }` (docs/specs/shops.md, Decision 6): the check is asked to haggle over a line of a store. The store must be one
+    // shown to this player and the line one on its shelf: anything else is "No such shop." or "No such item.", as an id that is nothing is.
     askCheck(s, a, ctx, ev) {
       const e = s.entities[a.actor];
       (e && (ctx.role === 'dm' || (ownerOf(s, e) && ownerOf(s, e) === ctx.userId))) || fail('You can ask only for your own character.');
       Object.hasOwn(SKILLS, a.skill) || fail('Unknown skill.');
-      ev.push({ type: 'checkAsked', actor: e.id, skill: a.skill, by: ctx.role === 'dm' ? 'dm' : ctx.userId });
+      let about = null;
+      if (a.about !== undefined) {
+        const ab = a.about, dm = ctx.role === 'dm';
+        (ab && typeof ab === 'object' && !Array.isArray(ab)) || fail('No such shop.');
+        const shop = typeof ab.shop === 'string' && Array.isArray(s.shops) ? s.shops.find((x) => x?.id === ab.shop) : null;
+        (shop && shop.kind === 'store' && (dm || shownTo(shop, ctx.userId))) || fail('No such shop.');
+        const market = Array.isArray(s.markets) ? s.markets.find((m) => m.id === shop.from?.market) : null;
+        const line = typeof ab.line === 'string' ? findLine(shop, market, ab.line) : null;
+        (line && line.hidden !== true && !shop.overrides?.[line.id]?.gone) || fail('No such item.');
+        about = { shop: shop.id, line: line.id };
+      }
+      ev.push({ type: 'checkAsked', actor: e.id, skill: a.skill, by: ctx.role === 'dm' ? 'dm' : ctx.userId, ...(about ? { about } : {}) });
     },
     // Write a stretch of a scene's transcript, or a line the DM types, to the chronicle.
     // { type: 'sceneChronicle', title, lines?: [from, to], scene?, text?, public? }

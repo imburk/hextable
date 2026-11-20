@@ -163,8 +163,9 @@ export function carryPlay(e, fresh, record, sheet) {
   // its damage, and at least 1.
   const lost = e.maxHp - e.hp;
   fresh.hp = e.hp > 0 && !e.dead ? Math.max(1, fresh.maxHp - lost) : 0;
-  // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13).
-  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
+  // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13). `coins`, the purse
+  // (docs/specs/shops.md, Decision 5), is kept as `xp` is.
+  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished', 'coins']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
   for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);
