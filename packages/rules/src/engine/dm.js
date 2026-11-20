@@ -15,7 +15,7 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, up } from './shared.js';
-import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, byMarch, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
 import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
@@ -225,7 +225,9 @@ export const handlers = {
   },
   // Play on a different map, of either grid. The party is set down at its start; the creatures of
   // the old place stay behind with it, and so do areas laid on its cells (E8, below). A map of an
-  // older format is brought up to date first, as every map that enters the game is. { type: 'loadMap', map }
+  // older format is brought up to date first, as every map that enters the game is.
+  // { type: 'loadMap', map, entry? }: with `entry`, the party arrives at that entry's starts
+  // (docs/specs/travel.md, Decision 3); without it, at the starts that belong to no entry.
   loadMap(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.encounter || fail("The map can't change in the middle of a fight.");
@@ -233,18 +235,32 @@ export const handlers = {
     try { map = migrateMap(structuredClone(a.map)); } catch { fail("That map can't be used. It is not a map document."); }
     const problems = lintMap(map);
     problems.length === 0 || fail(`That map can't be used. ${problems[0]}`);
+    const entries = map.entries ?? [];
+    const entry = a.entry === undefined ? null : (typeof a.entry === 'string' && entries.find((en) => en.id === a.entry)) || fail(`That map has no entry "${a.entry}".`);
     const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
-    const first = map.starts[0] ?? parse(Object.keys(map.levels[0].tiles)[0]);
-    const start = landing(map, first, first.z ?? 0);
-    const party = Object.values(s.entities).filter((e) => e.side === 'party'), spots = [], taken = new Set();
+    // A start's height (P18): its own `z`, else its level's, else the ground's.
+    const zOf = (st) => st.z ?? map.levels.find((l) => l.id === st.level)?.z ?? 0;
+    // Which starts: the entry's; with none named, those of no entry, or if every start has one, the first entry's.
+    const mine = entry ? map.starts.filter((st) => st.entry === entry.id)
+      : map.starts.some((st) => st.entry === undefined) ? map.starts.filter((st) => st.entry === undefined)
+      : map.starts.filter((st) => st.entry === entries[0]?.id);
+    const first = mine[0] ?? parse(Object.keys(map.levels[0].tiles)[0]);
+    const start = landing(map, first, zOf(first));
+    // Arrivals come in marching order (byMarch), so a column comes through the gate as it walked. One that
+    // leads a column and has no place in the order of its own walks first.
+    const led = new Set(Object.values(s.entities).map((e) => e.follow).filter(Boolean));
+    const rank = (e) => e.march ?? (led.has(e.id) && !e.follow ? -1 : Infinity);
+    const party = Object.values(s.entities).filter((e) => e.side === 'party').sort((x, y) => byMarch({ march: rank(x) }, { march: rank(y) }) || 0), spots = [], taken = new Set();
     const take = (p) => { spots.push(p); taken.add(key(p)); };
-    // The map's starts in order, each where a creature can stand (walkable ground, nothing solid on
+    // The starts in order, each where a creature can stand (walkable ground, nothing solid on
     // it, not taken); then, for anyone left, the spiral out from the first start, as before.
     const B = barriers(map), G = gridOf(map);
-    for (const st of map.starts) {
+    const standing = (st) => { const p = landing(map, st, zOf(st)), level = p && ground(map, p)?.level; return walkable(p) && level && !B.solid(level.id, p) ? p : null; };
+    !entry || mine.some(standing) || fail(`Nobody can stand at ${entry.name}.`);
+    for (const st of mine) {
       if (spots.length >= party.length) break;
-      const p = landing(map, st, st.z ?? 0), level = p && ground(map, p)?.level;
-      if (walkable(p) && level && !B.solid(level.id, p) && !taken.has(key(p))) take(p);
+      const p = standing(st);
+      if (p && !taken.has(key(p))) take(p);
     }
     for (let n = 0; n < 12 && spots.length < party.length; n++) {
       for (const h of G.range(start, n)) {
