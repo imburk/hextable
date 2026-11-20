@@ -10,6 +10,8 @@ import { EDITS, MAP_FORMAT, MAP_LIMITS, lintMap, migrateMap, newMap } from "../s
 import { inArea } from "../src/space.js";
 import { view, viewEvents, viewShopArea } from "../src/view.js";
 import { newGame } from "../src/scenario.js";
+import { migrate } from "../src/migrate.js";
+import cave from "../src/content/maps/cave.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" }, KIM = { role: "player", userId: "kim" };
@@ -146,6 +148,22 @@ test("inArea: any cell of the footprint on the area's level; a Large pawn with o
   assert.equal(inArea(m, "nowhere", at(2, 0)), false);
   assert.equal(inArea(field({ areas: undefined }), "stall", at(0, 0, "medium", 10)), false);
   assert.equal(inArea(m, market, { size: "medium" }), false);
+  assert.equal(inArea(undefined, market, at(2, 0)), false, "no map");
+  assert.equal(inArea(null, "stall", at(0, 0)), false);
+});
+
+test("inArea on hexes: a footprint does not drop a floor where it overhangs a level's edge; a flyer counts by the surface under its anchor", () => {
+  const m = field({ areas: [...field().areas, { id: "plaza", name: "Plaza", level: "ground", hexes: ["0,0", "1,0"] }] });
+  const at = (q, r, size = "medium", z = 0) => ({ pos: { q, r, z }, size });
+  // Large on the loft anchored at 1,0: 1,0 and 1,1 are loft, 2,0 overhangs the ground's market cell. Not in the market.
+  assert.equal(inArea(m, "OUTFITTER-CANARY", at(1, 0, "large", 10)), false);
+  assert.equal(inArea(m, "OUTFITTER-CANARY", at(1, 0, "large", 0)), true, "the same pawn on the ground is in");
+  // Large on the loft anchored at -1,0 overhangs nothing of the stall's level but its own cells: in the stall by 0,0.
+  assert.equal(inArea(m, "stall", at(-1, 0, "large", 10)), true);
+  // A flyer high over the market (no loft there) is in it; one high over the loft is in the stall, not the plaza below.
+  assert.equal(inArea(m, "OUTFITTER-CANARY", at(2, 0, "medium", 30)), true);
+  assert.equal(inArea(m, "stall", at(0, 0, "medium", 30)), true);
+  assert.equal(inArea(m, "plaza", at(0, 0, "medium", 30)), false);
 });
 
 test("inArea on squares: a Large pawn (2 by 2 from its north-west square) with one square in is inside", () => {
@@ -160,6 +178,49 @@ test("inArea on squares: a Large pawn (2 by 2 from its north-west square) with o
   assert.equal(inArea(m, "shop", at(2, 2, "medium")), true);
   // A Huge one fills 3 by 3: from 0,0 it reaches 2,2.
   assert.equal(inArea(m, "shop", at(0, 0, "huge")), true);
+});
+
+test("inArea on squares: an overhang off a loft does not reach the shop below; a flyer counts by the surface under its anchor", () => {
+  const tiles = {}, loft = {};
+  for (let q = -3; q <= 3; q++) for (let r = -3; r <= 3; r++) tiles[`${q},${r}`] = { t: "stone" };
+  for (const k of ["0,0", "1,0", "0,1", "1,1"]) loft[k] = { t: "stone" };
+  const m = newMap({ id: "sq", name: "Sq", grid: "square", levels: [{ id: "ground", name: "Ground", z: 0, tiles }, { id: "loft", name: "Loft", z: 10, tiles: loft }],
+    areas: [{ id: "shop", name: "Shop", level: "ground", hexes: ["2,2"] }, { id: "under", name: "Under", level: "ground", hexes: ["0,0"] }, { id: "up", name: "Up", level: "loft", hexes: ["1,1"] }] });
+  assert.deepEqual(lintMap(m), []);
+  const at = (q, r, size, z = 0) => ({ pos: { q, r, z }, size });
+  // Large anchored at 1,1 on the loft: 1,1 is loft; 2,1, 1,2 and 2,2 overhang the ground. Not in the shop below; in "up".
+  assert.equal(inArea(m, "shop", at(1, 1, "large", 10)), false);
+  assert.equal(inArea(m, "up", at(1, 1, "large", 10)), true);
+  assert.equal(inArea(m, "shop", at(1, 1, "large", 0)), true, "the same pawn on the ground is in");
+  // Flyers: over the shop it is in; over the loft it is on the loft, not in the area under it.
+  assert.equal(inArea(m, "shop", at(2, 2, "medium", 40)), true);
+  assert.equal(inArea(m, "under", at(0, 0, "medium", 40)), false);
+  assert.equal(inArea(m, "under", at(0, 0, "medium", 0)), true);
+});
+
+test("a parked place (travel W2) holding a map with areas keeps them, migrates and lints, and comes back with them", () => {
+  const s = newGame(5);
+  s.world = { id: "w", version: 1, hash: null, root: "field", routes: [], tables: [], nodes: {
+    field: { id: "field", kind: "map", scale: "tactical", name: "The field" },
+    cave: { id: "cave", kind: "map", scale: "tactical", name: "The cave" } } };
+  s.place = null; s.parked = {}; s.journey = null;
+  ok(apply(s, { type: "loadMap", node: "field", map: field() }, DM));
+  ok(apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave) }, DM));
+  assert.deepEqual(s.parked.field.map.areas, field().areas, "parked with its areas");
+  const saved = migrate(JSON.parse(JSON.stringify(s)));
+  assert.deepEqual(saved.parked.field.map.areas, field().areas);
+  assert.deepEqual(lintMap(saved.parked.field.map), []);
+  // And from an older saved table (format 1 map in a parked record): the areas survive the map's migration.
+  const old = JSON.parse(JSON.stringify(s));
+  old.version = 26;
+  const { format, grid, cellFeet, ...rest } = old.parked.field.map;
+  old.parked.field.map = { format: 1, ...rest, hexFeet: 5 };
+  const up = migrate(old);
+  assert.equal(up.parked.field.map.format, 2);
+  assert.deepEqual(up.parked.field.map.areas, field().areas);
+  assert.deepEqual(lintMap(up.parked.field.map), []);
+  ok(apply(s, { type: "loadMap", node: "field" }, DM));
+  assert.deepEqual(s.map.areas, field().areas, "back in play with them");
 });
 
 test("players are sent no area through the map, and of a store only the cells in tiles they are sent", () => {
