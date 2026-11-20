@@ -182,9 +182,13 @@ function freeze(s, terrain = true) {
   const m = s.map;
   const parked = isMap(s.parked) ? Object.entries(s.parked).filter(([, r]) => isMap(r) && isMap(r.map)) : [];
   const light = parked.length ? Object.fromEntries(Object.entries(s.parked).map(([k, r]) => [k, isMap(r) && isMap(r.map) ? { ...r, map: lighten(r.map) } : r])) : null;
-  const top = { ...s, timeline: null, ...(light ? { parked: light } : {}) };
+  // The imported market packs (`markets`, up to 20 of 128 KB; docs/specs/shops.md) are never changed in place either: `market` puts a new
+  // list in whole (engine/trade.js). So they too are held by reference, in their place among the keys.
+  const keepMarkets = Object.hasOwn(s, 'markets') && s.markets !== null && typeof s.markets === 'object';
+  const top = { ...s, timeline: null, ...(light ? { parked: light } : {}), ...(keepMarkets ? { markets: null } : {}) };
   const whole = terrain || !isMap(m);
   const copy = structuredClone(whole ? top : { ...top, map: lighten(m) });
+  if (keepMarkets) copy.markets = s.markets;
   if (!whole) copy.map = refill(m, copy.map);
   for (const [k, r] of parked) copy.parked[k].map = refill(r.map, copy.parked[k].map);
   return copy;

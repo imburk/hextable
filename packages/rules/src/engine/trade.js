@@ -134,7 +134,15 @@ const where = (s, shop, e, ctx) => { if (!dm(ctx)) { const why = placeProblem(s,
 
 // ---- money ----------------------------------------------------------------------------------------------------------------------
 
-const purseOf = (e) => cleanPurse(e.coins) ?? {};
+// A creature's purse, or a refusal when what it holds is not a purse (a kind past the ceiling, a coin that is not a whole number): such a
+// purse is the DM's to set again with `give`, never read as empty.
+const purseOf = (e) => {
+  const p = e.coins === undefined ? {} : cleanPurse(e.coins);
+  (p && COINS.every((k) => (p[k] ?? 0) <= TRADE_LIMITS.coins)) || fail(`${e.name}'s purse can't be read; the DM sets it again.`);
+  return p;
+};
+// A purse after a trade, refused if a kind would go past the ceiling (Decision 4: 0 to 10,000,000 of each kind).
+const capped = (e, p) => { COINS.every((k) => (p[k] ?? 0) <= TRADE_LIMITS.coins) || fail(`${e.name}'s purse would hold more than ${TRADE_LIMITS.coins.toLocaleString('en')} coins of a kind.`); return p; };
 const setPurse = (e, p) => { if (Object.keys(p).length) e.coins = p; else delete e.coins; };
 const addCoins = (p, add) => { const out = { ...p }; for (const k of Object.keys(add)) out[k] = (out[k] ?? 0) + add[k]; return out; };
 const coinsArg = (v) => {
@@ -194,7 +202,8 @@ export function settleShops(s, ev) {
     for (const j of [...(shop.joint ?? [])]) {
       const b = s.entities[j.buyer], owner = b ? ownerOf(s, b) : null;
       const line = findLine(shop, marketOfShop(s, shop), j.line), left = line ? leftOf(shop, line) : 0;
-      const why = s.encounter ? 'fight' : !b || !up(b) ? 'buyer' : !onShelf(shop, line) || (left !== undefined && left < j.qty) ? 'stock'
+      const gone = Object.keys(j.pledges ?? {}).some((id) => !s.entities[id] || s.entities[id].dead);
+      const why = s.encounter ? 'fight' : !b || !up(b) ? 'buyer' : gone ? 'pledger' : !onShelf(shop, line) || (left !== undefined && left < j.qty) ? 'stock'
         : owner && !shownTo(shop, owner) ? 'hidden' : owner && placeProblem(s, shop, b) ? 'left' : null;
       if (why) endJoint(shop, j, why, ev);
     }
@@ -358,6 +367,11 @@ export const handlers = {
         if (!['keeper', 'notes', 'haggle'].includes(k)) seen = true;
       }
     }
+    if (a.set?.lists !== undefined) {
+      const m = marketOfShop(s, shop), listed = new Set(next.lists.flatMap((lid) => m?.lists?.find((l) => l.id === lid)?.lines?.map((l) => l.id) ?? []));
+      const clash = next.lines.find((l) => listed.has(l.id));
+      !clash || fail(`${shop.name} has a line "${clash.id}" already.`);
+    }
     if (a.remove !== undefined) {
       (Array.isArray(a.remove) && a.remove.every((id) => typeof id === 'string')) || fail('Name the lines to remove.');
       for (const id of a.remove) next.lines.some((l) => l.id === id) || fail(`${shop.name} has no line of its own "${id.slice(0, 60)}".`);
@@ -436,6 +450,7 @@ export const handlers = {
       return;
     }
     line.hidden === true || fail(`${lineName(line)} is on the shelf already.`);
+    !shop.overrides?.[line.id]?.gone || fail(`${lineName(line)} is taken off the shelf here: give it back (override null) first.`);
     delete line.hidden;
     const left = leftOf(shop, line);
     ev.push({ type: 'goodsRevealed', shop: shop.id, line: line.id, name: lineName(line), price: listPrice(line, shop, marketOfShop(s, shop), marketEnv()), ...(left !== undefined ? { qty: left } : {}), ...heard(shop) });
@@ -476,7 +491,7 @@ export const handlers = {
       return;
     }
     const h = haggleOf(shop.haggle);
-    let price, by, check = null, steps = had?.steps ?? 0, roleplay = had?.roleplay === true, dc = null;
+    let kept = false, price, by, check = null, steps = had?.steps ?? 0, roleplay = had?.roleplay === true, dc = null;
     if (a.price !== undefined) {
       (a.check === undefined && a.roleplay === undefined) || fail('A price set by hand is the price: no check, no bonus with it.');
       price = typeof a.price === 'string' ? parsePrice(a.price) : whole(a.price, 0, TRADE_LIMITS.coins * 100) ? a.price : null;
@@ -508,9 +523,12 @@ export const handlers = {
       const points = steps * h.step + (roleplay ? h.bonus : 0);
       price = pointsPrice(base, points, sell, cap);
       by = 'haggle';
+      // A roll that goes worse than the offer already standing (a failed re-haggle) does not take that offer away: the earlier quote
+      // stays as it was, and is what the event says.
+      if (check && had && (sell ? price < had.price : price > had.price)) { kept = true; ({ price, by } = had); steps = had.steps ?? 0; roleplay = had.roleplay === true; }
     }
-    shop.quotes = (shop.quotes ?? []).filter((q) => q !== had);
-    if (by === 'dm' || steps || roleplay) {
+    if (!kept) shop.quotes = (shop.quotes ?? []).filter((q) => q !== had);
+    if (kept) { /* the standing quote stays */ } else if (by === 'dm' || steps || roleplay) {
       shop.quotes.push({ id: `q${(shop.seq = (shop.seq ?? 0) + 1)}`, ...ref, for: e.id, price, ...(sell ? { sell: true } : {}), by, ...(steps ? { steps } : {}), ...(roleplay ? { roleplay: true } : {}) });
     }
     ev.push({ type: 'quoted', shop: shop.id, for: e.id, ...ref, name, price, was: base, ...(sell ? { sell } : {}), by, ...(check ? { check } : {}),
@@ -539,6 +557,7 @@ export const handlers = {
     const total = qty * unit, purse = purseOf(e);
     const r = pay(purse, total, a.pay);
     if (!r.ok) fail(r.have !== undefined && a.pay === undefined ? `${e.name} has ${formatCoins(purse)}; ${withQty(name, qty)} costs ${formatCp(total)}.` : r.error);
+    capped(e, r.purse);
     const gear = land(s, e, line, qty, 'buy');               // the one step that may refuse: before any coin moves
     const me = s.entities[e.id];                             // a sheet remade is a new record
     setPurse(me, r.purse);
@@ -548,10 +567,11 @@ export const handlers = {
     ev.push({ type: 'coins', id: me.id, coins: { ...(me.coins ?? {}) }, why: 'buy' }, ...gear);
   },
   // { type: 'chipIn', actor, shop, joint, share }: a character's share of a joint purchase in copper pieces' worth; 0 takes it back.
+  // Taking a pledge back (`share: 0`) may be done from anywhere, down or in a fight: it only takes away a promise.
   chipIn(s, a, ctx, ev) {
     const shop = shopFor(s, a.shop, ctx, 'store'), e = ent(s, a.actor);
-    shopper(s, e, ctx);
-    where(s, shop, e, ctx);
+    if (a.share === 0) control(s, e, ctx);
+    else { shopper(s, e, ctx); where(s, shop, e, ctx); }
     const j = (shop.joint ?? []).find((x) => x.id === a.joint) || fail('No such purchase.');
     e.id !== j.buyer || fail(`${e.name} is the buyer and pays what the others have not pledged.`);
     const total = j.qty * j.price;
@@ -578,7 +598,7 @@ export const handlers = {
     const q = (shop.quotes ?? []).find((x) => x.sell && x.for === e.id && x.item === c.key);
     const unit = q ? q.price : sellOffer(c.thing, shop, marketOfShop(s, shop), marketEnv())?.cp ?? null;
     unit !== null || fail(`${The(shop.name)} makes no offer for ${c.name}. Ask the DM.`);
-    const total = unit * qty;
+    const total = unit * qty, after = capped(e, addCoins(purseOf(e), change(total)));
     let me = e;
     if (c.x) {
       const sheet = structuredClone(e.sheet);
@@ -590,7 +610,7 @@ export const handlers = {
     } else {
       for (let n = 0; n < qty; n++) me.gear.splice(me.gear.findIndex((g) => String(g).toLowerCase() === c.key.toLowerCase()), 1);
     }
-    setPurse(me, addCoins(purseOf(me), change(total)));
+    setPurse(me, after);
     quoteGone(shop, me.id, c.key, true);
     ev.push({ type: 'sold', shop: shop.id, id: me.id, item: c.key, name: c.name, qty, price: total, ...heard(shop) });
     ev.push({ type: 'coins', id: me.id, coins: { ...(me.coins ?? {}) }, why: 'sell' });
@@ -608,9 +628,11 @@ export const handlers = {
       const each = {}, left = {};
       for (const k of COINS) if (p[k]) { const n = Math.floor(p[k] / who.length); if (n) each[k] = n; if (p[k] - n * who.length) left[k] = p[k] - n * who.length; }
       Object.keys(each).length || fail(`There are too few coins in ${the(shop.name)} to share among ${who.length}.`);
+      const after = who.map((x) => capped(x, addCoins(purseOf(x), each)));
       shop.coins = left;
       ev.push({ type: 'took', shop: shop.id, split: who.map((x) => x.id), each, left, ...heard(shop) });
-      for (const x of who) { setPurse(x, addCoins(purseOf(x), each)); ev.push({ type: 'coins', id: x.id, coins: { ...(x.coins ?? {}) }, why: 'take' }); }
+      who.forEach((x, i) => setPurse(x, after[i]));
+      for (const x of who) { ev.push({ type: 'coins', id: x.id, coins: { ...(x.coins ?? {}) }, why: 'take' }); }
       return;
     }
     const shop = shopFor(s, a.shop, ctx, 'loot'), e = ent(s, a.actor);
@@ -620,18 +642,23 @@ export const handlers = {
       a.line === undefined || fail('Take coins or a line, one at a time.');
       const want = coinsArg(a.coins), p = cleanPurse(shop.coins) ?? {};
       for (const k of Object.keys(want)) want[k] <= (p[k] ?? 0) || fail(`${The(shop.name)} holds no ${want[k]} ${k.toUpperCase()}.`);
+      const mine = capped(e, addCoins(purseOf(e), want));
       for (const k of Object.keys(want)) { p[k] -= want[k]; if (!p[k]) delete p[k]; }
       shop.coins = p;
-      setPurse(e, addCoins(purseOf(e), want));
+      setPurse(e, mine);
       ev.push({ type: 'took', shop: shop.id, id: e.id, coins: want, ...heard(shop) });
       ev.push({ type: 'coins', id: e.id, coins: { ...(e.coins ?? {}) }, why: 'take' });
       return;
     }
-    const line = (shop.lines ?? []).find((l) => l.id === a.line && l.hidden !== true) || fail('No such item.');
-    const qty = qtyArg(a.qty, line.qty ?? 1);
+    // A line on the shelf as `viewShops` shows it (not taken off, not hidden; how many by its override first), and its stock taken down as a
+    // store's is (`stockDown`). At none left the line goes, with its override.
+    const line = (shop.lines ?? []).find((l) => l.id === a.line);
+    (line && onShelf(shop, line)) || fail('No such item.');
+    const qty = qtyArg(a.qty, leftOf(shop, line) ?? 1);
     const gear = land(s, e, line, qty, 'take');
-    line.qty = (line.qty ?? 1) - qty;
-    if (line.qty <= 0) shop.lines = shop.lines.filter((l) => l !== line);
+    if (leftOf(shop, line) === undefined) line.qty = 1;
+    stockDown(shop, line, qty);
+    if (leftOf(shop, line) <= 0) { shop.lines = shop.lines.filter((l) => l !== line); if (shop.overrides) delete shop.overrides[line.id]; }
     ev.push({ type: 'took', shop: shop.id, id: e.id, line: line.id, name: lineName(line), qty, ...heard(shop) }, ...gear);
   },
 };
@@ -652,6 +679,7 @@ function settleJoint(s, shop, e, a, ctx, ev) {
   const purses = Object.fromEntries(payers.map((p) => [p.id, purseOf(p)])), names = Object.fromEntries(payers.map((p) => [p.id, p.name]));
   const r = settle(j, purses, names);
   if (!r.ok) fail(r.error.replace('; the share is', `; ${r.who === j.buyer ? 'their' : 'the'} share is`));
+  for (const p of r.payers) capped(s.entities[p.id], p.purse);
   const gear = land(s, buyer, line, j.qty, 'buy');
   for (const p of r.payers) setPurse(s.entities[p.id], p.purse);
   stockDown(shop, line, j.qty);

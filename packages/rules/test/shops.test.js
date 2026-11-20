@@ -375,3 +375,93 @@ test("loot packages: take a line, take coins, the DM shares the coins out; give 
   assert.equal(view(s, PAT).entities.m1.coins, undefined);
   assert.deepEqual(view(s, PAT).entities.fighter.coins, { sp: 10, gp: 25, pp: 1 });
 });
+
+// ---------- the review of #598 ----------
+
+test("taking from a package follows its overrides: a line taken off is no such item, none left is sold out, stock comes off the override", () => {
+  const s = table();
+  const box = ok(apply(s, { type: "openShop", kind: "loot", market: "port-goods", template: "strongbox" }, DM)).events[0].shop;
+  ok(apply(s, { type: "showShop", shop: box, to: "all" }, DM));
+  ok(apply(s, { type: "shopEdit", shop: box, override: { dagger: { gone: true } } }, DM));
+  no(apply(s, { type: "take", actor: "rogue", shop: box, line: "dagger" }, KIM), "No such item.");
+  ok(apply(s, { type: "shopEdit", shop: box, override: { dagger: { qty: 0 } } }, DM));
+  no(apply(s, { type: "take", actor: "rogue", shop: box, line: "dagger" }, KIM), "Sold out.");
+  assert.deepEqual(viewShops(s, KIM)[0].lines, []);
+  ok(apply(s, { type: "shopEdit", shop: box, override: { dagger: { qty: 3 } } }, DM));
+  assert.equal(viewShops(s, KIM)[0].lines[0].qty, 3);
+  ok(apply(s, { type: "take", actor: "rogue", shop: box, line: "dagger", qty: 2 }, KIM));
+  assert.equal(viewShops(s, KIM)[0].lines[0].qty, 1);
+  ok(apply(s, { type: "take", actor: "rogue", shop: box, line: "dagger" }, KIM));
+  assert.deepEqual([s.shops[0].lines, s.shops[0].overrides.dagger], [[], undefined]);
+});
+
+test("a joint purchase ended because its buyer's player was dropped from the store tells the others only that it ended; a pledger may withdraw from anywhere", () => {
+  const s = table(), shop = outfitter(s);
+  ok(apply(s, { type: "buy", actor: "fighter", shop, line: "rope", split: true }, PAT));
+  ok(apply(s, { type: "chipIn", actor: "cleric", shop, joint: "j1", share: 50 }, LEE));
+  s.entities.cleric.pos = { q: -4, r: 2, z: 0 };                                         // out of the quay
+  ok(apply(s, { type: "chipIn", actor: "cleric", shop, joint: "j1", share: 0 }, LEE));
+  assert.deepEqual(s.shops[0].joint[0].pledges, {});
+  const r = ok(apply(s, { type: "showShop", shop, to: ["kim"] }, DM));
+  assert.equal(r.events.find((e) => e.type === "jointEnded").why, "hidden");
+  assert.deepEqual(viewEvents(r.events, s, KIM).filter((e) => e.type === "jointEnded"), [{ type: "jointEnded", shop, joint: "j1", why: "ended" }]);
+  // A pledger who leaves the table ends the purchase.
+  ok(apply(s, { type: "showShop", shop, to: "all" }, DM));
+  s.entities.cleric.pos = { ...s.entities.fighter.pos, q: s.entities.fighter.pos.q + 1, r: s.entities.fighter.pos.r - 1 };
+  ok(apply(s, { type: "buy", actor: "fighter", shop, line: "rope", split: true }, PAT));
+  ok(apply(s, { type: "chipIn", actor: "cleric", shop, joint: "j2", share: 50 }, LEE));
+  const gone = ok(apply(s, { type: "remove", actor: "cleric" }, DM)).events.find((e) => e.type === "jointEnded");
+  assert.equal(gone?.why, "pledger");
+});
+
+test("a purse that is not a purse is refused, not read as empty, and no trade takes a kind past 10,000,000", () => {
+  const s = table(), shop = outfitter(s, { fighter: { gp: 5 } });
+  s.entities.fighter.coins = { gp: 20_000_000 };
+  no(apply(s, { type: "buy", actor: "fighter", shop, line: "rope" }, PAT), "Brenna's purse can't be read; the DM sets it again.");
+  s.entities.fighter.coins = { gp: 10_000_000, pp: 1 };
+  ok(apply(s, { type: "give", actor: "fighter", item: "Longsword" }, DM));
+  ok(apply(s, { type: "quote", shop, for: "fighter", item: "Longsword", sell: true, price: "1 GP" }, DM));
+  const before = JSON.stringify(s);
+  no(apply(s, { type: "sell", actor: "fighter", shop, item: "Longsword" }, PAT), "Brenna's purse would hold more than 10,000,000 coins of a kind.");
+  assert.equal(JSON.stringify(s), before);
+});
+
+test("a failed re-haggle keeps the better quote; a special taken off the shelf is not revealed; new lists may not clash with own lines", () => {
+  const s = table(), shop = outfitter(s);
+  const rp = ok(apply(s, { type: "quote", shop, for: "fighter", line: "potion-of-healing", roleplay: true }, DM)).events.find((e) => e.type === "quoted");
+  assert.equal(rp.price, 4750);
+  const failed = ok(apply(s, { type: "quote", shop, for: "fighter", line: "potion-of-healing", check: { skill: "persuasion", dc: 40 } }, DM)).events.find((e) => e.type === "quoted");
+  assert.equal(failed.price, 4750);
+  assert.equal(s.shops[0].quotes.find((q) => q.line === "potion-of-healing").price, 4750);
+  ok(apply(s, { type: "shopEdit", shop, override: { "canary-orb": { gone: true } } }, DM));
+  no(apply(s, { type: "revealGoods", shop, line: "canary-orb" }, DM), "CANARY ORB is taken off the shelf here: give it back (override null) first.");
+  ok(apply(s, { type: "shopEdit", shop, set: { lists: [] } }, DM));
+  ok(apply(s, { type: "shopEdit", shop, add: [{ id: "rope", name: "Good rope", price: "2 GP", kind: "gear" }] }, DM));
+  no(apply(s, { type: "shopEdit", shop, set: { lists: ["standard"] } }, DM), "Outfitter has a line \"rope\" already.");
+});
+
+test("twenty markets of the largest size cost an ordinary action and the undo mark almost nothing: they are held by reference, never changed in place", () => {
+  const s = table();
+  const lines = Array.from({ length: 195 }, (_, n) => ({ id: `l${n}`, name: `A rather long line name number ${n} xx`, price: "1 GP", kind: "gear", art: "icon:rope", note: "x".repeat(100) }));
+  const big = (i) => ({ format: "hextable-market", v: 1, id: `big-${i}`, name: `Big ${i}`, version: 1, lists: [0, 1, 2].map((k) => ({ id: `list-${k}`, name: "L", lines: lines.map((l) => ({ ...l, id: `${l.id}-${k}` })) })), stores: [], loot: [] });
+  const time = (f, n = 20) => { f(); const t0 = performance.now(); for (let i = 0; i < n; i++) f(); return (performance.now() - t0) / n; };
+  const step = () => ok(apply(s, { type: "advanceTime", minutes: 1 }, DM));
+  const bare = time(step), bareMark = time(() => mark(s));
+  ok(apply(s, { type: "market", remove: "port-goods" }, DM));
+  for (let i = 0; i < 20; i++) ok(apply(s, { type: "market", add: big(i) }, DM));
+  assert.ok(JSON.stringify(s.markets).length > 2_000_000);
+  const deep = (x) => { if (x && typeof x === "object") { Object.freeze(x); for (const v of Object.values(x)) deep(v); } return x; };
+  deep(s.markets);
+  const full = time(step), fullMark = time(() => mark(s));
+  assert.ok(full < bare + 3, `an action: ${full.toFixed(2)} ms with 20 markets, ${bare.toFixed(2)} ms without`);
+  assert.ok(fullMark < bareMark + 3, `the undo mark: ${fullMark.toFixed(2)} ms with 20 markets, ${bareMark.toFixed(2)} ms without`);
+  // Shops on frozen markets play, and undo of an import gives back the list as it was.
+  const id = ok(apply(s, { type: "openShop", kind: "store", name: "Stall" }, DM)).events[0].shop;
+  ok(apply(s, { type: "closeShop", shop: id }, DM));
+  const h = createHistory(), before = mark(s), was = s.markets;
+  const r = ok(apply(s, { type: "market", remove: "big-3" }, DM));
+  h.record(before, s, describeStep({ type: "market", remove: "big-3" }, r.events, before, s));
+  assert.equal(s.markets.length, 19);
+  h.undo(s);
+  assert.equal(s.markets, was);
+});

@@ -174,8 +174,20 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // own creatures' standing instructions for reactions, and a reaction they are asked about (or
   // only that the table is waiting). A player who was sent a creature as a seen record in place of the open one
   // (forViewer) has their own snapshot, taken of what they were sent, so a patch never compares against the shared record.
+  // The DM's view holds the imported market packs (up to 20 of 128 KB; docs/specs/shops.md). The engine never changes them in place (a
+  // `market` action puts a new list in whole), so their JSON is kept per list and not made again for every update.
+  const marketsJson = new WeakMap();
+  const snapDM = (state) => {
+    const list = state.markets;
+    if (!list || typeof list !== "object") return snapshot(state);
+    const snap = snapshot({ ...state, markets: undefined });
+    let json = marketsJson.get(list);
+    if (json === undefined) { json = JSON.stringify(list); marketsJson.set(list, json); }
+    snap.top.markets = json;
+    return snap;
+  };
   const snapFor = (t, m, state) => {
-    if (m.role === "dm") return snapshot(state);
+    if (m.role === "dm") return snapDM(state);
     const { snap, base } = forPlayers(t);
     if (state.entities !== base.entities || state.encounter !== base.encounter || state.effects !== base.effects) return snapshot(state);
     return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), shops: JSON.stringify(state.shops), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt) } };

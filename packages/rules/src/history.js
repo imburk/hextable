@@ -27,8 +27,14 @@ export const undoable = (action) => !LOBBY.has(action?.type);
 
 // What a state looked like, cheaply enough to take before every action. The timeline only ever
 // grows, so only its length is kept; its place among the keys is kept with a null.
+// The imported market packs (`markets`; docs/specs/shops.md) are held by reference, not copied: no action changes them in place (the
+// `market` action puts a new list in whole, engine/trade.js), so the copy of before stays true, and a step that did not touch them finds
+// the very same list after and costs nothing to compare. Up to 20 packs of 128 KB would otherwise be copied before every action.
 export function mark(state) {
-  return { tree: structuredClone({ ...state, timeline: null }), tl: state.timeline?.length ?? 0 };
+  const keep = Object.hasOwn(state, 'markets') && state.markets !== null && typeof state.markets === 'object';
+  const tree = structuredClone({ ...state, timeline: null, ...(keep ? { markets: null } : {}) });
+  if (keep) tree.markets = state.markets;
+  return { tree, tl: state.timeline?.length ?? 0 };
 }
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);

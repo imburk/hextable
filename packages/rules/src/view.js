@@ -375,6 +375,7 @@ export function viewShops(state, viewer) {
       const price = store ? listPrice(l, shop, market, env) : null;
       if (store && price === null) continue;
       const left = shop.overrides?.[l.id]?.qty !== undefined ? shop.overrides[l.id].qty : l.qty;
+      if (!store && left !== undefined && left <= 0) continue;                    // a loot line with none left is gone (Decision 7)
       lines.push({ id: l.id, name: lineName(l), ...(l.item !== undefined ? { item: l.item } : {}), ...(l.base !== undefined ? { base: l.base } : {}), ...(l.spell !== undefined ? { spell: l.spell } : {}),
         kind: kindOf(l, env), ...(l.art !== undefined ? { art: l.art } : {}), ...(l.note !== undefined ? { note: l.note } : {}), ...(price !== null ? { price } : {}), ...(left !== undefined ? { qty: left } : {}) });
     }
@@ -944,7 +945,11 @@ export function viewEvents(events, state, viewer) {
         const hears = (ev.to === 'all' || (Array.isArray(ev.to) && typeof u === 'string' && ev.to.includes(u))) && !(Array.isArray(ev.except) && typeof u === 'string' && ev.except.includes(u));
         const named = [ev.for, ev.buyer, ev.who, ...(Array.isArray(ev.split) ? ev.split : []), ...(Array.isArray(ev.payers) ? ev.payers.map((p) => p?.id) : [])].filter((x) => x !== undefined);
         if (!hears || named.some((id) => cls(id) === 'hidden')) break;
-        out.push(structuredClone(pick(ev, TRADE_KEYS[ev.type])));
+        const e = structuredClone(pick(ev, TRADE_KEYS[ev.type]));
+        // A joint purchase ended because its buyer's player is no longer shown the store says, to the others, only that it ended: who
+        // is shown a store is the DM's business (review of #598, M2).
+        if (e.type === 'jointEnded' && e.why === 'hidden') e.why = 'ended';
+        out.push(e);
         break;
       }
       case 'coins':                                    // a purse changed: a party creature's, whose record the party is sent; never which shop

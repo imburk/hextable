@@ -860,6 +860,18 @@ the stores shown to them now, not at P4; P4 keeps `market` joining `MAP_ACTIONS`
 - **Selling** pays in the largest coins first (`change`), so 35 GP is 3 PP 5 GP. A name in `gear` that is a pack item's own name (a weapon,
   armour, or a magic item with no variant or base) sells as that item. A quote set for a name sells that name at that price.
 - **Shop ids** count up in `state.shopSeq` (`s1, s2, ...`), so a closed shop's id is never used again.
+- **Markets are held by reference** (review of #598, M3). Twenty packs at the 128 KB limit are 2.5 MB of JSON; copied before every action
+  (apply()'s snapshot and the undo mark) they cost about 12 ms each, 25 ms an action, and the server's patch snapshot for the DM another 7.
+  No action changes a market in place (`market` puts a new list in whole), so `freeze` in `engine.js` and `mark` in `history.js` hold the list
+  by reference, and the table server keeps its JSON per list (`snapDM`). Measured after: an action and a mark cost what they cost without
+  markets (under 0.5 ms each). `shops.test.js` holds the bound (under 3 ms more per action and per mark, markets deep-frozen). A future
+  action that edits a market in place breaks this, and the frozen test catches it.
+- **The fix round of the review of #598.** `take` reads a line's overrides as the view does (taken off: "No such item."; none left: "Sold
+  out."; stock off the override; at none left the line and its override go). A `jointEnded` for `hidden` is told to players as `ended`. A
+  pledge is taken back from anywhere (`share: 0`: no place, fight or up check); a joint purchase ends (`pledger`) when a pledger leaves the
+  table or dies. A purse that is not a purse (a kind past 10,000,000, a coin not whole) is refused, not read as empty, and no buy, sell, take
+  or settle may take a kind past the ceiling. A re-haggle that comes out worse than the standing quote leaves that quote. `revealGoods`
+  refuses a special taken off the shelf; `shopEdit { set: { lists } }` refuses lists whose lines share an id with the shop's own.
 
 ## Security and hidden-information review points
 
