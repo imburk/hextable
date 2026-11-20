@@ -352,7 +352,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     const asks = L.feats.filter((x) => x.f.options && !x.option);
     if (asks.length) list.push({ id: 'choices', title: 'Class choices', tip: asks.map((x) => `${x.f.name}${b.choices[x.f.id] ? `: ${Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id].length : (x.f.options.find((o) => o.id === b.choices[x.f.id])?.name ?? '')}` : ''}`).join(' · '), need: needOf(nd, 'choices'), render: () => choicesSection(asks) });
     const fs = featChoices(s);
-    if (fs.length) list.push({ id: 'feats', title: 'Feats', tip: fs.map((sl) => `${sl.name.replace(/ \(.*$/, '').replace(/:.*$/, '')}: ${sl.taken ? CONTENT.feats[sl.taken.id]?.name : 'none'}`).join(' · '), need: needOf(nd, 'feats'), render: () => featsSection(fs) });
+    if (fs.length) list.push({ id: 'feats', title: 'Feats', tip: fs.map((sl) => `${/\(level (\d+)\)/.test(sl.name) ? `Level ${/\(level (\d+)\)/.exec(sl.name)[1]}` : sl.name.replace(/:.*$/, '')}: ${sl.taken ? CONTENT.feats[sl.taken.id]?.name : 'none'}`).join(' · '), need: needOf(nd, 'feats'), render: () => featsSection(fs) });
     list.push({ id: 'gear', title: 'Armour and weapons', tip: gearTip(L, c), render: () => gearSection(L, c, d) });
     if (L.cast) list.push({ id: 'spells', title: 'Spells', tip: spellTip(L), render: () => spellsSection(L) });
     return list;

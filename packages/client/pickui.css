@@ -33,7 +33,8 @@
 .pk input:checked + .box.round::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-ink); }
 .pk input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pk input:disabled + .box { opacity: .45; border-style: dashed; }
-.pk .opt.dim > label { cursor: default; }
+.pk .opt.dim > label, .pk .opt.static > label { cursor: default; }
+.pk .opt.static > label { padding-left: 2px; }
 .pk .opt .txt { min-width: 0; flex: 1; display: block; }
 .pk .opt .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 700; }
 .pk .opt .l1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

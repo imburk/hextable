@@ -103,7 +103,7 @@ export function pickRow(o) {
   const txt = el('span', { class: 'txt' }, l1, o.why ? el('span', { class: 'l2 one why', text: o.why }) : o.summary ? el('span', { class: 'l2 one', text: o.summary }) : null,
     o.cost ? el('span', { class: 'l2 costline', text: o.cost }) : null, o.also ? el('span', { class: 'l2 also', text: o.also }) : null);
   const lab = el('label', {}, input, input ? el('span', { class: `box${kind === 'radio' ? ' round' : ''}` }) : null, txt);
-  const row = el('div', { class: `opt${o.np ? ' npr' : ''}${off || o.why ? ' dim' : ''}${o.checked ? ' on' : ''}`, 'data-row': o.id });
+  const row = el('div', { class: `opt${o.np ? ' npr' : ''}${off || o.why ? ' dim' : ''}${o.checked ? ' on' : ''}${kind === 'none' ? ' static' : ''}`, 'data-row': o.id });
   row.append(lab);
   if (o.info) { row.append(infoButton(row, o.label ?? o.title, o.info)); reveal(row, o.info); }
   return row;
