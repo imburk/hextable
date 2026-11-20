@@ -406,3 +406,42 @@ test("a homebrew subclass of another class is not matched, and the SRD subclass 
   const xml = fixture("paladin-ember").replace("<specialization type=\"string\">Ember</specialization>", "<specialization type=\"string\">Oath of Devotion</specialization>");
   assert.equal(using(overlayOf([EMBER]), () => importFgxml(xml)).character.subclass, "devotion");
 });
+
+// ---------- picks inferred for a subclass's list of skills (#548) ----------
+const picksPack = () => {
+  const f = (id, level, skills) => ({ id: `hb-quill-${id}`, name: id.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase()), level, tier: "auto", checked: false, text: "In the pack's own words.", grants: { skills } });
+  const sub = (name, features) => ({ id: `hb-quill-${name.toLowerCase().replace(/ /g, "-")}`, name, class: "cleric", source: "homebrew:quill", checked: false, text: "Invented.", features });
+  const r = loadPack({ format: "hextable-pack", v: 1, pack: { id: "quill", name: "quill", version: 1, license: "CC0, by the author", attribution: "Written for a test." },
+    subclasses: [
+      sub("Domain of Expertise", [f("deep-reading", 3, { n: 2, from: ["history", "religion", "arcana", "nature"], expertise: true })]),
+      sub("Domain of Plain Lists", [f("plain-reading", 3, { n: 2, from: ["history", "religion", "arcana", "nature"] })]),
+    ] });
+  assert.ok(r.ok, (r.problems ?? []).join("; "));
+  return overlayOf([r.pack]);
+};
+const withDomain = (name, prof) => fixture("cleric").replace("Life Domain", name)
+  .replace(/(<name type="string">(?:History|Religion)<\/name><prof type="number">)1/g, (_, a) => `${a}${prof}`);
+
+test("a list feature with Expertise infers its picks only from skills the sheet marks at 2, and says so", () => {
+  const ON = picksPack();
+  const two = using(ON, () => importFgxml(withDomain("Domain of Expertise", 2)));
+  assert.deepEqual(two.character.choices["hb-quill-deep-reading"], ["history", "religion"]);
+  const line = two.report.features.find((x) => x.name === "Deep reading");
+  assert.equal(line.why, "Picks inferred: History, Religion \u2014 check them.");
+  assert.equal(two.report.loadable, true, two.report.problems.join("; "));
+  // Proficiency 1 only: Expertise the sheet never had would be invented, so no pick is written and validate asks.
+  const one = using(ON, () => importFgxml(withDomain("Domain of Expertise", 1)));
+  assert.equal(one.character.choices?.["hb-quill-deep-reading"], undefined);
+  assert.ok(!one.report.features.some((x) => x.name === "Deep reading"), "no line for a pick not made");
+  using(ON, () => assert.match(validate(one.character).join(" "), /Choose 2 skills for Deep reading/));
+});
+
+test("a list feature without Expertise still infers from proficiency 1, and says so", () => {
+  const ON = picksPack();
+  const r = using(ON, () => importFgxml(withDomain("Domain of Plain Lists", 1)));
+  assert.deepEqual(r.character.choices["hb-quill-plain-reading"], ["history", "religion"]);
+  assert.equal(r.report.features.find((x) => x.name === "Plain reading").why, "Picks inferred: History, Religion \u2014 check them.");
+  using(ON, () => assert.deepEqual(validate(r.character), []));
+  // An SRD sheet says nothing of the kind.
+  assert.ok(!importFgxml(fixture("cleric")).report.features.some((x) => /inferred/.test(x.why)));
+});
