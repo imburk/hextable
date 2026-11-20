@@ -440,14 +440,14 @@ async function scoresPass(browser, url, label, opts, grid) {
       });
 
       await run.do('a roll made and not saved stays on the device: closing the panel is not a new roll; "below 10" lets only a low score be rolled again', async () => {
-        await tap('#mc-new'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        await tap('#mc-new'); await waitShown(page, '#qb'); await openSec(page, 'scores'); await tap('#qb-method-roll');
         await page.selectOption('#qb-rule-reroll', 'below'); if ((await val('#qb-rule-below')) !== '10') throw new Error('below defaults to 10');
         await tap('#qb-roll'); await waitShown(page, '#qb-chips');
         const open = await page.$$eval('[id^="qb-reroll-"]', (b) => b.map((x) => +x.id.slice(10)));
         const lows = first.map(topOf).flatMap((n, i) => (n < 10 ? [i] : []));
         if (open.join() !== lows.join()) throw new Error(`rerollable ${open}, expected ${lows} of ${first.map(topOf)}`);
         const why = await page.$$eval('[id^="qb-noreroll-"]', (e) => e.map((x) => x.textContent)); if (why.length + open.length !== 6 || why.some((w) => !/is not below 10/.test(w))) throw new Error(`reasons: ${why}`);
-        await page.click('#qb-cancel'); await tap('#mc-new'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        await page.click('#qb-cancel'); await tap('#mc-new'); await waitShown(page, '#qb'); await openSec(page, 'scores'); await tap('#qb-method-roll');
         if (await page.$('#qb-roll')) throw new Error('closing the panel gave a new roll');
         const again = await page.$$eval('.sc-chip', (c) => c.map((x) => +x.dataset.score)); if (again.join() !== first.map(topOf).join()) throw new Error('not the same roll');
         await page.click('#qb-cancel');
@@ -472,7 +472,7 @@ async function scoresPass(browser, url, label, opts, grid) {
       await run.do('a level-up shows how the scores were made and offers no way to change them', async () => {
         await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
         await wait(page, () => !document.getElementById('qb-levelup')?.disabled);
-        await tap('#qb-levelup'); await waitShown(page, '#qb');
+        await tap('#qb-levelup'); await waitShown(page, '#qb'); await openSec(page, 'scores');
         const line = await txt('#qb-sc-line');
         if (!/^Rolled on a device, \d+ \w+ 2026\. A level-up does not change them/.test(line)) throw new Error(`line: ${line}`);
         if (await page.$('.sc-method') || await page.$('#qb-roll') || await page.$('[id^="qb-reroll-"]')) throw new Error('a level-up offers to change the scores');

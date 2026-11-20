@@ -429,8 +429,9 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
 
   // ---------- Class resource and features ----------
   const dots = (n, cls = '') => el('span', { class: 'pk-pips', 'aria-hidden': 'true' }, ...Array.from({ length: Math.min(n, 12) }, () => el('span', { class: `pip${cls}` })));
-  function featureRow(f, res, u) {
-    const when = featureWhen(f), own = u ?? f.uses;
+  function featureRow(f0, res, u) {
+    const f = f0.grants || f0.feat ? f0 : (featuresOf(sheet()).find((x) => x.f.id === f0.id)?.f ?? f0);       // a record's feature has no grants: read the class's own entry for when it is used
+    const when = featureWhen(f), own = u ?? f0.uses ?? f.uses;
     return pickRow({ id: `qb-feature-${f.id}`, kind: 'none', title: f.name, chips: [res ? chip('cost', costText(res, f)) : null, chip('when', when)].filter(Boolean), summary: firstSentence(f.text), also: own && !res ? usesText(own.max !== undefined && typeof own.max === 'number' ? own : null) : '',
       info: { title: f.name, sub: `${when}${res ? ` · costs ${costText(res, f)}` : ''}`, text: f.text } });
   }
@@ -797,7 +798,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     const old = new Map((was.feats ?? []).map((f) => [f.id, f]));
     const fresh = (now.feats ?? []).filter((f) => !old.has(f.id));
     const grown = (now.feats ?? []).filter((f) => old.has(f.id) && f.uses && JSON.stringify(f.uses) !== JSON.stringify(old.get(f.id).uses));
-    if (fresh.length) box.append(el('h4', { text: 'New features' }), ...fresh.map(featureRow));
+    if (fresh.length) box.append(el('h4', { text: 'New features' }), ...fresh.map((f) => featureRow(f)));
     if (grown.length) box.append(el('h4', { text: 'Features that grow' }), ...grown.map((f) => el('p', { class: 'note', text: `${f.name}: ${usesText(old.get(f.id).uses)} becomes ${usesText(f.uses)}` })));
     if (!fresh.length && !grown.length) box.append(el('p', { class: 'note', text: 'No new features at this level.' }));
     box.append(el('p', { class: 'note', text: 'Anything below that needs a choice (a subclass, skills, spells, ability scores for a feat) is listed beside the button.' }));
