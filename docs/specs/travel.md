@@ -1035,6 +1035,19 @@ the fill. **Loading a world clears the DM's undo history**, as removing a homebr
 world. The world budget is its own iterative walk with the homebrew budget's rules (prototype keys, control characters, plain
 data), not the homebrew scanner itself, which `content/schema.js` does not export: **sharing the code is an open question**.
 
+**Build notes, W4.** What players are sent is built in `view.js` and the lists of what they know are `s.known` (`known.js`): an
+absent field read as empty, so no state version changed. The players' view gains, only for a table with a world and only once a place
+is known, `atlas` (`{ name, here, nodes, routes, markers }`, ids `pl1`, `pin1`, `ent1`, `rt1` given in the order first known); to a
+player whose characters are all parked, `watching: { mode, at }`; and to every player `away` (the party members kept in parked places,
+as `{ node, record }`, a record scrubbed of every creature not of the party). The shared view is still one: the place in play's. Under
+`watching: 'off'` a watcher gets the band, their `away` sheets and the out-of-character talk; no map, creatures, fight or events of the
+place. A player's `enter`, `jump`, `cast`, `goTo` and the like have their `node`, `pin`, `entry` and `route` turned from player ids in
+`dispatch` (`known.js`, `translate`); any id they were not given, a pack's own included, is answered `There is no such place.` before
+anything else is looked at. `say` carries `node` (the place it was said at); a parked group's in-character line is `far`, with `to` (who
+was there), and is sent only to those players and the DM. Not built here, because no row owns it and each needs a history label and a
+test case: the DM's `showPlace` and `showRoute` actions (`known.js` has the working parts, `showPlace` and `showRoute`, tested); a route
+is also "known" once travelled, which is W6's.
+
 ## What stays manual
 
 - Getting lost, foraging and what a Search finds on the road: the DM, with the terrain's DC offered.
