@@ -314,7 +314,9 @@ test("an SRD character and a sheet of the SRD's own are validated and derived as
 // ---------- the importer names the picks a sheet already holds ----------
 test("an imported sheet whose skills hold exactly the feature's n of its list gets them as the picks, and loads", () => {
   // The cleric fixture (History, Insight, Medicine, Religion) with its domain renamed to the invented one: History and Religion are two of the list.
-  const xml = readFileSync(new URL("./fixtures/fgxml-cleric.xml", import.meta.url), "utf8").replace("Life Domain", "Domain of the Open Page");
+  // The domain gives Expertise, so the importer reads only the skills the sheet marks at proficiency 2 (#548).
+  const xml = readFileSync(new URL("./fixtures/fgxml-cleric.xml", import.meta.url), "utf8").replace("Life Domain", "Domain of the Open Page")
+    .replace(/(<name type="string">(?:History|Religion)<\/name><prof type="number">)1/g, "$12");
   const { character, report } = using(ON, () => importFgxml(xml));
   assert.equal(report.loadable, true, report.problems.join("; "));
   assert.equal(character.subclass, SUB);
@@ -330,7 +332,7 @@ test("an imported sheet whose skills hold exactly the feature's n of its list ge
   const bare = importFgxml(xml);
   assert.equal(bare.character.choices?.[hb("open-page")], undefined);
   // A sheet that holds only one of the list gets no pick (the DM names the other).
-  const one = using(ON, () => importFgxml(xml.replace(/<name type="string">History<\/name><prof type="number">1<\/prof>/, '<name type="string">History</name><prof type="number">0</prof>')));
+  const one = using(ON, () => importFgxml(xml.replace(/<name type="string">History<\/name><prof type="number">2<\/prof>/, '<name type="string">History</name><prof type="number">0</prof>')));
   assert.equal(one.character.choices?.[hb("open-page")], undefined);
   using(ON, () => assert.match(validate(one.character).join(" "), /Choose 2 skills for Open page/));
 });
