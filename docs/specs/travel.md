@@ -1048,6 +1048,13 @@ was there), and is sent only to those players and the DM. Not built here, becaus
 test case: the DM's `showPlace` and `showRoute` actions (`known.js` has the working parts, `showPlace` and `showRoute`, tested); a route
 is also "known" once travelled, which is W6's.
 
+Review notes on W4. What players are sent includes the world's name and the name of every known place and of each place above one
+(Decision 12), so a DM should put no spoiler in those names. `s.known` is reset when the world's hash changes, so a new version of
+the same world never maps an old player id onto new content. A parked group's in-character lines count against a cap of their own,
+kept on its record (`said`, as a scene's). Undo can give back a table whose `known` list is shorter, so a later place may be issued
+an id that an undone one had; the whole view is resent after an undo and nothing from the undone future is kept, so this leaks
+nothing.
+
 ## What stays manual
 
 - Getting lost, foraging and what a Search finds on the road: the DM, with the terrain's DC offered.

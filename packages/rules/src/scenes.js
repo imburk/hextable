@@ -150,21 +150,24 @@ export function sceneActions(fail) {
       dm || (typeof ctx.userId === 'string' && ctx.userId) || fail('Join the table first.');
       const sc = s.scene?.open ? s.scene : null;     // a scene not open is not where anyone is talking
       let as = null, name, far = null;
+      // The scene's cap comes first, for everyone who is not speaking from a parked place (the order the checks have always had); a parked group has
+      // a cap of its own, kept on its record, so a player there cannot flood the table either.
+      const away = typeof a.as === 'string' && !sc?.present.some((p) => p.id === a.as) && !Object.hasOwn(s.entities, a.as) ? parkedParty(s, a.as) : null;
+      const farOk = !!away && (dm || ownerOf({ entities: away.rec.entities }, away.e) === ctx.userId);
+      if (!farOk) !sc || sc.said < SCENE_LIMITS.said || fail('This scene has gone on long enough. Start a new one.');
+      else (away.rec.said ?? 0) < SCENE_LIMITS.said || fail('This place has gone on long enough. Start a new scene.');
       if (a.as === null || a.as === undefined) name = dm ? 'DM' : cleanText(a.userName, 40) || 'A player';
       else {
         const npc = typeof a.as === 'string' ? sc?.present.find((p) => p.id === a.as) : null;
         const e = typeof a.as === 'string' && !npc && Object.hasOwn(s.entities, a.as) ? s.entities[a.as] : null;
-        // A character of the party in a place that is not in play (docs/specs/travel.md, Decision 5): it speaks there, to its own place.
-        const away = typeof a.as === 'string' && !npc && !e ? parkedParty(s, a.as) : null;
         // The same answer for someone else's character, an NPC, a creature players cannot see and an id that is nothing.
         if (npc) { dm || fail('You can speak only as your own character.'); name = npc.name; }
         else if (e && e.side === 'party' && (dm || ownerOf(s, e) === ctx.userId)) name = e.name;
-        else if (away && (dm || ownerOf({ entities: away.rec.entities }, away.e) === ctx.userId)) { name = away.e.name; far = away; }
+        else if (farOk) { name = away.e.name; far = away; }
         else fail(dm ? 'Nobody of that name is in the scene.' : 'You can speak only as your own character.');
         as = a.as;
       }
-      // What is said in a place that is not in play is not a line of the scene in play.
-      !sc || far || sc.said < SCENE_LIMITS.said || fail('This scene has gone on long enough. Start a new one.');
+      if (far) far.rec.said = (far.rec.said ?? 0) + 1;
       const line = sc && !far ? ++sc.said : undefined;
       // `node`: where it was said, when the table has a world (view.js tells players the id they were given, and only that). A line said
       // in character by a parked group is for the players there alone (`to`, who they are then), and the DM.

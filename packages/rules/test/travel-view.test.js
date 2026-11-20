@@ -226,3 +226,49 @@ test("what is known only grows, is part of the state, and an undone arrival leav
   ok(apply(s, { type: "advanceTime", minutes: 1 }, DM));
   assert.deepEqual(knownOf(s).nodes, ["continent", "cave"], "the party is at the cave; the keep (parked) is known too once the world's own parked record says so");
 });
+
+test("under watching: off a parked group's in-character line is still heard by the players of that group, and not by the group in play", () => {
+  const s = split();
+  const KIM = { role: "player", userId: "kim" };
+  s.entities.fighter.owner = "pat";
+  s.parked.keep.entities.wizard.owner = "kim";                    // the keep's group has two players: Sam (cleric) and Kim (wizard)
+  ok(apply(s, { type: "setting", key: "watching", value: "off" }, DM));
+  const far = ok(apply(s, { type: "say", as: "cleric", text: "KEEPLINE" }, SAM)).events;
+  assert.deepEqual(viewEvents(far, s, SAM).map((e) => e.text), ["KEEPLINE"], "the speaker hears it");
+  assert.deepEqual(viewEvents(far, s, KIM).map((e) => e.text), ["KEEPLINE"], "and so does the other player there");
+  assert.deepEqual(viewEvents(far, s, PAT), [], "the group in play does not");
+  assert.deepEqual(view(s, KIM).watching, { mode: "off", at: ["pl2"] });
+  // The place in play's in-character line is not told to an off watcher; out of character still is.
+  const here = ok(apply(s, { type: "say", as: "fighter", text: "CAVELINE" }, PAT)).events;
+  assert.deepEqual(viewEvents(here, s, SAM), []);
+});
+
+test("a parked group's lines are capped like a scene's, and a full scene gives a bad speaker the answer it always did", () => {
+  const s = split();
+  s.parked.keep.said = 5000;
+  refused(s, { type: "say", as: "cleric", text: "flood" }, /gone on long enough/, SAM);
+  ok(apply(s, { type: "say", as: "fighter", text: "the cave is another count" }, PAT));
+  s.parked.keep.said = 4999;
+  ok(apply(s, { type: "say", as: "cleric", text: "last one" }, SAM));
+  assert.equal(s.parked.keep.said, 5000);
+  refused(s, { type: "say", as: "cleric", text: "one more" }, /gone on long enough/, SAM);
+  // A scene in play that is full: the old order of checks, whatever the speaker.
+  ok(apply(s, { type: "scene", scene: { title: "S" } }, DM));
+  s.scene.said = 5000;
+  refused(s, { type: "say", as: "wizard", text: "x" }, /This scene has gone on long enough/, PAT);
+  refused(s, { type: "say", as: "nobody", text: "x" }, /This scene has gone on long enough/, PAT);
+});
+
+test("a new version of the same world (another hash) starts what the players know again", () => {
+  const s = world(newGame(5));
+  s.world.hash = "a".repeat(64);
+  ok(apply(s, { type: "loadMap", node: "keep", map: keepMap(), entry: "gate" }, DM));
+  showPlace(s, { node: "cave" });
+  assert.deepEqual(knownOf(s).nodes, ["continent", "keep", "cave"]);
+  s.world.hash = "b".repeat(64);
+  assert.equal(knownOf(s), null, "the old lists name nothing in the new content");
+  assert.equal(view(s, PAT).atlas, undefined);
+  ok(apply(s, { type: "advanceTime", minutes: 1 }, DM));
+  assert.deepEqual(knownOf(s).nodes, ["continent", "keep"], "only what the party stands in");
+  assert.equal(view(s, PAT).atlas.nodes.pl2.name, "The keep");
+});

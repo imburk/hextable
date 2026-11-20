@@ -534,7 +534,7 @@ export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
   // A player whose characters are in another place, with the table rule `watching: 'off'`, is told the table's out-of-character talk and what is shown
   // to them, and nothing of the place in play.
-  return viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && ev.as === null) || ev?.type === 'handoutShown') : events, state, viewer);
+  return viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer);
 }
 function viewEventsOf(events, state, viewer) {
   // The faces of a damage, healing or Temporary Hit Points roll (docs/specs/dice.md) go with the

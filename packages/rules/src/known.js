@@ -1,14 +1,14 @@
 // What the players know of the atlas (docs/specs/travel.md, Decisions 4, 5 and 12; build row W4). Pure: nothing here
 // reads a clock or a die, and what is worked out changes nothing but `s.known`.
 //
-//   s.known: absent | { world, nodes: [id], pins: { [node]: [pin id] }, entries: { [node]: [entry id] }, routes: [id] }
+//   s.known: absent | { world, hash, nodes: [id], pins: { [node]: [pin id] }, entries: { [node]: [entry id] }, routes: [id] }
 //
 // The places, pins, entries and routes a table's players have been told of, each list in the order they were first
 // known. A player is never sent the pack's ids: a place is `pl1`, `pl2`, ... by its place in `known.nodes`, a pin of a
 // known place `pin1`, ... by its place in that place's list, an entry `ent1`, ... likewise and a route `rt1`, ...; so what
 // they are sent says nothing of a place they do not know, not even how many there are (a scene numbers its own the same
 // way, scenes.js). The lists only grow, so an id once given means the same thing for as long as the world stays; a different
-// world (another id) starts them again. It is the engine's own record, kept in the state beside the world's index (undo,
+// world (another id, or the same id with other content: its hash) starts them again. It is the engine's own record, kept in the state beside the world's index (undo,
 // saving and a table export carry it): `learn` runs after every action (engine.js), and the DM's `showPlace` and
 // `showRoute` (engine/atlas.js) add to it. A table with no world has none, and the view of a table with none is the
 // view it always had.
@@ -32,8 +32,8 @@ export const hasWorld = (s) => isRec(s?.world) && isRec(s.world.nodes) && Object
 // The record, made fresh for the world the table has now (and again for a different world than the one it had).
 function record(s) {
   const k = s.known;
-  if (isRec(k) && k.world === (s.world.id ?? null) && Array.isArray(k.nodes) && isRec(k.pins) && isRec(k.entries) && Array.isArray(k.routes)) return k;
-  return (s.known = { world: s.world.id ?? null, nodes: [], pins: {}, entries: {}, routes: [] });
+  if (isRec(k) && k.world === (s.world.id ?? null) && k.hash === (s.world.hash ?? null) && Array.isArray(k.nodes) && isRec(k.pins) && isRec(k.entries) && Array.isArray(k.routes)) return k;
+  return (s.known = { world: s.world.id ?? null, hash: s.world.hash ?? null, nodes: [], pins: {}, entries: {}, routes: [] });
 }
 const add = (list, id) => { if (!list.includes(id)) list.push(id); };
 const addTo = (map, key, id) => { if (!own(map, key)) map[key] = []; add(map[key], id); };
@@ -121,7 +121,7 @@ const fromNumber = (list, text, prefix) => {
   const id = list[Number(digits) - 1];
   return typeof id === 'string' ? id : null;
 };
-export const knownOf = (s) => (hasWorld(s) && isRec(s.known) && s.known.world === (s.world.id ?? null) && Array.isArray(s.known.nodes) && isRec(s.known.pins) && isRec(s.known.entries) && Array.isArray(s.known.routes) ? s.known : null);
+export const knownOf = (s) => (hasWorld(s) && isRec(s.known) && s.known.world === (s.world.id ?? null) && s.known.hash === (s.world.hash ?? null) && Array.isArray(s.known.nodes) && isRec(s.known.pins) && isRec(s.known.entries) && Array.isArray(s.known.routes) ? s.known : null);
 
 // The id a player is given for a place of the world, or null if they were not given one.
 export const playerNode = (s, id) => { const k = knownOf(s); return k ? numbered(k.nodes, id, PLAYER_ID.node) : null; };
