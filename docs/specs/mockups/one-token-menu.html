@@ -269,7 +269,7 @@ body.bare #mock { display: none; }
 .frame[data-theme=sunlit] { --icon: var(--accent); }
 .frame[data-theme=pocket] { --icon: var(--accent); }
 .arc { position: absolute; inset: 0; z-index: 41; pointer-events: none; }
-.atile { position: absolute; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--panel-solid); color: var(--icon);
+.atile { position: absolute; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--panel-solid); color: var(--icon);
   display: grid; place-items: center; padding: 0; pointer-events: auto; box-shadow: 0 3px 10px #0006; cursor: pointer;
   transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 0; transition: transform .5s cubic-bezier(.2,.8,.25,1) calc(var(--i) * 25ms), opacity .4s calc(var(--i) * 25ms); }
 .frame[data-theme=pocket] .atile { border-radius: 4px; box-shadow: 3px 3px 0 #0005; }
@@ -279,7 +279,7 @@ body.bare #mock { display: none; }
 .atile.static { position: relative; margin: 0; transform: none; opacity: 1; flex: none; }
 .atile .sigil { width: 44px; height: 44px; font-size: 19px; }
 .atile .sigil .sring { width: 54px; height: 54px; inset: -5px; }
-.alab { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 600 12px/1.2 var(--body); color: var(--ink); background: var(--panel-solid); border: 1px solid var(--line);
+.alab { position: absolute; top: 55px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 600 12px/1.2 var(--body); color: var(--ink); background: var(--panel-solid); border: 1px solid var(--line);
   border-radius: 999px; padding: 2px 7px; opacity: 0; transition: opacity .35s; pointer-events: none; }
 .arc.labels .alab { opacity: 1; }
 .abadge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--bad); color: #fff; font: 700 11px/18px var(--body); text-align: center; padding: 0 4px; }
@@ -314,7 +314,7 @@ body.bare #mock { display: none; }
 #symbols .symhead { display: flex; justify-content: space-between; color: #eee; margin-bottom: 10px; }
 #symbols .symhead button { font: inherit; padding: 4px 10px; }
 #symbols .symcols { display: flex; flex-wrap: wrap; gap: 12px; }
-.symtheme { width: 360px; padding: 12px; border-radius: 10px; }
+.symtheme { width: 360px; padding: 12px; border-radius: 10px; background: var(--panel-solid) !important; color: var(--ink); }
 .symtheme h3 { margin: 0 0 10px; font: 700 16px var(--display); }
 .symgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .sym { display: flex; align-items: center; gap: 10px; } .sym small { color: var(--ink); font-size: 12px; }
@@ -558,28 +558,32 @@ const tileFace = (it, size = 26) => it.char ? sigil(it.char) : ico(it.icon);
 // ---------- the arc: a quick tap on the die fans the places out round it (Decision 4c) ----------
 // Two rings round the token: the inner ring is "Play", the outer ring "This game". At bottom centre each ring is a half
 // circle; in a corner a quarter circle. When a ring has more places than slots, its last slot is More.
+// Rings round the token, filled in order: your characters and Play first, then This game. At bottom centre on a phone each
+// ring is half an ellipse, narrower than it is tall so the ends stay on the screen; in a corner each ring is a quarter
+// circle. Capacities: phone centre 6 + 8; phone corner 3 + 5 + 7; desktop centre 8 + 11; desktop corner 4 + 6 + 8. When
+// there are more places than slots, the last slot is More. (Phone centre: ellipses 112 x 142 and 165 x 252 px.)
 function arcLayout() {
-  const W = F.offsetWidth, H = F.offsetHeight, phone = ST.frame === 'phone';
+  const W = F.offsetWidth, phone = ST.frame === 'phone';
   const t = $('token').getBoundingClientRect(), f = F.getBoundingClientRect(), sc = f.width / W;
   const cx = (t.left + t.width / 2 - f.left) / sc, cy = (t.top + t.height / 2 - f.top) / sc;
   const corner = ST.token !== 'centre';
-  const rings = phone ? (corner ? [{ r: 128, n: 4 }, { r: 210, n: 6 }] : [{ r: 132, n: 7 }, { r: 218, n: 8 }])
-    : (corner ? [{ r: 140, n: 4 }, { r: 230, n: 6 }] : [{ r: 150, n: 8 }, { r: 245, n: 10 }]);
-  // angles in degrees, 0 = right, 90 = straight up
-  const span = corner ? (ST.token === 'left' ? [86, 4] : [176, 94]) : [172, 8];
+  const rings = phone ? (corner ? [{ rx: 118, ry: 118, n: 3 }, { rx: 196, ry: 196, n: 5 }, { rx: 274, ry: 274, n: 7 }] : [{ rx: 112, ry: 142, n: 6 }, { rx: 165, ry: 252, n: 8 }])
+    : (corner ? [{ rx: 130, ry: 130, n: 4 }, { rx: 215, ry: 215, n: 6 }, { rx: 300, ry: 300, n: 8 }] : [{ rx: 175, ry: 175, n: 8 }, { rx: 290, ry: 290, n: 11 }]);
+  const span = corner ? (ST.token === 'left' ? [88, 2] : [178, 92]) : [168, 12];      // degrees: 0 = right, 90 = straight up
   return { cx, cy, rings, span, phone };
 }
 function arcHtml() {
-  const L = arcLayout(), items = visibleItems(), play = items.filter((i) => i.group === 'play'), game = items.filter((i) => i.group === 'game');
-  const place = (list, ring) => {
-    let shown = list;
-    if (list.length > ring.n) shown = [...list.slice(0, ring.n - 1), { id: 'more:' + list[0].group, label: 'More', icon: 'more', more: list.slice(ring.n - 1) }];
-    return shown.map((it, i) => { const k = shown.length === 1 ? .5 : i / (shown.length - 1), a = (L.span[0] + (L.span[1] - L.span[0]) * k) * Math.PI / 180;
-      return { it, x: L.cx + Math.cos(a) * ring.r, y: L.cy - Math.sin(a) * ring.r }; });
-  };
-  const spots = [...place(play, L.rings[0]), ...place(game, L.rings[1])];
-  const tile = ({ it, x, y }, i) => `<button type="button" class="atile${it.char ? ' achar' : ''}" style="left:${x}px;top:${y}px;--dx:${L.cx - x}px;--dy:${L.cy - y}px;--i:${i}" data-arc="${it.id}" aria-label="${it.label}${it.badge ? `, ${it.badge} new` : ''}">${tileFace(it)}${it.badge ? `<span class="abadge">${it.badge}</span>` : ''}<span class="alab">${it.label}</span></button>`;
-  const cards = `${ST.waiting.length || !ST.seenRing ? `<div class="arccards" style="bottom:${F.offsetHeight - L.cy + L.rings[1].r + 50}px">${waitBox()}${ringNote()}</div>` : ''}`;
+  const L = arcLayout(), items = visibleItems(), cap = L.rings.reduce((a, r) => a + r.n, 0);
+  const list = items.length > cap ? [...items.slice(0, cap - 1), { id: 'more:all', label: 'More', icon: 'more' }] : items;
+  const spots = []; let k = 0;
+  for (const ring of L.rings) {
+    const part = list.slice(k, k + ring.n); k += part.length; if (!part.length) break;
+    part.forEach((it, i) => { const u = ring.n === 1 ? .5 : (part.length === ring.n ? i / (ring.n - 1) : (i + .5) / part.length), a = (L.span[0] + (L.span[1] - L.span[0]) * u) * Math.PI / 180;
+      spots.push({ it, x: L.cx + Math.cos(a) * ring.rx, y: L.cy - Math.sin(a) * ring.ry }); });
+  }
+  const tile = ({ it, x, y }, i) => `<button type="button" class="atile${it.char ? ' achar' : ''}" role="menuitem" style="left:${x}px;top:${y}px;--dx:${L.cx - x}px;--dy:${L.cy - y}px;--i:${i}" data-arc="${it.id}" aria-label="${it.label}${it.badge ? `, ${it.badge} new` : ''}">${tileFace(it)}${it.badge ? `<span class="abadge">${it.badge}</span>` : ''}<span class="alab">${it.label}</span></button>`;
+  const outer = L.rings[Math.min(L.rings.length - 1, Math.ceil(list.length / 6))].ry;
+  const cards = `${ST.waiting.length || !ST.seenRing ? `<div class="arccards" style="bottom:${F.offsetHeight - L.cy + outer + 50}px">${waitBox()}${ringNote()}</div>` : ''}`;
   return cards + spots.map(tile).join('');
 }
 let labelT = null;
@@ -590,7 +594,7 @@ function openArc(on) {
     ST.labelsShown = ST.alwaysLabels;
     A.innerHTML = arcHtml(); A.hidden = false; A.className = `arc${ST.labelsShown ? ' labels' : ''}`;
     requestAnimationFrame(() => requestAnimationFrame(() => A.classList.add('out')));
-    $('scrim').classList.add('on', 'light'); $('token').setAttribute('aria-expanded', 'true'); $('turnline').style.visibility = 'hidden';
+    $('scrim').classList.add('on', 'light'); $('scrim').querySelector('.tip').textContent = 'Tap the map or the die to close'; $('token').setAttribute('aria-expanded', 'true'); $('turnline').style.visibility = 'hidden';
     if (!ST.alwaysLabels) labelT = setTimeout(() => { if (ST.arcOpen) { ST.labelsShown = true; A.classList.add('labels'); } }, 3000);   // no choice in 3 s: say what each is
     A.querySelector('.atile')?.focus({ preventScroll: true });
   } else {
