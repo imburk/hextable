@@ -6,6 +6,10 @@
 //   table's messages on as they come (packmanager.js keeps what they carry); `packData(id)` asks for one pack's data; `packOp(msg)` sends a DM's
 //   `{t:'pack', ...}` and resolves with the table's `packs` answer or rejects with its error frame ({ error, problems?, blockers? }). While
 //   `holdUpdates()` says a pack's data is still on its way, updates wait (in order, at most 4 seconds) so a state never names a spell the page lacks.
+//   The world pack (docs/specs/travel.md, Decision 2; W3), both transports: `worldOp(pack)` loads or replaces the game's world (the DM's)
+//   and resolves with `{ t:'world', world: { id, name, version, hash, nodes, maps, routes, tables } }` or rejects with { error, problems? };
+//   `on.world(msg)` says what world the game has. Solo keeps the pack in IndexedDB (`hextable-world`) and its pictures with the tab's
+//   files, and puts the pack's map into an action that needs it (`fillMap`), as the table server does.
 //   Online only: `link` (this connection's state: { known, state, label, text, rtt }), `links` (what the table told us of the others':
 //   Map userId -> { state, rtt, at }: for the DM every player's, for a player the DM's), `on.link()` and `on.links()` when either changes.
 import { apply } from './shared/engine.js';
@@ -19,6 +23,7 @@ import { HOMEBREW_LIMITS } from './shared/content/schema.js';
 import { PackError } from './shared/content/registry.js';
 import { cleanPacks, inUse, packsMatch, vetAdd, vetPacks, vetUpdate } from './shared/content/packs.js';
 import { localAssets, serverAssets } from './assets.js';
+import { assetBytesOf, fillMap, indexOf, loadWorld, needsMap, storedWorld, worldSummary } from './shared/worldpack.js';
 import { LINK, LINK_FAST, start as linkStart, step as linkStep, explain as linkExplain, average as linkAverage } from './linkquality.js';
 
 const store = {
@@ -97,6 +102,33 @@ export function soloPackNotes(state, held) {
   return notes;
 }
 
+// ---------- solo: the world pack this browser keeps (docs/specs/travel.md, Decision 2, "Solo play keeps it in IndexedDB with the device's assets") ----------
+// One record, `{ id, version, hash, data, assets }` as the table server keeps it: `data` the pack without its pictures' bytes (they are
+// the tab's files, packages/client/assets.js) and `assets` the files' ids by the pack's picture keys. What IndexedDB gives back is checked
+// for that shape before it is used; anything else is let go.
+const WORLD_DB = 'hextable-world';
+const worldDb = () => new Promise((resolve, reject) => {
+  const req = indexedDB.open(WORLD_DB, 1);
+  req.onupgradeneeded = () => req.result.createObjectStore('world');
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => reject(new Error('This browser will not keep a world.'));
+});
+async function worldStore(mode, fn) {
+  const d = await worldDb();
+  return new Promise((resolve, reject) => {
+    const tx = d.transaction('world', mode), out = fn(tx.objectStore('world'));
+    tx.oncomplete = () => resolve(out.result);
+    tx.onerror = tx.onabort = () => reject(new Error(tx.error?.name === 'QuotaExceededError' ? 'This browser has no room left for the world.' : 'This browser could not keep the world.'));
+  });
+}
+const isRec = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+export const soloWorldShape = (w) => isRec(w) && typeof w.id === 'string' && Number.isInteger(w.version) && typeof w.hash === 'string' && isRec(w.data)
+  && isRec(w.data.world) && Array.isArray(w.data.nodes) && (w.data.maps === undefined || isRec(w.data.maps)) && isRec(w.assets);
+async function sha256Hex(bytes) {
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return [...d].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 // The valley's options for a grid and a party: squares if asked, a party if given (newGame's `party`, scenario.js), otherwise nothing (the hex valley with the four starters, as always).
 const valleyOptions = (grid, party) => (grid === 'square' || party ? { ...(grid === 'square' && { grid: 'square' }), ...(party && { party }) } : undefined);
 
@@ -125,6 +157,15 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
     if (!r.ok) console.error(`solo: could not set the game's packs (${r.error})`);
   };
   resync();
+  // The world pack (W3): read from IndexedDB once, at start. Until it has been read, an action that may need one of its maps waits for it
+  // (it is refused with a sentence, as the table would never play a client's map where the pack has one).
+  let world = null, worldRead = false;
+  const worldReady = (async () => {
+    try { const w = await worldStore('readonly', (st) => st.get('current')); world = soloWorldShape(w) ? w : null; }
+    catch { world = null; }
+    finally { worldRead = true; }
+    if (world) t.on.world?.({ t: 'world', world: worldSummary(world.data, world.hash) });
+  })();
   // The undo history lives in this tab only: a reload starts it afresh. The pins for rewind (the start of
   // the last fight, the last rest) are kept in this browser beside the game, since the history is not;
   // `pinsError` says why there are none if the browser refused the space.
@@ -152,7 +193,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
   const announce = (msg = packsMsg(), only = null, data = true) => { t.on.packs?.(msg); if (data) for (const p of only ? [only] : records) t.on.packData?.(dataMsg(p)); };
   const t = {
     solo: true, you: { role: 'dm', userId: 'local', name: 'You' }, on: {}, undoInfo: { undo: [], redo: [] }, assets: localAssets(),
-    start() { announce(); told(); t.on.update(state, []); },
+    start() { announce(); told(); t.on.update(state, []); if (world) t.on.world?.({ t: 'world', world: worldSummary(world.data, world.hash) }); },
     // The packs, as the table would say them to the DM, so the page's store builds and installs the overlay (packmanager.js): the list, then each pack's data.
     // Asked for again (the store does when it lacks one), the data comes at once.
     packData(id) { const r = records.find((p) => p.id === id); if (r) queueMicrotask(() => t.on.packData?.(dataMsg(r))); },
@@ -215,8 +256,13 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
         } catch { reject({ error: "The game couldn't make sense of that pack message." }); }
       });
     },
-    send(action) {
-      if (action?.type === 'setPacks') return t.on.error("A game's packs are changed with the pack message.");     // which packs there are is the browser's to say, not an action's
+    send(sent) {
+      if (sent?.type === 'setPacks') return t.on.error("A game's packs are changed with the pack message.");     // which packs there are is the browser's to say, not an action's
+      if (sent?.type === 'worldIndex') return t.on.error("A game's world is loaded with the world message.");
+      // The fill (as the table server does it): a map put in an action that may enter a place of the world is dropped, and the pack's put in.
+      if (!worldRead && state.world && needsMap(state, sent, null).touch) return t.on.error('The world is still being read from this browser. Try again in a moment.');
+      let action;
+      try { action = fillMap(state, sent, world?.data ?? null); } catch { return t.on.error("The game couldn't make sense of that action."); }
       const before = undoable(action) ? mark(state) : null;
       const res = apply(state, action, { role: 'dm', userId: 'local' });
       if (!res.ok) return t.on.error(res.error);
@@ -227,6 +273,56 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
       }
       store.set('hextable.solo', state);
       t.on.update(state, res.events);
+    },
+    // The DM's world pack, as the table server's `world` message does it, in the same order: the rules' budget and linter; the engine's
+    // refusals tried on a copy of the game; the pictures into this tab's files (one the last world had, byte for byte, is used again);
+    // the record into IndexedDB; `worldIndex` through the engine. A refusal changes nothing: what was stored is taken back out. On success
+    // the undo history is cleared and the last world's pictures that nothing shows any more are let go.
+    async worldOp(pack) {
+      const refuse = (problems) => { const list = problems.slice(0, 20).map((x) => String(x).slice(0, 300)); return Promise.reject({ error: `The world pack was refused. ${list.slice(0, 3).join(' ')}${list.length > 3 ? ` (and ${problems.length - 3} more)` : ''}`, problems: list }); };
+      await worldReady;
+      const r = loadWorld(pack);
+      if (!r.ok) return refuse(r.problems);
+      const pictures = Object.entries(r.pack.assets ?? {});
+      const ctx = { role: 'dm', userId: 'local' };
+      const trial = apply(structuredClone(state), { type: 'worldIndex', index: indexOf(storedWorld(r.pack, Object.fromEntries(pictures.map(([k]) => [k, `trial-${k}`]))), r.hash) }, ctx);
+      if (!trial.ok) return refuse([trial.error]);
+      const had = new Map(), ids = {}, kept = {}, added = [];
+      let have = [];
+      try { have = (await t.assets.list()).assets.map((a) => a.id); } catch { /* no files yet */ }
+      for (const a of Object.values(world?.assets ?? {})) if (have.includes(a?.id)) had.set(a.hash, a.id);
+      const takeBack = async () => { for (const id of added) { try { await t.assets.remove(id); } catch { /* best effort */ } } };
+      for (const [key, a] of pictures) {
+        const bytes = assetBytesOf(a.data), hash = await sha256Hex(bytes);
+        if (had.has(hash)) { ids[key] = had.get(hash); kept[key] = { id: ids[key], hash }; continue; }
+        let rec;
+        try { rec = await t.assets.upload(new File([bytes], a.name ?? key, { type: 'application/octet-stream' })); }
+        catch (err) { await takeBack(); return refuse([`Picture "${key}" could not be kept: ${err.message}`]); }
+        added.push(rec.id); had.set(hash, rec.id); ids[key] = rec.id; kept[key] = { id: rec.id, hash };
+      }
+      const data = storedWorld(r.pack, ids), index = indexOf(data, r.hash), record = { id: index.id, version: index.version, hash: r.hash, data, assets: kept };
+      try { await worldStore('readwrite', (st) => st.put(record, 'current')); }
+      catch (err) { await takeBack(); return refuse([err.message]); }
+      const res = apply(state, { type: 'worldIndex', index }, ctx);
+      if (!res.ok) {
+        await takeBack();
+        try { await worldStore('readwrite', (st) => (world ? st.put(world, 'current') : st.delete('current'))); } catch { /* the browser keeps the new record; the game names the old world */ }
+        return refuse([res.error]);
+      }
+      const before = world;
+      world = record;
+      if (before?.assets) {
+        const now = new Set(Object.values(kept).map((a) => a.id)), shown = assetRefs(state);
+        for (const rec of Object.values(state.parked ?? {})) for (const id of assetRefs({ map: rec?.map, scene: rec?.scene })) shown.add(id);
+        for (const n of Object.values(state.world?.nodes ?? {})) if (typeof n?.image === 'string') shown.add(n.image);
+        for (const a of Object.values(before.assets)) if (a?.id && !now.has(a.id) && !shown.has(a.id)) { try { await t.assets.remove(a.id); } catch { /* best effort */ } }
+      }
+      history.clear(); store.del(PINS); pinsError = null; told();
+      store.set('hextable.solo', state);
+      t.on.update(state, res.events);
+      const msg = { t: 'world', world: worldSummary(data, r.hash) };
+      t.on.world?.(msg);
+      return msg;
     },
     undo: () => step('undo', 'undone'),
     redo: () => step('redo', 'redone'),
@@ -243,7 +339,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
     export: async () => {
       let files = { assets: [], skipped: [], limit: EXPORT_ASSET_BYTES };
       try { files = await t.assets.pack({ first: assetRefs(state) }); } catch { /* this browser keeps no files: the export has the game only */ }
-      return { code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state), packs: records.map(({ id, version, hash, data }) => ({ id, version, hash, data })), assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit };
+      return { code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state), packs: records.map(({ id, version, hash, data }) => ({ id, version, hash, data })), world: world ? structuredClone(world) : null, assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit };
     },
     reset({ grid: g = grid, party: p = party } = {}) { state = newGame((Math.random() * 1e9) | 0, valleyOptions(g, p)); resync(); history.clear(); store.del(PINS); pinsError = null; told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
   };
@@ -267,6 +363,7 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   const receiver = createReceiver(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'sync' })); });
   let pendingExport = null;            // { resolve, reject, timer } while an export is awaited
   let pendingPack = null;              // { resolve, reject, timer } while the answer to a DM's `pack` message is awaited
+  let pendingWorld = null;             // { resolve, reject, timer } while the answer to a DM's `world` message is awaited
   // Updates held while a pack's data is on its way (t.holdUpdates, set by the page), and the packs message the table sends before the first
   // update after a welcome (a table with no packs sends none: the first update then says the list is empty).
   const held = []; let heldTimer = null, packsSeen = true;
@@ -348,6 +445,8 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
         if (pendingPack && msg.changed) { clearTimeout(pendingPack.timer); const p = pendingPack; pendingPack = null; p.resolve(msg); }
       }
       else if (msg.t === 'packData') t.on.packData?.(msg);
+      else if (msg.t === 'world') { t.on.world?.(msg); if (pendingWorld) { clearTimeout(pendingWorld.timer); const p = pendingWorld; pendingWorld = null; p.resolve(msg); } }
+      else if (msg.t === 'error' && pendingWorld && !msg.expired && (msg.world === true || /world|Too many requests/i.test(String(msg.error ?? '')))) { clearTimeout(pendingWorld.timer); const p = pendingWorld; pendingWorld = null; p.reject(msg); }
       else if (msg.t === 'export') { pendingExport?.resolve(msg.table); }
       else if (msg.t === 'error' && pendingExport && !msg.expired) pendingExport.reject(new Error(msg.error));
       else if (msg.t === 'pong') gotPong(msg);
@@ -362,7 +461,7 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   };
   t.start = open;
   // Drop this connection for good (used when the player starts over with a different table).
-  t.close = () => { hello = null; stopLink(); clearTimeout(heldTimer); held.length = 0; clearTimeout(pendingPack?.timer); pendingPack = null; if (ws) { ws.onmessage = null; ws.close(); } };
+  t.close = () => { hello = null; stopLink(); clearTimeout(heldTimer); held.length = 0; clearTimeout(pendingPack?.timer); pendingPack = null; clearTimeout(pendingWorld?.timer); pendingWorld = null; if (ws) { ws.onmessage = null; ws.close(); } };
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
   // Leave the table for good and forget it on this device.
   t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); store.del('hextable.session'); t.close(); };
@@ -376,6 +475,13 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
     if (pendingPack) return reject({ error: 'Wait for the table to answer the last pack change.' });
     pendingPack = { resolve, reject, timer: setTimeout(() => { pendingPack = null; reject({ error: 'The table did not answer.' }); }, 20000) };
     ws.send(JSON.stringify({ ...msg, t: 'pack' }));
+  });
+  // The DM's world pack (docs/specs/travel.md, Decision 2): { t:'world', pack }. One at a time; the table answers with `world` or a refusal.
+  t.worldOp = (pack) => new Promise((resolve, reject) => {
+    if (ws?.readyState !== 1) return reject({ error: 'Reconnecting to the table…' });
+    if (pendingWorld) return reject({ error: 'Wait for the table to answer the last world.' });
+    pendingWorld = { resolve, reject, timer: setTimeout(() => { pendingWorld = null; reject({ error: 'The table did not answer.' }); }, 60000) };
+    ws.send(JSON.stringify({ t: 'world', pack }));
   });
   // The DM asks for the whole table to keep as a file. Resolves to { code, exportedAt, state }.
   t.export = () => new Promise((resolve, reject) => {

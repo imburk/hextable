@@ -77,7 +77,7 @@ as an action: it is refused, and the server keeps `state.packs` in step with the
 
 - `{t:"pack", op:"add"|"update", pack}` from the DM; `pack` is the pack document or its JSON text. `{t:"pack", op:"remove", id}`.
   Anyone else, and anyone not let in, is answered `Only the DM can change the table's packs.`
-- Sizes. A seated DM's frame is bounded before it is parsed at 1 MiB plus 4 KB (the same as a map document; everyone else's at 16 KB). That
+- Sizes. A seated DM's frame is bounded before it is parsed at 4 MB plus 64 KB (what a world pack needs; everyone else's at 16 KB). That
   holds a 256 KB pack in text form even when every character needs escaping (at most twice its size). A pack sent as text is read
   only up to 512 KB (twice the pack limit); the rules' budget then holds the pack to 256 KB of canonical JSON, whatever form it came in.
   Nothing reads the start of the frame.
@@ -114,6 +114,48 @@ as an action: it is refused, and the server keeps `state.packs` in step with the
 - `export` carries `packs` (`[{id, version, hash, data}]`) beside `state`.
 - Limits. `LIMIT_PACKS` pack messages per table per `LIMIT_PACK_WINDOW_MS` (20 per 10 minutes), spent only by the table's seated DM (a message with no
   valid operation, and anything from a player or an unseated socket, spends none; those meet the ordinary per-connection limits).
+
+### World packs (travel W3, #595)
+
+A table can hold one **world pack**: the DM's atlas of places, battle maps, routes and encounter tables
+(`docs/specs/travel.md`, Decision 2). It is kept in the table's record beside `state`, as the packs are:
+`table.world = {id, version, hash, data, assets}`, where `data` is the pack with its pictures' bytes taken out
+(they are in the table's file store, below) and every reference to a picture rewritten to the store's id, and
+`assets` is `{[pack picture key]: {id, hash}}`. The game keeps only the index (`state.world`: places, pins,
+entries, routes, tables; no maps, no pictures), recorded by the engine action `worldIndex`.
+
+- `{t:"world", pack}` from the DM; `pack` is the world pack document (or its JSON text). Anyone else is answered
+  `Only the DM can load a world.`; anyone not seated, `Join a table first.`
+- The checks, in order: who; the table's pack budget (`LIMIT_PACKS`, shared with `pack`); the size; the rules'
+  `loadWorld` (an iterative budget on the document as sent: at most 4 MB of JSON pictures included, no
+  `__proto__`, `constructor` or `prototype` key, no control character, nothing that is not plain data; then the
+  linter: every map through `lintMap`, every monster of an encounter table one of the SRD's or of the table's
+  homebrew packs, at most 300 places nested 8 deep, 60 maps, 100 pins a place, 500 routes, 50 tables of 100 rows,
+  50 pictures each a PNG, JPEG or WebP by its bytes; `WORLD_LIMITS` in `rules/src/worldpack.js`); the engine's own
+  refusals, tried on a copy of the game (in a fight, on a journey, an older version of the same world, a place
+  kept at the table that the pack would turn from a battle map into another kind, a pack place with the id of one
+  made at the table); then the pictures go into the store (by their bytes, under the store's limits; one the
+  table's last world had, byte for byte, is used again); then `worldIndex` through `apply`; and only then the
+  record changes. A refusal at any step changes nothing (a picture stored before it is removed again) and is
+  `{t:"error", world: true, error, problems}`, the linter's plain sentences, at most 20.
+- On success the DM's undo history is cleared (an undo step cannot cross into another world), the last world's
+  pictures that nothing shown any more names (the map in play, a parked place's map or scene, a handout, a place
+  of the index) are deleted, and every seated DM is sent `{t:"world", world: {id, name, version, hash, nodes, maps,
+  routes, tables}}`; a DM sitting down is sent it too. A table file whose world record is not that shape loads
+  without it, and the DM is sent `{t:"world", world: null, dropped: true}`.
+- Players are sent nothing of the world: no message, no `worldLoaded` event (it is not in the players' allow
+  list), nothing in their view (which has no `world`), and so no right to fetch its pictures (a player may fetch
+  only files their own view names). What players learn of places is W4's (`docs/specs/travel.md`, Decision 12).
+- `worldIndex` cannot be sent as an action, by the DM or anyone: `A table's world is loaded with the world message.`
+- **The fill.** An action that may enter a battle place for the first time, or put one back as prepared
+  (`enter`, `leave`, `loadMap {node}`, `goTo {stale: "reset"}`, `resetPlace`), has any `map` the client put in it
+  dropped, and the world pack's map of that place put in instead when the place is not in play or kept. A place
+  made at the table (`nodeAdd`, `added`) is not the pack's, and the DM's own map stays. The size of an action is
+  checked on what the client sent, before the fill; the action applied, recorded and undone is the filled one.
+- `export` carries `world` (the record as the table keeps it, or null) beside `state` and `packs`; the pictures are among `assets`.
+- The solo game does the same in the browser: the record in IndexedDB (`hextable-world`), the pictures among the
+  tab's files, and the same fill (`packages/client/transport.js`).
+- `npm run world -- <world.json> [--pack <homebrew.json> ...]` checks a file with these checks before import.
 
 ### Connection quality (#246)
 
@@ -342,10 +384,11 @@ with no entries.
   `blob:` (table files are shown from blob: URLs, see Table files). A table file gets a stricter
   CSP of its own.
 - **Sizes.** An action over 4 KB of JSON is refused with `That action is too large.` The one
-  exception is the DM's `loadMap` and `mapEdit`, which carry a whole map document and may
-  be up to 1 MiB. A player sending those is held to 4 KB. WebSocket frames are capped to match:
-  16 KB until someone is seated as the DM, about 1 MiB after. A larger frame closes the
-  connection with code 1009.
+  exception is the DM's `loadMap`, `mapEdit` and the travel actions that may carry a place's map
+  (`enter`, `leave`, `goTo`, `resetPlace`, `nodeAdd`), which may be up to 1 MiB. A player sending
+  those is held to 4 KB. WebSocket frames are capped to match: 16 KB until someone is seated as the
+  DM, and after that 4 MB and 64 KB, for a world pack (`{t:"world"}`, at most 4 MB of JSON); an action
+  in such a frame is still held to 1 MiB. A larger frame closes the connection with code 1009.
 - **Idle tables.** A table nobody has sat down at, acted in or left for 30 days stops counting
   against the cap of 500 tables, so abandoned tables cannot lock out new ones. It is not
   deleted: its DM or players can still resume it, and it counts again from then. The stamp

@@ -140,9 +140,10 @@ function pictureType(data) {
   const head = assetBytesOf(typeof data === 'string' ? data.slice(0, 24) : '');
   if (!head || head.length < 16) return null;
   const s = (a, b) => String.fromCharCode(...head.subarray(a, b));
-  if (head[0] === 0x89 && s(1, 4) === 'PNG' && s(12, 16) === 'IHDR') return 'image/png';
-  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
-  if (s(0, 4) === 'RIFF' && s(8, 12) === 'WEBP') return 'image/webp';
+  // The same tests as the asset stores' (packages/server/src/assets.js and packages/client/assets.js, `sniff`).
+  if (head[0] === 0x89 && s(1, 4) === 'PNG' && s(4, 8) === '\r\n\x1a\n' && s(12, 16) === 'IHDR') return 'image/png';
+  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff && head[3] >= 0xc0) return 'image/jpeg';
+  if (s(0, 4) === 'RIFF' && s(8, 12) === 'WEBP' && /^VP8[ LX]$/.test(s(12, 16))) return 'image/webp';
   return null;
 }
 

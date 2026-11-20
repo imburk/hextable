@@ -313,3 +313,35 @@ test("the fill: a client's own map in an enter is replaced by the pack's; nothin
   // With no pack at all (a table with no world), a client's map for a pack place is still dropped.
   assert.equal(fillMap(s, { type: "enter", pin: "p-keep", map: evil }, null).map, undefined);
 });
+
+// ---------- npm run world ----------
+test("npm run world checks a file with the table's own checks, lends a homebrew pack's monsters, and says why it refuses", async () => {
+  const { main } = await import("../../../scripts/world.mjs");
+  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "world-cli-"));
+  const lines = { out: [], err: [] };
+  const wo = process.stdout.write, we = process.stderr.write;
+  process.stdout.write = (s) => { lines.out.push(String(s)); return true; };
+  process.stderr.write = (s) => { lines.err.push(String(s)); return true; };
+  try {
+    const file = (name, data) => { const f = join(dir, name); writeFileSync(f, typeof data === "string" ? data : JSON.stringify(data)); return f; };
+    assert.equal(main([file("ok.json", riverPack())]), 0);
+    assert.match(lines.out.join(""), /The river country \(version 1\): ok\n {2}4 places, 2 battle maps, 1 route, 1 encounter table, 2 pictures/);
+    const hb = riverPack();
+    hb.tables[0].rows[1].foes = [{ monster: "hb-cli-wolf", count: 1 }];
+    assert.equal(main([file("hb.json", hb)]), 1);
+    assert.match(lines.err.join(""), /problem: Encounter table "road-table", row 2 names a monster that is not in the game's content or the table's homebrew: "hb-cli-wolf"\./);
+    const { CONTENT } = await import("../src/content/index.js");
+    const wolf = { ...structuredClone(CONTENT.monsters.wolf), id: "hb-cli-wolf", name: "Grey Wolf", source: "homebrew:cli", checked: false, text: "A wolf." };
+    const pack = file("pack.json", { format: "hextable-pack", v: 1, pack: { id: "cli", name: "Cli", version: 1, license: "CC0", attribution: "A test." }, monsters: [wolf] });
+    assert.equal(main([file("hb.json", hb), "--pack", pack]), 0, lines.err.join(""));
+    assert.equal(main([file("proto.json", JSON.stringify(riverPack()).replace('"name":"The keep"', '"__proto__":1,"name":"The keep"'))]), 1);
+    assert.equal(main([]), 2);
+    assert.equal(main(["a.json", "--nope"]), 2);
+  } finally {
+    process.stdout.write = wo; process.stderr.write = we;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
