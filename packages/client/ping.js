@@ -33,7 +33,7 @@ export function cellAtPoint(state, planeHex, x, y) {
 }
 
 // The drawing. `screenOf(cell)` is the renderer's (where a cell is on the screen, or null); `host` the element the marks go in (a layer over the canvas that takes no pointer).
-export function createPings({ screenOf, host, doc = document, now = () => performance.now(), raf = (f) => requestAnimationFrame(f) }) {
+export function createPings({ screenOf, host, doc = document, now = () => performance.now(), raf = (f) => requestAnimationFrame(f), setTimer = (f, ms) => setTimeout(f, ms) }) {
   const marks = new Set();
   let ring = null, looping = false;
   const place = (el, hex) => { const p = screenOf(hex); el.style.display = p ? '' : 'none'; if (p) el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`; };
@@ -57,6 +57,7 @@ export function createPings({ screenOf, host, doc = document, now = () => perfor
       const label = doc.createElement('span'); label.className = 'ping-name'; label.textContent = name;
       el.append(doc.createElement('i'), label); host.append(el);
       const m = { el, at, until: now() + PING_MS }; marks.add(m); place(el, at);
+      setTimer(() => { if (marks.delete(m)) el.remove(); }, PING_MS);      // frames do not run in a hidden tab: a mark is taken off by the clock as well
       if (!looping) { looping = true; raf(loop); }
       return m;
     },

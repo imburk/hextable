@@ -337,4 +337,5 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 .ping-name { position: absolute; left: 0; top: -44px; transform: translateX(-50%); white-space: nowrap; padding: 1px 8px; border-radius: 10px; background: #000b; color: #fff; border: 2px solid var(--ping-color); font-weight: 700; font-size: 13px; animation: ping-fade var(--ping-ms, 3000ms) linear both; }
 @keyframes ping-ring { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.4); opacity: 0.25; } }
 @keyframes ping-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .hold-ring { animation: none; } .ping i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .hold-ring { animation: none; border-style: dashed; } .ping i { animation: none; } .ping-name { animation: none; }
+  .hold-ring::after { content: 'Keep holding'; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 4px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; background: #000b; padding: 1px 6px; border-radius: 8px; } }

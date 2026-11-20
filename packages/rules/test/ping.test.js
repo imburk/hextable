@@ -78,3 +78,43 @@ test("a ping does not disturb the undo history", () => {
   ok(apply(s, { type: "ping", at: cell(s) }, PAT));
   assert.equal(h.list().length, 1);
 });
+
+// A cell far from the party, so that the light rule has not made it out; and the sight rule set the way the DM sets it.
+const farCell = (s) => { const l = s.map.levels[0]; const k = Object.keys(l.tiles).map((c) => c.split(",").map(Number)).sort((a, b) => Math.hypot(b[0], b[1]) - Math.hypot(a[0], a[1]))[0]; return { q: k[0], r: k[1] }; };
+// (The starting valley is wholly in the light rule's memory at once, so the memory is emptied to leave cells not yet made out.)
+const withSight = (rule) => { const s = newGame(5); ok(apply(s, { type: "setting", key: "sight", value: rule }, DM)); s.map.seen = { tiles: { [s.map.levels[0].id]: [] }, objects: {} }; return s; };
+
+test("under each sight rule a player may ping only a cell the view would send them", () => {
+  for (const rule of ["rooms", "los", "light"]) {
+    const s = withSight(rule), at = farCell(s), lv = s.map.levels[0];
+    const sent = (st) => !!view(st, { role: "player", userId: "pat" }).map.levels.find((l) => l.id === lv.id)?.tiles[`${at.q},${at.r}`];
+    const before = json(s);
+    const r = apply(s, { type: "ping", at }, PAT);
+    assert.equal(r.ok, sent(s), `${rule}: a ping is accepted exactly when the view sends the cell`);
+    if (!r.ok) assert.equal(r.error, "Pick a spot on the map.");
+    assert.equal(json(s) === before || r.ok, true);
+    ok(apply(s, { type: "ping", at }, DM));
+  }
+  // The light rule does refuse a cell not yet made out, and accepts it once the party has made it out.
+  const s = withSight("light"), at = farCell(s), lv = s.map.levels[0];
+  assert.equal(apply(s, { type: "ping", at }, PAT).ok, false);
+  s.map.seen = { tiles: { [lv.id]: [`${at.q},${at.r}`] }, objects: {} };
+  ok(apply(s, { type: "ping", at }, PAT));
+});
+
+test("a hidden floor is neither accepted nor measured for a player", () => {
+  const s = newGame(5), at = cell(s), lv = s.map.levels[0], key = `${at.q},${at.r}`;
+  s.map.levels.push({ id: "attic", name: "Attic", z: 10, tiles: { [key]: { t: "stone" }, "40,40": { t: "stone" } } });
+  s.map.regions.push({ id: "hidden-attic", level: "attic", hexes: [key, "40,40"], revealed: false });
+  assert.equal(ok(apply(s, { type: "ping", at: { ...at, z: 10 } }, PAT)).events[0].at.z, lv.z + (lv.tiles[key].h ?? 0), "the height is the ground's, not the attic's");
+  assert.equal(apply(s, { type: "ping", at: { q: 40, r: 40 } }, PAT).ok, false, "a cell that exists only on the hidden floor is refused");
+  assert.equal(ok(apply(s, { type: "ping", at: { ...at, z: 10 } }, DM)).events[0].at.z, 10, "the DM's own ping may be on the floor it names");
+});
+
+test("a ping while a reaction is awaited leaves the question as it was", () => {
+  const s = newGame(5);
+  s.pending = { n: 1, action: { type: "noop" }, ctx: { role: "dm" }, answers: [], ask: { reactor: "x" } };
+  const was = json(s.pending);
+  ok(apply(s, { type: "ping", at: cell(s) }, PAT));
+  assert.equal(json(s.pending), was);
+});

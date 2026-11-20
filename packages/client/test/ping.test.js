@@ -43,7 +43,7 @@ function fakeDoc() {
 
 test('a ping stays three seconds, follows the renderer, and a renderer that cannot place it draws nothing', () => {
   const d = fakeDoc(); let t = 0, frames = []; let at = { x: 10, y: 20 };
-  const P = createPings({ screenOf: () => at, host: d.host, doc: d, now: () => t, raf: (f) => frames.push(f) });
+  const timers = [], P = createPings({ screenOf: () => at, host: d.host, doc: d, now: () => t, raf: (f) => frames.push(f), setTimer: (f, ms) => timers.push([f, ms]) });
   const m = P.ping({ at: { q: 1, r: 2, z: 0 }, name: 'Pat', color: '#abc' });
   assert.equal(P.count(), 1);
   assert.equal(m.el.children[1].text, 'Pat');
@@ -55,6 +55,13 @@ test('a ping stays three seconds, follows the renderer, and a renderer that cann
   assert.equal(m.el.style.display, 'none');
   t = PING_MS; frames.shift()();
   assert.equal(m.el.removed, true); assert.equal(P.count(), 0); assert.equal(frames.length, 0);
+});
+
+test('a mark is also taken off by the clock, for a tab whose frames do not run', () => {
+  const d = fakeDoc(), timers = [], P = createPings({ screenOf: () => ({ x: 1, y: 1 }), host: d.host, doc: d, now: () => 0, raf: () => {}, setTimer: (f, ms) => timers.push([f, ms]) });
+  const m = P.ping({ at: { q: 0, r: 0, z: 0 }, name: 'A', color: '#fff' });
+  assert.equal(timers[0][1], PING_MS); timers[0][0]();
+  assert.equal(m.el.removed, true); assert.equal(P.count(), 0);
 });
 
 test('the ring starts where the press is, and stop() takes it away', () => {

@@ -449,8 +449,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           undoOf(table).track(action, res.events, before, table.state);
           dirtyHistory.add(table.code);
         }
-        touch(table);
-        save(table);
+        // A ping is told and nothing more: it is no activity that keeps a table awake and nothing of it is kept, so nothing is saved for it.
+        if (action.type !== "ping") { touch(table); save(table); }
         if (before) tellUndo(table);
         broadcast(table, res.events);
       },

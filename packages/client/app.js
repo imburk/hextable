@@ -259,13 +259,14 @@ function received(state, events, fresh) {
 
 // Press and hold on the map for a second to point out the cell to everyone (#599; docs/specs/table-ui.md, "Ping"). The hold is hold.js's, the marks ping.js's.
 const PG = createPings({ screenOf: (h) => R.screenOf(h), host: (() => { const d = document.createElement('div'); d.id = 'pings'; document.body.append(d); return d; })() });
+let pressed = null;          // the cell under the press when it began
 const HOLD = createHold({
-  onStart: (x, y) => PG.start(x, y, HOLD_MS),
+  onStart: (x, y) => { PG.start(x, y, HOLD_MS); pressed = S && cellAtPoint(S, (px, py, feet) => R.planeHex(px, py, feet), x, y); },
   onCancel: () => PG.stop(),
   onFire: (x, y) => {
     PG.stop();
     const cell = S && T && cellAtPoint(S, (px, py, feet) => R.planeHex(px, py, feet), x, y);
-    if (!cell) return;
+    if (!cell || !pressed || pressed.q !== cell.q || pressed.r !== cell.r) return;      // the camera moved under the press: not the cell it began on
     navigator.vibrate?.(20);
     T.send({ type: 'ping', at: cell });
   },
