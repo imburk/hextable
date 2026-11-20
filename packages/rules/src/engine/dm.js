@@ -366,9 +366,20 @@ export const SETTINGS = { sight: SIGHT_RULES,
   squareCover: SQUARE_COVERS,
   // Stepping away (resolve.js, AWAY): what becomes of the turns of a creature set aside, and what a
   // player's "need a break" does. Absent means the first. Words in SETTING_TEXT.
-  away: AWAY, breaks: ['on', 'ask', 'off'] };
+  away: AWAY, breaks: ['on', 'ask', 'off'],
+  // Rolled ability scores (docs/specs/ability-scores.md, scores.js): whether a score may be rolled again (once), which, and which result stands. Absent means the first.
+  scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  scoreReroll: {
+    none: 'Rolled ability scores stand as rolled: no score may be rolled again (the SRD\'s rule, the default).',
+    below: 'A rolled score below the number set under it may be rolled again, once. "Below" is judged on the score first rolled.',
+    each: 'Every rolled score may be rolled again, once.',
+  },
+  scoreRerollResult: {
+    new: 'The new roll of a score rolled again stands, even if it is lower (the default).',
+    higher: 'Of a score and its roll again, the higher stands.',
+  },
   away: {
     dodge: 'A creature set aside takes the Dodge action on its turn and stays where it is (the default). Set aside on its own turn, it takes the Dodge action if it still has its action, and its turn ends. A table rule; the SRD has no rule for a player who steps away.',
     end: 'A creature set aside has its turn moved to the end of the round, and gets its place back next round. Back by then, it plays that turn; still away, it takes the Dodge action and stays where it is. Set aside part-way through its own turn, the rest of that turn waits at the end of the round. A table rule; the SRD has no rule for delaying a turn.',

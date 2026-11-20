@@ -15,6 +15,7 @@ import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, obj
 import { cure } from './rolls.js';
 import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing } from './sheets.js';
 import { handHolds } from '../weapons.js';
+import { rollScore, rollScores, mayReroll, tableRule, topThree } from '../scores.js';
 
 // A Shield needs a hand: one holding a creature in each (docs/specs/grapple-shove.md, Decision 4) has none.
 function freeHandForShield(s, e) {
@@ -22,7 +23,36 @@ function freeHandForShield(s, e) {
   if (held.length >= 2) fail(`${e.name} has no hand free for a Shield: it is holding ${held.map((t) => t.name).join(' and ')}. Let go first (letGo).`);
 }
 
+// Who is rolling ability scores: a member by their user id, the DM by theirs (or 'dm' where there is none, as in a game on one device).
+const roller = (ctx) => ctx.role === 'dm' ? (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : 'dm') : (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : fail('Only someone at the table can roll ability scores.'));
 export const handlers = {
+  // Roll the six ability scores from the game's seed (docs/specs/ability-scores.md): four d6 each, the lowest die set aside. { type: 'rollAbilityScores' }
+  // A member rolls once; the DM may roll a fresh set. What was rolled is kept in `scoreRolls` for the table rule's rerolls, and the event is told to the
+  // DM and the roller only (view.js). `at` is where the event stands in the timeline, so a sheet can name it.
+  rollAbilityScores(s, a, ctx, ev) {
+    const who = roller(ctx);
+    (ctx.role === 'dm' || !s.scoreRolls?.[who]) || fail('You have already rolled your ability scores at this table.');
+    const { sets } = rollScores(s);
+    (s.scoreRolls ??= {})[who] = { sets: sets.map((x) => ({ dice: x.faces })) };
+    ev.push({ type: 'scoresRolled', by: who, sets: sets.map((x) => ({ dice: x.dice, total: x.total })), at: s.timeline?.length ?? 0 });
+  },
+  // Roll one of those scores again, once, if the table's rule allows it (settings `scoreReroll`, `scoreRerollBelow`, `scoreRerollResult`).
+  // { type: 'rerollAbilityScore', index } with index 0 to 5, the score's place in the roll.
+  rerollAbilityScore(s, a, ctx, ev) {
+    const who = roller(ctx), mine = s.scoreRolls?.[who];
+    mine || fail('Roll your ability scores first.');
+    (Number.isInteger(a.index) && a.index >= 0 && a.index < mine.sets.length) || fail('Which score? It is 0 to 5, in the order rolled.');
+    const set = mine.sets[a.index], rule = tableRule(s.settings), first = topThree(set.dice);
+    if (!mayReroll(set, rule)) {
+      fail(set.again ? 'That score has been rolled again already.' : rule.reroll === 'none' ? 'This table does not allow a score to be rolled again.'
+        : `This table allows a score below ${rule.below} to be rolled again; this one is ${first}.`);
+    }
+    const r = rollScore(s);
+    set.again = r.faces;
+    const old = rule.result === 'higher' && first > r.total;
+    ev.push({ type: 'scoreRerolled', by: who, index: a.index, from: { dice: set.dice.map((value, i) => ({ sides: 6, value, ...(i === set.dice.indexOf(Math.min(...set.dice)) ? { drop: true } : {}) })), total: first },
+      to: { dice: r.dice, total: r.total }, stands: old ? 'old' : 'new', total: old ? first : r.total, at: s.timeline?.length ?? 0 });
+  },
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
   setSpeed(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change how a creature moves.');
