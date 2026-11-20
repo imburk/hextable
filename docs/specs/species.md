@@ -451,3 +451,48 @@ Each has a default the jobs follow if he does not answer.
   the subclass note's 16 KB.*
 - **Q10. The order of the amendments.** *Default: S2 to S4 (the lineage spells and choices touch six of the nine
   species), then S5 to S8 (the Dragonborn and the Orc), then S9 and S10 with the subclass note's F, then S11 and S12.*
+
+## Build notes: SP1, the species kind and the sheet (#552)
+
+Built to Decisions 1 to 3 and the removed-pack rule of Decision 5, the owner's questions on their defaults. No species is entered (SP2);
+the tests use two invented ones. What was settled in building, and what differs from the sketch:
+
+- **Where.** `content/schema.js`: `lintSpecies`, wired into `lintPack({ ..., species })`; `SPECIES_SIZES`; `type` in the record's fields.
+  `content/index.js`: `CONTENT.species`, empty. `derive.js`: `speciesOf`, `speciesFeatures`, `missingSpeciesOf`, the sheet's `species`
+  in `validate` (`checkSpecies`), and the species in `gather`, `featuresOf`, the Speed, the size, `type`, `why.species` and `missing`.
+  `engine/sheets.js`: `tellMissing` tells the DM of a missing species. `PACKS` has no `species` list yet (SP2 adds the file and the list),
+  `HOMEBREW_LOOKUPS` and `HOMEBREW_ENTRY_KINDS` have no `species` (SP7), and `npm run content` prints what it printed.
+- **A species' features are linted as a feat's grants are** (`lintFeature` with the feat's class, which has no table), so an amount is a
+  number, `{ mod }`, `{ prof }`, `{ perLevel }` or `{ byLevel }` at the character level, `{ column }` is refused, and every grant that only a
+  subclass's feature may carry is refused with the feat's sentence, worded for a species. Refused besides, each with its reason, because
+  `derive` would drop it without a word: `spells`, `cantrips`, `spellLists` and `freeCast` (S2), `feat` (S4), `triggers` and `formOf` (a
+  class's alone), `attune`, `skills.from: 'class'`, and an option that `requires` a spell. A cost names a feature with uses of the species,
+  or of the same lineage option. A lineage option's feature ids are not the species' own (the sheet's `species.choices` are kept by feature
+  id), but two options may use the same id (ten Breath Weapons). The entry's tier is no higher than its lowest feature, counting every
+  lineage option's (the entry cannot know which one a sheet picks). `sizes` is `small` and `medium` only: the sizes a sheet may have.
+- **In the record.** A species feature is `species-<id>`, a lineage's `species-<lineage>-<id>`, an option `...-<option>`, first in `feats`,
+  before the class's; a cost or `with` naming one is relabelled with it. The numbers go by the character level (`SPECIES_CLASS`, `i: -2`).
+  A `heal`, `tempHp` or `damage` step whose amount bakes to a plain number (`{ prof: 1 }`) has it written as dice text (`"+3"`), which a step's dice must be;
+  no SRD class, feat or item had one, so no record changes.
+- **The sheet.** `species: { id, lineage?, ability?, choices? }`. `spells` (S2's pick) is not accepted yet. With a loaded species: the
+  lineage and the ability are required where the species has them and refused where it has none; a choice for a feature the species has not
+  is refused; the size is one of `sizes` ("A Stonefolk is Medium."); the sheet's own `speed` is refused ("Speed comes from the species: a
+  Stonefolk has 25 ft. Take the sheet's own Speed out."). An unknown id is refused ("There is no species "dwarf" in the game ...") unless it
+  has a homebrew id's shape (`HB_ID`), which is the absent case below.
+- **`type`.** On the record only when it is not `humanoid`; `lintRecord` accepts `type` (any creature type but `humanoid`), so a record
+  typed in by hand may carry one too. `makeEntity` already spreads the record, so the creature has it and `creatureType` reads it; a creature
+  remade without it has none.
+- **The absent species.** The sheet keeps the id; no trait; the Speed is the sheet's or 30, the size the sheet's or Medium; `why.species` is
+  the spec's sentence; `derive` returns `missing: [..., { kind: 'species', id }]`. `missingOf` stays the subclasses' (the client's header
+  and `keepAway` read it as such); the species is `missingSpeciesOf`. **Differs from the sketch:** the DM-only event is one of its own, after
+  the subclasses' events (B2 made one per missing subclass, which tests and the client pin), not one event listing both.
+- **State shape: no change, no version bump.** The sheet gains an optional field, the record and the creature an optional `type`.
+  **What players are sent: unchanged for every sheet without a species.** A party creature is sent whole, so its `type` and its sheet's
+  `species` reach the players once a sheet names one; the DM's event is never sent.
+
+**Fix round 1 (the review of #553).** The client's build sheet keeps `species` among the fields it has no control for (`KEEP`), so an edit or a
+level from the build screen keeps the id, and the hand-typed form keeps a record's `type` (`packages/client/buildsheet.js` and `quickentry.js`,
+beyond the issue's list, approved for this round). `lintSpecies` builds the record id of every feature and option, with the species alone and
+with each lineage option in turn, and refuses two that come out the same ("feature old-craft's option lore and feature old-craft-lore would both be
+"species-old-craft-lore" in a character's record: rename one"). An option's tier counts toward the entry's. A flat amount that adds a modifier
+(`{ prof: 1 }` with `addMod`) bakes to one number ("+5"), not "+3+2". State shape: unchanged.

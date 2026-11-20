@@ -58,7 +58,9 @@ export const CONTENT = { spells: byId(spells), monsters: byId(monsters), summons
   classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId(items), multiclass: multiclassSpellcaster, advancement, prices,
   // A table's homebrew subclasses, by id (docs/specs/homebrew-subclasses.md, Decision 3). Empty for the SRD, whose subclasses stay inside their
   // classes (`CONTENT.classes[id].subclass`), so nothing the SRD prints, counts or tests changes; the registry adds a table's.
-  subclasses: {} };
+  subclasses: {},
+  // Species, by id (docs/specs/species.md, Decision 1). Empty until the SRD's nine are entered (job SP2); a sheet that names none derives as before.
+  species: {} };
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));

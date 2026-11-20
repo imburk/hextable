@@ -71,6 +71,20 @@ test('editing a character keeps every sheet field the screen has no control for,
   assert.equal(derive(back).record.abil.wis, 24);
 });
 
+test('editing or levelling a character keeps its species whole, a homebrew one that is not loaded too (docs/specs/species.md, #552)', async () => {
+  const { validate } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
+  const species = { id: 'hb-ember-folk-ash-born', lineage: 'cinder', choices: { 'old-craft': 'lore' } };
+  const sheet = { name: 'Brann', class: 'fighter', level: 1, abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 12, cha: 8 }, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, species };
+  assert.ok(KEEP.includes('species'));
+  assert.deepEqual(keptOf(sheet).species, species);
+  assert.notEqual(keptOf(sheet).species, species, 'a copy, not the sheet\'s own object');
+  assert.equal(keptOf({ name: 'x' }).species, undefined);
+  // Put back on the next level's sheet the way Save does: the id is still there, and the sheet still validates.
+  const next = { ...sheet, level: 2, species: undefined, ...keptOf(sheet) };
+  assert.deepEqual(next.species, species);
+  assert.deepEqual(validate(next), []);
+});
+
 test('the DM score bonus is said in words and can be taken off the kept fields (#498)', () => {
   assert.equal(bonusText({ cha: 2 }), 'DM bonus: +2 Charisma');
   assert.equal(bonusText({ str: 1, cha: 2 }), 'DM bonus: +1 Strength, +2 Charisma');
