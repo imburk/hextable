@@ -959,3 +959,36 @@ and marks the proposal "(design choice, lead's proposal)" for the owner to confi
 ## Adventure modules
 
 A market pack can also reach a table inside an adventure module, through the same linter and import: see [adventure-module.md](adventure-module.md) (Decision 2 and "Where this spec changes or meets existing specs", item 3).
+
+## Build notes: P1, the SRD's prices as data (#563)
+
+What was built: `packages/rules/src/content/srd52/prices.js` (new), `content/index.js` (the file joins `PACKS[0]` as `prices` and `CONTENT.prices`, as `advancement` does), `content/schema.js` (`lintPrices`, called by `lintPack`) and `packages/rules/test/prices.test.js` (new; this spec's "tests/" is `packages/rules/test/`). Nothing else changed: no engine file, no state, no version.
+
+**The shape.** One object, not a list, like `advancement`: `{ id, name, source, checked, text, coins, perPound, selling, rarities, consumableDivisor, scrollMultiple, addsBaseCost, scrolls }`.
+
+| Field | Holds | Compared with the SRD, `srd52-flow.txt` (layout file `srd52.txt` in brackets) |
+|---|---|---|
+| `coins` | `{ id, name, cp }` for cp, sp, ep, gp, pp: 1, 10, 50, 100, 1000 copper pieces (the Coin Values table gives 1/100, 1/10, 1/2, 1, 10 GP) | lines 20245 to 20268 [5362 to 5370]; the text above it, 20236 to 20241, says the Gold Piece is the main coin and 100 CP make 1 GP |
+| `perPound` | 50 | 20242 to 20243 [5359 to 5360]: a coin weighs about a third of an ounce, so fifty weigh a pound |
+| `selling` | `{ equipment: 50, trade: 100, valuable: 100 }`, percent of cost | Selling Equipment, 20290 to 20294 [5396 to 5400]: equipment fetches half its cost; trade goods and valuables keep their full value |
+| `rarities` | common 100, uncommon 400, rare 4,000, very-rare 40,000, legendary 200,000 GP; artifact `gp: null` (priceless) | Magic Item Rarities and Values, 36413 to 36438 [13164 to 13168]; the sentence that Artifacts are priceless, 36391 to 36392 |
+| `consumableDivisor` | 2 | the footnote, 36445 [13169]: "Halve the value for a consumable item other than a Spell Scroll" |
+| `scrollMultiple` | 2 | 36446 to 36447 [13170 to 13171]: the value of a Spell Scroll is double what it costs to scribe |
+| `addsBaseCost` | true | 36404 to 36411 [13149 to 13160]: a magic item that incorporates an item with a purchase cost adds that cost; the example, +1 Armor (Plate Armor), is 4,000 + 1,500 = 5,500 GP |
+| `scrolls` | levels 0 to 9: 15, 25, 100, 150, 1,000, 1,500, 10,000, 12,500, 15,000, 50,000 GP | Spell Scroll Costs, 23344 to 23436 [6256 to 6269]; the flow file interleaves this table with the Raw Materials text, so its rows were read in the layout file |
+
+`checked: true` was set after reading each of those lines against the file and again against the test, which holds the numbers a second time, typed from the SRD and not copied from the data.
+
+**What is not in it, and why.**
+
+- **The 70 percent for magic items is the owner's answer (question 3), not the SRD's**, so it is not in `prices.js` (and `selling` has no `magic` key; the linter refuses one). It is a store default: P2's `buys.magic`. The SRD's own rates are the two in `selling`. The spec's X1 row says "the selling rates"; this is the reading that keeps the SRD's data free of the table's numbers.
+- **`selling` keys follow the line kinds of Decision 1**, not the SRD's words: `equipment` covers kinds `gear`, `weapon` and `armour`; `trade` and `valuable` are the SRD's "trade goods and valuables", given separately because a line has one kind. P2 maps a line's kind to the key.
+- **No price for a magic item whose rarity "varies".** Two items of the pack have it: the Spell Scroll (priced by its spell's level through `scrolls`) and the Feather Token (the SRD prints "Rarity Varies", line 38809 and following, and no value). A market line for a Feather Token needs its own `price`, as Decision 2 already says of a line with no list price. The test pins the Feather Token as the only item left without a value.
+- **The Time column of Spell Scroll Costs is not entered** (it is about scribing, not buying); nor are the crafting rules (Raw Materials and Time, "half its purchase cost", the Magic Item Crafting Time and Cost table, 36605 and following): they are not prices a store charges. The Adventuring Gear table is P8, as question 8 settled.
+- **The availability words** ("Common magic items can often be bought in a town or city", 36396 to 36399) are advice to the DM, not data; a seller who "might ask for a service rather than coin" (36403) stays the DM's, as Decision 5 says.
+
+**What the data gives P2** (`listPrice`): a magic item's value is `rarities[rarity].gp`, divided by `consumableDivisor` when one of its uses has `consumed: true` and it is not the Spell Scroll; the Spell Scroll's is `scrolls[level].gp * scrollMultiple`; either plus the `cost` of its `base` weapon or armour when `addsBaseCost`. The test carries a small helper with exactly that, so the three worked figures are checked against the data (Potion of Healing 50 GP, Wand of Magic Missiles 400 GP, +1 Armor (Plate Armor) 5,500 GP), and more: Weapon, +1 (Longsword) 415 GP, a Potion of Healing (Greater) 200 GP, a level 3 Spell Scroll 300 GP. The Potion of Healing's 50 GP also agrees with the Adventuring Gear table's own "Potion of Healing (50 GP)" (22486). The helper stays in the test: the rule's home is `market.js`, which is P2's.
+
+**The linter.** `lintPrices` (exported from `schema.js`, called from `lintPack` when the pack has `prices`; problems read `prices: ...`) refuses: a key it does not know, a function, a missing `checked`, coins not cp, sp, ep, gp, pp in that order, a copper value that is not a whole number or does not rise, a Copper Piece that is not 1 or a Gold Piece that is not 100, `selling` keys other than the three, a percent outside 1 to 100, rarities not in the order of `RARITIES` (without "varies"), a value that is not a whole number or does not rise, an Artifact with a price, a priced rarity with none, a divisor below 2, a scroll table that is not levels 0 to 9 in order, rising. It checks the shape and the SRD's structure, not the SRD's numbers: those are the test's. A homebrew pack cannot carry `prices` (the closed key list of `strict` mode refuses it, `"prices" cannot be homebrew`; tested): the prices are the SRD's, and a table's own prices live in a market pack.
+
+**Tests.** `prices.test.js`, 13 tests: the pack carries and lints the table; each table against the SRD's numbers; the three worked prices and more; every item of the pack has a value except the Feather Token; every weapon and armour `cost` string reads in the coins of the table; fifteen-odd broken tables each refused with its sentence; a homebrew pack with `prices` is refused. No existing test was changed.
