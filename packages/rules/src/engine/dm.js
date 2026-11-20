@@ -4,7 +4,7 @@
 import { gridOf, col } from '../grid.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate } from '../content/index.js';
 import { effectsOf, endEffect } from '../durations.js';
-import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, under } from '../space.js';
+import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, surfaces, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
 import { EDITS, lintMap, migrateMap } from '../map.js';
@@ -12,7 +12,7 @@ import { arrivalSpots, marchOrder, setPin } from '../places.js';
 import { loadNode, placeIn } from './travel.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
-import { SIGHT_RULES, unknown } from '../vision.js';
+import { SIGHT_RULES, tileSent, unknown } from '../vision.js';
 import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
@@ -335,6 +335,22 @@ export const handlers = {
   ...handoutActions(fail),
   // Scenes: scene, endScene, sceneNpc, say, askCheck, sceneChronicle (scenes.js).
   ...sceneActions(fail),
+  // Point out a cell to everyone at the table. { type: 'ping', at: { q, r } }. It changes no state of its own and is not an undo step or a timeline
+  // entry (engine.js `record`): the event is told once to everyone (view.js). A cell the sender is not sent (a region not revealed, a tile not yet made out under the light rule) is refused as a cell off the map.
+  ping(s, a, ctx, ev) {
+    const dm = ctx.role === 'dm';
+    dm || (typeof ctx.userId === 'string' && ctx.userId) || fail('Join the table first.');
+    const at = a.at, bad = () => fail('Pick a spot on the map.');
+    if (!at || typeof at !== 'object' || !Number.isInteger(at.q) || !Number.isInteger(at.r) || !Array.isArray(s.map?.levels)) bad();
+    // A player may name only a cell the view would send them (`tileSent`, the call view.js makes, under whatever sight rule is in force), and the height
+    // comes only from such a surface: a hidden floor above or below is neither accepted nor measured. The DM's is any cell of the map.
+    const want = Number.isInteger(at.z) ? at.z : 0;
+    const here = surfaces(s.map, at).filter((sf) => dm || tileSent(s, sf.level.id, at));
+    here.length || bad();
+    const land = here.reduce((b, sf) => (Math.abs(sf.z - want) < Math.abs(b.z - want) ? sf : b));
+    const name = String(a.userName ?? '').trim().slice(0, 40) || (dm ? 'DM' : 'A player');
+    ev.push({ type: 'ping', from: dm ? 'dm' : ctx.userId, name, at: { q: at.q, r: at.r, z: land.z } });
+  },
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');

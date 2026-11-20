@@ -22,7 +22,7 @@ export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
 
 // Lobby changes are who sits where, not the game: they are never undone.
-const LOBBY = new Set(['claim', 'release']);
+const LOBBY = new Set(['claim', 'release', 'ping']);      // a ping changes nothing to take back
 export const undoable = (action) => !LOBBY.has(action?.type);
 
 // What a state looked like, cheaply enough to take before every action. The timeline only ever
@@ -303,6 +303,7 @@ export function describeStep(action, events, before, after) {
     case 'scene': label = ev('sceneEdit') ? 'The scene was changed' : `A scene began: ${String(ev('sceneStart')?.title ?? '').slice(0, 40)}`; break;
     case 'endScene': label = 'The scene ended'; break;
     case 'sceneNpc': { const c = ev('sceneNpc')?.change; label = c === 'added' ? `${ev('sceneNpc').name} joined the scene` : c === 'removed' ? `${ev('sceneNpc').name} left the scene` : 'Someone in the scene was changed'; break; }
+    case 'ping': label = 'A spot was pointed out'; break;
     case 'say': { const e = ev('say'); label = e?.as === null ? 'Something was said out of character' : `${e?.name ?? 'Someone'} spoke`; break; }
     case 'askCheck': label = 'A check was asked for'; break;
     case 'sceneChronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
