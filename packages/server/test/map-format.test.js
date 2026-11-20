@@ -28,16 +28,17 @@ function sameButHeader(was, now) {
   assert.equal(was.map.format, 1);
   assert.equal(was.map.hexFeet, 5);
   assert.equal(now.version, VERSION);
-  assert.equal(VERSION, 26);                          // 21 for map format 2; 22, turns named by creature (#300); 23, companions (#311); 24, packs (#390); 25, ability scores rolled at the table (#557); 26, places of a world (#579)
+  assert.equal(VERSION, 27);                          // 21 for map format 2; 22, turns named by creature (#300); 23, companions (#311); 24, packs (#390); 25, ability scores rolled at the table (#557); 26, places of a world (#579); 27, the table rule strikeFirst (#585)
   assert.deepEqual(Object.keys(now.map).slice(0, 5), HEADER);
   assert.equal(now.map.format, 2);
   assert.equal(now.map.grid, "hex");
   assert.equal(now.map.cellFeet, 5);
   assert.equal("hexFeet" in now.map, false);
   assert.deepEqual(lintMap(now.map), []);
-  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey"]) delete c[k]; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
+  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey"]) delete c[k]; if (c.settings) delete c.settings.strikeFirst; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
   assert.deepEqual(now.packs, []);                  // version 24 (#390)
   assert.deepEqual([now.world, now.place, now.parked, now.journey], [null, null, {}, null]);   // version 26 (#579)
+  assert.equal(now.settings.strikeFirst, was.settings.autoEngage !== false ? "casts" : "off");   // version 27 (#585)
   assert.deepEqual(strip(now), strip(was));
 }
 

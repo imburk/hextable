@@ -1,10 +1,10 @@
-// E23 (#372; docs/specs/table-ui.md, E23 and its build note): with `autoEngage` on and no fight, the DM's hostile cast at
-// a party member takes effect (its saves, damage, conditions, Concentration, the reactions it allows) and then the fight
+// E23 (#372; docs/specs/table-ui.md, E23 and its build note; the table rule `strikeFirst` since #585, which these tables
+// have at 'casts'): with no fight, the DM's hostile cast at a party member takes effect (its saves, damage, conditions, Concentration, the reactions it allows) and then the fight
 // starts, in the same action. On hexes (the valley) and on the square room: a save spell (Sacred Flame), an attack-roll
 // spell (Fire Bolt), an area catching two or more party members (Fireball), a Concentration spell (Hold Person) and a
 // spell from an item (a Wand of Magic Missiles). Then: the reactions it allows (Shield, Counterspell, and a player asked),
 // one undo for both, redo, a replay, a save and load in the middle, saves from main, and CAST_TAKES_FIRST_ACTION both
-// ways. With `autoEngage` off the cast starts the fight and is not cast, as before (and e23-replay.test.js).
+// ways. With `strikeFirst` 'off' the cast starts the fight and is not cast (and e23-replay.test.js).
 import assert from "node:assert/strict";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,15 +67,30 @@ for (const grid of GRIDS) {
     }
   });
 
-  test(`${grid}: with autoEngage off, or a player's cast, nothing is cast and the fight starts, as before`, () => {
-    const s = K.table(grid, { autoEngage: false }), r = ok(apply(s, K.CASTS.attack(grid), DM));
-    assert.deepEqual(r.events.map((e) => e.type).slice(0, 1), ["encounterStart"]);
-    assert.equal(at(r, "cast"), -1);
-    const p = K.table(grid), rp = ok(apply(p, { type: "cast", actor: "wizard", spell: "fire-bolt", target: "mage" }, U3));
-    assert.equal(at(rp, "cast"), -1, "a player's cast at a foe: as before");
-    // The DM's harmful cast at nobody of the party (a foe at a foe): as before.
-    const q = K.table(grid), rq = ok(apply(q, { type: "cast", actor: "mage", spell: "fire-bolt", target: "priest" }, DM));
-    assert.equal(at(rq, "cast"), -1);
+  test(`${grid}: with strikeFirst off, nothing is cast and the fight starts (the SRD's way); 'casts' is the DM's at the party only; 'all' lands a player's cast too (#585)`, () => {
+    for (const autoEngage of [false, true]) {
+      const s = K.table(grid, { autoEngage, strikeFirst: "off" }), r = ok(apply(s, K.CASTS.attack(grid), DM));
+      assert.deepEqual(r.events.map((e) => e.type).slice(0, 1), ["encounterStart"]);
+      assert.equal(at(r, "cast"), -1);
+      const p = K.table(grid, { autoEngage, strikeFirst: "off" }), rp = ok(apply(p, { type: "cast", actor: "wizard", spell: "fire-bolt", target: "mage" }, U3));
+      assert.equal(at(rp, "cast"), -1, "a player's cast at a foe starts the fight and is not cast");
+      assert.ok(p.encounter);
+    }
+    // 'casts' as before #585: with autoEngage off, a player's cast, the DM casting a party member's spell: not cast.
+    const o = K.table(grid, { autoEngage: false }), ro = ok(apply(o, K.CASTS.attack(grid), DM));
+    assert.equal(at(ro, "cast"), -1, "'casts' asks for autoEngage on");
+    const c = K.table(grid), rc = ok(apply(c, { type: "cast", actor: "wizard", spell: "fire-bolt", target: "mage" }, U3));
+    assert.equal(at(rc, "cast"), -1, "'casts': a player's cast at a foe is not cast");
+    const d = K.table(grid), rd = ok(apply(d, { type: "cast", actor: "wizard", spell: "fire-bolt", target: "priest" }, DM));
+    assert.equal(at(rd, "cast"), -1, "'casts': the DM casting a party member's spell is not cast");
+    // 'all': a player's cast at a foe lands, then the fight starts; autoEngage plays no part.
+    const p = K.table(grid, { autoEngage: false, strikeFirst: "all" }), rp = ok(apply(p, { type: "cast", actor: "wizard", spell: "fire-bolt", target: "mage" }, U3));
+    assert.ok(at(rp, "cast") >= 0 && at(rp, "cast") < at(rp, "encounterStart"), "a player's cast at a foe: cast, then the fight");
+    // A harmful cast at nobody of another side (a foe at a foe): the fight starts, nothing is cast.
+    for (const sf of ["casts", "all"]) {
+      const q = K.table(grid, { strikeFirst: sf }), rq = ok(apply(q, { type: "cast", actor: "mage", spell: "fire-bolt", target: "priest" }, DM));
+      assert.equal(at(rq, "cast"), -1, sf);
+    }
   });
 
   test(`${grid}: a refused cast changes nothing`, () => {
