@@ -1,7 +1,7 @@
 # Spec: spells on the sheet: one list of checkboxes, the level a spell was chosen at in its box, changes by the rules, a clear slots and prepared display
 
 Status: draft by an agent, to be reviewed by the design owner. **Round 3** (the owner tried the
-round 2 mockup; see "Round 3 feedback" below, which adds Decisions 8 and 9 and amends the words and
+round 2 mockup; see "Round 3 feedback" below, which adds Decisions 8 to 12 and amends the words and
 mockup sections). Round 2 (the owner tried the round 1 mockup; see "Round 2 feedback", which
 amended Decisions 1 to 4). Issue #568. A design job:
 this spec and a clickable picture, [`mockups/spells-on-the-sheet.html`](mockups/spells-on-the-sheet.html)
@@ -505,7 +505,7 @@ what a tap does (Decision 7).
 6. **Nothing moves, re-checked.** Sticking never changes the list's layout: every header,
    row and line has the same place in the list (measured from the top of the list's content)
    whether it is stuck or not; only what the eye sees moves, by scrolling. The 0 px tap check was
-   re-run with the round 3 mockup (see "The mockup"): TAPS_PLACEHOLDER.
+   re-run with the round 3 mockup (see "The mockup"): 79 taps, largest change 0 px (see "The mockup").
 7. **Rejected:** (a) one floating label that JavaScript rewrites to the current group as you
    scroll: its words change while scrolling and it costs work on every scroll event on a phone;
    (b) pinning the rule lines too: four pinned lines on a phone; (c) pinning the level as part
@@ -742,10 +742,36 @@ mouse; screenshots of the frame in `/home/claude/shots/568-r3/`):
   and the list does not scroll sideways.
 - **Count tiles:** each tile jumps to its group, which lands right under the bar.
 - **Nothing moves** (`window.mock.layout()`: the top and height of every row, header, rule line, tile
-  and the bar, the scroll position and the list's height, before and after each tap): TAPS_PLACEHOLDER
-- **Rows each moment lists** (level 4 sheets): MOMENTS_PLACEHOLDER
+  and the bar, the scroll position and the list's height, before and after each tap): **79 taps,
+  the largest change in any top, any height, the scroll position or the list's height was 0 px.** They
+  were: a Wizard walked from level 1 to 5, the swaps, Brenna's level 5, Long Rest and read-only view, **inside
+  each of the four moments for both characters** (a tap on the first, middle and last row of each list),
+  three taps with the list scrolled so that headers were stuck, and a tap inside a **filtered** list (phone
+  and desktop).
+- **Search** (Decision 12), phone and desktop alike: opening it left the scroll place and all 130
+  rows as they were (the bar still 93 px); "fire" left 2 rows (Fire Bolt; Fireball under a lone "Level 3"
+  sub-header, the Level 1 and 2 sub-headers and the Initiate group hidden); "lvl 2" left 36 rows under
+  "Level 2" only; "zzzq" left none and said so; with matches scrolled, the group and level headers stuck
+  at 93 and 127 px; the ✕ closed it and the list was **back at the scroll place it was opened at (1900 px)
+  with all 130 rows**.
+- **Rows each moment lists** (sheets at level 4, the level-up being to 5; rows per group):
 
-Screenshots: SHOTS_PLACEHOLDER
+  | Moment | Wren (Wizard) | Brenna (Cleric) |
+  |---|---|---|
+  | New character | cantrips 20 · Initiate spell 15 · spellbook 30 | cantrips 20 · Initiate spell 30 · prepared 15 |
+  | Level up | cantrips 20 · Initiate 15 · spellbook 95 | cantrips 20 · Initiate 30 · prepared 45 · always 6 |
+  | After a Long Rest | cantrips 17 (the Wizard list) · Initiate 1 · **spellbook 12** | cantrips 7 · Initiate 1 · **prepared 28** · always 4 |
+  | Any other time | cantrips 6 · Initiate 1 · **prepared 7** | cantrips 7 · Initiate 1 · prepared 7 · always 4 |
+
+  The tiles read, for Wren at level 4: "Cantrips 6 known", "Spells prepared 7 of 7", "Always prepared 1
+  spell", "Spellbook 12 spells".
+
+Screenshots in `/home/claude/shots/568-r3/` (frame only): `phone-wren-scroll-0` to `-5` and
+`phone-brenna-scroll-0` to `-5` (the pinned headers at six scroll places), `desktop-wren-scroll-*`,
+`desktop-brenna-scroll-*`, `phone-wren-pinned-after-taps`, `phone-wren-top-tiles` (caster lines, slots,
+tiles), `phone-{wren,brenna}-moment-{new,level,long,other}`, `phone-wren-long-scrolled`,
+`phone-search-{open,fire,none,scrolled-pinned,closed}`, `desktop-search-*`, `desktop-wren-card-hover`,
+`phone-wren-card`, and round 2's walk (`phone-wren-L*`, `-levelup5-*`, `-swap-*`, `phone-brenna-*`).
 Round 2's pictures (`/home/claude/shots/568-r2/`) are out of date.
 
 ## Build plan
@@ -754,7 +780,7 @@ Round 2's pictures (`/home/claude/shots/568-r2/`) are out of date.
 |---|---|---|
 | **SS1** (rules) | `spellsAt` and `book` on the sheet; `validate`; derive reads `book` (prepared ⊂ book); state version and migration; tests | `derive.js`, `migrate.js`, `packages/rules/test/derive.test.js` |
 | **SS2** (rules) | `spellChanges(before, after, moment)`; `levelUp` checks it; `respell` and the window from `rest` and `shortRest`; `corrected` on a DM's `setSheet`; view and log words; tests per class row of the rules table | `derive.js`, `engine/characters.js`, `engine/rests.js`, `view.js`, tests |
-| **SS3** (client) | the build sheet's Spells section: the one list of checkbox rows with the level in the box, the count bar, swaps in the list, the moments, the slot pips and tiles, always prepared, the spellbook's ★; the Magic Initiate block's line; `ⓘ` and #566's card; a test that a tap changes no row's place (the mockup's `layout()` check, in the client tests); smoke step in the classes pass | `buildsheet.js`, its CSS, `packages/client/test/`, `scripts/smoke/classes.mjs` |
+| **SS3** (client) | the build sheet's Spells section: the one list of checkbox rows with the level in the box, the count bar, swaps in the list, the moments, the slot pips and tiles, always prepared, the spellbook's ★; the Magic Initiate block's line; `ⓘ` and #566's card; sticky headers, `(lvl N)` names, the caster lines and tiles, the lists per moment and the search (Decisions 8 to 12); a test that a tap changes no row's place (the mockup's `layout()` check, in the client tests); smoke step in the classes pass | `buildsheet.js`, its CSS, `packages/client/test/`, `scripts/smoke/classes.mjs` |
 | **SS4** (client) | Character › Sheet › Spells (one-token menu) read-only list and the window line (the same list, live, Done in the foot); until the one-token menu lands, the same in today's sheet tab | `app.js` (`renderSheet`), the one-token menu's files when built |
 | **SS5** | a Wizard copying a spell into the book (gold and hours, DM-approved); High Elf's swap (with SP2) | later |
 

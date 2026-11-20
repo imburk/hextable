@@ -59,6 +59,7 @@ body { margin: 0; background: #111614; color: #e8e4d8; font: 15px/1.4 'Segoe UI'
 .sbtn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .srow { position: absolute; left: 0; right: 0; top: 0; height: 50px; background: var(--panel); z-index: 1; display: flex; align-items: center; gap: 8px; padding: 0 56px 0 16px; }
 .srow input { flex: 1; min-width: 0; height: 40px; font: 16px var(--body); color: var(--ink); background: var(--panel-2); border: 1px solid var(--accent); border-radius: var(--radius); padding: 0 10px; }
+.srow input::-webkit-search-cancel-button { display: none; }   /* the ✕ at the end of the row is the one way out */
 .srow .found { font-size: 13px; color: var(--muted); white-space: nowrap; min-width: 66px; text-align: right; }
 .srow .sclose { right: 6px; top: 3px; font-size: 20px; border: 1px solid var(--line); width: 44px; }
 .bar.s-open .need, .bar.s-open .parts, .bar.s-open .sbtn { visibility: hidden; }
