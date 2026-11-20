@@ -63,6 +63,8 @@ The owner tried the published mockup and said (his words quoted):
 | R17 | (round 4) "A number of these are setup items that are more specific, can they be held under the same menu item and just shown as sections ... dice ... on the same page as Look and just have a title bar that you click on" | The arc and the strip hold a few places: your character(s), Turns, Roll dice, Log and chat, Setup, and DM tools for the DM. Setup is one page of sections: Display and controls, Dice, The menu, Characters and packs, The table's rules, Help and about, Leave the table (Decision 4d) |
 | R18 | (round 4) "When a section is too long to display with the other section headers, it scrolls while keeping the section headers above and below." | One section open at a time; its content scrolls between the bars before it, pinned at the top, and the bars after it, pinned at the bottom (Decision 4d) |
 | R19 | (round 4) "the symbols across the top are too many and there's no indicator that there are more ... add > & < symbols if required? I'd prefer to get down to just a few though. Not sure what leave means ... If the latter, it should be under settings." | Six symbols fit a phone's strip; when more do not fit (a solo party, say), ‹ and › appear at the ends where there is more. Leave means leaving the table (the game, on this device); it is now the last section of Setup, with a confirm (Decisions 4c and 4d) |
+| R20 | (round 5) "when i click on wren, the w on the menu, it does this weird skip thing where it moves past the display and comes back?"; then "actually that happens when I click on anything" | Two causes, both fixed. (1) Opening a place scrolled the clipped frame: the strip's `scrollIntoView` on the current symbol, called while the sheet was still sliding up (the symbol below the frame's edge), scrolled every ancestor that could scroll, the frame and the sheet included, so the whole picture jumped. (2) Choosing a place from the strip re-made the screen and slid it in again from off the edge (from the left on a wide screen, 462 px; from the right on a phone, 53 to 161 px) though it was already in place. Now the strip sets only its own `scrollLeft`, and switching places swaps the screen where it is. The rule "the menu never overshoots" (Decision 6) |
+| R21 | (round 5) "the display needs to be consistent. On the setup tab, you only have one item open at a time. On Wren's page, it can open multiple things at once. I think we go with the setup version where you have headers that hold top/bottom. When all of them are shown, they should have the tip info. When we're in one, they can hide the tip info in favor of showing more working space." | One accordion for every page with sections: the character's page, Roll dice, Log and chat, Setup and DM tools. One section open; the bars before it pinned at the top and after it at the bottom; with none open each bar shows its tip, with one open the others show their title only. In-place folds are gone (Decisions 4a and 4d) |
 
 ## Rules that bind this design
 
@@ -444,19 +446,18 @@ The owner opened Story at the foot of Wren's screen and the screen jumped to the
   a refreshed state, a row that sends: the scroll of every level stays where the player
   left it. A re-drawn level keeps its `scrollTop` (the client keeps it per level and puts
   it back after drawing).
-- **Inside Character, groups and sections open in place**, under the row that was
-  tapped, like the sections of a paper sheet folded open: Attack, Cast, Heal, Inventory,
-  Abilities and skills, Story, and the turn bar's lists. The tapped row stays exactly
-  where it was under the finger; what it opens appears beneath it. A second tap folds it.
-  Any number may be open; each remembers that it is open until the menu closes.
-- **The name and status block stay on screen.** On a phone the status block ("Wren",
-  Hit Points, the turn bar) is fixed at the top of the Character screen and the groups
-  scroll under it, so Story at the bottom opens with Wren still shown above it.
-- **On a wide screen** a group may also open in the next column (the cascade); the
-  Character column then keeps its scroll and marks the open row. Only a screen that is a
-  real next step (a picker such as Formation or a Wild Shape form, a DM tools section)
-  pushes a new level on a phone; going back returns to the same scroll and the same open
-  sections.
+- **Round 5 replaces the in-place folds of round 2** with the one accordion of Decision 4d
+  (R21): on the character's page, as on Setup, one section is open at a time and the bars
+  before and after it stay pinned. What this rule still says: a tapped bar stays where it
+  was under the finger; an open section keeps its own scroll while it stays open, and each
+  page remembers which section was open.
+- **The name and status block stay on screen.** The status block ("Wren", Hit Points, the
+  turn bar) is fixed at the top of the character's page above the sections, so the Sheet
+  section at the bottom opens with Wren still shown above it.
+- Only a screen that is a real next step (a picker such as Formation or a Wild Shape form,
+  Arrange) pushes a new level; going back returns to the same scroll and the same open
+  section. On a wide screen there is no second column for a group any more: a group is a
+  section of the page.
 - **One exception, asked for:** the turn line's tap (Turns) and the Waiting for you box's
   buttons open their screen at its top, since that is where the thing is.
 
@@ -641,7 +642,60 @@ Kept per device (`hextable.menuOrder`, `hextable.menuHidden`), like the theme.
 Turns, Roll dice, Log and chat and DM tools may be hidden. (Help and Leave, which could not
 be hidden in round 3, are now sections of Setup, so they are always one place away.)
 
-### Decision 4d: Setup is one page of sections (round 4)
+### Decision 4d: pages of sections, one accordion (rounds 4 and 5)
+
+Round 4 made Setup one page of sections; round 5 (R21) uses the same accordion on **every
+page that has sections**, so the whole menu behaves one way:
+
+| Page | Sections |
+|---|---|
+| **Your character, in a fight** | Attack and cast · Move and defend · Heal · Features and reactions · Inventory · Sheet (abilities and skills, features and traits, spells known, story) |
+| **Your character, exploring** | Explore (Search, Hide, Follow, Lead, things in reach) · Cast · Heal and rest · Features · Inventory · Sheet |
+| **A companion** (the owl) | Move and defend · Help (or Attack) · Sheet |
+| **Roll dice** | Roll · Last rolls |
+| **Log and chat** | Handouts (when there are any) · Log · Talk (say, a note to the DM) |
+| **Setup** | the seven of round 4, below |
+| **DM tools** | Undo and the fight · Creatures · Map, sight and light · Table rules (Players see foes' health) · Party and time · Scenes and handouts · Table file |
+| **Turns** | none: one list |
+
+Round 2's eleven groups on the character's page become six sections: two groups that a
+player uses together share a section, with a small heading for each inside it (Attack /
+Cast, Move / Defend and hide, Features / Reactions). Six is what fits beside the status
+block on a phone (below).
+
+**The character's page.** The status block stays above the sections. With no section open
+it is the full block (name, level and class, the Hit Point bar, AC, speed, the turn bar in a
+fight, slots and conditions) and every bar shows its tip ("Fire Bolt, Quarterstaff · 2
+slots, 6 spells"). With a section open the block goes **compact**: one 44 px line (sigil,
+name, Hit Points and AC, End turn on my turn) and the turn bar (44 px), and the other bars
+show their titles only. The page's heading is the status block's name (it is still a
+heading for screen readers). **On my turn the page opens on "Attack and cast"**, the
+likeliest section (question 29); otherwise on what was open last, or none. A turn-bar
+segment opens, as a first section above the others, everything that costs it ("Costs your
+Bonus Action"); a second tap closes it. A section with nothing usable now still opens: its
+rows are greyed with their reasons, and its tip says why ("Not your turn.").
+
+**Room for the open section** (its own visible height, measured in the mockup with every
+other bar still on screen; round 5, with every bar showing its title only while one is
+open):
+
+| Page, open section | 390 x 844 phone | 1280 x 800 |
+|---|---|---|
+| Wren in a fight, my turn, "Attack and cast" (status block compact, turn bar shown) | **147 px** | 271 px |
+| Wren in a fight, "Sheet" | 149 px | 273 px |
+| Wren exploring, "Cast" | 195 px | 319 px |
+| The owl, "Move and defend" | 333 px | 457 px |
+| Roll dice, "Roll" | 384 px | 560 px |
+| Log and chat (with Handouts), "Log" | 338 px | 514 px |
+| Setup, "Dice" | 154 px | 330 px |
+| DM tools, "Table rules" | 154 px | 330 px |
+
+The tightest is the character's page in a fight on a phone; it keeps at least 140 px
+because the status block goes compact and no bar shows its tip while a section is open.
+With none open, every bar shows its tip (6 on the character's page, 7 on Setup) and all
+fit with the full status block.
+
+### Decision 4d (round 4): Setup is one page of sections
 
 Settings-like things are no longer places of their own. **Setup** holds them as sections,
 in this order:
@@ -664,8 +718,8 @@ in this order:
 - While a section is open, the **bars before it stay pinned at the top** and the **bars
   after it stay pinned at the bottom**; only the open section's content scrolls between
   them (its own scroll, kept while it stays open). The closed bars shrink to 44 px (the
-  title only) so all seven fit beside an open section on a 390 x 844 phone, with at least
-  120 px of the section showing.
+  title only; round 5: the open bar too) so all seven fit beside an open section on a 390 x
+  844 phone, with 154 px of the section showing.
 - With no section open, Setup is the list of seven bars.
 - **Roll dice** has a row "How dice look and how long they stay", which opens Setup with
   Dice open.
@@ -757,6 +811,24 @@ in this order:
 - **Reduced motion** (`prefers-reduced-motion: reduce`) means `appear` whatever the
   preference, and no pulse on the token.
 - Nothing waits for an animation: a tap during a slide acts on where things will be.
+- **The menu never overshoots (round 5, R20).** Nothing moves past where it ends up and
+  comes back. In particular:
+  - **Only three things move**: the sheet (or a wide screen's column) when the menu opens
+    or closes, a real next step (Arrange, a picker) sliding in, and the arc fanning out.
+    **Switching places** (from the strip, from the arc while the menu is open, from the
+    Waiting card) **swaps the screen where it is**: no slide, no fade from an edge.
+  - **No two slides at once.** The sheet rises with its screen already in place inside it;
+    the screen does not also slide in from the side.
+  - **Nothing scrolls an ancestor.** The client never calls `scrollIntoView` (it scrolls
+    every clipped ancestor, the page frame and the sheet included, which made the whole
+    picture jump while the sheet was still sliding). The strip shows the current symbol by
+    setting its own `scrollLeft`; focus moves with `preventScroll`.
+  - **The test** (in the build, as in the mockup's check): after each way into each place
+    (every symbol, from the arc and from the strip, every character, at 390 x 844 with
+    touch and at 1280 x 800, with slide and with appear), record the sheet's and the
+    screen's position every frame for 1.6 s: each moves only towards its final place, and
+    the scroll of the frame, the stage, the document, the sheet and its levels never
+    changes.
 
 ### Decision 7: states
 
@@ -1173,6 +1245,8 @@ away. The address can set a picture, for screenshots: for example
 `#bare&theme=sunlit&state=mine&open=cast`, `#bare&frame=desktop&open=turns`,
 `#bare&prompt=initiative` (the names are listed at the top of the file).
 
+Round 5: no skip when a place opens (the strip no longer scrolls the frame; switching places swaps the screen in place), and one accordion on every page with sections, with the compact status block on the character's page. Round 5 screenshots: `/home/claude/shots/527-r5`.
+
 Round 4 adds: few places in the arc and the strip, the die above everything that closes, Setup as one page of sections with pinned bars, Leave as Setup's last section with a confirm, ‹ › on an overflowing strip, a Player/DM switch in the mockup's controls. Round 4 screenshots: `/home/claude/shots/527-r4`.
 
 Round 3 adds: removable dice chips, Shift+click and press-and-hold to take a die away, dice that scatter and rest flat and apart, the arc round the die (the mockup control "Tap the die", and the die at left, centre or right), labels after 3 s, the strip of symbols across the top of every screen, Arrange with six-dot handles, the 1 s hold that throws a d20, a "Symbols" sheet in the three themes, and no × on the phone. Round 3 screenshots: `/home/claude/shots/527-r3`.
@@ -1213,7 +1287,7 @@ through one helper (`openMenu(page, path)`) added in M1.
 | D5 | **Roll dice** (client), after E-M2: the picker on the Dice screen, the token's press and hold, the throw zone with the chosen dice, the log line and title | `dice.js`, `app.js`, `drawer.js` (the Dice screen), `logview.js`, tests | `dice` | 2d6 + 1 to the table shows the same faces on every screen and in the log; "Only the DM" is seen by the roller and the DM only; refused while a reaction waits, with the reason |
 | E-M2 | **Engine: `freeRoll`**, a plain roll from the seed that changes nothing else (Decision 8b) | `engine/` (a handler in `rolls.js`'s domain or a small new module under `engine/`), `engine.js` (dispatch and the validation order: refused while a question waits), `view.js` (sent to all, or to the roller and the DM), `packages/server/README.md`, tests | — | Replay gives the same faces; undo takes it back; a player is never sent another player's `to: 'dm'` roll; 21 dice, a d7, a bonus of 21 are refused and change nothing |
 | M8 | **The arc, the strip, the symbols and the names** (rounds 3 and 4; round 4: a few places, the die above the sheet and the arc, ‹ › on the strip, Setup's sections): the symbol set as one module (`client/symbols.js`, inline SVG strings, `currentColor`), the arc on a quick tap with its rings per position and More, labels after 3 s and the setting, the strip across the top of every screen, every heading its own name, the handle as the phone's close control | `drawer.js`, `symbols.js` (new), `style.css`, `settings.js`, a test that every place has a symbol and an accessible name | `drawer`, `settings`, `keys` | At 390 x 844 the arc at bottom centre has 14 slots on the screen, none under 44 px; at bottom left 15; labels appear after 3 s and at once to a screen reader; no phone screen has a × |
-| M10 | **Setup as sections** (round 4): the seven sections, one open at a time with the bars pinned above and below, Leave with its confirm, the Dice row from Roll dice; and the closing test (every state, at both sizes, by the die, the map and Escape) | `settings.js`, `drawer.js`, `style.css`, a smoke pass `menuclose` | `settings`, `drawer` | All seven bars and 120 px of the open section fit at 390 x 844; no state fails to close |
+| M10 | **One accordion for every page with sections** (rounds 4 and 5): Setup's seven sections, the character's six (with the compact status block), Roll dice, Log and chat, DM tools; one open at a time with the bars pinned above and below; tips shown only with none open; the no-overshoot test (R20); Leave with its confirm, the Dice row from Roll dice; and the closing test (every state, at both sizes, by the die, the map and Escape) | `settings.js`, `drawer.js`, `style.css`, a smoke pass `menuclose` | `settings`, `drawer` | All seven bars and 120 px of the open section fit at 390 x 844; no state fails to close |
 | M9 | **Arrange**: hold a symbol, Setup › Arrange, drag by six dots, ▲ ▼, hide, Reset order; the four that cannot be hidden | `drawer.js`, `settings.js`, a test for the order and the fixed four | `drawer` | A dragged order survives a reload; Setup, Help, Leave and the character cannot be hidden |
 | D6 | **Many dice**: separate paths, hops, friction, glancing, nudging apart, flat rest, the fade; the 1 s hold on the die for a plain roll | `dice.js`, `app.js`, a unit test (100 throws of 12 dice: no two resting dice overlap; every resting die's face is the sent one) | `dice` | 6d20 + 1d100 + 2d6 rests as 10 separate dice at both sizes |
 | E-M3 | **Engine: foes' health for players, a table rule** (`settings.foeHealth`: `hidden`, `rough`, `exact`; Decision 7a) | `engine/dm.js` (`SETTINGS`), `migrate.js` (the next state version), `view.js` (the fraction under `exact`, seen creatures only), tests | — | Under `rough` no player message holds a foe's fraction; under `exact` a seen goblin's fraction is sent rounded to tenths and a hidden one's id is in no player message |
@@ -1326,3 +1400,11 @@ Added in round 4:
     stay pinned, which only works with one.*
 27. **Handouts inside Log and chat**, not a place of their own. *Default: yes; the Waiting
     card and the Log symbol's badge say when one arrives.*
+
+Added in round 5:
+
+28. **The character's six sections** (Attack and cast, Move and defend, Heal, Features and
+    reactions, Inventory, Sheet; exploring: Explore, Cast, Heal and rest, Features,
+    Inventory, Sheet). *Default: these.*
+29. **On my turn, open the character's page on "Attack and cast"?** *Default: yes; at other
+    times it opens on what was open last.*
