@@ -72,7 +72,7 @@ const KEYS = {
   picture: ['file', 'mime', 'bytes', 'sha256'],
   data: SECTIONS,
   start: ['map', 'entry', 'node', 'clock', 'light', 'weather', 'scene', 'stage'],
-  link: ['to', 'text'],
+  link: ['to', 'text', 'from', 'node'],
   encounter: ['id', 'name', 'map', 'region', 'creatures', 'budget', 'tactics', 'stage'],
   creature: ['monster', 'count', 'at', 'hidden', 'name'],
   budget: ['difficulty', 'level', 'size'],
@@ -88,7 +88,7 @@ const plain = (x) => { const p = Object.getPrototypeOf(x); return p === Object.p
 const own = (o, k) => isRec(o) && typeof k === 'string' && Object.hasOwn(o, k);
 const letters = (s) => [...s].length;
 const thousands = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-const quote = (s) => `"${String(s).length > 60 ? `${String(s).slice(0, 60)}...` : String(s)}"`;
+const quote = (s) => (typeof s === 'string' ? `"${s.length > 60 ? `${s.slice(0, 60)}...` : s}"` : `<${s === null ? 'null' : Array.isArray(s) ? 'list' : typeof s}>`);
 const idOk = (s) => typeof s === 'string' && ID.test(s) && s.length <= ADVENTURE_LIMITS.id;
 const whole = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 
@@ -131,9 +131,9 @@ export function budget(unpacked, limits = ADVENTURE_LIMITS) {
         bytes += String(v).length;
       } else if (typeof v === 'string') {
         bytes += jsonBytes(v);
-        const n = letters(v);
-        if (n > L.string) say(`${where(node)}: The text is ${thousands(n)} letters long; the most is ${thousands(L.string)}.`);
-        else if (HIDING.test(TEXT_KEYS.has(node.key) ? v.replace(/\n/g, '') : v)) say(`${where(node)}: The text has a control character or a direction override; text is plain text (a line break only in a long text).`);
+        const n = v.length > 2 * L.string ? Infinity : letters(v);          // a letter is at most two units: no spreading a huge string
+        if (n > L.string) say(`${where(node)}: The text is ${n === Infinity ? `over ${thousands(L.string)} letters long` : `${thousands(n)} letters long`}; the most is ${thousands(L.string)}.`);
+        else if (HIDING.test(TEXT_KEYS.has(node.key) ? v.replace(/[\n\r\t]/g, '') : v)) say(`${where(node)}: The text has a control character or a direction override; text is plain text (a line break or tab only in a long text).`);
       } else if (typeof v !== 'object') {
         say(`${where(node)}: ${typeof v === 'function' ? 'A function' : `A ${typeof v}`} is not data; a module is data only.`);
       } else if (!Array.isArray(v) && !plain(v)) {
@@ -153,7 +153,7 @@ export function budget(unpacked, limits = ADVENTURE_LIMITS) {
           const k = keys[i];
           bytes += jsonBytes(k) + 1;
           if (BAD_KEYS.includes(k)) { say(`${where(node)}: It has a key "${k}", which no module may have.`); continue; }
-          if (letters(k) > L.key) { say(`${where(node)}: A key is ${thousands(letters(k))} letters long; the most is ${L.key}.`); continue; }
+          if (k.length > 2 * L.key || letters(k) > L.key) { say(`${where(node)}: A key is too long; the most is ${L.key} letters.`); continue; }
           if (HIDING.test(k)) { say(`${where(node)}: A key has a character that cannot be shown or that hides what it says.`); continue; }
           stack.push([v[k], depth + 1, { key: k, up: node }]);
         }
@@ -173,8 +173,8 @@ export function migrateAdventure(unpacked) {
   if (typeof unpacked.manifest.v === 'number' && unpacked.manifest.v > ADVENTURE_V) return unpacked;
   const maps = unpacked.data.maps;
   if (!isRec(maps)) return unpacked;
-  const out = {};
-  for (const k of Object.keys(maps)) { try { out[k] = isRec(maps[k]) ? migrateMap(structuredClone(maps[k])) : maps[k]; } catch { out[k] = maps[k]; } }
+  // fromEntries defines each key as an own property, so a key `__proto__` can never reach a prototype.
+  const out = Object.fromEntries(Object.keys(maps).map((k) => { try { return [k, isRec(maps[k]) ? migrateMap(structuredClone(maps[k])) : maps[k]]; } catch { return [k, maps[k]]; } }));
   return { ...unpacked, data: { ...unpacked.data, maps: out } };
 }
 
@@ -189,12 +189,10 @@ export function canonical({ manifest, data }) {
 }
 
 // ---------- placing creatures ----------
-const placing = new WeakMap();        // a map document -> { B, candidates: Map<'region|size', positions> }
-function placeState(map) {
-  let p = placing.get(map);
-  if (!p) placing.set(map, p = { B: barriers(map), candidates: new Map() });
-  return p;
-}
+// What is worked out about one map while creatures are placed on it: its barriers, and for each region and size which of
+// the region's cells a creature can stand on (found lazily, cell by cell, and kept). It lives for one `lintAdventure` call
+// or one `placeIn` call and no longer, so an edited map is never read through a stale copy.
+const newPlacing = (map) => ({ B: barriers(map), stand: new Map() });
 // Where a creature of this body could stand with its anchor on this cell (a level's cell): the floor in that column
 // nearest the level's own surface, standable and with room for its whole footprint, as `spawn` checks it
 // (engine/world.js, placeCreature; the tests here are the same ones). Null if it cannot. It does not look at who stands there.
@@ -206,30 +204,22 @@ function standAt(map, B, body, level, h) {
   if (!g || TILES[g.tile.t].cost === Infinity) return null;
   return fitsOn(map, body, to, B) ? to : null;
 }
-// Sets down `bodies` (each `{ size }`) on the cells of a region, in the order of the region's cell list, each at the first
-// cell where it can stand and nobody (of `taken`, `{ size, pos }`, or set down before it) is in its way: no dice, so the
-// same module places the same way every time. Returns { ok: true, at: [position...] } or { ok: false, error, placed }:
-// too few cells is a problem to report, never a quiet move.
-export function placeIn(map, region, bodies, taken = []) {
+function placeWith(P, map, region, bodies, taken) {
   const r = (Array.isArray(map?.regions) ? map.regions : []).find((x) => x && x.id === region);
   if (!r) return { ok: false, error: `Region ${quote(region)} is not a region of this map.`, placed: 0 };
-  const level = map.levels.find((l) => l.id === r.level), G = gridOf(map), P = placeState(map);
-  const cells = r.hexes.map((k) => parse(k));
+  const level = map.levels.find((l) => l.id === r.level), G = gridOf(map);
   // Every body has an id: `overlapAt` treats two creatures with none as a riding pair sharing a space.
   const there = taken.map((t, i) => ({ id: `t${i}`, size: t.size, pos: t.pos })), at = [];
   const next = new Map();                         // size -> where to go on looking: what failed for a size still fails for it
   for (const body of bodies) {
     const ck = `${region}|${body.size}`;
-    let list = P.candidates.get(ck);
-    if (!list) {
-      list = [];
-      for (const h of cells) { const to = standAt(map, P.B, body, level, h); if (to) list.push(to); }
-      P.candidates.set(ck, list);
-    }
+    let memo = P.stand.get(ck);
+    if (!memo) P.stand.set(ck, memo = []);
     const mine = { id: 'new', size: body.size };
     let i = next.get(body.size) ?? 0, found = null;
-    for (; i < list.length; i++) {
-      if (!there.some((o) => overlapAt(o, o.pos, mine, list[i], G))) { found = list[i]; break; }
+    for (; i < r.hexes.length; i++) {
+      if (memo[i] === undefined) memo[i] = standAt(map, P.B, body, level, parse(r.hexes[i]));
+      if (memo[i] && !there.some((o) => overlapAt(o, o.pos, mine, memo[i], G))) { found = memo[i]; break; }
     }
     if (!found) return { ok: false, error: `The region ${quote(region)} has room for ${at.length} of the ${bodies.length} creatures; the rest would not fit.`, placed: at.length };
     next.set(body.size, i + 1);
@@ -238,12 +228,56 @@ export function placeIn(map, region, bodies, taken = []) {
   }
   return { ok: true, at };
 }
+// Sets down `bodies` (each `{ size }`) on the cells of a region, in the order of the region's cell list, each at the first
+// cell where it can stand and nobody (of `taken`, `{ size, pos }`, or set down before it) is in its way: no dice, so the
+// same module places the same way every time. Returns { ok: true, at: [position...] } or { ok: false, error, placed }:
+// too few cells is a problem to report, never a quiet move. Works out everything afresh from the map as given.
+export function placeIn(map, region, bodies, taken = []) {
+  return placeWith(newPlacing(map), map, region, bodies, taken);
+}
 // One creature on one cell of a level.
-function placeAt(map, level, h, body, taken) {
-  const to = standAt(map, placeState(map).B, body, level, h), G = gridOf(map);
+function placeAt(P, map, level, h, body, taken) {
+  const to = standAt(map, P.B, body, level, h), G = gridOf(map);
   if (!to) return { ok: false, error: `Nothing of that size can stand at ${h.q},${h.r} on level ${quote(level.id)}.` };
   if (taken.some((o, i) => overlapAt({ id: `t${i}`, ...o }, o.pos, { id: 'new', ...body }, to, G))) return { ok: false, error: `The cell ${h.q},${h.r} is taken by another creature of the same encounter.` };
   return { ok: true, at: [to] };
+}
+
+// The map document's own fields (map.js: lintMap, EDITS, migrateMap; the stock maps): a closed list at every level, so
+// a map cannot carry what no map has (hostile case 11), and heights and points within a range a map can stand in.
+const MAP_KEYS = {
+  map: ['format', 'id', 'name', 'grid', 'cellFeet', 'levels', 'walls', 'objects', 'regions', 'starts', 'entries', 'areas', 'seen', 'holding'],
+  level: ['id', 'name', 'z', 'tiles', 'image', 'light'], tile: ['t', 'h', 'lift'],
+  wall: ['id', 'level', 'a', 'b', 'kind'],
+  object: ['id', 'def', 'level', 'at', 'state', 'edge', 'seg', 'key', 'name', 'links', 'to', 'dc'], link: ['object', 'when', 'sets'],
+  region: ['id', 'name', 'level', 'hexes', 'revealed', 'light'], start: ['level', 'q', 'r', 'entry'],
+  entry: ['id', 'name', 'kind', 'object'], area: ['id', 'name', 'level', 'hexes'],
+};
+function mapShape(doc) {
+  const bad = [], say = (m) => { if (bad.length < 20) bad.push(m); };
+  const keys = (o, list, what) => { if (isRec(o)) for (const k of Object.keys(o)) if (!list.includes(k)) say(`${what} has "${k}", which a map does not have there.`); };
+  const far = (n, what) => { if (typeof n === 'number' && Math.abs(n) > 100000) say(`${what} is out of range; heights and points are within 100,000 feet.`); };
+  const each = (v) => (Array.isArray(v) ? v : []);
+  keys(doc, MAP_KEYS.map, 'The map');
+  for (const l of each(doc.levels)) {
+    if (!isRec(l)) continue;
+    keys(l, MAP_KEYS.level, `Level ${quote(l.id)}`); far(l.z, `Level ${quote(l.id)}'s height`);
+    if (isRec(l.tiles)) for (const [k, t] of Object.entries(l.tiles)) { keys(t, MAP_KEYS.tile, `The tile at ${quote(k)}`); if (isRec(t)) { far(t.h, `The tile at ${quote(k)}'s height`); far(t.lift, `The tile at ${quote(k)}'s lift`); } }
+  }
+  for (const w of each(doc.walls)) if (isRec(w)) { keys(w, MAP_KEYS.wall, `Wall ${quote(w.id)}`); for (const p of [w.a, w.b]) each(p).forEach((n) => far(n, `Wall ${quote(w.id)}`)); }
+  for (const o of each(doc.objects)) {
+    if (!isRec(o)) continue;
+    keys(o, MAP_KEYS.object, `Object ${quote(o.id)}`);
+    if (isRec(o.seg)) { keys(o.seg, ['a', 'b'], `Object ${quote(o.id)}'s line`); for (const p of [o.seg.a, o.seg.b]) each(p).forEach((n) => far(n, `Object ${quote(o.id)}'s line`)); }
+    for (const l of each(o.links)) keys(l, MAP_KEYS.link, `A link of object ${quote(o.id)}`);
+    for (const p of [o.at, o.to]) if (isRec(p)) { keys(p, ['q', 'r'], `Object ${quote(o.id)}'s place`); far(p.q, `Object ${quote(o.id)}'s place`); far(p.r, `Object ${quote(o.id)}'s place`); }
+  }
+  for (const r of each(doc.regions)) keys(r, MAP_KEYS.region, `Region ${quote(r?.id)}`);
+  for (const st of each(doc.starts)) keys(st, MAP_KEYS.start, 'A start');
+  for (const en of each(doc.entries)) keys(en, MAP_KEYS.entry, `Entry ${quote(en?.id)}`);
+  for (const a of each(doc.areas)) keys(a, MAP_KEYS.area, `Shop area ${quote(a?.id)}`);
+  if (isRec(doc.seen)) keys(doc.seen, ['tiles', 'objects'], 'What the party has seen');
+  return bad;
 }
 
 // ---------- the linter ----------
@@ -255,8 +289,16 @@ function placeAt(map, level, h, body, taken) {
 //     encounters: { [id]: { xp, creatures, standIns } } }
 // `ok` means nothing refuses the module. `problems` holds at most `limits.problems` sentences, `more` how many were left out.
 export function lintAdventure(unpacked, opts = {}) {
-  const L = { ...ADVENTURE_LIMITS, ...(opts.limits ?? {}) };
   const out = { ok: false, problems: [], more: 0, unsupported: [], missing: [], unused: [], encounters: {} };
+  try { return lintInner(unpacked, opts, out); } catch {
+    // Whatever slipped past the checks (a value of a kind no field holds) is one refusal, never a throw.
+    out.problems.push('module: Something in it is not what its field should hold, so it cannot be read as a module.');
+    out.ok = false;
+    return out;
+  }
+}
+function lintInner(unpacked, opts, out) {
+  const L = { ...ADVENTURE_LIMITS, ...(opts.limits ?? {}) };
   const say = (path, msg) => { if (out.problems.length < L.problems) out.problems.push(path ? `${path}: ${msg}` : msg); else out.more++; };
   const done = () => { out.ok = out.problems.length === 0; return out; };
   const fromBudget = budget(unpacked, L);
@@ -451,7 +493,8 @@ export function lintAdventure(unpacked, opts = {}) {
           if (isRec(l.image) && typeof l.image.asset === 'string' && assets.has(l.image.asset)) { used.add(l.image.asset); l.image = { ...l.image, asset: 'module-picture' }; }
           else say(`${path}`, `level ${quote(l.id)} has a background that names no picture of the module.`);
         }
-        const problems = lintMap(doc);
+        let problems;
+        try { problems = [...mapShape(doc), ...lintMap(doc)]; } catch { say(path, 'is not a map document.'); continue; }
         for (const p of problems.slice(0, 5)) say(path, p);
         if (problems.length > 5) say(path, `and ${problems.length - 5} more problems with this map.`);
         if (problems.length) continue;
@@ -483,7 +526,7 @@ export function lintAdventure(unpacked, opts = {}) {
   // encounters
   const encounters = data.encounters === undefined ? [] : list('encounters', data.encounters, L.encounters, 'encounters') ?? [];
   const encIds = taken('encounters', encounters);
-  let creaturesTotal = 0;
+  let creaturesTotal = 0;                         // placing stops once this is over the cap: no work past what a module may hold
   encounters.forEach((e, i) => {
     if (!isRec(e)) return;
     const path = `encounters/${idOf(e, i)}`;
@@ -546,15 +589,16 @@ export function lintAdventure(unpacked, opts = {}) {
     });
     if (count > L.creatures) { say(`${path}/creatures`, `holds ${count} creatures; the most for an encounter is ${L.creatures}.`); return; }
     creaturesTotal += count;
+    const over = creaturesTotal > L.creaturesTotal;
     out.encounters[idOf(e, i)] = { xp, creatures: count, standIns };
     // Placing them, as `stage` will: all or none, never moved quietly.
-    if (!ok || !m) return;
-    const set = [];
+    if (!ok || !m || over) return;
+    const set = [], P = (m.P ??= newPlacing(m.doc));
     for (const b of bodies) {
       if (!b.known) continue;
       const body = Array.from({ length: b.n }, () => ({ size: b.size }));
-      const r = b.region !== undefined ? placeIn(m.doc, b.region, body, set) : placeAt(m.doc, b.level, b.cell, body[0], set);
-      if (!r.ok) { say(b.region !== undefined ? `${b.cp}/at` : `${b.cp}/at`, r.error); break; }
+      const r = b.region !== undefined ? placeWith(P, m.doc, b.region, body, set) : placeAt(P, m.doc, b.level, b.cell, body[0], set);
+      if (!r.ok) { say(`${b.cp}/at`, r.error); break; }
       r.at.forEach((pos) => set.push({ size: b.size, pos }));
     }
   });
@@ -648,6 +692,11 @@ export function lintAdventure(unpacked, opts = {}) {
       const path = `links/${i}`;
       if (!isRec(k)) { say(path, 'must be { to, text }.'); return; }
       closed(k, KEYS.link, path);
+      // `from` and `node` make a link a route between two atlases (A11): read, named, not used yet.
+      for (const f of ['from', 'node']) if (k[f] !== undefined) {
+        if (!idOk(k[f])) say(`${path}/${f}`, 'must be the id of a place: lower-case letters and digits joined by single hyphens.');
+        else if (!out.unsupported.some((x) => x.section === 'links/atlas')) out.unsupported.push({ section: 'links/atlas', sentence: 'links: a link that names places ("from" and "node") needs the atlas, which is not in this game yet; the link is kept as words for the DM.' });
+      }
       if (!idOk(k.to)) say(`${path}/to`, `must be the id of a module: lower-case letters and digits joined by single hyphens, at most ${L.id} letters (no "/").`);
       str(`${path}/text`, k.text, L.text, { label: 'the words for the hook' });
     });
@@ -742,21 +791,28 @@ export function readAdventureJson(input, opts = {}) {
   if (doc.pictures !== undefined && !isRec(doc.pictures)) bad.push('pictures: must be an object of base64 pictures by asset id.');
   if (bad.length) return { ok: false, problems: bad, unpacked: null };
   const listed = isRec(doc.manifest.pictures) ? doc.manifest.pictures : {};
-  const pictures = {}, found = [];
+  const pictures = {}, found = [], notices = [];
+  let more = 0;
+  const say = (m) => { if (bad.length < ADVENTURE_LIMITS.problems) bad.push(m); else more++; };
   for (const id of Object.keys(doc.pictures ?? {})) {
     const path = `pictures/${idOk(id) ? id : quote(id)}`, entry = own(listed, id) ? listed[id] : null;
-    if (!entry || !isRec(entry)) { bad.push(`${path}: the module holds a picture the picture list does not name.`); continue; }
-    const b = bytesOf(doc.pictures[id]);
-    if (!b) { bad.push(`${path}: the picture is not base64.`); continue; }
-    if (b.length !== entry.bytes) { bad.push(`${path}: the picture is not the file the module names (its size differs).`); continue; }
+    if (!entry || !isRec(entry)) { say(`${path}: the module holds a picture the picture list does not name.`); continue; }
+    const text = doc.pictures[id];
+    if (typeof text !== 'string' || text.length % 4 !== 0 || !B64.test(text)) { say(`${path}: the picture is not base64.`); continue; }
+    // The size is checked on the text before anything is decoded: a picture is at most as long as its manifest line says.
+    if (!whole(entry.bytes, 1, ADVENTURE_LIMITS.pictureBytes) || text.length !== Math.ceil(entry.bytes / 3) * 4) { say(`${path}: the picture is not the file the module names (its size differs).`); continue; }
+    const b = bytesOf(text);
+    if (!b || b.length !== entry.bytes) { say(`${path}: the picture is not the file the module names (its size differs).`); continue; }
     const type = pictureType(b);
-    if (!type) { bad.push(`${path}: the picture is not a PNG, JPEG or WebP picture.`); continue; }
-    if (type !== entry.mime) { bad.push(`${path}: the picture is ${type}, not the ${entry.mime} the module names.`); continue; }
-    if (typeof opts.sha256 === 'function' && opts.sha256(b) !== entry.sha256) { bad.push(`${path}: the picture is not the file the module names (its fingerprint differs).`); continue; }
+    if (!type) { say(`${path}: the picture is not a PNG, JPEG or WebP picture.`); continue; }
+    if (type !== entry.mime) { say(`${path}: the picture is ${type}, not the ${entry.mime} the module names.`); continue; }
+    if (typeof opts.sha256 === 'function' && opts.sha256(b) !== entry.sha256) { say(`${path}: the picture is not the file the module names (its fingerprint differs).`); continue; }
     pictures[id] = b;
     found.push(id);
   }
-  return { ok: bad.length === 0, problems: bad, unpacked: { manifest: doc.manifest, data: doc.data, found, pictures } };
+  if (found.length && typeof opts.sha256 !== 'function') notices.push('pictures: no hash was given, so the pictures\' fingerprints were not checked.');
+  if (more) bad.push(`and ${more} more.`);
+  return { ok: bad.length === 0, problems: bad, notices, unpacked: { manifest: doc.manifest, data: doc.data, found, pictures } };
 }
 
 // Where a creature's footprint lies, for a caller that wants to draw or count it (the same cells `spawn` would fill).

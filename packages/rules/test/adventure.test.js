@@ -333,8 +333,8 @@ test("a map passes at 1 MB as JSON and fails one byte past", () => {
   const size = (m) => Buffer.byteLength(JSON.stringify(m));
   for (const [extra, ok] of [[0, true], [1, false]]) {
     const u = fresh(), m = u.data.maps.mill;
-    m.pad = "";
-    m.pad = "x".repeat(L.mapBytes + extra - size(m));
+    m.levels[1].name = "";
+    m.levels[1].name = "x".repeat(L.mapBytes + extra - size(m));
     assert.equal(size(m), L.mapBytes + extra);
     const r = lintAdventure(u, { found: FOUND, limits: { string: 2 * L.mapBytes, dataBytes: 8 * L.mapBytes } });
     assert.equal(r.ok, ok, r.problems.join(" | "));
@@ -458,4 +458,168 @@ test("the linter does not change the module it is given", () => {
   const u = fresh(), before = JSON.stringify(u);
   lint(u, { found: FOUND }); canonical(u);
   assert.equal(JSON.stringify(u), before);
+});
+
+// ---------- review fixes: B1, B2 ----------
+const ODD = [{ toString: 1 }, Object.create(null), [], null, true, 7];
+const spots = [
+  (d, v) => { d.encounters[0].map = v; }, (d, v) => { d.start.map = v; }, (d, v) => { d.start.entry = v; }, (d, v) => { d.start.scene = v; },
+  (d, v) => { d.start.stage[0] = v; }, (d, v) => { d.notes[0].at.map = v; }, (d, v) => { d.notes[0].at.region = v; }, (d, v) => { d.scenes[0].image = v; },
+  (d, v) => { d.scenes[0].present[0] = v; }, (d, v) => { d.npcs[0].scenes[0] = v; }, (d, v) => { d.npcs[0].monster = v; },
+  (d, v) => { d.encounters[0].creatures[0].monster = v; }, (d, v) => { d.encounters[0].region = v; }, (d, v) => { d.encounters[0].creatures[0].at.region = v; },
+  (d, v) => { d.start.light = { cellar: v }; }, (d, v) => { d.settings.cover = v; }, (d, v) => { d.links[0].to = v; }, (d, v) => { d.handouts[0].asset = v; },
+];
+test("a value of the wrong kind where an id is named is a refusal, never a throw", () => {
+  for (const set of spots) for (const v of ODD) {
+    const u = fresh(); set(u.data, v);
+    let r; assert.doesNotThrow(() => { r = lint(u, { found: FOUND }); }, String(set));
+    assert.equal(r.ok, false);
+    for (const p of r.problems) assert.equal(typeof p, "string");
+  }
+  assert.match(refused(edit((m, d) => { d.start.map = { toString: 1 }; }), /^start: the map <object> is not in this module\./).problems[0], /<object>/);
+});
+test("a map document of the wrong kind is refused with one sentence, whatever is in it", () => {
+  const bad = [
+    (m) => { m.levels = [null]; }, (m) => { m.grid = { toString: 1 }; }, (m) => { m.levels[0].id = { toString: 1 }; },
+    (m) => { m.regions[0].id = { toString: 1 }; }, (m) => { m.regions[0].hexes = [{ toString: 1 }]; }, (m) => { m.objects[0].state = { toString: 1 }; },
+    (m) => { m.objects = [null]; }, (m) => { m.walls = [null]; }, (m) => { m.regions = [null]; }, (m) => { m.starts = [null]; }, (m) => { m.levels[0].tiles = null; },
+  ];
+  for (const f of bad) {
+    const u = fresh(); f(u.data.maps.mill);
+    let r; assert.doesNotThrow(() => { r = lint(u, { found: FOUND }); });
+    assert.equal(r.ok, false);
+    assert.ok(r.problems.every((p) => /^[a-z]/.test(p)), r.problems.join(" | "));
+  }
+  const r = refused(edit((m, d) => { d.maps.mill.levels = [null]; }));
+  assert.ok(r.problems.some((p) => /^maps\/mill: /.test(p)));
+});
+
+// ---------- M2: a closed list of fields inside a map ----------
+test("a map carries no field a map does not have, and no height out of range", () => {
+  const map = (f) => edit((m, d) => f(d.maps.mill));
+  refused(map((m) => { m.script = "x"; }), /^maps\/mill: The map has "script"/);
+  refused(map((m) => { m.levels[0].onload = "x"; }), /Level "ground" has "onload"/);
+  refused(map((m) => { m.levels[0].tiles["0,0"] = { t: "stone", evil: 1 }; }), /The tile at "0,0" has "evil"/);
+  refused(map((m) => { m.walls = [{ id: "w1", level: "ground", a: 1, b: [0, 0], kind: "wall" }]; }), /Wall "w1" needs two points/);
+  refused(map((m) => { m.walls = [{ id: "w1", level: "ground", a: [0, 0], b: [5, 0], kind: "wall", html: "x" }]; }), /Wall "w1" has "html"/);
+  refused(map((m) => { m.doors = [null]; }), /The map has "doors"/);
+  refused(map((m) => { m.levels[0].tiles["0,0"] = { t: "stone", h: 1e308 }; }), /height is out of range/);
+  refused(map((m) => { m.levels[0].z = 1e9; }), /height is out of range/);
+  refused(map((m) => { m.objects[0].on = "x"; }), /Object "o1" has "on"/);
+  refused(map((m) => { m.regions[0].script = 1; }), /Region "yard" has "script"/);
+  refused(map((m) => { m.starts[0].x = 1; }), /A start has "x"/);
+  clean(map((m) => { m.levels[0].tiles["0,0"] = { t: "stone", h: 2.5 }; m.regions[0].revealed = true; m.levels[0].light = "dim"; m.entries = [{ id: "door", name: "Door", kind: "gate" }]; m.starts[0].entry = "door"; m.seen = { tiles: {}, objects: {} }; m.areas = [{ id: "stall", name: "Stall", level: "ground", hexes: ["0,0"] }]; }), { found: FOUND });
+});
+
+// ---------- H1, M1: placing is bounded, and not read through a stale copy ----------
+function hugeYard(d, side = 140) {            // 140 x 140 = 19,600 cells of grass, all one region
+  const tiles = {};
+  for (let q = 0; q < side; q++) for (let r = 0; r < side; r++) tiles[`${q},${r}`] = { t: "grass" };
+  Object.assign(d.maps.mill, { levels: [{ id: "ground", name: "Ground", z: 0, tiles }], objects: [], regions: [{ id: "yard", name: "Yard", level: "ground", hexes: Object.keys(tiles) }] });
+  d.start.light = {}; d.notes = []; d.start.stage = [];
+}
+test("placing on a 19,600-cell region is quick, and stops once the module is over its creature total", () => {
+  const lines = (n) => Array.from({ length: n }, () => ({ monster: "giant-rat", at: { region: "yard" } }));
+  for (const [encounters, ok] of [[25, true], [200, false]]) {                       // 1,000 creatures; 8,000 creatures
+    const u = fresh(); hugeYard(u.data);
+    u.data.encounters = Array.from({ length: encounters }, (_, i) => ({ id: `e${i}`, name: "E", map: "mill", creatures: lines(40) }));
+    const t = Date.now();
+    const r = lintAdventure(u, { found: FOUND, limits: { dataBytes: 8 * L.mapBytes } });
+    const ms = Date.now() - t;
+    assert.equal(r.ok, ok, r.problems.slice(0, 3).join(" | "));
+    assert.ok(ms < 4000, `${ms} ms`);
+    if (!ok) assert.match(r.problems[0], /^encounters: hold 8,000 creatures in all; the most is 1,000/);
+  }
+});
+test("placeIn works from the map as it is now: an edited region is placed afresh", () => {
+  const map = fresh().data.maps.mill;
+  const before = placeIn(map, "cellar", [{ size: "small" }]);
+  assert.deepEqual(before.at[0], { q: 0, r: 0, z: -10 });
+  map.regions.find((r) => r.id === "cellar").hexes = ["3,2", "2,2"];
+  assert.deepEqual(placeIn(map, "cellar", [{ size: "small" }]).at[0], { q: 3, r: 2, z: -10 });
+  map.levels[1].tiles["3,2"] = { t: "rock" };
+  assert.deepEqual(placeIn(map, "cellar", [{ size: "small" }]).at[0], { q: 2, r: 2, z: -10 });
+});
+
+// ---------- M3 policy, L1, L2, L3, L5 ----------
+test("a line break, a carriage return and a tab are allowed in long texts, nowhere else", () => {
+  clean(edit((m, d) => { d.scenes[0].readAloud = "one\r\ntwo\tthree"; d.notes[0].dm = "a\r\nb"; }), { found: FOUND });
+  for (const bad of ["a\rb", "a\tb"]) refused(edit((m, d) => { d.scenes[0].title = bad; }), /scenes\/0\/title: The text has a control character/);
+  refused(edit((m, d) => { d.scenes[0].readAloud = "a\u0001b"; }), /readAloud/);
+  refused(edit((m, d) => { d.scenes[0].readAloud = "a\u2029b"; }), /readAloud/);
+});
+test("a link's from and node are read and named as not in this game yet, not refused", () => {
+  const r = clean(edit((m, d) => { d.links = [{ to: "drowned-chapel", text: "Downriver.", from: "river-gate", node: "chapel-steps" }]; }), { found: FOUND });
+  assert.deepEqual(r.unsupported.map((x) => x.section), ["links/atlas"]);
+  assert.match(r.unsupported[0].sentence, /not in this game yet/);
+  refused(edit((m, d) => { d.links = [{ to: "x", text: "t", node: "A/B" }]; }), /^links\/0\/node/);
+  refused(edit((m, d) => { d.links = [{ to: "x", text: "t", via: "y" }]; }), /"via" is not a field/);
+});
+test("readAdventureJson: the size is checked on the text, a long problem list is cut, and unchecked fingerprints are said", () => {
+  const doc = () => { const d = JSON.parse(FIXTURE); d.pictures = { "a-gate": b64(PICTURES["a-gate"].bytes) }; return d; };
+  const plain = readAdventureJson(doc());
+  assert.ok(plain.ok);
+  assert.deepEqual(plain.notices, ["pictures: no hash was given, so the pictures' fingerprints were not checked."]);
+  assert.deepEqual(readAdventureJson(doc(), { sha256: sha }).notices, []);
+  const huge = doc(); huge.pictures["a-gate"] = "A".repeat(4 * 1024 * 1024);
+  const t = Date.now();
+  assert.match(readAdventureJson(huge).problems[0], /^pictures\/a-gate: the picture is not the file the module names \(its size differs\)/);
+  assert.ok(Date.now() - t < 500);
+  const many = doc(); for (let i = 0; i < 150; i++) many.pictures[`x-${i}`] = "AAAA";
+  const r = readAdventureJson(many);
+  assert.equal(r.problems.length, 101);
+  assert.equal(r.problems[100], "and 50 more.");
+});
+test("budget does not spread a huge string, and says so", () => {
+  const t = Date.now();
+  const r = budget({ manifest: {}, data: { a: "é".repeat(2000000) } }, { dataBytes: 1e9 });
+  assert.ok(Date.now() - t < 1000);
+  assert.match(r[0], /^a: The text is over 8,000 letters long/);
+  assert.match(budget({ manifest: {}, data: { ["k".repeat(5000)]: 1 } })[0], /A key is too long/);
+});
+test("migrateAdventure called alone is safe with a __proto__ map id", () => {
+  const u = fresh(); Object.defineProperty(u.data.maps, "__proto__", { value: structuredClone(u.data.maps.mill), enumerable: true, configurable: true, writable: true });
+  const out = migrateAdventure(u);
+  assert.equal(Object.getPrototypeOf(out.data.maps), Object.prototype);
+  assert.ok(Object.hasOwn(out.data.maps, "__proto__"));
+  assert.equal({}.format, undefined);
+});
+test("settings.level as { min, max }", () => {
+  clean(edit((m, d) => { d.settings.level = { min: 1, max: 3 }; }), { found: FOUND });
+  clean(edit((m, d) => { d.settings.level = { min: 2, max: 2 }; }), { found: FOUND });
+  for (const bad of [{ min: 3, max: 1 }, { min: 0, max: 3 }, { min: 1 }, { min: 1, max: 3, x: 1 }, "1", 0]) refused(edit((m, d) => { d.settings.level = bad; }), /^settings\/level: must be a character level 1 to 20, or \{ min, max \}\.$/, { found: FOUND });
+});
+
+// ---------- boundaries the first pass left out ----------
+test("ids: 40 letters pass and 41 fail; keys 200 and 201; present 20 and 21; the problems cap", () => {
+  const id40 = "a".repeat(40);
+  clean(edit((m, d) => { d.links = [{ to: id40, text: "t" }]; }), { found: FOUND });
+  refused(edit((m, d) => { d.links = [{ to: `${id40}a`, text: "t" }]; }), /^links\/0\/to/, { found: FOUND });
+  clean(edit((m) => { m.module.id = id40; }), { found: FOUND });
+  refused(edit((m) => { m.module.id = `${id40}a`; }), /^module\/id/, { found: FOUND });
+  assert.deepEqual(budget({ manifest: {}, data: { ["k".repeat(200)]: 1 } }), []);
+  assert.ok(budget({ manifest: {}, data: { ["k".repeat(201)]: 1 } }).some((p) => /key is too long/.test(p)));
+  const crowd = (n) => (m, d) => {
+    d.npcs = Array.from({ length: n }, (_, i) => ({ id: `n${i}`, name: "N" })); d.scenes[0].present = d.npcs.map((x) => x.id); d.npcs[0].scenes = [];
+  };
+  clean(edit((m, d) => crowd(20)(m, d)), { found: FOUND });
+  refused(edit((m, d) => crowd(21)(m, d)), /^scenes\/gate\/present: has 21 people; the most is 20/, { found: FOUND });
+  const r = lint(edit((m, d) => { d.handouts = Array.from({ length: 150 }, (_, i) => ({ id: `h${i}`, title: "H" })); }), { found: FOUND });
+  assert.equal(r.problems.length, 100);
+  assert.equal(r.more, 50);
+  const words = refusal(r);
+  assert.equal(words.length, 11);
+  assert.equal(words[10], "and 140 more.");
+});
+test("attribution 500 and srd 1,000 letters; needs.homebrew 4 and 5 packs; a picture's file name 100 letters", () => {
+  const priv = (f) => edit((m) => { m.module.content = "private"; f(m); });
+  clean(priv((m) => { m.module.licence.attribution = str(500); m.module.licence.srd = str(1000); }), { found: FOUND });
+  refused(priv((m) => { m.module.licence.attribution = str(501); }), /^module\/licence\/attribution: is 501 letters long/, { found: FOUND });
+  refused(priv((m) => { m.module.licence.srd = str(1001); }), /^module\/licence\/srd: is 1,001 letters long/, { found: FOUND });
+  const packs = (n) => (m) => { m.needs.homebrew = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, version: 1, hash: "sha256:00" })); };
+  assert.ok(!lint(edit(packs(4)), { found: FOUND }).problems.some((p) => /has 4 packs/.test(p)));
+  refused(edit(packs(5)), /^needs\/homebrew: has 5 packs; the most is 4/, { found: FOUND });
+  const name = (n) => edit((m) => { m.pictures["a-gate"].file = `pictures/${"a".repeat(n - 9 - 4)}.png`; });
+  clean(name(100), { found: FOUND });
+  refused(name(101), /^pictures\/a-gate: its file must be/, { found: FOUND });
 });
