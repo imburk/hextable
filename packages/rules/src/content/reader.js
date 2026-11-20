@@ -1946,6 +1946,14 @@ export const GRANT_WORDS = {
   skills(v, at) {
     if (!isObj(v) || !isInt(v.n)) return this.bad(`${at} is not { n, from }.`);
     this.num(`${at}.n`, v.n, 'skills');
+    if (Array.isArray(v.from)) {
+      // From a short list (#544): picked on the sheet's choices for this feature, and the Expertise is in the same skills.
+      const names = v.from.filter((k) => typeof k === 'string' && Object.hasOwn(SKILLS, k)).slice(0, 20).map((k) => cap1(k.replace(/-/g, ' ')));
+      if (!names.length) return this.bad(`${at}.from is not a list of skills.`);
+      this.line(`${v.n} skill${v.n === 1 ? '' : 's'}, chosen on the holder's sheet from ${list(names, 'or')}; one the holder already has cannot be chosen.`, 1);
+      if (v.expertise === true) this.line(`The holder has Expertise in ${v.n === 1 ? 'it' : 'them'}: the Proficiency Bonus is doubled for checks with ${v.n === 1 ? 'that skill' : 'those skills'}.`, 1);
+      return;
+    }
     this.line(`${v.n} more skill${v.n === 1 ? '' : 's'}, chosen on the holder's sheet from ${v.from === 'any' ? 'any skill' : 'its class\'s list'}.`, 1);
   },
   abilityBonus(v, at) {
@@ -1964,7 +1972,10 @@ export const GRANT_WORDS = {
   proficiency(v) {
     if (!isObj(v)) return this.bad('`proficiency` is not { weapons, armour }.');
     const bits = [];
-    if (Array.isArray(v.weapons) && v.weapons.length) bits.push('martial weapons');
+    // `martial`, and (#544) weapons named by id: a weapon of the SRD or of the pack, trained by name.
+    const named = Array.isArray(v.weapons) ? v.weapons.filter((w) => typeof w === 'string' && w !== 'martial').slice(0, 12) : [];
+    if (Array.isArray(v.weapons) && v.weapons.length > named.length) bits.push('martial weapons');
+    if (named.length) bits.push(`the ${list(named.map((w) => nameOf('weapons', w)))}, which it names`);
     if (Array.isArray(v.armour) && v.armour.length) bits.push(`${list(v.armour.filter((c) => ARMOUR_CATEGORIES.includes(c)))} armor`);
     this.line(`Training with ${list(bits) || 'nothing the reader can read'}.`, 1);
   },

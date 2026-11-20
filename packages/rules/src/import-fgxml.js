@@ -431,6 +431,11 @@ function build(root, ch, options) {
   sheet.skills = [...classPicks, ...anyPicks];
   const extra = profs.filter((k) => !sheet.skills.includes(k));
   if (extra.length) sheet.extraSkills = extra;
+  // A feature that gives skills from a short list (#544): where the sheet's proficiencies already hold exactly its `n` of them, those are its picks (the sheet records them under the feature's id).
+  for (const x of featuresOf(sheet)) {
+    const g = x.f.grants?.skills, held = Array.isArray(g?.from) ? g.from.filter((k) => profs.includes(k)) : [];
+    if (held.length && held.length === g.n) sheet.choices = { ...(sheet.choices ?? {}), [x.f.id]: held };
+  }
   if (sheet.skills.length < wantClass() + wantAny()) {
     adjust('skills', undefined, `${sheet.skills.length} of ${wantClass() + wantAny()}`, `The sheet has fewer skill proficiencies the ${c.name} list allows than a level ${level} ${multi ? 'character with these classes' : c.name} chooses, so the sheet cannot load until the DM picks the rest.`);
   }
