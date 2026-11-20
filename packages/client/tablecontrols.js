@@ -1,5 +1,5 @@
 // Three table controls for the DM (issue #163): the table's pace, the stock maps, and the line on a character's
-// sheet that says where its Fantasy Grounds import report went. Each one only builds and sends ordinary actions
+// sheet that says where its Fantasy Grounds import report went; and since then more table rules (Strike first, #585). Each one only builds and sends ordinary actions
 // ({ type: 'setting', key: 'pace' }, { type: 'loadMap' }); nothing here decides a rule.
 import { STOCK_MAPS } from './shared/content/maps/index.js';
 import { SETTINGS, SETTING_TEXT } from './shared/engine.js';
@@ -34,6 +34,15 @@ export const SQUARE_RULES = [
   { key: 'areaFill', ask: 'Which squares a Sphere, Cylinder or Emanation covers', names: { round: 'Those whose centre is inside it', grid: 'Every square within its size' } },
   { key: 'squareCover', ask: 'How cover is judged', names: { obstacle: 'By what is in the way', corners: 'By the four corners' } },
 ];
+
+// The table rule `strikeFirst` (engine/dm.js SETTINGS; #585): a choice under "Start a fight when the party comes near
+// enemies", with the words of the chosen value under it. 'off' unless the state says otherwise (a new table has none).
+export const STRIKE_FIRST_ASK = 'Strike first: what lands before the fight it starts';
+export const STRIKE_FIRST_NAMES = { off: 'Off (SRD)', casts: 'Spells only', all: 'Spells and attacks' };
+export const strikeFirstRule = (settings) => {
+  const v = SETTINGS.strikeFirst.includes(settings?.strikeFirst) ? settings.strikeFirst : 'off';
+  return { value: v, text: SETTING_TEXT.strikeFirst[v] };
+};
 
 // The lobby's last choice of grid for the starter valley, kept on the device.
 export const GRID_KEY = 'hextable.valleyGrid';
@@ -81,6 +90,11 @@ export function initTableControls({ act, getState, isDM, toast }) {
   $('dm-conclusion').onchange = (ev) => act({ type: 'setting', key: 'conclusion', value: ev.target.value });
   $('dm-xpshare').onchange = (ev) => act({ type: 'setting', key: 'xpShare', value: ev.target.value });
 
+  // Strike first (#585): after the engage checkbox (app.js keeps that one). The select is at least 44 px high, for touch.
+  $('dm-engage').closest('label').insertAdjacentHTML('afterend', `<label class="assign">${esc(STRIKE_FIRST_ASK)} <select id="dm-strike-first" style="min-height:44px">${SETTINGS.strikeFirst.map((v) => `<option value="${esc(v)}">${esc(STRIKE_FIRST_NAMES[v] ?? v)}</option>`).join('')}</select></label>
+    <p class="note" id="dm-strike-first-text"></p>`);
+  $('dm-strike-first').onchange = (ev) => act({ type: 'setting', key: 'strikeFirst', value: ev.target.value });
+
   // Rolled ability scores (docs/specs/ability-scores.md): may a score be rolled again, below what number, and which result stands. A section of its own after the one that
   // holds the XP choice (it is not a fight rule). Each choice is a label over a select the whole width and at least 44 px high (a thumb), as the square rules are (`#dm-scores` in style.css).
   $('dm-xpshare').closest('section').insertAdjacentHTML('afterend', `<section id="dm-scores"><h3>Rolled ability scores</h3>
@@ -126,6 +140,8 @@ export function initTableControls({ act, getState, isDM, toast }) {
       $('dm-conclusion').value = S?.settings?.conclusion ?? 'dm'; $('dm-xpshare').value = S?.settings?.xpShare ?? 'split';
       $('dm-conclusion-note').hidden = $('dm-conclusion').value !== 'auto';
       scoreRule(S);
+      const sf = strikeFirstRule(S?.settings);
+      $('dm-strike-first').value = sf.value; $('dm-strike-first-text').textContent = sf.text;
       $('pace-table').textContent = `The DM has set the table to: ${PACE_NAME[pace] ?? pace}. ${dm ? '' : 'Only the DM can change this.'}`;
       btn.disabled = !!S?.encounter;
       $('dm-stock-fight').hidden = !S?.encounter;

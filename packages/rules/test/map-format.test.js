@@ -25,7 +25,7 @@ const isHexHeader = (map) => {
 
 test("a new map, the valley and every stock map are format 2 hex maps of 5-foot cells", () => {
   assert.equal(MAP_FORMAT, 2);
-  assert.equal(VERSION, 26);
+  assert.equal(VERSION, 27);
   for (const map of [newMap(), newGame(1).map, ...STOCK_MAPS.map((m) => m.map).filter((x) => x.grid === "hex")]) {
     isHexHeader(map);
     assert.deepEqual(lintMap(map), map.id === "map" ? ["It has no tiles."] : [], map.id);
@@ -117,9 +117,10 @@ function sameButHeader(was, now) {
   assert.equal(now.version, VERSION);
   isHexHeader(now.map);
   assert.deepEqual(lintMap(now.map), []);
-  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey"]) delete c[k]; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
+  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey"]) delete c[k]; if (c.settings) delete c.settings.strikeFirst; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
   assert.deepEqual(now.packs, []);                  // version 24 (#390)
   assert.deepEqual([now.world, now.place, now.parked, now.journey], [null, null, {}, null]);   // version 26 (#579)
+  assert.equal(now.settings.strikeFirst, was.settings.autoEngage !== false ? "casts" : "off");   // version 27 (#585): the table rule strikeFirst, as its autoEngage was
   assert.deepEqual(strip(now), strip(was));
 }
 

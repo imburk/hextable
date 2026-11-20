@@ -66,6 +66,23 @@ export const unseenAt = (map, pos) => { const sf = under(map, pos); return !!sf 
 // the party has found it, or it is somewhere they have not seen.
 export const concealed = (map, e) => !!e && e.side !== 'party' && (!!e.hidden || !!e.hiding || unseenAt(map, e.pos));
 
+// ---------- shop areas ----------
+// Is a creature inside a shop area (docs/specs/shops.md, Decision 4)? It is when any cell of its footprint, by
+// its size on the map's grid, is a cell of the area, and the creature stands on the area's level: the surface under
+// its anchor cell is on that level (a flyer counts by the surface under it), and so is the surface under that cell,
+// so a Large pawn on a loft whose edge overhangs the floor below does not drop a floor into the shop there. A Large
+// pawn half in the doorway is in. `area` is the area's record or its id on this map; no map, an id the map does not
+// have, or a creature off the map is not inside.
+export function inArea(map, area, e) {
+  if (!map) return false;
+  const a = typeof area === 'string' ? (map.areas ?? []).find((x) => x?.id === area) : area;
+  if (!a || !Array.isArray(a.hexes) || !e?.pos) return false;
+  const level = under(map, e.pos)?.level.id;
+  if (level === undefined || level !== a.level) return false;
+  const cells = new Set(a.hexes);
+  return footprint(e, e.pos, gridOf(map)).some((c) => cells.has(col(c)) && under(map, c)?.level.id === level);
+}
+
 // ---------- distance ----------
 // How many hexes of height a difference in feet counts as: under 5 ft is none.
 export const rise = (dz) => Math.floor((Math.abs(dz) + 2.49) / FT);

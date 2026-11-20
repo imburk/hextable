@@ -1,6 +1,6 @@
 // About: the legal statements and credits, as data. One file holds every word, so a legal change is one edit here,
 // and nothing is fetched when the page opens. The test in test/about.test.js compares each statement with its source
-// (the SRD's Legal Information page, LICENSE, vendor/three/LICENSE, package.json) so they cannot drift.
+// (the SRD's Legal Information page, LICENSE, vendor/three/LICENSE, vendor/zip.js/LICENSE, package.json) so they cannot drift.
 // The text is plain: aboutHTML() escapes it and turns the web addresses in it into links.
 
 // The attribution statement that Wizards of the Coast asks to be included in any work that uses the SRD 5.2, as the SRD's
@@ -704,6 +704,41 @@ THE SOFTWARE.`,
   site: 'https://github.com/mrdoob/three.js',
 };
 
+// zip.js reads and writes adventure-module zips (docs/specs/adventure-module.md, Decision 1); vendor/zip.js/LICENSE, word for word.
+export const ZIP_LICENCE = {
+  name: 'zip.js v2.25.0, BSD 3-Clause License',
+  text: `BSD 3-Clause License
+
+Copyright (c) 2023, Gildas Lormeau
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.`,
+  where: './vendor/zip.js/LICENSE',
+  site: 'https://github.com/gildas-lormeau/zip.js',
+};
+
 // The five faces the page loads from Google Fonts (index.html). Each is under the SIL Open Font License, Version 1.1;
 // the copyright lines are the ones in each family's own licence file, as the Fontsource packaging of Google Fonts shows them.
 export const OFL = { name: 'SIL Open Font License, Version 1.1', url: 'https://openfontlicense.org' };
@@ -743,6 +778,9 @@ export function aboutHTML(info = {}) {
     <section class="ab-sec"><h3>Three.js</h3>
       <p>The 3D view uses Three.js, ${linked(THREE_LICENCE.site)}, under the MIT License; it is loaded when the table opens (about 458 KB, once). The copy kept with the game is unchanged but for its import lines; its licence file is <a href="${esc(THREE_LICENCE.where)}" target="_blank" rel="noopener">${esc(THREE_LICENCE.where)}</a>.</p>
       <details><summary>${esc(THREE_LICENCE.name)}</summary><pre class="ab-pre">${esc(THREE_LICENCE.text)}</pre></details></section>
+    <section class="ab-sec"><h3>zip.js</h3>
+      <p>Adventure modules are read and written with zip.js, ${linked(ZIP_LICENCE.site)}, under the BSD 3-Clause License; it is loaded only when a module is opened. The copy kept with the game is unchanged; its licence file is <a href="${esc(ZIP_LICENCE.where)}" target="_blank" rel="noopener">${esc(ZIP_LICENCE.where)}</a>.</p>
+      <details><summary>${esc(ZIP_LICENCE.name)}</summary><pre class="ab-pre">${esc(ZIP_LICENCE.text)}</pre></details></section>
     <section class="ab-sec"><h3>Fonts</h3>
       <p>The page loads these from Google Fonts. Each is under the ${linked(OFL.name)} (${linked(OFL.url)}).</p>
       <ul class="ab-list">${FONTS.map((f) => `<li><b>${esc(f.name)}</b>: ${esc(f.copyright)}</li>`).join('')}</ul></section>
