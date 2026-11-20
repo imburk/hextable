@@ -150,7 +150,16 @@ function teleport(s, t, step, to, ev) {
 
 // `opts` (E23, a hostile cast that lands first; casting.js): `keep`, the creatures whose Reaction, taken during that cast,
 // stays spent until their first turn; `owed`, what a caster's first turn goes without ({ [id]: { time, slot, spell } }).
+// A fight happens only on a battle map (docs/specs/travel.md, Decision 7): while the table is on a navigation or scene
+// node, the map in play is its holding map (map.js, holdingMap), which is no battlefield. Every way a fight starts comes
+// through startEncounter (the DM's call, `autoEngage` on a walk, an attack or hostile cast outside a fight, `engage`), so
+// it is refused here. Not a RuleError: some callers take a refusal of the fight as "no fight" and carry on (a hostile cast
+// that lands first, casting.js); this must refuse the whole action instead, and apply() puts the game back as it was
+// before the action and answers with the sentence (engine.js).
+export class NotBattleMap extends Error {}
+export const NOT_BATTLE = 'This is not a battle map. Choose one to fight on.';
 export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = null, opts = null) {
+  if (s.map?.holding) throw new NotBattleMap(NOT_BATTLE);
   const arena = {}, G = gridOf(s.map);
   for (const h of G.range(center, radius)) if (hasColumn(s.map, h)) arena[col(h)] = 1;    // a fight locks whole columns, every level
   catchUp(s, arena, walked, ev);                         // those walking with the party are with it
