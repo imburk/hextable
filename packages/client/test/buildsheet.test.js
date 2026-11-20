@@ -13,6 +13,7 @@ cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus, subclassChoices, subclassNote, classTitle, missingText } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
+const { freshScores, scoreBase, scoreBackground, scoreParts, scoresDraft, bgAbilities, METHOD_NAMES } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
 const { featuresOf } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
 const { loadPack, overlayOf, using } = await import(pathToFileURL(join(tmp, 'shared/content/registry.js')));
 const { derive, validate } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
@@ -162,4 +163,124 @@ test('what the engine makes of a character with the pack away is what the header
   assert.equal(classTitle(s.entities[id]), 'Paladin (subclass not loaded)');
   assert.deepEqual(validate(palSheet('hb-ember-folk-oath-of-the-ember')), []);
   assert.ok(derive(palSheet('hb-ember-folk-oath-of-the-ember')).missing.length === 1);
+});
+
+// ---------- ability scores (docs/specs/ability-scores.md, #557): the pure part of the score section ----------
+const SC_SHEET = (abilities, scores) => ({ name: 'Kerrin', class: 'fighter', level: 1, abilities, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, ...(scores ? { scores } : {}) });
+const SC_DICE = [[5, 3, 6, 2], [4, 4, 4, 1], [6, 6, 5, 3], [2, 3, 3, 1], [4, 5, 3, 3], [6, 2, 4, 1]];        // 14 12 17 8 12 12
+const AB = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+
+test('a fresh draft is "enter by hand": nothing is placed, no background, the rule is the SRD\'s', () => {
+  const sc = freshScores();
+  assert.equal(sc.method, 'hand');
+  assert.deepEqual(METHOD_NAMES, { standard: 'Standard array', pointcost: 'Point cost', roll: 'Roll', hand: 'Enter by hand' });
+  assert.deepEqual(sc.rule, { reroll: 'none', result: 'new' });
+  assert.deepEqual(freshScores({ reroll: 'below', below: 10, result: 'higher' }).rule, { reroll: 'below', below: 10, result: 'higher' });
+  assert.deepEqual(freshScores({ reroll: 'sometimes' }).rule, { reroll: 'none', result: 'new' }, 'a damaged stored rule gives the default');
+  assert.equal(scoreBackground(sc), null);
+});
+
+test('standard array: the numbers placed so far, the six scores with 8 for the unplaced, a sentence for what is missing, and no record until all six are on', () => {
+  const sc = freshScores(); sc.method = 'standard';
+  sc.std.str = 15; sc.std.dex = 14;
+  assert.deepEqual(scoreBase(sc), { str: 15, dex: 14, con: null, int: null, wis: null, cha: null });
+  let p = scoreParts(sc);
+  assert.equal(p.scores, null);
+  assert.deepEqual(p.problems, ['Place all six numbers (4 still to place).']);
+  assert.equal(p.abilities.con, 8);
+  Object.assign(sc.std, { con: 13, int: 12, wis: 10, cha: 8 });
+  p = scoreParts(sc);
+  assert.deepEqual(p.problems, []);
+  assert.deepEqual(p.scores, { method: 'standard', base: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 } });
+  assert.deepEqual(validate(SC_SHEET(p.abilities, p.scores)), []);
+});
+
+test('the background choices: +2 and +1, or +1 to each; an SRD one offers its three abilities, another any; unfinished is false', () => {
+  const sc = freshScores(); sc.method = 'standard'; Object.assign(sc.std, { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 });
+  assert.deepEqual(bgAbilities('soldier'), ['str', 'dex', 'con']);
+  assert.deepEqual(bgAbilities('other'), AB);
+  Object.assign(sc.bg, { id: 'soldier', mode: 'twoone' });
+  assert.equal(scoreBackground(sc), false);
+  assert.deepEqual(scoreParts(sc).problems, ['Choose which abilities the background raises.']);
+  Object.assign(sc.bg, { plus2: 'str', plus1: 'dex' });
+  assert.deepEqual(scoreBackground(sc), { id: 'soldier', abilities: { str: 2, dex: 1 } });
+  let p = scoreParts(sc);
+  assert.deepEqual([p.abilities.str, p.abilities.dex, p.abilities.con], [17, 15, 13]);
+  assert.deepEqual(validate(SC_SHEET(p.abilities, p.scores)), []);
+  Object.assign(sc.bg, { plus1: 'cha' });                                // Soldier does not raise Charisma
+  assert.equal(scoreBackground(sc), false);
+  sc.bg.mode = 'all';
+  assert.deepEqual(scoreBackground(sc), { id: 'soldier', abilities: { str: 1, dex: 1, con: 1 } });
+  Object.assign(sc.bg, { id: 'other', mode: 'all', all: ['int', 'wis', 'cha'] });
+  assert.deepEqual(scoreBackground(sc), { abilities: { int: 1, wis: 1, cha: 1 } });
+  sc.bg.all = ['int', 'int', 'cha'];
+  assert.equal(scoreBackground(sc), false, 'three different abilities');
+  Object.assign(sc.bg, { mode: 'twoone', plus2: 'cha', plus1: 'int' });
+  p = scoreParts(sc);
+  assert.deepEqual(p.scores.background, { abilities: { cha: 2, int: 1 } });
+  assert.deepEqual(validate(SC_SHEET(p.abilities, p.scores)), []);
+  sc.bg.plus1 = 'cha';
+  assert.equal(scoreBackground(sc), false, 'the same ability twice');
+});
+
+test('point cost: the draft starts at 8 everywhere, its record is valid, and a record that costs more than the budget is refused', () => {
+  const sc = freshScores(); sc.method = 'pointcost';
+  assert.deepEqual(scoreBase(sc), Object.fromEntries(AB.map((a) => [a, 8])));
+  assert.deepEqual(scoreParts(sc).problems, []);
+  Object.assign(sc.pts, { str: 15, dex: 15, con: 15 });
+  const p = scoreParts(sc);
+  assert.deepEqual(validate(SC_SHEET(p.abilities, p.scores)), []);
+  assert.equal(scoreParts({ ...sc, pts: { ...sc.pts, int: 9 } }).scores.base.int, 9);
+  assert.match(validate(SC_SHEET(p.abilities, { ...p.scores, base: { ...p.scores.base, int: 9 } })).join(' '), /cost 28 points|no longer match/);
+});
+
+test('a roll: nothing without it, the rolled scores placed by their place in the list, a reroll under each rule, the sheet record valid', () => {
+  const sc = freshScores(); sc.method = 'roll';
+  assert.deepEqual(scoreParts(sc).problems, ['Roll the dice first.']);
+  sc.roll = { rolls: SC_DICE.map((dice) => ({ dice })), rule: { reroll: 'below', below: 10, result: 'higher' }, by: 'device', at: '2026-11-19' };
+  assert.deepEqual(scoreParts(sc).problems, ['Place all six numbers (6 still to place).']);
+  AB.forEach((a, i) => { sc.place[a] = i; });
+  assert.deepEqual(scoreBase(sc), { str: 14, dex: 12, con: 17, int: 8, wis: 12, cha: 12 });
+  let p = scoreParts(sc);
+  assert.deepEqual(p.problems, []);
+  assert.deepEqual(p.scores.rolls[0], { dice: [5, 3, 6, 2] });
+  assert.deepEqual(p.scores.rule, { reroll: 'below', below: 10, result: 'higher' });
+  assert.deepEqual([p.scores.by, p.scores.at], ['device', '2026-11-19']);
+  assert.deepEqual(validate(SC_SHEET(p.abilities, p.scores)), []);
+  // The 8 (roll 4) rolled again to 4: `higher` keeps the 8; the same draft under `new` makes it a 4.
+  sc.roll.rolls[3].again = [1, 1, 2, 1];
+  assert.equal(scoreBase(sc).int, 8);
+  p = scoreParts(sc);
+  assert.deepEqual(validate(SC_SHEET(p.abilities, p.scores)), []);
+  sc.roll.rule = { reroll: 'below', below: 10, result: 'new' };
+  assert.equal(scoreBase(sc).int, 4);
+  p = scoreParts(sc);
+  assert.deepEqual(validate(SC_SHEET(p.abilities, p.scores)), []);
+  assert.deepEqual(p.scores.rolls[3], { dice: [2, 3, 3, 1], again: [1, 1, 2, 1] });
+  // The record is a copy: changing the draft later does not change a sheet already made.
+  p.scores.rolls[0].dice[0] = 1;
+  assert.equal(sc.roll.rolls[0].dice[0], 5);
+});
+
+test('a saved sheet opens on its own method; a sheet with no record, or one that no longer agrees, opens on "enter by hand"', () => {
+  const base = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 };
+  const std = scoresDraft(SC_SHEET({ str: 17, dex: 15, con: 13, int: 12, wis: 10, cha: 8 }, { method: 'standard', base, background: { id: 'soldier', abilities: { str: 2, dex: 1 } } }));
+  assert.equal(std.method, 'standard');
+  assert.equal(std.saved, true);
+  assert.deepEqual(std.std, base);
+  assert.deepEqual([std.bg.id, std.bg.mode, std.bg.plus2, std.bg.plus1], ['soldier', 'twoone', 'str', 'dex']);
+  const all = scoresDraft(SC_SHEET({ str: 16, dex: 15, con: 14, int: 12, wis: 10, cha: 8 }, { method: 'pointcost', base, background: { id: 'soldier', abilities: { str: 1, dex: 1, con: 1 } } }));
+  assert.deepEqual([all.method, all.bg.mode, all.bg.all], ['pointcost', 'all', ['str', 'dex', 'con']]);
+  assert.equal(scoresDraft(SC_SHEET(base)).method, 'hand');
+  assert.equal(scoresDraft(SC_SHEET({ ...base, str: 18 }, { method: 'standard', base })).method, 'hand', 'a record the scores contradict is not trusted');
+  // A rolled one: the places are found again from the scores, by roll, each roll used once (three 12s are three different rolls).
+  const rb = { str: 14, dex: 12, con: 17, int: 8, wis: 12, cha: 12 };
+  const r = scoresDraft(SC_SHEET(rb, { method: 'roll', base: rb, rolls: SC_DICE.map((dice) => ({ dice })), by: 'table', at: 41 }));
+  assert.equal(r.method, 'roll');
+  assert.deepEqual([r.roll.by, r.roll.at], ['table', 41]);
+  assert.deepEqual(AB.map((a) => r.place[a]), [0, 1, 2, 3, 4, 5]);
+  assert.equal(new Set(AB.map((a) => r.place[a])).size, 6);
+  const p = scoreParts(r);
+  assert.deepEqual(p.problems, []);
+  assert.deepEqual([p.scores.by, p.scores.at], ['table', 41], 'where it was rolled is kept when a sheet is edited');
 });

@@ -1,6 +1,7 @@
 # Spec: one token, one menu, a clean screen; dice that stay, say whose, and can be thrown
 
-Status: draft by an agent, to be reviewed by the design owner. Issue #527. A design job:
+Status: draft by an agent, revised after the owner tried the mockup (round 2, 19 November
+2026: "Owner's feedback, round 2" below). Issue #527. A design job:
 this spec and a clickable picture, [`mockups/one-token-menu.html`](mockups/one-token-menu.html)
 (open the file in a browser; nothing in it runs the game). No code is written by this
 spec.
@@ -37,6 +38,32 @@ The owner, in chat on 19 November 2026 (summarised in #527; his points, in order
    fling, as in a well-known phone game that catches creatures with a thrown ball). The
    result is still the engine's seeded roll; the throw is presentation and lands on it.
 
+### Owner's feedback, round 2
+
+The owner tried the published mockup and said (his words quoted):
+
+| # | He said | What changed here |
+|---|---|---|
+| R1 | "The slide is too quick, slow it by half a second." | Every slide of the menu takes 0.5 s longer: the sheet rises in 0.72 s and falls in 0.66 s; a level or column moves in 0.68 to 0.70 s (Decision 6) |
+| R2 | "When I click through Wren, every time I select a tab on that sheet, it resets the sheet to the top. It should stay where it is, i.e., when I click on story, now at the bottom, 'Wren' should stay as displayed" | A new rule: **nothing scrolls by itself**. Inside Character, groups and sections open in place under their row; the name and status block stay on screen; every level keeps its scroll (Decision 4a) |
+| R3 | "The current dice animation feels a bit comic." Make them calmer and more real; "make them an upsell item and provide a few options to start with, some simple colors. I like translucent dice personally and in blue. I'd like them to be able to pick primary colors with primary color numbering for dice." | A calmer throw (no squash, no flickering numbers, two low hops, a small rock to rest) and **dice looks**: free starters (simple solids, primary colours with a chosen primary number colour, translucent blue as the default) and looks for sale later; the shop is a separate decision (Decisions 8a and 9) |
+| R4 | "You should always be able to just roll dice, it's kind of fun." | **Roll dice**: always on the Dice screen and on a press and hold of the token; any dice, a count and a modifier; the engine rolls it from the seed (engine amendment E-M2, `freeRoll`), the table sees it as a plain roll that changes nothing (Decision 8b) |
+| R5 | "There's a 1 and the die button also has a green wrap around it, is that health? What's the 1 for, I don't see a required action?" | The green wrap is the health ring; the 1 was the mockup's mistake (a badge with nothing behind it). Now the badge shows only when something waits, opening the menu shows exactly what at the top, and the ring explains itself (Decision 1) |
+| R6 | "In this mockup for the phone, the character sheet comes up with Wren and then after it says 'level 1 wizard' and then Wren as a drop down, it doesn't appear to do anything ... it should probably be at a 'higher' level." | The choice of character moves to the first level: one row per creature the person controls; a player with one character sees one row and no switcher; nothing in a character's screen changes which character it is (Decision 4b) |
+| R7 | "Just to the right of Pip and above left of the goblin warrior are brown rectangles, are those part of the design or what?" | They were the mockup's rocks, drawn as plain boxes. The mockup now draws boulders (a lumpy outline, light from above, a shadow), so the stand-in map does not look like buttons. Nothing in the game changes |
+| R8 | "I'd like health bars on everyone when in combat or at least the option for the DM to display them." | A health bar over every creature in a fight: the party's exact, a foe's from what players are sent today (full, half for Bloodied, empty for Down), and a DM table rule "Players see foes' health: Hidden / Rough / Exact"; Exact is engine amendment E-M3 (Decision 7a) |
+| R9 | (round 3) "I'm at 6 d20 and 1 d100 and I can't unselect dice, a shift key should allow deselection." | Your roll as chips with a − each and Clear all; Shift+click and press and hold on a die take one away (Decision 8b, "Taking dice away") |
+| R10 | (round 3) "I went ahead and rolled all of those dice and I couldn't see them, they distributed in a row and overlapped. I'd prefer it if they bounced around the screen naturally and just landed where they stopped, maybe nudging to one side or another as they roll so as not to overlap ... the die's up face should parallel the tabletop plane." | Dice scatter: each has its own path, hops, rolls with friction, glances off the edges and the other dice, stops where it stops, and touching dice are nudged apart; a resting die lies flat in the board's plane; then the other faces' numerals fade (Decision 9, "Many dice") |
+| R11 | (round 3) "On the phone version, the horizontal line is sufficient to close the menu, no x needed." | No × on the phone sheet: the grab handle (a real button, "Close menu", 44 px tall) closes it on a tap or a drag down; the map and Escape still close it; a wide screen keeps its × (Decision 3) |
+| R12 | (round 3) "the labeling should be for what it is? Table is also too blunt." | Every screen's heading names what it is, never "Menu"; three naming sets for the two groups, with a pick (Decision 4c) |
+| R13 | (round 3) "create some symbols like setup should be the standard gear symbol. DM tools should have a wrench. Characters could be meeples. Packs needs something ... A singular aesthetic that matches the game" | One set of line symbols drawn in the theme's colour: gear, wrench, meeples, a strapped tome for Packs, and the rest; shown together on one sheet in the mockup (Decision 4c) |
+| R14 | (round 3) "if I click and hold, can they have that 6 dot thing to allow them to be dragged into a different order?" | Arrange: hold a symbol, or Setup › Arrange; rows with six-dot handles to drag, ▲ ▼ for keys, an eye to hide; per device; Reset order; four places cannot be hidden (Decision 4c) |
+| R15 | (round 3) "if I just hold that for a second, can it immediately allow me to roll a die for idle fun. When I just quick click on it, can it present the menu as a set of icons ... if there's no selection for 3 seconds, popup text explanations? When in the menus, show those same icons across the top"; then "quick tap, I don't want a row, I want an arc around the die." | A quick tap fans the symbols out in an **arc round the die**; labels appear after 3 s; inside a screen the same symbols run across the top; holding the die for a second throws the last roll at once (Decisions 1 and 4c) |
+| R16 | (round 4) "OK, I can't get out of the menu now that it's up." | A rule and a test: every state closes by a tap on the die, a tap on the map, or Escape. The die now sits above the sheet and the arc (it was under the dimmed map, so a tap on it reached the map instead, and on a phone the sheet covered it); the phone sheet keeps a footer for it; the Waiting card and the health note never take the closing tap (Decision 3, "Closing, always") |
+| R17 | (round 4) "A number of these are setup items that are more specific, can they be held under the same menu item and just shown as sections ... dice ... on the same page as Look and just have a title bar that you click on" | The arc and the strip hold a few places: your character(s), Turns, Roll dice, Log and chat, Setup, and DM tools for the DM. Setup is one page of sections: Display and controls, Dice, The menu, Characters and packs, The table's rules, Help and about, Leave the table (Decision 4d) |
+| R18 | (round 4) "When a section is too long to display with the other section headers, it scrolls while keeping the section headers above and below." | One section open at a time; its content scrolls between the bars before it, pinned at the top, and the bars after it, pinned at the bottom (Decision 4d) |
+| R19 | (round 4) "the symbols across the top are too many and there's no indicator that there are more ... add > & < symbols if required? I'd prefer to get down to just a few though. Not sure what leave means ... If the latter, it should be under settings." | Six symbols fit a phone's strip; when more do not fit (a solo party, say), ‹ and › appear at the ends where there is more. Leave means leaving the table (the game, on this device); it is now the last section of Setup, with a confirm (Decisions 4c and 4d) |
+
 ## Rules that bind this design
 
 - **Everything goes through `apply()`.** Every button in the menu sends an action the
@@ -70,8 +97,8 @@ design keeps exactly these on the clean screen, and nothing else:
 |---|---|
 | That it is my turn | The token wears a ring and pulses once; a banner "Your turn, Wren" for 1.6 s; the turn line says "Your turn" |
 | Whose turn it is, and how long until mine (a fight only) | One line of text above the token: **"Goblin Warrior 2's turn · you in 3"** (the turn line). No strip of chips |
-| That something is waiting for me (a reaction, a roll, a handout, a note) | A badge on the token with a number, and the question itself if it must be answered (it opens on its own, as today) |
-| How hurt my character is | A thin arc round the token: the selected character's Hit Points, in the theme's good colour turning to bad below half; the number in the token's spoken name (question 4) |
+| That something is waiting for me (a reaction, a roll, a handout, a note) | A badge on the token with a number **only when something waits**, and the question itself if it must be answered (it opens on its own, as today); opening the menu lists what waits, in words |
+| How hurt my character is | A thin arc round the token: the selected character's Hit Points, in the theme's good colour turning to bad below half; the number in the token's spoken name, and for 3 s beside the token whenever it changes (question 4) |
 | That the link to the table is lost | The offline bar of `player-screen.md` Decision 10 across the top; the token greys with a crossed mark |
 | A roll that just happened | The dice, left on the board for the time the player chose (Dice, below) |
 
@@ -110,7 +137,7 @@ which smoke passes change).
 | Hint and aim bar `#hint`, `#hint-text`, `#hint-pick`, `#hint-go`, `#hint-cancel` | over the map | **The aim bar**, at the bottom, where the token is (`player-screen.md` Decision 4). While something is armed the aim bar *is* the one overlay; the token hides behind it and Cancel brings it back |
 | Camera buttons `#cam` (⟲ ⟳ + −) | right edge | **Hidden by default.** The map already turns and zooms by touch (drag, pinch) and by keys and wheel. Setup › Controls › "Camera buttons on the map" (off) brings them back for whoever wants them; the one-finger way to turn the map without the buttons is Setup's buttons too (question 8) |
 | `#pace-wait` ("…", skip a beat) | dock | A small **Skip** pill beside the token while a beat plays under the pace "wait" |
-| Party chips `#party` | dock | **The character switcher** at the top of the Character screen: "Wren ▾" lists the characters this person controls (solo: the whole party). Also: a tap on one of your own pawns on the map selects it, as now |
+| Party chips `#party` | dock | **One row per character on the first level** (Decision 4b): each creature this person controls (their characters, companions they play, stand-ins the DM plays; solo: the whole party) is its own row at the top of the menu. A player with one character sees one row and no switcher anywhere. Also: a tap on one of your own pawns on the map selects it, as now |
 | Card head, Hit Points, AC, `#c-res` pills, End turn, Sheet | dock (`#card`) | **Character › status block** (top of the character screen): name, level and class, Hit Points, AC, Speed, conditions, Concentration, slots, the turn bar in a fight; **End turn** is the status block's right-hand button on my turn, and also on the turn line ("End turn" appears there on my turn so a turn can end without opening the menu) |
 | Action panel tabs `#ap-tabs`: Explore, Attacks, Spells, Bonus, Move, Features, Items, Reactions, Down; `#ap-all` | dock | **Character › action groups** (below). The rows are the same rows (`tabRows`, `spellRows`, `rankExplore`), sorted into groups by what the player wants instead of by tab. Items › **Inventory**. Down › the status block (see States) |
 | `#ap-how` (how a condition ends) | dock | Character › status block: a tap on a condition shows its line in place |
@@ -202,23 +229,51 @@ tap outside clears it.** Reasons:
 - **What it is.** A die, 64 px, drawn by the theme: Classic a brass d20 on a dark disc,
   Sunlit a rounded green d20 with a white rim, Pocket a pixel-cut d20 with a hard shadow.
   It is the button `#btn-menu`, `aria-label="Menu"` (spoken with state: "Menu. Your
-  turn. Wren, 6 of 8 Hit Points. 1 waiting."), `aria-expanded`, `aria-controls`.
+  turn. Wren, 6 of 8 Hit Points. 1 new handout."), `aria-expanded`, `aria-controls`.
 - **Where.** Bottom centre by default, 16 px above the safe area. Setup › Controls › "The
   menu token sits": **bottom centre**, **bottom right**, **bottom left** (left-handed).
   On a wide screen the same three; bottom centre by default.
 - **What it wears.**
-  - the **Hit Points arc** of the selected character (question 4);
-  - a **badge**: the number of things waiting for this person (handouts, notes, the DM's
-    waiting players and an undecided conclusion: today's `#menu-badge` sum);
+  - the **health ring**: an arc round the die for the selected character's Hit Points
+    (question 4), in the theme's good colour, the bad colour below half, empty at 0. It
+    **explains itself** three ways, because a coloured ring alone is a riddle (R5):
+    1. **When Hit Points change**, a small label sits beside the token for 3 s: "Wren 3 / 8
+       HP" (spoken once, politely);
+    2. **The first time the menu opens on a device**, a one-line note above the arc
+       (Decision 4c): "The ring round the die is Wren's health: 6 of 8 HP." with **Got it**
+       (`hextable.seen.ring`, never shown again);
+    3. **Help and feedback** opens on "The die button": a picture of the token with each
+       mark named (health ring, turn ring, badge, offline mark).
+    The character row of the first level draws the same ring round the sigil, beside "6 / 8
+    HP", so the two are seen together.
+  - a **badge**, **only when something is waiting for this person**, never otherwise: a
+    handout or note not yet opened, a level ready, for the DM a waiting player or an
+    undecided conclusion (today's `#menu-badge` sum). The number counts those things and
+    nothing else. A question that must be answered (a reaction) does not use the badge: it
+    opens by itself (Decision 2).
+  - **What waits is said at once.** When the badge shows, a tap on the token fans out
+    the arc with a **Waiting for you** card above it listing each
+    thing in words with its button: "1 new handout: A torn map · **Open**", "Wren can reach
+    level 2 · **Level up**". Opening it clears its count. When nothing waits there is no
+    box and no badge.
   - on **my turn**, a ring in the accent colour that pulses once at the start of the turn
     (not under reduced motion) and stays lit;
   - **offline**: greyed with a crossed mark.
-- **What a tap does.** Opens the menu where it was last left (the character screen, most of
-  the time), or on the **Character** screen at the start of my turn (question 3). A
-  second tap on the token closes it.
-- **A press and hold** (500 ms, the finger still) on the token opens the **Dice** screen
-  (the last rolls). It is a shortcut only: Dice is on the first level. There is no free
-  "roll a die for fun": a number the engine did not make has no place on the table.
+- **What a quick tap does** (round 3). The places fan out in an **arc round the die**
+  (Decision 4c), and nothing else opens. A tap on a symbol opens that place; a tap on the
+  die again, or on the map, folds the arc back. When something waits, the Waiting for you
+  card sits above the arc. (At the start of my turn, if question 3 is answered yes, the
+  Character screen opens instead.)
+- **Holding it for a second** (1 s, the finger still; round 3) **throws dice at once, for
+  fun**: the last roll made in Roll dice (a single d20 until one has been made), from the
+  die, with no menu. It is a plain roll through E-M2 (`freeRoll`), seen by the roller and
+  the DM only (question 22). The die lifts a little at 1 s so the finger knows it worked;
+  lifting the finger earlier is a tap. Roll dice itself stays on the Dice screen and in the
+  arc.
+- **Three holds, three places, never in conflict:** holding the **die** (1 s) throws for
+  fun; holding a **symbol in the arc** (0.5 s) opens Arrange; holding a **die type in Roll
+  dice** (0.5 s) takes one die of that kind away. The die's hold is longer because a throw
+  cannot be taken back and a tap must stay a tap.
 
 ### Decision 2: one overlay at a time
 
@@ -243,7 +298,12 @@ inside them the same rule holds.
 - On a phone the sheet stops 12 % below the top; that strip of map, dimmed, is the **clear
   zone**: one tap there closes the whole menu (every level), and the tap does nothing else
   (it does not move the character). The breadcrumb's "‹" goes back one level; a swipe
-  right on a screen goes back one level; a swipe down on the sheet's handle closes it all.
+  right on a screen goes back one level.
+- **No × on a phone (round 3).** The sheet's **grab handle** is the close control: a real
+  button named "Close menu", the full width of the sheet and 44 px tall, with a 56 x 6 px bar
+  drawn in it. A tap on it closes the sheet; so does a drag down past 60 px or a quick flick
+  (a shorter drag springs back). The map above and Escape still close it. A wide screen
+  keeps its × (there is no handle there).
 - On a wide screen the visible map beside the columns is the clear zone, with the same
   rule. A pinned menu (`hextable.drawerPin`, as today) is not closed by a tap on the map:
   the map then plays as normal.
@@ -254,6 +314,15 @@ inside them the same rule holds.
   the same screen, so the player sees the turn bar change; the status block says what
   happened in one line ("Dashed: 60 ft to move.").
 - Escape (or M) closes the whole menu; Backspace or Left goes back one level.
+- **Closing, always (round 4).** In every state, the arc, every screen, every section, Arrange,
+  More, with or without the Waiting for you card or the health-ring note, **three things
+  close it: a tap on the die, a tap on the map, Escape.** So the die is drawn above the
+  dimmed map, the arc and the sheet (only a prompt, the aim bar and the throw zone are above
+  it, and those hide it), and the phone sheet ends 92 px above the bottom so the die stays
+  in view and in reach. The Waiting card and the health note are only as big as their text,
+  so the map round them still closes. The build carries a test that walks each state at
+  both sizes and closes it each of the three ways (the mockup's check did: 27 states x 2
+  sizes, all closed).
 
 ### Decision 4: the tree
 
@@ -261,8 +330,12 @@ The same tree at both sizes. First level, top to bottom:
 
 ```
  ┌───────────────────────────────────────────┐
+ │ Waiting for you                            │  only when the badge shows (Decision 1)
+ │ 1 new handout: A torn map         [Open]   │
+ ├───────────────────────────────────────────┤
  │ (sigil) Wren                     6/8 HP ›  │  Character   ← always first; the symbol of the character
  │         Wizard 1 · Your turn               │
+ │   (sigil) Owl · Wren's familiar   1/1 HP › │  one row per creature controlled (Decision 4b)
  ├───────────────────────────────────────────┤
  │ Turns            Round 2 · Goblin's turn › │  (outside a fight: Party)
  │ Dice                     last: Wren 17   › │
@@ -291,7 +364,7 @@ tab).
 **Character**, the cascade (second level), read top to bottom like a character sheet:
 
 ```
- ‹ Menu   Wren ▾                                   (switch character)
+ ‹ Menu   Wren                                     (no switcher here: Decision 4b)
  ┌ STATUS ─────────────────────────────────────┐
  │ Wren · Level 1 Wizard        [End turn]      │  End turn on my turn only
  │ ▓▓▓▓▓▓░░ 6 / 8 HP    AC 12    Speed 30 ft    │
@@ -362,13 +435,67 @@ coins; a tap on an item shows its text and its actions.
 scroll a long page: Abilities and skills (with "Check…" on each skill when a check can be
 asked), Features and traits, Spells known, Story (background, notes).
 
+### Decision 4a: nothing scrolls by itself (round 2, R2)
+
+The owner opened Story at the foot of Wren's screen and the screen jumped to the top, with
+"Wren" gone. The rule:
+
+- **No screen ever changes its scroll position by itself.** Opening, closing, a new turn,
+  a refreshed state, a row that sends: the scroll of every level stays where the player
+  left it. A re-drawn level keeps its `scrollTop` (the client keeps it per level and puts
+  it back after drawing).
+- **Inside Character, groups and sections open in place**, under the row that was
+  tapped, like the sections of a paper sheet folded open: Attack, Cast, Heal, Inventory,
+  Abilities and skills, Story, and the turn bar's lists. The tapped row stays exactly
+  where it was under the finger; what it opens appears beneath it. A second tap folds it.
+  Any number may be open; each remembers that it is open until the menu closes.
+- **The name and status block stay on screen.** On a phone the status block ("Wren",
+  Hit Points, the turn bar) is fixed at the top of the Character screen and the groups
+  scroll under it, so Story at the bottom opens with Wren still shown above it.
+- **On a wide screen** a group may also open in the next column (the cascade); the
+  Character column then keeps its scroll and marks the open row. Only a screen that is a
+  real next step (a picker such as Formation or a Wild Shape form, a DM tools section)
+  pushes a new level on a phone; going back returns to the same scroll and the same open
+  sections.
+- **One exception, asked for:** the turn line's tap (Turns) and the Waiting for you box's
+  buttons open their screen at its top, since that is where the thing is.
+
+### Decision 4b: which character (round 2)
+
+The owner, on the phone mockup: the "Wren ▾" choice inside the character screen "doesn't
+appear to do anything and it's within the character so if it's so they can control
+multiple characters it should probably be at a 'higher' level." Agreed. The choice of
+character lives **on the first level**, never inside a character's screen:
+
+- **One row per creature this person controls**, at the top of the first level under the
+  Waiting for you box, in this order: the selected one first, then the others in turn
+  order (in a fight) or party order. Each row is the character's symbol with its own
+  health ring, the name, level and class (or "Owl · Wren's familiar"), and a state on the
+  right ("Your turn", "6 / 8 HP", "Down"). A tap opens that creature's Character screen
+  **and selects it** (the camera goes to it, as `select` does today), so the token's ring,
+  the turn line and the map's reach are then about it.
+- **Who sees several rows:** a player with a companion they command (Find Familiar, a
+  steed), a player given a second character, the DM's stand-ins (`standIn`), and solo play
+  (the whole party: Brenna, Pip, Odessa, Tavin, Wren). Companions sit under their master,
+  indented.
+- **A player with one character** sees one row and nothing else: no switcher, no arrow, no
+  "choose". The row is simply "Wren".
+- **The DM** sees the creatures they play by hand in this list only when they have chosen
+  some ("Play as…" in DM tools › Creatures); monsters run by the AI are not listed. The
+  DM's tracker (Turns) remains the way to pick any creature.
+- On a wide screen the rows are the top of the first column; the Character column shows
+  the one that was tapped.
+- The Character screen's head carries only the name, level and class: nothing in it
+  changes which character it is.
+
 **Turns** (the tracker, `tracker.js`, unchanged inside): header "Round 2 · Goblin Warrior
 2's turn · you in 3"; rows as built, with **"You"** under each of the viewer's own
 creatures and their initiative roll shown as a die glyph with the number. Tapping a row
 selects the creature and moves the camera; on a phone it also clears the menu.
 
-**Dice**: the last rolls (Decision 8), and the dice settings in one place (they also live
-in Setup).
+**Dice**: **Roll dice** at the top (Decision 8b), then the last rolls (Decision 8), then
+the dice settings in one place, the dice look among them (Decision 8a; they also live in
+Setup).
 
 **Log and chat**: the log by fight as built (filters kept: All, Talk, Rolls…); at the
 foot a **Say** box ("Say as Wren" or "out of character", the engine's `say`) and **Note to
@@ -403,6 +530,148 @@ becomes a list of level-3 screens, each today's section unchanged inside:
 | **The table's rules** | the read-only list, as today |
 | **Connection** | the link dot with its words (when online) |
 
+### Decision 4c: names, symbols, the arc, the strip and Arrange (round 3)
+
+This decision replaces the first level of Decision 4 as a list: the places and their order
+are the same, but they are reached through an arc of symbols round the die and a strip of
+the same symbols across the top of every screen. Decision 4's tree below the first level
+(the character screen, its groups, Setup, DM tools) stands.
+
+**Names: every screen says what it is.** The heading of a screen is its own name, never
+"Menu": **Wren** (the character's name), **Turns** (in a fight) or **Party**, **Dice**,
+**Log and chat**, **Handouts**, **Setup**, **DM tools**, **Characters**, **Packs**,
+**Help**, **About**; a screen under another says both in its back link ("‹ Setup" over
+"Arrange the symbols"). The die's button is spoken "Menu" only as its role ("Menu button:
+Wren, 6 of 8 HP").
+
+The two groups need names. Three sets, for the owner to choose (question 19):
+
+| Set | Your play | The game around it | For | Against |
+|---|---|---|---|---|
+| **A (my pick)** | **Play** | **This game** | Says what each is for in words a new player uses; "This game" covers setup, the characters, packs, help and leaving without the jargon of "table" or "session" | "Game" is broad |
+| B | **At the table** | **Behind the screen** | The tabletop's own picture; warm | "Behind the screen" reads as the DM's, but players use Setup and Leave too |
+| C | **Adventure** | **Session** | Short | "Session" is technical; a solo player has no session |
+
+The group names show as captions in Arrange and Help; the arc shows them by ring (Play
+inside, This game outside), not in words, so the arc stays clean.
+
+**One set of symbols.** Line drawings on a 24-unit grid, 1.7-unit strokes with round ends,
+drawn in the theme's accent colour (`currentColor`), on a round tile of the panel colour
+(Classic: a brass-tinted rim; Sunlit: white tiles; Pocket: square tiles with a hard shadow
+and square stroke ends). No fills except small dots, so they read at 26 px and at 44.
+
+| Place | Symbol | Why |
+|---|---|---|
+| Your character | its **sigil** (a letter on its colour) with the **health ring** | the same ring as the die's, so the two are learnt together |
+| Turns (a fight) | **crossed swords** | the fight's order |
+| Party (exploring) | **a campfire** | the party at rest together |
+| Dice | **a d20** | |
+| Roll dice | **two dice** with pips | rolling, as opposed to looking at rolls |
+| Log and chat | **a speech bubble** with lines | talk and what was said |
+| Handouts | **a scroll** | |
+| Setup | **a gear** | the owner's choice; the universal sign |
+| DM tools | **a wrench** | the owner's choice |
+| Characters | **two meeples** | the owner's choice: people at the table |
+| Packs | **a strapped tome** (a book with a clasp) | homebrew is a book of extra rules and things |
+| Help | **a question mark** in a circle | |
+| About | **an i** in a circle | |
+| Leave | **a door with an arrow** | |
+| More | **three dots** | |
+| Arrange | **six dots** | the drag handle people know |
+
+The mockup's "Symbols" control shows them together in the three themes.
+
+Round 4: Characters, Packs, Help, About, Leave and Handouts are no longer places (they are
+sections of Setup or of Log and chat), so their symbols leave the arc and the strip; the
+set is kept for later use (a section bar may carry its symbol if the owner wants it).
+
+**The places (round 4).** Only a few: **your character** (one symbol per creature you
+control), **Turns** (Party when exploring), **Roll dice**, **Log and chat** (handouts are a
+section of it), **Setup**, and **DM tools** for the DM. Everything else is a section of
+Setup (Decision 4d). A player with one character has **5**; with a familiar 6; the DM 6 or
+more; a solo player with a party of five, 9 (+ DM tools, 10).
+
+**The arc (a quick tap on the die).** The places fan out from the die along rings, in
+order. They grow out of the die in 0.5 s with a
+25 ms stagger (none under Just appear or reduced motion).
+
+| Where the die sits | Rings (centre distance) | Slots | What it holds |
+|---|---|---|---|
+| Phone, bottom centre | one half **ellipse**, 128 x 150 px; a second (165 x 252) only past 7 | 7 (+ 8) | every usual case in one ring (5 to 7); a solo party uses the second ring |
+| Phone, bottom left or right | one **quarter circle** of 124 px; a second of 204 px past 4 | 4 + 6 | 5 or 6 places use both rings |
+| Wide screen, centre | one half circle of 160 px; a second of 270 px | 8 + 11 | one ring for every usual case |
+| Wide screen, corner | quarter circles of 135 and 220 px | 4 + 6 | |
+
+- Each symbol is a 52 px round button (above the 44 px minimum), its badge at its corner.
+- **When there are more places than slots** the last slot is **More**, a screen of every
+  place as labelled tiles. With the few places of round 4 this needs more than 15 places
+  on a phone, which no table reaches today.
+- **Labels.** The words are in each button from the start (a screen reader says them at
+  once); on screen they appear as small plates under the symbols after **3 seconds** with
+  no choice, and stay until the arc closes. Setup › The menu › **Labels under the symbols:
+  After 3 seconds / Always**.
+- **Closing:** a tap on the die, on the map, or Escape folds the arc. Choosing a place
+  folds it and opens the screen.
+- **Keyboard:** M opens the arc; arrow keys move round it in order; Enter opens; the
+  focus starts on the first symbol.
+
+**The strip (inside a screen).** The same symbols, in the same order, run across the top
+of every screen as the way between places (48 px buttons). The current place is marked (a
+rim and an underline in the accent colour, `aria-current="page"`). Six fit a 390 px phone
+with room to spare. **When they do not fit** (a solo party with the DM's tools: 10), the
+strip scrolls sideways, the current one is scrolled into view, and a **‹** or **›** (32 x
+48 px, the accent colour, with a soft shadow) appears at an end **only when there is more
+that way**; a tap moves the strip by about three symbols. Labels show under
+them only when "Always" is set. This replaces the "‹ Menu" link: there is no first-level
+list to go back to.
+
+**Arrange (round 3).** Hold a symbol in the arc for half a second, or open Setup ›
+**Arrange the symbols**. Each place is a row: a **six-dot handle** (44 px) to drag it up or
+down within its group, ▲ and ▼ buttons for keys and switch users, and an **eye** to hide it
+from the arc and the strip. **Reset order** puts back the order and shows everything.
+Kept per device (`hextable.menuOrder`, `hextable.menuHidden`), like the theme.
+
+**Two kinds of place cannot be hidden** (round 4), and their row says why:
+
+| Place | Why it always shows |
+|---|---|
+| Your character(s) | the character is how you play |
+| Setup | it is where hidden symbols come back, and where you leave the table |
+
+Turns, Roll dice, Log and chat and DM tools may be hidden. (Help and Leave, which could not
+be hidden in round 3, are now sections of Setup, so they are always one place away.)
+
+### Decision 4d: Setup is one page of sections (round 4)
+
+Settings-like things are no longer places of their own. **Setup** holds them as sections,
+in this order:
+
+| Section | Holds |
+|---|---|
+| **Display and controls** | Theme; Health bars over creatures; Camera buttons on the map; Floors; Keys |
+| **Dice** | Dice look (and the primary-colour picker); Rolls stay on the board; Throw my dice with a flick; Other players' dice |
+| **The menu** | Arrange the symbols; Labels under the symbols; The die sits; Menus: slide or appear; Open my character at the start of my turn |
+| **Characters and packs** | Who plays whom, adding, levelling (the DM's tools for it; a player sees their own); the packs the table uses (the DM adds and removes them here) |
+| **The table's rules** | The DM's rules in words for players; for the DM, the rules to set (Players see foes' health here too) |
+| **Help and about** | The die and every symbol explained; feedback; credits, licences, version |
+| **Leave the table** | Leaving this game on this device: "Leave the table…", then **Stay** / **Leave the table** (in the bad colour). Words: "Leaving takes you back to the start page. It does not end the game for anyone else." |
+
+**How the sections behave.**
+
+- Each section is a **title bar** (52 px, the title and a one-line summary, a chevron) that
+  opens and closes it. **One section is open at a time**: opening another closes the first,
+  and the tapped bar stays where it was under the finger.
+- While a section is open, the **bars before it stay pinned at the top** and the **bars
+  after it stay pinned at the bottom**; only the open section's content scrolls between
+  them (its own scroll, kept while it stays open). The closed bars shrink to 44 px (the
+  title only) so all seven fit beside an open section on a 390 x 844 phone, with at least
+  120 px of the section showing.
+- With no section open, Setup is the list of seven bars.
+- **Roll dice** has a row "How dice look and how long they stay", which opens Setup with
+  Dice open.
+- Keyboard: Tab moves between bars; Enter or Space opens; each bar is a button with
+  `aria-expanded` and `aria-controls`; the open content is a labelled region.
+
 ### Decision 5: the layout at each size
 
 ```
@@ -424,7 +693,7 @@ becomes a list of level-3 screens, each today's section unchanged inside:
 ┌──────────────────────────────────┐   ┌──────────────────────────────────┐
 │▒▒▒▒▒ map, dimmed: tap to clear ▒▒│   │▒▒▒▒▒▒▒▒▒ tap to clear ▒▒▒▒▒▒▒▒▒▒▒│
 ├──────────────────────────────────┤   ├──────────────────────────────────┤
-│ ‹ Menu   Wren ▾                  │   │ ‹ Wren   Cast                    │
+│ ‹ Menu   Wren                    │   │ ‹ Wren   Cast                    │
 │ Wren · Level 1 Wizard [End turn] │   │ Level 1 slots ●●   [Sort, filter]│
 │ ▓▓▓▓▓▓░░ 6/8 HP  AC 12  30 ft    │   │ Fire Bolt   Cantrip · 120 ft  [A]│
 │ [Action][Bonus][Move 30][React]  │   │ Burning Hands L1 · 15 ft cone [A]│
@@ -458,7 +727,8 @@ becomes a list of level-3 screens, each today's section unchanged inside:
 
 - **Phone, below 900 px wide:** the sheet rises from the bottom to `calc(100% - 12vh)`;
   one level shown; levels push from the right; a breadcrumb row on top (48 px, the "‹"
-  is a 48 px target); the sheet's own handle (a short bar) closes it on a swipe down. The
+  is a 48 px target); the sheet's grab handle closes it on a tap or a drag down, and there
+  is no × (round 3). The
   status block of the character screen stays fixed at the top of that screen while the
   groups scroll under it, so Hit Points and the turn bar are never scrolled away.
 - **Tablet in portrait** (768 x 1024) is a phone layout with a sheet capped at 560 px wide,
@@ -472,11 +742,14 @@ becomes a list of level-3 screens, each today's section unchanged inside:
 
 ### Decision 6: motion, and "just appear"
 
-- **Slide (default).** Phone: the sheet rises in 220 ms (ease-out), falls in 160 ms; a
-  level pushes in from the right in 180 ms and the old one moves 30 % left and dims.
-  Wide: each column slides out from the left in 200 ms, 40 ms after the one before it
-  (the shooter's stagger). The scrim fades in with the sheet. Closing is quicker than
-  opening on purpose: giving the screen back should feel instant.
+- **Slide (default).** Round 2 (R1): the owner found the first speeds too quick ("slow it
+  by half a second"), so each slide is 0.5 s longer than the first draft. Phone: the
+  sheet rises in **0.72 s** (ease-out) and falls in **0.66 s**; a level pushes in from
+  the right in **0.68 s** and the old one moves 30 % left and dims. Wide: each column
+  slides out from the left in **0.70 s**, 40 ms after the one before it (the shooter's
+  stagger), and slides back in 0.66 s. The scrim fades with the sheet. These are the
+  menu's slides; the prompts (a reaction question, the throw zone, the aim bar) keep a
+  quick 0.22 s, because a question should not make a player wait (question 13).
 - **Just appear.** Setup › The menu › "Menus: **Slide in and out** / **Just appear**"
   (`hextable.menuMotion`: `slide` | `appear`), a device preference like the theme. With
   `appear`, every sheet, column, level, card and prompt is shown and hidden with no
@@ -506,6 +779,42 @@ becomes a list of level-3 screens, each today's section unchanged inside:
 | **Level ready** | nothing | badge +1 | Character's status block has "Level 2 ready" with the button of `player-screen.md` Decision 8 |
 | **Offline** | the offline bar on top | greyed, crossed | every action row greyed with "Nothing you do is sent until the table is back." |
 | **DM, any state** | the undo chip beside the token for 8 s after each action | badge = waiting players etc. | DM tools on the first level |
+
+### Decision 7a: health bars over every creature (round 2, R8)
+
+**Today.** The game already draws a small bar over each creature (`render-three.js` labels,
+`hpFraction` in `three-build.js`): exact for a creature whose Hit Points the viewer is
+sent, and for a foe a guess from its `health` word (healthy 1, bloodied 0.45, down 0).
+What players are sent is fixed in `view.js`: a foe's Hit Points are never sent (`seenHp`
+sends only 1 or 0), only `health`: healthy, bloodied, down or dead (`healthOf`, Bloodied
+being at or below half).
+
+**The design.**
+
+- **Over every creature, in a fight, always**, unless this person turns it off: a device
+  preference, Setup › Look › **Health bars over creatures: Always / In a fight / Never**
+  (`hextable.bars`; default **Always**, as today: question 17).
+- **The party's bars are exact** (Hit Points over maximum), as today; a creature at 0 shows
+  an empty bar and the word "Down" on tap.
+- **A foe's bar follows the table's rule** (`settings.foeHealth`, set by the DM in DM tools
+  › Table rules, and shown for the DM in Setup too):
+
+  | Value | A player sees over a foe | Engine |
+  |---|---|---|
+  | **Hidden** | no bar; the tracker says nothing of its health | client only (the client does not draw it) |
+  | **Rough** (default) | a bar that is full (Healthy), **half with a notch** in the middle (Bloodied), or empty (Down); the notch says "this bar is a word, not a number"; a tap on the creature says the word | none: it is what `view.js` sends today. The half bar replaces today's 0.45, which looked like a number |
+  | **Exact** | the real fraction of its Hit Points (still no number on the bar) | **E-M3**: `view.js` sends a new field `hpFrac` (Hit Points over maximum, rounded to tenths) for a foe the party can see, only when the table's rule is `exact` |
+
+- **E-M3, the rule:** a table setting the DM chooses (`foeHealth` in `SETTINGS`, `rough` by
+  default; an older game migrates to `rough`); under `exact` the view sends a rounded
+  fraction for a creature that is **seen** (`visibility` 'seen'); a hidden or unseen
+  creature still sends nothing at all, and a creature shown as Someone sends no fraction.
+  The number of Hit Points is never sent, only the fraction. Tests: under `rough` no player
+  message holds a foe's fraction; under `exact` a hidden creature's id appears in no player
+  message.
+- **The DM** sees exact bars for everyone, always.
+- **Colour is not alone:** the party's bar is green, turning amber below half; a foe's bar
+  is red; Bloodied's notch and the word on tap carry the meaning.
 
 ### Decision 8: dice that stay, and say whose
 
@@ -543,6 +852,105 @@ section 6), so nothing is lost when they fade.
   the colour band, the title, the faces as glyphs, the result line. Read-only; built from
   the log's own entries, so it never holds more than the log.
 
+### Decision 8a: dice looks (round 2, R3)
+
+The owner: dice as "an upsell item", with "a few options to start with, some simple colors.
+I like translucent dice personally and in blue. I'd like them to be able to pick primary
+colors with primary color numbering for dice."
+
+A **dice look** is a device preference (`hextable.diceLook`), chosen in Setup › Dice and
+animation › **Dice look** and on the Dice screen, with a live die that turns slowly so the
+look is seen at rest and in motion. A look is presentation only: it changes no number, no
+rule and nothing sent to the engine.
+
+| Look | What it is | Free or paid |
+|---|---|---|
+| **Translucent blue** (the default) | clear blue resin: the body at about 55 % opacity with the board showing through, white numbers, a soft highlight on the top edges | **Free starter**, the default look (the owner's own choice) |
+| **Simple solids** | one colour each with a contrasting number: White (black numbers), Black (white), Red (white), Blue (white), Green (white), Yellow (black) | **Free starters** |
+| **Primary colours, your way** | pick the **die colour** from red, yellow, blue (and white, black) and the **number colour** from red, yellow, blue, white, black. A pair that cannot be read (the same colour twice; yellow on white) is greyed with the reason "The numbers would not show." | **Free starter** |
+| Other translucent colours (red, green, amber, smoke) | as translucent blue | **Paid later** |
+| Swirls, metals, gemstones, glow, sets that match a theme | richer looks, each a small data file of colours and a finish | **Paid later** |
+
+**Which looks are free is the owner's choice** (question 11); the table above is the
+proposal. **The shop is not designed here**: buying needs an account, payment, refunds,
+the stores' rules on phones and a licence for any bought art, and the game has no accounts
+today (`portable-characters.md` keeps characters per browser). It is a separate decision
+for the owner (question 12). Until then the paid looks are not shown at all: nothing is
+greyed with a price, so no one is teased with what cannot be bought.
+
+**Who sees my look.** In the first build, a look is drawn on this device only: I see my
+dice in my look; others see my dice in their own choice of look for others' dice ("Other
+players' dice: in their colour of the party / like mine"). Showing each player's chosen
+look to the whole table needs the look sent to the server's list of who is at the table
+(not the game state: it is not a rule). Question 14.
+
+**The roller's colour stays.** Whatever the look, the title's colour band says whose roll
+it is (Decision 8), so a table where everyone picks translucent blue still knows whose die
+is whose.
+
+### Decision 8b: Roll dice, any time (round 2, R4)
+
+The owner: "You should always be able to just roll dice, it's kind of fun."
+
+**Where.** The top of the **Dice** screen, and **Roll dice** in the arc. Holding the die for
+a second throws the last roll at once without opening anything (round 3, Decision 1). In a
+fight, in a scene, while exploring: always reachable.
+
+**What.** A row of dice: **d4, d6, d8, d10, d12, d20, d100**; a tap adds one of that die
+(the count shows on its button, "× 2"); a modifier stepper (−10 to +10); an optional "What for?" line (40 characters: "Perception, for the
+DM"); and who sees it: **The table** (default for players) or **Only the DM** (default for
+the DM: a DM's private roll). Then **Roll**: the throw zone opens with those dice (up to
+12 shown, as today's limit), thrown by a tap, a flick or Enter, or at once under "Always
+throw my dice at once".
+
+**Taking dice away (round 3).** The owner, with six d20 and a d100 chosen: "I can't
+unselect dice, a shift key should allow deselection." The rule: **every way to add a die
+has a way to take it away, on every device, and none of them needs a key a phone lacks.**
+
+- **Your roll** sits above the dice as a row of chips in the order of the dice, then the
+  modifier: **6d20 + 1d100 + 2**. Each chip has its own **−** (a 44 px target) that takes one
+  die of that kind away; a tap on the chip itself does the same. The modifier's chip has a
+  **×** that sets it back to 0. **Clear all** at the end of the row empties the roll and the
+  modifier. With nothing chosen the row says "No dice yet: tap a die to add it."
+- **On a computer, Shift+click** on a die's button takes one of it away (a plain click adds).
+- **On a touch screen, press and hold** a die's button (500 ms, the finger still) takes one
+  away, with a short buzz where the device allows; the tap that ends the hold adds nothing.
+- **Keyboard:** each button says how in its spoken name ("d20, 6 chosen: tap to add one;
+  Shift+click or press and hold to take one away"); a chip's − is a button in the tab order.
+- **At most 20 dice in one roll** (the limit of E-M2): a tap past it adds nothing and says
+  "At most 20 dice in one roll."
+- The Roll button always names the whole roll ("Roll 6d20 + 1d100 + 2"), so what will be
+  thrown is never in doubt.
+
+**Through `apply()`: engine amendment E-M2, a new action `freeRoll`.** There is no action
+for a roll that is not part of something else today (checked: the handlers in `engine/`
+have none). The roll must be the engine's, from the seed, so it replays and nobody can
+type a number:
+
+- `freeRoll { as?, dice: [{ sides, count }], bonus, label?, to: 'table' | 'dm' }`: `sides` one
+  of 4, 6, 8, 10, 12, 20, 100; at most 20 dice in all; `bonus` an integer from −20 to 20;
+  `label` cleaned like a `say` line, at most 40 characters. Anything else is refused and
+  changes nothing.
+- The engine rolls each die with the existing `die(state, sides)` of `rng.js`, from the seed, and records an
+  event `diceRolled { by, as, dice: [{ sides, value }], bonus, total, label, to }` on the
+  timeline; it changes **nothing else** in the game: no Hit Points, no check, no turn.
+- **Who may:** anyone at the table, as themselves or as a creature they control; in a fight
+  at any time (it is not an action of the turn). Refused while a question waits for an
+  answer (a reaction, a dice question): the waiting action will be re-run from the state
+  before it, dice seed included, and a roll in between would change what it rolls.
+- **Who is sent it:** `to: 'table'`, everyone, with the faces (the number is public by the
+  roller's choice); `to: 'dm'`, the roller and the DM; other players are sent nothing, not
+  even that a roll happened.
+- **Undo:** the DM's undo takes it back like any action.
+- **The log** says it plainly, so nobody mistakes it for a game roll: "**Wren rolls 2d6 +
+  1** (Perception, for the DM): 4, 5 + 1 = **10**. A plain roll: it changes nothing in the
+  game." The dice title says "You (Wren): 2d6 + 1 · plain roll".
+- **The server** limits it like any message (the existing per-connection message bucket,
+  `packages/server/src/limits.js`); no new limit is needed.
+
+A plain roll is never used by the game as a check or an attack: if the DM wants a roll to
+count, the DM asks for it with the game's own check (today's `askCheck`, DM tools).
+
 ### Decision 9: throwing with a finger
 
 Today the tray (`dice.js`, `tray`) takes a flick as a direction only (a unit vector);
@@ -567,6 +975,48 @@ A flick is never required: a tap throws; Enter on the focused die throws; the "T
 button stays for whoever wants it. Setup › "Throw my dice with a flick" (on) turns the
 gesture off so a touch on the die simply throws.
 
+**Many dice (round 3, R10).** The owner threw 6d20, 1d100 and 2d6 in the round-2 mockup
+and they flew in a row and lay on top of one another. The rule for any number of dice:
+
+- **Each die has its own path.** Thrown from the finger (or the die button) in the throw's
+  direction, each with its own small spread of angle and speed. It hops two or three times
+  (each about a third of the one before), then rolls with friction and stops **where it
+  stops**: there is no line or grid of resting places.
+- **They do not lie on one another.** Dice glance off the edges of the board's area and off
+  each other as they roll (an elastic push with some loss); dice that come to rest touching
+  are **nudged apart** a few pixels a frame until none overlaps, before the numbers settle.
+- **Flat on the table.** A resting die lies with its up face in the plane of the board, seen
+  at the board's tilt (`dice.md` 5.2), and turns about the up axis so its number is upright
+  for the camera, with a little jitter. No die rests tilted or on an edge.
+- **Only the rolled number stays.** As in the game today (`dice.md` 5.3): once a die is
+  still, after 0.05 s the numerals of its other faces fade out over 0.45 s (0.35 s in quick),
+  and the counted number grows a little.
+- **The area** is the board between the dice title and the bottom controls. **At most 12
+  dice are drawn** (a d100 is two d10s, so 6d20 + 1d100 + 2d6 is 10 dice on the board); a
+  roll of more shows 12 and "+N more dice" under the title, as `dice.md` section 5 already
+  says. Twelve 50 px dice take under a fifth of a phone's board area (390 x 500 px), so they
+  never need to shrink there; on a smaller board they shrink to fit (`dice.md` 5.2).
+
+**A calmer, more real throw (round 2, R3).** The owner found the first mockup "a bit
+comic": the die grew and shrank, and its number flickered through random values as it
+spun. The motion follows a real die on a table instead:
+
+- **No squash, stretch or scale bounce.** The die keeps its size; only the camera's
+  perspective changes it.
+- **No flickering numbers.** While the die turns fast its faces are a blur of the die's
+  own colour; the numerals come into view as it slows, on the faces actually turned up,
+  ending on the engine's face. No random number is ever drawn in the air.
+- **Friction, not springs.** It travels with an ease-out (fast to slow), at most **two low
+  hops** of falling height (the second about a third of the first), then rolls and
+  **rocks once** to rest (less than 8 degrees, 0.25 s). Flight about 0.9 to 1.3 s in
+  `full`, 0.5 s in `quick`.
+- **A shadow on the board** that tightens as the die lands; a soft click of contact is a
+  sound for later (no sound now).
+- **Weight by size:** a d4 slides more than it rolls; a d20 rolls longest; a d100 is two
+  d10s that part a little.
+- **Translucent looks** show the board through the body and the back edges faintly, so a
+  translucent die reads as a solid object, not as a flat icon.
+
 **Landing on the engine's result.** The rule of `dice.md` section 1 stands: the face shown
 is the face the engine sent. Two cases:
 
@@ -577,8 +1027,8 @@ is the face the engine sent. Two cases:
 
 The finger's speed and spin choose only the path; they never reach the engine and never
 choose a face. No physics library is added: the flight is the existing scripted tumble with
-the launch point, launch velocity and spin taken from the gesture, a ground plane, three
-bounces with restitution, and the steered last bounce (`dice.js`; a unit test holds that the
+the launch point, launch velocity and spin taken from the gesture, a ground plane, two
+low hops with friction, and the steered last bounce (`dice.js`; a unit test holds that the
 resting face is the sent face for 1,000 random gestures and every die type).
 
 **Who sees the throw.** The thrower sees their own path. Other screens see the dice of the
@@ -650,7 +1100,11 @@ How the prompt fits each table rule:
 
 | Where | Words |
 |---|---|
-| Token, spoken | Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting. |
+| Token, spoken | Menu. Your turn. Wren, 6 of 8 Hit Points. 1 new handout. |
+| Health label (3 s after a change) | Wren 3 / 8 HP |
+| First open, once | The ring round the die is Wren's health: 6 of 8 HP. **Got it** |
+| Waiting for you | 1 new handout: A torn map · **Open** · Wren can reach level 2 · **Level up** · (DM) Pip is waiting to join · **Let in** |
+| Help, the die button | The die button opens everything. The ring round it is your character's health. A lit ring: it is your turn. A number: something is waiting for you; open the menu to see what. Greyed and crossed: the link to the table is lost. |
 | Turn line, another's turn | Round 2 · Goblin Warrior 2's turn · you in 3 |
 | | Round 2 · Goblin Warrior 2's turn · you next |
 | | Round 2 · Something moves unseen |
@@ -671,7 +1125,28 @@ How the prompt fits each table rule:
 | Sections | Inventory · Sheet: Abilities and skills · Features and traits · Spells known · Story |
 | Setup, menu | The menu token sits: Bottom centre / Bottom right / Bottom left · Menus: Slide in and out / Just appear · Open my character at the start of my turn · Keep the menu open beside the map |
 | Setup, controls | Camera buttons on the map |
-| Setup, dice | Rolls stay on the board: 1.5 seconds / 3 seconds / 6 seconds / Until I tap · Throw my dice with a flick |
+| Setup, dice | Rolls stay on the board: 1.5 seconds / 3 seconds / 6 seconds / Until I tap · Throw my dice with a flick · Dice look: Translucent blue / White / Black / Red / Blue / Green / Yellow / Primary colours, your way (Die colour, Number colour; greyed: The numbers would not show.) · Other players' dice: In their party colour / Like mine |
+| Roll dice | Roll dice · d4 d6 d8 d10 d12 d20 d100 · Modifier · What for? · Who sees it: The table / Only the DM · **Roll 2d6 + 1** |
+| Group names (pick) | Play · This game |
+| Arc labels | Wren · Owl · Turns / Party · Dice · Roll dice · Log and chat · Handouts · Setup · DM tools · Characters · Packs · Help · About · Leave · More |
+| Arc, close hint | Tap the map or the die to close |
+| Phone sheet, close hint | Tap here or the die to close |
+| Places (round 4) | Wren · Owl · Turns / Party · Roll dice · Log and chat · DM tools · Setup |
+| Setup sections | Display and controls · Dice · The menu · Characters and packs · The table's rules · Help and about · Leave the table |
+| Leave | Leave the table… · Leave the table? Your character stays with the DM, and you can come back with the table's code. · **Stay** · **Leave the table** |
+| Strip arrows (spoken) | More symbols to the left · More symbols to the right |
+| Handle (spoken) | Close menu |
+| Arrange | Arrange the symbols · Drag a row by its six dots, or use ▲ ▼. The eye hides a symbol from the arc and the strip. Kept on this device. · Always shown: Your character is how you play. / Setup is where hidden symbols come back. / Help explains every symbol, hidden ones too. / Leaving must always be possible. · Reset order |
+| Setup, menu | Labels under the symbols: After 3 seconds / Always |
+| Hold-to-roll title | You (Wren): 1d20 · just for fun |
+| Many dice | +N more dice |
+| Roll dice, your roll | 6d20 − · 1d100 − · 2 × · **Clear all** · No dice yet: tap a die to add it. · Tap a die to add one. To take one away: its − in your roll above, a tap on it there, Shift+click, or press and hold the die. · At most 20 dice in one roll. |
+| Roll dice, refused | Not while the table waits for an answer. |
+| Plain roll, log | Wren rolls 2d6 + 1 (Perception, for the DM): 4, 5 + 1 = 10. A plain roll: it changes nothing in the game. |
+| Plain roll, title | You (Wren): 2d6 + 1 · plain roll |
+| Setup, look | Health bars over creatures: Always / In a fight / Never |
+| DM, table rules | Players see foes' health: Hidden / Rough (default) / Exact · (Rough) A foe's bar is full, half (Bloodied) or empty (Down). · (Exact) A foe's bar shows its real Hit Points. Hidden and unseen creatures still send nothing. |
+| First level, characters | one row each: Wren · Level 1 Wizard · Your turn · 6 / 8 HP; Owl · Wren's familiar · 1 / 1 HP |
 | Dice title | **You** (Wren): Initiative · 17 · 2nd of 9 · Goblin Warrior 2: Scimitar attack · 14 vs AC 12 · Hit |
 | Initiative prompt | **Roll for initiative!** Throw your die, Wren. · The game has rolled it; throw to see it. (`auto`) · Your throw rolls it. (`throw` with E-M1) · Thrown for you |
 | Throw zone | Wren: Fire Bolt · 1d20 + 5 to hit · Flick, tap or press Enter to throw · Cancel |
@@ -698,6 +1173,20 @@ away. The address can set a picture, for screenshots: for example
 `#bare&theme=sunlit&state=mine&open=cast`, `#bare&frame=desktop&open=turns`,
 `#bare&prompt=initiative` (the names are listed at the top of the file).
 
+Round 4 adds: few places in the arc and the strip, the die above everything that closes, Setup as one page of sections with pinned bars, Leave as Setup's last section with a confirm, ‹ › on an overflowing strip, a Player/DM switch in the mockup's controls. Round 4 screenshots: `/home/claude/shots/527-r4`.
+
+Round 3 adds: removable dice chips, Shift+click and press-and-hold to take a die away, dice that scatter and rest flat and apart, the arc round the die (the mockup control "Tap the die", and the die at left, centre or right), labels after 3 s, the strip of symbols across the top of every screen, Arrange with six-dot handles, the 1 s hold that throws a d20, a "Symbols" sheet in the three themes, and no × on the phone. Round 3 screenshots: `/home/claude/shots/527-r3`.
+
+Round 2 adds to the mockup: the slower slide; groups and sections of Character opening in
+place with Wren kept on screen (scroll kept on both sizes); one row per character on the
+first level (Wren and Owl, her familiar; a mock control switches to "one character" to show
+the plain single row); the badge only when something waits ("Arrives › a handout"), with
+the Waiting for you box; the health label when Wren is hit and the one-time note on the
+ring; the calmer throw; dice looks with a turning preview; and Roll dice on the Dice screen
+and on a press and hold of the token; boulders in place of the plain boxes on the stand-in
+map; health bars over every creature, and the DM's "Players see foes' health" in DM tools
+and Setup. Round 2 screenshots: `/home/claude/shots/527-r2`.
+
 Screenshots of the mockup and of today's game at both sizes were taken for the pull request
 (today's: `today-*.png`; the mockup's: `mock-*.png`).
 
@@ -714,17 +1203,27 @@ through one helper (`openMenu(page, path)`) added in M1.
 | M1 | **The token and the menu shell.** `#btn-menu` becomes the token (bottom centre, theme-drawn, badge); the drawer becomes the menu: first level as a list (replacing `#drawer-tabs`), the sheet from the bottom below 900 px, columns from 900 px, breadcrumb, clear zone, Escape/M/arrows, `hextable.menuMotion` and reduced motion. Its screens are today's tabs, re-parented, ids kept | `drawer.js`, `index.html`, `style.css` (+ `menu.css`), `settings.js`, `keys.js` (words only), smoke helper | `drawer`, `settings`, `keys` | One tap on the map closes every level; Just appear shows no movement; focus returns to the token; the first level lists Character, Turns, Dice, Log and chat, Table |
 | M2 | **One overlay at a time.** The precedence of Decision 2: a prompt or card folds the menu; the aim bar and throw zone hide the token; the menu never reopens by itself | `drawer.js`, `reactionprompt.js`, `conclusion.js`, `defeat.js`, `app.js` (`refresh`) | `reactions`, `rewards`, `defeat`, `armed` | A reaction question with the menu open: the menu folds, the question shows, after the answer the screen is clean and one tap on the token returns to the same screen |
 | M3 | **The clean screen.** `#top` goes (status to the turn line, undo to the DM's chip); `#order` to the turn line; `#cam` behind its setting; the feedback icon to Help and feedback; `#party` and `#card` leave the dock (the action panel lives in the menu from now; until M4 its tabs are shown as they are inside the Character screen) | `index.html`, `app.js`, `feedback.js`, `style.css`, `actionpanel.css` | `actionpanel`, `paneltabs`, `controls`, `feedback`, `multiplayer` | At 390 x 844 exploring, nothing but the map and the token; in a fight, the turn line; the old order strip is gone and Turns opens from the turn line |
-| M4 | **The character cascade.** The status block with the turn bar (absorbs `player-screen.md` P2); the switcher; the action groups of Decision 4 from the existing rows; the turn bar's filter screens; the likeliest row inline; level-3 screens for formation, class-feature pickers, the short rest | `actionpanel.js` (`groupsFor(S, e)` beside `tabRows`), `classes.js`, `formation.js`, `companions.js`, `grapple.js` (host element only), `actionpanel.css`, tests for the grouping | `actionpanel`, `paneltabs`, `formation`, `companions`, `grapple` | Every row that a tab showed is in at least one group (a test walks the four sample characters and compares); a greyed group says why; a healing spell is in Cast and Heal |
+| M4 | **The character cascade.** The status block with the turn bar (absorbs `player-screen.md` P2); one row per controlled character on the first level (Decision 4b); the action groups of Decision 4 from the existing rows; the turn bar's filter screens; the likeliest row inline; level-3 screens for formation, class-feature pickers, the short rest | `actionpanel.js` (`groupsFor(S, e)` beside `tabRows`), `classes.js`, `formation.js`, `companions.js`, `grapple.js` (host element only), `actionpanel.css`, tests for the grouping | `actionpanel`, `paneltabs`, `formation`, `companions`, `grapple` | Every row that a tab showed is in at least one group (a test walks the four sample characters and compares); a greyed group says why; a healing spell is in Cast and Heal |
 | M5 | **Inventory and Sheet sections**; Log and chat with Say; DM tools as level-3 screens; Setup's new groups | `actionpanel.js` (items), `app.js` (`renderSheet` split), `logview.js`, `handouts.js` (Say box), `settings.js`, `index.html` (DM sections wrapped) | `log`, `items`, `dm`, `scenes` | A player can say a line out of character from Log and chat; every DM section is reachable in three taps |
 | M6 | **The states of Decision 7**: the banner, the token's ring and arc, "you in N", down and dead lines, badges, offline | `app.js`, `drawer.js`, `linkdot.js`, `style.css` | `reactions`, `link`, `multiplayer` | "you in 3" counts right with an unseen slot; the banner shows once a turn; offline greys the token and every row says why |
 | D1 | **Dice stay and say whose**: `hextable.diceHold`, resting rows, the colour band, "You", the separate own initiative die, the Dice screen | `dice.js` (`hold`, titles), `app.js`, `settings.js`, a `dice.js` test for the titles | `dice` | With "Until I tap", a roll stays until a tap; the viewer's own initiative die is thrown on its own with "You (Wren)"; no title holds a number the view did not send |
 | D2 | **The initiative prompt (reveal)** under `auto` | `dice.js`, `app.js` (`encounterStart`), `tracker.js` (the held row) | `dice`, `actionpanel` | On `encounterStart` the player gets the prompt; their own number is hidden on their screen only until thrown or 8 s; the fight never waits |
 | D3 | **The finger throw**: press, spin, fling; launch from the finger; steering to the sent face; the late reply and refusal; "Throw my dice with a flick" | `dice.js` (`tray`, the tumble), `app.js` (`act` hands the faces to the flying die), a unit test (1,000 gestures, every die, the resting face is the sent face) | `dice`, `armed` | Under `throw`, a flick sends the action at release and the die rests on the event's face; a slow release is a tap; a refused action fades the die with the reason |
+| D4 | **Calmer throw and dice looks** (round 2): the tumble of Decision 9's list (no scale bounce, no random numerals, two hops, a rock), translucent drawing, `hextable.diceLook` with the free starters, the primary-colour picker with its unreadable-pair rule, the preview die | `dice.js` (drawing and the look), `settings.js`, `themes.js` untouched (a look is not a theme), a unit test (every free look's number contrast above 3:1; an unreadable pair is refused) | `dice` | A translucent blue d20 shows the board through it; no frame of a throw draws a numeral that is not on a face turned up; Yellow on White is greyed with its reason |
+| D5 | **Roll dice** (client), after E-M2: the picker on the Dice screen, the token's press and hold, the throw zone with the chosen dice, the log line and title | `dice.js`, `app.js`, `drawer.js` (the Dice screen), `logview.js`, tests | `dice` | 2d6 + 1 to the table shows the same faces on every screen and in the log; "Only the DM" is seen by the roller and the DM only; refused while a reaction waits, with the reason |
+| E-M2 | **Engine: `freeRoll`**, a plain roll from the seed that changes nothing else (Decision 8b) | `engine/` (a handler in `rolls.js`'s domain or a small new module under `engine/`), `engine.js` (dispatch and the validation order: refused while a question waits), `view.js` (sent to all, or to the roller and the DM), `packages/server/README.md`, tests | — | Replay gives the same faces; undo takes it back; a player is never sent another player's `to: 'dm'` roll; 21 dice, a d7, a bonus of 21 are refused and change nothing |
+| M8 | **The arc, the strip, the symbols and the names** (rounds 3 and 4; round 4: a few places, the die above the sheet and the arc, ‹ › on the strip, Setup's sections): the symbol set as one module (`client/symbols.js`, inline SVG strings, `currentColor`), the arc on a quick tap with its rings per position and More, labels after 3 s and the setting, the strip across the top of every screen, every heading its own name, the handle as the phone's close control | `drawer.js`, `symbols.js` (new), `style.css`, `settings.js`, a test that every place has a symbol and an accessible name | `drawer`, `settings`, `keys` | At 390 x 844 the arc at bottom centre has 14 slots on the screen, none under 44 px; at bottom left 15; labels appear after 3 s and at once to a screen reader; no phone screen has a × |
+| M10 | **Setup as sections** (round 4): the seven sections, one open at a time with the bars pinned above and below, Leave with its confirm, the Dice row from Roll dice; and the closing test (every state, at both sizes, by the die, the map and Escape) | `settings.js`, `drawer.js`, `style.css`, a smoke pass `menuclose` | `settings`, `drawer` | All seven bars and 120 px of the open section fit at 390 x 844; no state fails to close |
+| M9 | **Arrange**: hold a symbol, Setup › Arrange, drag by six dots, ▲ ▼, hide, Reset order; the four that cannot be hidden | `drawer.js`, `settings.js`, a test for the order and the fixed four | `drawer` | A dragged order survives a reload; Setup, Help, Leave and the character cannot be hidden |
+| D6 | **Many dice**: separate paths, hops, friction, glancing, nudging apart, flat rest, the fade; the 1 s hold on the die for a plain roll | `dice.js`, `app.js`, a unit test (100 throws of 12 dice: no two resting dice overlap; every resting die's face is the sent one) | `dice` | 6d20 + 1d100 + 2d6 rests as 10 separate dice at both sizes |
+| E-M3 | **Engine: foes' health for players, a table rule** (`settings.foeHealth`: `hidden`, `rough`, `exact`; Decision 7a) | `engine/dm.js` (`SETTINGS`), `migrate.js` (the next state version), `view.js` (the fraction under `exact`, seen creatures only), tests | — | Under `rough` no player message holds a foe's fraction; under `exact` a seen goblin's fraction is sent rounded to tenths and a hidden one's id is in no player message |
+| M7 | **Health bars** (client): the device preference, Rough's half bar with a notch, Hidden, the DM's setting in DM tools and in Setup; Exact once E-M3 is in | `render-three.js`, `three-build.js` (`hpFraction`), `settings.js`, `app.js` | `three-parity`, `actionpanel` | Each of the three rules draws as said at both sizes; the party's bars stay exact |
 | E-M1 | **Engine: initiative as a question under `throw`** (optional, owner question 7) | `engine/resolve.js` (`startEncounter`), `engine/shared.js` (`ask`), `engine.js` (the new action `throwInit` in the validation order), `view.js` (`viewPrompt`), `packages/server/README.md`, tests | — | A fight on `throw` waits for each connected player's throw; each roll is made at the answer from the seed; undo of an answer gives the question back; the DM's Throw the rest answers all; replay is exact |
 
 M1 first, then M2 and M3; M4 to M6 in order (they share `actionpanel.js` and `app.js`); D1
 to D3 can run beside M4 to M6 (they touch `dice.js` and only small parts of `app.js`; one
-at a time with M6). E-M1 waits for the owner. `player-screen.md`'s remaining stages fold
+at a time with M6). D4 can come at any time; E-M2 then D5 once the owner agrees; M7 at any time (its Exact after E-M3). E-M1
+waits for the owner. `player-screen.md`'s remaining stages fold
 in: P2 into M4, P3 into M6, P4 (reach edge) and P5 (now: the Dice screen and Log and chat
 replace the last-thing line, question 6) stand as they are, P6 into M4 (Explore group), P7
 and P8 into M6 and M3.
@@ -745,6 +1244,12 @@ and P8 into M6 and M3.
   setting (question 7) can turn it off.
 - **Gestures fight the map.** The throw zone takes touches only on the die; the sheet's
   swipe-down only on its handle; the map keeps every other touch.
+- **Free rolls in a serious moment.** A player rolling for fun in a tense fight adds lines
+  to the log. They are marked "plain roll" and the log's Rolls filter can hide them
+  (`hextable.logFilter`).
+- **Paid looks before a shop.** If a paid look were shown greyed with a price before the
+  shop exists, it would be a tease; they are not shown until the owner decides (question
+  12).
 - **Landscape phones and small tablets** get the column shape at its narrowest; checked at
   844 x 390 in M1.
 
@@ -776,3 +1281,48 @@ Each has a default; the build follows the default unless the owner says otherwis
    fly the way I threw it, for one more small message per throw. *Default: no; others see
    the die thrown from my side, as today.*
 10. **The token's place.** *Default: bottom centre; bottom right and bottom left in Setup.*
+
+Added in round 2:
+
+11. **Which dice looks are free?** *Default: translucent blue (the default look), six
+    simple solids, and primary colours with a chosen number colour are free; other
+    translucent colours, swirls, metals, gemstones and theme sets are for sale later.*
+12. **The shop for dice looks** (accounts, payment, refunds, the phone stores' rules, who
+    makes the art): a separate decision and its own design. *Default: not designed now; paid
+    looks are not shown until it is decided.*
+13. **The slower slide for prompts too?** The menu now slides in 0.72 s. *Default: the
+    menu only; a reaction question, the aim bar and the throw zone stay quick (0.22 s) so a
+    question never makes anyone wait.*
+14. **Should everyone see my dice look?** *Default: not in the first build (each screen
+    draws others' dice in their party colour); later, sent with the table's list of
+    players, not in the game state.*
+15. **Plain rolls: who sees them by default?** *Default: the table for a player's roll,
+    only the DM for the DM's own; the roller can switch each time.*
+16. **Press and hold on the token.** *Settled in round 3 by the owner: holding the die for a
+    second throws the last roll for fun (Decision 1).*
+17. **Health bars: always, or only in a fight?** *Default: always, as today; the device
+    setting offers "In a fight" and "Never".*
+18. **Foes' health for players.** *Default: Rough (full, half, empty, from the words players
+    are sent today); the DM can choose Hidden, or Exact once E-M3 is built.*
+
+Added in round 3:
+
+19. **The names of the two groups.** *Default: Set A, "Play" and "This game".*
+20. **The arc's capacity before More.** *Default: as in Decision 4c (14 at bottom centre on
+    a phone, 15 in a corner); More holds the rest.*
+21. **Labels after 3 seconds, or always?** *Default: after 3 seconds; "Always" in Setup.*
+22. **Holding the die to throw for fun: who sees it?** *Default: you and the DM (the
+    table's log stays quiet); Roll dice offers "The table".*
+23. **Should the DM be able to hide DM tools from the arc?** *Default: yes from the arc,
+    never from the strip.*
+
+Added in round 4:
+
+24. **The few places.** *Default: your character(s), Turns, Roll dice, Log and chat, Setup,
+    and DM tools for the DM; everything else in Setup.*
+25. **Setup's sections and their order.** *Default: Display and controls, Dice, The menu,
+    Characters and packs, The table's rules, Help and about, Leave the table.*
+26. **One section open at a time, or several?** *Default: one; the bars before and after
+    stay pinned, which only works with one.*
+27. **Handouts inside Log and chat**, not a place of their own. *Default: yes; the Waiting
+    card and the Log symbol's badge say when one arrives.*

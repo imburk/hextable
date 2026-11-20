@@ -6,6 +6,9 @@ import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
 import { startBar, loadDraft, saveDraft, keepBuild, dropBuild, whenLine } from './startflow.js';
 import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
+import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, DEFAULT_RULE, BELOW, cleanRule, ruleText, pointsSpent, pointsLeft, rollScores, rollScore, mayReroll, rerollWhy,
+  standing, applyBackground, checkScores, scoresLine, dmLine, setText, dayText } from './shared/scores.js';
+import { keyedRng } from './shared/rng.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -26,6 +29,87 @@ export const bonusText = (sb) => { const l = ABILITIES.filter((a) => Number.isIn
 export const withoutBonus = (keep) => { const { scoreBonus, ...rest } = keep; void scoreBonus; return rest; };
 export const keptOf = (s) => Object.fromEntries(KEEP.filter((k) => s[k] !== undefined).map((k) => [k, structuredClone(s[k])]));
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
+
+// ---------- ability scores (docs/specs/ability-scores.md, #557) ----------
+// The draft of the score section is `sc`: { method: 'hand' | 'standard' | 'pointcost' | 'roll', std, pts, place, roll, rule, saved, bg }. It decides no rule: `scores.js` and `validate` do.
+//   std: the Standard Array number on each ability (or null); pts: each ability's score for point cost; roll: { rolls: [{ dice, again? }], rule, by, at } or null, with
+//   place: which rolled score (by its place in the list) is on each ability; rule: the reroll rule a roll made now will be made under; saved: the roll came with a saved sheet
+//   (so it can no longer be rolled again); bg: { id: '' | an SRD background | 'other', mode: 'twoone' | 'all', plus2, plus1, all: [three abilities for another background] }.
+const blank = () => Object.fromEntries(ABILITIES.map((a) => [a, null]));
+export const METHOD_NAMES = { standard: 'Standard array', pointcost: 'Point cost', roll: 'Roll', hand: 'Enter by hand' };
+export const freshScores = (rule = DEFAULT_RULE) => ({ method: 'hand', std: blank(), pts: Object.fromEntries(ABILITIES.map((a) => [a, 8])), place: blank(), roll: null, rule: cleanRule(rule), saved: false,
+  bg: { id: '', mode: 'twoone', plus2: '', plus1: '', all: ['', '', ''] } });
+// The abilities a background may raise: its own three for an SRD one, any of the six for another.
+export const bgAbilities = (id) => (Object.hasOwn(BACKGROUNDS, id) ? BACKGROUNDS[id].abilities : ABILITIES);
+// The numbers placed before the background: { str: 14 | null, ... }.
+export function scoreBase(sc) {
+  const out = blank();
+  for (const a of ABILITIES) {
+    if (sc.method === 'standard') out[a] = sc.std[a];
+    else if (sc.method === 'pointcost') out[a] = sc.pts[a];
+    else if (sc.method === 'roll' && sc.roll && Number.isInteger(sc.place[a]) && sc.roll.rolls[sc.place[a]]) out[a] = standing(sc.roll.rolls[sc.place[a]], sc.roll.rule);
+  }
+  return out;
+}
+// The background as the record keeps it ({ id?, abilities }), null for none, or false while its choices are not all made.
+export function scoreBackground(sc) {
+  const g = sc.bg, abil = bgAbilities(g.id);
+  if (!g.id) return null;
+  const id = g.id === 'other' ? {} : { id: g.id };
+  if (g.mode === 'all') {
+    const three = g.id === 'other' ? g.all : BACKGROUNDS[g.id].abilities;
+    return three.every((a) => ABILITIES.includes(a)) && new Set(three).size === 3 ? { ...id, abilities: Object.fromEntries(three.map((a) => [a, 1])) } : false;
+  }
+  return abil.includes(g.plus2) && abil.includes(g.plus1) && g.plus2 !== g.plus1 ? { ...id, abilities: { [g.plus2]: 2, [g.plus1]: 1 } } : false;
+}
+// What the draft makes: the six scores after the background (8 where one is not placed yet), the record for the sheet (null until everything is placed), and what is missing in words.
+export function scoreParts(sc, today = '') {
+  const base = scoreBase(sc), bg = scoreBackground(sc), problems = [];
+  const open = ABILITIES.filter((a) => base[a] === null).length;
+  if (sc.method === 'roll' && !sc.roll) problems.push('Roll the dice first.');
+  else if (open) problems.push(`Place all six numbers (${open} still to place).`);
+  if (bg === false) problems.push('Choose which abilities the background raises.');
+  const placed = Object.fromEntries(ABILITIES.map((a) => [a, base[a] ?? 8]));
+  const abilities = applyBackground(placed, bg || undefined);
+  let scores = null;
+  if (!problems.length) {
+    scores = { method: sc.method, base: placed, ...(bg ? { background: bg } : {}) };
+    if (sc.method === 'roll') Object.assign(scores, { rolls: structuredClone(sc.roll.rolls), rule: cleanRule(sc.roll.rule), by: sc.roll.by ?? 'device', ...(sc.roll.at !== undefined ? { at: sc.roll.at } : { ...(today ? { at: today } : {}) }) });
+  }
+  return { abilities, scores, problems };
+}
+// The draft for a saved sheet: its record if it has one that agrees with its scores, else "enter by hand".
+export function scoresDraft(sheet, rule = DEFAULT_RULE) {
+  const sc = freshScores(rule), r = sheet?.scores;
+  if (!r || checkScores(sheet).length) return sc;
+  sc.method = r.method; sc.saved = true;
+  if (r.method === 'standard') for (const a of ABILITIES) sc.std[a] = r.base[a];
+  if (r.method === 'pointcost') for (const a of ABILITIES) sc.pts[a] = r.base[a];
+  if (r.method === 'roll') {
+    sc.roll = { rolls: structuredClone(r.rolls), rule: cleanRule(r.rule), by: r.by ?? 'device', ...(r.at !== undefined ? { at: r.at } : {}) };
+    const used = new Set();
+    for (const a of ABILITIES) {
+      const i = sc.roll.rolls.findIndex((s, k) => !used.has(k) && standing(s, sc.roll.rule) === r.base[a]);
+      if (i >= 0) { used.add(i); sc.place[a] = i; }
+    }
+  }
+  if (r.background) {
+    const es = Object.entries(r.background.abilities), all = es.length === 3;
+    Object.assign(sc.bg, { id: r.background.id ?? 'other', mode: all ? 'all' : 'twoone' });
+    if (all) sc.bg.all = es.map(([a]) => a);
+    else { sc.bg.plus2 = es.find(([, n]) => n === 2)[0]; sc.bg.plus1 = es.find(([, n]) => n === 1)[0]; }
+  }
+  return sc;
+}
+// The rule and the unsaved roll kept on this device (this browser's storage; a page that cannot read it plays without).
+export const RULE_KEY = 'hextable.scorerule', ROLL_KEY = 'hextable.scoreroll';
+const keepRead = (k) => { try { return JSON.parse(localStorage.getItem(k) ?? 'null'); } catch { return null; } };
+const keepWrite = (k, v) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage is refused: nothing is kept */ } };
+const dayNow = () => new Date().toISOString().slice(0, 10);
+const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (x) => x.toString(16).padStart(2, '0')).join('');
+// A roll made on this device: the dice are the rules package's (`rollScores`) on a key this page makes.
+const rollHere = () => rollScores({ rng: keyedRng(newKey()) }).sets.map((s) => ({ dice: s.faces }));
+const rerollHere = () => rollScore({ rng: keyedRng(newKey()) }).faces;
 
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -128,12 +212,14 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
 
   function fresh(cls = classIds[0]) {
     const c = CONTENT.classes[cls];
-    return { name: '', class: cls, subclass: undefined, level: 1, abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, abilText: null,
+    return { name: '', class: cls, subclass: undefined, level: 1, abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, abilText: null, hand: null, sc: freshScores(keepRead(RULE_KEY)),
       skills: [], expertise: [], choices: {}, feats: [], armour: null, shield: false, weapons: [], spells: [], color: DEFAULT_COLOR, keep: {}, c };
   }
   // The sheet the engine takes: choices only, nothing empty.
   function sheet() {
-    const s = { name: b.name.trim(), class: b.class, level: b.level, abilities: { ...b.abilities }, skills: [...b.skills] };
+    const parts = b.sc.method === 'hand' ? null : scoreParts(b.sc, dayNow());
+    const s = { name: b.name.trim(), class: b.class, level: b.level, abilities: parts ? parts.abilities : { ...b.abilities }, skills: [...b.skills] };
+    if (parts?.scores) s.scores = parts.scores;
     if (b.subclass) s.subclass = b.subclass;
     if (b.expertise.length) s.expertise = [...b.expertise];
     if (Object.keys(b.choices).length) s.choices = { ...b.choices };
@@ -151,7 +237,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     Object.assign(x, { name: s.name ?? '', subclass: s.subclass, level: s.level, abilities: { ...x.abilities, ...s.abilities }, skills: [...(s.skills ?? [])],
       expertise: [...(s.expertise ?? [])], choices: { ...(s.choices ?? {}) }, feats: structuredClone(s.feats ?? []), armour: s.armour ?? null, shield: !!s.shield, weapons: [...(s.weapons ?? [])],
       spells: [...(s.spells ?? [])], color: s.look?.color ?? DEFAULT_COLOR });
-    x.keep = keptOf(s);
+    x.keep = keptOf(s); x.sc = scoresDraft(s, keepRead(RULE_KEY)); x.hand = { ...x.abilities };
     return x;
   }
   const safeDerive = (s) => { try { return derive(s); } catch { return null; } };
@@ -225,7 +311,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     parts.push(el('section', {}, el('h3', { text: 'Who' }), el('div', { class: 'qe-grid qe-2' },
       el('label', { class: 'qe-f wide' }, el('span', { text: 'Name' }), name),
       sel('Class', 'class', classIds.map((id) => [id, CONTENT.classes[id].name]), b.class, (v) => {
-        const keep = { name: b.name, color: b.color, abilities: b.abilities, level: b.level, keep: b.keep };   // a new class starts with no feats
+        const keep = { name: b.name, color: b.color, abilities: b.abilities, abilText: b.abilText, hand: b.hand, sc: b.sc, level: b.level, keep: b.keep };   // a new class starts with no feats
         b = Object.assign(fresh(v), keep); autoSubclass(); build();
       }, locked || mode === 'edit'),
       sel('Level', 'levelsel', Array.from({ length: 20 }, (_, i) => [String(i + 1), String(i + 1)]), String(b.level), (v) => { b.level = +v; autoSubclass(); build(); }, locked),
@@ -233,25 +319,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       el('div', { class: 'qe-f wide', role: 'group', 'aria-labelledby': 'qb-color-label' }, el('span', { id: 'qb-color-label', text: 'Colour' }), color)),
       ...(subclassNote(c, b.subclass) ? [el('p', { class: 'note', id: 'qb-subclass-note', text: subclassNote(c, b.subclass) })] : [])));
 
-    // Abilities
-    const ab = el('div', { class: 'qe-abil' });
-    for (const a of ABILITIES) {
-      const out = el('output', { class: 'qe-mod', id: `qb-mod-${a}`, text: signed(mod(b.abilities[a])) });
-      const input = el('input', { id: `qb-abil-${a}`, type: 'text', inputMode: 'numeric', autocomplete: 'off', maxLength: 2, value: String(b.abilText?.[a] ?? b.abilities[a]),
-        oninput: (ev) => {
-          (b.abilText ??= {})[a] = ev.target.value;
-          const n = Number(ev.target.value.trim() === '' ? NaN : ev.target.value);
-          b.abilities[a] = Number.isInteger(n) ? n : NaN; out.textContent = Number.isInteger(n) ? signed(mod(n)) : '–'; update();
-        } });
-      ab.append(el('div', { class: 'qe-ab' }, el('label', { class: 'qe-f qe-ab-in' }, el('span', { text: a.toUpperCase() }), input), out,
-        el('small', { class: 'note', text: c.saves.includes(a) ? 'Save proficiency' : '' })));
-    }
-    // The DM's score bonus (an import keeps what a score above 20 had that the engine does not derive): said, and the DM can take it off.
-    const bonus = bonusText(b.keep.scoreBonus);
-    parts.push(el('section', {}, el('h3', { text: 'Ability scores' }), ab,
-      el('p', { class: 'note', text: 'Enter each score as it stands after background. A feat chosen below that raises a score adds its points, and so do features that raise one (Primal Champion).' }),
-      bonus ? el('p', { class: 'note qb-bonus', id: 'qb-scorebonus' }, el('span', { id: 'qb-scorebonus-text', text: `${bonus}. Added after the scores above, up to 30.` }),
-        mode === 'mine' ? null : el('button', { type: 'button', id: 'qb-scorebonus-remove', class: 'qb-bonus-remove', text: 'Remove', 'aria-label': `Remove the ${bonus}`, onclick: () => { b.keep = withoutBonus(b.keep); build(); } })) : null));
+    // Abilities: four ways to make the scores (docs/specs/ability-scores.md)
+    parts.push(scoresSection(c, locked));
 
     // Features that ask for a choice
     const asks = L.feats.filter((x) => x.f.options && !x.option);
@@ -321,6 +390,139 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     update();
     panel.scrollTop = scroll;
     if (focus && focus !== 'qb-name' && !/^qb-abil/.test(focus)) document.getElementById(focus)?.focus({ preventScroll: true });
+  }
+
+  // ---------- ability scores ----------
+  const placeholder = (a) => String(b.abilText?.[a] ?? b.abilities[a]);
+  // The six typed boxes, as they always were: "Enter by hand" (and a sheet with no record of how its scores were made).
+  function handBoxes(c) {
+    const ab = el('div', { class: 'qe-abil' });
+    for (const a of ABILITIES) {
+      const out = el('output', { class: 'qe-mod', id: `qb-mod-${a}`, text: signed(mod(b.abilities[a])) });
+      const input = el('input', { id: `qb-abil-${a}`, type: 'text', inputMode: 'numeric', autocomplete: 'off', maxLength: 2, value: placeholder(a),
+        oninput: (ev) => {
+          (b.abilText ??= {})[a] = ev.target.value;
+          const n = Number(ev.target.value.trim() === '' ? NaN : ev.target.value);
+          b.abilities[a] = Number.isInteger(n) ? n : NaN; out.textContent = Number.isInteger(n) ? signed(mod(n)) : '–'; update();
+        } });
+      ab.append(el('div', { class: 'qe-ab' }, el('label', { class: 'qe-f qe-ab-in' }, el('span', { text: a.toUpperCase() }), input), out,
+        el('small', { class: 'note', text: c.saves.includes(a) ? 'Save proficiency' : '' })));
+    }
+    return ab;
+  }
+  const deviceRule = () => cleanRule(keepRead(RULE_KEY));
+  // Switching the way scores are made keeps what was typed (it comes back with "Enter by hand"); nothing is thrown away.
+  function setMethod(m) {
+    const sc = b.sc;
+    if (m === sc.method) return;
+    if (sc.method === 'hand') { b.hand = { ...b.abilities }; }
+    sc.method = m;
+    if (m === 'hand') { b.abilities = { ...(b.hand ?? b.abilities) }; b.abilText = null; }
+    else {
+      if (m === 'roll' && !sc.roll) { const kept = keepRead(ROLL_KEY); if (kept && Array.isArray(kept.rolls) && kept.rolls.length === 6) { sc.roll = { rolls: kept.rolls, rule: cleanRule(kept.rule), by: 'device', ...(typeof kept.at === 'string' ? { at: kept.at } : {}) }; sc.rule = sc.roll.rule; } }
+      b.abilities = scoreParts(sc, dayNow()).abilities;
+    }
+    build();
+  }
+  function scoresSection(c, locked) {
+    const sc = b.sc, sec = el('section', { id: 'qb-scores', class: 'sc' }, el('h3', { text: 'Ability scores' }));
+    const bonus = bonusText(b.keep.scoreBonus);
+    const bonusLine = bonus ? el('p', { class: 'note qb-bonus', id: 'qb-scorebonus' }, el('span', { id: 'qb-scorebonus-text', text: `${bonus}. Added after the scores above, up to 30.` }),
+      mode === 'mine' ? null : el('button', { type: 'button', id: 'qb-scorebonus-remove', class: 'qb-bonus-remove', text: 'Remove', 'aria-label': `Remove the ${bonus}`, onclick: () => { b.keep = withoutBonus(b.keep); build(); } })) : null;
+    // A level-up changes no score: how they were made is shown, not offered.
+    if (locked && sc.method !== 'hand') {
+      sec.append(el('p', { class: 'note', id: 'qb-sc-line', text: `${scoresLine(sheet())}. A level-up does not change them; a feat chosen below adds its own points.` }),
+        el('div', { class: 'sc-final' }, ...ABILITIES.map((a) => el('div', { class: 'qe-ab' }, el('b', { text: a.toUpperCase() }), el('output', { class: 'qe-mod', id: `qb-mod-${a}`, text: `${b.abilities[a]} (${signed(mod(b.abilities[a]))})` })))), ...(bonusLine ? [bonusLine] : []));
+      return sec;
+    }
+    sec.append(el('div', { class: 'sc-methods', role: 'group', 'aria-label': 'How the scores are made' }, ...Object.entries(METHOD_NAMES).map(([m, name]) =>
+      el('button', { type: 'button', id: `qb-method-${m}`, class: 'sc-method', 'aria-pressed': String(sc.method === m), text: name, onclick: () => setMethod(m) }))));
+    if (sc.method === 'hand') {
+      sec.append(handBoxes(c),
+        el('p', { class: 'note', id: 'qb-sc-line', text: 'Enter each score as it stands after background. A feat chosen below that raises a score adds its points, and so do features that raise one (Primal Champion). Or choose a way above to make them; what you type here is kept.' }), ...(bonusLine ? [bonusLine] : []));
+      return sec;
+    }
+    const parts = scoreParts(sc, dayNow()), base = scoreBase(sc), bgd = scoreBackground(sc);
+    const used = (a) => (bgd && bgd.abilities[a] ? bgd.abilities[a] : 0);
+    const rows = el('div', { class: 'sc-rows', id: 'qb-sc-rows' });
+    const row = (a, control, shown) => rows.append(el('div', { class: 'sc-row', id: `qb-row-${a}` }, el('span', { class: 'sc-name' }, el('b', { text: a.toUpperCase() }), el('small', { text: ABIL_NAME[a] })), control,
+      el('span', { class: 'sc-bg', id: `qb-bg-plus-${a}`, text: used(a) ? `+${used(a)}` : '' }), el('output', { class: 'sc-final-score', id: `qb-final-${a}`, 'aria-label': `${ABIL_NAME[a]} after background` , text: base[a] === null ? '–' : String(parts.abilities[a]) }),
+      el('output', { class: 'qe-mod', id: `qb-mod-${a}`, text: base[a] === null ? '–' : signed(mod(parts.abilities[a])) }), shown ?? null));
+    const pick = (id, options, value, onchange, label) => { const s = el('select', { id, 'aria-label': label }, ...options.map(([v, tx]) => el('option', { value: v, text: tx }))); s.value = value ?? ''; s.onchange = () => onchange(s.value); return s; };
+    let line = '';
+    if (sc.method === 'standard') {
+      const taken = (a) => ABILITIES.filter((x) => x !== a).map((x) => sc.std[x]);
+      const suggest = ARRAY_BY_CLASS[b.class];
+      sec.append(el('div', { class: 'row' }, el('button', { type: 'button', id: 'qb-suggest', text: `Suggest for a ${c.name}`, disabled: !suggest, onclick: () => { Object.assign(sc.std, suggest); build(); } }),
+        el('small', { class: 'note', text: 'The SRD\'s own placement of 15, 14, 13, 12, 10 and 8 for the class.' })));
+      for (const a of ABILITIES) row(a, pick(`qb-std-${a}`, [['', 'Choose…'], ...STANDARD_ARRAY.map((n) => [String(n), taken(a).includes(n) ? `${n} (used)` : String(n)])], sc.std[a] === null ? '' : String(sc.std[a]),
+        (v) => { sc.std[a] = v === '' ? null : +v; if (v !== '') for (const x of ABILITIES) if (x !== a && sc.std[x] === +v) sc.std[x] = null; build(); }, `${ABIL_NAME[a]}: a number of the array`));
+      line = `Used ${ABILITIES.filter((a) => sc.std[a] !== null).length} of 6 numbers.`;
+    } else if (sc.method === 'pointcost') {
+      const left = pointsLeft(sc.pts), step = (a, d) => { sc.pts[a] += d; build(); };
+      for (const a of ABILITIES) {
+        const v = sc.pts[a], next = v < 15 ? POINT_COST[v + 1] - POINT_COST[v] : Infinity;
+        row(a, el('span', { class: 'sc-step' }, el('button', { type: 'button', id: `qb-pc-${a}-minus`, text: '−', 'aria-label': `Lower ${ABIL_NAME[a]}`, disabled: v <= 8, onclick: () => step(a, -1) }),
+          el('output', { id: `qb-pc-${a}`, text: String(v), 'aria-label': `${ABIL_NAME[a]} before background` }),
+          el('button', { type: 'button', id: `qb-pc-${a}-plus`, text: '+', 'aria-label': `Raise ${ABIL_NAME[a]}`, disabled: v >= 15 || next > left, onclick: () => step(a, 1) })));
+      }
+      const spent = pointsSpent(sc.pts);
+      line = `${POINT_BUDGET} points, ${spent} spent, ${left} left. Scores go from 8 to 15 before the background.${left === 0 ? ' No points left: lower a score to raise another.' : ''}`;
+    } else {
+      const R = sc.roll, rule = R ? R.rule : sc.rule;
+      if (!R) {
+        const ruleBox = el('div', { class: 'qe-grid qe-2', id: 'qb-rule' },
+          el('label', { class: 'qe-f' }, el('span', { text: 'Reroll (rules for rolled scores on this device)' }), pick('qb-rule-reroll', [['none', 'No score may be rolled again (SRD)'], ['below', 'A score below a number, once'], ['each', 'Every score, once']], sc.rule.reroll,
+            (v) => { sc.rule = cleanRule({ reroll: v, ...(v === 'below' ? { below: sc.rule.below ?? 10 } : {}), result: sc.rule.result }); keepWrite(RULE_KEY, sc.rule); build(); })),
+          sc.rule.reroll === 'below' ? el('label', { class: 'qe-f' }, el('span', { text: 'Below' }), pick('qb-rule-below', [...BELOW].sort((x, y) => x - y).map((n) => [String(n), String(n)]), String(sc.rule.below),
+            (v) => { sc.rule = cleanRule({ ...sc.rule, below: +v }); keepWrite(RULE_KEY, sc.rule); build(); })) : null,
+          sc.rule.reroll !== 'none' ? el('label', { class: 'qe-f wide' }, el('span', { text: 'The result that stands' }), pick('qb-rule-result', [['new', 'The new roll stands'], ['higher', 'The higher of the two stands']], sc.rule.result,
+            (v) => { sc.rule = cleanRule({ ...sc.rule, result: v }); keepWrite(RULE_KEY, sc.rule); build(); })) : null);
+        sec.append(ruleBox, el('p', { class: 'note', id: 'qb-rule-text', text: ruleText(sc.rule) }),
+          el('div', { class: 'row' }, el('button', { type: 'button', id: 'qb-roll', class: 'sc-roll', text: 'Roll the dice', onclick: () => {
+            sc.roll = { rolls: rollHere(), rule: cleanRule(sc.rule), by: 'device', at: dayNow() }; sc.place = blank(); sc.saved = false;
+            keepWrite(ROLL_KEY, { rolls: sc.roll.rolls, rule: sc.roll.rule, at: sc.roll.at }); build(); } })),
+          el('p', { class: 'note', text: 'Four dice for each score, the lowest set aside, six times. Rolled on this device: the DM will see this, and that it was not rolled at the table.' }));
+      } else {
+        const where = R.by === 'table' ? 'Rolled at the table.' : `Rolled on this device${dayText(R.at) ? ` on ${dayText(R.at)}` : ''}. The DM will see this.`;
+        sec.append(el('p', { class: 'note', id: 'qb-rule-text', text: `${where} ${ruleText(R.rule)}` }));
+        const chips = el('div', { class: 'sc-chips', id: 'qb-chips' });
+        R.rolls.forEach((s, i) => {
+          const why = sc.saved ? 'This character was saved with these rolls.' : rerollWhy(s, R.rule), can = !sc.saved && mayReroll(s, R.rule);
+          const onto = ABILITIES.find((a) => sc.place[a] === i);
+          chips.append(el('div', { class: 'sc-chip', id: `qb-chip-${i}`, 'data-score': String(standing(s, R.rule)) }, el('b', { text: `Roll ${i + 1}: ${standing(s, R.rule)}` }), el('small', { text: setText(s, R.rule).replace(/^\d+ /, '') }),
+            onto ? el('small', { class: 'note', text: `On ${onto.toUpperCase()}` }) : null,
+            can ? el('button', { type: 'button', id: `qb-reroll-${i}`, text: 'Roll this score again', onclick: () => { s.again = rerollHere(); keepWrite(ROLL_KEY, { rolls: R.rolls, rule: R.rule, at: R.at }); build(); } })
+              : el('small', { class: 'note', id: `qb-noreroll-${i}`, text: why })));
+        });
+        sec.append(chips);
+        for (const a of ABILITIES) {
+          const free = R.rolls.map((s, i) => i).filter((i) => i === sc.place[a] || !ABILITIES.some((x) => sc.place[x] === i));
+          row(a, pick(`qb-place-${a}`, [['', 'Choose…'], ...free.map((i) => [String(i), `${standing(R.rolls[i], R.rule)} (roll ${i + 1})`])], Number.isInteger(sc.place[a]) ? String(sc.place[a]) : '',
+            (v) => { sc.place[a] = v === '' ? null : +v; build(); }, `${ABIL_NAME[a]}: a rolled score`));
+        }
+        const rerolled = R.rolls.filter((s) => s.again).length;
+        line = `${where}${rerolled ? ` ${rerolled} of 6 rolled again.` : ''}`;
+      }
+    }
+    if (sc.method !== 'roll' || sc.roll) sec.append(rows);
+    // The background's increase
+    const g = sc.bg, abil = bgAbilities(g.id), names = (list) => list.map((a) => [a, ABIL_NAME[a]]);
+    const bgBox = el('div', { class: 'sc-bgbox', id: 'qb-bgbox' }, el('label', { class: 'qe-f wide' }, el('span', { text: 'Background' }), pick('qb-bg', [['', 'No increase from a background'], ...Object.entries(BACKGROUNDS).map(([id, d]) => [id, d.name]), ['other', 'Another background (your GM\'s)']], g.id,
+      (v) => { Object.assign(g, { id: v, plus2: '', plus1: '', all: ['', '', ''] }); build(); }, 'Background')));
+    if (g.id) {
+      bgBox.append(el('label', { class: 'qe-f wide' }, el('span', { text: 'Its increase' }), pick('qb-bg-mode', [['twoone', '+2 to one ability and +1 to another'], ['all', '+1 to each of three abilities']], g.mode, (v) => { g.mode = v; build(); }, 'Its increase')));
+      if (g.mode === 'twoone') bgBox.append(el('div', { class: 'qe-grid qe-2' },
+        el('label', { class: 'qe-f' }, el('span', { text: '+2 to' }), pick('qb-bg-plus2', [['', 'Choose…'], ...names(abil)], g.plus2, (v) => { g.plus2 = v; if (g.plus1 === v) g.plus1 = ''; build(); }, '+2 to')),
+        el('label', { class: 'qe-f' }, el('span', { text: '+1 to' }), pick('qb-bg-plus1', [['', 'Choose…'], ...names(abil)], g.plus1, (v) => { g.plus1 = v; if (g.plus2 === v) g.plus2 = ''; build(); }, '+1 to'))));
+      else if (g.id === 'other') bgBox.append(el('div', { class: 'qe-grid qe-2' }, ...[0, 1, 2].map((i) => el('label', { class: 'qe-f' }, el('span', { text: `+1 to (${i + 1})` }), pick(`qb-bg-all-${i}`, [['', 'Choose…'], ...names(ABILITIES)], g.all[i], (v) => { g.all[i] = v; build(); }, `+1 to ability ${i + 1}`)))));
+      else bgBox.append(el('p', { class: 'note', text: `${BACKGROUNDS[g.id].name} raises ${BACKGROUNDS[g.id].abilities.map((a) => ABIL_NAME[a]).join(', ')} by 1 each.` }));
+      bgBox.append(el('p', { class: 'note', text: 'No score goes above 20. The background\'s feat, skills and tool are chosen where they always were.' }));
+    }
+    sec.append(bgBox, el('p', { class: 'note', id: 'qb-sc-line', text: line }));
+    if (sc.method === 'roll' && sc.roll && parts.scores) sec.append(el('p', { class: 'note', id: 'qb-dm-line', text: `What the DM sees: ${dmLine({ ...sheet(), scores: parts.scores })}` }));
+    sec.append(el('p', { class: 'note', text: 'What you typed under "Enter by hand" is kept.' }), ...(bonusLine ? [bonusLine] : []));
+    return sec;
   }
 
   // ---------- feats (C13): `sheet.feats` is [{ id, at, abilities?, skills?, list?, ability?, spells? }]; the places and what each offers are `featChoices` ----------
@@ -478,7 +680,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   function update() {
     if (!refs.derived) return;
     keepDraft();
-    const s = sheet(), problems = validate(s), d = safeDerive({ ...s, abilities: Object.fromEntries(ABILITIES.map((a) => [a, Number.isInteger(s.abilities[a]) ? s.abilities[a] : 10])) });
+    const s = sheet(), problems = [...(b.sc.method === 'hand' ? [] : scoreParts(b.sc, dayNow()).problems), ...validate(s)], d = safeDerive({ ...s, abilities: Object.fromEntries(ABILITIES.map((a) => [a, Number.isInteger(s.abilities[a]) ? s.abilities[a] : 10])) });
     refs.problems.textContent = '';
     for (const p of problems) refs.problems.append(el('li', { text: p }));
     refs.problems.hidden = problems.length === 0;
@@ -500,13 +702,17 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   function close() { panel.hidden = true; pending = null; keep = null; panel.classList.remove('over-lobby'); }
   function save() {
     const s = sheet();
-    if (validate(s).length) return;
+    if (validate(s).length || (b.sc.method !== 'hand' && scoreParts(b.sc, dayNow()).problems.length)) return;
+    // A roll that was kept on this device is used up once a sheet is saved with it (a new character rolls anew).
+    const used = () => { if (s.scores?.method === 'roll' && s.scores.by === 'device') keepWrite(ROLL_KEY, null); };
     if (mode === 'mine') {
       const why = keep?.(s);
       if (why) { refs.problems.append(el('li', { text: why })); refs.problems.hidden = false; return; }
+      used();
       clearDraft();
       return close();
     }
+    used();
     pending = mode === 'add' ? 'spawned' : 'edited'; refs.save.disabled = true;
     setTimeout(() => { if (pending) { pending = null; if (!panel.hidden) update(); } }, 4000);   // the engine said no (its toast is showing): let the DM fix it
     if (mode === 'levelup') act({ type: 'levelUp', actor: target.id, sheet: s });

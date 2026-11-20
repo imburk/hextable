@@ -11,7 +11,10 @@ import { AMBIENT } from './content/lights.js';
 // that reads format 1 refuses a format 2 document rather than reading a square map as hexes.
 export const MAP_FORMAT = 2;
 export const GRIDS = ['hex', 'square'];
-export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500 };
+export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500, entries: 100 };
+// What an entry is (docs/specs/travel.md, Decision 3): a named group of starts where a party arrives.
+// `near` and `far` are the two ends of a map used for a fight; a `circle` names its permanent circle object.
+export const ENTRY_KINDS = ['gate', 'dock', 'circle', 'landing', 'near', 'far', 'other'];
 
 export const newMap = (over = {}) => ({
   format: MAP_FORMAT, id: 'map', name: 'Untitled map', grid: 'hex', cellFeet: 5,
@@ -31,6 +34,13 @@ export function migrateMap(doc) {
     doc = { ...newMap({ id: 'valley', name: 'The valley' }), levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }] };
   }
   for (const k of ['walls', 'objects', 'regions', 'starts']) if (!Array.isArray(doc[k])) doc[k] = [];
+  // A start's `level` that names no level of the map is dropped, so the start is found by its cell as
+  // before levels were named (docs/specs/travel.md, Decision 3): a saved table whose level was removed
+  // before `unlevel` took its starts with it still loads.
+  if (Array.isArray(doc.levels)) {
+    const levels = new Set(doc.levels.map((l) => l?.id));
+    for (const st of doc.starts) if (st && typeof st === 'object' && st.level !== undefined && !levels.has(st.level)) delete st.level;
+  }
   // Format 1 to 2: every format 1 map is on hexes; `hexFeet` becomes `cellFeet` (the linter still
   // insists on 5). The header keeps its order: format, id, name, grid, cellFeet, then the rest.
   // A format 1 document's own `grid` or `cellFeet`, if it had any, meant nothing to the build that
@@ -94,9 +104,12 @@ export function lintMap(doc, extra = []) {
     if (!Array.isArray(doc[k])) bad.push(`"${k}" must be a list.`);
     else if (MAP_LIMITS[k] && doc[k].length > MAP_LIMITS[k]) bad.push(`It has more than ${MAP_LIMITS[k]} ${k}.`);
   }
+  if (doc.entries !== undefined && !Array.isArray(doc.entries)) bad.push('"entries" must be a list.');
+  else if (doc.entries?.length > MAP_LIMITS.entries) bad.push(`It has more than ${MAP_LIMITS.entries} entries.`);
   for (const st of Array.isArray(doc.starts) ? doc.starts : []) {
     if (!st || !Number.isInteger(st.q) || !Number.isInteger(st.r)) bad.push(`A start is not a ${G.word.one}.`);
-    else if (!doc.levels.some((l) => l.tiles?.[`${st.q},${st.r}`])) bad.push(`The start at ${st.q},${st.r} has nothing to stand on.`);
+    else if (st.level !== undefined && !ids.has(st.level)) bad.push(`The start at ${st.q},${st.r} is on a level that does not exist: "${st.level}".`);
+    else if (!doc.levels.some((l) => (st.level === undefined || l.id === st.level) && l.tiles?.[`${st.q},${st.r}`])) bad.push(`The start at ${st.q},${st.r} has nothing to stand on.`);
   }
   if (bad.length) return bad;
   const point = (p) => Array.isArray(p) && p.length === 2 && p.every(num);
@@ -133,6 +146,21 @@ export function lintMap(doc, extra = []) {
     if (def.connects && o.to === undefined) bad.push(`Object "${o.id}" joins two places and needs \`to\`.`);
     if (o.dc !== undefined && !(o.dc && typeof o.dc === 'object' && Object.values(o.dc).every((n) => Number.isInteger(n) && n > 0 && n <= 40))) bad.push(`Object "${o.id}" has DCs that are not whole numbers.`);
   }
+  // Entries (docs/specs/travel.md, Decision 3): unique ids, each with a start, every start's entry known,
+  // and a circle's object on the map.
+  const entryIds = new Set();
+  for (const en of doc.entries ?? []) {
+    if (!en || typeof en !== 'object' || Array.isArray(en)) { bad.push('An entry is not a record.'); continue; }
+    if (!text(en.id)) { bad.push(text(en.name) ? `The entry "${en.name}" has no id.` : 'An entry has no id.'); continue; }
+    if (entryIds.has(en.id)) bad.push(`Entry id "${en.id}" is used twice.`);
+    entryIds.add(en.id);
+    if (!text(en.name)) bad.push(`Entry "${en.id}" has no name.`);
+    if (!ENTRY_KINDS.includes(en.kind)) bad.push(`Entry "${en.id}" has kind "${en.kind}"; it can be ${ENTRY_KINDS.join(', ')}.`);
+    if (en.kind === 'circle' && !doc.objects.some((o) => o && o.id === en.object)) bad.push(`Entry "${en.id}" is a circle and names no object of the map as its circle.`);
+    if (en.kind !== 'circle' && en.object !== undefined) bad.push(`Entry "${en.id}" names an object, and only a circle does.`);
+    if (!doc.starts.some((st) => st.entry === en.id)) bad.push(`Entry "${en.id}" has no start.`);
+  }
+  for (const st of doc.starts) if (st.entry !== undefined && !entryIds.has(st.entry)) bad.push(`The start at ${st.q},${st.r} belongs to an entry that does not exist: "${st.entry}".`);
   const taken = new Set();
   for (const r of doc.regions) {
     if (!r || typeof r !== 'object') { bad.push('A region is not a record.'); continue; }
@@ -199,6 +227,7 @@ export const EDITS = {
     map.walls = map.walls.filter((w) => w.level !== id);
     map.objects = map.objects.filter((o) => o.level !== id);
     map.regions = map.regions.filter((r) => r.level !== id);
+    map.starts = map.starts.filter((st) => st.level !== id);    // a start placed on that level goes with it
     return drop(map.levels, id, 'level');
   },
   wall(map, { wall }) {
@@ -222,6 +251,12 @@ export const EDITS = {
   },
   unregion: (map, { id }) => drop(map.regions, id, 'region'),
   starts(map, { starts }) { map.starts = structuredClone(starts ?? []); },
+  // The map's entries, whole (docs/specs/travel.md, Decision 3); none, or an empty list, takes them away.
+  // Starts name their entry through the `starts` change; the linter checks the two agree.
+  entries(map, { entries }) {
+    if (entries === undefined || entries === null || (Array.isArray(entries) && !entries.length)) delete map.entries;
+    else map.entries = structuredClone(entries);
+  },
   // The DM clears what the party remembers of the place, on one level or all of it.
   forget(map, { level }) {
     if (!map.seen) return;
