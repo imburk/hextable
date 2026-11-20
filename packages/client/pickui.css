@@ -1,0 +1,86 @@
+/* pickui.js: the accordion, the pick row, the chips and the reveal button (#603). Every colour is a theme variable; every target is at least 44 px. */
+.pk svg.i { width: 1.1em; height: 1.1em; vertical-align: -0.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.pk button { touch-action: manipulation; }
+
+/* the accordion: bars before the open one pinned above, bars after it pinned below, the open body scrolls between */
+.pk .acc { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.pk .acc-top, .pk .acc-bot { flex: none; }
+.pk .acc:not(:has(.acc-body)) { overflow-y: auto; }
+.pk .acc-body { flex: 1 1 auto; min-height: 120px; overflow-y: auto; padding: 6px 4px 12px 8px; border-left: 2px solid var(--accent); margin: 2px 0 6px 6px; overscroll-behavior: contain; }
+.pk .acchead { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; text-align: left; padding: 6px 12px; margin: 3px 0; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); border-radius: var(--radius); }
+.pk .acchead .t { flex: 1; min-width: 0; } .pk .acchead .t b { display: block; font-weight: 700; }
+.pk .acchead .t small { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk .acchead .chev { color: var(--muted); font-size: 20px; transition: transform .3s; }
+.pk .acchead .need { flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 9px; background: color-mix(in srgb, var(--accent) 40%, var(--panel)); color: var(--ink); border: 2px solid var(--accent); white-space: nowrap; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+.pk .acchead.compact { min-height: 44px; padding: 2px 12px; margin: 2px 0; }
+.pk .acchead.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); } .pk .acchead.on .chev { transform: rotate(90deg); }
+
+/* section contents */
+.pk .pk-lead { color: var(--muted); font-size: 14px; margin: 2px 0 8px; }
+.pk .gh, .pk .sechead { position: sticky; top: -6px; z-index: 2; background: var(--panel); display: flex; align-items: baseline; gap: 8px; margin: 12px -4px 2px -8px; padding: 8px 8px 6px; border-bottom: 2px solid var(--accent); font: 700 13px var(--body, inherit); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.pk .gh span, .pk .sechead span { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); font-size: 13px; }
+.pk .pk-note { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; margin: 6px 0 8px; background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); font-size: 14px; }
+.pk .pk-note.alert { border-left-color: var(--bad); }
+
+/* a pick row: radio or checkbox, words, the i button */
+.pk .opt { display: flex; align-items: flex-start; gap: 4px; border-bottom: 1px solid var(--line); }
+.pk .opt > label { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; cursor: pointer; position: relative; min-height: 44px; }
+.pk .opt input { position: absolute; opacity: 0; left: 0; top: 8px; width: 30px; height: 30px; margin: 0; }
+.pk .box { flex: none; width: 30px; height: 30px; margin-top: 2px; border: 2px solid var(--muted); border-radius: 7px; display: grid; place-items: center; font-weight: 800; font-size: 17px; line-height: 1; color: var(--accent-ink); }
+.pk .box.round { border-radius: 50%; }
+.pk input:checked + .box { background: var(--accent); border-color: var(--accent); }
+.pk input:checked + .box::after { content: '\2713'; }
+.pk input:checked + .box.round::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-ink); }
+.pk input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pk input:disabled + .box { opacity: .45; border-style: dashed; }
+.pk .opt.dim > label { cursor: default; }
+.pk .opt .txt { min-width: 0; flex: 1; display: block; }
+.pk .opt .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 700; }
+.pk .opt .l1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pk .opt .l1 .lv { flex: none; font-weight: 400; color: var(--muted); white-space: pre; }
+.pk .opt .l1 .chip { flex: none; } .pk .opt .l1 .rt { margin-left: auto; font-weight: 800; flex: none; }
+.pk .opt .l2 { display: block; color: var(--muted); font-size: 13px; line-height: 1.3; margin-top: 1px; }
+.pk .opt .l2.one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-size: 14px; }
+.pk .opt.dim .l2.one { color: var(--muted); }
+.pk .opt .l2.costline { color: var(--ink); font-size: 14px; }
+.pk .opt.npr { box-shadow: inset 4px 0 0 var(--bad); padding-left: 8px; }
+.pk .opt.dim .l1 .nm { color: var(--muted); font-weight: 400; }
+.pk .ibtn { flex: none; width: 44px; height: 44px; background: none; border: 0; padding: 0; display: grid; place-items: center; color: inherit; }
+.pk .ibtn i { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--muted); border-radius: 50%; color: var(--muted); font: 700 14px Georgia, serif; font-style: normal; }
+.pk .ibtn[aria-expanded=true] i { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.pk .disc { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 10px; margin: 10px 0 2px; border: 1px dashed var(--muted); background: none; color: var(--ink); border-radius: var(--radius); }
+.pk .disc .tx { flex: 1; } .pk .disc small { display: block; color: var(--muted); font-size: 13px; }
+.pk .disc .chev { transition: transform .3s; color: var(--muted); font-size: 18px; } .pk .disc[aria-expanded=true] .chev { transform: rotate(90deg); }
+
+/* chips */
+.pk .chip { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; white-space: nowrap; border: 1px solid var(--muted); color: var(--ink); }
+.pk .chip.np { background: var(--ink); color: var(--panel); border-color: var(--ink); padding: 0 8px 0 5px; font-weight: 700; }
+.pk .chip.good { border-color: var(--good); }
+.pk .chip.cost { background: color-mix(in srgb, var(--accent) 40%, var(--panel)); border: 2px solid var(--accent); font-weight: 700; }
+.pk .chip.tag { border: 2px solid var(--accent); font-weight: 700; }
+
+/* the class resource card */
+.pk .res { border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel-2); padding: 10px 12px; margin: 4px 0 8px; }
+.pk .res h3 { margin: 0; font: 700 18px var(--display, inherit); display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pk .res h3 .alias { font: 400 13px var(--body, inherit); color: var(--muted); }
+.pk .res .big { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; }
+.pk .res .num { font: 800 34px/1 var(--body, inherit); }
+.pk .res .back { font-size: 14px; margin-top: 4px; }
+.pk .pk-pips { display: flex; gap: 6px; flex-wrap: wrap; }
+.pk .pip { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); border: 2px solid var(--accent); }
+.pk .slotrow { display: flex; align-items: center; gap: 10px; margin: 4px 0; } .pk .slotrow .lbl { width: 62px; font-weight: 600; font-size: 14px; }
+.pk .slotrow .pip { width: 16px; height: 16px; }
+.pk .feat-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.pk .feat-row .top2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pk .feat-row .nm { font-weight: 700; flex: 1; min-width: 0; }
+.pk .feat-row .sum { color: var(--ink); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pk .feat-row .top2 .ibtn { margin: -6px -6px -6px 0; }
+
+/* chips of choices (skills) */
+.pk .chipset { display: flex; flex-wrap: wrap; gap: 6px; }
+.pk .chipset label { position: relative; }
+.pk .chipset input { position: absolute; opacity: 0; inset: 0; margin: 0; width: 100%; height: 100%; }
+.pk .chipset span { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; }
+.pk .chipset input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.pk .chipset input:disabled + span { opacity: .45; }
+.pk .chipset input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
