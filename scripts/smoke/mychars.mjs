@@ -511,7 +511,7 @@ async function gamePass(browser, url, label, opts, grid) {
         const reroll = box.sel[0]; if (!reroll.shown) throw new Error('the reroll control is not shown');
         if (box.sel[1].shown || box.sel[2].shown) throw new Error('"below" and "result" show while the rule is none');
         for (const x of box.sel.filter((y) => y.shown)) if (x.h < (touch ? 43 : 20) || x.right > box.iw + 1) throw new Error(`${x.id}: ${x.w}x${x.h}, right edge ${x.right} of ${box.iw}`);
-        if (!/No score may be rolled again|rolled again/.test(await txt('#dm-score-text'))) throw new Error(`rule text: ${await txt('#dm-score-text')}`);
+        if (!/no score may be rolled again/i.test(await txt('#dm-score-text'))) throw new Error(`rule text: ${await txt('#dm-score-text')}`);
         await page.selectOption('#dm-score-reroll', 'below');
         await wait(page, () => window.hextable.state.settings.scoreReroll === 'below');
         if (!(await shown(page, '#dm-score-below')) || !(await shown(page, '#dm-score-result'))) throw new Error('below and result are not offered once the rule is "below"');
@@ -520,7 +520,7 @@ async function gamePass(browser, url, label, opts, grid) {
         const after = await page.evaluate(() => { const out = []; for (const id of ['dm-score-reroll', 'dm-score-below', 'dm-score-result']) { const e = document.getElementById(id), r = e.getBoundingClientRect(); out.push({ id, h: Math.round(r.height), right: Math.round(r.right), shown: e.getClientRects().length > 0 }); } return { out, iw: innerWidth, sideways: document.getElementById('dm-score-text').closest('.panel, #drawer, aside')?.scrollWidth > (document.getElementById('dm-score-text').closest('.panel, #drawer, aside')?.clientWidth ?? 0) + 1 }; });
         for (const x of after.out) if (!x.shown || x.h < (touch ? 43 : 20) || x.right > after.iw + 1) throw new Error(`${x.id}: ${JSON.stringify(x)}`);
         if (after.sideways) throw new Error('the DM panel scrolls sideways');
-        if (!/A score below 11/.test(await txt('#dm-score-text')) || !/higher/i.test(await txt('#dm-score-text'))) throw new Error(`rule text: ${await txt('#dm-score-text')}`);
+        if (!/rolled again, once/.test(await txt('#dm-score-text')) || !/higher/i.test(await txt('#dm-score-text')) || (await page.$eval('#dm-score-below', (e) => e.value)) !== '11') throw new Error(`rule text: ${await txt('#dm-score-text')}`);
         await shot('2-dm-controls-below', '#dm-score-reroll', 'center');
       });
 
