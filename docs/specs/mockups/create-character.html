@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: create-character rework (#603, #605)</title>
+<!-- A picture to react to (docs/specs/create-character.md). Nothing here runs the game: every control only shows what it would do.
+     Self-contained: no network, no fonts fetched (the game's font names come first, with fallbacks). The numbers are worked out
+     by the small model in the script below from SRD 5.2 rules; the weapons, armour and spells are the game's own content entries
+     (packages/rules/src/content/srd52), copied in by a script. The address can set the picture, for screenshots:
+       #char=monk|wizard  theme=classic|sunlit|pocket  frame=phone|desktop  open=who|scores|skills|power|feats|gear|spells  screen=build|tags
+       armour=<id>  shield=1  weapons=<id,id>  l4=<feat id>  np=1 (opens the Not proficient lists)  bare (hides the mockup's own controls)
+     The accordion is the one agreed in docs/specs/one-token-menu.md (round 5): one section open, the bars before it pinned at the top and
+     after it at the bottom, tips shown only when every bar is closed. -->
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d100f; }
+[hidden] { display: none !important; }
+
+/* ---------- the mockup's own controls (not part of the design) ---------- */
+#mock { position: fixed; z-index: 100; top: 4px; left: 6px; font: 12px/1.3 system-ui, sans-serif; color: #ddd; max-width: calc(100vw - 12px); }
+#mock summary { cursor: pointer; background: #000c; border: 1px solid #555; border-radius: 6px; padding: 4px 8px; list-style: none; width: max-content; }
+#mock[open] summary { border-radius: 6px 6px 0 0; }
+#mock .box { background: #000e; border: 1px solid #555; padding: 8px; border-radius: 0 6px 6px 6px; display: grid; gap: 6px; max-width: 360px; }
+#mock .grp { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+#mock .grp b { width: 64px; font-weight: 600; color: #aaa; }
+#mock button { font: inherit; color: #ddd; background: #222; border: 1px solid #555; border-radius: 4px; padding: 3px 7px; cursor: pointer; }
+#mock button.on { background: #ddd; color: #111; }
+#mock p { margin: 0; color: #999; }
+body.bare #mock { display: none; }
+#stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding-top: 34px; }
+body.bare #stage { padding-top: 0; }
+
+/* ---------- themes: tokens copied from packages/client/themes.js (as in the other mockups) ---------- */
+.frame { --bg: #1d2622; --panel: #26322dee; --panel-solid: #26322d; --panel-2: #31403a; --ink: #efe9d8; --muted: #a9b3a6; --accent: #d7a84a; --accent-ink: #1d2622; --line: #4a5a52; --good: #7fc48a; --bad: #e0685a;
+  --display: 'Vollkorn SC', Georgia, serif; --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif; --radius: 6px; --scrim: rgba(10, 14, 12, .55); }
+.frame[data-theme=sunlit] { --bg: #8fd0e8; --panel: #fffdf4f2; --panel-solid: #fffdf4; --panel-2: #eef4dc; --ink: #23412f; --muted: #5f7a68; --accent: #2f9e6b; --accent-ink: #fff; --line: #c9dab5; --good: #2f9e6b; --bad: #d9483b;
+  --display: 'Baloo 2', 'Trebuchet MS', sans-serif; --body: 'Nunito', 'Segoe UI', system-ui, sans-serif; --radius: 14px; --scrim: rgba(35, 65, 47, .35); }
+.frame[data-theme=pocket] { --bg: #c7e8c1; --panel: #2b2d42f2; --panel-solid: #2b2d42; --panel-2: #3a3d5c; --ink: #f8f7ff; --muted: #b8b8d1; --accent: #ffd23f; --accent-ink: #2b2d42; --line: #545880; --good: #8be28b; --bad: #ff6b6b;
+  --display: 'Silkscreen', 'Courier New', monospace; --body: 'Nunito', 'Segoe UI', system-ui, sans-serif; --radius: 2px; --scrim: rgba(43, 45, 66, .45); }
+
+/* ---------- the frame ---------- */
+.frame { position: relative; overflow: hidden; background: var(--panel-solid); color: var(--ink); font: 15px/1.35 var(--body); flex: none; }
+.frame.phone { width: min(390px, 100vw); height: min(844px, 100%); border-radius: 0; }
+.frame.desktop { width: min(1280px, 100vw); height: min(800px, 100%); }
+@media (min-width: 440px) { .frame.phone { border-radius: 22px; border: 1px solid #444; } }
+.frame button, .frame input, .frame select { font: inherit; color: inherit; }
+.frame button { cursor: pointer; touch-action: manipulation; }
+.frame :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.frame svg.i { width: 1.1em; height: 1.1em; vertical-align: -0.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.btn { min-height: 44px; min-width: 44px; padding: 0 14px; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); }
+.btn.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn[aria-disabled=true] { opacity: .5; }
+.sr { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- the screen ---------- */
+.create { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+.top { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--line); min-height: 58px; background: var(--panel-solid); }
+.top .x { width: 44px; height: 44px; font-size: 20px; border: 0; background: none; color: var(--muted); }
+.top .ttl { flex: 1; min-width: 0; }
+.top .ttl b { display: block; font: 700 18px/1.15 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top .ttl small { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top .ttl small.ready { color: var(--good); }
+.main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.frame.desktop .main { flex-direction: row; }
+.frame.desktop .left { width: 540px; flex: none; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; padding: 6px 10px 8px; }
+.frame.phone .left { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 2px 8px 6px; }
+.frame.desktop .right { flex: 1; min-width: 0; overflow: auto; padding: 14px 18px; background: var(--bg-2, var(--panel-solid)); }
+
+/* ---------- the live sheet (sticky): phone strip, desktop panel ---------- */
+.live { flex: none; background: var(--panel); border-bottom: 1px solid var(--line); padding: 6px 10px 6px; position: relative; z-index: 3; box-shadow: 0 3px 10px #0004; }
+.frame[data-theme=sunlit] .live { box-shadow: 0 3px 10px #23412f22; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.stat { display: inline-flex; align-items: baseline; gap: 4px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; padding: 2px 10px; font-size: 14px; white-space: nowrap; }
+.stat b { font-weight: 800; font-size: 15px; }
+.stat.key { border-color: var(--accent); }
+.livehead { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.livehead b { color: var(--ink); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
+.livehead .sp { flex: 1; }
+.livehead button { min-height: 32px; min-width: 44px; border: 0; background: none; color: var(--muted); padding: 0 6px; font-size: 18px; line-height: 1; }
+.alist { margin: 2px 0 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; }
+.frame.phone .alist { max-height: 86px; }
+.arow { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 1px 4px; border-radius: 4px; font-size: 14px; }
+.arow .n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.arow .h { width: 62px; text-align: right; font-weight: 800; flex: none; font-variant-numeric: tabular-nums; }
+.arow .d { width: 108px; text-align: left; flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.frame.desktop .arow { min-height: 40px; font-size: 15px; border-bottom: 1px solid var(--line); border-radius: 0; }
+.frame.desktop .arow .d { width: 190px; font-size: 14px; }
+.frame.desktop .arow .h { width: 80px; }
+.arow.flash { animation: flash 1.4s ease-out; }
+@keyframes flash { 0% { background: var(--accent); color: var(--accent-ink); } 100% { background: transparent; } }
+.arow.gone { opacity: .5; }
+.heads { margin: 4px 0 0; font-size: 13px; display: flex; gap: 6px; align-items: flex-start; border-left: 4px solid var(--bad); padding: 2px 6px; background: var(--panel-2); border-radius: 0 var(--radius) var(--radius) 0; }
+.heads ul { margin: 0; padding: 0 0 0 14px; }
+.livebig h2 { font: 700 22px var(--display); margin: 0; }
+.livebig .sub { color: var(--muted); margin: 0 0 10px; }
+.livebig h3 { font: 700 13px var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 4px; display: flex; align-items: baseline; gap: 8px; }
+.livebig h3 span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.acwhy { color: var(--muted); font-size: 13px; margin: 6px 2px 0; }
+
+/* ---------- the accordion (one-token-menu.md, round 5) ---------- */
+.acc { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.acc-top, .acc-bot { flex: none; }
+.acc-body { flex: 1 1 auto; min-height: 120px; overflow: auto; padding: 6px 4px 12px 8px; border-left: 2px solid var(--accent); margin: 2px 0 6px 6px; overscroll-behavior: contain; }
+.acchead { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; text-align: left; padding: 6px 12px; margin: 3px 0; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); }
+.acchead .t { flex: 1; min-width: 0; } .acchead .t b { display: block; font-weight: 700; }
+.acchead .t small { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acchead .chev { color: var(--muted); font-size: 20px; transition: transform .3s; }
+.acchead .need { flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; background: var(--accent); color: var(--accent-ink); white-space: nowrap; }
+.acchead.compact { min-height: 44px; padding: 2px 12px; margin: 2px 0; } .acchead.compact small { display: none; }
+.acchead.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); } .acchead.on .chev { transform: rotate(90deg); }
+.frame.phone .acchead { min-height: 52px; }
+
+/* ---------- section contents ---------- */
+.lead { color: var(--muted); font-size: 14px; margin: 2px 0 8px; }
+.sechead { font: 700 12px var(--body); letter-spacing: .08em; color: var(--muted); text-transform: uppercase; margin: 14px 2px 4px; display: flex; align-items: baseline; gap: 8px; }
+.sechead span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.field { display: grid; gap: 3px; margin: 8px 0; } .field label { font-size: 13px; color: var(--muted); }
+.field input[type=text], .field .val { min-height: 44px; padding: 0 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); border-radius: var(--radius); display: flex; align-items: center; }
+.field .val { color: var(--ink); } .field .val small { color: var(--muted); margin-left: 8px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatches button { width: 44px; height: 44px; border: 2px solid var(--line); border-radius: var(--radius); }
+.swatches button[aria-pressed=true] { border-color: var(--ink); outline: 2px solid var(--accent); outline-offset: 1px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tile { border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); padding: 6px 8px; text-align: center; }
+.tile b { display: block; font-size: 22px; line-height: 1.1; } .tile small { color: var(--muted); font-size: 12px; display: block; } .tile .m { font-weight: 700; }
+.tile.up { border-color: var(--accent); }
+
+/* a choice row: checkbox or radio, words, an info button */
+.opt { display: flex; align-items: flex-start; gap: 4px; border-bottom: 1px solid var(--line); }
+.opt > label { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; cursor: pointer; position: relative; }
+.opt input { position: absolute; opacity: 0; left: 0; top: 8px; width: 30px; height: 30px; margin: 0; }
+.box { flex: none; width: 30px; height: 30px; margin-top: 2px; border: 2px solid var(--muted); border-radius: 7px; display: grid; place-items: center; font-weight: 800; font-size: 17px; line-height: 1; color: var(--accent-ink); }
+.box.round { border-radius: 50%; }
+input:checked + .box { background: var(--accent); border-color: var(--accent); }
+input:checked + .box::after { content: '\2713'; }
+input:checked + .box.round::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-ink); }
+input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:disabled + .box { opacity: .45; border-style: dashed; }
+.opt.on { background: linear-gradient(90deg, #0000, #0000); }
+.opt .txt { min-width: 0; flex: 1; }
+.opt .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 700; }
+.opt .l1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.opt .l1 .lv { flex: none; font-weight: 400; color: var(--muted); white-space: pre; }
+.opt .l1 .tag, .opt .l1 .np, .opt .l1 .cat { flex: none; }
+.opt .l2 { color: var(--muted); font-size: 13px; line-height: 1.3; margin-top: 1px; }
+.opt .l2.cost { color: var(--ink); font-size: 14px; }
+.opt .l2.also { color: var(--muted); }
+.opt.np { box-shadow: inset 4px 0 0 var(--bad); padding-left: 8px; }
+.opt.dim .l1 .nm { color: var(--muted); font-weight: 400; }
+.info { flex: none; width: 44px; height: 44px; background: none; border: 0; padding: 0; display: grid; place-items: center; }
+.info i { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--muted); border-radius: 50%; color: var(--muted); font: 700 14px Georgia, serif; font-style: normal; }
+.info[aria-expanded=true] i { background: var(--ink); color: var(--panel-solid); border-color: var(--ink); }
+.more { margin: 0 0 6px 42px; padding: 6px 10px; background: var(--panel-2); border-radius: var(--radius); font-size: 14px; border-left: 3px solid var(--accent); }
+.more p { margin: 0 0 4px; } .more p:last-child { margin: 0; }
+.group { margin-top: 12px; }
+.group > .gh { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 4px 0; font-size: 14px; }
+.group > .gh span { font-weight: 400; color: var(--muted); font-size: 13px; }
+.disc { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 10px; margin: 10px 0 2px; border: 1px dashed var(--muted); background: none; border-radius: var(--radius); }
+.disc .tx { flex: 1; } .disc small { display: block; color: var(--muted); font-size: 13px; }
+.disc .chev { transition: transform .3s; color: var(--muted); font-size: 18px; } .disc[aria-expanded=true] .chev { transform: rotate(90deg); }
+
+/* chips */
+.np { display: inline-flex; align-items: center; gap: 4px; background: var(--ink); color: var(--panel-solid); border-radius: 999px; padding: 1px 9px 1px 6px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.np.sm { font-size: 12px; padding: 0 7px 0 4px; }
+.cat { display: inline-flex; align-items: center; border: 1px solid var(--muted); color: var(--ink); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cat.good { border-color: var(--good); }
+/* the spell tag: three shapes, so it never depends on colour alone (#605) */
+.tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 9px 1px 6px; font-size: 13px; font-weight: 700; white-space: nowrap; line-height: 1.35; }
+.tag.attack { background: var(--accent); color: var(--accent-ink); border: 2px solid var(--accent); }
+.tag.save { background: transparent; color: var(--ink); border: 2px solid var(--accent); }
+.tag.none { background: transparent; color: var(--muted); border: 2px dashed var(--muted); }
+.tag.sm { font-size: 12px; padding: 0 7px 0 4px; }
+.keyline { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--muted); margin: 2px 0 8px; }
+.keyline span { display: inline-flex; gap: 6px; align-items: center; }
+
+.note { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; margin: 6px 0 8px; background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius); font-size: 14px; }
+.note.alert { border-left-color: var(--bad); }
+.note b { font-weight: 700; }
+
+/* resources card: Focus Points, spell slots */
+.res { border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel-2); padding: 10px 12px; margin: 4px 0 8px; }
+.res h3 { margin: 0; font: 700 18px var(--display); display: flex; align-items: baseline; gap: 8px; }
+.res h3 .alias { font: 400 13px var(--body); color: var(--muted); }
+.res .big { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; }
+.res .num { font: 800 34px/1 var(--body); }
+.pips { display: flex; gap: 6px; flex-wrap: wrap; }
+.pip { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); border: 2px solid var(--accent); }
+.pip.empty { background: transparent; }
+.res .back { font-size: 14px; }
+.res .back b { font-weight: 700; }
+.slotrow { display: flex; align-items: center; gap: 10px; margin: 4px 0; } .slotrow .lbl { width: 62px; font-weight: 600; font-size: 14px; }
+.slotrow .pip { width: 18px; height: 18px; }
+.spend { margin: 0; padding: 0; list-style: none; }
+.spend li { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.cost { flex: none; display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.when { flex: none; display: inline-flex; border: 1px solid var(--muted); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--ink); }
+.feat-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.feat-row .top2 { display: flex; align-items: center; gap: 6px; }
+.feat-row .top2 .nm { font-weight: 700; flex: 1; min-width: 0; }
+.feat-row .sum { color: var(--ink); font-size: 14px; }
+.feat-row .more { margin-left: 0; }
+.abpick { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px 42px; align-items: center; font-size: 13px; color: var(--muted); }
+.abpick button { min-height: 40px; min-width: 52px; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); font-weight: 700; }
+.abpick button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.abpick button:disabled { opacity: .4; }
+.chipset { display: flex; flex-wrap: wrap; gap: 6px; }
+.chipset label { position: relative; }
+.chipset input { position: absolute; opacity: 0; inset: 0; margin: 0; }
+.chipset span { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; }
+.chipset input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.chipset input:disabled + span { opacity: .45; }
+.chipset input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toast { position: absolute; z-index: 70; top: 70px; left: 50%; transform: translateX(-50%); background: var(--panel-solid); border: 1px solid var(--line); padding: 8px 14px; border-radius: var(--radius); font-size: 14px; box-shadow: 0 3px 10px #0006; max-width: calc(100% - 20px); text-align: center; }
+
+/* "the same tag elsewhere" screen */
+.where { position: absolute; inset: 0; overflow: auto; padding: 14px; background: var(--bg-2, var(--panel-solid)); }
+.where h2 { font: 700 20px var(--display); margin: 0 0 4px; } .where > p { color: var(--muted); margin: 0 0 10px; max-width: 720px; }
+.wgrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.frame.phone .wgrid { grid-template-columns: 1fr; }
+.wcard { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); padding: 8px 10px 4px; }
+.wcard h3 { margin: 0; font: 700 16px var(--display); } .wcard h3 + p { margin: 0 0 4px; color: var(--muted); font-size: 13px; }
+.cast { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding: 6px 0; min-height: 56px; }
+.cast .txt { flex: 1; min-width: 0; } .cast .slot { flex: none; font-size: 12px; font-weight: 700; border: 1px solid var(--muted); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.cast .l1 { display: flex; align-items: center; gap: 6px; font-weight: 700; } .cast .l1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; } .cast .l1 .lv { color: var(--muted); font-weight: 400; white-space: pre; flex: none; } .cast .l1 .tag { flex: none; }
+.cast .l2 { color: var(--muted); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .arow.flash { animation: none; background: var(--accent); color: var(--accent-ink); } .acchead .chev, .disc .chev { transition: none; } }
+</style>
+</head>
+<body>
+<details id="mock">
+  <summary>Mockup controls</summary>
+  <div class="box">
+    <div class="grp"><b>Character</b><button data-set="char=monk">Monk 5</button><button data-set="char=wizard">Wizard 5</button></div>
+    <div class="grp"><b>Screen</b><button data-set="screen=build">Create character</button><button data-set="screen=tags">Spell tag elsewhere</button></div>
+    <div class="grp"><b>Theme</b><button data-set="theme=classic">Classic</button><button data-set="theme=sunlit">Sunlit</button><button data-set="theme=pocket">Pocket</button></div>
+    <div class="grp"><b>Frame</b><button data-set="frame=phone">Phone 390</button><button data-set="frame=desktop">Desktop 1280</button></div>
+    <div class="grp"><b>Reset</b><button id="reset">Reset this character</button></div>
+    <p>Nothing here runs the game. Tick weapons, pick armour, choose feats and the live sheet follows. The address can also set it (see the comment at the top of the file).</p>
+  </div>
+</details>
+<div id="stage"><div class="frame phone" id="frame" data-theme="classic"></div></div>
+
+<script>
+// Copied from packages/rules/src/content/srd52 by a script (names, damage, properties, tags derived from each spell’s effect steps).
+const SPELLS = [{"id":"fire-bolt","name":"Fire Bolt","lvl":0,"tag":"A","ab":"","time":"action","range":120,"conc":false,"rit":false,"dmg":"1d10 fire","tier":"auto","text":"A ranged spell attack against one target in range. On a hit it deals fire damage, which grows at higher character levels."},{"id":"ray-of-frost","name":"Ray of Frost","lvl":0,"tag":"A","ab":"","time":"action","range":60,"conc":false,"rit":false,"dmg":"1d8 cold","tier":"auto","text":"A ranged spell attack for cold damage, growing at higher character levels. A target that is hit loses 10 feet of Speed until the start of the caster's next turn."},{"id":"acid-splash","name":"Acid Splash","lvl":0,"tag":"S","ab":"dex","time":"action","range":60,"conc":false,"rit":false,"dmg":"1d6 acid","tier":"auto","text":"An acid bubble bursts at a point in range. Each creature in the 5-foot-radius sphere makes a Dexterity save or takes acid damage, which grows at higher character levels."},{"id":"chill-touch","name":"Chill Touch","lvl":0,"tag":"A","ab":"","time":"action","range":"touch","conc":false,"rit":false,"dmg":"1d10 necrotic","tier":"assist","text":"A melee spell attack that deals necrotic damage, growing at higher character levels. A target that is hit cannot regain hit points until the end of the caster's next turn; the DM enforces that part."},{"id":"shocking-grasp","name":"Shocking Grasp","lvl":0,"tag":"A","ab":"","time":"action","range":"touch","conc":false,"rit":false,"dmg":"1d8 lightning","tier":"assist","text":"A melee spell attack for lightning damage, growing at higher character levels. A target that is hit cannot make Opportunity Attacks until the start of its next turn; the DM enforces that."},{"id":"poison-spray","name":"Poison Spray","lvl":0,"tag":"A","ab":"","time":"action","range":30,"conc":false,"rit":false,"dmg":"1d12 poison","tier":"auto","text":"A ranged spell attack against one creature in range. On a hit it takes poison damage, which grows at higher character levels."},{"id":"mage-hand","name":"Mage Hand","lvl":0,"tag":"N","ab":"","time":"action","range":30,"conc":false,"rit":false,"dmg":"","tier":"manual","text":"A floating spectral hand that can do simple fetch-and-carry tasks up to 30 feet away for a minute. It cannot attack."},{"id":"prestidigitation","name":"Prestidigitation","lvl":0,"tag":"N","ab":"","time":"action","range":10,"conc":false,"rit":false,"dmg":"","tier":"manual","text":"A small bag of party tricks: sensory effects, cleaning, warming, marking, or a trinket or image that lasts a moment. It deals no damage."},{"id":"minor-illusion","name":"Minor Illusion","lvl":0,"tag":"N","ab":"","time":"action","range":30,"conc":false,"rit":false,"dmg":"","tier":"manual","text":"Creates a sound or a small silent image. A creature that studies it can see through it with an Investigation check against the caster's spell save DC."},{"id":"light","name":"Light","lvl":0,"tag":"N","ab":"","time":"action","range":"touch","conc":false,"rit":false,"dmg":"","tier":"manual","text":"A touched object glows like a torch for an hour, in a colour the caster picks."},{"id":"magic-missile","name":"Magic Missile","lvl":1,"tag":"N","ab":"","time":"action","range":120,"conc":false,"rit":false,"dmg":"1d4+1 force","tier":"auto","text":"Three darts of force, each striking a creature of the caster's choice in range for 1d4+1 force damage; they can all go to one creature or be split. One more dart per slot level above 1."},{"id":"burning-hands","name":"Burning Hands","lvl":1,"tag":"S","ab":"dex","time":"action","range":"self","conc":false,"rit":false,"dmg":"3d6 fire","tier":"auto","text":"Each creature in a 15-foot cone makes a Dexterity save, taking fire damage on a failure or half as much on a success."},{"id":"sleep","name":"Sleep","lvl":1,"tag":"S","ab":"wis","time":"action","range":60,"conc":true,"rit":false,"dmg":"","tier":"assist","text":"Each creature of the caster's choice in a small sphere makes a Wisdom save or is Incapacitated until the end of its next turn."},{"id":"shield","name":"Shield","lvl":1,"tag":"N","ab":"","time":"reaction","range":"self","conc":false,"rit":false,"dmg":"","tier":"auto","text":"Cast as a Reaction when the caster is hit by an attack roll or targeted by Magic Missile: +5 to AC until the start of the caster's next turn, including against the attack that set it off, and no damage from Magic Missile meanwhile. Cast by standing instruction: never, only if it turns the hit into a miss, always, or ask its player."},{"id":"mage-armor","name":"Mage Armor","lvl":1,"tag":"N","ab":"","time":"action","range":"touch","conc":false,"rit":false,"dmg":"","tier":"manual","text":"A touched willing creature without armor gets a base AC of 13 plus its Dexterity modifier for 8 hours."},{"id":"thunderwave","name":"Thunderwave","lvl":1,"tag":"S","ab":"con","time":"action","range":"self","conc":false,"rit":false,"dmg":"2d8 thunder","tier":"assist","text":"Each creature in a 15-foot cube from the caster makes a Constitution save, taking thunder damage on a failure (half on a success; more with higher slots) and being pushed 10 feet away on a failure. Unsecured objects inside the cube are also pushed 10 feet, and the boom is heard 300 feet away."},{"id":"chromatic-orb","name":"Chromatic Orb","lvl":1,"tag":"A","ab":"","time":"action","range":90,"conc":false,"rit":false,"dmg":"3d8 chosen","tier":"assist","text":"A ranged spell attack for 3d8 damage of a type the caster picks (more with higher slots). When two or more of the d8s match, the orb can leap to another target; the DM rolls the leaps."},{"id":"charm-person","name":"Charm Person","lvl":1,"tag":"S","ab":"wis","time":"action","range":30,"conc":false,"rit":false,"dmg":"","tier":"assist","text":"One visible Humanoid makes a Wisdom save, with Advantage if the caster or an ally is fighting it, or is charmed for an hour and Friendly to the caster, until the caster or an ally damages it; one more Humanoid per slot level above 1."},{"id":"detect-magic","name":"Detect Magic","lvl":1,"tag":"N","ab":"","time":"action","range":"self","conc":true,"rit":true,"dmg":"","tier":"manual","text":"The caster senses magic within 30 feet while concentrating, and can learn the school of a visible aura. It can be a ritual."},{"id":"find-familiar","name":"Find Familiar","lvl":1,"tag":"N","ab":"","time":"hour","range":10,"conc":false,"rit":true,"dmg":"","tier":"assist","text":"Summons a spirit companion in the form of a CR 0 Beast, as a Celestial, Fey or Fiend, that acts on its own turn but cannot attack; an hour to cast, or a ritual. One familiar a caster: casting again gives it the new form. No Octopus form: the SRD has no block."},{"id":"identify","name":"Identify","lvl":1,"tag":"N","ab":"","time":"minute","range":"touch","conc":false,"rit":true,"dmg":"","tier":"manual","text":"Touching an object reveals its magic properties; touching a creature reveals the spells on it. Takes a minute; it can be a ritual."},{"id":"color-spray","name":"Color Spray","lvl":1,"tag":"S","ab":"con","time":"action","range":"self","conc":false,"rit":false,"dmg":"","tier":"auto","text":"Each creature in a 15-foot cone makes a Constitution save or is Blinded until the end of the caster's next turn."},{"id":"feather-fall","name":"Feather Fall","lvl":1,"tag":"N","ab":"","time":"reaction","range":60,"conc":false,"rit":false,"dmg":"","tier":"manual","text":"Up to five falling creatures drift down slowly and take no fall damage. It is cast as a reaction."},{"id":"scorching-ray","name":"Scorching Ray","lvl":2,"tag":"A","ab":"","time":"action","range":120,"conc":false,"rit":false,"dmg":"2d6 fire","tier":"auto","text":"Three fiery rays at one target or several in range, each a ranged spell attack for 2d6 fire damage. One more ray per slot level above 2."},{"id":"shatter","name":"Shatter","lvl":2,"tag":"S","ab":"con","time":"action","range":60,"conc":false,"rit":false,"dmg":"3d8 thunder","tier":"assist","text":"A loud noise: each creature in a 10-foot-radius sphere makes a Constitution save, taking 3d8 thunder damage on a failure or half on a success; damage grows with higher slots."},{"id":"hold-person","name":"Hold Person","lvl":2,"tag":"S","ab":"wis","time":"action","range":60,"conc":true,"rit":false,"dmg":"","tier":"assist","text":"A Humanoid the caster can see makes a Wisdom save or is Paralyzed for up to a minute, repeating the save at the end of each of its turns; one more Humanoid per slot level above 2."},{"id":"web","name":"Web","lvl":2,"tag":"S","ab":"dex","time":"action","range":60,"conc":true,"rit":false,"dmg":"","tier":"assist","text":"A 20-foot cube of sticky webbing for up to an hour of Concentration. The first time on a turn a creature enters it or starts its turn there, it makes a Dexterity save or is Restrained until the spell ends."},{"id":"misty-step","name":"Misty Step","lvl":2,"tag":"N","ab":"","time":"bonus","range":"self","conc":false,"rit":false,"dmg":"","tier":"auto","text":"The caster teleports up to 30 feet to an unoccupied space it can see, named when it is cast."},{"id":"invisibility","name":"Invisibility","lvl":2,"tag":"N","ab":"","time":"action","range":"touch","conc":true,"rit":false,"dmg":"","tier":"assist","text":"A touched creature is Invisible for up to an hour of Concentration; one more creature per slot level above 2."},{"id":"acid-arrow","name":"Acid Arrow","lvl":2,"tag":"A","ab":"","time":"action","range":90,"conc":false,"rit":false,"dmg":"4d4 acid","tier":"assist","text":"A ranged spell attack: 4d4 acid on a hit, and half of that initial damage (2d4) on a miss."},{"id":"mirror-image","name":"Mirror Image","lvl":2,"tag":"N","ab":"","time":"action","range":"self","conc":false,"rit":false,"dmg":"","tier":"manual","text":"Three illusory duplicates for a minute: when hit, roll a d6 for each remaining duplicate and on a 3 or higher a duplicate is hit and destroyed instead. Blind, Blindsight and Truesight foes are unaffected."},{"id":"fireball","name":"Fireball","lvl":3,"tag":"S","ab":"dex","time":"action","range":150,"conc":false,"rit":false,"dmg":"8d6 fire","tier":"assist","text":"A burst of fire: each creature in a 20-foot-radius sphere makes a Dexterity save, taking 8d6 fire damage on a failure or half on a success; damage grows with higher slots. Flammable objects in the area that are not worn or carried start burning, which the DM applies."},{"id":"lightning-bolt","name":"Lightning Bolt","lvl":3,"tag":"S","ab":"dex","time":"action","range":"self","conc":false,"rit":false,"dmg":"8d6 lightning","tier":"auto","text":"A 100-foot-long, 5-foot-wide line of lightning from the caster in a chosen direction: each creature in it makes a Dexterity save, taking 8d6 lightning damage on a failure or half on a success; damage grows with higher slots."},{"id":"counterspell","name":"Counterspell","lvl":3,"tag":"S","ab":"con","time":"reaction","range":60,"conc":false,"rit":false,"dmg":"","tier":"auto","text":"A Reaction when a creature within 60 feet casts a spell with Verbal, Somatic or Material components: it makes a Constitution save or the spell fizzles, wasting its action and (if a slot was used) not spending the slot. Cast by standing instruction (never, always, or ask its player) against a spell the engine casts; spells the DM casts by hand, and reaction spells, are the DM's to counter."},{"id":"hypnotic-pattern","name":"Hypnotic Pattern","lvl":3,"tag":"S","ab":"wis","time":"action","range":120,"conc":true,"rit":false,"dmg":"","tier":"assist","text":"A twisting pattern in a 30-foot cube: each creature that can see it makes a Wisdom save or is Charmed for up to a minute of Concentration, and while Charmed is Incapacitated with a Speed of 0."},{"id":"fly","name":"Fly","lvl":3,"tag":"N","ab":"","time":"action","range":"touch","conc":true,"rit":false,"dmg":"","tier":"manual","text":"A touched willing creature gains a Fly Speed of 60 feet and can hover for up to 10 minutes of Concentration, and falls when it ends if still aloft. Higher slots add one creature each."},{"id":"haste","name":"Haste","lvl":3,"tag":"N","ab":"","time":"action","range":30,"conc":true,"rit":false,"dmg":"","tier":"assist","text":"A willing creature gets +2 to AC and Advantage on Dexterity saves for up to a minute of Concentration."},{"id":"vampiric-touch","name":"Vampiric Touch","lvl":3,"tag":"A","ab":"","time":"action","range":"touch","conc":true,"rit":false,"dmg":"3d6 necrotic","tier":"assist","text":"A melee spell attack for 3d6 necrotic damage, with more from higher slots; on a hit the caster regains half the damage dealt, which the DM applies. The SRD gives the range as Self; it is entered as touch so the engine can reach a creature within reach."},{"id":"slow","name":"Slow","lvl":3,"tag":"S","ab":"wis","time":"action","range":120,"conc":true,"rit":false,"dmg":"","tier":"assist","text":"In a 40-foot cube, up to six creatures make a Wisdom save or are slowed for up to a minute of Concentration: -2 to AC and Dexterity saves. The caster picks up to six creatures in the cube and the engine applies the save and those two penalties."}];
+const WEAPONS = [{"id":"club","name":"Club","cat":"simple","kind":"melee","dmg":"1d4","type":"bludgeoning","props":["light"],"range":null,"mastery":"slow"},{"id":"dagger","name":"Dagger","cat":"simple","kind":"melee","dmg":"1d4","type":"piercing","props":["finesse","light","thrown"],"range":[20,60],"mastery":"nick"},{"id":"greatclub","name":"Greatclub","cat":"simple","kind":"melee","dmg":"1d8","type":"bludgeoning","props":["two-handed"],"range":null,"mastery":"push"},{"id":"handaxe","name":"Handaxe","cat":"simple","kind":"melee","dmg":"1d6","type":"slashing","props":["light","thrown"],"range":[20,60],"mastery":"vex"},{"id":"javelin","name":"Javelin","cat":"simple","kind":"melee","dmg":"1d6","type":"piercing","props":["thrown"],"range":[30,120],"mastery":"slow"},{"id":"light-hammer","name":"Light Hammer","cat":"simple","kind":"melee","dmg":"1d4","type":"bludgeoning","props":["light","thrown"],"range":[20,60],"mastery":"nick"},{"id":"mace","name":"Mace","cat":"simple","kind":"melee","dmg":"1d6","type":"bludgeoning","props":[],"range":null,"mastery":"sap"},{"id":"quarterstaff","name":"Quarterstaff","cat":"simple","kind":"melee","dmg":"1d6","type":"bludgeoning","props":["versatile"],"range":null,"mastery":"topple"},{"id":"sickle","name":"Sickle","cat":"simple","kind":"melee","dmg":"1d4","type":"slashing","props":["light"],"range":null,"mastery":"nick"},{"id":"spear","name":"Spear","cat":"simple","kind":"melee","dmg":"1d6","type":"piercing","props":["thrown","versatile"],"range":[20,60],"mastery":"sap"},{"id":"dart","name":"Dart","cat":"simple","kind":"ranged","dmg":"1d4","type":"piercing","props":["finesse","thrown"],"range":[20,60],"mastery":"vex"},{"id":"light-crossbow","name":"Light Crossbow","cat":"simple","kind":"ranged","dmg":"1d8","type":"piercing","props":["ammunition","loading","two-handed"],"range":[80,320],"mastery":"slow"},{"id":"shortbow","name":"Shortbow","cat":"simple","kind":"ranged","dmg":"1d6","type":"piercing","props":["ammunition","two-handed"],"range":[80,320],"mastery":"vex"},{"id":"sling","name":"Sling","cat":"simple","kind":"ranged","dmg":"1d4","type":"bludgeoning","props":["ammunition"],"range":[30,120],"mastery":"slow"},{"id":"battleaxe","name":"Battleaxe","cat":"martial","kind":"melee","dmg":"1d8","type":"slashing","props":["versatile"],"range":null,"mastery":"topple"},{"id":"flail","name":"Flail","cat":"martial","kind":"melee","dmg":"1d8","type":"bludgeoning","props":[],"range":null,"mastery":"sap"},{"id":"glaive","name":"Glaive","cat":"martial","kind":"melee","dmg":"1d10","type":"slashing","props":["heavy","reach","two-handed"],"range":null,"mastery":"graze"},{"id":"greataxe","name":"Greataxe","cat":"martial","kind":"melee","dmg":"1d12","type":"slashing","props":["heavy","two-handed"],"range":null,"mastery":"cleave"},{"id":"greatsword","name":"Greatsword","cat":"martial","kind":"melee","dmg":"2d6","type":"slashing","props":["heavy","two-handed"],"range":null,"mastery":"graze"},{"id":"halberd","name":"Halberd","cat":"martial","kind":"melee","dmg":"1d10","type":"slashing","props":["heavy","reach","two-handed"],"range":null,"mastery":"cleave"},{"id":"lance","name":"Lance","cat":"martial","kind":"melee","dmg":"1d10","type":"piercing","props":["heavy","reach","two-handed"],"range":null,"mastery":"topple"},{"id":"longsword","name":"Longsword","cat":"martial","kind":"melee","dmg":"1d8","type":"slashing","props":["versatile"],"range":null,"mastery":"sap"},{"id":"maul","name":"Maul","cat":"martial","kind":"melee","dmg":"2d6","type":"bludgeoning","props":["heavy","two-handed"],"range":null,"mastery":"topple"},{"id":"morningstar","name":"Morningstar","cat":"martial","kind":"melee","dmg":"1d8","type":"piercing","props":[],"range":null,"mastery":"sap"},{"id":"pike","name":"Pike","cat":"martial","kind":"melee","dmg":"1d10","type":"piercing","props":["heavy","reach","two-handed"],"range":null,"mastery":"push"},{"id":"rapier","name":"Rapier","cat":"martial","kind":"melee","dmg":"1d8","type":"piercing","props":["finesse"],"range":null,"mastery":"vex"},{"id":"scimitar","name":"Scimitar","cat":"martial","kind":"melee","dmg":"1d6","type":"slashing","props":["finesse","light"],"range":null,"mastery":"nick"},{"id":"shortsword","name":"Shortsword","cat":"martial","kind":"melee","dmg":"1d6","type":"piercing","props":["finesse","light"],"range":null,"mastery":"vex"},{"id":"trident","name":"Trident","cat":"martial","kind":"melee","dmg":"1d8","type":"piercing","props":["thrown","versatile"],"range":[20,60],"mastery":"topple"},{"id":"warhammer","name":"Warhammer","cat":"martial","kind":"melee","dmg":"1d8","type":"bludgeoning","props":["versatile"],"range":null,"mastery":"push"},{"id":"war-pick","name":"War Pick","cat":"martial","kind":"melee","dmg":"1d8","type":"piercing","props":["versatile"],"range":null,"mastery":"sap"},{"id":"whip","name":"Whip","cat":"martial","kind":"melee","dmg":"1d4","type":"slashing","props":["finesse","reach"],"range":null,"mastery":"slow"},{"id":"blowgun","name":"Blowgun","cat":"martial","kind":"ranged","dmg":"1","type":"piercing","props":["ammunition","loading"],"range":[25,100],"mastery":"vex"},{"id":"hand-crossbow","name":"Hand Crossbow","cat":"martial","kind":"ranged","dmg":"1d6","type":"piercing","props":["ammunition","light","loading"],"range":[30,120],"mastery":"vex"},{"id":"heavy-crossbow","name":"Heavy Crossbow","cat":"martial","kind":"ranged","dmg":"1d10","type":"piercing","props":["ammunition","heavy","loading","two-handed"],"range":[100,400],"mastery":"push"},{"id":"longbow","name":"Longbow","cat":"martial","kind":"ranged","dmg":"1d8","type":"piercing","props":["ammunition","heavy","two-handed"],"range":[150,600],"mastery":"slow"},{"id":"musket","name":"Musket","cat":"martial","kind":"ranged","dmg":"1d12","type":"piercing","props":["ammunition","loading","two-handed"],"range":[40,120],"mastery":"slow"},{"id":"pistol","name":"Pistol","cat":"martial","kind":"ranged","dmg":"1d10","type":"piercing","props":["ammunition","loading"],"range":[30,90],"mastery":"vex"}];
+const ARMOUR = [{"id":"padded-armor","name":"Padded Armor","cat":"light","ac":11,"dex":"full","str":null,"stealth":true},{"id":"leather-armor","name":"Leather Armor","cat":"light","ac":11,"dex":"full","str":null,"stealth":false},{"id":"studded-leather-armor","name":"Studded Leather Armor","cat":"light","ac":12,"dex":"full","str":null,"stealth":false},{"id":"hide-armor","name":"Hide Armor","cat":"medium","ac":12,"dex":2,"str":null,"stealth":false},{"id":"chain-shirt","name":"Chain Shirt","cat":"medium","ac":13,"dex":2,"str":null,"stealth":false},{"id":"scale-mail","name":"Scale Mail","cat":"medium","ac":14,"dex":2,"str":null,"stealth":true},{"id":"breastplate","name":"Breastplate","cat":"medium","ac":14,"dex":2,"str":null,"stealth":false},{"id":"half-plate-armor","name":"Half Plate Armor","cat":"medium","ac":15,"dex":2,"str":null,"stealth":true},{"id":"ring-mail","name":"Ring Mail","cat":"heavy","ac":14,"dex":null,"str":null,"stealth":true},{"id":"chain-mail","name":"Chain Mail","cat":"heavy","ac":16,"dex":null,"str":13,"stealth":true},{"id":"splint-armor","name":"Splint Armor","cat":"heavy","ac":17,"dex":null,"str":15,"stealth":true},{"id":"plate-armor","name":"Plate Armor","cat":"heavy","ac":18,"dex":null,"str":15,"stealth":true},{"id":"shield","name":"Shield","cat":"shield","ac":2,"dex":null,"str":null,"stealth":false}];
+
+
+// ============================== the model (a stand-in for derive.js: SRD 5.2 rules, level 5) ==============================
+const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const AB3 = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
+const ABN = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+const PB = 3, LEVEL = 5;
+const mod = (s) => Math.floor((s - 10) / 2);
+const sg = (n) => (n >= 0 ? '+' : '−') + Math.abs(n);
+const sg0 = (n) => (n === 0 ? '' : sg(n));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+const W = Object.fromEntries(WEAPONS.map((w) => [w.id, w]));
+const A = Object.fromEntries(ARMOUR.map((a) => [a.id, a]));
+const SP = Object.fromEntries(SPELLS.map((s) => [s.id, s]));
+const SKILL_NAMES = { acrobatics: 'Acrobatics', athletics: 'Athletics', history: 'History', insight: 'Insight', religion: 'Religion', stealth: 'Stealth', arcana: 'Arcana', investigation: 'Investigation', medicine: 'Medicine', nature: 'Nature' };
+
+const FEATS = [
+  { id: 'alert', name: 'Alert', cat: 'Origin', once: true, sum: 'Add your Proficiency Bonus to Initiative; you may swap Initiative with a willing ally.',
+    text: ['Add your Proficiency Bonus to Initiative rolls.', 'Right after rolling Initiative you may trade Initiatives with a willing ally in the fight, unless either of you is Incapacitated.'] },
+  { id: 'magic-initiate', name: 'Magic Initiate', cat: 'Origin', sum: 'Learn two cantrips and one level 1 spell from the Cleric, Druid or Wizard list.',
+    text: ['Learn two cantrips and one level 1 spell from the Cleric, Druid or Wizard list, cast with Intelligence, Wisdom or Charisma (chosen with the feat).', 'The level 1 spell is always prepared; cast it once without a slot, again after a Long Rest, or with your own slots. Taken again, choose another list.'] },
+  { id: 'savage-attacker', name: 'Savage Attacker', cat: 'Origin', once: true, sum: 'Once a turn, roll a weapon hit’s damage dice twice and keep either result.',
+    text: ['Once a turn, when you hit with a weapon, roll its damage dice twice and use either result.'] },
+  { id: 'skilled', name: 'Skilled', cat: 'Origin', sum: 'Gain proficiency in any three skills or tools.',
+    text: ['Gain proficiency in any three skills or tools, in any mix. Can be taken more than once.'] },
+  { id: 'ability-score-improvement', name: 'Ability Score Improvement', cat: 'General', lvl4: true, sum: 'Raise one score by 2, or two scores by 1 each (no score above 20).',
+    text: ['Raise one ability score by 2, or two scores by 1 each; no score above 20. Can be taken more than once.'] },
+  { id: 'grappler', name: 'Grappler', cat: 'General', once: true, lvl4: true, needs: 'Needs Strength or Dexterity 13', sum: '+1 Strength or Dexterity; an Unarmed Strike can hit and grapple at once.',
+    text: ['Strength or Dexterity +1 (to 20).', 'Once a turn, an Unarmed Strike that hits during the Attack action can both deal damage and grapple; Advantage on attack rolls against a creature you are grappling; moving a grappled creature your size or smaller costs no extra movement.'] },
+];
+const FEAT = Object.fromEntries(FEATS.map((f) => [f.id, f]));
+
+// The two sample characters. Everything a class decides is in this table; the numbers below it are worked out.
+const CHARS = {
+  monk: { id: 'monk', cls: 'Monk', sub: 'Warrior of the Open Hand', hitDie: 8, base: { str: 10, dex: 16, con: 14, int: 8, wis: 15, cha: 10 }, name: 'Tamsin', caster: false,
+    skillPool: ['acrobatics', 'athletics', 'history', 'insight', 'religion', 'stealth'], skillN: 2,
+    armourTrained: [], shieldTrained: false,
+    weaponTrained: (w) => w.cat === 'simple' || (w.cat === 'martial' && w.props.includes('light')),
+    isMonkWeapon: (w) => w.kind === 'melee' && (w.cat === 'simple' || w.props.includes('light')),
+    trainText: 'Armour: none. Shields: no. Weapons: Simple weapons, and Martial weapons that have the Light property.' },
+  wizard: { id: 'wizard', cls: 'Wizard', sub: 'Evoker', hitDie: 6, base: { str: 8, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, name: 'Ilsa', caster: true, castAb: 'int',
+    skillPool: ['arcana', 'history', 'insight', 'investigation', 'medicine', 'nature', 'religion'], skillN: 2,
+    armourTrained: [], shieldTrained: false,
+    weaponTrained: (w) => w.cat === 'simple', isMonkWeapon: () => false,
+    trainText: 'Armour: none. Shields: no. Weapons: Simple weapons.', cantrips: 4, prepared: 9, slots: { 1: 4, 2: 3, 3: 2 } },
+};
+const COLORS = ['#c8553d', '#d9a441', '#4a7c59', '#5b6fb5', '#8e5ba6', '#3a8f9c', '#c2607f', '#7d8590'];
+const DEFAULTS = {
+  monk: () => ({ name: 'Tamsin', color: '#5b6fb5', skills: new Set(['acrobatics', 'insight']), bg: 'alert', l4: null, asi: 'dex', armour: '', shield: false, weapons: new Set(['shortsword', 'quarterstaff']), cantrips: new Set(), prepared: new Set(), open: { armour: false, weapons: false }, info: new Set(), acc: null }),
+  wizard: () => ({ name: 'Ilsa', color: '#8e5ba6', skills: new Set(['arcana', 'investigation']), bg: 'skilled', l4: null, asi: 'int', armour: '', shield: false, weapons: new Set(['dagger', 'quarterstaff']),
+    cantrips: new Set(['fire-bolt', 'ray-of-frost', 'mage-hand']), prepared: new Set(['magic-missile', 'burning-hands', 'shield', 'sleep', 'misty-step', 'scorching-ray', 'fireball', 'counterspell']), open: { armour: false, weapons: false }, info: new Set(), acc: null }),
+};
+const S = { char: 'monk', theme: 'classic', frame: null, screen: 'build', live: true, pk: { monk: DEFAULTS.monk(), wizard: DEFAULTS.wizard() }, toast: '', sig: {} };
+
+function finalScores(c, p) {
+  const sc = { ...c.base };
+  if (p.l4 === 'ability-score-improvement') sc[p.asi] = Math.min(20, sc[p.asi] + 2);
+  if (p.l4 === 'grappler') sc[p.asi === 'str' ? 'str' : 'dex'] = Math.min(20, sc[p.asi === 'str' ? 'str' : 'dex'] + 1);
+  return sc;
+}
+const dieScale = (d) => { const m = /^(\d+)d(\d+)(.*)$/.exec(d); if (!m) return d; return `${m[1] * 2}d${m[2]}${m[3]}`; };
+const spellDmg = (s) => { let d = s.dmg.replace(' chosen', ''); if (s.lvl === 0 && d) d = dieScale(d.replace(/ .*/, '')) + (s.dmg.includes(' ') ? ' ' + s.dmg.split(' ').slice(1).join(' ') : ''); return d; };
+const SPELL_EXTRA = { 'magic-missile': ' ×3 darts', 'scorching-ray': ' ×3 rays', 'chromatic-orb': ' (type you pick)' };
+
+// What the character is, worked out from the picks: Armour Class, Hit Points, Speed, attacks, and what is turned off.
+function calc(cid) {
+  const c = CHARS[cid], p = S.pk[cid], sc = finalScores(c, p), M = Object.fromEntries(ABIL.map((a) => [a, mod(sc[a])]));
+  const monk = cid === 'monk';
+  const suit = p.armour ? A[p.armour] : null;
+  const suitTrained = suit ? c.armourTrained.includes(suit.cat) : true;
+  const shieldWorn = p.shield, shieldCounts = shieldWorn && c.shieldTrained;
+  const martial = monk && !suit && !shieldWorn;
+  const flags = [], acWhy = [];
+  let ac;
+  if (suit) {
+    const dexPart = suit.dex === 'full' ? M.dex : typeof suit.dex === 'number' ? Math.min(M.dex, suit.dex) : 0;
+    ac = suit.ac + dexPart;
+    acWhy.push(`${suit.name} ${suit.ac}${suit.dex === 'full' ? ` + DEX ${sg(M.dex)}` : typeof suit.dex === 'number' ? ` + DEX ${sg(dexPart)} (max ${suit.dex})` : ''}`);
+  } else if (monk && !shieldWorn) { ac = 10 + M.dex + M.wis; acWhy.push(`10 + DEX ${sg(M.dex)} + WIS ${sg(M.wis)} (Unarmored Defense)`); }
+  else { ac = 10 + M.dex; acWhy.push(`10 + DEX ${sg(M.dex)}`); }
+  if (shieldWorn) { if (shieldCounts) { ac += 2; acWhy.push('Shield +2'); } else acWhy.push('Shield +0 (not trained: no AC bonus)'); }
+  let speed = 30 + (martial ? 10 : 0);
+  if (suit && suit.str && sc.str < suit.str) { speed -= 10; flags.push(`Speed −10 ft: ${suit.name} needs Strength ${suit.str}`); }
+  if (suit && !suitTrained) { flags.unshift('Disadvantage on every Strength and Dexterity roll'); if (c.caster) flags.unshift('Cannot cast spells'); }
+  if (suit && suit.stealth) flags.push('Disadvantage on Stealth checks');
+  if (shieldWorn && !c.shieldTrained) flags.push('The Shield gives no AC (not trained)');
+  if (monk && !martial) flags.push('Martial Arts, Unarmored Defense and Unarmored Movement are off');
+  const hp = c.hitDie + M.con + (LEVEL - 1) * (c.hitDie / 2 + 1 + M.con);
+  const init = M.dex + (p.bg === 'alert' || p.l4 === 'alert' ? PB : 0);
+  const att = [];
+  if (monk) att.push({ id: 'unarmed-strike', name: 'Unarmed Strike', hit: (martial ? M.dex : M.str) + PB, dmg: martial ? `1d8${sg0(M.dex)}` : `1${sg0(M.str)}`, type: 'bludgeoning', trained: true, note: martial ? 'Martial Arts' : '' });
+  for (const w of WEAPONS) {
+    if (!p.weapons.has(w.id)) continue;
+    const trained = c.weaponTrained(w), mw = monk && c.isMonkWeapon(w), useMA = martial && mw, fin = w.props.includes('finesse');
+    const a = useMA ? Math.max(M.str, M.dex) : w.kind === 'ranged' ? M.dex : fin ? Math.max(M.str, M.dex) : M.str;
+    const die = useMA ? '1d8' : w.dmg;
+    att.push({ id: w.id, name: w.name, hit: a + (trained ? PB : 0), dmg: `${die}${sg0(a)}`, type: w.type, trained, note: mw && martial ? 'Monk weapon' : '', range: w.range });
+  }
+  const sp = [];
+  if (c.caster) {
+    const dc = 8 + PB + M[c.castAb], atk = PB + M[c.castAb];
+    for (const id of [...p.cantrips, ...p.prepared]) { const s = SP[id]; if (!s.dmg) continue;
+      sp.push({ id, spell: s, name: s.name, tag: s.tag, ab: s.ab, hit: s.tag === 'A' ? sg(atk) : s.tag === 'S' ? `DC ${dc}` : '—', dmg: spellDmg(s) + (SPELL_EXTRA[id] ?? ''), lvl: s.lvl }); }
+    sp.sort((x, y) => x.lvl - y.lvl);
+  }
+  return { c, p, sc, M, ac, acWhy: acWhy.join(', '), hp, speed, init, att, sp, flags, martial, suit, suitTrained, dc: c.caster ? 8 + PB + M[c.castAb] : 0, atk: c.caster ? PB + M[c.castAb] : 0, focus: monk ? 5 : 0, focusDc: monk ? 8 + PB + M.wis : 0 };
+}
+
+// What is still to choose, in words (a greyed Save says why).
+function needs(cid) {
+  const c = CHARS[cid], p = S.pk[cid], n = [];
+  if (p.skills.size < c.skillN) n.push({ sec: 'skills', t: `${c.skillN - p.skills.size} skill${c.skillN - p.skills.size === 1 ? '' : 's'}` });
+  if (!p.bg) n.push({ sec: 'feats', t: 'a background feat' });
+  if (!p.l4) n.push({ sec: 'feats', t: 'a level 4 feat' });
+  if (c.caster) {
+    if (p.cantrips.size < c.cantrips) n.push({ sec: 'spells', t: `${c.cantrips - p.cantrips.size} cantrip${c.cantrips - p.cantrips.size === 1 ? '' : 's'}` });
+    if (p.prepared.size < c.prepared) n.push({ sec: 'spells', t: `${c.prepared - p.prepared.size} prepared spell${c.prepared - p.prepared.size === 1 ? '' : 's'}` });
+  }
+  return n;
+}
+
+// ============================== pieces ==============================
+const ICON = {
+  slash: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>',
+  target: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
+  die: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18M4 7.5l16 9M20 7.5l-16 9" opacity=".45"/></svg>',
+  none: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/></svg>',
+  warn: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>',
+  info: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  spark: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 6.3L21 12l-6.8 2.7L12 21l-2.2-6.3L3 12l6.8-2.7z"/></svg>',
+};
+const tagWords = (s) => (s.tag === 'A' ? 'Attack' : s.tag === 'S' ? `${AB3[s.ab]} save` : 'No roll');
+const tagHTML = (s, sm) => `<span class="tag ${s.tag === 'A' ? 'attack' : s.tag === 'S' ? 'save' : 'none'}${sm ? ' sm' : ''}">${s.tag === 'A' ? ICON.target : s.tag === 'S' ? ICON.die : ICON.none}${tagWords(s)}</span>`;
+const npHTML = (sm) => `<span class="np${sm ? ' sm' : ''}">${ICON.slash}Not proficient</span>`;
+const pips = (n, max) => `<span class="pips" aria-hidden="true">${Array.from({ length: max }, (_, i) => `<span class="pip${i < n ? '' : ' empty'}"></span>`).join('')}</span>`;
+const infoBtn = (key, label) => `<button type="button" class="info" data-info="${key}" data-fid="info-${key}" aria-expanded="${S.pk[S.char].info.has(key)}" aria-label="About ${esc(label)}"><i>i</i></button>`;
+const spellTime = (t) => ({ action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', minute: '1 minute', hour: '1 hour' }[t] ?? t);
+const spellRange = (r) => (r === 'self' ? 'Self' : r === 'touch' ? 'Touch' : typeof r === 'number' ? `${r} ft` : r);
+const lvText = (s) => (s.lvl ? `(lvl ${s.lvl})` : '(cantrip)');
+const firstSentence = (t) => (t || '').split(/(?<=\.) /)[0];
+const tagMeaning = (s, ch) => s.tag === 'A' ? `You roll a spell attack: d20 ${sg(ch.atk)} against the target’s Armor Class.` : s.tag === 'S' ? `The target rolls a ${ABN[s.ab]} saving throw against your spell save DC ${ch.dc}.` : 'Nothing is rolled to see whether it works.';
+
+// ============================== the accordion sections ==============================
+function sections(cid) {
+  const ch = calc(cid), c = ch.c, p = ch.p, nd = needs(cid);
+  const needOf = (sec) => { const n = nd.filter((x) => x.sec === sec); return n.length ? `Choose ${n.map((x) => x.t).join(', ')}` : ''; };
+  const featName = (id) => FEAT[id]?.name;
+  const list = [
+    { id: 'who', title: 'Who', tip: `${p.name || 'Unnamed'} · ${c.cls} ${LEVEL} · ${c.sub}`, html: () => whoHTML(ch) },
+    { id: 'scores', title: 'Ability scores', tip: ABIL.map((a) => `${AB3[a]} ${ch.sc[a]}`).join(' · '), html: () => scoresHTML(ch) },
+    { id: 'skills', title: 'Skills', tip: p.skills.size ? [...p.skills].map((k) => SKILL_NAMES[k]).join(', ') + ` · ${p.skills.size} of ${c.skillN}` : 'None chosen yet', need: needOf('skills'), html: () => skillsHTML(ch) },
+    { id: 'power', title: c.caster ? 'Spell slots and features' : 'Focus Points and features', tip: c.caster ? `Spell slots 4 · 3 · 2, back on a Long Rest · ${CLASS_FEATURES[cid].length} features` : `Focus Points 5, all back on a Short Rest · ${CLASS_FEATURES[cid].length + 4} features`, html: () => powerHTML(ch) },
+    { id: 'feats', title: 'Feats', tip: `Background: ${featName(p.bg) ?? 'not chosen'} · Level 4: ${featName(p.l4) ?? 'not chosen'}`, need: needOf('feats'), html: () => featsHTML(ch) },
+    { id: 'gear', title: 'Armour and weapons', tip: `${p.armour ? A[p.armour].name : 'No armour'}${p.shield ? ' + Shield' : ''} · ${p.weapons.size} weapon${p.weapons.size === 1 ? '' : 's'}${[...p.weapons].some((w) => !c.weaponTrained(W[w])) || (p.armour && !ch.suitTrained) || p.shield ? ' · not proficient with something' : ' · all trained'}`, html: () => gearHTML(ch) },
+  ];
+  if (c.caster) list.push({ id: 'spells', title: 'Spells', tip: `${p.cantrips.size} of ${c.cantrips} cantrips · ${p.prepared.size} of ${c.prepared} prepared`, need: needOf('spells'), html: () => spellsHTML(ch) });
+  return list;
+}
+
+function whoHTML(ch) {
+  const { c, p } = ch;
+  return `<div class="field"><label for="f-name">Name</label><input type="text" id="f-name" data-fid="f-name" value="${esc(p.name)}" maxlength="40" autocomplete="off"></div>
+    <div class="field"><label>Pawn colour</label><div class="swatches" role="group" aria-label="Pawn colour">${COLORS.map((k) => `<button type="button" data-color="${k}" data-fid="col-${k}" style="background:${k}" aria-pressed="${p.color === k}" aria-label="${k}"></button>`).join('')}</div></div>
+    <div class="field"><label>Class and level</label><div class="val">${c.cls} ${LEVEL}<small>as today: class, level and subclass pickers are not redrawn here</small></div></div>
+    <div class="field"><label>Subclass</label><div class="val">${c.sub}</div></div>`;
+}
+function scoresHTML(ch) {
+  const { c, p, sc, M } = ch;
+  const up = (a) => sc[a] !== c.base[a];
+  return `<p class="lead">Set as today (Standard array, Point cost, Roll or by hand). What a feat adds shows here and on the live sheet.</p>
+    <div class="tiles">${ABIL.map((a) => `<div class="tile${up(a) ? ' up' : ''}"><small>${ABN[a]}</small><b>${sc[a]}</b><span class="m">${sg(M[a])}</span>${up(a) ? `<small>${c.base[a]} + feat</small>` : ''}</div>`).join('')}</div>
+    <p class="lead" style="margin-top:8px">Proficiency Bonus ${sg(PB)} at level ${LEVEL}.</p>`;
+}
+function skillsHTML(ch) {
+  const { c, p } = ch, full = p.skills.size >= c.skillN;
+  return `<p class="lead">Choose ${c.skillN} from the ${c.cls}’s list. ${p.skills.size} of ${c.skillN} chosen.</p><div class="chipset">${c.skillPool.map((k) => `<label><input type="checkbox" data-skill="${k}" data-fid="sk-${k}" ${p.skills.has(k) ? 'checked' : ''} ${!p.skills.has(k) && full ? 'disabled' : ''}><span>${SKILL_NAMES[k]}</span></label>`).join('')}</div>${full ? '<p class="lead">Untick one to change your mind.</p>' : ''}`;
+}
+
+// Class powers (item 1 and 2 of #603): the resource is its own card, then what spends it, then every feature with when it is used.
+const MONK_SPEND = [
+  { key: 'flurry', n: 'Flurry of Blows', when: 'Bonus Action', cost: '1 Focus Point', sum: 'Make two Unarmed Strikes.', text: ['Spend 1 Focus Point to make two Unarmed Strikes as a Bonus Action.', 'Open Hand Technique adds an effect to each hit of a Flurry (see below).'] },
+  { key: 'patient', n: 'Patient Defense', when: 'Bonus Action', cost: '1 Focus Point', sum: 'Disengage and Dodge together. Plain Disengage is free.', text: ['Take the Disengage action as a Bonus Action, for free.', 'Or spend 1 Focus Point to take both Disengage and Dodge as a Bonus Action.'] },
+  { key: 'step', n: 'Step of the Wind', when: 'Bonus Action', cost: '1 Focus Point', sum: 'Disengage and Dash together, jump doubled. Plain Dash is free.', text: ['Take the Dash action as a Bonus Action, for free.', 'Or spend 1 Focus Point to take both Disengage and Dash as a Bonus Action; your jump distance is doubled for the turn.'] },
+  { key: 'stun', n: 'Stunning Strike', when: 'When you hit', cost: '1 Focus Point', sum: 'Once a turn, a hit can Stun the target if it fails a CON save.', text: ['Once a turn, when you hit with a Monk weapon or an Unarmed Strike, spend 1 Focus Point.', 'The target makes a Constitution save against your Focus save DC or is Stunned until the start of your next turn. On a success its Speed is halved and the next attack against it has Advantage.'] },
+];
+const CLASS_FEATURES = {
+  monk: [
+    { g: 'Attacks', key: 'martial', n: 'Martial Arts', when: 'Always on', sum: 'Unarmed Strikes and Monk weapons use the 1d8 Martial Arts die and Dexterity; one Unarmed Strike is a Bonus Action.', text: ['While unarmed or holding only Monk weapons, with no armour and no Shield: roll 1d8 in place of the normal damage, use Dexterity for attack and damage, and make an Unarmed Strike as a Bonus Action.', 'Monk weapons are Simple melee weapons and Martial melee weapons with the Light property.'] },
+    { g: 'Attacks', key: 'extra', n: 'Extra Attack', when: 'Attack action', sum: 'Attack twice when you take the Attack action.', text: ['Attack twice when you take the Attack action.'] },
+    { g: 'Attacks', key: 'open', n: 'Open Hand Technique', when: 'On a Flurry hit', sum: 'Each Flurry of Blows hit can Push, Topple or Addle the target.', text: ['When you hit with a Flurry of Blows attack, impose one effect: Addle, Push (Strength save or pushed 15 feet) or Topple (Dexterity save or knocked Prone).'] },
+    { g: 'Defence', key: 'ud', n: 'Unarmored Defense', when: 'Always on', sum: 'With no armour or Shield, Armor Class is 10 + DEX + WIS.', text: ['While you wear no armour and hold no Shield, your base Armor Class is 10 plus your Dexterity and Wisdom modifiers.'] },
+    { g: 'Defence', key: 'deflect', n: 'Deflect Attacks', when: 'Reaction', sum: 'When hit, cut the damage by 1d10 + DEX + Monk level.', text: ['When an attack roll hits you and its damage includes Bludgeoning, Piercing or Slashing, use your Reaction to reduce the damage by 1d10 + your Dexterity modifier + your Monk level.'] },
+    { g: 'Defence', key: 'slowfall', n: 'Slow Fall', when: 'Reaction', sum: 'When you fall, cut the damage by 5 × Monk level.', text: ['Use your Reaction when you fall to reduce the damage by five times your Monk level.'] },
+    { g: 'Movement and recovery', key: 'um', n: 'Unarmored Movement', when: 'Always on', sum: 'Speed +10 ft with no armour or Shield.', text: ['Your Speed increases by 10 feet while you wear no armour and hold no Shield.'] },
+    { g: 'Movement and recovery', key: 'um2', n: 'Uncanny Metabolism', when: 'Roll Initiative', sum: 'Once per Long Rest: regain all Focus Points and some Hit Points.', text: ['When you roll Initiative you can regain all spent Focus Points and Hit Points equal to your Monk level plus a roll of your Martial Arts die. Once per Long Rest.'] },
+  ],
+  wizard: [
+    { g: 'Casting', key: 'cast', n: 'Spellcasting', when: 'Always on', sum: 'Cast Wizard spells with Intelligence: spell save DC 14, spell attack +6.', text: ['Cast Wizard spells using Intelligence. Cantrips are free; prepared spells spend a slot of their level or higher. Slots come back on a Long Rest.'] },
+    { g: 'Casting', key: 'rit', n: 'Ritual Adept', when: 'Ritual', sum: 'Cast any Ritual spell in your spellbook without preparing it.', text: ['Cast any Ritual spell in your spellbook as a Ritual without preparing it.'] },
+    { g: 'Casting', key: 'arcane', n: 'Arcane Recovery', when: 'After a Short Rest', sum: 'Once per Long Rest: regain spell slots worth up to 3 levels (none of level 6+).', text: ['When you finish a Short Rest, recover spell slots with a combined level up to half your Wizard level (rounded up), none of level 6 or higher. Once per Long Rest.'] },
+    { g: 'Casting', key: 'mem', n: 'Memorize Spell', when: 'Short Rest', sum: 'Swap one prepared spell for another from your spellbook.', text: ['On a Short Rest, swap one prepared spell for another from your spellbook.'] },
+    { g: 'Evoker', key: 'evo', n: 'Evocation Savant', when: 'Always on', sum: 'Add Evocation spells to your spellbook more cheaply.', text: ['Add two Evocation spells of level 2 or lower to your spellbook, and one more each time you gain a new spell slot level.'] },
+    { g: 'Evoker', key: 'potent', n: 'Potent Cantrip', when: 'Damaging cantrip', sum: 'A damaging cantrip that misses or is saved against still deals half damage.', text: ['A damaging cantrip that misses or is saved against still deals half damage, with no other effect.'] },
+    { g: 'Skills', key: 'scholar', n: 'Scholar', when: 'Always on', sum: 'Expertise in one skill you know from Arcana, History, Investigation, Medicine, Nature or Religion.', text: ['Expertise in one of Arcana, History, Investigation, Medicine, Nature or Religion that you are proficient in.'] },
+  ],
+};
+function featureRow(f, cid) {
+  const open = S.pk[cid].info.has(f.key);
+  return `<div class="feat-row"><div class="top2"><span class="nm">${esc(f.n)}</span>${f.cost ? `<span class="cost">${esc(f.cost)}</span>` : ''}<span class="when">${esc(f.when)}</span>${infoBtn(f.key, f.n)}</div><div class="sum">${esc(f.sum)}</div>${open ? `<div class="more">${f.text.map((t) => `<p>${esc(t)}</p>`).join('')}</div>` : ''}</div>`;
+}
+function powerHTML(ch) {
+  const { c } = ch;
+  if (c.caster) {
+    const rows = Object.entries(c.slots).map(([l, n]) => `<div class="slotrow"><span class="lbl">Level ${l}</span>${pips(n, n)}<span>${n}</span></div>`).join('');
+    const groups = [...new Set(CLASS_FEATURES.wizard.map((f) => f.g))];
+    return `<div class="res"><h3>Spell slots <span class="alias">what casting spends</span></h3>${rows}<p class="back" style="margin:6px 0 0"><b>All back on a Long Rest.</b> Arcane Recovery gives some back after a Short Rest.</p></div>
+      <p class="lead">A spell of level 2 spends a slot of level 2 or higher. Cantrips spend nothing. Spell save DC ${ch.dc}, spell attack ${sg(ch.atk)}.</p>
+      ${groups.map((g) => `<div class="sechead">${esc(g)}</div>${CLASS_FEATURES.wizard.filter((f) => f.g === g).map((f) => featureRow(f, 'wizard')).join('')}`).join('')}`;
+  }
+  const groups = [...new Set(CLASS_FEATURES.monk.map((f) => f.g))];
+  return `<div class="res"><h3>Focus Points <span class="alias">Monk’s Focus: your chi</span></h3>
+      <div class="big"><span class="num">5</span>${pips(5, 5)}</div>
+      <div class="back"><b>All back on a Short Rest</b> (or a Long Rest). You have one per Monk level. Save DC ${ch.focusDc} (8 + WIS ${sg(ch.M.wis)} + Proficiency ${sg(PB)}).</div></div>
+    <div class="sechead">What spends Focus Points <span>1 point each</span></div>
+    ${MONK_SPEND.map((f) => featureRow(f, 'monk')).join('')}
+    ${groups.map((g) => `<div class="sechead">${esc(g)}</div>${CLASS_FEATURES.monk.filter((f) => f.g === g).map((f) => featureRow(f, 'monk')).join('')}`).join('')}`;
+}
+
+// Feats (item 5): a one-line summary and an info button before choosing.
+function featOpt(slot, f, ch, taken, blocked) {
+  const p = ch.p, key = `${slot}-${f.id}`, checked = p[slot] === f.id, open = p.info.has(key);
+  return `<div class="opt${checked ? ' on' : ''}${blocked ? ' dim' : ''}"><label><input type="radio" name="feat-${slot}" data-feat="${slot}|${f.id}" data-fid="ft-${key}" ${checked ? 'checked' : ''} ${blocked ? 'disabled' : ''}><span class="box round"></span>
+    <span class="txt"><span class="l1"><span class="nm">${esc(f.name)}</span><span class="cat">${f.cat}</span></span><span class="l2" style="${blocked ? '' : 'color:var(--ink);font-size:14px'}">${esc(blocked || f.sum)}</span></span></label>${infoBtn(key, f.name)}</div>
+    ${open ? `<div class="more">${f.text.map((t) => `<p>${esc(t)}</p>`).join('')}${f.needs ? `<p><b>${f.needs}.</b></p>` : ''}</div>` : ''}
+    ${checked && f.id === 'ability-score-improvement' ? abPick('Raise which score by 2?', p.asi, ABIL) : ''}${checked && f.id === 'grappler' ? abPick('Raise which score by 1?', p.asi === 'str' ? 'str' : 'dex', ['str', 'dex']) : ''}`;
+}
+const abPick = (label, cur, list) => `<div class="abpick"><span>${label}</span>${list.map((a) => `<button type="button" data-asi="${a}" data-fid="asi-${a}" aria-pressed="${cur === a}">${AB3[a]}</button>`).join('')}</div>`;
+function featsHTML(ch) {
+  const { c, p, sc } = ch;
+  const okGrapple = sc.str >= 13 || sc.dex >= 13;
+  const block = (slot, f) => (f.once && (slot === 'bg' ? p.l4 : p.bg) === f.id ? 'Already chosen; this feat can’t be taken twice.' : f.id === 'grappler' && !okGrapple ? 'Needs Strength or Dexterity 13.' : '');
+  return `<p class="lead">Each feat says what it does before you pick it. Tap <b>i</b> for the whole text.</p>
+    <div class="group"><div class="gh">Background: Origin feat <span>choose one</span></div>${FEATS.filter((f) => f.cat === 'Origin').map((f) => featOpt('bg', f, ch, false, block('bg', f))).join('')}</div>
+    <div class="group"><div class="gh">Level 4: a feat <span>Ability Score Improvement is one</span></div>${FEATS.map((f) => featOpt('l4', f, ch, false, block('l4', f))).join('')}</div>`;
+}
+
+// Armour and weapons (item 3): what the class is trained in first, then the rest with what it costs.
+function npArmourCost(ch, a) {
+  const { c } = ch;
+  const main = c.caster ? 'Disadvantage on Strength and Dexterity rolls · can’t cast spells' : 'Disadvantage on Strength and Dexterity rolls · turns off Monk features';
+  const also = [a.stealth ? 'Disadvantage on Stealth' : '', a.str ? `Speed −10 ft unless Strength ${a.str}` : ''].filter(Boolean).join(' · ');
+  return { main, also };
+}
+const acText = (a) => (a.dex === 'full' ? `AC ${a.ac} + DEX` : typeof a.dex === 'number' ? `AC ${a.ac} + DEX (max ${a.dex})` : `AC ${a.ac}`);
+function gearHTML(ch) {
+  const { c, p } = ch, monk = c.id === 'monk';
+  const noteBase = monk ? `<div class="note${ch.martial ? '' : ' alert'}">${ch.martial ? ICON.info : ICON.warn}<div>${ch.martial ? '<b>Armour or a Shield turns off</b> Unarmored Defense, Martial Arts and Unarmored Movement. A Monk keeps all three by wearing nothing.' : '<b>Right now these are OFF:</b> Unarmored Defense, Martial Arts and Unarmored Movement, because of the armour or Shield below.'}</div></div>` : '';
+  const trainLine = `<p class="lead"><b>${c.cls} training.</b> ${c.trainText}</p>`;
+  // armour
+  const armourNP = ARMOUR.filter((a) => a.cat !== 'shield' && !c.armourTrained.includes(a.cat));
+  const noneOpt = `<div class="opt${p.armour === '' ? ' on' : ''}"><label><input type="radio" name="armour" data-armour="" data-fid="ar-none" ${p.armour === '' ? 'checked' : ''}><span class="box round"></span><span class="txt"><span class="l1"><span class="nm">No armour</span><span class="cat good">Trained</span></span><span class="l2">${monk ? `AC ${10 + ch.M.dex + ch.M.wis}: 10 + DEX + WIS. Keeps Martial Arts and Unarmored Movement.` : `AC ${10 + ch.M.dex}: 10 + DEX.`}</span></span></label></div>`;
+  const armourRow = (a) => { const k = npArmourCost(ch, a), on = p.armour === a.id;
+    return `<div class="opt np${on ? ' on' : ''}"><label><input type="radio" name="armour" data-armour="${a.id}" data-fid="ar-${a.id}" ${on ? 'checked' : ''}><span class="box round"></span><span class="txt"><span class="l1"><span class="nm">${esc(a.name)}</span>${npHTML()}</span><span class="l2">${cap(a.cat)} · ${acText(a)}</span><span class="l2 cost">${k.main}</span>${k.also ? `<span class="l2 also">${k.also}</span>` : ''}</span></label></div>`; };
+  const armourOpen = p.open.armour || p.armour;
+  const shieldOn = p.shield;
+  const shieldRow = `<div class="opt np${shieldOn ? ' on' : ''}"><label><input type="checkbox" data-shield="1" data-fid="sh" ${shieldOn ? 'checked' : ''}><span class="box"></span><span class="txt"><span class="l1"><span class="nm">Shield</span>${npHTML()}</span><span class="l2">+2 AC if you are trained</span><span class="l2 cost">No AC bonus without training${monk ? ' · turns off Monk features' : ''}</span></span></label></div>`;
+  // weapons
+  const trainedW = WEAPONS.filter((w) => c.weaponTrained(w)), npW = WEAPONS.filter((w) => !c.weaponTrained(w));
+  const monkW = trainedW.filter((w) => c.isMonkWeapon(w)), otherW = trainedW.filter((w) => !c.isMonkWeapon(w));
+  const bonusOf = (w) => { const m = ch.M; const useMA = monk && c.isMonkWeapon(w) && ch.martial; const a = useMA ? Math.max(m.str, m.dex) : w.kind === 'ranged' ? m.dex : w.props.includes('finesse') ? Math.max(m.str, m.dex) : m.str; return { a, useMA }; };
+  const wRow = (w, trained) => { const on = p.weapons.has(w.id), b = bonusOf(w), hit = b.a + (trained ? PB : 0), die = b.useMA ? '1d8' : w.dmg;
+    const props = [w.kind === 'ranged' ? 'Ranged' : 'Melee', `${die}${sg0(b.a)} ${w.type}`, ...(w.range ? [`range ${w.range[0]}/${w.range[1]}`] : []), ...w.props.filter((x) => ['finesse', 'light', 'heavy', 'reach', 'thrown', 'two-handed', 'versatile', 'loading', 'ammunition'].includes(x)).map(cap)].join(' · ');
+    return `<div class="opt${trained ? '' : ' np'}${on ? ' on' : ''}"><label><input type="checkbox" data-weapon="${w.id}" data-fid="wp-${w.id}" ${on ? 'checked' : ''}><span class="box"></span><span class="txt"><span class="l1"><span class="nm">${esc(w.name)}</span>${trained ? (monk && c.isMonkWeapon(w) ? '<span class="cat good">Monk weapon</span>' : '') : npHTML()}<span style="margin-left:auto;font-weight:800;flex:none">${sg(hit)}</span></span><span class="l2">${props}</span>${trained ? '' : `<span class="l2 cost">No Proficiency Bonus on the attack roll: ${sg(hit)} instead of ${sg(hit + PB)}${monk && w.kind === 'melee' ? '. Not a Monk weapon: no Martial Arts die.' : ''}</span>`}</span></label></div>`; };
+  const wOpen = p.open.weapons || npW.some((w) => p.weapons.has(w.id));
+  const npTicked = npW.filter((w) => p.weapons.has(w.id)).length;
+  const unarmed = monk ? `<div class="opt"><label style="cursor:default"><span class="box" style="border-style:dashed;opacity:.6"></span><span class="txt"><span class="l1"><span class="nm">Unarmed Strike</span><span class="cat good">Monk weapon</span></span><span class="l2">Always available. ${ch.martial ? `1d8${sg0(ch.M.dex)} with Martial Arts.` : `1${sg0(ch.M.str)} without Martial Arts (armour or Shield).`}</span></span></label></div>` : '';
+  return `${trainLine}${noteBase}
+    <div class="sechead">Armour <span>one suit</span></div>
+    ${noneOpt}
+    <button type="button" class="disc" data-open="armour" data-fid="d-armour" aria-expanded="${!!armourOpen}"><span class="tx">${armourOpen ? 'Armour you are not proficient with' : `Show armour you are not proficient with (${armourNP.length})`}<small>${c.cls}s have no armour training. Each one says what it costs.</small></span><span class="chev">›</span></button>
+    ${armourOpen ? armourNP.map(armourRow).join('') : ''}
+    <div class="sechead">Shield</div>${shieldRow}
+    <div class="sechead">Weapons <span>tick what you carry</span></div>
+    ${monk ? `<div class="group"><div class="gh">Monk weapons <span>Martial Arts die and Dexterity</span></div>${unarmed}${monkW.map((w) => wRow(w, true)).join('')}</div>${otherW.length ? `<div class="group"><div class="gh">Trained, but not Monk weapons <span>normal damage</span></div>${otherW.map((w) => wRow(w, true)).join('')}</div>` : ''}`
+      : `<div class="group"><div class="gh">Simple weapons <span>you are proficient</span></div>${trainedW.map((w) => wRow(w, true)).join('')}</div>`}
+    <button type="button" class="disc" data-open="weapons" data-fid="d-weapons" aria-expanded="${!!wOpen}"><span class="tx">${wOpen ? 'Weapons you are not proficient with' : `Show weapons you are not proficient with (${npW.length})`}<small>${npTicked ? `${npTicked} ticked. ` : ''}You can carry them, but add no Proficiency Bonus to the attack roll.</small></span><span class="chev">›</span></button>
+    ${wOpen ? npW.map((w) => wRow(w, false)).join('') : ''}`;
+}
+
+// Spells (item 7 of the brief, #605): the tag sits beside the level.
+const CANTRIPS = SPELLS.filter((s) => s.lvl === 0), LEVELS = [1, 2, 3].map((l) => SPELLS.filter((s) => s.lvl === l));
+function spellOpt(s, ch, group, full, on) {
+  const key = `sp-${s.id}`, open = ch.p.info.has(key);
+  const sub = [spellTime(s.time), spellRange(s.range), s.dmg ? spellDmg(s) + (SPELL_EXTRA[s.id] ?? '') : '', s.conc ? 'Concentration' : '', s.rit ? 'Ritual' : ''].filter(Boolean).join(' · ');
+  const dis = !on && full;
+  return `<div class="opt${dis ? ' dim' : ''}"><label><input type="checkbox" data-spell="${group}|${s.id}" data-fid="${key}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''}><span class="box"></span><span class="txt"><span class="l1"><span class="nm">${esc(s.name)}</span><span class="lv"> ${lvText(s)}</span>${tagHTML(s)}</span><span class="l2">${esc(sub)}</span></span></label>${infoBtn(key, s.name)}</div>
+    ${open ? `<div class="more"><p><b>${tagWords(s)}.</b> ${esc(tagMeaning(s, ch))}</p><p>${esc(firstSentence(s.text))}</p></div>` : ''}`;
+}
+const keyLine = () => `<div class="keyline"><span>${tagHTML({ tag: 'A' })} you roll to hit</span><span>${tagHTML({ tag: 'S', ab: 'dex' })} the target rolls</span><span>${tagHTML({ tag: 'N' })} nothing is rolled</span></div>`;
+function spellsHTML(ch) {
+  const { c, p } = ch;
+  const cFull = p.cantrips.size >= c.cantrips, pFull = p.prepared.size >= c.prepared;
+  return `<p class="lead">Wizard spells use Intelligence: <b>spell save DC ${ch.dc}</b> (targets save against this), <b>spell attack ${sg(ch.atk)}</b>. Every spell shows its level and what is rolled.</p>${keyLine()}
+    <div class="sechead">Cantrips <span>${p.cantrips.size} of ${c.cantrips} chosen</span></div>${CANTRIPS.map((s) => spellOpt(s, ch, 'cantrips', cFull, p.cantrips.has(s.id))).join('')}
+    ${LEVELS.map((L, i) => `<div class="sechead">Level ${i + 1} <span>${i === 0 ? `prepared ${p.prepared.size} of ${c.prepared} (all levels)` : `${c.slots[i + 1]} slots`}</span></div>${L.map((s) => spellOpt(s, ch, 'prepared', pFull, p.prepared.has(s.id))).join('')}`).join('')}`;
+}
+
+// ============================== the live sheet (item 4): sticky strip on a phone, a panel on a desktop ==============================
+function attackRows(ch) {
+  const sig = {}, prev = S.sig[ch.c.id] ?? {};
+  const rows = [];
+  for (const a of ch.att) { const s = `${sg(a.hit)}|${a.dmg}|${a.trained}`; sig[a.id] = s;
+    rows.push(`<li class="arow${prev[a.id] !== s ? ' flash' : ''}" data-aid="${a.id}"><span class="n">${esc(a.name)}</span>${a.trained ? '' : npHTML(true)}<span class="h">${sg(a.hit)}</span><span class="d">${esc(a.dmg)} ${a.type}</span></li>`); }
+  for (const s of ch.sp) { const k = `${s.hit}|${s.dmg}`; sig['sp-' + s.id] = k;
+    rows.push(`<li class="arow${prev['sp-' + s.id] !== k ? ' flash' : ''}" data-aid="sp-${s.id}"><span class="n">${esc(s.name)}</span>${tagHTML(s.spell, true)}<span class="h">${esc(s.hit)}</span><span class="d">${esc(s.dmg)}</span></li>`); }
+  S.sig[ch.c.id] = sig;
+  return rows.join('');
+}
+const headsHTML = (ch) => (ch.flags.length ? `<div class="heads">${ICON.warn}<ul>${ch.flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : '');
+const attackNote = (ch) => (ch.c.id === 'monk' ? 'Attack action: 2 attacks (Extra Attack)' : 'Attack action: 1 attack');
+function liveStrip(ch) {
+  const c = ch.c;
+  return `<div class="live" id="live"><div class="chips"><span class="stat key">AC <b>${ch.ac}</b></span><span class="stat">HP <b>${ch.hp}</b></span><span class="stat">Speed <b>${ch.speed}</b> ft</span><span class="stat">Init <b>${sg(ch.init)}</b></span>
+    ${c.caster ? '<span class="stat key">Slots <b>4·3·2</b></span>' : '<span class="stat key">Focus Points <b>5</b></span>'}</div>
+    <div class="livehead"><b>Attacks</b><span>${attackNote(ch)}</span><span class="sp"></span><button type="button" id="livetoggle" data-fid="livetoggle" aria-expanded="${S.live}" aria-label="${S.live ? 'Hide' : 'Show'} the attacks list">${S.live ? '▴' : '▾'}</button></div>
+    ${S.live ? `<ul class="alist" id="alist" aria-live="polite">${attackRows(ch)}</ul>` : ''}${headsHTML(ch)}</div>`;
+}
+function liveBig(ch) {
+  const c = ch.c, p = ch.p;
+  return `<div class="livebig" id="live"><h2>${esc(p.name || 'Unnamed')}</h2><p class="sub">${c.cls} ${LEVEL} · ${c.sub}. This sheet follows every choice on the left.</p>
+    <div class="chips"><span class="stat key">AC <b>${ch.ac}</b></span><span class="stat">HP <b>${ch.hp}</b></span><span class="stat">Speed <b>${ch.speed}</b> ft</span><span class="stat">Initiative <b>${sg(ch.init)}</b></span><span class="stat">Proficiency <b>${sg(PB)}</b></span></div>
+    <div class="acwhy">AC ${ch.ac} = ${esc(ch.acWhy)}</div>
+    <h3>${c.caster ? 'Spell slots' : 'Focus Points'}<span>${c.caster ? 'back on a Long Rest' : 'back on a Short Rest'}</span></h3>
+    ${c.caster ? `<div class="chips">${Object.entries(c.slots).map(([l, n]) => `<span class="stat">Level ${l} ${pips(n, n)}</span>`).join('')}</div>` : `<div class="chips"><span class="stat key"><b>5</b> of 5 ${pips(5, 5)}</span><span class="stat">Save DC <b>${ch.focusDc}</b></span></div><div class="acwhy">Spent on Flurry of Blows, Patient Defense, Step of the Wind and Stunning Strike, 1 point each.</div>`}
+    ${c.caster ? `<div class="acwhy">Spell save DC ${ch.dc} · spell attack ${sg(ch.atk)}</div>` : ''}
+    <h3>Attacks<span>${attackNote(ch)}</span></h3><ul class="alist" id="alist" aria-live="polite">${attackRows(ch)}</ul>
+    ${monkFlurry(ch)}${headsHTML(ch)}</div>`;
+}
+const monkFlurry = (ch) => (ch.c.id === 'monk' && ch.martial ? `<h3>With Focus Points<span>1 point each</span></h3><ul class="alist"><li class="arow"><span class="n">Flurry of Blows</span><span class="h">${sg(ch.att[0].hit)}</span><span class="d">2 Unarmed Strikes, ${esc(ch.att[0].dmg)} each</span></li><li class="arow"><span class="n">Stunning Strike</span><span class="h">DC ${ch.focusDc}</span><span class="d">CON save or Stunned</span></li></ul>` : '');
+
+// ============================== the screen ==============================
+function accordion(cid) {
+  const list = sections(cid), p = S.pk[cid], cur = p.acc, open = list.findIndex((x) => x.id === cur);
+  const head = (x) => `<button type="button" class="acchead${x.id === cur ? ' on' : ''}${open >= 0 ? ' compact' : ''}" data-acc="${x.id}" data-fid="acc-${x.id}" aria-expanded="${x.id === cur}" aria-controls="acc-${x.id}"><span class="t"><b>${x.title}</b>${x.tip ? `<small>${esc(x.tip)}</small>` : ''}</span>${x.need ? `<span class="need">${esc(x.need)}</span>` : ''}<span class="chev" aria-hidden="true">›</span></button>`;
+  if (open < 0) return `<div class="acc"><div class="acc-top">${list.map(head).join('')}</div></div>`;
+  return `<div class="acc"><div class="acc-top">${list.slice(0, open + 1).map(head).join('')}</div><div class="acc-body" id="acc-${list[open].id}" data-sec="${list[open].id}" role="region" aria-label="${list[open].title}">${list[open].html()}</div><div class="acc-bot">${list.slice(open + 1).map(head).join('')}</div></div>`;
+}
+function buildHTML() {
+  const cid = S.char, ch = calc(cid), nd = needs(cid), desk = frame.classList.contains('desktop');
+  const status = nd.length ? `Still to choose: ${nd.map((x) => x.t).join(', ')}` : 'Ready to save';
+  return `<div class="create"><div class="top"><button type="button" class="x" data-act="cancel" aria-label="Cancel">✕</button><div class="ttl"><b>${esc(ch.p.name || 'New character')} · ${ch.c.cls} ${LEVEL}</b><small class="${nd.length ? '' : 'ready'}">${esc(status)}</small></div>
+    <button type="button" class="btn go" data-act="save" aria-disabled="${nd.length > 0}">Save</button></div>
+    <div class="main">${desk ? '' : liveStrip(ch)}<div class="left">${accordion(cid)}</div>${desk ? `<div class="right">${liveBig(ch)}</div>` : ''}</div></div>${S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : ''}`;
+}
+
+// "The same tag elsewhere": the tag is one function, drawn wherever a spell is picked or shown.
+function whereHTML() {
+  const ch = calc('wizard'), s = (id) => SP[id];
+  const pickRow = (sp, checked, sub) => `<div class="cast"><span class="box${checked ? '' : ''}" style="${checked ? 'background:var(--accent);border-color:var(--accent)' : ''}" aria-hidden="true">${checked ? '✓' : ''}</span><span class="txt"><span class="l1"><span class="nm">${esc(sp.name)}</span><span class="lv"> ${lvText(sp)}</span>${tagHTML(sp)}</span><span class="l2">${esc(sub ?? `${spellTime(sp.time)} · ${spellRange(sp.range)}`)}</span></span></div>`;
+  const playRow = (sp, slot) => `<div class="cast"><span class="txt"><span class="l1"><span class="nm">${esc(sp.name)}</span><span class="lv"> ${lvText(sp)}</span>${tagHTML(sp)}</span><span class="l2">${esc(spellTime(sp.time))} · ${esc(spellRange(sp.range))}${sp.dmg ? ' · ' + esc(spellDmg(sp)) : ''}</span></span><span class="slot">${slot}</span></div>`;
+  return `<div class="where"><h2>The same tag, wherever a spell is picked or shown (#605)</h2><p>One tag from the spell’s own data, drawn by one function: <b>Attack</b> (you roll to hit), <b>DEX save</b> (the target rolls; the ability is named), <b>No roll</b>. Same shape and size as the level, in every theme; the three shapes differ in fill and outline as well as in words.</p>
+    <div class="wgrid">
+      <div class="wcard"><h3>New character</h3><p>Spells section of the build screen</p>${[s('fire-bolt'), s('acid-splash'), s('mage-hand')].map((x) => pickRow(x, x.id !== 'mage-hand')).join('')}</div>
+      <div class="wcard"><h3>Level up</h3><p>Choosing the new spells at level 5</p>${[s('fireball'), s('counterspell'), s('hypnotic-pattern')].map((x) => pickRow(x, x.id === 'fireball')).join('')}</div>
+      <div class="wcard"><h3>Prepare after a Long Rest</h3><p>Swap prepared spells; 8 of 9 chosen</p>${[s('magic-missile'), s('shield'), s('sleep'), s('scorching-ray')].map((x) => pickRow(x, x.id !== 'sleep')).join('')}</div>
+      <div class="wcard"><h3>In play: the spell list</h3><p>Cast rows, with what each costs</p>${[[s('fire-bolt'), 'Cantrip'], [s('burning-hands'), 'Level 1 slot'], [s('shield'), 'Reaction'], [s('hold-person'), 'Level 2 slot'], [s('fireball'), 'Level 3 slot']].map(([x, k]) => playRow(x, k)).join('')}</div>
+    </div></div>`;
+}
+
+// ============================== drawing and events ==============================
+const frame = document.getElementById('frame');
+function render() {
+  const keep = { acc: {}, alist: 0, left: 0 };
+  const ab = frame.querySelector('.acc-body'); if (ab) keep.acc[ab.dataset.sec] = ab.scrollTop;
+  const al = frame.querySelector('#alist'); if (al) keep.alist = al.scrollTop;
+  const fid = document.activeElement?.dataset?.fid, selStart = document.activeElement?.selectionStart;
+  frame.dataset.theme = S.theme;
+  frame.className = 'frame ' + (S.frame ?? (window.innerWidth >= 900 ? 'desktop' : 'phone'));
+  frame.innerHTML = S.screen === 'tags' ? whereHTML() : buildHTML();
+  const nb = frame.querySelector('.acc-body'); if (nb && keep.acc[nb.dataset.sec] !== undefined) nb.scrollTop = keep.acc[nb.dataset.sec];
+  const nl = frame.querySelector('#alist');
+  if (nl) { nl.scrollTop = keep.alist; const f = nl.querySelector('.flash'); if (f) { const top = f.offsetTop - nl.offsetTop; if (top < nl.scrollTop || top + f.offsetHeight > nl.scrollTop + nl.clientHeight) nl.scrollTop = Math.max(0, top - nl.clientHeight + f.offsetHeight + 4); } }
+  if (fid) { const t = frame.querySelector(`[data-fid="${fid}"]`); if (t) { t.focus({ preventScroll: true }); if (selStart != null && t.setSelectionRange) try { t.setSelectionRange(selStart, selStart); } catch {} } }
+  document.querySelectorAll('#mock [data-set]').forEach((b) => { const [k, v] = b.dataset.set.split('='); const cur = k === 'frame' ? (S.frame ?? (frame.classList.contains('desktop') ? 'desktop' : 'phone')) : S[k]; b.classList.toggle('on', cur === v); });
+}
+function say(t) { S.toast = t; render(); clearTimeout(say.t); say.t = setTimeout(() => { S.toast = ''; render(); }, 2600); }
+function toggleSet(set, id, on) { if (on) set.add(id); else set.delete(id); }
+
+frame.addEventListener('click', (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  const p = S.pk[S.char];
+  if (t.dataset.acc) { p.acc = p.acc === t.dataset.acc ? null : t.dataset.acc; return render(); }
+  if (t.dataset.info) { toggleSet(p.info, t.dataset.info, !p.info.has(t.dataset.info)); return render(); }
+  if (t.dataset.open) { p.open[t.dataset.open] = !(p.open[t.dataset.open] || (t.dataset.open === 'armour' ? p.armour : [...p.weapons].some((w) => !CHARS[S.char].weaponTrained(W[w])))); return render(); }
+  if (t.dataset.color) { p.color = t.dataset.color; return render(); }
+  if (t.dataset.asi) { p.asi = t.dataset.asi; return render(); }
+  if (t.id === 'livetoggle') { S.live = !S.live; return render(); }
+  if (t.dataset.act === 'save') return t.getAttribute('aria-disabled') === 'true' ? say('Not yet: ' + needs(S.char).map((x) => x.t).join(', ') + ' still to choose.') : say('Mockup: the character would be saved here.');
+  if (t.dataset.act === 'cancel') return say('Mockup: this would close the screen.');
+});
+frame.addEventListener('change', (e) => {
+  const t = e.target, p = S.pk[S.char], c = CHARS[S.char];
+  if (t.dataset.skill) toggleSet(p.skills, t.dataset.skill, t.checked);
+  else if (t.dataset.weapon) toggleSet(p.weapons, t.dataset.weapon, t.checked);
+  else if (t.dataset.armour !== undefined && t.name === 'armour') p.armour = t.dataset.armour;
+  else if (t.dataset.shield) p.shield = t.checked;
+  else if (t.dataset.feat) { const [slot, id] = t.dataset.feat.split('|'); p[slot] = id; if (id === 'grappler' && p.asi !== 'str') p.asi = 'dex'; }
+  else if (t.dataset.spell) { const [g, id] = t.dataset.spell.split('|'); toggleSet(p[g], id, t.checked); }
+  render();
+});
+frame.addEventListener('input', (e) => { if (e.target.id === 'f-name') { S.pk[S.char].name = e.target.value; const ttl = frame.querySelector('.ttl b'); if (ttl) ttl.textContent = `${e.target.value || 'New character'} · ${CHARS[S.char].cls} ${LEVEL}`; } });
+
+// the mockup's own controls and the address
+function setOpt(k, v) {
+  if (k === 'char' && CHARS[v]) S.char = v; else if (k === 'theme') S.theme = v; else if (k === 'frame') S.frame = v; else if (k === 'screen') S.screen = v;
+  else if (k === 'open') S.pk[S.char].acc = v === 'none' ? null : v;
+  else if (k === 'armour') S.pk[S.char].armour = v; else if (k === 'shield') S.pk[S.char].shield = v === '1';
+  else if (k === 'weapons') S.pk[S.char].weapons = new Set(v.split(',').filter(Boolean)); else if (k === 'l4') S.pk[S.char].l4 = v || null;
+  else if (k === 'np') { S.pk[S.char].open.armour = true; S.pk[S.char].open.weapons = true; }
+  else if (k === 'bare') document.body.classList.add('bare');
+}
+function fromHash() { for (const part of location.hash.replace(/^#/, '').split('&')) { if (!part) continue; const [k, v = ''] = part.split('='); setOpt(k, decodeURIComponent(v)); } }
+document.getElementById('mock').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'reset') { S.pk[S.char] = DEFAULTS[S.char](); S.sig = {}; return render(); }
+  if (b.dataset.set) { const [k, v] = b.dataset.set.split('='); setOpt(k, v); render(); } });
+window.addEventListener('resize', () => { if (!S.frame) render(); });
+window.mock = { set(o) { for (const [k, v] of Object.entries(o)) setOpt(k, String(v)); render(); }, state: S, calc };
+fromHash(); render();
+</script>
+</body>
+</html>
