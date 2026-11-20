@@ -251,14 +251,14 @@ async function pass(browser, url, label, opts, grid) {
             if (!/^← Back to Characters/.test(await text(p, '#qb-close')) || !(await h44('#qb-close'))) throw new Error('build Back is not a labelled 44 px button');
             // the colour: swatches and a box in the page, never the browser's own colour dialog; every target 44 px
             if (await p.$('#qb input[type="color"]')) throw new Error('the build screen still uses the browser colour dialog');
-            const sw = await p.$$eval('#qb .qb-swatch', (b) => b.map((x) => { const r = x.getBoundingClientRect(); return [r.width, r.height]; }));
+            const sw = await p.$$eval('#qb .qb-swatch:not([hidden])', (b) => b.map((x) => { const r = x.getBoundingClientRect(); return [r.width, r.height]; }));
             if (sw.length < 8 || sw.some(([w, h]) => w < 43.5 || h < 43.5)) throw new Error(`swatches: ${JSON.stringify(sw)}`);
             await tp('#qb-color-8e5ba6');
             if ((await p.getAttribute('#qb-color-8e5ba6', 'aria-checked')) !== 'true') throw new Error('the swatch is not marked chosen');
             await tp('#qb-color-more'); await waitShown(p, '#qb-color-hex');
             await p.fill('#qb-color-hex', 'nope'); await wait(p, () => /Type a colour/.test(document.querySelector('#qb-color-note').textContent));
             if ((await p.getAttribute('#qb-color-8e5ba6', 'aria-checked')) !== 'true') throw new Error('a bad colour changed the choice');
-            await p.fill('#qb-color-hex', '12AB34'); await wait(p, () => document.querySelector('#qb-color .qb-swatch.on')?.dataset.color === '#12ab34' || !document.querySelector('#qb-color .qb-swatch.on'));
+            await p.fill('#qb-color-hex', '12AB34'); await wait(p, () => document.querySelector('#qb-color .qb-swatch.on')?.dataset.color === '#12ab34');
             await sh('2-colour');
             await p.fill('#qb-name', 'Dara Flint'); await p.selectOption('#qb-class', 'fighter'); await p.selectOption('#qb-levelsel', '3');
             await wait(p, () => document.querySelector('#qb-draft'));
@@ -271,7 +271,7 @@ async function pass(browser, url, label, opts, grid) {
             await p.reload(); await waitShown(p, '#lobby');
             await tp('#lobby-party > summary'); await tp('#lobby-mychars'); await tp('#mc-new'); await waitShown(p, '#qb');
             if ((await p.inputValue('#qb-name')) !== 'Dara Flint') throw new Error('a reload lost the draft');
-            if ((await p.evaluate(() => document.querySelector('.qb-swatch.on')?.dataset.color ?? document.querySelector('#qb-color-hex').value)) !== '#12ab34') throw new Error('the colour was lost');
+            if ((await p.evaluate(() => document.querySelector('.qb-swatch.on')?.dataset.color)) !== '#12ab34') throw new Error('the colour was lost');
             await tp('#qb-startover'); await tp('#qb-startover'); await wait(p, () => document.querySelector('#qb-name').value === '');
             if ((await draft())?.build?.new) throw new Error('Start over left the draft');
             // saving keeps the colour as a #rrggbb and clears the draft

@@ -438,14 +438,19 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   // The colour: a row of swatches (44 px each, a tick on the chosen one) and "More", which opens a box for any `#rrggbb`. No browser dialog.
   function colourField() {
     const wrap = el('div', { class: 'qb-colour', id: 'qb-color' });
-    const mine = b.color.toLowerCase(), listed = PALETTE.some(([v]) => v === mine);
-    const choices = listed ? PALETTE : [...PALETTE, [mine, 'Current colour']];
     const row = el('div', { class: 'qb-swatches', role: 'radiogroup', 'aria-label': 'Colour' });
-    const mark = () => { for (const sw of row.querySelectorAll('.qb-swatch')) { const on = sw.dataset.color === b.color.toLowerCase(); sw.setAttribute('aria-checked', String(on)); sw.classList.toggle('on', on); sw.textContent = on ? '\u2713' : ''; } };
-    for (const [v, name] of choices) {
+    // The last swatch is the colour in use when it is not one of the nine (an imported sheet, or one typed in More); it is hidden otherwise.
+    const custom = el('button', { type: 'button', role: 'radio', class: 'qb-swatch', id: 'qb-color-current', 'aria-label': 'Current colour', title: 'Current colour', hidden: true });
+    const mark = () => {
+      const mine = b.color.toLowerCase(), listed = PALETTE.some(([v]) => v === mine);
+      custom.hidden = listed; if (!listed) { custom.dataset.color = mine; custom.style.background = mine; }
+      for (const sw of row.querySelectorAll('.qb-swatch')) { const on = !sw.hidden && sw.dataset.color === mine; sw.setAttribute('aria-checked', String(on)); sw.classList.toggle('on', on); sw.textContent = on ? '\u2713' : ''; }
+    };
+    for (const [v, name] of PALETTE) {
       row.append(el('button', { type: 'button', role: 'radio', class: 'qb-swatch', id: `qb-color-${v.slice(1)}`, 'data-color': v, 'aria-label': name, title: name, style: `background:${v}`,
         onclick: () => { b.color = v; mark(); if (hex) hex.value = v; update(); } }));
     }
+    row.append(custom);
     const hex = el('input', { type: 'text', id: 'qb-color-hex', value: b.color, maxLength: 7, autocomplete: 'off', autocapitalize: 'off', spellcheck: false, 'aria-label': 'Colour as #rrggbb', 'aria-describedby': 'qb-color-note',
       oninput: () => { const v = hexOf(hex.value); note.textContent = v || !hex.value.trim() ? '' : 'Type a colour like #c8553d: a # and six letters or digits (0 to 9, a to f).'; if (v) { b.color = v; mark(); update(); } } });
     const note = el('p', { class: 'note qb-colour-note', id: 'qb-color-note', role: 'status' });
