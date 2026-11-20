@@ -435,6 +435,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // Taken before every action: for the undo history (claiming a seat is not undone), and to
         // put the game back if the engine throws part way through (review #132, L6).
         const was = mark(table.state), before = undoable(action) ? was : null;
+        const pingWas = action.type === "ping" ? JSON.stringify(was.tree) : null;
         try {
           res = engine.apply(table, table.state, action, { role: me.role, userId: me.id });
         } catch {
@@ -449,8 +450,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           undoOf(table).track(action, res.events, before, table.state);
           dirtyHistory.add(table.code);
         }
-        // A ping is told and nothing more: it is no activity that keeps a table awake and nothing of it is kept, so nothing is saved for it.
-        if (action.type !== "ping") { touch(table); save(table); }
+        // A ping is no activity that keeps a table awake and nothing of it is kept, so it is neither touched nor saved, unless the passes that
+        // follow every action changed the game (a tile made out under the light rule, say): then it is saved like any other change.
+        if (action.type !== "ping" || JSON.stringify({ ...table.state, timeline: null }) !== pingWas) { touch(table); save(table); }
         if (before) tellUndo(table);
         broadcast(table, res.events);
       },
