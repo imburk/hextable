@@ -16,7 +16,8 @@ const kebab = (s) => String(s).toLowerCase().normalize('NFKD').replace(/[^a-z0-9
 const profFor = (level) => (Number.isInteger(level) && level >= 1 && level <= 20 ? 2 + Math.floor((level - 1) / 4) : 2);
 const DEFAULT_COLOR = '#3a7d44';
 // Parts of a record this form has no field for. They are kept as they were when a sheet is edited.
-const KEEP = ['speeds', 'hover', 'resist', 'vuln', 'immune'];
+// (`type`: a creature type other than Humanoid, from a species; docs/specs/species.md. A record never carries `humanoid`.)
+const KEEP = ['speeds', 'hover', 'resist', 'vuln', 'immune', 'type'];
 
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -94,6 +95,7 @@ function toRecord(m) {
 function recordOf(e) {
   const r = {};
   for (const k of ['name', 'cls', 'level', 'size', 'ac', 'speed', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools', 'castAbil', 'gear', ...KEEP, 'look']) if (e[k] !== undefined) r[k] = structuredClone(e[k]);
+  if (r.type === 'humanoid') delete r.type;
   r.hp = e.maxHp ?? e.hp;
   r.attacks = (e.attacks ?? []).map((a) => Object.fromEntries(['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse'].filter((k) => a[k] !== undefined).map((k) => [k, structuredClone(a[k])])));
   if (e.spells?.length) r.spells = e.spells.filter((id) => SPELLS[id]);

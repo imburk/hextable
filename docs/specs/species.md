@@ -489,3 +489,10 @@ the tests use two invented ones. What was settled in building, and what differs 
 - **State shape: no change, no version bump.** The sheet gains an optional field, the record and the creature an optional `type`.
   **What players are sent: unchanged for every sheet without a species.** A party creature is sent whole, so its `type` and its sheet's
   `species` reach the players once a sheet names one; the DM's event is never sent.
+
+**Fix round 1 (the review of #553).** The client's build sheet keeps `species` among the fields it has no control for (`KEEP`), so an edit or a
+level from the build screen keeps the id, and the hand-typed form keeps a record's `type` (`packages/client/buildsheet.js` and `quickentry.js`,
+beyond the issue's list, approved for this round). `lintSpecies` builds the record id of every feature and option, with the species alone and
+with each lineage option in turn, and refuses two that come out the same ("feature old-craft's option lore and feature old-craft-lore would both be
+"species-old-craft-lore" in a character's record: rename one"). An option's tier counts toward the entry's. A flat amount that adds a modifier
+(`{ prof: 1 }` with `addMod`) bakes to one number ("+5"), not "+3+2". State shape: unchanged.

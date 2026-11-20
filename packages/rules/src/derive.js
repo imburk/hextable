@@ -289,7 +289,12 @@ function bakeAt(list, c, level, abil, pb = proficiencyFor(level)) {
     for (const k of ['heal', 'tempHp', 'damage']) {
       if (x[k] && typeof x[k] === 'object') {
         x[k] = amount(x[k], c, level, abil);                  // a die from the class table
-        if (typeof x[k] === 'number') x[k] = signed(x[k]);    // or a flat amount (`{ prof }`: Adrenaline Rush's Temporary Hit Points) as dice text, "+3", as a step's dice are
+        // Or a flat amount (`{ prof }`: Adrenaline Rush's Temporary Hit Points), as dice text ("+3"), as a step's dice are. A modifier it adds
+        // (`addMod`) goes into the number, so it is "+5", not "+3+2", which no dice reader takes.
+        if (typeof x[k] === 'number') {
+          if (typeof x.addMod === 'string') { x[k] += mod(abil[x.addMod]); delete x.addMod; }
+          x[k] = signed(x[k]);
+        }
       }
       if (k in x && typeof x.addMod === 'string') { x[k] = dice(x[k], mod(abil[x.addMod])); delete x.addMod; }
     }

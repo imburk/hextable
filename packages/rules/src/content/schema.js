@@ -2055,6 +2055,7 @@ function lintSpecies(e, say) {
     lintFeature(f, FEAT_CLASS, (m) => sub(m.replace('a feat or an item cannot', 'a species cannot').replace('used once in the class', 'used once in the species (a lineage option\'s feature ids are not the species\' own)')), ids);
     if (!f || typeof f !== 'object') return;
     if (TIERS.includes(f.tier)) lows.push(f.tier);
+    for (const o of Array.isArray(f.options) ? f.options : []) if (TIERS.includes(o?.tier)) lows.push(o.tier);      // an option chosen is played as a feature of its own tier
     const fs = (m) => sub(`feature ${typeof f.id === 'string' ? f.id : '(without an id)'}: ${m}`);
     if (f.feat !== undefined) fs('a place for a feat in a species waits on the Origin feat place (S4)');
     for (const g of [f.grants, ...(Array.isArray(f.options) ? f.options.map((o) => o?.grants) : [])]) {
@@ -2101,7 +2102,21 @@ function lintSpecies(e, say) {
       }
     }
   }
-  // A species is no higher a tier than its lowest feature (any lineage option's counts: the entry cannot know which one is chosen).
+  // The ids the features get in the record (derive.js, speciesFeatures): `species-<id>`, `species-<lineage>-<id>` for a lineage's, and `-<option>` after either
+  // for an option chosen. Two that come out the same (a feature "x-y" beside feature "x"'s option "y"; a lineage "a"'s feature "b" beside the species'
+  // feature "a-b") would make a sheet that cannot be played, so they are refused, for the species alone and with each lineage option in turn.
+  const recIds = (list, pre, label) => list.filter((f) => f && typeof f === 'object' && typeof f.id === 'string').flatMap((f) => [[`${pre}${f.id}`, `${label}feature ${f.id}`],
+    ...(Array.isArray(f.options) ? f.options : []).filter((o) => typeof o?.id === 'string').map((o) => [`${pre}${f.id}-${o.id}`, `${label}feature ${f.id}'s option ${o.id}`])]);
+  const sets = Array.isArray(lin?.options) && lin.options.length ? lin.options.filter((o) => o && typeof o === 'object' && ID.test(o.id ?? '') && Array.isArray(o.features)).map((o) => [o.id, o.features]) : [[null, []]];
+  const told = new Set();
+  for (const [lid, list] of sets) {
+    const seen = new Map();
+    for (const [rid, what] of [...recIds(e.features, 'species-', ''), ...recIds(list, `species-${lid}-`, `lineage ${lid}'s `)]) {
+      if (!seen.has(rid)) seen.set(rid, what);
+      else if (!told.has(rid)) { told.add(rid); say(`${seen.get(rid)} and ${what} would both be "${rid}" in a character's record: rename one`); }
+    }
+  }
+  // A species is no higher a tier than its lowest feature or option (any lineage option's counts: the entry cannot know which one is chosen).
   if (TIERS.includes(e.tier) && lows.some((t) => TIER_RANK[t] < TIER_RANK[e.tier])) say(`tier is ${e.tier}, but a feature is ${lows.reduce((a, b) => (TIER_RANK[b] < TIER_RANK[a] ? b : a))}: a species is no higher than its lowest feature`);
 }
 

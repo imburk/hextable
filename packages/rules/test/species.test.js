@@ -93,6 +93,16 @@ test("lintSpecies: the invented species pass; each refusal has its sentence", ()
   assert.equal(bad((s) => { s.lineage.options[1].features[1].grants.action.cost.resource = "surge"; }), "");
   assert.match(bad((s) => { s.lineage.options[0].features.push({ ...structuredClone(s.lineage.options[1].features[1]), id: "granite-burst" }); }), /lineage granite: feature granite-burst: a cost names "basalt-burst"/);
   assert.match(bad((s) => { s.dmNotes = "x".repeat(501); }), /dmNotes is text of at most 500 letters/);
+  // An option's tier counts as a feature's.
+  assert.match(bad((s) => { s.features[4].options[1].tier = "manual"; delete s.features[4].options[1].grants; }), /tier is auto, but a feature is manual: a species is no higher than its lowest feature/);
+  // Two ids that come out the same in the record: a feature "x-y" beside feature "x"'s option "y"; a lineage "a"'s feature "b" beside the species' feature "a-b".
+  const lore = { id: "old-craft-lore", name: "Old Lore", level: 1, tier: "auto", checked: false, text: "Advantage on Intelligence saves.", grants: { modifiers: [{ on: "save.int", op: "advantage" }] } };
+  assert.match(bad((s) => { s.features.push(lore); }), /feature old-craft's option lore and feature old-craft-lore would both be "species-old-craft-lore" in a character's record: rename one/);
+  assert.match(bad((s) => { s.features.push({ ...lore, id: "granite-granite-skin" }); }), /feature granite-granite-skin and lineage granite's feature granite-skin would both be "species-granite-granite-skin" in a character's record: rename one/);
+  // Only with the lineage option that makes it: Basalt's features are not Granite's.
+  assert.equal(bad((s) => { s.features.push({ ...lore, id: "granite-basalt-sight" }); }), "");
+  assert.match(bad((s) => { s.lineage.options[0].features.push({ ...lore, id: "granite-skin-x" }); s.lineage.options[0].features[0].options = [{ id: "x", name: "X", tier: "auto", text: "X.", grants: { resist: ["fire"] } }, { id: "z", name: "Z", tier: "auto", text: "Z.", grants: { resist: ["cold"] } }]; }),
+    /lineage granite's feature granite-skin's option x and lineage granite's feature granite-skin-x would both be "species-granite-granite-skin-x"/);
   // A pack with no species lints as before.
   assert.deepEqual(lintPack({ pack: PACK.pack }), []);
 });
@@ -127,6 +137,18 @@ test("a level 5 Stonefolk fighter: Resistance, Darkvision, save Advantage, Hit P
     assert.equal(featuresOf(stone(5))[0].f.id, "species-darkvision");
     assert.equal(speciesOf(stone(5)).id, "stonefolk");
   });
+});
+
+test("a flat amount with a modifier added bakes to one number: \"+5\", not \"+3+2\"", () => {
+  const sp = structuredClone(stonefolk);
+  sp.features[3].grants.action.effects = [{ tempHp: { prof: 1 }, addMod: "con" }];
+  assert.deepEqual(lintPack({ pack: PACK.pack, species: [sp] }), []);
+  CONTENT.species.stonefolk = sp;
+  try {
+    const r = derive(stone(5)).record;
+    assert.deepEqual(feat(r, "species-surge").action.effects, [{ tempHp: "+5" }], "3 (Proficiency Bonus) + 2 (Constitution)");
+    assert.deepEqual(lintRecord(r), []);
+  } finally { delete CONTENT.species.stonefolk; }
 });
 
 test("the lineage's features come at their character level, and the Proficiency Bonus and per-level numbers go by the character's level, across classes", () => {
