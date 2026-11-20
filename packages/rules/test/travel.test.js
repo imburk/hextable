@@ -66,7 +66,7 @@ test("an unknown entry and one nobody can stand at are refused, and nothing chan
   // The well's one start is the Lord's chest.
   map.entries.push({ id: "well", name: "The well", kind: "other" });
   map.starts.push({ level: "upper", q: -1, r: -6, entry: "well" });
-  for (const [entry, words] of [["dock", 'That map has no entry "dock".'], ["well", "Nobody can stand at The well."], [7, 'That map has no entry "7".']]) {
+  for (const [entry, words] of [["dock", 'That map has no entry "dock".'], ["well", "Nobody can stand at The well."], [7, "Name an entry by its id."], [{ id: "gate" }, "Name an entry by its id."]]) {
     const s = newGame(5), before = structuredClone(s);
     const r = apply(s, { type: "loadMap", map, entry }, DM);
     assert.ok(!r.ok, `${entry} is refused`);
@@ -93,6 +93,13 @@ test("arrivals come in marching order: the order set by the DM, and a column's l
   assert.deepEqual(t.entities[lead].pos, { ...ROOF[1], z: 10 }, "the leader comes first");
   const rest = party(t).filter((e) => e.id !== lead).sort((a, b) => a.march - b.march);
   rest.forEach((e, i) => assert.deepEqual(e.pos, { ...ROOF[i + 2], z: 10 }, `${e.id} in its place`));
+});
+
+test("marching order on a map with no entries: the first in the order takes the first start", () => {
+  const s = newGame(5), back = party(s).map((e) => e.id).reverse();
+  ok(apply(s, { type: "marchingOrder", order: back }, DM));
+  ok(apply(s, { type: "loadMap", map: structuredClone(keep) }, DM));
+  back.forEach((id, i) => assert.deepEqual(s.entities[id].pos, { ...keep.starts[i], z: 0 }, `${id} on start ${i}`));
 });
 
 test("a map whose every start has an entry sets the party down at its first entry when none is named", () => {

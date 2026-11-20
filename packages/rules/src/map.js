@@ -34,6 +34,13 @@ export function migrateMap(doc) {
     doc = { ...newMap({ id: 'valley', name: 'The valley' }), levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }] };
   }
   for (const k of ['walls', 'objects', 'regions', 'starts']) if (!Array.isArray(doc[k])) doc[k] = [];
+  // A start's `level` that names no level of the map is dropped, so the start is found by its cell as
+  // before levels were named (docs/specs/travel.md, Decision 3): a saved table whose level was removed
+  // before `unlevel` took its starts with it still loads.
+  if (Array.isArray(doc.levels)) {
+    const levels = new Set(doc.levels.map((l) => l?.id));
+    for (const st of doc.starts) if (st && typeof st === 'object' && st.level !== undefined && !levels.has(st.level)) delete st.level;
+  }
   // Format 1 to 2: every format 1 map is on hexes; `hexFeet` becomes `cellFeet` (the linter still
   // insists on 5). The header keeps its order: format, id, name, grid, cellFeet, then the rest.
   // A format 1 document's own `grid` or `cellFeet`, if it had any, meant nothing to the build that
@@ -144,7 +151,8 @@ export function lintMap(doc, extra = []) {
   const entryIds = new Set();
   for (const en of doc.entries ?? []) {
     if (!en || typeof en !== 'object' || Array.isArray(en)) { bad.push('An entry is not a record.'); continue; }
-    if (!text(en.id) || entryIds.has(en.id)) bad.push(`Entry id "${en.id}" is missing or used twice.`);
+    if (!text(en.id)) { bad.push(text(en.name) ? `The entry "${en.name}" has no id.` : 'An entry has no id.'); continue; }
+    if (entryIds.has(en.id)) bad.push(`Entry id "${en.id}" is used twice.`);
     entryIds.add(en.id);
     if (!text(en.name)) bad.push(`Entry "${en.id}" has no name.`);
     if (!ENTRY_KINDS.includes(en.kind)) bad.push(`Entry "${en.id}" has kind "${en.kind}"; it can be ${ENTRY_KINDS.join(', ')}.`);

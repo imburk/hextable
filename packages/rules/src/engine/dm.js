@@ -236,7 +236,8 @@ export const handlers = {
     const problems = lintMap(map);
     problems.length === 0 || fail(`That map can't be used. ${problems[0]}`);
     const entries = map.entries ?? [];
-    const entry = a.entry === undefined ? null : (typeof a.entry === 'string' && entries.find((en) => en.id === a.entry)) || fail(`That map has no entry "${a.entry}".`);
+    typeof a.entry === 'string' || a.entry === undefined || fail('Name an entry by its id.');
+    const entry = a.entry === undefined ? null : entries.find((en) => en.id === a.entry) || fail(`That map has no entry "${a.entry}".`);
     const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
     // A start's height (P18): its own `z`, else its level's, else the ground's.
     const zOf = (st) => st.z ?? map.levels.find((l) => l.id === st.level)?.z ?? 0;
@@ -246,8 +247,9 @@ export const handlers = {
       : map.starts.filter((st) => st.entry === entries[0]?.id);
     const first = mine[0] ?? parse(Object.keys(map.levels[0].tiles)[0]);
     const start = landing(map, first, zOf(first));
-    // Arrivals come in marching order (byMarch), so a column comes through the gate as it walked. One that
-    // leads a column and has no place in the order of its own walks first.
+    // Arrivals come in marching order (byMarch), "so the column comes through the gate in the order it walked"
+    // (travel.md, Decision 3). `partyFollow` numbers the followers and not their leader, who walks at the
+    // head: one that leads a column and has no place in the order of its own comes first.
     const led = new Set(Object.values(s.entities).map((e) => e.follow).filter(Boolean));
     const rank = (e) => e.march ?? (led.has(e.id) && !e.follow ? -1 : Infinity);
     const party = Object.values(s.entities).filter((e) => e.side === 'party').sort((x, y) => byMarch({ march: rank(x) }, { march: rank(y) }) || 0), spots = [], taken = new Set();

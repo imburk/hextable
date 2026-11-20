@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply } from "../src/engine.js";
 import * as H from "../src/hex.js";
-import { EDITS, ENTRY_KINDS, lintMap, newMap } from "../src/map.js";
+import { EDITS, ENTRY_KINDS, lintMap, migrateMap, newMap } from "../src/map.js";
+import { migrate } from "../src/migrate.js";
+import { view } from "../src/view.js";
 import { newGame } from "../src/scenario.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -40,7 +42,14 @@ test("lintMap refuses entries that do not hang together", () => {
   };
   const starts = field().starts;
   bad({ entries: "gate" }, '"entries" must be a list');
-  bad({ entries: [{ id: "gate", name: "A", kind: "gate" }, { id: "gate", name: "B", kind: "gate" }, { id: "loft", name: "L", kind: "landing" }] }, 'Entry id "gate" is missing or used twice');
+  bad({ entries: [{ id: "gate", name: "A", kind: "gate" }, { id: "gate", name: "B", kind: "gate" }, { id: "loft", name: "L", kind: "landing" }] }, 'Entry id "gate" is used twice');
+  bad({ entries: [{ name: "The back door", kind: "gate" }, ...field().entries] }, 'The entry "The back door" has no id.');
+  bad({ entries: [{ kind: "gate" }, ...field().entries] }, "An entry has no id.");
+  assert.ok(!lintMap(field({ entries: [{ kind: "gate" }, ...field().entries] })).some((x) => x.includes("undefined")), "no message says undefined");
+  bad({ entries: ["gate", ...field().entries] }, "An entry is not a record.");
+  bad({ entries: [null, ...field().entries] }, "An entry is not a record.");
+  bad({ entries: Array.from({ length: 101 }, (_, i) => ({ id: `e${i}`, name: `E${i}`, kind: "other" })) }, "It has more than 100 entries.");
+  bad({ starts: [...starts, { q: 1, r: 1, entry: 5 }] }, 'belongs to an entry that does not exist: "5"');
   bad({ entries: [{ id: "gate", kind: "gate" }, { id: "loft", name: "L", kind: "landing" }] }, 'Entry "gate" has no name');
   bad({ entries: [{ id: "gate", name: "G", kind: "door" }, { id: "loft", name: "L", kind: "landing" }] }, 'Entry "gate" has kind "door"');
   bad({ entries: [...field().entries, { id: "well", name: "The well", kind: "other" }] }, 'Entry "well" has no start');
@@ -87,4 +96,47 @@ test("removing a level takes the starts placed on it", () => {
   assert.ok(lintMap(m).some((x) => x.includes('Entry "loft" has no start')));
   EDITS.entries(m, { entries: m.entries.filter((en) => en.id !== "loft") });
   assert.deepEqual(lintMap(m), []);
+});
+
+test("unlevel through mapEdit: refused while an entry would be left with no start, and done with the entries in the same change", () => {
+  const s = newGame(5);
+  ok(apply(s, { type: "loadMap", map: field() }, DM));
+  const before = structuredClone(s);
+  const r = apply(s, { type: "mapEdit", ops: [{ op: "unlevel", id: "loft" }] }, DM);
+  assert.ok(!r.ok);
+  assert.match(r.error, /Entry "loft" has no start/);
+  assert.deepEqual(s, before, "nothing changed");
+  ok(apply(s, { type: "mapEdit", ops: [{ op: "unlevel", id: "loft" }, { op: "entries", entries: field().entries.filter((en) => en.id !== "loft") }] }, DM));
+  assert.deepEqual(s.map.levels.map((l) => l.id), ["ground"]);
+  assert.deepEqual(s.map.starts, [{ q: -4, r: 0 }, { q: 4, r: 0, entry: "gate" }]);
+  assert.deepEqual(s.map.entries.map((en) => en.id), ["gate"]);
+});
+
+test("a start whose level is gone is read by its cell: such a map loads, and a saved table with one still loads", () => {
+  // A level removed before unlevel took its starts with it.
+  const stale = () => field({ entries: undefined, starts: [{ level: "attic", q: -4, r: 0 }, { q: 4, r: 0 }] });
+  assert.deepEqual(migrateMap(stale()).starts, [{ q: -4, r: 0 }, { q: 4, r: 0 }]);
+  const s = newGame(5);
+  ok(apply(s, { type: "loadMap", map: stale() }, DM));
+  assert.deepEqual(Object.values(s.entities).find((e) => e.side === "party").pos, { q: -4, r: 0, z: 0 });
+  // The same start in a saved table's map: the load drops the stale level, and the map can be edited.
+  const saved = structuredClone(s);
+  saved.map.starts[0].level = "attic";
+  const back = migrate(saved);
+  assert.deepEqual(back.map.starts[0], { q: -4, r: 0 });
+  assert.deepEqual(lintMap(back.map), []);
+  ok(apply(back, { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: { q: 5, r: -5 }, tile: { t: "grass" } }] }, DM));
+});
+
+test("a player is sent no entries and no start's entry (canary)", () => {
+  const s = newGame(5);
+  const m = field();
+  m.entries = m.entries.map((en) => ({ ...en, name: `CANARY-${en.id}` }));
+  ok(apply(s, { type: "loadMap", map: m, entry: "gate" }, DM));
+  const v = view(s, { role: "player", userId: "pat" });
+  assert.ok(!("entries" in v.map), "no entries");
+  for (const st of v.map.starts ?? []) assert.ok(!("entry" in st), "no start names an entry");
+  const sent = JSON.stringify(v);
+  assert.ok(!sent.includes("CANARY"), "no entry name");
+  assert.ok(!/"entr(y|ies)"/.test(sent), "no entry field anywhere");
 });
