@@ -20,6 +20,7 @@
 // Proficiency Bonus, cantrips and Hit Dice by the total. A sheet with one class is unchanged.
 import { CONTENT } from './content/index.js';
 import { ABILITIES, DAMAGE_TYPES, SKILLS, WEAR_ONE } from './content/schema.js';
+import { checkScores } from './scores.js';
 
 export const mod = (score) => Math.floor((score - 10) / 2);
 export const proficiencyFor = (level) => 2 + Math.floor((level - 1) / 4);
@@ -660,7 +661,7 @@ export function derive(sheet) {
 // What the DM's score bonus adds to one ability (0 where there is none); the sheet's field is checked by validate, this only reads it.
 const scoreBonusOf = (sheet, a) => (sheet.scoreBonus && Number.isInteger(sheet.scoreBonus[a]) && sheet.scoreBonus[a] > 0 ? Math.min(10, sheet.scoreBonus[a]) : 0);
 const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'shieldStowed', 'weapons', 'spells',
-  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning', 'scoreBonus'];
+  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning', 'scoreBonus', 'scores'];
 export function validate(sheet) {
   const bad = [], say = (m) => bad.push(m);
   if (!sheet || typeof sheet !== 'object') return ['A sheet is a record of choices.'];
@@ -706,6 +707,7 @@ export function validate(sheet) {
     const ok = rq.all ? rq.all.every((a) => sheet.abilities[a] >= 13) : rq.any.some((a) => sheet.abilities[a] >= 13);
     if (!ok) say(`A character with levels in ${k.c.name} and another class needs ${(rq.all ?? rq.any).map((a) => ABILITY_NAMES[a]).join(rq.all ? ' and ' : ' or ')} of 13 or more.`);
   }
+  for (const m of checkScores(sheet)) say(m);            // how the scores were made, if the sheet says (scores.js); a sheet that does not say is not checked
   const { feats, G, abil, abilBase, armourWords, weaponWords, cf, chosen, before, featSkills, trainedSuit, picks } = gather(sheet);
   if (sheet.scoreBonus !== undefined) {
     const sb = sheet.scoreBonus;
