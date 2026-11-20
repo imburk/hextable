@@ -4,7 +4,7 @@
 import { gridOf, col } from '../grid.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate } from '../content/index.js';
 import { effectsOf, endEffect } from '../durations.js';
-import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, under } from '../space.js';
+import { FT, landing, overlapAt, regionAt, shown, SQUARE_RANGES, surfaces, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
 import { EDITS, lintMap, migrateMap } from '../map.js';
@@ -335,6 +335,19 @@ export const handlers = {
   ...handoutActions(fail),
   // Scenes: scene, endScene, sceneNpc, say, askCheck, sceneChronicle (scenes.js).
   ...sceneActions(fail),
+  // Point out a cell to everyone at the table. { type: 'ping', at: { q, r } }. It changes no state and is not an undo step or a timeline
+  // entry (engine.js `record`): the event is told once to everyone (view.js). A cell the sender may not see yet is refused as a cell off the map.
+  ping(s, a, ctx, ev) {
+    const dm = ctx.role === 'dm';
+    dm || (typeof ctx.userId === 'string' && ctx.userId) || fail('Join the table first.');
+    const at = a.at, bad = () => fail('Pick a spot on the map.');
+    if (!at || typeof at !== 'object' || !Number.isInteger(at.q) || !Number.isInteger(at.r) || !Array.isArray(s.map?.levels)) bad();
+    const here = surfaces(s.map, at);
+    here.length && (dm || here.some((sf) => shown(s.map, sf.level.id, at))) || bad();
+    const land = landing(s.map, at, Number.isInteger(at.z) ? at.z : 0);
+    const name = String(a.userName ?? '').trim().slice(0, 40) || (dm ? 'DM' : 'A player');
+    ev.push({ type: 'ping', from: dm ? 'dm' : ctx.userId, name, at: { q: at.q, r: at.r, z: land.z } });
+  },
   setting(s, a, ctx) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
