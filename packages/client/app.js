@@ -42,6 +42,7 @@ import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
 import { refreshReport, refreshNote } from './refresh.js';
 import { classTitle, missingText } from './buildsheet.js';
+import { dmLine } from './shared/scores.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.js';
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
@@ -741,6 +742,7 @@ function renderSheet() {
     ${CLS.sheetBanner(e)}
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
+    ${isDM() && e.sheet && dmLine(e.sheet) ? `<p class="note" id="sheet-scores-line">${esc(dmLine(e.sheet))}</p>` : ''}
     <p class="note">Saving throws: ${saves}</p>
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
       ${e.actions.map(actionProfile).map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bonus !== undefined ? signed(p.bonus) : p.dc ? `${p.save.toUpperCase()} DC ${p.dc}` : ''}</td><td>${esc(p.long)}${p.recharge ? ` · recharge ${p.recharge[0]}–6` : ''}${p.uses ? ` · ${p.uses.n}/day` : ''}</td><td>${p.far ? `${p.far} ft` : p.area ? `${p.area.size} ft ${p.area.shape}` : ''}</td></tr>`).join('')}</table></section>` : `<section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
