@@ -11,13 +11,14 @@
 // The engine never reads a view and never produces one. Design: docs/specs/hidden-information.md
 import { HEX, gridOf, col, parse } from './grid.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
-import { concealed } from './space.js';
+import { concealed, inArea } from './space.js';
 import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
-import { controllerOf, hbId, homebrewBlock, isPile, openContents, ownerOf, pileOpen } from './engine.js';
+import { controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
+import { buysOf, kindOf, listPrice } from './market.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -236,7 +237,7 @@ const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
+  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
 }
 
 // An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
@@ -351,6 +352,49 @@ export function playerView(state) {
 export function viewHandouts(state, viewer) {
   return (state.handouts ?? []).filter((h) => shownTo(h, viewer?.userId))
     .map((h) => ({ id: h.id, title: h.title, ...(h.text !== undefined && { text: h.text }), ...(h.asset !== undefined && { asset: h.asset }) }));
+}
+
+// ---------- shops ----------
+// The shops shown to this viewer (docs/specs/shops.md, Decision 3), shaped from an allow list: for each, its id, kind, name, blurb and art;
+// the lines on its shelf (lines of its lists not taken off, its own lines not hidden) with the price after markup and overrides and how
+// many are left of a limited one; a loot package's coins; what a store pays when the party sells; the standing offers and the purchases
+// being paid together that concern the party; the cells of its shop area that this player is sent (`viewShopArea`) and which of the party
+// stand in it now. Never a shop not shown to them, a hidden line (its id, name, price or how many there are), `haggle`, `notes`, `from`,
+// `waits`, `keeper`, `at`, a quote's steps or roleplaying bonus, or anything of `state.markets`. The DM is sent the state itself.
+// A part of `view()`, and of the view the table server builds for each player itself (packages/server/src/tables.js, stateFor).
+export function viewShops(state, viewer) {
+  if (isDM(viewer)) return structuredClone(Array.isArray(state.shops) ? state.shops : []);
+  const env = marketEnv(), open = (id) => typeof id === 'string' && classify(state, id) === 'open', out = [];
+  for (const shop of Array.isArray(state.shops) ? state.shops : []) {
+    if (!shownTo(shop, viewer?.userId)) continue;
+    const market = marketOfShop(state, shop), store = shop.kind === 'store', ids = new Set(), lines = [];
+    const all = [...(shop.lines ?? []), ...(shop.lists ?? []).flatMap((lid) => (market?.lists ?? []).find((x) => x?.id === lid)?.lines ?? [])];
+    for (const l of all) {
+      if (!l || ids.has(l.id) || l.hidden === true || shop.overrides?.[l.id]?.gone) continue;
+      ids.add(l.id);
+      const price = store ? listPrice(l, shop, market, env) : null;
+      if (store && price === null) continue;
+      const left = shop.overrides?.[l.id]?.qty !== undefined ? shop.overrides[l.id].qty : l.qty;
+      if (!store && left !== undefined && left <= 0) continue;                    // a loot line with none left is gone (Decision 7)
+      lines.push({ id: l.id, name: lineName(l), ...(l.item !== undefined ? { item: l.item } : {}), ...(l.base !== undefined ? { base: l.base } : {}), ...(l.spell !== undefined ? { spell: l.spell } : {}),
+        kind: kindOf(l, env), ...(l.art !== undefined ? { art: l.art } : {}), ...(l.note !== undefined ? { note: l.note } : {}), ...(price !== null ? { price } : {}), ...(left !== undefined ? { qty: left } : {}) });
+    }
+    const rec = { id: shop.id, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
+    if (!store) { rec.coins = { ...(shop.coins ?? {}) }; out.push(rec); continue; }
+    rec.buys = buysOf(shop.buys);
+    rec.quotes = (shop.quotes ?? []).filter((q) => open(q.for) && (q.line === undefined || ids.has(q.line)))
+      .map((q) => ({ id: q.id, ...(q.line !== undefined ? { line: q.line } : {}), ...(q.item !== undefined ? { item: q.item } : {}), for: q.for, price: q.price, ...(q.sell ? { sell: true } : {}) }));
+    rec.joint = (shop.joint ?? []).filter((j) => open(j.buyer) && ids.has(j.line)).map((j) => ({ id: j.id, line: j.line, name: lineName(lines.find((l) => l.id === j.line)),
+      qty: j.qty, price: j.price, buyer: j.buyer, pledges: Object.fromEntries(Object.entries(j.pledges ?? {}).filter(([k]) => open(k))) }));
+    const area = viewShopArea(state, shop, viewer);
+    if (area) {
+      rec.area = area;
+      const a = (state.map.areas ?? []).find((x) => x?.id === shop.at.area);
+      if (!state.scene?.open) rec.here = Object.values(state.entities).filter((e) => e.side === 'party' && !e.dead && open(e.id) && inArea(state.map, a, e)).map((e) => e.id);
+    }
+    out.push(rec);
+  }
+  return out;
 }
 
 // ---------- shop areas ----------
@@ -518,6 +562,19 @@ const pick = (ev, keys) => {
   const out = {};
   for (const k of keys) if (ev[k] !== undefined) out[k] = ev[k];
   return out;
+};
+
+// What a player is told of each trade event (docs/specs/shops.md, X5), when they are in its audience.
+const TRADE_KEYS = {
+  shopShown: ['type', 'shop', 'name'], shopHidden: ['type', 'shop'], shopChanged: ['type', 'shop'], shopClosed: ['type', 'shop', 'name'],
+  goodsRevealed: ['type', 'shop', 'line', 'name', 'price', 'qty'],
+  quoted: ['type', 'shop', 'for', 'line', 'item', 'name', 'price', 'was', 'sell', 'check', 'withdrawn'],
+  bought: ['type', 'shop', 'id', 'line', 'name', 'qty', 'price', 'paid', 'change', 'joint', 'payers'],
+  sold: ['type', 'shop', 'id', 'item', 'name', 'qty', 'price'],
+  took: ['type', 'shop', 'id', 'line', 'name', 'qty', 'coins', 'split', 'each', 'left'],
+  jointOpened: ['type', 'shop', 'joint', 'line', 'name', 'qty', 'price', 'buyer'],
+  pledged: ['type', 'shop', 'joint', 'who', 'share'],
+  jointEnded: ['type', 'shop', 'joint', 'why'],
 };
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
@@ -880,7 +937,26 @@ export function viewEvents(events, state, viewer) {
         out.push(pick(ev, ['type', 'from', 'as', 'name', 'text', 'scene', 'line']));
         break;
       case 'checkAsked':                               // a request for a check is between the player who asked and the DM
-        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(pick(ev, ['type', 'actor', 'skill', 'by']));
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about'])));
+        break;
+      // Shops (docs/specs/shops.md, Decision 3 and X5): each trade event carries the shop's audience when it happened (`to`, `except`;
+      // engine/trade.js) and goes to a player in it alone, live or from the record, shaped from an allow list; the audience is never sent,
+      // nor a haggle's DC, steps or roleplaying bonus, nor how a price was reached (a hand-set price is just the price).
+      case 'shopShown': case 'shopHidden': case 'shopChanged': case 'shopClosed': case 'goodsRevealed': case 'quoted': case 'bought': case 'sold':
+      case 'took': case 'jointOpened': case 'pledged': case 'jointEnded': {
+        const u = viewer?.userId;
+        const hears = (ev.to === 'all' || (Array.isArray(ev.to) && typeof u === 'string' && ev.to.includes(u))) && !(Array.isArray(ev.except) && typeof u === 'string' && ev.except.includes(u));
+        const named = [ev.for, ev.buyer, ev.who, ...(Array.isArray(ev.split) ? ev.split : []), ...(Array.isArray(ev.payers) ? ev.payers.map((p) => p?.id) : [])].filter((x) => x !== undefined);
+        if (!hears || named.some((id) => cls(id) === 'hidden')) break;
+        const e = structuredClone(pick(ev, TRADE_KEYS[ev.type]));
+        // A joint purchase ended because its buyer's player is no longer shown the store says, to the others, only that it ended: who
+        // is shown a store is the DM's business (review of #598, M2).
+        if (e.type === 'jointEnded' && e.why === 'hidden') e.why = 'ended';
+        out.push(e);
+        break;
+      }
+      case 'coins':                                    // a purse changed: a party creature's, whose record the party is sent; never which shop
+        if (cls(ev.id) === 'open') out.push(structuredClone(pick(ev, ['type', 'id', 'coins', 'why', 'given', 'taken'])));
         break;
       case 'handoutShown':                             // that a handout was shown, to those it was shown to; never who else
         if (ev.to === 'all' || (Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId))) out.push(pick(ev, ['type', 'handout', 'title']));

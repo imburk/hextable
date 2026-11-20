@@ -77,6 +77,14 @@ const SENSE = [
 const turnOf = (s, id) => { for (let i = 0; i < 30 && s.encounter && current(s) !== id; i++) apply(s, { type: "endTurn", actor: current(s) }, DM); };
 const lastObj = (s) => s.map.objects.at(-1)?.id;
 const lasting = (s) => s.effects?.[0]?.id;
+const MKT = { format: "hextable-market", v: 1, id: "mkt", name: "Market", version: 1, lists: [{ id: "std", name: "Std", lines: [{ id: "rope", name: "Rope", price: "1 GP", kind: "gear" }] }],
+  stores: [{ id: "store", name: "Store", lists: ["std"], special: [{ id: "wand", item: "wand-of-magic-missiles", qty: 1, hidden: true }] }], loot: [] };
+function store(s) {
+  apply(s, { type: "market", add: MKT }, DM);
+  apply(s, { type: "openShop", kind: "store", market: "mkt", template: "store" }, DM);
+  apply(s, { type: "showShop", shop: "s1", to: "all" }, DM);
+  for (const id of ["fighter", "rogue"]) apply(s, { type: "give", actor: id, coins: { gp: 20 } }, DM);
+}
 function places(s) {
   apply(s, { type: "nodeAdd", node: { name: "Here", kind: "map" }, here: true }, DM);
   apply(s, { type: "nodeAdd", node: { name: "There", kind: "map" }, map: structuredClone(s.map) }, DM);
@@ -122,7 +130,19 @@ const SENSE2 = [
   { pre: places, a: { type: "keepPlace", node: "there" } },
   { pre: places, a: { type: "forgetPlace", node: "there" } },
   { pre: places, a: { type: "place", who: ["rogue"], node: "there" } },
-  { pre: (s) => { places(s); delete s.world.nodes.there.added; }, a: (s) => ({ type: "resetPlace", node: "there", map: s.parked?.there ? structuredClone(s.parked.there.map) : null }) },
+  { pre: (s) => { places(s); delete s.world.nodes.there.added; }, a: (s) => ({ type: "resetPlace", node: "there", map: s.parked?.there ? structuredClone(s.parked.there.map) : null }) },  // Purses and shops (docs/specs/shops.md, P3): a market, a store shown to all with the DM trading, a loot package.
+  { a: { type: "market", add: MKT } },
+  { pre: (s) => apply(s, { type: "market", add: MKT }, DM), a: { type: "market", remove: "mkt" } },
+  { pre: (s) => apply(s, { type: "market", add: MKT }, DM), a: { type: "openShop", kind: "store", market: "mkt", template: "store" } },
+  { pre: store, a: { type: "shopEdit", shop: "s1", set: { name: "Stall" } } },
+  { pre: store, a: { type: "showShop", shop: "s1", to: "none" } },
+  { pre: store, a: { type: "revealGoods", shop: "s1", line: "wand" } },
+  { pre: store, a: { type: "closeShop", shop: "s1" } },
+  { pre: store, a: { type: "quote", shop: "s1", for: "fighter", line: "rope", price: 50 } },
+  { pre: store, a: { type: "buy", actor: "fighter", shop: "s1", line: "rope" } },
+  { pre: (s) => { store(s); apply(s, { type: "buy", actor: "fighter", shop: "s1", line: "rope", split: true }, DM); }, a: { type: "chipIn", actor: "rogue", shop: "s1", joint: "j1", share: 10 } },
+  { pre: (s) => { store(s); apply(s, { type: "give", actor: "fighter", item: "Rope" }, DM); }, a: { type: "sell", actor: "fighter", shop: "s1", item: "Rope" } },
+  { pre: (s) => apply(s, { type: "openShop", kind: "loot", name: "Box" }, DM), a: (s) => { apply(s, { type: "shopEdit", shop: "s1", coins: { gp: 4 } }, DM); return { type: "take", shop: "s1", split: ["fighter", "rogue"] }; } },
 ];
 const lcg = (n) => () => (n = (Math.imul(n, 1103515245) + 12345) >>> 0) / 4294967296;
 const HEX = [{ q: 0, r: 0 }, { q: 2, r: 1 }, { q: -1, r: 0 }, { q: 2, r: 0 }, { q: 4, r: -1 }, { q: 1, r: 1, z: 0 }];
