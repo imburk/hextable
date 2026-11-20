@@ -872,6 +872,14 @@ the stores shown to them now, not at P4; P4 keeps `market` joining `MAP_ACTIONS`
   table or dies. A purse that is not a purse (a kind past 10,000,000, a coin not whole) is refused, not read as empty, and no buy, sell, take
   or settle may take a kind past the ceiling. A re-haggle that comes out worse than the standing quote leaves that quote. `revealGoods`
   refuses a special taken off the shelf; `shopEdit { set: { lists } }` refuses lists whose lines share an id with the shop's own.
+- **Known and left as they are** (review of #598, L2, L4, L8):
+  - *A joint purchase's price is frozen when it opens* (L2). A later price override, markup change or withdrawn quote does not change it:
+    the party pays the price it opened at. The DM who wants another price cancels it and the buyer opens it again.
+  - *A magic item's sell price ignores the line's own price and markup* (L4): by Decision 5 it is 70 percent of the SRD value, so a special
+    priced under 70 percent of its value can be bought and sold back at a profit. The DM should know this when pricing specials. A haggled
+    sell offer is capped at the value; a sell price the DM sets by hand is not.
+  - *Haggling at a shop not shown to a player still makes an open `check` event* for the character (L8), so players the shop is not shown
+    to see that the character rolled Persuasion (never where, nor for what).
 
 ## Security and hidden-information review points
 
