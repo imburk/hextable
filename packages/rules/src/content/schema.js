@@ -2017,6 +2017,94 @@ function lintFeatDef(e, say) {
   if (findFunction(e)) say('content is data only');
 }
 
+// ---------- species (docs/specs/species.md, S1) ----------
+// A species: its creature type, the sizes a sheet may pick from, its Speed, the abilities its spells may use (chosen once on the
+// sheet), its features and at most one `lineage`, a choice whose options bring features of their own. A feature is a class feature,
+// checked by `lintFeature` as a feat's grants are (`FEAT_CLASS`: no class table, so an amount is a number, an ability modifier, `{ prof }`,
+// `{ perLevel }` or `{ byLevel }`, read at the character level). What a species cannot say yet is refused here with its reason, so
+// nothing a species names is dropped quietly by `derive`.
+export const SPECIES_SIZES = ['small', 'medium'];          // the sizes a sheet may have (derive.js, validate)
+const SPECIES_KEYS = ['id', 'name', 'source', 'checked', 'tier', 'text', 'type', 'sizes', 'speed', 'ability', 'features', 'lineage', 'dmNotes'];
+const LINEAGE_KEYS = ['name', 'options'], LINEAGE_OPTION_KEYS = ['id', 'name', 'text', 'features'];
+// The grants a species' feature may not carry yet, and why (each is a later job of the spec, or a class's alone).
+const SPECIES_NOT_YET = {
+  spells: 'a species\' spells wait on innate spells (S2): `spells` adds to a class\'s prepared list, which a species has not',
+  cantrips: 'a species\' cantrips wait on innate spells (S2): `cantrips` adds to a class\'s count, which a species has not',
+  spellLists: 'a species\' spells wait on innate spells (S2): `spellLists` widens a class\'s list, which a species has not',
+  freeCast: 'a species\' free casting waits on innate spells (S2): the spell would not be one the character knows',
+  triggers: '`triggers` are a class\'s or a subclass\'s feature\'s only',
+  formOf: '`formOf` changes a feature of the same class, which a species has not',
+  attune: 'more Attunement from a species is not read by the engine yet',
+};
+const TIER_RANK = { auto: 2, assist: 1, manual: 0 };
+function lintSpecies(e, say) {
+  if (!ID.test(e.id ?? '') || !isText(e.name) || !isText(e.source) || !isText(e.text)) say('needs a kebab-case id, a name, a source and text');
+  for (const k of Object.keys(e)) if (!SPECIES_KEYS.includes(k)) say(`"${k}" is not something a species has`);
+  if (typeof e.checked !== 'boolean') say('needs `checked`');
+  if (!TIERS.includes(e.tier)) say(`tier is one of ${TIERS.join(', ')}`);
+  if (!CREATURE_TYPES.includes(e.type)) say(`type is a creature type (${CREATURE_TYPES.join(', ')}); every SRD species is humanoid`);
+  if (!(Array.isArray(e.sizes) && e.sizes.length && allOf(SPECIES_SIZES)(e.sizes) && new Set(e.sizes).size === e.sizes.length)) say('sizes lists small, medium or both: the sizes a sheet may pick from, the first when it names none');
+  if (!(isInt(e.speed) && e.speed >= 5 && e.speed <= 60 && e.speed % 5 === 0)) say('speed is its Speed in feet, a multiple of 5 from 5 to 60');
+  if (e.ability !== undefined && !(allOf(ABILITIES)(e.ability) && e.ability.length && new Set(e.ability).size === e.ability.length)) say('ability lists the abilities its spells may use, each once');
+  if (e.dmNotes !== undefined && !(typeof e.dmNotes === 'string' && letters(e.dmNotes) <= SUBCLASS_NOTES)) say(`dmNotes is text of at most ${SUBCLASS_NOTES} letters`);
+  if (findFunction(e)) say('content is data only');
+  if (!Array.isArray(e.features)) { say('features is a list (it may be empty)'); return; }
+  const own = new Set(), lows = [];
+  // One feature of the species or of a lineage option, with what a species may not say. `ids` is the set of ids used so far in that list.
+  const one = (f, ids, sub) => {
+    lintFeature(f, FEAT_CLASS, (m) => sub(m.replace('a feat or an item cannot', 'a species cannot').replace('used once in the class', 'used once in the species (a lineage option\'s feature ids are not the species\' own)')), ids);
+    if (!f || typeof f !== 'object') return;
+    if (TIERS.includes(f.tier)) lows.push(f.tier);
+    const fs = (m) => sub(`feature ${typeof f.id === 'string' ? f.id : '(without an id)'}: ${m}`);
+    if (f.feat !== undefined) fs('a place for a feat in a species waits on the Origin feat place (S4)');
+    for (const g of [f.grants, ...(Array.isArray(f.options) ? f.options.map((o) => o?.grants) : [])]) {
+      if (!g || typeof g !== 'object') continue;
+      for (const [k, why] of Object.entries(SPECIES_NOT_YET)) if (g[k] !== undefined) fs(why);
+      if (g.skills?.from === 'class') fs('a species has no class list: its skills are `from: "any"`');
+    }
+    for (const o of Array.isArray(f.options) ? f.options : []) if (o?.requires?.spell !== undefined) fs(`option ${o.id}: a species option cannot require a spell (it has no class whose spells it reads)`);
+  };
+  for (const f of e.features) one(f, own, say);
+  for (const f of e.features) if (f && typeof f === 'object' && typeof f.id === 'string') own.add(f.id);
+  // What a cost may name: a feature with uses of the species, or of the same lineage option.
+  const pools = (list) => new Set(list.filter((f) => f && typeof f === 'object' && f.uses).map((f) => f.id));
+  const costs = (list, open, sub) => {
+    for (const f of list) {
+      if (!f || typeof f !== 'object') continue;
+      const a = f.grants?.action, names = [a?.cost?.resource, ...(Array.isArray(a?.modes) ? a.modes.map((m) => m?.cost?.resource) : [])].filter((x) => x !== undefined);
+      for (const r of names) if (!open.has(r)) sub(`feature ${f.id}: a cost names "${r}", which is not a feature with uses of this species`);
+    }
+  };
+  costs(e.features, pools(e.features), say);
+  const lin = e.lineage;
+  if (lin !== undefined) {
+    if (!lin || typeof lin !== 'object' || Array.isArray(lin)) say('lineage is { name, options }');
+    else {
+      for (const k of Object.keys(lin)) if (!LINEAGE_KEYS.includes(k)) say(`"${k}" is not something a lineage has`);
+      if (!isText(lin.name)) say('lineage needs a name');
+      if (!(Array.isArray(lin.options) && lin.options.length >= 2)) say('lineage.options lists two or more choices');
+      else {
+        const seen = new Set();
+        for (const o of lin.options) {
+          const os = (m) => say(`lineage ${typeof o?.id === 'string' ? o.id : '(without an id)'}: ${m}`);
+          if (!o || typeof o !== 'object' || Array.isArray(o)) { say('a lineage option is { id, name, text, features }'); continue; }
+          for (const k of Object.keys(o)) if (!LINEAGE_OPTION_KEYS.includes(k)) os(`"${k}" is not something a lineage option has`);
+          if (!ID.test(o.id ?? '') || seen.has(o.id)) os('needs a kebab-case id used once in the lineage');
+          seen.add(o.id);
+          if (!isText(o.name) || !isText(o.text)) os('needs a name and text');
+          if (!Array.isArray(o.features)) { os('features is a list'); continue; }
+          // A lineage's features are played beside the species' own, so their ids are not the species' features' ids (its choices are kept by feature id).
+          const ids = new Set(own);
+          for (const f of o.features) one(f, ids, os);
+          costs(o.features, new Set([...pools(e.features), ...pools(o.features)]), os);
+        }
+      }
+    }
+  }
+  // A species is no higher a tier than its lowest feature (any lineage option's counts: the entry cannot know which one is chosen).
+  if (TIERS.includes(e.tier) && lows.some((t) => TIER_RANK[t] < TIER_RANK[e.tier])) say(`tier is ${e.tier}, but a feature is ${lows.reduce((a, b) => (TIER_RANK[b] < TIER_RANK[a] ? b : a))}: a species is no higher than its lowest feature`);
+}
+
 // ---------- magic items (content/srd52/magic-items.js) ----------
 // A magic item (SRD "Magic Items"): what it is, whether it needs Attunement and from whom, where it must
 // be worn or held for its magic, the mundane item it is made from, its bonus, and what it grants while
@@ -2099,7 +2187,7 @@ export function lintPack(doc, opts = {}) {
 }
 function lintPackCore(doc, opts) {
   if (opts.strict) { const over = budget(doc, opts.limits); if (over.length) return over; }
-  const { pack, spells = [], monsters = [], summons, pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement, subclasses } = doc;
+  const { pack, spells = [], monsters = [], summons, pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement, subclasses, species } = doc;
   const problems = [];
   const strict = opts.strict || opts.keys ? strictOptions(doc, opts, problems) : null;
   if (strict && problems.length) return problems;               // the document's own shape is wrong: nothing below can be read
@@ -2109,7 +2197,7 @@ function lintPackCore(doc, opts) {
     monster: monsterLookup(opts.srd ?? SRD_REF, pack?.id, new Map((Array.isArray(monsters) ? monsters : []).filter((x) => x && typeof x === 'object').map((x) => [x.id, x]))) };
   const itemCtx = { weapons: new Set(weapons.map((w) => w.id)), armour: new Set(armour.filter((a) => a.category !== 'shield').map((a) => a.id)), spells: spells.length ? new Set(spells.map((x) => x.id)) : null };
   for (const [kind, list, lint] of [['spells', spells, lintSpell], ['monsters', monsters, lintMonster], ['summons', summons ?? [], lintSummonBlock], ['conditions', conditions, lintCondition], ['objects', objects, lintObject], ['classes', classes, lintClass], ['weapons', weapons, lintWeapon], ['armour', armour, lintArmour], ['feats', feats ?? [], lintFeatDef], ['items', items ?? [], (e, say) => lintItem(e, say, itemCtx)],
-    ['subclasses', subclasses ?? [], (e, say) => lintSubclass(e, say, subclassCtx)]]) {
+    ['subclasses', subclasses ?? [], (e, say) => lintSubclass(e, say, subclassCtx)], ['species', species ?? [], lintSpecies]]) {
     const seen = new Set();
     for (const e of list) {
       const say = (m) => problems.push(`${kind}/${shortId(e)}: ${m}`);
@@ -2230,7 +2318,9 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
   'feats', 'hitDie', 'armour', 'shield', 'critOn', 'bonusActs', 'pact', 'conditionImmune',
   // A character with more than one class (derive.js): its classes and levels, its Hit Dice by size,
   // and the spellcasting ability of each spell whose class's differs from `castAbil`.
-  'classes', 'hitDice', 'spellAbil'];
+  'classes', 'hitDice', 'spellAbil',
+  // A creature type other than Humanoid, from a species (derive.js; docs/specs/species.md, Decision 1). A Humanoid's record has none.
+  'type'];
 // `abil` (the ability it uses), `weapon` (its equipment id) and `time: 'bonus'` (a Bonus Action
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time', 'dc'];
@@ -2405,6 +2495,7 @@ export function lintRecord(r, { spells = {} } = {}) {
   for (const k of ['shield', 'pact']) if (r[k] !== undefined && r[k] !== true) say(`${k} is true or left out.`);
   if (r.critOn !== undefined && !within(r.critOn, 15, 19)) say('Its Critical Hit range starts at 15 to 19.');
   if (r.bonusActs !== undefined && !(Array.isArray(r.bonusActs) && r.bonusActs.every((x) => BONUS_ACTS.includes(x)))) say(`Its Bonus Action options are ${BONUS_ACTS.join(', ')}.`);
+  if (r.type !== undefined && !(CREATURE_TYPES.includes(r.type) && r.type !== 'humanoid')) say(`Its creature type is one of ${CREATURE_TYPES.filter((t) => t !== 'humanoid').join(', ')}, or left out for a Humanoid.`);
   if (r.look !== undefined && !(r.look && Object.keys(r.look).every((k) => k === 'color') && /^#[0-9a-fA-F]{6}$/.test(r.look.color ?? ''))) say('Its look is a colour like #c8553d.');
   return bad;
 }

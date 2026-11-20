@@ -9,7 +9,8 @@
 //     skills: [class skill picks and skills from features], extraSkills?: [from background or species],
 //     expertise?: [skills], choices?: { featureId: optionId | [optionIds] | [skills] (the skills a subclass feature gives from a short list)}, armour?: id, shield?: true | armourId (a Shield entry), shieldStowed?: true (the Shield is carried, not held),
 //     weapons?: [ids, "unarmed-strike"], spells?: [cantrips and prepared spells],
-//     size?, speed?, senses?, tools?, gear?, look? }
+//     size?, speed?, senses?, tools?, gear?, look?,
+//     species?: { id, lineage?, ability?, choices?: { featureId: optionId | [optionIds] } } }   (docs/specs/species.md, Decision 2)
 // Ability scores are entered as they stand after background and feats; class features that raise
 // them (Primal Champion) are added here. Pure: no state, no dice.
 //
@@ -58,6 +59,46 @@ const missingSubclass = (k) => !!k.c && k.level >= 3 && typeof k.subclass === 's
 export const missingOf = (sheet) => classesOf(sheet).filter(missingSubclass).map((k) => ({ kind: 'subclass', id: k.subclass, class: k.c.id }));
 // The character's level: the sum of its class levels.
 export const levelOf = (sheet) => classesOf(sheet).reduce((n, k) => n + k.level, 0);
+
+// ---------- species (docs/specs/species.md, S1) ----------
+// A sheet's `species` names a species of the pack (CONTENT.species: the SRD's, or a table's own while its packs are lent), its
+// lineage, the ability its spells use and its features' choices. The species' features are played as feats' are, at the character
+// level (`SPECIES_CLASS`, as `FEAT_CLASS`), under ids of their own: `species-<feature id>`, and `species-<lineage id>-<feature id>` for
+// a lineage's, so they never meet a class feature's, a feat's (`feat-`) or an item's (`item-`).
+const SPECIES_CLASS = { id: 'species', name: 'Species', table: {}, features: [], subclass: { id: null, features: [] } };
+const speciesId = (sheet) => (sheet?.species && typeof sheet.species === 'object' && !Array.isArray(sheet.species) && typeof sheet.species.id === 'string' ? sheet.species.id : null);
+// The species entry the sheet names, if it is loaded here; else null.
+export function speciesOf(sheet) {
+  const id = speciesId(sheet);
+  return id !== null && Object.hasOwn(CONTENT.species, id) ? CONTENT.species[id] : null;
+}
+// A homebrew species the sheet names whose pack is not loaded at this table (Decision 5): [{ kind: 'species', id }]. The id stays on the
+// sheet and its traits are absent. Any other unknown id is refused by `validate`. Apart from `missingOf`, which is about subclasses and is
+// read as such by `engine/sheets.js` (spent uses kept while away) and the client; `derive` returns both in `missing`.
+export function missingSpeciesOf(sheet) {
+  const id = speciesId(sheet);
+  return id !== null && HB_ID.test(id) && !Object.hasOwn(CONTENT.species, id) ? [{ kind: 'species', id }] : [];
+}
+// The lineage option the sheet picked, if the species has it.
+const lineageOf = (sp, sheet) => (sp?.lineage && typeof sheet.species.lineage === 'string' ? sp.lineage.options.find((o) => o.id === sheet.species.lineage) ?? null : null);
+// Every feature the character has from its species, up to the character level: the species' own, then its lineage's, each with the
+// option chosen for it (`species.choices`, by the feature's own id). [{ f, option?, of?, cls, species: true, key }], `key` the id the
+// sheet's choices use. A cost or `with` naming a species feature is relabelled with it, as a later class's are.
+export function speciesFeatures(sheet) {
+  const sp = speciesOf(sheet);
+  if (!sp) return [];
+  const total = levelOf(sheet), lin = lineageOf(sp, sheet), cls = { c: SPECIES_CLASS, level: total, i: -2, first: false };
+  const map = new Map([...sp.features.map((f) => [f.id, `species-${f.id}`]), ...(lin ? lin.features.map((f) => [f.id, `species-${lin.id}-${f.id}`]) : [])]);
+  const out = [], choices = sheet.species.choices && typeof sheet.species.choices === 'object' ? sheet.species.choices : {};
+  for (const f0 of [...sp.features, ...(lin ? lin.features : [])].filter((x) => x.level <= total)) {
+    const f = relabel(f0, map);
+    out.push({ f, cls, species: true, key: f0.id });
+    if (!f.options) continue;
+    const chose = Object.hasOwn(choices, f0.id) ? choices[f0.id] : undefined, ids = Array.isArray(chose) ? (f.pick ? chose : []) : [chose];
+    for (const o of f.options.filter((x) => ids.includes(x.id))) out.push({ f: { ...o, id: `${f.id}-${o.id}`, level: f.level, checked: f.checked }, option: true, of: f.id, cls, species: true, key: f0.id });
+  }
+  return out;
+}
 
 // A later class's feature whose id an earlier class's feature has (Spellcasting, Channel Divinity,
 // Ability Score Improvement) is played under the class's id in front ("bard-spellcasting"), and so
@@ -157,10 +198,10 @@ function featFeature(y, total) {
   return { f: { id: y.rid, name, level: y.slot.level, tier: d.tier, text: d.text, checked: d.checked, ...(Object.keys(grants).length ? { grants } : {}), ...(uses ? { uses } : {}) },
     cls: { c: FEAT_CLASS, level: total, i: -1, first: false }, feat: d.id, at: y.slot.at };
 }
-// Every feature the character has: its classes' (classFeatures) and then its feats', each as a feature.
+// Every feature the character has: its species' (speciesFeatures), its classes' (classFeatures) and then its feats', each as a feature.
 export function featuresOf(sheet) {
   const cf = classFeatures(sheet), total = levelOf(sheet);
-  return [...cf, ...chosenFeats(sheet, cf).map((y) => featFeature(y, total))];
+  return [...speciesFeatures(sheet), ...cf, ...chosenFeats(sheet, cf).map((y) => featFeature(y, total))];
 }
 
 // ---------- magic items ----------
@@ -246,7 +287,10 @@ function bakeAt(list, c, level, abil, pb = proficiencyFor(level)) {
     fix(x); fix(x.modifier);
     if (x.addLevel) { x.heal = dice(x.heal, level); delete x.addLevel; }
     for (const k of ['heal', 'tempHp', 'damage']) {
-      if (x[k] && typeof x[k] === 'object') x[k] = amount(x[k], c, level, abil);                  // a die from the class table
+      if (x[k] && typeof x[k] === 'object') {
+        x[k] = amount(x[k], c, level, abil);                  // a die from the class table
+        if (typeof x[k] === 'number') x[k] = signed(x[k]);    // or a flat amount (`{ prof }`: Adrenaline Rush's Temporary Hit Points) as dice text, "+3", as a step's dice are
+      }
       if (k in x && typeof x.addMod === 'string') { x[k] = dice(x[k], mod(abil[x.addMod])); delete x.addMod; }
     }
     if ('save' in x && typeof x.dc === 'string') x.dc = 8 + pb + mod(abil[x.dc]);   // the class's own DC (Proficiency Bonus by total level)
@@ -287,7 +331,7 @@ const grantsOf = (feats) => feats.map((x) => x.f.grants).filter(Boolean);
 function gather(sheet) {
   const ks = classesOf(sheet), c = ks[0].c, level = ks.reduce((n, k) => n + k.level, 0), cf = classFeatures(sheet), chosen = chosenFeats(sheet, cf);
   const held = heldItems(sheet), on = held.filter(itemActive);
-  const feats = [...cf, ...chosen.map((y) => featFeature(y, level)), ...on.filter((y) => y.def.grants).map((y) => itemFeature(y, level))], G = grantsOf(feats);
+  const feats = [...speciesFeatures(sheet), ...cf, ...chosen.map((y) => featFeature(y, level)), ...on.filter((y) => y.def.grants).map((y) => itemFeature(y, level))], G = grantsOf(feats);
   // Scores as typed, then each feat's points in the order the feats were taken, then class features that raise them (Primal Champion).
   const typed = Object.fromEntries(ABILITIES.map((a) => [a, sheet.abilities?.[a] ?? 10]));
   const { abil, before } = raised(typed, chosen);
@@ -368,10 +412,11 @@ export function derive(sheet) {
   if (scoreBonusOf(sheet, 'dex') && acWhy.some((t) => /^Dexterity/.test(t))) acWhy.push(`Dexterity score includes the DM's bonus of +${scoreBonusOf(sheet, 'dex')}`);
   why.ac = acWhy;
 
-  // Speed: the sheet's (from species, 30 if not given), heavy armour too heavy for the wearer
-  // costs 10 feet, and features add.
-  let speed = sheet.speed ?? 30;
-  why.speed = [`${speed} ft`];
+  // Speed: the species' (validate refuses the sheet's own beside a loaded species), else the sheet's (30 if not given); heavy armour too
+  // heavy for the wearer costs 10 feet, and features add.
+  const sp = speciesOf(sheet), lin = sp ? lineageOf(sp, sheet) : null, spGone = missingSpeciesOf(sheet);
+  let speed = sp ? sp.speed : sheet.speed ?? 30;
+  why.speed = [sp ? `${speed} ft (${sp.name})` : `${speed} ft`];
   if (armour?.strength && !suit?.def.mithral && abil.str < armour.strength) { speed -= 10; why.speed.push(`${armour.name} needs Strength ${armour.strength}: -10 ft`); }
   for (const x of feats) {
     const sp = x.f.grants?.speed;
@@ -626,7 +671,8 @@ export function derive(sheet) {
   for (const k of ks) hitDice[k.c.hitDie] = (hitDice[k.c.hitDie] ?? 0) + k.level;
   const thieves = ks.some((k, i) => (i === 0 ? k.c.tools : k.c.multiclass.tools) === "Thieves' Tools");
   const record = {
-    name: String(sheet.name ?? '').trim(), cls, level, size: sheet.size ?? 'medium',
+    name: String(sheet.name ?? '').trim(), cls, level, size: sheet.size ?? sp?.sizes[0] ?? 'medium',
+    ...(sp && sp.type !== 'humanoid' ? { type: sp.type } : {}),
     ac, hp, speed, ...(Object.keys(speeds).length ? { speeds } : {}), ...(Object.keys(senses).length ? { senses } : {}),
     prof: pb, abil, saveProf: ABILITIES.filter((a) => saveProf.has(a)), skills, expertise,
     tools: [...(thieves ? ['thieves-tools'] : []), ...(sheet.tools ?? []), ...featTools].filter((t, i, l) => l.indexOf(t) === i),
@@ -652,7 +698,13 @@ export function derive(sheet) {
   why.abil = chosen.filter((y) => points(y).length).map((y) => `${y.def.name}: ${points(y).map(([a, n]) => `${nice(a)} +${n}`).join(', ')}`);
   const dm = ABILITIES.filter((a) => scoreBonusOf(sheet, a));
   if (dm.length) why.abil.push(`DM bonus: ${dm.map((a) => `${ABILITY_NAMES[a]} +${scoreBonusOf(sheet, a)}`).join(', ')}`);
-  return { record, why, missing: missingOf(sheet) };
+  // The species: what it is, its lineage, the ability its spells would use; or that its entry is not loaded here (Decision 5).
+  if (sp) {
+    const ab = sp.ability && typeof sheet.species.ability === 'string' && sp.ability.includes(sheet.species.ability) ? sheet.species.ability : null;
+    why.species = [`${sp.name}${lin ? ` (${sp.lineage.name}: ${lin.name})` : ''}`, `${nice(record.size)}, Speed ${sp.speed} ft`,
+      ...(sp.type !== 'humanoid' ? [`Creature type: ${nice(sp.type)}`] : []), ...(ab ? [`Spellcasting ability for its spells: ${ABILITY_NAMES[ab]}`] : [])];
+  } else if (spGone.length) why.species = [`Species "${spGone[0].id.slice(0, 60)}": its entry is not loaded at this table, so it gives no traits.`];
+  return { record, why, missing: [...missingOf(sheet), ...spGone] };
 }
 
 // ---------- what is wrong with a sheet ----------
@@ -660,7 +712,7 @@ export function derive(sheet) {
 // What the DM's score bonus adds to one ability (0 where there is none); the sheet's field is checked by validate, this only reads it.
 const scoreBonusOf = (sheet, a) => (sheet.scoreBonus && Number.isInteger(sheet.scoreBonus[a]) && sheet.scoreBonus[a] > 0 ? Math.min(10, sheet.scoreBonus[a]) : 0);
 const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'shieldStowed', 'weapons', 'spells',
-  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning', 'scoreBonus'];
+  'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning', 'scoreBonus', 'species'];
 export function validate(sheet) {
   const bad = [], say = (m) => bad.push(m);
   if (!sheet || typeof sheet !== 'object') return ['A sheet is a record of choices.'];
@@ -696,8 +748,16 @@ export function validate(sheet) {
   // Who a message is about: "A level 5 Fighter", or for several classes "This character".
   const who = multi ? 'This character' : `A level ${level} ${c.name}`;
   if (!(sheet.abilities && ABILITIES.every((a) => Number.isInteger(sheet.abilities[a]) && sheet.abilities[a] >= 1 && sheet.abilities[a] <= 20))) say('It needs all six ability scores, each 1 to 20 (features that raise them are added for you).');
-  if (sheet.size !== undefined && !['small', 'medium'].includes(sheet.size)) say('Its size is Small or Medium.');
-  if (sheet.speed !== undefined && !(Number.isInteger(sheet.speed) && sheet.speed >= 5 && sheet.speed <= 60 && sheet.speed % 5 === 0)) say('Its Speed is a multiple of 5 feet.');
+  const sp = speciesOf(sheet);
+  if (sheet.species !== undefined) checkSpecies(sheet, sp, say);
+  // With a loaded species, the size is one of the species' and the Speed is the species' own (Decision 2; question Q2: the DM's `setSpeed` is the override in play).
+  if (sp) {
+    if (sheet.size !== undefined && !sp.sizes.includes(sheet.size)) say(`${article(sp.name)} ${sp.name} is ${sp.sizes.map(nice).join(' or ')}.`);
+    if (sheet.speed !== undefined) say(`Speed comes from the species: ${article(sp.name).toLowerCase()} ${sp.name} has ${sp.speed} ft. Take the sheet's own Speed out.`);
+  } else {
+    if (sheet.size !== undefined && !['small', 'medium'].includes(sheet.size)) say('Its size is Small or Medium.');
+    if (sheet.speed !== undefined && !(Number.isInteger(sheet.speed) && sheet.speed >= 5 && sheet.speed <= 60 && sheet.speed % 5 === 0)) say('Its Speed is a multiple of 5 feet.');
+  }
   if (bad.some((m) => m.startsWith('It needs all six'))) return bad;
   // Prerequisites (Multiclassing): 13 or more in the primary ability of each of its classes.
   if (multi) for (const k of ks) {
@@ -759,7 +819,8 @@ export function validate(sheet) {
   for (const x of feats) {
     const f = x.f;
     if (!f.options) continue;
-    const pick = sheet.choices?.[f.id];
+    // A species feature's choice is in the sheet's `species.choices`, by the feature's own id (`key`).
+    const pick = x.species ? (sheet.species.choices && typeof sheet.species.choices === 'object' && Object.hasOwn(sheet.species.choices, x.key) ? sheet.species.choices[x.key] : undefined) : sheet.choices?.[f.id];
     // Options picked as a list (Metamagic) may be left unchosen: the character then knows none of
     // them yet, and plays as before they were built (the build screen has no list picker yet).
     if (f.pick) {
@@ -829,6 +890,37 @@ export function validate(sheet) {
   if (sheet.shieldStowed !== undefined && (sheet.shieldStowed !== true || !(sheet.shield === true || typeof sheet.shield === 'string'))) say('A Shield put away (shieldStowed) is true, and only for a sheet that has a Shield.');
   void abil;
   return bad;
+}
+
+// ---------- a species on a sheet ----------
+const SPECIES_ENTRY = ['id', 'lineage', 'ability', 'choices'];
+const article = (name) => (/^[AEIOU]/.test(name) ? 'An' : 'A');
+// The sheet's `species` (Decision 2): its shape, then, for a loaded species, its lineage, its ability and its choices. A homebrew id whose pack is
+// not loaded here is kept (Decision 5: the character must still load) and nothing in it is checked against a species it cannot see.
+function checkSpecies(sheet, sp, say) {
+  const s = sheet.species;
+  if (!s || typeof s !== 'object' || Array.isArray(s) || typeof s.id !== 'string' || Object.keys(s).some((k) => !SPECIES_ENTRY.includes(k))) return say('Its species is { id, lineage?, ability?, choices? }: the species, its lineage, the ability its spells use, and its features\' choices.');
+  if (!sp) {
+    if (HB_ID.test(s.id)) return;
+    const known = Object.values(CONTENT.species).map((x) => `${x.name} (${x.id})`);
+    return say(s.id.startsWith('hb-') ? 'Its species is not the id of a homebrew species: that is "hb-", the pack\'s id, a dash and a name, in lower case letters, digits and dashes.'
+      : `There is no species "${s.id.slice(0, 60)}" in the game${known.length ? `: choose ${known.join(', ')}` : ' (no species is entered yet)'}.`);
+  }
+  if (sp.lineage) {
+    const names = sp.lineage.options.map((o) => o.name).join(', ');
+    if (s.lineage === undefined) say(`Choose the ${sp.lineage.name} of the ${sp.name}: ${names}.`);
+    else if (!sp.lineage.options.some((o) => o.id === s.lineage)) say(`The ${sp.name}'s ${sp.lineage.name} is one of ${names}; "${String(s.lineage).slice(0, 60)}" is not.`);
+  } else if (s.lineage !== undefined) say(`The ${sp.name} has no lineage to choose.`);
+  if (sp.ability) {
+    const names = sp.ability.map((a) => ABILITY_NAMES[a]).join(', ');
+    if (s.ability === undefined) say(`Choose the ability the ${sp.name}'s spells use: ${names}.`);
+    else if (!sp.ability.includes(s.ability)) say(`The ${sp.name}'s spells use ${names}; "${String(s.ability).slice(0, 20)}" is not one of them.`);
+  } else if (s.ability !== undefined) say(`The ${sp.name} has no spellcasting ability to choose.`);
+  if (s.choices !== undefined) {
+    const lin = lineageOf(sp, sheet), open = new Set([...sp.features, ...(lin ? lin.features : [])].filter((f) => f.options).map((f) => f.id));
+    if (!(s.choices && typeof s.choices === 'object' && !Array.isArray(s.choices) && Object.values(s.choices).every((v) => typeof v === 'string' || (Array.isArray(v) && v.length <= 10 && v.every((x) => typeof x === 'string'))))) say('Its species\' choices name options.');
+    else for (const k of Object.keys(s.choices)) if (!open.has(k)) say(`The ${sp.name}${lin ? ` (${lin.name})` : ''} has no feature "${k.slice(0, 60)}" with options to choose.`);
+  }
 }
 
 // ---------- feats on a sheet ----------
