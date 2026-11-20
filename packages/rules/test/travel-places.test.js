@@ -153,7 +153,7 @@ test("a split party: the table cuts back and forth, each group exactly as it was
   refused(s, { type: "goTo", node: "cave" }, /already at The cave/);
   refused(s, { type: "goTo", node: "tavern" }, /Nobody and nothing is kept at A tavern/);
   refused(s, { type: "goTo", node: "nowhere" }, /no place "nowhere"/);
-  refused(s, { type: "goTo", node: "keep" }, /Only the DM/, PAT);
+  refused(s, { type: "goTo", node: "keep" }, /There is no such place\./, PAT);      // a pack's id is nothing to a player (W4: they are given ids of their own)
 });
 
 test("startEncounter on a navigation node is refused and nothing changes; so is an attack that would start a fight (Done when 4)", () => {
@@ -164,7 +164,7 @@ test("startEncounter on a navigation node is refused and nothing changes; so is 
   assert.ok(Object.values(s.entities).every((e) => pinOf(s, e.id) === "p-keep"), "they stand at the pin that leads back to the keep");
   assert.ok(Object.values(s.entities).every((e) => !("pin" in e)), "a pin is not on the creature, which players are sent whole");
   const pv = json(view(s, PAT));
-  for (const k of ["p-keep", "continent", "The continent"]) assert.ok(!pv.includes(k), `a player's view has no ${k}`);
+  for (const k of ["p-keep", '"continent"']) assert.ok(!pv.includes(k), `a player's view has no ${k}`);      // (a place they know is sent by name and an id of their own, W4)
   const r = refused(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 6 }, /This is not a battle map/);
   assert.equal(r.error, NOT_BATTLE);
   // A wolf the DM put on the holding map, and an attack at it.
@@ -284,7 +284,7 @@ test("stale places: 9 days 23 hours is not stale, 10 days is; the DM alone is to
   // The DM alone: not in any player's events, nor their view.
   assert.deepEqual(viewEvents(r2.events, s, PAT).filter((e) => e.type === "placeStale"), []);
   const v = json(view(s, PAT));
-  for (const k of ['"parked"', '"world"', '"place"', "Snag", "The keep", '"stale"']) assert.ok(!v.includes(k), `a player's view has no ${k}`);
+  for (const k of ['"parked"', '"world":', '"place"', "Snag", '"stale"']) assert.ok(!v.includes(k), `a player's view has no ${k}`);
   // Going there without an answer is refused with the question, and nothing changes; so is a wrong answer.
   refused(s, { type: "goTo", node: "keep" }, /The keep has been left for 10 days\. Keep it as it was, put it back as prepared, or edit it first/);
   refused(s, { type: "loadMap", node: "keep" }, /has been left for 10 days/);
@@ -376,14 +376,15 @@ test("what players are sent: never a parked place, its creatures, the world's id
   assert.ok(!sent.some((e) => ["parked", "arrived", "cut", "relocated", "placeStale", "nodeAdded"].includes(e.type)));
   assert.ok(sent.some((e) => e.type === "map"), "the new map is told, as loadMap tells it");
   const v = view(s, PAT), text = json(v);
-  for (const k of ["Canary", canary, "cleric", "wizard", "Greywatch", '"keep"', "river-country", "continent", "parked", '"world"']) assert.ok(!text.includes(k), `no ${k} in a player's view`);
+  for (const k of ["Canary", canary, "Greywatch", '"keep"', "river-country", '"continent"', "parked", '"world":']) assert.ok(!text.includes(k), `no ${k} in a player's view`);
   assert.deepEqual(Object.keys(v.entities).sort(), ["fighter", "rogue"]);
+  assert.deepEqual(Object.keys(v.away).sort(), ["cleric", "wizard"], "the party's own, kept at the keep, as read-only sheets (W4)");
   const g = ok(apply(s, { type: "goTo", node: "keep" }, DM));
   const tg = json(viewEvents(g.events, s, PAT));
   assert.ok(!tg.includes("cave") && !tg.includes("Hollow"), "the place left is not named");
   // A player cannot send the travel actions.
   for (const a of [{ type: "goTo", node: "cave" }, { type: "enter", pin: "p-keep" }, { type: "leave" }, { type: "loadMap", node: "cave" }, { type: "forgetPlace", node: "cave" },
-    { type: "keepPlace", node: "cave" }, { type: "resetPlace", node: "cave" }, { type: "nodeAdd", node: { name: "X", kind: "scene" } }, { type: "place", who: ["cleric"], node: "cave" }]) refused(s, a, /Only the DM/, PAT);
+    { type: "keepPlace", node: "cave" }, { type: "resetPlace", node: "cave" }, { type: "nodeAdd", node: { name: "X", kind: "scene" } }, { type: "place", who: ["cleric"], node: "cave" }]) refused(s, a, /Only the DM|There is no such place/, PAT);
 });
 
 test("forgetPlace drops a parked place, refused while the party is there; the parked cap refuses a seventeenth battle place", () => {

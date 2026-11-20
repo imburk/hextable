@@ -375,6 +375,9 @@ export const SETTINGS = { sight: SIGHT_RULES,
   diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
+  // Travel (docs/specs/travel.md, Decision 5, W4): whether a player whose characters are in a place that is not in play watches the place that is, live (the
+  // first value, and the default when absent), or is sent the band and the table's talk only.
+  watching: ['live', 'off'],
   // Strike first (resolve.js, strikesFirst; docs/specs/table-ui.md, E23 as amended by #585): what lands before the fight
   // it starts. 'off' (the SRD's way), 'casts' (the DM's hostile cast at the party, while `autoEngage` is on: the rule as
   // #372 built it), 'all' (casts, attacks and a monster's actions, by anyone, at another side). Absent means the first; a
@@ -389,6 +392,10 @@ export const SETTINGS = { sight: SIGHT_RULES,
   scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  watching: {
+    live: 'A player whose characters are in another place watches the group in play live: its map, creatures and talk, under a band that says their characters are not there. The default.',
+    off: 'A player whose characters are in another place is sent the band and the table\'s out-of-character talk only, not the scene in play. Use it when watching would spoil the scene.',
+  },
   strikeFirst: {
     off: 'An attack, a hostile spell or a monster\'s action outside a fight starts the fight and is not made yet: everyone rolls Initiative, and the creature makes it on its turn. The SRD\'s rule, the default.',
     casts: 'Only while "Start a fight when the party comes near enemies" is on: your hostile spell at a party member, outside a fight, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts. With that off, nothing lands first. Attacks, monsters\' actions and the players\' spells start the fight and are not made yet. A table rule; it is not in the SRD.',
