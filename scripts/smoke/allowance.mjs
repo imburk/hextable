@@ -72,7 +72,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       let tries = 0;
       const attempt = async () => {
         tries++;
-        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await idle(dm); }
+        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 10000); await idle(dm); }
         const found = await dm.evaluate(async (b) => {
           const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
           const S = window.hextable.state, G = gridOf(S.map), me = S.entities[b], DM = { role: 'dm', userId: 'dm' };
