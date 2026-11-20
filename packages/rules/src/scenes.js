@@ -26,6 +26,8 @@
 import { ASSET_ID } from './map.js';
 import { SKILLS } from './content/schema.js';
 import { ownerOf } from './engine/shared.js';
+import { shownTo } from './handouts.js';
+import { findLine } from './market.js';
 
 export const SCENE_LIMITS = { title: 80, name: 60, notes: 2000, present: 20, say: 500, lines: 200, chronicle: 8000, said: 5000 };
 
@@ -47,6 +49,12 @@ export function fightEndsScene(s, ev) {
   s.scene = null;
   const at = ev.findIndex((e) => e.type === 'encounterStart');
   if (at < 0) ev.push(end); else ev.splice(at, 0, end);
+}
+
+// A creature of the party kept in a parked place (travel.md, Decision 5): { node, rec, e }, or null.
+function parkedParty(s, id) {
+  for (const [node, rec] of Object.entries(s.parked ?? {})) if (rec?.entities && Object.hasOwn(rec.entities, id) && rec.entities[id].side === 'party') return { node, rec, e: rec.entities[id] };
+  return null;
 }
 
 // The first time a scene is opened it takes the ids players will see (see the top of this file).
@@ -143,29 +151,53 @@ export function sceneActions(fail) {
       const dm = ctx.role === 'dm';
       dm || (typeof ctx.userId === 'string' && ctx.userId) || fail('Join the table first.');
       const sc = s.scene?.open ? s.scene : null;     // a scene not open is not where anyone is talking
-      !sc || sc.said < SCENE_LIMITS.said || fail('This scene has gone on long enough. Start a new one.');
-      let as = null, name;
+      let as = null, name, far = null;
+      // The scene's cap comes first, for everyone who is not speaking from a parked place (the order the checks have always had); a parked group has
+      // a cap of its own, kept on its record, so a player there cannot flood the table either.
+      const away = typeof a.as === 'string' && !sc?.present.some((p) => p.id === a.as) && !Object.hasOwn(s.entities, a.as) ? parkedParty(s, a.as) : null;
+      const farOk = !!away && (dm || ownerOf({ entities: away.rec.entities }, away.e) === ctx.userId);
+      if (!farOk) !sc || sc.said < SCENE_LIMITS.said || fail('This scene has gone on long enough. Start a new one.');
+      else (away.rec.said ?? 0) < SCENE_LIMITS.said || fail('This place has gone on long enough. Start a new scene.');
       if (a.as === null || a.as === undefined) name = dm ? 'DM' : cleanText(a.userName, 40) || 'A player';
       else {
         const npc = typeof a.as === 'string' ? sc?.present.find((p) => p.id === a.as) : null;
-        const e = typeof a.as === 'string' && !npc ? s.entities[a.as] : null;
+        const e = typeof a.as === 'string' && !npc && Object.hasOwn(s.entities, a.as) ? s.entities[a.as] : null;
         // The same answer for someone else's character, an NPC, a creature players cannot see and an id that is nothing.
         if (npc) { dm || fail('You can speak only as your own character.'); name = npc.name; }
         else if (e && e.side === 'party' && (dm || ownerOf(s, e) === ctx.userId)) name = e.name;
+        else if (farOk) { name = away.e.name; far = away; }
         else fail(dm ? 'Nobody of that name is in the scene.' : 'You can speak only as your own character.');
         as = a.as;
       }
-      const line = sc ? ++sc.said : undefined;
-      ev.push({ type: 'say', from: dm ? 'dm' : ctx.userId, as, name, text, ...(sc ? { scene: sc.id, line } : {}) });
+      if (far) far.rec.said = (far.rec.said ?? 0) + 1;
+      const line = sc && !far ? ++sc.said : undefined;
+      // `node`: where it was said, when the table has a world (view.js tells players the id they were given, and only that). A line said
+      // in character by a parked group is for the players there alone (`to`, who they are then), and the DM.
+      const node = far ? far.node : as !== null && typeof s.place === 'string' ? s.place : undefined;
+      const to = far ? [...new Set(Object.values(far.rec.entities).filter((x) => x.side === 'party').map((x) => ownerOf({ entities: far.rec.entities }, x)).filter(Boolean))] : undefined;
+      ev.push({ type: 'say', from: dm ? 'dm' : ctx.userId, as, name, text, ...(sc && !far ? { scene: sc.id, line } : {}), ...(node !== undefined ? { node } : {}), ...(far ? { far: true, to } : {}) });
     },
     // A player asks the DM to let their character make a check. { type: 'askCheck', actor, skill }
     // Whose: their own character, or a companion they play (`ownerOf`; a command-orders creature only on a turn commanded for it).
     // It is a request, not a roll: the DM answers with the `check` action and a DC of their own.
+    // `about: { shop, line }` (docs/specs/shops.md, Decision 6): the check is asked to haggle over a line of a store. The store must be one
+    // shown to this player and the line one on its shelf: anything else is "No such shop." or "No such item.", as an id that is nothing is.
     askCheck(s, a, ctx, ev) {
       const e = s.entities[a.actor];
       (e && (ctx.role === 'dm' || (ownerOf(s, e) && ownerOf(s, e) === ctx.userId))) || fail('You can ask only for your own character.');
       Object.hasOwn(SKILLS, a.skill) || fail('Unknown skill.');
-      ev.push({ type: 'checkAsked', actor: e.id, skill: a.skill, by: ctx.role === 'dm' ? 'dm' : ctx.userId });
+      let about = null;
+      if (a.about !== undefined) {
+        const ab = a.about, dm = ctx.role === 'dm';
+        (ab && typeof ab === 'object' && !Array.isArray(ab)) || fail('No such shop.');
+        const shop = typeof ab.shop === 'string' && Array.isArray(s.shops) ? s.shops.find((x) => x?.id === ab.shop) : null;
+        (shop && shop.kind === 'store' && (dm || shownTo(shop, ctx.userId))) || fail('No such shop.');
+        const market = Array.isArray(s.markets) ? s.markets.find((m) => m.id === shop.from?.market) : null;
+        const line = typeof ab.line === 'string' ? findLine(shop, market, ab.line) : null;
+        (line && line.hidden !== true && !shop.overrides?.[line.id]?.gone) || fail('No such item.');
+        about = { shop: shop.id, line: line.id };
+      }
+      ev.push({ type: 'checkAsked', actor: e.id, skill: a.skill, by: ctx.role === 'dm' ? 'dm' : ctx.userId, ...(about ? { about } : {}) });
     },
     // Write a stretch of a scene's transcript, or a line the DM types, to the chronicle.
     // { type: 'sceneChronicle', title, lines?: [from, to], scene?, text?, public? }

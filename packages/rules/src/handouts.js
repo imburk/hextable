@@ -115,6 +115,8 @@ export function assetRefs(state) {
   for (const p of state?.scene?.present ?? []) if (typeof p.portrait === 'string') out.add(p.portrait);
   for (const h of state?.handouts ?? []) if (typeof h.asset === 'string') out.add(h.asset);
   for (const l of state?.map?.levels ?? []) if (typeof l.image?.asset === 'string') out.add(l.image.asset);
+  // The picture of each place a player has been sent (`atlas`, view.js; travel.md, Decision 12): a player may fetch it with the place.
+  for (const n of Object.values(state?.atlas?.nodes ?? {})) if (typeof n?.image === 'string') out.add(n.image);
   return out;
 }
 

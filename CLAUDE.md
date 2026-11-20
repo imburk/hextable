@@ -45,7 +45,10 @@ by the engine. Must work on PC, phone and tablet.
   (adding, editing, levelling, gear, attunement), `rests.js` (rests, time,
   chronicle, rewards) and `dm.js` (DM tools, the map, light, settings,
   handouts, scenes) and `companions.js` (the DM's `bond`, a master's `command`,
-  and a familiar's `dismiss` and `recall`; design `docs/specs/companions.md`). Under them, helpers used by more than one domain, in
+  and a familiar's `dismiss` and `recall`; design `docs/specs/companions.md`) and `trade.js` (purses and shops:
+  `market`, `openShop`, `shopEdit`, `showShop`, `revealGoods`, `closeShop`, `quote`, `buy`, `chipIn`, `sell`,
+  `take`, the place rule; design `docs/specs/shops.md`, its money arithmetic in the pure `market.js` beside
+  `engine.js`). Under them, helpers used by more than one domain, in
   layers that import only downwards: `shared.js` (basics: `fail`, `ent`,
   `control`, dice, asking a player) ← `world.js` (moving and fitting,
   regions, objects, hidden creatures, areas and targets, marching) and

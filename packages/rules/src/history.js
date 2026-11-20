@@ -27,8 +27,14 @@ export const undoable = (action) => !LOBBY.has(action?.type);
 
 // What a state looked like, cheaply enough to take before every action. The timeline only ever
 // grows, so only its length is kept; its place among the keys is kept with a null.
+// The imported market packs (`markets`; docs/specs/shops.md) are held by reference, not copied: no action changes them in place (the
+// `market` action puts a new list in whole, engine/trade.js), so the copy of before stays true, and a step that did not touch them finds
+// the very same list after and costs nothing to compare. Up to 20 packs of 128 KB would otherwise be copied before every action.
 export function mark(state) {
-  return { tree: structuredClone({ ...state, timeline: null }), tl: state.timeline?.length ?? 0 };
+  const keep = Object.hasOwn(state, 'markets') && state.markets !== null && typeof state.markets === 'object';
+  const tree = structuredClone({ ...state, timeline: null, ...(keep ? { markets: null } : {}) });
+  if (keep) tree.markets = state.markets;
+  return { tree, tl: state.timeline?.length ?? 0 };
 }
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -44,7 +50,9 @@ function changes(a, b, path = [], ops = []) {
     for (const k of kb) {
       if (!path.length && k === 'timeline') continue;
       if (!Object.hasOwn(a, k)) ops.push({ p: [...path, k], v: b[k] });
-      else if (!same(a[k], b[k])) changes(a[k], b[k], [...path, k], ops);
+      // The market packs (`markets`) are an atom: put back whole, never edited item by item, since `mark()` and the pins share the list
+      // with the state by reference and nothing may change it in place (docs/specs/shops.md, build notes P3).
+      else if (!same(a[k], b[k])) { if (!path.length && k === 'markets') ops.push({ p: [k], v: b[k] }); else changes(a[k], b[k], [...path, k], ops); }
     }
     for (const k of ka) if (!Object.hasOwn(b, k)) ops.push({ p: [...path, k], d: 1 });
     const after = [...ka.filter((k) => Object.hasOwn(b, k)), ...kb.filter((k) => !Object.hasOwn(a, k))];
@@ -166,7 +174,9 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
       const p = pins[kind];
       if (!p) return null;
       const before = mark(state), was = state, tl = state.timeline;
-      const tree = structuredClone(p.tree), owners = {};
+      const keep = Object.hasOwn(p.tree, 'markets') && p.tree.markets !== null && typeof p.tree.markets === 'object';
+      const tree = structuredClone(keep ? { ...p.tree, markets: null } : p.tree), owners = {};
+      if (keep) tree.markets = p.tree.markets;                 // the market list as pinned, shared and never edited (see mark)
       for (const [id, e] of Object.entries(was.entities ?? {})) owners[id] = { owner: e.owner, ownerName: e.ownerName };
       const rng = state.rng, seq = state.seq;
       for (const k of Object.keys(state)) delete state[k];
@@ -245,6 +255,12 @@ export function describeStep(action, events, before, after) {
     return list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
   }
   function told(who, words) { return who === null ? null : `${who} ${words}`; }
+  // A shop by the action's id, as it is after the step or was before it (closed, it is only in the state before).
+  function shopName() {
+    const id = action.shop ?? events.find((e) => typeof e.shop === 'string')?.shop;
+    const sh = (after.shops ?? []).find((x) => x.id === id) ?? (prior?.shops ?? []).find((x) => x.id === id);
+    return sh?.name ?? 'A shop';
+  }
   function place(e) { return e?.name ?? 'a place'; }
 
   function phrase(name) {
@@ -300,6 +316,31 @@ export function describeStep(action, events, before, after) {
     case 'showHandout': label = 'A handout was shown'; break;
     case 'hideHandout': label = 'A handout was taken back'; break;
     case 'removeHandout': label = 'A handout was removed'; break;
+    // Shops (docs/specs/shops.md, Decision 9). The DM's steps are the DM's: players are told nothing of them, and no label shown to a
+    // player names a shop, a line or a price (a player the shop is not shown to hears the step too; the gear and coins events say what
+    // changed hands to those who may know).
+    case 'market': label = { label: a.remove !== undefined ? `A market was removed: ${ev('market')?.name ?? 'a market'}` : `A market was imported: ${ev('market')?.name ?? 'a market'}`, shown: null }; break;
+    case 'openShop': label = { label: `${shopName()} was opened`, shown: null }; break;
+    case 'shopEdit': label = { label: `${shopName()} was changed`, shown: null }; break;
+    case 'showShop': label = { label: a.to === 'none' ? `The DM hid ${shopName()} from everyone` : a.to === 'all' ? `The DM showed ${shopName()} to everyone` : `The DM showed ${shopName()} to some players`, shown: null }; break;
+    case 'revealGoods': label = { label: `${ev('goodsRevealed')?.name ?? 'Something'} was ${a.hide === true ? 'hidden again' : 'revealed'} at ${shopName()}`, shown: null }; break;
+    case 'closeShop': label = { label: `${shopName()} was closed`, shown: null }; break;
+    case 'quote': { const q = ev('quoted'); label = { label: q?.withdrawn ? `The offer to ${name(a.for)} was withdrawn` : `${shopName()} quoted ${name(a.for)} ${q?.price ?? '?'} CP for ${q?.name ?? 'something'}`, shown: null }; break; }
+    case 'buy': {
+      const b = ev('bought'), j = ev('jointOpened');
+      label = b ? { label: `${who} bought ${b.qty > 1 ? `${b.name} x${b.qty}` : b.name}${b.payers ? ' with help' : ''}`, shown: `${who} bought something` }
+        : j ? { label: `${who} began buying ${j.name} with help`, shown: `${who} began a purchase with help` }
+          : { label: `${who} called off a purchase with help`, shown: `${who} called off a purchase` };
+      break;
+    }
+    case 'chipIn': label = { label: a.share ? `${who} pledged ${a.share} CP towards a purchase` : `${who} took back a pledge`, shown: `${who} changed a pledge` }; break;
+    case 'sell': { const x = ev('sold'); label = { label: `${who} sold ${x ? (x.qty > 1 ? `${x.name} x${x.qty}` : x.name) : 'something'}`, shown: `${who} sold something` }; break; }
+    case 'take': {
+      const x = ev('took');
+      label = a.split !== undefined ? { label: `The DM shared out ${shopName()}`, shown: 'Coins were shared out' }
+        : { label: `${who} took ${x?.coins ? 'coins' : x?.name ?? 'something'} from ${shopName()}`, shown: `${who} took something` };
+      break;
+    }
     // Scenes. A label never holds what was said, nor anything of an NPC but whether they came or went.
     case 'scene': label = ev('sceneEdit') ? 'The scene was changed' : `A scene began: ${String(ev('sceneStart')?.title ?? '').slice(0, 40)}`; break;
     case 'endScene': label = 'The scene ended'; break;
