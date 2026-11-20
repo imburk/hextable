@@ -1,6 +1,6 @@
 # Spec: making ability scores (standard array, point cost, rolling)
 
-Status: draft by an agent, to be reviewed by the design owner. Issue #557. Nothing here is built.
+Status: draft by an agent, agreed by the owner (answers of 19 November, defaults to all seven questions). Issue #557. Part 1 is built (decisions 1 to 3, 5 and 6, and the lobby roll of 4); part 2 (the engine actions, the table settings, state version 25) is not. See the build note at the end.
 
 The owner, 19 November 2026, 21:10 ET:
 
@@ -301,3 +301,15 @@ S1 and S3 do not need S2 to be useful: a lobby roll works with S1 and S3 alone, 
    content.
 7. **A second whole set for a player** (the member already rolled, the character died). Default: **not offered**; the DM rolls
    a fresh set. Alternative: a DM-only "clear this player's roll".
+
+## Build note: part 1 (#557)
+
+Built: `packages/rules/src/scores.js` (and `validate`, through `checkScores`, with `scores` in the sheet's fields); the build screen's score section; the line in My characters; the DM's line in the character sheet; the unsaved roll and the rule kept on the device. No engine action, no state change. What was settled while building:
+
+- **The record's `rule`.** A roll's record carries `rule: { reroll, below?, result }` as designed. On a device the rule is the one kept under `hextable.scorerule` (the page offers it above the Roll button, until the first roll; after it the rule is fixed and said in a sentence). `scores.js` exports `standing`, `mayReroll`, `rerollWhy`, `ruleText`, `cleanRule`; the client and `validate` both read them.
+- **Typed scores are kept, not replaced.** Choosing a method does not ask "this replaces the scores you typed" (the design's wording): nothing is thrown away, what was typed comes back with "Enter by hand" and the section says so. A level-up shows how the scores were made and does not offer to change them.
+- **Where a roll is rolled today.** The build screen rolls on the device in every mode, in a game too (`by: 'device'`, the day). `by: 'table'` and `at: <event seq>` are read, checked and shown ("Rolled at the table (event 41)") but nothing writes them until part 2. `dmLine(sheet, tableRule)` already says "More rerolls than this table allows" when given the table's rule; part 2 gives it one.
+- **A roll that is not saved** is kept in `hextable.scoreroll` (the faces, the rule and the day, with any reroll already made) until a sheet is saved with it. Closing the panel is not a new roll; a rerolled score stays rerolled. A character opened from a saved sheet cannot roll or reroll again ("This character was saved with these rolls.").
+- **The DM's line** is in the character sheet of a creature that has a `sheet` with a record (`#sheet-scores-line`, DM only; one line in `app.js`, outside the files the design named; it only calls `dmLine`).
+- **Sentences added to `validate`**: the ten of the table above plus one for a rule that is not one ("Its reroll rule is none, below a number from 4 to 18, or each, and either the new roll or the higher of the two stands.") and one for the record's shape.
+- **Styles** are in `style.css` (`.sc-*`), not `quickentry.css` where the rest of the build screen's are; the build screen's `select` and `button` rules there ask 40 px, and the score section asks 44.

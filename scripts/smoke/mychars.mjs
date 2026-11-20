@@ -252,7 +252,7 @@ async function scoresPass(browser, url, label, opts, grid) {
       await ctx.addInitScript((bytes) => { const real = crypto.getRandomValues.bind(crypto); crypto.getRandomValues = (a) => (a instanceof Uint8Array && a.length === 32 ? (a.set(bytes), a) : real(a)); }, FIXED);
       const page = await ctx.newPage();
       run.watch(page);
-      const shot = (n) => (dir ? page.screenshot({ path: `${dir}/scores-${n}-${tag}.png` }).catch(() => {}) : null);
+      const shot = async (n, at = null) => { if (!dir) return; if (at) await page.$eval(at, (e) => e.scrollIntoView({ block: 'start' })).catch(() => {}); await page.screenshot({ path: `${dir}/scores-${n}-${tag}.png` }).catch(() => {}); };
       const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
       const sheets = () => stored(page).then((l) => l.map((f) => f.sheet));
       const fill = async (name) => {
@@ -304,7 +304,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         await page.selectOption('#qb-bg-plus1', 'str');                      // the same ability twice: the +2 is cleared
         if (!/Choose which abilities the background raises/.test(await txt('#qb-problems'))) throw new Error('an unfinished background is not said');
         await page.selectOption('#qb-bg-plus2', 'str'); await page.selectOption('#qb-bg-plus1', 'dex');
-        await saveable(); await shot('2-standard');
+        await saveable(); await shot('2-standard', '#qb-scores');
         await page.click('#qb-save'); await waitShown(page, '#qb', false);
         const s = (await sheets()).at(-1);
         if (s.scores.method !== 'standard' || JSON.stringify(s.scores.background) !== '{"id":"soldier","abilities":{"str":2,"dex":1}}' || s.abilities.str !== 17) throw new Error(`sheet ${JSON.stringify(s)}`);
@@ -326,7 +326,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         await page.selectOption('#qb-bg', 'soldier'); await page.selectOption('#qb-bg-mode', 'all');
         const fin = await page.$$eval('[id^="qb-final-"]', (o) => o.map((x) => x.textContent).join());
         if (fin !== '16,16,15,10,8,8') throw new Error(`final ${fin}`);
-        await saveable(); await shot('3-pointcost');
+        await saveable(); await shot('3-pointcost', '#qb-scores');
         await page.click('#qb-save'); await waitShown(page, '#qb', false);
         const s = (await sheets()).at(-1);
         if (s.scores.method !== 'pointcost' || s.scores.base.con !== 14 || validate(s).length) throw new Error(`sheet ${JSON.stringify(s.scores)} ${validate(s)}`);
@@ -337,6 +337,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (!/No score may be rolled again/.test(await txt('#qb-rule-text'))) throw new Error(await txt('#qb-rule-text'));
         await page.selectOption('#qb-rule-reroll', 'each'); await page.selectOption('#qb-rule-result', 'higher');
         if (!/Every score may be rolled again, once\. The higher of the two stands/.test(await txt('#qb-rule-text'))) throw new Error(await txt('#qb-rule-text'));
+        await shot('4a-roll-rule', '#qb-scores');
         await tap('#qb-roll'); await waitShown(page, '#qb-chips');
         const scores = await page.$$eval('.sc-chip', (c) => c.map((x) => +x.dataset.score));
         if (scores.join() !== first.map(topOf).join()) throw new Error(`rolled ${scores}, the rules package says ${first.map(topOf)}`);
@@ -353,7 +354,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (!/What the DM sees: Rolled on the player's device on \d+ \w+ 2026, under the rule "Every score may be rolled again, once\. The higher of the two stands\." \(set on that device\)/.test(await txt('#qb-dm-line'))) throw new Error(await txt('#qb-dm-line'));
         if (!/Not witnessed: the table did not roll these/.test(await txt('#qb-dm-line'))) throw new Error('"not witnessed" is not said');
         const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('hextable.scoreroll'))); if (!kept || kept.rolls.length !== 6 || !kept.rolls[0].again) throw new Error('the unsaved roll is not kept on the device');
-        await saveable(); await shot('4-roll');
+        await saveable(); await shot('4-roll', '#qb-scores');
         await page.click('#qb-save'); await waitShown(page, '#qb', false);
         const s = (await sheets()).at(-1);
         if (s.scores.method !== 'roll' || s.scores.by !== 'device' || JSON.stringify(s.scores.rule) !== '{"reroll":"each","result":"higher"}' || validate(s).length) throw new Error(`sheet ${JSON.stringify(s.scores)} ${validate(s)}`);
@@ -368,7 +369,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (await page.$('#qb-roll')) throw new Error('a saved roll offers a new roll');
         if (await page.$('[id^="qb-reroll-"]')) throw new Error('a saved roll can be rolled again');
         if (!/saved with these rolls/.test(await txt('#qb-noreroll-1'))) throw new Error(await txt('#qb-noreroll-1'));
-        await shot('5-edit');
+        await shot('5-edit', '#qb-scores');
         await page.click('#qb-cancel');
       });
 
@@ -398,6 +399,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         const who = await page.$eval('#sheet-body h2', (h) => h.textContent);
         if (who !== 'Rolla Kerr') throw new Error(`the sheet is ${who}'s`);
         if (!/Rolled on the player's device/.test(line)) throw new Error(`no line for the DM: "${line}"`);
+        await page.$eval('#sheet-scores-line', (e) => e.scrollIntoView({ block: 'center' })).catch(() => {});
         await shot('6-dm-sheet');
       });
     } finally { await ctx.close(); }
