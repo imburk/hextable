@@ -342,5 +342,5 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 
 /* The slot a spell is cast with (#604): a thumb-sized menu on touch, and the bar may wrap its buttons under the words on a narrow screen. */
 #hint { flex-wrap: wrap; }
-#hint-slot { max-width: 100%; }
-@media (pointer: coarse) { #hint-slot { min-height: 44px; } }
+#hint #hint-slot { max-width: 100%; }
+@media (pointer: coarse) { #hint #hint-slot { min-height: 44px; } }
