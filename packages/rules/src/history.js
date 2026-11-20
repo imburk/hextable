@@ -139,12 +139,14 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
     listRedo: () => redos.map((s) => s.label).reverse(),
     clear() { undos = []; redos = []; pins = { fight: null, rest: null }; },
     // After an action that was recorded: a fight that began pins the state from before the action
-    // (`before`, its mark); a rest pins the state after it and drops the fight pin; a new map drops both.
+    // (`before`, its mark); a rest pins the state after it and drops the fight pin; a new map drops both. Going to a place
+    // of a world (`loadMap { node }` and the travel actions) drops neither: the place left is kept in the state, so a
+    // rewind to the last rest crosses it like anything else (docs/specs/travel.md, Decision 11).
     // Taking an action back with undo leaves the pins as they are.
     track(action, events, before, after) {
       // Returns whether the pins changed, so a caller that keeps them elsewhere knows to write them.
       const was = pins;
-      if (action?.type === 'loadMap') pins = { fight: null, rest: null };
+      if (action?.type === 'loadMap' && action.node === undefined) pins = { fight: null, rest: null };
       else {
         const started = events.some((e) => e.type === 'encounterStart'), rested = events.some((e) => e.type === 'rest');
         if (!started && !rested) return false;
@@ -231,6 +233,13 @@ export function describeStep(action, events, before, after) {
   const text = phrase(real), shown = phrase(seen);
   return finish({ label: typeof text === 'string' ? text : text.label, shown: typeof shown === 'string' ? shown : shown.shown });
 
+  // The creatures of a move, by name; for players (`party`), the party's only (a creature the DM moved is not named to them).
+  function names(ids, name, party = false) {
+    const list = (Array.isArray(ids) ? ids : []).filter((id) => !party || find(id)?.side === 'party').map(name);
+    return !list.length ? (party ? 'The party' : 'Nobody') : list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
+  }
+  const place = (e) => e?.name ?? 'a place';
+
   function phrase(name) {
   const a = action, who = name(a.actor);
   let label;
@@ -254,7 +263,15 @@ export function describeStep(action, events, before, after) {
     case 'setObject': label = 'Something on the map was changed'; break;
     case 'refresh': label = 'Refreshed from sheet'; break;
     case 'mapEdit': label = 'The map was edited'; break;
-    case 'loadMap': label = 'A new map was loaded'; break;
+    case 'loadMap': label = a.node === undefined ? 'A new map was loaded' : { label: `${names(ev('arrived')?.ids, name)} went to ${place(ev('arrived'))}`, shown: `${names(ev('arrived')?.ids, name, true)} moved on` }; break;
+    // Places of a world (docs/specs/travel.md, W2). A place is named for the DM only: players are told who went, never where.
+    case 'enter': label = { label: `${names(ev('arrived')?.ids, name)} went into ${place(ev('arrived'))}`, shown: `${names(ev('arrived')?.ids, name, true)} went in` }; break;
+    case 'leave': label = { label: `${names(ev('arrived')?.ids, name)} went out to ${place(ev('arrived'))}`, shown: `${names(ev('arrived')?.ids, name, true)} went out` }; break;
+    case 'goTo': label = { label: `The table cut to ${place(ev('cut'))}`, shown: 'The table cut to another place' }; break;
+    case 'forgetPlace': label = { label: `${place(ev('placeForgotten'))} was let go`, shown: null }; break;
+    case 'keepPlace': label = { label: `${place(ev('placeKept'))} was kept as it was left`, shown: null }; break;
+    case 'resetPlace': label = { label: `${place(ev('placeReset'))} was put back as prepared`, shown: null }; break;
+    case 'nodeAdd': label = { label: `A place was added: ${place(ev('nodeAdded'))}`, shown: null }; break;
     case 'startEncounter': label = 'The fight began'; break;
     case 'endEncounter': label = 'The fight was ended'; break;
     case 'endEffect': label = 'A lasting effect was ended'; break;
@@ -303,6 +320,8 @@ export function describeStep(action, events, before, after) {
     case 'recall': label = `${who} called ${name(a.id)} back`; break;
     // Riding (stage C6a).
     case 'mount': label = `${who} mounted ${name(a.mount)}`; break;
+    case 'place': if (a.node !== undefined) { const r = ev('relocated'), ids = r?.ids ?? []; label = { label: `${names(ids, name)} ${ids.length === 1 ? 'was' : 'were'} placed at ${place(r)}`, shown: `${names(ids, name, true)} ${ids.filter((id) => find(id)?.side === 'party').length === 1 ? 'was' : 'were'} placed` }; break; }
+      label = `${who} ${ACTS.place}`; break;
     case 'dismount': label = `${who} dismounted`; break;
     case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;

@@ -13,7 +13,8 @@ import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
 import { control, controllerOf, current, fail, homebrewBlock, homebrewCreatures, homebrewSources, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
-import { checkEnd, fall, settleBonds, settleHolds } from './engine/resolve.js';
+import { checkEnd, fall, NotBattleMap, settleBonds, settleHolds } from './engine/resolve.js';
+import { staleCheck } from './places.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -23,6 +24,7 @@ import { handlers as characters } from './engine/characters.js';
 import { handlers as rests } from './engine/rests.js';
 import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
+import { handlers as travel } from './engine/travel.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
 export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, controllerOf, FLY_CEILING, hbId, homebrewBlock, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
@@ -39,14 +41,15 @@ export { teleportSpot } from './engine/casting.js';
 export { HIDE_DC, hideProblem, itemUsesFor, scrollStats, usesFor } from './engine/features.js';
 export { SETTINGS, SETTING_TEXT } from './engine/dm.js';
 export { DAWN, dawnsBetween } from './engine/rests.js';
-export { AWAY, awayHow } from './engine/resolve.js';
+export { AWAY, awayHow, NOT_BATTLE } from './engine/resolve.js';
+export { TRAVEL_LIMITS } from './places.js';             // places of a world (docs/specs/travel.md, W2)
 
 export { FT };                       // feet per hex
 export { opportunityAttack };
 
 // Every action's handler, from the domain modules in engine/ (CLAUDE.md, Engine layout). An action
 // type is defined in one module only: if two defined it, the later spread would win silently.
-const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, {
+const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, travel, {
   // { type: 'react', prompt, take: reactionId | null, slot? }: the answer to the reaction an action
   // is waiting on (`pending`; reactions.js). Given by the reacting creature's controller or the DM
   // (the DM's answer overrides). `prompt` is the number it was asked under, so an answer to an
@@ -70,7 +73,7 @@ const handlers = buildHandlers([movement, attacks, casting, features, characters
     Object.assign(RUN, { action, ctx: was, answers: [...answers, answer], i: 0 });
     dispatch(s, action, was, ev);
   },
-}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'companions', 'engine']);
+}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'companions', 'travel', 'engine']);
 
 // Builds the table of handlers, a Map keyed by action type: a lookup can then never find what every
 // object has (`toString`, `constructor`, `__proto__`). Throws, naming both modules, if two modules
@@ -119,7 +122,7 @@ function look(s, ev) {
 // The fields of an action that name creatures, one id or a list of them. (`follow`'s `leader` is
 // not one: its handler gives one answer for a creature that is not there and one not in the party. `deliver` is a cast's
 // familiar, stage C5c; `dismiss` and `recall` look at their `id` in companions.js, as `companionOrder` does.)
-const CREATURE_FIELDS = ['actor', 'target', 'entity', 'targets', 'spare', 'ids', 'order', 'deliver'];
+const CREATURE_FIELDS = ['actor', 'target', 'entity', 'targets', 'spare', 'ids', 'order', 'deliver', 'who'];
 
 // Run one action's handler. Also how a waiting action is run again when its reaction is answered.
 function dispatch(s, action, ctx, ev) {
@@ -161,17 +164,22 @@ function dispatch(s, action, ctx, ev) {
 // cost, not the size of the map. What play does change in the map (`objects`, `regions`, `seen`, `starts`) is copied as ever.
 // TERRAIN_ACTIONS is the list of the actions that may change the terrain; `apply-restore.test.js` shows that no other action type does
 // (it plays every type with the terrain frozen). A new action that edits tiles or walls in place MUST be added here.
+// The maps of parked places (docs/specs/travel.md, Decision 5) are never changed in place by any action (a reset puts a
+// new map in whole), so their terrain is held by reference for every action, as the map in play's is.
 export const TERRAIN_ACTIONS = new Set(['mapEdit', 'loadMap']);
 const BY_REFERENCE = ['levels', 'walls'];
+const isMap = (m) => !!m && typeof m === 'object' && !Array.isArray(m);
+const lighten = (m) => { const rest = {}; for (const k of Object.keys(m)) if (!BY_REFERENCE.includes(k)) rest[k] = m[k]; return rest; };
+const refill = (m, copy) => { const map = {}; for (const k of Object.keys(m)) map[k] = BY_REFERENCE.includes(k) ? m[k] : copy[k]; return map; };      // the same keys in the same order
 function freeze(s, terrain = true) {
   const m = s.map;
-  if (terrain || !m || typeof m !== 'object' || Array.isArray(m)) return structuredClone({ ...s, timeline: null });
-  const held = {}, rest = {};
-  for (const k of Object.keys(m)) { if (BY_REFERENCE.includes(k)) held[k] = m[k]; else rest[k] = m[k]; }
-  const copy = structuredClone({ ...s, timeline: null, map: rest });
-  const map = {};
-  for (const k of Object.keys(m)) map[k] = BY_REFERENCE.includes(k) ? held[k] : copy.map[k];      // the same keys in the same order
-  copy.map = map;
+  const parked = isMap(s.parked) ? Object.entries(s.parked).filter(([, r]) => isMap(r) && isMap(r.map)) : [];
+  const light = parked.length ? Object.fromEntries(Object.entries(s.parked).map(([k, r]) => [k, isMap(r) && isMap(r.map) ? { ...r, map: lighten(r.map) } : r])) : null;
+  const top = { ...s, timeline: null, ...(light ? { parked: light } : {}) };
+  const whole = terrain || !isMap(m);
+  const copy = structuredClone(whole ? top : { ...top, map: lighten(m) });
+  if (!whole) copy.map = refill(m, copy.map);
+  for (const [k, r] of parked) copy.parked[k].map = refill(r.map, copy.parked[k].map);
   return copy;
 }
 // The copy for this action: whole where the action may change the terrain (a `react` re-plays the action it answers).
@@ -223,6 +231,13 @@ function applyInner(s, action, ctx) {
     stopWork();
     delete s.stack;                                  // never leave half an effect behind
     if (err instanceof WorkLimit) return safe(() => overWork(s, snap, err, ev, action, was));
+    // A fight called while the table is on a navigation or scene node (engine/resolve.js, NotBattleMap): refused, and
+    // the game put back as it was before the action, whatever the action had done on the way (docs/specs/travel.md, Decision 7).
+    if (err instanceof NotBattleMap) {
+      if (net) thaw(s, net);
+      setRun(null);
+      return { ok: false, error: err.message, events: [] };
+    }
     if (err instanceof Pause) {
       // Stop and ask: the game goes back to how it was before the action (the dice seed too), and
       // keeps the action, the answers given so far and the question. Only the player asked and
@@ -244,7 +259,8 @@ function applyInner(s, action, ctx) {
   setRun(null);
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds);
   // a grapple whose grappler is gone, Incapacitated or out of range ends (settleHolds).
-  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); checkEvents(ev); } catch (err) {
+  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); checkEvents(ev); } catch (err) {
+    if (err instanceof NotBattleMap) { stopWork(); delete s.stack; if (net) thaw(s, net); return { ok: false, error: err.message, events: [] }; }
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
     if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
   }

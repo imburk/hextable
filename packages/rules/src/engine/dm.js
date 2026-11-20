@@ -1,13 +1,15 @@
 // The DM's tools and the map (engine.js): claiming characters, starting and ending fights, spawning
 // and placing creatures, regions, objects, map edits and loading, light, conditions and Hit Points,
 // handouts and scenes, and table settings.
-import { gridOf, col, key, parse } from '../grid.js';
-import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
+import { gridOf, col } from '../grid.js';
+import { CONTENT, MONSTERS, SPELLS, summonTemplate } from '../content/index.js';
 import { effectsOf, endEffect } from '../durations.js';
-import { FT, ground, landing, overlapAt, regionAt, SQUARE_RANGES, STEP_MAX, under } from '../space.js';
+import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
 import { EDITS, lintMap, migrateMap } from '../map.js';
+import { arrivalSpots, marchOrder } from '../places.js';
+import { loadNode, placeIn } from './travel.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
 import { SIGHT_RULES, unknown } from '../vision.js';
@@ -15,7 +17,7 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, up } from './shared.js';
-import { airspace, AREA_FILLS, byMarch, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
 import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
@@ -134,8 +136,11 @@ export const handlers = {
     ev.push({ type: 'spawned', id });
     if (s.encounter?.arena[col(at)]) joinEncounter(s, s.entities[id], ev);
   },
+  // { type: 'place', actor, to }: on the map in play. { type: 'place', who | actor, node, pin?, entry? }: anywhere in
+  // the atlas (docs/specs/travel.md, Decision 4; engine/travel.js).
   place(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can place creatures.');
+    if (a.node !== undefined) return placeIn(s, a, ctx, ev);
     const e = ent(s, a.actor);
     // On the nearest floor, or exactly where asked if a height is given and there is room there (in the air, say).
     const to = (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z)) || fail("There's nothing there to stand on.");
@@ -172,6 +177,7 @@ export const handlers = {
   // The changes are made to a copy and the copy is checked whole, so a bad edit changes nothing.
   mapEdit(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
+    !s.map?.holding || fail('This is not a battle map: there is nothing to edit here.');
     (Array.isArray(a.ops) && a.ops.length > 0 && a.ops.length <= 2000) || fail('Nothing to change.');
     const map = structuredClone(s.map);
     for (const op of a.ops) {
@@ -228,49 +234,21 @@ export const handlers = {
   // older format is brought up to date first, as every map that enters the game is.
   // { type: 'loadMap', map, entry? }: with `entry`, the party arrives at that entry's starts
   // (docs/specs/travel.md, Decision 3); without it, at the starts that belong to no entry.
+  // { type: 'loadMap', node, entry?, who?, stale?, map? }: to a place of the world, keeping the one left (travel.md,
+  // Decision 5; engine/travel.js). Without `node`, the old map is thrown away as it always was, world or not.
   loadMap(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.encounter || fail("The map can't change in the middle of a fight.");
+    if (a.node !== undefined) return loadNode(s, a, ctx, ev);
     let map;
     try { map = migrateMap(structuredClone(a.map)); } catch { fail("That map can't be used. It is not a map document."); }
     const problems = lintMap(map);
     problems.length === 0 || fail(`That map can't be used. ${problems[0]}`);
-    const entries = map.entries ?? [];
     typeof a.entry === 'string' || a.entry === undefined || fail('Name an entry by its id.');
-    const entry = a.entry === undefined ? null : entries.find((en) => en.id === a.entry) || fail(`That map has no entry "${a.entry}".`);
-    const walkable = (p) => p && TILES[ground(map, p).tile.t].cost < Infinity;
-    // A start's height (P18): its own `z`, else its level's, else the ground's.
-    const zOf = (st) => st.z ?? map.levels.find((l) => l.id === st.level)?.z ?? 0;
-    // Which starts: the entry's; with none named, those of no entry, or if every start has one, the first entry's.
-    const mine = entry ? map.starts.filter((st) => st.entry === entry.id)
-      : map.starts.some((st) => st.entry === undefined) ? map.starts.filter((st) => st.entry === undefined)
-      : map.starts.filter((st) => st.entry === entries[0]?.id);
-    const first = mine[0] ?? parse(Object.keys(map.levels[0].tiles)[0]);
-    const start = landing(map, first, zOf(first));
-    // Arrivals come in marching order (byMarch), "so the column comes through the gate in the order it walked"
-    // (travel.md, Decision 3). `partyFollow` numbers the followers and not their leader, who walks at the
-    // head: one that leads a column and has no place in the order of its own comes first.
-    const led = new Set(Object.values(s.entities).map((e) => e.follow).filter(Boolean));
-    const rank = (e) => e.march ?? (led.has(e.id) && !e.follow ? -1 : Infinity);
-    const party = Object.values(s.entities).filter((e) => e.side === 'party').sort((x, y) => byMarch({ march: rank(x) }, { march: rank(y) }) || 0), spots = [], taken = new Set();
-    const take = (p) => { spots.push(p); taken.add(key(p)); };
-    // The starts in order, each where a creature can stand (walkable ground, nothing solid on
-    // it, not taken); then, for anyone left, the spiral out from the first start, as before.
-    const B = barriers(map), G = gridOf(map);
-    const standing = (st) => { const p = landing(map, st, zOf(st)), level = p && ground(map, p)?.level; return walkable(p) && level && !B.solid(level.id, p) ? p : null; };
-    !entry || mine.some(standing) || fail(`Nobody can stand at ${entry.name}.`);
-    for (const st of mine) {
-      if (spots.length >= party.length) break;
-      const p = standing(st);
-      if (p && !taken.has(key(p))) take(p);
-    }
-    for (let n = 0; n < 12 && spots.length < party.length; n++) {
-      for (const h of G.range(start, n)) {
-        const p = G.dist(h, start) === n ? landing(map, h, start.z) : null;
-        if (walkable(p) && Math.abs(p.z - start.z) <= STEP_MAX && spots.length < party.length && !taken.has(key(p))) take(p);
-      }
-    }
-    spots.length === party.length || fail("That map has no room for the party at its start.");
+    // Arrivals come in marching order and at the entry's starts, or the starts of no entry (places.js, arrivalSpots).
+    const all = Object.values(s.entities), party = marchOrder(all.filter((e) => e.side === 'party'), all);
+    const r = arrivalSpots(map, party.length, a.entry ?? null);
+    const spots = r.spots ?? fail(r.problem);
     const leaving = new Set(Object.values(s.entities).filter((e) => e.side !== 'party').map((e) => e.id));
     for (const fx of [...effectsOf(s)]) if (leaving.has(fx.source) || fx.parts.some((p) => leaving.has(p.target))) endEffect(s, ev, fx, 'the party moved on');
     // E8 (docs/specs/square-grid.md, Decision 4): a lasting area laid on the old map's cells, a zone
@@ -279,7 +257,8 @@ export const handlers = {
     for (const fx of [...effectsOf(s)]) if (fx.terrain || (fx.zone && !fx.zone.follows)) endEffect(s, ev, fx, 'the party moved on');
     for (const id of leaving) delete s.entities[id];
     s.map = map;
-    party.forEach((e, i) => { e.pos = spots[i]; });
+    party.forEach((e, i) => { e.pos = spots[i]; delete e.pin; });
+    if (s.place) s.place = null;                       // the map in play is no longer a place of the world
     ev.push({ type: 'map', map: map.id, name: map.name });
     lookAround(s, ev);
   },
