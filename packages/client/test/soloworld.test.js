@@ -120,3 +120,21 @@ test('solo: world messages run one at a time, and a new game lets the world and 
   const ex = await t.export();
   assert.equal(ex.world, null);
 });
+
+test('solo: a New game started while a world is loading refuses that world, takes its pictures back out, and leaves no world', async () => {
+  const { t } = await open();
+  await t.reset();
+  const v8 = riverPack(); v8.world.version = 8;
+  const upload = t.assets.upload.bind(t.assets);
+  let resetting = null;
+  t.assets.upload = async (f) => { const r = await upload(f); resetting ??= t.reset(); return r; };     // a New game, in the middle of the load
+  const e = await rejected(t.worldOp(v8));
+  t.assets.upload = upload;
+  assert.match(e.error, /A new game was started while the world was loading\. Load the world again\./);
+  await resetting;
+  const ex = await t.export();
+  assert.equal(ex.state.world ?? null, null, 'the new game has no world');
+  assert.equal(ex.world, null);
+  assert.equal(dbs.get('hextable-world').get('world').rows.get('current'), undefined);
+  assert.deepEqual(files(), [], 'the pictures stored for it were taken back out');
+});

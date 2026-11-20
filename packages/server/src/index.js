@@ -296,7 +296,9 @@ server.on("upgrade", (req, socket) => {
     }
     // A handler that throws (a damaged table file, a bug) costs that message an error frame, not the process: the failure is logged
     // with its stack so it is not hidden, and the socket carries on.
-    try { session.receive(msg); if (msg?.t === "leave") ws.maxPayload = FRAME_MAX; }
+    // Leaving puts the socket back to the small frame before anything else runs, so a failure on the way cannot skip it.
+    if (msg?.t === "leave") ws.maxPayload = FRAME_MAX;
+    try { session.receive(msg); }
     catch (err) {
       console.error(`A "${String(msg?.t).slice(0, 20)}" message failed: ${err?.stack ?? err}`);
       try { ws.send(JSON.stringify({ t: "error", error: "The server could not handle that message." })); } catch { /* the socket is gone */ }

@@ -286,6 +286,10 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
     {
       const refuse = (problems) => { const list = problems.slice(0, 20).map((x) => String(x).slice(0, 300)); return Promise.reject({ error: `The world pack was refused. ${list.slice(0, 3).join(' ')}${list.length > 3 ? ` (and ${problems.length - 3} more)` : ''}`, problems: list }); };
       await worldReady;
+      // The game this world is for: a New game started while the pictures or the record are being kept (`reset`) refuses it, with
+      // what was stored taken back out, rather than putting this world into a game it was not loaded for.
+      const game = state, moved = () => state !== game;
+      const MOVED = 'A new game was started while the world was loading. Load the world again.';
       const r = loadWorld(pack);
       if (!r.ok) return refuse(r.problems);
       const pictures = Object.entries(r.pack.assets ?? {});
@@ -305,10 +309,11 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
         catch (err) { await takeBack(); return refuse([`Picture "${key}" could not be kept: ${err.message}`]); }
         added.push(rec.id); had.set(hash, rec.id); ids[key] = rec.id; kept[key] = { id: rec.id, hash };
       }
+      if (moved()) { await takeBack(); return refuse([MOVED]); }
       const data = storedWorld(r.pack, ids), index = indexOf(data, r.hash), record = { id: index.id, version: index.version, hash: r.hash, data, assets: kept };
       try { await worldStore('readwrite', (st) => st.put(record, 'current')); }
       catch (err) { await takeBack(); return refuse([err.message]); }
-      const res = apply(state, { type: 'worldIndex', index }, ctx);
+      const res = moved() ? { ok: false, error: MOVED } : apply(state, { type: 'worldIndex', index }, ctx);
       if (!res.ok) {
         await takeBack();
         try { await worldStore('readwrite', (st) => (world ? st.put(world, 'current') : st.delete('current'))); } catch { /* the browser keeps the new record; the game names the old world */ }
