@@ -67,3 +67,21 @@ test("a shop shown to a player reaches them through patches as view() has it; on
   check();
   assert.deepEqual(pat.receiver.state.shops, []);
 });
+
+test("the DM's view of the market list stays true through import, undo and redo (the server keeps its JSON per list)", () => {
+  const tables = createTables({ seed: () => 5 });
+  const dm = client(tables);
+  dm.say({ t: "host", name: "Dana" });
+  const code = dm.last("welcome").code;
+  const expected = () => { const w = dm.last("welcome"); return JSON.parse(JSON.stringify({ ...view(tables.get(code).state, { role: w.role, userId: w.userId }), timeline: undefined })); };
+  const two = structuredClone(MARKET); two.version = 2; two.lists[0].lines[0].price = "2 GP";
+  const ver = () => dm.receiver.state.markets.map((m) => m.version);
+  dm.say({ t: "act", action: { type: "market", add: MARKET } });
+  dm.say({ t: "act", action: { type: "market", add: two } });
+  assert.deepEqual(ver(), [2]);
+  for (const [say, want] of [["undo", [1]], ["redo", [2]], ["undo", [1]]]) {
+    dm.say({ t: say });
+    assert.deepEqual(ver(), want, say);
+    assert.deepEqual(dm.receiver.state, expected(), say);
+  }
+});

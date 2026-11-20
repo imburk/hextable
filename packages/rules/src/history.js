@@ -50,7 +50,9 @@ function changes(a, b, path = [], ops = []) {
     for (const k of kb) {
       if (!path.length && k === 'timeline') continue;
       if (!Object.hasOwn(a, k)) ops.push({ p: [...path, k], v: b[k] });
-      else if (!same(a[k], b[k])) changes(a[k], b[k], [...path, k], ops);
+      // The market packs (`markets`) are an atom: put back whole, never edited item by item, since `mark()` and the pins share the list
+      // with the state by reference and nothing may change it in place (docs/specs/shops.md, build notes P3).
+      else if (!same(a[k], b[k])) { if (!path.length && k === 'markets') ops.push({ p: [k], v: b[k] }); else changes(a[k], b[k], [...path, k], ops); }
     }
     for (const k of ka) if (!Object.hasOwn(b, k)) ops.push({ p: [...path, k], d: 1 });
     const after = [...ka.filter((k) => Object.hasOwn(b, k)), ...kb.filter((k) => !Object.hasOwn(a, k))];
@@ -172,7 +174,9 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
       const p = pins[kind];
       if (!p) return null;
       const before = mark(state), was = state, tl = state.timeline;
-      const tree = structuredClone(p.tree), owners = {};
+      const keep = Object.hasOwn(p.tree, 'markets') && p.tree.markets !== null && typeof p.tree.markets === 'object';
+      const tree = structuredClone(keep ? { ...p.tree, markets: null } : p.tree), owners = {};
+      if (keep) tree.markets = p.tree.markets;                 // the market list as pinned, shared and never edited (see mark)
       for (const [id, e] of Object.entries(was.entities ?? {})) owners[id] = { owner: e.owner, ownerName: e.ownerName };
       const rng = state.rng, seq = state.seq;
       for (const k of Object.keys(state)) delete state[k];

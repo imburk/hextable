@@ -465,3 +465,38 @@ test("twenty markets of the largest size cost an ordinary action and the undo ma
   h.undo(s);
   assert.equal(s.markets, was);
 });
+
+test("history puts the market list back whole: import v1, v2, undo, redo, undo; a rewind pin keeps its own list; nothing is edited in place", () => {
+  const s = newGame(5), h = createHistory();
+  const deep = (x) => { if (x && typeof x === "object") { Object.freeze(x); for (const v of Object.values(x)) deep(v); } return x; };
+  const tracked = (action) => { const before = mark(s), r = ok(apply(s, action, DM)); h.record(before, s, describeStep(action, r.events, before, s)); h.track(action, r.events, before, s); deep(s.markets); return r; };
+  const ver = () => s.markets.map((m) => m.version);
+  tracked({ type: "market", add: market() });
+  const v1 = s.markets, v1json = JSON.stringify(v1);
+  const two = market({ version: 2 }); two.lists[0].lines[2].price = "2 GP";
+  tracked({ type: "market", add: two });
+  const v2 = s.markets, v2json = JSON.stringify(v2);
+  assert.deepEqual(ver(), [2]);
+  h.undo(s); assert.deepEqual(ver(), [1]); assert.equal(s.markets, v1);
+  h.redo(s); assert.deepEqual(ver(), [2]); assert.equal(s.markets, v2);
+  h.undo(s); assert.deepEqual(ver(), [1]);
+  assert.deepEqual([JSON.stringify(v1), JSON.stringify(v2)], [v1json, v2json], "neither list was changed");
+  // A fight pins the state with v1; v2 is imported in the fight; the rewind gives v1 back, and its undo v2.
+  tracked({ type: "startEncounter", center: s.entities.m1.pos, radius: 30 });
+  tracked({ type: "market", add: two });
+  assert.deepEqual(ver(), [2]);
+  h.rewind(s, "fight");
+  assert.deepEqual(ver(), [1]);
+  assert.equal(s.markets, v1);
+  h.undo(s);
+  assert.deepEqual(ver(), [2]);
+  assert.equal(JSON.stringify(v1), v1json);
+});
+
+test("a market's lines may be replaced by a list in the same edit that removes the shop's own line of the same id", () => {
+  const s = table(), shop = outfitter(s);
+  ok(apply(s, { type: "shopEdit", shop, set: { lists: [] } }, DM));
+  ok(apply(s, { type: "shopEdit", shop, add: [{ id: "rope", name: "Good rope", price: "2 GP", kind: "gear" }] }, DM));
+  ok(apply(s, { type: "shopEdit", shop, set: { lists: ["standard"] }, remove: ["rope"] }, DM));
+  assert.equal(viewShops(s, PAT)[0].lines.find((l) => l.id === "rope").price, 100);
+});

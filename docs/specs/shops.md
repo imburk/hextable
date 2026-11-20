@@ -865,12 +865,16 @@ the stores shown to them now, not at P4; P4 keeps `market` joining `MAP_ACTIONS`
   No action changes a market in place (`market` puts a new list in whole), so `freeze` in `engine.js` and `mark` in `history.js` hold the list
   by reference, and the table server keeps its JSON per list (`snapDM`). Measured after: an action and a mark cost what they cost without
   markets (under 0.5 ms each). `shops.test.js` holds the bound (under 3 ms more per action and per mark, markets deep-frozen). A future
-  action that edits a market in place breaks this, and the frozen test catches it.
+  action that edits a market in place breaks this, and the frozen test catches it. For the same reason `history.js` treats `markets` as an
+  atom: `changes()` puts the list back whole (`{ p: ['markets'], v }`) rather than item by item, and a rewind takes the pinned list as it
+  is, so undo, redo and rewind swap lists and never edit one (and the server's per-list JSON stays true). Tested: import v1, v2, undo, redo,
+  undo, a rewind across an import, and the DM's patched view through the same.
 - **The fix round of the review of #598.** `take` reads a line's overrides as the view does (taken off: "No such item."; none left: "Sold
   out."; stock off the override; at none left the line and its override go). A `jointEnded` for `hidden` is told to players as `ended`. A
   pledge is taken back from anywhere (`share: 0`: no place, fight or up check); a joint purchase ends (`pledger`) when a pledger leaves the
   table or dies. A purse that is not a purse (a kind past 10,000,000, a coin not whole) is refused, not read as empty, and no buy, sell, take
-  or settle may take a kind past the ceiling. A re-haggle that comes out worse than the standing quote leaves that quote. `revealGoods`
+  or settle may take a kind past the ceiling. A re-haggle that comes out worse than the standing quote leaves that quote; a failed roll still
+  sets the Influence wait on that character and line, kept quote or not. `revealGoods`
   refuses a special taken off the shelf; `shopEdit { set: { lists } }` refuses lists whose lines share an id with the shop's own.
 - **Known and left as they are** (review of #598, L2, L4, L8):
   - *A joint purchase's price is frozen when it opens* (L2). A later price override, markup change or withdrawn quote does not change it:

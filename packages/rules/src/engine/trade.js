@@ -367,11 +367,6 @@ export const handlers = {
         if (!['keeper', 'notes', 'haggle'].includes(k)) seen = true;
       }
     }
-    if (a.set?.lists !== undefined) {
-      const m = marketOfShop(s, shop), listed = new Set(next.lists.flatMap((lid) => m?.lists?.find((l) => l.id === lid)?.lines?.map((l) => l.id) ?? []));
-      const clash = next.lines.find((l) => listed.has(l.id));
-      !clash || fail(`${shop.name} has a line "${clash.id}" already.`);
-    }
     if (a.remove !== undefined) {
       (Array.isArray(a.remove) && a.remove.every((id) => typeof id === 'string')) || fail('Name the lines to remove.');
       for (const id of a.remove) next.lines.some((l) => l.id === id) || fail(`${shop.name} has no line of its own "${id.slice(0, 60)}".`);
@@ -379,6 +374,11 @@ export const handlers = {
       for (const id of a.remove) delete next.overrides[id];
       next.quotes = next.quotes.filter((q) => !a.remove.includes(q.line));
       seen = true;
+    }
+    if (a.set?.lists !== undefined) {                 // after `remove`: a line taken out in the same edit is no clash
+      const m = marketOfShop(s, shop), listed = new Set(next.lists.flatMap((lid) => m?.lists?.find((l) => l.id === lid)?.lines?.map((l) => l.id) ?? []));
+      const clash = next.lines.find((l) => listed.has(l.id));
+      !clash || fail(`${shop.name} has a line "${clash.id}" already.`);
     }
     if (a.add !== undefined) {
       (Array.isArray(a.add) && a.add.length) || fail('Send the lines to add.');
