@@ -209,17 +209,69 @@ test("the event number on a roll is a counter in `scoreRolls`, not a place in th
   assert.equal(run(s, { type: "rollAbilityScores" }, { role: "player", userId: "#seq" }).ok, false, "the counter's key is not anyone's");
 });
 
-test("a hand-edited record of a roll is refused cleanly, never a TypeError; the DM can roll over it", () => {
-  for (const bad of [{}, { sets: [] }, { sets: [{}, {}, {}, {}, {}, {}] }, { sets: Array(6).fill({ dice: [1, 2, 3] }) }, { sets: Array(6).fill({ dice: [1, 2, 3, 9] }) }, 5, null]) {
+const X = { role: "player", userId: "x" };
+test("a hand-edited record of a roll is refused cleanly, never a TypeError; the DM puts it right by rolling for that member", () => {
+  for (const bad of [{}, { sets: [] }, { sets: [{}, {}, {}, {}, {}, {}] }, { sets: Array(6).fill({ dice: [1, 2, 3] }) }, { sets: Array(6).fill({ dice: [1, 2, 3, 9] }) }, { sets: Array(5).fill({ dice: [1, 2, 3, 4] }) }, 5, null]) {
     const s = game(); set(s, "scoreReroll", "each"); s.scoreRolls.x = bad;
     const before = json(s);
-    const r = run(s, { type: "rerollAbilityScore", index: 0 }, { role: "player", userId: "x" });
-    assert.equal(r.ok, false, json(bad));
-    assert.equal(json(s), before, "nothing changed");
-    assert.equal(run(s, { type: "rollAbilityScores" }, { role: "player", userId: "x" }).ok, bad === null ? true : false, "a player's second roll is still refused");
+    assert.equal(run(s, { type: "rerollAbilityScore", index: 0 }, X).ok, false, json(bad));
+    assert.equal(run(s, { type: "rollAbilityScores" }, X).ok, false, "a second roll is refused");
+    assert.equal(json(s), before, "nothing changed, the counter too");
+    const f = run(s, { type: "rollAbilityScores", for: "x" }, DM);          // the DM at a real table: with an id of their own
+    assert.ok(f.ok, f.error);
+    assert.equal(f.events[0].by, "x");
+    assert.equal(s.scoreRolls.dm, undefined, "the DM's own record is not made");
+    assert.ok(run(s, { type: "rerollAbilityScore", index: 0 }, X).ok, "the member can reroll what is now sound");
   }
-  const s = game(); s.scoreRolls.x = {};
-  assert.ok(run(s, { type: "rollAbilityScores" }, { role: "dm", userId: "x" }).ok);
   const t = game(); t.scoreRolls = "junk";
   assert.ok(run(t, { type: "rollAbilityScores" }, ANA).ok, "a scoreRolls that is not a record is made one");
+  const u = game(); set(u, "scoreReroll", "each"); u.scoreRolls.x = { sets: Array.from({ length: 6 }) };
+  assert.equal(run(u, { type: "rerollAbilityScore", index: 0 }, X).ok, false, "holes are a damaged record");
+});
+
+test("the DM rolls for a member: DM only, checked before anything changes, told to that member and the DM and no one else", () => {
+  const s = game(); set(s, "scoreReroll", "each");
+  assert.ok(run(s, { type: "rollAbilityScores" }, ANA).ok);
+  const before = json(s);
+  for (const [a, ctx] of [[{ type: "rollAbilityScores", for: "ana" }, ANA], [{ type: "rollAbilityScores", for: "ben" }, BEN], [{ type: "rollAbilityScores", for: "" }, DM],
+    [{ type: "rollAbilityScores", for: 7 }, DM], [{ type: "rollAbilityScores", for: "#seq" }, DM], [{ type: "rollAbilityScores", for: "x".repeat(101) }, DM], [{ type: "rollAbilityScores", for: null }, DM]]) {
+    assert.equal(run(s, a, ctx).ok, false, json(a));
+    assert.equal(json(s), before, "refused before anything changed");
+  }
+  const old = json(s.scoreRolls.ana);
+  const r = run(s, { type: "rollAbilityScores", for: "ana" }, DM);
+  assert.ok(r.ok, r.error);
+  assert.notEqual(json(s.scoreRolls.ana), old, "a fresh set in place of the old");
+  assert.equal(Object.keys(s.scoreRolls).filter((k) => k !== "#seq").join(), "ana");
+  assert.ok(run(s, { type: "rerollAbilityScore", index: 0 }, ANA).ok, "and the member can reroll from it");
+  const e = r.events[0];
+  assert.equal(viewEvents([e], s, { role: "player", userId: "ana" })[0].sets.length, 6, "the member is told the roll");
+  assert.equal(viewEvents([e], s, { role: "dm", userId: "dm" })[0].sets.length, 6);
+  assert.deepEqual(viewEvents([e], s, { role: "player", userId: "ben" }), [{ type: "scoresRolled" }], "no one else is told anything");
+  assert.equal(run(game(), { type: "rollAbilityScores", for: "ben" }, DM).ok, true, "a member who has not rolled can be rolled for");
+});
+
+test("the event counter: a refusal leaves it alone; it is not anyone's; a bad or missing one is rebuilt from the records kept", () => {
+  const s = game(); set(s, "scoreReroll", "below");
+  assert.ok(run(s, { type: "rollAbilityScores" }, ANA).ok);
+  const keep = () => json(s);
+  let before = keep();
+  assert.equal(run(s, { type: "rollAbilityScores" }, ANA).ok, false);
+  assert.equal(run(s, { type: "rerollAbilityScore", index: 9 }, ANA).ok, false);
+  assert.equal(run(s, { type: "rerollAbilityScore", index: 0 }, BEN).ok, false);
+  assert.equal(run(s, { type: "rerollAbilityScore", index: 0 }, { role: "player", userId: "#seq" }).ok, false);
+  assert.equal(run(s, { type: "rollAbilityScores" }, { role: "dm", userId: "#seq" }).ok, false);
+  assert.equal(run(s, { type: "rerollAbilityScore", index: 0 }, { role: "dm", userId: "#seq" }).ok, false);
+  assert.equal(keep(), before, "nothing, the counter included, moved");
+  assert.equal(s.scoreRolls["#seq"], 1);
+  for (const bad of [-3, 1.5, "7", null, NaN, undefined]) {
+    const g = game(); run(g, { type: "rollAbilityScores" }, ANA); run(g, { type: "rollAbilityScores" }, BEN);
+    g.scoreRolls["#seq"] = bad;
+    const e = run(g, { type: "rollAbilityScores" }, DM).events[0];
+    assert.equal(e.at, 3, `rebuilt from the two records kept, then counted: ${String(bad)}`);
+  }
+  const v = game(); run(v, { type: "rollAbilityScores" }, ANA); run(v, { type: "rollAbilityScores" }, BEN);
+  delete v.scoreRolls["#seq"];                                              // a version 25 state with records and no counter
+  assert.equal(run(v, { type: "rollAbilityScores" }, DM).events[0].at, 3);
+  assert.equal(run(v, { type: "rollAbilityScores", for: "ana" }, DM).events[0].at, 4);
 });

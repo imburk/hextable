@@ -26,31 +26,51 @@ function freeHandForShield(s, e) {
 // Who is rolling ability scores: a member by their user id, the DM by theirs (or 'dm' where there is none, as in a game on one device).
 // `scoreRolls['#seq']` counts the roll events (a stable number, unlike a place in the capped timeline): a sheet's `at` names the event by it.
 const SEQ = '#seq';
-const nextSeq = (s) => { const r = s.scoreRolls; r[SEQ] = (Number.isSafeInteger(r[SEQ]) && r[SEQ] >= 0 ? r[SEQ] : 0) + 1; return r[SEQ]; };
-// A recorded roll that has the shape the actions read (six sets of four dice), else a plain refusal.
-const sound = (x) => x && typeof x === 'object' && Array.isArray(x.sets) && x.sets.length === 6
-  && x.sets.every((q) => q && Array.isArray(q.dice) && q.dice.length === 4 && q.dice.every((d) => Number.isInteger(d) && d >= 1 && d <= 6)
-    && (q.again === undefined || (Array.isArray(q.again) && q.again.length === 4 && q.again.every((d) => Number.isInteger(d) && d >= 1 && d <= 6))));
+const isRec = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+// A user's own record (never one inherited, never the counter).
+const own = (s, who) => (isRec(s.scoreRolls) && who !== SEQ && Object.hasOwn(s.scoreRolls, who) ? s.scoreRolls[who] : undefined);
+// The next event number. A counter that is missing or is not a whole number from 0 up (a save made by hand, or before it was kept) is rebuilt as the
+// number of records kept, so the numbers go on from there; it is written only here, after every check has passed.
+const nextSeq = (s) => {
+  const r = s.scoreRolls, c = r[SEQ];
+  r[SEQ] = (Number.isSafeInteger(c) && c >= 0 ? c : Object.keys(r).filter((k) => k !== SEQ).length) + 1;
+  return r[SEQ];
+};
+// A recorded roll that has the shape the actions read (six sets of four dice, each die 1 to 6), else a plain refusal.
+const dice4 = (d) => { if (!Array.isArray(d) || d.length !== 4) return false; for (let i = 0; i < 4; i++) if (!Number.isInteger(d[i]) || d[i] < 1 || d[i] > 6) return false; return true; };
+const sound = (x) => {
+  if (!isRec(x) || !Array.isArray(x.sets) || x.sets.length !== 6) return false;
+  for (let i = 0; i < 6; i++) { const q = x.sets[i]; if (!isRec(q) || !dice4(q.dice) || (q.again !== undefined && !dice4(q.again))) return false; }
+  return true;
+};
 const roller = (ctx) => ctx.role === 'dm' ? (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : 'dm') : (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : fail('Only someone at the table can roll ability scores.'));
 export const handlers = {
   // Roll the six ability scores from the game's seed (docs/specs/ability-scores.md): four d6 each, the lowest die set aside. { type: 'rollAbilityScores' }
   // A member rolls once; the DM may roll a fresh set. What was rolled is kept in `scoreRolls` for the table rule's rerolls, and the event is told to the
   // DM and the roller only (view.js). `at` is the event's number from a counter kept in `scoreRolls`, so a sheet can name it for good.
+  // { type: 'rollAbilityScores', for? }: `for` is a member's user id and only the DM may give it: the DM rolls a fresh set for that member, in place of
+  // whatever they have (how a record that is damaged, or a roll the member should not be held to, is put right). It is told to that member and the DM.
   rollAbilityScores(s, a, ctx, ev) {
-    const who = roller(ctx);
+    let who = roller(ctx);
+    if (a.for !== undefined) {
+      ctx.role === 'dm' || fail('Only the DM can roll ability scores for someone else.');
+      (typeof a.for === 'string' && a.for && a.for.length <= 100) || fail('Whose scores? Give their user id.');
+      who = a.for;
+    }
     who === SEQ && fail('Only someone at the table can roll ability scores.');
-    (s.scoreRolls && typeof s.scoreRolls === 'object' && !Array.isArray(s.scoreRolls)) || (s.scoreRolls = {});
-    (ctx.role === 'dm' || !s.scoreRolls?.[who]) || fail('You have already rolled your ability scores at this table.');
+    (ctx.role === 'dm' || own(s, who) === undefined) || fail('You have already rolled your ability scores at this table.');
     const { sets } = rollScores(s);
-    (s.scoreRolls ??= {})[who] = { sets: sets.map((x) => ({ dice: x.faces })) };
-    ev.push({ type: 'scoresRolled', by: who, sets: sets.map((x) => ({ dice: x.dice, total: x.total })), at: nextSeq(s) });
+    if (!isRec(s.scoreRolls)) s.scoreRolls = {};
+    const at = nextSeq(s);                                                    // before the record is written: a counter rebuilt counts the records already kept
+    s.scoreRolls[who] = { sets: sets.map((x) => ({ dice: x.faces })) };
+    ev.push({ type: 'scoresRolled', by: who, sets: sets.map((x) => ({ dice: x.dice, total: x.total })), at });
   },
   // Roll one of those scores again, once, if the table's rule allows it (settings `scoreReroll`, `scoreRerollBelow`, `scoreRerollResult`).
   // { type: 'rerollAbilityScore', index } with index 0 to 5, the score's place in the roll.
   rerollAbilityScore(s, a, ctx, ev) {
-    const who = roller(ctx), mine = who === SEQ ? undefined : s.scoreRolls?.[who];
-    mine || fail('Roll your ability scores first.');
-    sound(mine) || fail('The roll kept for you is damaged; ask the DM to roll your scores again.');
+    const who = roller(ctx), mine = own(s, who);
+    mine !== undefined || fail('Roll your ability scores first.');
+    sound(mine) || fail('The roll kept for you is damaged; ask the DM to roll your scores for you.');
     (Number.isInteger(a.index) && a.index >= 0 && a.index < mine.sets.length) || fail('Which score? It is 0 to 5, in the order rolled.');
     const set = mine.sets[a.index], rule = tableRule(s.settings), first = topThree(set.dice);
     if (!mayReroll(set, rule)) {
