@@ -7,6 +7,7 @@ COPY package.json ./
 COPY scripts/build.mjs scripts/
 COPY packages/client packages/client
 COPY packages/rules/src packages/rules/src
+COPY assets/models assets/models
 RUN npm run build
 
 FROM node:22-alpine
