@@ -1,8 +1,9 @@
 # Spec: spells on the sheet: one list of checkboxes, the level a spell was chosen at in its box, changes by the rules, a clear slots and prepared display
 
-Status: draft by an agent, to be reviewed by the design owner. **Round 2** (the owner tried the
-round 1 mockup; see "Round 2 feedback" below, which amends Decisions 1 to 4 and the words and
-mockup sections). Issue #568. A design job:
+Status: draft by an agent, to be reviewed by the design owner. **Round 3** (the owner tried the
+round 2 mockup; see "Round 3 feedback" below, which adds Decisions 8 and 9 and amends the words and
+mockup sections). Round 2 (the owner tried the round 1 mockup; see "Round 2 feedback", which
+amended Decisions 1 to 4). Issue #568. A design job:
 this spec and a clickable picture, [`mockups/spells-on-the-sheet.html`](mockups/spells-on-the-sheet.html)
 (open the file in a browser; nothing in it runs the game). No code is written by this spec;
 the lead approves it before the build.
@@ -49,6 +50,24 @@ the rules in "What the rules allow" are unchanged; only how they are shown chang
 | R2-3 | (level of a spell chosen now) | A spell chosen in this sitting shows **the current level as a number, on a gold box**, at once; the number is what will be saved. A tick that turns into a number on Save was rejected (see Decision 2: it changes a glyph the player has already read, and shows nothing about what is recorded). | Decision 2 |
 | R2-4 | "the whole list bounced around ... just showing I selected a spell" | **A tap changes the box, the counts and one line of words, and nothing else.** The list is built once and is never re-sorted, rebuilt, opened, closed or scrolled by a tap; rows have a fixed height; sections do not open or close; chosen rows stay where they are. Checked in the mockup by measuring every row's place before and after each tap: 0 px of movement over 50 taps (see "Nothing moves"). | Decision 7 (new) |
 | R2-5 | "It's just not intuitive" | Fewer kinds of thing on screen: one list, one kind of row, one count. Rows that were "locked lines" in round 1 are the same rows, unchanged in look; a tap on one that cannot change says when it can. | Decisions 2, 3 |
+
+## Round 3 feedback
+
+The owner tried the round 2 mockup, levelling the Wizard (his words, 20 November 2026):
+
+> "For spellbook on the level up screen, it should have section headers that scroll up/down and
+> stop at the top of the display even as the spells themselves scroll. The spell title should
+> have (lvl X). I like the info button. I'd prefer that it be a 3 second hover to display but
+> there's no equivalent on a touch screen is there?"
+
+Round 2's answers (one list, the level in the box, nothing moves) were not questioned and stand.
+
+| # | What he said | What the design does now | Where |
+|---|---|---|---|
+| R3-1 | "section headers that scroll up/down and stop at the top of the display even as the spells themselves scroll" | Every group header (Cantrips, the Magic Initiate spell, Spellbook or Prepared spells, Always prepared) **sticks under the count bar** while its rows scroll beneath it, and the next header pushes it up. In the spellbook the "Level N" sub-header sticks under its group header the same way. The bar stays pinned above both. On a phone at most **two lines are pinned below the bar** (the group, 34 px, and its level, 26 px); with the bar that is 153 px of a 712 px list. It is done for every group, not only the spellbook, so the list reads the same everywhere. | Decision 8 (new) |
+| R3-2 | "The spell title should have (lvl X)" | Every spell row's name reads **"Magic Missile (lvl 1)"**, and a cantrip **"Fire Bolt (cantrip)"**, in the row's fixed 52 px: a long name is cut with an ellipsis and the tag is never cut. | Decision 9 (new) |
+| R3-3 | "I like the info button" | **Kept**, unchanged in size and place (28 px circle in a 44 px target at the end of every row). It now also brightens when the mouse is on its row, and the status line says "Tap ⓘ to read a spell." so it is the obvious tap. | Decision 9 |
+| R3-4 | "I'd prefer that it be a 3 second hover to display but there's no equivalent on a touch screen is there?" | **Desktop: yes, the card appears after the mouse rests on a row for 3 seconds** (it did in round 2; the mockup now says so at the top). **Touch: there is no hover, so there is no exact equivalent.** The nearest thing is a **press-and-hold of about half a second** on the row, which phones already use for "tell me more"; it is kept. A 3 second hold was not copied: a finger held still for 3 seconds feels like nothing is happening. **Nobody has to find the hold:** tapping the ⓘ is the way, on a phone and on a desktop, and it works the same everywhere. | Decision 9 |
 
 ## The answers to his questions, in plain words
 
@@ -155,15 +174,15 @@ for a Wizard with Magic Initiate (Cleric):
 ```
  CANTRIPS                                                   6 of 6
  Wizard 4 and Magic Initiate (Cleric) 2; the source is under each name.
-   [ ] Acid Splash                                           ⓘ
-   [1] Fire Bolt        Wizard                               ⓘ
-   [1] Guidance         Magic Initiate · Cleric · WIS        ⓘ
-   [ ] Resistance       Cleric list · Magic Initiate         ⓘ
+   [ ] Acid Splash (cantrip)                                 ⓘ
+   [1] Fire Bolt (cantrip)       Wizard                      ⓘ
+   [1] Guidance (cantrip)        Magic Initiate · Cleric · WIS   ⓘ
+   [ ] Resistance (cantrip)      Cleric list · Magic Initiate    ⓘ
    ...                  (every cantrip either list offers, A to Z, chosen or not)
  LEVEL 1 SPELL · MAGIC INITIATE (CLERIC)                    1 of 1
  SPELLBOOK                                     12 of 12   ★ 7 of 7
    LEVEL 1
-   [1] Detect Magic                                   ★     ⓘ
+   [1] Detect Magic (lvl 1)                           ★     ⓘ
 ```
 
 - **One Cantrips group; the tag is the source**, shown under the name of a chosen cantrip: the
@@ -292,17 +311,17 @@ already show):
  ┌ Cantrips 6 ┐ ┌ Prepared 7 of 7 ┐ ┌ Always prepared 1 ┐ ┌ Spellbook 12 ┐
 
  CANTRIPS                                                   6 of 6
-   [ ] Acid Splash                                           ⓘ
-   [1] Fire Bolt  Wizard     ...   (the one list of Decision 1: every cantrip, A to Z)
+   [ ] Acid Splash (cantrip)                                 ⓘ
+   [1] Fire Bolt (cantrip)  Wizard     ...   (the one list of Decision 1: every cantrip, A to Z)
  LEVEL 1 SPELL · MAGIC INITIATE (CLERIC)                    1 of 1
  SPELLBOOK                                     12 of 12   ★ 7 of 7
    LEVEL 1
-   [1] Detect Magic                                   ★     ⓘ
-   [ ] Feather Fall                                   ☆     ⓘ
+   [1] Detect Magic (lvl 1)                           ★     ⓘ
+   [ ] Feather Fall (lvl 1)                           ☆     ⓘ
    LEVEL 2
-   [4] Scorching Ray                                  ☆     ⓘ
+   [4] Scorching Ray (lvl 2)                          ☆     ⓘ
  ALWAYS PREPARED · do not count          (Brenna: Life Domain's six, read-only rows)
-   Aid           Life Domain · from level 3                  ⓘ
+   Aid (lvl 2)   Life Domain · from level 3                  ⓘ
 ```
 
 - **Slots** are pips by spell level, the number beside them; Pact Magic says "2 slots of
@@ -407,7 +426,8 @@ build must keep and the mockup shows:
    toggle. Chosen rows stay where they are, among the unchosen.
 5. **No scroll change.** The tap never scrolls the list (no scroll-to, no focus jump). The
    only things that scroll it are the player's own scrolling and a tap on a count tile
-   ("scroll to this group").
+   ("scroll to this group"). Headers that stick under the bar (Decision 8) are what scrolling
+   looks like, not an effect of a tap: no tap changes which header is pinned.
 6. **Fixed heights.** Rows are 52 px, headings and rule lines have text that does not change
    when a tap happens, the bar has a fixed height and its lines never wrap into more. So a
    longer or shorter word in a count cannot push a row.
@@ -420,6 +440,102 @@ position and its total height. Over the 50 taps of a walk of a Wizard from level
 Cleric's swap, a Long Rest and the read-only view, on a 390 x 844 touch screen and a
 1280 x 800 mouse screen, **the largest change in any row's top, any height, the scroll
 position or the list's height was 0 px.**
+
+### Decision 8: headers that stick (round 3)
+
+The owner's picture: the headers stay at the top of the list while the spells scroll under
+them, so you always know which group, and which spell level, you are looking at. This is
+**scroll behaviour, not tap behaviour**: it changes what the player sees as they scroll, never
+what a tap does (Decision 7).
+
+1. **What sticks.** The count bar (Decision 3) stays pinned at the top of the list, as in round
+   2. Under it, the **group header** of the group being read sticks: `CANTRIPS 6 of 6`,
+   `LEVEL 1 SPELL · MAGIC INITIATE (CLERIC) 1 of 1`, `SPELLBOOK 12 of 14 ★ 7 of 9` (a Cleric's
+   `PREPARED SPELLS 7 of 9`), `ALWAYS PREPARED do not count`. In a group made of spell levels
+   (the spellbook, the Cleric's prepared spells) the **level sub-header** (`LEVEL 2`) sticks
+   under the group header. The group's count is on its header, so it stays in view while you
+   scroll, which is useful in itself.
+2. **The stack, in px** (the same on a phone and a desktop):
+
+   | Piece | Height | Pinned when |
+   |---|---|---|
+   | Count bar | 93 | always |
+   | Group header | 34 | always, one line |
+   | Level sub-header | 26 | only in a group made of spell levels |
+   | **Pinned in all** | **127** (cantrips, Initiate, always prepared) or **153** (spellbook, prepared spells) | |
+
+   On a phone that leaves 585 or 559 px of the 712 px list (about 11 rows); on the 1280 x 800
+   desktop panel (list 668 px) 541 or 515 px. **At most two lines are pinned below the bar**: the
+   group and its level, nothing else (the rule line under a header, which says when a spell can
+   change, is *not* pinned; it scrolls away, and a tap that cannot change a spell says it on the
+   status line anyway).
+3. **The push.** The next header takes the place of the one above it, the "stacked sticky"
+   pattern: as the end of a group comes up, its header is pushed up under the bar by the next
+   group's header; when a spell level ends, its sub-header is pushed up by the next level's. A
+   group header is pushed together with its level sub-header, which is inside it.
+4. **Fixed and plain.** A header is one line of a fixed height, opaque (rows scroll under it
+   and are not seen through it), its title is cut with an ellipsis rather than wrapped, and its
+   count is on the right. The level sub-header has a slightly lighter fill, so the two pinned
+   lines read as two tiers.
+5. **How it is built** (for SS3): CSS only, `position: sticky` with three constants (bar 93,
+   group 34, level 26). Each group is a `<section>` that holds its header, and each spell level
+   a `<div>` that holds its sub-header, which is what makes the next one push the last; no
+   scroll listener and no JavaScript while scrolling. The count tiles scroll to a group so its
+   header lands right under the bar (not under the pinned stack).
+6. **Nothing moves, re-checked.** Sticking never changes the list's layout: every header,
+   row and line has the same place in the list (measured from the top of the list's content)
+   whether it is stuck or not; only what the eye sees moves, by scrolling. The 0 px tap check was
+   re-run with the round 3 mockup (see "The mockup"): TAPS_PLACEHOLDER.
+7. **Rejected:** (a) one floating label that JavaScript rewrites to the current group as you
+   scroll: its words change while scrolling and it costs work on every scroll event on a phone;
+   (b) pinning the rule lines too: four pinned lines on a phone; (c) pinning the level as part
+   of the group line ("SPELLBOOK · LEVEL 2"): one line fewer (127 px), but the header's words
+   change as you scroll (question 15).
+
+### Decision 9: the level in the name, and the info button (round 3)
+
+**The name.** Every spell row, in every group, reads `Name (lvl N)`: `Magic Missile (lvl 1)`,
+`Scorching Ray (lvl 2)`; a cantrip reads `Fire Bolt (cantrip)`. The tag follows the name in
+regular weight and the muted colour; the name stays bold. The always-prepared rows have it too
+(`Aid (lvl 2)`).
+
+- **Why "(cantrip)" and not "(lvl 0)".** "Cantrip" is the SRD's own word and the word the
+  Cantrips header already uses. A cantrip uses no slot, so "lvl 0" invites the question "what
+  slot is that?", and looks like a typo beside the slot pips (which start at level 1). It costs two
+  more characters, which the row has room for (see the next point). The alternative is in question
+  14.
+- **Fixed height at 390 px.** The row is still 52 px. The name is cut with an ellipsis, the tag
+  is not: at 390 px the longest name in the lists, "Protection from Evil and Good", reads
+  "Protection from Evil and G… (lvl 1)", with the box, the ★ and the ⓘ in place. (The name area at
+  390 px is about 228 px in a Wizard's row, which has the ★.) Measured in the mockup: every row on
+  the screen is 52 px high, with and without a long name.
+- **Under a "Level 1" sub-header the tag says what the header says.** That is kept as asked: a row
+  read alone (by a screen reader, in a log line, in the scroll card) still says its level, and the
+  tag is the only place a Magic Initiate or Always prepared row shows it.
+- **Two numbers on a row, and how they are told apart.** The number *in the box* is the
+  character level the spell was chosen at (Decision 2); the number in the *tag* is the spell's own
+  level. They differ for most rows (Scorching Ray: `4` in the box, `(lvl 2)` in the name). They are told
+  apart by place and look (an outlined or gold box on the left, grey words in brackets after the
+  name) and by the status line's legend, which says what the box number is. It is the one
+  thing here that may be misread (Risks, question 15).
+- **Words for a screen reader:** "Magic Missile, level 1 spell, chosen at level 1" ·
+  "Fire Bolt, cantrip, Wizard, chosen at level 1".
+
+**The ⓘ and the scroll card.**
+
+- **The ⓘ stays**, as the owner likes it: a 28 px circle in a 44 px target at the end of every spell
+  row, after the ★ where there is one. A tap opens the scroll card (#566); a tap on it again, a
+  tap elsewhere, Escape or scrolling the list closes it. It is **the obvious tap**: the same place
+  on every row, it brightens when the mouse is on its row or it has focus, it has the tooltip
+  "Read Fire Bolt", and the status line's legend ends "Tap ⓘ to read a spell."
+- **On a mouse:** resting the pointer on a row for **3 seconds** shows the card, and moving off
+  hides it. (The ⓘ is there for the person who does not want to wait.)
+- **On touch there is no hover.** A finger is either on the glass or off it, so the 3-second
+  hover has no twin. The equivalent is a **press-and-hold of about 0.5 seconds** on the row, which
+  shows the card and does not choose or un-choose the spell (the tap that ends the press is
+  swallowed). It is kept as a shortcut, and the design never depends on it: **tap the ⓘ**. Half a
+  second, not three, because a finger held for three seconds feels like a frozen screen, and
+  because half a second is what phones already use for "tell me more".
 
 ## The words
 
@@ -435,7 +551,11 @@ position or the list's height was 0 px.**
 | Count, top | Choose {n} more · All chosen |
 | Count, what is open | {n} cantrips · {n} Initiate · {n} book · {n} to prepare |
 | Count, group heading | {have} of {cap} · ★ {have} of {cap} |
-| Legend, status line | The number in a box is the level you chose the spell at. |
+| Legend, status line | The number in a box is the level you chose the spell at. Tap ⓘ to read a spell. |
+| Spell name | {Name} (lvl {N}) · cantrip: {Name} (cantrip) |
+| ⓘ tooltip (mouse) | Read {Name} |
+| Group header (sticks) | {Title}   {have} of {cap}   (spellbook: ★ {have} of {cap}) |
+| Level sub-header (sticks) | LEVEL {N} |
 | Given up (a swap) | giving this up · tap to keep; status: Given up. Choose another of the same level to replace it, or tap it again to keep it. |
 | Swap refused | That swap is used. Put the other one back to swap this one. |
 | Group full | Full: {cap} of {cap}. Tap one you chose earlier to give it up, if a swap is left. |
