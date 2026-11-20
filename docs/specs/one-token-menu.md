@@ -52,6 +52,7 @@ The owner tried the published mockup and said (his words quoted):
 | R6 | "In this mockup for the phone, the character sheet comes up with Wren and then after it says 'level 1 wizard' and then Wren as a drop down, it doesn't appear to do anything ... it should probably be at a 'higher' level." | The choice of character moves to the first level: one row per creature the person controls; a player with one character sees one row and no switcher; nothing in a character's screen changes which character it is (Decision 4b) |
 | R7 | "Just to the right of Pip and above left of the goblin warrior are brown rectangles, are those part of the design or what?" | They were the mockup's rocks, drawn as plain boxes. The mockup now draws boulders (a lumpy outline, light from above, a shadow), so the stand-in map does not look like buttons. Nothing in the game changes |
 | R8 | "I'd like health bars on everyone when in combat or at least the option for the DM to display them." | A health bar over every creature in a fight: the party's exact, a foe's from what players are sent today (full, half for Bloodied, empty for Down), and a DM table rule "Players see foes' health: Hidden / Rough / Exact"; Exact is engine amendment E-M3 (Decision 7a) |
+| R9 | (round 3) "I'm at 6 d20 and 1 d100 and I can't unselect dice, a shift key should allow deselection." | Your roll as chips with a − each and Clear all; Shift+click and press and hold on a die take one away (Decision 8b, "Taking dice away") |
 
 ## Rules that bind this design
 
@@ -720,12 +721,30 @@ token, which opens it with the dice last used. In a fight, in a scene, while exp
 always reachable.
 
 **What.** A row of dice: **d4, d6, d8, d10, d12, d20, d100**; a tap adds one of that die
-(the count shows on the chip, "2 × d6"); a long press or "−" takes one away; a modifier
-stepper (−10 to +10); an optional "What for?" line (40 characters: "Perception, for the
+(the count shows on its button, "× 2"); a modifier stepper (−10 to +10); an optional "What for?" line (40 characters: "Perception, for the
 DM"); and who sees it: **The table** (default for players) or **Only the DM** (default for
 the DM: a DM's private roll). Then **Roll**: the throw zone opens with those dice (up to
 12 shown, as today's limit), thrown by a tap, a flick or Enter, or at once under "Always
 throw my dice at once".
+
+**Taking dice away (round 3).** The owner, with six d20 and a d100 chosen: "I can't
+unselect dice, a shift key should allow deselection." The rule: **every way to add a die
+has a way to take it away, on every device, and none of them needs a key a phone lacks.**
+
+- **Your roll** sits above the dice as a row of chips in the order of the dice, then the
+  modifier: **6d20 + 1d100 + 2**. Each chip has its own **−** (a 44 px target) that takes one
+  die of that kind away; a tap on the chip itself does the same. The modifier's chip has a
+  **×** that sets it back to 0. **Clear all** at the end of the row empties the roll and the
+  modifier. With nothing chosen the row says "No dice yet: tap a die to add it."
+- **On a computer, Shift+click** on a die's button takes one of it away (a plain click adds).
+- **On a touch screen, press and hold** a die's button (500 ms, the finger still) takes one
+  away, with a short buzz where the device allows; the tap that ends the hold adds nothing.
+- **Keyboard:** each button says how in its spoken name ("d20, 6 chosen: tap to add one;
+  Shift+click or press and hold to take one away"); a chip's − is a button in the tab order.
+- **At most 20 dice in one roll** (the limit of E-M2): a tap past it adds nothing and says
+  "At most 20 dice in one roll."
+- The Roll button always names the whole roll ("Roll 6d20 + 1d100 + 2"), so what will be
+  thrown is never in doubt.
 
 **Through `apply()`: engine amendment E-M2, a new action `freeRoll`.** There is no action
 for a roll that is not part of something else today (checked: the handlers in `engine/`
@@ -910,6 +929,7 @@ How the prompt fits each table rule:
 | Setup, controls | Camera buttons on the map |
 | Setup, dice | Rolls stay on the board: 1.5 seconds / 3 seconds / 6 seconds / Until I tap · Throw my dice with a flick · Dice look: Translucent blue / White / Black / Red / Blue / Green / Yellow / Primary colours, your way (Die colour, Number colour; greyed: The numbers would not show.) · Other players' dice: In their party colour / Like mine |
 | Roll dice | Roll dice · d4 d6 d8 d10 d12 d20 d100 · Modifier · What for? · Who sees it: The table / Only the DM · **Roll 2d6 + 1** |
+| Roll dice, your roll | 6d20 − · 1d100 − · 2 × · **Clear all** · No dice yet: tap a die to add it. · Tap a die to add one. To take one away: its − in your roll above, a tap on it there, Shift+click, or press and hold the die. · At most 20 dice in one roll. |
 | Roll dice, refused | Not while the table waits for an answer. |
 | Plain roll, log | Wren rolls 2d6 + 1 (Perception, for the DM): 4, 5 + 1 = 10. A plain roll: it changes nothing in the game. |
 | Plain roll, title | You (Wren): 2d6 + 1 · plain roll |

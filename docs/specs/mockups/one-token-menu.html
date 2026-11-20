@@ -253,6 +253,15 @@ body.bare #mock { display: none; }
 .frame.appear .preview .pv { animation: none; }
 .seg button[aria-disabled=true] { opacity: .4; }
 .shadow { position: absolute; width: 60px; height: 14px; margin: 0 0 0 -30px; border-radius: 50%; background: #000; filter: blur(4px); }
+.pool { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.pool.empty { color: var(--muted); font-size: 14px; min-height: 52px; }
+.pchip { display: inline-flex; align-items: stretch; border: 1px solid var(--accent); border-radius: 999px; overflow: hidden; }
+.pchip button { min-height: 44px; border: 0; background: var(--panel-2); font-weight: 700; }
+.pchip .pl { padding: 0 6px 0 14px; font-size: 16px; }
+.pchip .pm { min-width: 44px; font-size: 20px; color: var(--accent); border-left: 1px solid var(--line); }
+.pool .plus { font-weight: 700; color: var(--muted); }
+.pool .pclear { margin-left: auto; min-height: 44px; }
+.dpick button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 </style>
 </head>
 <body>
@@ -569,13 +578,27 @@ function lookSetting() {
   }
   return h;
 }
+const diceCount = () => Object.values(ST.pick).reduce((a, n) => a + n, 0);
+function subDie(sd) { if (!ST.pick[sd]) return; ST.pick[sd] -= 1; if (!ST.pick[sd]) delete ST.pick[sd]; renderMenu(); }
+// a press and hold on a die type takes one away (touch has no Shift); the click that follows the hold is swallowed
+let dieHold = null, dieHeld = false;
+F.addEventListener('pointerdown', (ev) => { const b = ev.target.closest('.dpick [data-sd]'); if (!b) return; dieHeld = false; clearTimeout(dieHold);
+  dieHold = setTimeout(() => { dieHeld = true; subDie(b.dataset.sd); navigator.vibrate?.(20); }, 500); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach((e) => F.addEventListener(e, () => clearTimeout(dieHold)));
+F.addEventListener('click', (ev) => { if (dieHeld && ev.target.closest('.dpick [data-sd]')) { dieHeld = false; ev.stopImmediatePropagation(); ev.preventDefault(); } }, true);
+F.addEventListener('contextmenu', (ev) => { if (ev.target.closest('.dpick [data-sd]')) ev.preventDefault(); });
 function rollText() {
   const parts = Object.entries(ST.pick).filter(([, n]) => n > 0).map(([s, n]) => `${n}d${s}`);
   return parts.length ? parts.join(' + ') + (ST.mod ? ` ${ST.mod > 0 ? '+' : '−'} ${Math.abs(ST.mod)}` : '') : '';
 }
 function rollPicker() {
   const sides = [4, 6, 8, 10, 12, 20, 100];
-  return `<div class="dpick">${sides.map((sd) => `<button type="button" class="${ST.pick[sd] ? 'n' : ''}" data-act="add:${sd}" aria-label="Add a d${sd}${ST.pick[sd] ? `, ${ST.pick[sd]} chosen` : ''}"><b>d${sd}</b><small>${ST.pick[sd] ? '× ' + ST.pick[sd] : ''}</small></button>`).join('')}<button type="button" data-act="clearpick"><b>Clear</b></button></div>
+  const chosen = Object.entries(ST.pick).filter(([, n]) => n > 0);
+  // the pool: what will be rolled, as chips; a tap on a chip, or its −, takes one die away
+  const pool = chosen.length || ST.mod ? `<div class="pool" role="group" aria-label="Your roll">${chosen.map(([sd, n], i) => `${i ? '<span class="plus" aria-hidden="true">+</span>' : ''}<span class="pchip"><button type="button" class="pl" data-act="sub:${sd}" aria-label="${n}d${sd}: tap to take one away">${n}d${sd}</button><button type="button" class="pm" data-act="sub:${sd}" aria-label="One d${sd} less">−</button></span>`).join('')}${ST.mod ? `${chosen.length ? '<span class="plus" aria-hidden="true">' + (ST.mod > 0 ? '+' : '−') + '</span>' : ''}<span class="pchip"><button type="button" class="pl" data-act="modzero" aria-label="Modifier ${ST.mod}: tap to clear">${chosen.length ? Math.abs(ST.mod) : ST.mod}</button><button type="button" class="pm" data-act="modzero" aria-label="No modifier">×</button></span>` : ''}
+    <button type="button" class="btn pclear" data-act="clearpick">Clear all</button></div>` : '<div class="pool empty">No dice yet: tap a die to add it.</div>';
+  return `${pool}<div class="dpick">${sides.map((sd) => `<button type="button" class="${ST.pick[sd] ? 'n' : ''}" data-act="add:${sd}" data-sd="${sd}" aria-label="d${sd}${ST.pick[sd] ? `, ${ST.pick[sd]} chosen` : ''}: tap to add one; Shift+click or press and hold to take one away"><b>d${sd}</b><small>${ST.pick[sd] ? '× ' + ST.pick[sd] : ''}</small></button>`).join('')}</div>
+    <div class="subtle">Tap a die to add one. To take one away: its − in your roll above, a tap on it there, Shift+click, or press and hold the die.</div>
     <div class="step"><span style="flex:1">Modifier</span><button type="button" data-act="mod:-1" aria-label="Less">−</button><output>${ST.mod > 0 ? '+' : ''}${ST.mod}</output><button type="button" data-act="mod:1" aria-label="More">+</button></div>
     <div class="say" style="margin:4px 0"><input id="rollfor" aria-label="What for?" placeholder="What for? (optional)" maxlength="40" value="${ST.rollFor.replace(/"/g, '&quot;')}"></div>
     ${seg('Who sees it', 'rollTo', [['table', 'The table'], ['dm', 'Only the DM']])}
@@ -793,7 +816,12 @@ F.addEventListener('click', (ev) => {
   if (a.startsWith('toast:')) return toast(a.slice(6));
   if (a === 'seen') { ST.seenRing = true; return renderMenu(); }
   if (a.startsWith('wait:')) { const w = ST.waiting.splice(Number(a.slice(5)), 1)[0]; renderHud(); return go(w.go); }
-  if (a.startsWith('add:')) { const sd = a.slice(4); ST.pick[sd] = Math.min(20, (ST.pick[sd] ?? 0) + 1); return renderMenu(); }
+  if (a.startsWith('add:')) { const sd = a.slice(4);
+    if (ev.shiftKey) return subDie(sd);                                     // Shift+click takes one away
+    if (diceCount() >= 20) return toast('At most 20 dice in one roll.');
+    ST.pick[sd] = (ST.pick[sd] ?? 0) + 1; return renderMenu(); }
+  if (a.startsWith('sub:')) return subDie(a.slice(4));
+  if (a === 'modzero') { ST.mod = 0; return renderMenu(); }
   if (a === 'clearpick') { ST.pick = {}; ST.mod = 0; return renderMenu(); }
   if (a.startsWith('mod:')) { ST.mod = Math.max(-10, Math.min(10, ST.mod + Number(a.slice(4)))); return renderMenu(); }
   if (a === 'rollpick') return rollPicked();
