@@ -518,7 +518,7 @@ export async function casters(browser, url, label, opts) {
         if (count5 !== '0 of 5 chosen') throw new Error(`level 5: ${count5}`);
         const gated = await page.$$eval('#choice-eldritch-invocations [data-option]', (l) => l.filter((x) => /Needs Warlock level/.test(x.textContent)).map((x) => [x.dataset.option, x.querySelector('input').disabled]));
         if (!gated.length || gated.some(([, off]) => !off)) throw new Error(`prerequisites: ${JSON.stringify(gated)}`);
-        await page.selectOption('#qb-levelsel', '15');
+        await openSec(page, 'who'); await page.selectOption('#qb-levelsel', '15'); await openSec(page, 'choices');
         const count15 = await text('#count-eldritch-invocations');
         if (count15 !== '0 of 9 chosen') throw new Error(`level 15: ${count15}`);
         const free = await page.$$eval('#choice-eldritch-invocations input:not(:disabled)', (b) => b.map((x) => x.id));
