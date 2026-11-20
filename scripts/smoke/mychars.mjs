@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, openTab, playSolo } from './lib.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { validate } from '../../packages/rules/src/derive.js';
 import { rollScores } from '../../packages/rules/src/scores.js';
@@ -576,6 +576,135 @@ async function scrollPass(browser, url, label, opts, grid) {
   });
 }
 
+// ---------- the build screen rolls through the table in a game (#578) ----------
+// In a solo game (the player is the DM) the table's rule is said in its words, Roll sends rollAbilityScores and the six scores are the game's own dice, only the scores
+// the rule allows can be rolled again (a reroll is an action too), a sheet saved from it carries by: 'table' and the event's number, the sheet validates, and the panel
+// reopened shows the kept roll. The DM's three controls for the rule are looked at on the way: shown, no sideways scroll, every control at least 44 px on a phone.
+async function gamePass(browser, url, label, opts, grid) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, tag = `${grid}-${touch ? 'phone' : 'wide'}`;
+    const dir = process.env.SMOKE_SHOTS; if (dir) mkdirSync(dir, { recursive: true });
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const shot = async (n, at = null, block = 'start') => { if (!dir) return; if (at) await page.$eval(at, (e, b) => e.scrollIntoView({ block: b }), block).catch(() => {}); await page.screenshot({ path: `${dir}/game-${n}-${tag}.png` }).catch(() => {}); };
+      const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
+      const txt = (sel) => text(page, sel);
+      const rolls = () => state(page, (S) => (S.scoreRolls.local ?? S.scoreRolls.dm)?.sets ?? null);
+      const settings = (S) => S.settings;
+
+      await run.do('the DM\'s three controls for rolled scores are on screen, in words, fit the width and are big enough to touch', async () => {
+        await open(page, url, { grid }); await playSolo(page);
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await page.$eval('#dm-score-reroll', (e) => e.scrollIntoView({ block: 'center' }));
+        const box = await page.evaluate(() => { const r = (id) => document.getElementById(id).getBoundingClientRect(); const sel = ['dm-score-reroll', 'dm-score-below', 'dm-score-result'].map((id) => ({ id, w: Math.round(r(id).width), h: Math.round(r(id).height), shown: document.getElementById(id).getClientRects().length > 0, right: Math.round(r(id).right) })); return { sel, iw: innerWidth }; });
+        await shot('1-dm-controls-none', '#dm-score-reroll', 'center');
+        const reroll = box.sel[0]; if (!reroll.shown) throw new Error('the reroll control is not shown');
+        if (box.sel[1].shown || box.sel[2].shown) throw new Error('"below" and "result" show while the rule is none');
+        for (const x of box.sel.filter((y) => y.shown)) if (x.h < (touch ? 43 : 20) || x.right > box.iw + 1) throw new Error(`${x.id}: ${x.w}x${x.h}, right edge ${x.right} of ${box.iw}`);
+        if (!/no score may be rolled again/i.test(await txt('#dm-score-text'))) throw new Error(`rule text: ${await txt('#dm-score-text')}`);
+        await page.selectOption('#dm-score-reroll', 'below');
+        await wait(page, () => window.hextable.state.settings.scoreReroll === 'below');
+        if (!(await shown(page, '#dm-score-below')) || !(await shown(page, '#dm-score-result'))) throw new Error('below and result are not offered once the rule is "below"');
+        await page.selectOption('#dm-score-below', '11'); await page.selectOption('#dm-score-result', 'higher');
+        await wait(page, () => window.hextable.state.settings.scoreRerollBelow === 11 && window.hextable.state.settings.scoreRerollResult === 'higher');
+        const after = await page.evaluate(() => { const out = []; for (const id of ['dm-score-reroll', 'dm-score-below', 'dm-score-result']) { const e = document.getElementById(id), r = e.getBoundingClientRect(); out.push({ id, h: Math.round(r.height), right: Math.round(r.right), shown: e.getClientRects().length > 0 }); } return { out, iw: innerWidth, sideways: document.getElementById('dm-score-text').closest('.panel, #drawer, aside')?.scrollWidth > (document.getElementById('dm-score-text').closest('.panel, #drawer, aside')?.clientWidth ?? 0) + 1 }; });
+        for (const x of after.out) if (!x.shown || x.h < (touch ? 43 : 20) || x.right > after.iw + 1) throw new Error(`${x.id}: ${JSON.stringify(x)}`);
+        if (after.sideways) throw new Error('the DM panel scrolls sideways');
+        if (!/rolled again, once/.test(await txt('#dm-score-text')) || !/higher/i.test(await txt('#dm-score-text')) || (await page.$eval('#dm-score-below', (e) => e.value)) !== '11') throw new Error(`rule text: ${await txt('#dm-score-text')}`);
+        await shot('2-dm-controls-below', '#dm-score-reroll', 'center');
+      });
+
+      await run.do('in the game the sheet says the table\'s rule, and Roll sends the action: the six scores are the game\'s dice', async () => {
+        await tap('#qb-add'); await waitShown(page, '#qb');
+        await tap('#qb-method-roll');
+        if (!/^This table: A score below 11 may be rolled again, once\. The higher of the two stands\./.test(await txt('#qb-rule-text'))) throw new Error(await txt('#qb-rule-text'));
+        if (await page.$('#qb-rule-reroll')) throw new Error('the device\'s rule choices are offered in a game');
+        await shot('3-before-roll', '#qb-scores');
+        await tap('#qb-roll'); await waitShown(page, '#qb-chips');
+        const sets = await rolls(); if (!sets || sets.length !== 6) throw new Error('the game holds no roll');
+        const top = (d) => d.reduce((a, b) => a + b, 0) - Math.min(...d);
+        const chips = await page.$$eval('.sc-chip', (c) => c.map((x) => +x.dataset.score));
+        if (chips.join() !== sets.map((x) => top(x.dice)).join()) throw new Error(`chips ${chips}, game ${sets.map((x) => top(x.dice))}`);
+        if (!/^Rolled at the table \(event 1\)\./.test(await txt('#qb-rule-text')) && !/Rolled at the table \(event 1\)/.test(await txt('#qb-rule-text'))) throw new Error(await txt('#qb-rule-text'));
+        if (await page.$('#qb-roll')) throw new Error('a roll button is still offered beside a roll');
+        const open = await page.$$eval('[id^="qb-reroll-"]', (b) => b.map((x) => +x.id.slice(10)));
+        const low = chips.flatMap((n, i) => (n < 11 ? [i] : []));
+        if (open.join() !== low.join()) throw new Error(`rerollable ${open}, the rule (below 11) allows ${low} of ${chips}`);
+        await shot('4-rolled', '#qb-scores');
+      });
+
+      await run.do('a score the rule allows is rolled again through the table, once; the sheet shows the result that stands', async () => {
+        const before = await rolls(), top = (d) => d.reduce((a, b) => a + b, 0) - Math.min(...d);
+        const i = (await page.$$eval('[id^="qb-reroll-"]', (b) => b.map((x) => +x.id.slice(10))))[0];
+        if (i === undefined) { console.log('smoke: no score below 11 was rolled (nothing to roll again)'); return; }
+        await tap(`#qb-reroll-${i}`); await wait(page, (n) => !document.querySelector(`#qb-reroll-${n}`) && /rolled again/.test(document.getElementById(`qb-chip-${n}`)?.textContent ?? ''), i);
+        const after = await rolls();
+        if (!after[i].again || JSON.stringify(after[i].dice) !== JSON.stringify(before[i].dice)) throw new Error('the game did not keep the reroll beside the first roll');
+        const want = Math.max(top(after[i].dice), top(after[i].again));
+        if ((await page.$eval(`#qb-chip-${i}`, (c) => +c.dataset.score)) !== want) throw new Error(`stands ${await page.$eval(`#qb-chip-${i}`, (c) => c.dataset.score)}, the rule says ${want}`);
+        if (!/rolled again already/.test(await txt(`#qb-noreroll-${i}`))) throw new Error(await txt(`#qb-noreroll-${i}`));
+      });
+
+      await run.do('placed and saved: by table, the event\'s number, the rule it was rolled under; the sheet validates; the DM line says so', async () => {
+        await page.fill('#qb-name', 'Tabel Roe'); await page.selectOption('#qb-class', 'fighter');
+        for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
+        const style = await page.$('#qb-choice-fighting-style'); if (style) await page.selectOption('#qb-choice-fighting-style', 'defense');
+        for (const [i, a] of ABIL.entries()) await page.selectOption(`#qb-place-${a}`, String(i));
+        const line = await txt('#qb-dm-line'); if (!/Rolled at the table \(event \d+\), under the rule "A score below 11/.test(line) || /Not witnessed/.test(line) || /More rerolls/.test(line)) throw new Error(line);
+        await wait(page, () => document.querySelector('#qb-save') && !document.querySelector('#qb-save').disabled && document.querySelectorAll('#qb-problems li').length === 0);
+        await shot('5-saving', '#qb-scores');
+        await page.click('#qb-save'); await waitShown(page, '#qb', false);
+        const e = await state(page, (S) => Object.values(S.entities).find((x) => x.name === 'Tabel Roe')?.sheet ?? null);
+        if (!e) throw new Error('no character was made'); const r = e.scores;
+        if (r.method !== 'roll' || r.by !== 'table' || !Number.isInteger(r.at) || validate(e).length) throw new Error(`sheet ${JSON.stringify(r)} ${validate(e)}`);
+        if (r.rule.reroll !== 'below' || r.rule.below !== 11 || r.rule.result !== 'higher') throw new Error(`rule ${JSON.stringify(r.rule)}`);
+        const sets = await rolls(); if (JSON.stringify(r.rolls.map((x) => x.dice)) !== JSON.stringify(sets.map((x) => x.dice))) throw new Error('the dice on the sheet are not the game\'s');
+        if (await page.evaluate(() => localStorage.getItem('hextable.scoreroll'))) throw new Error('a table roll was kept on the device');
+      });
+
+      await run.do('a new character in the same game is shown the kept roll, not a new roll button (the DM may roll a fresh set)', async () => {
+        await tap('#qb-add'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        if (await page.$('#qb-roll')) throw new Error('a kept roll is offered a new roll button');
+        const sets = await rolls(), top = (d) => d.reduce((a, b) => a + b, 0) - Math.min(...d);
+        const chips = await page.$$eval('.sc-chip', (c) => c.map((x) => +x.dataset.score));
+        if (chips.length !== 6 || chips.some((n, i) => n < 3 || n > 18) || !sets) throw new Error(`chips ${chips}`);
+        if (!(await page.$('#qb-roll-fresh'))) throw new Error('the DM is not offered a fresh set');
+        await shot('6-kept', '#qb-scores');
+        await tap('#qb-roll-fresh'); await wait(page, (old) => (window.hextable.state.scoreRolls.local ?? window.hextable.state.scoreRolls.dm).sets[0].dice.join() !== old || window.hextable.state.scoreRolls['#seq'] > 2, sets[0].dice.join());
+        const fresh = await rolls(); if (JSON.stringify(fresh) === JSON.stringify(sets)) throw new Error('the fresh set is the old one');
+        await wait(page, (n) => document.querySelectorAll('.sc-chip').length === 6 && !document.querySelector('#qb-roll-fresh')?.disabled && /event [3-9]/.test(document.getElementById('qb-rule-text').textContent), null);
+        await page.click('#qb-cancel');
+      });
+
+      await run.do('a table that allows no reroll offers none, and says why on each score', async () => {
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await page.selectOption('#dm-score-reroll', 'none'); await wait(page, () => window.hextable.state.settings.scoreReroll === 'none');
+        await tap('#qb-add'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        if (await page.$('[id^="qb-reroll-"]')) throw new Error('a reroll is offered where the table allows none');
+        const why = await page.$$eval('[id^="qb-noreroll-"]', (e) => e.map((x) => x.textContent)); if (why.length !== 6 || why.some((w) => !/does not allow/.test(w))) throw new Error(`reasons: ${why}`);
+        await page.click('#qb-cancel');
+      });
+
+      await run.do('after a reload and Continue the kept roll is found again with its event number, and no Roll button is offered', async () => {
+        const sets = await rolls(); const was = await page.evaluate(() => window.hextable.state.scoreRolls['#seq']);
+        await wait(page, () => localStorage.getItem('hextable.solo'));
+        await page.reload(); await waitShown(page, '#lobby');
+        await tap('#lobby-solo'); await wait(page, () => window.hextable?.state?.entities);
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await tap('#qb-add'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        if (await page.$('#qb-roll')) throw new Error('a Roll button after a reload, beside a kept roll');
+        const chips = await page.$$eval('.sc-chip', (c) => c.length); if (chips !== 6) throw new Error(`${chips} chips`);
+        if (!new RegExp(`Rolled at the table \\(event ${was}\\)`).test(await txt('#qb-rule-text'))) throw new Error(`${await txt('#qb-rule-text')} (the game's counter is ${was})`);
+        if (JSON.stringify(await rolls()) !== JSON.stringify(sets)) throw new Error('the roll changed');
+        await shot('7-after-reload', '#qb-scores');
+        await page.click('#qb-cancel');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   const wide = { viewport: { width: 1280, height: 800 } }, phone = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
   await pass(browser, url, 'my characters on hexes at 1280x800', wide, 'hex');
@@ -584,6 +713,8 @@ export default async function (browser, url) {
   await pass(browser, url, 'my characters on squares at 1280x800', wide, 'square');
   await scoresPass(browser, url, 'ability scores in the build screen on hexes at 1280x800', wide, 'hex');
   await scoresPass(browser, url, 'ability scores in the build screen on squares at 390x844 with touch', phone, 'square');
+  await gamePass(browser, url, 'ability scores rolled at the table in a game at 1280x800', wide, 'hex');
+  await gamePass(browser, url, 'ability scores rolled at the table in a game at 390x844 with touch', phone, 'square');
   await scrollPass(browser, url, 'untrained armour and the scroll card in the build screen on hexes at 1280x800', wide, 'hex');
   await scrollPass(browser, url, 'untrained armour and the scroll card in the build screen on squares at 390x844 with touch', phone, 'square');
 }

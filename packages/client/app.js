@@ -42,7 +42,7 @@ import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
 import { refreshReport, refreshNote } from './refresh.js';
 import { classTitle, missingText } from './buildsheet.js';
-import { dmLine } from './shared/scores.js';
+import { dmLine, tableRule } from './shared/scores.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.js';
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
@@ -61,6 +61,7 @@ const flyAlt = {};
 const heightOf = (pos) => { const sf = under(S.map, pos); return sf ? Math.floor((pos.z - sf.z) / FT) * FT : 0; };
 const altOf = (e) => flyAlt[e.id] ?? heightOf(e.pos);
 
+const SCORE_EVENTS = ['scoresRolled', 'scoreRerolled'];
 let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null, aiSent = null;
 let themeId = THEMES[prefs.get('hextable.theme')] ? prefs.get('hextable.theme') : 'classic';
 let seeded = false;      // whether the log has been given the table's recent history yet
@@ -450,7 +451,10 @@ function onUpdate(state, events, fresh) {
     LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
     if (D.pinned && D.wide) D.open('turns', null, true);       // pinned means open beside the map, from the start
     splashDone();
+    QE.fresh();
     if (!T.solo && isDM()) T.history({ types: ['chronicle'], limit: 200 });
+    if (!T.solo) T.history({ types: SCORE_EVENTS, limit: 200 });      // this member's own rolled scores, for the build sheet (the answer is in T.on.history)
+    if (T.solo) { QE.events(recall(S, { types: SCORE_EVENTS, limit: Infinity })); QE.scoresChecked(); }
     if (T.solo) { seeded = true; LV.seed(recall(S, { limit: Infinity }).map((e) => [e, describe(e)])); }      // the whole timeline is here: a reload rebuilds the groups
   }
   if (first && pendingMap && isDM()) { act(pendingMap); pendingMap = null; }      // the lobby's chosen map, once the new table has its first state
@@ -745,7 +749,7 @@ function renderSheet() {
     ${CLS.sheetBanner(e)}
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
-    ${isDM() && e.sheet && dmLine(e.sheet) ? `<p class="note" id="sheet-scores-line">${esc(dmLine(e.sheet))}</p>` : ''}
+    ${isDM() && e.sheet && dmLine(e.sheet, tableRule(S.settings)) ? `<p class="note" id="sheet-scores-line">${esc(dmLine(e.sheet, tableRule(S.settings)))}</p>` : ''}
     <p class="note">Saving throws: ${saves}</p>
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
       ${e.actions.map(actionProfile).map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bonus !== undefined ? signed(p.bonus) : p.dc ? `${p.save.toUpperCase()} DC ${p.dc}` : ''}</td><td>${esc(p.long)}${p.recharge ? ` · recharge ${p.recharge[0]}–6` : ''}${p.uses ? ` · ${p.uses.n}/day` : ''}</td><td>${p.far ? `${p.far} ft` : p.area ? `${p.area.size} ft ${p.area.shape}` : ''}</td></tr>`).join('')}</table></section>` : `<section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
@@ -1153,7 +1157,7 @@ addEventListener('blur', () => KB.release());
 document.addEventListener('visibilitychange', () => { if (document.hidden) KB.release(); });
 setInterval(() => KB.tick(), 30);
 
-const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId });
+const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId, me: () => T?.you?.userId });
 // Homebrew packs (packmanager.js): kept installed while a table is open. When they change, what names a pack's entry is dropped or drawn again.
 const PK = initPacks({ transport: () => T, isDM, toast, changed: () => {
   buildSpawn();
@@ -1236,6 +1240,8 @@ function start(transport, map = null) {
   T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };
   T.on.history = (msg) => {
     if (!S) return;
+    if (msg.types?.includes('scoresRolled')) { QE.events(msg.entries); QE.scoresChecked(); return; }      // the build sheet's own question: nothing else is in it
+    if (msg.recent) QE.events(msg.entries.filter((e) => SCORE_EVENTS.includes(e.type)));
     if (msg.recent) {             // what happened before we sat down, so the log has some context
       if (seeded) return;         // a reconnect sends it again; the log already has it
       seeded = true;
