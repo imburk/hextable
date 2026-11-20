@@ -49,7 +49,7 @@ export const WHEN = {
 
 // Actions the table may still take while an action waits for a reaction: the answer itself, and
 // what changes nothing the waiting action could depend on (talk, notes, handouts, seats).
-export const WHILE_WAITING = new Set(['react', 'say', 'note', 'claim', 'release', 'handout', 'showHandout', 'hideHandout', 'removeHandout', 'askCheck']);
+export const WHILE_WAITING = new Set(['react', 'say', 'ping', 'note', 'claim', 'release', 'handout', 'showHandout', 'hideHandout', 'removeHandout', 'askCheck']);
 
 // Addition H of docs/specs/homebrew-subclasses.md: the feature of `o` that lets it move after its Opportunity Attack hits (`triggers.opportunityHit`), or null.
 // What it gives is feet of movement, kept on the fight's turn flags as `rmove:<creature>` until the next turn begins (engine/movement.js).
