@@ -297,9 +297,9 @@ function groupIds(grp) { const set = new Set(grp.segs.flatMap(poolIds)); return 
 const hintFor = (grp) => {
   const c = CHARS[S.who], m = S.moment, seg = grp.segs[0], mi = seg.id === 'mi1';
   if (grp.id === 'cant') {
-    const cl = S.segs.find((g) => g.id === 'cls'), base = `${c.cls} ${cl.cap}${c.plus ? ` (${T.cant[S.lvl - 1]} + ${c.plus})` : ''} and Magic Initiate (${LN[c.mi.list]}) 2: each cantrip's source shows under its name.`;
+    const cl = S.segs.find((g) => g.id === 'cls'), base = `${c.cls} ${cl.cap}${c.plus ? ` (${T.cant[S.lvl - 1]} + ${c.plus})` : ''} and Magic Initiate (${LN[c.mi.list]}) 2; the source is under each name.`;
     if (m === 'new') return base;
-    if (m === 'level') return `${base} ${c.wiz ? 'A Wizard cantrip can change after a Long Rest.' : 'You may replace one Cleric cantrip when you gain a Cleric level.'} You may replace one Magic Initiate spell: tap its number to give it up, then choose another.`;
+    if (m === 'level') return `${base} ${c.wiz ? 'A Wizard cantrip can change after a Long Rest.' : 'One Cleric cantrip can change now.'} One Magic Initiate spell can change now: tap its number to give it up.`;
     if (m === 'long') return `${base} ${c.wiz ? 'After this Long Rest one Wizard cantrip can change: tap its number to give it up, then choose another.' : 'A Cleric cantrip can change when you gain a Cleric level.'}`;
     return `${base} ${whenWords(S.who, cl)}`;
   }
@@ -406,7 +406,7 @@ function refresh() {
   else {
     refs.need.textContent = n ? `Choose ${n} more` : 'All chosen'; refs.need.className = 'need' + (n ? '' : ' done');
     const f = (id) => free(S.segs.find((g) => g.id === id)), init = f('mi') + f('mi1');
-    const parts = [f('cls') && `${f('cls')} cantrips`, init && `${init} Initiate`, f('known') && `${f('known')} ${wiz ? 'book' : 'to prepare'}`, freePrep() && `${freePrep()} to prepare`].filter(Boolean);
+    const parts = [f('cls') && `${f('cls')} cantrip${f('cls') > 1 ? 's' : ''}`, init && `${init} Initiate`, f('known') && `${f('known')} ${wiz ? 'book' : 'to prepare'}`, freePrep() && `${freePrep()} to prepare`].filter(Boolean);
     refs.parts.textContent = n ? parts.join(' · ') : (S.moment === 'new' ? 'Press Save to finish.' : S.moment === 'level' ? `Press Level up to ${S.lvl} to finish.` : 'Press Done to finish.');
   }
   if (refs.go) {

@@ -149,27 +149,31 @@ round the rules: it is the fix for a sheet that was entered wrong, and the log s
 
 The Spells section is **one list of checkbox rows** (round 2: no chooser, no second step). It
 is made of groups under fixed headings, each with its own count on the heading's right
-("3 of 4"). For a Wizard with Magic Initiate (Cleric):
+("6 of 6"). **There is one Cantrips group** (the owner's first ask, kept), not one per source:
+for a Wizard with Magic Initiate (Cleric):
 
 ```
- CANTRIPS · WIZARD                                         4 of 4
-   [ ] Acid Splash                                          ⓘ
-   [1] Fire Bolt                                            ⓘ
-   [1] Light                                                ⓘ
-   ...                       (every Wizard cantrip, A to Z, chosen or not)
- CANTRIPS · MAGIC INITIATE (CLERIC)                         2 of 2
+ CANTRIPS                                                   6 of 6
+ Wizard 4 and Magic Initiate (Cleric) 2; the source is under each name.
+   [ ] Acid Splash                                           ⓘ
+   [1] Fire Bolt        Wizard                               ⓘ
+   [1] Guidance         Magic Initiate · Cleric · WIS        ⓘ
+   [ ] Resistance       Cleric list · Magic Initiate         ⓘ
+   ...                  (every cantrip either list offers, A to Z, chosen or not)
  LEVEL 1 SPELL · MAGIC INITIATE (CLERIC)                    1 of 1
- SPELLBOOK                                      12 of 12   ★ 7 of 7
+ SPELLBOOK                                     12 of 12   ★ 7 of 7
    LEVEL 1
-   [1] Detect Magic                                    ★    ⓘ
-   [4] Scorching Ray ...
+   [1] Detect Magic                                   ★     ⓘ
 ```
 
-- **One Cantrips group per source, one list.** The class's cantrips come first, then each
-  feat's or species's own cantrips under its own heading ("Cantrips · Magic Initiate
-  (Cleric)"), so the source is the heading, not a tag on every row. A cantrip a character
-  already knows by another source is shown dimmed in the other group with "already chosen
-  under Wizard cantrips". The count line at the top of the screen (Decision 3) adds them up.
+- **One Cantrips group; the tag is the source**, shown under the name of a chosen cantrip: the
+  class (`Wizard`), a feat with its list and ability (`Magic Initiate · Cleric · WIS`), a
+  Fighting Style (`Blessed Warrior · CHA`), a species (`High Elf · INT`, once SP2 lands). A
+  cantrip that only a feat's list offers says so before it is chosen ("Cleric list · Magic
+  Initiate"). A tap on a cantrip both lists offer takes the class's place first, then the
+  feat's; a group with no place left says so on the status line. Each source has its own cap
+  (the hint line says "Wizard 4 and Magic Initiate (Cleric) 2"; the count line of a Cleric
+  with Thaumaturge says "Cleric 4 (3 + Thaumaturge)": it counts and swaps as the class's own).
 - **A row is** the box, the spell's name, and `ⓘ` (the #566 scroll card on a tap, and on a
   3-second hover or a long-press of the name, so a phone player never has to discover the
   long-press). Every spell row in this spec has the same card.
@@ -254,8 +258,9 @@ again keeps it. How many may be given up is the rules table, per group: a Wizard
 may give up none of her cantrips (that is after a Long Rest) but one of Magic Initiate's
 spells; a Cleric one cantrip and one of Magic Initiate's. A second give-up beyond the allowance
 is refused on the status line ("That swap is used. Put the other one back to swap this one.").
-The new spell must be of the same level and in the same group (the groups have their own
-counts), so "a cantrip for a cantrip" needs no extra checking by the player. At a Long Rest
+The new spell must be of the same level and the same source (each source has its own count,
+and a source's count is what rises), so "a cantrip for a cantrip" needs no extra checking by
+the player. At a Long Rest
 the same goes for a Cleric's prepared spells (any number) and a Wizard's: the ★ on a spellbook
 row is tapped to prepare or unprepare it (Decision 4).
 
@@ -286,10 +291,9 @@ already show):
  Slots   Level 1 ●●●●   Level 2 ●●●                        back on a Long Rest
  ┌ Cantrips 6 ┐ ┌ Prepared 7 of 7 ┐ ┌ Always prepared 1 ┐ ┌ Spellbook 12 ┐
 
- CANTRIPS · WIZARD                                          4 of 4
+ CANTRIPS                                                   6 of 6
    [ ] Acid Splash                                           ⓘ
-   [1] Fire Bolt  ...        (the one list of Decision 1: every cantrip, A to Z)
- CANTRIPS · MAGIC INITIATE (CLERIC)                         2 of 2
+   [1] Fire Bolt  Wizard     ...   (the one list of Decision 1: every cantrip, A to Z)
  LEVEL 1 SPELL · MAGIC INITIATE (CLERIC)                    1 of 1
  SPELLBOOK                                     12 of 12   ★ 7 of 7
    LEVEL 1
