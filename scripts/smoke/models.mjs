@@ -89,6 +89,12 @@ async function models(browser, url, label, opts) {
       });
       await run.do('a goblin that is brought to 0 falls and holds its fall; when it is brought back it gets up (the fall played backwards) and idles', async () => {
         await calm(page);
+        // The strike above may have killed this goblin (it has few hit points; the fighter's blow is random, and the model then already lies fallen
+        // before this step starts). The step is about the fall, so start from a goblin that stands: bring it back if it was dropped, and wait until its model
+        // is up and idle, whichever way the blow went.
+        await page.evaluate(() => { const e = window.hextable.state.entities.m1; if (e.dead || e.hp <= 0) window.hextable.act({ type: 'setHp', actor: 'm1', hp: 4 }); });
+        await wait(page, () => { const p = window.__R().actors.get('m1').pup, e = window.hextable.state.entities.m1; return !e.dead && e.hp > 0 && p.base === 'idle' && !p.shot && p.curKey === 'idle'; }, null, 8000);
+        await calm(page);
         await page.evaluate(() => { const p = window.__R().actors.get('m1').pup, go = p.go.bind(p); window.__goes = []; p.go = (b, o) => { window.__goes.push(b); return go(b, o); }; });
         const r = await page.evaluate(() => { const h = window.hextable, R1 = window.__R(); h.act({ type: 'setHp', actor: 'm1', hp: 0 }); h.act({ type: 'harm', actor: 'm1', amount: 1 }); const p = R1.actors.get('m1').pup; return { base: p.base, cur: p.curKey, hp: h.state.entities.m1.hp, dead: h.state.entities.m1.dead }; });
         if (r.base !== 'die' && !(await page.evaluate(() => window.__R().actors.get('m1').pup.base === 'die'))) throw new Error(`it did not fall: ${JSON.stringify(r)}`);
