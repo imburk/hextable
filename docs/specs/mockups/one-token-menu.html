@@ -3,12 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mockup: one token, one menu (#527)</title>
+<title>Mockup: one token, one menu (#527, round 2)</title>
 <!-- A picture to react to (docs/specs/one-token-menu.md). Nothing here runs the game: every number is made up and every
      control only shows what it would do. Self-contained: no network, no fonts fetched (the game's font names come first,
      with fallbacks). The address can set the picture, for screenshots:
-       #theme=classic|sunlit|pocket  frame=phone|desktop  state=explore|other|mine|down  open=root|character|cast|turns|dice|setup
-       motion=slide|appear  bare (hides the mockup's own controls)  prompt=reaction|initiative -->
+       #theme=classic|sunlit|pocket  frame=phone|desktop  state=explore|other|mine|down  open=root|character|cast|story|turns|dice|setup
+       motion=slide|appear  bare (hides the mockup's own controls)  prompt=reaction|initiative|aim  chars=one|familiar|solo
+       look=<dice look id>  waiting (a handout waits)  seen (the ring's note was already seen)  hit (Wren was just hit)
+     Round 2 (the owner's feedback): slower slides, sections open in place and nothing scrolls by itself, the choice of
+     character on the first level, a badge only when something waits, the health ring explained, a calmer throw, dice
+     looks, and Roll dice. -->
 <style>
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0d100f; }
@@ -85,7 +89,7 @@ body.bare #mock { display: none; }
 @keyframes bannerFlat { 0%, 99% { opacity: 1; } 100% { opacity: 0; } }
 
 /* the scrim / clear zone */
-.scrim { position: absolute; inset: 0; z-index: 30; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .2s; border: 0; padding: 0; width: 100%; }
+.scrim { position: absolute; inset: 0; z-index: 30; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .7s; border: 0; padding: 0; width: 100%; }
 .scrim.on { opacity: 1; pointer-events: auto; }
 .scrim .tip { position: absolute; top: 18px; left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 3px #000; }
 .frame.desktop .scrim .tip { top: auto; bottom: 110px; left: 1020px; right: 0; text-align: center; padding-left: 0; }
@@ -95,12 +99,12 @@ body.bare #mock { display: none; }
 .menu { position: absolute; z-index: 40; color: var(--ink); }
 /* phone: a sheet from the bottom */
 .frame.phone .menu { left: 0; right: 0; bottom: 0; height: calc(100% - 96px); background: var(--panel-solid); border-radius: 16px 16px 0 0; border-top: 1px solid var(--line);
-  box-shadow: 0 -8px 30px #0007; transform: translateY(105%); visibility: hidden; transition: transform .16s ease-in, visibility 0s .16s; display: flex; flex-direction: column; overflow: hidden; }
-.frame.phone .menu.open { transform: none; visibility: visible; transition: transform .22s ease-out; }
+  box-shadow: 0 -8px 30px #0007; transform: translateY(105%); visibility: hidden; transition: transform .66s ease-in-out, visibility 0s .66s; display: flex; flex-direction: column; overflow: hidden; }
+.frame.phone .menu.open { transform: none; visibility: visible; transition: transform .72s cubic-bezier(.2,.8,.25,1); }
 .frame.phone .menu .handle { flex: none; height: 22px; display: flex; justify-content: center; align-items: center; border: 0; background: none; width: 100%; padding: 0; }
 .frame.phone .menu .handle i { width: 44px; height: 5px; border-radius: 3px; background: var(--line); }
 .frame.phone .levels { position: relative; flex: 1; overflow: hidden; }
-.frame.phone .level { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--panel-solid); transition: transform .18s ease-out, opacity .18s; }
+.frame.phone .level { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--panel-solid); transition: transform .68s cubic-bezier(.2,.8,.25,1), opacity .68s; }
 .frame.phone .level.behind { transform: translateX(-30%); opacity: 0; pointer-events: none; }
 .frame.phone .level.ahead { transform: translateX(100%); pointer-events: none; }
 /* desktop: columns from the left */
@@ -108,8 +112,8 @@ body.bare #mock { display: none; }
 .frame.desktop .menu { top: 0; bottom: 0; left: 0; display: flex; pointer-events: none; }
 .frame.desktop .levels { display: flex; height: 100%; }
 .frame.desktop .level { height: 100%; display: flex; flex-direction: column; background: var(--panel-solid); border-right: 1px solid var(--line); pointer-events: auto; box-shadow: 6px 0 18px #0004;
-  transform: translateX(-110%); opacity: 0; transition: transform .2s ease-out, opacity .2s; }
-.frame.desktop .level.shown { transform: none; opacity: 1; }
+  transform: translateX(-110%); opacity: 0; transition: transform .66s ease-in-out, opacity .66s; }
+.frame.desktop .level.shown { transform: none; opacity: 1; transition: transform .7s cubic-bezier(.2,.8,.25,1), opacity .7s; }
 .frame.desktop .level.w1 { width: 250px; } .frame.desktop .level.w2 { width: 420px; } .frame.desktop .level.w3 { width: 360px; }
 .frame.desktop .level.cur { box-shadow: 6px 0 22px #0006; }
 .frame.appear .menu, .frame.appear .level { transition: none !important; }
@@ -218,6 +222,37 @@ body.bare #mock { display: none; }
 .roll .faces { font-weight: 800; border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
 .log li { margin: 6px 0; } .log { padding-left: 18px; }
 .say { display: flex; gap: 6px; margin-top: 10px; } .say input { flex: 1; min-height: 44px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); border-radius: var(--radius); padding: 0 10px; font: inherit; }
+/* round 2 */
+.token .hplabel { position: absolute; left: 74px; top: 20px; white-space: nowrap; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font: 600 14px var(--body); color: var(--ink); box-shadow: 0 2px 8px #0005; }
+.token.right .hplabel { left: auto; right: 74px; }
+.waitbox { border: 2px solid var(--accent); border-radius: var(--radius); padding: 8px 10px; margin: 6px 0 10px; background: var(--panel); }
+.waitbox h3 { margin: 0 0 4px; font: 700 15px var(--body); }
+.waitbox .w { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+.waitbox .w span { flex: 1; }
+.note { border: 1px dashed var(--line); border-radius: var(--radius); padding: 8px 10px; margin: 6px 0; display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.note span { flex: 1; }
+.sigil { position: relative; }
+.sring { position: absolute; inset: -6px; width: 60px; height: 60px; }
+.sring circle { fill: none; stroke-width: 3; stroke-linecap: round; }
+.row.char.sub { margin-left: 22px; width: calc(100% - 22px); min-height: 64px; }
+.row.char.sub .sigil { width: 38px; height: 38px; font-size: 17px; }
+.row.char.sub .sring { width: 50px; height: 50px; }
+.row[aria-expanded] .chev { transition: transform .3s; }
+.row[aria-expanded=true] .chev { transform: rotate(90deg); }
+.fold { margin: 0 0 8px 10px; padding-left: 8px; border-left: 2px solid var(--line); }
+.dpick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.dpick button { min-height: 56px; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); display: grid; place-items: center; line-height: 1.1; padding: 4px; }
+.dpick button b { font-size: 15px; } .dpick button small { color: var(--accent); font-weight: 700; font-size: 12px; }
+.dpick button.n { border-color: var(--accent); }
+.step { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.step button { min-width: 48px; min-height: 48px; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); font-size: 20px; }
+.step output { min-width: 40px; text-align: center; font-weight: 700; font-size: 18px; }
+.preview { display: flex; align-items: center; gap: 14px; margin: 8px 0; }
+.preview .pv { width: 72px; height: 72px; animation: turn 9s linear infinite; }
+@keyframes turn { to { transform: rotate(360deg); } }
+.frame.appear .preview .pv { animation: none; }
+.seg button[aria-disabled=true] { opacity: .4; }
+.shadow { position: absolute; width: 60px; height: 14px; margin: 0 0 0 -30px; border-radius: 50%; background: #000; filter: blur(4px); }
 </style>
 </head>
 <body>
@@ -227,10 +262,11 @@ body.bare #mock { display: none; }
     <div class="grp"><b>Frame</b><button data-k="frame" data-v="phone">Phone 390</button><button data-k="frame" data-v="desktop">Desktop 1280</button></div>
     <div class="grp"><b>Theme</b><button data-k="theme" data-v="classic">Classic</button><button data-k="theme" data-v="sunlit">Sunlit</button><button data-k="theme" data-v="pocket">Pocket</button></div>
     <div class="grp"><b>State</b><button data-k="state" data-v="explore">Exploring</button><button data-k="state" data-v="other">Another's turn</button><button data-k="state" data-v="mine">My turn</button><button data-k="state" data-v="down">Down</button></div>
-    <div class="grp"><b>Arrives</b><button data-do="reaction">A reaction question</button><button data-do="initiative">Initiative is called</button></div>
+    <div class="grp"><b>Plays</b><button data-k="chars" data-v="one">One character</button><button data-k="chars" data-v="familiar">Wren + familiar</button><button data-k="chars" data-v="solo">Solo party</button></div>
+    <div class="grp"><b>Arrives</b><button data-do="handout">A handout</button><button data-do="hit">Wren is hit</button><button data-do="reaction">A reaction question</button><button data-do="initiative">Initiative</button></div>
     <div class="grp"><b>Motion</b><button data-k="motion" data-v="slide">Slide</button><button data-k="motion" data-v="appear">Just appear</button></div>
     <div class="grp"><b>Dice rule</b><button data-k="rule" data-v="auto">auto</button><button data-k="rule" data-v="throw">throw</button></div>
-    <p>Tap the die token to open the menu. Tap the dimmed map to clear it. Character › Cast › Burning Hands aims; Fire Bolt throws (rule "throw"). Drag, spin and fling the die.</p>
+    <p>Tap the die to open the menu; tap the dimmed map to clear it. Press and hold the die: Roll dice. Character › Cast › Burning Hands aims; Fire Bolt throws. Drag, spin and fling a die.</p>
   </div>
 </details>
 
@@ -250,7 +286,8 @@ body.bare #mock { display: none; }
           <text class="die-n" y="1" style="font-size:12px">20</text>
         </g>
       </svg>
-      <span class="badge" id="badge">1</span>
+      <span class="badge" id="badge" hidden></span>
+      <span class="hplabel" id="hplabel" role="status" hidden></span>
     </button>
     <div class="dice-layer" id="dicelayer"></div>
     <button class="scrim" id="scrim" type="button" aria-label="Close the menu"><span class="tip">Tap here to clear the menu</span></button>
@@ -268,218 +305,334 @@ body.bare #mock { display: none; }
 const $ = (id) => document.getElementById(id);
 const F = $('frame');
 const ST = { frame: 'phone', theme: 'classic', state: 'mine', motion: 'slide', rule: 'auto', hold: '3', token: 'centre', path: [], open: false,
-  aiming: null, dice: [], bar: { action: true, bonus: true, move: 30, reaction: true }, initShown: true, autoOpen: false };
+  aiming: null, dice: [], bar: { action: true, bonus: true, move: 30, reaction: true }, initShown: true, autoOpen: false, flick: true,
+  chars: 'familiar', sel: 'wren', waiting: [], seenRing: false, folds: new Set(), scroll: {}, look: 'tblue', dieCol: 'red', numCol: 'yellow',
+  pick: { 20: 1 }, mod: 0, rollTo: 'table', rollFor: '', bars: 'always', foeHealth: 'rough' };
 
-// ---------- the made-up character and table ----------
-const WREN = { name: 'Wren', cls: 'Level 1 Wizard', hp: 6, max: 8, ac: 12, speed: 30, slots: 2 };
+// ---------- made-up creatures ----------
+const CH = {
+  wren: { id: 'wren', name: 'Wren', sub: 'Level 1 Wizard', hp: 6, max: 8, ac: 12, speed: 30, col: '#c96a3a', letter: 'W' },
+  owl: { id: 'owl', name: 'Owl', sub: 'Wren’s familiar', hp: 1, max: 1, ac: 11, speed: 60, col: '#8a7a5a', letter: 'O', master: 'wren' },
+  brenna: { id: 'brenna', name: 'Brenna', sub: 'Level 1 Fighter', hp: 12, max: 12, ac: 18, speed: 30, col: '#b84a3a', letter: 'B' },
+  pip: { id: 'pip', name: 'Pip', sub: 'Level 1 Rogue', hp: 7, max: 10, ac: 14, speed: 30, col: '#4f9a6a', letter: 'P' },
+  odessa: { id: 'odessa', name: 'Odessa', sub: 'Level 1 Cleric', hp: 10, max: 10, ac: 16, speed: 30, col: '#d0a030', letter: 'O' },
+  tavin: { id: 'tavin', name: 'Tavin', sub: 'Level 1 Warlock', hp: 8, max: 8, ac: 13, speed: 30, col: '#4f7fc0', letter: 'T' },
+};
+const mineList = () => ({ one: ['wren'], familiar: ['wren', 'owl'], solo: ['wren', 'brenna', 'pip', 'odessa', 'tavin'] })[ST.chars];
+const sel = () => CH[ST.sel];
 const ORDER = [
   { n: 'Odessa', init: 20, side: 'party', hp: '10 / 10' }, { n: 'Wren', init: 17, side: 'party', hp: '6 / 8', you: true },
   { n: 'Goblin Warrior 3', side: 'foe', hp: 'Healthy' }, { n: 'Tavin', init: 15, side: 'party', hp: '8 / 8' },
   { n: 'Wolf 1', side: 'foe', hp: 'Bloodied' }, { n: 'Pip', init: 11, side: 'party', hp: '7 / 10' },
   { n: 'Something moves unseen', side: 'unseen' }, { n: 'Goblin Warrior 2', side: 'foe', hp: 'Healthy' }, { n: 'Brenna', init: 6, side: 'party', hp: '12 / 12' }];
 
+// ---------- dice looks (Decision 8a) ----------
+const LOOKS = {
+  tblue: { name: 'Translucent blue', free: true, fill: '#2f7fe0', op: .55, num: '#ffffff', edge: '#bfe0ff', clear: true },
+  white: { name: 'White', free: true, fill: '#f4f1e8', op: 1, num: '#111111', edge: '#b9b4a6' },
+  black: { name: 'Black', free: true, fill: '#1c1c1c', op: 1, num: '#ffffff', edge: '#5a5a5a' },
+  red: { name: 'Red', free: true, fill: '#c62828', op: 1, num: '#ffffff', edge: '#ef9a9a' },
+  blue: { name: 'Blue', free: true, fill: '#1e4fbf', op: 1, num: '#ffffff', edge: '#90b4ff' },
+  green: { name: 'Green', free: true, fill: '#2e7d32', op: 1, num: '#ffffff', edge: '#a5d6a7' },
+  yellow: { name: 'Yellow', free: true, fill: '#f2c200', op: 1, num: '#111111', edge: '#8a6d00' },
+  primary: { name: 'Primary colours, your way', free: true },
+};
+const PRIM = { red: '#d32f2f', yellow: '#fbc02d', blue: '#1e4fbf', white: '#f7f7f7', black: '#161616' };
+const UNREADABLE = (d, n) => d === n || (d === 'yellow' && n === 'white') || (d === 'white' && n === 'yellow') || (d === 'black' && n === 'blue') || (d === 'blue' && n === 'black') || (d === 'red' && n === 'black') || (d === 'black' && n === 'red');
+function lookOf() {
+  if (ST.look !== 'primary') return LOOKS[ST.look];
+  return { fill: PRIM[ST.dieCol], op: 1, num: PRIM[ST.numCol], edge: ST.dieCol === 'white' ? '#999' : '#ffffff99' };
+}
+// a die drawn as a flat-shaded solid: d4 triangle, d6 square, d8 diamond, d10 kite, d12 pentagon, d20 hexagon
+const SHAPES = {
+  4: { pts: '0,-24 22,16 -22,16', lines: '' },
+  6: { pts: '-19,-19 19,-19 19,19 -19,19', lines: '<polyline points="-19,-19 -12,-12 12,-12 19,-19"/><polyline points="12,-12 12,12 19,19"/>' },
+  8: { pts: '0,-25 22,0 0,25 -22,0', lines: '<polyline points="-22,0 22,0"/>' },
+  10: { pts: '0,-25 21,-4 13,18 -13,18 -21,-4', lines: '<polyline points="-21,-4 0,6 21,-4"/><polyline points="0,6 0,-25"/>' },
+  12: { pts: '0,-24 22,-7 14,20 -14,20 -22,-7', lines: '<polygon points="0,-13 11,-4 7,10 -7,10 -11,-4"/>' },
+  20: { pts: '0,-24 21,-12 21,12 0,24 -21,12 -21,-12', lines: '<polyline points="0,-24 -12,7 12,7 0,-24"/><polyline points="-21,-12 -12,7 0,24 12,7 21,-12"/>' },
+};
+function dieSvg(sides, n, { numA = 1, look = lookOf(), size = 26 } = {}) {
+  const sh = SHAPES[sides === 100 ? 10 : sides] ?? SHAPES[20];
+  const back = look.clear ? `<g fill="none" stroke="${look.edge}" stroke-opacity=".35" stroke-width="1"><polyline points="-21,12 0,0 21,12"/><polyline points="0,0 0,24"/></g>` : '';
+  return `<svg viewBox="-28 -28 56 56" aria-hidden="true"><polygon points="${sh.pts}" fill="${look.fill}" fill-opacity="${look.op}" stroke="${look.edge}" stroke-width="2" stroke-linejoin="round"/>${back}
+    <g fill="none" stroke="${look.edge}" stroke-width="1.2" stroke-opacity=".75">${sh.lines}</g>
+    ${look.clear ? '<polygon points="-15,-14 -3,-21 -9,-11" fill="#fff" fill-opacity=".35"/>' : ''}
+    <text x="0" y="${sides === 4 ? 6 : 2}" text-anchor="middle" dominant-baseline="central" style="font:800 ${size * .62}px system-ui,sans-serif" fill="${look.num}" fill-opacity="${numA}">${n ?? ''}</text></svg>`;
+}
+
+// ---------- a stand-in for the engine's seeded dice (the real roll comes from the game state's seed) ----------
+let seed = 20261119;
+const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+const engineDie = (sides) => 1 + Math.floor(rnd() * sides);
+
 // ---------- the map ----------
 function drawMap() {
   const W = ST.frame === 'phone' ? 390 : 1280, H = ST.frame === 'phone' ? 844 : 800;
   const cx = W * (ST.frame === 'phone' ? .5 : .62), cell = ST.frame === 'phone' ? 52 : 64;
   let s = `<svg viewBox="0 0 ${W} ${H}" aria-label="The map"><rect width="${W}" height="${H}" fill="var(--g1)"/>`;
-  // a tilted grid: rows get wider toward the bottom
   const rows = 16, top = -40;
   const yAt = (r) => top + Math.pow(r / rows, 1.15) * (H + 120);
   const half = (r) => (W * .55) + r * cell * .9;
+  const xAt = (c, r) => cx + c * (half(r) * 2 / 17.5);
   for (let r = 0; r < rows; r++) {
-    const y0 = yAt(r), y1 = yAt(r + 1), cols = 14;
-    for (let c = -cols; c < cols; c++) {
-      const x = (rr) => cx + c * (half(rr) * 2 / (cols * 1.25));
-      const pts = [[x(r), y0], [cx + (c + 1) * (half(r) * 2 / (cols * 1.25)), y0], [cx + (c + 1) * (half(r + 1) * 2 / (cols * 1.25)), y1], [x(r + 1), y1]];
+    const y0 = yAt(r), y1 = yAt(r + 1);
+    for (let c = -14; c < 14; c++) {
+      const pts = [[xAt(c, r), y0], [xAt(c + 1, r), y0], [xAt(c + 1, r + 1), y1], [xAt(c, r + 1), y1]];
       const forest = ((r * 7 + c * 13) % 11 === 0) || ((r * 3 + c * 5) % 17 === 0);
-      const reach = ST.state === 'mine' && !ST.aiming && Math.abs(c) <= 2 && r >= 7 && r <= 10;
+      const reach = ST.state === 'mine' && !ST.aiming && c >= -2 && c <= 2 && r >= 7 && r <= 10;
       s += `<polygon points="${pts.map((p) => p.join(',')).join(' ')}" fill="${forest ? 'var(--g2)' : 'var(--g1)'}" stroke="#0002" stroke-width="1"/>`;
       if (reach) s += `<polygon points="${pts.map((p) => p.join(',')).join(' ')}" fill="var(--move)"/>`;
       if (forest) { const mx = (pts[0][0] + pts[2][0]) / 2, my = (pts[0][1] + pts[2][1]) / 2, k = (y1 - y0) / 40;
         s += `<polygon points="${mx},${my - 30 * k} ${mx - 13 * k},${my + 4 * k} ${mx + 13 * k},${my + 4 * k}" fill="var(--tree)"/>`; }
     }
   }
-  if (ST.state === 'mine' && !ST.aiming) { const y0 = yAt(7), y1 = yAt(11), x0 = cx - 2 * (half(7) * 2 / 17.5), x1 = cx + 3 * (half(7) * 2 / 17.5), x2 = cx + 3 * (half(11) * 2 / 17.5), x3 = cx - 2 * (half(11) * 2 / 17.5);
-    s += `<polygon points="${x0},${y0} ${x1},${y0} ${x2},${y1} ${x3},${y1}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-opacity=".85"/>`; }
+  if (ST.state === 'mine' && !ST.aiming) s += `<polygon points="${xAt(-2, 7)},${yAt(7)} ${xAt(3, 7)},${yAt(7)} ${xAt(3, 11)},${yAt(11)} ${xAt(-2, 11)},${yAt(11)}" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-opacity=".85"/>`;
   if (ST.aiming?.locked) { const y0 = yAt(4.5), y1 = yAt(8.5), xm = cx + 20;
     s += `<defs><pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="rgba(255,120,50,.35)"/><line x1="0" y1="0" x2="0" y2="8" stroke="rgba(255,255,255,.5)" stroke-width="2"/></pattern></defs>`;
     s += `<polygon points="${xm},${y1} ${xm - 150},${y0} ${xm + 150},${y0}" fill="url(#hatch)" stroke="var(--ink)" stroke-width="2"/>`; }
-  const rock = (x, y, w) => `<rect x="${x}" y="${y}" width="${w}" height="${w * .7}" rx="4" fill="var(--rock)" stroke="#0004"/>`;
+  // boulders: a lumpy outline, lit from the top left, with a shadow on the grass (the map is a stand-in for the 3D view)
+  const rock = (x, y, w) => { const h = w * .62, p = (a, b) => `${x + a * w},${y + b * h}`;
+    return `<g><ellipse cx="${x + w * .55}" cy="${y + h * .98}" rx="${w * .6}" ry="${h * .22}" fill="#0004"/>
+      <path d="M${p(.05, .85)} C${p(-.05, .45)} ${p(.15, .1)} ${p(.42, .06)} C${p(.62, -.04)} ${p(.95, .12)} ${p(1.0, .5)} C${p(1.05, .8)} ${p(.85, 1.0)} ${p(.55, .98)} C${p(.35, 1.02)} ${p(.12, 1.0)} ${p(.05, .85)} Z" fill="url(#rockg)" stroke="#0005" stroke-width="1.5"/>
+      <path d="M${p(.25, .3)} C${p(.35, .18)} ${p(.5, .16)} ${p(.6, .22)}" fill="none" stroke="#fff3" stroke-width="3" stroke-linecap="round"/>
+      <path d="M${p(.55, .55)} L${p(.68, .78)}" stroke="#0003" stroke-width="2"/></g>`; };
+  s += `<defs><radialGradient id="rockg" cx="35%" cy="30%" r="80%"><stop offset="0" stop-color="#b8b3a6"/><stop offset=".55" stop-color="var(--rock)"/><stop offset="1" stop-color="#4c4a44"/></radialGradient></defs>`;
   s += rock(cx - 170, yAt(3), 70) + rock(cx + 120, yAt(10), 80);
-  const pawn = (x, y, col, name, foe) => `<g><ellipse cx="${x}" cy="${y + 16}" rx="20" ry="8" fill="#0004"/><circle cx="${x}" cy="${y}" r="17" fill="${col}" stroke="${foe ? '#0008' : '#0006'}" stroke-width="3"/><circle cx="${x}" cy="${y - 20}" r="9" fill="${col}" stroke="#0006" stroke-width="2"/><text class="nm" x="${x}" y="${y - 36}">${name}</text></g>`;
-  s += pawn(cx - 40, yAt(5.5), 'var(--foe)', 'Goblin Warrior 2', 1) + pawn(cx + 50, yAt(6), 'var(--foe)', 'Goblin Warrior 3', 1) + pawn(cx + 130, yAt(7.2), 'var(--foe)', 'Wolf 1', 1);
-  s += pawn(cx + 5, yAt(8.8), '#c96a3a', 'Wren', 0) + pawn(cx - 90, yAt(9.6), '#4f7fc0', 'Tavin', 0) + pawn(cx + 80, yAt(10.4), '#4f9a6a', 'Pip', 0);
+  // health bars over every creature (Decision 7a): the party's exact; a foe's by the table's rule (rough: full, half for Bloodied, empty)
+  const showBars = ST.bars === 'always' || (ST.bars === 'fight' && fight());
+  const bar = (x, y, hp, foe) => {
+    if (!showBars || hp == null) return '';
+    const f = typeof hp === 'number' ? hp : { healthy: 1, bloodied: .5, down: 0 }[hp];
+    const rough = typeof hp === 'string';
+    return `<g><rect x="${x - 22}" y="${y - 31}" width="44" height="7" rx="3" fill="#000a" stroke="#fff8" stroke-width="1"/><rect x="${x - 21}" y="${y - 30}" width="${42 * f}" height="5" rx="2" fill="${foe ? '#e0574a' : f < .5 ? '#e0a040' : '#6fcf6f'}"/>${rough ? `<line x1="${x}" y1="${y - 31}" x2="${x}" y2="${y - 24}" stroke="#fff" stroke-width="1.2"/>` : ''}</g>`;
+  };
+  const foeHp = (exact, cat) => ST.foeHealth === 'hidden' ? null : ST.foeHealth === 'exact' ? exact : cat;
+  const pawn = (x, y, col, name, foe, ring, hp) => `<g>${ring ? `<ellipse cx="${x}" cy="${y + 16}" rx="26" ry="11" fill="none" stroke="#fff" stroke-width="2.5"/>` : ''}<ellipse cx="${x}" cy="${y + 16}" rx="20" ry="8" fill="#0004"/><circle cx="${x}" cy="${y}" r="17" fill="${col}" stroke="${foe ? '#0008' : '#0006'}" stroke-width="3"/><circle cx="${x}" cy="${y - 20}" r="9" fill="${col}" stroke="#0006" stroke-width="2"/>${bar(x, y - 12, hp, foe)}<text class="nm" x="${x}" y="${y - 48}">${name}</text></g>`;
+  s += pawn(cx - 40, yAt(5.5), 'var(--foe)', 'Goblin Warrior 2', 1, false, foeHp(10 / 10, 'healthy')) + pawn(cx + 50, yAt(6), 'var(--foe)', 'Goblin Warrior 3', 1, false, foeHp(7 / 10, 'healthy')) + pawn(cx + 130, yAt(7.2), 'var(--foe)', 'Wolf 1', 1, false, foeHp(4 / 11, 'bloodied'));
+  s += pawn(cx + 5, yAt(8.8), '#c96a3a', 'Wren', 0, ST.sel === 'wren', hpOf(CH.wren) / CH.wren.max) + pawn(cx - 90, yAt(9.6), '#4f7fc0', 'Tavin', 0, ST.sel === 'tavin', 1) + pawn(cx + 80, yAt(10.4), '#4f9a6a', 'Pip', 0, ST.sel === 'pip', .7);
+  if (ST.chars === 'familiar') s += `<g><circle cx="${cx + 40}" cy="${yAt(9.3)}" r="9" fill="#8a7a5a" stroke="${ST.sel === 'owl' ? '#fff' : '#0006'}" stroke-width="2.5"/>${showBars ? `<rect x="${cx + 28}" y="${yAt(9.3) - 30}" width="24" height="5" rx="2" fill="#6fcf6f" stroke="#000a"/>` : ''}<text class="nm" x="${cx + 40}" y="${yAt(9.3) - 34}" style="font-size:11px">Owl</text></g>`;
   if (ST.aiming?.locked) s += `<text class="nm" x="${cx - 40}" y="${yAt(5.5) + 50}" style="font-size:12px">◎ caught</text><text class="nm" x="${cx + 50}" y="${yAt(6) + 50}" style="font-size:12px">◎ caught</text>`;
-  s += '</svg>';
-  $('map').innerHTML = s;
+  $('map').innerHTML = s + '</svg>';
 }
 
-// ---------- the screens of the menu ----------
-const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-const row = (o) => `<button type="button" class="row${o.on ? ' on' : ''}${o.grey ? ' grey' : ''}${o.cls ? ' ' + o.cls : ''}" ${o.go ? `data-go="${o.go}"` : ''} ${o.act ? `data-act="${o.act}"` : ''} ${o.grey ? 'aria-disabled="true"' : ''}>
-  ${o.pre ?? ''}<span class="t"><b>${o.b}</b>${o.s ? `<small${o.grey ? ' class="why"' : ''}>${o.s}</small>` : ''}</span>${o.chip ? `<span class="chip">${o.chip}</span>` : ''}${o.r ? `<span class="r">${o.r}</span>` : ''}${o.go ? '<span class="chev" aria-hidden="true">›</span>' : ''}</button>`;
+// ---------- the menu's screens ----------
+const row = (o) => `<button type="button" class="row${o.on ? ' on' : ''}${o.grey ? ' grey' : ''}${o.cls ? ' ' + o.cls : ''}" ${o.go ? `data-go="${o.go}"` : ''} ${o.act ? `data-act="${o.act}"` : ''} ${o.fold ? `data-fold="${o.fold}" aria-expanded="${ST.folds.has(o.fold)}"` : ''} ${o.grey ? 'aria-disabled="true"' : ''}>
+  ${o.pre ?? ''}<span class="t"><b>${o.b}</b>${o.s ? `<small${o.grey ? ' class="why"' : ''}>${o.s}</small>` : ''}</span>${o.chip ? `<span class="chip">${o.chip}</span>` : ''}${o.r ? `<span class="r">${o.r}</span>` : ''}${o.go || o.fold ? '<span class="chev" aria-hidden="true">›</span>' : ''}</button>`;
 const fight = () => ST.state !== 'explore';
 const mine = () => ST.state === 'mine';
-const turnWords = () => ({ explore: 'Exploring · Day 1, 08:00', other: ST.round1 ? 'Round 1 · Odessa’s turn · you next' : 'Round 2 · Goblin Warrior 2’s turn · you in 3', mine: 'Round 2 · Your turn', down: 'You are down · Death saves ✓ ○ ○  ✗ ○ ○' })[ST.state];
+const turnWords = () => ({ explore: 'Exploring · Day 1, 08:00', other: ST.round1 ? 'Round 1 · Odessa’s turn · you next' : 'Round 2 · Goblin Warrior 2’s turn · you in 3', mine: `Round 2 · Your turn${ST.sel !== 'wren' ? ', ' + sel().name : ''}`, down: 'You are down · Death saves ✓ ○ ○  ✗ ○ ○' })[ST.state];
+const hpOf = (c) => (c.id === 'wren' && ST.state === 'down' ? 0 : c.hp);
+const sigil = (c) => { const f = hpOf(c) / c.max * 100; return `<span class="sigil" aria-hidden="true" style="background:${c.col};color:#fff">${c.letter}<svg class="sring" viewBox="0 0 60 60"><circle cx="30" cy="30" r="27" stroke="var(--line)"/><circle cx="30" cy="30" r="27" pathLength="100" stroke-dasharray="${f} 100" stroke="${f < 50 ? 'var(--bad)' : 'var(--good)'}" transform="rotate(-90 30 30)"/></svg></span>`; };
+
+function charRows() {
+  const list = mineList();
+  return list.map((id) => { const c = CH[id];
+    const st = c.id === 'wren' ? (mine() ? 'Your turn' : ST.state === 'down' ? 'Down' : fight() ? 'Waiting' : 'Exploring') : c.sub;
+    return row({ cls: `char${c.master ? ' sub' : ''}`, pre: sigil(c), b: c.name, s: c.id === 'wren' || !c.master ? `${c.sub} · ${st}` : c.sub, r: `${hpOf(c)} / ${c.max} HP`, go: 'character:' + id, on: ST.path[0] === 'character:' + id }); }).join('');
+}
+function waitBox() {
+  if (!ST.waiting.length) return '';
+  return `<div class="waitbox" role="region" aria-label="Waiting for you"><h3>Waiting for you</h3>${ST.waiting.map((w, i) => `<div class="w"><span>${w.text}</span><button type="button" class="btn go" data-act="wait:${i}">${w.btn}</button></div>`).join('')}</div>`;
+}
+const ringNote = () => ST.seenRing ? '' : `<div class="note" role="note"><span>The ring round the die is ${sel().name}’s health: ${hpOf(sel())} of ${sel().max} HP.</span><button type="button" class="btn" data-act="seen">Got it</button></div>`;
 
 const SCREENS = {
-  root: () => ({ title: 'Menu', body: `
-    ${row({ cls: 'char', pre: '<span class="sigil" aria-hidden="true">W</span>', b: 'Wren', s: `Level 1 Wizard · ${mine() ? 'Your turn' : ST.state === 'down' ? 'Down' : fight() ? 'Waiting' : 'Exploring'}`, r: `${WREN.hp} / ${WREN.max} HP`, go: 'character', on: ST.path.includes('character') })}
-    ${row({ b: fight() ? 'Turns' : 'Party', r: fight() ? (mine() ? 'Round 2 · you' : 'Round 2 · you in 3') : '4 in the party', go: 'turns', on: ST.path.includes('turns') })}
-    ${row({ b: 'Dice', r: ST.dice.length ? `last: ${ST.dice[0].who} ${ST.dice[0].val}` : 'no rolls yet', go: 'dice', on: ST.path.includes('dice') })}
-    ${row({ b: 'Log and chat', r: '2 new', go: 'log', on: ST.path.includes('log') })}
-    ${row({ b: 'Handouts', r: '1 new', go: 'handouts', on: ST.path.includes('handouts') })}
+  root: () => ({ title: 'Menu', body: `${waitBox()}${ringNote()}${charRows()}
+    ${row({ b: fight() ? 'Turns' : 'Party', r: fight() ? (mine() ? 'Round 2 · you' : 'Round 2 · you in 3') : '5 in the party', go: 'turns', on: ST.path[0] === 'turns' })}
+    ${row({ b: 'Dice', s: 'Roll dice · last rolls · dice look', r: ST.dice.length ? `last: ${ST.dice[0].val}` : '', go: 'dice', on: ST.path[0] === 'dice' })}
+    ${row({ b: 'Log and chat', r: '2 new', go: 'log', on: ST.path[0] === 'log' })}
+    ${ST.handouts ? row({ b: 'Handouts', r: '1', go: 'handouts', on: ST.path[0] === 'handouts' }) : ''}
     <div class="sec">Table</div>
-    ${row({ b: 'Setup', s: 'Look, the menu, controls, dice', go: 'setup', on: ST.path.includes('setup') })}
-    ${row({ b: 'DM tools', s: 'Shown to the DM only', go: 'dm', on: ST.path.includes('dm') })}
+    ${row({ b: 'Setup', s: 'Look, the menu, controls, dice', go: 'setup', on: ST.path[0] === 'setup' })}
+    ${row({ b: 'DM tools', s: 'Shown to the DM only', go: 'dm', on: ST.path[0] === 'dm' })}
     ${row({ b: 'Characters', s: 'Who plays whom, add, level up', go: 'chars' })}
     ${row({ b: 'Packs', s: 'Homebrew this table uses', go: 'packs' })}
-    ${row({ b: 'Help and feedback', go: 'help' })}
+    ${row({ b: 'Help and feedback', s: 'The die button, explained', go: 'help', on: ST.path[0] === 'help' })}
     ${row({ b: 'About', go: 'about' })}
     <div class="sec"></div>
     ${row({ b: 'Leave the table', s: 'Your character stays with the DM', act: 'toast:Leave the table: asks first, then goes to the start page.' })}` }),
 
-  character: () => {
-    const b = ST.bar, down = ST.state === 'down';
-    const seg = (k, label, txt, used) => `<button type="button" data-act="filter:${k}" class="${!mine() && k !== 'reaction' ? 'off' : used ? 'used' : ''}" aria-label="${label}, ${txt}"><b>${label}</b><small>${txt}</small></button>`;
+  character: (id) => {
+    const c = CH[id], b = ST.bar, down = id === 'wren' && ST.state === 'down', isMine = mine() && id === ST.sel;
+    const seg = (k, label, txt, used) => `<button type="button" data-fold="filter:${k}" aria-expanded="${ST.folds.has('filter:' + k)}" class="${!isMine && k !== 'reaction' ? 'off' : used ? 'used' : ''}" aria-label="${label}, ${txt}"><b>${label}</b><small>${txt}</small></button>`;
     const nyt = 'Not your turn';
+    const turnbar = fight() && !down && id === 'wren' ? `<div class="turnbar" role="group" aria-label="This turn">${seg('action', 'Action', isMine ? (b.action ? 'Ready' : 'Used') : nyt, !b.action)}${seg('bonus', 'Bonus', isMine ? (b.bonus ? 'Ready' : 'Used') : nyt, !b.bonus)}${seg('move', 'Move', isMine ? `${b.move} of 30 ft` : nyt, !b.move)}${seg('reaction', 'Reaction', b.reaction ? 'Ready' : 'Used', !b.reaction)}</div>` : '';
     const status = `<div class="status">
-      <div class="top"><span class="sigil" aria-hidden="true">W</span><span class="who"><b>Wren</b> <small>Level 1 Wizard · <button type="button" class="btn" style="min-height:32px;padding:0 8px" data-act="toast:Switch: the characters you play (here: Wren, and Owl the familiar).">Wren ▾</button></small></span>
-        ${mine() ? '<button type="button" class="btn go" data-act="endturn">End turn</button>' : ''}</div>
-      <div class="hpbar"><span class="bar"><i style="width:${down ? 0 : WREN.hp / WREN.max * 100}%"></i></span><span>${down ? 0 : WREN.hp} / ${WREN.max} HP</span><span>AC ${WREN.ac}</span><span>${WREN.speed} ft</span></div>
+      <div class="top">${sigil(c)}<span class="who"><b>${c.name}</b><small>${c.sub}</small></span>${isMine ? '<button type="button" class="btn go" data-act="endturn">End turn</button>' : ''}</div>
+      <div class="hpbar"><span class="bar"><i style="width:${hpOf(c) / c.max * 100}%"></i></span><span>${hpOf(c)} / ${c.max} HP</span><span>AC ${c.ac}</span><span>${c.speed} ft</span></div>
       ${down ? '<div class="saves" aria-label="Death saves: 1 success, 0 failures">✓ ○ ○ &nbsp; ✗ ○ ○</div><div class="subtle">Death saves are rolled for you at the start of your turn. Your friends can heal you.</div>' : ''}
-      ${fight() && !down ? `<div class="turnbar" role="group" aria-label="This turn">${seg('action', 'Action', mine() ? (b.action ? 'Ready' : 'Used') : nyt, !b.action)}${seg('bonus', 'Bonus', mine() ? (b.bonus ? 'Ready' : 'Used') : nyt, !b.bonus)}${seg('move', 'Move', mine() ? `${b.move} of 30 ft` : nyt, !b.move)}${seg('reaction', 'Reaction', b.reaction ? 'Ready' : 'Used', !b.reaction)}</div>` : ''}
-      <div class="pills"><span>Level 1 slots ●●</span>${ST.state === 'other' ? '<span>Concentrating: none</span>' : ''}${down ? '<span>Unconscious ⓘ</span><span>Prone ⓘ</span>' : ''}</div></div>`;
-    const why = down ? 'You can’t act while Unconscious.' : !mine() && fight() ? 'Not your turn.' : '';
-    const g = (k, b2, s, extra = {}) => row({ b: b2, s: why && !extra.react ? why : s, go: why && !extra.react ? undefined : 'g:' + k, grey: !!why && !extra.react, on: ST.path.includes('g:' + k), ...extra });
+      ${turnbar}${['filter:action', 'filter:bonus', 'filter:move', 'filter:reaction'].filter((f) => ST.folds.has(f)).map((f) => `<div class="fold">${GROUPS[f]()}</div>`).join('')}
+      <div class="pills">${id === 'wren' ? '<span>Level 1 slots ●●</span>' : ''}${down ? '<span>Unconscious ⓘ</span><span>Prone ⓘ</span>' : ''}</div></div>`;
+    const why = down ? 'You can’t act while Unconscious.' : fight() && !isMine ? 'Not your turn.' : '';
+    // groups and sections open in place (Decision 4a); on a wide screen a group opens in the next column
+    const wide = ST.frame === 'desktop';
+    const g = (k, label, s, extra = {}) => {
+      const greyed = !!why && !extra.react;
+      const key = 'g:' + k;
+      if (wide && !extra.section) return row({ b: label, s: greyed ? why : s, go: greyed ? undefined : key, grey: greyed, on: ST.path.includes(key) });
+      return row({ b: label, s: greyed ? why : s, fold: greyed ? undefined : key, grey: greyed }) + (ST.folds.has(key) && !greyed ? `<div class="fold">${GROUPS[key]()}</div>` : '');
+    };
     let groups;
-    if (fight()) groups = `${g('attack', 'Attack', 'Fire Bolt, Quarterstaff, Dagger')}
-      ${mine() && b.action ? `<div class="like">${row({ b: 'Fire Bolt', s: 'Cantrip · +5 to hit · 1d10 fire · 120 ft', chip: 'Action', act: 'firebolt' })}</div>` : ''}
+    if (id !== 'wren') groups = `${g('move', 'Move', c.master ? 'Fly 60 ft · Dash' : 'Dash, Disengage')}${g('defend', 'Defend and hide', 'Dodge, Hide')}${c.master ? row({ b: 'Help', s: 'Give Wren Advantage on her next attack', chip: 'Action', act: 'toast:Help: tap the enemy Wren will attack.' }) : g('attack', 'Attack', 'Weapons')}`;
+    else if (fight()) groups = `${g('attack', 'Attack', 'Fire Bolt, Quarterstaff, Dagger')}
+      ${isMine && b.action ? `<div class="like">${row({ b: 'Fire Bolt', s: 'Cantrip · +5 to hit · 1d10 fire · 120 ft', chip: 'Action', act: 'firebolt' })}</div>` : ''}
       ${g('cast', 'Cast', '2 slots · 6 spells')}${g('heal', 'Heal', 'Potion of Healing')}${g('move', 'Move', 'Dash, Disengage, Stand up')}
       ${g('defend', 'Defend and hide', 'Dodge, Hide')}${g('features', 'Features', 'Arcane Recovery (after a Short Rest)')}
       ${g('reactions', 'Reactions', 'Shield asks you · Opportunity Attack always', { react: true })}`;
     else groups = `${g('explore', 'Explore', 'Search, Hide, Follow, Lead')}${g('cast', 'Cast', '2 slots · 6 spells · 1 ritual')}${g('heal', 'Heal', 'Potion of Healing')}
       ${g('use', 'Use', 'A lever, 5 ft away')}${g('rest', 'Rest', 'Short rest, Long rest')}${g('features', 'Features', 'Arcane Recovery')}`;
-    return { title: 'Wren', crumb: 'Menu', fixed: status, body: `<div class="sec">Actions</div>${groups}
-      <div class="sec">Inventory</div>${row({ b: 'Inventory', s: 'Quarterstaff (held) · Dagger · Spellbook · 3 more · 12 GP', go: 'inventory' })}
-      <div class="sec">Sheet</div>${row({ b: 'Abilities and skills', s: 'Int 16 (+3) · Arcana +5 · Investigation +5', go: 'abil' })}${row({ b: 'Features and traits', go: 'feats' })}${row({ b: 'Spells known', go: 'g:cast' })}${row({ b: 'Story', s: 'Sage · notes', go: 'story' })}` };
+    const sec = (k, label, s) => g(k, label, s, { section: true, react: true });
+    const sheet = id === 'wren' ? `<div class="sec">Inventory</div>${sec('inventory', 'Inventory', 'Quarterstaff (held) · Dagger · Spellbook · 3 more · 12 GP')}
+      <div class="sec">Sheet</div>${sec('abil', 'Abilities and skills', 'Int 16 (+3) · Arcana +5 · Investigation +5')}${sec('feats', 'Features and traits', 'Arcane Recovery · Ritual Adept')}${sec('known', 'Spells known', '6 in the spellbook')}${sec('story', 'Story', 'Sage · notes')}` : `<div class="sec">Sheet</div>${sec('story', 'Story', c.master ? 'An owl, bound to Wren by Find Familiar' : 'Background · notes')}`;
+    return { title: c.name, crumb: 'Menu', fixed: status, body: `<div class="sec">Actions</div>${groups}${sheet}` };
   },
 
-  'g:cast': () => ({ title: 'Cast', crumb: 'Wren', body: `<div class="subtle">Level 1 slots ●● &nbsp; <button type="button" class="btn" style="min-height:40px" data-act="toast:Sort and filter: by level, by what it does, rituals only.">Sort and filter</button></div>
-    ${row({ b: 'Fire Bolt', s: 'Cantrip · +5 to hit · 1d10 fire · 120 ft', chip: 'Action', act: 'firebolt', grey: fight() && !mine() })}
-    ${row({ b: 'Burning Hands', s: 'Level 1 · 15 ft cone · Dexterity save · 3d6 fire', chip: 'Action', act: 'aim' , grey: fight() && !mine()})}
-    ${row({ b: 'Magic Missile', s: 'Level 1 · 120 ft · three darts, 1d4 + 1 force each', chip: 'Action', act: 'toast:Magic Missile: tap up to 3 creatures.', grey: fight() && !mine() })}
-    ${row({ b: 'Shield', s: 'Level 1 · when you are hit · +5 AC until your next turn', chip: 'Reaction', grey: true })}
-    ${row({ b: 'Mage Armor', s: 'Level 1 · 8 hours · AC 13 + Dex', chip: 'Action', act: 'toast:Mage Armor: tap a willing creature.', grey: fight() && !mine() })}
-    ${row({ b: 'Detect Magic', s: 'Level 1 · Concentration · Ritual', chip: 'Action', grey: fight(), })}
-    ${fight() && !mine() ? '<div class="subtle">Greyed: Not your turn. Shield is cast from the reaction question when you are hit.</div>' : '<div class="subtle">Shield: cast from the reaction question when you are hit. Detect Magic as a ritual takes 10 minutes: not in a fight.</div>'}` }),
-  'g:attack': () => ({ title: 'Attack', crumb: 'Wren', body: `${row({ b: 'Fire Bolt', s: 'Cantrip · +5 to hit · 1d10 fire · 120 ft', chip: 'Action', act: 'firebolt' })}${row({ b: 'Quarterstaff', s: '+2 to hit · 1d6 bludgeoning · reach 5 ft', chip: 'Action', act: 'toast:Quarterstaff: tap an enemy within 5 ft.' })}${row({ b: 'Dagger', s: '+2 to hit · 1d4 piercing · 5 ft or thrown 20/60 ft', chip: 'Action', act: 'toast:Dagger: tap an enemy.' })}${row({ b: 'Grapple or Shove', s: 'Unarmed Strike · no one within 5 ft', chip: 'Action', grey: true })}<div class="subtle">Or tap an enemy on the map to attack with what reaches.</div>` }),
-  'g:heal': () => ({ title: 'Heal', crumb: 'Wren', body: `${row({ b: 'Potion of Healing', s: '2d4 + 2 · you, or a creature within 5 ft', chip: 'Bonus Action', act: 'toast:Potion of Healing: tap yourself or someone beside you.' })}<div class="subtle">Wren has no healing spell.</div>` }),
-  'g:move': () => ({ title: 'Move', crumb: 'Wren', body: `<div class="subtle">Solid edge on the map: where you can walk this turn. Tap a space to walk there.</div>${row({ b: 'Dash', s: 'Double your move: 60 ft', chip: 'Action', act: 'dash' })}${row({ b: 'Disengage', s: 'No Opportunity Attacks', chip: 'Action', act: 'toast:Disengage: sent. Action used.' })}${row({ b: 'Stand up', s: 'You are not Prone', grey: true })}` }),
-  'g:defend': () => ({ title: 'Defend and hide', crumb: 'Wren', body: `${row({ b: 'Dodge', s: 'Attackers roll with Disadvantage', chip: 'Action', act: 'toast:Dodge: sent. Action used.' })}${row({ b: 'Hide', s: 'Stealth +2 · DC 15', chip: 'Action', grey: true })}<div class="subtle">Hide greyed: A creature that can see you is too close.</div>` }),
-  'g:features': () => ({ title: 'Features', crumb: 'Wren', body: row({ b: 'Arcane Recovery', s: 'Once a day, after a Short Rest', grey: true }) }),
-  'g:reactions': () => ({ title: 'Reactions', crumb: 'Wren', body: `<div class="subtle">Reaction this round: ${ST.bar.reaction ? 'ready' : 'used'}.</div>${row({ b: 'Shield', s: 'Asks you', act: 'toast:Change: Never · Only if it turns the hit into a miss · Always · Ask.' })}${row({ b: 'Opportunity Attack', s: 'Always', act: 'toast:Change: Never · Always · Ask.' })}` }),
-  'g:explore': () => ({ title: 'Explore', crumb: 'Wren', body: `${row({ b: 'Search', s: 'Perception +1 · secret doors, traps, things hiding · 15 ft', act: 'toast:Search: sent.' })}${row({ b: 'Hide', s: 'Stealth +2 · DC 15', act: 'toast:Hide: sent.' })}${row({ b: 'Follow', s: 'Walk behind someone', act: 'toast:Follow: tap a party member.' })}${row({ b: 'Lead', s: 'Pip leads · Take the lead', act: 'toast:Lead: everyone walks behind Wren; then Formation.' })}${row({ b: 'Check…', s: 'Skills, on the sheet', go: 'abil' })}` }),
-  'g:use': () => ({ title: 'Use', crumb: 'Wren', body: row({ b: 'Pull the lever', s: 'Lever, 5 ft away', act: 'toast:Pull the lever: sent.' }) }),
-  'g:rest': () => ({ title: 'Rest', crumb: 'Wren', body: `${row({ b: 'Short rest…', s: 'Choose who spends Hit Point Dice', go: 'shortrest' })}${row({ b: 'Long rest', s: 'The party · asks the DM', act: 'toast:Long rest: the DM is asked.' })}` }),
-  shortrest: () => ({ title: 'Short rest', crumb: 'Rest', body: '<div class="subtle">(The short-rest picker, as a screen of the menu instead of a popup.)</div>' }),
-  inventory: () => ({ title: 'Inventory', crumb: 'Wren', body: `${row({ b: 'Quarterstaff', s: 'Held · 1d6 bludgeoning', chip: 'Held', act: 'toast:Quarterstaff: Put away · Give… · Drop' })}${row({ b: 'Dagger', s: 'Worn at the belt', act: 'toast:Dagger: Hold · Give… · Drop' })}${row({ b: 'Spellbook', act: 'toast:Spellbook: the spells it holds.' })}${row({ b: 'Potion of Healing', s: '1 · Bonus Action to drink', act: 'toast:Potion of Healing: Drink · Give… · Drop' })}${row({ b: 'Explorer’s Pack', s: 'Bedroll, rations, rope, torches…' })}${row({ b: 'Coins', r: '12 GP · 4 SP' })}` }),
-  abil: () => ({ title: 'Abilities and skills', crumb: 'Wren', body: `<div class="subtle">Str 8 (−1) · Dex 14 (+2) · Con 12 (+1) · Int 16 (+3) · Wis 13 (+1) · Cha 10 (+0)</div>${['Arcana +5', 'History +5', 'Investigation +5', 'Perception +1', 'Stealth +2'].map((x) => row({ b: x.split(' ')[0], r: x.split(' ')[1], act: `toast:${x.split(' ')[0]} check: asks the DM, who may let you roll.` })).join('')}` }),
-  feats: () => ({ title: 'Features and traits', crumb: 'Wren', body: `${row({ b: 'Arcane Recovery', s: 'Regain spent slots after a Short Rest, once a day' })}${row({ b: 'Ritual Adept', s: 'Cast a ritual spell from your book' })}` }),
-  story: () => ({ title: 'Story', crumb: 'Wren', body: '<div class="subtle">Background: Sage. Notes the player writes.</div>' }),
-
-  turns: () => ({ title: fight() ? 'Turns' : 'Party', crumb: 'Menu', body: `<div class="subtle">${fight() ? (mine() ? 'Round 2 · Your turn' : 'Round 2 · Goblin Warrior 2’s turn · you in 3') : 'Exploring · Day 1, 08:00'}</div>
-    <div class="tracker">${(fight() ? ORDER : ORDER.filter((o) => o.side === 'party')).map((o, i) => {
+  turns: () => ({ title: fight() ? 'Turns' : 'Party', crumb: 'Menu', body: `<div class="subtle">${fight() ? turnWords() : 'Exploring · Day 1, 08:00'}</div>
+    <div class="tracker">${(fight() ? ORDER : ORDER.filter((o) => o.side === 'party')).map((o) => {
       const cur = fight() && (mine() ? o.you : o.n === 'Goblin Warrior 2');
       if (o.side === 'unseen') return `<div class="trow"><span class="init"></span><span class="n" style="color:var(--muted)">Something moves unseen</span></div>`;
       const init = !fight() ? '' : o.you && !ST.initShown ? '?' : (o.init ?? '');
       return `<div class="trow${cur ? ' cur' : ''}${o.side === 'foe' ? ' foe' : ''}" ${cur ? 'aria-current="step"' : ''}><span class="init">${init}</span><span class="n"><b>${o.n}</b>${o.you ? '<small>You</small>' : ''}</span><span class="h">${o.hp}</span></div>`; }).join('')}</div>
     <div class="subtle">A tap on a row selects that creature and shows it on the map; on a phone it also clears the menu.</div>` }),
 
-  dice: () => ({ title: 'Dice', crumb: 'Menu', body: `${holdSetting()}${flickSetting()}<div class="sec">Last rolls</div>
-    ${ST.dice.length ? ST.dice.slice(0, 20).map((d) => `<div class="roll" style="border-left-color:${d.col}"><span class="t"><b>${d.title}</b><small>${d.res}</small></span><span class="faces">${d.val}</span></div>`).join('') : '<div class="subtle">No rolls yet. Try Arrives › Initiative, or Character › Attack › Fire Bolt.</div>'}
-    <div class="subtle">Only rolls you were shown: the same as the log.</div>` }),
+  dice: () => ({ title: 'Dice', crumb: 'Menu', body: `<div class="sec">Roll dice</div>${rollPicker()}
+    <div class="sec">Last rolls</div>
+    ${ST.dice.length ? ST.dice.slice(0, 20).map((d) => `<div class="roll" style="border-left-color:${d.col}"><span class="t"><b>${d.title}</b><small>${d.res}</small></span><span class="faces">${d.val}</span></div>`).join('') : '<div class="subtle">No rolls yet.</div>'}
+    <div class="sec">How dice look and stay</div>${lookSetting()}${holdSetting()}${flickSetting()}` }),
   log: () => ({ title: 'Log and chat', crumb: 'Menu', body: `<div class="seg"><button type="button" class="on">All</button><button type="button">Talk</button><button type="button">Rolls</button></div>
-    <ol class="log"><li><b>Fight 1 · The valley · Round 2</b></li><li>Odessa’s Sacred Flame: Goblin Warrior 3 succeeds on its save.</li><li>Wolf 1 bites Tavin: 5 piercing.</li><li><i>Pip (out of character): brb, snacks</i></li></ol>
-    <div class="say"><input aria-label="Say" placeholder="Say as Wren"><button type="button" class="btn go" data-act="toast:Said (the engine’s say action).">Send</button></div>
-    <div class="seg"><button type="button" class="on">As Wren</button><button type="button">Out of character</button><button type="button" data-act="toast:Note to the DM: private.">Note to the DM</button></div>` }),
-  handouts: () => ({ title: 'Handouts', crumb: 'Menu', body: row({ b: 'A torn map', s: 'Shown by the DM · new', act: 'toast:The handout opens full screen.' }) }),
-  setup: () => ({ title: 'Setup', crumb: 'Menu', body: `<div class="sec">Look</div>${seg('Theme', 'theme', [['classic', 'Classic'], ['sunlit', 'Sunlit'], ['pocket', 'Pocket']])}
+    <ol class="log"><li><b>Fight 1 · The valley · Round 2</b></li><li>Odessa’s Sacred Flame: Goblin Warrior 3 succeeds on its save.</li><li>Wolf 1 bites Tavin: 5 piercing.</li>${ST.dice.filter((d) => d.plain).slice(0, 3).map((d) => `<li>${d.log}</li>`).join('')}<li><i>Pip (out of character): brb, snacks</i></li></ol>
+    <div class="say"><input aria-label="Say" placeholder="Say as Wren"><button type="button" class="btn go" data-act="toast:Said (the engine’s say action).">Send</button></div>` }),
+  handouts: () => ({ title: 'Handouts', crumb: 'Menu', body: row({ b: 'A torn map', s: 'Shown by the DM', act: 'toast:The handout opens full screen.' }) }),
+  setup: () => ({ title: 'Setup', crumb: 'Menu', body: `<div class="sec">Look</div>${seg('Theme', 'theme', [['classic', 'Classic'], ['sunlit', 'Sunlit'], ['pocket', 'Pocket']])}${seg('Health bars over creatures', 'bars', [['always', 'Always'], ['fight', 'In a fight'], ['never', 'Never']])}
     <div class="sec">The menu</div>${seg('The menu token sits', 'token', [['left', 'Bottom left'], ['centre', 'Bottom centre'], ['right', 'Bottom right']])}${seg('Menus', 'motion', [['slide', 'Slide in and out'], ['appear', 'Just appear']])}
     ${seg('Open my character at the start of my turn', 'autoOpen', [[false, 'No'], [true, 'Yes']])}
     <div class="sec">Controls</div>${row({ b: 'Keys', r: 'WASD and arrows', act: 'toast:Keys: the presets of keyboard.md.' })}${seg('Camera buttons on the map', 'cam', [['off', 'Off'], ['on', 'On']])}
-    <div class="sec">Dice and animation</div>${holdSetting()}${flickSetting()}${seg('Dice', 'show', [['full', 'Full throw'], ['quick', 'Quick'], ['off', 'Off']])}
+    <div class="sec">Dice and animation</div>${lookSetting()}${holdSetting()}${flickSetting()}${seg('Other players’ dice', 'others', [['party', 'In their party colour'], ['mine', 'Like mine']])}
+    <div class="sec">For the DM: the table’s rules</div>${seg('Players see foes’ health', 'foeHealth', [['hidden', 'Hidden'], ['rough', 'Rough (default)'], ['exact', 'Exact']])}
     <div class="sec">The table’s rules</div><div class="subtle">The DM has set the table to: dice ${ST.rule === 'throw' ? 'thrown by whoever acts' : 'rolled as soon as someone acts'}; wait for each beat.</div>` }),
-  dm: () => ({ title: 'DM tools', crumb: 'Menu', body: ['Undo and redo|Undo: Wren moved', 'Fight|Call for initiative, end the fight, monsters', 'Creatures|Add (with a search), hide, conditions', 'Map|Edit, stock maps, places', 'Sight and light', 'Table rules|Pace, dice, rewards, XP, cover…', 'Party|Marching order, rest', 'Scenes and handouts', 'Time and chronicle', 'Table file|Export, leave'].map((x) => { const [b, s] = x.split('|'); return row({ b, s, act: `toast:${b}: today’s DM section, unchanged inside.` }); }).join('') }),
-  chars: () => ({ title: 'Characters', crumb: 'Menu', body: `${row({ b: 'Wren', s: 'You play · Level 1 Wizard' })}${row({ b: 'Add a character', s: 'Build, type in, or import a file', grey: true })}<div class="subtle">Greyed: only the DM adds characters at this table.</div>` }),
-  packs: () => ({ title: 'Packs', crumb: 'Menu', body: '<div class="subtle">This table uses: SRD 5.2.1, and one homebrew pack the DM added. (The DM manages packs here.)</div>' }),
-  help: () => ({ title: 'Help and feedback', crumb: 'Menu', body: '<div class="subtle">(The feedback panel of feedback.md opens here; it was the icon on the left edge.)</div>' }),
+  dm: () => ({ title: 'DM tools', crumb: 'Menu', body: `<div class="sec">Table rules: what players see</div>${seg('Players see foes’ health', 'foeHealth', [['hidden', 'Hidden'], ['rough', 'Rough (default)'], ['exact', 'Exact']])}
+    <div class="subtle">${{ hidden: 'No bar over a foe; the tracker says nothing of its health.', rough: 'A foe’s bar is full, half (Bloodied) or empty (Down): what players are sent today.', exact: 'A foe’s bar shows its real Hit Points (engine change E-M3). Hidden and unseen creatures still send nothing.' }[ST.foeHealth]}</div>
+    <div class="sec">Sections</div>` + ['Undo and redo|Undo: Wren moved', 'Fight|Call for initiative, end the fight, monsters', 'Creatures|Add (with a search), hide, conditions, play as…', 'Map|Edit, stock maps, places', 'Sight and light', 'Table rules|Pace, dice, rewards, XP, cover…', 'Party|Marching order, rest', 'Scenes and handouts', 'Time and chronicle', 'Table file|Export, leave'].map((x) => { const [b, s] = x.split('|'); return row({ b, s, act: `toast:${b}: today’s DM section, unchanged inside.` }); }).join('') }),
+  chars: () => ({ title: 'Characters', crumb: 'Menu', body: `${row({ b: 'Wren', s: 'You play · Level 1 Wizard' })}${row({ b: 'Add a character', s: 'Only the DM adds characters at this table.', grey: true })}` }),
+  packs: () => ({ title: 'Packs', crumb: 'Menu', body: '<div class="subtle">This table uses: SRD 5.2.1, and one homebrew pack the DM added.</div>' }),
+  help: () => ({ title: 'Help and feedback', crumb: 'Menu', body: `<div class="sec">The die button</div>
+    <div class="preview"><svg viewBox="0 0 68 68" width="68" height="68" aria-hidden="true"><circle cx="34" cy="34" r="31" fill="var(--panel-solid)" stroke="var(--line)"/><circle cx="34" cy="34" r="31" fill="none" stroke="var(--good)" stroke-width="4" pathLength="100" stroke-dasharray="75 100" transform="rotate(-90 34 34)"/></svg>
+    <div class="subtle" style="margin:0">The die button opens everything.<br><b>The ring round it</b> is your character’s health: full is green, below half it turns red.<br><b>A lit ring</b>: it is your turn.<br><b>A number</b>: something is waiting for you; open the menu to see what.<br><b>Greyed and crossed</b>: the link to the table is lost.<br><b>Press and hold</b>: Roll dice.</div></div>
+    <div class="sec">Feedback</div><div class="subtle">(The feedback panel of feedback.md opens here.)</div>` }),
   about: () => ({ title: 'About', crumb: 'Menu', body: '<div class="subtle">The SRD 5.2 attribution, the licence, the credits, the version.</div>' }),
 };
-SCREENS['filter:bonus'] = () => ({ title: 'Bonus Action', crumb: 'Wren', body: `<div class="subtle">Everything that costs a Bonus Action, from every group.</div>${row({ b: 'Potion of Healing', s: 'Heal · 2d4 + 2', chip: 'Bonus Action', act: 'toast:Potion of Healing: tap yourself or someone beside you.' })}` });
-SCREENS['filter:action'] = () => ({ title: 'Action', crumb: 'Wren', body: `<div class="subtle">Everything that costs your Action.</div>${row({ b: 'Fire Bolt', s: 'Attack · Cantrip', chip: 'Action', act: 'firebolt' })}${row({ b: 'Burning Hands', s: 'Cast · Level 1 · 15 ft cone', chip: 'Action', act: 'aim' })}${row({ b: 'Dash', s: 'Move', chip: 'Action', act: 'dash' })}${row({ b: 'Dodge', s: 'Defend', chip: 'Action', act: 'toast:Dodge: sent.' })}` });
-SCREENS['filter:move'] = SCREENS['g:move'];
-SCREENS['filter:reaction'] = SCREENS['g:reactions'];
+const GROUPS = {
+  'g:cast': () => `<div class="subtle">Level 1 slots ●● &nbsp; <button type="button" class="btn" style="min-height:40px" data-act="toast:Sort and filter: by level, by what it does, rituals only.">Sort and filter</button></div>
+    ${row({ b: 'Fire Bolt', s: 'Cantrip · +5 to hit · 1d10 fire · 120 ft', chip: 'Action', act: 'firebolt', grey: fight() && !mine() })}
+    ${row({ b: 'Burning Hands', s: 'Level 1 · 15 ft cone · Dexterity save · 3d6 fire', chip: 'Action', act: 'aim', grey: fight() && !mine() })}
+    ${row({ b: 'Magic Missile', s: 'Level 1 · 120 ft · three darts, 1d4 + 1 force each', chip: 'Action', act: 'toast:Magic Missile: tap up to 3 creatures.', grey: fight() && !mine() })}
+    ${row({ b: 'Shield', s: 'Level 1 · when you are hit · cast from the reaction question', chip: 'Reaction', grey: true })}
+    ${row({ b: 'Mage Armor', s: 'Level 1 · 8 hours · AC 13 + Dex', chip: 'Action', act: 'toast:Mage Armor: tap a willing creature.', grey: fight() && !mine() })}`,
+  'g:attack': () => `${row({ b: 'Fire Bolt', s: 'Cantrip · +5 to hit · 1d10 fire · 120 ft', chip: 'Action', act: 'firebolt' })}${row({ b: 'Quarterstaff', s: '+2 to hit · 1d6 bludgeoning · reach 5 ft', chip: 'Action', act: 'toast:Quarterstaff: tap an enemy within 5 ft.' })}${row({ b: 'Dagger', s: '+2 to hit · 1d4 piercing · thrown 20/60 ft', chip: 'Action', act: 'toast:Dagger: tap an enemy.' })}<div class="subtle">Or tap an enemy on the map to attack with what reaches.</div>`,
+  'g:heal': () => `${row({ b: 'Potion of Healing', s: '2d4 + 2 · you, or a creature within 5 ft', chip: 'Bonus Action', act: 'toast:Potion of Healing: tap yourself or someone beside you.' })}<div class="subtle">Wren has no healing spell.</div>`,
+  'g:move': () => `${row({ b: 'Dash', s: 'Double your move', chip: 'Action', act: 'dash' })}${row({ b: 'Disengage', s: 'No Opportunity Attacks', chip: 'Action', act: 'toast:Disengage: sent.' })}`,
+  'g:defend': () => `${row({ b: 'Dodge', s: 'Attackers roll with Disadvantage', chip: 'Action', act: 'toast:Dodge: sent.' })}${row({ b: 'Hide', s: 'A creature that can see you is too close.', chip: 'Action', grey: true })}`,
+  'g:features': () => row({ b: 'Arcane Recovery', s: 'Once a day, after a Short Rest', grey: true }),
+  'g:reactions': () => `${row({ b: 'Shield', s: 'Asks you', act: 'toast:Change: Never · Only if it turns the hit into a miss · Always · Ask.' })}${row({ b: 'Opportunity Attack', s: 'Always', act: 'toast:Change: Never · Always · Ask.' })}`,
+  'g:explore': () => `${row({ b: 'Search', s: 'Perception +1 · 15 ft', act: 'toast:Search: sent.' })}${row({ b: 'Hide', s: 'Stealth +2 · DC 15', act: 'toast:Hide: sent.' })}${row({ b: 'Follow', s: 'Walk behind someone', act: 'toast:Follow: tap a party member.' })}${row({ b: 'Lead', s: 'Pip leads · Take the lead', act: 'toast:Lead: everyone walks behind Wren.' })}`,
+  'g:use': () => row({ b: 'Pull the lever', s: 'Lever, 5 ft away', act: 'toast:Pull the lever: sent.' }),
+  'g:rest': () => `${row({ b: 'Short rest…', s: 'Choose who spends Hit Point Dice', act: 'toast:Short rest: the picker opens as the next screen.' })}${row({ b: 'Long rest', s: 'The party · asks the DM', act: 'toast:Long rest: the DM is asked.' })}`,
+  'g:inventory': () => `${row({ b: 'Quarterstaff', s: 'Held · 1d6 bludgeoning', chip: 'Held' })}${row({ b: 'Dagger', s: 'At the belt' })}${row({ b: 'Spellbook' })}${row({ b: 'Potion of Healing', s: '1 · Bonus Action to drink' })}${row({ b: 'Coins', r: '12 GP · 4 SP' })}`,
+  'g:abil': () => `<div class="subtle">Str 8 (−1) · Dex 14 (+2) · Con 12 (+1) · Int 16 (+3) · Wis 13 (+1) · Cha 10 (+0)</div>${['Arcana +5', 'History +5', 'Investigation +5', 'Perception +1', 'Stealth +2'].map((x) => row({ b: x.split(' ')[0], r: x.split(' ')[1], act: `toast:${x.split(' ')[0]} check: asks the DM.` })).join('')}`,
+  'g:feats': () => `${row({ b: 'Arcane Recovery', s: 'Regain spent slots after a Short Rest, once a day' })}${row({ b: 'Ritual Adept', s: 'Cast a ritual spell from your book' })}`,
+  'g:known': () => '<div class="subtle">Fire Bolt, Mage Hand, Prestidigitation · Burning Hands, Magic Missile, Shield, Mage Armor, Detect Magic, Sleep</div>',
+  'g:story': () => `<div class="subtle">${ST.sel === 'owl' ? 'An owl, bound to Wren by Find Familiar. It sees in the dark and flies at 60 ft.' : 'Background: Sage. Wren left the academy to find the library her teacher wrote about. Notes the player writes go here.'}</div>`,
+  'filter:action': () => `${row({ b: 'Fire Bolt', s: 'Attack · Cantrip', chip: 'Action', act: 'firebolt' })}${row({ b: 'Burning Hands', s: 'Cast · Level 1', chip: 'Action', act: 'aim' })}${row({ b: 'Dash', s: 'Move', chip: 'Action', act: 'dash' })}`,
+  'filter:bonus': () => row({ b: 'Potion of Healing', s: 'Heal · 2d4 + 2', chip: 'Bonus Action', act: 'toast:Potion of Healing: tap yourself or someone beside you.' }),
+  'filter:move': () => '<div class="subtle">Solid edge on the map: where you can walk this turn. Tap a space to walk there.</div>',
+  'filter:reaction': () => `${row({ b: 'Shield', s: 'Asks you' })}${row({ b: 'Opportunity Attack', s: 'Always' })}`,
+};
+// on a wide screen a group opens in the next column, with the same rows
+for (const k of Object.keys(GROUPS)) if (k.startsWith('g:')) SCREENS[k] = () => ({ title: { 'g:cast': 'Cast', 'g:attack': 'Attack', 'g:heal': 'Heal', 'g:move': 'Move', 'g:defend': 'Defend and hide', 'g:features': 'Features', 'g:reactions': 'Reactions', 'g:explore': 'Explore', 'g:use': 'Use', 'g:rest': 'Rest' }[k] ?? '', crumb: sel().name, body: GROUPS[k]() });
 
-function seg(label, key, opts) {
-  return `<div class="setl">${label}</div><div class="seg" role="radiogroup" aria-label="${label}">${opts.map(([v, t]) => `<button type="button" role="radio" aria-checked="${String(ST[key] ?? (key === 'cam' ? 'off' : key === 'show' ? 'full' : '')) === String(v)}" class="${String(ST[key] ?? (key === 'cam' ? 'off' : key === 'show' ? 'full' : '')) === String(v) ? 'on' : ''}" data-set="${key}=${v}">${t}</button>`).join('')}</div>`;
+function seg(label, key, opts, disabledWhy) {
+  const cur = String(ST[key] ?? (key === 'cam' ? 'off' : key === 'others' ? 'party' : ''));
+  return `<div class="setl">${label}</div><div class="seg" role="radiogroup" aria-label="${label}">${opts.map(([v, t]) => { const why = disabledWhy?.(v);
+    return `<button type="button" role="radio" aria-checked="${cur === String(v)}" class="${cur === String(v) ? 'on' : ''}" ${why ? `aria-disabled="true" title="${why}"` : `data-set="${key}=${v}"`}>${t}</button>`; }).join('')}</div>`;
 }
 const holdSetting = () => seg('Rolls stay on the board', 'hold', [['1.5', '1.5 seconds'], ['3', '3 seconds'], ['6', '6 seconds'], ['tap', 'Until I tap']]);
 const flickSetting = () => seg('Throw my dice with a flick', 'flick', [[true, 'On'], [false, 'Off']]);
-ST.flick = true;
+function lookSetting() {
+  const free = Object.entries(LOOKS).filter(([, l]) => l.free);
+  let h = `<div class="preview"><span class="pv">${dieSvg(20, 20)}</span><span class="subtle" style="margin:0">${ST.look === 'primary' ? 'Primary colours, your way' : LOOKS[ST.look].name}<br>Free to start. More looks may be sold later.</span></div>`;
+  h += seg('Dice look', 'look', free.map(([id, l]) => [id, l.name]));
+  if (ST.look === 'primary') {
+    h += seg('Die colour', 'dieCol', Object.keys(PRIM).map((c) => [c, c[0].toUpperCase() + c.slice(1)]), (v) => UNREADABLE(v, ST.numCol) ? 'The numbers would not show.' : '');
+    h += seg('Number colour', 'numCol', Object.keys(PRIM).map((c) => [c, c[0].toUpperCase() + c.slice(1)]), (v) => UNREADABLE(ST.dieCol, v) ? 'The numbers would not show.' : '');
+    h += '<div class="subtle">A greyed colour: the numbers would not show on that die.</div>';
+  }
+  return h;
+}
+function rollText() {
+  const parts = Object.entries(ST.pick).filter(([, n]) => n > 0).map(([s, n]) => `${n}d${s}`);
+  return parts.length ? parts.join(' + ') + (ST.mod ? ` ${ST.mod > 0 ? '+' : '−'} ${Math.abs(ST.mod)}` : '') : '';
+}
+function rollPicker() {
+  const sides = [4, 6, 8, 10, 12, 20, 100];
+  return `<div class="dpick">${sides.map((sd) => `<button type="button" class="${ST.pick[sd] ? 'n' : ''}" data-act="add:${sd}" aria-label="Add a d${sd}${ST.pick[sd] ? `, ${ST.pick[sd]} chosen` : ''}"><b>d${sd}</b><small>${ST.pick[sd] ? '× ' + ST.pick[sd] : ''}</small></button>`).join('')}<button type="button" data-act="clearpick"><b>Clear</b></button></div>
+    <div class="step"><span style="flex:1">Modifier</span><button type="button" data-act="mod:-1" aria-label="Less">−</button><output>${ST.mod > 0 ? '+' : ''}${ST.mod}</output><button type="button" data-act="mod:1" aria-label="More">+</button></div>
+    <div class="say" style="margin:4px 0"><input id="rollfor" aria-label="What for?" placeholder="What for? (optional)" maxlength="40" value="${ST.rollFor.replace(/"/g, '&quot;')}"></div>
+    ${seg('Who sees it', 'rollTo', [['table', 'The table'], ['dm', 'Only the DM']])}
+    <button type="button" class="btn go" style="width:100%;min-height:52px;margin-top:8px" data-act="rollpick" ${rollText() ? '' : 'aria-disabled="true"'}>${rollText() ? 'Roll ' + rollText() : 'Choose dice first'}</button>
+    <div class="subtle">The game rolls them from its own dice, like every roll. A plain roll: it changes nothing in the game.</div>`;
+}
 
-// ---------- drawing the menu ----------
-function renderMenu() {
+// ---------- drawing the menu: every level keeps its scroll (Decision 4a) ----------
+function saveScroll() { $('levels').querySelectorAll('.level').forEach((el) => { const b = el.querySelector('.lbody'); if (b) ST.scroll[el.dataset.id] = b.scrollTop; }); }
+function restoreScroll() { $('levels').querySelectorAll('.level').forEach((el) => { const b = el.querySelector('.lbody'); if (b && ST.scroll[el.dataset.id] != null) b.scrollTop = ST.scroll[el.dataset.id]; }); }
+function screenOf(id) { if (id.startsWith('character:')) return SCREENS.character(id.split(':')[1]); return (SCREENS[id] || SCREENS.root)(); }
+function renderMenu(animateNew) {
+  saveScroll();
   const lv = $('levels'), phone = ST.frame === 'phone';
   const path = ['root', ...ST.path];
   const show = phone ? path : path.slice(-3);
   lv.innerHTML = path.map((id, i) => {
-    const sc = (SCREENS[id] || SCREENS.root)();
-    const visible = show.includes(id) && (phone ? i === path.length - 1 : true);
+    if (!phone && !show.includes(id)) return '';
+    const sc = screenOf(id);
     const di = show.indexOf(id), w = id === 'root' ? 'w1' : (di === show.length - 1 && show.length === 3 ? 'w3' : 'w2');
-    const cls = phone ? (i === path.length - 1 ? '' : 'behind') : (visible ? `shown ${w}${i === path.length - 1 ? ' cur' : ''}` : '');
-    if (!phone && !visible) return '';
+    const isNew = animateNew === id;
+    const cls = phone ? (i === path.length - 1 ? (isNew && ST.motion !== 'appear' ? 'ahead' : '') : 'behind') : `${isNew && ST.motion !== 'appear' ? '' : 'shown'} ${w}${i === path.length - 1 ? ' cur' : ''}`;
     const back = i > 0 && phone ? `<button type="button" class="back" data-back="1" aria-label="Back to ${sc.crumb}">‹ ${sc.crumb}</button>` : '';
-    return `<section class="level ${cls}" data-i="${i}" aria-labelledby="h-${i}">
+    return `<section class="level ${cls}" data-i="${i}" data-id="${id}" aria-labelledby="h-${i}">
       <div class="lhead">${back}<h2 id="h-${i}" tabindex="-1">${sc.title}</h2>${i === path.length - 1 || phone ? '<button type="button" class="close" data-close="1" aria-label="Close the menu">×</button>' : ''}</div>
       ${sc.fixed ?? ''}<div class="lbody">${sc.body}</div></section>`;
   }).join('');
-  if (!phone) requestAnimationFrame(() => lv.querySelectorAll('.level').forEach((el) => el.classList.add('shown')));
+  restoreScroll();
+  if (animateNew) requestAnimationFrame(() => requestAnimationFrame(() => lv.querySelectorAll('.level').forEach((el) => { el.classList.remove('ahead'); if (!phone) el.classList.add('shown'); })));
   $('scrim').querySelector('.tip').textContent = phone ? 'Tap here to clear the menu' : 'Tap the map to clear the menu';
+  const rf = $('rollfor'); if (rf) rf.oninput = () => { ST.rollFor = rf.value; };
 }
-
 function openMenu(on) {
   if (on && (ST.aiming || $('throwzone').classList.contains('open') || $('question').classList.contains('open'))) return;
   ST.open = on;
   $('menu').classList.toggle('open', on); $('scrim').classList.toggle('on', on);
   $('token').setAttribute('aria-expanded', String(on));
-  if (ST.frame === 'desktop') { if (on) renderMenu(); else $('levels').querySelectorAll('.level').forEach((el) => el.classList.remove('shown')); }
-  else if (on) renderMenu();
+  if (on) { renderMenu(ST.frame === 'desktop' ? 'root' : null); if (ST.frame === 'desktop') requestAnimationFrame(() => $('levels').querySelectorAll('.level').forEach((el) => el.classList.add('shown'))); }
+  else if (ST.frame === 'desktop') $('levels').querySelectorAll('.level').forEach((el) => el.classList.remove('shown'));
   $('turnline').style.visibility = on ? 'hidden' : '';
 }
 function go(id) {
-  // a group or screen opened from level n replaces everything after n
-  const lvl = ST.path.indexOf(id);
-  if (lvl >= 0) ST.path = ST.path.slice(0, lvl + 1);
-  else {
-    const parentOf = { character: 0, turns: 0, dice: 0, log: 0, handouts: 0, setup: 0, dm: 0, chars: 0, packs: 0, help: 0, about: 0 };
-    if (id in parentOf) ST.path = [id];
-    else if (ST.path.length && ST.path[0] === 'character' && (id.startsWith('g:') || id.startsWith('filter:') || ['inventory', 'abil', 'feats', 'story'].includes(id))) ST.path = ['character', id];
-    else ST.path = [...ST.path, id];
-  }
-  renderMenu();
-  const h = $('levels').querySelector('.level:last-child h2'); h?.focus({ preventScroll: true });
+  if (id.startsWith('character:')) { ST.sel = id.split(':')[1]; ST.path = [id]; renderHud(); renderMenu(id); return focusLast(); }
+  if (id.startsWith('g:')) { const base = ST.path.find((p) => p.startsWith('character:')) ?? 'character:' + ST.sel; ST.path = [base, id]; renderMenu(id); return focusLast(); }
+  if (SCREENS[id] && !id.startsWith('g:')) { ST.path = [id]; ST.scroll[id] = 0; renderMenu(id); return focusLast(); }
 }
+function focusLast() { $('levels').querySelector('.level:last-child h2')?.focus({ preventScroll: true }); }
 
 // ---------- clean-screen pieces ----------
 function renderHud() {
   F.className = `frame ${ST.frame}${ST.motion === 'appear' ? ' appear' : ''}`;
   F.dataset.theme = ST.theme;
   const t = $('token'); t.className = `token ${ST.token === 'centre' ? '' : ST.token}${mine() ? ' mine' : ''}`;
-  const hp = ST.state === 'down' ? 0 : WREN.hp / WREN.max * 100;
+  const c = sel(), hp = hpOf(c) / c.max * 100;
   $('hparc').setAttribute('stroke-dasharray', `${hp} 100`); $('hparc').classList.toggle('low', hp < 50);
-  t.setAttribute('aria-label', `Menu. ${mine() ? 'Your turn. ' : ''}Wren, ${ST.state === 'down' ? 0 : WREN.hp} of ${WREN.max} Hit Points. 1 waiting.`);
+  const n = ST.waiting.length; $('badge').hidden = !n; $('badge').textContent = n;
+  t.setAttribute('aria-label', `Menu. ${mine() ? 'Your turn. ' : ''}${c.name}, ${hpOf(c)} of ${c.max} Hit Points.${n ? ' ' + ST.waiting.map((w) => w.short).join(', ') + '.' : ''}`);
   const tl = $('turnline');
   if (ST.state === 'explore') tl.hidden = true;
   else {
@@ -489,13 +642,13 @@ function renderHud() {
   drawMap();
   if (ST.open) renderMenu();
 }
+let hpT;
+function hpLabel() { const c = sel(), l = $('hplabel'); l.textContent = `${c.name} ${hpOf(c)} / ${c.max} HP`; l.hidden = false; clearTimeout(hpT); hpT = setTimeout(() => { l.hidden = true; }, 3000); }
 function banner() { const b = $('banner'); b.hidden = false; b.classList.remove('show'); void b.offsetWidth; b.classList.add('show'); const t = $('token'); t.classList.remove('pulse'); void t.offsetWidth; if (ST.motion !== 'appear') t.classList.add('pulse'); setTimeout(() => { b.hidden = true; }, 1700); }
 let toastT; function toast(m) { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2600); }
 
-// ---------- aiming (the aim bar) ----------
-function aim() {
-  openMenu(false); ST.aiming = { locked: false }; $('token').hidden = true; $('turnline').hidden = true; drawMap(); aimBar();
-}
+// ---------- aiming ----------
+function aim() { openMenu(false); ST.aiming = { locked: false }; $('token').hidden = true; $('turnline').hidden = true; drawMap(); aimBar(); }
 function aimBar() {
   const a = ST.aiming, el = $('aim');
   el.innerHTML = `<h3>Burning Hands · 15 ft cone</h3><p>${a.locked ? 'Catches Goblin Warrior 2 and Goblin Warrior 3.' : 'Tap a square to aim.'}</p>${a.locked ? '<p class="subtle">Tap another square to aim again.</p>' : ''}
@@ -504,105 +657,119 @@ function aimBar() {
 }
 function endAim() { ST.aiming = null; $('aim').classList.remove('open'); $('token').hidden = false; renderHud(); }
 
-// ---------- the throw zone and the flick ----------
-const D20 = (n, size = 28) => `<svg viewBox="-26 -26 52 52" aria-hidden="true"><polygon class="die-f" points="0,-24 21,-12 21,12 0,24 -21,12 -21,-12"/><polyline class="die-l" points="0,-24 -12,7 12,7 0,-24"/><polyline class="die-l" points="-21,-12 -12,7 0,24 12,7 21,-12"/><text class="die-n" y="2" style="font-size:${size * .5}px">${n}</text></svg>`;
+// ---------- the throw zone, the flick and a calmer tumble (Decision 9) ----------
 let throwCtx = null;
 function throwZone(ctx) {
   openMenu(false); throwCtx = ctx; $('token').hidden = true;
-  const el = $('throwzone');
+  const el = $('throwzone'), first = ctx.dice[0];
   el.innerHTML = `<h3>${ctx.head}</h3><p class="subtle">${ctx.sub}</p>
-    <div class="throwpad" id="pad"><button type="button" class="pdie" id="pdie" aria-label="Throw the die">${D20(20)}</button><div class="hint">${ST.flick ? 'Press, spin, fling · or tap · or Enter' : 'Tap or press Enter to throw'}</div></div>
+    <div class="throwpad" id="pad"><button type="button" class="pdie" id="pdie" aria-label="Throw the dice">${dieSvg(first, first === 100 ? '%' : first)}</button><div class="hint">${ctx.dice.length > 1 ? `${ctx.dice.length} dice · ` : ''}${ST.flick ? 'Press, spin, fling · or tap · or Enter' : 'Tap or press Enter to throw'}</div></div>
     ${ctx.cancel ? '<div class="acts"><button type="button" class="btn" data-act="canceltz">Cancel</button></div>' : ''}`;
   el.classList.add('open');
   bindFlick($('pdie'));
-  if (ctx.timeout) { ctx.timer = setTimeout(() => { if (throwCtx === ctx) release(null, true); }, ctx.timeout); }
+  if (ctx.timeout) ctx.timer = setTimeout(() => { if (throwCtx === ctx) release(null, true); }, ctx.timeout);
 }
 function closeThrow() { $('pdie')?.remove(); $('throwzone').classList.remove('open'); $('token').hidden = false; if (throwCtx?.timer) clearTimeout(throwCtx.timer); throwCtx = null; }
 function bindFlick(d) {
-  let pts = [], spin = 0, lastAng = null, held = false;
+  let pts = [], spin = 0, held = false;
   const fr = () => F.getBoundingClientRect(), sc = () => fr().width / F.offsetWidth;
-  d.addEventListener('pointerdown', (ev) => { ev.preventDefault(); held = true; d.setPointerCapture(ev.pointerId); d.classList.add('held'); pts = [{ x: ev.clientX, y: ev.clientY, t: performance.now() }]; spin = 0; lastAng = null; });
+  d.addEventListener('pointerdown', (ev) => { ev.preventDefault(); held = true; d.setPointerCapture(ev.pointerId); d.classList.add('held'); pts = [{ x: ev.clientX, y: ev.clientY, t: performance.now() }]; spin = 0; });
   d.addEventListener('pointermove', (ev) => {
     if (!held) return; const p = { x: ev.clientX, y: ev.clientY, t: performance.now() }; pts.push(p); if (pts.length > 30) pts.shift();
-    if (pts.length > 3) { const a = pts[pts.length - 4], b = pts[pts.length - 2], c = p; const a1 = Math.atan2(b.y - a.y, b.x - a.x), a2 = Math.atan2(c.y - b.y, c.x - b.x); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; spin = spin * .9 + da * 6; }
-    const r = d.getBoundingClientRect(); d.style.transform = `translate(${(p.x - pts[0].x) / sc()}px, ${(p.y - pts[0].y) / sc()}px) rotate(${spin * 40}deg) scale(1.1)`;
-    const tr = document.createElement('i'); tr.className = 'trail'; const f = fr(); tr.style.left = `${(p.x - f.left) / sc()}px`; tr.style.top = `${(p.y - f.top) / sc()}px`; F.appendChild(tr); setTimeout(() => tr.remove(), 250);
+    if (pts.length > 3) { const a = pts[pts.length - 4], b = pts[pts.length - 2]; let da = Math.atan2(p.y - b.y, p.x - b.x) - Math.atan2(b.y - a.y, b.x - a.x); while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; spin = spin * .9 + da * 6; }
+    d.style.transform = `translate(${(p.x - pts[0].x) / sc()}px, ${(p.y - pts[0].y) / sc()}px) rotate(${spin * 30}deg)`;
   });
-  const up = (ev) => {
+  const up = () => {
     if (!held) return; held = false; d.classList.remove('held');
     const now = performance.now(), recent = pts.filter((p) => now - p.t < 80), a = recent[0] ?? pts[0], b = pts[pts.length - 1];
     const dt = Math.max(16, b.t - a.t), vx = (b.x - a.x) / dt * 1000 / sc(), vy = (b.y - a.y) / dt * 1000 / sc();
     const f = fr(), from = { x: (b.x - f.left) / sc(), y: (b.y - f.top) / sc() };
-    if (Math.hypot(b.x - pts[0].x, b.y - pts[0].y) / sc() > 60 && (b.y - pts[0].y) > 0 && Math.hypot(vx, vy) < 200) { d.style.transform = ''; return; }  // dragged back down: no throw
+    if ((b.y - pts[0].y) / sc() > 60 && Math.hypot(vx, vy) < 200) { d.style.transform = ''; return; }
     release(Math.hypot(vx, vy) < 200 ? null : { vx, vy, spin, from });
   };
   d.addEventListener('pointerup', up); d.addEventListener('pointercancel', up);
   d.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); release(null); } });
 }
-// The engine's result: in the game it comes in the event (rule "throw": after the action is sent at release; "auto": before).
-const RESULTS = [17, 4, 12, 19, 9, 15];
-let ri = 0;
 function release(fl, forYou = false) {
   const ctx = throwCtx; if (!ctx) return; const W = F.offsetWidth, H = F.offsetHeight;
   const from = fl?.from ?? { x: W / 2, y: H - 110 };
-  const v = fl ? { x: fl.vx, y: fl.vy } : { x: (Math.random() - .5) * 200, y: -1300 };
-  const sp = fl ? fl.spin : 4;
+  const v = fl ? { x: fl.vx, y: fl.vy } : { x: 0, y: -1400 };
   closeThrow();
-  // rule "throw": the action is sent now; the result arrives a moment later (a made-up 180 ms round trip)
-  const target = ctx.value ?? RESULTS[ri++ % RESULTS.length];
-  const known = ST.rule === 'auto' || ctx.known ? 0 : 180;
-  fly(from, v, sp, target, known, () => settle(ctx, target, forYou));
+  // the engine's faces: with the rule "throw" the action is sent now and the faces come back a moment later (a made-up 180 ms)
+  const faces = ctx.values ?? ctx.dice.map((sd) => engineDie(sd));
+  const delay = ST.rule === 'auto' || ctx.known ? 0 : 180;
+  let done = 0; const els = [];
+  ctx.dice.slice(0, 12).forEach((sd, i) => {
+    const spread = (i - (ctx.dice.length - 1) / 2) * 110;
+    els.push(fly({ x: from.x + spread * .2, y: from.y }, { x: v.x + spread * 2.2, y: v.y * (1 - i * .05) }, fl?.spin ?? 2, sd, faces[i], delay, () => { if (++done === Math.min(12, ctx.dice.length)) settle(ctx, faces, forYou); }));
+  });
 }
-function fly(from, v, spin, target, delay, done) {
-  const L = $('dicelayer'), el = document.createElement('div'); el.className = 'fdie'; L.appendChild(el);
-  const W = F.offsetWidth, H = F.offsetHeight, top = ST.frame === 'phone' ? 150 : 140;
-  let x = from.x, y = from.y, vx = Math.max(-1600, Math.min(1600, v.x)), vy = Math.max(-2600, Math.min(-500, v.y)), rot = 0, w = 6 + Math.abs(spin) * 3;
+// A die on a table: ease-out travel, two low hops of falling height, a tumble that slows, a small rock to rest. No squash or
+// stretch, no number in the air: the numerals come into view only as it slows, on the engine's face.
+function fly(from, v, spin, sides, target, delay, done) {
+  const L = $('dicelayer'), el = document.createElement('div'), sh = document.createElement('div'); el.className = 'fdie'; sh.className = 'shadow'; L.append(sh, el);
+  const W = F.offsetWidth, H = F.offsetHeight, top = ST.frame === 'phone' ? 290 : 250;
   const quick = ST.motion === 'appear' || matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const T = quick ? .35 : Math.min(1.6, .8 + Math.hypot(vx, vy) / 3000), t0 = performance.now(); let known = false, face = 1 + Math.floor(Math.random() * 20);
-  setTimeout(() => { known = true; }, delay);
+  const speed = Math.min(2600, Math.hypot(v.x, v.y)), T = quick ? .5 : .9 + Math.min(.4, speed / 6500);
+  const dist = Math.min(H - top - 150, 220 + speed * .22), dir = Math.atan2(Math.min(-300, v.y), v.x);
+  const end = { x: Math.max(50, Math.min(W - 50, from.x + Math.cos(dir) * dist)), y: Math.max(top, from.y + Math.sin(dir) * dist) };
+  const turns = (sides === 4 ? 1.2 : sides === 20 ? 3 : 2.2) * (1 + Math.min(2, Math.abs(spin)) * .3), sign = spin < 0 ? -1 : 1;
+  let known = delay === 0; setTimeout(() => { known = true; }, delay);
+  const t0 = performance.now(); let extra = 0;
   (function step(now) {
-    const t = (now - t0) / 1000, dt = 1 / 60, u = Math.min(1, t / T);
-    vx *= .965; vy *= .965; x += vx * dt; y += vy * dt;
-    if (x < 40) { x = 40; vx = -vx * .6; } if (x > W - 40) { x = W - 40; vx = -vx * .6; }
-    if (y < top) { y = top; vy = -vy * .5; } if (y > H - 120) { y = H - 120; vy = -vy * .5; }
-    // steering: once the face is known, the last stretch of the tumble slows and turns toward it
-    const steer = known ? Math.max(0, (u - .6) / .4) : 0;
-    rot += w * (1 - steer * .9) * dt * 60; if (Math.floor(rot / 70) !== Math.floor((rot - w) / 70) && steer < .7) face = 1 + Math.floor(Math.random() * 20);
-    const shown = steer >= .7 ? target : face, s = 1 + Math.sin(u * Math.PI * 3) * .12 * (1 - u);
-    el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.transform = `rotate(${(1 - steer) * rot + steer * 0}deg) scale(${s})`; el.innerHTML = D20(shown, 30);
-    if (u < 1 || !known) { if (t > T + 2 && !known) el.title = 'Waiting for the table…'; requestAnimationFrame(step); }
-    else { el.style.transform = 'none'; el.innerHTML = D20(target, 30); done(el); }
+    let t = (now - t0) / 1000;
+    if (!known && t > T) { extra = t - T; t = T * .97; }                 // a late reply: the die keeps rolling slowly on the board
+    const u = Math.min(1, t / T), e = 1 - Math.pow(1 - u, 3);            // ease-out: fast to slow
+    const x = from.x + (end.x - from.x) * e, y = from.y + (end.y - from.y) * e;
+    // two low hops, the second a third of the first, both in the first 60 % of the travel
+    const hop = u < .35 ? Math.sin(u / .35 * Math.PI) * 34 : u < .6 ? Math.sin((u - .35) / .25 * Math.PI) * 11 : 0;
+    const rot = sign * 360 * turns * e + (extra ? Math.sin(extra * 8) * 6 : 0);
+    const rock = u > .85 ? Math.sin((u - .85) / .15 * Math.PI * 2) * 6 * (1 - u) / .15 : 0;
+    const slow = 1 - e;                                                   // how fast it still turns
+    const numA = known ? Math.max(0, Math.min(1, (.22 - slow) / .18)) : 0;
+    el.style.left = `${x}px`; el.style.top = `${y - hop}px`; el.style.transform = `rotate(${rot + rock}deg)`;
+    sh.style.left = `${x}px`; sh.style.top = `${y + 30}px`; sh.style.opacity = String(.35 - hop / 200); sh.style.transform = `scale(${1 + hop / 60})`;
+    el.innerHTML = dieSvg(sides, sides === 100 ? (target === 100 ? '00' : String(Math.floor(target / 10) * 10).padStart(2, '0')) : target, { numA });
+    if (u < 1 || !known) requestAnimationFrame(step);
+    else { el.style.transform = `rotate(${Math.round(rot / 360) * 360}deg)`; el.style.transition = 'transform .25s ease-out'; done(el); }
   })(t0);
+  return el;
 }
 let holdT;
-function settle(ctx, val, forYou) {
+function settle(ctx, faces, forYou) {
   const L = $('dicelayer'); L.querySelector('.dtitle')?.remove();
-  const tt = document.createElement('div'); tt.className = 'dtitle'; tt.style.borderLeftColor = '#c96a3a';
-  tt.innerHTML = `<b>${ctx.title(val)}</b><div class="res">${ctx.res(val)}${forYou ? ' · Thrown for you' : ''}</div>${ctx.list ? ctx.list(val) : ''}${ST.hold === 'tap' ? '<div class="subtle" style="margin:4px 0 0">Tap to clear</div>' : `<div class="cd" id="cd"></div>`}`;
+  const total = faces.reduce((a, b) => a + b, 0) + (ctx.mod ?? 0);
+  const tt = document.createElement('div'); tt.className = 'dtitle'; tt.style.borderLeftColor = sel().col;
+  tt.innerHTML = `<b>${ctx.title(faces, total)}</b><div class="res">${ctx.res(faces, total)}${forYou ? ' · Thrown for you' : ''}</div>${ctx.list ? ctx.list() : ''}${ST.hold === 'tap' ? '<div class="subtle" style="margin:4px 0 0">Tap to clear</div>' : `<div class="cd" id="cd"></div>`}`;
   L.appendChild(tt); L.style.pointerEvents = 'auto';
-  ST.dice.unshift({ who: 'Wren', val, title: ctx.title(val), res: ctx.res(val), col: '#c96a3a' });
-  ctx.after?.(val);
-  const clear = () => { L.innerHTML = ''; L.style.pointerEvents = 'none'; clearTimeout(holdT); if (ST.open) renderMenu(); };
-  L.onclick = clear;
-  clearTimeout(holdT);
-  if (ST.hold !== 'tap') { const s = Number(ST.hold); const cd = $('cd'); cd.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: s * 1000, easing: 'linear' }); holdT = setTimeout(clear, s * 1000); }
+  ST.dice.unshift({ val: ctx.dice.length > 1 || ctx.mod ? total : faces[0], title: ctx.title(faces, total), res: ctx.res(faces, total), col: sel().col, plain: !!ctx.plain, log: ctx.plain ? ctx.log(faces, total) : '' });
+  ctx.after?.(faces);
+  const clear = () => { L.innerHTML = ''; L.style.pointerEvents = 'none'; clearTimeout(holdT); };
+  L.onclick = clear; clearTimeout(holdT);
+  if (ST.hold !== 'tap') { const s = Number(ST.hold); $('cd').animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], { duration: s * 1000, easing: 'linear' }); holdT = setTimeout(clear, s * 1000); }
+  if (ST.open) renderMenu();
 }
 function fireBolt() {
-  const ctx = { head: 'Wren: Fire Bolt', sub: `Goblin Warrior 3 · 1d20 + 5 to hit · ${ST.rule === 'throw' ? 'the action is sent when you throw' : 'the game has rolled it; throw to see it'}`, cancel: true,
-    title: () => 'You (Wren): Fire Bolt attack', res: (v) => `${v} + 5 = ${v + 5} vs AC 15 · ${v + 5 >= 15 ? 'Hit' : 'Miss'}`, after: () => { ST.bar.action = false; } };
-  if (ST.rule === 'throw') throwZone(ctx);
-  else { openMenu(false); const W = F.offsetWidth, H = F.offsetHeight; ctx.known = true; throwCtx = ctx; release(null); }
+  const ctx = { dice: [20], head: 'Wren: Fire Bolt', sub: `Goblin Warrior 3 · 1d20 + 5 to hit · ${ST.rule === 'throw' ? 'the action is sent when you throw' : 'the game has rolled it; throw to see it'}`, cancel: true,
+    title: () => 'You (Wren): Fire Bolt attack', res: (f) => `${f[0]} + 5 = ${f[0] + 5} vs AC 15 · ${f[0] + 5 >= 15 ? 'Hit' : 'Miss'}`, after: () => { ST.bar.action = false; } };
+  if (ST.rule === 'throw') throwZone(ctx); else { openMenu(false); ctx.known = true; throwCtx = ctx; release(null); }
+}
+function rollPicked() {
+  const dice = []; for (const [sd, n] of Object.entries(ST.pick)) for (let i = 0; i < n; i++) dice.push(Number(sd));
+  if (!dice.length) return;
+  const txt = rollText(), what = ST.rollFor.trim(), to = ST.rollTo;
+  throwZone({ dice, mod: ST.mod, plain: true, head: `Roll ${txt}`, sub: `${what ? what + ' · ' : ''}${to === 'dm' ? 'Only the DM sees it' : 'The table sees it'} · a plain roll`, cancel: true,
+    title: () => `You (Wren): ${txt} · plain roll`, res: (f, tot) => `${f.join(', ')}${ST.mod ? ` ${ST.mod > 0 ? '+' : '−'} ${Math.abs(ST.mod)}` : ''} = ${tot}${what ? ' · ' + what : ''}`,
+    log: (f, tot) => `Wren rolls ${txt}${what ? ' (' + what + ')' : ''}: ${f.join(', ')}${ST.mod ? ` ${ST.mod > 0 ? '+' : '−'} ${Math.abs(ST.mod)}` : ''} = <b>${tot}</b>. A plain roll: it changes nothing in the game.${to === 'dm' ? ' (Seen by you and the DM.)' : ''}` });
 }
 function initiative() {
   if (ST.open) { openMenu(false); toast('The menu folds away: initiative is called.'); }
-  ST.state = 'other'; ST.initShown = false; ST.round1 = true; ST.bar = { action: true, bonus: true, move: 30, reaction: true }; renderHud();
-  setTimeout(() => throwZone({ head: 'Roll for initiative!', sub: ST.rule === 'throw' ? 'Throw your die, Wren. Your throw rolls it (engine change E-M1).' : 'Throw your die, Wren. The game has rolled it; throw to see it.', known: true, value: 17, timeout: 8000,
-    title: () => 'You (Wren): Initiative', res: (v) => `${v} · 2nd of 9`,
+  ST.state = 'other'; ST.initShown = false; ST.round1 = true; ST.bar = { action: true, bonus: true, move: 30, reaction: true }; syncMock(); renderHud();
+  setTimeout(() => throwZone({ dice: [20], values: [17], known: true, timeout: 8000, head: 'Roll for initiative!', sub: ST.rule === 'throw' ? 'Throw your die, Wren. Your throw rolls it (engine change E-M1).' : 'Throw your die, Wren. The game has rolled it; throw to see it.',
+    title: () => 'You (Wren): Initiative', res: (f) => `${f[0]} · 2nd of 9`,
     list: () => `<ol><li>Odessa 20</li><li class="me">▶ Wren 17 (you)</li><li>Goblin Warrior 3</li><li>Tavin 15</li><li>Wolf 1</li><li>Pip 11</li><li>Something moves unseen</li><li>Goblin Warrior 2</li><li>Brenna 6</li></ol>`,
     after: () => { ST.initShown = true; renderHud(); } }), ST.open ? 250 : 0);
 }
-
-// ---------- a question arrives ----------
 function reaction() {
   const wasOpen = ST.open;
   if (wasOpen) { openMenu(false); toast('The menu folds away; the question comes first.'); }
@@ -610,64 +777,93 @@ function reaction() {
     $('qscrim').hidden = false; const q = $('question');
     q.innerHTML = `<h3>Use a reaction?</h3><p>Goblin Warrior 2 hits Wren with a Scimitar: 17 against AC 12.</p><div class="acts"><button type="button" class="btn go" data-act="answer:Shield">Use Shield (level 1 slot) · AC 17, the hit misses</button><button type="button" class="btn" data-act="answer:no">Do not react</button></div>`;
     q.classList.add('open'); q.querySelector('button').focus({ preventScroll: true });
-  }, wasOpen && ST.motion !== 'appear' ? 220 : 0);
+  }, wasOpen && ST.motion !== 'appear' ? 700 : 0);
 }
 
 // ---------- taps ----------
 F.addEventListener('click', (ev) => {
-  const b = ev.target.closest('[data-go],[data-act],[data-back],[data-close],[data-set]'); if (!b) return;
+  const b = ev.target.closest('[data-go],[data-act],[data-back],[data-close],[data-set],[data-fold]'); if (!b) return;
+  if (b.getAttribute('aria-disabled') === 'true') { if (b.title) toast(b.title); return; }
   if (b.dataset.close) return openMenu(false);
   if (b.dataset.back) { ST.path.pop(); renderMenu(); return; }
   if (b.dataset.set) { const [k, v] = b.dataset.set.split('='); ST[k] = v === 'true' ? true : v === 'false' ? false : v; syncMock(); renderHud(); return; }
+  if (b.dataset.fold) { const k = b.dataset.fold; ST.folds.has(k) ? ST.folds.delete(k) : ST.folds.add(k); renderMenu(); return; }   // opens in place: nothing scrolls
   if (b.dataset.go) { if (b.closest('.turnline')) { ST.path = ['turns']; openMenu(true); return; } return go(b.dataset.go); }
-  const a = b.dataset.act; if (b.getAttribute('aria-disabled') === 'true') return;
+  const a = b.dataset.act;
   if (a.startsWith('toast:')) return toast(a.slice(6));
-  if (a.startsWith('filter:')) return go(a);
+  if (a === 'seen') { ST.seenRing = true; return renderMenu(); }
+  if (a.startsWith('wait:')) { const w = ST.waiting.splice(Number(a.slice(5)), 1)[0]; renderHud(); return go(w.go); }
+  if (a.startsWith('add:')) { const sd = a.slice(4); ST.pick[sd] = Math.min(20, (ST.pick[sd] ?? 0) + 1); return renderMenu(); }
+  if (a === 'clearpick') { ST.pick = {}; ST.mod = 0; return renderMenu(); }
+  if (a.startsWith('mod:')) { ST.mod = Math.max(-10, Math.min(10, ST.mod + Number(a.slice(4)))); return renderMenu(); }
+  if (a === 'rollpick') return rollPicked();
   if (a === 'aim') return aim();
   if (a === 'firebolt') return fireBolt();
   if (a === 'cancelaim') return endAim();
-  if (a === 'cast') { endAim(); throwCtx = { known: true, title: () => 'You (Wren): Burning Hands damage', res: (v) => `${v} fire · Goblin Warrior 2 and 3 save (Dexterity)`, after: () => { ST.bar.action = false; ST.slots = 1; } }; return release(null); }
+  if (a === 'cast') { endAim(); throwCtx = { dice: [6, 6, 6], known: true, title: () => 'You (Wren): Burning Hands damage', res: (f, t) => `${f.join(' + ')} = ${t} fire · Goblin Warrior 2 and 3 save (Dexterity)`, after: () => { ST.bar.action = false; } }; return release(null); }
   if (a === 'canceltz') return closeThrow();
   if (a === 'dash') { ST.bar.action = false; ST.bar.move = 60; renderMenu(); return toast('Dashed: 60 ft to move.'); }
-  if (a === 'endturn') { ST.state = 'other'; openMenu(false); renderHud(); return toast('Turn ended. Goblin Warrior 2’s turn.'); }
+  if (a === 'endturn') { ST.state = 'other'; openMenu(false); syncMock(); renderHud(); return toast('Turn ended. Goblin Warrior 2’s turn.'); }
   if (a.startsWith('answer:')) { $('question').classList.remove('open'); $('qscrim').hidden = true; if (a === 'answer:Shield') ST.bar.reaction = false; renderHud(); return toast(a === 'answer:Shield' ? 'Shield: AC 17 until your next turn. The hit misses.' : 'You did not react.'); }
 });
-$('token').addEventListener('click', (ev) => { ev.stopPropagation(); if (!ST.path.length) ST.path = ['character']; openMenu(!ST.open); });
+// the token: a tap opens (the first level when something waits); a press and hold opens Roll dice
+let pressT = null, pressed = false;
+$('token').addEventListener('pointerdown', () => { pressed = false; pressT = setTimeout(() => { pressed = true; ST.path = ['dice']; ST.scroll.dice = 0; if (!ST.open) openMenu(true); else renderMenu(); toast('Roll dice'); }, 500); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach((e) => $('token').addEventListener(e, () => clearTimeout(pressT)));
+$('token').addEventListener('click', (ev) => {
+  ev.stopPropagation(); if (pressed) { pressed = false; return; }
+  if (ST.open) return openMenu(false);
+  if (ST.waiting.length || !ST.seenRing) ST.path = [];
+  else if (!ST.path.length) ST.path = ['character:' + ST.sel];
+  openMenu(true);
+});
 $('scrim').addEventListener('click', () => openMenu(false));
 $('handle').addEventListener('click', () => openMenu(false));
 $('map').addEventListener('click', () => { if (ST.aiming) { ST.aiming.locked = true; drawMap(); aimBar(); } });
 document.addEventListener('keydown', (ev) => {
   if (ev.target.matches('input')) return;
-  if (ev.key === 'm' || ev.key === 'M') { if (!ST.path.length) ST.path = ['character']; openMenu(!ST.open); }
+  if (ev.key === 'm' || ev.key === 'M') { if (!ST.path.length && !ST.waiting.length) ST.path = ['character:' + ST.sel]; openMenu(!ST.open); }
   else if (ev.key === 'Escape') { if (ST.aiming) endAim(); else openMenu(false); }
   else if ((ev.key === 'Backspace' || ev.key === 'ArrowLeft') && ST.open && ST.path.length > 1) { ST.path.pop(); renderMenu(); }
 });
 
 // ---------- the mockup's controls and the address ----------
 function syncMock() { document.querySelectorAll('#mock [data-k]').forEach((b) => b.classList.toggle('on', String(ST[b.dataset.k]) === b.dataset.v)); }
+function addHandout() { ST.handouts = true; ST.waiting.push({ text: '1 new handout: A torn map', btn: 'Open', go: 'handouts', short: '1 new handout' }); renderHud(); toast('The DM showed you a handout.'); }
+function hit() { CH.wren.hp = Math.max(1, CH.wren.hp - 3); ST.sel = 'wren'; renderHud(); hpLabel(); toast('Goblin Warrior 2 hits Wren: 3 slashing.'); }
 document.getElementById('mock').addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
-  if (b.dataset.k) { const k = b.dataset.k, v = b.dataset.v; const was = ST[k]; ST[k] = v;
+  if (b.dataset.k) { const k = b.dataset.k, v = b.dataset.v, was = ST[k]; ST[k] = v;
     if (k === 'state') { ST.round1 = false; ST.bar = { action: true, bonus: true, move: 30, reaction: true }; ST.initShown = true; }
-    if (k === 'frame') { fit(); }
-    syncMock(); renderHud(); if (k === 'state' && v === 'mine' && was !== 'mine') { banner(); if (ST.autoOpen) { ST.path = ['character']; openMenu(true); } } }
+    if (k === 'chars') { if (!mineList().includes(ST.sel)) ST.sel = 'wren'; ST.path = ST.path.filter((p) => !p.startsWith('character:') || mineList().includes(p.split(':')[1])); }
+    if (k === 'frame') { ST.path = ST.path.filter((p) => !p.startsWith('g:')); fit(); }
+    syncMock(); renderHud(); if (k === 'state' && v === 'mine' && was !== 'mine') { banner(); if (ST.autoOpen) { ST.path = ['character:wren']; openMenu(true); } } }
   if (b.dataset.do === 'reaction') { if (ST.state === 'explore') { ST.state = 'other'; syncMock(); renderHud(); } reaction(); }
   if (b.dataset.do === 'initiative') initiative();
+  if (b.dataset.do === 'handout') addHandout();
+  if (b.dataset.do === 'hit') hit();
 });
-function fit() {
-  const W = ST.frame === 'phone' ? 390 : 1280, H = ST.frame === 'phone' ? 844 : 800;
-  const s = Math.min(1, innerWidth / W, innerHeight / H); F.style.transform = s < 1 ? `scale(${s})` : '';
-}
+function fit() { const W = ST.frame === 'phone' ? 390 : 1280, H = ST.frame === 'phone' ? 844 : 800; const s = Math.min(1, innerWidth / W, innerHeight / H); F.style.transform = s < 1 ? `scale(${s})` : ''; }
 addEventListener('resize', fit);
 (function fromHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  for (const k of ['theme', 'frame', 'state', 'motion', 'rule', 'hold']) if (h.get(k)) ST[k] = h.get(k);
+  for (const k of ['theme', 'frame', 'state', 'motion', 'rule', 'hold', 'chars', 'look']) if (h.get(k)) ST[k] = h.get(k);
   if (!h.get('frame') && innerWidth >= 900) ST.frame = 'desktop';
   if (h.has('bare')) document.body.classList.add('bare');
+  if (h.has('seen')) ST.seenRing = true;
   if (innerWidth < 600 || h.has('bare')) $('mock').open = false;
   fit(); syncMock(); renderHud();
+  if (h.has('waiting')) addHandout();
+  if (h.has('hit')) hit();
   const open = h.get('open');
-  if (open) { ST.path = open === 'root' ? [] : open === 'cast' ? ['character', 'g:cast'] : [open]; ST.motion === 'slide' && (F.classList.add('appear')); openMenu(true); setTimeout(() => renderHud(), 0); }
+  if (open) {
+    const m = { root: [], character: ['character:wren'], cast: ST.frame === 'desktop' ? ['character:wren', 'g:cast'] : ['character:wren'], story: ['character:wren'] }[open] ?? [open];
+    if (open === 'cast' && ST.frame === 'phone') ST.folds.add('g:cast');
+    if (open === 'story') { ST.folds.add('g:story'); }
+    ST.path = m; const keep = ST.motion; ST.motion = 'appear'; F.classList.add('appear'); openMenu(true); ST.motion = keep; renderMenu();
+    if (open === 'story') { const b = $('levels').querySelector('.level:last-child .lbody'); b.scrollTop = b.scrollHeight; }
+    setTimeout(() => { F.classList.toggle('appear', ST.motion === 'appear'); }, 50);
+  }
   if (h.get('prompt') === 'reaction') reaction();
   if (h.get('prompt') === 'initiative') initiative();
   if (h.get('prompt') === 'aim') aim();
