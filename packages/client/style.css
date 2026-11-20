@@ -283,6 +283,25 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 .keys-list dt { margin: 0; }
 .keys-list dd { margin: 0; text-align: right; white-space: nowrap; }
 .keys-list kbd { display: inline-block; min-width: 1.6em; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; font: 12px/1.4 ui-monospace, monospace; text-align: center; }
+/* The build sheet's score section (docs/specs/ability-scores.md): four ways to make the scores, six rows, the background */
+.qe .sc-methods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0 0 10px; }
+.qe .sc-method, .qe .sc button, .qe .sc select { min-height: 44px; }
+.qe .sc-method[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.sc-rows { display: grid; gap: 6px; margin: 8px 0; }
+.sc-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) 26px 30px 36px; gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 6px; }
+.sc-name { display: grid; line-height: 1.1; } .sc-name small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.sc-bg { color: var(--good); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+.sc-final-score { font: 700 18px var(--display); text-align: center; font-variant-numeric: tabular-nums; }
+.sc-row .qe-mod { font-size: 15px; }
+.sc-step { display: grid; grid-template-columns: 44px 1fr 44px; gap: 6px; align-items: center; text-align: center; }
+.sc-step output { font: 700 18px var(--display); font-variant-numeric: tabular-nums; }
+.sc-chips { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 6px 0; }
+.sc-chip { display: grid; gap: 2px; border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; }
+.sc-chip small { color: var(--muted); } .sc-chip button { justify-self: start; }
+.sc-bgbox { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.sc-final { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.qe .sc .sc-roll { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; flex: 1; }
+@media (min-width: 560px) { .qe .sc-methods { grid-template-columns: repeat(4, minmax(0, 1fr)); } .sc-chips { grid-template-columns: 1fr 1fr; } .sc-final { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
 
 /* The start flow says where you are and has a Back (startflow.js, issue #556): a 44 px Back button with its words, and a title of the trail. */
 .sf-bar { display: grid; gap: 6px; }
