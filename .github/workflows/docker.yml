@@ -62,8 +62,9 @@ jobs:
         run: |
           # Tables are written a second after a change; stopping the container (SIGTERM) saves any that are waiting.
           docker stop hextable >/dev/null
-          ls -la "$DATA"
-          if ! ls "$DATA" | grep -q .; then echo "::error::the server saved nothing to its data volume"; exit 1; fi
+          # The entrypoint gave the folder to uid 1000, so the runner needs sudo to look inside.
+          sudo ls -laR "$DATA"
+          if ! sudo ls "$DATA" | grep -q .; then echo "::error::the server saved nothing to its data volume"; exit 1; fi
           if [ "$(docker inspect -f '{{.State.ExitCode}}' hextable)" != "0" ]; then echo "::error::the container did not stop cleanly"; docker logs hextable; exit 1; fi
       - name: Live check, dry run (reads only; proves the script and the API calls)
         if: github.event_name == 'pull_request'
