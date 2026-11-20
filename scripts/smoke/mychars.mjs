@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { validate } from '../../packages/rules/src/derive.js';
 import { rollScores } from '../../packages/rules/src/scores.js';
 import { keyedRng } from '../../packages/rules/src/rng.js';
+import { CONTENT } from '../../packages/rules/src/content/index.js';
 
 // ---------- My characters and the lobby's party step (docs/specs/portable-characters.md, "Build note: My characters", issue #308) ----------
 // At 1280x800 and at 390x844 with touch, on hexes and on squares, from the lobby: the party step offers 1 to 6 places, each a starter or one of
@@ -484,6 +485,97 @@ async function scoresPass(browser, url, label, opts, grid) {
   });
 }
 
+// ---------- untrained armour and the scroll card in the build screen (#566) ----------
+// Armour the class has no training in is greyed in the Armour list (a wizard: all of it, and the Shield), with a line saying why; a fighter's is not.
+// A spell's text comes up in a parchment card after 3 s of hover (nothing before), after a 500 ms touch press (and the press does not tick the spell),
+// or on focus plus the I key; Escape, moving away or a tap elsewhere hides it; at 390x844 it is inside the screen.
+async function scrollPass(browser, url, label, opts, grid) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch, tag = `${grid}-${touch ? 'phone' : 'wide'}`;
+    const dir = process.env.SMOKE_SHOTS; if (dir) mkdirSync(dir, { recursive: true });
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const shot = (n) => (dir ? page.screenshot({ path: `${dir}/scroll-${n}-${tag}.png` }).catch(() => {}) : null);
+      const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
+      const card = () => page.evaluate(() => { const c = document.querySelector('#scrolltip'); if (!c) return null; const r = c.getBoundingClientRect(); return { text: c.querySelector('p')?.textContent, title: c.querySelector('b')?.textContent, sub: c.querySelector('small')?.textContent, l: r.left, t: r.top, r: r.right, b: r.bottom, vw: document.documentElement.clientWidth, vh: innerHeight }; });
+      const gone = () => wait(page, () => !document.querySelector('#scrolltip'));
+      const SP = 'fire-bolt', ROW = `label:has(#qb-spell-${SP})`, want = CONTENT.spells[SP];
+      const inside = (c) => c.l >= 0 && c.t >= 0 && c.r <= c.vw && c.b <= c.vh;
+      await open(page, url, { grid });
+      await tap('#lobby-party > summary').catch(() => {}); if (!(await shown(page, '#lobby-mychars'))) await tap('#lobby-party > summary');
+      await tap('#lobby-mychars'); await waitShown(page, '#mychars'); await tap('#mc-new'); await waitShown(page, '#qb');
+
+      await run.do('a wizard\'s Armour list greys every armour with "(no training)", the Shield is greyed too, and a line says why', async () => {
+        await page.selectOption('#qb-class', 'wizard');
+        const o = await page.$$eval('#qb-armour option', (l) => l.map((x) => [x.value, x.disabled, x.textContent]));
+        if (o[0][0] !== '' || o[0][1]) throw new Error(`None is not choosable: ${JSON.stringify(o[0])}`);
+        const bad = o.slice(1).filter(([, d, t]) => !d || !/\(no training\)$/.test(t)); if (bad.length || o.length < 5) throw new Error(`armour options: ${JSON.stringify(o)}`);
+        if (!(await page.$eval('#qb-shield', (e) => e.disabled)) || !/no training/.test(await text(page, '#qb-shield + span'))) throw new Error('the Shield is not greyed');
+        if (!/A Wizard has no training with .*Shields/.test(await text(page, '#qb-armour-note'))) throw new Error(`note: ${await page.textContent('#qb-armour-note').catch(() => null)}`);
+        if ((await page.inputValue('#qb-armour')) !== '') throw new Error('the Armour list changed');
+        await page.$eval('#qb-armour', (e) => e.scrollIntoView({ block: 'center' })); await shot('1-armour');
+      });
+
+      await run.do('a fighter\'s armour is not greyed', async () => {
+        await page.selectOption('#qb-class', 'fighter');
+        if (await page.$('#qb-armour option:disabled') || await page.$('#qb-armour-note') || await page.$eval('#qb-shield', (e) => e.disabled)) throw new Error('a fighter has something greyed');
+        await page.selectOption('#qb-armour', 'plate-armor'); await page.check('#qb-shield');
+        await page.selectOption('#qb-class', 'wizard');
+        if ((await page.$$eval('#qb-armour option:disabled', (l) => l.length)) < 4) throw new Error('the wizard list is not greyed again');
+      });
+
+      await run.do(touch ? 'a 500 ms press on a spell shows its scroll card inside the screen, does not tick the spell, and a tap elsewhere hides it' : 'hovering a spell shows nothing before 3 s, then its scroll card; Escape and moving away hide it', async () => {
+        await page.$eval(ROW, (e) => e.scrollIntoView({ block: 'center' }));
+        const sel = ROW;
+        if (!touch) {
+          await page.hover(sel); await sleep(2500);
+          if (await card()) throw new Error('the card came up before 3 s');
+          await wait(page, () => document.querySelector('#scrolltip'));
+          let c = await card();
+          if (c.text !== want.text || c.title !== want.name || !/^Cantrip · /.test(c.sub)) throw new Error(`card: ${JSON.stringify(c)}`);
+          if (!inside(c)) throw new Error(`card outside the screen: ${JSON.stringify(c)}`);
+          if (!(await page.evaluate(() => getComputedStyle(document.querySelector('#scrolltip')).backgroundImage.includes('gradient')))) throw new Error('the card has no parchment');
+          await shot('2-hover'); await page.keyboard.press('Escape'); await gone();
+          await page.hover(sel); await sleep(300); await page.mouse.move(5, 5); await sleep(3300);
+          if (await card()) throw new Error('moving away did not stop the card');
+          await page.hover(sel); await wait(page, () => document.querySelector('#scrolltip')); await page.mouse.move(5, 5); await gone();
+        } else {
+          const cdp = await ctx.newCDPSession(page);
+          const at = await page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return [r.left + 20, r.top + r.height / 2]; });
+          const pt = [{ x: at[0], y: at[1], id: 1 }];
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt }); await sleep(250);
+          if (await card()) throw new Error('the card came up before the press was held');
+          await sleep(450);
+          const c = await card(); if (!c) throw new Error('no card after a 500 ms press');
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(300);
+          if (c.text !== want.text || !inside(c)) throw new Error(`card: ${JSON.stringify(c)}`);
+          if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('the press ticked the spell');
+          if (!(await card())) throw new Error('lifting the finger hid the card');
+          await shot('2-press');
+          await page.touchscreen.tap(8, 8); await gone();
+          await tap(sel); if (!(await page.isChecked(`#qb-spell-${SP}`))) throw new Error('a plain tap no longer ticks the spell');
+          await tap(sel); if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('a second tap did not untick');
+        }
+      });
+
+      await run.do('focus and the I key show the card; Escape hides it; a feature\'s option has one too', async () => {
+        await page.focus(`#qb-spell-${SP}`); await page.keyboard.press('i');
+        const c = await card(); if (!c || c.text !== want.text) throw new Error(`key card: ${JSON.stringify(c)}`);
+        await page.keyboard.press('Escape'); await gone();
+        if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('the I key ticked the spell');
+        await page.selectOption('#qb-class', 'sorcerer'); await page.selectOption('#qb-levelsel', '2');
+        const opt = await page.$('#qb label[data-option]');
+        if (opt) {
+          await page.focus('#qb label[data-option] input'); await page.keyboard.press('i');
+          const o = await card(); if (!o || !o.text) throw new Error('an option has no card'); await page.keyboard.press('Escape'); await gone();
+        }
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   const wide = { viewport: { width: 1280, height: 800 } }, phone = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true };
   await pass(browser, url, 'my characters on hexes at 1280x800', wide, 'hex');
@@ -492,4 +584,6 @@ export default async function (browser, url) {
   await pass(browser, url, 'my characters on squares at 1280x800', wide, 'square');
   await scoresPass(browser, url, 'ability scores in the build screen on hexes at 1280x800', wide, 'hex');
   await scoresPass(browser, url, 'ability scores in the build screen on squares at 390x844 with touch', phone, 'square');
+  await scrollPass(browser, url, 'untrained armour and the scroll card in the build screen on hexes at 1280x800', wide, 'hex');
+  await scrollPass(browser, url, 'untrained armour and the scroll card in the build screen on squares at 390x844 with touch', phone, 'square');
 }
