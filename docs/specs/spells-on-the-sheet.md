@@ -63,7 +63,9 @@ The owner tried the round 2 mockup, levelling the Wizard (his words, 20 November
 He tried it again and added, at 06:32 ET (summarised, not word for word): he likes the directions and the caster
 stats and wants the stats on a combat page too; "save DC 13" is unclear; does Magic Initiate use Wisdom
 while Wizard spells use Intelligence; "All back on a Long Rest" and the four tiles are unclear; and the
-list should show only the spells available at each moment.
+list should show only the spells available at each moment. At 06:45 ET he added: the long list gets a
+search that **filters** (hides what does not match), opened by a magnifying-glass button and not a box that
+always takes room, with an obvious way out.
 
 Round 2's answers (one list, the level in the box, nothing moves) were not questioned and stand.
 
@@ -79,6 +81,7 @@ Round 2's answers (one list, the level in the box, nothing moves) were not quest
 | R3-8 | "'All back on a Long Rest'" | Reads **"Spell slots: all back after a Long Rest"** (the label is on the row; Pact Magic's says "back after a Short Rest"). | Decision 11 |
 | R3-9 | "The four tiles are unclear" | Each tile now has a **label, a number with its unit, and one line saying what it counts**: "Cantrips: 6 known", "Spells prepared: 7 of 7", "Always prepared: 1 spell (do not count against your limit)", "Spellbook: 12 spells (written in it; it only grows)"; a Cleric's fourth tile is "Free casts: 1 per Long Rest". | Decision 11 |
 | R3-10 | Only show the spells available at each moment | **New character and Level up list everything to choose from. After a Long Rest the list shows only what can be prepared** (a Wizard: the spellbook's spells; a Cleric: the Cleric list) and, for a Wizard, the Wizard cantrip list for the one cantrip the rules let her swap. **At any other time it shows only what the character has: prepared spells, cantrips, always-prepared spells.** The set is fixed by the moment, so a tap still changes nothing else. | Decision 10 |
+| R3-11 | A search for the long list: it filters (hides non-matches), is opened by a magnifying-glass button and not a box that always takes space, keeps the sticky level headers (a header with no matching rows hides), and has an obvious way out | **A magnifying-glass button in the corner of the count bar** (44 px target). Tapped, a search row covers the bar's top two lines (the bar keeps its 93 px; the status line stays). Typing **hides every row that does not match**, a level sub-header and a group header with no matching row hide with them, and the headers that remain still stick. **The ✕** at the end of the search row clears the text, closes the search and **puts the whole list back at the scroll place it was at when the search was opened**. Filtering is **the one exception to "nothing moves"**, and only while the search is open; ticking a box inside the filtered list moves nothing. This answers question 11. | Decision 12 (new), Decision 7 |
 
 ## The answers to his questions, in plain words
 
@@ -444,6 +447,12 @@ build must keep and the mockup shows:
    longer or shorter word in a count cannot push a row.
 7. **A refusal is words, not movement.** A tap on a spell that cannot change, or on a full
    group, changes only the bar's status line.
+8. **One exception, and only while it is open: the search** (Decision 12). Typing in the search
+   hides the rows that do not match, which is rows moving, and the owner asked for it. It is
+   allowed because the player did it on purpose and sees the list narrow, and it ends with the ✕,
+   which puts the full list back at the scroll place it was left. **Inside a filtered list the rule
+   holds as before**: ticking a box, a ★ or a swap changes the box, the counts and the status words and
+   nothing else, and no row appears or goes because of a tap.
 
 **Nothing moves** (the check in the mockup, `window.mock.layout()`): before and after each
 tap, the top and height of every row, heading, rule line, tile and the bar, the list's scroll
@@ -617,6 +626,42 @@ values, so the two places cannot disagree. The mockup draws the sheet only):
   A tile's height is fixed (78 px) with a one or two line "what it counts", so a number cannot change
   its height.
 
+### Decision 12: a search that filters, opened by a button (round 3)
+
+The long list (about 130 rows at a level-up, Risks) gets a search. The owner chose **a filter that
+hides what does not match**, so round 2's default (question 11: "no search box, because a filter
+moves rows") is answered the other way, with the limits below.
+
+1. **Closed, it takes no room.** A **magnifying-glass button** (a drawn glass, not a letter, 44 px
+   target, tooltip and name "Search spells") sits in the corner of the count bar. The bar does not
+   get taller, and there is no box until the button is tapped.
+2. **Open.** A search row covers the bar's first two lines (the number to choose and what it is made
+   of); the status line below it stays. The row holds a text box (16 px, so a phone does not zoom),
+   the number of matches ("12 matches") and an **✕** (44 px, "Clear the search and show the whole
+   list"). The keyboard comes up on a phone. Opening the search changes nothing in the list.
+3. **What it does.** As the player types, rows whose name (with its tag, so "lvl 2" and "cantrip"
+   work) does not contain the text hide. A **spell level's sub-header hides when none of its rows
+   match, and so does a group's header** when the whole group has no match; the headers that
+   remain **still stick** (Decision 8, measured). The intro blocks (caster lines, slots, tiles, the
+   window line) and the rule lines are not part of the results and are hidden while there is text, so
+   the matches start at the top. No match says: **No spell matches "xyz".**
+4. **The way out is the ✕**: it clears the text, closes the search and **restores the full list at
+   the scroll place the list had when the search was opened**, whatever was scrolled while
+   filtering. Escape does the same on a keyboard. Deleting the text back to nothing (the key,
+   not the ✕) also brings the full list back at that place, leaving the search open. A rest, a
+   level-up or Save closes it (the list is rebuilt).
+5. **Ticking inside a filtered list moves nothing** (Decision 7, point 8): the same box, counts and
+   status words; a row never appears or goes because of a tap. A spell chosen while filtered stays
+   in the list, matching or not, until the search changes.
+6. **It filters what the moment lists** (Decision 10): at any other time it searches the 20 or so
+   rows of prepared spells and cantrips, which is rarely needed; the button is always there so the
+   bar does not change.
+7. **Words:** the button's name "Search spells"; the placeholder "Search spells"; "{n} match(es)";
+   "No spell matches "{text}"."; the ✕'s name "Clear the search and show the whole list".
+8. **Rejected:** a box that is always open (takes about 52 px on a phone for a thing used now and
+   then); a search that only brightens matches and dims the rest (round 2's alternative: it keeps the
+   list still but does not shorten it, which is what the owner wants the search for).
+
 ## The words
 
 | Where | Words |
@@ -631,6 +676,7 @@ values, so the two places cannot disagree. The mockup draws the sheet only):
 | Count, top | Choose {n} more · All chosen |
 | Count, what is open | {n} cantrips · {n} Initiate · {n} book · {n} to prepare |
 | Count, group heading | {have} of {cap} · ★ {have} of {cap} |
+| Search button, row | Search spells · {n} match(es) · No spell matches "{text}". · ✕: Clear the search and show the whole list |
 | Caster line, class | {Class} spells: {Ability} · Spell save DC {n} (targets save against this) · Spell attack +{n} |
 | Caster line, feat | Magic Initiate ({List}) spells: {Ability}, chosen with the feat · Spell save DC {n} · Spell attack +{n} |
 | Slots | Spell slots · Level {n} ●●● · All back after a Long Rest (Pact Magic: after a Short Rest) |
@@ -679,7 +725,7 @@ from level to level. The swaps of the rules are in the same list (Wren at level 
 a Magic Initiate spell; Brenna a cantrip). Round 3 adds: **headers that stick** under the count
 bar (scroll any list; Decision 8); **`(lvl N)` and `(cantrip)`** on every name (Decision 9); the
 **caster lines, "Spell slots" row and the four relabelled tiles** (Decision 11); and the
-**list that follows the moment** (Decision 10): switch Moment to see what each lists. `ⓘ` shows
+**list that follows the moment** (Decision 10): switch Moment to see what each lists; and the **search** (Decision 12): the magnifying glass in the bar, the ✕ to leave. `ⓘ` shows
 the scroll card on a tap; on a mouse, 3 seconds on a row shows it; on touch, a press-and-hold of
 half a second does. The page has no chooser and no second step. It does not draw: an older sheet's
 dash, a multiclass character, the DM's correction, the Short Rest, the combat page.
@@ -717,11 +763,11 @@ Shadows stays manual).
 
 ## Risks
 
-- **A long list** (a new character and a level-up only; after a rest and at other times the list is a
+- **A long list, now with a search** (a new character and a level-up only; after a rest and at other times the list is a
   few dozen rows at most, Decision 10). A level 5 Wizard's list is about 130 rows (every cantrip and spell of her
   levels, chosen or not), about 6,800 px on a phone. That is the price of "nothing moves" and
   of one list; the count tiles jump to a group, and the bar keeps the count in view. A search
-  that hid rows would move rows (question 11).
+  (Decision 12) filters the list when the player wants fewer rows.
 - **A number in a box may be read as a quantity.** The legend on the status line says what it
   is, and the accessible name says it in words. If the owner's players misread it, the fallback
   is a "L" before the number (`L3`).
@@ -770,9 +816,11 @@ Round 2 (20 November 2026), new, each with its default:
 10. **New choice: a number or a tick?** Default **the current level as a number on a gold
     box**, at once (Decision 2). Alternative: a tick on a gold box that becomes the number
     when the level-up is saved.
-11. **Finding a spell in a long list:** default **no search box** (a filter hides rows, which
-    is rows moving). Alternative: a search box fixed at the top that only brightens the
-    matching rows and dims the others, hiding none.
+11. **Finding a spell in a long list:** ~~default no search box~~ **Answered by the owner
+    (round 3, 06:45 ET): a search that filters (hides non-matches), opened by a magnifying-glass
+    button, with an ✕ that clears and closes it** (Decision 12). It is the one allowed exception to
+    "nothing moves", only while it is open. (Round 2's alternative, a box that only dims
+    non-matches, is not wanted.)
 12. **Giving up a spell to swap:** default **tap its number** (the box empties and the count
     rises; tap again to keep it). Alternative: a "Replace" button on the row, which opens
     nothing but does the same; it adds a control to every row that may change.

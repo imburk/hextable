@@ -434,8 +434,8 @@ function mkSearch(list) {
   refs.sbtn = b; refs.bar.append(b, refs.srow);
   refs.none = el('p', { class: 'none', hidden: true }); list.append(refs.none);
 }
-function openSearch() { hideCard(); srch.open = true; srch.scroll = refs.list.scrollTop; refs.srow.hidden = false; refs.bar.classList.add('s-open'); refs.sin.focus(); }
-function closeSearch() { srch.open = false; srch.q = ''; refs.sin.value = ''; refs.srow.hidden = true; refs.bar.classList.remove('s-open'); applyFilter(true); refs.list.scrollTop = srch.scroll; refs.sbtn.focus(); }
+function openSearch() { hideCard(); srch.open = true; srch.scroll = refs.list.scrollTop; refs.srow.hidden = false; refs.bar.classList.add('s-open'); refs.sin.focus({ preventScroll: true }); }
+function closeSearch() { srch.open = false; srch.q = ''; refs.sin.value = ''; refs.srow.hidden = true; refs.bar.classList.remove('s-open'); applyFilter(true); refs.list.scrollTop = srch.scroll; refs.sbtn.focus({ preventScroll: true }); }
 function applyFilter(had) {
   const list = refs.list, q = srch.q.trim().toLowerCase(), on = srch.open && !!q;
   hideCard(); list.classList.toggle('searching', on);
