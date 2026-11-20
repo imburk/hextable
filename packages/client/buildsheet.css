@@ -1,0 +1,63 @@
+/* The create-character screen (#603): head, then the accordion with the live sheet pinned beside it, then Save. Shared pieces are in pickui.css. */
+.panel.qb { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+.panel.qb > .qe-head, .panel.qb > .sf-bar { flex: none; }
+.panel.qb .sf-bar { position: static; margin: calc(-1 * max(14px, env(safe-area-inset-top))) -16px 6px; }
+.qb-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.qb-left { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.qb-left > .acc { flex: 1 1 auto; min-height: 0; }
+.qb .acc-body section { border-top: 0; margin-top: 0; padding-top: 0; }
+.qb .acc-body > section > h3:first-child { display: none; }
+.qb .acc-body h4 { margin: 10px 0 4px; }
+.qb-foot { flex: none; border-top: 1px solid var(--line); padding: 8px 0 max(10px, env(safe-area-inset-bottom)); background: var(--panel); }
+.qb-foot .row { display: flex; gap: 8px; } .qb-foot .row button { min-height: 44px; }
+.qb-foot .qe-save { flex: 1; }
+.qb-why { margin: 0 0 4px; font-size: 14px; font-weight: 600; } .qb-why[hidden] { display: none; }
+.qb-foot .qe-problems { margin: 0 0 6px; max-height: 3.6em; overflow-y: auto; font-size: 13px; }
+
+/* the live sheet: a strip on a phone */
+.qb-live { flex: none; background: var(--panel); border-bottom: 1px solid var(--line); padding: 4px 2px 6px; position: relative; z-index: 3; box-shadow: 0 3px 10px #0004; }
+.qb-live .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.qb-live .stat { display: inline-flex; align-items: baseline; gap: 4px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; padding: 1px 9px; font-size: 13px; white-space: nowrap; }
+.qb-live .stat b { font-weight: 800; font-size: 14px; } .qb-live .stat.key { border-color: var(--accent); }
+.qb-live .livehead { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 13px; color: var(--muted); min-width: 0; }
+.qb-live .livehead > b { color: var(--ink); text-transform: uppercase; letter-spacing: .06em; font-size: 12px; }
+.qb-live .livehead .sp { flex: 1; } .qb-live .livehead .note1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.qb-live .livehead button { min-height: 44px; min-width: 44px; margin: -10px -4px -10px 0; border: 0; background: none; color: var(--muted); font-size: 18px; padding: 0 6px; }
+.qb-live .alist { margin: 2px 0 0; padding: 0; list-style: none; max-height: 84px; overflow-y: auto; overscroll-behavior: contain; }
+.qb-live .arow { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 1px 4px; border-radius: 4px; font-size: 14px; }
+.qb-live .arow .n { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.qb-live .arow .h { margin-left: auto; width: 44px; text-align: right; font-weight: 800; flex: none; font-variant-numeric: tabular-nums; }
+.qb-live .arow .dm { min-width: 54px; flex: none; padding-left: 6px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.qb-live .arow.flash { animation: qb-flash 1.4s ease-out; }
+@keyframes qb-flash { 0% { background: var(--accent); color: var(--accent-ink); } 100% { background: transparent; } }
+.qb-live .heads { margin: 4px 0 0; font-size: 12.5px; border-left: 4px solid var(--bad); padding: 2px 6px; background: var(--panel-2); border-radius: 0 var(--radius) var(--radius) 0; }
+.qb-live .heads ul { margin: 0; padding: 0 0 0 14px; }
+.qb-live .acwhy { color: var(--muted); font-size: 13px; margin: 6px 2px 0; }
+.qb-live h3.live-name { margin: 0; font: 700 22px var(--display, inherit); } .qb-live .sub { margin: 0 0 8px; color: var(--muted); }
+.qb-live h4 { margin: 14px 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); } .qb-live h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 6px; }
+.qb-live .pk-pips { display: inline-flex; gap: 4px; } .qb-live .pip { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .qb-live .arow.flash { animation: none; background: var(--accent); color: var(--accent-ink); } }
+
+/* a wide screen: the accordion on the left, the live sheet a panel on the right */
+@media (min-width: 900px) {
+  .panel.qe.qb { width: min(1040px, 100%); }
+  .qb-main { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 0 16px; }
+  .qb-left { grid-column: 1; grid-row: 1; }
+  .qb-live { grid-column: 2; grid-row: 1; overflow-y: auto; border-bottom: 0; border-left: 1px solid var(--line); box-shadow: none; padding: 6px 4px 8px 16px; }
+  .qb-live .arow { min-height: 40px; font-size: 15px; border-bottom: 1px solid var(--line); border-radius: 0; }
+  .qb-live .alist { max-height: none; overflow: visible; }
+  .qb-live .arow .dm { max-width: 60%; font-size: 14px; }
+  .qb-live .arow .h { width: 70px; }
+  .qb-live .stat { font-size: 14px; padding: 2px 10px; } .qb-live .stat b { font-size: 15px; }
+}
+
+/* a phone: the head is one short row, and the foot is as small as it can be, so the open section has room */
+@media (max-width: 899px) {
+  .panel.qb { padding-top: max(6px, env(safe-area-inset-top)); }
+  .panel.qb .sf-bar { display: flex; align-items: center; gap: 8px; margin: 0 -16px 4px; padding: 0 16px 4px; border-bottom: 1px solid var(--line); }
+  .panel.qb .sf-title { font-size: 14px; line-height: 1.2; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .panel.qb .sf-back { padding: 8px 10px; font-size: 14px; flex: none; }
+  .panel.qb .qe-head h2 { font-size: 17px; }
+  .qb-why.has-needs ~ .qe-problems { display: none; }
+  .qb-foot { padding-top: 4px; } .qb-why { font-size: 13px; margin: 0 0 4px; }
+}

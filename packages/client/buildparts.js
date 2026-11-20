@@ -68,8 +68,9 @@ export function featureWhen(f) {
   if (g.extraAttack) return 'Attack action';
   if (g.initiative?.regain) return 'Roll Initiative';
   if (a?.time === 'free') return 'When you hit';
-  if (/\bBonus Action\b/.test(t.slice(0, 120)) && !g.ac) return 'Bonus Action';
-  if (f.uses?.recharge === 'short' && !g.ac) return 'Short Rest';
+  if (g.ac || g.martialArts || g.speed || g.skills || g.expertise || g.saves || g.modifiers) return 'Always on';
+  if (/\bBonus Action\b/.test(t.slice(0, 120))) return 'Bonus Action';
+  if (f.uses?.recharge === 'short') return 'Short Rest';
   if (g.recover || g.restore) return /Short Rest/.test(t) ? 'After a Short Rest' : 'Rest';
   return 'Always on';
 }
@@ -104,7 +105,7 @@ export function resourcesOf(entries, recFeats = []) {
   for (const x of entries) {
     if (!x.f.uses || !spend.has(x.f.id)) continue;
     const u = rec.get(x.f.id)?.uses ?? x.f.uses, col = x.f.uses.max?.column;
-    out.push({ id: x.f.id, name: x.f.name, title: col ? nice(col) : x.f.name, alias: `${x.f.name}${RESOURCE_NICKNAME[x.f.id] ? `: ${RESOURCE_NICKNAME[x.f.id]}` : ''}`, max: u.max, recharge: u.recharge ?? 'long', short: u.short, spenders: spend.get(x.f.id), feature: x.f });
+    out.push({ id: x.f.id, name: x.f.name, title: col ? String(col).split('-').map(cap).join(' ') : x.f.name, alias: `${x.f.name}${RESOURCE_NICKNAME[x.f.id] ? `: ${RESOURCE_NICKNAME[x.f.id]}` : ''}`, max: u.max, recharge: u.recharge ?? 'long', short: u.short, spenders: spend.get(x.f.id), feature: x.f });
   }
   return out;
 }
@@ -145,3 +146,6 @@ export function armourCost(a, caster, bare = []) {
   return `Disadvantage on Strength and Dexterity rolls${caster ? ' \u00b7 can\u2019t cast spells' : ''}${bare.length ? ` \u00b7 turns off ${bare.join(', ')}` : ''}`;
 }
 export const armourAlso = (a) => [a.stealth ? 'Disadvantage on Stealth' : '', a.strength ? `Speed \u221210 ft unless Strength ${a.strength}` : ''].filter(Boolean).join(' \u00b7 ');
+
+// The spell's roll tag (Attack / DEX save / No roll), #605: it needs a field in the spell data, so there is none yet. Every place a spell row is drawn asks here; return a chip node when it exists.
+export const spellTag = () => null;
