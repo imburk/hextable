@@ -218,7 +218,6 @@ function applyInner(s, action, ctx) {
   const asks = !!s.pending || action?.type === 'react' || mayAsk(s);
   const heavy = mayBeHeavy(s, action ?? {});            // true: a cast or action that may meet the ceiling; 'copy': a use whose work is not read from here
   const snap = asks || heavy ? copyFor(s, action) : null;
-  const putBack = asks || heavy === true;
   // Any handler may throw something that is not a rule refusal (a TypeError, a bad dice expression met in content, a state a bug or an
   // old save left wrong) after it has changed things; the game is then put back as it was (below, and for the settle phase after it) and the
   // error goes on up (#421 for `act` and `cast`, #425 for every action). So a copy is kept for every action a handler exists for (an
@@ -255,8 +254,11 @@ function applyInner(s, action, ctx) {
       setRun(null);
       return safe(() => record(s, ev));
     }
-    if (net && !(err instanceof RuleError)) thaw(s, net);   // anything but a refusal (a TypeError, a bad dice expression met in content) puts the game back as it was, then goes on up: a bug is not hidden
-    else if (snap && putBack) thaw(s, snap);              // (a copy taken for an item, feature or object use is put back only for the work ceiling: a plain refusal changed nothing, and what holds the state keeps holding it) a refused answer leaves the question waiting, as it was
+    // Every way an action can fail puts the game back from the copy taken above, a rule refusal too: a refused action changes nothing,
+    // however the handler got there (review R3, #617; engine/casting.js once set a flag before it refused). A refusal of an answer to a
+    // reaction question restores the copy taken for it, so the question is left waiting, as it was. A non-refusal throw goes on up: a bug is not hidden.
+    // `net` is only null for an action no handler exists for, which changes nothing.
+    if (net) thaw(s, net);
     setRun(null);
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
