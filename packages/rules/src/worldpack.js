@@ -373,7 +373,8 @@ export function lintWorld(doc, { monster = defaultMonster } = {}) {
     if (!n) { say(`${where} ${word} a place that is not in the pack: ${quote(e.node)}.`); return; }
     if (e.pin !== undefined && e.entry !== undefined) say(`${where} names a pin and an entry at one end; name one.`);
     if (e.pin !== undefined && !(n.kind === 'nav' && pinsOf.get(n.id)?.has(e.pin))) say(`${where} ${word} a pin that ${quote(n.id)} does not have: ${quote(e.pin)}.`);
-    if (e.entry !== undefined && !(battleNode(n.id) && own(entriesOf, n.map) && entriesOf[n.map].has(e.entry))) say(`${where} ${word} an entry that ${quote(n.id)} does not have: ${quote(e.entry)}.`);
+    const unread = battleNode(n.id) && own(maps, n.map) && !own(entriesOf, n.map);       // its map was refused above: said once, there
+    if (e.entry !== undefined && !unread && !(battleNode(n.id) && own(entriesOf, n.map) && entriesOf[n.map].has(e.entry))) say(`${where} ${word} an entry that ${quote(n.id)} does not have: ${quote(e.entry)}.`);
   };
   for (const r of routes) {
     if (!isRec(r)) { say('A route is not a record.'); continue; }
@@ -560,7 +561,7 @@ export function fillMap(s, a, stored) {
 }
 
 // What the DM is told of a world they imported: its name, version and how much it holds.
-export function worldSummary(index, stored) {
-  return { id: index.id, name: index.name, version: index.version, hash: index.hash, nodes: Object.keys(index.nodes).length,
-    maps: Object.keys(stored?.maps ?? {}).length, routes: index.routes.length, tables: index.tables.length };
+export function worldSummary(stored, hash) {
+  return { id: stored.world.id, name: stored.world.name, version: stored.world.version, hash, nodes: (stored.nodes ?? []).length,
+    maps: Object.keys(stored.maps ?? {}).length, routes: (stored.routes ?? []).length, tables: (stored.tables ?? []).length };
 }

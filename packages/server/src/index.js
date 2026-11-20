@@ -18,7 +18,7 @@ import { promisify } from "node:util";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { clientAddress, createLimits, limitsFromEnv, proxyFromEnv, LIMIT_MESSAGE } from "./limits.js";
-import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES } from "./tables.js";
+import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, WORLD_FRAME_BYTES, worldAssets } from "./tables.js";
 import { assetRefs } from "../../rules/src/handouts.js";
 import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
@@ -79,8 +79,10 @@ async function siteFile(target, compress) {
 // only the DM may send a whole map document. The DM's frame limit, 1 MiB plus the envelope, is also what bounds a pack message before
 // it is parsed: a pack is at most 256 KB of JSON, which as text inside a message is at most twice that once its quotes are escaped,
 // well inside 1 MiB (tables.js then reads a pack text only up to 512 KB and the rules' budget holds the pack to 256 KB).
+// A world pack (docs/specs/travel.md, Decision 2) is at most 4 MB of JSON, pictures included, so a seated DM's frame is
+// bounded at that and an envelope of 64 KB; an action in it is still held to MAX_MAP_ACTION_BYTES by tables.js.
 const FRAME_MAX = MAX_ACTION_BYTES + 4096;
-const DM_FRAME_MAX = MAX_MAP_ACTION_BYTES + 4096;
+const DM_FRAME_MAX = Math.max(MAX_MAP_ACTION_BYTES + 4096, WORLD_FRAME_BYTES);
 
 const limits = createLimits(limitsFromEnv(process.env));
 setInterval(() => limits.sweep(), 60_000).unref();
@@ -153,7 +155,10 @@ function save(t) {
   timer ??= setTimeout(() => { timer = null; flush(); }, 1000);
 }
 
-const tables = createTables({ load, save, loadHistory, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+// A world pack's pictures go into the table's file store (tables.js, worldAssets).
+const { importAssets, dropAssets } = worldAssets(() => assets);
+
+const tables = createTables({ load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });

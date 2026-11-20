@@ -11,12 +11,16 @@ import { aiStep } from "../src/ai.js";
 import { newMap } from "../src/map.js";
 import * as H from "../src/hex.js";
 import { newGame } from "../src/scenario.js";
+import { indexOf, loadWorld, storedWorld } from "../src/worldpack.js";
+import { riverPack } from "./fixtures/world-pack.js";
 
 const DM = { role: "dm", userId: "dm" };
 const json = (x) => JSON.stringify(x);
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const terrain = (s) => json([s.map.levels, s.map.walls]);
 function deepFreeze(x) { if (x && typeof x === "object" && !Object.isFrozen(x)) { Object.freeze(x); for (const v of Object.values(x)) deepFreeze(v); } return x; }
+// The index of a world (docs/specs/travel.md, W3), for `worldIndex`.
+const WORLD_INDEX = (() => { const r = loadWorld(riverPack()); return indexOf(storedWorld(r.pack, { a1: "store-a1-00000000", a2: "store-a2-00000000" }), r.hash); })();
 const WRITE = /read.only|not extensible|Cannot delete property|Cannot define property|object is not extensible/;
 
 // A small stone floor with a wooden door, a hidden pit trap and a lever; the party at its start; a goblin; optionally in a fight.
@@ -64,7 +68,7 @@ const SENSE = [
   { type: "remove", actor: GOB }, { type: "setLight", actor: "fighter", item: "torch" }, { type: "reveal", actor: GOB, hidden: true }, { type: "condition", actor: "fighter", condition: "prone", on: true },
   { type: "setHp", actor: "fighter", hp: 3 }, { type: "harm", actor: "fighter", amount: 4 }, { type: "mend", actor: "fighter", amount: 4 },
   { type: "handout", id: "h1", title: "T", text: "x" }, { type: "note", to: "pat", text: "x" }, { type: "scene", id: "s1", title: "S" }, { type: "endScene" }, { type: "say", text: "hi" },
-  { type: "askCheck", actor: "fighter", skill: "perception", dc: 10 }, { type: "setting", key: "autoEngage", value: true }, { type: "setPacks", packs: [] },
+  { type: "askCheck", actor: "fighter", skill: "perception", dc: 10 }, { type: "setting", key: "autoEngage", value: true }, { type: "setPacks", packs: [] }, { type: "worldIndex", index: WORLD_INDEX },
   { type: "bond", actor: GOB, to: "wizard", kind: "pet" }, { type: "companionOrder", actor: GOB, order: "follow" }, { type: "command", actor: "wizard", ids: [GOB], order: "attack" },
   { type: "companion", actor: GOB, auto: true }, { type: "dismiss", actor: GOB }, { type: "recall", actor: GOB },
   { type: "pickUp", actor: "fighter", object: "pile" }, { type: "equip", actor: "fighter", item: "x" }, { type: "attune", actor: "fighter", item: null },
