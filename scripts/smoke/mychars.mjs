@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, openTab } from './lib.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { validate } from '../../packages/rules/src/derive.js';
 import { rollScores } from '../../packages/rules/src/scores.js';
@@ -264,6 +264,7 @@ async function scoresPass(browser, url, label, opts, grid) {
       const fresh = async () => { await tap('#lobby-party > summary').catch(() => {}); if (!(await shown(page, '#lobby-mychars'))) await tap('#lobby-party > summary'); await tap('#lobby-mychars'); await waitShown(page, '#mychars'); await tap('#mc-new'); await waitShown(page, '#qb'); };
       const val = (sel) => page.inputValue(sel);
       const txt = (sel) => text(page, sel);
+      const clean = async (what) => { const s = await txt('#qb-scores'); if (/\bnull\b|undefined|NaN/.test(s)) throw new Error(`${what}: stray words in the score section: ${s.slice(0, 120)}`); };
 
       await run.do('the score section offers four ways to make the scores, each button at least 44 px, and opens on "Enter by hand"', async () => {
         await open(page, url, { grid }); await fresh();
@@ -271,7 +272,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (ids.join() !== 'qb-method-standard:Standard array:false,qb-method-pointcost:Point cost:false,qb-method-roll:Roll:false,qb-method-hand:Enter by hand:true') throw new Error(`methods: ${ids}`);
         const small = await heightOk(page, '#qb-scores button'); if (small.length) throw new Error(`small buttons: ${small}`);
         if (!(await page.$('#qb-abil-str'))) throw new Error('no typed boxes');
-        await shot('1-hand');
+        await clean('hand'); await shot('1-hand');
       });
 
       await run.do('what is typed by hand is kept when another way is chosen and comes back with "Enter by hand"', async () => {
@@ -291,7 +292,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (got !== '15,14,13,8,10,12') throw new Error(`suggestion for a Fighter: ${got}`);
         await page.selectOption('#qb-std-cha', '15');                       // 15 is on STR: it moves
         if ((await val('#qb-std-str')) !== '' || (await val('#qb-std-cha')) !== '15') throw new Error('a number was used twice');
-        await tap('#qb-suggest');
+        await tap('#qb-suggest'); await clean('standard');
         if (!/Used 6 of 6 numbers/.test(await txt('#qb-sc-line'))) throw new Error(await txt('#qb-sc-line'));
       });
 
@@ -326,7 +327,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         await page.selectOption('#qb-bg', 'soldier'); await page.selectOption('#qb-bg-mode', 'all');
         const fin = await page.$$eval('[id^="qb-final-"]', (o) => o.map((x) => x.textContent).join());
         if (fin !== '16,16,15,10,8,8') throw new Error(`final ${fin}`);
-        await saveable(); await shot('3-pointcost', '#qb-scores');
+        await clean('pointcost'); await saveable(); await shot('3-pointcost', '#qb-scores');
         await page.click('#qb-save'); await waitShown(page, '#qb', false);
         const s = (await sheets()).at(-1);
         if (s.scores.method !== 'pointcost' || s.scores.base.con !== 14 || validate(s).length) throw new Error(`sheet ${JSON.stringify(s.scores)} ${validate(s)}`);
@@ -337,7 +338,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (!/No score may be rolled again/.test(await txt('#qb-rule-text'))) throw new Error(await txt('#qb-rule-text'));
         await page.selectOption('#qb-rule-reroll', 'each'); await page.selectOption('#qb-rule-result', 'higher');
         if (!/Every score may be rolled again, once\. The higher of the two stands/.test(await txt('#qb-rule-text'))) throw new Error(await txt('#qb-rule-text'));
-        await shot('4a-roll-rule', '#qb-scores');
+        await clean('roll, before'); await shot('4a-roll-rule', '#qb-scores');
         await tap('#qb-roll'); await waitShown(page, '#qb-chips');
         const scores = await page.$$eval('.sc-chip', (c) => c.map((x) => +x.dataset.score));
         if (scores.join() !== first.map(topOf).join()) throw new Error(`rolled ${scores}, the rules package says ${first.map(topOf)}`);
@@ -354,7 +355,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (!/What the DM sees: Rolled on the player's device on \d+ \w+ 2026, under the rule "Every score may be rolled again, once\. The higher of the two stands\." \(set on that device\)/.test(await txt('#qb-dm-line'))) throw new Error(await txt('#qb-dm-line'));
         if (!/Not witnessed: the table did not roll these/.test(await txt('#qb-dm-line'))) throw new Error('"not witnessed" is not said');
         const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('hextable.scoreroll'))); if (!kept || kept.rolls.length !== 6 || !kept.rolls[0].again) throw new Error('the unsaved roll is not kept on the device');
-        await saveable(); await shot('4-roll', '#qb-scores');
+        await clean('roll, after'); await saveable(); await shot('4-roll', '#qb-scores');
         await page.click('#qb-save'); await waitShown(page, '#qb', false);
         const s = (await sheets()).at(-1);
         if (s.scores.method !== 'roll' || s.scores.by !== 'device' || JSON.stringify(s.scores.rule) !== '{"reroll":"each","result":"higher"}' || validate(s).length) throw new Error(`sheet ${JSON.stringify(s.scores)} ${validate(s)}`);
@@ -401,6 +402,17 @@ async function scoresPass(browser, url, label, opts, grid) {
         if (!/Rolled on the player's device/.test(line)) throw new Error(`no line for the DM: "${line}"`);
         await page.$eval('#sheet-scores-line', (e) => e.scrollIntoView({ block: 'center' })).catch(() => {});
         await shot('6-dm-sheet');
+      });
+
+      await run.do('a level-up shows how the scores were made and offers no way to change them', async () => {
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await wait(page, () => !document.getElementById('qb-levelup')?.disabled);
+        await tap('#qb-levelup'); await waitShown(page, '#qb');
+        const line = await txt('#qb-sc-line');
+        if (!/^Rolled on a device, \d+ \w+ 2026\. A level-up does not change them/.test(line)) throw new Error(`line: ${line}`);
+        if (await page.$('.sc-method') || await page.$('#qb-roll') || await page.$('[id^="qb-reroll-"]')) throw new Error('a level-up offers to change the scores');
+        await clean('level-up'); await shot('7-levelup', '#qb-scores');
+        await page.click('#qb-cancel');
       });
     } finally { await ctx.close(); }
   });

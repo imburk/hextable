@@ -392,14 +392,14 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     // A level-up changes no score: how they were made is shown, not offered.
     if (locked && sc.method !== 'hand') {
       sec.append(el('p', { class: 'note', id: 'qb-sc-line', text: `${scoresLine(sheet())}. A level-up does not change them; a feat chosen below adds its own points.` }),
-        el('div', { class: 'sc-final' }, ...ABILITIES.map((a) => el('div', { class: 'qe-ab' }, el('b', { text: a.toUpperCase() }), el('output', { class: 'qe-mod', id: `qb-mod-${a}`, text: `${b.abilities[a]} (${signed(mod(b.abilities[a]))})` })))), bonusLine);
+        el('div', { class: 'sc-final' }, ...ABILITIES.map((a) => el('div', { class: 'qe-ab' }, el('b', { text: a.toUpperCase() }), el('output', { class: 'qe-mod', id: `qb-mod-${a}`, text: `${b.abilities[a]} (${signed(mod(b.abilities[a]))})` })))), ...(bonusLine ? [bonusLine] : []));
       return sec;
     }
     sec.append(el('div', { class: 'sc-methods', role: 'group', 'aria-label': 'How the scores are made' }, ...Object.entries(METHOD_NAMES).map(([m, name]) =>
       el('button', { type: 'button', id: `qb-method-${m}`, class: 'sc-method', 'aria-pressed': String(sc.method === m), text: name, onclick: () => setMethod(m) }))));
     if (sc.method === 'hand') {
       sec.append(handBoxes(c),
-        el('p', { class: 'note', id: 'qb-sc-line', text: 'Enter each score as it stands after background. A feat chosen below that raises a score adds its points, and so do features that raise one (Primal Champion). Or choose a way above to make them; what you type here is kept.' }), bonusLine);
+        el('p', { class: 'note', id: 'qb-sc-line', text: 'Enter each score as it stands after background. A feat chosen below that raises a score adds its points, and so do features that raise one (Primal Champion). Or choose a way above to make them; what you type here is kept.' }), ...(bonusLine ? [bonusLine] : []));
       return sec;
     }
     const parts = scoreParts(sc, dayNow()), base = scoreBase(sc), bgd = scoreBackground(sc);
@@ -481,7 +481,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     }
     sec.append(bgBox, el('p', { class: 'note', id: 'qb-sc-line', text: line }));
     if (sc.method === 'roll' && sc.roll && parts.scores) sec.append(el('p', { class: 'note', id: 'qb-dm-line', text: `What the DM sees: ${dmLine({ ...sheet(), scores: parts.scores })}` }));
-    sec.append(el('p', { class: 'note', text: 'What you typed under "Enter by hand" is kept.' }), bonusLine);
+    sec.append(el('p', { class: 'note', text: 'What you typed under "Enter by hand" is kept.' }), ...(bonusLine ? [bonusLine] : []));
     return sec;
   }
 
