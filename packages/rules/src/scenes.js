@@ -49,6 +49,12 @@ export function fightEndsScene(s, ev) {
   if (at < 0) ev.push(end); else ev.splice(at, 0, end);
 }
 
+// A creature of the party kept in a parked place (travel.md, Decision 5): { node, rec, e }, or null.
+function parkedParty(s, id) {
+  for (const [node, rec] of Object.entries(s.parked ?? {})) if (rec?.entities && Object.hasOwn(rec.entities, id) && rec.entities[id].side === 'party') return { node, rec, e: rec.entities[id] };
+  return null;
+}
+
 // The first time a scene is opened it takes the ids players will see (see the top of this file).
 function firstOpen(s, sc) {
   s.scenesOpened = (s.scenesOpened ?? 0) + 1;
@@ -143,20 +149,28 @@ export function sceneActions(fail) {
       const dm = ctx.role === 'dm';
       dm || (typeof ctx.userId === 'string' && ctx.userId) || fail('Join the table first.');
       const sc = s.scene?.open ? s.scene : null;     // a scene not open is not where anyone is talking
-      !sc || sc.said < SCENE_LIMITS.said || fail('This scene has gone on long enough. Start a new one.');
-      let as = null, name;
+      let as = null, name, far = null;
       if (a.as === null || a.as === undefined) name = dm ? 'DM' : cleanText(a.userName, 40) || 'A player';
       else {
         const npc = typeof a.as === 'string' ? sc?.present.find((p) => p.id === a.as) : null;
-        const e = typeof a.as === 'string' && !npc ? s.entities[a.as] : null;
+        const e = typeof a.as === 'string' && !npc && Object.hasOwn(s.entities, a.as) ? s.entities[a.as] : null;
+        // A character of the party in a place that is not in play (docs/specs/travel.md, Decision 5): it speaks there, to its own place.
+        const away = typeof a.as === 'string' && !npc && !e ? parkedParty(s, a.as) : null;
         // The same answer for someone else's character, an NPC, a creature players cannot see and an id that is nothing.
         if (npc) { dm || fail('You can speak only as your own character.'); name = npc.name; }
         else if (e && e.side === 'party' && (dm || ownerOf(s, e) === ctx.userId)) name = e.name;
+        else if (away && (dm || ownerOf({ entities: away.rec.entities }, away.e) === ctx.userId)) { name = away.e.name; far = away; }
         else fail(dm ? 'Nobody of that name is in the scene.' : 'You can speak only as your own character.');
         as = a.as;
       }
-      const line = sc ? ++sc.said : undefined;
-      ev.push({ type: 'say', from: dm ? 'dm' : ctx.userId, as, name, text, ...(sc ? { scene: sc.id, line } : {}) });
+      // What is said in a place that is not in play is not a line of the scene in play.
+      !sc || far || sc.said < SCENE_LIMITS.said || fail('This scene has gone on long enough. Start a new one.');
+      const line = sc && !far ? ++sc.said : undefined;
+      // `node`: where it was said, when the table has a world (view.js tells players the id they were given, and only that). A line said
+      // in character by a parked group is for the players there alone (`to`, who they are then), and the DM.
+      const node = far ? far.node : as !== null && typeof s.place === 'string' ? s.place : undefined;
+      const to = far ? [...new Set(Object.values(far.rec.entities).filter((x) => x.side === 'party').map((x) => ownerOf({ entities: far.rec.entities }, x)).filter(Boolean))] : undefined;
+      ev.push({ type: 'say', from: dm ? 'dm' : ctx.userId, as, name, text, ...(sc && !far ? { scene: sc.id, line } : {}), ...(node !== undefined ? { node } : {}), ...(far ? { far: true, to } : {}) });
     },
     // A player asks the DM to let their character make a check. { type: 'askCheck', actor, skill }
     // Whose: their own character, or a companion they play (`ownerOf`; a command-orders creature only on a turn commanded for it).

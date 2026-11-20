@@ -218,7 +218,10 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     if (m.role === "dm") return snapshot(state);
     const { snap, base } = forPlayers(t);
     if (state.entities !== base.entities || state.encounter !== base.encounter || state.effects !== base.effects) return snapshot(state);
-    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt) } };
+    // `away` and `watching` (rules view.js, placesView) are this player's own, by where their characters are: only a table with a world has them.
+    const places = {};
+    for (const k of ["away", "watching"]) if (state[k] !== undefined) places[k] = JSON.stringify(state[k]);
+    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt), ...places } };
   };
   const eventsFor = (t, m, events) => engine.viewEvents(t, events, t.state, { role: m.role, userId: m.id });
 

@@ -15,6 +15,7 @@ import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, NotBattleMap, settleBonds, settleHolds } from './engine/resolve.js';
 import { NO_WALK, staleCheck } from './places.js';
+import { learn, translate } from './known.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -148,6 +149,9 @@ function dispatch(s, action, ctx, ev) {
   }
   // Only a string type that is in the table is an action; anything else (no action, no type, a type
   // that is not a string, `toString`) is refused as unknown.
+  // The places, pins and entries a player names are the ids they were given (known.js); each is turned into the world's own
+  // here, and one that is nothing to them is refused as a place that does not exist, before the handler looks at anything.
+  if (ctx.role !== 'dm') action = translate(s, action, fail);
   const type = action?.type;
   const h = (typeof type === 'string' && handlers.get(type)) || fail(`Unknown action: ${typeof type === 'object' && type !== null ? 'not a name' : typeof type === 'symbol' ? type.toString() : String(type)}`);
   // Nobody walks on a holding map (docs/specs/travel.md, Decision 1): on a navigation or scene node a group stands at a pin,
@@ -264,7 +268,7 @@ function applyInner(s, action, ctx) {
   setRun(null);
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds);
   // a grapple whose grappler is gone, Incapacitated or out of range ends (settleHolds).
-  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); checkEvents(ev); } catch (err) {
+  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); learn(s); checkEvents(ev); } catch (err) {
     if (err instanceof NotBattleMap) { stopWork(); delete s.stack; if (net) thaw(s, net); return { ok: false, error: err.message, events: [] }; }
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
     if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
