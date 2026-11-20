@@ -12,7 +12,7 @@ import { SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, unfind } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 
@@ -113,10 +113,18 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   const { targets, hexes, origin } = aimAction(s, e, def, a, false, ctx);
   partFull(s, e, def, def.target.creature ? targets : null);
   const p = actionProfile(def);
-  if (!s.encounter && p.harmful && targets !== null && !def.target.self) {          // roll initiative first
+  // Outside a fight a harmful action at others starts the fight and is not taken (the SRD's way): it is taken on the
+  // creature's turn. With the table rule `strikeFirst` at 'all', one at a creature of another side lands first, then the
+  // fight starts (resolve.js, strikesFirst and thenFight; E23 as amended by #585).
+  let lands = null;
+  if (!s.encounter && p.harmful && targets !== null && !def.target.self) {
+    // Where the actor and its target stand is shown first, either way (review of #594, M2): so a creature in a place
+    // the party has not seen is in the fight it starts. These reveals come before the act's events (outside what
+    // thenFight marks unseen), as with the rule off and for a weapon attack.
     showPlace(s, e, ev);
     if (def.target.creature) showPlace(s, targets[0], ev);
-    return def.target.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
+    if (!strikesFirst(s, e, targets, 'act', ctx)) return def.target.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);   // roll initiative first
+    lands = strikeStart(s, ev);
   }
   if (s.encounter) {
     const b = s.encounter.budget, time = def.time ?? 'action', pooled = time === 'action' && fromPool(b, def.id);
@@ -128,6 +136,7 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   if (def.uses) (e.charges ??= {})[def.id] = (e.charges[def.id] ?? def.uses.n) - 1;
   if (s.encounter && isAttack(def) && !reactToAttacker(s, e, ev)) return checkEnd(s, ev);        // addition I: a creature under an effect of a foe's attacks
   runAction(s, e, def, targets, hexes, origin, ev);
+  if (lands) thenFight(s, e, ev, lands, { area: !!def.target.area, target: targets[0] });
   checkEnd(s, ev);
 }
 
@@ -365,8 +374,20 @@ export const handlers = {
     checkRange(s, e, t, atk);
     walled(s, e, t);
     const option = optionOf(s, e, t, atk, a);
+    // Outside a fight the attack starts the fight and is not made (the SRD's way): it is made on the attacker's turn. With
+    // the table rule `strikeFirst` at 'all', an attack at a creature of another side is made first, a plain one (what needs a
+    // turn in a fight is refused before anything changes), then the fight starts (resolve.js, thenFight; #585).
+    const first = !s.encounter && strikesFirst(s, e, [t], 'attack', ctx);
+    if (first) (a.brutal === undefined && a.cunning === undefined && a.prey === undefined && !a.grab) || fail('Brutal Strike, Cunning Strike, Superior Hunter\'s Prey and Punch and Grab go with an attack on a turn in a fight. An attack made before the fight starts is a plain one.');
     showPlace(s, e, ev); showPlace(s, t, ev);
-    if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
+    if (!s.encounter && !first) return engage(s, e, t, ev);       // roll initiative first
+    if (first) {
+      const lands = strikeStart(s, ev);
+      if (option !== 'damage') strikeOption(s, e, t, atk, option, a.shove, ev);
+      else resolveAttack(s, e, t, atk, ev);
+      thenFight(s, e, ev, lands, { target: t });
+      return checkEnd(s, ev);
+    }
     const b = s.encounter.budget;
     // Attacks a feature gave this turn (Flurry of Blows) come first; then a Bonus Action attack
     // (the Monk's Unarmed Strike); then those Extra Attack left; then the Attack action.

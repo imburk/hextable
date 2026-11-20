@@ -177,15 +177,17 @@ test("a version 23 state loads with packs: [] and is otherwise unchanged; migrat
   s.version = 23;
   const was = structuredClone(s);
   migrate(s);
-  assert.equal(VERSION, 26);
-  assert.equal(s.version, 26);
+  assert.equal(VERSION, 27);
+  assert.equal(s.version, 27);
   assert.deepEqual(s.packs, []);
-  const places = (x) => ({ ...x, world: undefined, place: undefined, parked: undefined, journey: undefined });   // version 26 (#579) adds the places of a world
+  assert.equal(s.settings.strikeFirst, "casts");   // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
+  const unstruck = (x) => { const { strikeFirst, ...settings } = x.settings; return settings; };
+  const places = (x) => ({ ...x, world: undefined, place: undefined, parked: undefined, journey: undefined, settings: unstruck(x) });   // version 26 (#579) adds the places of a world
   assert.equal(json({ ...places(s), version: 23 }), json(was), "newGame already holds packs: [], so nothing moves");
   const old = newGame(5); delete old.packs; old.version = 23;
   migrate(old);
   assert.deepEqual(old.packs, []);
-  assert.equal(json({ ...old, packs: undefined, version: 26 }), json({ ...s, packs: undefined }));
+  assert.equal(json({ ...old, packs: undefined, version: 27 }), json({ ...s, packs: undefined }));
   const again = json(s);
   migrate(s);
   assert.equal(json(s), again);

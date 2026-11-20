@@ -375,6 +375,11 @@ export const SETTINGS = { sight: SIGHT_RULES,
   diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
+  // Strike first (resolve.js, strikesFirst; docs/specs/table-ui.md, E23 as amended by #585): what lands before the fight
+  // it starts. 'off' (the SRD's way), 'casts' (the DM's hostile cast at the party, while `autoEngage` is on: the rule as
+  // #372 built it), 'all' (casts, attacks and a monster's actions, by anyone, at another side). Absent means the first; a
+  // table saved before state version 27 has 'casts' where `autoEngage` was on (migrate.js). Words in SETTING_TEXT.
+  strikeFirst: ['off', 'casts', 'all'],
   // Square maps only: how cover is judged (sight.js); absent means the first. Words in SETTING_TEXT.
   squareCover: SQUARE_COVERS,
   // Stepping away (resolve.js, AWAY): what becomes of the turns of a creature set aside, and what a
@@ -384,6 +389,12 @@ export const SETTINGS = { sight: SIGHT_RULES,
   scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  strikeFirst: {
+    off: 'An attack, a hostile spell or a monster\'s action outside a fight starts the fight and is not made yet: everyone rolls Initiative, and the creature makes it on its turn. The SRD\'s rule, the default.',
+    casts: 'Only while "Start a fight when the party comes near enemies" is on: your hostile spell at a party member, outside a fight, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts. With that off, nothing lands first. Attacks, monsters\' actions and the players\' spells start the fight and are not made yet. A table rule; it is not in the SRD.',
+    all: 'An attack, a hostile spell or a monster\'s action at a creature of another side, outside a fight, by you or a player, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts and everyone rolls Initiative. The creature\'s first turn is still a whole turn. A table rule; it is not in the SRD.',
+  },
+
   scoreReroll: {
     none: 'Rolled ability scores stand as rolled: no score may be rolled again (the SRD\'s rule, the default).',
     below: 'A rolled score below the number set under it may be rolled again, once. "Below" is judged on the score first rolled.',
