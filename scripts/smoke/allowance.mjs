@@ -84,7 +84,8 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
             if (!r.ok) { why.push(`spawn: ${r.error}`); continue; }
             const gid = r.events.find((x) => x.type === 'spawned').id;
             // where it can walk to that is away from Sir Bell (not beside her): asked of the engine in a fight begun on the copy
-            { const f = apply(c, { type: 'startEncounter', center: me.pos, radius: 6 }, DM); if (!f.ok) { why.push(`fight: ${f.error}`); continue; } }
+            // The spawn itself may have begun the fight on the copy (a foe appearing beside a party member with autoEngage on): then there is nothing to start.
+            if (S.encounter || !c.encounter) { const f = apply(c, { type: 'startEncounter', center: me.pos, radius: 6 }, DM); if (!f.ok) { why.push(`fight: ${f.error} (the table had one: ${!!S.encounter})`); continue; } }
             for (let i = 0; i < 30 && c.encounter.order[c.encounter.turn].id !== gid; i++) apply(c, { type: 'endTurn', actor: c.encounter.order[c.encounter.turn].id }, DM);
             for (const d of G.range(h, 3)) {
               if (G.dist(me.pos, d) < 2) continue;
