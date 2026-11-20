@@ -126,12 +126,12 @@ export function tableRollRule(settings, rolls, result) {
 }
 const sane = (s) => !!s && Array.isArray(s.dice) && s.dice.length === 4 && (s.again === undefined || (Array.isArray(s.again) && s.again.length === 4));
 // The roll this table holds for the one using the sheet, as the draft's `roll`, or null. The DM's view holds every record (`scoreRolls`); a player's holds none, so what
-// the events said (`heard`) is all there is. The DM's own id is not told to the sheet: it is the one the first roll came back under, else 'dm' (a game on one device).
+// the events said (`heard`) is all there is. The DM's own id is not told to the sheet: it is the one the first roll came back under, else 'local' (a solo game) or 'dm'.
 export function keptRoll(S, heard) {
   const recs = S?.scoreRolls;
   let rolls = null, at;
   if (recs && typeof recs === 'object') {
-    const who = heard?.by ?? 'dm', rec = who !== '#seq' && Object.hasOwn(recs, who) ? recs[who] : null;
+    const who = heard?.by ?? ['local', 'dm'].find((k) => Object.hasOwn(recs, k)) ?? 'local', rec = who !== '#seq' && Object.hasOwn(recs, who) ? recs[who] : null;
     if (rec && Array.isArray(rec.sets) && rec.sets.length === 6 && rec.sets.every(sane)) {
       rolls = rec.sets.map((x) => ({ dice: [...x.dice], ...(x.again ? { again: [...x.again] } : {}) }));
       if (heard && heard.by === who && heard.rolls.every((x, i) => x.dice.join() === rolls[i].dice.join())) at = heard.at;       // the event number is not in the record: only the event said it

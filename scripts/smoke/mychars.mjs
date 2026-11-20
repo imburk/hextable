@@ -499,7 +499,7 @@ async function gamePass(browser, url, label, opts, grid) {
       const shot = async (n, at = null, block = 'start') => { if (!dir) return; if (at) await page.$eval(at, (e, b) => e.scrollIntoView({ block: b }), block).catch(() => {}); await page.screenshot({ path: `${dir}/game-${n}-${tag}.png` }).catch(() => {}); };
       const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
       const txt = (sel) => text(page, sel);
-      const rolls = () => state(page, (S) => S.scoreRolls.dm?.sets ?? null);
+      const rolls = () => state(page, (S) => (S.scoreRolls.local ?? S.scoreRolls.dm)?.sets ?? null);
       const settings = (S) => S.settings;
 
       await run.do('the DM\'s three controls for rolled scores are on screen, in words, fit the width and are big enough to touch', async () => {
@@ -580,7 +580,7 @@ async function gamePass(browser, url, label, opts, grid) {
         if (chips.length !== 6 || chips.some((n, i) => n < 3 || n > 18) || !sets) throw new Error(`chips ${chips}`);
         if (!(await page.$('#qb-roll-fresh'))) throw new Error('the DM is not offered a fresh set');
         await shot('6-kept', '#qb-scores');
-        await tap('#qb-roll-fresh'); await wait(page, (old) => window.hextable.state.scoreRolls.dm.sets[0].dice.join() !== old || window.hextable.state.scoreRolls['#seq'] > 2, sets[0].dice.join());
+        await tap('#qb-roll-fresh'); await wait(page, (old) => (window.hextable.state.scoreRolls.local ?? window.hextable.state.scoreRolls.dm).sets[0].dice.join() !== old || window.hextable.state.scoreRolls['#seq'] > 2, sets[0].dice.join());
         const fresh = await rolls(); if (JSON.stringify(fresh) === JSON.stringify(sets)) throw new Error('the fresh set is the old one');
         await wait(page, (n) => document.querySelectorAll('.sc-chip').length === 6 && !document.querySelector('#qb-roll-fresh')?.disabled && /event [3-9]/.test(document.getElementById('qb-rule-text').textContent), null);
         await page.click('#qb-cancel');
