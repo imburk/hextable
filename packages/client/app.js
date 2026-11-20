@@ -390,6 +390,9 @@ function words(ev) {
     case 'conclusionSkipped': return ['The fight gives no rewards.'];
     case 'conclusionReady': return ['The fight is over. Its rewards are waiting for you.', 'head'];
     case 'xp': case 'conclusionEdited': return null;
+    // Ability scores rolled at the table (scores.js): the numbers only for the DM and the roller; the rest are told that it happened.
+    case 'scoresRolled': return [ev.sets ? `Ability scores rolled: ${ev.sets.map((x) => x.total).join(', ')}.` : 'Someone rolled their ability scores.'];
+    case 'scoreRerolled': return [ev.from ? `Ability score ${ev.index + 1} rolled again: ${ev.from.total}, then ${ev.to.total}; ${ev.stands === 'old' ? 'the first stands' : 'the new roll stands'} (${ev.total}).` : 'Someone rolled one ability score again.'];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     // The transcript of a scene, one line each, until the scene screen is built.

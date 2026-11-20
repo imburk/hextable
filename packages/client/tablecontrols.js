@@ -23,6 +23,9 @@ export const gridWords = (text, G) => (G.kind === 'hex' ? text : String(text).re
 export const aimedWords = (G) => gridWords('Aimed: tap another hex to move it, or Cast', G);
 export const gridName = (map) => gridOf(map).word.many;
 
+// The words of the rolled-score rule's choices (engine/dm.js SETTINGS; the longer words are SETTING_TEXT).
+const SCORE_NAMES = { reroll: { none: 'is not allowed (SRD)', below: 'once, a score below a number', each: 'once, every score' }, result: { new: 'The new roll stands', higher: 'The higher of the two stands' } };
+
 // The table rules that only mean something on a square map (engine/dm.js SETTINGS; the words beside each choice are SETTING_TEXT).
 // Each is a question and the short names of its choices, in the order of SETTINGS (the first is the default).
 export const SQUARE_RULES = [
@@ -78,6 +81,18 @@ export function initTableControls({ act, getState, isDM, toast }) {
   $('dm-conclusion').onchange = (ev) => act({ type: 'setting', key: 'conclusion', value: ev.target.value });
   $('dm-xpshare').onchange = (ev) => act({ type: 'setting', key: 'xpShare', value: ev.target.value });
 
+  // Rolled ability scores (docs/specs/ability-scores.md): may a score be rolled again, below what number, and which result stands. Added under the XP choice.
+  $('dm-xpshare').closest('label').insertAdjacentHTML('afterend', `<label class="assign">Rolled ability scores: rolling a score again <select id="dm-score-reroll">${SETTINGS.scoreReroll.map((v) => `<option value="${v}">${esc(SCORE_NAMES.reroll[v])}</option>`).join('')}</select></label>
+    <label class="assign" id="dm-score-below-label">Rolled again if below <select id="dm-score-below">${[...SETTINGS.scoreRerollBelow].sort((x, y) => x - y).map((v) => `<option value="${v}">${v}</option>`).join('')}</select></label>
+    <label class="assign">The result that stands <select id="dm-score-result">${SETTINGS.scoreRerollResult.map((v) => `<option value="${v}">${esc(SCORE_NAMES.result[v])}</option>`).join('')}</select></label>
+    <p class="note" id="dm-score-text"></p>`);
+  for (const [id, key, num] of [['dm-score-reroll', 'scoreReroll', false], ['dm-score-below', 'scoreRerollBelow', true], ['dm-score-result', 'scoreRerollResult', false]]) $(id).onchange = (ev) => act({ type: 'setting', key, value: num ? +ev.target.value : ev.target.value });
+  const scoreRule = (S) => {
+    const st = S?.settings ?? {}, mode = st.scoreReroll ?? 'none', res = st.scoreRerollResult ?? 'new';
+    $('dm-score-reroll').value = mode; $('dm-score-below').value = String(st.scoreRerollBelow ?? 10); $('dm-score-result').value = res;
+    $('dm-score-below-label').hidden = mode !== 'below'; $('dm-score-result').closest('label').hidden = mode === 'none';
+    $('dm-score-text').textContent = `${SETTING_TEXT.scoreReroll[mode]}${mode === 'none' ? '' : ` ${SETTING_TEXT.scoreRerollResult[res]}`}`;
+  };
   // Loading a map over the game in progress asks first: a second tap, which lapses after a few seconds.
   const btn = $('dm-stock-go');
   let timer = null;
@@ -108,6 +123,7 @@ export function initTableControls({ act, getState, isDM, toast }) {
       $('dm-pace').value = pace;
       $('dm-conclusion').value = S?.settings?.conclusion ?? 'dm'; $('dm-xpshare').value = S?.settings?.xpShare ?? 'split';
       $('dm-conclusion-note').hidden = $('dm-conclusion').value !== 'auto';
+      scoreRule(S);
       $('pace-table').textContent = `The DM has set the table to: ${PACE_NAME[pace] ?? pace}. ${dm ? '' : 'Only the DM can change this.'}`;
       btn.disabled = !!S?.encounter;
       $('dm-stock-fight').hidden = !S?.encounter;

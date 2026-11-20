@@ -177,14 +177,14 @@ test("a version 23 state loads with packs: [] and is otherwise unchanged; migrat
   s.version = 23;
   const was = structuredClone(s);
   migrate(s);
-  assert.equal(VERSION, 24);
-  assert.equal(s.version, 24);
+  assert.equal(VERSION, 25);
+  assert.equal(s.version, 25);
   assert.deepEqual(s.packs, []);
   assert.equal(json({ ...s, version: 23 }), json(was), "newGame already holds packs: [], so nothing moves");
   const old = newGame(5); delete old.packs; old.version = 23;
   migrate(old);
   assert.deepEqual(old.packs, []);
-  assert.equal(json({ ...old, packs: undefined, version: 24 }), json({ ...s, packs: undefined }));
+  assert.equal(json({ ...old, packs: undefined, version: 25 }), json({ ...s, packs: undefined }));
   const again = json(s);
   migrate(s);
   assert.equal(json(s), again);

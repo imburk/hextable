@@ -16,7 +16,7 @@ import { validFormation } from './engine/world.js';
 import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
 
-export const VERSION = 24;
+export const VERSION = 25;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -153,6 +153,8 @@ export function migrate(state) {
   // A state already at version 24 with no `packs` at all (one made by `newGame`, which does not set it) is left as it is: reading code
   // takes an absent list as none, and a state that is migrated again stays byte for byte the same.
   if (!(state.version >= 24) || Object.hasOwn(state, 'packs')) state.packs = Array.isArray(state.packs) && packsProblem(state.packs) === null ? copyPacks(state.packs) : [];
+  // Version 25: the ability scores a member has rolled, `{ [userId]: { sets: [{ dice, again? }] } }` (docs/specs/ability-scores.md); a table saved before has none.
+  if (!(state.version >= 25) || state.scoreRolls === undefined) state.scoreRolls = state.scoreRolls && typeof state.scoreRolls === 'object' && !Array.isArray(state.scoreRolls) ? state.scoreRolls : {};
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
