@@ -353,6 +353,22 @@ export function viewHandouts(state, viewer) {
     .map((h) => ({ id: h.id, title: h.title, ...(h.text !== undefined && { text: h.text }), ...(h.asset !== undefined && { asset: h.asset }) }));
 }
 
+// ---------- shop areas ----------
+// What a player is sent of a store's shop area (docs/specs/shops.md, Decision 3 and Decision 4; review point 9):
+// nothing unless the shop is a store shown to this viewer and points at an area on the map in play, and then only
+// `{ level, hexes }`, the area's cells that lie in tiles this player is sent; none of them sent, nothing. Never the
+// area's id or name (the outline carries the store's). The map document sent to players never carries `areas`
+// (shownMap builds it from an allow list), so this is the only way an area reaches a player; P3's `viewShops` puts
+// its answer in the shop's `area`. Until shops exist (P3) nothing calls it and players are sent no areas at all.
+export function viewShopArea(state, shop, viewer) {
+  if (!shop || shop.kind !== 'store' || !shownTo(shop, viewer?.userId)) return undefined;
+  const id = shop.at?.area, area = typeof id === 'string' ? (state.map?.areas ?? []).find((a) => a?.id === id) : undefined;
+  if (!area || state.map.holding) return undefined;
+  const tiles = shownMap(state).doc.levels.find((l) => l.id === area.level)?.tiles;
+  const hexes = tiles ? area.hexes.filter((k) => Object.hasOwn(tiles, k)) : [];
+  return hexes.length ? { level: area.level, hexes } : undefined;
+}
+
 // ---------- the map ----------
 // Players are sent the hexes of revealed regions and of no region, the stretches of wall beside
 // those hexes, the objects that touch them, and the regions already revealed. Nothing else: an

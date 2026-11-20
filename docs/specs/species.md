@@ -451,3 +451,100 @@ Each has a default the jobs follow if he does not answer.
   the subclass note's 16 KB.*
 - **Q10. The order of the amendments.** *Default: S2 to S4 (the lineage spells and choices touch six of the nine
   species), then S5 to S8 (the Dragonborn and the Orc), then S9 and S10 with the subclass note's F, then S11 and S12.*
+
+## Build notes: SP1, the species kind and the sheet (#552)
+
+Built to Decisions 1 to 3 and the removed-pack rule of Decision 5, the owner's questions on their defaults. No species is entered (SP2);
+the tests use two invented ones. What was settled in building, and what differs from the sketch:
+
+- **Where.** `content/schema.js`: `lintSpecies`, wired into `lintPack({ ..., species })`; `SPECIES_SIZES`; `type` in the record's fields.
+  `content/index.js`: `CONTENT.species`, empty. `derive.js`: `speciesOf`, `speciesFeatures`, `missingSpeciesOf`, the sheet's `species`
+  in `validate` (`checkSpecies`), and the species in `gather`, `featuresOf`, the Speed, the size, `type`, `why.species` and `missing`.
+  `engine/sheets.js`: `tellMissing` tells the DM of a missing species. `PACKS` has no `species` list yet (SP2 adds the file and the list),
+  `HOMEBREW_LOOKUPS` and `HOMEBREW_ENTRY_KINDS` have no `species` (SP7), and `npm run content` prints what it printed.
+- **A species' features are linted as a feat's grants are** (`lintFeature` with the feat's class, which has no table), so an amount is a
+  number, `{ mod }`, `{ prof }`, `{ perLevel }` or `{ byLevel }` at the character level, `{ column }` is refused, and every grant that only a
+  subclass's feature may carry is refused with the feat's sentence, worded for a species. Refused besides, each with its reason, because
+  `derive` would drop it without a word: `spells`, `cantrips`, `spellLists` and `freeCast` (S2), `feat` (S4), `triggers` and `formOf` (a
+  class's alone), `attune`, `skills.from: 'class'`, and an option that `requires` a spell. A cost names a feature with uses of the species,
+  or of the same lineage option. A lineage option's feature ids are not the species' own (the sheet's `species.choices` are kept by feature
+  id), but two options may use the same id (ten Breath Weapons). The entry's tier is no higher than its lowest feature, counting every
+  lineage option's (the entry cannot know which one a sheet picks). `sizes` is `small` and `medium` only: the sizes a sheet may have.
+- **In the record.** A species feature is `species-<id>`, a lineage's `species-<lineage>-<id>`, an option `...-<option>`, first in `feats`,
+  before the class's; a cost or `with` naming one is relabelled with it. The numbers go by the character level (`SPECIES_CLASS`, `i: -2`).
+  A `heal`, `tempHp` or `damage` step whose amount bakes to a plain number (`{ prof: 1 }`) has it written as dice text (`"+3"`), which a step's dice must be;
+  no SRD class, feat or item had one, so no record changes.
+- **The sheet.** `species: { id, lineage?, ability?, choices? }`. `spells` (S2's pick) is not accepted yet. With a loaded species: the
+  lineage and the ability are required where the species has them and refused where it has none; a choice for a feature the species has not
+  is refused; the size is one of `sizes` ("A Stonefolk is Medium."); the sheet's own `speed` is refused ("Speed comes from the species: a
+  Stonefolk has 25 ft. Take the sheet's own Speed out."). An unknown id is refused ("There is no species "dwarf" in the game ...") unless it
+  has a homebrew id's shape (`HB_ID`), which is the absent case below.
+- **`type`.** On the record only when it is not `humanoid`; `lintRecord` accepts `type` (any creature type but `humanoid`), so a record
+  typed in by hand may carry one too. `makeEntity` already spreads the record, so the creature has it and `creatureType` reads it; a creature
+  remade without it has none.
+- **The absent species.** The sheet keeps the id; no trait; the Speed is the sheet's or 30, the size the sheet's or Medium; `why.species` is
+  the spec's sentence; `derive` returns `missing: [..., { kind: 'species', id }]`. `missingOf` stays the subclasses' (the client's header
+  and `keepAway` read it as such); the species is `missingSpeciesOf`. **Differs from the sketch:** the DM-only event is one of its own, after
+  the subclasses' events (B2 made one per missing subclass, which tests and the client pin), not one event listing both.
+- **State shape: no change, no version bump.** The sheet gains an optional field, the record and the creature an optional `type`.
+  **What players are sent: unchanged for every sheet without a species.** A party creature is sent whole, so its `type` and its sheet's
+  `species` reach the players once a sheet names one; the DM's event is never sent.
+
+**Fix round 1 (the review of #553).** The client's build sheet keeps `species` among the fields it has no control for (`KEEP`), so an edit or a
+level from the build screen keeps the id, and the hand-typed form keeps a record's `type` (`packages/client/buildsheet.js` and `quickentry.js`,
+beyond the issue's list, approved for this round). `lintSpecies` builds the record id of every feature and option, with the species alone and
+with each lineage option in turn, and refuses two that come out the same ("feature old-craft's option lore and feature old-craft-lore would both be
+"species-old-craft-lore" in a character's record: rename one"). An option's tier counts toward the entry's. A flat amount that adds a modifier
+(`{ prof: 1 }` with `addMod`) bakes to one number ("+5"), not "+3+2". State shape: unchanged.
+
+## Build notes: SP2, the nine SRD species as data (#583)
+
+Built to Decisions 1 and 4 on SP1's linter, with no change to the vocabulary. `content/srd52/species.js` holds the nine; `content/index.js`
+puts them in `PACKS[0].species` and `CONTENT.species`. Every entry is `checked: true`, compared field by field (creature type, size, Speed,
+every trait, its level, its uses and recharge, every number and damage type) with `reference/srd52/srd52-flow.txt`. The Tiefling's
+legacy table runs past the row's 19975, to 19993. What was settled:
+
+- **Lines compared.** Creature type 19579-19583. Dragonborn 19608-19698: size and Speed 19611-19612, Draconic Ancestry and its table
+  19614-19652, Breath Weapon 19664-19678, Damage Resistance 19679-19681, Darkvision 19686, Draconic Flight 19688-19698. Dwarf 19699-19719:
+  19702-19703, Darkvision 19706, Dwarven Resilience 19708, Dwarven Toughness 19711, Stonecunning 19714-19719. Elf 19720-19788: 19723-19724,
+  Darkvision 19727, Elven Lineage 19729-19777 (its table, the level 3 and 5 rule 19733-19740), the ability 19778, Fey Ancestry 19780, Keen
+  Senses 19783, Trance 19785. Gnome 19789-19831: 19792-19793, Darkvision 19796, Gnomish Cunning 19798, Gnomish Lineage 19799, Forest Gnome
+  19804, Rock Gnome 19811-19831. Goliath 19832-19880: 19835-19836, Giant Ancestry 19839-19866, Large Form 19869-19876, Powerful Build 19877.
+  Halfling 19881-19899: 19884-19885, Brave 19888, Halfling Nimbleness 19890, Luck 19893, Naturally Stealthy 19896. Human 19900-19912:
+  19903-19905, Resourceful 19907, Skillful 19908, Versatile 19910. Orc 19913-19930: 19915-19916, Adrenaline Rush 19918-19923, Darkvision
+  19924, Relentless Endurance 19926. Tiefling 19931-19993: 19934-19936, Darkvision 19938, Fiendish Legacy 19940-19951, Otherworldly Presence
+  19952, the legacies 19956-19993 (Abyssal 19968, Chthonic 19977, Infernal 19986).
+- **Every species is `manual`**, because each has at least one trait the vocabulary cannot say yet and a species is no higher than its lowest
+  feature (SP1). They rise as SP3 to SP6 land.
+- **Played by the engine (`auto`):** every Darkvision (a Drow's 120 ft over the Elf's 60), the Dragonborn's Resistance (each ancestry its own
+  copy), Dwarven Resilience, Dwarven Toughness, Fey Ancestry, Gnomish Cunning, the Wood Elf's 35 ft (`speed.add: 5`), Brave, Skillful
+  (`skills: { n: 1, from: "any" }`), Adrenaline Rush (Bonus Action, `acts: ["dash"]`, Temporary Hit Points and uses of the Proficiency Bonus,
+  back on a Short Rest) and each Fiendish Legacy's Resistance.
+- **`assist`:** Large Form (the Bonus Action, its use, 10 minutes of Advantage on Strength checks and 10 ft of Speed are played; becoming
+  Large and the room for it are a `manual` step), Powerful Build (Advantage on a check to escape a grapple, by `check.escape`; carrying
+  capacity is not tracked) and Versatile (the place "Species: Origin feat (Human)" is on every sheet and plays its feat; it is not tied to the
+  trait until S4).
+- **`manual`, with uses kept so the engine spends them.** A manual feature with `uses` and no action is used by the `feature` action as a free
+  use that spends one and tells the DM its text (`engine/features.js`); a Bonus Action trait has a cost-only action instead (`time: "bonus"`,
+  one `manual` step), so the Bonus Action is spent too. So: Breath Weapon (uses of the Proficiency Bonus; S5, S6), Draconic Flight (Bonus
+  Action, once; S8), Stonecunning (Bonus Action, Proficiency Bonus; Tremorsense is not sight), Relentless Endurance (once; S7), each Giant
+  Ancestry boon (Proficiency Bonus: Cloud's Jaunt a Bonus Action; Fire's Burn, Frost's Chill and Hill's Tumble a free use, S9; Stone's
+  Endurance and Storm's Thunder a free use that does not spend the Reaction, which the text gives to the DM, S10), and every lineage spell of
+  level 3 and 5 and the Forest Gnome's Speak with Animals (their casting without a slot, once a Long Rest or the Proficiency Bonus; S2).
+- **`manual`, text only:** the lineage cantrips and Otherworldly Presence (S2; the High Elf's swap with them), Keen Senses (S3 is refused in a
+  species: the text has the player enter the skill among the sheet's extra skills and the DM check it), Trance, Resourceful (no Heroic
+  Inspiration), Rock Gnome's clockwork devices, Luck (S11), Halfling Nimbleness (S12) and Naturally Stealthy.
+- **Cloud's Jaunt is not a `teleport` step.** The spec asked SP2 to check whether a feature's action runs `teleport` as a spell's does. It does
+  not: only `cast` takes a destination (`a.hex`, `teleportSpot`, `src.to` in `engine/casting.js`); a feature's action has none, so its
+  teleport step would hand itself to the DM (`effects.js`) under an `auto` tier. It is a cost-only Bonus Action until a feature's action can
+  take a destination (a small engine change, not named among S1 to S12; DEBT T102 (1)).
+- **The ability.** The Elf, Gnome and Tiefling carry `ability: ["int", "wis", "cha"]`, so a sheet chooses it now (SP1 requires it) though no
+  spell plays with it until S2; the text of each spell feature names "your lineage's ability".
+- **Ids.** The Drow's Darkvision is `superior-darkvision` and the Wood Elf's Speed `fleet` (a lineage feature may not reuse the species'
+  `darkvision`); each Dragonborn ancestry has `breath-weapon` and `damage-resistance`, each legacy `resistance`.
+- **Text.** Every `manual` and `assist` text says what the DM does and what the engine does not, in this project's words; a test
+  (`species-content.test.js`) holds each to that.
+- **Beyond the issue's files, approved by the lead.** `packages/rules/test/species.test.js`: SP1's tests pinned an empty `CONTENT.species`;
+  they now use a made-up id ("no-such-species") for the unknown-species sentence, expect the nine in its list of choices, and pin the nine.
+  `scripts/content-report.mjs`: `npm run content` passes the species to `coverage` (9, all manual) and prints a table of each species' tier
+  and its features by tier, every lineage option's counted. `docs/DEBT.md`: row T102.
