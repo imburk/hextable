@@ -44,6 +44,7 @@ const REGISTRY = {
   'three-parity': ['three-parity'],
   maps: ['maps'],
   pinch: ['pinch'],
+  ping: ['ping'],
   newgame: ['newgame'],
   actionpanel: ['actionpanel'],
   paneltabs: ['paneltabs'],

@@ -44,6 +44,8 @@ export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 // Lines of a scene's transcript (`say`) one member may send in a minute. The engine caps a line's
 // length and a scene's number of lines; this keeps one member from filling the record for everyone.
 export const MAX_SAYS_PER_MINUTE = 30;
+// A member's pings (`ping`) are at least this far apart, in milliseconds.
+export const PING_GAP_MS = 1000;
 // The most entries one fight's record is sent with ({t:"history",fight}).
 export const FIGHT_ENTRIES = 500;
 export const MAP_ACTIONS = new Set(["loadMap", "mapEdit", "enter", "leave", "goTo", "resetPlace", "nodeAdd"]);
@@ -197,6 +199,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   };
   // When each member last spoke in a scene, for MAX_SAYS_PER_MINUTE.
   const saidAt = new WeakMap();
+  const pingedAt = new WeakMap();
   // What each connection was last sent, so the next update can be only what changed.
   const sent = new WeakMap();
   // The whole view, to one connection: on sitting down, on being let in, and on request.
@@ -419,12 +422,20 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           if (times.length >= MAX_SAYS_PER_MINUTE) return error("You are speaking too fast. Wait a moment.");
           times.push(t0);
         }
+        // A ping is signed with the name the member joined by, and at most one a second each: nothing is saved of it, so only the link is guarded.
+        if (action.type === "ping") {
+          if (me.role === "dm") delete action.userName; else action.userName = me.name;
+          const t0 = now();
+          if (pingedAt.has(me) && t0 - pingedAt.get(me) < PING_GAP_MS) return error("You are pinging too fast. Wait a moment.");
+          pingedAt.set(me, t0);
+        }
         // A note from the DM goes to someone sitting at this table as a player. The engine knows only ids.
         if (action.type === "note" && me.role === "dm" && !table.members.some((m) => m.approved && m.role === "player" && m.id === action.to)) return error("That player isn't at this table.");
         let res;
         // Taken before every action: for the undo history (claiming a seat is not undone), and to
         // put the game back if the engine throws part way through (review #132, L6).
         const was = mark(table.state), before = undoable(action) ? was : null;
+        const pingWas = action.type === "ping" ? JSON.stringify(was.tree) : null;
         try {
           res = engine.apply(table, table.state, action, { role: me.role, userId: me.id });
         } catch {
@@ -439,8 +450,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           undoOf(table).track(action, res.events, before, table.state);
           dirtyHistory.add(table.code);
         }
-        touch(table);
-        save(table);
+        // A ping is no activity that keeps a table awake and nothing of it is kept, so it is neither touched nor saved, unless the passes that
+        // follow every action changed the game (a tile made out under the light rule, say): then it is saved like any other change.
+        if (action.type !== "ping" || JSON.stringify({ ...table.state, timeline: null }) !== pingWas) { touch(table); save(table); }
         if (before) tellUndo(table);
         broadcast(table, res.events);
       },
