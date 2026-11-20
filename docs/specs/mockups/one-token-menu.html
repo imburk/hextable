@@ -262,6 +262,62 @@ body.bare #mock { display: none; }
 .pool .plus { font-weight: 700; color: var(--muted); }
 .pool .pclear { margin-left: auto; min-height: 44px; }
 .dpick button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* round 3: the symbols, the arc, the strip, Arrange, the handle */
+.ico { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.frame[data-theme=pocket] .ico { stroke-width: 2; stroke-linecap: square; stroke-linejoin: miter; }
+.frame[data-theme=classic] { --icon: var(--accent); }
+.frame[data-theme=sunlit] { --icon: var(--accent); }
+.frame[data-theme=pocket] { --icon: var(--accent); }
+.arc { position: absolute; inset: 0; z-index: 41; pointer-events: none; }
+.atile { position: absolute; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--panel-solid); color: var(--icon);
+  display: grid; place-items: center; padding: 0; pointer-events: auto; box-shadow: 0 3px 10px #0006; cursor: pointer;
+  transform: translate(var(--dx), var(--dy)) scale(.3); opacity: 0; transition: transform .5s cubic-bezier(.2,.8,.25,1) calc(var(--i) * 25ms), opacity .4s calc(var(--i) * 25ms); }
+.frame[data-theme=pocket] .atile { border-radius: 4px; box-shadow: 3px 3px 0 #0005; }
+.frame[data-theme=classic] .atile { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.arc.out .atile { transform: none; opacity: 1; }
+.frame.appear .atile { transition: none; }
+.atile.static { position: relative; margin: 0; transform: none; opacity: 1; flex: none; }
+.atile .sigil { width: 44px; height: 44px; font-size: 19px; }
+.atile .sigil .sring { width: 54px; height: 54px; inset: -5px; }
+.alab { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 600 12px/1.2 var(--body); color: var(--ink); background: var(--panel-solid); border: 1px solid var(--line);
+  border-radius: 999px; padding: 2px 7px; opacity: 0; transition: opacity .35s; pointer-events: none; }
+.arc.labels .alab { opacity: 1; }
+.abadge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--bad); color: #fff; font: 700 11px/18px var(--body); text-align: center; padding: 0 4px; }
+.arccards { position: absolute; left: 12px; right: 12px; pointer-events: auto; }
+.frame.desktop .arccards { left: 50%; right: auto; width: 440px; margin-left: -220px; }
+.scrim.light { background: color-mix(in srgb, var(--scrim) 70%, transparent); }
+.navstrip { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 4px 10px 6px; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+.navstrip::-webkit-scrollbar { display: none; }
+.ntile { flex: none; min-width: 48px; height: 48px; border-radius: var(--radius); border: 1px solid transparent; background: none; color: var(--icon); display: grid; place-items: center; padding: 0 2px; }
+.ntile.on { background: var(--panel-2); border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+.ntile .sigil { width: 34px; height: 34px; font-size: 15px; } .ntile .sigil .sring { width: 44px; height: 44px; inset: -5px; }
+.ntile .nlab { display: none; font-size: 10px; color: var(--muted); }
+.navstrip.labels .ntile { height: 62px; grid-template-rows: 1fr auto; } .navstrip.labels .nlab { display: block; }
+.frame.phone .menu .handle { height: 44px; }
+.frame.phone .menu .handle i { width: 56px; height: 6px; }
+.mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mtile { min-height: 84px; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); color: var(--icon); display: grid; place-items: center; gap: 4px; padding: 8px; }
+.mtile span { color: var(--ink); font-size: 13px; }
+.alist { list-style: none; margin: 0; padding: 0; }
+.arow { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 4px 6px; margin: 4px 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+.arow.off { opacity: .5; } .arow.dragging { position: relative; z-index: 2; box-shadow: 0 6px 18px #0008; border-color: var(--accent); }
+.arow .grip { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); touch-action: none; cursor: grab; }
+.arow .grip .ico { width: 22px; height: 22px; }
+.arow .aface { color: var(--icon); } .arow .aface .sigil { width: 34px; height: 34px; font-size: 15px; } .arow .aface .sigil .sring { width: 44px; height: 44px; inset: -5px; }
+.arow .t { flex: 1; min-width: 0; } .arow .t small { display: block; color: var(--muted); font-size: 12px; }
+.arow .aup, .arow .aeye { min-width: 40px; min-height: 44px; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius); color: var(--ink); padding: 0; display: grid; place-items: center; }
+.legend .lg { display: flex; gap: 10px; align-items: center; min-height: 48px; color: var(--icon); }
+.legend .lg span { color: var(--ink); } .legend .lg small { display: block; color: var(--muted); }
+.legend .lg .sigil { width: 34px; height: 34px; font-size: 15px; } .legend .lg .sigil .sring { width: 44px; height: 44px; inset: -5px; }
+.token.lift svg { transform: scale(1.12); transition: transform .15s; }
+#symbols { position: fixed; inset: 0; z-index: 200; background: #000d; overflow: auto; padding: 16px; font: 13px system-ui, sans-serif; }
+#symbols .symhead { display: flex; justify-content: space-between; color: #eee; margin-bottom: 10px; }
+#symbols .symhead button { font: inherit; padding: 4px 10px; }
+#symbols .symcols { display: flex; flex-wrap: wrap; gap: 12px; }
+.symtheme { width: 360px; padding: 12px; border-radius: 10px; }
+.symtheme h3 { margin: 0 0 10px; font: 700 16px var(--display); }
+.symgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sym { display: flex; align-items: center; gap: 10px; } .sym small { color: var(--ink); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -273,12 +329,14 @@ body.bare #mock { display: none; }
     <div class="grp"><b>State</b><button data-k="state" data-v="explore">Exploring</button><button data-k="state" data-v="other">Another's turn</button><button data-k="state" data-v="mine">My turn</button><button data-k="state" data-v="down">Down</button></div>
     <div class="grp"><b>Plays</b><button data-k="chars" data-v="one">One character</button><button data-k="chars" data-v="familiar">Wren + familiar</button><button data-k="chars" data-v="solo">Solo party</button></div>
     <div class="grp"><b>Arrives</b><button data-do="handout">A handout</button><button data-do="hit">Wren is hit</button><button data-do="reaction">A reaction question</button><button data-do="initiative">Initiative</button></div>
+    <div class="grp"><b>Menu</b><button data-do="arc">Tap the die</button><button data-do="hold">Hold the die</button><button data-do="symbols">Symbols</button><button data-k="token" data-v="left">Die left</button><button data-k="token" data-v="centre">centre</button><button data-k="token" data-v="right">right</button></div>
     <div class="grp"><b>Motion</b><button data-k="motion" data-v="slide">Slide</button><button data-k="motion" data-v="appear">Just appear</button></div>
     <div class="grp"><b>Dice rule</b><button data-k="rule" data-v="auto">auto</button><button data-k="rule" data-v="throw">throw</button></div>
     <p>Tap the die to open the menu; tap the dimmed map to clear it. Press and hold the die: Roll dice. Character › Cast › Burning Hands aims; Fire Bolt throws. Drag, spin and fling a die.</p>
   </div>
 </details>
 
+<div id="symbols" hidden></div>
 <div id="stage">
   <div class="frame phone" id="frame" data-theme="classic">
     <div class="map" id="map"></div>
@@ -298,9 +356,10 @@ body.bare #mock { display: none; }
       <span class="badge" id="badge" hidden></span>
       <span class="hplabel" id="hplabel" role="status" hidden></span>
     </button>
+    <div class="arc" id="arc" role="menu" aria-label="Places" hidden></div>
     <div class="dice-layer" id="dicelayer"></div>
     <button class="scrim" id="scrim" type="button" aria-label="Close the menu"><span class="tip">Tap here to clear the menu</span></button>
-    <nav class="menu" id="menu" aria-label="Menu"><button class="handle" type="button" id="handle" aria-label="Close the menu"><i></i></button><div class="levels" id="levels"></div></nav>
+    <nav class="menu" id="menu" aria-label="Menu"><button class="handle" type="button" id="handle" aria-label="Close menu" title="Close menu (or drag down)"><i></i></button><div class="levels" id="levels"></div></nav>
     <div class="dock" id="aim" role="region" aria-label="Aiming"></div>
     <div class="dock" id="throwzone" role="dialog" aria-label="Throw the dice"></div>
     <div class="qscrim" id="qscrim" hidden></div>
@@ -313,10 +372,11 @@ body.bare #mock { display: none; }
 'use strict';
 const $ = (id) => document.getElementById(id);
 const F = $('frame');
+const DEFAULT_ORDER_INIT = ['chars-mine', 'turns', 'dice', 'roll', 'log', 'handouts', 'setup', 'dm', 'chars', 'packs', 'help', 'about', 'leave'];
 const ST = { frame: 'phone', theme: 'classic', state: 'mine', motion: 'slide', rule: 'auto', hold: '3', token: 'centre', path: [], open: false,
   aiming: null, dice: [], bar: { action: true, bonus: true, move: 30, reaction: true }, initShown: true, autoOpen: false, flick: true,
   chars: 'familiar', sel: 'wren', waiting: [], seenRing: false, folds: new Set(), scroll: {}, look: 'tblue', dieCol: 'red', numCol: 'yellow',
-  pick: { 20: 1 }, mod: 0, rollTo: 'table', rollFor: '', bars: 'always', foeHealth: 'rough' };
+  pick: { 20: 1 }, mod: 0, rollTo: 'table', rollFor: '', bars: 'always', foeHealth: 'rough', order: [...DEFAULT_ORDER_INIT], hiddenItems: new Set(), alwaysLabels: false, arcOpen: false, lastPool: null };
 
 // ---------- made-up creatures ----------
 const CH = {
@@ -361,13 +421,14 @@ const SHAPES = {
   12: { pts: '0,-24 22,-7 14,20 -14,20 -22,-7', lines: '<polygon points="0,-13 11,-4 7,10 -7,10 -11,-4"/>' },
   20: { pts: '0,-24 21,-12 21,12 0,24 -21,12 -21,-12', lines: '<polyline points="0,-24 -12,7 12,7 0,-24"/><polyline points="-21,-12 -12,7 0,24 12,7 21,-12"/>' },
 };
-function dieSvg(sides, n, { numA = 1, look = lookOf(), size = 26 } = {}) {
+function dieSvg(sides, n, { numA = 1, look = lookOf(), size = 26, others = [], othersA = 0, topScale = 1 } = {}) {
   const sh = SHAPES[sides === 100 ? 10 : sides] ?? SHAPES[20];
   const back = look.clear ? `<g fill="none" stroke="${look.edge}" stroke-opacity=".35" stroke-width="1"><polyline points="-21,12 0,0 21,12"/><polyline points="0,0 0,24"/></g>` : '';
   return `<svg viewBox="-28 -28 56 56" aria-hidden="true"><polygon points="${sh.pts}" fill="${look.fill}" fill-opacity="${look.op}" stroke="${look.edge}" stroke-width="2" stroke-linejoin="round"/>${back}
     <g fill="none" stroke="${look.edge}" stroke-width="1.2" stroke-opacity=".75">${sh.lines}</g>
     ${look.clear ? '<polygon points="-15,-14 -3,-21 -9,-11" fill="#fff" fill-opacity=".35"/>' : ''}
-    <text x="0" y="${sides === 4 ? 6 : 2}" text-anchor="middle" dominant-baseline="central" style="font:800 ${size * .62}px system-ui,sans-serif" fill="${look.num}" fill-opacity="${numA}">${n ?? ''}</text></svg>`;
+    ${othersA > .01 ? others.map((o) => `<text x="${o.x}" y="${o.y}" text-anchor="middle" dominant-baseline="central" style="font:700 ${size * .26}px system-ui,sans-serif" fill="${look.num}" fill-opacity="${othersA * .8}">${o.v}</text>`).join('') : ''}
+    <text x="0" y="${sides === 4 ? 6 : 2}" text-anchor="middle" dominant-baseline="central" transform="scale(${topScale})" style="font:800 ${size * .62}px system-ui,sans-serif" fill="${look.num}" fill-opacity="${numA}">${n ?? ''}</text></svg>`;
 }
 
 // ---------- a stand-in for the engine's seeded dice (the real roll comes from the game state's seed) ----------
@@ -446,21 +507,141 @@ function waitBox() {
 }
 const ringNote = () => ST.seenRing ? '' : `<div class="note" role="note"><span>The ring round the die is ${sel().name}’s health: ${hpOf(sel())} of ${sel().max} HP.</span><button type="button" class="btn" data-act="seen">Got it</button></div>`;
 
+// ---------- one set of symbols (round 3): simple line icons drawn in currentColor, so each theme colours them ----------
+const gearPath = (() => { let d = ''; for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2 - Math.PI / 2, r = i % 2 ? 7.2 : 9.6; const a2 = a + Math.PI / 16 * (i % 2 ? 1 : 1);
+  d += `${i ? 'L' : 'M'}${(12 + Math.cos(a - .12) * r).toFixed(2)} ${(12 + Math.sin(a - .12) * r).toFixed(2)} L${(12 + Math.cos(a2 - .08) * r).toFixed(2)} ${(12 + Math.sin(a2 - .08) * r).toFixed(2)} `; } return d + 'Z'; })();
+const MEEPLE = 'M12 3.2a2.4 2.4 0 0 1 1.5 4.3c2.6.3 5.3 1.1 5.3 2.5 0 1-1.6 1.1-3.2 1.1l2.3 5.4c.3.7-.2 1.4-.9 1.4h-2.6L12 14.9 9.6 17.9H7c-.7 0-1.2-.7-.9-1.4L8.4 11.1C6.8 11.1 5.2 11 5.2 10c0-1.4 2.7-2.2 5.3-2.5A2.4 2.4 0 0 1 12 3.2z';
+const ICONS = {
+  setup: `<path d="${gearPath}"/><circle cx="12" cy="12" r="3"/>`,
+  dm: '<path d="M4.5 19.5l8.2-8.2"/><path d="M12.7 11.3a4.6 4.6 0 0 1 5.6-6.6l-2.9 2.9.4 2.1 2.1.4 2.9-2.9a4.6 4.6 0 0 1-6.6 5.6"/><circle cx="5.6" cy="18.4" r=".6" fill="currentColor"/>',
+  chars: `<g transform="translate(4 1.5) scale(.62)"><path d="${MEEPLE}"/></g><g transform="translate(5.2 5.2) scale(.78)"><path d="${MEEPLE}" fill="var(--icon-fill, none)"/></g>`,
+  packs: '<path d="M6 4.5h11.5a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H6a1.5 1.5 0 0 1-1.5-1.5v-12A2 2 0 0 1 6 4.5z"/><path d="M8 4.5v15.5"/><path d="M18.5 9.5h1.8v4h-1.8"/><path d="M11 9h4.5M11 12h4.5"/>',
+  turns: '<path d="M5 4.5l9.5 9.5M19 4.5L9.5 14"/><path d="M4.5 4l2.7.4.4 2.7M19.5 4l-2.7.4-.4 2.7"/><path d="M12.5 16l4-4M7.5 12l4 4"/><path d="M15.2 17.2l3.3 3.3M8.8 17.2L5.5 20.5"/>',
+  party: '<path d="M5 20.5l14-4M19 20.5l-14-4"/><path d="M12 15c-3-1.6-2.6-5.2.2-9.5.8 2.4 3.6 3.8 2.6 7.4-.4 1.3-1.4 2-2.8 2.1z"/><path d="M12 15c-.9-.8-.8-2 .1-3.3.9 1.2 1 2.4-.1 3.3z"/>',
+  dice: '<path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/><path d="M12 3l-4.6 9.3h9.2z"/><path d="M4.2 7.5l3.2 4.8M19.8 7.5l-3.2 4.8M7.4 12.3L12 21l4.6-8.7"/>',
+  roll: '<rect x="3.5" y="8.5" width="9.5" height="9.5" rx="1.8" transform="rotate(-12 8.2 13.2)"/><rect x="11.5" y="5" width="9" height="9" rx="1.8" transform="rotate(14 16 9.5)"/><circle cx="6.4" cy="11.6" r=".9" fill="currentColor"/><circle cx="9.6" cy="15" r=".9" fill="currentColor"/><circle cx="14.5" cy="7.3" r=".9" fill="currentColor"/><circle cx="16" cy="9.5" r=".9" fill="currentColor"/><circle cx="17.5" cy="11.7" r=".9" fill="currentColor"/>',
+  log: '<path d="M4 5.5h16v10H11l-4.5 3.8v-3.8H4z"/><path d="M7.5 9h9M7.5 12h6"/>',
+  handouts: '<path d="M7 4.5h11v12.5a2.5 2.5 0 0 0 2.5 2.5H9.5A2.5 2.5 0 0 1 7 17z"/><path d="M7 4.5A2 2 0 0 0 5 6.5V9h2"/><path d="M10 9h5M10 12h5"/>',
+  help: '<circle cx="12" cy="12" r="8.6"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.6"/><circle cx="12" cy="16.8" r=".7" fill="currentColor"/>',
+  about: '<circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r=".8" fill="currentColor"/>',
+  leave: '<path d="M14 4.5H6.5v15H14"/><path d="M10.5 12h9.5M17 9l3 3-3 3"/>',
+  more: '<circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/>',
+  grip: '<g fill="currentColor" stroke="none"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></g>',
+  eye: '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.6"/>',
+  eyeoff: '<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><path d="M4 20L20 4"/>',
+};
+const ico = (id, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[id] ?? ''}</svg>`;
+
+// The places, as data: id, words, symbol, group, and whether it may be hidden (Decision 4c)
+function allItems() {
+  const items = [];
+  for (const id of mineList()) { const c = CH[id]; items.push({ id: 'character:' + id, label: c.name, sub: c.master ? c.sub : `${c.sub}`, char: c, group: 'play', fixed: true, why: 'Your character is how you play.' }); }
+  items.push({ id: 'turns', label: fight() ? 'Turns' : 'Party', icon: fight() ? 'turns' : 'party', group: 'play' });
+  items.push({ id: 'dice', label: 'Dice', icon: 'dice', group: 'play' });
+  items.push({ id: 'roll', label: 'Roll dice', icon: 'roll', group: 'play', go: 'dice' });
+  items.push({ id: 'log', label: 'Log and chat', icon: 'log', group: 'play', badge: 2 });
+  if (ST.handouts) items.push({ id: 'handouts', label: 'Handouts', icon: 'handouts', group: 'play', badge: ST.waiting.length ? 1 : 0 });
+  items.push({ id: 'setup', label: 'Setup', icon: 'setup', group: 'game', fixed: true, why: 'Setup is where hidden symbols come back.' });
+  items.push({ id: 'dm', label: 'DM tools', icon: 'dm', group: 'game', why: '' });
+  items.push({ id: 'chars', label: 'Characters', icon: 'chars', group: 'game' });
+  items.push({ id: 'packs', label: 'Packs', icon: 'packs', group: 'game' });
+  items.push({ id: 'help', label: 'Help', icon: 'help', group: 'game', fixed: true, why: 'Help explains every symbol, hidden ones too.' });
+  items.push({ id: 'about', label: 'About', icon: 'about', group: 'game' });
+  items.push({ id: 'leave', label: 'Leave', icon: 'leave', group: 'game', fixed: true, why: 'Leaving must always be possible.' });
+  const ord = (it) => { const i = ST.order.indexOf(it.id.startsWith('character:') ? 'chars-mine' : it.id); return i < 0 ? 99 : i; };
+  return items.sort((a, b) => (a.group === b.group ? 0 : a.group === 'play' ? -1 : 1) || ord(a) - ord(b) || 0);
+}
+const DEFAULT_ORDER = ['chars-mine', 'turns', 'dice', 'roll', 'log', 'handouts', 'setup', 'dm', 'chars', 'packs', 'help', 'about', 'leave'];
+const visibleItems = () => allItems().filter((it) => !ST.hiddenItems.has(it.id));
+const tileFace = (it, size = 26) => it.char ? sigil(it.char) : ico(it.icon);
+
+// ---------- the arc: a quick tap on the die fans the places out round it (Decision 4c) ----------
+// Two rings round the token: the inner ring is "Play", the outer ring "This game". At bottom centre each ring is a half
+// circle; in a corner a quarter circle. When a ring has more places than slots, its last slot is More.
+function arcLayout() {
+  const W = F.offsetWidth, H = F.offsetHeight, phone = ST.frame === 'phone';
+  const t = $('token').getBoundingClientRect(), f = F.getBoundingClientRect(), sc = f.width / W;
+  const cx = (t.left + t.width / 2 - f.left) / sc, cy = (t.top + t.height / 2 - f.top) / sc;
+  const corner = ST.token !== 'centre';
+  const rings = phone ? (corner ? [{ r: 128, n: 4 }, { r: 210, n: 6 }] : [{ r: 132, n: 7 }, { r: 218, n: 8 }])
+    : (corner ? [{ r: 140, n: 4 }, { r: 230, n: 6 }] : [{ r: 150, n: 8 }, { r: 245, n: 10 }]);
+  // angles in degrees, 0 = right, 90 = straight up
+  const span = corner ? (ST.token === 'left' ? [86, 4] : [176, 94]) : [172, 8];
+  return { cx, cy, rings, span, phone };
+}
+function arcHtml() {
+  const L = arcLayout(), items = visibleItems(), play = items.filter((i) => i.group === 'play'), game = items.filter((i) => i.group === 'game');
+  const place = (list, ring) => {
+    let shown = list;
+    if (list.length > ring.n) shown = [...list.slice(0, ring.n - 1), { id: 'more:' + list[0].group, label: 'More', icon: 'more', more: list.slice(ring.n - 1) }];
+    return shown.map((it, i) => { const k = shown.length === 1 ? .5 : i / (shown.length - 1), a = (L.span[0] + (L.span[1] - L.span[0]) * k) * Math.PI / 180;
+      return { it, x: L.cx + Math.cos(a) * ring.r, y: L.cy - Math.sin(a) * ring.r }; });
+  };
+  const spots = [...place(play, L.rings[0]), ...place(game, L.rings[1])];
+  const tile = ({ it, x, y }, i) => `<button type="button" class="atile${it.char ? ' achar' : ''}" style="left:${x}px;top:${y}px;--dx:${L.cx - x}px;--dy:${L.cy - y}px;--i:${i}" data-arc="${it.id}" aria-label="${it.label}${it.badge ? `, ${it.badge} new` : ''}">${tileFace(it)}${it.badge ? `<span class="abadge">${it.badge}</span>` : ''}<span class="alab">${it.label}</span></button>`;
+  const cards = `${ST.waiting.length || !ST.seenRing ? `<div class="arccards" style="bottom:${F.offsetHeight - L.cy + L.rings[1].r + 50}px">${waitBox()}${ringNote()}</div>` : ''}`;
+  return cards + spots.map(tile).join('');
+}
+let labelT = null;
+function openArc(on) {
+  const A = $('arc');
+  ST.arcOpen = on; clearTimeout(labelT);
+  if (on) {
+    ST.labelsShown = ST.alwaysLabels;
+    A.innerHTML = arcHtml(); A.hidden = false; A.className = `arc${ST.labelsShown ? ' labels' : ''}`;
+    requestAnimationFrame(() => requestAnimationFrame(() => A.classList.add('out')));
+    $('scrim').classList.add('on', 'light'); $('token').setAttribute('aria-expanded', 'true'); $('turnline').style.visibility = 'hidden';
+    if (!ST.alwaysLabels) labelT = setTimeout(() => { if (ST.arcOpen) { ST.labelsShown = true; A.classList.add('labels'); } }, 3000);   // no choice in 3 s: say what each is
+    A.querySelector('.atile')?.focus({ preventScroll: true });
+  } else {
+    A.classList.remove('out'); setTimeout(() => { if (!ST.arcOpen) { A.hidden = true; A.innerHTML = ''; } }, ST.motion === 'appear' ? 0 : 450);
+    if (!ST.open) { $('scrim').classList.remove('on', 'light'); $('token').setAttribute('aria-expanded', 'false'); $('turnline').style.visibility = ''; }
+  }
+}
+function pickPlace(id) {
+  if (id === 'leave') { openArc(false); return toast('Leave the table? (asks first, then goes to the start page)'); }
+  if (id.startsWith('more:')) { openArc(false); ST.path = ['more']; return openMenu(true); }
+  const target = id === 'roll' ? 'dice' : id;
+  openArc(false); ST.path = []; if (target === 'dice') ST.scroll.dice = 0;
+  if (target.startsWith('character:')) ST.sel = target.split(':')[1];
+  ST.path = [target]; renderHud(); openMenu(true);
+}
+
+// ---------- the strip of symbols across the top of every screen: the way between places (Decision 4c) ----------
+function navStrip(cur) {
+  const items = visibleItems();
+  return `<nav class="navstrip${ST.alwaysLabels ? ' labels' : ''}" aria-label="Places">${items.map((it) => { const id = it.id === 'roll' ? 'dice' : it.id, on = id === cur && it.id !== 'roll';
+    return `<button type="button" class="ntile${on ? ' on' : ''}" data-nav="${it.id}" ${on ? 'aria-current="page"' : ''} aria-label="${it.label}" title="${it.label}">${tileFace(it)}<span class="nlab">${it.label}</span></button>`; }).join('')}</nav>`;
+}
+
+// ---------- Arrange: the order and what shows, per device ----------
+function arrangeHtml() {
+  const items = allItems();
+  const rowOf = (it) => `<li class="arow${ST.hiddenItems.has(it.id) ? ' off' : ''}" data-aid="${it.id}"><span class="grip" aria-hidden="true">${ico('grip')}</span><span class="aface">${tileFace(it)}</span><span class="t"><b>${it.label}</b>${it.fixed ? `<small>Always shown: ${it.why}</small>` : ''}</span>
+    <button type="button" class="aup" data-move="${it.id}:-1" aria-label="Move ${it.label} earlier">▲</button><button type="button" class="aup" data-move="${it.id}:1" aria-label="Move ${it.label} later">▼</button>
+    ${it.fixed ? '' : `<button type="button" class="aeye" data-hide="${it.id}" aria-pressed="${ST.hiddenItems.has(it.id)}" aria-label="${ST.hiddenItems.has(it.id) ? 'Show' : 'Hide'} ${it.label}">${ico(ST.hiddenItems.has(it.id) ? 'eyeoff' : 'eye')}</button>`}</li>`;
+  const grp = (g, name) => `<div class="sec">${name}</div><ol class="alist" data-group="${g}">${items.filter((i) => i.group === g).map(rowOf).join('')}</ol>`;
+  return `<div class="subtle">Drag a row by its six dots, or use ▲ ▼. The eye hides a symbol from the arc and the strip. Kept on this device.</div>${grp('play', groupName('play'))}${grp('game', groupName('game'))}
+    <button type="button" class="btn" style="width:100%;margin-top:10px" data-act="resetorder">Reset order</button>`;
+}
+const groupName = (g) => ({ play: 'Play', game: 'This game' })[g];
+function moveItem(id, d) {
+  const key = id.startsWith('character:') ? 'chars-mine' : id, o = ST.order, i = o.indexOf(key), it = allItems().find((x) => x.id === id);
+  const same = o.filter((k) => { const x = allItems().find((y) => (y.id.startsWith('character:') ? 'chars-mine' : y.id) === k); return x && x.group === it.group; });
+  const j = same.indexOf(key) + d; if (j < 0 || j >= same.length) return;
+  const other = same[j], oi = o.indexOf(other); o[i] = other; o[oi] = key;
+}
+// drag by the six dots: the row follows the finger; where it is let go decides its place
+let drag = null;
+F.addEventListener('pointerdown', (ev) => { const g = ev.target.closest('.arow .grip'); if (!g) return; ev.preventDefault(); const li = g.closest('.arow');
+  drag = { li, id: li.dataset.aid, y0: ev.clientY, list: li.parentElement }; li.classList.add('dragging'); g.setPointerCapture?.(ev.pointerId); });
+F.addEventListener('pointermove', (ev) => { if (!drag) return; const sc = F.getBoundingClientRect().width / F.offsetWidth; drag.dy = (ev.clientY - drag.y0) / sc; drag.li.style.transform = `translateY(${drag.dy}px)`; });
+F.addEventListener('pointerup', () => { if (!drag) return; const rows = [...drag.list.children], h = drag.li.offsetHeight + 6, steps = Math.round((drag.dy ?? 0) / h);
+  for (let k = 0; k < Math.abs(steps); k++) moveItem(drag.id, Math.sign(steps)); drag = null; renderMenu(); });
+
 const SCREENS = {
-  root: () => ({ title: 'Menu', body: `${waitBox()}${ringNote()}${charRows()}
-    ${row({ b: fight() ? 'Turns' : 'Party', r: fight() ? (mine() ? 'Round 2 · you' : 'Round 2 · you in 3') : '5 in the party', go: 'turns', on: ST.path[0] === 'turns' })}
-    ${row({ b: 'Dice', s: 'Roll dice · last rolls · dice look', r: ST.dice.length ? `last: ${ST.dice[0].val}` : '', go: 'dice', on: ST.path[0] === 'dice' })}
-    ${row({ b: 'Log and chat', r: '2 new', go: 'log', on: ST.path[0] === 'log' })}
-    ${ST.handouts ? row({ b: 'Handouts', r: '1', go: 'handouts', on: ST.path[0] === 'handouts' }) : ''}
-    <div class="sec">Table</div>
-    ${row({ b: 'Setup', s: 'Look, the menu, controls, dice', go: 'setup', on: ST.path[0] === 'setup' })}
-    ${row({ b: 'DM tools', s: 'Shown to the DM only', go: 'dm', on: ST.path[0] === 'dm' })}
-    ${row({ b: 'Characters', s: 'Who plays whom, add, level up', go: 'chars' })}
-    ${row({ b: 'Packs', s: 'Homebrew this table uses', go: 'packs' })}
-    ${row({ b: 'Help and feedback', s: 'The die button, explained', go: 'help', on: ST.path[0] === 'help' })}
-    ${row({ b: 'About', go: 'about' })}
-    <div class="sec"></div>
-    ${row({ b: 'Leave the table', s: 'Your character stays with the DM', act: 'toast:Leave the table: asks first, then goes to the start page.' })}` }),
+  more: () => ({ title: 'More', body: `<div class="mgrid">${visibleItems().map((it) => `<button type="button" class="mtile" data-nav="${it.id}">${tileFace(it)}<span>${it.label}</span></button>`).join('')}</div>` }),
+  arrange: () => ({ title: 'Arrange the symbols', crumb: 'Setup', body: arrangeHtml() }),
 
   character: (id) => {
     const c = CH[id], b = ST.bar, down = id === 'wren' && ST.state === 'down', isMine = mine() && id === ST.sel;
@@ -514,7 +695,7 @@ const SCREENS = {
     <div class="say"><input aria-label="Say" placeholder="Say as Wren"><button type="button" class="btn go" data-act="toast:Said (the engine’s say action).">Send</button></div>` }),
   handouts: () => ({ title: 'Handouts', crumb: 'Menu', body: row({ b: 'A torn map', s: 'Shown by the DM', act: 'toast:The handout opens full screen.' }) }),
   setup: () => ({ title: 'Setup', crumb: 'Menu', body: `<div class="sec">Look</div>${seg('Theme', 'theme', [['classic', 'Classic'], ['sunlit', 'Sunlit'], ['pocket', 'Pocket']])}${seg('Health bars over creatures', 'bars', [['always', 'Always'], ['fight', 'In a fight'], ['never', 'Never']])}
-    <div class="sec">The menu</div>${seg('The menu token sits', 'token', [['left', 'Bottom left'], ['centre', 'Bottom centre'], ['right', 'Bottom right']])}${seg('Menus', 'motion', [['slide', 'Slide in and out'], ['appear', 'Just appear']])}
+    <div class="sec">The menu</div>${row({ b: 'Arrange the symbols', s: 'Their order, and which show', go: 'arrange' })}${seg('Labels under the symbols', 'alwaysLabels', [[false, 'After 3 seconds'], [true, 'Always']])}${seg('The menu token sits', 'token', [['left', 'Bottom left'], ['centre', 'Bottom centre'], ['right', 'Bottom right']])}${seg('Menus', 'motion', [['slide', 'Slide in and out'], ['appear', 'Just appear']])}
     ${seg('Open my character at the start of my turn', 'autoOpen', [[false, 'No'], [true, 'Yes']])}
     <div class="sec">Controls</div>${row({ b: 'Keys', r: 'WASD and arrows', act: 'toast:Keys: the presets of keyboard.md.' })}${seg('Camera buttons on the map', 'cam', [['off', 'Off'], ['on', 'On']])}
     <div class="sec">Dice and animation</div>${lookSetting()}${holdSetting()}${flickSetting()}${seg('Other players’ dice', 'others', [['party', 'In their party colour'], ['mine', 'Like mine']])}
@@ -527,7 +708,8 @@ const SCREENS = {
   packs: () => ({ title: 'Packs', crumb: 'Menu', body: '<div class="subtle">This table uses: SRD 5.2.1, and one homebrew pack the DM added.</div>' }),
   help: () => ({ title: 'Help and feedback', crumb: 'Menu', body: `<div class="sec">The die button</div>
     <div class="preview"><svg viewBox="0 0 68 68" width="68" height="68" aria-hidden="true"><circle cx="34" cy="34" r="31" fill="var(--panel-solid)" stroke="var(--line)"/><circle cx="34" cy="34" r="31" fill="none" stroke="var(--good)" stroke-width="4" pathLength="100" stroke-dasharray="75 100" transform="rotate(-90 34 34)"/></svg>
-    <div class="subtle" style="margin:0">The die button opens everything.<br><b>The ring round it</b> is your character’s health: full is green, below half it turns red.<br><b>A lit ring</b>: it is your turn.<br><b>A number</b>: something is waiting for you; open the menu to see what.<br><b>Greyed and crossed</b>: the link to the table is lost.<br><b>Press and hold</b>: Roll dice.</div></div>
+    <div class="subtle" style="margin:0">The die button opens everything.<br><b>The ring round it</b> is your character’s health: full is green, below half it turns red.<br><b>A lit ring</b>: it is your turn.<br><b>A number</b>: something is waiting for you; open the menu to see what.<br><b>Greyed and crossed</b>: the link to the table is lost.<br><b>Tap</b>: the symbols fan out round it. <b>Hold for a second</b>: it throws your last roll (a d20 at first), just for fun.</div></div>
+    <div class="sec">The symbols</div><div class="legend">${allItems().map((it) => `<div class="lg">${tileFace(it)}<span><b>${it.label}</b><small>${({ turns: 'Who acts when, and how everyone is', party: 'Who is in the party, and how they are', dice: 'Your last rolls, and how dice look', roll: 'Roll any dice, for fun or for the DM', log: 'What happened, and talking', handouts: 'What the DM has shown you', setup: 'How the game looks and behaves on this device', dm: 'The DM’s tools (the DM only)', chars: 'Who plays whom; adding and levelling characters', packs: 'Homebrew the table uses', help: 'This page', about: 'Credits and licences', leave: 'Leave this game' })[it.icon] ?? 'Your character: status, actions, inventory, sheet'}</small></span></div>`).join('')}</div>
     <div class="sec">Feedback</div><div class="subtle">(The feedback panel of feedback.md opens here.)</div>` }),
   about: () => ({ title: 'About', crumb: 'Menu', body: '<div class="subtle">The SRD 5.2 attribution, the licence, the credits, the version.</div>' }),
 };
@@ -611,39 +793,44 @@ function saveScroll() { $('levels').querySelectorAll('.level').forEach((el) => {
 function restoreScroll() { $('levels').querySelectorAll('.level').forEach((el) => { const b = el.querySelector('.lbody'); if (b && ST.scroll[el.dataset.id] != null) b.scrollTop = ST.scroll[el.dataset.id]; }); }
 function screenOf(id) { if (id.startsWith('character:')) return SCREENS.character(id.split(':')[1]); return (SCREENS[id] || SCREENS.root)(); }
 function renderMenu(animateNew) {
+  if (!ST.path.length) ST.path = ['character:' + ST.sel];
   saveScroll();
-  const lv = $('levels'), phone = ST.frame === 'phone';
-  const path = ['root', ...ST.path];
-  const show = phone ? path : path.slice(-3);
+  const lv = $('levels'), phone = ST.frame === 'phone', path = ST.path;
+  const show = phone ? path.slice(-1) : path.slice(-2);
+  const base = path[0];
   lv.innerHTML = path.map((id, i) => {
-    if (!phone && !show.includes(id)) return '';
-    const sc = screenOf(id);
-    const di = show.indexOf(id), w = id === 'root' ? 'w1' : (di === show.length - 1 && show.length === 3 ? 'w3' : 'w2');
+    if (!show.includes(id)) return '';
+    const sc = screenOf(id), last = i === path.length - 1;
     const isNew = animateNew === id;
-    const cls = phone ? (i === path.length - 1 ? (isNew && ST.motion !== 'appear' ? 'ahead' : '') : 'behind') : `${isNew && ST.motion !== 'appear' ? '' : 'shown'} ${w}${i === path.length - 1 ? ' cur' : ''}`;
-    const back = i > 0 && phone ? `<button type="button" class="back" data-back="1" aria-label="Back to ${sc.crumb}">‹ ${sc.crumb}</button>` : '';
+    const cls = phone ? (isNew && ST.motion !== 'appear' ? 'ahead' : '') : `${isNew && ST.motion !== 'appear' ? '' : 'shown'} ${i === 0 ? 'w2' : 'w3'}${last ? ' cur' : ''}`;
+    const back = i > 0 && phone ? `<button type="button" class="back" data-back="1" aria-label="Back to ${screenOf(path[i - 1]).title}">‹ ${screenOf(path[i - 1]).title}</button>` : '';
     return `<section class="level ${cls}" data-i="${i}" data-id="${id}" aria-labelledby="h-${i}">
-      <div class="lhead">${back}<h2 id="h-${i}" tabindex="-1">${sc.title}</h2>${i === path.length - 1 || phone ? '<button type="button" class="close" data-close="1" aria-label="Close the menu">×</button>' : ''}</div>
+      ${i === 0 || phone ? navStrip(base) : ''}
+      <div class="lhead">${back}<h2 id="h-${i}" tabindex="-1">${sc.title}</h2>${!phone && last ? '<button type="button" class="close" data-close="1" aria-label="Close menu">×</button>' : ''}</div>
       ${sc.fixed ?? ''}<div class="lbody">${sc.body}</div></section>`;
   }).join('');
   restoreScroll();
+  lv.querySelector('.ntile.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
   if (animateNew) requestAnimationFrame(() => requestAnimationFrame(() => lv.querySelectorAll('.level').forEach((el) => { el.classList.remove('ahead'); if (!phone) el.classList.add('shown'); })));
-  $('scrim').querySelector('.tip').textContent = phone ? 'Tap here to clear the menu' : 'Tap the map to clear the menu';
+  $('scrim').querySelector('.tip').textContent = phone ? 'Tap here to close' : 'Tap the map to close';
   const rf = $('rollfor'); if (rf) rf.oninput = () => { ST.rollFor = rf.value; };
 }
 function openMenu(on) {
   if (on && (ST.aiming || $('throwzone').classList.contains('open') || $('question').classList.contains('open'))) return;
+  if (on && ST.arcOpen) openArc(false);
   ST.open = on;
-  $('menu').classList.toggle('open', on); $('scrim').classList.toggle('on', on);
+  $('menu').classList.toggle('open', on); $('menu').style.transform = '';
+  $('scrim').classList.toggle('on', on); $('scrim').classList.remove('light');
   $('token').setAttribute('aria-expanded', String(on));
-  if (on) { renderMenu(ST.frame === 'desktop' ? 'root' : null); if (ST.frame === 'desktop') requestAnimationFrame(() => $('levels').querySelectorAll('.level').forEach((el) => el.classList.add('shown'))); }
+  if (on) { renderMenu(ST.frame === 'desktop' ? ST.path[0] : null); if (ST.frame === 'desktop') requestAnimationFrame(() => $('levels').querySelectorAll('.level').forEach((el) => el.classList.add('shown'))); focusLast(); }
   else if (ST.frame === 'desktop') $('levels').querySelectorAll('.level').forEach((el) => el.classList.remove('shown'));
   $('turnline').style.visibility = on ? 'hidden' : '';
 }
 function go(id) {
   if (id.startsWith('character:')) { ST.sel = id.split(':')[1]; ST.path = [id]; renderHud(); renderMenu(id); return focusLast(); }
   if (id.startsWith('g:')) { const base = ST.path.find((p) => p.startsWith('character:')) ?? 'character:' + ST.sel; ST.path = [base, id]; renderMenu(id); return focusLast(); }
-  if (SCREENS[id] && !id.startsWith('g:')) { ST.path = [id]; ST.scroll[id] = 0; renderMenu(id); return focusLast(); }
+  if (id === 'arrange') { ST.path = ['setup', 'arrange']; renderMenu('arrange'); return focusLast(); }
+  if (SCREENS[id]) { ST.path = [id]; ST.scroll[id] = 0; renderMenu(id); return focusLast(); }
 }
 function focusLast() { $('levels').querySelector('.level:last-child h2')?.focus({ preventScroll: true }); }
 
@@ -715,55 +902,106 @@ function bindFlick(d) {
 }
 function release(fl, forYou = false) {
   const ctx = throwCtx; if (!ctx) return; const W = F.offsetWidth, H = F.offsetHeight;
-  const from = fl?.from ?? { x: W / 2, y: H - 110 };
-  const v = fl ? { x: fl.vx, y: fl.vy } : { x: 0, y: -1400 };
+  const from = fl?.from ?? ctx.from ?? { x: W / 2, y: H - 110 };
+  const v = fl ? { x: fl.vx, y: fl.vy } : { x: (rnd() - .5) * 400, y: -1600 };
   closeThrow();
   // the engine's faces: with the rule "throw" the action is sent now and the faces come back a moment later (a made-up 180 ms)
   const faces = ctx.values ?? ctx.dice.map((sd) => engineDie(sd));
   const delay = ST.rule === 'auto' || ctx.known ? 0 : 180;
-  let done = 0; const els = [];
-  ctx.dice.slice(0, 12).forEach((sd, i) => {
-    const spread = (i - (ctx.dice.length - 1) / 2) * 110;
-    els.push(fly({ x: from.x + spread * .2, y: from.y }, { x: v.x + spread * 2.2, y: v.y * (1 - i * .05) }, fl?.spin ?? 2, sd, faces[i], delay, () => { if (++done === Math.min(12, ctx.dice.length)) settle(ctx, faces, forYou); }));
-  });
+  // one body per die; a d100 is two d10s, tens and units (dice.md section 5)
+  const bodies = [];
+  ctx.dice.forEach((sd, i) => { const f = faces[i];
+    if (sd === 100) { bodies.push({ sd: 10, label: String(f === 100 ? 0 : Math.floor(f / 10) * 10).padStart(2, '0'), pct: true }, { sd: 10, label: String(f % 10) }); }
+    else bodies.push({ sd, label: String(f) }); });
+  ctx.more = Math.max(0, bodies.length - 12);           // at most 12 dice on the board; the rest are a line under the title
+  simulate(bodies.slice(0, 12), from, v, fl?.spin ?? 2, delay, () => settle(ctx, faces, forYou));
 }
-// A die on a table: ease-out travel, two low hops of falling height, a tumble that slows, a small rock to rest. No squash or
-// stretch, no number in the air: the numerals come into view only as it slows, on the engine's face.
-function fly(from, v, spin, sides, target, delay, done) {
-  const L = $('dicelayer'), el = document.createElement('div'), sh = document.createElement('div'); el.className = 'fdie'; sh.className = 'shadow'; L.append(sh, el);
-  const W = F.offsetWidth, H = F.offsetHeight, top = ST.frame === 'phone' ? 290 : 250;
+// Dice on a table (round 3): each die is thrown on its own path, hops two or three times lower each time, rolls with friction,
+// glances off the sides and off the other dice, and stops where it stops. Dice that end up touching are nudged apart as they
+// settle. A resting die lies flat on the board (seen at the board's tilt) and turns so its number is upright; then the
+// numerals of its other faces fade and only the rolled number stays (dice.md 5.3).
+function simulate(bs, from, v, spin, delay, done) {
+  const L = $('dicelayer'), W = F.offsetWidth, H = F.offsetHeight, phone = ST.frame === 'phone';
+  const S = phone ? 50 : 58, R = S / 2 + 3;            // drawn size and the radius that keeps dice apart
+  const box = { x0: R + 8, x1: W - R - 8, y0: phone ? 215 : 205, y1: H - (phone ? 130 : 115) };
   const quick = ST.motion === 'appear' || matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const speed = Math.min(2600, Math.hypot(v.x, v.y)), T = quick ? .5 : .9 + Math.min(.4, speed / 6500);
-  const dist = Math.min(H - top - 150, 220 + speed * .22), dir = Math.atan2(Math.min(-300, v.y), v.x);
-  const end = { x: Math.max(50, Math.min(W - 50, from.x + Math.cos(dir) * dist)), y: Math.max(top, from.y + Math.sin(dir) * dist) };
-  const turns = (sides === 4 ? 1.2 : sides === 20 ? 3 : 2.2) * (1 + Math.min(2, Math.abs(spin)) * .3), sign = spin < 0 ? -1 : 1;
   let known = delay === 0; setTimeout(() => { known = true; }, delay);
-  const t0 = performance.now(); let extra = 0;
+  const g = 2600, fric = 1150, sp = Math.min(2600, Math.max(1000, Math.hypot(v.x, v.y))), dir = Math.atan2(Math.min(-500, v.y), v.x);
+  const next = (b) => ((Number(b.face) * 7 + 3) % b.sd) + 1;
+  bs.forEach((b) => {
+    const a = dir + (rnd() - .5) * .9, s = sp * (.42 + rnd() * .3);
+    Object.assign(b, { x: Math.max(box.x0, Math.min(box.x1, from.x + (rnd() - .5) * 40)), y: Math.min(from.y, box.y1), vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      z: 14, vz: 300 + rnd() * 220, ang: rnd() * 360, w: (spin >= 0 ? 1 : -1) * (520 + rnd() * 480) * (1 + Math.min(2, Math.abs(spin)) * .25), rolled: 0,
+      face: 1 + Math.floor(rnd() * b.sd), final: false, rest: false });
+    b.el = document.createElement('div'); b.el.className = 'fdie'; b.el.style.width = b.el.style.height = `${S}px`; b.el.style.margin = `${-S / 2}px 0 0 ${-S / 2}px`;
+    b.sh = document.createElement('div'); b.sh.className = 'shadow'; L.append(b.sh, b.el);
+  });
+  let last = performance.now(), phase = 'roll', t1 = 0, told = false;
+  const draw = (b, othersA = 1, topScale = 1) => {
+    const flat = .76 + .24 * Math.min(1, b.z / 26);                       // lying in the board's plane when down
+    b.el.style.left = `${b.x}px`; b.el.style.top = `${b.y - b.z}px`; b.el.style.transform = `scale(1, ${flat}) rotate(${b.ang}deg)`;
+    b.sh.style.left = `${b.x}px`; b.sh.style.top = `${b.y + S * .32}px`; b.sh.style.opacity = String(Math.max(.08, .32 - b.z / 260)); b.sh.style.transform = `scale(${1 + b.z / 90})`;
+    const spinning = Math.min(1, Math.abs(b.w) / 900);
+    const numA = b.rest ? 1 : Math.max(.18, 1 - spinning);                // the numerals blur while it spins fast
+    const lab = b.final ? b.label : (b.pct ? String((b.face % 10) * 10).padStart(2, '0') : String(b.face));
+    b.el.innerHTML = dieSvg(b.sd, lab, { numA, size: S * .5, others: othersOf(b, lab), othersA: othersA * numA, topScale });
+  };
   (function step(now) {
-    let t = (now - t0) / 1000;
-    if (!known && t > T) { extra = t - T; t = T * .97; }                 // a late reply: the die keeps rolling slowly on the board
-    const u = Math.min(1, t / T), e = 1 - Math.pow(1 - u, 3);            // ease-out: fast to slow
-    const x = from.x + (end.x - from.x) * e, y = from.y + (end.y - from.y) * e;
-    // two low hops, the second a third of the first, both in the first 60 % of the travel
-    const hop = u < .35 ? Math.sin(u / .35 * Math.PI) * 34 : u < .6 ? Math.sin((u - .35) / .25 * Math.PI) * 11 : 0;
-    const rot = sign * 360 * turns * e + (extra ? Math.sin(extra * 8) * 6 : 0);
-    const rock = u > .85 ? Math.sin((u - .85) / .15 * Math.PI * 2) * 6 * (1 - u) / .15 : 0;
-    const slow = 1 - e;                                                   // how fast it still turns
-    const numA = known ? Math.max(0, Math.min(1, (.22 - slow) / .18)) : 0;
-    el.style.left = `${x}px`; el.style.top = `${y - hop}px`; el.style.transform = `rotate(${rot + rock}deg)`;
-    sh.style.left = `${x}px`; sh.style.top = `${y + 30}px`; sh.style.opacity = String(.35 - hop / 200); sh.style.transform = `scale(${1 + hop / 60})`;
-    el.innerHTML = dieSvg(sides, sides === 100 ? (target === 100 ? '00' : String(Math.floor(target / 10) * 10).padStart(2, '0')) : target, { numA });
-    if (u < 1 || !known) requestAnimationFrame(step);
-    else { el.style.transform = `rotate(${Math.round(rot / 360) * 360}deg)`; el.style.transition = 'transform .25s ease-out'; done(el); }
-  })(t0);
-  return el;
+    const dt = Math.min(.033, (now - last) / 1000) * (quick ? 2.2 : 1); last = now;
+    if (phase === 'roll') {
+      for (const b of bs) {
+        if (b.rest) continue;
+        b.vz -= g * dt; b.z += b.vz * dt;
+        if (b.z <= 0) { b.z = 0; if (b.vz < -110) { b.vz = -b.vz * .36; b.vx *= .86; b.vy *= .86; b.w *= .8; } else b.vz = 0; }
+        let spd = Math.hypot(b.vx, b.vy);
+        if (b.z === 0 && b.vz === 0) { const dec = fric * dt; if (spd <= dec) { b.vx = b.vy = 0; spd = 0; } else { b.vx -= b.vx / spd * dec; b.vy -= b.vy / spd * dec; spd -= dec; } }
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        if (b.x < box.x0) { b.x = box.x0; b.vx = Math.abs(b.vx) * .5; } if (b.x > box.x1) { b.x = box.x1; b.vx = -Math.abs(b.vx) * .5; }
+        if (b.y < box.y0) { b.y = box.y0; b.vy = Math.abs(b.vy) * .5; } if (b.y > box.y1) { b.y = box.y1; b.vy = -Math.abs(b.vy) * .5; }
+        if (b.z === 0) b.w = Math.sign(b.w || 1) * Math.min(Math.abs(b.w), spd * 2.4 + 30);   // on the board it turns as fast as it rolls
+        b.ang += b.w * dt;
+        if (b.z === 0) { b.rolled += spd * dt; if (!b.final && b.rolled > S * 1.4) { b.rolled = 0; b.face = next(b); } }  // a new face up each roll over
+        if (known && spd < 160 && b.z === 0) b.final = true;               // the last roll over brings the engine's face up
+        if (known && b.final && spd < 6 && b.z === 0 && b.vz === 0) { b.rest = true; b.w = 0; }
+      }
+      // dice glance off one another; resting dice that touch are nudged apart gently
+      for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+        const a = bs[i], c = bs[j], dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || .01, min = 2 * R;
+        if (d >= min) continue;
+        const nx = dx / d, ny = dy / d, over = min - d;
+        if (a.rest && c.rest) { const k = Math.min(over, 3) / 2; a.x -= nx * k; a.y -= ny * k; c.x += nx * k; c.y += ny * k; }
+        else {
+          a.x -= nx * over / 2; a.y -= ny * over / 2; c.x += nx * over / 2; c.y += ny * over / 2;
+          const vn = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny;
+          if (vn < 0) { const jn = -(1 + .55) * vn / 2; a.vx -= jn * nx; a.vy -= jn * ny; c.vx += jn * nx; c.vy += jn * ny; if (Math.abs(jn) > 20) { a.rest = c.rest = false; } }
+        }
+      }
+      for (const b of bs) { b.x = Math.max(box.x0, Math.min(box.x1, b.x)); b.y = Math.max(box.y0, Math.min(box.y1, b.y)); draw(b); }
+      const apart = bs.every((a, i) => bs.every((c, j) => j <= i || Math.hypot(c.x - a.x, c.y - a.y) >= 2 * R - 1));
+      if (bs.every((b) => b.rest) && apart) { phase = 'align'; t1 = now; bs.forEach((b) => { b.a0 = b.ang; b.a1 = Math.round(b.ang / 360) * 360 + (rnd() - .5) * 14; }); }
+    } else {
+      // turn each die so its number is upright for the camera (a little jitter either way), then fade the other faces' numerals
+      const t = (now - t1) / 1000, u = Math.min(1, t / .3), e = 1 - Math.pow(1 - u, 3);
+      const f = quick ? .35 : .45, o = Math.max(0, Math.min(1, (t - .3 - .05) / f));
+      for (const b of bs) { b.ang = b.a0 + (b.a1 - b.a0) * e; draw(b, 1 - o, 1 + .14 * o); }
+      if (u >= 1 && !told) { told = true; done(); }
+      if (o >= 1) return;
+    }
+    requestAnimationFrame(step);
+  })(last);
+}
+// the numerals on the faces round the top one, seen from above (none on a d4 or a d6: their sides are not seen from above)
+const SIDES = { 8: [[-11, 1], [11, 1]], 10: [[-12, -4], [12, -4], [0, 13]], 12: [[0, -17], [15, -2], [-15, -2], [9, 14], [-9, 14]], 20: [[-12, -10], [12, -10], [0, 15], [-15, 6], [15, 6]] };
+function othersOf(b, lab) {
+  const pos = SIDES[b.sd] ?? [], n = Number(lab) || b.sd;
+  return pos.map(([x, y], i) => { let v = ((n + [5, 11, 17, 3, 9][i]) % b.sd) + 1; if (b.pct) v = String((v % 10) * 10).padStart(2, '0'); return { x, y, v }; });
 }
 let holdT;
 function settle(ctx, faces, forYou) {
   const L = $('dicelayer'); L.querySelector('.dtitle')?.remove();
   const total = faces.reduce((a, b) => a + b, 0) + (ctx.mod ?? 0);
   const tt = document.createElement('div'); tt.className = 'dtitle'; tt.style.borderLeftColor = sel().col;
-  tt.innerHTML = `<b>${ctx.title(faces, total)}</b><div class="res">${ctx.res(faces, total)}${forYou ? ' · Thrown for you' : ''}</div>${ctx.list ? ctx.list() : ''}${ST.hold === 'tap' ? '<div class="subtle" style="margin:4px 0 0">Tap to clear</div>' : `<div class="cd" id="cd"></div>`}`;
+  tt.innerHTML = `<b>${ctx.title(faces, total)}</b><div class="res">${ctx.res(faces, total)}${forYou ? ' · Thrown for you' : ''}</div>${ctx.more ? `<div class="subtle" style="margin:2px 0 0">+${ctx.more} more dice</div>` : ''}${ctx.list ? ctx.list() : ''}${ST.hold === 'tap' ? '<div class="subtle" style="margin:4px 0 0">Tap to clear</div>' : `<div class="cd" id="cd"></div>`}`;
   L.appendChild(tt); L.style.pointerEvents = 'auto';
   ST.dice.unshift({ val: ctx.dice.length > 1 || ctx.mod ? total : faces[0], title: ctx.title(faces, total), res: ctx.res(faces, total), col: sel().col, plain: !!ctx.plain, log: ctx.plain ? ctx.log(faces, total) : '' });
   ctx.after?.(faces);
@@ -814,8 +1052,8 @@ F.addEventListener('click', (ev) => {
   if (b.dataset.go) { if (b.closest('.turnline')) { ST.path = ['turns']; openMenu(true); return; } return go(b.dataset.go); }
   const a = b.dataset.act;
   if (a.startsWith('toast:')) return toast(a.slice(6));
-  if (a === 'seen') { ST.seenRing = true; return renderMenu(); }
-  if (a.startsWith('wait:')) { const w = ST.waiting.splice(Number(a.slice(5)), 1)[0]; renderHud(); return go(w.go); }
+  if (a === 'seen') { ST.seenRing = true; if (ST.arcOpen) { $('arc').querySelector('.arccards')?.remove(); if (ST.waiting.length) openArc(true); return; } return renderMenu(); }
+  if (a.startsWith('wait:')) { const w = ST.waiting.splice(Number(a.slice(5)), 1)[0]; if (ST.arcOpen) openArc(false); ST.path = [w.go]; renderHud(); return openMenu(true); }
   if (a.startsWith('add:')) { const sd = a.slice(4);
     if (ev.shiftKey) return subDie(sd);                                     // Shift+click takes one away
     if (diceCount() >= 20) return toast('At most 20 dice in one roll.');
@@ -824,7 +1062,8 @@ F.addEventListener('click', (ev) => {
   if (a === 'modzero') { ST.mod = 0; return renderMenu(); }
   if (a === 'clearpick') { ST.pick = {}; ST.mod = 0; return renderMenu(); }
   if (a.startsWith('mod:')) { ST.mod = Math.max(-10, Math.min(10, ST.mod + Number(a.slice(4)))); return renderMenu(); }
-  if (a === 'rollpick') return rollPicked();
+  if (a === 'rollpick') { ST.lastPool = { pick: { ...ST.pick }, mod: ST.mod }; return rollPicked(); }
+  if (a === 'resetorder') { ST.order = [...DEFAULT_ORDER]; ST.hiddenItems.clear(); toast('Order reset.'); return renderMenu(); }
   if (a === 'aim') return aim();
   if (a === 'firebolt') return fireBolt();
   if (a === 'cancelaim') return endAim();
@@ -834,24 +1073,51 @@ F.addEventListener('click', (ev) => {
   if (a === 'endturn') { ST.state = 'other'; openMenu(false); syncMock(); renderHud(); return toast('Turn ended. Goblin Warrior 2’s turn.'); }
   if (a.startsWith('answer:')) { $('question').classList.remove('open'); $('qscrim').hidden = true; if (a === 'answer:Shield') ST.bar.reaction = false; renderHud(); return toast(a === 'answer:Shield' ? 'Shield: AC 17 until your next turn. The hit misses.' : 'You did not react.'); }
 });
-// the token: a tap opens (the first level when something waits); a press and hold opens Roll dice
+// the token: a quick tap fans the symbols out round it (or closes what is open); held for a second it throws your last roll
 let pressT = null, pressed = false;
-$('token').addEventListener('pointerdown', () => { pressed = false; pressT = setTimeout(() => { pressed = true; ST.path = ['dice']; ST.scroll.dice = 0; if (!ST.open) openMenu(true); else renderMenu(); toast('Roll dice'); }, 500); });
+$('token').addEventListener('pointerdown', () => { pressed = false; clearTimeout(pressT); $('token').classList.remove('lift');
+  pressT = setTimeout(() => { pressed = true; $('token').classList.add('lift'); quickRoll(); setTimeout(() => $('token').classList.remove('lift'), 300); }, 1000); });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach((e) => $('token').addEventListener(e, () => clearTimeout(pressT)));
+$('token').addEventListener('contextmenu', (ev) => ev.preventDefault());
 $('token').addEventListener('click', (ev) => {
   ev.stopPropagation(); if (pressed) { pressed = false; return; }
   if (ST.open) return openMenu(false);
-  if (ST.waiting.length || !ST.seenRing) ST.path = [];
-  else if (!ST.path.length) ST.path = ['character:' + ST.sel];
-  openMenu(true);
+  openArc(!ST.arcOpen);
 });
-$('scrim').addEventListener('click', () => openMenu(false));
-$('handle').addEventListener('click', () => openMenu(false));
+function quickRoll() {
+  if (ST.open) openMenu(false); if (ST.arcOpen) openArc(false);
+  const pool = ST.lastPool ?? { pick: { 20: 1 }, mod: 0 }, dice = [];
+  for (const [sd, n] of Object.entries(pool.pick)) for (let i = 0; i < n; i++) dice.push(Number(sd));
+  const txt = Object.entries(pool.pick).map(([sd, n]) => `${n}d${sd}`).join(' + ') + (pool.mod ? ` ${pool.mod > 0 ? '+' : '−'} ${Math.abs(pool.mod)}` : '');
+  const t = $('token').getBoundingClientRect(), f = F.getBoundingClientRect(), sc = f.width / F.offsetWidth;
+  throwCtx = { dice, mod: pool.mod, plain: true, known: true, from: { x: (t.left + t.width / 2 - f.left) / sc, y: (t.top - f.top) / sc },
+    title: () => `You (Wren): ${txt} · just for fun`, res: (fs, tot) => `${fs.join(', ')}${pool.mod ? ` ${pool.mod > 0 ? '+' : '−'} ${Math.abs(pool.mod)}` : ''} = ${tot}`,
+    log: (fs, tot) => `Wren rolls ${txt} for fun: ${fs.join(', ')} = <b>${tot}</b>. (Seen by you and the DM.)` };
+  release(null);
+}
+$('scrim').addEventListener('click', () => { if (ST.arcOpen) openArc(false); openMenu(false); });
+// the grab handle closes the sheet: a tap, or a drag down past 60 px or a quick flick
+let hd = null;
+$('handle').addEventListener('pointerdown', (ev) => { hd = { y: ev.clientY, t: performance.now(), dy: 0 }; $('handle').setPointerCapture?.(ev.pointerId); $('menu').style.transition = 'none'; });
+$('handle').addEventListener('pointermove', (ev) => { if (!hd) return; const sc = F.getBoundingClientRect().width / F.offsetWidth; hd.dy = Math.max(0, (ev.clientY - hd.y) / sc); $('menu').style.transform = `translateY(${hd.dy}px)`; });
+$('handle').addEventListener('pointerup', () => { if (!hd) return; const fast = hd.dy / Math.max(1, performance.now() - hd.t) > .5; $('menu').style.transition = '';
+  const close = hd.dy < 6 || hd.dy > 60 || fast; hd = null; $('menu').style.transform = ''; if (close) openMenu(false); });
 $('map').addEventListener('click', () => { if (ST.aiming) { ST.aiming.locked = true; drawMap(); aimBar(); } });
+// arc and strip taps; a press and hold on a symbol in the arc opens Arrange
+let arcHold = null, arcHeld = false;
+F.addEventListener('pointerdown', (ev) => { const t = ev.target.closest('[data-arc]'); if (!t) return; arcHeld = false; clearTimeout(arcHold);
+  arcHold = setTimeout(() => { arcHeld = true; openArc(false); ST.path = ['setup', 'arrange']; openMenu(true); }, 500); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach((e) => F.addEventListener(e, () => clearTimeout(arcHold)));
+F.addEventListener('click', (ev) => {
+  const a = ev.target.closest('[data-arc]'); if (a) { if (arcHeld) { arcHeld = false; return; } return pickPlace(a.dataset.arc); }
+  const n = ev.target.closest('[data-nav]'); if (n) { const id = n.dataset.nav; if (id === 'leave') return toast('Leave the table? (asks first, then goes to the start page)'); return go(id === 'roll' ? 'dice' : id); }
+  const m = ev.target.closest('[data-move]'); if (m) { const [id, d] = m.dataset.move.split(/:(?=-?\d$)/); moveItem(id, Number(d)); return renderMenu(); }
+  const h = ev.target.closest('[data-hide]'); if (h) { const id = h.dataset.hide; ST.hiddenItems.has(id) ? ST.hiddenItems.delete(id) : ST.hiddenItems.add(id); return renderMenu(); }
+});
 document.addEventListener('keydown', (ev) => {
   if (ev.target.matches('input')) return;
-  if (ev.key === 'm' || ev.key === 'M') { if (!ST.path.length && !ST.waiting.length) ST.path = ['character:' + ST.sel]; openMenu(!ST.open); }
-  else if (ev.key === 'Escape') { if (ST.aiming) endAim(); else openMenu(false); }
+  if (ev.key === 'm' || ev.key === 'M') { if (ST.open) openMenu(false); else openArc(!ST.arcOpen); }
+  else if (ev.key === 'Escape') { if (ST.aiming) endAim(); else if (ST.arcOpen) openArc(false); else openMenu(false); }
   else if ((ev.key === 'Backspace' || ev.key === 'ArrowLeft') && ST.open && ST.path.length > 1) { ST.path.pop(); renderMenu(); }
 });
 
@@ -870,12 +1136,21 @@ document.getElementById('mock').addEventListener('click', (ev) => {
   if (b.dataset.do === 'initiative') initiative();
   if (b.dataset.do === 'handout') addHandout();
   if (b.dataset.do === 'hit') hit();
+  if (b.dataset.do === 'arc') { if (ST.open) openMenu(false); openArc(true); }
+  if (b.dataset.do === 'hold') quickRoll();
+  if (b.dataset.do === 'symbols') symbols(!document.getElementById('symbols').hidden ? false : true);
 });
+function symbols(on) {
+  const el = document.getElementById('symbols'); el.hidden = !on; if (!on) return;
+  const ids = ['setup', 'dm', 'chars', 'packs', 'turns', 'party', 'dice', 'roll', 'log', 'handouts', 'help', 'about', 'leave', 'more', 'grip'];
+  const names = { setup: 'Setup (gear)', dm: 'DM tools (wrench)', chars: 'Characters (meeples)', packs: 'Packs (a strapped tome)', turns: 'Turns (crossed swords)', party: 'Party (campfire)', dice: 'Dice (a d20)', roll: 'Roll dice (two dice)', log: 'Log and chat (a speech bubble)', handouts: 'Handouts (a scroll)', help: 'Help', about: 'About', leave: 'Leave (a door)', more: 'More', grip: 'Arrange (six dots)' };
+  el.innerHTML = `<div class="symhead"><b>The symbols, in the three themes</b><button type="button" onclick="symbols(false)">Close</button></div><div class="symcols">${['classic', 'sunlit', 'pocket'].map((th) => `<div class="frame symtheme" data-theme="${th}"><h3>${({ classic: 'Classic Tabletop', sunlit: 'Sunlit Wilds', pocket: 'Pocket Meadow' })[th]}</h3><div class="symgrid">${`<div class="sym"><span class="atile static">${sigil(CH.wren)}</span><small>Your character (its sigil, with the health ring)</small></div>` + ids.map((id) => `<div class="sym"><span class="atile static">${ico(id)}</span><small>${names[id]}</small></div>`).join('')}</div></div>`).join('')}</div>`;
+}
 function fit() { const W = ST.frame === 'phone' ? 390 : 1280, H = ST.frame === 'phone' ? 844 : 800; const s = Math.min(1, innerWidth / W, innerHeight / H); F.style.transform = s < 1 ? `scale(${s})` : ''; }
 addEventListener('resize', fit);
 (function fromHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  for (const k of ['theme', 'frame', 'state', 'motion', 'rule', 'hold', 'chars', 'look']) if (h.get(k)) ST[k] = h.get(k);
+  for (const k of ['theme', 'frame', 'state', 'motion', 'rule', 'hold', 'chars', 'look', 'token']) if (h.get(k)) ST[k] = h.get(k);
   if (!h.get('frame') && innerWidth >= 900) ST.frame = 'desktop';
   if (h.has('bare')) document.body.classList.add('bare');
   if (h.has('seen')) ST.seenRing = true;
@@ -885,16 +1160,19 @@ addEventListener('resize', fit);
   if (h.has('hit')) hit();
   const open = h.get('open');
   if (open) {
-    const m = { root: [], character: ['character:wren'], cast: ST.frame === 'desktop' ? ['character:wren', 'g:cast'] : ['character:wren'], story: ['character:wren'] }[open] ?? [open];
+    if (open === 'root') { openArc(true); }
+    const m = { root: [], arrange: ['setup', 'arrange'], character: ['character:wren'], cast: ST.frame === 'desktop' ? ['character:wren', 'g:cast'] : ['character:wren'], story: ['character:wren'] }[open] ?? [open];
     if (open === 'cast' && ST.frame === 'phone') ST.folds.add('g:cast');
     if (open === 'story') { ST.folds.add('g:story'); }
-    ST.path = m; const keep = ST.motion; ST.motion = 'appear'; F.classList.add('appear'); openMenu(true); ST.motion = keep; renderMenu();
+    if (open !== 'root') { ST.path = m; } const keep = ST.motion; if (open === 'root') ST.motion = keep; else { ST.motion = 'appear'; F.classList.add('appear'); openMenu(true); ST.motion = keep; renderMenu(); }
     if (open === 'story') { const b = $('levels').querySelector('.level:last-child .lbody'); b.scrollTop = b.scrollHeight; }
     setTimeout(() => { F.classList.toggle('appear', ST.motion === 'appear'); }, 50);
   }
   if (h.get('prompt') === 'reaction') reaction();
   if (h.get('prompt') === 'initiative') initiative();
   if (h.get('prompt') === 'aim') aim();
+  if (h.has('arc')) { openArc(true); if (h.has('labels')) { ST.labelsShown = true; $('arc').classList.add('labels'); } }
+  if (h.has('symbols')) symbols(true);
 })();
 </script>
 </body>
