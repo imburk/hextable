@@ -318,6 +318,28 @@ body.bare #mock { display: none; }
 .symtheme h3 { margin: 0 0 10px; font: 700 16px var(--display); }
 .symgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .sym { display: flex; align-items: center; gap: 10px; } .sym small { color: var(--ink); font-size: 12px; }
+.token { z-index: 48; }
+.frame.phone .menu { padding-bottom: 92px; }
+.lbody.acchost > .acc { flex: 1 1 auto; }
+.frame.desktop .lbody { padding-bottom: 100px; }
+.lbody.acchost { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 6px; }
+.frame.desktop .lbody.acchost { padding-bottom: 6px; }
+.acc { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.acc-top, .acc-bot { flex: none; }
+.acc-body { flex: 1 1 auto; min-height: 120px; overflow: auto; padding: 4px 6px 10px; border-left: 2px solid var(--accent); margin: 2px 0 6px 6px; overscroll-behavior: contain; }
+.acchead { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; text-align: left; padding: 6px 12px; margin: 3px 0; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--radius); }
+.acchead .t { flex: 1; } .acchead .t b { display: block; } .acchead .t small { display: block; color: var(--muted); font-size: 12px; }
+.acchead .chev { color: var(--muted); font-size: 20px; transition: transform .3s; }
+.acchead.compact { min-height: 44px; padding: 2px 12px; margin: 2px 0; } .acchead.compact small { display: none; }
+.acchead.on { border-color: var(--accent); } .acchead.on .chev { transform: rotate(90deg); }
+.btn.bad { background: var(--bad); color: #fff; border-color: var(--bad); font-weight: 700; }
+.acts2 { display: flex; gap: 8px; margin-top: 8px; } .acts2 .btn { flex: 1; min-height: 48px; }
+.navwrap { position: relative; flex: none; display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+.navwrap .navstrip { flex: 1; border-bottom: 0; }
+.nscroll { flex: none; width: 32px; min-height: 48px; border: 0; background: var(--panel-solid); color: var(--accent); font-size: 26px; font-weight: 700; padding: 0; z-index: 1; }
+.nscroll.left { box-shadow: 6px 0 8px -4px #0007; } .nscroll.right { box-shadow: -6px 0 8px -4px #0007; }
+.ntile { position: relative; }
+.ntile .abadge { top: 0; right: 0; }
 </style>
 </head>
 <body>
@@ -329,6 +351,7 @@ body.bare #mock { display: none; }
     <div class="grp"><b>State</b><button data-k="state" data-v="explore">Exploring</button><button data-k="state" data-v="other">Another's turn</button><button data-k="state" data-v="mine">My turn</button><button data-k="state" data-v="down">Down</button></div>
     <div class="grp"><b>Plays</b><button data-k="chars" data-v="one">One character</button><button data-k="chars" data-v="familiar">Wren + familiar</button><button data-k="chars" data-v="solo">Solo party</button></div>
     <div class="grp"><b>Arrives</b><button data-do="handout">A handout</button><button data-do="hit">Wren is hit</button><button data-do="reaction">A reaction question</button><button data-do="initiative">Initiative</button></div>
+    <div class="grp"><b>Role</b><button data-k="role" data-v="player">Player</button><button data-k="role" data-v="dm">DM</button></div>
     <div class="grp"><b>Menu</b><button data-do="arc">Tap the die</button><button data-do="hold">Hold the die</button><button data-do="symbols">Symbols</button><button data-k="token" data-v="left">Die left</button><button data-k="token" data-v="centre">centre</button><button data-k="token" data-v="right">right</button></div>
     <div class="grp"><b>Motion</b><button data-k="motion" data-v="slide">Slide</button><button data-k="motion" data-v="appear">Just appear</button></div>
     <div class="grp"><b>Dice rule</b><button data-k="rule" data-v="auto">auto</button><button data-k="rule" data-v="throw">throw</button></div>
@@ -372,11 +395,11 @@ body.bare #mock { display: none; }
 'use strict';
 const $ = (id) => document.getElementById(id);
 const F = $('frame');
-const DEFAULT_ORDER_INIT = ['chars-mine', 'turns', 'dice', 'roll', 'log', 'handouts', 'setup', 'dm', 'chars', 'packs', 'help', 'about', 'leave'];
+const DEFAULT_ORDER_INIT = ['chars-mine', 'turns', 'roll', 'log', 'dm', 'setup'];
 const ST = { frame: 'phone', theme: 'classic', state: 'mine', motion: 'slide', rule: 'auto', hold: '3', token: 'centre', path: [], open: false,
   aiming: null, dice: [], bar: { action: true, bonus: true, move: 30, reaction: true }, initShown: true, autoOpen: false, flick: true,
   chars: 'familiar', sel: 'wren', waiting: [], seenRing: false, folds: new Set(), scroll: {}, look: 'tblue', dieCol: 'red', numCol: 'yellow',
-  pick: { 20: 1 }, mod: 0, rollTo: 'table', rollFor: '', bars: 'always', foeHealth: 'rough', order: [...DEFAULT_ORDER_INIT], hiddenItems: new Set(), alwaysLabels: false, arcOpen: false, lastPool: null };
+  pick: { 20: 1 }, mod: 0, rollTo: 'table', rollFor: '', bars: 'always', foeHealth: 'rough', order: [...DEFAULT_ORDER_INIT], hiddenItems: new Set(), alwaysLabels: false, arcOpen: false, lastPool: null, role: 'player', accOpen: null, leaveAsk: false, floors: 'rooms' };
 
 // ---------- made-up creatures ----------
 const CH = {
@@ -535,23 +558,16 @@ const ico = (id, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-
 // The places, as data: id, words, symbol, group, and whether it may be hidden (Decision 4c)
 function allItems() {
   const items = [];
-  for (const id of mineList()) { const c = CH[id]; items.push({ id: 'character:' + id, label: c.name, sub: c.master ? c.sub : `${c.sub}`, char: c, group: 'play', fixed: true, why: 'Your character is how you play.' }); }
-  items.push({ id: 'turns', label: fight() ? 'Turns' : 'Party', icon: fight() ? 'turns' : 'party', group: 'play' });
-  items.push({ id: 'dice', label: 'Dice', icon: 'dice', group: 'play' });
-  items.push({ id: 'roll', label: 'Roll dice', icon: 'roll', group: 'play', go: 'dice' });
-  items.push({ id: 'log', label: 'Log and chat', icon: 'log', group: 'play', badge: 2 });
-  if (ST.handouts) items.push({ id: 'handouts', label: 'Handouts', icon: 'handouts', group: 'play', badge: ST.waiting.length ? 1 : 0 });
-  items.push({ id: 'setup', label: 'Setup', icon: 'setup', group: 'game', fixed: true, why: 'Setup is where hidden symbols come back.' });
-  items.push({ id: 'dm', label: 'DM tools', icon: 'dm', group: 'game', why: '' });
-  items.push({ id: 'chars', label: 'Characters', icon: 'chars', group: 'game' });
-  items.push({ id: 'packs', label: 'Packs', icon: 'packs', group: 'game' });
-  items.push({ id: 'help', label: 'Help', icon: 'help', group: 'game', fixed: true, why: 'Help explains every symbol, hidden ones too.' });
-  items.push({ id: 'about', label: 'About', icon: 'about', group: 'game' });
-  items.push({ id: 'leave', label: 'Leave', icon: 'leave', group: 'game', fixed: true, why: 'Leaving must always be possible.' });
+  for (const id of mineList()) { const c = CH[id]; items.push({ id: 'character:' + id, label: c.name, sub: c.sub, char: c, fixed: true, why: 'Your character is how you play.' }); }
+  items.push({ id: 'turns', label: fight() ? 'Turns' : 'Party', icon: fight() ? 'turns' : 'party' });
+  items.push({ id: 'roll', label: 'Roll dice', icon: 'roll' });
+  items.push({ id: 'log', label: 'Log and chat', icon: 'log', badge: ST.waiting.length ? ST.waiting.length : 0 });
+  if (ST.role === 'dm') items.push({ id: 'dm', label: 'DM tools', icon: 'dm' });
+  items.push({ id: 'setup', label: 'Setup', icon: 'setup', fixed: true, why: 'Setup is where hidden symbols come back, and where you leave the table.' });
   const ord = (it) => { const i = ST.order.indexOf(it.id.startsWith('character:') ? 'chars-mine' : it.id); return i < 0 ? 99 : i; };
-  return items.sort((a, b) => (a.group === b.group ? 0 : a.group === 'play' ? -1 : 1) || ord(a) - ord(b) || 0);
+  return items.sort((a, b) => ord(a) - ord(b));
 }
-const DEFAULT_ORDER = ['chars-mine', 'turns', 'dice', 'roll', 'log', 'handouts', 'setup', 'dm', 'chars', 'packs', 'help', 'about', 'leave'];
+const DEFAULT_ORDER = ['chars-mine', 'turns', 'roll', 'log', 'dm', 'setup'];
 const visibleItems = () => allItems().filter((it) => !ST.hiddenItems.has(it.id));
 const tileFace = (it, size = 26) => it.char ? sigil(it.char) : ico(it.icon);
 
@@ -567,8 +583,8 @@ function arcLayout() {
   const t = $('token').getBoundingClientRect(), f = F.getBoundingClientRect(), sc = f.width / W;
   const cx = (t.left + t.width / 2 - f.left) / sc, cy = (t.top + t.height / 2 - f.top) / sc;
   const corner = ST.token !== 'centre';
-  const rings = phone ? (corner ? [{ rx: 118, ry: 118, n: 3 }, { rx: 196, ry: 196, n: 5 }, { rx: 274, ry: 274, n: 7 }] : [{ rx: 112, ry: 142, n: 6 }, { rx: 165, ry: 252, n: 8 }])
-    : (corner ? [{ rx: 130, ry: 130, n: 4 }, { rx: 215, ry: 215, n: 6 }, { rx: 300, ry: 300, n: 8 }] : [{ rx: 175, ry: 175, n: 8 }, { rx: 290, ry: 290, n: 11 }]);
+  const rings = phone ? (corner ? [{ rx: 124, ry: 124, n: 4 }, { rx: 204, ry: 204, n: 6 }] : [{ rx: 128, ry: 150, n: 7 }, { rx: 165, ry: 252, n: 8 }])
+    : (corner ? [{ rx: 135, ry: 135, n: 4 }, { rx: 220, ry: 220, n: 6 }] : [{ rx: 160, ry: 160, n: 8 }, { rx: 270, ry: 270, n: 11 }]);
   const span = corner ? (ST.token === 'left' ? [88, 2] : [178, 92]) : [168, 12];      // degrees: 0 = right, 90 = straight up
   return { cx, cy, rings, span, phone };
 }
@@ -605,7 +621,7 @@ function openArc(on) {
 function pickPlace(id) {
   if (id === 'leave') { openArc(false); return toast('Leave the table? (asks first, then goes to the start page)'); }
   if (id.startsWith('more:')) { openArc(false); ST.path = ['more']; return openMenu(true); }
-  const target = id === 'roll' ? 'dice' : id;
+  const target = id === 'roll' ? 'dice' : id;   // Roll dice opens the Roll dice screen (id 'dice')
   openArc(false); ST.path = []; if (target === 'dice') ST.scroll.dice = 0;
   if (target.startsWith('character:')) ST.sel = target.split(':')[1];
   ST.path = [target]; renderHud(); openMenu(true);
@@ -614,9 +630,12 @@ function pickPlace(id) {
 // ---------- the strip of symbols across the top of every screen: the way between places (Decision 4c) ----------
 function navStrip(cur) {
   const items = visibleItems();
-  return `<nav class="navstrip${ST.alwaysLabels ? ' labels' : ''}" aria-label="Places">${items.map((it) => { const id = it.id === 'roll' ? 'dice' : it.id, on = id === cur && it.id !== 'roll';
-    return `<button type="button" class="ntile${on ? ' on' : ''}" data-nav="${it.id}" ${on ? 'aria-current="page"' : ''} aria-label="${it.label}" title="${it.label}">${tileFace(it)}<span class="nlab">${it.label}</span></button>`; }).join('')}</nav>`;
+  return `<div class="navwrap"><button type="button" class="nscroll left" data-scroll="-1" aria-label="More symbols to the left" hidden>‹</button><nav class="navstrip${ST.alwaysLabels ? ' labels' : ''}" aria-label="Places">${items.map((it) => { const id = it.id === 'roll' ? 'dice' : it.id, on = id === cur;
+    return `<button type="button" class="ntile${on ? ' on' : ''}" data-nav="${it.id}" ${on ? 'aria-current="page"' : ''} aria-label="${it.label}" title="${it.label}">${tileFace(it)}${it.badge ? `<span class="abadge">${it.badge}</span>` : ''}<span class="nlab">${it.label}</span></button>`; }).join('')}</nav><button type="button" class="nscroll right" data-scroll="1" aria-label="More symbols to the right" hidden>›</button></div>`;
 }
+// ‹ › appear only when the strip does not fit, and only on the side where there is more
+function stripArrows() { document.querySelectorAll('.navwrap').forEach((w) => { const n = w.querySelector('.navstrip'), more = n.scrollWidth > n.clientWidth + 1;
+  w.querySelector('.left').hidden = !more || n.scrollLeft < 2; w.querySelector('.right').hidden = !more || n.scrollLeft + n.clientWidth > n.scrollWidth - 2; n.onscroll = stripArrows; }); }
 
 // ---------- Arrange: the order and what shows, per device ----------
 function arrangeHtml() {
@@ -624,14 +643,13 @@ function arrangeHtml() {
   const rowOf = (it) => `<li class="arow${ST.hiddenItems.has(it.id) ? ' off' : ''}" data-aid="${it.id}"><span class="grip" aria-hidden="true">${ico('grip')}</span><span class="aface">${tileFace(it)}</span><span class="t"><b>${it.label}</b>${it.fixed ? `<small>Always shown: ${it.why}</small>` : ''}</span>
     <button type="button" class="aup" data-move="${it.id}:-1" aria-label="Move ${it.label} earlier">▲</button><button type="button" class="aup" data-move="${it.id}:1" aria-label="Move ${it.label} later">▼</button>
     ${it.fixed ? '' : `<button type="button" class="aeye" data-hide="${it.id}" aria-pressed="${ST.hiddenItems.has(it.id)}" aria-label="${ST.hiddenItems.has(it.id) ? 'Show' : 'Hide'} ${it.label}">${ico(ST.hiddenItems.has(it.id) ? 'eyeoff' : 'eye')}</button>`}</li>`;
-  const grp = (g, name) => `<div class="sec">${name}</div><ol class="alist" data-group="${g}">${items.filter((i) => i.group === g).map(rowOf).join('')}</ol>`;
-  return `<div class="subtle">Drag a row by its six dots, or use ▲ ▼. The eye hides a symbol from the arc and the strip. Kept on this device.</div>${grp('play', groupName('play'))}${grp('game', groupName('game'))}
+  return `<div class="subtle">Drag a row by its six dots, or use ▲ ▼. The eye hides a symbol from the arc and the strip. Kept on this device.</div><ol class="alist" data-group="all">${items.map(rowOf).join('')}</ol>
     <button type="button" class="btn" style="width:100%;margin-top:10px" data-act="resetorder">Reset order</button>`;
 }
 const groupName = (g) => ({ play: 'Play', game: 'This game' })[g];
 function moveItem(id, d) {
-  const key = id.startsWith('character:') ? 'chars-mine' : id, o = ST.order, i = o.indexOf(key), it = allItems().find((x) => x.id === id);
-  const same = o.filter((k) => { const x = allItems().find((y) => (y.id.startsWith('character:') ? 'chars-mine' : y.id) === k); return x && x.group === it.group; });
+  const key = id.startsWith('character:') ? 'chars-mine' : id, o = ST.order, i = o.indexOf(key);
+  const same = o.filter((k) => allItems().some((y) => (y.id.startsWith('character:') ? 'chars-mine' : y.id) === k));
   const j = same.indexOf(key) + d; if (j < 0 || j >= same.length) return;
   const other = same[j], oi = o.indexOf(other); o[i] = other; o[oi] = key;
 }
@@ -690,21 +708,15 @@ const SCREENS = {
       return `<div class="trow${cur ? ' cur' : ''}${o.side === 'foe' ? ' foe' : ''}" ${cur ? 'aria-current="step"' : ''}><span class="init">${init}</span><span class="n"><b>${o.n}</b>${o.you ? '<small>You</small>' : ''}</span><span class="h">${o.hp}</span></div>`; }).join('')}</div>
     <div class="subtle">A tap on a row selects that creature and shows it on the map; on a phone it also clears the menu.</div>` }),
 
-  dice: () => ({ title: 'Dice', crumb: 'Menu', body: `<div class="sec">Roll dice</div>${rollPicker()}
+  dice: () => ({ title: 'Roll dice', crumb: 'Menu', body: `${rollPicker()}
     <div class="sec">Last rolls</div>
     ${ST.dice.length ? ST.dice.slice(0, 20).map((d) => `<div class="roll" style="border-left-color:${d.col}"><span class="t"><b>${d.title}</b><small>${d.res}</small></span><span class="faces">${d.val}</span></div>`).join('') : '<div class="subtle">No rolls yet.</div>'}
-    <div class="sec">How dice look and stay</div>${lookSetting()}${holdSetting()}${flickSetting()}` }),
-  log: () => ({ title: 'Log and chat', crumb: 'Menu', body: `<div class="seg"><button type="button" class="on">All</button><button type="button">Talk</button><button type="button">Rolls</button></div>
+    ${row({ b: 'How dice look and how long they stay', s: 'In Setup, under Dice', act: 'setupdice' })}` }),
+  log: () => ({ title: 'Log and chat', crumb: 'Menu', body: `${ST.handouts ? `<div class="sec">Handouts</div>${row({ b: 'A torn map', s: 'Shown by the DM', act: 'toast:The handout opens full screen.' })}<div class="sec">Log</div>` : ''}<div class="seg"><button type="button" class="on">All</button><button type="button">Talk</button><button type="button">Rolls</button></div>
     <ol class="log"><li><b>Fight 1 · The valley · Round 2</b></li><li>Odessa’s Sacred Flame: Goblin Warrior 3 succeeds on its save.</li><li>Wolf 1 bites Tavin: 5 piercing.</li>${ST.dice.filter((d) => d.plain).slice(0, 3).map((d) => `<li>${d.log}</li>`).join('')}<li><i>Pip (out of character): brb, snacks</i></li></ol>
     <div class="say"><input aria-label="Say" placeholder="Say as Wren"><button type="button" class="btn go" data-act="toast:Said (the engine’s say action).">Send</button></div>` }),
   handouts: () => ({ title: 'Handouts', crumb: 'Menu', body: row({ b: 'A torn map', s: 'Shown by the DM', act: 'toast:The handout opens full screen.' }) }),
-  setup: () => ({ title: 'Setup', crumb: 'Menu', body: `<div class="sec">Look</div>${seg('Theme', 'theme', [['classic', 'Classic'], ['sunlit', 'Sunlit'], ['pocket', 'Pocket']])}${seg('Health bars over creatures', 'bars', [['always', 'Always'], ['fight', 'In a fight'], ['never', 'Never']])}
-    <div class="sec">The menu</div>${row({ b: 'Arrange the symbols', s: 'Their order, and which show', go: 'arrange' })}${seg('Labels under the symbols', 'alwaysLabels', [[false, 'After 3 seconds'], [true, 'Always']])}${seg('The menu token sits', 'token', [['left', 'Bottom left'], ['centre', 'Bottom centre'], ['right', 'Bottom right']])}${seg('Menus', 'motion', [['slide', 'Slide in and out'], ['appear', 'Just appear']])}
-    ${seg('Open my character at the start of my turn', 'autoOpen', [[false, 'No'], [true, 'Yes']])}
-    <div class="sec">Controls</div>${row({ b: 'Keys', r: 'WASD and arrows', act: 'toast:Keys: the presets of keyboard.md.' })}${seg('Camera buttons on the map', 'cam', [['off', 'Off'], ['on', 'On']])}
-    <div class="sec">Dice and animation</div>${lookSetting()}${holdSetting()}${flickSetting()}${seg('Other players’ dice', 'others', [['party', 'In their party colour'], ['mine', 'Like mine']])}
-    <div class="sec">For the DM: the table’s rules</div>${seg('Players see foes’ health', 'foeHealth', [['hidden', 'Hidden'], ['rough', 'Rough (default)'], ['exact', 'Exact']])}
-    <div class="sec">The table’s rules</div><div class="subtle">The DM has set the table to: dice ${ST.rule === 'throw' ? 'thrown by whoever acts' : 'rolled as soon as someone acts'}; wait for each beat.</div>` }),
+  setup: () => ({ title: 'Setup', crumb: 'Menu', acc: true, body: accordion(SETUP_SECTIONS()) }),
   dm: () => ({ title: 'DM tools', crumb: 'Menu', body: `<div class="sec">Table rules: what players see</div>${seg('Players see foes’ health', 'foeHealth', [['hidden', 'Hidden'], ['rough', 'Rough (default)'], ['exact', 'Exact']])}
     <div class="subtle">${{ hidden: 'No bar over a foe; the tracker says nothing of its health.', rough: 'A foe’s bar is full, half (Bloodied) or empty (Down): what players are sent today.', exact: 'A foe’s bar shows its real Hit Points (engine change E-M3). Hidden and unseen creatures still send nothing.' }[ST.foeHealth]}</div>
     <div class="sec">Sections</div>` + ['Undo and redo|Undo: Wren moved', 'Fight|Call for initiative, end the fight, monsters', 'Creatures|Add (with a search), hide, conditions, play as…', 'Map|Edit, stock maps, places', 'Sight and light', 'Table rules|Pace, dice, rewards, XP, cover…', 'Party|Marching order, rest', 'Scenes and handouts', 'Time and chronicle', 'Table file|Export, leave'].map((x) => { const [b, s] = x.split('|'); return row({ b, s, act: `toast:${b}: today’s DM section, unchanged inside.` }); }).join('') }),
@@ -713,10 +725,29 @@ const SCREENS = {
   help: () => ({ title: 'Help and feedback', crumb: 'Menu', body: `<div class="sec">The die button</div>
     <div class="preview"><svg viewBox="0 0 68 68" width="68" height="68" aria-hidden="true"><circle cx="34" cy="34" r="31" fill="var(--panel-solid)" stroke="var(--line)"/><circle cx="34" cy="34" r="31" fill="none" stroke="var(--good)" stroke-width="4" pathLength="100" stroke-dasharray="75 100" transform="rotate(-90 34 34)"/></svg>
     <div class="subtle" style="margin:0">The die button opens everything.<br><b>The ring round it</b> is your character’s health: full is green, below half it turns red.<br><b>A lit ring</b>: it is your turn.<br><b>A number</b>: something is waiting for you; open the menu to see what.<br><b>Greyed and crossed</b>: the link to the table is lost.<br><b>Tap</b>: the symbols fan out round it. <b>Hold for a second</b>: it throws your last roll (a d20 at first), just for fun.</div></div>
-    <div class="sec">The symbols</div><div class="legend">${allItems().map((it) => `<div class="lg">${tileFace(it)}<span><b>${it.label}</b><small>${({ turns: 'Who acts when, and how everyone is', party: 'Who is in the party, and how they are', dice: 'Your last rolls, and how dice look', roll: 'Roll any dice, for fun or for the DM', log: 'What happened, and talking', handouts: 'What the DM has shown you', setup: 'How the game looks and behaves on this device', dm: 'The DM’s tools (the DM only)', chars: 'Who plays whom; adding and levelling characters', packs: 'Homebrew the table uses', help: 'This page', about: 'Credits and licences', leave: 'Leave this game' })[it.icon] ?? 'Your character: status, actions, inventory, sheet'}</small></span></div>`).join('')}</div>
+    <div class="sec">The symbols</div><div class="legend">${[...allItems(), { id: 'x-dm', label: 'DM tools', icon: 'dm' }].filter((it, i, a) => a.findIndex((y) => y.label === it.label) === i).map((it) => `<div class="lg">${tileFace(it)}<span><b>${it.label}</b><small>${({ turns: 'Who acts when, and how everyone is', party: 'Who is in the party, and how they are', roll: 'Roll any dice, for fun or for the DM; your last rolls', log: 'What happened, talking, and what the DM has shown you', setup: 'Display, dice, the menu, characters, packs, help, about, and leaving the table', dm: 'The DM’s tools (the DM only)', chars: 'Who plays whom; adding and levelling characters', packs: 'Homebrew the table uses', help: 'This page', about: 'Credits and licences', leave: 'Leave this game' })[it.icon] ?? 'Your character: status, actions, inventory, sheet'}</small></span></div>`).join('')}</div>
     <div class="sec">Feedback</div><div class="subtle">(The feedback panel of feedback.md opens here.)</div>` }),
   about: () => ({ title: 'About', crumb: 'Menu', body: '<div class="subtle">The SRD 5.2 attribution, the licence, the credits, the version.</div>' }),
 };
+// Setup is one page of sections (round 4): a title bar each; one open at a time; while open, its content scrolls between
+// the bars before it (pinned at the top) and the bars after it (pinned at the bottom).
+const SETUP_SECTIONS = () => [
+  { id: 'display', title: 'Display and controls', sub: 'Theme, health bars, camera buttons, keys', html: () => `${row({ b: 'Keys', r: 'WASD and arrows', act: 'toast:Keys: the presets of keyboard.md.' })}${seg('Theme', 'theme', [['classic', 'Classic'], ['sunlit', 'Sunlit'], ['pocket', 'Pocket']])}${seg('Health bars over creatures', 'bars', [['always', 'Always'], ['fight', 'In a fight'], ['never', 'Never']])}${seg('Camera buttons on the map', 'cam', [['off', 'Off'], ['on', 'On']])}${seg('Floors', 'floors', [['rooms', 'Rooms, with a faint grid'], ['hex', 'Each space on its own']])}` },
+  { id: 'dice', title: 'Dice', sub: 'Their look, how long rolls stay, flicking', html: () => `${lookSetting()}${holdSetting()}${flickSetting()}${seg('Other players’ dice', 'others', [['party', 'In their party colour'], ['mine', 'Like mine']])}` },
+  { id: 'menu', title: 'The menu', sub: 'The symbols, their order, the die’s place, motion', html: () => `${row({ b: 'Arrange the symbols', s: 'Their order, and which show', go: 'arrange' })}${seg('Labels under the symbols', 'alwaysLabels', [[false, 'After 3 seconds'], [true, 'Always']])}${seg('The die sits', 'token', [['left', 'Bottom left'], ['centre', 'Bottom centre'], ['right', 'Bottom right']])}${seg('Menus', 'motion', [['slide', 'Slide in and out'], ['appear', 'Just appear']])}${seg('Open my character at the start of my turn', 'autoOpen', [[false, 'No'], [true, 'Yes']])}` },
+  { id: 'chars', title: 'Characters and packs', sub: 'Who plays whom; homebrew this table uses', html: () => `<div class="setl">Characters</div>${row({ b: 'Wren', s: 'You play · Level 1 Wizard' })}${row({ b: 'Add a character', s: 'Only the DM adds characters at this table.', grey: true })}<div class="setl">Packs</div><div class="subtle">This table uses: SRD 5.2.1, and one homebrew pack the DM added. (The DM adds and removes packs here.)</div>` },
+  { id: 'rules', title: 'The table’s rules', sub: 'Set by the DM', html: () => `${ST.role === 'dm' ? seg('Players see foes’ health', 'foeHealth', [['hidden', 'Hidden'], ['rough', 'Rough (default)'], ['exact', 'Exact']]) : ''}<div class="subtle">Dice: ${ST.rule === 'throw' ? 'thrown by whoever acts' : 'rolled as soon as someone acts'}. Pace: wait for each beat. Foes’ health: ${ST.foeHealth}.</div>` },
+  { id: 'help', title: 'Help and about', sub: 'The die and the symbols explained; feedback; credits', html: () => `${SCREENS.help().body}<div class="sec">About</div>${SCREENS.about().body}` },
+  { id: 'leave', title: 'Leave the table', sub: 'Leave this game on this device', html: () => ST.leaveAsk
+    ? `<div class="subtle">Leave the table? Your character stays with the DM, and you can come back with the table’s code.</div><div class="acts2"><button type="button" class="btn" data-act="leaveno">Stay</button><button type="button" class="btn bad" data-act="leaveyes">Leave the table</button></div>`
+    : `<div class="subtle">Leaving takes you back to the start page. It does not end the game for anyone else.</div><button type="button" class="btn bad" style="width:100%" data-act="leaveask">Leave the table…</button>` },
+];
+function accordion(list) {
+  const open = list.findIndex((x) => x.id === ST.accOpen);
+  const head = (x) => `<button type="button" class="acchead${x.id === ST.accOpen ? ' on' : ''}${ST.accOpen && x.id !== ST.accOpen ? ' compact' : ''}" data-acc="${x.id}" aria-expanded="${x.id === ST.accOpen}" aria-controls="acc-${x.id}"><span class="t"><b>${x.title}</b><small>${x.sub}</small></span><span class="chev" aria-hidden="true">›</span></button>`;
+  if (open < 0) return `<div class="acc"><div class="acc-top">${list.map(head).join('')}</div></div>`;
+  return `<div class="acc"><div class="acc-top">${list.slice(0, open + 1).map(head).join('')}</div><div class="acc-body" id="acc-${list[open].id}" role="region" aria-label="${list[open].title}">${list[open].html()}</div><div class="acc-bot">${list.slice(open + 1).map(head).join('')}</div></div>`;
+}
 const GROUPS = {
   'g:cast': () => `<div class="subtle">Level 1 slots ●● &nbsp; <button type="button" class="btn" style="min-height:40px" data-act="toast:Sort and filter: by level, by what it does, rituals only.">Sort and filter</button></div>
     ${row({ b: 'Fire Bolt', s: 'Cantrip · +5 to hit · 1d10 fire · 120 ft', chip: 'Action', act: 'firebolt', grey: fight() && !mine() })}
@@ -811,12 +842,14 @@ function renderMenu(animateNew) {
     return `<section class="level ${cls}" data-i="${i}" data-id="${id}" aria-labelledby="h-${i}">
       ${i === 0 || phone ? navStrip(base) : ''}
       <div class="lhead">${back}<h2 id="h-${i}" tabindex="-1">${sc.title}</h2>${!phone && last ? '<button type="button" class="close" data-close="1" aria-label="Close menu">×</button>' : ''}</div>
-      ${sc.fixed ?? ''}<div class="lbody">${sc.body}</div></section>`;
+      ${sc.fixed ?? ''}<div class="lbody${sc.acc ? ' acchost' : ''}">${sc.body}</div></section>`;
   }).join('');
   restoreScroll();
+  const ab = lv.querySelector('.acc-body'); if (ab) { ab.scrollTop = ST.scroll['acc:' + ST.accOpen] ?? 0; ab.onscroll = () => { ST.scroll['acc:' + ST.accOpen] = ab.scrollTop; }; }
   lv.querySelector('.ntile.on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  stripArrows();
   if (animateNew) requestAnimationFrame(() => requestAnimationFrame(() => lv.querySelectorAll('.level').forEach((el) => { el.classList.remove('ahead'); if (!phone) el.classList.add('shown'); })));
-  $('scrim').querySelector('.tip').textContent = phone ? 'Tap here to close' : 'Tap the map to close';
+  $('scrim').querySelector('.tip').textContent = phone ? 'Tap here or the die to close' : 'Tap the map or the die to close';
   const rf = $('rollfor'); if (rf) rf.oninput = () => { ST.rollFor = rf.value; };
 }
 function openMenu(on) {
@@ -1066,6 +1099,10 @@ F.addEventListener('click', (ev) => {
   if (a === 'modzero') { ST.mod = 0; return renderMenu(); }
   if (a === 'clearpick') { ST.pick = {}; ST.mod = 0; return renderMenu(); }
   if (a.startsWith('mod:')) { ST.mod = Math.max(-10, Math.min(10, ST.mod + Number(a.slice(4)))); return renderMenu(); }
+  if (a === 'leaveask') { ST.leaveAsk = true; return renderMenu(); }
+  if (a === 'leaveno') { ST.leaveAsk = false; return renderMenu(); }
+  if (a === 'leaveyes') { ST.leaveAsk = false; openMenu(false); return toast('(The start page would open: you have left the table.)'); }
+  if (a === 'setupdice') { ST.accOpen = 'dice'; return go('setup'); }
   if (a === 'rollpick') { ST.lastPool = { pick: { ...ST.pick }, mod: ST.mod }; return rollPicked(); }
   if (a === 'resetorder') { ST.order = [...DEFAULT_ORDER]; ST.hiddenItems.clear(); toast('Order reset.'); return renderMenu(); }
   if (a === 'aim') return aim();
@@ -1115,6 +1152,8 @@ F.addEventListener('pointerdown', (ev) => { const t = ev.target.closest('[data-a
 F.addEventListener('click', (ev) => {
   const a = ev.target.closest('[data-arc]'); if (a) { if (arcHeld) { arcHeld = false; return; } return pickPlace(a.dataset.arc); }
   const n = ev.target.closest('[data-nav]'); if (n) { const id = n.dataset.nav; if (id === 'leave') return toast('Leave the table? (asks first, then goes to the start page)'); return go(id === 'roll' ? 'dice' : id); }
+  const ac = ev.target.closest('[data-acc]'); if (ac) { const id = ac.dataset.acc; ST.accOpen = ST.accOpen === id ? null : id; ST.leaveAsk = false; renderMenu(); $('levels').querySelector(`[data-acc="${id}"]`)?.focus({ preventScroll: true }); return; }
+  const sc = ev.target.closest('[data-scroll]'); if (sc) { sc.parentElement.querySelector('.navstrip').scrollBy({ left: Number(sc.dataset.scroll) * 160, behavior: ST.motion === 'appear' ? 'auto' : 'smooth' }); return; }
   const m = ev.target.closest('[data-move]'); if (m) { const [id, d] = m.dataset.move.split(/:(?=-?\d$)/); moveItem(id, Number(d)); return renderMenu(); }
   const h = ev.target.closest('[data-hide]'); if (h) { const id = h.dataset.hide; ST.hiddenItems.has(id) ? ST.hiddenItems.delete(id) : ST.hiddenItems.add(id); return renderMenu(); }
 });
@@ -1127,7 +1166,7 @@ document.addEventListener('keydown', (ev) => {
 
 // ---------- the mockup's controls and the address ----------
 function syncMock() { document.querySelectorAll('#mock [data-k]').forEach((b) => b.classList.toggle('on', String(ST[b.dataset.k]) === b.dataset.v)); }
-function addHandout() { ST.handouts = true; ST.waiting.push({ text: '1 new handout: A torn map', btn: 'Open', go: 'handouts', short: '1 new handout' }); renderHud(); toast('The DM showed you a handout.'); }
+function addHandout() { ST.handouts = true; ST.waiting.push({ text: '1 new handout: A torn map', btn: 'Open', go: 'log', short: '1 new handout' }); renderHud(); toast('The DM showed you a handout.'); }
 function hit() { CH.wren.hp = Math.max(1, CH.wren.hp - 3); ST.sel = 'wren'; renderHud(); hpLabel(); toast('Goblin Warrior 2 hits Wren: 3 slashing.'); }
 document.getElementById('mock').addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
@@ -1146,7 +1185,7 @@ document.getElementById('mock').addEventListener('click', (ev) => {
 });
 function symbols(on) {
   const el = document.getElementById('symbols'); el.hidden = !on; if (!on) return;
-  const ids = ['setup', 'dm', 'chars', 'packs', 'turns', 'party', 'dice', 'roll', 'log', 'handouts', 'help', 'about', 'leave', 'more', 'grip'];
+  const ids = ['turns', 'party', 'roll', 'log', 'setup', 'dm', 'more', 'grip'];
   const names = { setup: 'Setup (gear)', dm: 'DM tools (wrench)', chars: 'Characters (meeples)', packs: 'Packs (a strapped tome)', turns: 'Turns (crossed swords)', party: 'Party (campfire)', dice: 'Dice (a d20)', roll: 'Roll dice (two dice)', log: 'Log and chat (a speech bubble)', handouts: 'Handouts (a scroll)', help: 'Help', about: 'About', leave: 'Leave (a door)', more: 'More', grip: 'Arrange (six dots)' };
   el.innerHTML = `<div class="symhead"><b>The symbols, in the three themes</b><button type="button" onclick="symbols(false)">Close</button></div><div class="symcols">${['classic', 'sunlit', 'pocket'].map((th) => `<div class="frame symtheme" data-theme="${th}"><h3>${({ classic: 'Classic Tabletop', sunlit: 'Sunlit Wilds', pocket: 'Pocket Meadow' })[th]}</h3><div class="symgrid">${`<div class="sym"><span class="atile static">${sigil(CH.wren)}</span><small>Your character (its sigil, with the health ring)</small></div>` + ids.map((id) => `<div class="sym"><span class="atile static">${ico(id)}</span><small>${names[id]}</small></div>`).join('')}</div></div>`).join('')}</div>`;
 }
@@ -1154,12 +1193,13 @@ function fit() { const W = ST.frame === 'phone' ? 390 : 1280, H = ST.frame === '
 addEventListener('resize', fit);
 (function fromHash() {
   const h = new URLSearchParams(location.hash.slice(1));
-  for (const k of ['theme', 'frame', 'state', 'motion', 'rule', 'hold', 'chars', 'look', 'token']) if (h.get(k)) ST[k] = h.get(k);
+  for (const k of ['theme', 'frame', 'state', 'motion', 'rule', 'hold', 'chars', 'look', 'token', 'role', 'acc']) if (h.get(k)) ST[k] = h.get(k);
   if (!h.get('frame') && innerWidth >= 900) ST.frame = 'desktop';
   if (h.has('bare')) document.body.classList.add('bare');
   if (h.has('seen')) ST.seenRing = true;
   if (innerWidth < 600 || h.has('bare')) $('mock').open = false;
   fit(); syncMock(); renderHud();
+  if (h.get('acc')) { ST.accOpen = h.get('acc'); }
   if (h.has('waiting')) addHandout();
   if (h.has('hit')) hit();
   const open = h.get('open');

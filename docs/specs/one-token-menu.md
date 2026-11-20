@@ -59,6 +59,10 @@ The owner tried the published mockup and said (his words quoted):
 | R13 | (round 3) "create some symbols like setup should be the standard gear symbol. DM tools should have a wrench. Characters could be meeples. Packs needs something ... A singular aesthetic that matches the game" | One set of line symbols drawn in the theme's colour: gear, wrench, meeples, a strapped tome for Packs, and the rest; shown together on one sheet in the mockup (Decision 4c) |
 | R14 | (round 3) "if I click and hold, can they have that 6 dot thing to allow them to be dragged into a different order?" | Arrange: hold a symbol, or Setup › Arrange; rows with six-dot handles to drag, ▲ ▼ for keys, an eye to hide; per device; Reset order; four places cannot be hidden (Decision 4c) |
 | R15 | (round 3) "if I just hold that for a second, can it immediately allow me to roll a die for idle fun. When I just quick click on it, can it present the menu as a set of icons ... if there's no selection for 3 seconds, popup text explanations? When in the menus, show those same icons across the top"; then "quick tap, I don't want a row, I want an arc around the die." | A quick tap fans the symbols out in an **arc round the die**; labels appear after 3 s; inside a screen the same symbols run across the top; holding the die for a second throws the last roll at once (Decisions 1 and 4c) |
+| R16 | (round 4) "OK, I can't get out of the menu now that it's up." | A rule and a test: every state closes by a tap on the die, a tap on the map, or Escape. The die now sits above the sheet and the arc (it was under the dimmed map, so a tap on it reached the map instead, and on a phone the sheet covered it); the phone sheet keeps a footer for it; the Waiting card and the health note never take the closing tap (Decision 3, "Closing, always") |
+| R17 | (round 4) "A number of these are setup items that are more specific, can they be held under the same menu item and just shown as sections ... dice ... on the same page as Look and just have a title bar that you click on" | The arc and the strip hold a few places: your character(s), Turns, Roll dice, Log and chat, Setup, and DM tools for the DM. Setup is one page of sections: Display and controls, Dice, The menu, Characters and packs, The table's rules, Help and about, Leave the table (Decision 4d) |
+| R18 | (round 4) "When a section is too long to display with the other section headers, it scrolls while keeping the section headers above and below." | One section open at a time; its content scrolls between the bars before it, pinned at the top, and the bars after it, pinned at the bottom (Decision 4d) |
+| R19 | (round 4) "the symbols across the top are too many and there's no indicator that there are more ... add > & < symbols if required? I'd prefer to get down to just a few though. Not sure what leave means ... If the latter, it should be under settings." | Six symbols fit a phone's strip; when more do not fit (a solo party, say), ‹ and › appear at the ends where there is more. Leave means leaving the table (the game, on this device); it is now the last section of Setup, with a confirm (Decisions 4c and 4d) |
 
 ## Rules that bind this design
 
@@ -310,6 +314,15 @@ inside them the same rule holds.
   the same screen, so the player sees the turn bar change; the status block says what
   happened in one line ("Dashed: 60 ft to move.").
 - Escape (or M) closes the whole menu; Backspace or Left goes back one level.
+- **Closing, always (round 4).** In every state, the arc, every screen, every section, Arrange,
+  More, with or without the Waiting for you card or the health-ring note, **three things
+  close it: a tap on the die, a tap on the map, Escape.** So the die is drawn above the
+  dimmed map, the arc and the sheet (only a prompt, the aim bar and the throw zone are above
+  it, and those hide it), and the phone sheet ends 92 px above the bottom so the die stays
+  in view and in reach. The Waiting card and the health note are only as big as their text,
+  so the map round them still closes. The build carries a test that walks each state at
+  both sizes and closes it each of the three ways (the mockup's check did: 27 states x 2
+  sizes, all closed).
 
 ### Decision 4: the tree
 
@@ -568,22 +581,31 @@ and square stroke ends). No fills except small dots, so they read at 26 px and a
 
 The mockup's "Symbols" control shows them together in the three themes.
 
+Round 4: Characters, Packs, Help, About, Leave and Handouts are no longer places (they are
+sections of Setup or of Log and chat), so their symbols leave the arc and the strip; the
+set is kept for later use (a section bar may carry its symbol if the owner wants it).
+
+**The places (round 4).** Only a few: **your character** (one symbol per creature you
+control), **Turns** (Party when exploring), **Roll dice**, **Log and chat** (handouts are a
+section of it), **Setup**, and **DM tools** for the DM. Everything else is a section of
+Setup (Decision 4d). A player with one character has **5**; with a familiar 6; the DM 6 or
+more; a solo player with a party of five, 9 (+ DM tools, 10).
+
 **The arc (a quick tap on the die).** The places fan out from the die along rings, in
-order: your characters, then Play, then This game. They grow out of the die in 0.5 s with a
+order. They grow out of the die in 0.5 s with a
 25 ms stagger (none under Just appear or reduced motion).
 
-| Where the die sits | Rings (centre distance) | Slots | Reach |
+| Where the die sits | Rings (centre distance) | Slots | What it holds |
 |---|---|---|---|
-| Phone, bottom centre | two half **ellipses**, 112 x 142 px and 165 x 252 px (narrower than tall, so the ends stay on a 390 px screen) | 6 + 8 = 14 | the outer ring's top is 252 px above the die, within a thumb's sweep from the bottom edge |
-| Phone, bottom left or right | three **quarter circles**, 118, 196 and 274 px | 3 + 5 + 7 = 15 | a quarter circle stays on the screen and under the thumb of that side |
-| Wide screen, centre | two half circles, 175 and 290 px | 8 + 11 = 19 | |
-| Wide screen, corner | three quarter circles, 130, 215 and 300 px | 4 + 6 + 8 = 18 | |
+| Phone, bottom centre | one half **ellipse**, 128 x 150 px; a second (165 x 252) only past 7 | 7 (+ 8) | every usual case in one ring (5 to 7); a solo party uses the second ring |
+| Phone, bottom left or right | one **quarter circle** of 124 px; a second of 204 px past 4 | 4 + 6 | 5 or 6 places use both rings |
+| Wide screen, centre | one half circle of 160 px; a second of 270 px | 8 + 11 | one ring for every usual case |
+| Wide screen, corner | quarter circles of 135 and 220 px | 4 + 6 | |
 
 - Each symbol is a 52 px round button (above the 44 px minimum), its badge at its corner.
-- **When there are more places than slots** (a solo party of five, say), the last slot is
-  **More**, which opens a screen of every place as large labelled tiles. With today's places
-  a player with one character uses 12 slots, so More appears only for big parties or many
-  companions.
+- **When there are more places than slots** the last slot is **More**, a screen of every
+  place as labelled tiles. With the few places of round 4 this needs more than 15 places
+  on a phone, which no table reaches today.
 - **Labels.** The words are in each button from the start (a screen reader says them at
   once); on screen they appear as small plates under the symbols after **3 seconds** with
   no choice, and stay until the arc closes. Setup › The menu › **Labels under the symbols:
@@ -595,8 +617,11 @@ order: your characters, then Play, then This game. They grow out of the die in 0
 
 **The strip (inside a screen).** The same symbols, in the same order, run across the top
 of every screen as the way between places (48 px buttons). The current place is marked (a
-rim and an underline in the accent colour, `aria-current="page"`). On a phone they scroll
-sideways when they do not fit; the current one is scrolled into view. Labels show under
+rim and an underline in the accent colour, `aria-current="page"`). Six fit a 390 px phone
+with room to spare. **When they do not fit** (a solo party with the DM's tools: 10), the
+strip scrolls sideways, the current one is scrolled into view, and a **‹** or **›** (32 x
+48 px, the accent colour, with a soft shadow) appears at an end **only when there is more
+that way**; a tap moves the strip by about three symbols. Labels show under
 them only when "Always" is set. This replaces the "‹ Menu" link: there is no first-level
 list to go back to.
 
@@ -606,17 +631,46 @@ down within its group, ▲ and ▼ buttons for keys and switch users, and an **e
 from the arc and the strip. **Reset order** puts back the order and shows everything.
 Kept per device (`hextable.menuOrder`, `hextable.menuHidden`), like the theme.
 
-**Four places cannot be hidden**, and their row says why:
+**Two kinds of place cannot be hidden** (round 4), and their row says why:
 
 | Place | Why it always shows |
 |---|---|
 | Your character(s) | the character is how you play |
-| Setup | it is where hidden symbols are brought back |
-| Help | it explains every symbol, hidden ones too |
-| Leave | leaving a table must always be possible |
+| Setup | it is where hidden symbols come back, and where you leave the table |
 
-DM tools, for the DM, may be hidden from the arc but stays in the DM's strip, since undo
-lives there.
+Turns, Roll dice, Log and chat and DM tools may be hidden. (Help and Leave, which could not
+be hidden in round 3, are now sections of Setup, so they are always one place away.)
+
+### Decision 4d: Setup is one page of sections (round 4)
+
+Settings-like things are no longer places of their own. **Setup** holds them as sections,
+in this order:
+
+| Section | Holds |
+|---|---|
+| **Display and controls** | Theme; Health bars over creatures; Camera buttons on the map; Floors; Keys |
+| **Dice** | Dice look (and the primary-colour picker); Rolls stay on the board; Throw my dice with a flick; Other players' dice |
+| **The menu** | Arrange the symbols; Labels under the symbols; The die sits; Menus: slide or appear; Open my character at the start of my turn |
+| **Characters and packs** | Who plays whom, adding, levelling (the DM's tools for it; a player sees their own); the packs the table uses (the DM adds and removes them here) |
+| **The table's rules** | The DM's rules in words for players; for the DM, the rules to set (Players see foes' health here too) |
+| **Help and about** | The die and every symbol explained; feedback; credits, licences, version |
+| **Leave the table** | Leaving this game on this device: "Leave the table…", then **Stay** / **Leave the table** (in the bad colour). Words: "Leaving takes you back to the start page. It does not end the game for anyone else." |
+
+**How the sections behave.**
+
+- Each section is a **title bar** (52 px, the title and a one-line summary, a chevron) that
+  opens and closes it. **One section is open at a time**: opening another closes the first,
+  and the tapped bar stays where it was under the finger.
+- While a section is open, the **bars before it stay pinned at the top** and the **bars
+  after it stay pinned at the bottom**; only the open section's content scrolls between
+  them (its own scroll, kept while it stays open). The closed bars shrink to 44 px (the
+  title only) so all seven fit beside an open section on a 390 x 844 phone, with at least
+  120 px of the section showing.
+- With no section open, Setup is the list of seven bars.
+- **Roll dice** has a row "How dice look and how long they stay", which opens Setup with
+  Dice open.
+- Keyboard: Tab moves between bars; Enter or Space opens; each bar is a button with
+  `aria-expanded` and `aria-controls`; the open content is a labelled region.
 
 ### Decision 5: the layout at each size
 
@@ -1076,6 +1130,11 @@ How the prompt fits each table rule:
 | Group names (pick) | Play · This game |
 | Arc labels | Wren · Owl · Turns / Party · Dice · Roll dice · Log and chat · Handouts · Setup · DM tools · Characters · Packs · Help · About · Leave · More |
 | Arc, close hint | Tap the map or the die to close |
+| Phone sheet, close hint | Tap here or the die to close |
+| Places (round 4) | Wren · Owl · Turns / Party · Roll dice · Log and chat · DM tools · Setup |
+| Setup sections | Display and controls · Dice · The menu · Characters and packs · The table's rules · Help and about · Leave the table |
+| Leave | Leave the table… · Leave the table? Your character stays with the DM, and you can come back with the table's code. · **Stay** · **Leave the table** |
+| Strip arrows (spoken) | More symbols to the left · More symbols to the right |
 | Handle (spoken) | Close menu |
 | Arrange | Arrange the symbols · Drag a row by its six dots, or use ▲ ▼. The eye hides a symbol from the arc and the strip. Kept on this device. · Always shown: Your character is how you play. / Setup is where hidden symbols come back. / Help explains every symbol, hidden ones too. / Leaving must always be possible. · Reset order |
 | Setup, menu | Labels under the symbols: After 3 seconds / Always |
@@ -1114,6 +1173,8 @@ away. The address can set a picture, for screenshots: for example
 `#bare&theme=sunlit&state=mine&open=cast`, `#bare&frame=desktop&open=turns`,
 `#bare&prompt=initiative` (the names are listed at the top of the file).
 
+Round 4 adds: few places in the arc and the strip, the die above everything that closes, Setup as one page of sections with pinned bars, Leave as Setup's last section with a confirm, ‹ › on an overflowing strip, a Player/DM switch in the mockup's controls. Round 4 screenshots: `/home/claude/shots/527-r4`.
+
 Round 3 adds: removable dice chips, Shift+click and press-and-hold to take a die away, dice that scatter and rest flat and apart, the arc round the die (the mockup control "Tap the die", and the die at left, centre or right), labels after 3 s, the strip of symbols across the top of every screen, Arrange with six-dot handles, the 1 s hold that throws a d20, a "Symbols" sheet in the three themes, and no × on the phone. Round 3 screenshots: `/home/claude/shots/527-r3`.
 
 Round 2 adds to the mockup: the slower slide; groups and sections of Character opening in
@@ -1151,7 +1212,8 @@ through one helper (`openMenu(page, path)`) added in M1.
 | D4 | **Calmer throw and dice looks** (round 2): the tumble of Decision 9's list (no scale bounce, no random numerals, two hops, a rock), translucent drawing, `hextable.diceLook` with the free starters, the primary-colour picker with its unreadable-pair rule, the preview die | `dice.js` (drawing and the look), `settings.js`, `themes.js` untouched (a look is not a theme), a unit test (every free look's number contrast above 3:1; an unreadable pair is refused) | `dice` | A translucent blue d20 shows the board through it; no frame of a throw draws a numeral that is not on a face turned up; Yellow on White is greyed with its reason |
 | D5 | **Roll dice** (client), after E-M2: the picker on the Dice screen, the token's press and hold, the throw zone with the chosen dice, the log line and title | `dice.js`, `app.js`, `drawer.js` (the Dice screen), `logview.js`, tests | `dice` | 2d6 + 1 to the table shows the same faces on every screen and in the log; "Only the DM" is seen by the roller and the DM only; refused while a reaction waits, with the reason |
 | E-M2 | **Engine: `freeRoll`**, a plain roll from the seed that changes nothing else (Decision 8b) | `engine/` (a handler in `rolls.js`'s domain or a small new module under `engine/`), `engine.js` (dispatch and the validation order: refused while a question waits), `view.js` (sent to all, or to the roller and the DM), `packages/server/README.md`, tests | — | Replay gives the same faces; undo takes it back; a player is never sent another player's `to: 'dm'` roll; 21 dice, a d7, a bonus of 21 are refused and change nothing |
-| M8 | **The arc, the strip, the symbols and the names** (round 3): the symbol set as one module (`client/symbols.js`, inline SVG strings, `currentColor`), the arc on a quick tap with its rings per position and More, labels after 3 s and the setting, the strip across the top of every screen, every heading its own name, the handle as the phone's close control | `drawer.js`, `symbols.js` (new), `style.css`, `settings.js`, a test that every place has a symbol and an accessible name | `drawer`, `settings`, `keys` | At 390 x 844 the arc at bottom centre has 14 slots on the screen, none under 44 px; at bottom left 15; labels appear after 3 s and at once to a screen reader; no phone screen has a × |
+| M8 | **The arc, the strip, the symbols and the names** (rounds 3 and 4; round 4: a few places, the die above the sheet and the arc, ‹ › on the strip, Setup's sections): the symbol set as one module (`client/symbols.js`, inline SVG strings, `currentColor`), the arc on a quick tap with its rings per position and More, labels after 3 s and the setting, the strip across the top of every screen, every heading its own name, the handle as the phone's close control | `drawer.js`, `symbols.js` (new), `style.css`, `settings.js`, a test that every place has a symbol and an accessible name | `drawer`, `settings`, `keys` | At 390 x 844 the arc at bottom centre has 14 slots on the screen, none under 44 px; at bottom left 15; labels appear after 3 s and at once to a screen reader; no phone screen has a × |
+| M10 | **Setup as sections** (round 4): the seven sections, one open at a time with the bars pinned above and below, Leave with its confirm, the Dice row from Roll dice; and the closing test (every state, at both sizes, by the die, the map and Escape) | `settings.js`, `drawer.js`, `style.css`, a smoke pass `menuclose` | `settings`, `drawer` | All seven bars and 120 px of the open section fit at 390 x 844; no state fails to close |
 | M9 | **Arrange**: hold a symbol, Setup › Arrange, drag by six dots, ▲ ▼, hide, Reset order; the four that cannot be hidden | `drawer.js`, `settings.js`, a test for the order and the fixed four | `drawer` | A dragged order survives a reload; Setup, Help, Leave and the character cannot be hidden |
 | D6 | **Many dice**: separate paths, hops, friction, glancing, nudging apart, flat rest, the fade; the 1 s hold on the die for a plain roll | `dice.js`, `app.js`, a unit test (100 throws of 12 dice: no two resting dice overlap; every resting die's face is the sent one) | `dice` | 6d20 + 1d100 + 2d6 rests as 10 separate dice at both sizes |
 | E-M3 | **Engine: foes' health for players, a table rule** (`settings.foeHealth`: `hidden`, `rough`, `exact`; Decision 7a) | `engine/dm.js` (`SETTINGS`), `migrate.js` (the next state version), `view.js` (the fraction under `exact`, seen creatures only), tests | — | Under `rough` no player message holds a foe's fraction; under `exact` a seen goblin's fraction is sent rounded to tenths and a hidden one's id is in no player message |
@@ -1253,3 +1315,14 @@ Added in round 3:
     table's log stays quiet); Roll dice offers "The table".*
 23. **Should the DM be able to hide DM tools from the arc?** *Default: yes from the arc,
     never from the strip.*
+
+Added in round 4:
+
+24. **The few places.** *Default: your character(s), Turns, Roll dice, Log and chat, Setup,
+    and DM tools for the DM; everything else in Setup.*
+25. **Setup's sections and their order.** *Default: Display and controls, Dice, The menu,
+    Characters and packs, The table's rules, Help and about, Leave the table.*
+26. **One section open at a time, or several?** *Default: one; the bars before and after
+    stay pinned, which only works with one.*
+27. **Handouts inside Log and chat**, not a place of their own. *Default: yes; the Waiting
+    card and the Log symbol's badge say when one arrives.*
