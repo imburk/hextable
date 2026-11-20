@@ -5,9 +5,13 @@
 //   s.world:  null | { id, version, hash, root, nodes: { [id]: node }, routes, tables, came? }
 //             node: { id, kind: 'nav' | 'map' | 'scene' | 'vessel', name?, scale?, parent?, pins?, entries?, terrain?, added? }
 //             (the index of the world the DM imported, W3; a node made in play by `nodeAdd` carries `added: true`).
-//             `came` is the engine's own note of the entry the party last arrived by at each battle node, for a reset.
+//             `came` is the engine's own note of the entry the party last arrived by at each battle node, for a reset;
+//             `at` is the pin each creature on a navigation node stands at, `{ [creature id]: pin id }`: the spec's `e.pin`,
+//             kept here and not on the creature because a party creature's record is sent to players whole, and a pin's
+//             id is the DM's (Decision 12: players are sent pins renumbered, W4).
 //   s.place:  null | the id of the node in play (null: the map in play is not a place of a world)
 //   s.parked: { [id]: { map, entities, effects, scene, encounter: null, pending: null, since, kept, stale } }
+//             (and `sinceOf: { [creature id]: clock }` for a creature there that was parked from another time than `since`)
 //   s.journey: null (journeys are W6)
 //
 // A table that has never used a world has `world: null, place: null, parked: {}, journey: null` (or, made by
@@ -41,6 +45,12 @@ export function placeName(s, id) {
   return n?.name ?? (battleRecord(rec) ? rec.map.name : null) ?? (s.place === id && s.map && !s.map.holding ? s.map.name : null) ?? words(id);
 }
 
+// The pin a creature stands at on a navigation node (null: none), and setting it (null takes it away).
+export const pinOf = (s, id) => (own(s.world?.at, id) ? s.world.at[id] : null);
+export function setPin(s, id, pin) {
+  if (pin) ((s.world ??= emptyWorld()).at ??= {})[id] = pin;
+  else if (own(s.world?.at, id)) delete s.world.at[id];
+}
 export const emptyWorld = () => ({ id: null, version: null, hash: null, root: null, nodes: {}, routes: [], tables: [] });
 // A parked record, in the shape V2 will need (Decision 5).
 export const newRecord = (map, since, { entities = {}, effects = [], scene = null } = {}) =>

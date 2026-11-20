@@ -8,7 +8,7 @@ import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, under } from '../space
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
 import { EDITS, lintMap, migrateMap } from '../map.js';
-import { arrivalSpots, marchOrder } from '../places.js';
+import { arrivalSpots, marchOrder, setPin } from '../places.js';
 import { loadNode, placeIn } from './travel.js';
 import { handoutActions } from '../handouts.js';
 import { sceneActions } from '../scenes.js';
@@ -257,7 +257,7 @@ export const handlers = {
     for (const fx of [...effectsOf(s)]) if (fx.terrain || (fx.zone && !fx.zone.follows)) endEffect(s, ev, fx, 'the party moved on');
     for (const id of leaving) delete s.entities[id];
     s.map = map;
-    party.forEach((e, i) => { e.pos = spots[i]; delete e.pin; });
+    party.forEach((e, i) => { e.pos = spots[i]; setPin(s, e.id, null); });
     if (s.place) s.place = null;                       // the map in play is no longer a place of the world
     ev.push({ type: 'map', map: map.id, name: map.name });
     lookAround(s, ev);

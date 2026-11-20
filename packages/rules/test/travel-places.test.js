@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { apply, ACTION_TYPES, dawnsBetween, NOT_BATTLE, TRAVEL_LIMITS } from "../src/engine.js";
 import { arrive, CREATURE_LINKS } from "../src/engine/travel.js";
 import { holdingMap, lintMap } from "../src/map.js";
-import { effectFate, staleCheck } from "../src/places.js";
+import { effectFate, pinOf, staleCheck } from "../src/places.js";
 import { migrate, VERSION } from "../src/migrate.js";
 import { view, viewEvents } from "../src/view.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
@@ -161,7 +161,10 @@ test("startEncounter on a navigation node is refused and nothing changes; so is 
   ok(apply(s, { type: "leave" }, DM));
   assert.equal(s.place, "continent");
   assert.equal(s.map.holding, true);
-  assert.ok(Object.values(s.entities).every((e) => e.pin === "p-keep"), "they stand at the pin that leads back to the keep");
+  assert.ok(Object.values(s.entities).every((e) => pinOf(s, e.id) === "p-keep"), "they stand at the pin that leads back to the keep");
+  assert.ok(Object.values(s.entities).every((e) => !("pin" in e)), "a pin is not on the creature, which players are sent whole");
+  const pv = json(view(s, PAT));
+  for (const k of ["p-keep", "continent", "The continent"]) assert.ok(!pv.includes(k), `a player's view has no ${k}`);
   const r = refused(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 6 }, /This is not a battle map/);
   assert.equal(r.error, NOT_BATTLE);
   // A wolf the DM put on the holding map, and an attack at it.
@@ -193,7 +196,7 @@ test("enter and leave: a pin leads down, at its entry; leaving climbs to the pin
   ok(apply(s, { type: "enter", pin: "p-port" }, DM));
   assert.equal(s.place, "port");
   assert.ok(s.map.holding);
-  assert.ok(Object.values(s.entities).every((e) => e.pin === undefined), "into a navigation node at no pin");
+  assert.ok(Object.values(s.entities).every((e) => pinOf(s, e.id) === null), "into a navigation node at no pin");
   assert.equal(s.parked.continent, undefined, "a navigation node nobody stays at is let go");
   ok(apply(s, { type: "enter", pin: "p-tavern", map: structuredClone(tavern), who: ["fighter", "rogue"] }, DM));
   assert.equal(s.place, "tavern");
@@ -202,7 +205,7 @@ test("enter and leave: a pin leads down, at its entry; leaving climbs to the pin
   ok(apply(s, { type: "leave" }, DM));
   assert.equal(s.place, "port");
   assert.deepEqual(party(s), ["cleric", "fighter", "rogue", "wizard"]);
-  assert.equal(s.entities.fighter.pin, "p-tavern");
+  assert.equal(pinOf(s, "fighter"), "p-tavern");
   assert.equal(s.parked.tavern.map.id, "tavern");
   // A scene node.
   ok(apply(s, { type: "leave" }, DM));
@@ -404,12 +407,12 @@ test("place { node }: anywhere in the atlas, from play or a parked place, and a 
   s.entities.wizard.sheet = { items: [{ id: "w", item: "wand-of-magic-missiles", charges: 0 }] };
   ok(apply(s, { type: "place", who: ["wizard"], node: "continent", pin: "p-cave" }, DM));
   assert.equal(s.entities.wizard, undefined);
-  assert.equal(s.parked.continent.entities.wizard.pin, "p-cave");
+  assert.equal(pinOf(s, "wizard"), "p-cave");
   assert.ok(s.parked.continent.map.holding);
   ok(apply(s, { type: "advanceTime", minutes: DAY }, DM));
   const r = ok(apply(s, { type: "place", actor: "wizard", node: "keep", entry: "gate" }, DM));
   assert.ok(s.entities.wizard);
-  assert.equal(s.entities.wizard.pin, undefined);
+  assert.equal(pinOf(s, "wizard"), null);
   assert.ok(r.events.some((e) => e.type === "recharged" && e.id === "wizard"), "the dawn it missed");
   assert.equal(s.parked.continent, undefined, "a navigation node left with nobody holds nothing");
   refused(s, { type: "place", who: ["wizard"], node: "tavern" }, /Nobody has been to A tavern yet/);
@@ -509,4 +512,19 @@ test("staleCheck is pure over the parked places: a holding map never goes stale"
   const ev = [];
   staleCheck(s, ev);
   assert.deepEqual(ev, []);
+});
+
+test("a creature put into a parked place counts what it misses from when it was put there, not from when the place was left", () => {
+  const s = atKeep();
+  s.entities.wizard.sheet = { items: [{ id: "w", item: "wand-of-magic-missiles", charges: 0 }] };
+  ok(apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave) }, DM));
+  ok(apply(s, { type: "advanceTime", minutes: 2 * DAY }, DM));
+  ok(apply(s, { type: "place", who: ["wizard"], node: "keep", entry: "gate" }, DM));
+  assert.equal(s.parked.keep.sinceOf.wizard, s.clock);
+  s.parked.keep.entities.wizard.sheet.items[0].charges = 0;                  // spent: it filled at the dawns it had in play
+  ok(apply(s, { type: "advanceTime", minutes: DAY }, DM));
+  const g = ok(apply(s, { type: "goTo", node: "keep" }, DM));
+  const w = g.events.filter((e) => e.type === "recharged" && e.id === "wizard");
+  assert.equal(w.length, 1);
+  assert.equal(w[0].rolls.length, 1, "one dawn missed at the keep, not three");
 });

@@ -10,7 +10,7 @@ import { holdingMap, lintMap, migrateMap } from '../map.js';
 import { key } from '../grid.js';
 import {
   arrivalSpots, battleRecord, CAP_TEXT, depthOf, effectFate, emptyWorld, goingWith, isBattle, marchOrder, NODE_KINDS, nodeIdFor,
-  nodeOf, parkedBattles, parkedOf, placeName, newRecord, STALE_CHOICES, staleQuestion, TRAVEL_LIMITS,
+  nodeOf, parkedBattles, parkedOf, pinOf, placeName, newRecord, setPin, STALE_CHOICES, staleQuestion, TRAVEL_LIMITS,
 } from '../places.js';
 import { fail } from './shared.js';
 import { lookAround, unfollow } from './world.js';
@@ -98,11 +98,11 @@ function split(place, ids, ev) {
 // Sets the movers down in a place at `spots`, and at `pin` on a navigation node (null: at none). A navigation or scene
 // node holds its creatures on its holding map (Decision 1), where they are set down as on any map; where they stand
 // there means nothing (the screens draw the node's picture), and the map is never made again while the node is held.
-function join(place, out, spots, pin) {
+function join(s, place, out, spots, pin) {
   out.creatures.forEach((e, i) => {
     place.entities[e.id] = e;
     e.pos = spots[i];
-    if (pin) e.pin = pin; else delete e.pin;
+    setPin(s, e.id, pin);
   });
   if (out.effects.length) (place.effects ??= []).push(...out.effects);
 }
@@ -116,9 +116,22 @@ function spotsFor(map, list, entry, others) {
 // The creatures that were in a parked place catch up when it comes into play (Decision 5): nothing is simulated for the
 // time it was away (no monster walks), then its lasting effects whose time is up end, and each creature there gets the
 // dawns it missed, through the same code as `rest` and `advanceTime`.
-function catchUp(s, since, who, ev) {
-  dawn(s, since, ev, who);
+// `rec` is the record they come out of: each creature is counted from when it was parked (the record's `since`, or its own
+// in `sinceOf`, for one that came into the record later or stayed there through a reset).
+function catchUp(s, rec, who, ev) {
+  const by = new Map();
+  for (const e of who) { const t = awaySince(rec, e.id); by.set(t, [...(by.get(t) ?? []), e]); }
+  for (const [t, list] of [...by].sort((x, y) => x[0] - y[0])) dawn(s, t, ev, list);
   tick(s, ev);
+}
+const awaySince = (rec, id) => (own(rec.sinceOf, id) ? rec.sinceOf[id] : rec.since);
+// Creatures put into a parked record keep the clock they were parked from (Decision 5: what they missed is counted from
+// it): from play, now; from another parked record, that record's count for them.
+function sinceInto(s, into, from, ids) {
+  for (const id of ids) {
+    const t = from ? awaySince(from, id) : s.clock;
+    if (t !== into.since) (into.sinceOf ??= {})[id] = t; else if (own(into.sinceOf, id)) delete into.sinceOf[id];
+  }
 }
 
 // Parks the place in play (Decision 5: "leaving parks"), as it is now, with whoever is still in it.
@@ -173,8 +186,11 @@ function applyReset(s, id, rec, plan, ev) {
   let ended = 0, dropped = 0;
   for (const fx of [...rec.effects]) if (effectFate(fx, keep, rec.entities) !== 'go') { endEffect(rec, ev, fx, `${plan.name} was put back as prepared`); ended++; }
   for (const x of Object.keys(rec.entities)) if (!keep.has(x)) { delete rec.entities[x]; dropped++; }
-  plan.order.forEach((e, i) => { e.pos = plan.spots[i]; delete e.pin; });
+  const was = new Map([...keep].map((x) => [x, awaySince(rec, x)]));
+  plan.order.forEach((e, i) => { e.pos = plan.spots[i]; setPin(s, e.id, null); });
   Object.assign(rec, { map: plan.map, scene: null, since: s.clock, kept: null, stale: null });
+  delete rec.sinceOf;
+  for (const [x, t] of was) if (t !== rec.since) (rec.sinceOf ??= {})[x] = t;          // the party there still missed what it missed
   const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
   ev.push({ type: 'placeReset', node: id, name: plan.name,
     text: `${plan.name} was put back as the world pack has it: ${n(dropped, 'creature', 'creatures')} not of the party, ${n(ended, 'lasting effect', 'lasting effects')} and every change to its map (doors, what was seen, the DM's edits) were dropped.${keep.size ? ` ${n(keep.size, 'creature', 'creatures')} of the party there ${keep.size === 1 ? 'was' : 'were'} set down at its entry.` : ''}` });
@@ -228,14 +244,14 @@ export function arrive(s, a, ev, { to, ids, entry = null, pin = null, portal = f
     for (const x of Object.keys(s.entities)) delete s.entities[x];
   }
   // the stale answer, the place parked and the target brought into play (a parked one catches up),
-  const rec = t.rec, since = rec?.since ?? null;
+  const rec = t.rec;
   if (answer) answerStale(s, to, rec, answer, plan, ev);
   if (rec) delete s.parked[to];
   if (parking) park(s, from, ev);                  // a navigation or scene node nobody stays at holds nothing: it is let go
   bring(s, to, rec ? unparked(rec) : { map: t.map, entities: {}, effects: [], scene: null });
-  if (rec) catchUp(s, since, Object.values(rec.entities), ev);
+  if (rec) catchUp(s, rec, Object.values(rec.entities), ev);
   // and the movers set down.
-  join(s, { creatures: order, effects: out.effects }, spots, battle ? null : pin);
+  join(s, s, { creatures: order, effects: out.effects }, spots, battle ? null : pin);
   if (battle) ((s.world ??= emptyWorld()).came ??= {})[to] = entry;
   ev.push({ type: 'map', map: s.map.id, name: s.map.name });
   ev.push({ type: 'arrived', node: to, name, from, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
@@ -282,7 +298,7 @@ export function placeIn(s, a, ctx, ev) {
   const map = dst?.map ?? holdingMap();
   const spots = spotsFor(map, order, entry, Object.values(dst?.entities ?? {}).filter((e) => !(same && going.has(e.id))));
   if (same) {
-    order.forEach((e, i) => { e.pos = spots[i]; if (pin) e.pin = pin; else delete e.pin; });
+    order.forEach((e, i) => { e.pos = spots[i]; setPin(s, e.id, pin); });
     ev.push({ type: 'relocated', node: to, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
     if (inPlay) { for (const e of order) ev.push({ type: 'placed', id: e.id, to: e.pos }); lookAround(s, ev); }
     return;
@@ -290,8 +306,9 @@ export function placeIn(s, a, ctx, ev) {
   // From one place to another. What is left of a parked navigation or scene node that holds nobody and no scene is let go.
   const out = split(src, going, ev);
   const into = dst ?? ((s.parked ??= {})[to] = newRecord(map, s.clock));
-  join(into, { creatures: order, effects: out.effects }, spots, battle ? null : pin);
-  if (fromKey !== null && inPlay) catchUp(s, src.since, out.creatures, ev);
+  join(s, into, { creatures: order, effects: out.effects }, spots, battle ? null : pin);
+  if (fromKey !== null && inPlay) catchUp(s, src, out.creatures, ev);
+  if (!inPlay) sinceInto(s, into, fromKey === null ? null : src, out.creatures.map((e) => e.id));
   if (fromKey !== null && src.map.holding && !Object.keys(src.entities).length && !src.scene) delete s.parked[fromKey];
   ev.push({ type: 'relocated', node: to, from: fromNode, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
   if (inPlay) { for (const e of out.creatures) ev.push({ type: 'placed', id: e.id, to: e.pos }); lookAround(s, ev); }
@@ -309,7 +326,7 @@ export const handlers = {
     typeof a.pin === 'string' || fail('Name a pin by its id.');
     const p = (here.pins ?? []).find((x) => x.id === a.pin) || fail(`${placeName(s, s.place)} has no pin "${a.pin}".`);
     (typeof p.to === 'string' && nodeOf(s, p.to)) || fail(`${p.name ?? 'That pin'} leads nowhere.`);
-    const at = Object.values(s.entities).filter((e) => e.side === 'party' && (e.pin === p.id || e.pin === undefined)).map((e) => e.id);
+    const at = Object.values(s.entities).filter((e) => e.side === 'party' && [p.id, null].includes(pinOf(s, e.id))).map((e) => e.id);
     const ids = named(s.entities, a.who, at.length ? at : partyIn(s.entities));
     arrive(s, a, ev, { to: p.to, ids, entry: isBattle(nodeOf(s, p.to)) ? p.entry ?? null : null });
   },
@@ -340,12 +357,11 @@ export const handlers = {
     const plan = answer === 'reset' ? resetPlan(s, to, rec, a.map) : null;
     const parking = holdsAnything(s);
     capCheck(s, { parkingFrom: parking && !s.map.holding, unparking: battleRecord(rec), adding: false });
-    const since = rec.since;
     if (answer) answerStale(s, to, rec, answer, plan, ev);
     delete s.parked[to];
     if (parking) park(s, from, ev);
     bring(s, to, unparked(rec));
-    catchUp(s, since, Object.values(rec.entities), ev);
+    catchUp(s, rec, Object.values(rec.entities), ev);
     ev.push({ type: 'map', map: s.map.id, name: s.map.name });
     ev.push({ type: 'cut', node: to, name, from });
     lookAround(s, ev);
