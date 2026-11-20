@@ -1,8 +1,9 @@
 # Spec: spells on the sheet: one list of checkboxes, the level a spell was chosen at in its box, changes by the rules, a clear slots and prepared display
 
-Status: draft by an agent, to be reviewed by the design owner. **Round 2** (the owner tried the
-round 1 mockup; see "Round 2 feedback" below, which amends Decisions 1 to 4 and the words and
-mockup sections). Issue #568. A design job:
+Status: draft by an agent, to be reviewed by the design owner. **Round 3** (the owner tried the
+round 2 mockup; see "Round 3 feedback" below, which adds Decisions 8 to 12 and amends the words and
+mockup sections). Round 2 (the owner tried the round 1 mockup; see "Round 2 feedback", which
+amended Decisions 1 to 4). Issue #568. A design job:
 this spec and a clickable picture, [`mockups/spells-on-the-sheet.html`](mockups/spells-on-the-sheet.html)
 (open the file in a browser; nothing in it runs the game). No code is written by this spec;
 the lead approves it before the build.
@@ -49,6 +50,38 @@ the rules in "What the rules allow" are unchanged; only how they are shown chang
 | R2-3 | (level of a spell chosen now) | A spell chosen in this sitting shows **the current level as a number, on a gold box**, at once; the number is what will be saved. A tick that turns into a number on Save was rejected (see Decision 2: it changes a glyph the player has already read, and shows nothing about what is recorded). | Decision 2 |
 | R2-4 | "the whole list bounced around ... just showing I selected a spell" | **A tap changes the box, the counts and one line of words, and nothing else.** The list is built once and is never re-sorted, rebuilt, opened, closed or scrolled by a tap; rows have a fixed height; sections do not open or close; chosen rows stay where they are. Checked in the mockup by measuring every row's place before and after each tap: 0 px of movement over 50 taps (see "Nothing moves"). | Decision 7 (new) |
 | R2-5 | "It's just not intuitive" | Fewer kinds of thing on screen: one list, one kind of row, one count. Rows that were "locked lines" in round 1 are the same rows, unchanged in look; a tap on one that cannot change says when it can. | Decisions 2, 3 |
+
+## Round 3 feedback
+
+The owner tried the round 2 mockup, levelling the Wizard (his words, 20 November 2026):
+
+> "For spellbook on the level up screen, it should have section headers that scroll up/down and
+> stop at the top of the display even as the spells themselves scroll. The spell title should
+> have (lvl X). I like the info button. I'd prefer that it be a 3 second hover to display but
+> there's no equivalent on a touch screen is there?"
+
+He tried it again and added, at 06:32 ET (summarised, not word for word): he likes the directions and the caster
+stats and wants the stats on a combat page too; "save DC 13" is unclear; does Magic Initiate use Wisdom
+while Wizard spells use Intelligence; "All back on a Long Rest" and the four tiles are unclear; and the
+list should show only the spells available at each moment. At 06:45 ET he added: the long list gets a
+search that **filters** (hides what does not match), opened by a magnifying-glass button and not a box that
+always takes room, with an obvious way out.
+
+Round 2's answers (one list, the level in the box, nothing moves) were not questioned and stand.
+
+| # | What he said | What the design does now | Where |
+|---|---|---|---|
+| R3-1 | "section headers that scroll up/down and stop at the top of the display even as the spells themselves scroll" | Every group header (Cantrips, the Magic Initiate spell, Spellbook or Prepared spells, Always prepared) **sticks under the count bar** while its rows scroll beneath it, and the next header pushes it up. In the spellbook the "Level N" sub-header sticks under its group header the same way. The bar stays pinned above both. On a phone at most **two lines are pinned below the bar** (the group, 34 px, and its level, 26 px); with the bar that is 153 px of a 712 px list. It is done for every group, not only the spellbook, so the list reads the same everywhere. | Decision 8 (new) |
+| R3-2 | "The spell title should have (lvl X)" | Every spell row's name reads **"Magic Missile (lvl 1)"**, and a cantrip **"Fire Bolt (cantrip)"**, in the row's fixed 52 px: a long name is cut with an ellipsis and the tag is never cut. | Decision 9 (new) |
+| R3-3 | "I like the info button" | **Kept**, unchanged in size and place (28 px circle in a 44 px target at the end of every row). It now also brightens when the mouse is on its row, and the status line says "Tap ⓘ to read a spell." so it is the obvious tap. | Decision 9 |
+| R3-4 | "I'd prefer that it be a 3 second hover to display but there's no equivalent on a touch screen is there?" | **Desktop: yes, the card appears after the mouse rests on a row for 3 seconds** (it did in round 2; the mockup now says so at the top). **Touch: there is no hover, so there is no exact equivalent.** The nearest thing is a **press-and-hold of about half a second** on the row, which phones already use for "tell me more"; it is kept. A 3 second hold was not copied: a finger held still for 3 seconds feels like nothing is happening. **Nobody has to find the hold:** tapping the ⓘ is the way, on a phone and on a desktop, and it works the same everywhere. | Decision 9 |
+| R3-5 | He likes the directions and the caster stats; the stats should also be on a combat page | Kept on the sheet. **The same caster lines are also shown on the combat page** of the character screen (one-token menu, Character, where a player in a fight has Cast): same words, same numbers, read-only, from the same derived values; the mockup draws the sheet only. | Decision 11 |
+| R3-6 | "'save DC 13' is unclear" | The line reads **"Spell save DC 13 (targets save against this)"** and **"Spell attack +5"**. | Decision 11 |
+| R3-7 | Do Magic Initiate spells use Wisdom while Wizard spells use Intelligence? | **Yes, and it is the player's choice, not the class's.** SRD 5.2 (Magic Initiate, line 20040): "Intelligence, Wisdom, or Charisma is your spellcasting ability for this feat's spells (choose when you select this feat)." Wren chose Wisdom; her Wizard spells use Intelligence. The sheet says it plainly in its own line: **"Magic Initiate (Cleric) spells: Wisdom, chosen with the feat"**, with that line's own save DC and attack bonus. | Decision 11 |
+| R3-8 | "'All back on a Long Rest'" | Reads **"Spell slots: all back after a Long Rest"** (the label is on the row; Pact Magic's says "back after a Short Rest"). | Decision 11 |
+| R3-9 | "The four tiles are unclear" | Each tile now has a **label, a number with its unit, and one line saying what it counts**: "Cantrips: 6 known", "Spells prepared: 7 of 7", "Always prepared: 1 spell (do not count against your limit)", "Spellbook: 12 spells (written in it; it only grows)"; a Cleric's fourth tile is "Free casts: 1 per Long Rest". | Decision 11 |
+| R3-10 | Only show the spells available at each moment | **New character and Level up list everything to choose from. After a Long Rest the list shows only what can be prepared** (a Wizard: the spellbook's spells; a Cleric: the Cleric list) and, for a Wizard, the Wizard cantrip list for the one cantrip the rules let her swap. **At any other time it shows only what the character has: prepared spells, cantrips, always-prepared spells.** The set is fixed by the moment, so a tap still changes nothing else. | Decision 10 |
+| R3-11 | A search for the long list: it filters (hides non-matches), is opened by a magnifying-glass button and not a box that always takes space, keeps the sticky level headers (a header with no matching rows hides), and has an obvious way out | **A magnifying-glass button in the corner of the count bar** (44 px target). Tapped, a search row covers the bar's top two lines (the bar keeps its 93 px; the status line stays). Typing **hides every row that does not match**, a level sub-header and a group header with no matching row hide with them, and the headers that remain still stick. **The ✕** at the end of the search row clears the text, closes the search and **puts the whole list back at the scroll place it was at when the search was opened**. Filtering is **the one exception to "nothing moves"**, and only while the search is open; ticking a box inside the filtered list moves nothing. This answers question 11. | Decision 12 (new), Decision 7 |
 
 ## The answers to his questions, in plain words
 
@@ -155,15 +188,15 @@ for a Wizard with Magic Initiate (Cleric):
 ```
  CANTRIPS                                                   6 of 6
  Wizard 4 and Magic Initiate (Cleric) 2; the source is under each name.
-   [ ] Acid Splash                                           ⓘ
-   [1] Fire Bolt        Wizard                               ⓘ
-   [1] Guidance         Magic Initiate · Cleric · WIS        ⓘ
-   [ ] Resistance       Cleric list · Magic Initiate         ⓘ
+   [ ] Acid Splash (cantrip)                                 ⓘ
+   [1] Fire Bolt (cantrip)       Wizard                      ⓘ
+   [1] Guidance (cantrip)        Magic Initiate · Cleric · WIS   ⓘ
+   [ ] Resistance (cantrip)      Cleric list · Magic Initiate    ⓘ
    ...                  (every cantrip either list offers, A to Z, chosen or not)
  LEVEL 1 SPELL · MAGIC INITIATE (CLERIC)                    1 of 1
  SPELLBOOK                                     12 of 12   ★ 7 of 7
    LEVEL 1
-   [1] Detect Magic                                   ★     ⓘ
+   [1] Detect Magic (lvl 1)                           ★     ⓘ
 ```
 
 - **One Cantrips group; the tag is the source**, shown under the name of a chosen cantrip: the
@@ -177,7 +210,7 @@ for a Wizard with Magic Initiate (Cleric):
 - **A row is** the box, the spell's name, and `ⓘ` (the #566 scroll card on a tap, and on a
   3-second hover or a long-press of the name, so a phone player never has to discover the
   long-press). Every spell row in this spec has the same card.
-- **Every spell the source offers is a row**, chosen or not, in a fixed order (cantrips, then
+- **Every spell the source offers is a row** (when the moment is one that chooses: a new character and a level-up; after a rest and at any other time the list is shorter, Decision 10), chosen or not, in a fixed order (cantrips, then
   spell level 1 up, each A to Z). A level-up adds rows when it opens a new spell level
   (level 5 adds level 3 spells); it never takes a row away or reorders them.
 - **There are no "open pick" rows** ("+ Choose a Wizard cantrip (1 left)" of round 1 is
@@ -292,17 +325,17 @@ already show):
  ┌ Cantrips 6 ┐ ┌ Prepared 7 of 7 ┐ ┌ Always prepared 1 ┐ ┌ Spellbook 12 ┐
 
  CANTRIPS                                                   6 of 6
-   [ ] Acid Splash                                           ⓘ
-   [1] Fire Bolt  Wizard     ...   (the one list of Decision 1: every cantrip, A to Z)
+   [ ] Acid Splash (cantrip)                                 ⓘ
+   [1] Fire Bolt (cantrip)  Wizard     ...   (the one list of Decision 1: every cantrip, A to Z)
  LEVEL 1 SPELL · MAGIC INITIATE (CLERIC)                    1 of 1
  SPELLBOOK                                     12 of 12   ★ 7 of 7
    LEVEL 1
-   [1] Detect Magic                                   ★     ⓘ
-   [ ] Feather Fall                                   ☆     ⓘ
+   [1] Detect Magic (lvl 1)                           ★     ⓘ
+   [ ] Feather Fall (lvl 1)                           ☆     ⓘ
    LEVEL 2
-   [4] Scorching Ray                                  ☆     ⓘ
+   [4] Scorching Ray (lvl 2)                          ☆     ⓘ
  ALWAYS PREPARED · do not count          (Brenna: Life Domain's six, read-only rows)
-   Aid           Life Domain · from level 3                  ⓘ
+   Aid (lvl 2)   Life Domain · from level 3                  ⓘ
 ```
 
 - **Slots** are pips by spell level, the number beside them; Pact Magic says "2 slots of
@@ -407,12 +440,19 @@ build must keep and the mockup shows:
    toggle. Chosen rows stay where they are, among the unchosen.
 5. **No scroll change.** The tap never scrolls the list (no scroll-to, no focus jump). The
    only things that scroll it are the player's own scrolling and a tap on a count tile
-   ("scroll to this group").
+   ("scroll to this group"). Headers that stick under the bar (Decision 8) are what scrolling
+   looks like, not an effect of a tap: no tap changes which header is pinned.
 6. **Fixed heights.** Rows are 52 px, headings and rule lines have text that does not change
    when a tap happens, the bar has a fixed height and its lines never wrap into more. So a
    longer or shorter word in a count cannot push a row.
 7. **A refusal is words, not movement.** A tap on a spell that cannot change, or on a full
    group, changes only the bar's status line.
+8. **One exception, and only while it is open: the search** (Decision 12). Typing in the search
+   hides the rows that do not match, which is rows moving, and the owner asked for it. It is
+   allowed because the player did it on purpose and sees the list narrow, and it ends with the ✕,
+   which puts the full list back at the scroll place it was left. **Inside a filtered list the rule
+   holds as before**: ticking a box, a ★ or a swap changes the box, the counts and the status words and
+   nothing else, and no row appears or goes because of a tap.
 
 **Nothing moves** (the check in the mockup, `window.mock.layout()`): before and after each
 tap, the top and height of every row, heading, rule line, tile and the bar, the list's scroll
@@ -420,6 +460,207 @@ position and its total height. Over the 50 taps of a walk of a Wizard from level
 Cleric's swap, a Long Rest and the read-only view, on a 390 x 844 touch screen and a
 1280 x 800 mouse screen, **the largest change in any row's top, any height, the scroll
 position or the list's height was 0 px.**
+
+### Decision 8: headers that stick (round 3)
+
+The owner's picture: the headers stay at the top of the list while the spells scroll under
+them, so you always know which group, and which spell level, you are looking at. This is
+**scroll behaviour, not tap behaviour**: it changes what the player sees as they scroll, never
+what a tap does (Decision 7).
+
+1. **What sticks.** The count bar (Decision 3) stays pinned at the top of the list, as in round
+   2. Under it, the **group header** of the group being read sticks: `CANTRIPS 6 of 6`,
+   `LEVEL 1 SPELL · MAGIC INITIATE (CLERIC) 1 of 1`, `SPELLBOOK 12 of 14 ★ 7 of 9` (a Cleric's
+   `PREPARED SPELLS 7 of 9`), `ALWAYS PREPARED do not count`. In a group made of spell levels
+   (the spellbook, the Cleric's prepared spells) the **level sub-header** (`LEVEL 2`) sticks
+   under the group header. The group's count is on its header, so it stays in view while you
+   scroll, which is useful in itself.
+2. **The stack, in px** (the same on a phone and a desktop):
+
+   | Piece | Height | Pinned when |
+   |---|---|---|
+   | Count bar | 93 | always |
+   | Group header | 34 | always, one line |
+   | Level sub-header | 26 | only in a group made of spell levels |
+   | **Pinned in all** | **127** (cantrips, Initiate, always prepared) or **153** (spellbook, prepared spells) | |
+
+   On a phone that leaves 585 or 559 px of the 712 px list (about 11 rows); on the 1280 x 800
+   desktop panel (list 668 px) 541 or 515 px. **At most two lines are pinned below the bar**: the
+   group and its level, nothing else (the rule line under a header, which says when a spell can
+   change, is *not* pinned; it scrolls away, and a tap that cannot change a spell says it on the
+   status line anyway).
+3. **The push.** The next header takes the place of the one above it, the "stacked sticky"
+   pattern: as the end of a group comes up, its header is pushed up under the bar by the next
+   group's header; when a spell level ends, its sub-header is pushed up by the next level's. A
+   group header is pushed together with its level sub-header, which is inside it.
+4. **Fixed and plain.** A header is one line of a fixed height, opaque (rows scroll under it
+   and are not seen through it), its title is cut with an ellipsis rather than wrapped, and its
+   count is on the right. The level sub-header has a slightly lighter fill, so the two pinned
+   lines read as two tiers.
+5. **How it is built** (for SS3): CSS only, `position: sticky` with three constants (bar 93,
+   group 34, level 26). Each group is a `<section>` that holds its header, and each spell level
+   a `<div>` that holds its sub-header, which is what makes the next one push the last; no
+   scroll listener and no JavaScript while scrolling. The count tiles scroll to a group so its
+   header lands right under the bar (not under the pinned stack).
+6. **Nothing moves, re-checked.** Sticking never changes the list's layout: every header,
+   row and line has the same place in the list (measured from the top of the list's content)
+   whether it is stuck or not; only what the eye sees moves, by scrolling. The 0 px tap check was
+   re-run with the round 3 mockup (see "The mockup"): 79 taps, largest change 0 px (see "The mockup").
+7. **Rejected:** (a) one floating label that JavaScript rewrites to the current group as you
+   scroll: its words change while scrolling and it costs work on every scroll event on a phone;
+   (b) pinning the rule lines too: four pinned lines on a phone; (c) pinning the level as part
+   of the group line ("SPELLBOOK · LEVEL 2"): one line fewer (127 px), but the header's words
+   change as you scroll (question 15).
+
+### Decision 9: the level in the name, and the info button (round 3)
+
+**The name.** Every spell row, in every group, reads `Name (lvl N)`: `Magic Missile (lvl 1)`,
+`Scorching Ray (lvl 2)`; a cantrip reads `Fire Bolt (cantrip)`. The tag follows the name in
+regular weight and the muted colour; the name stays bold. The always-prepared rows have it too
+(`Aid (lvl 2)`).
+
+- **Why "(cantrip)" and not "(lvl 0)".** "Cantrip" is the SRD's own word and the word the
+  Cantrips header already uses. A cantrip uses no slot, so "lvl 0" invites the question "what
+  slot is that?", and looks like a typo beside the slot pips (which start at level 1). It costs two
+  more characters, which the row has room for (see the next point). The alternative is in question
+  14.
+- **Fixed height at 390 px.** The row is still 52 px. The name is cut with an ellipsis, the tag
+  is not: at 390 px the longest name in the lists, "Protection from Evil and Good", reads
+  "Protection from Evil and G… (lvl 1)", with the box, the ★ and the ⓘ in place. (The name area at
+  390 px is about 228 px in a Wizard's row, which has the ★.) Measured in the mockup: every row on
+  the screen is 52 px high, with and without a long name.
+- **Under a "Level 1" sub-header the tag says what the header says.** That is kept as asked: a row
+  read alone (by a screen reader, in a log line, in the scroll card) still says its level, and the
+  tag is the only place a Magic Initiate or Always prepared row shows it.
+- **Two numbers on a row, and how they are told apart.** The number *in the box* is the
+  character level the spell was chosen at (Decision 2); the number in the *tag* is the spell's own
+  level. They differ for most rows (Scorching Ray: `4` in the box, `(lvl 2)` in the name). They are told
+  apart by place and look (an outlined or gold box on the left, grey words in brackets after the
+  name) and by the status line's legend, which says what the box number is. It is the one
+  thing here that may be misread (Risks, question 15).
+- **Words for a screen reader:** "Magic Missile, level 1 spell, chosen at level 1" ·
+  "Fire Bolt, cantrip, Wizard, chosen at level 1".
+
+**The ⓘ and the scroll card.**
+
+- **The ⓘ stays**, as the owner likes it: a 28 px circle in a 44 px target at the end of every spell
+  row, after the ★ where there is one. A tap opens the scroll card (#566); a tap on it again, a
+  tap elsewhere, Escape or scrolling the list closes it. It is **the obvious tap**: the same place
+  on every row, it brightens when the mouse is on its row or it has focus, it has the tooltip
+  "Read Fire Bolt", and the status line's legend ends "Tap ⓘ to read a spell."
+- **On a mouse:** resting the pointer on a row for **3 seconds** shows the card, and moving off
+  hides it. (The ⓘ is there for the person who does not want to wait.)
+- **On touch there is no hover.** A finger is either on the glass or off it, so the 3-second
+  hover has no twin. The equivalent is a **press-and-hold of about 0.5 seconds** on the row, which
+  shows the card and does not choose or un-choose the spell (the tap that ends the press is
+  swallowed). It is kept as a shortcut, and the design never depends on it: **tap the ⓘ**. Half a
+  second, not three, because a finger held for three seconds feels like a frozen screen, and
+  because half a second is what phones already use for "tell me more".
+
+### Decision 10: each moment lists only what it can use (round 3)
+
+The owner: show only the spells available at each moment. Round 2 listed every spell the class
+may take at every moment, which is right for choosing and wrong for reading. What the list holds
+now depends on **the moment** (Decision 3's table), and on nothing a tap can change:
+
+| Moment | Cantrips | The spells group (spellbook or prepared) | The Magic Initiate spell | Always prepared |
+|---|---|---|---|---|
+| **New character**, **Level up** | every cantrip either list offers (Decision 1) | every spell of the levels the class has slots for | every level 1 spell on its list | all |
+| **After a Long Rest** | what is chosen; a Wizard also gets **every Wizard cantrip**, for the one cantrip the rules let her swap | a **Wizard: the spellbook's spells only** (the ★ prepares them); a **Cleric (Druid, Paladin, Ranger): the whole class list** of the levels she has slots for | what is chosen | all |
+| **After a Short Rest** (Wizard 5+, Memorize Spell) | as after a Long Rest, but without the cantrip swap: what is chosen | the spellbook's spells only | what is chosen | all |
+| **Any other time** | what is chosen | **what is prepared only** (a Wizard's group is headed "Prepared spells", not "Spellbook": the book itself is not listed) | what is chosen | all |
+
+- **Why a Wizard's Long Rest list is the book, and a Cleric's is the class list.** It is the
+  rule: a Wizard prepares from her spellbook; a Cleric from her whole list (the table under
+  "What the rules allow"). The Wizard's one cantrip swap is the only reason her cantrip list is long
+  then (cantrips are known, not prepared, and "replace 1 after a Long Rest" picks from the Wizard
+  list).
+- **Fewer rows, so shorter lists.** After a rest the Wizard's list is the 12 spells of her book, not
+  about 130 rows; at any other time it is her 7 prepared spells and her 6 cantrips (counts of the
+  mockup are in "The mockup"). The long list of Risks is the level-up and new-character moment only.
+- **Still one list that does not move.** The rows are decided when the sitting opens (Decision 7
+  point 1) from the moment and the sheet. A tap never adds or removes a row: a spell given up in a
+  swap stays as a dashed row until the swap is done; a spell chosen in a swap was already in the list.
+  The nothing-moves check was re-run inside each moment (see "The mockup").
+- **The headers and counts follow.** A group with no rows is not drawn; the level sub-headers are
+  those of the rows shown (Decision 8). The count tiles still count what the sheet holds, and a
+  tile whose group is not listed (the Wizard's Spellbook tile at any other time) scrolls to the
+  group nearest to it ("Prepared spells") and keeps its number: the book is counted, not listed.
+- **Not shown at any other time: the spellbook's unprepared spells.** That is the owner's ask and
+  the default; question 18 has the alternative.
+
+### Decision 11: the caster lines, the slots and the four tiles (round 3)
+
+Under the heading, in this order (the sheet, read-only at any moment; the same two lines and the
+slots row are also shown on the **combat page** of the character screen, one-token menu
+Character › Cast, so a player in a fight has them without opening the sheet; they are derived
+values, so the two places cannot disagree. The mockup draws the sheet only):
+
+```
+ Wizard spells: Intelligence · Spell save DC 13 (targets save against this) · Spell attack +5
+ Magic Initiate (Cleric) spells: Wisdom, chosen with the feat · Spell save DC 12 · Spell attack +4
+ Spell slots   Level 1 ●●●●   Level 2 ●●●        All back after a Long Rest
+```
+
+- **Spell save DC** is the number a target rolls its saving throw against; the bracket says so the
+  first time a player meets it. **Spell attack** is the bonus added to a spell's attack roll. Both
+  are the SRD's 8 + proficiency + the spellcasting modifier, and the proficiency bonus + that modifier.
+- **Each spell source has its own ability.** The class's (Wizard: Intelligence) and Magic Initiate's,
+  which the player chose with the feat (SRD 5.2: Intelligence, Wisdom or Charisma, "choose when you
+  select this feat"; reference line 20040). So a Wizard with Magic Initiate (Cleric) can have two lines
+  with two abilities and two DCs, as drawn. A species' spells (High Elf, with SP2) get a third line the
+  same way. A line shows only for a source the character has.
+- **Spell slots** is the row's own label, and "All back after a Long Rest" says when (Pact Magic:
+  "2 slots of level 3 · all back after a Short Rest").
+- **The four tiles** each carry a label, a number with its unit and one line saying what it counts.
+  A tap still scrolls to the group (Decision 4):
+
+  | Tile | Number | The line under it | What it counts |
+  |---|---|---|---|
+  | **Cantrips** | `6 known` | cast any time, no slot | every cantrip from every source (class, Magic Initiate, species) |
+  | **Spells prepared** | `7 of 7` (a Wizard: ★ prepared of the limit; a Cleric: chosen of the limit) | chosen from your spellbook / from the Cleric list | the spells counted against the Prepared Spells column; not the always-prepared ones |
+  | **Always prepared** | `1 spell` | do not count against your limit | spells a feature gives (a Cleric's domain spells, Magic Initiate's level 1 spell) |
+  | **Spellbook** (a Wizard) | `12 spells` | spells written in it; it only grows | every spell in the book, prepared or not |
+  | **Free casts** (everyone else, in the fourth place) | `1 per Long Rest` | Magic Initiate spell, once per Long Rest | the cast without a slot the feat gives |
+
+  A tile's height is fixed (78 px) with a one or two line "what it counts", so a number cannot change
+  its height.
+
+### Decision 12: a search that filters, opened by a button (round 3)
+
+The long list (about 130 rows at a level-up, Risks) gets a search. The owner chose **a filter that
+hides what does not match**, so round 2's default (question 11: "no search box, because a filter
+moves rows") is answered the other way, with the limits below.
+
+1. **Closed, it takes no room.** A **magnifying-glass button** (a drawn glass, not a letter, 44 px
+   target, tooltip and name "Search spells") sits in the corner of the count bar. The bar does not
+   get taller, and there is no box until the button is tapped.
+2. **Open.** A search row covers the bar's first two lines (the number to choose and what it is made
+   of); the status line below it stays. The row holds a text box (16 px, so a phone does not zoom),
+   the number of matches ("12 matches") and an **✕** (44 px, "Clear the search and show the whole
+   list"). The keyboard comes up on a phone. Opening the search changes nothing in the list.
+3. **What it does.** As the player types, rows whose name (with its tag, so "lvl 2" and "cantrip"
+   work) does not contain the text hide. A **spell level's sub-header hides when none of its rows
+   match, and so does a group's header** when the whole group has no match; the headers that
+   remain **still stick** (Decision 8, measured). The intro blocks (caster lines, slots, tiles, the
+   window line) and the rule lines are not part of the results and are hidden while there is text, so
+   the matches start at the top. No match says: **No spell matches "xyz".**
+4. **The way out is the ✕**: it clears the text, closes the search and **restores the full list at
+   the scroll place the list had when the search was opened**, whatever was scrolled while
+   filtering. Escape does the same on a keyboard. Deleting the text back to nothing (the key,
+   not the ✕) also brings the full list back at that place, leaving the search open. A rest, a
+   level-up or Save closes it (the list is rebuilt).
+5. **Ticking inside a filtered list moves nothing** (Decision 7, point 8): the same box, counts and
+   status words; a row never appears or goes because of a tap. A spell chosen while filtered stays
+   in the list, matching or not, until the search changes.
+6. **It filters what the moment lists** (Decision 10): at any other time it searches the 20 or so
+   rows of prepared spells and cantrips, which is rarely needed; the button is always there so the
+   bar does not change.
+7. **Words:** the button's name "Search spells"; the placeholder "Search spells"; "{n} match(es)";
+   "No spell matches "{text}"."; the ✕'s name "Clear the search and show the whole list".
+8. **Rejected:** a box that is always open (takes about 52 px on a phone for a thing used now and
+   then); a search that only brightens matches and dims the rest (round 2's alternative: it keeps the
+   list still but does not shorten it, which is what the owner wants the search for).
 
 ## The words
 
@@ -435,7 +676,16 @@ position or the list's height was 0 px.**
 | Count, top | Choose {n} more · All chosen |
 | Count, what is open | {n} cantrips · {n} Initiate · {n} book · {n} to prepare |
 | Count, group heading | {have} of {cap} · ★ {have} of {cap} |
-| Legend, status line | The number in a box is the level you chose the spell at. |
+| Search button, row | Search spells · {n} match(es) · No spell matches "{text}". · ✕: Clear the search and show the whole list |
+| Caster line, class | {Class} spells: {Ability} · Spell save DC {n} (targets save against this) · Spell attack +{n} |
+| Caster line, feat | Magic Initiate ({List}) spells: {Ability}, chosen with the feat · Spell save DC {n} · Spell attack +{n} |
+| Slots | Spell slots · Level {n} ●●● · All back after a Long Rest (Pact Magic: after a Short Rest) |
+| Tiles | Cantrips: {n} known · Spells prepared: {n} of {cap} · Always prepared: {n} spells (do not count against your limit) · Spellbook: {n} spells (written in it) · Free casts: 1 per Long Rest |
+| Legend, status line | The number in a box is the level you chose the spell at. Tap ⓘ to read a spell. |
+| Spell name | {Name} (lvl {N}) · cantrip: {Name} (cantrip) |
+| ⓘ tooltip (mouse) | Read {Name} |
+| Group header (sticks) | {Title}   {have} of {cap}   (spellbook: ★ {have} of {cap}) |
+| Level sub-header (sticks) | LEVEL {N} |
 | Given up (a swap) | giving this up · tap to keep; status: Given up. Choose another of the same level to replace it, or tap it again to keep it. |
 | Swap refused | That swap is used. Put the other one back to swap this one. |
 | Group full | Full: {cap} of {cap}. Tap one you chose earlier to give it up, if a swap is left. |
@@ -458,33 +708,71 @@ position or the list's height was 0 px.**
 - **A spell the content lacks** (a homebrew pack not loaded): the row reads "{id}: not loaded
   at this table", kept, as subclasses are today.
 - **Read-only** (Character › Sheet › Spells with no window open): the same blocks, no Change
-  buttons, the group lines say when.
+  buttons, the group lines say when; only what the character has is listed (Decision 10).
+- **A group with no rows at a moment** (a Fighter with Magic Initiate has no spellbook group; a
+  character with no always-prepared spell has none) is not drawn, and neither is its header.
 
 ## The mockup
 
-[`mockups/spells-on-the-sheet.html`](mockups/spells-on-the-sheet.html), round 2: a phone frame
+[`mockups/spells-on-the-sheet.html`](mockups/spells-on-the-sheet.html), round 3: a phone frame
 (390 x 844) and a desktop frame (1280 x 800); two characters (Wren, a Wizard with Magic
 Initiate (Cleric); Brenna, a Cleric of the Life Domain with Magic Initiate (Wizard)); four
 moments (New character, which builds level 1; Level up; After a Long Rest; Any other time),
-and **"Sheet is at level" 1 to 5** to jump a sheet to a level. **To walk a character up:**
+and **"Sheet is at level"** 1 to 5 to jump a sheet to a level. **To walk a character up:**
 pick New character, tick spells until the top says "All chosen", press Save, then Level up
 (to 2, 3, 4, 5); the number in each box is the level it was chosen at, and the choices carry
 from level to level. The swaps of the rules are in the same list (Wren at level 5 may give up
-a Magic Initiate spell; Brenna a cantrip); a Long Rest and Any other time show the live and
-the read-only list. `ⓘ`, a long-press or a 3-second hover shows the scroll card. The page has
-no chooser and no second step. It does not draw: an older sheet's dash, a multiclass
-character, the DM's correction, the Short Rest.
+a Magic Initiate spell; Brenna a cantrip). Round 3 adds: **headers that stick** under the count
+bar (scroll any list; Decision 8); **`(lvl N)` and `(cantrip)`** on every name (Decision 9); the
+**caster lines, "Spell slots" row and the four relabelled tiles** (Decision 11); and the
+**list that follows the moment** (Decision 10): switch Moment to see what each lists; and the **search** (Decision 12): the magnifying glass in the bar, the ✕ to leave. `ⓘ` shows
+the scroll card on a tap; on a mouse, 3 seconds on a row shows it; on touch, a press-and-hold of
+half a second does. The page has no chooser and no second step. It does not draw: an older sheet's
+dash, a multiclass character, the DM's correction, the Short Rest, the combat page.
 
-The mockup was walked with a script (not part of the repo) on a 390 x 844 touch screen and a
-1280 x 800 mouse screen: a Wizard from level 1 to 5 by taps, Brenna's level 5 and a Long Rest,
-and Wren's Long Rest and read-only view. Screenshots, `/home/claude/shots/568-r2/`:
-`phone-wren-new-L1-start`, `phone-wren-L1-mid`, `phone-wren-L2-mid`, `phone-wren-L4-done-top`,
-`phone-wren-levelup5-start`, `phone-wren-levelup5-book`, `phone-wren-L5-picked`,
-`phone-wren-L5-swap-open`, `phone-wren-L5-swap-done`, `phone-wren-L5-saved-readonly`,
-`phone-wren-card`, `phone-wren-long`, `phone-wren-other`, `phone-brenna-levelup5`,
-`phone-brenna-levelup5-picked`, `phone-brenna-long`, `desktop-wren-new-L1`,
-`desktop-wren-levelup5-start`, `desktop-wren-levelup5-picked`, `desktop-wren-card-hover`.
-Round 1's pictures (`mock-*.png`, with the chooser) are out of date.
+**What was measured** (a script, not part of the repo; Chromium at 390 x 844 touch and 1280 x 800
+mouse; screenshots of the frame in `/home/claude/shots/568-r3/`):
+
+- **Pinned stack:** bar 93 px, group header 34, level sub-header 26 (CSS constants, measured the
+  same). At scroll positions from 0 to 3600 px, in both frames and both characters, the group header
+  sat at 93 px under the bar's bottom edge and the level sub-header at 127 px; as a group ended its header
+  was pushed up under the bar by the next one.
+- **Rows:** every row is 52 px high at 390 px, including "Protection from Evil and Good (lvl 1)",
+  whose name is cut with an ellipsis and whose tag is fully visible. No touch target is under 44 px
+  and the list does not scroll sideways.
+- **Count tiles:** each tile jumps to its group, which lands right under the bar.
+- **Nothing moves** (`window.mock.layout()`: the top and height of every row, header, rule line, tile
+  and the bar, the scroll position and the list's height, before and after each tap): **79 taps,
+  the largest change in any top, any height, the scroll position or the list's height was 0 px.** They
+  were: a Wizard walked from level 1 to 5, the swaps, Brenna's level 5, Long Rest and read-only view, **inside
+  each of the four moments for both characters** (a tap on the first, middle and last row of each list),
+  three taps with the list scrolled so that headers were stuck, and a tap inside a **filtered** list (phone
+  and desktop).
+- **Search** (Decision 12), phone and desktop alike: opening it left the scroll place and all 130
+  rows as they were (the bar still 93 px); "fire" left 2 rows (Fire Bolt; Fireball under a lone "Level 3"
+  sub-header, the Level 1 and 2 sub-headers and the Initiate group hidden); "lvl 2" left 36 rows under
+  "Level 2" only; "zzzq" left none and said so; with matches scrolled, the group and level headers stuck
+  at 93 and 127 px; the ✕ closed it and the list was **back at the scroll place it was opened at (1900 px)
+  with all 130 rows**.
+- **Rows each moment lists** (sheets at level 4, the level-up being to 5; rows per group):
+
+  | Moment | Wren (Wizard) | Brenna (Cleric) |
+  |---|---|---|
+  | New character | cantrips 20 · Initiate spell 15 · spellbook 30 | cantrips 20 · Initiate spell 30 · prepared 15 |
+  | Level up | cantrips 20 · Initiate 15 · spellbook 95 | cantrips 20 · Initiate 30 · prepared 45 · always 6 |
+  | After a Long Rest | cantrips 17 (the Wizard list) · Initiate 1 · **spellbook 12** | cantrips 7 · Initiate 1 · **prepared 28** · always 4 |
+  | Any other time | cantrips 6 · Initiate 1 · **prepared 7** | cantrips 7 · Initiate 1 · prepared 7 · always 4 |
+
+  The tiles read, for Wren at level 4: "Cantrips 6 known", "Spells prepared 7 of 7", "Always prepared 1
+  spell", "Spellbook 12 spells".
+
+Screenshots in `/home/claude/shots/568-r3/` (frame only): `phone-wren-scroll-0` to `-5` and
+`phone-brenna-scroll-0` to `-5` (the pinned headers at six scroll places), `desktop-wren-scroll-*`,
+`desktop-brenna-scroll-*`, `phone-wren-pinned-after-taps`, `phone-wren-top-tiles` (caster lines, slots,
+tiles), `phone-{wren,brenna}-moment-{new,level,long,other}`, `phone-wren-long-scrolled`,
+`phone-search-{open,fire,none,scrolled-pinned,closed}`, `desktop-search-*`, `desktop-wren-card-hover`,
+`phone-wren-card`, and round 2's walk (`phone-wren-L*`, `-levelup5-*`, `-swap-*`, `phone-brenna-*`).
+Round 2's pictures (`/home/claude/shots/568-r2/`) are out of date.
 
 ## Build plan
 
@@ -492,7 +780,7 @@ Round 1's pictures (`mock-*.png`, with the chooser) are out of date.
 |---|---|---|
 | **SS1** (rules) | `spellsAt` and `book` on the sheet; `validate`; derive reads `book` (prepared ⊂ book); state version and migration; tests | `derive.js`, `migrate.js`, `packages/rules/test/derive.test.js` |
 | **SS2** (rules) | `spellChanges(before, after, moment)`; `levelUp` checks it; `respell` and the window from `rest` and `shortRest`; `corrected` on a DM's `setSheet`; view and log words; tests per class row of the rules table | `derive.js`, `engine/characters.js`, `engine/rests.js`, `view.js`, tests |
-| **SS3** (client) | the build sheet's Spells section: the one list of checkbox rows with the level in the box, the count bar, swaps in the list, the moments, the slot pips and tiles, always prepared, the spellbook's ★; the Magic Initiate block's line; `ⓘ` and #566's card; a test that a tap changes no row's place (the mockup's `layout()` check, in the client tests); smoke step in the classes pass | `buildsheet.js`, its CSS, `packages/client/test/`, `scripts/smoke/classes.mjs` |
+| **SS3** (client) | the build sheet's Spells section: the one list of checkbox rows with the level in the box, the count bar, swaps in the list, the moments, the slot pips and tiles, always prepared, the spellbook's ★; the Magic Initiate block's line; `ⓘ` and #566's card; sticky headers, `(lvl N)` names, the caster lines and tiles, the lists per moment and the search (Decisions 8 to 12); a test that a tap changes no row's place (the mockup's `layout()` check, in the client tests); smoke step in the classes pass | `buildsheet.js`, its CSS, `packages/client/test/`, `scripts/smoke/classes.mjs` |
 | **SS4** (client) | Character › Sheet › Spells (one-token menu) read-only list and the window line (the same list, live, Done in the foot); until the one-token menu lands, the same in today's sheet tab | `app.js` (`renderSheet`), the one-token menu's files when built |
 | **SS5** | a Wizard copying a spell into the book (gold and hours, DM-approved); High Elf's swap (with SP2) | later |
 
@@ -501,10 +789,11 @@ Shadows stays manual).
 
 ## Risks
 
-- **A long list.** A level 5 Wizard's list is about 130 rows (every cantrip and spell of her
+- **A long list, now with a search** (a new character and a level-up only; after a rest and at other times the list is a
+  few dozen rows at most, Decision 10). A level 5 Wizard's list is about 130 rows (every cantrip and spell of her
   levels, chosen or not), about 6,800 px on a phone. That is the price of "nothing moves" and
   of one list; the count tiles jump to a group, and the bar keeps the count in view. A search
-  that hid rows would move rows (question 11).
+  (Decision 12) filters the list when the player wants fewer rows.
 - **A number in a box may be read as a quantity.** The legend on the status line says what it
   is, and the accessible name says it in words. If the owner's players misread it, the fallback
   is a "L" before the number (`L3`).
@@ -553,12 +842,37 @@ Round 2 (20 November 2026), new, each with its default:
 10. **New choice: a number or a tick?** Default **the current level as a number on a gold
     box**, at once (Decision 2). Alternative: a tick on a gold box that becomes the number
     when the level-up is saved.
-11. **Finding a spell in a long list:** default **no search box** (a filter hides rows, which
-    is rows moving). Alternative: a search box fixed at the top that only brightens the
-    matching rows and dims the others, hiding none.
+11. **Finding a spell in a long list:** ~~default no search box~~ **Answered by the owner
+    (round 3, 06:45 ET): a search that filters (hides non-matches), opened by a magnifying-glass
+    button, with an ✕ that clears and closes it** (Decision 12). It is the one allowed exception to
+    "nothing moves", only while it is open. (Round 2's alternative, a box that only dims
+    non-matches, is not wanted.)
 12. **Giving up a spell to swap:** default **tap its number** (the box empties and the count
     rises; tap again to keep it). Alternative: a "Replace" button on the row, which opens
     nothing but does the same; it adds a control to every row that may change.
 13. **A spell the domain grants after it was prepared** (a Cleric prepared Cure Wounds, then
     reaches level 3): default **the engine frees the prepared place and says so in the log**.
     Alternative: refuse to preparing a domain spell before it is granted.
+
+
+Round 3 (20 November 2026), new, each with its default:
+
+14. **A cantrip's tag:** default **"(cantrip)"** (the SRD's word, and no slot). Alternative:
+    "(lvl 0)", which is the owner's pattern to the letter and two characters shorter.
+15. **Two numbers on a row** (the box: the character level it was chosen at; the name: the spell's
+    level): default **both, told apart by place and look**, with the legend. Alternative: "(spell lvl 2)"
+    or "(L2)" in the name, which is clearer and longer; or the box number with an "L" before it (also
+    the fallback of Risks).
+16. **How much is pinned on a phone:** default **the bar, the group and its level (153 px of 712)**.
+    Alternative: the level folded into the group line ("SPELLBOOK · LEVEL 2", 127 px), whose words
+    change as you scroll; or a shorter bar on a phone (the status line moved out of the bar).
+17. **The press-and-hold on touch:** default **kept, 0.5 seconds, as a shortcut; the ⓘ is the tap**.
+    Alternative: drop the hold, so that the ⓘ is the only way on a phone (one fewer hidden behaviour,
+    and a phone player who never found the hold loses nothing).
+18. **The Wizard's unprepared spells at any other time:** default **not listed** (the owner's ask:
+    only what is prepared), the Spellbook tile still counts them. Alternative: a read-only "Spellbook"
+    group below the prepared spells, which is 5 or so more rows and lets a Wizard read what she has
+    written down without opening a window.
+19. **The combat page:** default **the caster lines and the slots row are shown on it, read-only**.
+    Alternative: only the DC and attack bonus (two numbers), with the ability and the Magic
+    Initiate line left on the sheet.
