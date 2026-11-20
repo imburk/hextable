@@ -267,7 +267,7 @@ test("the reading says the list, the Expertise and the weapons; a player is sent
   using(ON, () => {
     const text = () => readEntry("subclasses", CONTENT.subclasses[SUB]).lines.join("\n");
     const read = text();
-    assert.match(read, /2 skills, chosen on the holder's sheet from Arcana, History, Nature or Religion; one the holder already has cannot be chosen/);
+    assert.match(read, /2 skills, chosen on the holder's sheet from Arcana, History, Nature or Religion; one the holder already has may be chosen, and gives no second proficiency/);
     assert.match(read, /Expertise in them: the Proficiency Bonus is doubled/);
     assert.match(read, /1 skill, chosen on the holder's sheet from Investigation, Medicine or Survival/);
     assert.match(read, /Training with the "Rapier" and "Whip", which it names/);
