@@ -42,6 +42,7 @@ import { multiclassSpellcaster } from './srd52/multiclass.js';
 import { advancement } from './srd52/advancement.js';
 import { feats } from './srd52/feats.js';
 import { items } from './srd52/magic-items.js';
+import { prices } from './srd52/prices.js';
 
 // A new content file is added in two places: an import above, and its list here.
 const spells = [...spellsStarter, ...spells0, ...spells1, ...spells4, ...spells5, ...spells6, ...spells7, ...spells8, ...spells9, ...spells2, ...spells3];
@@ -50,11 +51,11 @@ const monsters = [...monstersStarter, ...monstersAC, ...monstersPZ, ...monstersD
 const classes = [barbarian, bard, cleric, druid, fighter, monk, paladin, ranger, rogue, sorcerer, warlock, wizard];
 
 export { TILES };
-export const PACKS = [{ pack, spells, monsters, summons, pregens, conditions, objects, classes, weapons, armour, feats, items, multiclass: multiclassSpellcaster, advancement }];
+export const PACKS = [{ pack, spells, monsters, summons, pregens, conditions, objects, classes, weapons, armour, feats, items, multiclass: multiclassSpellcaster, advancement, prices }];
 export { legacyMonster };                              // exported for tests
 const byId = (list) => Object.fromEntries(list.map((e) => [e.id, e]));
 export const CONTENT = { spells: byId(spells), monsters: byId(monsters), summons: byId(summons), pregens: byId(pregens), conditions: byId(conditions), objects: byId(objects),
-  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId(items), multiclass: multiclassSpellcaster, advancement,
+  classes: byId(classes), weapons: byId(weapons), armour: byId(armour), feats: byId(feats), items: byId(items), multiclass: multiclassSpellcaster, advancement, prices,
   // A table's homebrew subclasses, by id (docs/specs/homebrew-subclasses.md, Decision 3). Empty for the SRD, whose subclasses stay inside their
   // classes (`CONTENT.classes[id].subclass`), so nothing the SRD prints, counts or tests changes; the registry adds a table's.
   subclasses: {},

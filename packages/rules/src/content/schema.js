@@ -2192,6 +2192,58 @@ function lintItem(e, say, ctx = {}) {
   if (findFunction(e)) say('content is data only');
 }
 
+// The prices table (docs/specs/shops.md, task P1): every number a whole number, the coins in the SRD's order with Copper Piece
+// the unit and the Gold Piece 100 of them, the rarities in the order of RARITIES (an Artifact is priceless: `gp: null`, and only an
+// Artifact), values and scroll costs rising, and `checked`. What a number is, the SRD says: it is compared in the test.
+const PRICE_COINS = ['cp', 'sp', 'ep', 'gp', 'pp'];
+const PRICE_KEYS = ['id', 'name', 'source', 'checked', 'text', 'coins', 'perPound', 'selling', 'rarities', 'consumableDivisor', 'scrollMultiple', 'addsBaseCost', 'scrolls'];
+export function lintPrices(t, say) {
+  if (!t || typeof t !== 'object' || Array.isArray(t)) return say('is { id, name, source, checked, text, coins, perPound, selling, rarities, consumableDivisor, scrollMultiple, addsBaseCost, scrolls }');
+  for (const k of Object.keys(t)) if (!PRICE_KEYS.includes(k)) say(`"${k}" is not something the prices have`);
+  if (!ID.test(t.id ?? '') || !isText(t.name) || !isText(t.source) || !isText(t.text)) say('needs an id in kebab-case, a name, a source and text');
+  if (typeof t.checked !== 'boolean') say('needs `checked`');
+  const rows = (list, what, keys) => {
+    if (!Array.isArray(list)) { say(`${what} is a list`); return false; }
+    if (list.every((r) => r && typeof r === 'object' && !Array.isArray(r) && Object.keys(r).length === keys.length && keys.every((k) => Object.hasOwn(r, k)))) return true;
+    say(`${what}: a row is { ${keys.join(', ')} }`);
+    return false;
+  };
+  const rising = (list, key, what) => { for (let i = 1; i < list.length; i++) if (!(list[i][key] > list[i - 1][key])) { say(`${what} must rise from one row to the next`); break; } };
+  if (rows(t.coins, 'coins', ['id', 'name', 'cp'])) {
+    if (t.coins.map((c) => c.id).join() !== PRICE_COINS.join()) say(`coins are ${PRICE_COINS.join(', ')}, in that order`);
+    else {
+      if (!t.coins.every((c) => isText(c.name) && isInt(c.cp) && c.cp > 0)) say('each coin has a name and a worth in copper pieces, a whole number above 0');
+      else {
+        rising(t.coins, 'cp', 'the coins\' worth');
+        if (t.coins[0].cp !== 1) say('the Copper Piece is the unit: its worth is 1');
+        if (t.coins[3].cp !== 100) say('the Gold Piece is the game\'s main coin: 100 copper pieces');
+      }
+    }
+  }
+  if (!(isInt(t.perPound) && t.perPound > 0)) say('perPound is how many coins weigh a pound, a whole number above 0');
+  const sell = t.selling;
+  if (!(sell && typeof sell === 'object' && Object.keys(sell).join() === 'equipment,trade,valuable' && Object.values(sell).every((n) => isInt(n) && n >= 1 && n <= 100))) say('selling is { equipment, trade, valuable }: percents of cost, from 1 to 100');
+  if (rows(t.rarities, 'rarities', ['id', 'name', 'gp'])) {
+    const want = RARITIES.filter((r) => r !== 'varies');
+    if (t.rarities.map((r) => r.id).join() !== want.join()) say(`rarities are ${want.join(', ')}, in that order`);
+    else {
+      const priced = t.rarities.filter((r) => r.id !== 'artifact');
+      if (!t.rarities.every((r) => isText(r.name)) || !priced.every((r) => isInt(r.gp) && r.gp > 0)) say('each rarity has a name and a value in GP, a whole number above 0, except the Artifact');
+      else rising(priced, 'gp', 'the values by rarity');
+      if (t.rarities.at(-1).gp !== null) say('an Artifact is priceless: `gp: null`');
+    }
+  }
+  if (!(isInt(t.consumableDivisor) && t.consumableDivisor >= 2)) say('consumableDivisor is the number a consumable item\'s value is divided by, a whole number from 2');
+  if (!(isInt(t.scrollMultiple) && t.scrollMultiple >= 1)) say('scrollMultiple is how many times its scribing cost a Spell Scroll is worth, a whole number from 1');
+  if (typeof t.addsBaseCost !== 'boolean') say('addsBaseCost is true or false');
+  if (rows(t.scrolls, 'scrolls', ['level', 'gp'])) {
+    if (t.scrolls.length !== 10 || !t.scrolls.every((r, i) => r.level === i)) say('scrolls are the levels 0 (a cantrip) to 9, in order');
+    else if (!t.scrolls.every((r) => isInt(r.gp) && r.gp > 0)) say('each Spell Scroll cost is in GP, a whole number above 0');
+    else rising(t.scrolls, 'gp', 'the Spell Scroll costs');
+  }
+  if (findFunction(t)) say('content is data only');
+}
+
 // `opts.strict`: the gate for a homebrew pack (docs/specs/homebrew.md, Decision 2): the budget first (and nothing else
 // if it fails), then the closed key lists, the homebrew id, source and `checked` rules, on top of the lint below.
 // `opts.keys`: the closed key lists alone (the SRD pack passes them). Without options, as it always was.
@@ -2202,7 +2254,7 @@ export function lintPack(doc, opts = {}) {
 }
 function lintPackCore(doc, opts) {
   if (opts.strict) { const over = budget(doc, opts.limits); if (over.length) return over; }
-  const { pack, spells = [], monsters = [], summons, pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement, subclasses, species } = doc;
+  const { pack, spells = [], monsters = [], summons, pregens = [], conditions = [], objects = [], classes = [], weapons = [], armour = [], feats, items, multiclass, advancement, prices, subclasses, species } = doc;
   const problems = [];
   const strict = opts.strict || opts.keys ? strictOptions(doc, opts, problems) : null;
   if (strict && problems.length) return problems;               // the document's own shape is wrong: nothing below can be read
@@ -2310,6 +2362,8 @@ function lintPackCore(doc, opts) {
       && (i === 0 ? r.xp === 0 && r.prof === 2 : r.xp > rows[i - 1].xp && r.prof >= rows[i - 1].prof));
     if (!good) problems.push('advancement: the Character Advancement table is levels 1 to 20 of { level, xp, prof }, XP rising from 0, with `checked`');
   }
+  // The prices of the SRD (content/srd52/prices.js): coins, the selling rule, magic item values by rarity, Spell Scroll costs.
+  if (prices !== undefined) lintPrices(prices, (m) => problems.push(`prices: ${m}`));
   for (const p of pregens) {
     const say = (m) => problems.push(`pregens/${p?.id ?? '?'}: ${m}`);
     if (!ID.test(p.id ?? '')) say('id must be kebab-case');
