@@ -6,7 +6,7 @@ import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
 import { startBar, loadDraft, saveDraft, keepBuild, dropBuild, whenLine } from './startflow.js';
 import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
-import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, DEFAULT_RULE, BELOW, cleanRule, ruleText, pointsSpent, pointsLeft, rollScores, rollScore, mayReroll, rerollWhy,
+import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, DEFAULT_RULE, BELOW, cleanRule, ruleText, pointsSpent, pointsLeft, rollScores, rollScore, mayReroll, rerollWhy, rerollOpen, topThree, tableRule,
   standing, applyBackground, checkScores, scoresLine, dmLine, setText, dayText } from './shared/scores.js';
 import { keyedRng } from './shared/rng.js';
 import { attach as scrollOn, hide as scrollOff } from './scrolltip.js';
@@ -22,8 +22,9 @@ export const PALETTE = [['#c8553d', 'Red'], ['#d9a441', 'Gold'], ['#4a7c59', 'Gr
 // What the "More" box was given as a colour: `#rrggbb` (lower case), or '' when it is not one. A leading # is optional.
 export const hexOf = (text) => { const m = /^#?([0-9a-fA-F]{6})$/.exec(String(text ?? '').trim()); return m ? `#${m[1].toLowerCase()}` : ''; };
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
-// (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20.)
-export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus'];
+// (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20. `species` is the sheet's species,
+// docs/specs/species.md: kept whole, its id and choices, until the species picker (SP9) gives it a control.)
+export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus', 'species'];
 // The DM's score bonus as a line ("DM bonus: +2 Charisma"), or '' when there is none; and a kept-fields object without it.
 export const bonusText = (sb) => { const l = ABILITIES.filter((a) => Number.isInteger(sb?.[a]) && sb[a] > 0).map((a) => `+${sb[a]} ${ABIL_NAME[a]}`); return l.length ? `DM bonus: ${l.join(', ')}` : ''; };
 export const withoutBonus = (keep) => { const { scoreBonus, ...rest } = keep; void scoreBonus; return rest; };
@@ -84,7 +85,7 @@ export function scoreParts(sc, today = '') {
   let scores = null;
   if (!problems.length) {
     scores = { method: sc.method, base: placed, ...(bg ? { background: bg } : {}) };
-    if (sc.method === 'roll') Object.assign(scores, { rolls: structuredClone(sc.roll.rolls), rule: cleanRule(sc.roll.rule), by: sc.roll.by ?? 'device', ...(sc.roll.at !== undefined ? { at: sc.roll.at } : { ...(today ? { at: today } : {}) }) });
+    if (sc.method === 'roll') Object.assign(scores, { rolls: structuredClone(sc.roll.rolls), rule: cleanRule(sc.roll.rule), by: sc.roll.by ?? 'device', ...(sc.roll.at !== undefined ? { at: sc.roll.at } : (sc.roll.by ?? 'device') === 'device' && today ? { at: today } : {}) });
   }
   return { abilities, scores, problems };
 }
@@ -120,6 +121,37 @@ const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (x) 
 // A roll made on this device: the dice are the rules package's (`rollScores`) on a key this page makes.
 const rollHere = () => rollScores({ rng: keyedRng(newKey()) }).sets.map((s) => ({ dice: s.faces }));
 const rerollHere = () => rollScore({ rng: keyedRng(newKey()) }).faces;
+
+// ---------- rolling at the table (docs/specs/ability-scores.md, #578) ----------
+// In a game the dice are the game's: the sheet sends `rollAbilityScores` and `rerollAbilityScore` and draws what the events say. These are the pure parts.
+// `heard` is what this page was told of its own roll: { by, at, rolls: [{ dice, again? }], result? } (`result`: which result stood at the last reroll, where the event shows it).
+const faces = (dice) => dice.map((d) => d.value);
+export const rollsOfEvent = (ev) => ev.sets.map((s) => ({ dice: faces(s.dice) }));
+// A reroll event written into a list of rolls, once.
+export function rerollInto(rolls, ev) { const s = rolls[ev.index]; if (s && !s.again) s.again = faces(ev.to.dice); }
+// The result that stood at a reroll: `stands: 'old'` can only be "the higher"; a new roll that stood below the old can only be "the new"; otherwise the setting says nothing, so there is none.
+export const resultOf = (ev) => (ev.stands === 'old' ? 'higher' : ev.to.total < ev.from.total ? 'new' : undefined);
+// The rule a table roll is kept under: the table's rule now, the result that stood where a reroll showed it, and "every score" if the rerolls already made would not fit a narrower rule.
+export function tableRollRule(settings, rolls, result) {
+  const now = tableRule(settings), rule = result ? cleanRule({ ...now, result }) : now;
+  return rolls.every((s) => !s.again || rerollOpen(rule, topThree(s.dice))) ? rule : cleanRule({ reroll: 'each', result: rule.result });
+}
+const sane = (s) => !!s && Array.isArray(s.dice) && s.dice.length === 4 && (s.again === undefined || (Array.isArray(s.again) && s.again.length === 4));
+// The roll this table holds for the one using the sheet, as the draft's `roll`, or null. The DM's view holds every record (`scoreRolls`); a player's holds none, so what
+// the events said (`heard`) is all there is. The DM's own id is not told to the sheet: it is the one the first roll came back under, else 'local' (a solo game) or 'dm'.
+export function keptRoll(S, heard, myId) {
+  const recs = S?.scoreRolls;
+  let rolls = null, at;
+  if (recs && typeof recs === 'object') {
+    const who = myId ?? heard?.by ?? ['local', 'dm'].find((k) => Object.hasOwn(recs, k)) ?? 'local', rec = who !== '#seq' && Object.hasOwn(recs, who) ? recs[who] : null;
+    if (rec && Array.isArray(rec.sets) && rec.sets.length === 6 && rec.sets.every(sane)) {
+      rolls = rec.sets.map((x) => ({ dice: [...x.dice], ...(x.again ? { again: [...x.again] } : {}) }));
+      if (heard && heard.by === who && heard.rolls.every((x, i) => x.dice.join() === rolls[i].dice.join())) at = heard.at;       // the event number is not in the record: only the event said it
+    }
+  } else if (heard) { rolls = structuredClone(heard.rolls); at = heard.at; }
+  if (!rolls) return null;
+  return { rolls, rule: tableRollRule(S?.settings, rolls, heard?.result), by: 'table', ...(at !== undefined ? { at } : {}), ...(heard?.result ? { result: heard.result } : {}) };
+}
 
 function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -210,13 +242,18 @@ export function openBuild(o) {
   current.open(o);
 }
 
-export function initBuild({ act, toast, getState, getSelected, importButton }) {
+export function initBuild({ act, toast, getState, getSelected, importButton, me = () => undefined }) {
   const classIds = Object.keys(CONTENT.classes);
   let b = fresh(), mode = 'add', target = null, base = null, base0 = null, pending = null, keep = null;       // `keep`: where a sheet goes in 'mine' mode
   // In 'mine' mode (the start flow, issue #556): the trail the title shows, the key of this character's draft ('new' or its id), what the sheet
   // held when it was opened (a draft is kept only once it differs), and whether a draft was picked up.
   let trail = [], draftKey = null, baseline = '', pickedUp = null, opening = false, moreOpen = false;
   const open = new Set(['spells-0']);          // spell groups left open across redraws
+  // Rolling at the table (#578): what this page was told of its own roll, and whether a roll or reroll is sent and not yet answered.
+  let heard = null, waiting = null, checked = false, rolledOut = false;       // checked: the table's history of this member's rolls has come; rolledOut: the engine said this member has rolled and none is known here
+  const inGame = () => mode !== 'mine' && !!getState();
+  const wait = () => { clearTimeout(waiting?.timer); waiting = { timer: setTimeout(() => { waiting = null; if (!panel.hidden) build(); }, 4000) }; };      // a refusal does not come back as an event: the buttons come back after a moment
+  const unwait = () => { clearTimeout(waiting?.timer); waiting = null; };
   const refs = {};
 
   const panel = el('aside', { id: 'qb', class: 'panel qe qb', hidden: true, 'aria-label': 'Build a character from class and level' });
@@ -229,6 +266,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   }
   // The sheet the engine takes: choices only, nothing empty.
   function sheet() {
+    if (b.sc.roll?.by === 'table' && !b.sc.saved && inGame()) b.sc.roll.rule = tableRollRule(getState().settings, b.sc.roll.rolls, b.sc.roll.result);
     const parts = b.sc.method === 'hand' ? null : scoreParts(b.sc, dayNow());
     const s = { name: b.name.trim(), class: b.class, level: b.level, abilities: parts ? parts.abilities : { ...b.abilities }, skills: [...b.skills] };
     if (parts?.scores) s.scores = parts.scores;
@@ -299,6 +337,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     const scroll = panel.scrollTop, focus = document.activeElement?.id;
     panel.textContent = ''; scrollOff();
     for (const k of Object.keys(refs)) delete refs[k];
+    if (b.sc.roll?.by === 'table' && !b.sc.saved && inGame()) b.sc.roll.rule = tableRollRule(getState().settings, b.sc.roll.rolls, b.sc.roll.result);       // the rule it is kept under is the table's, as it stands when saved
     const L = limits(), c = L.c, locked = mode === 'levelup';
     const title = mode === 'levelup' ? `Level up ${target.name}` : mode === 'edit' ? `Edit ${target.name}` : mode === 'mine' ? (target ? `Edit ${target.name}` : 'New character for My characters') : 'Build from class and level';
     let head = el('div', { class: 'qe-head' }, el('h2', { text: title }), el('button', { type: 'button', class: 'close', id: 'qb-close', text: 'Close', onclick: close }));
@@ -435,7 +474,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     sc.method = m;
     if (m === 'hand') { b.abilities = { ...(b.hand ?? b.abilities) }; b.abilText = null; }
     else {
-      if (m === 'roll' && !sc.roll) { const kept = keepRead(ROLL_KEY); if (kept && Array.isArray(kept.rolls) && kept.rolls.length === 6) { sc.roll = { rolls: kept.rolls, rule: cleanRule(kept.rule), by: 'device', ...(typeof kept.at === 'string' ? { at: kept.at } : {}) }; sc.rule = sc.roll.rule; } }
+      if (m === 'roll' && !sc.roll && inGame()) { sc.roll = keptRoll(getState(), heard, me()); if (sc.roll) { sc.rule = sc.roll.rule; sc.place = blank(); sc.saved = false; } }
+      else if (m === 'roll' && !sc.roll) { const kept = keepRead(ROLL_KEY); if (kept && Array.isArray(kept.rolls) && kept.rolls.length === 6) { sc.roll = { rolls: kept.rolls, rule: cleanRule(kept.rule), by: 'device', ...(typeof kept.at === 'string' ? { at: kept.at } : {}) }; sc.rule = sc.roll.rule; } }
       b.abilities = scoreParts(sc, dayNow()).abilities;
     }
     build();
@@ -486,7 +526,13 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       line = `${POINT_BUDGET} points, ${spent} spent, ${left} left. Scores go from 8 to 15 before the background.${left === 0 ? ' No points left: lower a score to raise another.' : ''}`;
     } else {
       const R = sc.roll, rule = R ? R.rule : sc.rule;
-      if (!R) {
+      if (!R && inGame()) {
+        sec.append(el('p', { class: 'note', id: 'qb-rule-text', text: `This table: ${ruleText(tableRule(getState().settings))}` }),
+          // A member who has rolled is not offered a button the engine would refuse: until the table has said what this member holds, and once it has been refused, a sentence instead.
+          rolledOut ? el('p', { class: 'note', id: 'qb-rolled-out' , text: 'You have rolled at this table; ask the DM to roll for you.' })
+            : el('div', { class: 'row' }, el('button', { type: 'button', id: 'qb-roll', class: 'sc-roll', text: waiting ? 'Rolling…' : !checked && !getState().scoreRolls ? 'Checking your rolls…' : 'Roll the dice', disabled: !!waiting || (!checked && !getState().scoreRolls), onclick: () => { wait(); build(); act({ type: 'rollAbilityScores' }); } })),
+          el('p', { class: 'note', text: 'Four dice for each score, the lowest set aside, six times, rolled by the table: the roll is recorded, and only you and the DM see the numbers.' }));
+      } else if (!R) {
         const ruleBox = el('div', { class: 'qe-grid qe-2', id: 'qb-rule' },
           el('label', { class: 'qe-f' }, el('span', { text: 'Reroll (rules for rolled scores on this device)' }), pick('qb-rule-reroll', [['none', 'No score may be rolled again (SRD)'], ['below', 'A score below a number, once'], ['each', 'Every score, once']], sc.rule.reroll,
             (v) => { sc.rule = cleanRule({ reroll: v, ...(v === 'below' ? { below: sc.rule.below ?? 10 } : {}), result: sc.rule.result }); keepWrite(RULE_KEY, sc.rule); build(); })),
@@ -500,18 +546,23 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
             keepWrite(ROLL_KEY, { rolls: sc.roll.rolls, rule: sc.roll.rule, at: sc.roll.at }); build(); } })),
           el('p', { class: 'note', text: 'Four dice for each score, the lowest set aside, six times. Rolled on this device: the DM will see this, and that it was not rolled at the table.' }));
       } else {
-        const where = R.by === 'table' ? 'Rolled at the table.' : `Rolled on this device${dayText(R.at) ? ` on ${dayText(R.at)}` : ''}. The DM will see this.`;
-        sec.append(el('p', { class: 'note', id: 'qb-rule-text', text: `${where} ${ruleText(R.rule)}` }));
+        const table = R.by === 'table', live = table && !sc.saved && inGame() ? tableRule(getState().settings) : R.rule;       // a table roll may be rolled again as the table's rule is now
+        const where = table ? `Rolled at the table${Number.isInteger(R.at) ? ` (event ${R.at})` : ''}.` : `Rolled on this device${dayText(R.at) ? ` on ${dayText(R.at)}` : ''}. Not witnessed: the table did not roll these. The DM will see this.`;
+        sec.append(el('p', { class: 'note', id: 'qb-rule-text', text: `${where} ${table && !sc.saved && inGame() ? `This table: ${ruleText(live)}` : ruleText(R.rule)}` }));
         const chips = el('div', { class: 'sc-chips', id: 'qb-chips' });
         R.rolls.forEach((s, i) => {
-          const why = sc.saved ? 'This character was saved with these rolls.' : rerollWhy(s, R.rule), can = !sc.saved && mayReroll(s, R.rule);
+          const why = sc.saved ? 'This character was saved with these rolls.' : rerollWhy(s, live), can = !sc.saved && mayReroll(s, live);
           const onto = ABILITIES.find((a) => sc.place[a] === i);
           chips.append(el('div', { class: 'sc-chip', id: `qb-chip-${i}`, 'data-score': String(standing(s, R.rule)) }, el('b', { text: `Roll ${i + 1}: ${standing(s, R.rule)}` }), el('small', { text: setText(s, R.rule).replace(/^\d+ /, '') }),
             onto ? el('small', { class: 'note', text: `On ${onto.toUpperCase()}` }) : null,
-            can ? el('button', { type: 'button', id: `qb-reroll-${i}`, text: 'Roll this score again', onclick: () => { s.again = rerollHere(); keepWrite(ROLL_KEY, { rolls: R.rolls, rule: R.rule, at: R.at }); build(); } })
+            can ? el('button', { type: 'button', id: `qb-reroll-${i}`, text: 'Roll this score again', disabled: !!waiting,
+              onclick: table ? () => { wait(); build(); act({ type: 'rerollAbilityScore', index: i }); } : () => { s.again = rerollHere(); keepWrite(ROLL_KEY, { rolls: R.rolls, rule: R.rule, at: R.at }); build(); } })
               : el('small', { class: 'note', id: `qb-noreroll-${i}`, text: why })));
         });
         sec.append(chips);
+        // The DM's view holds every record, and the DM may always roll a fresh set in place of the kept one; a player is not offered one.
+        if (table && !sc.saved && inGame() && getState().scoreRolls) sec.append(el('div', { class: 'row' }, el('button', { type: 'button', id: 'qb-roll-fresh', text: waiting ? 'Rolling…' : 'Roll a fresh set (DM)', disabled: !!waiting, onclick: () => { wait(); build(); act({ type: 'rollAbilityScores' }); } }),
+          el('small', { class: 'note', text: 'Replaces the roll the table holds for you.' })));
         for (const a of ABILITIES) {
           const free = R.rolls.map((s, i) => i).filter((i) => i === sc.place[a] || !ABILITIES.some((x) => sc.place[x] === i));
           row(a, pick(`qb-place-${a}`, [['', 'Choose…'], ...free.map((i) => [String(i), `${standing(R.rolls[i], R.rule)} (roll ${i + 1})`])], Number.isInteger(sc.place[a]) ? String(sc.place[a]) : '',
@@ -536,7 +587,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       bgBox.append(el('p', { class: 'note', text: 'No score goes above 20. The background\'s feat, skills and tool are chosen where they always were.' }));
     }
     sec.append(bgBox, el('p', { class: 'note', id: 'qb-sc-line', text: line }));
-    if (sc.method === 'roll' && sc.roll && parts.scores) sec.append(el('p', { class: 'note', id: 'qb-dm-line', text: `What the DM sees: ${dmLine({ ...sheet(), scores: parts.scores })}` }));
+    if (sc.method === 'roll' && sc.roll && parts.scores) sec.append(el('p', { class: 'note', id: 'qb-dm-line', text: `What the DM sees: ${dmLine({ ...sheet(), scores: parts.scores }, inGame() ? tableRule(getState().settings) : undefined)}` }));
     sec.append(el('p', { class: 'note', text: 'What you typed under "Enter by hand" is kept.' }), ...(bonusLine ? [bonusLine] : []));
     return sec;
   }
@@ -714,6 +765,20 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     if (r.feats?.length) D.append(el('h4', { text: 'Features' }), el('div', { id: 'qb-feats' }, ...r.feats.map(featureRow)));
   }
 
+  // What the table said of this page's own roll (the events a roller is sent whole): written to `heard`, and to the draft if its roll is a table's.
+  function tableEvent(ev) {
+    const mine = (by) => (me() !== undefined ? by === me() : !!(waiting || (heard && heard.by === by)));      // our id is told by the page; without it, an answer to our own request
+    if (ev.type === 'scoresRolled' && Array.isArray(ev.sets)) {
+      if (!mine(ev.by) || (heard && heard.by === ev.by && Number.isInteger(heard.at) && Number.isInteger(ev.at) && heard.at > ev.at)) return;      // not ours, or older than what we hold (the history comes after a live roll)
+      heard = { by: ev.by, at: ev.at, rolls: rollsOfEvent(ev) }; unwait(); rolledOut = false;
+      if (!panel.hidden && mode !== 'mine' && !b.sc.saved && b.sc.method === 'roll') { b.sc.roll = keptRoll(getState(), heard, me()); b.sc.rule = b.sc.roll?.rule ?? b.sc.rule; b.sc.place = blank(); build(); }
+    } else if (ev.type === 'scoreRerolled' && ev.from && ev.to && heard && mine(ev.by) && heard.by === ev.by) {
+      if (heard.rolls[ev.index]?.again) return;
+      rerollInto(heard.rolls, ev); heard.result = resultOf(ev) ?? heard.result; unwait();
+      const R = b.sc.roll;
+      if (!panel.hidden && R?.by === 'table' && !b.sc.saved) { rerollInto(R.rolls, ev); R.result = heard.result; build(); }
+    }
+  }
   function autoSubclass() { if (b.level >= 3 && !b.subclass) b.subclass = b.c.subclass.id; }
   function close() { panel.hidden = true; pending = null; keep = null; panel.classList.remove('over-lobby'); }
   function save() {
@@ -738,7 +803,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   const api = {
     // { mode: 'add' } | { mode: 'edit', entity } | { mode: 'levelup', entity } | { mode: 'mine', sheet?, onSave }
     open(o = { mode: 'add' }) {
-      mode = o.mode; pending = null; target = o.entity ? { id: o.entity.id, name: o.entity.name } : null;
+      if (!getState()) { heard = null; checked = false; rolledOut = false; }                // no game: whatever an earlier table said is no one's now
+      unwait(); mode = o.mode; pending = null; target = o.entity ? { id: o.entity.id, name: o.entity.name } : null;
       keep = mode === 'mine' ? o.onSave : null;
       trail = o.trail ?? ['New character']; draftKey = mode === 'mine' ? (o.cid ?? 'new') : null; base0 = mode === 'mine' ? (o.sheet ?? null) : null; pickedUp = null; moreOpen = false;
       panel.classList.toggle('over-lobby', mode === 'mine');             // it opens over the lobby, which is above the usual panels
@@ -760,7 +826,12 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       panel.hidden = false; panel.scrollTop = 0;
     },
     close,
+    // The table's answer about this member's own rolls has come (a page that asked for it), or the engine refused something.
+    fresh() { heard = null; checked = false; rolledOut = false; unwait(); },       // a new table's first state: nothing of an earlier table is held
+    scoresChecked() { checked = true; if (!panel.hidden) build(); },
+    refused(msg) { if (/already rolled your ability scores/.test(String(msg))) { rolledOut = true; unwait(); if (!panel.hidden) build(); } },
     events(events) {
+      for (const ev of events) tableEvent(ev);
       if (!pending) return;
       const done = events.find((ev) => ev.type === pending);
       if (!done) return;

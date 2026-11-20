@@ -16,10 +16,28 @@ import { validFormation } from './engine/world.js';
 import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
 
-export const VERSION = 25;
+export const VERSION = 26;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
+  // The places parked in a world (version 26; docs/specs/travel.md, Decision 5) hold creatures, lasting effects and a map
+  // of their own: every step below that brings creatures, effects or a map up to date is run on each of them as on the
+  // place in play, from the same version (review of #580, M3). A record that is not whole is dropped, and the DM told in
+  // the record (a `manual` for the DM alone): nothing of a place goes without the DM hearing of it.
+  if (state.parked !== undefined) {
+    const lost = [];
+    if (!isRec(state.parked)) { if (state.parked !== null) lost.push('(the list of parked places)'); state.parked = {}; }
+    for (const [k, r] of Object.entries(state.parked)) {
+      if (!(isRec(r) && isRec(r.map) && isRec(r.entities) && Object.values(r.entities).every(isRec) && (r.effects === undefined || Array.isArray(r.effects)) && Number.isFinite(r.since))) { delete state.parked[k]; lost.push(k); continue; }
+      const place = { version: state.version, entities: r.entities, effects: r.effects ?? [], encounter: null, map: r.map };
+      migrate(place);
+      Object.assign(r, { map: place.map, entities: place.entities, effects: place.effects });
+    }
+    if (lost.length && Array.isArray(state.timeline)) {
+      state.timeline.push({ t: Number.isFinite(state.clock) ? state.clock : 0, type: 'manual', actor: null, name: 'Places', partial: true,
+        text: `A saved place could not be read and was let go when this table was loaded: ${lost.join(', ')}. What was there (its map, creatures and lasting effects) is gone; the place is built again from the world pack next time.` });
+    }
+  }
   // Version 2: a condition is a record ({ source, level, ... }), no longer just `true`.
   for (const e of Object.values(state.entities)) {
     for (const [id, v] of Object.entries(e.cond ?? {})) { if (v === true) e.cond[id] = {}; else if (!v) delete e.cond[id]; }
@@ -155,6 +173,15 @@ export function migrate(state) {
   if (!(state.version >= 24) || Object.hasOwn(state, 'packs')) state.packs = Array.isArray(state.packs) && packsProblem(state.packs) === null ? copyPacks(state.packs) : [];
   // Version 25: the ability scores a member has rolled, `{ [userId]: { sets: [{ dice, again? }] } }` (docs/specs/ability-scores.md); a table saved before has none.
   if (!(state.version >= 25) || state.scoreRolls === undefined) state.scoreRolls = state.scoreRolls && typeof state.scoreRolls === 'object' && !Array.isArray(state.scoreRolls) ? state.scoreRolls : {};
+  // Version 26: places of a world (docs/specs/travel.md, Decisions 2, 5 and 11; row W2). `world` (the index of the world the
+  // DM imported, or null), `place` (the node in play, or null), `parked` (the places left as they were) and `journey`
+  // (W6). A table saved before then has none: `world: null, place: null, parked: {}, journey: null`, and plays as it did.
+  // A state already at version 26 without them (one made by `newGame`, which does not set them) is left as it is, as for
+  // `packs`: reading code takes an absent field as empty. One that is not whole is put back to empty, so nothing reads half
+  // a place: a world that is not a record, a place that names no node of it, a parked record without its map and creatures.
+  if (!(state.version >= 26)) Object.assign(state, { world: state.world ?? null, place: state.place ?? null, parked: state.parked ?? {}, journey: state.journey ?? null });
+  if (state.world !== undefined && !(state.world === null || (isRec(state.world) && isRec(state.world.nodes)))) state.world = null;
+  if (state.place !== undefined && !(state.place === null || (typeof state.place === 'string' && isRec(state.world?.nodes) && Object.hasOwn(state.world.nodes, state.place)))) state.place = null;
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
@@ -172,6 +199,8 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
   return state;
 }
+
+const isRec = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 // A conclusion as rewards.js makes it, in every part a later action or view reads.
 function validConclusion(c) {

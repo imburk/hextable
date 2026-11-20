@@ -11,7 +11,7 @@ import { AMBIENT } from './content/lights.js';
 // that reads format 1 refuses a format 2 document rather than reading a square map as hexes.
 export const MAP_FORMAT = 2;
 export const GRIDS = ['hex', 'square'];
-export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500, entries: 100 };
+export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500, entries: 100, areas: 200 };
 // What an entry is (docs/specs/travel.md, Decision 3): a named group of starts where a party arrives.
 // `near` and `far` are the two ends of a map used for a fight; a `circle` names its permanent circle object.
 export const ENTRY_KINDS = ['gate', 'dock', 'circle', 'landing', 'near', 'far', 'other'];
@@ -21,6 +21,23 @@ export const newMap = (over = {}) => ({
   levels: [{ id: 'ground', name: 'Ground', z: 0, tiles: {} }],
   walls: [], objects: [], regions: [], starts: [], ...over,
 });
+
+// The holding map (docs/specs/travel.md, Decision 1): what the engine holds as `s.map` while the table is on a
+// navigation or scene node. A plain one-level clearing of grass on hexes, with no walls, objects, regions, starts
+// or light, so that every rule that reads the map keeps its invariants and finds nothing to do; big enough for
+// `n` creatures with room for nine cells each, and never smaller than a disc of radius 12 (469 cells, about 9 KB):
+// a held node keeps its holding map while it is held, and the arrivals' spiral (places.js, arrivalSpots) reaches 11
+// cells out. Marked `holding: true`: the screens never draw it, a fight cannot start on it (engine/resolve.js), and its
+// id and name say nothing of the place.
+export const HOLDING_ID = 'holding';
+export function holdingMap(n = 1) {
+  const count = Math.max(1, Math.min(500, Number.isInteger(n) ? n : 1));
+  let radius = 12;
+  while (3 * radius * (radius + 1) + 1 < count * 9) radius++;
+  const tiles = { '0,0': { t: 'grass' } };                 // first: arrivals are set down from the middle out (places.js, arrivalSpots)
+  for (let q = -radius; q <= radius; q++) for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) tiles[`${q},${r}`] ??= { t: 'grass' };
+  return { ...newMap({ id: HOLDING_ID, name: 'Holding map' }), levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], holding: true };
+}
 
 // Brings a map document from an older format up to date. Safe to run on any document, any number of
 // times. A document of a newer format than this build reads is left as it is, so that the linter
@@ -106,6 +123,8 @@ export function lintMap(doc, extra = []) {
   }
   if (doc.entries !== undefined && !Array.isArray(doc.entries)) bad.push('"entries" must be a list.');
   else if (doc.entries?.length > MAP_LIMITS.entries) bad.push(`It has more than ${MAP_LIMITS.entries} entries.`);
+  if (doc.areas !== undefined && !Array.isArray(doc.areas)) bad.push('"areas" must be a list.');
+  else if (doc.areas?.length > MAP_LIMITS.areas) bad.push(`It has more than ${MAP_LIMITS.areas} shop areas.`);
   for (const st of Array.isArray(doc.starts) ? doc.starts : []) {
     if (!st || !Number.isInteger(st.q) || !Number.isInteger(st.r)) bad.push(`A start is not a ${G.word.one}.`);
     else if (st.level !== undefined && !ids.has(st.level)) bad.push(`The start at ${st.q},${st.r} is on a level that does not exist: "${st.level}".`);
@@ -177,6 +196,26 @@ export function lintMap(doc, extra = []) {
     if (r.revealed !== undefined && typeof r.revealed !== 'boolean') bad.push(`Region "${r.id}": revealed must be true or false.`);
     if (r.light !== undefined && !AMBIENT.includes(r.light)) bad.push(`Region "${r.id}" has light "${r.light}"; it can be ${AMBIENT.join(', ')}.`);
   }
+  // Shop areas (docs/specs/shops.md, Decision 4): a named set of cells on one level that a store points at
+  // by id. Unlike a region an area reveals nothing and may overlap a region, several regions or another area.
+  const areaIds = new Set();
+  for (const a of doc.areas ?? []) {
+    if (!a || typeof a !== 'object' || Array.isArray(a)) { bad.push('A shop area is not a record.'); continue; }
+    if (!text(a.id)) { bad.push(text(a.name) ? `The shop area "${a.name}" has no id.` : 'A shop area has no id.'); continue; }
+    if (areaIds.has(a.id)) bad.push(`Shop area id "${a.id}" is used twice.`);
+    areaIds.add(a.id);
+    if (!text(a.name)) bad.push(`Shop area "${a.id}" has no name.`);
+    const level = doc.levels.find((l) => l.id === a.level);
+    if (!level) { bad.push(text(a.level) ? `Shop area "${a.id}" is on a level that does not exist: "${a.level}".` : `Shop area "${a.id}" names no level.`); continue; }
+    if (!Array.isArray(a.hexes) || !a.hexes.length) { bad.push(`Shop area "${a.id}" has no ${G.word.many}.`); continue; }
+    if (a.hexes.length > MAP_LIMITS.tiles) { bad.push(`Shop area "${a.id}" has more than ${MAP_LIMITS.tiles} ${G.word.many}.`); continue; }
+    const mine = new Set();
+    for (const k of a.hexes) {
+      if (typeof k !== 'string' || !COL.test(k) || !Object.hasOwn(level.tiles, k)) { bad.push(typeof k === 'string' && k.length <= 40 ? `Shop area "${a.id}" includes "${k}", which is not a ${G.word.one} of its level.` : `Shop area "${a.id}" includes something that is not a ${G.word.one} of its level.`); break; }
+      if (mine.has(k)) { bad.push(`Shop area "${a.id}" names ${k} twice.`); break; }
+      mine.add(k);
+    }
+  }
   // What the party has seen (docs/specs/sight.md, decision 6): tiles per level, and things as last seen.
   if (doc.seen !== undefined) {
     const sn = doc.seen, okTiles = sn && typeof sn === 'object' && !Array.isArray(sn) && (sn.tiles === undefined || (sn.tiles && typeof sn.tiles === 'object' && Object.entries(sn.tiles).every(([l, cols]) => ids.has(l) && Array.isArray(cols) && cols.length <= MAP_LIMITS.tiles && cols.every((k) => typeof k === 'string' && COL.test(k)))));
@@ -207,6 +246,12 @@ export const EDITS = {
       delete l.tiles[col(at)];
       for (const r of map.regions) if (r.level === level) r.hexes = r.hexes.filter((k) => k !== col(at));
       map.regions = map.regions.filter((r) => r.hexes.length);
+      // A shop area gives the cell up too; one left with none goes (a store pointing at it then has no place here).
+      if (map.areas) {
+        for (const a of map.areas) if (a?.level === level && Array.isArray(a.hexes)) a.hexes = a.hexes.filter((k) => k !== col(at));
+        map.areas = map.areas.filter((a) => !Array.isArray(a?.hexes) || a.hexes.length);
+        if (!map.areas.length) delete map.areas;
+      }
     }
   },
   level(map, { level }) {
@@ -227,6 +272,7 @@ export const EDITS = {
     map.walls = map.walls.filter((w) => w.level !== id);
     map.objects = map.objects.filter((o) => o.level !== id);
     map.regions = map.regions.filter((r) => r.level !== id);
+    if (map.areas) { map.areas = map.areas.filter((a) => a?.level !== id); if (!map.areas.length) delete map.areas; }
     map.starts = map.starts.filter((st) => st.level !== id);    // a start placed on that level goes with it
     return drop(map.levels, id, 'level');
   },
@@ -256,6 +302,12 @@ export const EDITS = {
   entries(map, { entries }) {
     if (entries === undefined || entries === null || (Array.isArray(entries) && !entries.length)) delete map.entries;
     else map.entries = structuredClone(entries);
+  },
+  // The map's shop areas, whole (docs/specs/shops.md, Decision 4); none, or an empty list, takes them away.
+  // The linter checks every one; a store names an area by id, so an id the DM keeps keeps the store's place.
+  areas(map, { areas }) {
+    if (areas === undefined || areas === null || (Array.isArray(areas) && !areas.length)) delete map.areas;
+    else map.areas = structuredClone(areas);
   },
   // The DM clears what the party remembers of the place, on one level or all of it.
   forget(map, { level }) {

@@ -13,6 +13,11 @@ cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus, subclassChoices, subclassNote, classTitle, missingText, armourTrained, armourOptions, armourNote, spellCard } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
+const { standing } = await import(pathToFileURL(join(tmp, 'shared/scores.js')));
+const { view } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
+const { rollsOfEvent, rerollInto, resultOf, tableRollRule, keptRoll } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
+const { viewEvents } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
+const { keyedRng } = await import(pathToFileURL(join(tmp, 'shared/rng.js')));
 const { freshScores, scoreBase, scoreBackground, scoreParts, scoresDraft, bgAbilities, METHOD_NAMES } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
 const { featuresOf } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
 const { loadPack, overlayOf, using } = await import(pathToFileURL(join(tmp, 'shared/content/registry.js')));
@@ -69,6 +74,20 @@ test('editing a character keeps every sheet field the screen has no control for,
   const back = { ...character, scoreBonus: undefined, ...keptOf(character) };
   assert.deepEqual(validate(back), []);
   assert.equal(derive(back).record.abil.wis, 24);
+});
+
+test('editing or levelling a character keeps its species whole, a homebrew one that is not loaded too (docs/specs/species.md, #552)', async () => {
+  const { validate } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
+  const species = { id: 'hb-ember-folk-ash-born', lineage: 'cinder', choices: { 'old-craft': 'lore' } };
+  const sheet = { name: 'Brann', class: 'fighter', level: 1, abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 12, cha: 8 }, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, species };
+  assert.ok(KEEP.includes('species'));
+  assert.deepEqual(keptOf(sheet).species, species);
+  assert.notEqual(keptOf(sheet).species, species, 'a copy, not the sheet\'s own object');
+  assert.equal(keptOf({ name: 'x' }).species, undefined);
+  // Put back on the next level's sheet the way Save does: the id is still there, and the sheet still validates.
+  const next = { ...sheet, level: 2, species: undefined, ...keptOf(sheet) };
+  assert.deepEqual(next.species, species);
+  assert.deepEqual(validate(next), []);
 });
 
 test('the DM score bonus is said in words and can be taken off the kept fields (#498)', () => {
@@ -292,4 +311,90 @@ test('spellCard: name, level and lists, and the pack\'s own text', () => {
   const s = CONTENT.spells.fireball, c = spellCard(s);
   assert.equal(c.title, 'Fireball'); assert.match(c.sub, /^Level 3 · /); assert.equal(c.text, s.text); assert.ok(c.text.length > 20);
   assert.match(spellCard(CONTENT.spells['fire-bolt']).sub, /^Cantrip · /);
+});
+
+// ---------- rolling at the table (#578): the sheet reads the engine's own events ----------
+const TABLE = () => { const g = newGame(7); g.rng = keyedRng('0123456789abcdef'.repeat(4)); return g; };
+const DMX = { role: 'dm', userId: 'dm' }, ANAX = { role: 'player', userId: 'ana' };
+const AA = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const setRule = (g, reroll, result = 'new', below) => { for (const [key, value] of [['scoreReroll', reroll], ['scoreRerollResult', result], ...(below ? [['scoreRerollBelow', below]] : [])]) assert.ok(apply(g, { type: 'setting', key, value }, DMX).ok); };
+
+test('a roll at the table: the events become the draft\'s rolls, by: table, with the event number, and the sheet validates', () => {
+  const g = TABLE(); setRule(g, 'each', 'higher');
+  const r = apply(g, { type: 'rollAbilityScores' }, ANAX); assert.ok(r.ok, r.error);
+  const ev = viewEvents(r.events, g, ANAX).find((e) => e.type === 'scoresRolled');
+  const rolls = rollsOfEvent(ev);
+  assert.equal(rolls.length, 6);
+  assert.ok(rolls.every((x) => x.dice.length === 4 && x.dice.every((d) => d >= 1 && d <= 6) && x.again === undefined));
+  const heard = { by: ev.by, at: ev.at, rolls };
+  const sc = freshScores(); sc.method = 'roll';
+  const kept = keptRoll(view(g, ANAX), heard);          // a player's view holds no record: the events are all there is
+  assert.deepEqual([kept.by, kept.at, kept.rule], ['table', ev.at, { reroll: 'each', result: 'higher' }]);
+  Object.assign(sc, { roll: kept, place: Object.fromEntries(AA.map((a, i) => [a, i])) });
+  const p = scoreParts(sc, '2026-11-20');
+  assert.deepEqual(p.problems, []);
+  assert.deepEqual([p.scores.by, p.scores.at], ['table', ev.at], 'a table roll keeps its event number, not a day');
+  assert.deepEqual(validate({ ...SC_SHEET(p.abilities, p.scores) }), []);
+});
+
+test('a roll with no event number (the DM reopens the sheet) keeps no date, and the DM\'s view finds the record by its own id', () => {
+  const g = TABLE(); const r = apply(g, { type: 'rollAbilityScores' }, DMX); assert.ok(r.ok);
+  const kept = keptRoll(g, null);                          // no event heard: the DM's record under 'dm'
+  assert.equal(kept.by, 'table'); assert.equal(kept.at, undefined);
+  const sc = freshScores(); sc.method = 'roll'; Object.assign(sc, { roll: kept, place: Object.fromEntries(AA.map((a, i) => [a, i])) });
+  assert.equal(scoreParts(sc, '2026-11-20').scores.at, undefined);
+  assert.equal(keptRoll(view(g, ANAX), null), null, 'a player with no events heard has no roll to show');
+  assert.equal(keptRoll(g, { by: 'someone-else', at: 1, rolls: [] }), null, 'a record that is not this roller\'s is not shown');
+});
+
+test('a reroll: the event is written into the rolls, the sheet agrees with the engine on which result stands, and a refusal changes nothing', () => {
+  for (const [result, label] of [['new', 'new'], ['higher', 'higher']]) {
+    const g = TABLE(); setRule(g, 'each', result);
+    let r = apply(g, { type: 'rollAbilityScores' }, ANAX); assert.ok(r.ok);
+    const ev = viewEvents(r.events, g, ANAX)[0], heard = { by: ev.by, at: ev.at, rolls: rollsOfEvent(ev) };
+    for (let i = 0; i < 6; i++) {
+      r = apply(g, { type: 'rerollAbilityScore', index: i }, ANAX); assert.ok(r.ok, r.error);
+      const re = viewEvents(r.events, g, ANAX).find((e) => e.type === 'scoreRerolled');
+      rerollInto(heard.rolls, re); heard.result = resultOf(re) ?? heard.result;
+      const sc = freshScores(); sc.method = 'roll';
+      sc.roll = keptRoll(view(g, ANAX), heard);
+      assert.equal(standing(sc.roll.rolls[i], sc.roll.rule), re.total, `${label}: score ${i} stands as the engine says`);
+    }
+    assert.ok(heard.rolls.every((x) => x.again));
+    const again = apply(g, { type: 'rerollAbilityScore', index: 0 }, ANAX);
+    assert.equal(again.ok, false);
+    assert.match(again.error, /rolled again already/);
+  }
+});
+
+test('the rule a table roll is kept under: the table\'s now, and "every score" if rerolls already made would not fit a narrower one', () => {
+  assert.deepEqual(tableRollRule({ scoreReroll: 'below', scoreRerollBelow: 11 }, [{ dice: [1, 2, 3, 1] }]), { reroll: 'below', below: 11, result: 'new' });
+  assert.deepEqual(tableRollRule(undefined, [{ dice: [6, 6, 6, 6] }]), { reroll: 'none', result: 'new' });
+  const high = [{ dice: [6, 6, 6, 6], again: [1, 1, 1, 1] }];       // rolled again at 18 while the table said each; the table now says none
+  assert.deepEqual(tableRollRule({ scoreReroll: 'none' }, high, 'higher'), { reroll: 'each', result: 'higher' });
+  assert.equal(resultOf({ stands: 'old', from: { total: 15 }, to: { total: 9 } }), 'higher');
+  assert.equal(resultOf({ stands: 'new', from: { total: 15 }, to: { total: 9 } }), 'new');
+  assert.equal(resultOf({ stands: 'new', from: { total: 9 }, to: { total: 15 } }), undefined, 'a better new roll says nothing about which result stands');
+});
+
+test('after a reload: the page\'s own id finds the DM\'s record under an online user id, and a player\'s own past events (the history) give the kept roll; another member\'s are not ours (#578)', () => {
+  const g = TABLE(); const OND = { role: 'dm', userId: 'u-dm' }, BENX = { role: 'player', userId: 'ben' };
+  const a = apply(g, { type: 'rollAbilityScores' }, OND); assert.ok(a.ok, a.error);
+  const b = apply(g, { type: 'rollAbilityScores' }, ANAX); assert.ok(b.ok, b.error);
+  const c = apply(g, { type: 'rollAbilityScores' }, BENX); assert.ok(c.ok, c.error);
+  // The online DM, no event heard yet (a reload): the record under their own id, not Ana's or Ben's.
+  const dm = keptRoll(g, null, 'u-dm');
+  assert.deepEqual(dm.rolls.map((x) => x.dice), g.scoreRolls['u-dm'].sets.map((x) => x.dice));
+  assert.equal(keptRoll(g, null, 'nobody'), null, 'no record under an id that has not rolled: no kept roll');
+  // The same DM, told the history: the event number comes back.
+  const evs = viewEvents(a.events, g, OND), heardDm = { by: 'u-dm', at: evs[0].at, rolls: rollsOfEvent(evs[0]) };
+  assert.equal(keptRoll(g, heardDm, 'u-dm').at, evs[0].at);
+  // A player: no record in their view; the history holds their own full event and bare ones for others.
+  const hist = viewEvents([...a.events, ...b.events, ...c.events], g, ANAX);
+  assert.deepEqual(hist.filter((e) => e.sets).map((e) => e.by), ['ana'], 'only Ana\'s own roll is whole');
+  const mine = hist.find((e) => e.sets && e.by === 'ana'), pv = view(g, ANAX);
+  const kept = keptRoll(pv, { by: mine.by, at: mine.at, rolls: rollsOfEvent(mine) }, 'ana');
+  assert.deepEqual([kept.by, kept.at], ['table', mine.at]);
+  assert.deepEqual(kept.rolls.map((x) => x.dice), g.scoreRolls.ana.sets.map((x) => x.dice));
+  assert.equal(keptRoll(pv, null, 'ana'), null, 'nothing heard, nothing shown: the sheet does not guess');
 });

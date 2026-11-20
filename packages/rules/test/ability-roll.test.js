@@ -185,13 +185,15 @@ test("a sheet made from the table's roll carries its record: the faces, the rule
 });
 
 test("state version 25: a new game has no rolled scores; an older state gets an empty record, once; nothing else moves", () => {
-  assert.equal(VERSION, 25);
+  assert.equal(VERSION, 26);                                   // 26: places of a world (#579)
   const s = newGame(5);
-  assert.deepEqual(s.scoreRolls, {}); assert.equal(s.version, 25);
+  assert.deepEqual(s.scoreRolls, {}); assert.equal(s.version, 26);
   const old = newGame(5); delete old.scoreRolls; old.version = 24;
   migrate(old);
-  assert.deepEqual(old.scoreRolls, {}); assert.equal(old.version, 25);
-  assert.deepEqual(old, s);
+  assert.deepEqual(old.scoreRolls, {}); assert.equal(old.version, 26);
+  const { world, place, parked, journey, ...rest } = old;       // version 26 adds the places of a world, empty
+  assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });
+  assert.deepEqual(rest, s);
   const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");
   const kept = newGame(5); kept.scoreRolls = { ana: { sets: [] } }; migrate(kept);
   assert.deepEqual(kept.scoreRolls, { ana: { sets: [] } }, "a roll already there is kept");
