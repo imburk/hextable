@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, openTab, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
+import { sleep, tapGuarded, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, openTab, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
 
 // ---------- Grapple, Shove, Escape and Let go; the familiar's attacks and Investment; Refresh from sheet (issue #486, stage G7 of docs/specs/grapple-shove.md) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Part 1: on the fighter's turn the Unarmed Strike has Grapple, Shove away and Shove Prone rows; a tap arms
@@ -18,17 +18,9 @@ const text = (page, sel) => page.$eval(sel, (e) => e.textContent.replace(/\s+/g,
 const lines = (page) => page.evaluate(() => window.hextable.state.timeline.map((e) => window.hextable.describe(e)).filter(Boolean));
 const send = (page, a) => page.evaluate((x) => window.hextable.act(x), a);
 
-// A tap on a creature on the map: the camera is let settle, and a creature under a panel is not tapped.
-async function tapCreature(page, touch, id) {
-  for (let k = 0; k < 6; k++) {
-    await settle(page, id);
-    const pt = await page.evaluate((i) => { const e = window.hextable.state.entities[i]; return window.hextable.R.screenOf(e.pos); }, id);
-    if (pt && pt.x > 5 && pt.y > 5 && (await onCanvas(page, pt.x, pt.y))) { await tapAt(page, touch, pt.x, pt.y); return; }
-    await page.evaluate((i) => window.hextable.R.focus?.(window.hextable.state.entities[i].pos), id);
-    await sleep(300);
-  }
-  throw new Error(`could not tap ${id} on the map`);
-}
+// A tap on a creature on the map, checked: the renderer is asked who it picked, and a tap that landed on something else (a hero standing in front of the
+// foe, a panel) is made again from another side of the map (lib.mjs tapGuarded). The camera is let settle first.
+const tapCreature = (page, touch, id) => tapGuarded(page, touch, id);
 
 // A built character: the valley's own are typed in by hand and have no Unarmed Strike. Returns its id.
 async function addFighter(page, sheet = {}) {
@@ -152,12 +144,13 @@ async function part1(browser, url, label, opts) {
       });
 
       await run.do('the held creature\'s own turn: Escape rows for Athletics and Acrobatics with their bonuses; a tap sends escape and the log says "tries to break free"', async () => {
-        await send(page, { type: 'condition', actor: foe, condition: 'paralyzed', on: false });
         await send(page, { type: 'condition', actor: foe, condition: 'prone', on: false });
+        await wait(page, (f) => !window.hextable.state.entities[f].cond.prone, foe);
         await freshTurn(page, hero); await select(page, hero); await panelTab(page, 'attacks');
         await tap('#ap-attacks [data-row="strike:unarmed-strike:grapple"]');
         await wait(page, () => window.hextable.mode.extra?.option === 'grapple');
-        // The goblin is no longer Paralyzed, so a failed save is a matter of luck: Grapple until it is held (a turn each), at most six times.
+        // The goblin is still Paralyzed here, so it fails the save and the hold is certain (the loop stays as a guard against a tap that did not land); it is made
+        // to stand up from the paralysis only once it is held, so that its own turn can come and offer the Escape rows.
         for (let k = 0; k < 6; k++) {
           await tapCreature(page, touch, foe); await idle(page);
           if (await state(page, (S, f) => !!S.entities[f].cond.grappled?.holds, foe)) break;
@@ -166,6 +159,8 @@ async function part1(browser, url, label, opts) {
           await wait(page, () => window.hextable.mode.extra?.option === 'grapple');
         }
         if (!(await state(page, (S, f) => !!S.entities[f].cond.grappled?.holds, foe))) throw new Error('the goblin was never held in six turns');
+        await send(page, { type: 'condition', actor: foe, condition: 'paralyzed', on: false });
+        await wait(page, (f) => !window.hextable.state.entities[f].cond.paralyzed && !!window.hextable.state.entities[f].cond.grappled?.holds, foe);
         await turnOf(page, foe); await select(page, foe);
         await panelTab(page, 'attacks');
         for (const skill of ['athletics', 'acrobatics']) await waitShown(page, `#ap-attacks [data-row="escape:${hero}:${skill}"]`);
