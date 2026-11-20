@@ -33,6 +33,9 @@ test('a second hover restarts the wait; the card is made once', () => {
 test('a card brought up by the key is taken down by leave', () => {
   const { log, t } = rig(); t.shownNow(); t.leave(); assert.deepEqual(log, ['end']);
 });
+test('a card taken down by something else is forgotten, so the next tap is a plain tap', () => {
+  const { c, t } = rig(); t.press(); c.tick(500); assert.equal(t.shown, true); t.reset(); assert.equal(t.shown, false);
+});
 test('a different wait can be given (the one-token menu\'s labels use the same helper)', () => {
   const { c, log, t } = rig({ hoverMs: 1000 }); t.hover(); c.tick(1000); assert.deepEqual(log, ['hold:hover']);
 });

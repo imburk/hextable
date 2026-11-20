@@ -18,6 +18,7 @@ export function dwellTimer({ hold, end = () => {}, hoverMs = HOVER_MS, pressMs =
     hover: () => arm(hoverMs, 'hover'),
     press: () => arm(pressMs, 'press'),
     lift: stop,
+    reset() { stop(); up = false; },          // the card was taken down by something else (Escape, a tap elsewhere)
     leave() { stop(); if (up) { up = false; end(); } },
     get waiting() { return t !== null; },
     get shown() { return up; },
@@ -35,7 +36,7 @@ export function placeCard(a, w, h, vw, vh, gap = 10, margin = 12) {
   return { left, top, width: cw, maxH };
 }
 
-let card = null, owner = null, wired = false;
+let card = null, owner = null, ownerTimer = null, wired = false;
 const ID = 'scrolltip';
 function cssOnce() {
   if (document.getElementById('scrolltip-css')) return;
@@ -43,10 +44,10 @@ function cssOnce() {
 }
 export function hide() {
   if (!card) return;
-  card.remove(); card = null;
+  card.remove(); card = null; ownerTimer?.reset(); ownerTimer = null;
   owner?.removeAttribute('aria-describedby'); owner = null;
 }
-function show(anchor, d) {
+function show(anchor, d, timer) {
   hide(); cssOnce();
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = text; return e; };
   card = document.createElement('div'); card.id = ID; card.className = 'scrolltip'; card.setAttribute('role', 'tooltip');
@@ -56,7 +57,7 @@ function show(anchor, d) {
   card.style.visibility = 'hidden'; card.style.width = `${Math.min(320, vw - 24)}px`; card.style.maxHeight = `${Math.max(80, vh - 24)}px`; document.body.append(card);
   const p = placeCard(r, 320, card.offsetHeight, vw, vh);
   card.style.left = `${p.left}px`; card.style.top = `${p.top}px`; card.style.visibility = '';
-  owner = anchor; anchor.setAttribute('aria-describedby', ID);
+  owner = anchor; ownerTimer = timer; anchor.setAttribute('aria-describedby', ID);
 }
 function wire() {
   if (wired) return; wired = true;
@@ -68,8 +69,8 @@ function wire() {
 // Hook a node. `describe()` is asked when the card is to be shown and gives { title, sub?, text } or null (nothing to show). Returns the node.
 export function attach(node, describe) {
   wire();
-  const open = () => { const d = describe(); if (!d?.text) return false; show(node, d); return true; };
-  const t = dwellTimer({ hold: () => { if (!open()) t.leave(); }, end: hide });
+  const open = () => { const d = describe(); if (!d?.text) return false; show(node, d, t); return true; };
+  const t = dwellTimer({ hold: () => { if (open()) t.shownNow(); else t.leave(); }, end: hide });
   let pressed = false;
   node.classList.add('has-scroll');
   node.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') t.hover(); });
