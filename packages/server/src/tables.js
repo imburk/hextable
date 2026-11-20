@@ -7,7 +7,7 @@
 //   const session = tables.connect(conn);     // one per connection
 //   session.receive(message);                 // a parsed client message
 //   session.disconnect();
-import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 // What reads content for a table (the engine, the views, the history's labels, migration) is imported under a raw_ name and
 // called only inside the "scoped engine" block of createTables, which lends the table's homebrew to every call.
 import { apply as rawApply, recall as rawRecall } from "../../rules/src/engine.js";
@@ -21,7 +21,39 @@ import { forViewer as rawForViewer, playerView as rawPlayerView, view as rawView
 import { forPlayers as packFilteredCopy, packForPlayer, packsMatch, PLAYER_PACK_KINDS, cleanPacks, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
 import { installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
+import { assetRefs } from "../../rules/src/handouts.js";
+import { exportFirst, fillMap, indexOf, loadWorld, picturesShown, storedWorld, WORLD_LIMITS, worldPictures, worldSummary } from "../../rules/src/worldpack.js";
 import { LIMIT_MESSAGE } from "./limits.js";
+
+// A table's world as the server writes it beside the state: { id, version, hash, data, assets }, `data` the pack with its
+// pictures' bytes taken out (they are in the asset store) and `assets` the store's ids by the pack's picture keys.
+const isRecord = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const worldRecord = (w) => isRecord(w) && typeof w.id === "string" && Number.isInteger(w.version) && typeof w.hash === "string" && isRecord(w.data)
+  && isRecord(w.data.world) && Array.isArray(w.data.nodes) && (w.data.maps === undefined || isRecord(w.data.maps)) && (w.assets === undefined || isRecord(w.assets));
+const WORLD_PROBLEMS_SHOWN = 20;
+// A world pack's pictures (docs/specs/travel.md, Decision 2, "assets ... uploaded into the table's asset store on import"), for
+// createTables' `importAssets` and `dropAssets`, over a store made by assets.js (`store()` gives it). Each picture is put in the
+// store as an upload is, by its bytes and under the same limits; a picture the table's last world had, byte for byte, is used
+// again rather than kept twice. All or nothing: if one is refused, those this call stored are removed and the store's sentence is
+// given. Returns { ok: true, assets: { [pack key]: { id, hash } }, added: [ids stored now] } or { ok: false, error }.
+export function worldAssets(store) {
+  return {
+    importAssets(code, list, previous) {
+      const assets = store(), have = new Map();
+      for (const a of Object.values(previous ?? {})) if (typeof a?.id === "string" && typeof a.hash === "string" && assets.get(code, a.id)) have.set(a.hash, a.id);
+      const out = {}, added = [];
+      for (const { key, data, name } of list) {
+        const bytes = Buffer.from(data, "base64"), hash = createHash("sha256").update(bytes).digest("hex");
+        if (have.has(hash)) { out[key] = { id: have.get(hash), hash }; continue; }
+        const r = assets.put(code, bytes, { name });
+        if (!r.ok) { for (const id of added) assets.remove(code, id); return { ok: false, error: `Picture "${key}" could not be kept: ${r.error}` }; }
+        added.push(r.record.id); have.set(hash, r.record.id); out[key] = { id: r.record.id, hash };
+      }
+      return { ok: true, assets: out, added };
+    },
+    dropAssets(code, ids) { const assets = store(); for (const id of ids) assets.remove(code, id); },
+  };
+}
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";   // no 0/O or 1/I/L
 const makeCode = () => Array.from({ length: 6 }, () => ALPHABET[randomInt(ALPHABET.length)]).join("");
@@ -56,11 +88,15 @@ export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
 // characters), so the text is read only up to twice the pack limit; the rules' own budget then bounds the pack itself at
 // MAX_PACK_BYTES of canonical JSON, whatever form it came in. The frame it travels in is held to the DM's frame limit (index.js).
 export const MAX_PACK_TEXT_BYTES = 2 * MAX_PACK_BYTES;
+// A `world` message carries the DM's world pack (docs/specs/travel.md, Decision 2): at most WORLD_LIMITS.bytes (4 MB) of
+// JSON, pictures included, checked by the rules' budget; the frame it travels in is that and an envelope (index.js).
+export const MAX_WORLD_BYTES = WORLD_LIMITS.bytes;
+export const WORLD_FRAME_BYTES = MAX_WORLD_BYTES + 64 * 1024;
 export { cleanPacks as sanitizePacks, usesIn, vetPacks };
 export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
 
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {} } = {}) {
   // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
   // rolls (an integer rng, as before version 16) unless they also give a key.
   key ??= seed ? () => null : () => randomBytes(32).toString("hex");
@@ -129,6 +165,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const s = cleanPacks(t.packs);
     t.packs = s.packs;
     if (s.dropped.length) { t.packsDropped = s.dropped; console.error(`Table ${t.code}: homebrew packs dropped at load: ${s.dropped.map((d) => `${d.id ?? "?"} (${d.reason})`).join("; ")}`); }
+    // The world pack a file holds (beside the state, as the packs are): one that is not the shape the server writes is not
+    // used (the DM is told at sitting down, and imports it again). Its maps are linted by the engine whenever one is put in an action.
+    if (t.world !== undefined && t.world !== null && !worldRecord(t.world)) { console.error(`Table ${t.code}: its world pack could not be read and was not used.`); t.world = null; t.worldDropped = true; }
     engine.migrate(t); t.active ??= now(); tables.set(t.code, t);
     try { if (t.state && typeof t.state === "object") resyncPacks(t); } catch (err) { console.error(`Table ${t.code}: could not set its packs in the game: ${err.message}`); }     // saved tables may predate the current content ids
     // A table whose dice still come from a 32-bit seed is given a key, once, now: from here on
@@ -300,6 +339,10 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const r = engine.apply(t, t.state, { type: "setPacks", packs: want }, { role: "dm", userId: "server" });
     if (!r.ok) console.error(`Table ${t.code}: could not set its packs in the game (${r.error})`);
   }
+  // What the DM is told of the table's world: its name, version and what it holds (never the pack itself, which the DM sent).
+  // Nobody else is told anything of it: players learn of places only through their view (docs/specs/travel.md, Decision 12).
+  const worldMessage = (t) => ({ t: "world", world: t.world ? worldSummary(t.world.data, t.world.hash) : null, ...(t.worldDropped ? { dropped: true } : {}) });
+  const tellWorld = (t) => { for (const m of t.members) if (m.role === "dm" && m.approved) tell(m, worldMessage(t)); };
   const welcome = (t, m) => ({ t: "welcome", role: m.role, userId: m.id, name: m.name, code: t.code, token: m.token, approved: m.approved });
 
   function lobby(t) {
@@ -328,6 +371,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         sendFull(t, m, conn);
         conn.send({ t: "history", entries: history(t, m, { limit: 50 }), recent: true });   // so the log isn't empty
         if (m.role === "dm") conn.send(undoInfo(t));
+        if (m.role === "dm" && (t.world || t.worldDropped)) conn.send(worldMessage(t));
       }
       lobby(t);
     }
@@ -384,8 +428,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       // their records (`assets`), up to a size limit; what did not fit is listed in `assetsSkipped`.
       export() {
         if (me.role !== "dm") return error("Only the DM can export the table.");
-        const files = exportAssets(table.code, table.state);
-        conn.send({ t: "export", table: { code: table.code, exportedAt: new Date().toISOString(), state: table.state, packs: table.packs.map((p) => ({ id: p.id, version: p.version, hash: p.hash, data: p.data })), assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit } });
+        // The files the game shows and those its world uses go first, so an export over the byte limit leaves out none of them before another.
+        const files = exportAssets(table.code, table.state, exportFirst(table.state, table.world));
+        conn.send({ t: "export", table: { code: table.code, exportedAt: new Date().toISOString(), state: table.state, packs: table.packs.map((p) => ({ id: p.id, version: p.version, hash: p.hash, data: p.data })), world: table.world ? { id: table.world.id, version: table.world.version, hash: table.world.hash, data: table.world.data, assets: table.world.assets } : null, assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit } });
       },
       // The client noticed it missed an update and wants the whole view again.
       sync() {
@@ -412,6 +457,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         if (Buffer.byteLength(JSON.stringify(action)) > cap) return error("That action is too large.");
         // Which packs the table holds is the server's to say: `state.packs` follows the `pack` message, never an action.
         if (action.type === "setPacks") return error("A table's packs are changed with the pack message.");
+        // The index of the table's world is the server's to record, from a pack the DM sent with the world message (docs/specs/travel.md, Decision 2).
+        if (action.type === "worldIndex") return error("A table's world is loaded with the world message.");
         // Players can only ever claim a character for themselves, under their own name.
         if (action.type === "claim" && me.role !== "dm") { action.user = me.id; action.userName = me.name; }
         // Out of character, a player's line is signed with the name they joined by, never one they send.
@@ -432,12 +479,18 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // A note from the DM goes to someone sitting at this table as a player. The engine knows only ids.
         if (action.type === "note" && me.role === "dm" && !table.members.some((m) => m.approved && m.role === "player" && m.id === action.to)) return error("That player isn't at this table.");
         let res;
+        // The fill (docs/specs/travel.md, Decision 2): an action that enters a battle place for the first time, or puts one
+        // back as prepared, carries the world pack's map of it, put in here. A `map` the client put in such an action is
+        // dropped first: the server never plays a client's map where the pack has one. The size above was checked on what
+        // the client sent; what is applied and recorded is the action as filled.
+        let filled;
+        try { filled = fillMap(table.state, action, table.world?.data ?? null); } catch { return error("The table couldn't make sense of that action."); }
         // Taken before every action: for the undo history (claiming a seat is not undone), and to
         // put the game back if the engine throws part way through (review #132, L6).
-        const was = mark(table.state), before = undoable(action) ? was : null;
+        const was = mark(table.state), before = undoable(filled) ? was : null;
         const pingWas = action.type === "ping" ? JSON.stringify(was.tree) : null;
         try {
-          res = engine.apply(table, table.state, action, { role: me.role, userId: me.id });
+          res = engine.apply(table, table.state, filled, { role: me.role, userId: me.id });
         } catch {
           putBack(table.state, was);
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
@@ -446,8 +499,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         if (before) {
           // The timeline is capped here, not in apply(); what is dropped goes in the undo step so undo is exact.
           const dropped = capTimeline(table.state.timeline, timelineCap);
-          undoOf(table).record(before, table.state, engine.describeStep(table, action, res.events, before, table.state), dropped);
-          undoOf(table).track(action, res.events, before, table.state);
+          undoOf(table).record(before, table.state, engine.describeStep(table, filled, res.events, before, table.state), dropped);
+          undoOf(table).track(filled, res.events, before, table.state);
           dirtyHistory.add(table.code);
         }
         // A ping is no activity that keeps a table awake and nothing of it is kept, so it is neither touched nor saved, unless the passes that
@@ -550,6 +603,60 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       tellPacks(t, { op, id, ...(record && { version: record.version }) });
     };
 
+    // The DM loads or replaces the table's world (docs/specs/travel.md, Decision 2): { t: "world", pack: <the world pack, or its JSON text> }.
+    // The order of the checks: who; the table's pack budget (shared with `pack`); the size; the rules' budget and linter (`loadWorld`, with
+    // the table's homebrew lent, so a table of a homebrew monster may name it); then the engine's own refusals, tried on a copy of the game
+    // (`worldIndex` is refused in a fight, on a journey, or for an older version), all before any file is stored; then the pictures go into
+    // the table's store (a picture the table's last world had, byte for byte, is used again); then `worldIndex` through the engine; and only
+    // then the record changes. A refusal at any step changes nothing: not the record, the state, the store or what anyone has. On success the
+    // DM's undo history is cleared (a step could not be undone across a different world), the pictures of the last world nothing shows any
+    // more are let go, and the DM is told. Players are told nothing: their view has no world (W4 sends them the places they know).
+    handlers.world = (msg) => {
+      if (me.role !== "dm") return error("Only the DM can load a world.");
+      const t = table;
+      if (!allowPack(t.code)) return error(LIMIT_MESSAGE);
+      const refuse = (problems) => {
+        const list = problems.slice(0, WORLD_PROBLEMS_SHOWN).map((x) => String(x).slice(0, 300));
+        conn.send({ t: "error", world: true, error: `The world pack was refused. ${list.slice(0, 3).join(" ")}${list.length > 3 ? ` (and ${problems.length - 3} more)` : ""}`, problems: list });
+      };
+      let data = msg.pack;
+      if (typeof data === "string") { if (Buffer.byteLength(data) > WORLD_FRAME_BYTES) return refuse([`It is too large: a world pack may be at most ${MAX_WORLD_BYTES} bytes.`]); }
+      else if (!isRecord(data)) return refuse(["Send the world pack as a JSON document."]);
+      const r = loadWorld(data);
+      if (!r.ok) return refuse(r.problems);
+      const pictures = Object.entries(r.pack.assets ?? {});
+      if (pictures.length && !importAssets) return refuse(["This server keeps no files, so a world with pictures cannot be loaded here."]);
+      const ctx = { role: me.role, userId: me.id };
+      // The engine's refusals, on a copy, before any file is stored (the pictures' ids are not known yet: stand-ins are used).
+      const trial = engine.apply(t, structuredClone(t.state), { type: "worldIndex", index: indexOf(storedWorld(r.pack, Object.fromEntries(pictures.map(([k]) => [k, `trial-${k}`]))), r.hash) }, ctx);
+      if (!trial.ok) return refuse([trial.error]);
+      let stored = { assets: {}, added: [] };
+      if (pictures.length) {
+        stored = importAssets(t.code, pictures.map(([key, a]) => ({ key, data: a.data, name: a.name ?? key })), t.world?.assets ?? {});
+        if (!stored.ok) return refuse([stored.error]);
+      }
+      const ids = Object.fromEntries(Object.entries(stored.assets).map(([k, a]) => [k, a.id]));
+      const kept = storedWorld(r.pack, ids), index = indexOf(kept, r.hash);
+      const was = mark(t.state);
+      let res;
+      try { res = engine.apply(t, t.state, { type: "worldIndex", index }, ctx); }
+      catch { putBack(t.state, was); res = { ok: false, error: "The table couldn't make sense of that world." }; }
+      if (!res.ok) { dropAssets(t.code, stored.added); return refuse([res.error]); }
+      const before = t.world;
+      t.world = { id: index.id, version: index.version, hash: r.hash, data: kept, assets: stored.assets };
+      delete t.worldDropped;
+      if (before?.assets) {
+        const now = new Set(Object.values(stored.assets).map((a) => a.id)), shown = picturesShown(t.state);
+        dropAssets(t.code, Object.values(before.assets).map((a) => a?.id).filter((id) => typeof id === "string" && !now.has(id) && !shown.has(id)));
+      }
+      undoOf(t).clear(); dirtyHistory.add(t.code);
+      touch(t);
+      save(t);
+      tellUndo(t);
+      broadcast(t, res.events);
+      tellWorld(t);
+    };
+
     // A member asks for the data of one pack (the client keeps packs by hash and asks only for what it lacks). Rate limited per member.
     handlers.packData = (msg) => {
       if (!me.approved) return error("Waiting for the DM to let you in.");
@@ -580,7 +687,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return {
       receive(msg) {
         if (!msg || typeof msg !== "object") return;
-        const seated = ["approve", "act", "undo", "redo", "rewind", "leave", "history", "sync", "export", "pack", "packData"].includes(msg.t);
+        const seated = ["approve", "act", "undo", "redo", "rewind", "leave", "history", "sync", "export", "pack", "packData", "world"].includes(msg.t);
         if (seated ? !me : me) return error(seated ? "Join a table first." : "You are already at a table.");
         const handle = handlers[msg.t];
         if (typeof handle !== "function") return;
@@ -626,5 +733,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return { seq, ...undoOf(t).dump() };
   }
 
-  return { connect, exportHistory, member, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
+  // Whether a file of a table may be deleted (assets-http.js): not one the table's world uses (worldpack.js, worldPictures).
+  // Returns null, or the sentence the deletion is refused with.
+  function keepsAsset(code, id) {
+    const t = typeof code === "string" ? tables.get(code) : undefined;
+    if (!t?.world) return null;
+    return worldPictures(t.state, t.world).has(id) ? "That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first." : null;
+  }
+
+  return { connect, exportHistory, member, keepsAsset, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
 }
