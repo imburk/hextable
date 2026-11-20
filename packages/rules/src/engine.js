@@ -194,6 +194,24 @@ function thaw(s, snap) {
   for (const k of Object.keys(s)) delete s[k];
   for (const k of Object.keys(snap)) s[k] = k === 'timeline' ? tl : snap[k];
 }
+// A refusal puts the game back by mending it IN PLACE: whatever the refused action left changed is set back to what the copy holds, and every
+// object that was not changed stays the very same object. A refusal is the commonest way an action ends, and what holds a creature or a list
+// (a test, a view) keeps holding it, as it did while a refusal changed nothing; `thaw` (a throw that is not a refusal, a question) swaps whole objects.
+// Same key order as the copy, so the game's JSON is identical. Terrain held by reference in the copy is the same object and is skipped.
+const plain = (x) => x !== null && typeof x === 'object' && (Array.isArray(x) || Object.getPrototypeOf(x) === Object.prototype);
+const set = (o, k, v) => { if (o[k] !== v) o[k] = v; };      // a write only where it differs (terrain that is unchanged may be frozen, apply-terrain.test.js)
+function back(t, c) {
+  if (t === c) return t;
+  if (!plain(t) || !plain(c) || Array.isArray(t) !== Array.isArray(c)) return c;
+  if (Array.isArray(c)) { if (t.length !== c.length) t.length = c.length; for (let i = 0; i < c.length; i++) set(t, i, back(t[i], c[i])); return t; }
+  const tk = Object.keys(t), ck = Object.keys(c);
+  if (tk.length === ck.length && tk.every((k, i) => k === ck[i])) { for (const k of ck) set(t, k, back(t[k], c[k])); return t; }
+  const old = { ...t };                                   // the keys differ: take them all off and put them back in the copy's order
+  for (const k of tk) delete t[k];
+  for (const k of ck) t[k] = back(old[k], c[k]);
+  return t;
+}
+function mend(s, snap) { back(s, { ...snap, timeline: s.timeline }); }
 
 // The work count is switched off however the action ends, a throw included.
 //
@@ -258,7 +276,7 @@ function applyInner(s, action, ctx) {
     // however the handler got there (review R3, #617; engine/casting.js once set a flag before it refused). A refusal of an answer to a
     // reaction question restores the copy taken for it, so the question is left waiting, as it was. A non-refusal throw goes on up: a bug is not hidden.
     // `net` is only null for an action no handler exists for, which changes nothing.
-    if (net) thaw(s, net);
+    if (net) { if (err instanceof RuleError) mend(s, net); else thaw(s, net); }
     setRun(null);
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
