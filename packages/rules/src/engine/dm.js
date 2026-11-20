@@ -373,7 +373,7 @@ export const SETTINGS = { sight: SIGHT_RULES,
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
   strikeFirst: {
-    false: 'An attack, a hostile spell or a monster\'s action outside a fight starts the fight and is not made yet: everyone rolls Initiative (a surprised creature with Disadvantage), and the creature makes it on its turn. The SRD\'s rule, the default.',
+    false: 'An attack, a hostile spell or a monster\'s action outside a fight starts the fight and is not made yet: everyone rolls Initiative, and the creature makes it on its turn. The SRD\'s rule, the default.',
     true: 'An attack, a hostile spell or a monster\'s action at a creature of another side, outside a fight, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts and everyone rolls Initiative. The creature\'s first turn is still a whole turn. A table rule; it is not in the SRD.',
   },
   scoreReroll: {

@@ -195,7 +195,7 @@ export function engage(s, e, t, ev, walked = null, opts = null) {
 
 // ---------- Strike first (the table rule `strikeFirst`; docs/specs/table-ui.md, E23 as amended by #585) ----------
 // Off (the SRD's way; a new table has it off): an attack, a hostile cast or a creature's harmful action outside a fight
-// starts the fight and is not made. Everyone rolls Initiative (a surprised creature with Disadvantage), and the creature
+// starts the fight and is not made. Everyone rolls Initiative, and the creature
 // makes it on its turn. On (a house rule; a table saved before #585 had it, for casts, while `autoEngage` was on): it
 // lands first, then the fight starts, in the same action, so one undo takes back both (casting.js, attacks.js).
 // Does `e`'s harmful act at `targets` land first? No fight on, the rule on, and one it is aimed at or catches is of
