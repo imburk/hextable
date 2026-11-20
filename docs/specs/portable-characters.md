@@ -11,7 +11,10 @@ characters on from the start, a required level range, an operator trust list, re
 information in the public summary) and to those that came with the shops questions: **customs**,
 a highlight in the DM's review for large amounts of coins and for magical gear, and
 **coins that leave with a character** (see "Questions for the owner", 15 and 16, and
-`shops.md`, where coins come from).
+`shops.md`, where coins come from). **Amended 20 November 2026** (#592) to the owner's answer on #349, proposal 1:
+a file may carry a character's **own** homebrew (its spells, items and equipment, feats, subclass, species and a
+companion), checked and allowed piece by piece by the DM, with a size guard that only protects the server (file up to
+192 KB, bundle up to 96 KB and 48 entries); anything table-wide stays in a table pack (`homebrew.md`, Decision 4).
 
 The owner asked for four things:
 
@@ -152,7 +155,7 @@ player's device, in a file, or on the server?
   while the character sits there.
 
 **Choice: C.** The unit that travels is a **character file**: JSON, a name
-ending `.hextable-character.json`, at most 96 KB, with this shape:
+ending `.hextable-character.json`, at most 192 KB (the sheet, history and everything but the bundle stay within 96 KB; a `homebrew.bundle` may add up to 96 KB more, amended 20 November), with this shape:
 
 ```js
 {
@@ -170,13 +173,16 @@ ending `.hextable-character.json`, at most 96 KB, with this shape:
 ```
 
 Nothing in the file is a secret, and nothing in it names a person beyond
-monikers (Decisions 7 and 8). **Homebrew in the file** (amended 15 November 2026; the owner reopened the
-14 November rule): it lists homebrew ids and hashes in `needs.homebrew` so a
-table can say what it lacks, and it **may carry a `homebrew.bundle`** of the
-entries its sheet names (the lead's proposal: at most 12 entries and 24 KB, no
-monsters, inside the 96 KB file limit). A bundle is gated on the server, read
-back to the DM in plain words, **denied by default**, and enters a table only if
-the DM allows that piece (`homebrew.md`, Decision 4). The bundle is not covered
+monikers (Decisions 7 and 8). **Homebrew in the file** (amended 15 November and 20 November 2026; the owner reopened the
+14 November rule and then lifted the 12-entry limit): the file lists homebrew ids and hashes in `needs.homebrew` so a
+table can say what it lacks, and it **may carry a `homebrew.bundle`**: the character's own pieces, in lists keyed by
+kind (`spells`, `items`, `weapons`, `armour`, `feats`, `subclasses`, `species` once those kinds exist, and
+`companions`). Only pieces the character's own sheet names (or a piece that passed names) may be in it; a monster that
+is not the character's companion, an object, a rule or a whole pack is a table pack's business and is refused. The
+size guard is 96 KB and 48 entries for the bundle inside the 192 KB file, and exists only to protect the server
+(`homebrew.md`, Decision 4). A bundle is gated on the server, read back to the DM in plain words piece by piece,
+**denied by default**, and enters a table only if the DM allows that piece. A piece the DM declines is removed from the
+character's playing copy at that table; the player's file keeps its bundle. The bundle is not covered
 by the signed history. A character's own `cid` is its unique id (Decision 8).
 The sheet stays exactly the shape `validate` knows: the history travels beside
 the sheet, not inside it, so `SHEET_FIELDS` and `validate` do not change.
@@ -469,7 +475,7 @@ and approved by the DM".
    character from this device" or "Join and build one at the table" (today's
    path). The first picks from My characters or a file.
 2. `join` is unchanged. After it, a pending member may send one new message
-   `offer { character }` (at most 96 KB; one per ten seconds; at most three
+   `offer { character }` (at most 192 KB, of which at most 96 KB is a homebrew bundle; one per ten seconds; at most three
    kept). The connection's frame limit is raised for a player at a table whose
    `characters` is not `new` (`FRAME_MAX` in `index.js` is about 8 KB until
    now). The server parses it, runs every check below on its own and stores the
@@ -529,7 +535,7 @@ do about it.
 
 | Kind | What is compared | What the DM can do |
 |---|---|---|
-| **Missing content** | Every id the sheet names (class, subclass, spells, feats, magic items, weapons, armour, tools): is it in this table's content? Homebrew ids (`hb-...`, `homebrew.md`) are looked for among the DM's own packs for this table. **A homebrew piece is denied by default** (the owner, 15 November 2026). It plays if the table's packs already hold an entry with the same id and hash; otherwise the report shows it as "not in this table's rules", and, when the file's `homebrew.bundle` carried it and it passed the server's gate, with a generated plain-language reading from which the DM may **allow** it (`homebrew.md`, Decision 4; the details are the lead's proposal). | **Refuse** the character. **Accept without it**: the entry is taken off the playing copy and written to `parked` in the file (a name, never stats), and the report says what the character does not have here. **Stand in**: a stand-in rule below. For a homebrew piece the DM may **allow** it inside the review when the file carried it and it passed the gate (it enters as a guest pack); otherwise a DM who wants it adds it to their own pack outside the review, and the player offers again. |
+| **Missing content** | Every id the sheet names (class, subclass, spells, feats, magic items, weapons, armour, tools): is it in this table's content? Homebrew ids (`hb-...`, `homebrew.md`) are looked for among the DM's own packs for this table. **A homebrew piece is denied by default** (the owner, 15 November 2026). It plays if the table's packs already hold an entry with the same id and hash; otherwise the report shows it as "not in this table's rules", and, when the file's `homebrew.bundle` carried it and it passed the server's gate (budget, strict lint, hash, and since 20 November the kind test and the own-ness test: it must be one of the character's own pieces, not a table-wide one), with a generated plain-language reading from which the DM may **allow** it, one piece at a time (`homebrew.md`, Decision 4; the details are the lead's proposal). | **Refuse** the character. **Accept without it**: the entry is taken off the playing copy and written to `parked` in the file (a name, never stats), and the report says what the character does not have here. **Stand in**: a stand-in rule below. For a homebrew piece the DM may **allow** it inside the review when the file carried it and it passed the gate (it enters the table's guest store); a piece the DM declines is **removed** from the playing copy and listed in `parked`, never handed to the DM as a `manual` note, and the character plays without it (`homebrew.md`, Decision 4, "A piece the DM declines"). A table-wide piece, or one the gate refused, can only be added by the DM to their own table pack outside the review, and the player offers again. |
 | **Different version of content** | The `needs.packs` versions (`pack.version` in `content/srd52/pack.js`) against the table's; for homebrew, the `hash` of the entry against the table's entry with the same id. | **Accept** (the table's version plays), or **refuse**. A homebrew entry with the same id and a different hash is flagged separately: it is a different thing with the same name, and the table's entry is the one that plays. |
 | **Tier differences** | The sheet's features and items by tier (`auto`, `assist`, `manual`; `derive(sheet).record.feats`, `CONTENT.items[x].tier`). Not a fault, a fact: "of this character's 21 features, 4 need you to apply them by hand." | Accept. Information, never a block on its own. |
 | **Table rules** | The table's `settings` against the `rules` snapshot a block records (the settings that touch characters: `conclusion`, `xpShare`, `passiveFind`, `vertical`, `climbing`, `cover`, `creatureCover`; the list is a constant in `compat.js`). The snapshot is a signed claim like the rest: it says which rules the previous table played under. | Accept. Information: "levelled at a table where Experience Points were shared in full; here they are split." |
@@ -917,13 +923,13 @@ One table for the engine and server lanes. "Touches" is the file that changes.
 | # | Addition | Kind | Who may send | Touches | State version |
 |---|---|---|---|---|---|
 | A1 | `lineage.js`: canonical JSON, SHA-256 hashes, `lineageStep`, block building and `verifyChain`, `meter` | pure rules | n/a | `packages/rules/src/lineage.js`, `tests` | no |
-| A2 | `characterfile.js`: envelope shape, limits, parse and build (the optional `coins`) | pure rules | n/a | `packages/rules/src/characterfile.js`, `tests` | no |
+| A2 | `characterfile.js`: envelope shape, limits (192 KB, bundle 96 KB and 48 entries, `HOMEBREW_CARRY`), parse and build (the optional `coins` and `homebrew.bundle`) | pure rules | n/a | `packages/rules/src/characterfile.js`, `tests` | no |
 | A3 | `compat.js`: the differences, the stand-in rules and customs (`CUSTOMS`) | pure rules | n/a | `packages/rules/src/compat.js`, `tests` | no |
 | A4 | Settings `characters`, `takeaway`, `level` | settings | DM (`setting`) | `engine/dm.js` (`SETTINGS`) | no (absent means default) |
 | A5 | Action `admit` (with `coins`) | action | DM (the server composes it) | `engine/characters.js`, `tests` | no |
 | A6 | Server key, `GET /api/server`, the built-in official public key, the DM's per-table trust list | server | n/a | `packages/server/src/identity.js` (new), `index.js` | no |
 | A7 | Per-table record `chars`, sealing, `reconcile`, `revoked`, fork check | server | n/a | `tables.js` | no |
-| A8 | Messages `offer`, `offerResult`, `take` (the file for the owner or DM), frame limit raised for a player while `characters` is not `new` | server messages | pending member, member, DM | `tables.js`, `index.js`, `packages/server/README.md` | no |
+| A8 | Messages `offer`, `offerResult`, `take` (the file for the owner or DM), frame limit raised for a player while `characters` is not `new`, to the 192 KB file plus the envelope (amended 20 November) | server messages | pending member, member, DM | `tables.js`, `index.js`, `packages/server/README.md` | no |
 | A9 | `view.js` unchanged. `playerView` sends no `chars`. A test that proves it. | review | n/a | `tests` | no |
 
 Nothing here lets a client send what the engine should compute: the client
@@ -942,15 +948,16 @@ checked at 390 x 844 with touch and at 1280 x 800.
 | # | Task | Lane | Model | Touches | Done when |
 |---|---|---|---|---|---|
 | P1 | **Lineage, pure.** A1: canonical JSON (keys sorted, integers only), `sheetHash`, `lineageStep` for `levelUp`, `reset`, `xp`, `item`, `verifyChain` with verdicts, `meter` segments. Ed25519 and SHA-256 through `globalThis.crypto.subtle`. | engine | Opus | `packages/rules/src/lineage.js`, `packages/rules/test/lineage.test.js` | A chain made in the test verifies; changing any byte of an entry, a signature, `prev`, `head` or the sheet gives `broken` (or `editedSinceLastBlock` for the sheet alone); a key nobody trusts gives `signed-unknown` and the same meter weight as `self-reported`; a levelUp whose XP is below `xpFor(to)` has `basis: 'dm'`; a 5,000-entry or deeply nested hostile chain is refused in bounded time and never throws; two runs give identical bytes. |
-| P2 | **The file, pure.** A2 and A3: envelope limits and parse, `compat` with the kinds of Decision 5 and the stand-in rules. | engine | Opus | `packages/rules/src/characterfile.js`, `compat.js`, tests | A file with an unknown top-level key, a sheet over 20,000 characters, an `at` that is not a date, or a free-text field is refused; a sheet naming a spell the table lacks gives "missing content, can: refuse / accept without / stand in" and the stand-in removes exactly that spell and lists it in `parked`; a level-3 sheet whose subclass is missing gets the SRD subclass as a marked stand-in; no stand-in is ever silent; customs highlights 6,001 GP at level 12 and not 6,000, a Rare item and not a Common one, four Uncommon items and not three, and coins 101 GP over a signed `left` block's total and not 100, each with the amounts in its sentence; a file with `coins` of 10^9 or a negative or fractional kind is refused. |
+| P2 | **The file, pure.** A2 and A3: envelope limits and parse, `compat` with the kinds of Decision 5 and the stand-in rules. | engine | Opus | `packages/rules/src/characterfile.js`, `compat.js`, tests | A file with an unknown top-level key, a sheet over 20,000 characters, an `at` that is not a date, or a free-text field is refused; a sheet naming a spell the table lacks gives "missing content, can: refuse / accept without / stand in" and the stand-in removes exactly that spell and lists it in `parked`; a level-3 sheet whose subclass is missing gets the SRD subclass as a marked stand-in; no stand-in is ever silent; customs highlights 6,001 GP at level 12 and not 6,000, a Rare item and not a Common one, four Uncommon items and not three, and coins 101 GP over a signed `left` block's total and not 100, each with the amounts in its sentence; a file with `coins` of 10^9 or a negative or fractional kind is refused. **Amended 20 November (#592):** a file with a `homebrew.bundle` of 49 entries, one over 96 KB, a `monsters`, `objects`, `rules` or `packs` key, or an entry nothing of the sheet names is refused or reported piece by piece with the sentences of `homebrew.md` Decision 4; a bundle at the limits parses in bounded time. |
 | P3 | **Server identity and sealing.** A6 and the signing half of A7: `identity.js`, the key file, `GET /api/server`, the built-in official public key (the verdict `official`), a `chars` record per table, seals at `joined`, `levelUp`, conclusions and `left`, `reconcile` and `revoked`, the fork check. | server | Opus | `packages/server/src/identity.js` (new), `index.js`, `tables.js`, `packages/server/README.md`, `packages/server/test/` | A level-up at a table appends an entry and a signed block with the server's key id and the day; undoing it appends a `revoked` block, never deletes; the key is read from `DATA_DIR` across a restart and the start-up line prints the key id; the private key is in no table file, export or undo file (a test greps them); the server refuses to sign when its key could not be written. |
 | P4 | **Settings and `admit`.** A4 and A5. The coins part needs the purse of `shops.md` P3; until then a file's coins are listed and held back in full. | engine | Opus | `engine/dm.js`, `engine/characters.js`, `tests` | `setting characters own` is accepted and refused for a player; `admit` makes a party character, claims it for the member, refuses a second character for the same member, a thirteenth character and a sheet `validate` refuses, and changes nothing when it refuses. |
-| P5 | **The offer, server side.** A8 (offer, offerResult, frame limit) and the review result kept with the pending member. | server | Opus | `tables.js`, `index.js`, `packages/server/README.md`, `packages/server/test/` | A pending member's offer is checked by the server and stored; the DM's `lobby` message gets a summary and the report, never a player's; an offer over 96 KB, a second within ten seconds, or one at a table whose `characters` is `new` is refused; accepting sends `admit` and the player has the character; declining says why; a pending member sees only the report about their own file, which includes their own customs highlight and no one else's. |
+| P5 | **The offer, server side.** A8 (offer, offerResult, frame limit) and the review result kept with the pending member. | server | Opus | `tables.js`, `index.js`, `packages/server/README.md`, `packages/server/test/` | A pending member's offer is checked by the server and stored; the DM's `lobby` message gets a summary and the report, never a player's; an offer over 96 KB, a second within ten seconds, or one at a table whose `characters` is `new` is refused; accepting sends `admit` and the player has the character; declining says why; a pending member sees only the report about their own file, which includes their own customs highlight and no one else's. **Amended 20 November:** the offer limit is 192 KB; the review result holds each piece's reading and its Allow or Deny, and a pending member's reply names only pieces of their own file. |
 | P6 | **My characters, client.** The start-screen list, New portable character, import and export of files, the build screen without a game, Import from Fantasy Grounds with no table. | client | Sonnet | `packages/client/index.html`, `style.css`, `mycharacters.js` (new), `buildsheet.js`, `importfg.js` (an entry point only), `transport.js` (one storage key), `tests/` | At 390 x 844 a player builds a level 12 character with no game, saves it, exports it, imports it on a second "device" (a cleared storage) and the file is the same; its sheet passes `validate`; the file has `born: { level: 12, by: 'self' }`; opening and re-saving it with a changed spell list adds an `edits` entry that names `spells` and no values. |
 | P7 | **The level meter.** The component and its wording table. | client | Sonnet | `packages/client/levelmeter.js` (new), `style.css`, `tests/` | The wording test passes for every verdict and no string contains "verified" without a signer; each segment kind is told apart without colour (patterns tested by their class names and by the words); a created-at-12 file and a grown-from-1 file give different first lines and notches. |
-| P8 | **Join with a character and the DM's review.** The lobby choice, the offer, the pending line, the review screen with the report, Accept and Decline, and the table settings. | client | Sonnet | `index.html`, `style.css`, `app.js` (small), `tablecontrols.js`, `reviewchar.js` (new), `transport.js` (message pass-through), `tests/` | A DM and a player in two windows: the player offers a file; the DM sees the summary and the review at both sizes; Accept puts the character in the party owned by that player; Decline tells the player why; the pending player's screen shows no table setting; a file with 7,000 GP at level 12 shows the customs banner first, with its choices, at both sizes, and accepting with the coins held back above 6,000 GP admits the character with 6,000 GP and lists the rest as parked. |
+| P8 | **Join with a character and the DM's review.** The lobby choice, the offer, the pending line, the review screen with the report, Accept and Decline, and the table settings. | client | Sonnet | `index.html`, `style.css`, `app.js` (small), `tablecontrols.js`, `reviewchar.js` (new), `transport.js` (message pass-through), `tests/` | A DM and a player in two windows: the player offers a file; the DM sees the summary and the review at both sizes; Accept puts the character in the party owned by that player; Decline tells the player why; the pending player's screen shows no table setting; a file with 7,000 GP at level 12 shows the customs banner first, with its choices, at both sizes, and accepting with the coins held back above 6,000 GP admits the character with 6,000 GP and lists the rest as parked. **Amended 20 November:** the review lists a character's homebrew pieces one by one, each with its reading, its own Deny (default) or Allow, links between pieces, and an "Allow all of this character's pieces" button that only fills the screen; a declined piece shows as removed. |
 | P9 | **Send-off.** The `take` message, the send-off screen, `takeaway`, the DM's ticks, the player's confirmation, the file and the `left` block; Leave offers it first. | server, client | Opus (server), Sonnet (client) | `tables.js`, `packages/server/README.md`, `sendoff.js` (new), `app.js` (small), `tests/` | A character that gained a level and a magic item at a table leaves with both under `everything`, with the level only under `level-only`, and with neither under `nothing`; the DM's ticks change that; the file verifies back at the same server as "signed here"; a stand-in subclass is marked in the file; coins leave under `everything`, only as they arrived under `level-only` and `nothing`, and the `left` block's `coins` is the worth of what left. |
 | P10 | **Stretch: a character in two files.** Detecting that the incoming chain forks a block this server sealed, and showing it. Also the DM's "trust this server" tick and the operator list shown in settings. | server, client | Sonnet | `tables.js`, `reviewchar.js` | A file with a block removed and returned to its sealing server is reported "continued here by another copy"; the trust tick adds the key id to the table's list and the next file from that key reads "signed by a server you trust". |
+| P11 | **Carry a character's own homebrew (#592).** In My characters, a player attaches pieces to a character from a pack file they hold: only the kinds a file may carry, only pieces the sheet names, with the size guard shown as room left; the file's `homebrew.bundle` and `needs.homebrew` are written, and a file with a bundle that a table refuses or the DM declines is not changed. | client | Sonnet | `mycharacters.js`, `index.html`, `style.css`, `tests/` | At 390 x 844 a player attaches a homebrew spell and a companion to a character, exports, and imports on a second "device": the bundle is the same and `needs.homebrew` lists both ids and hashes; a piece the sheet does not name, a monster that is not a companion and a fiftieth entry are refused on the screen with the sentence; a file offered at a table and declined for one piece still holds that piece. |
 
 Customs and the coins in a file wait for the purse of `shops.md` (P3 there); the rest
 of P2 to P9 do not.
@@ -958,7 +965,7 @@ of P2 to P9 do not.
 Decision 8 (the official server, monikers, the hash and summary store, reputation,
 the lobby, the adventure setup and forks) has no tasks yet: it needs the owner's
 decision to run a service and a spec of its own for the server side. A1 to A9
-and P1 to P10 are built so that it can be added later (the `official` verdict,
+and P1 to P11 are built so that it can be added later (the `official` verdict,
 `dm` and `fork` fields, `cid` uniqueness) without redoing them.
 
 The first four can run in parallel after P1 and P2 are agreed; P5 needs P3 and
@@ -970,7 +977,7 @@ can start with a stub.
 Each is a thing a reviewer of the pull requests above must check.
 
 1. **A file is untrusted input.** The offer is parsed with bounds before anything
-   else: at most 96 KB, 400 entries, 100 blocks, 8 keys, depth under 12, no
+   else: at most 192 KB (96 KB without a homebrew bundle), 400 entries, 100 blocks, 8 keys, depth under 12, no
    function, no key outside the listed shapes, no string over 200 characters
    outside the sheet. `JSON.parse` of a hostile document throws on deep nesting;
    the server catches it. The hash and the Ed25519 checks use only data the file
@@ -1076,6 +1083,17 @@ answered on 15 November 2026 (issue #193, the comment "Q&A lead, 15 November, 08
 ET", with the shops questions), and questions 2, 3, 6, 10, 12, 13 and 14 on the same
 day (the comment "Beej (lead 4), 15 November, 09:45 ET"). Every question now has an
 answer; the lead's proposals inside them are marked.
+
+**Owner's answer, 20 November 2026** (#592; issue #349, proposal 1). On a character carrying homebrew: "why the
+limitation. The DM has to approve any homebrew. Agreed, no monsters unless it's a companion or something specific to
+the character. A homebrew rule that affects the table shouldn't be in a character sheet, it should be in a table
+package. can we separate those. The character should have equipment and special spells, etc." *What changed:* the
+file may carry a character's own pieces (spells, items and equipment, feats, subclass, species, a companion) and
+nothing table-wide; the 12-entry, 24 KB cap is replaced by a size guard for the server (the file 192 KB, the bundle 96
+KB and 48 entries); each piece is allowed or declined by the DM one at a time and a declined piece is removed. The full
+amendment, its four questions for the owner (numbered 10 to 13 there) and the rows affected are in `homebrew.md`,
+"Owner's answer, 20 November 2026" and Decision 4. Here: the file shape and limit (Decision 1), the missing-content
+row (Decision 5), A2, A8, P2, P5, P8 and the new P11.
 
 **Answered**
 
