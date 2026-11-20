@@ -668,29 +668,39 @@ values, so the two places cannot disagree. The mockup draws the sheet only):
 
 ## The mockup
 
-[`mockups/spells-on-the-sheet.html`](mockups/spells-on-the-sheet.html), round 2: a phone frame
+[`mockups/spells-on-the-sheet.html`](mockups/spells-on-the-sheet.html), round 3: a phone frame
 (390 x 844) and a desktop frame (1280 x 800); two characters (Wren, a Wizard with Magic
 Initiate (Cleric); Brenna, a Cleric of the Life Domain with Magic Initiate (Wizard)); four
 moments (New character, which builds level 1; Level up; After a Long Rest; Any other time),
-and **"Sheet is at level" 1 to 5** to jump a sheet to a level. **To walk a character up:**
+and **"Sheet is at level"** 1 to 5 to jump a sheet to a level. **To walk a character up:**
 pick New character, tick spells until the top says "All chosen", press Save, then Level up
 (to 2, 3, 4, 5); the number in each box is the level it was chosen at, and the choices carry
 from level to level. The swaps of the rules are in the same list (Wren at level 5 may give up
-a Magic Initiate spell; Brenna a cantrip); a Long Rest and Any other time show the live and
-the read-only list. `ⓘ`, a long-press or a 3-second hover shows the scroll card. The page has
-no chooser and no second step. It does not draw: an older sheet's dash, a multiclass
-character, the DM's correction, the Short Rest.
+a Magic Initiate spell; Brenna a cantrip). Round 3 adds: **headers that stick** under the count
+bar (scroll any list; Decision 8); **`(lvl N)` and `(cantrip)`** on every name (Decision 9); the
+**caster lines, "Spell slots" row and the four relabelled tiles** (Decision 11); and the
+**list that follows the moment** (Decision 10): switch Moment to see what each lists. `ⓘ` shows
+the scroll card on a tap; on a mouse, 3 seconds on a row shows it; on touch, a press-and-hold of
+half a second does. The page has no chooser and no second step. It does not draw: an older sheet's
+dash, a multiclass character, the DM's correction, the Short Rest, the combat page.
 
-The mockup was walked with a script (not part of the repo) on a 390 x 844 touch screen and a
-1280 x 800 mouse screen: a Wizard from level 1 to 5 by taps, Brenna's level 5 and a Long Rest,
-and Wren's Long Rest and read-only view. Screenshots, `/home/claude/shots/568-r2/`:
-`phone-wren-new-L1-start`, `phone-wren-L1-mid`, `phone-wren-L2-mid`, `phone-wren-L4-done-top`,
-`phone-wren-levelup5-start`, `phone-wren-levelup5-book`, `phone-wren-L5-picked`,
-`phone-wren-L5-swap-open`, `phone-wren-L5-swap-done`, `phone-wren-L5-saved-readonly`,
-`phone-wren-card`, `phone-wren-long`, `phone-wren-other`, `phone-brenna-levelup5`,
-`phone-brenna-levelup5-picked`, `phone-brenna-long`, `desktop-wren-new-L1`,
-`desktop-wren-levelup5-start`, `desktop-wren-levelup5-picked`, `desktop-wren-card-hover`.
-Round 1's pictures (`mock-*.png`, with the chooser) are out of date.
+**What was measured** (a script, not part of the repo; Chromium at 390 x 844 touch and 1280 x 800
+mouse; screenshots of the frame in `/home/claude/shots/568-r3/`):
+
+- **Pinned stack:** bar 93 px, group header 34, level sub-header 26 (CSS constants, measured the
+  same). At scroll positions from 0 to 3600 px, in both frames and both characters, the group header
+  sat at 93 px under the bar's bottom edge and the level sub-header at 127 px; as a group ended its header
+  was pushed up under the bar by the next one.
+- **Rows:** every row is 52 px high at 390 px, including "Protection from Evil and Good (lvl 1)",
+  whose name is cut with an ellipsis and whose tag is fully visible. No touch target is under 44 px
+  and the list does not scroll sideways.
+- **Count tiles:** each tile jumps to its group, which lands right under the bar.
+- **Nothing moves** (`window.mock.layout()`: the top and height of every row, header, rule line, tile
+  and the bar, the scroll position and the list's height, before and after each tap): TAPS_PLACEHOLDER
+- **Rows each moment lists** (level 4 sheets): MOMENTS_PLACEHOLDER
+
+Screenshots: SHOTS_PLACEHOLDER
+Round 2's pictures (`/home/claude/shots/568-r2/`) are out of date.
 
 ## Build plan
 
@@ -769,3 +779,26 @@ Round 2 (20 November 2026), new, each with its default:
 13. **A spell the domain grants after it was prepared** (a Cleric prepared Cure Wounds, then
     reaches level 3): default **the engine frees the prepared place and says so in the log**.
     Alternative: refuse to preparing a domain spell before it is granted.
+
+
+Round 3 (20 November 2026), new, each with its default:
+
+14. **A cantrip's tag:** default **"(cantrip)"** (the SRD's word, and no slot). Alternative:
+    "(lvl 0)", which is the owner's pattern to the letter and two characters shorter.
+15. **Two numbers on a row** (the box: the character level it was chosen at; the name: the spell's
+    level): default **both, told apart by place and look**, with the legend. Alternative: "(spell lvl 2)"
+    or "(L2)" in the name, which is clearer and longer; or the box number with an "L" before it (also
+    the fallback of Risks).
+16. **How much is pinned on a phone:** default **the bar, the group and its level (153 px of 712)**.
+    Alternative: the level folded into the group line ("SPELLBOOK · LEVEL 2", 127 px), whose words
+    change as you scroll; or a shorter bar on a phone (the status line moved out of the bar).
+17. **The press-and-hold on touch:** default **kept, 0.5 seconds, as a shortcut; the ⓘ is the tap**.
+    Alternative: drop the hold, so that the ⓘ is the only way on a phone (one fewer hidden behaviour,
+    and a phone player who never found the hold loses nothing).
+18. **The Wizard's unprepared spells at any other time:** default **not listed** (the owner's ask:
+    only what is prepared), the Spellbook tile still counts them. Alternative: a read-only "Spellbook"
+    group below the prepared spells, which is 5 or so more rows and lets a Wizard read what she has
+    written down without opening a window.
+19. **The combat page:** default **the caster lines and the slots row are shown on it, read-only**.
+    Alternative: only the DC and attack bonus (two numbers), with the ability and the Magic
+    Initiate line left on the sheet.
