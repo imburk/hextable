@@ -20,6 +20,7 @@ import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
+import { slotChoices } from './upcast.js';
 import { shownName } from './tracker.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
@@ -95,7 +96,7 @@ export function nearestAlly(S, e) {
 }
 // Why a spell cannot be cast now, in the engine's words ('' if it can).
 export function spellWhy(S, e, sp) {
-  return blocked(S, e, sp.time) || (sp.level > 0 && !(e.slots[sp.level] > 0) && `${e.name} has no level ${sp.level} spell slots left.`) ||
+  return blocked(S, e, sp.time) || (sp.level > 0 && !slotChoices(e, sp).length && `${e.name} has no level ${sp.level} spell slots left.`) ||
     (sp.level > 0 && S.encounter?.flags.slot && 'Only one spell slot can be spent per turn.') || '';
 }
 // Features and spells that give Hit Points back, found by what the record says.
