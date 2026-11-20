@@ -326,3 +326,15 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 .qb-more-btn { min-width: 64px; min-height: 44px; padding: 0 12px; }
 .qb-more { display: grid; gap: 4px; margin-top: 8px; } .qb-more[hidden] { display: none; } .qb-more label { font-size: 12px; color: var(--muted); }
 .qb-colour-note { margin: 0; color: var(--bad); font-size: 13px; } .qb-colour-note:empty { display: none; }
+
+/* A ping (#599): the ring that fills while a press on the map is held, and the mark the table sees for three seconds. Marks take no pointer. */
+#pings { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
+.hold-ring { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; border: 3px solid var(--accent); box-sizing: border-box; opacity: 0.9; animation: hold-fill var(--hold-ms, 1000ms) linear forwards; }
+@keyframes hold-fill { from { transform: scale(1.6); opacity: 0.2; } to { transform: scale(0.8); opacity: 1; border-width: 6px; } }
+.ping { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.ping i { position: absolute; left: -28px; top: -28px; width: 56px; height: 56px; border-radius: 50%; border: 4px solid var(--ping-color); box-shadow: 0 0 10px var(--ping-color), inset 0 0 8px var(--ping-color); animation: ping-ring 1s ease-out 3 both; }
+.ping i::after { content: ''; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: var(--ping-color); }
+.ping-name { position: absolute; left: 0; top: -44px; transform: translateX(-50%); white-space: nowrap; padding: 1px 8px; border-radius: 10px; background: #000b; color: #fff; border: 2px solid var(--ping-color); font-weight: 700; font-size: 13px; animation: ping-fade var(--ping-ms, 3000ms) linear both; }
+@keyframes ping-ring { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.4); opacity: 0.25; } }
+@keyframes ping-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .hold-ring { animation: none; } .ping i { animation: none; } }

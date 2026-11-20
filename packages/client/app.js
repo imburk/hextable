@@ -50,6 +50,8 @@ import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
+import { createHold, HOLD_MS } from './hold.js';
+import { createPings, cellAtPoint, pingColor } from './ping.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -242,6 +244,7 @@ function throwsOf(state, events) {
 let waiting = 0, chain = Promise.resolve();
 const thrown = [];          // the last rolls thrown on this device, for tests: window.hextable.thrown
 function received(state, events, fresh) {
+  if (!fresh) for (const ev of events) if (ev.type === 'ping') PG.ping({ at: ev.at, name: ev.name, color: pingColor(state, ev.from) });      // at once, not on a beat: nobody waits to be shown where to look
   const groups = !S || fresh || DICE.show === 'off' ? [] : throwsOf(state, events);
   thrown.push(...groups); thrown.splice(0, Math.max(0, thrown.length - 60));
   if (groups[0] && flick) groups[0].flick = flick;
@@ -252,6 +255,29 @@ function received(state, events, fresh) {
     waiting--;
     try { onUpdate(state, events, fresh); } catch (e) { setTimeout(() => { throw e; }); }
   });
+}
+
+// Press and hold on the map for a second to point out the cell to everyone (#599; docs/specs/table-ui.md, "Ping"). The hold is hold.js's, the marks ping.js's.
+const PG = createPings({ screenOf: (h) => R.screenOf(h), host: (() => { const d = document.createElement('div'); d.id = 'pings'; document.body.append(d); return d; })() });
+const HOLD = createHold({
+  onStart: (x, y) => PG.start(x, y, HOLD_MS),
+  onCancel: () => PG.stop(),
+  onFire: (x, y) => {
+    PG.stop();
+    const cell = S && T && cellAtPoint(S, (px, py, feet) => R.planeHex(px, py, feet), x, y);
+    if (!cell) return;
+    navigator.vibrate?.(20);
+    T.send({ type: 'ping', at: cell });
+  },
+});
+{
+  const el = $('gl'), at = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  // The map editor owns the pointer while it is open (it paints and traces), and no table is open in the lobby.
+  el.addEventListener('pointerdown', (e) => HOLD.down(e.pointerId, ...at(e), { button: e.button, enabled: !!S && !!T && !R.onPoint && !R.onDrag }));
+  el.addEventListener('pointermove', (e) => HOLD.move(e.pointerId, ...at(e)));
+  el.addEventListener('pointerup', (e) => HOLD.up(e.pointerId));
+  el.addEventListener('pointercancel', (e) => HOLD.up(e.pointerId));
+  el.addEventListener('wheel', () => HOLD.cancel(), { passive: true });
 }
 
 const ED = new Editor({ R, act, toast, state: () => S, isDM, refresh: () => refresh(), assets: () => T?.assets });     // the DM's map editor
