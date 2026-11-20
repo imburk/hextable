@@ -73,7 +73,7 @@ test("host a table over a real WebSocket and receive the whole game state", asyn
 test("a message far over any limit closes that connection cleanly and the server carries on", async () => {
   const { ws } = await talk({ t: "host", name: "Dana" }, (g) => g.some((m) => m.t === "update"));
   const closed = new Promise((resolve) => { ws.onclose = (ev) => resolve(ev.code); });
-  ws.send("z".repeat(3 * 1024 * 1024));
+  ws.send("z".repeat(5 * 1024 * 1024));          // past even a seated DM's frame, which holds a 4 MB world pack (travel W3)
   assert.equal(await closed, 1009);
   const ping = await fetch(`http://localhost:${PORT}/api/ping`);
   assert.deepEqual(await ping.json(), { ok: true });
