@@ -19,13 +19,15 @@ import { vanish } from './resolve.js';
 // charges and no `regain` (the Chime of Opening's ten uses) gets none back. The clock moving in a fight
 // (rounds) is not watched, and "once a dawn" uses are not tracked; the DM is told of those
 // held (a `manual` for the DM alone).
+// `who` is the creatures the dawns come to: by default everyone in play; a place unparked (docs/specs/travel.md,
+// Decision 5, "Catching up") gives the dawns it missed to the creatures that were there (engine/travel.js).
 export const DAWN = 6 * 60;
 export const dawnsBetween = (from, to) => Math.max(0, Math.floor((to - DAWN) / 1440) - Math.floor((from - DAWN) / 1440));
-function dawn(s, from, ev) {
+export function dawn(s, from, ev, who = Object.values(s.entities)) {
   const n = dawnsBetween(from, s.clock);
   if (!n) return;
   const daily = [];
-  for (const e of Object.values(s.entities)) {
+  for (const e of who) {
     for (const x of Array.isArray(e.sheet?.items) ? e.sheet.items : []) {
       const def = CONTENT.items[x?.item];
       if (!def) continue;

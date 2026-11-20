@@ -73,6 +73,13 @@ const SENSE = [
 const turnOf = (s, id) => { for (let i = 0; i < 30 && s.encounter && current(s) !== id; i++) apply(s, { type: "endTurn", actor: current(s) }, DM); };
 const lastObj = (s) => s.map.objects.at(-1)?.id;
 const lasting = (s) => s.effects?.[0]?.id;
+function places(s) {
+  apply(s, { type: "nodeAdd", node: { name: "Here", kind: "map" }, here: true }, DM);
+  apply(s, { type: "nodeAdd", node: { name: "There", kind: "map" }, map: structuredClone(s.map) }, DM);
+  if (!s.world) return;
+  s.world.nodes.top = { id: "top", kind: "nav", name: "Top", pins: [{ id: "p", name: "Here", to: "here" }] };
+  if (s.world.nodes.here) s.world.nodes.here.parent = "top";
+}
 const SENSE2 = [
   // A hold (docs/specs/grapple-shove.md, stage G2): the fighter holds the goblin, or the goblin the fighter, with a range no base passes.
   { pre: (s) => { s.entities[GOB].cond.grappled = { source: "fighter", holds: [{ by: "fighter", with: "hand", escape: 10, range: 300 }] }; }, a: { type: "letGo", actor: "fighter", target: GOB } },
@@ -103,6 +110,15 @@ const SENSE2 = [
   { pre: (s) => apply(s, { type: "scene", scene: { title: "S" } }, DM), a: { type: "endScene" } },
   // Movement an Opportunity Attack's rider gave (docs/specs/homebrew-subclasses.md, addition H), kept as a turn flag, given up (a fight only: the first base has none, and the setup is skipped there).
   { pre: (s) => { s.encounter.flags["rmove:fighter"] = 15; }, a: { type: "forgoMove", actor: "fighter" } },
+  // Places of a world (docs/specs/travel.md, W2): the map in play made a place, another battle place kept, a navigation node above.
+  { a: { type: "nodeAdd", node: { name: "Here", kind: "map" }, here: true } },
+  { pre: places, a: { type: "goTo", node: "there" } },
+  { pre: places, a: { type: "leave" } },
+  { pre: (s) => { places(s); apply(s, { type: "leave" }, DM); }, a: { type: "enter", pin: "p" } },
+  { pre: places, a: { type: "keepPlace", node: "there" } },
+  { pre: places, a: { type: "forgetPlace", node: "there" } },
+  { pre: places, a: { type: "place", who: ["rogue"], node: "there" } },
+  { pre: (s) => { places(s); delete s.world.nodes.there.added; }, a: (s) => ({ type: "resetPlace", node: "there", map: s.parked?.there ? structuredClone(s.parked.there.map) : null }) },
 ];
 const lcg = (n) => () => (n = (Math.imul(n, 1103515245) + 12345) >>> 0) / 4294967296;
 const HEX = [{ q: 0, r: 0 }, { q: 2, r: 1 }, { q: -1, r: 0 }, { q: 2, r: 0 }, { q: 4, r: -1 }, { q: 1, r: 1, z: 0 }];
@@ -179,7 +195,7 @@ test("no action type outside the list changes the terrain in ordinary AI-played 
 });
 
 test("the list is not empty words: mapEdit and loadMap do change the terrain, and still restore it if they throw", () => {
-  assert.deepEqual([...TERRAIN_ACTIONS].sort(), ["loadMap", "mapEdit"]);
+  assert.deepEqual([...TERRAIN_ACTIONS].sort(), ["enter", "goTo", "leave", "loadMap", "mapEdit"]);      // the last three put another place's map in play (docs/specs/travel.md, W2)
   const s = world(), before = json(s), t0 = terrain(s);
   const real = Array.prototype.push, boom = new Error("boom");
   let changed = null;

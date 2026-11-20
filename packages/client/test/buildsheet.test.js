@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus, subclassChoices, subclassNote, classTitle, missingText } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
+const { pickLimit, optionWhy, featPoints, KEEP, keptOf, bonusText, withoutBonus, subclassChoices, subclassNote, classTitle, missingText, armourTrained, armourOptions, armourNote, spellCard } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
 const { standing } = await import(pathToFileURL(join(tmp, 'shared/scores.js')));
 const { view } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
 const { rollsOfEvent, rerollInto, resultOf, tableRollRule, keptRoll } = await import(pathToFileURL(join(tmp, 'buildsheet.js')));
@@ -74,6 +74,20 @@ test('editing a character keeps every sheet field the screen has no control for,
   const back = { ...character, scoreBonus: undefined, ...keptOf(character) };
   assert.deepEqual(validate(back), []);
   assert.equal(derive(back).record.abil.wis, 24);
+});
+
+test('editing or levelling a character keeps its species whole, a homebrew one that is not loaded too (docs/specs/species.md, #552)', async () => {
+  const { validate } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
+  const species = { id: 'hb-ember-folk-ash-born', lineage: 'cinder', choices: { 'old-craft': 'lore' } };
+  const sheet = { name: 'Brann', class: 'fighter', level: 1, abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 12, cha: 8 }, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, species };
+  assert.ok(KEEP.includes('species'));
+  assert.deepEqual(keptOf(sheet).species, species);
+  assert.notEqual(keptOf(sheet).species, species, 'a copy, not the sheet\'s own object');
+  assert.equal(keptOf({ name: 'x' }).species, undefined);
+  // Put back on the next level's sheet the way Save does: the id is still there, and the sheet still validates.
+  const next = { ...sheet, level: 2, species: undefined, ...keptOf(sheet) };
+  assert.deepEqual(next.species, species);
+  assert.deepEqual(validate(next), []);
 });
 
 test('the DM score bonus is said in words and can be taken off the kept fields (#498)', () => {
@@ -274,6 +288,29 @@ test('a saved sheet opens on its own method; a sheet with no record, or one that
   const p = scoreParts(r);
   assert.deepEqual(p.problems, []);
   assert.deepEqual([p.scores.by, p.scores.at], ['table', 41], 'where it was rolled is kept when a sheet is edited');
+});
+
+test('armour: what a class has no training in is greyed and says so; what it is trained in is not; a sheet already wearing it can still show it (#566)', () => {
+  const armour = Object.values(CONTENT.armour).filter((a) => a.category !== 'shield');
+  const wiz = armourTrained(CONTENT.classes.wizard), fig = armourTrained(CONTENT.classes.fighter);
+  const w = armourOptions(armour, wiz, null), f = armourOptions(armour, fig, null);
+  assert.deepEqual(w[0], ['', 'None', false]);
+  assert.ok(w.slice(1).every(([, t, off]) => off && /\(no training\)$/.test(t)), 'a wizard is trained in none');
+  assert.ok(f.slice(1).every(([, t, off]) => !off && !/no training/.test(t)), 'a fighter is trained in all');
+  assert.equal(armourOptions(armour, wiz, 'plate-armor').find(([v]) => v === 'plate-armor')[2], false, 'the armour already worn stays choosable');
+  assert.match(armourNote(CONTENT.classes.wizard, wiz, armour), /^A Wizard has no training with light armour, medium armour, heavy armour, Shields, so they are greyed out/);
+  assert.equal(armourNote(CONTENT.classes.fighter, fig, armour), '');
+});
+test('armour: a class with some training greys only the rest, and a feature that grants training lifts it', () => {
+  const armour = Object.values(CONTENT.armour).filter((a) => a.category !== 'shield');
+  const cleric = CONTENT.classes.cleric, t = armourTrained(cleric), off = new Set(armourOptions(armour, t, null).filter(([, , d]) => d).map(([v]) => CONTENT.armour[v]?.category));
+  for (const k of ['light', 'medium', 'heavy']) assert.equal(off.has(k), !cleric.armour.includes(k), k);
+  assert.ok(armourTrained(CONTENT.classes.wizard, [{ proficiency: { armour: ['heavy'] } }]).has('heavy'));
+});
+test('spellCard: name, level and lists, and the pack\'s own text', () => {
+  const s = CONTENT.spells.fireball, c = spellCard(s);
+  assert.equal(c.title, 'Fireball'); assert.match(c.sub, /^Level 3 · /); assert.equal(c.text, s.text); assert.ok(c.text.length > 20);
+  assert.match(spellCard(CONTENT.spells['fire-bolt']).sub, /^Cantrip · /);
 });
 
 // ---------- rolling at the table (#578): the sheet reads the engine's own events ----------
