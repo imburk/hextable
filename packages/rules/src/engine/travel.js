@@ -95,21 +95,22 @@ function split(place, ids, ev) {
   for (const id of ids) { creatures.push(here[id]); delete here[id]; }
   return { creatures, effects: go };
 }
-// Sets the movers down in a place: at `spots` (a battle map), or at `pin` on a navigation node (null: at none).
+// Sets the movers down in a place at `spots`, and at `pin` on a navigation node (null: at none). A navigation or scene
+// node holds its creatures on its holding map (Decision 1), where they are set down as on any map; where they stand
+// there means nothing (the screens draw the node's picture), and the map is never made again while the node is held.
 function join(place, out, spots, pin) {
   out.creatures.forEach((e, i) => {
     place.entities[e.id] = e;
-    if (spots) e.pos = spots[i];
+    e.pos = spots[i];
     if (pin) e.pin = pin; else delete e.pin;
   });
   if (out.effects.length) (place.effects ??= []).push(...out.effects);
 }
-// A navigation or scene node holds its creatures on a holding map made for all of them (Decision 1); it is made again
-// whenever someone arrives, so there is always room. Positions there mean nothing: the screens draw the node's picture.
-function rehold(place) {
-  const all = Object.values(place.entities), map = holdingMap(all.length + 1), at = arrivalSpots(map, all.length).spots;
-  all.forEach((e, i) => { e.pos = at[i]; });
-  place.map = map;
+// Where `list` is set down on `map` among `others` (creatures already there), at `entry` (a battle map) or anywhere (a
+// holding map): positions, or the refusal.
+function spotsFor(map, list, entry, others) {
+  const r = arrivalSpots(map, list.length, entry, new Set(others.filter((e) => !e.dead).map((e) => key(e.pos))));
+  return r.spots ?? fail(r.problem);
 }
 
 // The creatures that were in a parked place catch up when it comes into play (Decision 5): nothing is simulated for the
@@ -141,7 +142,7 @@ function targetOf(s, to, node, a) {
     a.map !== undefined || fail(`Nobody has been to ${placeName(s, to)} yet: its map must come with the action.`);
     return { rec: null, map: readMap(a.map), entities: {}, since: null };
   }
-  return { rec: null, map: null, entities: {}, since: null };
+  return { rec: null, map: holdingMap(), entities: {}, since: null };
 }
 
 // The parked cap (Decision 5): a move that would leave more battle places parked than TRAVEL_LIMITS.parked is refused.
@@ -179,11 +180,12 @@ function applyReset(s, id, rec, plan, ev) {
     text: `${plan.name} was put back as the world pack has it: ${n(dropped, 'creature', 'creatures')} not of the party, ${n(ended, 'lasting effect', 'lasting effects')} and every change to its map (doors, what was seen, the DM's edits) were dropped.${keep.size ? ` ${n(keep.size, 'creature', 'creatures')} of the party there ${keep.size === 1 ? 'was' : 'were'} set down at its entry.` : ''}` });
 }
 // The DM's answer carried by a move into a stale place: keep (the ten days count again), edit (kept as left, the
-// mark cleared: the DM edits it there), or reset (`plan`, made beforehand).
+// mark cleared: the DM edits it there), or reset (`plan`, made beforehand); or, with no answer to be had, a portal's
+// arrival, kept as left.
 function answerStale(s, id, rec, answer, plan, ev) {
   if (answer === 'reset') return applyReset(s, id, rec, plan, ev);
   rec.stale = null;
-  if (answer === 'keep') rec.kept = s.clock;
+  if (answer === 'keep' || answer === 'portal') rec.kept = s.clock;
   ev.push({ type: 'placeKept', node: id, name: placeName(s, id), how: answer });
 }
 
@@ -191,8 +193,8 @@ function answerStale(s, id, rec, answer, plan, ev) {
 // Moves `ids` (creatures in play, with their companions) from the place in play to the node `to`, at `entry` (a battle
 // node) or `pin` (a navigation node). The place they leave is parked with whoever stays (or, if it is not a place of the
 // world, thrown away as `loadMap` throws a map away: then the whole party must go). Every check is made before anything
-// changes. `a` is the action, for its `map` and `stale`.
-export function arrive(s, a, ev, { to, ids, entry = null, pin = null }) {
+// changes. `a` is the action, for its `map` and `stale`. `portal`: an arrival by a portal or spell (W8), see below.
+export function arrive(s, a, ev, { to, ids, entry = null, pin = null, portal = false }) {
   noFight(s);
   !s.journey || fail('The party is on a journey: end it first.');
   const node = nodeNamed(s, to), name = placeName(s, to), from = s.place ?? null;
@@ -200,7 +202,9 @@ export function arrive(s, a, ev, { to, ids, entry = null, pin = null }) {
   const going = movers(s.entities, ids);
   if (from === null) partyIn(s.entities).every((x) => going.has(x)) || fail('The map in play is not a place of the world: the whole party goes together. Add it as a place first (nodeAdd with here) to leave someone there.');
   const t = targetOf(s, to, node, a);
-  const answer = staleGate(s, to, t.rec, a);
+  // A creature that arrives by a portal or a spell the DM was not at the table for (the `travel` step, W8) goes in with the
+  // place kept as left, the mark cleared and the DM told: the engine may not choose to reset for them.
+  const answer = portal && t.rec?.stale !== null && t.rec?.stale !== undefined ? 'portal' : staleGate(s, to, t.rec, a);
   const plan = answer === 'reset' ? resetPlan(s, to, t.rec, a.map) : null;
   // Where they are set down.
   const battle = isBattle(node);
@@ -210,12 +214,8 @@ export function arrive(s, a, ev, { to, ids, entry = null, pin = null }) {
   !(pin !== null && node.kind !== 'nav') || fail(`${name} is not a navigation map: it has no pins.`);
   pin === null || (node.pins ?? []).some((p) => p.id === pin) || fail(`${name} has no pin "${pin}".`);
   const order = marchOrder([...going].map((x) => s.entities[x]), Object.values(s.entities));
-  let spots = null;
-  if (battle) {
-    const map = plan ? plan.map : t.map, there = plan ? plan.order.map((e, i) => ({ ...e, pos: plan.spots[i] })) : Object.values(t.entities);
-    const r = arrivalSpots(map, order.length, entry, new Set(there.filter((e) => !e.dead).map((e) => key(e.pos))));
-    spots = r.spots ?? fail(r.problem);
-  }
+  const spots = plan ? spotsFor(plan.map, order, entry, plan.order.map((e, i) => ({ ...e, pos: plan.spots[i] })))
+    : spotsFor(t.map, order, entry, Object.values(t.entities));
   const stays = new Set(Object.keys(s.entities).filter((x) => !going.has(x)));
   const parking = from !== null && (!s.map.holding || stays.size > 0 || !!s.scene);
   capCheck(s, { parkingFrom: parking && !s.map.holding, unparking: battleRecord(t.rec), adding: battle && !t.rec });
@@ -232,11 +232,10 @@ export function arrive(s, a, ev, { to, ids, entry = null, pin = null }) {
   if (answer) answerStale(s, to, rec, answer, plan, ev);
   if (rec) delete s.parked[to];
   if (parking) park(s, from, ev);                  // a navigation or scene node nobody stays at holds nothing: it is let go
-  bring(s, to, rec ? unparked(rec) : { map: t.map ?? holdingMap(1), entities: {}, effects: [], scene: null });
+  bring(s, to, rec ? unparked(rec) : { map: t.map, entities: {}, effects: [], scene: null });
   if (rec) catchUp(s, since, Object.values(rec.entities), ev);
   // and the movers set down.
-  join(s, out, battle ? spots : null, battle ? null : pin);
-  if (!battle) rehold(s);
+  join(s, { creatures: order, effects: out.effects }, spots, battle ? null : pin);
   if (battle) ((s.world ??= emptyWorld()).came ??= {})[to] = entry;
   ev.push({ type: 'map', map: s.map.id, name: s.map.name });
   ev.push({ type: 'arrived', node: to, name, from, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
@@ -280,24 +279,18 @@ export function placeIn(s, a, ctx, ev) {
   const dst = inPlay ? s : rec;                                           // null: a navigation or scene node not yet held
   const same = (fromKey === null && inPlay) || (fromKey !== null && fromKey === to);
   const order = marchOrder([...going].map((x) => src.entities[x]), Object.values(src.entities));
-  let spots = null;
-  if (battle) {
-    const there = Object.values(dst.entities).filter((e) => !e.dead && !(same && going.has(e.id)));
-    const r = arrivalSpots(dst.map, order.length, entry, new Set(there.map((e) => key(e.pos))));
-    spots = r.spots ?? fail(r.problem);
-  }
+  const map = dst?.map ?? holdingMap();
+  const spots = spotsFor(map, order, entry, Object.values(dst?.entities ?? {}).filter((e) => !(same && going.has(e.id))));
   if (same) {
-    order.forEach((e, i) => { if (spots) e.pos = spots[i]; if (pin) e.pin = pin; else delete e.pin; });
-    if (!battle) rehold(dst);
+    order.forEach((e, i) => { e.pos = spots[i]; if (pin) e.pin = pin; else delete e.pin; });
     ev.push({ type: 'relocated', node: to, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
     if (inPlay) { for (const e of order) ev.push({ type: 'placed', id: e.id, to: e.pos }); lookAround(s, ev); }
     return;
   }
   // From one place to another. What is left of a parked navigation or scene node that holds nobody and no scene is let go.
   const out = split(src, going, ev);
-  const into = dst ?? ((s.parked ??= {})[to] = newRecord(holdingMap(1), s.clock));
-  join(into, { creatures: marchOrder(out.creatures, out.creatures), effects: out.effects }, spots, battle ? null : pin);
-  if (!battle) rehold(into);
+  const into = dst ?? ((s.parked ??= {})[to] = newRecord(map, s.clock));
+  join(into, { creatures: order, effects: out.effects }, spots, battle ? null : pin);
   if (fromKey !== null && inPlay) catchUp(s, src.since, out.creatures, ev);
   if (fromKey !== null && src.map.holding && !Object.keys(src.entities).length && !src.scene) delete s.parked[fromKey];
   ev.push({ type: 'relocated', node: to, from: fromNode, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
@@ -306,7 +299,8 @@ export function placeIn(s, a, ctx, ev) {
 
 export const handlers = {
   // { type: 'enter', pin, who?, map?, stale? }: from the navigation node in play into the place a pin leads to, at the
-  // pin's entry (or that place's default). `who` defaults to the party at that pin, or at no pin.
+  // pin's entry (or that place's default). `who` defaults to the party at that pin or at no pin, or, with nobody there,
+  // the whole party in the node (going between pins is `jump`, W5).
   enter(s, a, ctx, ev) {
     dmOnly(ctx, 'move the party between places');
     noFight(s);
@@ -316,7 +310,7 @@ export const handlers = {
     const p = (here.pins ?? []).find((x) => x.id === a.pin) || fail(`${placeName(s, s.place)} has no pin "${a.pin}".`);
     (typeof p.to === 'string' && nodeOf(s, p.to)) || fail(`${p.name ?? 'That pin'} leads nowhere.`);
     const at = Object.values(s.entities).filter((e) => e.side === 'party' && (e.pin === p.id || e.pin === undefined)).map((e) => e.id);
-    const ids = named(s.entities, a.who, at);
+    const ids = named(s.entities, a.who, at.length ? at : partyIn(s.entities));
     arrive(s, a, ev, { to: p.to, ids, entry: isBattle(nodeOf(s, p.to)) ? p.entry ?? null : null });
   },
   // { type: 'leave', who?, map?, stale? }: from the place in play up to the place above it, at the pin there that leads

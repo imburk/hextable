@@ -166,7 +166,7 @@ function dispatch(s, action, ctx, ev) {
 // (it plays every type with the terrain frozen). A new action that edits tiles or walls in place MUST be added here.
 // The maps of parked places (docs/specs/travel.md, Decision 5) are never changed in place by any action (a reset puts a
 // new map in whole), so their terrain is held by reference for every action, as the map in play's is.
-export const TERRAIN_ACTIONS = new Set(['mapEdit', 'loadMap']);
+export const TERRAIN_ACTIONS = new Set(['mapEdit', 'loadMap', 'enter', 'leave', 'goTo']);      // the last three put another place's map in play (engine/travel.js)
 const BY_REFERENCE = ['levels', 'walls'];
 const isMap = (m) => !!m && typeof m === 'object' && !Array.isArray(m);
 const lighten = (m) => { const rest = {}; for (const k of Object.keys(m)) if (!BY_REFERENCE.includes(k)) rest[k] = m[k]; return rest; };

@@ -25,12 +25,14 @@ export const newMap = (over = {}) => ({
 // The holding map (docs/specs/travel.md, Decision 1): what the engine holds as `s.map` while the table is on a
 // navigation or scene node. A plain one-level clearing of grass on hexes, with no walls, objects, regions, starts
 // or light, so that every rule that reads the map keeps its invariants and finds nothing to do; big enough for
-// `n` creatures (a disc of radius 4 or more, room for nine cells each). Marked `holding: true`: the screens never
-// draw it, a fight cannot start on it (engine/resolve.js), and its id and name say nothing of the place.
+// `n` creatures with room for nine cells each, and never smaller than a disc of radius 12 (469 cells, about 9 KB):
+// a held node keeps its holding map while it is held, and the arrivals' spiral (places.js, arrivalSpots) reaches 11
+// cells out. Marked `holding: true`: the screens never draw it, a fight cannot start on it (engine/resolve.js), and its
+// id and name say nothing of the place.
 export const HOLDING_ID = 'holding';
 export function holdingMap(n = 1) {
   const count = Math.max(1, Math.min(500, Number.isInteger(n) ? n : 1));
-  let radius = 4;
+  let radius = 12;
   while (3 * radius * (radius + 1) + 1 < count * 9) radius++;
   const tiles = {};
   for (let q = -radius; q <= radius; q++) for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) tiles[`${q},${r}`] = { t: 'grass' };

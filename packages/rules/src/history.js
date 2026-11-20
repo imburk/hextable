@@ -238,7 +238,7 @@ export function describeStep(action, events, before, after) {
     const list = (Array.isArray(ids) ? ids : []).filter((id) => !party || find(id)?.side === 'party').map(name);
     return !list.length ? (party ? 'The party' : 'Nobody') : list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
   }
-  const place = (e) => e?.name ?? 'a place';
+  function place(e) { return e?.name ?? 'a place'; }
 
   function phrase(name) {
   const a = action, who = name(a.actor);
