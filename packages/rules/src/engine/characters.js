@@ -24,23 +24,33 @@ function freeHandForShield(s, e) {
 }
 
 // Who is rolling ability scores: a member by their user id, the DM by theirs (or 'dm' where there is none, as in a game on one device).
+// `scoreRolls['#seq']` counts the roll events (a stable number, unlike a place in the capped timeline): a sheet's `at` names the event by it.
+const SEQ = '#seq';
+const nextSeq = (s) => { const r = s.scoreRolls; r[SEQ] = (Number.isSafeInteger(r[SEQ]) && r[SEQ] >= 0 ? r[SEQ] : 0) + 1; return r[SEQ]; };
+// A recorded roll that has the shape the actions read (six sets of four dice), else a plain refusal.
+const sound = (x) => x && typeof x === 'object' && Array.isArray(x.sets) && x.sets.length === 6
+  && x.sets.every((q) => q && Array.isArray(q.dice) && q.dice.length === 4 && q.dice.every((d) => Number.isInteger(d) && d >= 1 && d <= 6)
+    && (q.again === undefined || (Array.isArray(q.again) && q.again.length === 4 && q.again.every((d) => Number.isInteger(d) && d >= 1 && d <= 6))));
 const roller = (ctx) => ctx.role === 'dm' ? (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : 'dm') : (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : fail('Only someone at the table can roll ability scores.'));
 export const handlers = {
   // Roll the six ability scores from the game's seed (docs/specs/ability-scores.md): four d6 each, the lowest die set aside. { type: 'rollAbilityScores' }
   // A member rolls once; the DM may roll a fresh set. What was rolled is kept in `scoreRolls` for the table rule's rerolls, and the event is told to the
-  // DM and the roller only (view.js). `at` is where the event stands in the timeline, so a sheet can name it.
+  // DM and the roller only (view.js). `at` is the event's number from a counter kept in `scoreRolls`, so a sheet can name it for good.
   rollAbilityScores(s, a, ctx, ev) {
     const who = roller(ctx);
+    who === SEQ && fail('Only someone at the table can roll ability scores.');
+    (s.scoreRolls && typeof s.scoreRolls === 'object' && !Array.isArray(s.scoreRolls)) || (s.scoreRolls = {});
     (ctx.role === 'dm' || !s.scoreRolls?.[who]) || fail('You have already rolled your ability scores at this table.');
     const { sets } = rollScores(s);
     (s.scoreRolls ??= {})[who] = { sets: sets.map((x) => ({ dice: x.faces })) };
-    ev.push({ type: 'scoresRolled', by: who, sets: sets.map((x) => ({ dice: x.dice, total: x.total })), at: s.timeline?.length ?? 0 });
+    ev.push({ type: 'scoresRolled', by: who, sets: sets.map((x) => ({ dice: x.dice, total: x.total })), at: nextSeq(s) });
   },
   // Roll one of those scores again, once, if the table's rule allows it (settings `scoreReroll`, `scoreRerollBelow`, `scoreRerollResult`).
   // { type: 'rerollAbilityScore', index } with index 0 to 5, the score's place in the roll.
   rerollAbilityScore(s, a, ctx, ev) {
-    const who = roller(ctx), mine = s.scoreRolls?.[who];
+    const who = roller(ctx), mine = who === SEQ ? undefined : s.scoreRolls?.[who];
     mine || fail('Roll your ability scores first.');
+    sound(mine) || fail('The roll kept for you is damaged; ask the DM to roll your scores again.');
     (Number.isInteger(a.index) && a.index >= 0 && a.index < mine.sets.length) || fail('Which score? It is 0 to 5, in the order rolled.');
     const set = mine.sets[a.index], rule = tableRule(s.settings), first = topThree(set.dice);
     if (!mayReroll(set, rule)) {
@@ -51,7 +61,7 @@ export const handlers = {
     set.again = r.faces;
     const old = rule.result === 'higher' && first > r.total;
     ev.push({ type: 'scoreRerolled', by: who, index: a.index, from: { dice: set.dice.map((value, i) => ({ sides: 6, value, ...(i === set.dice.indexOf(Math.min(...set.dice)) ? { drop: true } : {}) })), total: first },
-      to: { dice: r.dice, total: r.total }, stands: old ? 'old' : 'new', total: old ? first : r.total, at: s.timeline?.length ?? 0 });
+      to: { dice: r.dice, total: r.total }, stands: old ? 'old' : 'new', total: old ? first : r.total, at: nextSeq(s) });
   },
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
   setSpeed(s, a, ctx, ev) {

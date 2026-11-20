@@ -9,6 +9,7 @@ import { view, viewEvents } from "../src/view.js";
 import { keyedRng } from "../src/rng.js";
 import { topThree, tableRule, rollScores, checkScores } from "../src/scores.js";
 import { validate } from "../src/derive.js";
+import { createHistory, describeStep, mark } from "../src/history.js";
 
 const DM = { role: "dm", userId: "dm" }, ANA = { role: "player", userId: "ana" }, BEN = { role: "player", userId: "ben" };
 const KEY = "0123456789abcdef".repeat(4);
@@ -155,10 +156,13 @@ test("what the table is sent: the roller and the DM see the numbers; every other
 test("undo takes a roll back whole, and replay from the seed gives the same rolls", () => {
   const s = game(); set(s, "scoreReroll", "each");
   const before = json(s);
-  const r = run(s, { type: "rollAbilityScores" }, ANA);
+  const h = createHistory(), m = mark(s), action = { type: "rollAbilityScores" };
+  const r = run(s, action, ANA);
   assert.ok(r.ok);
-  const u = run(s, { type: "undo" }, DM);
-  if (u.ok) assert.equal(json(s), before, "undone: no rolls, the rng back");
+  h.record(m, s, describeStep(action, r.events, m, s));
+  const u = h.undo(s);
+  assert.ok(u, "the roll can be undone");
+  assert.equal(json(s), before, "undone: no rolls, the rng back");
   const a = game(), b = game();
   for (const g of [a, b]) { run(g, { type: "rollAbilityScores" }, ANA); run(g, { type: "setting", key: "scoreReroll", value: "each" }, DM); run(g, { type: "rerollAbilityScore", index: 2 }, ANA); }
   assert.equal(json(a), json(b));
@@ -191,4 +195,31 @@ test("state version 25: a new game has no rolled scores; an older state gets an 
   const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");
   const kept = newGame(5); kept.scoreRolls = { ana: { sets: [] } }; migrate(kept);
   assert.deepEqual(kept.scoreRolls, { ana: { sets: [] } }, "a roll already there is kept");
+});
+
+test("the event number on a roll is a counter in `scoreRolls`, not a place in the timeline: it keeps counting when the timeline is cut", () => {
+  const s = game(); set(s, "scoreReroll", "each");
+  const a = run(s, { type: "rollAbilityScores" }, ANA).events[0].at;
+  s.timeline.splice(0, s.timeline.length);                      // what the cap does, all at once
+  const b = run(s, { type: "rollAbilityScores" }, BEN).events[0].at;
+  s.timeline.length = 0;
+  const c = run(s, { type: "rerollAbilityScore", index: 0 }, ANA).events[0].at;
+  assert.deepEqual([a, b, c], [1, 2, 3]);
+  assert.equal(new Set([a, b, c]).size, 3);
+  assert.equal(run(s, { type: "rollAbilityScores" }, { role: "player", userId: "#seq" }).ok, false, "the counter's key is not anyone's");
+});
+
+test("a hand-edited record of a roll is refused cleanly, never a TypeError; the DM can roll over it", () => {
+  for (const bad of [{}, { sets: [] }, { sets: [{}, {}, {}, {}, {}, {}] }, { sets: Array(6).fill({ dice: [1, 2, 3] }) }, { sets: Array(6).fill({ dice: [1, 2, 3, 9] }) }, 5, null]) {
+    const s = game(); set(s, "scoreReroll", "each"); s.scoreRolls.x = bad;
+    const before = json(s);
+    const r = run(s, { type: "rerollAbilityScore", index: 0 }, { role: "player", userId: "x" });
+    assert.equal(r.ok, false, json(bad));
+    assert.equal(json(s), before, "nothing changed");
+    assert.equal(run(s, { type: "rollAbilityScores" }, { role: "player", userId: "x" }).ok, bad === null ? true : false, "a player's second roll is still refused");
+  }
+  const s = game(); s.scoreRolls.x = {};
+  assert.ok(run(s, { type: "rollAbilityScores" }, { role: "dm", userId: "x" }).ok);
+  const t = game(); t.scoreRolls = "junk";
+  assert.ok(run(t, { type: "rollAbilityScores" }, ANA).ok, "a scoreRolls that is not a record is made one");
 });

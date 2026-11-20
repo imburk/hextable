@@ -1,6 +1,6 @@
 # Spec: making ability scores (standard array, point cost, rolling)
 
-Status: draft by an agent, agreed by the owner (answers of 19 November, defaults to all seven questions). Issue #557. Part 1 is built (decisions 1 to 3, 5 and 6, and the lobby roll of 4); part 2 (the engine actions, the table settings, state version 25) is not. See the build note at the end.
+Status: draft by an agent, agreed by the owner (answers of 19 November, defaults to all seven questions). Issue #557. Part 1 is built (decisions 1 to 3, 5 and 6, and the lobby roll of 4); part 2 (the engine actions, the table settings, state version 25) is built too (#576); what is left is the build sheet's use of it (#578). See the build notes at the end.
 
 The owner, 19 November 2026, 21:10 ET:
 
@@ -313,3 +313,13 @@ Built: `packages/rules/src/scores.js` (and `validate`, through `checkScores`, wi
 - **The DM's line** is in the character sheet of a creature that has a `sheet` with a record (`#sheet-scores-line`, DM only; one line in `app.js`, outside the files the design named; it only calls `dmLine`).
 - **Sentences added to `validate`**: the ten of the table above plus one for a rule that is not one ("Its reroll rule is none, below a number from 4 to 18, or each, and either the new roll or the higher of the two stands.") and one for the record's shape.
 - **Styles** are in `style.css` (`.sc-*`), not `quickentry.css` where the rest of the build screen's are; the build screen's `select` and `button` rules there ask 40 px, and the score section asks 44.
+
+## Build note: part 2 (#557, #576)
+
+Built: the settings `scoreReroll` (none, below, each), `scoreRerollBelow` (10 by default) and `scoreRerollResult` (new, or higher), with their words and the DM's controls in `tablecontrols.js`; `tableRule(settings)` in `scores.js`; the actions `rollAbilityScores` and `rerollAbilityScore` in `engine/characters.js`; the events `scoresRolled` and `scoreRerolled`; state version 25 and its migration (`scoreRolls: {}`).
+
+- **What is kept.** `state.scoreRolls[userId] = { sets: [{ dice: [4 faces], again?: [4 faces] }] }` (the DM, where there is no user id, is `'dm'`). A member rolls once per table; the DM may roll again, which replaces the set. A reroll is once per score, judged on the first roll, and the table's rule at that moment decides. A record that is not six sets of four dice (a hand-edited save) is refused with a sentence, never an error; the DM can roll over it.
+- **Who is told what.** `playerView` whitelists fields, so no player is sent `scoreRolls`; the DM's view is the whole state. In `viewEvents` the full events (the faces, the totals, which result stands) go to the roller and the DM; every other player gets the bare type, and the log shows them "Someone rolled their ability scores" and "Someone rolled one ability score again", with no numbers.
+- **What `at` is.** The event's number, from a counter kept in `scoreRolls['#seq']`: it counts every roll and reroll at the table, starting at 1, and does not move when the timeline is cut at its cap. (The events carry no `seq` of their own, and a place in the timeline would name the wrong event once the timeline had been cut.) A sheet's `at: <n>` with `by: 'table'` ("Rolled at the table (event n)") is this number. `'#seq'` is not anyone's user id: a roll from that id is refused.
+- **Outside the files this part's row names**: `history.js` (labels for the two actions), `app.js` (the two log lines), `feedback.js` and `docs/specs/feedback.md` (the two kinds, classified `engine`: no typed text), and a number of tests that pin the state version or compare a migrated old save with the new one.
+- **Left**: the build sheet still rolls on the device in every mode; it does not send the actions, write `by: 'table'` or give `dmLine` the table's rule (follow-up #578; `docs/DEBT.md` C22).
