@@ -537,10 +537,14 @@ legacy table runs past the row's 19975, to 19993. What was settled:
 - **Cloud's Jaunt is not a `teleport` step.** The spec asked SP2 to check whether a feature's action runs `teleport` as a spell's does. It does
   not: only `cast` takes a destination (`a.hex`, `teleportSpot`, `src.to` in `engine/casting.js`); a feature's action has none, so its
   teleport step would hand itself to the DM (`effects.js`) under an `auto` tier. It is a cost-only Bonus Action until a feature's action can
-  take a destination (a small engine change, not named among S1 to S12).
+  take a destination (a small engine change, not named among S1 to S12; DEBT T102 (1)).
 - **The ability.** The Elf, Gnome and Tiefling carry `ability: ["int", "wis", "cha"]`, so a sheet chooses it now (SP1 requires it) though no
   spell plays with it until S2; the text of each spell feature names "your lineage's ability".
 - **Ids.** The Drow's Darkvision is `superior-darkvision` and the Wood Elf's Speed `fleet` (a lineage feature may not reuse the species'
   `darkvision`); each Dragonborn ancestry has `breath-weapon` and `damage-resistance`, each legacy `resistance`.
 - **Text.** Every `manual` and `assist` text says what the DM does and what the engine does not, in this project's words; a test
   (`species-content.test.js`) holds each to that.
+- **Beyond the issue's files, approved by the lead.** `packages/rules/test/species.test.js`: SP1's tests pinned an empty `CONTENT.species`;
+  they now use a made-up id ("no-such-species") for the unknown-species sentence, expect the nine in its list of choices, and pin the nine.
+  `scripts/content-report.mjs`: `npm run content` passes the species to `coverage` (9, all manual) and prints a table of each species' tier
+  and its features by tier, every lineage option's counted. `docs/DEBT.md`: row T102.

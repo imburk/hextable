@@ -1,6 +1,7 @@
 // Species, job SP1 of docs/specs/species.md (S1): the species kind and its linter, the sheet's `species`, `speciesFeatures`, `why.species`,
 // the size and Speed rules, `type` on the record and the creature, and a species whose entry is not loaded.
-// The species here are invented for this test ("Stonefolk", "Glimmerkin"); no published species is used, and the SRD's are not entered yet (SP2).
+// The species here are invented for this test ("Stonefolk", "Glimmerkin"); no published species is used. The SRD's nine (SP2) are beside them in
+// CONTENT.species; species-content.test.js tests those.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, creatureType, current, makeEntity } from "../src/engine.js";
@@ -48,7 +49,7 @@ const glimmerkin = { id: "glimmerkin", name: "Glimmerkin", source: "Written for 
 const PACK = { pack: { id: "test-species", name: "Test species", license: "CC0", attribution: "Written for a test." }, species: [stonefolk, glimmerkin] };
 const GONE = "hb-ember-folk-ash-born";
 
-// The species are put into the pack's lookup for one test and taken out after it (the SRD has none yet).
+// The species are put into the pack's lookup for one test and taken out after it (beside the SRD's nine).
 function withSpecies(fn) {
   for (const sp of PACK.species) CONTENT.species[sp.id] = sp;
   try { return fn(); } finally { for (const sp of PACK.species) delete CONTENT.species[sp.id]; }
@@ -217,10 +218,10 @@ test("validate: the species' sentences", () => {
     // The shape, an unknown id, and a homebrew id of the wrong shape.
     assert.ok(v("stonefolk").includes("Its species is { id, lineage?, ability?, choices? }: the species, its lineage, the ability its spells use, and its features' choices."));
     assert.ok(v({ id: "stonefolk", lineage: "granite", spells: [] }).some((p) => p.startsWith("Its species is { id")));
-    assert.ok(v({ id: "dwarf" }).includes("There is no species \"dwarf\" in the game: choose Stonefolk (stonefolk), Glimmerkin (glimmerkin)."));
+    assert.ok(v({ id: "no-such-species" }).includes("There is no species \"no-such-species\" in the game: choose Dragonborn (dragonborn), Dwarf (dwarf), Elf (elf), Gnome (gnome), Goliath (goliath), Halfling (halfling), Human (human), Orc (orc), Tiefling (tiefling), Stonefolk (stonefolk), Glimmerkin (glimmerkin)."));
     assert.ok(v({ id: "hb-Bad" }).some((p) => p.startsWith("Its species is not the id of a homebrew species")));
   });
-  assert.ok(validate(fighter(1, { species: { id: "dwarf" } })).includes('There is no species "dwarf" in the game (no species is entered yet).'));
+  assert.ok(validate(fighter(1, { species: { id: "no-such-species" } })).includes('There is no species "no-such-species" in the game: choose Dragonborn (dragonborn), Dwarf (dwarf), Elf (elf), Gnome (gnome), Goliath (goliath), Halfling (halfling), Human (human), Orc (orc), Tiefling (tiefling).'));
   // Without a species, as before.
   assert.ok(validate(fighter(1, { size: "large" })).includes("Its size is Small or Medium."));
   assert.deepEqual(validate(fighter(1, { speed: 35, size: "small" })), []);
@@ -308,8 +309,8 @@ test("a species that is not loaded: the sheet keeps the id, there are no traits,
   } finally { delete CONTENT.species[GONE]; }
 });
 
-test("a sheet without a species derives as before, and nothing is entered in the SRD yet", () => {
-  assert.deepEqual(Object.keys(CONTENT.species), []);
+test("a sheet without a species derives as before, and the SRD holds its nine species (SP2)", () => {
+  assert.deepEqual(Object.keys(CONTENT.species), ["dragonborn", "dwarf", "elf", "gnome", "goliath", "halfling", "human", "orc", "tiefling"]);
   const r = derive(fighter(5));
   assert.equal(r.why.species, undefined);
   assert.deepEqual(r.missing, []);
