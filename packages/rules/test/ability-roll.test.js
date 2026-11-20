@@ -275,3 +275,24 @@ test("the event counter: a refusal leaves it alone; it is not anyone's; a bad or
   assert.equal(run(v, { type: "rollAbilityScores" }, DM).events[0].at, 3);
   assert.equal(run(v, { type: "rollAbilityScores", for: "ana" }, DM).events[0].at, 4);
 });
+
+test("ids that would reach the record's prototype are no one's: refused with the state unchanged, for the DM's `for` and for a caller's own id", () => {
+  const s = game(); set(s, "scoreReroll", "each"); run(s, { type: "rollAbilityScores" }, ANA);
+  const before = json(s);
+  for (const id of ["__proto__", "constructor", "prototype"]) {
+    for (const [a, ctx] of [[{ type: "rollAbilityScores", for: id }, DM], [{ type: "rollAbilityScores" }, { role: "player", userId: id }], [{ type: "rollAbilityScores" }, { role: "dm", userId: id }],
+      [{ type: "rerollAbilityScore", index: 0 }, { role: "player", userId: id }], [{ type: "rerollAbilityScore", index: 0 }, { role: "dm", userId: id }]]) {
+      assert.equal(run(s, a, ctx).ok, false, `${id} ${json(a)}`);
+      assert.equal(json(s), before, "unchanged");
+      assert.equal(Object.getPrototypeOf(s.scoreRolls), Object.prototype);
+    }
+  }
+});
+
+test("a rebuilt counter can repeat a number already seen: `at` is trusted only while the counter is intact", () => {
+  const s = game(); set(s, "scoreReroll", "each");
+  run(s, { type: "rollAbilityScores" }, ANA); run(s, { type: "rollAbilityScores" }, BEN);
+  assert.equal(run(s, { type: "rerollAbilityScore", index: 0 }, ANA).events[0].at, 3);
+  delete s.scoreRolls["#seq"];                                              // the counter is lost
+  assert.equal(run(s, { type: "rollAbilityScores", for: "cy" }, DM).events[0].at, 3, "rebuilt from two records: 3 again, though the reroll was 3");
+});

@@ -26,9 +26,11 @@ function freeHandForShield(s, e) {
 // Who is rolling ability scores: a member by their user id, the DM by theirs (or 'dm' where there is none, as in a game on one device).
 // `scoreRolls['#seq']` counts the roll events (a stable number, unlike a place in the capped timeline): a sheet's `at` names the event by it.
 const SEQ = '#seq';
+// Ids that are no one's: the counter's key and names that would reach the record's prototype.
+const NOBODY = new Set([SEQ, '__proto__', 'constructor', 'prototype']);
 const isRec = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
 // A user's own record (never one inherited, never the counter).
-const own = (s, who) => (isRec(s.scoreRolls) && who !== SEQ && Object.hasOwn(s.scoreRolls, who) ? s.scoreRolls[who] : undefined);
+const own = (s, who) => (isRec(s.scoreRolls) && !NOBODY.has(who) && Object.hasOwn(s.scoreRolls, who) ? s.scoreRolls[who] : undefined);
 // The next event number. A counter that is missing or is not a whole number from 0 up (a save made by hand, or before it was kept) is rebuilt as the
 // number of records kept, so the numbers go on from there; it is written only here, after every check has passed.
 const nextSeq = (s) => {
@@ -57,7 +59,7 @@ export const handlers = {
       (typeof a.for === 'string' && a.for && a.for.length <= 100) || fail('Whose scores? Give their user id.');
       who = a.for;
     }
-    who === SEQ && fail('Only someone at the table can roll ability scores.');
+    NOBODY.has(who) && fail('Only someone at the table can roll ability scores.');
     (ctx.role === 'dm' || own(s, who) === undefined) || fail('You have already rolled your ability scores at this table.');
     const { sets } = rollScores(s);
     if (!isRec(s.scoreRolls)) s.scoreRolls = {};
