@@ -278,3 +278,12 @@ export async function tapGuarded(page, touch, target) {
   } finally { await ev(() => { window.hextable.R.onTap = window.__tap; delete window.__yaw0; }); }
 }
 
+
+// The build screen is one accordion (pickui.js, #603): a section's controls are on the page only while it is open. Open one (a no-op if it is open).
+export async function openSec(page, id) { const bar = `#qb-acc-bar-${id}`; if ((await page.getAttribute(bar, 'aria-expanded')) !== 'true') await page.click(bar); }
+// The two skills and the Fighting Style a level 1 to 20 Fighter needs, ticked in the open build screen.
+export async function fighterBasics(page) {
+  await openSec(page, 'skills');
+  for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
+  if (await page.$('#qb-acc-bar-choices')) { await openSec(page, 'choices'); await page.check('#qb-choice-fighting-style-defense'); }
+}

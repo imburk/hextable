@@ -462,8 +462,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     for (const x of asks) {
       if (x.f.pick) {
         const mine = Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id] : [], taken = asks.filter((y) => y !== x && y.f.pick).flatMap((y) => b.choices[y.f.id] ?? []);
-        const box = el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, groupHead(`${x.f.name}: choose up to ${pickLimit(x)}`, el('span', { id: `count-${x.f.id}`, text: `${mine.length} of ${pickLimit(x)} chosen` }).textContent));
-        box.append(el('p', { class: 'pk-lead', text: firstSentence(x.f.text) }));
+        const box = el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, groupHead(`${x.f.name}: choose up to ${pickLimit(x)}`));
+        box.append(el('p', { class: 'pk-lead', id: `count-${x.f.id}`, text: `${mine.length} of ${pickLimit(x)} chosen` }), el('p', { class: 'pk-lead', text: firstSentence(x.f.text) }));
         for (const o of x.f.options) {
           const need = optionWhy(x, o, mine, b.spells), on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id) || !!need);
           const stale = on && optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells);
