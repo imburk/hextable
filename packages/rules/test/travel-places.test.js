@@ -528,3 +528,15 @@ test("a creature put into a parked place counts what it misses from when it was 
   assert.equal(w.length, 1);
   assert.equal(w[0].rolls.length, 1, "one dawn missed at the keep, not three");
 });
+
+test("undo size: an arrival's step holds the map left and the map arrived at, no more (Risks, measured in W2)", () => {
+  const s = atKeep(), h = createHistory();
+  const bytes = [];
+  for (const a of [{ type: "loadMap", node: "cave", map: structuredClone(cave) }, { type: "goTo", node: "keep" }, { type: "goTo", node: "cave" }]) {
+    const was = h.bytes, m = mark(s), r = ok(apply(s, a, DM));
+    h.record(m, s, describeStep(a, r.events, m, s));
+    bytes.push(h.bytes - was);
+  }
+  const maps = json(keep).length + json(cave).length;
+  for (const b of bytes) assert.ok(b < maps + 40000, `a step of ${b} bytes for maps of ${maps}`);
+});
