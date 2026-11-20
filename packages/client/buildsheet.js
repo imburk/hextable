@@ -4,6 +4,7 @@
 // character) or `levelUp`, and the engine checks the sheet again.
 import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
+import { startBar, loadDraft, saveDraft, keepBuild, dropBuild, whenLine } from './startflow.js';
 import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
@@ -11,6 +12,11 @@ const cap = (s) => s[0].toUpperCase() + s.slice(1);
 const nice = (id) => cap(id.replace(/-/g, ' '));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const DEFAULT_COLOR = '#3a7d44';
+// The colours a character's pawn can be, offered as a row of swatches (a theme has one colour for the whole party, so this set is the build screen's own).
+// The first four are the colours of the starter party. A sheet's colour is always `#rrggbb`, which is what the engine's linter takes.
+export const PALETTE = [['#c8553d', 'Red'], ['#d9a441', 'Gold'], ['#4a7c59', 'Green'], ['#5b6fb5', 'Blue'], ['#3a7d44', 'Meadow'], ['#8e5ba6', 'Purple'], ['#3a8f9c', 'Teal'], ['#c2607f', 'Rose'], ['#7d8590', 'Slate']];
+// What the "More" box was given as a colour: `#rrggbb` (lower case), or '' when it is not one. A leading # is optional.
+export const hexOf = (text) => { const m = /^#?([0-9a-fA-F]{6})$/.exec(String(text ?? '').trim()); return m ? `#${m[1].toLowerCase()}` : ''; };
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
 // (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20.)
 export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus'];
@@ -109,7 +115,10 @@ export function openBuild(o) {
 
 export function initBuild({ act, toast, getState, getSelected, importButton }) {
   const classIds = Object.keys(CONTENT.classes);
-  let b = fresh(), mode = 'add', target = null, base = null, pending = null, keep = null;       // `keep`: where a sheet goes in 'mine' mode
+  let b = fresh(), mode = 'add', target = null, base = null, base0 = null, pending = null, keep = null;       // `keep`: where a sheet goes in 'mine' mode
+  // In 'mine' mode (the start flow, issue #556): the trail the title shows, the key of this character's draft ('new' or its id), what the sheet
+  // held when it was opened (a draft is kept only once it differs), and whether a draft was picked up.
+  let trail = [], draftKey = null, baseline = '', pickedUp = null, opening = false, moreOpen = false;
   const open = new Set(['spells-0']);          // spell groups left open across redraws
   const refs = {};
 
@@ -146,6 +155,30 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   }
   const safeDerive = (s) => { try { return derive(s); } catch { return null; } };
 
+  // ---------- the draft (start flow only): what is filled in is kept in this browser, so Back never loses it ----------
+  const snapshot = () => { const { c, ...rest } = b; void c; return JSON.stringify(rest); };
+  function keepDraft() {
+    if (mode !== 'mine' || !draftKey || opening) return;
+    const now = snapshot(), d = loadDraft();
+    saveDraft(now === baseline ? dropBuild(d, draftKey) : keepBuild(d, draftKey, JSON.parse(now)));
+  }
+  const clearDraft = () => { if (draftKey) saveDraft(dropBuild(loadDraft(), draftKey)); };
+  // A draft read back: the choices it holds laid over a fresh sheet of its class; null if it does not make sense (then it is not used).
+  function fromDraft(saved) {
+    try {
+      if (!classIds.includes(saved.class)) return null;
+      const x = Object.assign(fresh(saved.class), saved, { c: CONTENT.classes[saved.class] });
+      x.abilities = { ...fresh().abilities, ...saved.abilities };
+      for (const a of ABILITIES) if (!Number.isInteger(x.abilities[a])) x.abilities[a] = NaN;       // an empty box was kept as null
+      if (typeof x.name !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(x.color)) return null;
+      for (const k of ['skills', 'expertise', 'feats', 'weapons', 'spells']) if (!Array.isArray(x[k])) return null;
+      const keepB = b; b = x;
+      try { limits(); } catch { b = keepB; return null; }
+      b = keepB;
+      return x;
+    } catch { return null; }
+  }
+
   // What the class and level allow, worked out from the same data derive and validate read.
   function limits() {
     const s = sheet(), c = classOf(s), feats = featuresOf(s), G = feats.map((x) => x.f.grants).filter(Boolean);
@@ -169,8 +202,14 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     for (const k of Object.keys(refs)) delete refs[k];
     const L = limits(), c = L.c, locked = mode === 'levelup';
     const title = mode === 'levelup' ? `Level up ${target.name}` : mode === 'edit' ? `Edit ${target.name}` : mode === 'mine' ? (target ? `Edit ${target.name}` : 'New character for My characters') : 'Build from class and level';
-    const head = el('div', { class: 'qe-head' }, el('h2', { text: title }), el('button', { type: 'button', class: 'close', id: 'qb-close', text: 'Close', onclick: close }));
+    let head = el('div', { class: 'qe-head' }, el('h2', { text: title }), el('button', { type: 'button', class: 'close', id: 'qb-close', text: 'Close', onclick: close }));
+    if (mode === 'mine') {
+      // The start flow: a Back button that says where it goes and a title that says where you are. Back keeps the draft.
+      const bar = startBar(el, { backId: 'qb-close', titleId: 'qb-title', onBack: close });
+      bar.show(trail); head = bar.bar;
+    }
     const parts = [head];
+    if (mode === 'mine') parts.push(draftBar());
     if (mode === 'levelup') parts.push(gainedBox());
     if (mode === 'add' && importButton) parts.push(el('div', { class: 'row' }, importButton(), el('small', { class: 'note', text: 'Or start from a Fantasy Grounds export.' })));
 
@@ -181,7 +220,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       return el('label', { class: wide ? 'qe-f wide' : 'qe-f' }, el('span', { text: label }), s);
     };
     const name = el('input', { id: 'qb-name', type: 'text', value: b.name, maxLength: 40, autocomplete: 'off', autocapitalize: 'words', spellcheck: false, oninput: (ev) => { b.name = ev.target.value; update(); } });
-    const color = el('input', { id: 'qb-color', type: 'color', value: b.color, oninput: (ev) => { b.color = ev.target.value; update(); } });
+    const color = colourField();
     parts.push(el('section', {}, el('h3', { text: 'Who' }), el('div', { class: 'qe-grid qe-2' },
       el('label', { class: 'qe-f wide' }, el('span', { text: 'Name' }), name),
       sel('Class', 'class', classIds.map((id) => [id, CONTENT.classes[id].name]), b.class, (v) => {
@@ -190,7 +229,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       }, locked || mode === 'edit'),
       sel('Level', 'levelsel', Array.from({ length: 20 }, (_, i) => [String(i + 1), String(i + 1)]), String(b.level), (v) => { b.level = +v; autoSubclass(); build(); }, locked),
       sel('Subclass', 'subclass', subclassChoices(c, b.level, b.subclass), b.subclass ?? '', (v) => { b.subclass = v || undefined; build(); }, false, true),
-      el('label', { class: 'qe-f' }, el('span', { text: 'Colour' }), color)),
+      el('div', { class: 'qe-f wide', role: 'group', 'aria-labelledby': 'qb-color-label' }, el('span', { id: 'qb-color-label', text: 'Colour' }), color)),
       ...(subclassNote(c, b.subclass) ? [el('p', { class: 'note', id: 'qb-subclass-note', text: subclassNote(c, b.subclass) })] : [])));
 
     // Abilities
@@ -276,7 +315,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     refs.problems = el('ul', { class: 'qe-problems', id: 'qb-problems', 'aria-live': 'polite' });
     const label = mode === 'levelup' ? `Level up to ${b.level}` : mode === 'edit' ? 'Save changes' : mode === 'mine' ? 'Save to My characters' : 'Add to the table';
     refs.save = el('button', { type: 'button', id: 'qb-save', class: 'qe-save', text: label, onclick: save });
-    parts.push(el('div', { class: 'qe-foot' }, refs.problems, el('div', { class: 'row' }, refs.save, el('button', { type: 'button', id: 'qb-cancel', text: 'Cancel', onclick: close }))));
+    parts.push(el('div', { class: 'qe-foot' }, refs.problems, el('div', { class: 'row' }, refs.save, el('button', { type: 'button', id: 'qb-cancel', text: mode === 'mine' ? '\u2190 Back' : 'Cancel', onclick: close }))));
     panel.append(...parts);
     update();
     panel.scrollTop = scroll;
@@ -396,9 +435,48 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   }
   const featureRow = (f) => el('details', { class: 'qb-feat' }, el('summary', { text: `${f.name}${f.uses ? ` · ${usesText(f.uses)}` : ''}` }), el('p', { class: 'note', text: f.text ?? '' }));
 
+  // The colour: a row of swatches (44 px each, a tick on the chosen one) and "More", which opens a box for any `#rrggbb`. No browser dialog.
+  function colourField() {
+    const wrap = el('div', { class: 'qb-colour', id: 'qb-color' });
+    const row = el('div', { class: 'qb-swatches', role: 'radiogroup', 'aria-label': 'Colour' });
+    // The last swatch is the colour in use when it is not one of the nine (an imported sheet, or one typed in More); it is hidden otherwise.
+    const custom = el('button', { type: 'button', role: 'radio', class: 'qb-swatch', id: 'qb-color-current', 'aria-label': 'Current colour', title: 'Current colour', hidden: true });
+    const mark = () => {
+      const mine = b.color.toLowerCase(), listed = PALETTE.some(([v]) => v === mine);
+      custom.hidden = listed; if (!listed) { custom.dataset.color = mine; custom.style.background = mine; }
+      for (const sw of row.querySelectorAll('.qb-swatch')) { const on = !sw.hidden && sw.dataset.color === mine; sw.setAttribute('aria-checked', String(on)); sw.classList.toggle('on', on); sw.textContent = on ? '\u2713' : ''; }
+    };
+    for (const [v, name] of PALETTE) {
+      row.append(el('button', { type: 'button', role: 'radio', class: 'qb-swatch', id: `qb-color-${v.slice(1)}`, 'data-color': v, 'aria-label': name, title: name, style: `background:${v}`,
+        onclick: () => { b.color = v; mark(); if (hex) hex.value = v; update(); } }));
+    }
+    row.append(custom);
+    const hex = el('input', { type: 'text', id: 'qb-color-hex', value: b.color, maxLength: 7, autocomplete: 'off', autocapitalize: 'off', spellcheck: false, 'aria-label': 'Colour as #rrggbb', 'aria-describedby': 'qb-color-note',
+      oninput: () => { const v = hexOf(hex.value); note.textContent = v || !hex.value.trim() ? '' : 'Type a colour like #c8553d: a # and six letters or digits (0 to 9, a to f).'; if (v) { b.color = v; mark(); update(); } } });
+    const note = el('p', { class: 'note qb-colour-note', id: 'qb-color-note', role: 'status' });
+    const box = el('div', { class: 'qb-more', hidden: !moreOpen }, el('label', { for: 'qb-color-hex', text: 'Any colour, as #rrggbb' }), hex, note);
+    const more = el('button', { type: 'button', class: 'qb-more-btn', id: 'qb-color-more', text: moreOpen ? 'Fewer' : 'More\u2026', 'aria-expanded': String(moreOpen),
+      onclick: () => { moreOpen = !moreOpen; box.hidden = !moreOpen; more.textContent = moreOpen ? 'Fewer' : 'More\u2026'; more.setAttribute('aria-expanded', String(moreOpen)); if (moreOpen) hex.focus({ preventScroll: true }); } });
+    row.append(more);
+    wrap.append(row, box);
+    mark();
+    return wrap;
+  }
+  // Under the title in the start flow: whether a draft was picked up, and Start over (two taps: it empties the sheet).
+  function draftBar() {
+    const over = el('button', { type: 'button', class: 'quiet leave', id: 'qb-startover', text: 'Start over' });
+    over.onclick = () => {
+      if (over.dataset.armed !== '1') { over.dataset.armed = '1'; over.textContent = 'Tap again to empty the sheet'; setTimeout(() => { over.dataset.armed = ''; over.textContent = 'Start over'; }, 3000); return; }
+      clearDraft(); pickedUp = null;
+      b = target && base0 ? fromSheet(base0) : fresh(); autoSubclass(); baseline = snapshot(); build();
+    };
+    return el('div', { class: 'sf-draft', id: 'qb-draft' }, el('p', { class: 'note', id: 'qb-draft-note', text: pickedUp ? `Picked up where you left off (saved ${whenLine(pickedUp)}). It is kept here until you save or start over.` : 'What you fill in is kept on this device if you go Back.' }), over);
+  }
+
   // The live numbers and the problems; redrawn after every change.
   function update() {
     if (!refs.derived) return;
+    keepDraft();
     const s = sheet(), problems = validate(s), d = safeDerive({ ...s, abilities: Object.fromEntries(ABILITIES.map((a) => [a, Number.isInteger(s.abilities[a]) ? s.abilities[a] : 10])) });
     refs.problems.textContent = '';
     for (const p of problems) refs.problems.append(el('li', { text: p }));
@@ -425,6 +503,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     if (mode === 'mine') {
       const why = keep?.(s);
       if (why) { refs.problems.append(el('li', { text: why })); refs.problems.hidden = false; return; }
+      clearDraft();
       return close();
     }
     pending = mode === 'add' ? 'spawned' : 'edited'; refs.save.disabled = true;
@@ -438,6 +517,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     open(o = { mode: 'add' }) {
       mode = o.mode; pending = null; target = o.entity ? { id: o.entity.id, name: o.entity.name } : null;
       keep = mode === 'mine' ? o.onSave : null;
+      trail = o.trail ?? ['New character']; draftKey = mode === 'mine' ? (o.cid ?? 'new') : null; base0 = mode === 'mine' ? (o.sheet ?? null) : null; pickedUp = null; moreOpen = false;
       panel.classList.toggle('over-lobby', mode === 'mine');             // it opens over the lobby, which is above the usual panels
       if (mode === 'mine') { b = o.sheet ? fromSheet(o.sheet) : fresh(); target = o.sheet ? { name: o.sheet.name } : null; autoSubclass(); }
       else if (mode === 'add') b = fresh(); else {
@@ -447,7 +527,14 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
           b.level = Math.min(20, o.entity.sheet.level + 1); autoSubclass();
         }
       }
-      build(); panel.hidden = false; panel.scrollTop = 0;
+      if (mode === 'mine') {
+        baseline = snapshot();
+        const saved = loadDraft().build[draftKey], x = saved ? fromDraft(saved.b) : null;
+        if (x) { b = x; pickedUp = saved.at; } else if (saved) saveDraft(dropBuild(loadDraft(), draftKey));    // a draft that makes no sense is thrown away
+      }
+      opening = true;
+      try { build(); } finally { opening = false; }
+      panel.hidden = false; panel.scrollTop = 0;
     },
     close,
     events(events) {
