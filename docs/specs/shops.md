@@ -1,8 +1,8 @@
 # Spec: shops and loot packages
 
 Status: draft by an agent, to be reviewed by the design owner. Issue #292 (the
-owner's request of 14 November). Nothing here is built. No code is written by
-this spec. **Amended 15 November 2026** (#347) to the owner's answers to questions
+owner's request of 14 November). Nothing here is built except P2 (the market
+document; see "Build notes: P2"). No code is written by this spec. **Amended 15 November 2026** (#347) to the owner's answers to questions
 2, 3, 5 and 10 (a roleplaying bonus on haggling, stores that buy magic items, split
 payment, and shopping only inside a shop area); the other questions are confirmed
 on their defaults; see "Questions for the owner". The "customs" request that came
@@ -768,6 +768,67 @@ and at 390 x 844 with touch.
 P1 and P2 can be built at once, and P3a beside them; P3 needs all three; P4 needs P3;
 P5 needs P3 and P4; P6 needs P5; P6a needs P3a and P5; P7 needs P2 and P6's card
 component.
+
+## Build notes: P2 (the market document)
+
+Built in `packages/rules/src/market.js` (pure, imports nothing, so it adds no import cycle) with `packages/rules/test/market.test.js`. No engine,
+view, server or content file changed. What it does, and what it settled where this spec left a number or a shape open:
+
+**What the content supplies is passed in, not read.** P1 (`content/srd52/prices.js`) is built beside it, so `market.js` reads no price table. The
+functions that need prices take an `env`, which the engine (P3) builds from the pack and P1's data, and which the tests stub with the SRD numbers
+quoted in this spec:
+
+```
+env.item(id)          -> { name, kind: 'weapon' | 'armour' | 'magic', cost?: '15 GP', rarity?, consumable?, scroll?, needs?: ['base' | 'type' | 'spell'] } | falsy
+env.rarityValue(r)    -> the Magic Item Rarities and Values entry, in copper pieces; null for an Artifact
+env.scrollCost(lvl)   -> the Spell Scroll Costs entry (the scribing cost), in copper pieces; the module doubles it
+env.spellLevel(id)    -> a spell's level, or falsy for no such spell
+```
+
+`lintMarket(doc, env?)` checks the document alone without an `env`, and adds the checks against the table's content (item, base, spell, a price
+for every priced line) with one. P3's `market { add }` passes the real one.
+
+**Exports.** Money: `parsePrice`, `formatCp`, `formatCoins`, `cleanPurse`, `purseCp`, `change`, `pay`. Store settings: `buysOf` (equipment 50, trade
+100, magic 70; `null` kept), `haggleOf` (step 10, dc 15, bonus 5), `haggleDc` (the store's DC or the keeper's Intelligence, whichever is higher).
+Prices: `findLine`, `kindOf`, `unitValue` (the SRD value, Decision 5 steps 2 and 3), `basePrice`, `listPrice`, `sellOffer`. Negotiation and paying
+together: `haggle`, `settle`. The document: `lintMarket`, `migrateMarket`, `MARKET_LIMITS`.
+
+**Settled here (each is a reading of the spec; change it here and in the code together).**
+
+- `lintMarket` returns a list of sentences, empty when the pack can be imported, as `lintMap` does; each begins with where it is
+  (`stores/outfitter/special/wand: no such item "wand-of-magic-misiles"`, `lists/standard/lines/rope: ...`, `loot/strongbox/lines/dagger: ...`), and the
+  list stops after 40 with one line saying there are more. `lists`, `stores` and `loot` may be left out of a document (they read as empty);
+  `migrateMarket` fills them. A format version above 1 or a document that is not plain data is refused by the linter, not migrated.
+- Stricter than the spec's prose, so that P3 has less to guess: a **list line has no `qty`** (stock is a special's or an override's), `hidden` is for
+  specials only, `kind` is left out for a line with an `item` (it is derived), a **loot line needs a `qty` and has no `price`**, and a loot package
+  also takes `blurb` and `art` (the storefront shows both for a shop of either kind). Line ids are unique across lists and specials of the whole
+  pack; loot line ids are unique inside their package. Ranges the spec left open: `markup` 10 to 1000, `buys` 0 to 100 or `null`, `haggle.step` 0 to
+  50, `dc` 1 to 40, `bonus` 0 to 25. The 128 KB limit counts the JSON without `assets`; the 1 MB limit counts the pictures decoded. A picture is
+  `image/png`, `image/jpeg` or `image/webp` with base64 data; the bytes are not sniffed here (the server's asset rules do that on import, X7).
+- A line's price: a stated price (a shop override first, then the line's `price`) is **final** and the markup does not touch it; otherwise the SRD
+  value is marked up by `markup` percent, rounded up to a whole copper piece. An override's `price` may be a string like a cost or a whole number
+  of copper pieces. A Spell Scroll is double its scribing cost and is not halved as a consumable; a consumable is halved rounding up.
+- `sellOffer(thing, shop, market, env)` returns `{ cp, cap, basis }` or `null`. Magic: `buys.magic` percent of the SRD value, whatever the markup or
+  a line's own price; `null` or an Artifact gives no offer. Otherwise a matching line (same pack id, or same name for named goods, and not `gone`)
+  at its price before markup times `buys` for its kind (`weapon`, `armour`, `gear` use `equipment`; `trade` and `valuable` use `trade`); otherwise
+  a weapon or armour of the pack at its cost times `buys.equipment`. Rounded **down**; an offer under 1 CP is no offer. `cap` is what a haggle may not
+  lift it above: the value, or for a line the store's own price for it.
+- `haggle(price, total, dc, step, bonus, { sell, cap })`: steps are 0, 1 or 2 as in the table of Decision 6; the points (`steps * step + bonus`) add up
+  and are taken from the list price (up for a sell offer), rounded up to a copper piece, a buy never below 1 CP, a sell offer never above `cap` and
+  never below the offer it started from. `total: null` is the bonus alone. `wait` is true for a rolled total below the DC and the bonus does not clear
+  it. A buy that the points would take to nothing is held at 1 CP.
+- `pay(purse, cp, named?)`: from the smallest coins up (CP, SP, EP, GP, PP), taking of each kind as many as the rest of the price needs, rounded up
+  to a whole coin; the overpayment comes back as `change` in PP, GP, SP, CP (never EP). A purse always loses exactly the price. `named` pays with
+  those coins, which must be held and cover the price. Nothing is changed in the purse given; the result carries the purse afterwards.
+- `settle(joint, purses, names?)`: `joint.price` is the price of **one**, as in `buy`; the whole is `qty * price`. The buyer's share is the rest
+  after the pledges, and **a pledge keyed by the buyer is refused** (Decision 5 says the buyer pays what nobody else has pledged; P3's `chipIn`
+  should refuse the buyer too, with the same reason). Pledges may come to the whole price (the buyer then pays nothing) but not more. Every payer, the
+  buyer last, pays as `pay` pays; the first one short is named (`Tor has 3 GP; the share is 100 GP.`). All or nothing: a refusal carries no purses.
+
+**Not here, left to P3.** Checking that a `base` fits the magic item's own `base` rule (`{ weapon: 'any' | 'melee' | [ids] }`): the linter only checks that
+it is a weapon or armour of the table, and `landItem` checks the rest when the item lands. The pack `hash`, the asset move, and the sniffing of picture
+bytes are the import action's. Sharing coins out of a loot package (Decision 7) is `take`'s, not X2's. `CLAUDE.md`'s layout paragraph does not list
+`market.js` yet; P3 adds it with `engine/trade.js`.
 
 ## Security and hidden-information review points
 

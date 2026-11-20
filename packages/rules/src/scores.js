@@ -76,6 +76,8 @@ export const ruleProblem = (rule) => !(isObj(rule) && Object.keys(rule).every((k
   && (rule.reroll === 'below' ? Number.isInteger(rule.below) && rule.below >= 4 && rule.below <= 18 : rule.below === undefined));
 // A rule made safe: anything wrong gives the default.
 export const cleanRule = (rule) => (ruleProblem(rule) ? { ...DEFAULT_RULE } : { reroll: rule.reroll, ...(rule.reroll === 'below' ? { below: rule.below } : {}), result: rule.result });
+// The rule a table's settings (`scoreReroll`, `scoreRerollBelow`, `scoreRerollResult`; engine/dm.js) make; settings that are absent are the SRD's.
+export const tableRule = (settings) => cleanRule({ reroll: settings?.scoreReroll ?? 'none', ...(settings?.scoreReroll === 'below' ? { below: settings.scoreRerollBelow ?? 10 } : {}), result: settings?.scoreRerollResult ?? 'new' });
 // Whether the rule lets a score whose first roll made `first` be rolled again (once; whether it already was is for the set to say).
 export const rerollOpen = (rule, first) => !!rule && (rule.reroll === 'each' || (rule.reroll === 'below' && first < rule.below));
 // A set is { dice: [4 faces], again?: [4 faces] }.
