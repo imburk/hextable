@@ -833,7 +833,7 @@ export function validate(sheet) {
         if (!o) { say(`${f.name} has no option "${p}".`); continue; }
         // An option's prerequisite (#232): a class level, another option taken with it, a spell known.
         const q = o.requires;
-        if (q?.level !== undefined && x.cls.level < q.level) say(`${o.name} needs ${x.cls.c.name} level ${q.level}.`);
+        if (q?.level !== undefined && x.cls.level < q.level) say(`${o.name} needs ${x.species ? 'character' : x.cls.c.name} level ${q.level}.`);
         if (q?.option !== undefined && !list.includes(q.option)) say(`${o.name} needs ${f.options.find((y) => y.id === q.option)?.name ?? q.option}.`);
         if (q?.spell !== undefined && !(x.cls.spells ?? []).includes(q.spell)) say(`${o.name} needs ${CONTENT.spells[q.spell]?.name ?? q.spell} among the ${x.cls.c.name}'s spells.`);
       }
