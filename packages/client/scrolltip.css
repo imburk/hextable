@@ -1,0 +1,15 @@
+/* The scroll card (#566). Parchment and dark ink; the paper and the rods take a little of the theme's accent, so each theme's card is its own. */
+.scrolltip { --paper-a: color-mix(in srgb, #f3e3bf 88%, var(--accent, #d7a84a)); --paper-b: color-mix(in srgb, #ead6a8 84%, var(--accent, #d7a84a));
+  --rod: color-mix(in srgb, #c9ad78 70%, var(--accent, #d7a84a)); --ink: #3b2a14; --ink-soft: #6b5532;
+  position: fixed; z-index: 60; box-sizing: border-box; display: flex; flex-direction: column; padding: 14px 16px 16px;
+  color: var(--ink); background: linear-gradient(var(--paper-a), var(--paper-b)); border-radius: 4px; box-shadow: 0 6px 24px #000a;
+  font: 14px/1.45 Georgia, 'Times New Roman', serif; text-align: left; }
+.scrolltip::before, .scrolltip::after { content: ''; position: absolute; left: -6px; right: -6px; height: 10px; background: var(--rod); border-radius: 6px; }
+.scrolltip::before { top: -6px; } .scrolltip::after { bottom: -6px; }
+.scrolltip-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.scrolltip b { display: block; font-size: 15px; margin-bottom: 2px; }
+.scrolltip small { display: block; color: var(--ink-soft); margin-bottom: 6px; }
+.scrolltip p { margin: 0; }
+.has-scroll { -webkit-touch-callout: none; }
+@media (pointer: coarse) { .has-scroll { -webkit-user-select: none; user-select: none; } }
+@media (prefers-reduced-motion: no-preference) { .scrolltip { animation: scrolltip-in .14s ease-out; } @keyframes scrolltip-in { from { opacity: 0; transform: translateY(-3px); } } }

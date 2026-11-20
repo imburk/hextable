@@ -6,7 +6,7 @@ import { gridOf } from '../grid.js';
 import { ground, overlapAt } from '../space.js';
 import { xpFor } from '../rewards.js';
 import { barriers } from '../walls.js';
-import { classesOf, derive, missingOf, validate } from '../derive.js';
+import { classesOf, derive, missingOf, missingSpeciesOf, validate } from '../derive.js';
 import { fail, featOf, living, RuleError } from './shared.js';
 import { fitsOn } from './world.js';
 import { effectsOf, endEffect } from '../durations.js';
@@ -196,8 +196,12 @@ export function carryPlay(e, fresh, record, sheet) {
 }
 // A character made from a sheet that names a homebrew subclass whose pack is not loaded here keeps the id and plays without its features and
 // spells (homebrew-subclasses.md, Decision 4). Told to the DM alone (`partial`), at every making of it from the sheet, a new character's too.
+// A homebrew species whose pack is not loaded likewise (docs/specs/species.md, Decision 5): its own event, after the subclasses', so a sheet with no
+// species tells the DM exactly what it did before. (A creature made from a record gets the species' creature type from it: `makeEntity` spreads the
+// record, `type` with it, and a remade creature gets only what its new record has.)
 export function tellMissing(ev, e, sheet) {
   for (const m of sheet ? missingOf(sheet) : []) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name}: its subclass "${m.id}" is not loaded at this table, so its subclass features and spells are absent until its pack is added again.` });
+  for (const m of sheet ? missingSpeciesOf(sheet) : []) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name}: its species "${m.id.slice(0, 60)}" is not loaded at this table, so it has none of its species traits until its pack is added again.` });
 }
 export function remake(s, e, record, sheet, ev) {
   !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);

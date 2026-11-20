@@ -9,6 +9,7 @@ import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, fe
 import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, DEFAULT_RULE, BELOW, cleanRule, ruleText, pointsSpent, pointsLeft, rollScores, rollScore, mayReroll, rerollWhy,
   standing, applyBackground, checkScores, scoresLine, dmLine, setText, dayText } from './shared/scores.js';
 import { keyedRng } from './shared/rng.js';
+import { attach as scrollOn, hide as scrollOff } from './scrolltip.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
@@ -21,12 +22,23 @@ export const PALETTE = [['#c8553d', 'Red'], ['#d9a441', 'Gold'], ['#4a7c59', 'Gr
 // What the "More" box was given as a colour: `#rrggbb` (lower case), or '' when it is not one. A leading # is optional.
 export const hexOf = (text) => { const m = /^#?([0-9a-fA-F]{6})$/.exec(String(text ?? '').trim()); return m ? `#${m[1].toLowerCase()}` : ''; };
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
-// (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20.)
-export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus'];
+// (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20. `species` is the sheet's species,
+// docs/specs/species.md: kept whole, its id and choices, until the species picker (SP9) gives it a control.)
+export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus', 'species'];
 // The DM's score bonus as a line ("DM bonus: +2 Charisma"), or '' when there is none; and a kept-fields object without it.
 export const bonusText = (sb) => { const l = ABILITIES.filter((a) => Number.isInteger(sb?.[a]) && sb[a] > 0).map((a) => `+${sb[a]} ${ABIL_NAME[a]}`); return l.length ? `DM bonus: ${l.join(', ')}` : ''; };
 export const withoutBonus = (keep) => { const { scoreBonus, ...rest } = keep; void scoreBonus; return rest; };
 export const keptOf = (s) => Object.fromEntries(KEEP.filter((k) => s[k] !== undefined).map((k) => [k, structuredClone(s[k])]));
+// Armour a class (and what a feature grants) gives training in: the categories 'light', 'medium', 'heavy', 'shield'. `grants` are the features' `grants` objects.
+export const armourTrained = (c, grants = []) => new Set([...(c?.armour ?? []), ...grants.flatMap((g) => g?.proficiency?.armour ?? [])]);
+// The Armour list's choices: [id, label, disabled]. Armour with no training is greyed and says so; `current` (a sheet already wearing it) stays choosable, so
+// the screen shows it as it is and the sheet's own sentence from `validate` still speaks.
+export const armourOptions = (armour, trained, current) => [['', 'None', false], ...armour.map((a) => { const no = !trained.has(a.category); return [a.id, `${a.name} (AC ${a.ac}, ${a.category})${no ? ' (no training)' : ''}`, no && a.id !== current]; })];
+// The line under the Armour list: what is greyed and why, or '' when nothing is.
+export function armourNote(c, trained, armour) {
+  const no = ['light', 'medium', 'heavy', 'shield'].filter((k) => !trained.has(k) && (k === 'shield' || armour.some((a) => a.category === k)));
+  return no.length ? `A ${c.name} has no training with ${no.map((k) => (k === 'shield' ? 'Shields' : `${k} armour`)).join(', ')}, so ${no.length === 1 ? 'it is' : 'they are'} greyed out. A feat or a multiclass that gives the training lifts that.` : '';
+}
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
 
 // ---------- ability scores (docs/specs/ability-scores.md, #557) ----------
@@ -151,6 +163,8 @@ export function usesText(u) {
   return `${n}, back on a Long Rest${u.short ? ` (${u.short} on a Short Rest)` : ''}`;
 }
 
+// What the scroll card says of a spell: its name, "Level 2 · Wizard, Cleric" (or Cantrip), and its text from the pack.
+export const spellCard = (s) => ({ title: s.name, sub: `${s.level ? `Level ${s.level}` : 'Cantrip'} · ${(s.classes ?? []).map(nice).join(', ')}`, text: s.text });
 // The Subclass list of a class (docs/specs/homebrew-subclasses.md, B5): the choose line, the SRD subclass, and every subclass of this class that the
 // table's packs hold (CONTENT.subclasses holds them while the page's overlay is installed), by name. `current` is the id the sheet names: if the list has
 // no such entry (its pack is not loaded here, or it is not this class's) it is kept as an entry, so editing the character does not drop it unseen.
@@ -284,7 +298,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
   // ---------- drawing ----------
   function build() {
     const scroll = panel.scrollTop, focus = document.activeElement?.id;
-    panel.textContent = '';
+    panel.textContent = ''; scrollOff();
     for (const k of Object.keys(refs)) delete refs[k];
     const L = limits(), c = L.c, locked = mode === 'levelup';
     const title = mode === 'levelup' ? `Level up ${target.name}` : mode === 'edit' ? `Edit ${target.name}` : mode === 'mine' ? (target ? `Edit ${target.name}` : 'New character for My characters') : 'Build from class and level';
@@ -330,9 +344,9 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
         el('p', { class: 'note', id: `count-${x.f.id}`, text: `${mine.length} of ${pickLimit(x)} chosen` }),
         ...x.f.options.map((o) => {
           const need = optionWhy(x, o, mine, b.spells), on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id) || !!need);
-          return el('label', { class: 'check qe-tick', 'data-option': o.id }, el('input', { type: 'checkbox', id: `pick-${x.f.id}-${o.id}`, checked: on, disabled: off,
+          return scrollOn(el('label', { class: 'check qe-tick', 'data-option': o.id }, el('input', { type: 'checkbox', id: `pick-${x.f.id}-${o.id}`, checked: on, disabled: off,
             onchange: (ev) => { const next = ev.target.checked ? [...mine, o.id] : mine.filter((i) => i !== o.id); if (next.length) b.choices[x.f.id] = next; else delete b.choices[x.f.id]; build(); } }),
-            el('span', {}, o.name + (taken.includes(o.id) ? ' (chosen above)' : ''), need || (on && optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)) ? el('small', { class: 'note', text: ` ${need || optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)}` }) : null));
+            el('span', {}, o.name + (taken.includes(o.id) ? ' (chosen above)' : ''), need || (on && optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)) ? el('small', { class: 'note', text: ` ${need || optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)}` }) : null)), () => ({ title: o.name, sub: x.f.name, text: o.text }));
         }));
     };
     if (asks.length) parts.push(el('section', {}, el('h3', { text: 'Choices' }), ...asks.map((x) => x.f.pick ? pickList(x) : el('div', {},
@@ -368,9 +382,13 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `qb-weapon-${w.id}`, checked: on, onchange: (ev) => { toggle(b.weapons, w.id, ev.target.checked); update(); } }),
         el('span', { text: `${w.name} (${w.damage})` }));
     };
+    const trained = armourTrained(c, L.feats.map((x) => x.f.grants).filter(Boolean)), aNote = armourNote(c, trained, armour), shieldNo = !trained.has('shield');
+    const opts = armourOptions(armour, trained, b.armour), armourSel = sel('Armour', 'armour', opts.map(([v, t]) => [v, t]), b.armour ?? '', (v) => { b.armour = v || null; update(); });
+    [...armourSel.querySelectorAll('option')].forEach((o, i) => { o.disabled = opts[i][2]; });
     parts.push(el('section', {}, el('h3', { text: 'Armour and weapons' }), el('div', { class: 'qe-grid qe-2' },
-      sel('Armour', 'armour', [['', 'None'], ...armour.map((a) => [a.id, `${a.name} (AC ${a.ac}, ${a.category})`])], b.armour ?? '', (v) => { b.armour = v || null; update(); }),
-      el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: 'qb-shield', checked: b.shield, onchange: (ev) => { b.shield = ev.target.checked; update(); } }), el('span', { text: 'Shield (+2 AC)' }))),
+      armourSel,
+      el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: 'qb-shield', checked: b.shield, disabled: shieldNo && !b.shield, onchange: (ev) => { b.shield = ev.target.checked; update(); } }), el('span', { text: `Shield (+2 AC)${shieldNo ? ' (no training)' : ''}` }))),
+      ...(aNote ? [el('p', { class: 'note', id: 'qb-armour-note', text: aNote })] : []),
       ...['simple', 'martial'].map((cat) => el('div', {}, el('h4', { text: `${cap(cat)} weapons` }),
         el('div', { class: 'qe-ticks' }, ...wp.filter((w) => w.category === cat).map(weaponTick)))),
       el('div', { class: 'qe-ticks' }, el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: 'qb-weapon-unarmed-strike', checked: b.weapons.includes('unarmed-strike'), onchange: (ev) => { toggle(b.weapons, 'unarmed-strike', ev.target.checked); update(); } }), el('span', { text: 'Unarmed Strike' })))));
@@ -571,8 +589,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
             const here = spells.filter((id) => CONTENT.spells[id]?.level === lv);
             box.append(el('h4', { text: `${name}: ${here.length} of ${most}` }), !list ? el('p', { class: 'note', text: 'Choose a spell list first.' }) : el('div', { class: 'qe-ticks' }, ...pool.filter((x) => x.level === lv).sort((a, z) => a.name.localeCompare(z.name)).map((x) => {
               const on = spells.includes(x.id);
-              return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `feat-${key}-spell-${x.id}`, checked: on, disabled: !on && here.length >= most,
-                onchange: (ev) => { const next = ev.target.checked ? [...spells, x.id] : spells.filter((i) => i !== x.id); put({ spells: next.length ? next : undefined }); build(); } }), el('span', { text: x.name }));
+              return scrollOn(el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `feat-${key}-spell-${x.id}`, checked: on, disabled: !on && here.length >= most,
+                onchange: (ev) => { const next = ev.target.checked ? [...spells, x.id] : spells.filter((i) => i !== x.id); put({ spells: next.length ? next : undefined }); build(); } }), el('span', { text: x.name })), () => spellCard(x));
             })));
           }
         }
@@ -599,8 +617,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
       const d = el('details', { id: `qb-spells-${lv}`, open: open.has(`spells-${lv}`) || mine > 0 }, el('summary', { text: `${lv === 0 ? 'Cantrips' : `Level ${lv}`}${mine ? ` (${mine} chosen)` : ''}` }),
         el('div', { class: 'qe-ticks' }, ...list.map((s) => {
           const on = b.spells.includes(s.id), auto = !on && always.has(s.id);
-          return el('label', { class: 'check qe-tick', title: s.text ?? '' }, el('input', { type: 'checkbox', id: `qb-spell-${s.id}`, checked: on || auto, disabled: auto || (!on && full),
-            onchange: (ev) => { toggle(b.spells, s.id, ev.target.checked); build(); } }), el('span', { text: auto ? `${s.name} (always prepared)` : s.name }));
+          return scrollOn(el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `qb-spell-${s.id}`, checked: on || auto, disabled: auto || (!on && full),
+            onchange: (ev) => { toggle(b.spells, s.id, ev.target.checked); build(); } }), el('span', { text: auto ? `${s.name} (always prepared)` : s.name })), () => spellCard(s));
         })));
       d.ontoggle = () => (d.open ? open.add(`spells-${lv}`) : open.delete(`spells-${lv}`));
       sec.append(d);
@@ -635,7 +653,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton }) {
     box.append(el('p', { class: 'note', text: 'Anything below that needs a choice (a subclass, skills, spells, ability scores for a feat) is listed beside the button.' }));
     return box;
   }
-  const featureRow = (f) => el('details', { class: 'qb-feat' }, el('summary', { text: `${f.name}${f.uses ? ` · ${usesText(f.uses)}` : ''}` }), el('p', { class: 'note', text: f.text ?? '' }));
+  const featureRow = (f) => el('details', { class: 'qb-feat' }, scrollOn(el('summary', { text: `${f.name}${f.uses ? ` · ${usesText(f.uses)}` : ''}` }), () => ({ title: f.name, text: f.text })), el('p', { class: 'note', text: f.text ?? '' }));
 
   // The colour: a row of swatches (44 px each, a tick on the chosen one) and "More", which opens a box for any `#rrggbb`. No browser dialog.
   function colourField() {
