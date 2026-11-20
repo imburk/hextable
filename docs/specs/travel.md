@@ -1017,6 +1017,10 @@ after W9b a DM can build one in the game; after W6 the party travels; after W6b 
 night; after W8 it teleports. The editor (W5b, W9b) is in the first build, not a later stage, and
 the light (W6b) comes with the journeys (W6): both are the owner's answers of 15 November.
 
+**Build notes, W2 (#579, #580).** On a navigation or scene node nobody, the DM included, can `move`: the group stands at a
+pin and goes between pins and places, never by cells, and every walk there is refused in the same words, so the answer never
+depends on a creature the player cannot see.
+
 ## What stays manual
 
 - Getting lost, foraging and what a Search finds on the road: the DM, with the terrain's DC offered.

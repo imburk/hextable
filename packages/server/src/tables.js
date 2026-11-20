@@ -36,7 +36,9 @@ export const MAX_MEMBERS = 12;
 export const IDLE_MS = 30 * 24 * 3600 * 1000;
 const SAVE_STALE_MS = 3600 * 1000;      // sitting down only rewrites the file when its stamp is this old
 // The most an action may weigh as JSON. Everyone is held to the small cap, except that the DM
-// may send a whole map document with loadMap or mapEdit, which run to hundreds of kilobytes.
+// may send a whole map document with loadMap or mapEdit, which run to hundreds of kilobytes, and so do the actions
+// that carry a place's map (docs/specs/travel.md, Decision 2; W2): a first visit (enter, leave, goTo with `stale: 'reset'`),
+// a reset, and a battle place added at the table.
 export const MAX_ACTION_BYTES = 4 * 1024;
 export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 // Lines of a scene's transcript (`say`) one member may send in a minute. The engine caps a line's
@@ -44,7 +46,7 @@ export const MAX_MAP_ACTION_BYTES = 1024 * 1024;
 export const MAX_SAYS_PER_MINUTE = 30;
 // The most entries one fight's record is sent with ({t:"history",fight}).
 export const FIGHT_ENTRIES = 500;
-const MAP_ACTIONS = new Set(["loadMap", "mapEdit"]);
+export const MAP_ACTIONS = new Set(["loadMap", "mapEdit", "enter", "leave", "goTo", "resetPlace", "nodeAdd"]);
 // A `pack` message carries one homebrew pack, at most this many bytes of JSON (HOMEBREW_LIMITS.packBytes); the frame it
 // travels in is that plus an envelope. A string pack is measured before it is parsed; index.js measures the frame before it parses it.
 export const MAX_PACK_BYTES = HOMEBREW_LIMITS.packBytes;
