@@ -617,6 +617,20 @@ starts as root and drops the same way. Never mount the volume anywhere but `DATA
 `DATA_DIR` to the mount path. After a deploy, the log should show `Hextable table server at ...` and no
 `entrypoint:` warning.
 
+### How deploys are verified (review R1, #617)
+
+- **Before a merge.** The `Docker` workflow (`.github/workflows/docker.yml`) runs on every pull request and push to `main`. It builds the
+  image (with `--build-arg GITHUB_SHA=<head>` so `dist/build.json` names the commit), starts it with an empty data volume and runs
+  `scripts/ci/check-image.mjs`: `/api/ping`, `/build.json` (its commit must be the head sha), `/` and its script, and a WebSocket to `/ws`
+  that hosts a table and gets the answer to one action. It then requires a container log with no error and a table saved to the
+  volume after a clean stop. `packages/server/test/docker.test.js` also walks every relative import from `docker-entrypoint.mjs` and requires
+  the run-time stage to copy each file; a server that imports from a folder the stage leaves out fails there, not on Railway.
+- **After a merge.** The `Live check` workflow (`.github/workflows/live-check.yml`, every 30 minutes and on demand) reads the head of
+  `main` and `/build.json` on Railway (`https://hextable-production.up.railway.app`) and GitHub Pages (`https://imburk.github.io/hextable`).
+  When main's head is over 20 minutes old and a site reports another commit, it opens the issue **Live site is not the merged version**
+  (or comments on the open one) with both shas, and closes it when they match again. `DRY_RUN=1 node scripts/ci/live-check.mjs` shows
+  what it would do. It checks the commit only: not `TRUST_PROXY` or the volume on the live service (DEBT T3b, T15).
+
 ## Known limits
 
 - Players are sent a view of the game, not the game: no dice seed, and other
