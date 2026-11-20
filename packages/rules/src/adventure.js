@@ -275,8 +275,27 @@ function mapShape(doc) {
     for (const p of [o.at, o.to]) if (isRec(p)) for (const k of ['q', 'r', 'z']) far(p[k], `Object ${quote(o.id)}'s place`);
     for (const p of [o.at, o.to]) keys(p, ['q', 'r', 'z'], `Object ${quote(o.id)}'s place`);
     if (o.contents !== undefined) {
-      if (!Array.isArray(o.contents) || o.contents.length > PILE_MAX) say(`Object ${quote(o.id)}'s contents are a list of at most ${PILE_MAX} things.`);
-      else for (const c of o.contents) keys(c, PILE_KEYS, `A thing in object ${quote(o.id)}`);
+      const what = `Object ${quote(o.id)}'s contents`;
+      if (o.def !== 'pile') say(`${what}: only a pile holds things.`);
+      else if (!Array.isArray(o.contents) || o.contents.length > PILE_MAX) say(`${what} are a list of at most ${PILE_MAX} things.`);
+      else {
+        const seen = new Set();
+        o.contents.forEach((c, i) => {
+          const at = `${what}, thing ${i + 1}`;
+          if (!isRec(c)) { say(`${at} is not a record.`); return; }
+          keys(c, PILE_KEYS, at);
+          // As engine/world.js reads a pile (wellFormed): an id of 1 to 12 lower-case letters and digits, unique in the pile; a thing
+          // of the DM's own naming has a `name` and no `item`; an item of the SRD has an `item` and no `name`.
+          if (typeof c.id !== 'string' || !/^[a-z0-9]{1,12}$/.test(c.id)) say(`${at} needs an id of 1 to 12 lower-case letters and digits.`);
+          else if (seen.has(c.id)) say(`${at} has an id that another thing in the pile has.`);
+          else seen.add(c.id);
+          if (c.item === undefined) { if (typeof c.name !== 'string' || !c.name.trim()) say(`${at} needs a name.`); }
+          else if (c.name !== undefined) say(`${at} is an item and has no name of its own.`);
+          if (c.name !== undefined && (typeof c.name !== 'string' || c.name.length > 2 * ADVENTURE_LIMITS.name || letters(c.name) > ADVENTURE_LIMITS.name)) say(`${at} has a name that is not text of at most ${ADVENTURE_LIMITS.name} letters.`);
+          for (const k of ['item', 'base', 'type', 'spell']) if (c[k] !== undefined && (typeof c[k] !== 'string' || c[k].length > ADVENTURE_LIMITS.id)) say(`${at} has a "${k}" that is not text of at most ${ADVENTURE_LIMITS.id} letters.`);
+          if (c.charges !== undefined && !whole(c.charges, 0, 100)) say(`${at} has charges that are not a whole number, 0 to 100.`);
+        });
+      }
     }
   }
   for (const r of each(doc.regions)) keys(r, MAP_KEYS.region, `Region ${quote(r?.id)}`);

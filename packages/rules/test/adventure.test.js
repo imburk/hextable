@@ -667,3 +667,27 @@ test("a map's own sentences come before the module's field-list ones", () => {
   assert.match(r.problems[0], /unknown terrain/);
   assert.match(r.problems[1], /has "script"/);
 });
+
+test("a pile's contents are checked as the engine reads them: records, ids, names, items, charges, and only on a pile", () => {
+  const withContents = (contents, def = "pile") => edit((m, d) => {
+    const map = d.maps.mill;
+    EDITS.object(map, { object: { def, level: "ground", at: { q: 2, r: 2 }, ...(def === "door-wooden" ? { edge: 0 } : {}), contents } });
+  });
+  const at = { found: FOUND };
+  clean(withContents([{ id: "a1", name: "Rope" }, { id: "b2", item: "longsword" }, { id: "c3", item: "wand-of-magic-missiles", charges: 7 }]), at);
+  for (const bad of [1, "x", null, [1]]) refused(withContents([bad]), /thing 1 is not a record/, at);
+  refused(withContents({ 0: { id: "a1", name: "x" } }), /are a list of at most 40/, at);
+  refused(withContents([{ id: "a1", name: { nested: { name: "x" } } }]), /has a name that is not text/, at);
+  refused(withContents([{ id: "a1", name: "x".repeat(7999) }]), /has a name that is not text of at most 60 letters/, at);
+  refused(withContents([{ id: "a1", name: { toString: 1 } }]), /has a name that is not text/, at);
+  refused(withContents([{ id: "a1", name: "x" }], "door-wooden"), /only a pile holds things/, at);
+  refused(withContents([{ id: "a1", name: "x" }, { id: "a1", name: "y" }]), /has an id that another thing in the pile has/, at);
+  refused(withContents([{ id: "A B", name: "x" }]), /needs an id of 1 to 12/, at);
+  refused(withContents([{ id: { toString: 1 }, name: "x" }]), /needs an id/, at);
+  refused(withContents([{ id: "a1" }]), /needs a name/, at);
+  refused(withContents([{ id: "a1", item: "longsword", name: "x" }]), /is an item and has no name/, at);
+  for (const k of ["item", "base", "type", "spell"]) refused(withContents([{ id: "a1", name: "x", [k]: { toString: 1 } }].map((c) => (k === "item" ? { id: "a1", item: c[k] } : c))), new RegExp(`"${k}" that is not text`), at);
+  refused(withContents([{ id: "a1", item: "x".repeat(41) }]), /"item" that is not text of at most 40/, at);
+  for (const bad of [-1, 1.5, "3", 101, { toString: 1 }]) refused(withContents([{ id: "a1", item: "longsword", charges: bad }]), /charges that are not a whole number/, at);
+  clean(withContents([{ id: "a1", item: "longsword", charges: 0 }, { id: "a2", name: "é".repeat(60) }]), at);
+});
