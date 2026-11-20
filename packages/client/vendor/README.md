@@ -210,7 +210,7 @@ its list differs from the wrapper's in count, offset, name bytes, sizes, method 
 |---|---|---|
 | Lists the central directory before inflating (name, method, sizes, CRC, flags, attributes) | yes, `ZipReader.getEntries()` | reads the same records itself and compares |
 | Inflates one entry at a time, as a stream | yes, `entry.getData(writable)` with the platform's `DecompressionStream('deflate-raw')` | counts every chunk it is given |
-| Stops part-way when the output passes a limit | yes, when a `signal` aborts or the writable throws | aborts the moment the output passes the declared size, the entry's cap, 200 times its packed size, or the 95 MB total |
+| Stops part-way when the output passes a limit | yes, when a `signal` aborts or the writable throws | aborts the moment the output passes the declared size, the entry's cap, 200 times its packed size, or the 95 MB total; `chunkSize` is set to 16 KB, so the platform's `DecompressionStream` can expand at most one 16 KB chunk (about 16 MB) before a counter sees it |
 | Output larger than the declared size | yes (`Invalid uncompressed size`) | also counted |
 | CRC-32 | yes, with `checkSignature: true` (`Invalid CRC32`) | turned on; a test for a stored and a deflated entry |
 | Writes a zip | yes, `ZipWriter` | `writeModuleZip`: manifest first, fixed dates, no ZIP64, no data descriptors |

@@ -33,7 +33,10 @@ export const ZIP_LIMITS = Object.freeze({
   pictureBytes: 5 * MB,       // one picture
   serverMs: 5000,             // the whole unpack, on the server
   browserMs: 20000,           // and in a browser
-  chunkBytes: 64 * KB,        // what the library reads at a time, so one chunk of a bomb is small
+  // What the library reads at a time. The platform's DecompressionStream may expand one whole input chunk before the
+  // first piece reaches a counter (deflate's ceiling is about 1,032 to 1), so this bounds a bomb's transient memory to
+  // about 16 MB. Measured on a 90 MB read of stored pictures in Node 22: 16 KB is as fast as 64 KB; 4 KB is twice slower.
+  chunkBytes: 16 * KB,
 });
 
 // What the library is told. useWebWorkers: false is the owner's condition (#572); useCompressionStream keeps the
