@@ -1292,6 +1292,33 @@ export function slotsFor(leader, followers) {
   return slots;
 }
 
+// E-P4: where `f` would stand in its leader's formation when a fight starts: the place nearest its slot's point (in the frame
+// of the way the leader last faced), if it is one `catchUp` could use anyway (standable, in the arena, within CATCH_UP feet of
+// the leader's walking), not ahead of the leader by more than half a cell, and free. It asks `moveOptions`, which knows every
+// creature that stands, seen or not, so a place held by one the party cannot see is simply not free, as for any other
+// occupant, and nothing is said. Null (today's trail) for no formation, no slot, no facing yet, a mount or its rider,
+// or a follower that cannot walk (Grappled, Speed 0).
+function formationPlace(s, f, leader, mine, theirs, arena) {
+  const fm = leader.formation;
+  if (!fm || fm.shape === 'column' || fm.face === undefined || mountOf(s, f) || riderOf(s, f) || f.cond?.grappled) return null;
+  const members = living(s).filter((x) => x.side === 'party' && x.follow === leader.id && !draggedBy(s, x).length).sort(byMarch);
+  const sl = slotsFor(leader, members)?.[f.id];
+  if (!sl) return null;
+  const G = gridOf(s.map), F = frameOf(G, leader.pos, fm.face), uu = F.u.x ** 2 + F.u.z ** 2, T = slotPoint(F, sl);
+  const o0 = G.toWorld(ORIGIN), cell = Math.min(...G.neighbors(ORIGIN).map((n) => Math.hypot(G.toWorld(n).x - o0.x, G.toWorld(n).z - o0.z)));
+  let best = null, bestKey = null;
+  for (const [k, v] of mine) {
+    if (!v.canStop || !arena[col(v.h)]) continue;
+    const lc = theirs.get(k)?.cost;
+    if (lc === undefined || lc > CATCH_UP) continue;
+    const w = G.toWorld(v.h), d = Math.hypot(w.x - T.x, w.z - T.z) / cell, fwd = ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu;
+    if (d > 0.75 + 1e-9 || fwd > 0.5 + 1e-9) continue;
+    const rank = [d, v.cost];
+    if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
+  }
+  return best;
+}
+
 // A fight is starting in `arena`. Everyone who was following a party member in it, and is not in
 // it already, is brought up to the nearest free place behind its leader that it could have walked
 // to (a path exists, and the place is at most CATCH_UP feet of walking from the leader).
@@ -1311,7 +1338,9 @@ export function catchUp(s, arena, walked, ev) {
     const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
     const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
     let best = null, bestKey = null;
-    for (const [k, v] of mine) {
+    const slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
+    if (slot) { best = slot; bestKey = null; }
+    else for (const [k, v] of mine) {
       if (!v.canStop || !arena[col(v.h)]) continue;
       const lc = theirs.get(k)?.cost;
       if (lc === undefined || lc > CATCH_UP) continue;

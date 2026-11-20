@@ -749,3 +749,20 @@ Each has a default; the build follows the default unless the owner says otherwis
 8. **Stabilising with Medicine (E-P3) and starting a fight in formation (E-P4): build
    now?** *Default: after the client stages; until then the screen says "Not in the game
    yet: ask the DM."*
+
+
+## Build notes: E-P4, a fight starts in formation (#615)
+
+- `catchUp` (`engine/world.js`) asks `formationPlace` first for each follower it brings up. The place is the one nearest
+  the follower's slot point (E21's frame: the leader's `formation.face`, the way it last walked; `slotsFor` deals presets
+  and reads held and custom slots), within 0.75 cell of it, not more than half a cell ahead of the leader, and one
+  `catchUp` could use anyway: standable (`canStop`), in the arena, within `CATCH_UP` feet of the leader's walking. Else the
+  trail picks the place, as before.
+- Today's behaviour is kept for: no formation, the column, a held shape in single file (`slotsFor` is null), a leader
+  with no facing yet (it has not walked since the shape was set), a follower with no slot, a mount or a rider, a
+  Grappled follower, and one holding a creature (never brought up). Followers already inside the arena are not moved (as
+  before).
+- A slot held by a creature the party cannot see is simply not free (`moveOptions` knows every creature that stands), so
+  the follower takes the trail's place, with no event of its own; the fight start reveals everyone in the arena as it
+  always has. No trap or zone check beyond today's (the walking layout's `peril` is not applied).
+- Tests: `packages/rules/test/formation-fight.test.js`.
