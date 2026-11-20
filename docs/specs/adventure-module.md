@@ -1462,6 +1462,11 @@ choice, open to the owner.
   from `map.js` and the stock maps) and heights and points within 100,000 feet; a level's picture names the module's asset
   id. `lintMap` is not total (`levels: [null]`, or an object where a string is expected, throws inside it); the call is
   wrapped, and making `map.js` total is a follow-up outside A1.
+  The lists were read from every place that writes a map: `map.js` (`EDITS`, `migrateMap`), `client/editor.js` (a start and a
+  ladder's `to` carry `z`; an object's `at` may too), the Universal VTT importer and the stock maps; a pile's `contents` are
+  allowed (at most `PILE_MAX`, each with the keys `engine/world.js` reads). A pile's `by` and `left` are the play record of a
+  creature the party did not know of, and a module holds no progress, so they are refused as unknown fields: "Save as
+  module" (A9) must drop them. A map's own `lintMap` sentences are listed before the module's field-list ones.
 - **Links.** `{ to, text }`; `from` and `node` are read and reported as not in this game yet (A11).
 - **Licence statement.** `SRD_ATTRIBUTION` is the text of `reference/srd52/README.md` ("SRD 5.2", straight quotes), as
   Decision 9 says. `content/srd52/pack.js` says "SRD 5.2.1" and `client/about.js` has curly quotes. **Question for the owner:**

@@ -18,7 +18,7 @@ import { canonical as canonicalJson } from './content/packs.js';
 import { CONTENT, TILES } from './content/index.js';
 import { AMBIENT } from './content/lights.js';
 import { lintMap, migrateMap } from './map.js';
-import { SETTINGS } from './engine.js';
+import { PILE_MAX, SETTINGS } from './engine.js';
 import { validate } from './derive.js';
 import { col, gridOf, parse } from './grid.js';
 import { footprint, ground, landing, overlapAt } from './space.js';
@@ -249,10 +249,12 @@ const MAP_KEYS = {
   map: ['format', 'id', 'name', 'grid', 'cellFeet', 'levels', 'walls', 'objects', 'regions', 'starts', 'entries', 'areas', 'seen', 'holding'],
   level: ['id', 'name', 'z', 'tiles', 'image', 'light'], tile: ['t', 'h', 'lift'],
   wall: ['id', 'level', 'a', 'b', 'kind'],
-  object: ['id', 'def', 'level', 'at', 'state', 'edge', 'seg', 'key', 'name', 'links', 'to', 'dc'], link: ['object', 'when', 'sets'],
-  region: ['id', 'name', 'level', 'hexes', 'revealed', 'light'], start: ['level', 'q', 'r', 'entry'],
+  // `contents` is a pile's loot (a pile the DM placed); `by` and `left` are a pile's play record, which a module never holds.
+  object: ['id', 'def', 'level', 'at', 'state', 'edge', 'seg', 'key', 'name', 'links', 'to', 'dc', 'contents'], link: ['object', 'when', 'sets'],
+  region: ['id', 'name', 'level', 'hexes', 'revealed', 'light'], start: ['level', 'q', 'r', 'z', 'entry'],
   entry: ['id', 'name', 'kind', 'object'], area: ['id', 'name', 'level', 'hexes'],
 };
+const PILE_KEYS = ['id', 'name', 'item', 'base', 'type', 'spell', 'charges'];     // engine/world.js, what a pile holds
 function mapShape(doc) {
   const bad = [], say = (m) => { if (bad.length < 20) bad.push(m); };
   const keys = (o, list, what) => { if (isRec(o)) for (const k of Object.keys(o)) if (!list.includes(k)) say(`${what} has "${k}", which a map does not have there.`); };
@@ -270,10 +272,15 @@ function mapShape(doc) {
     keys(o, MAP_KEYS.object, `Object ${quote(o.id)}`);
     if (isRec(o.seg)) { keys(o.seg, ['a', 'b'], `Object ${quote(o.id)}'s line`); for (const p of [o.seg.a, o.seg.b]) each(p).forEach((n) => far(n, `Object ${quote(o.id)}'s line`)); }
     for (const l of each(o.links)) keys(l, MAP_KEYS.link, `A link of object ${quote(o.id)}`);
-    for (const p of [o.at, o.to]) if (isRec(p)) { keys(p, ['q', 'r'], `Object ${quote(o.id)}'s place`); far(p.q, `Object ${quote(o.id)}'s place`); far(p.r, `Object ${quote(o.id)}'s place`); }
+    for (const p of [o.at, o.to]) if (isRec(p)) for (const k of ['q', 'r', 'z']) far(p[k], `Object ${quote(o.id)}'s place`);
+    for (const p of [o.at, o.to]) keys(p, ['q', 'r', 'z'], `Object ${quote(o.id)}'s place`);
+    if (o.contents !== undefined) {
+      if (!Array.isArray(o.contents) || o.contents.length > PILE_MAX) say(`Object ${quote(o.id)}'s contents are a list of at most ${PILE_MAX} things.`);
+      else for (const c of o.contents) keys(c, PILE_KEYS, `A thing in object ${quote(o.id)}`);
+    }
   }
   for (const r of each(doc.regions)) keys(r, MAP_KEYS.region, `Region ${quote(r?.id)}`);
-  for (const st of each(doc.starts)) keys(st, MAP_KEYS.start, 'A start');
+  for (const st of each(doc.starts)) { keys(st, MAP_KEYS.start, 'A start'); if (isRec(st)) far(st.z, 'A start\'s height'); }
   for (const en of each(doc.entries)) keys(en, MAP_KEYS.entry, `Entry ${quote(en?.id)}`);
   for (const a of each(doc.areas)) keys(a, MAP_KEYS.area, `Shop area ${quote(a?.id)}`);
   if (isRec(doc.seen)) keys(doc.seen, ['tiles', 'objects'], 'What the party has seen');
@@ -494,7 +501,7 @@ function lintInner(unpacked, opts, out) {
           else say(`${path}`, `level ${quote(l.id)} has a background that names no picture of the module.`);
         }
         let problems;
-        try { problems = [...mapShape(doc), ...lintMap(doc)]; } catch { say(path, 'is not a map document.'); continue; }
+        try { problems = [...lintMap(doc), ...mapShape(doc)]; } catch { say(path, 'is not a map document.'); continue; }
         for (const p of problems.slice(0, 5)) say(path, p);
         if (problems.length > 5) say(path, `and ${problems.length - 5} more problems with this map.`);
         if (problems.length) continue;

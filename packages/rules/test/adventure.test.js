@@ -8,6 +8,8 @@ import {
   ADVENTURE_LIMITS as L, budget, canonical, lintAdventure, migrateAdventure, placeIn, readAdventureJson, refusal, SRD_ATTRIBUTION,
 } from "../src/adventure.js";
 import { b64, PICTURES } from "./fixtures/adventure-pictures.js";
+import { EDITS } from "../src/map.js";
+import { STOCK_MAPS } from "../src/content/maps/index.js";
 
 const FIXTURE = readFileSync(new URL("./fixtures/adventure-flooded-mill.json", import.meta.url), "utf8");
 const sha = (u8) => createHash("sha256").update(u8).digest("hex");
@@ -622,4 +624,46 @@ test("attribution 500 and srd 1,000 letters; needs.homebrew 4 and 5 packs; a pic
   const name = (n) => edit((m) => { m.pictures["a-gate"].file = `pictures/${"a".repeat(n - 9 - 4)}.png`; });
   clean(name(100), { found: FOUND });
   refused(name(101), /^pictures\/a-gate: its file must be/, { found: FOUND });
+});
+
+// ---------- maps the game itself writes (the editor, the stock maps) ----------
+test("every stock map, wrapped as the module's map, lints clean", () => {
+  assert.ok(STOCK_MAPS.length >= 5);
+  for (const entry of STOCK_MAPS) {
+    const u = fresh(), map = structuredClone(entry.map);
+    u.manifest.needs.grid = "both";
+    Object.assign(u.data, { maps: { stock: map }, encounters: [], notes: [], start: { map: "stock" } });
+    u.data.scenes[0].present = []; u.data.npcs = []; u.data.start.scene = "gate";
+    const r = lint(u, { found: FOUND, limits: { dataBytes: 8 * L.mapBytes } });
+    assert.deepEqual(r.problems, [], `${entry.id ?? entry.map.id}`);
+  }
+});
+test("a map built with the editor's own operations lints clean; a pile's play record does not belong in a module", () => {
+  const u = fresh(), map = u.data.maps.mill;
+  const op = (name, arg) => { const bad = EDITS[name](map, arg); assert.equal(bad, undefined, bad); };
+  op("starts", { starts: [{ q: 0, r: 0, z: 0 }] });                                                   // editor.js: a start with its height
+  op("object", { object: { def: "ladder", level: "ground", at: { q: 1, r: 1 }, to: { q: 1, r: 1, z: -10 } } });   // a ladder's `to` with z
+  op("object", { object: { def: "door-wooden", level: "ground", at: { q: 2, r: 1 }, edge: 0 } });
+  op("object", { object: { def: "pile", level: "ground", at: { q: 2, r: 2 }, contents: [{ id: "a1", name: "Rope" }, { id: "b2", item: "longsword" }] } });
+  op("wall", { wall: { level: "ground", a: [0, 0], b: [10, 0], kind: "wall" } });
+  op("region", { region: { id: "porch", name: "Porch", level: "ground", hexes: ["6,0", "7,0"] } });
+  op("tile", { level: "ground", at: { q: 7, r: 3 }, tile: { t: "grass", h: 2.5 } });
+  op("level", { level: { id: "ground", light: "dim" } });
+  op("entries", { entries: [{ id: "gate", name: "Gate", kind: "gate" }] });
+  map.starts[0].entry = "gate";
+  clean(u, { found: FOUND });
+  const withPlay = structuredClone(u);
+  withPlay.data.maps.mill.objects.find((o) => o.def === "pile").by = "m3";
+  refused(withPlay, /Object "[a-z0-9]+" has "by"/);
+  const bigPile = structuredClone(u);
+  bigPile.data.maps.mill.objects.find((o) => o.def === "pile").contents = Array.from({ length: 41 }, (_, i) => ({ id: `i${i}`, name: "x" }));
+  refused(bigPile, /contents are a list of at most 40/);
+  const unknown = structuredClone(u);
+  unknown.data.maps.mill.objects.find((o) => o.def === "pile").contents = [{ id: "a1", name: "x", evil: 1 }];
+  refused(unknown, /has "evil"/);
+});
+test("a map's own sentences come before the module's field-list ones", () => {
+  const r = refused(edit((m, d) => { d.maps.mill.script = 1; d.maps.mill.levels[0].tiles["0,0"] = { t: "lava" }; }));
+  assert.match(r.problems[0], /unknown terrain/);
+  assert.match(r.problems[1], /has "script"/);
 });
