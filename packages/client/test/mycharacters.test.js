@@ -130,3 +130,17 @@ test('the party: picks become newGame\'s party, and every disallowed pick says w
   assert.equal(M.defaultPick(['starter:fighter', 'starter:rogue', 'starter:cleric', 'starter:wizard', mine], list), '');
   assert.equal(M.defaultPick([], list), 'starter:fighter');
 });
+
+test('a sheet that says how its scores were made travels in the file; one whose record the scores contradict is refused (#557)', () => {
+  const sb = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 };
+  const rolled = fighter('Rolla', { abilities: { str: 17, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }, scores: { method: 'standard', base: sb, background: { id: 'soldier', abilities: { str: 2 , con: 1 } } } });
+  assert.match(M.sheetProblems(rolled)[0] ?? '', /Soldier|background|match/, 'the background says con +1, so con would be 14');
+  const good = fighter('Rolla', { abilities: { str: 17, dex: 14, con: 14, int: 12, wis: 10, cha: 8 }, scores: rolled.scores });
+  assert.deepEqual(M.sheetProblems(good), []);
+  const f = M.makeFile(good, { how: 'built' }), r = M.parseFile(M.fileText(f));
+  assert.ok(r.ok, r.problems.join());
+  assert.deepEqual(r.file.sheet.scores, good.scores);
+  const bad = M.parseFile(M.fileText({ ...f, sheet: { ...good, abilities: { ...good.abilities, str: 18 } } }));
+  assert.equal(bad.ok, false);
+  assert.match(bad.problems.join(' '), /no longer match how they were made/);
+});

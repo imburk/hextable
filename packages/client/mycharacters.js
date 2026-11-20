@@ -4,6 +4,7 @@
 // whether the engine would play it, and every file and every stored entry is checked with it before it is used (a file is never trusted).
 // The top half of this module is pure (no page, no storage) so a test can run it; `initMyCharacters` is the part that draws.
 import { validate, classesOf, levelOf } from './shared/derive.js';
+import { scoresLine } from './shared/scores.js';
 import { PREGENS } from './shared/content/index.js';
 import { pack } from './shared/content/srd52/pack.js';
 import { openBuild } from './buildsheet.js';
@@ -266,7 +267,7 @@ export function initMyCharacters({ twoTap, toast }) {
         ? el('form', { class: 'mc-rename', onsubmit: (ev) => { ev.preventDefault(); const r = renameFile(list, f.cid, ev.target.elements.name.value); renaming = null; if (commit(r)) { msg = ''; notes = []; } drawParty(); drawManager(); } },
           el('input', { type: 'text', name: 'name', value: f.sheet.name, maxLength: 40, 'aria-label': `New name for ${f.sheet.name}`, autocomplete: 'off' }), el('button', { type: 'submit', text: 'Save name' }), el('button', { type: 'button', class: 'quiet', text: 'Cancel', onclick: () => { renaming = null; drawManager(); } }))
         : el('strong', { text: f.sheet.name });
-      return el('li', { class: 'mc-row', 'data-cid': f.cid }, title, el('small', { class: 'note', text: levelLine(f) }), bad(f) ? el('small', { class: 'note mc-bad', text: `Cannot be played: ${bad(f)}` }) : null,
+      return el('li', { class: 'mc-row', 'data-cid': f.cid }, title, el('small', { class: 'note', text: levelLine(f) }), scoresLine(f.sheet) ? el('small', { class: 'note mc-scores', text: `Scores: ${scoresLine(f.sheet)}` }) : null, bad(f) ? el('small', { class: 'note mc-bad', text: `Cannot be played: ${bad(f)}` }) : null,
         el('div', { class: 'row' },
           b('edit', 'Edit', () => openBuild({ mode: 'mine', sheet: f.sheet, onSave: (sheet) => { const r = editFile(list, f.cid, sheet); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }), edit),
           b('rename', 'Rename', () => { renaming = f.cid; drawManager(); panel.querySelector('.mc-rename input')?.focus(); }),
