@@ -74,16 +74,23 @@ body.bare #stage { padding-top: 0; }
 .stat { display: inline-flex; align-items: baseline; gap: 4px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; padding: 2px 10px; font-size: 14px; white-space: nowrap; }
 .stat b { font-weight: 800; font-size: 15px; }
 .stat.key { border-color: var(--accent); }
-.livehead { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.livehead { display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 13px; color: var(--muted); }
 .livehead b { color: var(--ink); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
 .livehead .sp { flex: 1; }
-.livehead button { min-height: 32px; min-width: 44px; border: 0; background: none; color: var(--muted); padding: 0 6px; font-size: 18px; line-height: 1; }
+.livehead button { min-height: 44px; min-width: 44px; margin: -8px -4px -8px 0; border: 0; background: none; color: var(--muted); padding: 0 6px; font-size: 18px; line-height: 1; }
 .alist { margin: 2px 0 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; }
-.frame.phone .alist { max-height: 86px; }
+.frame.phone .alist { max-height: 84px; }
+.frame.phone .arow .d { width: auto; min-width: 54px; }
+.frame.phone .arow .h { width: 40px; }
+.frame.phone .arow .d i { display: none; }
+.arow .d i { font-style: normal; color: var(--muted); }
+.frame.phone .stat { font-size: 13px; padding: 1px 9px; } .frame.phone .stat b { font-size: 14px; }
+.frame.phone .live { padding: 4px 10px; }
+.livehead .note1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .arow { display: flex; align-items: center; gap: 6px; min-height: 28px; padding: 1px 4px; border-radius: 4px; font-size: 14px; }
-.arow .n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-.arow .h { width: 62px; text-align: right; font-weight: 800; flex: none; font-variant-numeric: tabular-nums; }
-.arow .d { width: 108px; text-align: left; flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.arow .n { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.arow .h { margin-left: auto; width: 56px; text-align: right; font-weight: 800; flex: none; font-variant-numeric: tabular-nums; }
+.arow .d { width: 108px; text-align: left; padding-left: 6px; flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .frame.desktop .arow { min-height: 40px; font-size: 15px; border-bottom: 1px solid var(--line); border-radius: 0; }
 .frame.desktop .arow .d { width: 190px; font-size: 14px; }
 .frame.desktop .arow .h { width: 80px; }
@@ -92,6 +99,7 @@ body.bare #stage { padding-top: 0; }
 .arow.gone { opacity: .5; }
 .heads { margin: 4px 0 0; font-size: 13px; display: flex; gap: 6px; align-items: flex-start; border-left: 4px solid var(--bad); padding: 2px 6px; background: var(--panel-2); border-radius: 0 var(--radius) var(--radius) 0; }
 .heads ul { margin: 0; padding: 0 0 0 14px; }
+.frame.phone .heads { font-size: 12.5px; align-items: center; }
 .livebig h2 { font: 700 22px var(--display); margin: 0; }
 .livebig .sub { color: var(--muted); margin: 0 0 10px; }
 .livebig h3 { font: 700 13px var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 4px; display: flex; align-items: baseline; gap: 8px; }
@@ -106,10 +114,11 @@ body.bare #stage { padding-top: 0; }
 .acchead .t { flex: 1; min-width: 0; } .acchead .t b { display: block; font-weight: 700; }
 .acchead .t small { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .acchead .chev { color: var(--muted); font-size: 20px; transition: transform .3s; }
-.acchead .need { flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; background: var(--accent); color: var(--accent-ink); white-space: nowrap; }
+.acchead .need { flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 9px; background: color-mix(in srgb, var(--accent) 40%, var(--panel-solid)); color: var(--ink); border: 2px solid var(--accent); white-space: nowrap; }
 .acchead.compact { min-height: 44px; padding: 2px 12px; margin: 2px 0; } .acchead.compact small { display: none; }
 .acchead.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); } .acchead.on .chev { transform: rotate(90deg); }
 .frame.phone .acchead { min-height: 52px; }
+.frame.phone .acchead.compact { min-height: 44px; }
 
 /* ---------- section contents ---------- */
 .lead { color: var(--muted); font-size: 14px; margin: 2px 0 8px; }
@@ -138,15 +147,16 @@ input:checked + .box.round::after { content: ''; width: 10px; height: 10px; bord
 input:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 2px; }
 input:disabled + .box { opacity: .45; border-style: dashed; }
 .opt.on { background: linear-gradient(90deg, #0000, #0000); }
-.opt .txt { min-width: 0; flex: 1; }
+.opt .txt { min-width: 0; flex: 1; display: block; }
+.opt .l2 { display: block; }
 .opt .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 700; }
 .opt .l1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .opt .l1 .lv { flex: none; font-weight: 400; color: var(--muted); white-space: pre; }
 .opt .l1 .tag, .opt .l1 .np, .opt .l1 .cat { flex: none; }
 .opt .l2 { color: var(--muted); font-size: 13px; line-height: 1.3; margin-top: 1px; }
-.opt .l2.cost { color: var(--ink); font-size: 14px; }
+.opt .l2.costline { color: var(--ink); font-size: 14px; }
 .opt .l2.also { color: var(--muted); }
-.opt.np { box-shadow: inset 4px 0 0 var(--bad); padding-left: 8px; }
+.opt.npr { box-shadow: inset 4px 0 0 var(--bad); padding-left: 8px; }
 .opt.dim .l1 .nm { color: var(--muted); font-weight: 400; }
 .info { flex: none; width: 44px; height: 44px; background: none; border: 0; padding: 0; display: grid; place-items: center; }
 .info i { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--muted); border-radius: 50%; color: var(--muted); font: 700 14px Georgia, serif; font-style: normal; }
@@ -167,7 +177,7 @@ input:disabled + .box { opacity: .45; border-style: dashed; }
 .cat.good { border-color: var(--good); }
 /* the spell tag: three shapes, so it never depends on colour alone (#605) */
 .tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 9px 1px 6px; font-size: 13px; font-weight: 700; white-space: nowrap; line-height: 1.35; }
-.tag.attack { background: var(--accent); color: var(--accent-ink); border: 2px solid var(--accent); }
+.tag.attack { background: color-mix(in srgb, var(--accent) 40%, var(--panel-solid)); color: var(--ink); border: 2px solid var(--accent); }
 .tag.save { background: transparent; color: var(--ink); border: 2px solid var(--accent); }
 .tag.none { background: transparent; color: var(--muted); border: 2px dashed var(--muted); }
 .tag.sm { font-size: 12px; padding: 0 7px 0 4px; }
@@ -193,7 +203,7 @@ input:disabled + .box { opacity: .45; border-style: dashed; }
 .slotrow .pip { width: 18px; height: 18px; }
 .spend { margin: 0; padding: 0; list-style: none; }
 .spend li { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-.cost { flex: none; display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 9px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.cost { flex: none; display: inline-flex; align-items: center; gap: 4px; background: color-mix(in srgb, var(--accent) 40%, var(--panel-solid)); color: var(--ink); border: 2px solid var(--accent); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .when { flex: none; display: inline-flex; border: 1px solid var(--muted); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--ink); }
 .feat-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
 .feat-row .top2 { display: flex; align-items: center; gap: 6px; }
@@ -286,12 +296,12 @@ const CHARS = {
     armourTrained: [], shieldTrained: false,
     weaponTrained: (w) => w.cat === 'simple' || (w.cat === 'martial' && w.props.includes('light')),
     isMonkWeapon: (w) => w.kind === 'melee' && (w.cat === 'simple' || w.props.includes('light')),
-    trainText: 'Armour: none. Shields: no. Weapons: Simple weapons, and Martial weapons that have the Light property.' },
+    trainText: 'Armour none · Shields no · Weapons: Simple, and Martial with the Light property.' },
   wizard: { id: 'wizard', cls: 'Wizard', sub: 'Evoker', hitDie: 6, base: { str: 8, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, name: 'Ilsa', caster: true, castAb: 'int',
     skillPool: ['arcana', 'history', 'insight', 'investigation', 'medicine', 'nature', 'religion'], skillN: 2,
     armourTrained: [], shieldTrained: false,
     weaponTrained: (w) => w.cat === 'simple', isMonkWeapon: () => false,
-    trainText: 'Armour: none. Shields: no. Weapons: Simple weapons.', cantrips: 4, prepared: 9, slots: { 1: 4, 2: 3, 3: 2 } },
+    trainText: 'Armour none · Shields no · Weapons: Simple.', cantrips: 4, prepared: 9, slots: { 1: 4, 2: 3, 3: 2 } },
 };
 const COLORS = ['#c8553d', '#d9a441', '#4a7c59', '#5b6fb5', '#8e5ba6', '#3a8f9c', '#c2607f', '#7d8590'];
 const DEFAULTS = {
@@ -329,11 +339,11 @@ function calc(cid) {
   else { ac = 10 + M.dex; acWhy.push(`10 + DEX ${sg(M.dex)}`); }
   if (shieldWorn) { if (shieldCounts) { ac += 2; acWhy.push('Shield +2'); } else acWhy.push('Shield +0 (not trained: no AC bonus)'); }
   let speed = 30 + (martial ? 10 : 0);
-  if (suit && suit.str && sc.str < suit.str) { speed -= 10; flags.push(`Speed −10 ft: ${suit.name} needs Strength ${suit.str}`); }
-  if (suit && !suitTrained) { flags.unshift('Disadvantage on every Strength and Dexterity roll'); if (c.caster) flags.unshift('Cannot cast spells'); }
-  if (suit && suit.stealth) flags.push('Disadvantage on Stealth checks');
-  if (shieldWorn && !c.shieldTrained) flags.push('The Shield gives no AC (not trained)');
-  if (monk && !martial) flags.push('Martial Arts, Unarmored Defense and Unarmored Movement are off');
+  if (suit && suit.str && sc.str < suit.str) { speed -= 10; flags.push({ t: `Speed −10 ft: ${suit.name} needs Strength ${suit.str}`, s: 'Speed −10 ft' }); }
+  if (suit && !suitTrained) { flags.unshift({ t: 'Disadvantage on every Strength and Dexterity roll', s: 'Disadvantage on STR and DEX rolls' }); if (c.caster) flags.unshift({ t: 'Cannot cast spells', s: 'No spellcasting' }); }
+  if (suit && suit.stealth) flags.push({ t: 'Disadvantage on Stealth checks', s: 'Stealth Disadvantage' });
+  if (shieldWorn && !c.shieldTrained) flags.push({ t: 'The Shield gives no AC (not trained)', s: 'Shield: no AC' });
+  if (monk && !martial) flags.push({ t: 'Martial Arts, Unarmored Defense and Unarmored Movement are off', s: 'Martial Arts off' });
   const hp = c.hitDie + M.con + (LEVEL - 1) * (c.hitDie / 2 + 1 + M.con);
   const init = M.dex + (p.bg === 'alert' || p.l4 === 'alert' ? PB : 0);
   const att = [];
@@ -359,11 +369,11 @@ function calc(cid) {
 function needs(cid) {
   const c = CHARS[cid], p = S.pk[cid], n = [];
   if (p.skills.size < c.skillN) n.push({ sec: 'skills', t: `${c.skillN - p.skills.size} skill${c.skillN - p.skills.size === 1 ? '' : 's'}` });
-  if (!p.bg) n.push({ sec: 'feats', t: 'a background feat' });
-  if (!p.l4) n.push({ sec: 'feats', t: 'a level 4 feat' });
+  if (!p.bg) n.push({ sec: 'feats', t: 'background feat' });
+  if (!p.l4) n.push({ sec: 'feats', t: 'level 4 feat' });
   if (c.caster) {
     if (p.cantrips.size < c.cantrips) n.push({ sec: 'spells', t: `${c.cantrips - p.cantrips.size} cantrip${c.cantrips - p.cantrips.size === 1 ? '' : 's'}` });
-    if (p.prepared.size < c.prepared) n.push({ sec: 'spells', t: `${c.prepared - p.prepared.size} prepared spell${c.prepared - p.prepared.size === 1 ? '' : 's'}` });
+    if (p.prepared.size < c.prepared) n.push({ sec: 'spells', t: `${c.prepared - p.prepared.size} spell${c.prepared - p.prepared.size === 1 ? '' : 's'}` });
   }
   return n;
 }
@@ -399,7 +409,7 @@ function sections(cid) {
     { id: 'scores', title: 'Ability scores', tip: ABIL.map((a) => `${AB3[a]} ${ch.sc[a]}`).join(' · '), html: () => scoresHTML(ch) },
     { id: 'skills', title: 'Skills', tip: p.skills.size ? [...p.skills].map((k) => SKILL_NAMES[k]).join(', ') + ` · ${p.skills.size} of ${c.skillN}` : 'None chosen yet', need: needOf('skills'), html: () => skillsHTML(ch) },
     { id: 'power', title: c.caster ? 'Spell slots and features' : 'Focus Points and features', tip: c.caster ? `Spell slots 4 · 3 · 2, back on a Long Rest · ${CLASS_FEATURES[cid].length} features` : `Focus Points 5, all back on a Short Rest · ${CLASS_FEATURES[cid].length + 4} features`, html: () => powerHTML(ch) },
-    { id: 'feats', title: 'Feats', tip: `Background: ${featName(p.bg) ?? 'not chosen'} · Level 4: ${featName(p.l4) ?? 'not chosen'}`, need: needOf('feats'), html: () => featsHTML(ch) },
+    { id: 'feats', title: 'Feats', tip: `${featName(p.bg) ?? 'No background feat'} · level 4: ${featName(p.l4) ?? 'none yet'}`, need: needOf('feats'), html: () => featsHTML(ch) },
     { id: 'gear', title: 'Armour and weapons', tip: `${p.armour ? A[p.armour].name : 'No armour'}${p.shield ? ' + Shield' : ''} · ${p.weapons.size} weapon${p.weapons.size === 1 ? '' : 's'}${[...p.weapons].some((w) => !c.weaponTrained(W[w])) || (p.armour && !ch.suitTrained) || p.shield ? ' · not proficient with something' : ' · all trained'}`, html: () => gearHTML(ch) },
   ];
   if (c.caster) list.push({ id: 'spells', title: 'Spells', tip: `${p.cantrips.size} of ${c.cantrips} cantrips · ${p.prepared.size} of ${c.prepared} prepared`, need: needOf('spells'), html: () => spellsHTML(ch) });
@@ -509,17 +519,17 @@ function gearHTML(ch) {
   const armourNP = ARMOUR.filter((a) => a.cat !== 'shield' && !c.armourTrained.includes(a.cat));
   const noneOpt = `<div class="opt${p.armour === '' ? ' on' : ''}"><label><input type="radio" name="armour" data-armour="" data-fid="ar-none" ${p.armour === '' ? 'checked' : ''}><span class="box round"></span><span class="txt"><span class="l1"><span class="nm">No armour</span><span class="cat good">Trained</span></span><span class="l2">${monk ? `AC ${10 + ch.M.dex + ch.M.wis}: 10 + DEX + WIS. Keeps Martial Arts and Unarmored Movement.` : `AC ${10 + ch.M.dex}: 10 + DEX.`}</span></span></label></div>`;
   const armourRow = (a) => { const k = npArmourCost(ch, a), on = p.armour === a.id;
-    return `<div class="opt np${on ? ' on' : ''}"><label><input type="radio" name="armour" data-armour="${a.id}" data-fid="ar-${a.id}" ${on ? 'checked' : ''}><span class="box round"></span><span class="txt"><span class="l1"><span class="nm">${esc(a.name)}</span>${npHTML()}</span><span class="l2">${cap(a.cat)} · ${acText(a)}</span><span class="l2 cost">${k.main}</span>${k.also ? `<span class="l2 also">${k.also}</span>` : ''}</span></label></div>`; };
+    return `<div class="opt npr${on ? ' on' : ''}"><label><input type="radio" name="armour" data-armour="${a.id}" data-fid="ar-${a.id}" ${on ? 'checked' : ''}><span class="box round"></span><span class="txt"><span class="l1"><span class="nm">${esc(a.name)}</span>${npHTML()}</span><span class="l2">${cap(a.cat)} · ${acText(a)}</span><span class="l2 costline">${k.main}</span>${k.also ? `<span class="l2 also">${k.also}</span>` : ''}</span></label></div>`; };
   const armourOpen = p.open.armour || p.armour;
   const shieldOn = p.shield;
-  const shieldRow = `<div class="opt np${shieldOn ? ' on' : ''}"><label><input type="checkbox" data-shield="1" data-fid="sh" ${shieldOn ? 'checked' : ''}><span class="box"></span><span class="txt"><span class="l1"><span class="nm">Shield</span>${npHTML()}</span><span class="l2">+2 AC if you are trained</span><span class="l2 cost">No AC bonus without training${monk ? ' · turns off Monk features' : ''}</span></span></label></div>`;
+  const shieldRow = `<div class="opt npr${shieldOn ? ' on' : ''}"><label><input type="checkbox" data-shield="1" data-fid="sh" ${shieldOn ? 'checked' : ''}><span class="box"></span><span class="txt"><span class="l1"><span class="nm">Shield</span>${npHTML()}</span><span class="l2">+2 AC if you are trained</span><span class="l2 costline">No AC bonus without training${monk ? ' · turns off Monk features' : ''}</span></span></label></div>`;
   // weapons
   const trainedW = WEAPONS.filter((w) => c.weaponTrained(w)), npW = WEAPONS.filter((w) => !c.weaponTrained(w));
   const monkW = trainedW.filter((w) => c.isMonkWeapon(w)), otherW = trainedW.filter((w) => !c.isMonkWeapon(w));
   const bonusOf = (w) => { const m = ch.M; const useMA = monk && c.isMonkWeapon(w) && ch.martial; const a = useMA ? Math.max(m.str, m.dex) : w.kind === 'ranged' ? m.dex : w.props.includes('finesse') ? Math.max(m.str, m.dex) : m.str; return { a, useMA }; };
   const wRow = (w, trained) => { const on = p.weapons.has(w.id), b = bonusOf(w), hit = b.a + (trained ? PB : 0), die = b.useMA ? '1d8' : w.dmg;
     const props = [w.kind === 'ranged' ? 'Ranged' : 'Melee', `${die}${sg0(b.a)} ${w.type}`, ...(w.range ? [`range ${w.range[0]}/${w.range[1]}`] : []), ...w.props.filter((x) => ['finesse', 'light', 'heavy', 'reach', 'thrown', 'two-handed', 'versatile', 'loading', 'ammunition'].includes(x)).map(cap)].join(' · ');
-    return `<div class="opt${trained ? '' : ' np'}${on ? ' on' : ''}"><label><input type="checkbox" data-weapon="${w.id}" data-fid="wp-${w.id}" ${on ? 'checked' : ''}><span class="box"></span><span class="txt"><span class="l1"><span class="nm">${esc(w.name)}</span>${trained ? (monk && c.isMonkWeapon(w) ? '<span class="cat good">Monk weapon</span>' : '') : npHTML()}<span style="margin-left:auto;font-weight:800;flex:none">${sg(hit)}</span></span><span class="l2">${props}</span>${trained ? '' : `<span class="l2 cost">No Proficiency Bonus on the attack roll: ${sg(hit)} instead of ${sg(hit + PB)}${monk && w.kind === 'melee' ? '. Not a Monk weapon: no Martial Arts die.' : ''}</span>`}</span></label></div>`; };
+    return `<div class="opt${trained ? '' : ' npr'}${on ? ' on' : ''}"><label><input type="checkbox" data-weapon="${w.id}" data-fid="wp-${w.id}" ${on ? 'checked' : ''}><span class="box"></span><span class="txt"><span class="l1"><span class="nm">${esc(w.name)}</span>${trained ? (monk && c.isMonkWeapon(w) ? '<span class="cat good">Monk weapon</span>' : '') : npHTML()}<span style="margin-left:auto;font-weight:800;flex:none">${sg(hit)}</span></span><span class="l2">${props}</span>${trained ? '' : `<span class="l2 costline">No Proficiency Bonus on the attack roll: ${sg(hit)} instead of ${sg(hit + PB)}${monk && w.kind === 'melee' ? '. Not a Monk weapon: no Martial Arts die.' : ''}</span>`}</span></label></div>`; };
   const wOpen = p.open.weapons || npW.some((w) => p.weapons.has(w.id));
   const npTicked = npW.filter((w) => p.weapons.has(w.id)).length;
   const unarmed = monk ? `<div class="opt"><label style="cursor:default"><span class="box" style="border-style:dashed;opacity:.6"></span><span class="txt"><span class="l1"><span class="nm">Unarmed Strike</span><span class="cat good">Monk weapon</span></span><span class="l2">Always available. ${ch.martial ? `1d8${sg0(ch.M.dex)} with Martial Arts.` : `1${sg0(ch.M.str)} without Martial Arts (armour or Shield).`}</span></span></label></div>` : '';
@@ -559,20 +569,19 @@ function attackRows(ch) {
   const sig = {}, prev = S.sig[ch.c.id] ?? {};
   const rows = [];
   for (const a of ch.att) { const s = `${sg(a.hit)}|${a.dmg}|${a.trained}`; sig[a.id] = s;
-    rows.push(`<li class="arow${prev[a.id] !== s ? ' flash' : ''}" data-aid="${a.id}"><span class="n">${esc(a.name)}</span>${a.trained ? '' : npHTML(true)}<span class="h">${sg(a.hit)}</span><span class="d">${esc(a.dmg)} ${a.type}</span></li>`); }
+    rows.push(`<li class="arow${prev[a.id] !== s ? ' flash' : ''}" data-aid="${a.id}"><span class="n">${esc(a.name)}</span>${a.trained ? '' : npHTML(true)}<span class="h">${sg(a.hit)}</span><span class="d">${esc(a.dmg)}<i> ${a.type}</i></span></li>`); }
   for (const s of ch.sp) { const k = `${s.hit}|${s.dmg}`; sig['sp-' + s.id] = k;
     rows.push(`<li class="arow${prev['sp-' + s.id] !== k ? ' flash' : ''}" data-aid="sp-${s.id}"><span class="n">${esc(s.name)}</span>${tagHTML(s.spell, true)}<span class="h">${esc(s.hit)}</span><span class="d">${esc(s.dmg)}</span></li>`); }
   S.sig[ch.c.id] = sig;
   return rows.join('');
 }
-const headsHTML = (ch) => (ch.flags.length ? `<div class="heads">${ICON.warn}<ul>${ch.flags.map((f) => `<li>${esc(f)}</li>`).join('')}</ul></div>` : '');
-const attackNote = (ch) => (ch.c.id === 'monk' ? 'Attack action: 2 attacks (Extra Attack)' : 'Attack action: 1 attack');
+const headsHTML = (ch, short) => (ch.flags.length ? (short ? `<div class="heads">${ICON.warn}<span>${ch.flags.map((f) => esc(f.s)).join(' · ')}</span></div>` : `<div class="heads">${ICON.warn}<ul>${ch.flags.map((f) => `<li>${esc(f.t)}</li>`).join('')}</ul></div>`) : '');
+const attackNote = (ch) => (ch.c.id === 'monk' ? '2 per Attack action' : '1 per Attack action');
 function liveStrip(ch) {
   const c = ch.c;
-  return `<div class="live" id="live"><div class="chips"><span class="stat key">AC <b>${ch.ac}</b></span><span class="stat">HP <b>${ch.hp}</b></span><span class="stat">Speed <b>${ch.speed}</b> ft</span><span class="stat">Init <b>${sg(ch.init)}</b></span>
-    ${c.caster ? '<span class="stat key">Slots <b>4·3·2</b></span>' : '<span class="stat key">Focus Points <b>5</b></span>'}</div>
-    <div class="livehead"><b>Attacks</b><span>${attackNote(ch)}</span><span class="sp"></span><button type="button" id="livetoggle" data-fid="livetoggle" aria-expanded="${S.live}" aria-label="${S.live ? 'Hide' : 'Show'} the attacks list">${S.live ? '▴' : '▾'}</button></div>
-    ${S.live ? `<ul class="alist" id="alist" aria-live="polite">${attackRows(ch)}</ul>` : ''}${headsHTML(ch)}</div>`;
+  return `<div class="live" id="live"><div class="chips"><span class="stat key">AC <b>${ch.ac}</b></span><span class="stat">HP <b>${ch.hp}</b></span><span class="stat">Speed <b>${ch.speed}</b> ft</span><span class="stat">Init <b>${sg(ch.init)}</b></span></div>
+    <div class="livehead">${c.caster ? '<span class="stat key">Slots <b>4·3·2</b></span>' : '<span class="stat key">Focus Points <b>5</b></span>'}<b>Attacks</b><span class="note1">${attackNote(ch)}</span><span class="sp"></span><button type="button" id="livetoggle" data-fid="livetoggle" aria-expanded="${S.live}" aria-label="${S.live ? 'Hide' : 'Show'} the attacks list">${S.live ? '▴' : '▾'}</button></div>
+    ${S.live ? `<ul class="alist" id="alist" aria-live="polite">${attackRows(ch)}</ul>` : ''}${headsHTML(ch, true)}</div>`;
 }
 function liveBig(ch) {
   const c = ch.c, p = ch.p;
@@ -596,7 +605,7 @@ function accordion(cid) {
 }
 function buildHTML() {
   const cid = S.char, ch = calc(cid), nd = needs(cid), desk = frame.classList.contains('desktop');
-  const status = nd.length ? `Still to choose: ${nd.map((x) => x.t).join(', ')}` : 'Ready to save';
+  const status = nd.length ? `To choose: ${nd.map((x) => x.t).join(', ')}` : 'Ready to save';
   return `<div class="create"><div class="top"><button type="button" class="x" data-act="cancel" aria-label="Cancel">✕</button><div class="ttl"><b>${esc(ch.p.name || 'New character')} · ${ch.c.cls} ${LEVEL}</b><small class="${nd.length ? '' : 'ready'}">${esc(status)}</small></div>
     <button type="button" class="btn go" data-act="save" aria-disabled="${nd.length > 0}">Save</button></div>
     <div class="main">${desk ? '' : liveStrip(ch)}<div class="left">${accordion(cid)}</div>${desk ? `<div class="right">${liveBig(ch)}</div>` : ''}</div></div>${S.toast ? `<div class="toast" role="status">${esc(S.toast)}</div>` : ''}`;
