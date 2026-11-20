@@ -228,8 +228,11 @@
 
 <div id="lobby" hidden>
   <form id="lobby-card" autocomplete="off">
-    <h1>Hextable</h1>
-    <p>Roam free. When a fight starts, the arena locks and turns begin. Play on hexes or on squares.</p>
+    <div class="sf-bar" id="lobby-bar">
+      <button type="button" id="lobby-back" class="sf-back" hidden>&larr; Back to Start</button>
+      <div class="sf-head"><h1>Hextable</h1><p id="lobby-where" class="sf-where" aria-live="polite">Start a game</p></div>
+    </div>
+    <p id="lobby-intro">Roam free. When a fight starts, the arena locks and turns begin. Play on hexes or on squares.</p>
     <label for="lobby-name">Your name</label><input id="lobby-name" maxlength="24" placeholder="Name">
     <label for="lobby-map">Starting map (when you host or play solo)</label><select id="lobby-map"></select>
     <p class="note" id="lobby-map-grid" hidden></p>
@@ -255,6 +258,10 @@
     </details>
     <div class="row"><button type="button" id="lobby-solo" class="quiet">Play solo on this device</button><button type="button" id="lobby-new" class="quiet leave" hidden>New game</button></div>
     <p id="lobby-msg" role="status"></p>
+    <div id="lobby-draft" hidden>
+      <p class="note" id="lobby-draft-note">What you typed here, the map and the party are kept on this device, so a Back or a reload does not lose them. Your saved characters are not touched.</p>
+      <div class="row"><button type="button" id="lobby-startover" class="quiet leave">Start over</button></div>
+    </div>
     <div class="row"><button type="button" id="lobby-about" class="quiet">About Hextable</button></div>
   </form>
 </div>
