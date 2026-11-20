@@ -594,6 +594,21 @@ async function gamePass(browser, url, label, opts, grid) {
         const why = await page.$$eval('[id^="qb-noreroll-"]', (e) => e.map((x) => x.textContent)); if (why.length !== 6 || why.some((w) => !/does not allow/.test(w))) throw new Error(`reasons: ${why}`);
         await page.click('#qb-cancel');
       });
+
+      await run.do('after a reload and Continue the kept roll is found again with its event number, and no Roll button is offered', async () => {
+        const sets = await rolls(); const was = await page.evaluate(() => window.hextable.state.scoreRolls['#seq']);
+        await wait(page, () => localStorage.getItem('hextable.solo'));
+        await page.reload(); await waitShown(page, '#lobby');
+        await tap('#lobby-solo'); await wait(page, () => window.hextable?.state?.entities);
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await tap('#qb-add'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        if (await page.$('#qb-roll')) throw new Error('a Roll button after a reload, beside a kept roll');
+        const chips = await page.$$eval('.sc-chip', (c) => c.length); if (chips !== 6) throw new Error(`${chips} chips`);
+        if (!new RegExp(`Rolled at the table \\(event ${was}\\)`).test(await txt('#qb-rule-text'))) throw new Error(`${await txt('#qb-rule-text')} (the game's counter is ${was})`);
+        if (JSON.stringify(await rolls()) !== JSON.stringify(sets)) throw new Error('the roll changed');
+        await shot('7-after-reload', '#qb-scores');
+        await page.click('#qb-cancel');
+      });
     } finally { await ctx.close(); }
   });
 }
