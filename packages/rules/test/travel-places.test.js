@@ -623,3 +623,23 @@ test("L5: what is left of the lasting effects of a place let go ends, told as en
   const f = ok(apply(s, { type: "forgetPlace", node: "keep" }, DM));
   assert.ok(f.events.some((e) => e.type === "effectEnd" && e.fx === "fx91"));
 });
+
+test("an effect ended by forgetPlace or resetPlace is told to its source's player without the place's name or id", () => {
+  for (const how of ["forget", "reset"]) {
+    const s = atKeep();
+    s.world.nodes.keep.name = "The Canary Vault";
+    s.entities.wizard.owner = "pat";
+    ok(apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter", "rogue", "cleric"] }, DM));
+    if (how === "forget") ok(apply(s, { type: "place", who: ["wizard"], node: "cave" }, DM));
+    const rec = s.parked.keep;
+    rec.effects.push({ id: "fx95", name: "Alarm", spell: "alarm", source: "wizard", conc: false, lasts: "8 hours", until: { clock: s.clock + 480 }, parts: [], zone: { hexes: [] } });
+    // The wizard, gone or still there, is the source; the player must hear only that it ended.
+    const r = ok(apply(s, how === "forget" ? { type: "forgetPlace", node: "keep" } : { type: "resetPlace", node: "keep", map: keepMap() }, DM));
+    assert.ok(r.events.some((e) => e.type === "effectEnd" && e.fx === "fx95"), how);
+    for (const st of [s, { ...s, entities: { ...s.entities, ...(s.parked.keep?.entities ?? {}) } }]) {
+      const told = json(viewEvents(r.events, st, PAT));
+      for (const k of ["Canary", "Vault", '"keep"', "Greywatch"]) assert.ok(!told.includes(k), `${how}: no ${k} in a player's events`);
+    }
+    if (how === "forget") assert.ok(viewEvents(r.events, s, PAT).some((e) => e.type === "effectEnd"), "the wizard's player is told it ended");
+  }
+});

@@ -167,6 +167,7 @@ function capCheck(s, { parkingFrom, unparking, adding }) {
 }
 
 // ---------- the stale answer, and a reset ----------
+// An `effectEnd` may reach the player whose creature was its source (view.js), so the reasons given here never name a place.
 function resetPlan(s, id, rec, doc) {
   const node = nodeOf(s, id), name = placeName(s, id);
   battleRecord(rec) || fail(`${name} is not a battle map: there is nothing to put back.`);
@@ -186,7 +187,7 @@ function resetPlan(s, id, rec, doc) {
 function applyReset(s, id, rec, plan, ev) {
   const keep = new Set(plan.order.map((e) => e.id));
   let ended = 0, dropped = 0;
-  for (const fx of [...rec.effects]) if (effectFate(fx, keep, rec.entities) !== 'go') { endEffect(rec, ev, fx, `${plan.name} was put back as prepared`); ended++; }
+  for (const fx of [...rec.effects]) if (effectFate(fx, keep, rec.entities) !== 'go') { endEffect(rec, ev, fx, 'the place was put back as prepared'); ended++; }
   for (const x of Object.keys(rec.entities)) if (!keep.has(x)) { delete rec.entities[x]; dropped++; }
   const was = new Map([...keep].map((x) => [x, awaySince(rec, x)]));
   plan.order.forEach((e, i) => { e.pos = plan.spots[i]; setPin(s, e.id, null); });
@@ -381,7 +382,7 @@ export const handlers = {
     const name = placeName(s, a.node), rec = parkedOf(s, a.node) || fail(`Nothing is kept at ${name}.`);
     const there = Object.values(rec.entities).filter((e) => e.side === 'party');
     !there.length || fail(`${there.map((e) => e.name).join(', ')} ${there.length === 1 ? 'is' : 'are'} at ${name}. Bring ${there.length === 1 ? 'them' : 'them'} away first.`);
-    for (const fx of [...(rec.effects ?? [])]) endEffect(rec, ev, fx, `${name} was let go`);
+    for (const fx of [...(rec.effects ?? [])]) endEffect(rec, ev, fx, 'the place was let go');
     delete s.parked[a.node];
     ev.push({ type: 'placeForgotten', node: a.node, name });
   },
