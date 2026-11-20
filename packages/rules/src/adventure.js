@@ -215,7 +215,8 @@ export function placeIn(map, region, bodies, taken = []) {
   if (!r) return { ok: false, error: `Region ${quote(region)} is not a region of this map.`, placed: 0 };
   const level = map.levels.find((l) => l.id === r.level), G = gridOf(map), P = placeState(map);
   const cells = r.hexes.map((k) => parse(k));
-  const there = taken.map((t) => ({ size: t.size, pos: t.pos })), at = [];
+  // Every body has an id: `overlapAt` treats two creatures with none as a riding pair sharing a space.
+  const there = taken.map((t, i) => ({ id: `t${i}`, size: t.size, pos: t.pos })), at = [];
   const next = new Map();                         // size -> where to go on looking: what failed for a size still fails for it
   for (const body of bodies) {
     const ck = `${region}|${body.size}`;
@@ -225,14 +226,15 @@ export function placeIn(map, region, bodies, taken = []) {
       for (const h of cells) { const to = standAt(map, P.B, body, level, h); if (to) list.push(to); }
       P.candidates.set(ck, list);
     }
+    const mine = { id: 'new', size: body.size };
     let i = next.get(body.size) ?? 0, found = null;
     for (; i < list.length; i++) {
-      if (!there.some((o) => overlapAt(o, o.pos, body, list[i], G))) { found = list[i]; break; }
+      if (!there.some((o) => overlapAt(o, o.pos, mine, list[i], G))) { found = list[i]; break; }
     }
     if (!found) return { ok: false, error: `The region ${quote(region)} has room for ${at.length} of the ${bodies.length} creatures; the rest would not fit.`, placed: at.length };
     next.set(body.size, i + 1);
     at.push(found);
-    there.push({ size: body.size, pos: found });
+    there.push({ id: `p${there.length}`, size: body.size, pos: found });
   }
   return { ok: true, at };
 }
@@ -240,7 +242,7 @@ export function placeIn(map, region, bodies, taken = []) {
 function placeAt(map, level, h, body, taken) {
   const to = standAt(map, placeState(map).B, body, level, h), G = gridOf(map);
   if (!to) return { ok: false, error: `Nothing of that size can stand at ${h.q},${h.r} on level ${quote(level.id)}.` };
-  if (taken.some((o) => overlapAt(o, o.pos, body, to, G))) return { ok: false, error: `The cell ${h.q},${h.r} is taken by another creature of the same encounter.` };
+  if (taken.some((o, i) => overlapAt({ id: `t${i}`, ...o }, o.pos, { id: 'new', ...body }, to, G))) return { ok: false, error: `The cell ${h.q},${h.r} is taken by another creature of the same encounter.` };
   return { ok: true, at: [to] };
 }
 
