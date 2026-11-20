@@ -25,6 +25,7 @@ import { handlers as rests } from './engine/rests.js';
 import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
 import { handlers as travel } from './engine/travel.js';
+import { handlers as trade, settleShops } from './engine/trade.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
 export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, controllerOf, FLY_CEILING, hbId, homebrewBlock, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
@@ -43,13 +44,14 @@ export { SETTINGS, SETTING_TEXT } from './engine/dm.js';
 export { DAWN, dawnsBetween } from './engine/rests.js';
 export { AWAY, awayHow, NOT_BATTLE } from './engine/resolve.js';
 export { TRAVEL_LIMITS } from './places.js';             // places of a world (docs/specs/travel.md, W2)
+export { lineName, marketEnv, marketOfShop, placeProblem, TRADE_LIMITS } from './engine/trade.js';     // purses and shops (docs/specs/shops.md, P3)
 
 export { FT };                       // feet per hex
 export { opportunityAttack };
 
 // Every action's handler, from the domain modules in engine/ (CLAUDE.md, Engine layout). An action
 // type is defined in one module only: if two defined it, the later spread would win silently.
-const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, travel, {
+const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, travel, trade, {
   // { type: 'react', prompt, take: reactionId | null, slot? }: the answer to the reaction an action
   // is waiting on (`pending`; reactions.js). Given by the reacting creature's controller or the DM
   // (the DM's answer overrides). `prompt` is the number it was asked under, so an answer to an
@@ -73,7 +75,7 @@ const handlers = buildHandlers([movement, attacks, casting, features, characters
     Object.assign(RUN, { action, ctx: was, answers: [...answers, answer], i: 0 });
     dispatch(s, action, was, ev);
   },
-}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'companions', 'travel', 'engine']);
+}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'companions', 'travel', 'trade', 'engine']);
 
 // Builds the table of handlers, a Map keyed by action type: a lookup can then never find what every
 // object has (`toString`, `constructor`, `__proto__`). Throws, naming both modules, if two modules
@@ -264,7 +266,8 @@ function applyInner(s, action, ctx) {
   setRun(null);
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds);
   // a grapple whose grappler is gone, Incapacitated or out of range ends (settleHolds).
-  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); checkEvents(ev); } catch (err) {
+  // A joint purchase that can no longer be paid ends (engine/trade.js, settleShops: a fight, a buyer out of the shop area, stock gone).
+  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); settleShops(s, ev); checkEvents(ev); } catch (err) {
     if (err instanceof NotBattleMap) { stopWork(); delete s.stack; if (net) thaw(s, net); return { ok: false, error: err.message, events: [] }; }
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
     if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }

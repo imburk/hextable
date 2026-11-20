@@ -15,8 +15,9 @@ import { restamp } from './durations.js';
 import { validFormation } from './engine/world.js';
 import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
+import { cleanPurse } from './market.js';
 
-export const VERSION = 26;
+export const VERSION = 27;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -182,6 +183,27 @@ export function migrate(state) {
   if (!(state.version >= 26)) Object.assign(state, { world: state.world ?? null, place: state.place ?? null, parked: state.parked ?? {}, journey: state.journey ?? null });
   if (state.world !== undefined && !(state.world === null || (isRec(state.world) && isRec(state.world.nodes)))) state.world = null;
   if (state.place !== undefined && !(state.place === null || (typeof state.place === 'string' && isRec(state.world?.nodes) && Object.hasOwn(state.world.nodes, state.place)))) state.place = null;
+  // Version 27: purses and shops (docs/specs/shops.md, X3; task P3). `markets` (the market packs the DM imported) and `shops` (the
+  // stores and loot packages of this game); a table saved before has none of either. A state already at 27 without them (one made by
+  // `newGame`) is left as it is: reading code takes an absent list as empty. A list that is not a list is put back to empty, and a shop
+  // that is not whole (no id, kind or name) is let go; one missing a part the actions read gets it empty. A creature's purse (`coins`)
+  // keeps only whole numbers of the five coins; one that is not a purse, or holds nothing, is taken away.
+  if (!(state.version >= 27)) Object.assign(state, { markets: Array.isArray(state.markets) ? state.markets : [], shops: Array.isArray(state.shops) ? state.shops : [] });
+  if (state.markets !== undefined && !Array.isArray(state.markets)) state.markets = [];
+  if (state.shops !== undefined) {
+    if (!Array.isArray(state.shops)) state.shops = [];
+    state.shops = state.shops.filter((x) => isRec(x) && typeof x.id === 'string' && ['store', 'loot'].includes(x.kind) && typeof x.name === 'string');
+    for (const x of state.shops) {
+      for (const k of ['lines', 'quotes', 'joint']) if (!Array.isArray(x[k])) x[k] = [];
+      for (const k of ['overrides', 'waits']) if (!isRec(x[k])) x[k] = {};
+      if (!(x.shown === 'none' || x.shown === 'all' || (Array.isArray(x.shown) && x.shown.every((u) => typeof u === 'string')))) x.shown = 'none';
+    }
+  }
+  for (const e of Object.values(state.entities)) {
+    if (e.coins === undefined) continue;
+    const p = cleanPurse(e.coins);
+    if (p && Object.keys(p).length) e.coins = p; else delete e.coins;
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

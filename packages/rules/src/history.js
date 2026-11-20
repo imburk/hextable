@@ -245,6 +245,12 @@ export function describeStep(action, events, before, after) {
     return list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
   }
   function told(who, words) { return who === null ? null : `${who} ${words}`; }
+  // A shop by the action's id, as it is after the step or was before it (closed, it is only in the state before).
+  function shopName() {
+    const id = action.shop ?? events.find((e) => typeof e.shop === 'string')?.shop;
+    const sh = (after.shops ?? []).find((x) => x.id === id) ?? (prior?.shops ?? []).find((x) => x.id === id);
+    return sh?.name ?? 'A shop';
+  }
   function place(e) { return e?.name ?? 'a place'; }
 
   function phrase(name) {
@@ -299,6 +305,31 @@ export function describeStep(action, events, before, after) {
     case 'showHandout': label = 'A handout was shown'; break;
     case 'hideHandout': label = 'A handout was taken back'; break;
     case 'removeHandout': label = 'A handout was removed'; break;
+    // Shops (docs/specs/shops.md, Decision 9). The DM's steps are the DM's: players are told nothing of them, and no label shown to a
+    // player names a shop, a line or a price (a player the shop is not shown to hears the step too; the gear and coins events say what
+    // changed hands to those who may know).
+    case 'market': label = { label: a.remove !== undefined ? `A market was removed: ${ev('market')?.name ?? 'a market'}` : `A market was imported: ${ev('market')?.name ?? 'a market'}`, shown: null }; break;
+    case 'openShop': label = { label: `${shopName()} was opened`, shown: null }; break;
+    case 'shopEdit': label = { label: `${shopName()} was changed`, shown: null }; break;
+    case 'showShop': label = { label: a.to === 'none' ? `The DM hid ${shopName()} from everyone` : a.to === 'all' ? `The DM showed ${shopName()} to everyone` : `The DM showed ${shopName()} to some players`, shown: null }; break;
+    case 'revealGoods': label = { label: `${ev('goodsRevealed')?.name ?? 'Something'} was ${a.hide === true ? 'hidden again' : 'revealed'} at ${shopName()}`, shown: null }; break;
+    case 'closeShop': label = { label: `${shopName()} was closed`, shown: null }; break;
+    case 'quote': { const q = ev('quoted'); label = { label: q?.withdrawn ? `The offer to ${name(a.for)} was withdrawn` : `${shopName()} quoted ${name(a.for)} ${q?.price ?? '?'} CP for ${q?.name ?? 'something'}`, shown: null }; break; }
+    case 'buy': {
+      const b = ev('bought'), j = ev('jointOpened');
+      label = b ? { label: `${who} bought ${b.qty > 1 ? `${b.name} x${b.qty}` : b.name}${b.payers ? ' with help' : ''}`, shown: `${who} bought something` }
+        : j ? { label: `${who} began buying ${j.name} with help`, shown: `${who} began a purchase with help` }
+          : { label: `${who} called off a purchase with help`, shown: `${who} called off a purchase` };
+      break;
+    }
+    case 'chipIn': label = { label: a.share ? `${who} pledged ${a.share} CP towards a purchase` : `${who} took back a pledge`, shown: `${who} changed a pledge` }; break;
+    case 'sell': { const x = ev('sold'); label = { label: `${who} sold ${x ? (x.qty > 1 ? `${x.name} x${x.qty}` : x.name) : 'something'}`, shown: `${who} sold something` }; break; }
+    case 'take': {
+      const x = ev('took');
+      label = a.split !== undefined ? { label: `The DM shared out ${shopName()}`, shown: 'Coins were shared out' }
+        : { label: `${who} took ${x?.coins ? 'coins' : x?.name ?? 'something'} from ${shopName()}`, shown: `${who} took something` };
+      break;
+    }
     // Scenes. A label never holds what was said, nor anything of an NPC but whether they came or went.
     case 'scene': label = ev('sceneEdit') ? 'The scene was changed' : `A scene began: ${String(ev('sceneStart')?.title ?? '').slice(0, 40)}`; break;
     case 'endScene': label = 'The scene ended'; break;
