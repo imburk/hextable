@@ -375,7 +375,7 @@ export const SETTINGS = { sight: SIGHT_RULES,
 export const SETTING_TEXT = {
   strikeFirst: {
     off: 'An attack, a hostile spell or a monster\'s action outside a fight starts the fight and is not made yet: everyone rolls Initiative, and the creature makes it on its turn. The SRD\'s rule, the default.',
-    casts: 'Your hostile spell at a party member, outside a fight, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts, while a fight starts when the party comes near enemies. Attacks, monsters\' actions and the players\' spells start the fight and are not made yet. A table rule; it is not in the SRD.',
+    casts: 'Only while "Start a fight when the party comes near enemies" is on: your hostile spell at a party member, outside a fight, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts. With that off, nothing lands first. Attacks, monsters\' actions and the players\' spells start the fight and are not made yet. A table rule; it is not in the SRD.',
     all: 'An attack, a hostile spell or a monster\'s action at a creature of another side, outside a fight, by you or a player, lands first (its rolls, saves, damage and the reactions it allows), then the fight starts and everyone rolls Initiative. The creature\'s first turn is still a whole turn. A table rule; it is not in the SRD.',
   },
 

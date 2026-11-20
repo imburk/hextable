@@ -239,4 +239,35 @@ for (const grid of GRIDS) {
       assert.ok(s.encounter.order.some((o) => o.id === g), `${sf}: the goblin is in the fight`);
     }
   });
+
+  // Re-review of #594: the actor is never "caught" by its own act. A mage the DM hid casts Fireball on the fighter with
+  // itself in the area: its `revealed` as it is caught does not tell the party of it, so the cast is told as an unseen
+  // caster's, the same in two worlds that differ in its name, until the fight's start.
+  test(`${grid}: a hidden caster caught in its own area stays unseen until the fight starts`, () => {
+    const NAMES = ["Vex", "Zed"];
+    for (const sf of ["casts", "all"]) {
+      const runs = NAMES.map((n) => {
+        const s = K.table(grid, { strikeFirst: sf, hidden: true });
+        s.entities.mage.name = n;
+        const F = SPOTS[grid].fighter;
+        ok(apply(s, { type: "place", actor: "mage", to: grid === "hex" ? { q: F.q + 2, r: F.r - 1 } : { q: F.q + 1, r: F.r - 2 } }, DM));
+        const tl = s.timeline.length, r = ok(apply(s, K.CASTS.area(grid), DM));
+        return { s, r, tl };
+      });
+      const r0 = runs[0].r, cut = at(r0, "encounterStart");
+      assert.ok(r0.events.slice(0, cut).some((e) => e.type === "revealed" && e.id === "mage"), `${sf}: the mage is caught in its own Fireball`);
+      assert.ok(r0.events.slice(0, cut).some((e) => e.type === "save" && e.id === "mage"), `${sf}: and saves`);
+      const part = (evs) => { const i = evs.findIndex((e) => e.type === "encounterStart"); return evs.slice(0, i).filter((e) => !(e.type === "revealed" && e.id === "mage")); };
+      for (const u of PLAYERS) {
+        const live = runs.map(({ s, r }) => viewEvents(r.events, s, u)), told = runs.map(({ s, tl }) => viewEvents(s.timeline.slice(tl), s, u));
+        assert.deepEqual(part(live[0]), part(live[1]), `${sf}: the same for ${u.userId} in both worlds`);
+        assert.deepEqual(part(told[0]).map(({ t, ...e }) => e), part(live[0]), `${sf}: the record tells ${u.userId} the same`);
+        for (const [i, evs] of [...live, ...told].entries()) {
+          const text = json(part(evs));
+          assert.ok(!text.includes('"mage"') && !text.includes(NAMES[i % 2]), `${sf}: nothing names the caster before the fight: ${text}`);
+          assert.ok(!part(evs).some((e) => e.type === "cast" || e.by !== undefined || e.source !== undefined), `${sf}: no cast, no by, no source`);
+        }
+      }
+    }
+  });
 }

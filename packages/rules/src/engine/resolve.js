@@ -236,11 +236,13 @@ export const strikeStart = (s, ev) => ({
 export function thenFight(s, e, ev, lands, { area = false, target = null, owed = null } = {}) {
   // Unknown when the act began, until the party is told of it during the act (found by a party creature's senses, or
   // revealed by being caught in it); a creature that gives itself away by its own attack roll or spell is not told of
-  // until the fight starts. Or still unknown at the end, as E23 had it.
+  // until the fight starts. Or still unknown at the end, as E23 had it. The actor is never "caught" by its own act (a
+  // hidden caster in its own area stays unseen until the fight's start reveals it): only others are. A party creature's
+  // senses finding the actor during the act do tell the party of it (the Hellish Rebuke a Blindsight finding allows).
   const still = new Set(lands.unknown ?? []);
   const hid = (id) => typeof id === 'string' && Object.hasOwn(s.entities, id) && (still.has(id) || unknown(s, s.entities[id]));
   for (const x of ev.slice(lands.from)) {
-    if ((x.type === 'revealed' || (x.type === 'unhidden' && x.why === 'found')) && typeof x.id === 'string') still.delete(x.id);
+    if (((x.type === 'revealed' && x.id !== e.id) || (x.type === 'unhidden' && x.why === 'found')) && typeof x.id === 'string') still.delete(x.id);
     const ids = [...(hid(e.id) ? [e.id] : []), ...[x.id, x.actor, x.target, x.by, x.against, x.source, ...(Array.isArray(x.targets) ? x.targets : [])].filter(hid)];
     if (ids.length) x.unseen = [...new Set([...(Array.isArray(x.unseen) ? x.unseen : []), ...ids])];
   }
