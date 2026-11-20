@@ -13,6 +13,7 @@ import { autoPlays } from './shared/ai.js';
 import { aiAction } from './standin.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { holdWords, heldEndText, noteText, previewState, targetRefusals } from './grapple.js';
+import { inReach, aimFeet, reachEdge, farWords } from './aimrange.js';
 import { offerOf, offers, waitingFor, reachOf, moveLabel, forgoLabel, offerWords, waitWords, giveUpLabel } from './allowance.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
@@ -598,6 +599,16 @@ function aimHow(area, range) {
   if (area.shape === 'cone' || area.shape === 'line' || (area.shape === 'cube' && !(range > 0))) return gridWords(`tap a hex to aim the ${what}`, gridOf(S?.map));
   return area.shape === 'cube' ? `tap where the near side of the ${what} goes (within ${range} ft)` : `tap where the ${what} goes (within ${range} ft)`;
 }
+// An area aimed at a spot in range (issue #600): the edge of the caster's reach goes on the map, and a spot beyond it is drawn red and cannot be cast at.
+// Returns the words for a spot out of reach, or null. Preview only: the engine's own check (aimArea) is the one that refuses.
+const atSpot = (area, range) => area.shape !== 'emanation' && area.shape !== 'cone' && area.shape !== 'line' && !(area.shape === 'cube' && !(range > 0)) && range > 0;
+function reachAim(e, hl, name, area, range) {
+  if (!atSpot(area, range)) return null;
+  hl.range = reachEdge(S, e, range);
+  if (!mode.aim || inReach(S, e, mode.aim, range)) return null;
+  hl.areaBad = true;
+  return farWords(name, aimFeet(S, e, mode.aim), range);
+}
 // Highlights and the hint for an action being aimed.
 function actionAim(e, hl) {
   const def = e.actions.find((x) => x.id === mode.id), p = actionProfile(def);
@@ -608,7 +619,8 @@ function actionAim(e, hl) {
   const aimed = !!mode.aim || p.area.shape === 'emanation';
   hl.area = aimed ? areaHexes(S, e, { area: p.area }, mode.aim).map(cellKey) : [];
   const caught = aimed ? areaTargets(S, e, def, mode.aim) ?? [] : [];
-  const how = aimHow(p.area, p.range);
+  const how = aimHow(p.area, p.range), far = reachAim(e, hl, def.name, p.area, p.range);
+  if (far) return { hint: far, go: false };
   return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
@@ -696,6 +708,8 @@ function refresh() {
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
           hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
+          const far = reachAim(e, hl, sp.name, sp.area, sp.range);
+          if (far) { hint = far; go = false; }
         } else {
           const ids = targetsFor(S, e, { spell: mode.id });
           if (!sp.harmful) hl.allies = ids.filter((id) => !hostile(S.entities[id], e));
@@ -905,6 +919,16 @@ $('btn-undo').onclick = undo; $('ed-undo').onclick = undo; $('dm-undo').onclick 
 
 // ---------- taps ----------
 let lastMove = null;
+// A tap while aiming an area: the first puts the area there (on touch there is no hover, so this is the preview); a second on the same spot casts, as the Cast button does.
+// A spot out of reach is shown but never cast (the hint says how far it is, and Cast is hidden). A second tap straight after the first is a double tap and waits.
+let pinnedAt = 0;
+function aimTap(hex) {
+  const same = mode.pinned && mode.aim && cellKey(mode.aim) === cellKey(hex);
+  if (same && Date.now() - pinnedAt > 400 && !$('hint-go').hidden) return castAimed();
+  if (!same) pinnedAt = Date.now();
+  mode.aim = hex; mode.pinned = true;
+  refresh();
+}
 R.onTap = ({ hex, id }) => {
   if (!S || !T || skipping()) return;
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
@@ -922,12 +946,12 @@ R.onTap = ({ hex, id }) => {
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id, ...(mode.extra ?? {}) }) : setMode(MOVE);
   if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
   if (mode.kind === 'action') {
-    if (mode.area) { mode.aim = hex; mode.pinned = true; return refresh(); }
+    if (mode.area) return aimTap(hex);
     return tapped && tapped.id !== selId ? act({ type: 'act', actor: selId, action: mode.id, target: id }) : setMode(MOVE);
   }
   if (mode.kind === 'spell') {
     const sp = SPELLS[mode.id];
-    if (sp.area) { mode.aim = hex; mode.pinned = true; return refresh(); }
+    if (sp.area) return aimTap(hex);
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
     const most = spellMost(e, sp);
@@ -974,6 +998,9 @@ $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', 
 $('hint-go').onclick = () => {
   if (owedUi === 'offer') return setMode(OWED);
   if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));      // the DM gives it up for them; the engine lets the DM
+  castAimed();
+};
+function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
   else if (SPELLS[mode.id].area) {
     const sp = SPELLS[mode.id], me = S.entities[selId];
@@ -983,7 +1010,7 @@ $('hint-go').onclick = () => {
   }
   else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id]) }));
   mode = MOVE;
-};
+}
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 // The connection dot (linkdot.js, issue #246): the top bar's own at a table, and the DM's view of each player's in the tracker.
