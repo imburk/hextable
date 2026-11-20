@@ -34,8 +34,8 @@ export function holdingMap(n = 1) {
   const count = Math.max(1, Math.min(500, Number.isInteger(n) ? n : 1));
   let radius = 12;
   while (3 * radius * (radius + 1) + 1 < count * 9) radius++;
-  const tiles = {};
-  for (let q = -radius; q <= radius; q++) for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) tiles[`${q},${r}`] = { t: 'grass' };
+  const tiles = { '0,0': { t: 'grass' } };                 // first: arrivals are set down from the middle out (places.js, arrivalSpots)
+  for (let q = -radius; q <= radius; q++) for (let r = Math.max(-radius, -q - radius); r <= Math.min(radius, -q + radius); r++) tiles[`${q},${r}`] ??= { t: 'grass' };
   return { ...newMap({ id: HOLDING_ID, name: 'Holding map' }), levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }], holding: true };
 }
 

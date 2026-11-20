@@ -27,6 +27,7 @@ import { barriers } from './walls.js';
 export const TRAVEL_LIMITS = { staleDays: 10, staleMinutes: 10 * 1440, parked: 16, nodes: 300, depth: 8, name: 60 };
 export const NODE_KINDS = ['nav', 'map', 'scene', 'vessel'];
 export const STALE_CHOICES = ['keep', 'reset', 'edit'];
+export const NO_WALK = 'Nobody walks here: this is not a battle map. Go from pin to pin, or into a place.';
 export const CAP_TEXT = 'Sixteen places hold changes. Let one of them go back to how the world pack has it.';
 const EPS = 1e-6;                                         // the clock counts rounds as 0.1 of a minute
 

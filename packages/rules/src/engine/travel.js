@@ -158,7 +158,9 @@ function targetOf(s, to, node, a) {
   return { rec: null, map: holdingMap(), entities: {}, since: null };
 }
 
-// The parked cap (Decision 5): a move that would leave more battle places parked than TRAVEL_LIMITS.parked is refused.
+// The parked cap (Decision 5): a move that would leave more battle places parked than TRAVEL_LIMITS.parked is refused. Only
+// parked records count: the place in play does not, a first visit to a battle node does not (it is in play), and a battle
+// place added at the table with its map does (nodeAdd parks it).
 function capCheck(s, { parkingFrom, unparking, adding }) {
   const n = parkedBattles(s) + (parkingFrom ? 1 : 0) - (unparking ? 1 : 0) + (adding ? 1 : 0);
   n <= TRAVEL_LIMITS.parked || fail(CAP_TEXT);
@@ -234,7 +236,7 @@ export function arrive(s, a, ev, { to, ids, entry = null, pin = null, portal = f
     : spotsFor(t.map, order, entry, Object.values(t.entities));
   const stays = new Set(Object.keys(s.entities).filter((x) => !going.has(x)));
   const parking = from !== null && (!s.map.holding || stays.size > 0 || !!s.scene);
-  capCheck(s, { parkingFrom: parking && !s.map.holding, unparking: battleRecord(t.rec), adding: battle && !t.rec });
+  capCheck(s, { parkingFrom: parking && !s.map.holding, unparking: battleRecord(t.rec), adding: false });   // the place arrived at is in play, not parked
   // Nothing has changed so far. Now: out of the place in play,
   const out = split(s, going, ev);
   if (from === null) {
@@ -247,7 +249,8 @@ export function arrive(s, a, ev, { to, ids, entry = null, pin = null, portal = f
   const rec = t.rec;
   if (answer) answerStale(s, to, rec, answer, plan, ev);
   if (rec) delete s.parked[to];
-  if (parking) park(s, from, ev);                  // a navigation or scene node nobody stays at holds nothing: it is let go
+  if (parking) park(s, from, ev);
+  else for (const fx of [...effectsOf(s)]) endEffect(s, ev, fx, 'the party moved on');   // a navigation or scene node nobody stays at is let go; what was left of its effects ends
   bring(s, to, rec ? unparked(rec) : { map: t.map, entities: {}, effects: [], scene: null });
   if (rec) catchUp(s, rec, Object.values(rec.entities), ev);
   // and the movers set down.
@@ -299,7 +302,7 @@ export function placeIn(s, a, ctx, ev) {
   const spots = spotsFor(map, order, entry, Object.values(dst?.entities ?? {}).filter((e) => !(same && going.has(e.id))));
   if (same) {
     order.forEach((e, i) => { e.pos = spots[i]; setPin(s, e.id, pin); });
-    ev.push({ type: 'relocated', node: to, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
+    ev.push({ type: 'relocated', node: to, name, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
     if (inPlay) { for (const e of order) ev.push({ type: 'placed', id: e.id, to: e.pos }); lookAround(s, ev); }
     return;
   }
@@ -309,8 +312,11 @@ export function placeIn(s, a, ctx, ev) {
   join(s, into, { creatures: order, effects: out.effects }, spots, battle ? null : pin);
   if (fromKey !== null && inPlay) catchUp(s, src, out.creatures, ev);
   if (!inPlay) sinceInto(s, into, fromKey === null ? null : src, out.creatures.map((e) => e.id));
-  if (fromKey !== null && src.map.holding && !Object.keys(src.entities).length && !src.scene) delete s.parked[fromKey];
-  ev.push({ type: 'relocated', node: to, from: fromNode, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
+  if (fromKey !== null && src.map.holding && !Object.keys(src.entities).length && !src.scene) {
+    for (const fx of [...(src.effects ?? [])]) endEffect(src, ev, fx, 'the party moved on');
+    delete s.parked[fromKey];
+  }
+  ev.push({ type: 'relocated', node: to, name, from: fromNode, ids: [...going], ...(entry !== null ? { entry } : {}), ...(pin !== null ? { pin } : {}) });
   if (inPlay) { for (const e of out.creatures) ev.push({ type: 'placed', id: e.id, to: e.pos }); lookAround(s, ev); }
 }
 
@@ -360,6 +366,7 @@ export const handlers = {
     if (answer) answerStale(s, to, rec, answer, plan, ev);
     delete s.parked[to];
     if (parking) park(s, from, ev);
+    else for (const fx of [...effectsOf(s)]) endEffect(s, ev, fx, 'the party moved on');
     bring(s, to, unparked(rec));
     catchUp(s, rec, Object.values(rec.entities), ev);
     ev.push({ type: 'map', map: s.map.id, name: s.map.name });
@@ -374,6 +381,7 @@ export const handlers = {
     const name = placeName(s, a.node), rec = parkedOf(s, a.node) || fail(`Nothing is kept at ${name}.`);
     const there = Object.values(rec.entities).filter((e) => e.side === 'party');
     !there.length || fail(`${there.map((e) => e.name).join(', ')} ${there.length === 1 ? 'is' : 'are'} at ${name}. Bring ${there.length === 1 ? 'them' : 'them'} away first.`);
+    for (const fx of [...(rec.effects ?? [])]) endEffect(rec, ev, fx, `${name} was let go`);
     delete s.parked[a.node];
     ev.push({ type: 'placeForgotten', node: a.node, name });
   },

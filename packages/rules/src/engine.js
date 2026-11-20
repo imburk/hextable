@@ -14,7 +14,7 @@ import { control, controllerOf, current, fail, homebrewBlock, homebrewCreatures,
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, NotBattleMap, settleBonds, settleHolds } from './engine/resolve.js';
-import { staleCheck } from './places.js';
+import { NO_WALK, staleCheck } from './places.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -150,6 +150,11 @@ function dispatch(s, action, ctx, ev) {
   // that is not a string, `toString`) is refused as unknown.
   const type = action?.type;
   const h = (typeof type === 'string' && handlers.get(type)) || fail(`Unknown action: ${typeof type === 'object' && type !== null ? 'not a name' : typeof type === 'symbol' ? type.toString() : String(type)}`);
+  // Nobody walks on a holding map (docs/specs/travel.md, Decision 1): on a navigation or scene node a group stands at a pin,
+  // and moves between pins and places, never by cells. Refused for everyone alike, before anything is looked at, so the
+  // answer never depends on what is near: a walk that would have met a foe the party cannot see is refused in the same
+  // words as any other (review of #580, M1).
+  if (type === 'move' && s.map?.holding) fail(NO_WALK);
   // While an action waits for a reaction, nothing that could change how it comes out may happen.
   if (s.pending && !WHILE_WAITING.has(action.type)) fail('The table is waiting for a reaction to be answered.');
   h(s, action, ctx, ev);

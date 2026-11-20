@@ -540,3 +540,86 @@ test("undo size: an arrival's step holds the map left and the map arrived at, no
   const maps = json(keep).length + json(cave).length;
   for (const b of bytes) assert.ok(b < maps + 40000, `a step of ${b} bytes for maps of ${maps}`);
 });
+
+// ---------- review of #580 ----------
+
+test("M1: nobody walks on a holding map, and a player's walk near a foe they cannot see is refused exactly as one far from it", () => {
+  const s = atKeep();
+  for (const id of ["fighter", "rogue", "cleric", "wizard"]) s.entities[id].owner = "pat";
+  ok(apply(s, { type: "leave" }, DM));
+  const taken = new Set(Object.values(s.entities).map((e) => `${e.pos.q},${e.pos.r}`));
+  const free = (list) => list.find((h) => !taken.has(`${h.q},${h.r}`));
+  const at = free([{ q: 0, r: 3 }, { q: 1, r: 3 }, { q: -1, r: 4 }, { q: 2, r: 2 }]), to = free([{ q: 0, r: 2 }, { q: 1, r: 2 }, { q: -1, r: 3 }]);
+  s.entities.fighter.pos = { ...free([{ q: 0, r: 1 }, { q: 1, r: 1 }, { q: -1, r: 2 }]), z: 0 };
+  const near = structuredClone(s);
+  ok(apply(near, { type: "spawn", monster: "wolf", at, hidden: true }, DM));
+  const far = structuredClone(s);
+  ok(apply(far, { type: "spawn", monster: "wolf", at: { q: -11, r: 0 }, hidden: true }, DM));
+  const walk = { type: "move", actor: "fighter", to };
+  const a = refused(near, walk, /Nobody walks here/, PAT), b = refused(far, walk, /Nobody walks here/, PAT), c = refused(structuredClone(s), walk, /Nobody walks here/, PAT);
+  assert.equal(a.error, b.error); assert.equal(b.error, c.error);
+  refused(near, walk, /Nobody walks here/, DM);
+});
+
+test("M3: a parked place's creatures, effects and map are brought up to date by the migration as the place in play's are; one that cannot be read is let go and the DM told", () => {
+  const s = atKeep();
+  ok(apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter"] }, DM));
+  const old = JSON.parse(json(s));
+  old.version = 22;
+  const w = old.parked.keep.entities.wizard;
+  w.cond.prone = true; delete w.speeds; delete w.pos.z;                 // as a version 2-5 save had them
+  migrate(old);
+  const m = old.parked.keep.entities.wizard;
+  assert.deepEqual(m.cond.prone, {}, "a condition is a record");
+  assert.deepEqual(m.speeds, {}); assert.equal(m.pos.z, 0);
+  assert.equal(old.version, VERSION);
+  // A record that cannot be read.
+  const bad = JSON.parse(json(s));
+  bad.parked.ruin = { map: "x" };
+  const n = bad.timeline.length;
+  migrate(bad);
+  assert.equal(bad.parked.ruin, undefined);
+  assert.ok(bad.parked.keep, "the others are kept");
+  const note = bad.timeline[n];
+  assert.equal(note.type, "manual"); assert.match(note.text, /ruin/); assert.equal(note.partial, true);
+  assert.deepEqual(viewEvents([note], bad, PAT), [], "the DM's alone");
+});
+
+test("L1: the cap counts parked places only: a first visit from a navigation node with sixteen parked is allowed, from a battle place it is not", () => {
+  const s = atKeep();
+  for (let i = 0; i < TRAVEL_LIMITS.parked; i++) ok(apply(s, { type: "nodeAdd", node: { name: `Room ${i}`, kind: "map" }, map: structuredClone(tavern) }, DM));
+  refused(s, { type: "loadMap", node: "cave", map: structuredClone(cave) }, /Sixteen places hold changes/);    // the keep would be the seventeenth parked
+  ok(apply(s, { type: "forgetPlace", node: "room-0" }, DM));
+  ok(apply(s, { type: "leave" }, DM));                                       // the keep parked: sixteen
+  ok(apply(s, { type: "enter", pin: "p-cave", map: structuredClone(cave) }, DM));   // in play, not parked: still sixteen
+  assert.equal(s.place, "cave");
+  assert.equal(Object.values(s.parked).filter((r) => !r.map.holding).length, 16);
+});
+
+test("L2: a move's label names to players only the party they know of, and tells them nothing of a move of no party member", () => {
+  const s = atKeep();
+  const gob = ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Sneak", at: { q: -6, r: 2 }, hidden: true }, DM)).events[0].id;
+  const a = { type: "place", who: [gob], node: "continent" }, m = mark(s), r = ok(apply(s, a, DM));
+  const d = describeStep(a, r.events, m, s);
+  assert.match(d.label, /Sneak was placed at The continent/);
+  assert.equal(d.shown, null);
+  const e = { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["rogue"] }, me = mark(s), re = ok(apply(s, e, DM));
+  assert.equal(describeStep(e, re.events, me, s).shown, "Pip moved on");
+});
+
+test("L5: what is left of the lasting effects of a place let go ends, told as ended", () => {
+  const s = atKeep();
+  ok(apply(s, { type: "leave" }, DM));
+  s.effects.push({ id: "fx90", name: "Something lingering", spell: null, source: null, conc: false, lasts: "1 hour", until: { clock: s.clock + 60 }, parts: [] });
+  const r = ok(apply(s, { type: "enter", pin: "p-port" }, DM));
+  assert.ok(r.events.some((e) => e.type === "effectEnd" && e.fx === "fx90"));
+  assert.equal(s.parked.continent, undefined);
+  // forgetPlace too.
+  ok(apply(s, { type: "place", who: ["wizard"], node: "keep", entry: "gate" }, DM));
+  ok(apply(s, { type: "goTo", node: "keep" }, DM));
+  ok(apply(s, { type: "goTo", node: "port" }, DM));
+  ok(apply(s, { type: "place", who: ["wizard"], node: "port" }, DM));
+  s.parked.keep.effects.push({ id: "fx91", name: "Left behind", spell: null, source: null, conc: false, lasts: "1 hour", until: { clock: s.clock + 60 }, parts: [] });
+  const f = ok(apply(s, { type: "forgetPlace", node: "keep" }, DM));
+  assert.ok(f.events.some((e) => e.type === "effectEnd" && e.fx === "fx91"));
+});
