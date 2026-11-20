@@ -291,6 +291,9 @@ test("a species that is not loaded: the sheet keeps the id, there are no traits,
   assert.deepEqual(told, [{ type: "manual", actor: id, name: "Brann", partial: true, text: `Brann: its species "${GONE}" is not loaded at this table, so it has none of its species traits until its pack is added again.` }]);
   assert.deepEqual(s.entities[id].sheet.species.id, GONE, "the id is kept");
   assert.ok(!viewEvents(made.events, s, { role: "player", userId: "pat" }).some((e) => e.type === "manual"), "a player is not sent the event");
+  // A long id is cut to 60 letters in the event, as in `why.species`.
+  const long = `hb-ember-folk-${"a".repeat(80)}`, lr = ok(apply(newGame(5), { type: "setSheet", sheet: fighter(1, { species: { id: long } }) }, DM));
+  assert.match(lr.events.find((e) => e.type === "manual").text, new RegExp(`its species "${long.slice(0, 60)}" is not loaded`));
   // Every making of it from its sheet tells the DM again.
   assert.equal(ok(apply(s, { type: "refresh", actor: id }, DM)).events.filter((e) => e.type === "manual" && /species/.test(e.text)).length, 1);
   // With its entry loaded (here under a plain id standing in for the pack's), the traits come.

@@ -201,7 +201,7 @@ export function carryPlay(e, fresh, record, sheet) {
 // record, `type` with it, and a remade creature gets only what its new record has.)
 export function tellMissing(ev, e, sheet) {
   for (const m of sheet ? missingOf(sheet) : []) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name}: its subclass "${m.id}" is not loaded at this table, so its subclass features and spells are absent until its pack is added again.` });
-  for (const m of sheet ? missingSpeciesOf(sheet) : []) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name}: its species "${m.id}" is not loaded at this table, so it has none of its species traits until its pack is added again.` });
+  for (const m of sheet ? missingSpeciesOf(sheet) : []) ev.push({ type: 'manual', actor: e.id, name: e.name, partial: true, text: `${e.name}: its species "${m.id.slice(0, 60)}" is not loaded at this table, so it has none of its species traits until its pack is added again.` });
 }
 export function remake(s, e, record, sheet, ev) {
   !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
