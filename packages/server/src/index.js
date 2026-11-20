@@ -158,7 +158,7 @@ function save(t) {
 // A world pack's pictures go into the table's file store (tables.js, worldAssets).
 const { importAssets, dropAssets } = worldAssets(() => assets);
 
-const tables = createTables({ load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state) => assets.pack(code, { first: assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+const tables = createTables({ load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
@@ -265,7 +265,8 @@ server.on("upgrade", (req, socket) => {
         if (seat) sit(seat, -1);
         seat = seatKey(msg.code, msg.token); sit(seat, 1);
       }
-      if (msg.t === "welcome" && msg.role === "dm") ws.maxPayload = DM_FRAME_MAX;
+      // Only a seated DM's frame is large; any other welcome puts it back (travel W3: the DM's frame holds a 4 MB world pack).
+      if (msg.t === "welcome") ws.maxPayload = msg.role === "dm" ? DM_FRAME_MAX : FRAME_MAX;
       ws.send(JSON.stringify(msg));
       if (msg.t === "welcome") {
         if (peer.code && peer.code !== msg.code) peers.get(peer.code)?.delete(peer);
@@ -295,7 +296,7 @@ server.on("upgrade", (req, socket) => {
     }
     // A handler that throws (a damaged table file, a bug) costs that message an error frame, not the process: the failure is logged
     // with its stack so it is not hidden, and the socket carries on.
-    try { session.receive(msg); }
+    try { session.receive(msg); if (msg?.t === "leave") ws.maxPayload = FRAME_MAX; }
     catch (err) {
       console.error(`A "${String(msg?.t).slice(0, 20)}" message failed: ${err?.stack ?? err}`);
       try { ws.send(JSON.stringify({ t: "error", error: "The server could not handle that message." })); } catch { /* the socket is gone */ }

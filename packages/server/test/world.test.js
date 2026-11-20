@@ -12,6 +12,7 @@ import { createReceiver } from "../../rules/src/patch.js";
 import { playerView } from "../../rules/src/view.js";
 import { WORLD_LIMITS } from "../../rules/src/worldpack.js";
 import { createAssets } from "../src/assets.js";
+import { handleAssets } from "../src/assets-http.js";
 import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, worldAssets } from "../src/tables.js";
 import { JPEG, PNG, riverPack, tavernMap } from "../../rules/test/fixtures/world-pack.js";
 import { startServer, stopAll } from "./helpers.js";
@@ -214,6 +215,48 @@ test("replacing a world: pictures the same byte for byte are kept once, those no
   assert.deepEqual(assets.list(code).map((f) => f.id).sort(), [now.a1.id, now.a2.id].sort(), "the old port picture, which nothing shows, was let go");
 });
 
+// ---------- the world's pictures in the file store (review of #597, M1 and M2) ----------
+test("an export over the byte limit takes every picture the world uses before any other file", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hextable-world-")); dirs.push(dir);
+  const assets = createAssets({ dir });
+  let limit = 0;
+  const tables = createTables({ seed: () => 5, ...worldAssets(() => assets), exportAssets: (code, state, first) => assets.pack(code, { limit, first }) });
+  const { dm, code } = seated(tables);
+  // A file of the DM's, older than the world's, so it comes first by age, and as big as the continent picture: by age alone it
+  // would push that picture out of the export.
+  const other = assets.put(code, Buffer.from(PNG, "base64"), { name: "old" }).record;
+  dm.say({ t: "world", pack: riverPack() });
+  const w = tables.get(code).world, ids = [w.assets.a1.id, w.assets.a2.id];
+  limit = assets.list(code).filter((f) => ids.includes(f.id)).reduce((n, f) => n + f.bytes, 0) + 10;
+  // Neither picture is shown by anything in play (the table is still on the valley), so only the world says they matter.
+  dm.say({ t: "export" });
+  const ex = dm.last("export").table;
+  assert.deepEqual(ex.assets.map((a) => a.record.id).sort(), [...ids].sort(), "every world picture is in the export");
+  assert.deepEqual(ex.assetsSkipped.map((r) => r.id), [other.id], "the other file is the one left out");
+});
+
+test("the DM cannot delete a picture the table's world uses; any other file still goes", () => {
+  const { tables, assets } = server();
+  const { dm, code } = seated(tables);
+  const other = assets.put(code, Buffer.from(PNG, "base64"), { name: "handout" }).record;
+  dm.say({ t: "world", pack: riverPack() });
+  const w = tables.get(code).world, token = dm.last("welcome").token;
+  const del = (id) => {
+    const out = {};
+    const res = { writeHead(status) { out.status = status; return res; }, end(body) { out.body = body ? JSON.parse(body) : null; } };
+    handleAssets({ method: "DELETE", headers: { "x-hextable-token": token, host: "x" } }, res, { code, id }, { assets, tables, limits: { allowUpload: () => true, allowAssetRead: () => true, config: {} }, addr: "1" });
+    return out;
+  };
+  for (const id of [w.assets.a1.id, w.assets.a2.id]) {
+    const r = del(id);
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error, "That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first.");
+    assert.ok(assets.get(code, id), "it is still there");
+  }
+  assert.equal(del(other.id).status, 204);
+  assert.equal(assets.get(code, other.id), null);
+});
+
 // ---------- the fill ----------
 test("the fill: a client's own map in an enter is replaced by the pack's, and that is what the history records", () => {
   const { tables } = server();
@@ -310,7 +353,11 @@ test("over a real WebSocket: a seated DM may send a world pack larger than a map
   const told = await dm.wait((m) => m.t === "world" || m.t === "error");
   assert.equal(told.t, "world", told.error);
   assert.equal(told.world.nodes, 4);
-  dm.ws.close();
+  // After leaving, the DM's socket is held to the small frame again (review of #597, L1).
+  const shut = new Promise((r) => { dm.ws.onclose = (ev) => r(ev.code); });
+  dm.send({ t: "leave" });
+  dm.ws.send("z".repeat(64 * 1024));
+  assert.equal(await shut, 1009);
   // Someone not seated as the DM: a frame that large closes the socket.
   const stranger = await open();
   const closed = new Promise((r) => { stranger.ws.onclose = (ev) => r(ev.code); });

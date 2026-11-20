@@ -18,12 +18,12 @@ import { createReceiver } from './shared/patch.js';
 import { migrate, VERSION } from './shared/migrate.js';
 import { createHistory, describeStep, mark, undoable } from './shared/history.js';
 import { capTimeline, TIMELINE_CAP } from './shared/timeline.js';
-import { EXPORT_ASSET_BYTES, assetRefs } from './shared/handouts.js';
+import { EXPORT_ASSET_BYTES } from './shared/handouts.js';
 import { HOMEBREW_LIMITS } from './shared/content/schema.js';
 import { PackError } from './shared/content/registry.js';
 import { cleanPacks, inUse, packsMatch, vetAdd, vetPacks, vetUpdate } from './shared/content/packs.js';
 import { localAssets, serverAssets } from './assets.js';
-import { assetBytesOf, fillMap, indexOf, loadWorld, needsMap, storedWorld, worldSummary } from './shared/worldpack.js';
+import { assetBytesOf, exportFirst, fillMap, indexOf, loadWorld, needsMap, picturesShown, storedWorld, worldSummary } from './shared/worldpack.js';
 import { LINK, LINK_FAST, start as linkStart, step as linkStep, explain as linkExplain, average as linkAverage } from './linkquality.js';
 
 const store = {
@@ -278,7 +278,12 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
     // refusals tried on a copy of the game; the pictures into this tab's files (one the last world had, byte for byte, is used again);
     // the record into IndexedDB; `worldIndex` through the engine. A refusal changes nothing: what was stored is taken back out. On success
     // the undo history is cleared and the last world's pictures that nothing shows any more are let go.
-    async worldOp(pack) {
+    worldOp(pack) { const run = worldChain.then(() => loadOne(pack)); worldChain = run.catch(() => {}); return run; },
+  };
+  // One world message at a time (worldOp's promises are chained), so two cannot interleave their pictures and records.
+  let worldChain = worldReady;
+  async function loadOne(pack) {
+    {
       const refuse = (problems) => { const list = problems.slice(0, 20).map((x) => String(x).slice(0, 300)); return Promise.reject({ error: `The world pack was refused. ${list.slice(0, 3).join(' ')}${list.length > 3 ? ` (and ${problems.length - 3} more)` : ''}`, problems: list }); };
       await worldReady;
       const r = loadWorld(pack);
@@ -312,9 +317,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
       const before = world;
       world = record;
       if (before?.assets) {
-        const now = new Set(Object.values(kept).map((a) => a.id)), shown = assetRefs(state);
-        for (const rec of Object.values(state.parked ?? {})) for (const id of assetRefs({ map: rec?.map, scene: rec?.scene })) shown.add(id);
-        for (const n of Object.values(state.world?.nodes ?? {})) if (typeof n?.image === 'string') shown.add(n.image);
+        const now = new Set(Object.values(kept).map((a) => a.id)), shown = picturesShown(state);
         for (const a of Object.values(before.assets)) if (a?.id && !now.has(a.id) && !shown.has(a.id)) { try { await t.assets.remove(a.id); } catch { /* best effort */ } }
       }
       history.clear(); store.del(PINS); pinsError = null; told();
@@ -323,7 +326,9 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
       const msg = { t: 'world', world: worldSummary(data, r.hash) };
       t.on.world?.(msg);
       return msg;
-    },
+    }
+  }
+  Object.assign(t, {
     undo: () => step('undo', 'undone'),
     redo: () => step('redo', 'redone'),
     // Go back to the start of the last fight or to the last rest, with new dice; undo takes it back.
@@ -338,11 +343,24 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
     // The state and the files this tab keeps, as the server's export has them. Nothing leaves this tab.
     export: async () => {
       let files = { assets: [], skipped: [], limit: EXPORT_ASSET_BYTES };
-      try { files = await t.assets.pack({ first: assetRefs(state) }); } catch { /* this browser keeps no files: the export has the game only */ }
+      try { files = await t.assets.pack({ first: exportFirst(state, world) }); } catch { /* this browser keeps no files: the export has the game only */ }
       return { code: 'solo', exportedAt: new Date().toISOString(), state: structuredClone(state), packs: records.map(({ id, version, hash, data }) => ({ id, version, hash, data })), world: world ? structuredClone(world) : null, assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit };
     },
-    reset({ grid: g = grid, party: p = party } = {}) { state = newGame((Math.random() * 1e9) | 0, valleyOptions(g, p)); resync(); history.clear(); store.del(PINS); pinsError = null; told(); store.set('hextable.solo', state); t.on.update(state, [], true); },
-  };
+    // A new game starts without a world: the record this browser kept and its pictures are let go (in turn with any world message).
+    reset({ grid: g = grid, party: p = party } = {}) {
+      state = newGame((Math.random() * 1e9) | 0, valleyOptions(g, p)); resync(); history.clear(); store.del(PINS); pinsError = null; told(); store.set('hextable.solo', state); t.on.update(state, [], true);
+      worldChain = worldChain.then(dropWorld).catch(() => {});
+      return worldChain;
+    },
+  });
+  // The world record and its pictures, let go (a new game). The pictures something else in this tab still shows stay.
+  async function dropWorld() {
+    if (!world) return;
+    const was = world, shown = picturesShown(state);
+    world = null;
+    try { await worldStore('readwrite', (st) => st.delete('current')); } catch { /* the browser keeps it; it is read again and not used by a game without a world */ }
+    for (const a of Object.values(was.assets ?? {})) if (a?.id && !shown.has(a.id)) { try { await t.assets.remove(a.id); } catch { /* best effort */ } }
+  }
   return t;
 }
 

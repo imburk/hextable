@@ -22,7 +22,7 @@ import { forPlayers as packFilteredCopy, packForPlayer, packsMatch, PLAYER_PACK_
 import { installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
 import { assetRefs } from "../../rules/src/handouts.js";
-import { fillMap, indexOf, loadWorld, storedWorld, WORLD_LIMITS, worldSummary } from "../../rules/src/worldpack.js";
+import { exportFirst, fillMap, indexOf, loadWorld, picturesShown, storedWorld, WORLD_LIMITS, worldPictures, worldSummary } from "../../rules/src/worldpack.js";
 import { LIMIT_MESSAGE } from "./limits.js";
 
 // A table's world as the server writes it beside the state: { id, version, hash, data, assets }, `data` the pack with its
@@ -30,16 +30,6 @@ import { LIMIT_MESSAGE } from "./limits.js";
 const isRecord = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const worldRecord = (w) => isRecord(w) && typeof w.id === "string" && Number.isInteger(w.version) && typeof w.hash === "string" && isRecord(w.data)
   && isRecord(w.data.world) && Array.isArray(w.data.nodes) && (w.data.maps === undefined || isRecord(w.data.maps)) && (w.assets === undefined || isRecord(w.assets));
-// The pictures a game still shows: the map in play and its scene, handouts, and the maps and scenes of places parked
-// (docs/specs/travel.md, Decision 5). A picture of an earlier world that none of these names is let go when a world replaces it.
-function picturesIn(state) {
-  const out = assetRefs(state);
-  for (const rec of Object.values(isRecord(state?.parked) ? state.parked : {})) {
-    for (const id of assetRefs({ map: rec?.map, scene: rec?.scene })) out.add(id);
-  }
-  for (const n of Object.values(isRecord(state?.world?.nodes) ? state.world.nodes : {})) if (typeof n?.image === "string") out.add(n.image);
-  return out;
-}
 const WORLD_PROBLEMS_SHOWN = 20;
 // A world pack's pictures (docs/specs/travel.md, Decision 2, "assets ... uploaded into the table's asset store on import"), for
 // createTables' `importAssets` and `dropAssets`, over a store made by assets.js (`store()` gives it). Each picture is put in the
@@ -435,7 +425,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       // their records (`assets`), up to a size limit; what did not fit is listed in `assetsSkipped`.
       export() {
         if (me.role !== "dm") return error("Only the DM can export the table.");
-        const files = exportAssets(table.code, table.state);
+        // The files the game shows and those its world uses go first, so an export over the byte limit leaves out none of them before another.
+        const files = exportAssets(table.code, table.state, exportFirst(table.state, table.world));
         conn.send({ t: "export", table: { code: table.code, exportedAt: new Date().toISOString(), state: table.state, packs: table.packs.map((p) => ({ id: p.id, version: p.version, hash: p.hash, data: p.data })), world: table.world ? { id: table.world.id, version: table.world.version, hash: table.world.hash, data: table.world.data, assets: table.world.assets } : null, assets: files.assets, assetsSkipped: files.skipped, assetLimit: files.limit } });
       },
       // The client noticed it missed an update and wants the whole view again.
@@ -643,7 +634,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       t.world = { id: index.id, version: index.version, hash: r.hash, data: kept, assets: stored.assets };
       delete t.worldDropped;
       if (before?.assets) {
-        const now = new Set(Object.values(stored.assets).map((a) => a.id)), shown = picturesIn(t.state);
+        const now = new Set(Object.values(stored.assets).map((a) => a.id)), shown = picturesShown(t.state);
         dropAssets(t.code, Object.values(before.assets).map((a) => a?.id).filter((id) => typeof id === "string" && !now.has(id) && !shown.has(id)));
       }
       undoOf(t).clear(); dirtyHistory.add(t.code);
@@ -730,5 +721,13 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return { seq, ...undoOf(t).dump() };
   }
 
-  return { connect, exportHistory, member, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
+  // Whether a file of a table may be deleted (assets-http.js): not one the table's world uses (worldpack.js, worldPictures).
+  // Returns null, or the sentence the deletion is refused with.
+  function keepsAsset(code, id) {
+    const t = typeof code === "string" ? tables.get(code) : undefined;
+    if (!t?.world) return null;
+    return worldPictures(t.state, t.world).has(id) ? "That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first." : null;
+  }
+
+  return { connect, exportHistory, member, keepsAsset, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
 }

@@ -18,6 +18,7 @@ import { lintMap, migrateMap, MAP_LIMITS, ENTRY_KINDS } from './map.js';
 import { canonical, sha256 } from './content/packs.js';
 import { MONSTERS } from './content/index.js';
 import { STOCK_MAPS } from './content/maps/index.js';
+import { assetRefs } from './handouts.js';
 
 // The limits **(design choice)** (Decision 2): 4 MB as JSON, pictures included; 300 places; 60 battle maps; 100 pins a
 // place; 500 routes; 50 encounter tables of up to 100 rows; places nest 8 deep; names 60 letters; texts 1,500 letters.
@@ -429,6 +430,7 @@ export function lintWorld(doc, { monster = defaultMonster } = {}) {
     }
   }
   for (const k of Object.keys(assets)) if (!used.assets.has(k)) say(`Picture ${quote(k)} is used by no place and no map; leave it out.`);
+  for (const k of Object.keys(maps)) if (!used.maps.has(k)) say(`Battle map ${quote(k)} is used by no place, pin or route; leave it out.`);
   return bad;
 }
 
@@ -560,6 +562,31 @@ export function fillMap(s, a, stored) {
   const { map, ...rest } = a;
   return need.key ? { ...rest, map: structuredClone(stored.maps[need.key]) } : rest;
 }
+
+// ---------- the pictures a world uses ----------
+// The pictures a game shows now: the map in play and its scene, handouts, the maps and scenes of places parked
+// (Decision 5), and the pictures of the places of the index. A picture of an earlier world that none of these names is
+// let go when a world replaces it.
+export function picturesShown(state) {
+  const out = assetRefs(state);
+  for (const rec of Object.values(isRec(state?.parked) ? state.parked : {})) for (const id of assetRefs({ map: rec?.map, scene: rec?.scene })) out.add(id);
+  for (const n of Object.values(isRec(state?.world?.nodes) ? state.world.nodes : {})) if (typeof n?.image === 'string') out.add(n.image);
+  return out;
+}
+// The pictures the table's world uses (`world` is the record the table keeps, `{ ..., data, assets }`): every picture it
+// brought, every picture a place of the index or a parked place shows, and the backgrounds of the pack's maps, visited or
+// not. A table export takes these first; the DM's file store does not delete one of them.
+export function worldPictures(state, world) {
+  const out = new Set();
+  for (const a of Object.values(isRec(world?.assets) ? world.assets : {})) if (typeof a?.id === 'string') out.add(a.id);
+  for (const m of Object.values(isRec(world?.data?.maps) ? world.data.maps : {})) for (const l of Array.isArray(m?.levels) ? m.levels : []) if (typeof l?.image?.asset === 'string') out.add(l.image.asset);
+  for (const n of Array.isArray(world?.data?.nodes) ? world.data.nodes : []) if (typeof n?.image === 'string') out.add(n.image);
+  for (const n of Object.values(isRec(state?.world?.nodes) ? state.world.nodes : {})) if (typeof n?.image === 'string') out.add(n.image);
+  for (const rec of Object.values(isRec(state?.parked) ? state.parked : {})) for (const id of assetRefs({ map: rec?.map, scene: rec?.scene })) out.add(id);
+  return out;
+}
+// What a table export takes first: what the game shows now and what its world uses.
+export const exportFirst = (state, world) => new Set([...picturesShown(state), ...worldPictures(state, world)]);
 
 // What the DM is told of a world they imported: its name, version and how much it holds.
 export function worldSummary(stored, hash) {

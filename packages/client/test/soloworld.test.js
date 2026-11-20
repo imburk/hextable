@@ -102,3 +102,21 @@ test('solo: a refused world changes nothing, and a picture stored before a refus
   assert.match(e2.error, /Picture "a2" could not be kept: A picture can be at most 2 MB\./);
   assert.equal(files().length, before);
 });
+
+test('solo: world messages run one at a time, and a new game lets the world and its pictures go', async () => {
+  const { t } = await open();
+  const v6 = riverPack(); v6.world.version = 6;
+  const v7 = riverPack(); v7.world.version = 7;
+  v7.assets.a2.data = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe1, ...new Array(28).fill(3)));
+  const [a, b] = await Promise.all([t.worldOp(v6), t.worldOp(v7)]);
+  assert.deepEqual([a.world.version, b.world.version], [6, 7], 'in the order they were sent');
+  const kept = dbs.get('hextable-world').get('world').rows.get('current');
+  assert.equal(kept.version, 7);
+  const ids = Object.values(kept.assets).map((x) => x.id).sort();
+  assert.deepEqual(files().map((f) => f.id).sort(), ids, 'the files are the last world\'s pictures, no more');
+  await t.reset();
+  assert.equal(dbs.get('hextable-world').get('world').rows.get('current'), undefined, 'the record is gone');
+  assert.deepEqual(files(), [], 'and its pictures');
+  const ex = await t.export();
+  assert.equal(ex.world, null);
+});

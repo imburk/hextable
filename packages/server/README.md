@@ -152,7 +152,11 @@ entries, routes, tables; no maps, no pictures), recorded by the engine action `w
   dropped, and the world pack's map of that place put in instead when the place is not in play or kept. A place
   made at the table (`nodeAdd`, `added`) is not the pack's, and the DM's own map stays. The size of an action is
   checked on what the client sent, before the fill; the action applied, recorded and undone is the filled one.
-- `export` carries `world` (the record as the table keeps it, or null) beside `state` and `packs`; the pictures are among `assets`.
+- `export` carries `world` (the record as the table keeps it, or null) beside `state` and `packs`; the pictures are among `assets`,
+  taken before any other file (what the game shows and every picture the world uses, its unvisited maps' backgrounds included).
+- `DELETE /assets/<code>/<id>` of a picture the world uses is refused with `409` and
+  `That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first.`
+- A DM's socket that leaves (`{t:"leave"}`), or is welcomed as anything but the DM, is held to the small frame again.
 - The solo game does the same in the browser: the record in IndexedDB (`hextable-world`), the pictures among the
   tab's files, and the same fill (`packages/client/transport.js`).
 - `npm run world -- <world.json> [--pack <homebrew.json> ...]` checks a file with these checks before import.
@@ -437,7 +441,7 @@ Pictures a DM uploads for handouts and level backgrounds. Design: `docs/specs/ma
 | `POST /assets/<code>`, body = the raw bytes, `Content-Type: image/png`, `image/jpeg` or `image/webp`; optional `X-Asset-Name` (URI-encoded) | the DM, with the table open (a live connection on that seat) | `201 {asset}`; `403` anyone else, or the DM's token with no live connection; `415` not one of the three types *by its bytes*; `413` too big or the table is full; `507` the server is full; `408` the body was too slow; `429` over the upload limit or too many uploads at once |
 | `GET /assets/<code>` | the DM | `200 {assets, usage, limits}`; any `GET` or `HEAD` over the read limit is `429` |
 | `GET /assets/<code>/<id>` | the DM: any file of the table. A player: only a file named by something in *their own view* of the game (a handout shown to them, the background of a level they are sent), worked out on the server for each request | `200` the bytes |
-| `DELETE /assets/<code>/<id>` | the DM | `204` |
+| `DELETE /assets/<code>/<id>` | the DM | `204`; `409` for a picture the table's world uses |
 
   Every refusal to read is the same `404 {"error":"Not found"}`: no token, a wrong token, another
   table's token, a file not shown to you, a guessed id, a malformed id and a missing file all look

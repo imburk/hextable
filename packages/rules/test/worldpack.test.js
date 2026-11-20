@@ -200,6 +200,7 @@ test("the linter: unknown keys, ids, pins, routes, tables and pictures, each in 
     [(p) => { p.tables[0].rows[1].foes[0].count = "lots"; }, /a foe's "count" is a whole number from 1 to 50 or dice/],
     [(p) => { p.maps["keep-map"].levels[0].image = { asset: "nowhere", feet: [10, 10], origin: [0, 0] }; }, /level "ground" has a background that names no picture of the pack/],
     [(p) => { p.maps["keep-map"].holding = true; }, /marked as a holding map/],
+    [(p) => { p.maps["spare-map"] = tavernMap(); }, /^Battle map "spare-map" is used by no place, pin or route; leave it out\.$/],
   ];
   for (const [change, words] of cases) { const p = riverPack(); change(p); refusedWorld(p, words); }
   // A level's background may name a picture of the pack.
