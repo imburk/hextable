@@ -227,6 +227,8 @@ function begin(msg) {
 function syncMoment() { for (const r of document.querySelectorAll('#mock input[name=moment]')) r.checked = r.value === ui.moment; }
 const live = (k) => Object.values(S.picks[k]).filter((e) => !e.dropped).length;
 const free = (seg) => Math.max(0, seg.cap - live(seg.id));
+// The groups the list shows: one Cantrips group holds two sources (each with its own count); the others are one source each.
+const groupsOf = () => { const g = (id) => S.segs.find((x) => x.id === id); return [{ id: 'cant', title: 'Cantrips', segs: [g('cls'), g('mi')] }, { id: 'mi1', title: g('mi1').title, segs: [g('mi1')] }, { id: 'known', title: g('known').title, segs: [g('known')] }]; };
 const prepCap = () => S.segs.find((g) => g.id === 'known').starCap ?? 0;
 const freePrep = () => (CHARS[S.who].wiz ? Math.max(0, prepCap() - live('prep')) : 0);
 const totalFree = () => S.segs.reduce((n, g) => n + free(g), 0) + freePrep();
@@ -238,23 +240,30 @@ const dupOf = (seg, id) => { for (const o of S.segs) if (o.id !== seg.id && S.pi
 const canDrop = (pool) => S.drops[pool] < S.allow[pool];
 
 // A tap on a row's box: choose, take back, give up (a swap the rules allow), or keep after all. Changes state only; draws nothing new.
-function tap(seg, id) {
-  const e = S.picks[seg.id][id], pool = seg.pool;
-  if (S.moment === 'other') return say(`Nothing can change now. ${whenWords(S.who, seg)}`);
+// A cantrip row serves two sources (the class, Magic Initiate): the one it was chosen under, else the first with room that offers it.
+const entryOf = (r) => { for (const sg of r.segs) if (S.picks[sg.id][r.id]) return [sg, S.picks[sg.id][r.id]]; return [null, null]; };
+function tap(r) {
+  const id = r.id, [cur, e] = entryOf(r);
+  if (S.moment === 'other') return say(`Nothing can change now. ${whenWords(S.who, cur ?? r.segs[0])}`);
   if (e && !e.dropped) {
+    const seg = cur, pool = seg.pool;
     if (e.isNew) { delete S.picks[seg.id][id]; if (seg.id === 'known') delete S.picks.prep[id]; }
-    else if (canDrop(pool)) { e.dropped = true; S.drops[pool]++; if (seg.id === 'known') delete S.picks.prep[id]; }
+    else if (canDrop(pool)) { e.dropped = true; S.drops[pool]++; if (seg.id === 'known') delete S.picks.prep[id]; refresh(); return say('Given up. Choose another of the same kind to replace it, or tap it again to keep it.'); }
     else return say(S.allow[pool] > 0 ? 'That swap is used. Put the other one back to swap this one.' : whenWords(S.who, seg));
   } else if (e && e.dropped) {
-    if (live(seg.id) >= seg.cap) return say(`${seg.short[0].toUpperCase()}${seg.short.slice(1)} are full: ${seg.cap} of ${seg.cap}. Take the new one back first.`);
-    e.dropped = false; S.drops[pool]--;
+    if (live(cur.id) >= cur.cap) return say(`${cap1(cur.short)} are full: ${cur.cap} of ${cur.cap}. Take the new one back first.`);
+    e.dropped = false; S.drops[cur.pool]--;
   } else {
-    const d = dupOf(seg, id); if (d) return say(`Already chosen under ${d}.`);
-    if (live(seg.id) >= seg.cap) return say(S.allow[pool] > 0 ? `Full: ${seg.cap} of ${seg.cap}. Tap one you chose earlier to give it up, if a swap is left.` : `Full: ${seg.cap} of ${seg.cap}. ${whenWords(S.who, seg)}`);
+    const d = r.segs.length === 1 ? dupOf(r.segs[0], id) : null; if (d) return say(`Already chosen under ${d}.`);
+    const seg = r.segs.find((g) => live(g.id) < g.cap);
+    if (!seg) { const g = r.segs[0]; return say(S.allow[g.pool] > 0 ? `Full: ${g.cap} of ${g.cap}. Tap one you chose earlier to give it up, if a swap is left.` : `Full: ${g.cap} of ${g.cap}. ${whenWords(S.who, g)}`); }
     S.picks[seg.id][id] = { at: S.lvl, isNew: true };
   }
-  refresh();
+  settle();
 }
+const cap1 = (t) => t[0].toUpperCase() + t.slice(1);
+// after a change that worked: the status line goes back to the legend (words only)
+function settle() { refresh(); clearTimeout(S.timer); S.msg = LEGEND; refs.msg.textContent = LEGEND; }
 function tapStar(id) {
   const e = S.picks.prep[id], kn = S.picks.known[id], seg = S.segs.find((g) => g.id === 'known');
   if (S.moment === 'other') return say(`Nothing can change now. ${whenWords(S.who, seg, true)}`);
@@ -265,7 +274,7 @@ function tapStar(id) {
     else return say(whenWords(S.who, seg, true));
   } else if (e && e.dropped) { if (live('prep') >= prepCap()) return say(`Prepared: ${prepCap()} of ${prepCap()}. Unprepare another first.`); e.dropped = false; S.drops.prep--; }
   else { if (live('prep') >= prepCap()) return say(S.allow.prep > 0 ? `Prepared: ${prepCap()} of ${prepCap()}. Unprepare another first.` : `Prepared: ${prepCap()} of ${prepCap()}. ${whenWords(S.who, seg, true)}`); S.picks.prep[id] = { at: S.lvl, isNew: true }; }
-  refresh();
+  settle();
 }
 function commit() {
   const n = totalFree();
@@ -284,17 +293,23 @@ function poolIds(seg) {
   return Object.keys(POOL).filter((id) => POOL[id][2].includes(seg.list) && seg.lv.includes(POOL[id][1]) && !(seg.id === 'known' && granted.has(id)))
     .sort((a, b) => POOL[a][1] - POOL[b][1] || POOL[a][0].localeCompare(POOL[b][0]));
 }
-const hintFor = (seg) => {
-  const c = CHARS[S.who], m = S.moment, mi = seg.id === 'mi' || seg.id === 'mi1';
+function groupIds(grp) { const set = new Set(grp.segs.flatMap(poolIds)); return [...set].sort((a, b) => POOL[a][1] - POOL[b][1] || POOL[a][0].localeCompare(POOL[b][0])); }
+const hintFor = (grp) => {
+  const c = CHARS[S.who], m = S.moment, seg = grp.segs[0], mi = seg.id === 'mi1';
+  if (grp.id === 'cant') {
+    const cl = S.segs.find((g) => g.id === 'cls'), base = `${c.cls} ${cl.cap}${c.plus ? ` (${T.cant[S.lvl - 1]} + ${c.plus})` : ''} and Magic Initiate (${LN[c.mi.list]}) 2: each cantrip's source shows under its name.`;
+    if (m === 'new') return base;
+    if (m === 'level') return `${base} ${c.wiz ? 'A Wizard cantrip can change after a Long Rest.' : 'You may replace one Cleric cantrip when you gain a Cleric level.'} You may replace one Magic Initiate spell: tap its number to give it up, then choose another.`;
+    if (m === 'long') return `${base} ${c.wiz ? 'After this Long Rest one Wizard cantrip can change: tap its number to give it up, then choose another.' : 'A Cleric cantrip can change when you gain a Cleric level.'}`;
+    return `${base} ${whenWords(S.who, cl)}`;
+  }
   if (m === 'new') return seg.id === 'known' && c.wiz ? 'The book holds 6 spells at level 1 and 2 more at each Wizard level. Tap ★ to prepare a spell from it.' : seg.id === 'mi1' ? 'Always prepared, with one free casting per Long Rest.' : '';
   if (m === 'level') {
-    if (mi) return 'When you gain a level you may replace one of Magic Initiate\'s spells: tap its number to give it up, then choose another of the same level.';
-    if (seg.id === 'cls') return c.wiz ? 'One cantrip can change after a Long Rest.' : 'When you gain a Cleric level you may replace one: tap its number to give it up, then choose another.';
+    if (mi) return 'It is one of the Magic Initiate spells you may replace when you gain a level; see Cantrips above.';
     return c.wiz ? 'Two spells join the book this level. Prepared spells change after a Long Rest, from the book; tap ★ to prepare a new one.' : 'Prepared spells change after a Long Rest.';
   }
   if (m === 'long') {
     if (mi) return 'One of Magic Initiate\'s spells can change when you gain a level.';
-    if (seg.id === 'cls') return c.wiz ? 'After this Long Rest one cantrip can change: tap its number to give it up, then choose another.' : 'One cantrip can change when you gain a Cleric level.';
     return c.wiz ? 'Any prepared spell can change: tap ★ to prepare or unprepare. The book itself only grows.' : 'Any prepared spell can change: tap one to give it up, then choose another.';
   }
   return whenWords(S.who, seg);
@@ -321,17 +336,17 @@ function draw() {
   list.append(el('div', { class: 'tiles' }, tile('Cantrips', 'tCant', 'g-cls'), tile('Prepared', 'tPrep', 'g-known'), tile('Always prepared', 'tAlways', c.domain && domainN ? 'g-always' : 'g-mi1'), c.wiz ? tile('Spellbook', 'tBook', 'g-known') : tile('Free casts', 'tFree', 'g-mi1')));
   refs.domainN = domainN;
 
-  for (const seg of S.segs) {
-    const cnt = el('span', { class: 'cnt' }); refs.cnt[seg.id] = cnt;
-    const kids = [el('span', { class: 'ttl', text: seg.title + (seg.tail ? ` (${seg.tail})` : '') }), cnt];
+  for (const grp of groupsOf()) {
+    const seg = grp.segs[0], cnt = el('span', { class: 'cnt' }); refs.cnt[grp.id] = cnt;
+    const kids = [el('span', { class: 'ttl', text: grp.title }), cnt];
     if (seg.starCap != null) { refs.cntPrep = el('span', { class: 'cnt' }); kids.push(refs.cntPrep); }
-    list.append(el('h3', { id: `g-${seg.id}`, 'data-k': `h-${seg.id}` }, ...kids));
-    const hint = hintFor(seg); if (hint) list.append(el('p', { class: 'rule', 'data-k': `r-${seg.id}`, text: hint }));
+    list.append(el('h3', { id: `g-${grp.id}`, 'data-k': `h-${grp.id}` }, ...kids));
+    const hint = hintFor(grp); if (hint) list.append(el('p', { class: 'rule', 'data-k': `r-${grp.id}`, text: hint }));
     let lastLv = -1;
-    for (const id of poolIds(seg)) {
+    for (const id of groupIds(grp)) {
       const l = POOL[id][1];
-      if (seg.lv.length > 1 && l !== lastLv) { list.append(el('p', { class: 'lvl', 'data-k': `l-${seg.id}-${l}`, text: `Level ${l}` })); lastLv = l; }
-      list.append(mkRow(seg, id));
+      if (seg.lv.length > 1 && l !== lastLv) { list.append(el('p', { class: 'lvl', 'data-k': `l-${grp.id}-${l}`, text: `Level ${l}` })); lastLv = l; }
+      list.append(mkRow(grp, id));
     }
   }
   if (domainN) {
@@ -349,48 +364,49 @@ function draw() {
   refresh();
 }
 function infoBtn(id) { const b = el('button', { class: 'info', type: 'button', 'aria-label': `About ${sp(id).name}` }, el('i', { text: 'i' })); b.onclick = () => (card ? hideCard() : showCard(id, b)); return b; }
-function mkRow(seg, id) {
-  const s = sp(id), r = { seg, id };
+function mkRow(grp, id) {
+  const s = sp(id), segs = grp.segs.filter((g) => POOL[id][2].includes(g.list)), seg = segs[0], r = { grp, id, segs };
   r.num = el('span', { class: 'n' }); r.box = el('span', { class: 'box' }, r.num); r.sub = el('span', { class: 'sub' });
-  r.pick = el('button', { class: 'pick', type: 'button', role: 'checkbox', onclick: () => { if (swallow) { swallow = false; return; } tap(seg, id); } }, r.box, el('span', { class: 'txt' }, el('span', { class: 'nm', text: s.name }), r.sub));
+  r.pick = el('button', { class: 'pick', type: 'button', role: 'checkbox', onclick: () => { if (swallow) { swallow = false; return; } tap(r); } }, r.box, el('span', { class: 'txt' }, el('span', { class: 'nm', text: s.name }), r.sub));
   cardHooks(r.pick, id);
   const kids = [r.pick];
   if (seg.starCap != null) { r.star = el('button', { class: 'star', type: 'button', 'aria-label': `Prepare ${s.name}`, text: '★', onclick: () => tapStar(id) }); kids.push(r.star); }
   kids.push(infoBtn(id));
-  r.el = el('div', { class: 'row', 'data-k': `s-${seg.id}-${id}` }, ...kids);
+  r.el = el('div', { class: 'row', 'data-k': `s-${grp.id}-${id}` }, ...kids);
   rows.push(r);
   return r.el;
 }
 // Everything a tap can change, and nothing else: the box, the star, the counts, the status words.
 function refresh() {
   const wiz = CHARS[S.who].wiz;
+  const c = CHARS[S.who], tagOf = (g) => (g.id === 'cls' ? c.cls : `Magic Initiate · ${LN[c.mi.list]} · ${c.mi.abil}`);
   for (const r of rows) {
-    const e = S.picks[r.seg.id][r.id], on = e && !e.dropped, d = !e ? dupOf(r.seg, r.id) : null, name = sp(r.id).name;
+    const [cur, e] = entryOf(r), on = e && !e.dropped, d = !e && r.segs.length === 1 ? dupOf(r.segs[0], r.id) : null, name = sp(r.id).name;
     r.box.className = 'box' + (on ? (e.isNew ? ' new' : ' old') : '') + (e?.dropped ? ' gone' : '');
     r.num.textContent = on ? String(e.at) : '';
     r.pick.setAttribute('aria-checked', on ? 'true' : 'false');
-    r.pick.setAttribute('aria-label', `${name}, ${on ? `${e.isNew ? 'chosen now at' : 'chosen at'} level ${e.at}` : 'not chosen'}`);
+    r.pick.setAttribute('aria-label', `${name}${on && r.grp.id === 'cant' ? `, ${tagOf(cur)}` : ''}, ${on ? `${e.isNew ? 'chosen now at' : 'chosen at'} level ${e.at}` : 'not chosen'}`);
     r.pick.classList.toggle('dim', !!d);
-    r.sub.textContent = e?.dropped ? 'giving this up · tap to keep' : d ? `already chosen under ${d}` : '';
+    r.sub.textContent = e?.dropped ? 'giving this up · tap to keep' : d ? `already chosen under ${d}` : on && r.grp.id === 'cant' ? tagOf(cur) : !e && r.grp.id === 'cant' && r.segs.length === 1 && r.segs[0].id === 'mi' ? `${LN[c.mi.list]} list · Magic Initiate` : '';
     if (r.star) {
       const pe = S.picks.prep[r.id], pon = pe && !pe.dropped;
       r.star.setAttribute('aria-pressed', pon ? 'true' : 'false'); r.star.textContent = pon ? '★' : '☆';
       r.star.setAttribute('aria-disabled', on ? 'false' : 'true');
     }
   }
-  for (const seg of S.segs) { const n = live(seg.id); refs.cnt[seg.id].textContent = `${n} of ${seg.cap}`; refs.cnt[seg.id].classList.toggle('full', n === seg.cap); }
+  for (const grp of groupsOf()) { const n = grp.segs.reduce((t, g) => t + live(g.id), 0), cap = grp.segs.reduce((t, g) => t + g.cap, 0); refs.cnt[grp.id].textContent = `${n} of ${cap}`; refs.cnt[grp.id].classList.toggle('full', n === cap); }
   if (refs.cntPrep) { const n = live('prep'), cap = prepCap(); refs.cntPrep.textContent = `★ ${n} of ${cap}`; refs.cntPrep.classList.toggle('full', n === cap); }
   const sg = (id) => S.segs.find((g) => g.id === id);
   refs.tCant.textContent = `${live('cls') + live('mi')} known`;
   refs.tPrep.textContent = wiz ? `${live('prep')} of ${prepCap()}` : `${live('known')} of ${sg('known').cap}`;
   refs.tAlways.textContent = String(refs.domainN + live('mi1'));
   if (refs.tBook) refs.tBook.textContent = String(live('known')); if (refs.tFree) refs.tFree.textContent = '1 a day';
-  const n = totalFree(), labels = { cls: `for ${CHARS[S.who].cls} cantrips`, mi: 'for Magic Initiate cantrips', mi1: 'for the Magic Initiate spell', known: wiz ? 'for the spellbook' : 'to prepare' };
+  const n = totalFree();
   if (S.moment === 'other') { refs.need.textContent = 'Nothing to choose now'; refs.need.className = 'need'; refs.parts.textContent = ''; }
   else {
     refs.need.textContent = n ? `Choose ${n} more` : 'All chosen'; refs.need.className = 'need' + (n ? '' : ' done');
-    const parts = S.segs.filter((g) => free(g) > 0).map((g) => `${free(g)} ${labels[g.id]}`);
-    if (wiz && freePrep() > 0) parts.push(`${freePrep()} to prepare`);
+    const f = (id) => free(S.segs.find((g) => g.id === id)), init = f('mi') + f('mi1');
+    const parts = [f('cls') && `${f('cls')} cantrips`, init && `${init} Initiate`, f('known') && `${f('known')} ${wiz ? 'book' : 'to prepare'}`, freePrep() && `${freePrep()} to prepare`].filter(Boolean);
     refs.parts.textContent = n ? parts.join(' · ') : (S.moment === 'new' ? 'Press Save to finish.' : S.moment === 'level' ? `Press Level up to ${S.lvl} to finish.` : 'Press Done to finish.');
   }
   if (refs.go) {
