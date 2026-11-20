@@ -218,6 +218,7 @@ its list differs from the wrapper's in count, offset, name bytes, sizes, method 
 | One end record, reaching the end; nothing after it; comment of 1 KB at most | no (it searches, and tolerates appended data) | yes |
 | ZIP64 and multi-disk refused | no (it supports both) | yes, in the end record, the records and the extra fields |
 | Entry cap (320) | no | from the end record, before a record is read |
+| Size of the central directory | no (it reads whatever the end record says; 320 records of 64 KB extras and comments, a 42 MB directory, took it about 3 s and 760 MB) | at most 46 + 100 + 128 bytes a record, checked before a record is read; an extra field of at most 128 bytes in the directory and the local header; no entry comment |
 | Names: charset, 100 bytes, no `..`, `.`, empty segment, `/`, `\`, drive letter or NUL | partly (`filenameValidation`, other rules) | yes, the spec's rules; refused names shown escaped |
 | Duplicates, lower-cased | no | yes |
 | Kind (symbolic link, device) from external attributes | no (it reports them) | yes |
@@ -239,14 +240,14 @@ compresses file by file.
 | | Files | Raw | Gzip |
 |---|---:|---:|---:|
 | The game's own scripts, before (without `modulezip.js`) | 181 | 5,157,965 | 1,404,892 |
-| The wrapper, `modulezip.js` | 1 | 31,299 | 9,535 |
+| The wrapper, `modulezip.js` | 1 | 34,192 | 10,428 |
 | Vendored zip.js scripts | 36 | 391,824 | 107,194 |
-| Wrapper plus zip.js, against the game before | | +8.2 % | +8.3 % |
+| Wrapper plus zip.js, against the game before | | +8.3 % | +8.4 % |
 | Vendored Three.js scripts, for comparison | 5 | 2,304,270 | 457,683 |
 
 A normal page load fetches none of it: nothing on the page imports `modulezip.js`, and `modulezip.js` has no static
 import; it loads `./vendor/zip.js/zip-core.js` with a dynamic `import()` on its first read or write. Opening a module
-therefore costs about 117 KB gzipped, once, then comes from the browser cache. The server and the tests import the
+therefore costs about 118 KB gzipped, once, then comes from the browser cache. The server and the tests import the
 wrapper from `packages/client/` by path.
 
 ### Upgrading, on purpose

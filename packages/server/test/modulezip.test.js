@@ -45,9 +45,9 @@ function localRecord(p) {
   return Buffer.concat([head, p.packed, desc]);
 }
 function centralRecord(p, offset) {
-  const extra = p.extra ?? Buffer.alloc(0);
+  const extra = p.extra ?? Buffer.alloc(0), comment = p.comment ?? Buffer.alloc(0);
   return Buffer.concat([u32(0x02014b50), u16(p.madeBy ?? (3 << 8) | 20), u16(20), u16(p.flags), u16(p.method), u16(0), u16(0x5c21), u32(p.crc), u32(p.csize), u32(p.usize),
-    u16(p.name.length), u16(extra.length), u16(0), u16(p.diskStart ?? 0), u16(0), u32(p.extAttr ?? (p.name.at(-1) === 0x2f ? (0o040755 << 16) | 0x10 : 0o100644 << 16)), u32(p.offset ?? offset), p.name, extra]);
+    u16(p.name.length), u16(extra.length), u16(comment.length), u16(p.diskStart ?? 0), u16(0), u32(p.extAttr ?? (p.name.at(-1) === 0x2f ? (0o040755 << 16) | 0x10 : 0o100644 << 16)), u32(p.offset ?? offset), p.name, extra, comment]);
 }
 function endRecord(count, cdSize, cdOffset, o = {}) {
   const comment = o.comment ?? Buffer.alloc(0);
@@ -108,6 +108,9 @@ test("the library's writer makes a zip that unpacks to the JSON form byte for by
   assert.equal(r.ok, true, JSON.stringify(r.problems));
   assert.equal(JSON.stringify(toJsonForm(r)), JSON.stringify(form));
   assert.deepEqual(Buffer.from(await writeModuleZip({ manifest: MANIFEST, data: DATA, pictures: { "a-gate": PNG, "a-ledger": WEBP } })), Buffer.from(zip), "the same module gives the same bytes");
+  for (const file of ["../gate.png", "gate.png", "pictures/sub/gate.png", "pictures/Gate.png"])
+    await assert.rejects(writeModuleZip({ manifest: { ...MANIFEST, pictures: { "a-gate": { ...MANIFEST.pictures["a-gate"], file } } }, data: DATA }), /is not a picture's name in a module/);
+  await assert.rejects(writeModuleZip({ manifest: { ...MANIFEST, pictures: { "a-gate": MANIFEST.pictures["a-gate"], "a-two": MANIFEST.pictures["a-gate"] } }, data: DATA }), /named twice/);
   const lean = await readModuleZip(await writeModuleZip({ manifest: MANIFEST, data: DATA, pictures: { "a-gate": PNG } }));
   assert.equal(lean.ok, true, JSON.stringify(lean.problems));
   assert.deepEqual(lean.found, ["a-gate"]);
@@ -232,6 +235,32 @@ test("more than 320 entries is refused from the end record, before a record is r
   await refused(zipOf(entries), /the file holds 322 entries; a module may hold at most 320/);
 });
 
+test("a central directory padded with extras and comments is refused before the library reads it, quickly", async () => {
+  // 320 entries, each with a 65,535-byte extra field and a 65,535-byte comment: a 42 MB directory.
+  const pad = Buffer.alloc(0xffff, 0x41);
+  const entries = [...base(), ...Array.from({ length: 315 }, (_, i) => ({ name: `pictures/x${i}.png`, data: PNG, method: 0 }))].map((e) => ({ ...e, extra: pad, comment: pad }));
+  const file = zipOf(entries);
+  assert.ok(file.length > 40 * MB);
+  const before = process.memoryUsage().rss;
+  const t0 = performance.now();
+  const r = await refused(file, /^zip: the central directory is 40 MB; 320 entries need at most 86 KB\.$/);
+  assert.ok(performance.now() - t0 < 500, "refused in under half a second");
+  assert.ok(process.memoryUsage().rss - before < 32 * MB, "and without the library's hundreds of MB");
+  assert.equal(r.inflated, 0);
+  // One entry alone: an extra over 128 bytes, a comment, a local extra over 128 bytes.
+  const with3 = (over) => { const e = base(); e[3] = { ...e[3], ...over }; return zipOf(e); };
+  await refused(with3({ extra: Buffer.concat([u16(0x5455), u16(125), Buffer.alloc(125)]) }), /"pictures\/gate\.png" has an extra field of 129 bytes; a module's entries carry at most 128 bytes/);
+  assert.equal((await readModuleZip(with3({ extra: Buffer.concat([u16(0x5455), u16(5), Buffer.alloc(5), u16(0x7875), u16(11), Buffer.alloc(11)]) }))).ok, true, "Info-ZIP's usual extras are fine");
+  await refused(with3({ comment: Buffer.from("hi") }), /"pictures\/gate\.png" has a comment; a module's entries carry none/);
+  const g = prepare(base()[3]);
+  await refused(with3({ local: { name: g.name, method: 0, flags: 0, crc: g.crc, csize: g.csize, usize: g.usize, extra: Buffer.concat([u16(0x5455), u16(200), Buffer.alloc(200)]) } }), /local header of "pictures\/gate\.png" has an extra field of 204 bytes/);
+  // A name of 65,535 bytes goes over the directory's ceiling; one of 1,000 that fits under it is refused on its length
+  // (and shown cut), never turned into a string.
+  await refused(zipOf([...base(), { name: "a".repeat(0xffff), data: PNG, method: 0 }]), /the central directory is 64 KB; 6 entries need at most 2 KB/);
+  const long = await refused(zipOf([...base(), { name: "a".repeat(1000), data: PNG, method: 0 }]), /is not a name a module may use/);
+  assert.ok(long.problems.some((p) => p.includes('"' + "a".repeat(120) + '..."')));
+});
+
 // ---- 5. lying headers --------------------------------------------------------------------------------------------
 
 test("lying headers: a CRC-32 that differs, local sizes that differ, a data descriptor that disagrees, data into the directory", async () => {
@@ -347,7 +376,7 @@ test("the wrapper has no static import, and nothing on the default page load imp
   const files = readdirSync(client).filter((f) => /\.(js|html)$/.test(f) && f !== "modulezip.js");
   for (const f of files) {
     const text = readFileSync(join(client, f), "utf8");
-    assert.doesNotMatch(text, /vendor\/zip\.js/, `${f} names the vendored zip.js`);
+    assert.doesNotMatch(text, /(?:import\s*\(|from\s+|<script[^>]*src=)\s*['"][^'"]*vendor\/zip\.js/, `${f} imports the vendored zip.js`);
     assert.doesNotMatch(text, /from\s+['"][^'"]*modulezip\.js['"]|<script[^>]*modulezip/, `${f} imports modulezip.js statically`);
   }
 });

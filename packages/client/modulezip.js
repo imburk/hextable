@@ -26,6 +26,7 @@ export const ZIP_LIMITS = Object.freeze({
   unpackedBytes: 95 * MB,     // every entry inflated
   entries: 320,
   nameBytes: 100,
+  extraBytes: 128,            // one entry's extra field (Info-ZIP's, macOS's and Windows' run to about 60)
   ratio: 200,                 // one entry's unpacked size to its packed size
   commentBytes: 1 * KB,
   manifestBytes: 128 * KB,    // module.json
@@ -154,6 +155,10 @@ export function scanZip(bytes, limits = ZIP_LIMITS) {
   if (commentLen > limits.commentBytes) return { problems: [`zip: the archive comment is ${size(commentLen)}; a module may carry at most ${size(limits.commentBytes)}.`] };
   if (total > limits.entries) return { problems: [`zip: the file holds ${num(total)} entries; a module may hold at most ${num(limits.entries)}.`] };
   if (cdOffset + cdSize !== e) return { problems: ['zip: the central directory is not where the end record says; the file is refused.'] };
+  // Each record is 46 bytes, a name, an extra field and no comment, so the directory has a ceiling before it is read
+  // (without one, 320 records of 64 KB extras and comments make a 42 MB directory that the library takes seconds over).
+  const cdCap = total * (46 + limits.nameBytes + limits.extraBytes);
+  if (cdSize > cdCap) return { problems: [`zip: the central directory is ${size(cdSize)}; ${num(total)} entries need at most ${size(cdCap)}.`] };
 
   // The central directory, record by record.
   const entries = [];
@@ -164,8 +169,12 @@ export function scanZip(bytes, limits = ZIP_LIMITS) {
     const end = p + 46 + nameLen + extraLen + cmtLen;
     if (end > e) return { problems: ['zip: the central directory is damaged; the file is refused.'] };
     const raw = bytes.subarray(p + 46, p + 46 + nameLen);
+    const shown = `"${escapeName(raw)}"`;
+    if (extraLen > limits.extraBytes) return { problems: [`zip: the entry ${shown} has an extra field of ${size(extraLen)}; a module's entries carry at most ${num(limits.extraBytes)} bytes.`] };
+    if (cmtLen) return { problems: [`zip: the entry ${shown} has a comment; a module's entries carry none.`] };
     entries.push({
-      index: k, raw, rawName: ascii(raw), madeBy: u16(bytes, p + 4), flags: u16(bytes, p + 8), method: u16(bytes, p + 10),
+      // A name over the cap is never turned into a string; soundName refuses it on its length.
+      index: k, raw, rawName: nameLen <= limits.nameBytes ? ascii(raw) : '', madeBy: u16(bytes, p + 4), flags: u16(bytes, p + 8), method: u16(bytes, p + 10),
       crc: u32(bytes, p + 16), csize: u32(bytes, p + 20), usize: u32(bytes, p + 24), diskStart: u16(bytes, p + 34),
       extAttr: u32(bytes, p + 38), offset: u32(bytes, p + 42), extra: bytes.subarray(p + 46 + nameLen, p + 46 + nameLen + extraLen),
     });
@@ -229,6 +238,7 @@ export function scanZip(bytes, limits = ZIP_LIMITS) {
     if (o + 30 > cdOffset || u32(bytes, o) !== SIG.loc) { problems.push(`zip: the entry ${n} has no local header where the directory says; the file is refused.`); continue; }
     const lFlags = u16(bytes, o + 6), lMethod = u16(bytes, o + 8), lCrc = u32(bytes, o + 14), lC = u32(bytes, o + 18), lU = u32(bytes, o + 22);
     const lName = u16(bytes, o + 26), lExtra = u16(bytes, o + 28);
+    if (lExtra > limits.extraBytes) { problems.push(`zip: the local header of ${n} has an extra field of ${size(lExtra)}; a module's entries carry at most ${num(limits.extraBytes)} bytes.`); continue; }
     const dataStart = o + 30 + lName + lExtra;
     if (dataStart > cdOffset) { problems.push(`zip: the entry ${n} runs into the central directory; the file is refused.`); continue; }
     const localRaw = bytes.subarray(o + 30, o + 30 + lName);
@@ -312,6 +322,10 @@ function parseJson(bytes, name) {
 /**
  * Reads a module zip, doing every check of Decision 5's pass 1. Refuses with sentences; never throws for a bad file
  * (it throws only for a fault of the page: no SHA-256, a wrong library, a codec registered with the library).
+ *
+ * A Uint8Array or ArrayBuffer is read in place, not copied (a copy would double a 100 MB file): the caller must not
+ * change its bytes until the returned promise settles, or the checks and the inflating could see different files.
+ * A Blob is read into a fresh buffer. The pictures returned are new arrays, not views of the input.
  */
 export async function readModuleZip(file, opts = {}) {
   const limits = { ...ZIP_LIMITS, ...opts.limits };
@@ -414,6 +428,9 @@ export async function readModuleZip(file, opts = {}) {
 }
 
 // One entry through the library, its output counted as it comes and stopped the moment it passes a limit.
+// scanZip has already refused any entry whose declared size passes its cap, 200 times its packed size or the total, so
+// once the output stays within the declared size the 'cap', 'ratio' and 'total' branches cannot fire. They are kept on
+// purpose, as a second line should scanZip or the library change: the counter, not a header, is what bounds memory.
 async function inflateEntry(libEntry, en, ctx) {
   const { limits } = ctx;
   const out = new Uint8Array(en.usize);
@@ -463,6 +480,15 @@ const FIXED_DATE = new Date(2026, 0, 1, 0, 0, 0);
  * Fixed dates, no ZIP64, no data descriptors, no extra fields, so the same module gives the same bytes.
  */
 export async function writeModuleZip({ manifest, data, pictures = {} }) {
+  // The writer makes only zips the reader takes: every picture's file a picture's name, no two the same.
+  const files = new Set();
+  for (const [id, line] of Object.entries(manifest.pictures ?? {})) {
+    const file = line?.file;
+    const raw = new TextEncoder().encode(String(file ?? ''));
+    if (typeof file !== 'string' || !soundName(raw, file, false, ZIP_LIMITS) || roleOf(file, false) !== 'picture') throw new Error(`modulezip: pictures/${id}: "${escapeName(raw)}" is not a picture's name in a module`);
+    if (files.has(file.toLowerCase())) throw new Error(`modulezip: pictures/${id}: the file ${file} is named twice`);
+    files.add(file.toLowerCase());
+  }
   const zip = await loadZipLibrary();
   const writer = new zip.ZipWriter(new zip.Uint8ArrayWriter(), { useWebWorkers: false, zip64: false, dataDescriptor: false, extendedTimestamp: false, lastModDate: FIXED_DATE, keepOrder: true });
   const text = (v) => new zip.TextReader(JSON.stringify(v, null, 2) + '\n');
