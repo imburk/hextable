@@ -275,7 +275,7 @@ const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'onc
 //              that begins "hb-") the reader asks strict mode (`lintEntry`) whether a table would load the entry, and an entry it would REFUSE is
 //              read as before, but its first line says so, `refused` is true and `refusals` holds the checker's sentences. An SRD entry is not asked.
 //     strict   false: do not ask (an entry made only to try the reader's sentences, whose id and source are not a pack's).
-//     spells, weapons, armour   ids an item may name (see `lintEntry`).
+//     spells, weapons, armour   ids an item may name (see `lintEntry`); feats   the pack's feats (a list or a Map by id), for a subclass option that is a feat of the pack (#550).
 //   Returns also `refused`: true or false when strict mode was asked, null when it was not; and `refusals`: strict mode's sentences, up to 20.
 export function readEntry(kind, entry, ctx = {}) {
   try {
@@ -294,7 +294,7 @@ function refusal(kind, entry, ctx, r) {
   if (!pack && typeof entry.source === 'string') pack = /^homebrew:([a-z0-9]+(-[a-z0-9]+)*)$/.exec(entry.source)?.[1] ?? null;
   if (!pack && typeof entry.id === 'string' && entry.id.startsWith('hb-')) pack = /^hb-([a-z0-9]+)-/.exec(entry.id)?.[1] ?? 'unknown';
   if (!pack) return r;
-  const problems = lintEntry(PLURAL[k], entry, { pack, srd: CONTENT, ...(ctx.spells ? { spells: ctx.spells } : {}), ...(ctx.weapons ? { weapons: ctx.weapons } : {}), ...(ctx.armour ? { armour: ctx.armour } : {}) });
+  const problems = lintEntry(PLURAL[k], entry, { pack, srd: CONTENT, ...(ctx.spells ? { spells: ctx.spells } : {}), ...(ctx.weapons ? { weapons: ctx.weapons } : {}), ...(ctx.feats ? { feats: ctx.feats } : {}), ...(ctx.armour ? { armour: ctx.armour } : {}) });
   r.refused = problems.length > 0;
   r.refusals = problems.slice(0, READER_LIMITS.problems).map((x) => cap(String(x), 300));
   if (r.refused) r.lines.unshift(`REFUSED: this entry breaks the rules a table checks (${problems.length} problem${problems.length === 1 ? '' : 's'}, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.`);
@@ -2718,9 +2718,14 @@ class SubclassReading extends GrantReading {
       if (o.requires !== undefined) this.sRequires(o.requires, `${at}.requires`, listed, siblings);
       if (o.uses !== undefined) this.sUses(o.uses, `${at}.uses`, 1);
       if (o.feat !== undefined) {
-        const ft = typeof o.feat === 'string' && Object.hasOwn(CONTENT.feats ?? {}, o.feat) ? CONTENT.feats[o.feat] : null;
-        if (!ft) this.bad(`${at}.feat is not an SRD feat the engine knows.`);
-        this.line(`It is the feat ${nameOf('feats', o.feat)}: the character gets what that feat grants.`, 1);
+        // A feat of the pack (#550): the pack's own entry, read apart (the gate holds that it exists and is a Fighting Style feat).
+        const own = typeof this.def.source === 'string' ? /^homebrew:([a-z0-9]+(-[a-z0-9]+)*)$/.exec(this.def.source)?.[1] : undefined;
+        if (typeof o.feat === 'string' && o.feat.startsWith('hb-') && own !== undefined && o.feat.startsWith(`hb-${own}-`)) this.line(`It is the Fighting Style feat ${shown(o.feat)} of the same pack, read as its own entry: the character gets what that feat grants, and nothing else of it.`, 1);
+        else {
+          const ft = typeof o.feat === 'string' && Object.hasOwn(CONTENT.feats ?? {}, o.feat) ? CONTENT.feats[o.feat] : null;
+          if (!ft) this.bad(`${at}.feat is not an SRD feat the engine knows, nor a feat of the same pack.`);
+          this.line(`It is the feat ${nameOf('feats', o.feat)}: the character gets what that feat grants.`, 1);
+        }
       }
       if (o.grants !== undefined) this.sGrants(o.grants, `${at}.grants`);
       if (o.grants === undefined && o.feat === undefined && o.tier === 'auto') this.line('It grants nothing, so the engine has nothing to apply: it should not be auto.', 1);
