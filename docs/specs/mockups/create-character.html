@@ -21,7 +21,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0d100f; }
 #mock { position: fixed; z-index: 100; top: 4px; left: 6px; font: 12px/1.3 system-ui, sans-serif; color: #ddd; max-width: calc(100vw - 12px); }
 #mock summary { cursor: pointer; background: #000c; border: 1px solid #555; border-radius: 6px; padding: 4px 8px; list-style: none; width: max-content; }
 #mock[open] summary { border-radius: 6px 6px 0 0; }
-#mock .box { background: #000e; border: 1px solid #555; padding: 8px; border-radius: 0 6px 6px 6px; display: grid; gap: 6px; max-width: 360px; }
+#mock .mbox { background: #000e; border: 1px solid #555; padding: 8px; border-radius: 0 6px 6px 6px; display: grid; gap: 6px; max-width: 360px; }
 #mock .grp { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 #mock .grp b { width: 64px; font-weight: 600; color: #aaa; }
 #mock button { font: inherit; color: #ddd; background: #222; border: 1px solid #555; border-radius: 4px; padding: 3px 7px; cursor: pointer; }
@@ -154,6 +154,7 @@ input:disabled + .box { opacity: .45; border-style: dashed; }
 .opt .l1 .lv { flex: none; font-weight: 400; color: var(--muted); white-space: pre; }
 .opt .l1 .tag, .opt .l1 .np, .opt .l1 .cat { flex: none; }
 .opt .l2 { color: var(--muted); font-size: 13px; line-height: 1.3; margin-top: 1px; }
+.opt .l2.one, .feat-row .sum { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .opt .l2.costline { color: var(--ink); font-size: 14px; }
 .opt .l2.also { color: var(--muted); }
 .opt.npr { box-shadow: inset 4px 0 0 var(--bad); padding-left: 8px; }
@@ -164,8 +165,8 @@ input:disabled + .box { opacity: .45; border-style: dashed; }
 .more { margin: 0 0 6px 42px; padding: 6px 10px; background: var(--panel-2); border-radius: var(--radius); font-size: 14px; border-left: 3px solid var(--accent); }
 .more p { margin: 0 0 4px; } .more p:last-child { margin: 0; }
 .group { margin-top: 12px; }
-.group > .gh { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 4px 0; font-size: 14px; }
-.group > .gh span { font-weight: 400; color: var(--muted); font-size: 13px; }
+.group > .gh, .sechead { position: sticky; top: -6px; z-index: 2; background: var(--panel-solid); display: flex; align-items: baseline; gap: 8px; margin: 12px -4px 2px -8px; padding: 8px 8px 6px; border-bottom: 2px solid var(--accent); font: 700 13px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--ink); }
+.group > .gh span, .sechead span { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); font-size: 13px; }
 .disc { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 10px; margin: 10px 0 2px; border: 1px dashed var(--muted); background: none; border-radius: var(--radius); }
 .disc .tx { flex: 1; } .disc small { display: block; color: var(--muted); font-size: 13px; }
 .disc .chev { transition: transform .3s; color: var(--muted); font-size: 18px; } .disc[aria-expanded=true] .chev { transform: rotate(90deg); }
@@ -240,7 +241,7 @@ input:disabled + .box { opacity: .45; border-style: dashed; }
 <body>
 <details id="mock">
   <summary>Mockup controls</summary>
-  <div class="box">
+  <div class="mbox">
     <div class="grp"><b>Character</b><button data-set="char=monk">Monk 5</button><button data-set="char=wizard">Wizard 5</button></div>
     <div class="grp"><b>Screen</b><button data-set="screen=build">Create character</button><button data-set="screen=tags">Spell tag elsewhere</button></div>
     <div class="grp"><b>Theme</b><button data-set="theme=classic">Classic</button><button data-set="theme=sunlit">Sunlit</button><button data-set="theme=pocket">Pocket</button></div>
@@ -392,7 +393,7 @@ const tagWords = (s) => (s.tag === 'A' ? 'Attack' : s.tag === 'S' ? `${AB3[s.ab]
 const tagHTML = (s, sm) => `<span class="tag ${s.tag === 'A' ? 'attack' : s.tag === 'S' ? 'save' : 'none'}${sm ? ' sm' : ''}">${s.tag === 'A' ? ICON.target : s.tag === 'S' ? ICON.die : ICON.none}${tagWords(s)}</span>`;
 const npHTML = (sm) => `<span class="np${sm ? ' sm' : ''}">${ICON.slash}Not proficient</span>`;
 const pips = (n, max) => `<span class="pips" aria-hidden="true">${Array.from({ length: max }, (_, i) => `<span class="pip${i < n ? '' : ' empty'}"></span>`).join('')}</span>`;
-const infoBtn = (key, label) => `<button type="button" class="info" data-info="${key}" data-fid="info-${key}" aria-expanded="${S.pk[S.char].info.has(key)}" aria-label="About ${esc(label)}"><i>i</i></button>`;
+const infoBtn = (key, label) => `<button data-hkey="${key}" type="button" class="info" data-info="${key}" data-fid="info-${key}" aria-expanded="${S.pk[S.char].info.has(key)}" aria-label="About ${esc(label)}"><i>i</i></button>`;
 const spellTime = (t) => ({ action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', minute: '1 minute', hour: '1 hour' }[t] ?? t);
 const spellRange = (r) => (r === 'self' ? 'Self' : r === 'touch' ? 'Touch' : typeof r === 'number' ? `${r} ft` : r);
 const lvText = (s) => (s.lvl ? `(lvl ${s.lvl})` : '(cantrip)');
@@ -489,7 +490,7 @@ function powerHTML(ch) {
 function featOpt(slot, f, ch, taken, blocked) {
   const p = ch.p, key = `${slot}-${f.id}`, checked = p[slot] === f.id, open = p.info.has(key);
   return `<div class="opt${checked ? ' on' : ''}${blocked ? ' dim' : ''}"><label><input type="radio" name="feat-${slot}" data-feat="${slot}|${f.id}" data-fid="ft-${key}" ${checked ? 'checked' : ''} ${blocked ? 'disabled' : ''}><span class="box round"></span>
-    <span class="txt"><span class="l1"><span class="nm">${esc(f.name)}</span><span class="cat">${f.cat}</span></span><span class="l2" style="${blocked ? '' : 'color:var(--ink);font-size:14px'}">${esc(blocked || f.sum)}</span></span></label>${infoBtn(key, f.name)}</div>
+    <span class="txt"><span class="l1"><span class="nm">${esc(f.name)}</span><span class="cat">${f.cat}</span></span><span class="l2 one" style="${blocked ? '' : 'color:var(--ink);font-size:14px'}">${esc(blocked || f.sum)}</span></span></label>${infoBtn(key, f.name)}</div>
     ${open ? `<div class="more">${f.text.map((t) => `<p>${esc(t)}</p>`).join('')}${f.needs ? `<p><b>${f.needs}.</b></p>` : ''}</div>` : ''}
     ${checked && f.id === 'ability-score-improvement' ? abPick('Raise which score by 2?', p.asi, ABIL) : ''}${checked && f.id === 'grappler' ? abPick('Raise which score by 1?', p.asi === 'str' ? 'str' : 'dex', ['str', 'dex']) : ''}`;
 }
@@ -498,7 +499,7 @@ function featsHTML(ch) {
   const { c, p, sc } = ch;
   const okGrapple = sc.str >= 13 || sc.dex >= 13;
   const block = (slot, f) => (f.once && (slot === 'bg' ? p.l4 : p.bg) === f.id ? 'Already chosen; this feat can’t be taken twice.' : f.id === 'grappler' && !okGrapple ? 'Needs Strength or Dexterity 13.' : '');
-  return `<p class="lead">Each feat says what it does before you pick it. Tap <b>i</b> for the whole text.</p>
+  return `<p class="lead">Each feat says what it does in one line. For the whole text: tap <b>i</b>, rest the mouse on a row for 3 seconds, or press and hold a row on a phone.</p>
     <div class="group"><div class="gh">Background: Origin feat <span>choose one</span></div>${FEATS.filter((f) => f.cat === 'Origin').map((f) => featOpt('bg', f, ch, false, block('bg', f))).join('')}</div>
     <div class="group"><div class="gh">Level 4: a feat <span>Ability Score Improvement is one</span></div>${FEATS.map((f) => featOpt('l4', f, ch, false, block('l4', f))).join('')}</div>`;
 }
@@ -666,6 +667,18 @@ frame.addEventListener('change', (e) => {
   else if (t.dataset.spell) { const [g, id] = t.dataset.spell.split('|'); toggleSet(p[g], id, t.checked); }
   render();
 });
+// The whole text without the i button: the mouse resting on a row for 3 seconds (a computer), or a press held half a
+// second (a phone), as the spells mockup settled (spells-on-the-sheet.md R3-4). A hover opens it and leaving the row closes it.
+const rowKey = (el) => el?.closest?.('.opt, .feat-row')?.querySelector('.info')?.dataset.info;
+let hoverT = 0, hoverKey = null, pressT = 0, swallow = false;
+frame.addEventListener('mouseover', (e) => { const k = rowKey(e.target); if (!k || k === hoverKey) return; clearTimeout(hoverT);
+  hoverT = setTimeout(() => { const p = S.pk[S.char]; if (p.info.has(k)) return; hoverKey = k; p.info.add(k); render(); }, 3000); });
+frame.addEventListener('mouseout', (e) => { const from = rowKey(e.target), to = rowKey(e.relatedTarget); if (from === to) return; clearTimeout(hoverT);
+  if (hoverKey && hoverKey !== to) { S.pk[S.char].info.delete(hoverKey); hoverKey = null; render(); } });
+frame.addEventListener('touchstart', (e) => { const k = rowKey(e.target); if (!k || e.target.closest('.info')) return; clearTimeout(pressT);
+  pressT = setTimeout(() => { swallow = true; toggleSet(S.pk[S.char].info, k, !S.pk[S.char].info.has(k)); render(); }, 500); }, { passive: true });
+for (const ev of ['touchend', 'touchmove', 'touchcancel']) frame.addEventListener(ev, () => clearTimeout(pressT), { passive: true });
+frame.addEventListener('click', (e) => { if (swallow) { swallow = false; e.preventDefault(); e.stopPropagation(); } }, true);
 frame.addEventListener('input', (e) => { if (e.target.id === 'f-name') { S.pk[S.char].name = e.target.value; const ttl = frame.querySelector('.ttl b'); if (ttl) ttl.textContent = `${e.target.value || 'New character'} · ${CHARS[S.char].cls} ${LEVEL}`; } });
 
 // the mockup's own controls and the address
