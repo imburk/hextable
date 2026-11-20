@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAssets } from "../src/assets.js";
 import { VERSION } from "../../rules/src/migrate.js";
-import { createTables, IDLE_MS, MAP_ACTIONS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES } from "../src/tables.js";
+import { createTables, IDLE_MS, MAP_ACTIONS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES, PING_GAP_MS } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
 // It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
@@ -1046,6 +1046,46 @@ test("scenes: a player speaks only as their own character, and only so fast", ()
   assert.ok(!say(dm, { as: null, text: "the DM is counted apart" }).some((m) => m.t === "error"));
   t += 61_000;
   assert.ok(!say(player, { as: "rogue", text: "a minute later" }).some((m) => m.t === "error"));
+});
+
+test("a ping reaches everyone, signed with the joined name, at most one a second each, and is kept nowhere", () => {
+  let t = 1_000_000;
+  const tables = createTables({ seed: () => 5, now: () => t });
+  const { dm, player, code } = seated(tables);
+  const kim = client(tables);
+  kim.say({ t: "join", code, name: "Kim" });
+  dm.say({ t: "approve", userId: kim.last("welcome").userId, ok: true });
+  const at = (() => { const k = Object.keys(dm.last("update").state.map.levels[0].tiles)[0].split(",").map(Number); return { q: k[0], r: k[1] }; })();
+  const ping = (c, action = {}) => { const n = c.raw.length; c.say({ t: "act", action: { type: "ping", at, ...action } }); return c.raw.slice(n); };
+  const tl = () => tables.get(code).state.timeline.length, n = tl();
+  const first = ping(player, { userName: "DM" });
+  assert.ok(!first.some((m) => m.t === "error"));
+  for (const c of [dm, player, kim]) {
+    const evs = c.raw.filter((m) => m.t === "update").flatMap((m) => m.events ?? []).filter((e) => e.type === "ping");
+    assert.deepEqual(evs.map((e) => [e.name, e.from, e.at.q, e.at.r]), [["Pat", player.last("welcome").userId, at.q, at.r]]);
+  }
+  assert.equal(tl(), n, "nothing on the timeline");
+  assert.ok(!player.raw.some((m) => m.t === "undoable") && !dm.raw.slice(-3).some((m) => m.t === "undoable" && m.undo.length), "not an undo step");
+  assert.match(ping(player).find((m) => m.t === "error").error, /too fast/);
+  assert.ok(!ping(dm).some((m) => m.t === "error"), "the DM is counted apart");
+  assert.ok(!ping(kim).some((m) => m.t === "error"), "and each player");
+  t += PING_GAP_MS;
+  assert.ok(!ping(player).some((m) => m.t === "error"));
+  t += PING_GAP_MS;
+  assert.match(ping(player, { at: { q: 9999, r: 9999 } }).find((m) => m.t === "error").error, /spot on the map/);
+});
+
+test("a ping is saved only when the passes after it changed the game", () => {
+  let saves = 0;
+  const tables = createTables({ seed: () => 5, save: () => { saves++; } });
+  const { dm, code } = seated(tables);
+  dm.say({ t: "act", action: { type: "setting", key: "sight", value: "light" } });
+  const s = tables.get(code).state, at = (() => { const k = Object.keys(s.map.levels[0].tiles)[0].split(",").map(Number); return { q: k[0], r: k[1] }; })();
+  const ping = () => { const n = saves; dm.say({ t: "act", action: { type: "ping", at } }); return saves - n; };
+  // Nothing is made out yet: the passes after the ping make out what the party sees, which is a change to be kept.
+  s.map.seen = { tiles: { [s.map.levels[0].id]: [] }, objects: {} };
+  assert.ok(ping() > 0, "a change the ping's passes made is saved");
+  assert.equal(ping(), 0, "a ping that changed nothing is not");
 });
 
 test("standing instructions for reactions go to their player and the DM, and to no other player", () => {

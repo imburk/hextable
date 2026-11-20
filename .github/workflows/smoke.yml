@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pass: [base, timeline, drawer, three, pinch, newgame, actionpanel, dice, paneltabs, link, square, three-parity, maps, import, feedback, keys, companions, homebrew, reactions, prompt, armed, beats, scenes, controls, classes, interface, defeat, rewards, log, items, formation, mychars, grapple, standin, slotforms, models, allowance]
+        pass: [base, timeline, drawer, three, pinch, ping, newgame, actionpanel, dice, paneltabs, link, square, three-parity, maps, import, feedback, keys, companions, homebrew, reactions, prompt, armed, beats, scenes, controls, classes, interface, defeat, rewards, log, items, formation, mychars, grapple, standin, slotforms, models, allowance]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
