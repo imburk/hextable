@@ -43,7 +43,8 @@ import { objectDef } from './shared/walls.js';
 import { refreshReport, refreshNote } from './refresh.js';
 import { classTitle, missingText } from './buildsheet.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
-import { initMyCharacters } from './mycharacters.js';
+import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.js';
+import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
@@ -1248,7 +1249,11 @@ function start(transport, map = null) {
     }
     refresh();
   };
-  T.on.welcome = (you) => { SC.resync(); $('lobby').hidden = you.approved; if (!you.approved) { $('lobby-remember').hidden = true; $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; } };
+  T.on.welcome = (you) => {
+    SC.resync(); $('lobby').hidden = you.approved;
+    $('lobby-code').value = ''; saveFront();                    // the code did its job
+    if (!you.approved) { $('lobby-remember').hidden = true; lobbyAt(['Join a table', `Table ${you.code}`, 'Waiting for the DM'], leaveWaiting); $('lobby-msg').textContent = `Table ${you.code}: waiting for the DM to let you in…`; }
+  };
   FB.attach(T);                 // feedback.js notes the actions sent and the answers (nothing else is read from the transport)
   T.start();
 }
@@ -1260,6 +1265,7 @@ function showLobby(msg = '') {
   $('lobby-solo').textContent = solo ? 'Continue solo game' : 'Play solo on this device';
   $('lobby-new').hidden = !solo;
   $('lobby-msg').textContent = msg;
+  syncWhere(); syncStartOver();
   $('lobby').hidden = false;
   (sess ? $('lobby-rejoin') : $('lobby-solo')).focus?.({ preventScroll: true });
 }
@@ -1275,10 +1281,47 @@ function newSolo() {
 }
 $('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { if (!MC.party().party) return newSolo(); forgetSolo(); newSolo(); });
 const lobbyName = () => $('lobby-name').value.trim() || 'Adventurer';
-$('lobby-host').onclick = () => start(serverTransport({ t: 'host', name: lobbyName(), grid: TC.lobbyGrid() }), TC.lobbyChoice());
-$('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) start(serverTransport({ t: 'join', code, name: lobbyName() })); else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
+$('lobby-host').onclick = () => { lobbyAt(['Host a table', 'Connecting'], leaveWaiting); start(serverTransport({ t: 'host', name: lobbyName(), grid: TC.lobbyGrid() }), TC.lobbyChoice()); };
+$('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) { lobbyAt(['Join a table', `Table ${code.toUpperCase()}`, 'Connecting'], leaveWaiting); start(serverTransport({ t: 'join', code, name: lobbyName() })); } else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
 $('lobby-solo').onclick = () => (hasSoloGame() ? ($('lobby').hidden = true, start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice())) : newSolo());
 $('lobby-card').onsubmit = (ev) => ev.preventDefault();
+
+// ---------- the start flow says where you are, has a Back, and keeps what was filled in (issue #556; startflow.js) ----------
+// The front page's title is "Start a game". Opening the solo party makes it "New solo game \u203a Party", with a Back to the front; a host or join
+// that is connecting or waiting for the DM says so and its Back gives the request up. My characters and the build screen have their own bars.
+let lobbyBack = null;
+function lobbyAt(trail, back = null) {
+  lobbyBack = back;
+  $('lobby-where').textContent = trailTitle(trail);
+  $('lobby-back').hidden = !back; $('lobby-intro').hidden = !!back;
+}
+const syncWhere = () => { const p = $('lobby-party'); if (p.open) lobbyAt([SOLO_ROOT, 'Party'], () => { p.open = false; $('lobby-party-sum').focus?.({ preventScroll: true }); }); else lobbyAt(['Start a game']); };
+$('lobby-party').addEventListener('toggle', syncWhere);
+$('lobby-back').onclick = () => lobbyBack?.();
+// Backing out of a host or join that has not got in: the connection is closed, the lobby is back as it was, what was typed is still there.
+function leaveWaiting() { T?.close?.(); S = null; lobbyBusy(false); showLobby('You went back. Nothing was started.'); }
+// The draft: the name, code and map are saved as they are typed; the grid and the party already keep themselves (tablecontrols.js, mycharacters.js).
+const frontNow = () => ({ name: $('lobby-name').value, code: $('lobby-code').value, map: $('lobby-map').value, grid: TC.lobbyGrid() });
+function saveFront() { saveDraft(keepFront(loadDraft(), frontNow())); syncStartOver(); }
+function syncStartOver() {
+  let party = false; try { party = localStorage.getItem(PARTY_KEY) != null; } catch { /* storage unavailable */ }
+  $('lobby-draft').hidden = !(hasDraft(loadDraft()) || party);
+}
+{
+  const d = loadDraft().front;
+  if (d.name) $('lobby-name').value = d.name;
+  if (d.code) $('lobby-code').value = d.code;
+  if (d.map && [...$('lobby-map').options].some((o) => o.value === d.map)) { $('lobby-map').value = d.map; $('lobby-map').dispatchEvent(new Event('change')); }
+  if (d.grid) { const r = [...document.getElementsByName('lobby-grid')].find((x) => x.value === d.grid); if (r) { r.checked = true; r.dispatchEvent(new Event('change')); } }
+}
+$('lobby-card').addEventListener('input', saveFront);
+$('lobby-card').addEventListener('change', saveFront);
+$('lobby-startover').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to clear what you typed', '', () => {
+  $('lobby-name').value = ''; $('lobby-code').value = ''; $('lobby-map').value = ''; $('lobby-map').dispatchEvent(new Event('change'));
+  const sq = [...document.getElementsByName('lobby-grid')].find((x) => x.value === 'square'); if (sq) { sq.checked = true; sq.dispatchEvent(new Event('change')); }
+  MC.resetParty(); saveDraft({ v: 1, front: {}, build: {} });
+  $('lobby-msg').textContent = 'Cleared. Your saved characters are still in My characters.'; syncStartOver();
+});
 
 (async () => {
   let server = false;
