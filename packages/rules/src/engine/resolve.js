@@ -196,18 +196,36 @@ export function engage(s, e, t, ev, walked = null, opts = null) {
 // ---------- Strike first (the table rule `strikeFirst`; docs/specs/table-ui.md, E23 as amended by #585) ----------
 // Off (the SRD's way; a new table has it off): an attack, a hostile cast or a creature's harmful action outside a fight
 // starts the fight and is not made. Everyone rolls Initiative, and the creature
-// makes it on its turn. On (a house rule; a table saved before #585 had it, for casts, while `autoEngage` was on): it
-// lands first, then the fight starts, in the same action, so one undo takes back both (casting.js, attacks.js).
-// Does `e`'s harmful act at `targets` land first? No fight on, the rule on, and one it is aimed at or catches is of
-// another side (the DM's creature at the party, or a party member at a foe).
-export const strikesFirst = (s, e, targets) => !s.encounter && s.settings?.strikeFirst === true && targets.some((t) => t && t.id !== e.id && hostile(e, t));
-// Taken before the act does anything: where its events begin, and whose Reaction was spent already.
-export const strikeStart = (s, ev) => ({ from: ev.length, used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)) });
+// makes it on its turn. 'casts' or 'all' (house rules; see strikesFirst): it lands first, then the fight starts, in the
+// same action, so one undo takes back both (casting.js, attacks.js).
+// Does `e`'s harmful act at `targets` land first? `kind` is 'cast', 'attack' or 'act'. No fight on, and:
+//   - 'all' (#585, new rule): one it is aimed at or catches is of another side (the DM's creature at the party, or a
+//     party member at a foe), whoever sends it;
+//   - 'casts' (the rule as #372 built it, kept byte for byte for tables saved before #585): the DM's cast, by a creature
+//     not of the party, aimed at or catching a party member, while `autoEngage` is on;
+//   - 'off' (or absent): never.
+export function strikesFirst(s, e, targets, kind, ctx) {
+  if (s.encounter) return false;
+  const mode = s.settings?.strikeFirst ?? 'off';
+  if (mode === 'all') return targets.some((t) => t && t.id !== e.id && hostile(e, t));
+  if (mode === 'casts') return kind === 'cast' && ctx?.role === 'dm' && s.settings.autoEngage === true && e.side !== 'party' && targets.some((t) => t?.side === 'party');
+  return false;
+}
+// Taken before the act does anything: where its events begin, whose Reaction was spent already, and who the party does
+// not know of now (review of #594, M1: a hiding creature's own attack roll or Verbal component gives it away during the
+// act, and its act must still be told as an unseen creature's).
+export const strikeStart = (s, ev) => ({
+  from: ev.length,
+  used: new Set(living(s).filter((o) => o.reactionUsed).map((o) => o.id)),
+  unknown: new Set(Object.values(s.entities).filter((o) => !o.object && unknown(s, o)).map((o) => o.id)),
+});
 // The act has run (its rolls, saves, damage, conditions, the reactions it allowed, a Counterspell that undid it): now the
 // fight starts. Initiative is rolled as for any fight.
-//   - What the party did not know of while it acted stays unknown in its events (`unseen`, which view.js reads and
-//     apply()'s record keeps): a hidden creature's attack or spell is told as any unseen creature's is, and the fight's
-//     start then reveals it, as every fight does ("nobody fights unseen", hidden-information.md section 5).
+//   - What the party did not know of when the act began (until it is told of it during the act: found by a party
+//     creature's senses, or revealed by being caught in it), or still does not know of at its end, stays unknown in its
+//     events (`unseen`, which view.js reads and apply()'s record keeps): a hidden or hiding creature's attack or spell is
+//     told as any unseen creature's is, and the fight's start then reveals it, as every fight does ("nobody fights
+//     unseen", hidden-information.md section 5).
 //   - A Reaction taken during the act stays spent until that creature's first turn in the fight (SRD "Reactions": "When
 //     you take a Reaction, you can't take another one until the start of your next turn"), where a fight starting would
 //     otherwise give it back.
@@ -216,10 +234,14 @@ export const strikeStart = (s, ev) => ({ from: ev.length, used: new Set(living(s
 //     starts (startEncounter refuses before it changes anything, and that refusal is caught).
 //   - `owed` (casting.js, CAST_TAKES_FIRST_ACTION): what the actor's first turn goes without.
 export function thenFight(s, e, ev, lands, { area = false, target = null, owed = null } = {}) {
-  const hid = (id) => typeof id === 'string' && Object.hasOwn(s.entities, id) && unknown(s, s.entities[id]);
-  const actor = hid(e.id) ? [e.id] : [];
+  // Unknown when the act began, until the party is told of it during the act (found by a party creature's senses, or
+  // revealed by being caught in it); a creature that gives itself away by its own attack roll or spell is not told of
+  // until the fight starts. Or still unknown at the end, as E23 had it.
+  const still = new Set(lands.unknown ?? []);
+  const hid = (id) => typeof id === 'string' && Object.hasOwn(s.entities, id) && (still.has(id) || unknown(s, s.entities[id]));
   for (const x of ev.slice(lands.from)) {
-    const ids = [...actor, ...[x.id, x.actor, x.target, x.by, x.against, x.source, ...(Array.isArray(x.targets) ? x.targets : [])].filter(hid)];
+    if ((x.type === 'revealed' || (x.type === 'unhidden' && x.why === 'found')) && typeof x.id === 'string') still.delete(x.id);
+    const ids = [...(hid(e.id) ? [e.id] : []), ...[x.id, x.actor, x.target, x.by, x.against, x.source, ...(Array.isArray(x.targets) ? x.targets : [])].filter(hid)];
     if (ids.length) x.unseen = [...new Set([...(Array.isArray(x.unseen) ? x.unseen : []), ...ids])];
   }
   const keep = new Set(living(s).filter((o) => o.reactionUsed && !lands.used.has(o.id)).map((o) => o.id));

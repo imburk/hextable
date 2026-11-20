@@ -249,8 +249,8 @@ test("a valley table is unchanged by the migration but for the four new fields a
   migrate(old);
   const { world: w, place, parked, journey, ...rest } = old;
   assert.deepEqual({ w, place, parked, journey }, { w: null, place: null, parked: {}, journey: null });
-  const { strikeFirst, ...settings } = rest.settings;          // version 27 (#585) adds the table rule `strikeFirst`, as its `autoEngage` was
-  assert.equal(strikeFirst, true);
+  const { strikeFirst, ...settings } = rest.settings;          // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
+  assert.equal(strikeFirst, "casts");
   assert.equal(json({ ...rest, settings, version: 25 }), json(was));
   assert.deepEqual(Object.keys(old).slice(-4), ["world", "place", "parked", "journey"]);
   const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");

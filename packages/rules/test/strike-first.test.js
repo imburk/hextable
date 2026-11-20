@@ -1,6 +1,9 @@
-// The table rule `strikeFirst` (#585; docs/specs/table-ui.md, E23 as amended). Off (the SRD's way, and a new table's): an
+// The table rule `strikeFirst` (#585; docs/specs/table-ui.md, E23 as amended). 'off' (the SRD's way, and a new table's): an
 // attack, a hostile cast or a monster's action outside a fight starts the fight and is not made; everyone rolls Initiative
-// and the creature makes it on its turn. On (a house rule): it lands first, then the fight starts, in the same action.
+// and the creature makes it on its turn. 'all' (a house rule): it lands first, then the fight starts, in the same action.
+// 'casts' (the rule as #372 built it, which a table saved before #585 gets) is tested in e23-*.test.js; here only that
+// it lands no attack and no action. "On" below is 'all'. And the review of #594: a hiding creature's strike (M1), a
+// creature in a place not yet seen (M2).
 // Here: the setting, both ways for a character's attack, a monster's `act` (and `attack` with a monster's action) and a
 // cast; a player's attack at a foe; what a strike made first refuses; a refused strike changes nothing; a Reaction taken
 // during it; a player asked; undo, replay and a save and load; a hidden monster's strike (twin runs); the migration.
@@ -31,75 +34,82 @@ function goblin(s, grid, { hidden = false, name = null } = {}) {
 // The priest (a character sheet: its Mace is a flat attack) beside the cleric, as e23-scenarios.js has it.
 const priestBy = (s, grid) => { const C = SPOTS[grid].cleric; ok(apply(s, { type: "place", actor: "priest", to: { q: C.q + 1, r: C.r } }, DM)); };
 const MACE = { type: "attack", actor: "priest", target: "cleric", attack: "mace" };
+const ON = { strikeFirst: "all" };
 
-test("the setting: off unless set (a new game has none), the DM's to switch, true or false", () => {
-  assert.deepEqual(SETTINGS.strikeFirst, [false, true]);
+test("the setting: off unless set (a new game has none), the DM's to switch, 'off', 'casts' or 'all'", () => {
+  assert.deepEqual(SETTINGS.strikeFirst, ["off", "casts", "all"]);
   const s = newGame(5);
   assert.equal(s.settings.strikeFirst, undefined, "a new table: off");
-  assert.equal(apply(s, { type: "setting", key: "strikeFirst", value: true }, U1).ok, false);
-  assert.equal(apply(s, { type: "setting", key: "strikeFirst", value: "yes" }, DM).ok, false);
-  ok(apply(s, { type: "setting", key: "strikeFirst", value: true }, DM));
-  assert.equal(s.settings.strikeFirst, true);
+  assert.equal(apply(s, { type: "setting", key: "strikeFirst", value: "all" }, U1).ok, false);
+  for (const v of [true, false, "yes"]) assert.equal(apply(s, { type: "setting", key: "strikeFirst", value: v }, DM).ok, false);
+  for (const v of ["all", "casts", "off"]) { ok(apply(s, { type: "setting", key: "strikeFirst", value: v }, DM)); assert.equal(s.settings.strikeFirst, v); }
 });
 
-test("the migration: a table saved before version 27 has the rule as its autoEngage was; a new one is left as it is", () => {
+test("the migration: a table saved before version 27 gets 'casts' where autoEngage was on (or unset), else 'off'; a new one is left as it is", () => {
   assert.equal(VERSION, 27);
-  for (const on of [true, false]) {
-    const old = newGame(5); old.version = 26; old.settings.autoEngage = on;
+  for (const on of [true, false, undefined]) {
+    const old = newGame(5); old.version = 26; if (on === undefined) delete old.settings.autoEngage; else old.settings.autoEngage = on;
     migrate(old);
-    assert.equal(old.settings.strikeFirst, on);
+    assert.equal(old.settings.strikeFirst, on === false ? "off" : "casts");
     assert.equal(old.version, 27);
     const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");
   }
   const fresh = newGame(5), f = json(fresh); migrate(fresh); assert.equal(json(fresh), f);
-  const off = newGame(5); off.settings.strikeFirst = false; off.settings.autoEngage = true; migrate(off);
-  assert.equal(off.settings.strikeFirst, false, "a choice made at version 27 is kept");
+  const off = newGame(5); off.settings.strikeFirst = "all"; off.settings.autoEngage = false; migrate(off);
+  assert.equal(off.settings.strikeFirst, "all", "a choice made at version 27 is kept");
 });
 
 for (const grid of GRIDS) {
-  test(`${grid}: off (the SRD's way): an attack, a monster's action and a cast start the fight and are not made`, () => {
+  test(`${grid}: off (the SRD's way): an attack, a monster's action and a cast start the fight and are not made; 'casts' lands no attack or action`, () => {
     for (const autoEngage of [true, false]) {
-      const a = K.table(grid, { autoEngage, strikeFirst: false }); priestBy(a, grid);
+      for (const sf of ["off", "casts"]) {
+        const a = K.table(grid, { autoEngage, strikeFirst: sf }); priestBy(a, grid);
+        assert.equal(types(ok(apply(a, MACE, DM))).includes("attack"), false, sf);
+        const b = K.table(grid, { autoEngage, strikeFirst: sf }), g = goblin(b, grid);
+        assert.equal(types(ok(apply(b, { type: "act", actor: g, action: "scimitar", target: "fighter" }, DM))).includes("attack"), false, sf);
+        assert.ok(b.encounter);
+      }
+      const a = K.table(grid, { autoEngage, strikeFirst: "off" }); priestBy(a, grid);
       const ra = ok(apply(a, MACE, DM));
       assert.equal(types(ra).includes("attack"), false); assert.ok(a.encounter && at(ra, "encounterStart") >= 0);
-      const b = K.table(grid, { autoEngage, strikeFirst: false }), g = goblin(b, grid);
+      const b = K.table(grid, { autoEngage, strikeFirst: "off" }), g = goblin(b, grid);
       for (const act of [{ type: "act", actor: g, action: "scimitar", target: "fighter" }, { type: "attack", actor: g, target: "fighter", attack: "scimitar" }]) {
         const t = structuredClone(b), r = ok(apply(t, act, DM));
         assert.equal(types(r).includes("attack"), false, act.type); assert.ok(t.encounter);
         assert.equal(t.entities.fighter.hp, b.entities.fighter.hp);
       }
-      const c = K.table(grid, { autoEngage, strikeFirst: false }), rc = ok(apply(c, K.CASTS.attack(grid), DM));
+      const c = K.table(grid, { autoEngage, strikeFirst: "off" }), rc = ok(apply(c, K.CASTS.attack(grid), DM));
       assert.equal(at(rc, "cast"), -1); assert.ok(c.encounter);
-      const p = K.table(grid, { autoEngage, strikeFirst: false }), gp = goblin(p, grid);
+      const p = K.table(grid, { autoEngage, strikeFirst: "off" }), gp = goblin(p, grid);
       const rp = ok(apply(p, { type: "attack", actor: "fighter", target: gp, attack: "longsword" }, U1));
       assert.equal(types(rp).includes("attack"), false, "a player's attack too"); assert.ok(p.encounter);
     }
   });
 
   test(`${grid}: on: a character's attack, a monster's action and a player's attack land, then the fight starts; the first turn is whole`, () => {
-    const a = K.table(grid); priestBy(a, grid);
+    const a = K.table(grid, ON); priestBy(a, grid);
     const ra = ok(apply(a, MACE, DM));
     assert.ok(at(ra, "attack") >= 0 && at(ra, "attack") < at(ra, "encounterStart"), json(types(ra)));
     assert.ok(a.encounter.order.some((o) => o.id === "priest") && a.encounter.order.some((o) => o.id === "cleric"));
     turnOf(a, "priest");
     assert.equal(a.encounter.budget.action, 1, "the attacker's first turn has its action");
-    const b = K.table(grid), g = goblin(b, grid);
+    const b = K.table(grid, ON), g = goblin(b, grid);
     for (const act of [{ type: "act", actor: g, action: "scimitar", target: "fighter" }, { type: "attack", actor: g, target: "fighter", attack: "scimitar" }]) {
       const t = structuredClone(b), r = ok(apply(t, act, DM));
       assert.ok(at(r, "attack") >= 0 && at(r, "attack") < at(r, "encounterStart"), `${act.type}: ${json(types(r))}`);
       assert.ok(t.encounter.order.some((o) => o.id === g) && t.encounter.order.some((o) => o.id === "fighter"));
     }
-    const p = K.table(grid), gp = goblin(p, grid);
+    const p = K.table(grid, ON), gp = goblin(p, grid);
     const rp = ok(apply(p, { type: "attack", actor: "fighter", target: gp, attack: "longsword" }, U1));
     assert.ok(at(rp, "attack") >= 0 && at(rp, "attack") < at(rp, "encounterStart"), "a player's attack at a foe lands first");
     // Not at a creature of another side (the goblin at a foe): the fight starts and nothing is made, as with the rule off.
-    const q = K.table(grid), gq = goblin(q, grid); ok(apply(q, { type: "place", actor: "priest", to: { ...next(grid), q: next(grid).q + 1 } }, DM));
+    const q = K.table(grid, ON), gq = goblin(q, grid); ok(apply(q, { type: "place", actor: "priest", to: { ...next(grid), q: next(grid).q + 1 } }, DM));
     const rq = ok(apply(q, { type: "act", actor: gq, action: "scimitar", target: "priest" }, DM));
     assert.equal(types(rq).includes("attack"), false);
   });
 
   test(`${grid}: on: what needs a turn in a fight is refused before anything changes; a refused strike changes nothing`, () => {
-    const s = K.table(grid), g = goblin(s, grid), was = json(s);
+    const s = K.table(grid, ON), g = goblin(s, grid), was = json(s);
     for (const extra of [{ brutal: "topple" }, { cunning: [] }, { prey: g }, { grab: true }]) {
       const r = apply(s, { type: "attack", actor: "fighter", target: g, attack: "longsword", ...extra }, U1);
       assert.equal(r.ok, false, json(extra));
@@ -115,7 +125,7 @@ for (const grid of GRIDS) {
   test(`${grid}: on: a Shield taken during the attack stays spent into the fight; a player asked answers first`, () => {
     let found = 0;
     for (let seed = 1; seed <= 40 && !found; seed++) {
-      const s = K.table(grid, { seed, ward: { shield: "always" } }), g = goblin(s, grid);
+      const s = K.table(grid, { ...ON, seed, ward: { shield: "always" } }), g = goblin(s, grid);
       ok(apply(s, { type: "place", actor: g, to: { ...SPOTS[grid].wizard, q: SPOTS[grid].wizard.q + 1 } }, DM));
       const r = ok(apply(s, { type: "act", actor: g, action: "scimitar", target: "wizard" }, DM));
       const sh = r.events.findIndex((e) => e.type === "reaction" && e.reaction === "shield");
@@ -126,7 +136,7 @@ for (const grid of GRIDS) {
       turnOf(s, "wizard");
       assert.equal(s.entities.wizard.reactionUsed, false, "back at the start of its turn");
       // Asked: the whole act waits, nothing has started; the answer makes it, then the fight starts.
-      const t = K.table(grid, { seed, ward: { shield: "ask" } }), h = goblin(t, grid);
+      const t = K.table(grid, { ...ON, seed, ward: { shield: "ask" } }), h = goblin(t, grid);
       ok(apply(t, { type: "place", actor: h, to: { ...SPOTS[grid].wizard, q: SPOTS[grid].wizard.q + 1 } }, DM));
       const q = ok(apply(t, { type: "act", actor: h, action: "scimitar", target: "wizard" }, DM));
       assert.deepEqual(types(q), ["reactionAsked"]);
@@ -139,7 +149,7 @@ for (const grid of GRIDS) {
   });
 
   test(`${grid}: on: one undo takes back the strike and the fight; redo, a replay and a save and load give the same`, () => {
-    const build = () => { const s = K.table(grid); priestBy(s, grid); return s; };
+    const build = () => { const s = K.table(grid, ON); priestBy(s, grid); return s; };
     const s = build(), start = json(s), h = createHistory(), m = mark(s), r = ok(apply(s, MACE, DM));
     h.record(m, s, describeStep(MACE, r.events, m, s));
     const after = json(s);
@@ -157,7 +167,7 @@ for (const grid of GRIDS) {
     const NAMES = ["Snik", "Grub"];
     for (const act of ["act", "attack"]) {
       const runs = NAMES.map((n) => {
-        const s = K.table(grid), g = goblin(s, grid, { hidden: true, name: n }), tl = s.timeline.length;
+        const s = K.table(grid, ON), g = goblin(s, grid, { hidden: true, name: n }), tl = s.timeline.length;
         const a = act === "act" ? { type: "act", actor: g, action: "scimitar", target: "fighter" } : { type: "attack", actor: g, target: "fighter", attack: "scimitar" };
         return { s, g, tl, r: ok(apply(s, a, DM)) };
       });
@@ -176,6 +186,57 @@ for (const grid of GRIDS) {
         }
       }
       for (const { s } of runs) assert.ok(view(s, PLAYERS[0]).entities[g], "Seen once the fight starts");
+    }
+  });
+
+  // Review of #594, M1: a creature that took the Hide action gives itself away with its attack roll or a Verbal component,
+  // during the act. What the party did not know of when the act began is decided before it runs: two worlds that differ
+  // only in the hiding creature's name give every player the same events up to the fight's start, and none names it.
+  test(`${grid}: a hiding creature's strike made first (act, attack, cast) is told as an unseen creature's`, () => {
+    const NAMES = ["Snik", "Grub"];
+    const cases = {
+      act: (g) => ({ type: "act", actor: g, action: "scimitar", target: "fighter" }),
+      attack: (g) => ({ type: "attack", actor: g, target: "fighter", attack: "scimitar" }),
+      cast: () => K.CASTS.attack(grid),
+    };
+    for (const [name, mk] of Object.entries(cases)) for (const sf of name === "cast" ? ["casts", "all"] : ["all"]) {
+      const runs = NAMES.map((n) => {
+        const s = K.table(grid, { strikeFirst: sf });
+        let id;
+        if (name === "cast") { id = "mage"; s.entities.mage.name = n; } else id = goblin(s, grid, { name: n });
+        s.entities[id].hiding = { dc: 30 };
+        assert.ok(view(s, PLAYERS[0]).entities[id] === undefined, "unknown to the party before");
+        const tl = s.timeline.length;
+        return { s, id, tl, r: ok(apply(s, mk(id), DM)) };
+      });
+      const id = runs[0].id, part = (evs) => { const i = evs.findIndex((e) => e.type === "encounterStart"); return evs.slice(0, i).filter((e) => !(e.type === "revealed" && e.id === id)); };
+      assert.ok(runs[0].r.events.slice(0, at(runs[0].r, "encounterStart")).some((e) => (e.type === "attack" || e.type === "cast") && e.actor === id), `${name}: made before the fight`);
+      for (const u of PLAYERS) {
+        const live = runs.map(({ s, r }) => viewEvents(r.events, s, u)), told = runs.map(({ s, tl }) => viewEvents(s.timeline.slice(tl), s, u));
+        assert.deepEqual(part(live[0]), part(live[1]), `${name} ${sf}: the same for ${u.userId} in both worlds`);
+        assert.deepEqual(part(told[0]).map(({ t, ...e }) => e), part(live[0]), `${name} ${sf}: the record tells ${u.userId} the same`);
+        for (const [i, evs] of [...live, ...told].entries()) {
+          const text = json(part(evs));
+          assert.ok(!text.includes(`"${id}"`) && !text.includes(NAMES[i % 2]), `${name} ${sf}: nothing names it before the fight: ${text}`);
+          assert.ok(!part(evs).some((e) => ["attack", "cast"].includes(e.type) || e.by !== undefined), `${name} ${sf}: no attack or cast event, no by`);
+        }
+      }
+      for (const { s } of runs) assert.ok(view(s, PLAYERS[0]).entities[id], "Seen once the fight starts");
+    }
+  });
+
+  // Review of #594, M2: a monster in a place the party has not seen strikes first. Where it and its target stand is shown
+  // before the act (the `region` event comes first, outside what is marked unseen), so it is in the fight it starts.
+  test(`${grid}: a monster in a place not yet seen that strikes first is in the fight`, () => {
+    for (const sf of ["off", "all"]) {
+      const s = K.table(grid, { strikeFirst: sf }), g = goblin(s, grid), p = s.entities[g].pos;
+      s.map.regions.push({ id: "nook", name: "The nook", level: s.map.levels[0].id, hexes: [`${p.q},${p.r}`], revealed: false });
+      const r = ok(apply(s, { type: "act", actor: g, action: "scimitar", target: "fighter" }, DM));
+      const reg = at(r, "region");
+      assert.ok(reg >= 0, `${sf}: the place is shown: ${json(types(r))}`);
+      assert.equal(r.events[reg].unseen, undefined, "the reveal is not marked unseen");
+      if (sf === "all") assert.ok(reg < at(r, "attack") && at(r, "attack") < at(r, "encounterStart"));
+      assert.ok(s.encounter.order.some((o) => o.id === g), `${sf}: the goblin is in the fight`);
     }
   });
 }

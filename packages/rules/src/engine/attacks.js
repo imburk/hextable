@@ -114,15 +114,16 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   partFull(s, e, def, def.target.creature ? targets : null);
   const p = actionProfile(def);
   // Outside a fight a harmful action at others starts the fight and is not taken (the SRD's way): it is taken on the
-  // creature's turn. With the table rule `strikeFirst` on, one at a creature of another side lands first, then the fight
-  // starts (resolve.js, thenFight; E23 as amended by #585).
+  // creature's turn. With the table rule `strikeFirst` at 'all', one at a creature of another side lands first, then the
+  // fight starts (resolve.js, strikesFirst and thenFight; E23 as amended by #585).
   let lands = null;
   if (!s.encounter && p.harmful && targets !== null && !def.target.self) {
-    if (!strikesFirst(s, e, targets)) {                                             // roll initiative first
-      showPlace(s, e, ev);
-      if (def.target.creature) showPlace(s, targets[0], ev);
-      return def.target.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
-    }
+    // Where the actor and its target stand is shown first, either way (review of #594, M2): so a creature in a place
+    // the party has not seen is in the fight it starts. These reveals come before the act's events (outside what
+    // thenFight marks unseen), as with the rule off and for a weapon attack.
+    showPlace(s, e, ev);
+    if (def.target.creature) showPlace(s, targets[0], ev);
+    if (!strikesFirst(s, e, targets, 'act', ctx)) return def.target.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);   // roll initiative first
     lands = strikeStart(s, ev);
   }
   if (s.encounter) {
@@ -374,9 +375,9 @@ export const handlers = {
     walled(s, e, t);
     const option = optionOf(s, e, t, atk, a);
     // Outside a fight the attack starts the fight and is not made (the SRD's way): it is made on the attacker's turn. With
-    // the table rule `strikeFirst` on, an attack at a creature of another side is made first, a plain one (what needs a
+    // the table rule `strikeFirst` at 'all', an attack at a creature of another side is made first, a plain one (what needs a
     // turn in a fight is refused before anything changes), then the fight starts (resolve.js, thenFight; #585).
-    const first = !s.encounter && strikesFirst(s, e, [t]);
+    const first = !s.encounter && strikesFirst(s, e, [t], 'attack', ctx);
     if (first) (a.brutal === undefined && a.cunning === undefined && a.prey === undefined && !a.grab) || fail('Brutal Strike, Cunning Strike, Superior Hunter\'s Prey and Punch and Grab go with an attack on a turn in a fight. An attack made before the fight starts is a plain one.');
     showPlace(s, e, ev); showPlace(s, t, ev);
     if (!s.encounter && !first) return engage(s, e, t, ev);       // roll initiative first

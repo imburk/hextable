@@ -193,8 +193,8 @@ test("state version 25: a new game has no rolled scores; an older state gets an 
   assert.deepEqual(old.scoreRolls, {}); assert.equal(old.version, 27);
   const { world, place, parked, journey, ...rest } = old;       // version 26 adds the places of a world, empty
   assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });
-  const { strikeFirst, ...settings } = rest.settings;          // version 27 (#585) adds the table rule `strikeFirst`, as its `autoEngage` was
-  assert.equal(strikeFirst, true);
+  const { strikeFirst, ...settings } = rest.settings;          // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
+  assert.equal(strikeFirst, "casts");
   assert.deepEqual({ ...rest, settings }, s);
   const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");
   const kept = newGame(5); kept.scoreRolls = { ana: { sets: [] } }; migrate(kept);

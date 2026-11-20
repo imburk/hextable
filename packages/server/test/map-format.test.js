@@ -38,7 +38,7 @@ function sameButHeader(was, now) {
   const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey"]) delete c[k]; if (c.settings) delete c.settings.strikeFirst; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
   assert.deepEqual(now.packs, []);                  // version 24 (#390)
   assert.deepEqual([now.world, now.place, now.parked, now.journey], [null, null, {}, null]);   // version 26 (#579)
-  assert.equal(now.settings.strikeFirst, was.settings.autoEngage === true);   // version 27 (#585)
+  assert.equal(now.settings.strikeFirst, was.settings.autoEngage !== false ? "casts" : "off");   // version 27 (#585)
   assert.deepEqual(strip(now), strip(was));
 }
 

@@ -338,8 +338,8 @@ test("an old table loads unchanged but for its version", () => {
   assert.equal(s.version, 27);
   const { world, place, parked, journey, ...rest } = s;                    // version 26 (#579) adds the places of a world, empty
   assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });
-  const { strikeFirst, ...settings } = rest.settings;                      // version 27 (#585) adds the table rule `strikeFirst`, as its `autoEngage` was
-  assert.equal(strikeFirst, true);
+  const { strikeFirst, ...settings } = rest.settings;                      // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
+  assert.equal(strikeFirst, "casts");
   assert.equal(json({ ...rest, settings, version: 22 }), json(was));
   const again = json(s);
   migrate(s);

@@ -182,11 +182,12 @@ export function migrate(state) {
   if (!(state.version >= 26)) Object.assign(state, { world: state.world ?? null, place: state.place ?? null, parked: state.parked ?? {}, journey: state.journey ?? null });
   if (state.world !== undefined && !(state.world === null || (isRec(state.world) && isRec(state.world.nodes)))) state.world = null;
   if (state.place !== undefined && !(state.place === null || (typeof state.place === 'string' && isRec(state.world?.nodes) && Object.hasOwn(state.world.nodes, state.place)))) state.place = null;
-  // Version 27: the table rule `strikeFirst` (docs/specs/table-ui.md, E23 as amended by #585). Off by default, as the SRD
-  // has it (absent means off). A table saved before then kept a hostile cast landing first while `autoEngage` was on, so
-  // it gets the rule as its `autoEngage` was, and a cast there plays as it did. A state already at version 27 without it
-  // (one made by `newGame`, which does not set it) is left as it is.
-  if (!(state.version >= 27) && state.settings && typeof state.settings === 'object') state.settings.strikeFirst = state.settings.autoEngage === true;
+  // Version 27: the table rule `strikeFirst` (docs/specs/table-ui.md, E23 as amended by #585): 'off' (the SRD's way;
+  // absent means off), 'casts' or 'all'. A table saved before then had a DM's hostile cast at the party land first while
+  // `autoEngage` was on, and nothing else: it gets 'casts' (which still asks for `autoEngage` on, as before), or 'off'
+  // where `autoEngage` was off, so it plays exactly as it did. An unset `autoEngage` counts as on, as the table's rules
+  // are shown (settings.js). A state already at version 27 (one made by `newGame`, which does not set it) is left as it is.
+  if (!(state.version >= 27) && state.settings && typeof state.settings === 'object') state.settings.strikeFirst = state.settings.autoEngage !== false ? 'casts' : 'off';
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

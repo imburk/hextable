@@ -35,10 +35,14 @@ export const SQUARE_RULES = [
   { key: 'squareCover', ask: 'How cover is judged', names: { obstacle: 'By what is in the way', corners: 'By the four corners' } },
 ];
 
-// The table rule `strikeFirst` (engine/dm.js SETTINGS; #585): a checkbox under "Start a fight when the party comes near
-// enemies", with the words of the chosen value under it. Off unless the state says true (a new table has none).
-export const STRIKE_FIRST_LABEL = 'Strike first: an attack or hostile spell outside a fight lands before Initiative (house rule)';
-export const strikeFirstRule = (settings) => { const on = settings?.strikeFirst === true; return { on, text: SETTING_TEXT.strikeFirst[String(on)] }; };
+// The table rule `strikeFirst` (engine/dm.js SETTINGS; #585): a choice under "Start a fight when the party comes near
+// enemies", with the words of the chosen value under it. 'off' unless the state says otherwise (a new table has none).
+export const STRIKE_FIRST_ASK = 'Strike first: what lands before the fight it starts';
+export const STRIKE_FIRST_NAMES = { off: 'Off (SRD)', casts: 'Spells only', all: 'Spells and attacks' };
+export const strikeFirstRule = (settings) => {
+  const v = SETTINGS.strikeFirst.includes(settings?.strikeFirst) ? settings.strikeFirst : 'off';
+  return { value: v, text: SETTING_TEXT.strikeFirst[v] };
+};
 
 // The lobby's last choice of grid for the starter valley, kept on the device.
 export const GRID_KEY = 'hextable.valleyGrid';
@@ -86,10 +90,10 @@ export function initTableControls({ act, getState, isDM, toast }) {
   $('dm-conclusion').onchange = (ev) => act({ type: 'setting', key: 'conclusion', value: ev.target.value });
   $('dm-xpshare').onchange = (ev) => act({ type: 'setting', key: 'xpShare', value: ev.target.value });
 
-  // Strike first (#585): after the engage checkbox (app.js keeps that one). A whole-row label at least 44 px high, for touch.
-  $('dm-engage').closest('label').insertAdjacentHTML('afterend', `<label class="check" style="min-height:44px"><input type="checkbox" id="dm-strike-first"> ${esc(STRIKE_FIRST_LABEL)}</label>
+  // Strike first (#585): after the engage checkbox (app.js keeps that one). The select is at least 44 px high, for touch.
+  $('dm-engage').closest('label').insertAdjacentHTML('afterend', `<label class="assign">${esc(STRIKE_FIRST_ASK)} <select id="dm-strike-first" style="min-height:44px">${SETTINGS.strikeFirst.map((v) => `<option value="${esc(v)}">${esc(STRIKE_FIRST_NAMES[v] ?? v)}</option>`).join('')}</select></label>
     <p class="note" id="dm-strike-first-text"></p>`);
-  $('dm-strike-first').onchange = (ev) => act({ type: 'setting', key: 'strikeFirst', value: ev.target.checked });
+  $('dm-strike-first').onchange = (ev) => act({ type: 'setting', key: 'strikeFirst', value: ev.target.value });
 
   // Rolled ability scores (docs/specs/ability-scores.md): may a score be rolled again, below what number, and which result stands. Added under the XP choice.
   $('dm-xpshare').closest('label').insertAdjacentHTML('afterend', `<label class="assign">Rolled ability scores: rolling a score again <select id="dm-score-reroll">${SETTINGS.scoreReroll.map((v) => `<option value="${v}">${esc(SCORE_NAMES.reroll[v])}</option>`).join('')}</select></label>
@@ -135,7 +139,7 @@ export function initTableControls({ act, getState, isDM, toast }) {
       $('dm-conclusion-note').hidden = $('dm-conclusion').value !== 'auto';
       scoreRule(S);
       const sf = strikeFirstRule(S?.settings);
-      $('dm-strike-first').checked = sf.on; $('dm-strike-first-text').textContent = sf.text;
+      $('dm-strike-first').value = sf.value; $('dm-strike-first-text').textContent = sf.text;
       $('pace-table').textContent = `The DM has set the table to: ${PACE_NAME[pace] ?? pace}. ${dm ? '' : 'Only the DM can change this.'}`;
       btn.disabled = !!S?.encounter;
       $('dm-stock-fight').hidden = !S?.encounter;

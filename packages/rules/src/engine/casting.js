@@ -542,10 +542,10 @@ function castSpell(s, a, ctx, ev, item) {
       e.slots[slot] > 0 || fail(`${e.name} has no level ${slot} spell slots left.`);
     }
     const aimed = sp.aim === 'area' || sp.aim === 'creature';
-    // E23 as amended by #585: with the table rule `strikeFirst` on and no fight, a harmful cast at a creature of another
-    // side lands and then the fight starts (landThenFight, below). Otherwise (the SRD's way, and a new table's) a harmful
+    // E23 as amended by #585: under the table rule `strikeFirst` ('casts' or 'all'; resolve.js strikesFirst) and no
+    // fight, a harmful cast lands and then the fight starts (landThenFight, below). Otherwise (the SRD's way, and a new table's) a harmful
     // cast aimed at others outside a fight starts the fight and is not cast: the caster casts it on its turn.
-    const lands = !s.encounter && sp.harmful && aimed && strikesFirst(s, e, targets) ? { ...strikeStart(s, ev), time, slotted: sp.level > 0 && (!via || paysSlot) && !item } : null;
+    const lands = !s.encounter && sp.harmful && aimed && strikesFirst(s, e, targets, 'cast', ctx) ? { ...strikeStart(s, ev), time, slotted: sp.level > 0 && (!via || paysSlot) && !item } : null;
     if (!s.encounter && sp.harmful && aimed && !lands) return sp.aim === 'area' ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
     const done = () => { if (lands) landThenFight(s, e, sp, targets, ev, lands); checkEnd(s, ev); };
     const slotFlag = s.encounter ? s.encounter.flags.slot : undefined;

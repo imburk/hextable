@@ -180,7 +180,7 @@ test("a version 23 state loads with packs: [] and is otherwise unchanged; migrat
   assert.equal(VERSION, 27);
   assert.equal(s.version, 27);
   assert.deepEqual(s.packs, []);
-  assert.equal(s.settings.strikeFirst, true);   // version 27 (#585) adds the table rule `strikeFirst`, as its `autoEngage` was
+  assert.equal(s.settings.strikeFirst, "casts");   // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
   const unstruck = (x) => { const { strikeFirst, ...settings } = x.settings; return settings; };
   const places = (x) => ({ ...x, world: undefined, place: undefined, parked: undefined, journey: undefined, settings: unstruck(x) });   // version 26 (#579) adds the places of a world
   assert.equal(json({ ...places(s), version: 23 }), json(was), "newGame already holds packs: [], so nothing moves");

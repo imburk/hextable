@@ -86,7 +86,7 @@ test("saves made by main's code before C7 load unchanged and the brain plays on 
     const { packs, scoreRolls, world, place, parked, journey, ...rest } = s;                     // version 24 (#390) raises the version and adds `packs: []`; nothing else changes
     assert.deepEqual(packs, []); assert.deepEqual(scoreRolls, {});   // version 25 (#557) adds `scoreRolls`
     assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });   // version 26 (#579) adds the places of a world
-    assert.equal(rest.settings.strikeFirst, state.settings.autoEngage === true); // version 27 (#585) adds the table rule `strikeFirst`, as its `autoEngage` was
+    assert.equal(rest.settings.strikeFirst, state.settings.autoEngage !== false ? "casts" : "off"); // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
     const { strikeFirst, ...settings } = rest.settings;
     assert.equal(json({ ...rest, settings, version: state.version }), raw, `${grid} ${at}: loads unchanged`);
     const id = current(s), e = s.entities[id];
