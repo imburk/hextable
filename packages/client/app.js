@@ -1300,8 +1300,8 @@ $('lobby-party').addEventListener('toggle', syncWhere);
 $('lobby-back').onclick = () => lobbyBack?.();
 // Backing out of a host or join that has not got in: the connection is closed, the lobby is back as it was, what was typed is still there.
 function leaveWaiting() { T?.close?.(); S = null; lobbyBusy(false); showLobby('You went back. Nothing was started.'); }
-// The draft: the name, code and map are saved as they are typed; the grid and the party already keep themselves (tablecontrols.js, mycharacters.js).
-const frontNow = () => ({ name: $('lobby-name').value, code: $('lobby-code').value, map: $('lobby-map').value, grid: TC.lobbyGrid() });
+// The draft: the name, code and map are saved as they are typed; the grid and the party already keep themselves (tablecontrols.js, mycharacters.js), so they are not copied here.
+const frontNow = () => ({ name: $('lobby-name').value, code: $('lobby-code').value, map: $('lobby-map').value });
 function saveFront() { saveDraft(keepFront(loadDraft(), frontNow())); syncStartOver(); }
 function syncStartOver() {
   let party = false; try { party = localStorage.getItem(PARTY_KEY) != null; } catch { /* storage unavailable */ }
@@ -1312,7 +1312,6 @@ function syncStartOver() {
   if (d.name) $('lobby-name').value = d.name;
   if (d.code) $('lobby-code').value = d.code;
   if (d.map && [...$('lobby-map').options].some((o) => o.value === d.map)) { $('lobby-map').value = d.map; $('lobby-map').dispatchEvent(new Event('change')); }
-  if (d.grid) { const r = [...document.getElementsByName('lobby-grid')].find((x) => x.value === d.grid); if (r) { r.checked = true; r.dispatchEvent(new Event('change')); } }
 }
 $('lobby-card').addEventListener('input', saveFront);
 $('lobby-card').addEventListener('change', saveFront);

@@ -3,7 +3,7 @@
 // My characters (mycharacters.js) and the build screen when it opens for My characters (buildsheet.js).
 //
 // Where you are: a trail of names, from the task ("New solo game") to the page ("New character"), shown as "New solo game › Characters › New character".
-// The draft: one record per browser under DRAFT_KEY, { v, front, build }. `front` is what the front page holds (name, code, map, grid); `build` is
+// The draft: one record per browser under DRAFT_KEY, { v, front, build }. `front` is what the front page holds (name, code, map; the grid and the party keep themselves); `build` is
 // one record per character being built ('new' for a new one, the character's id for an edit), each with the sheet's choices as the build screen
 // holds them. Storage may be missing, full or throw: nothing here ever throws, and a draft that cannot be read is treated as none.
 
@@ -32,7 +32,6 @@ export function loadDraft(storage = globalThis.localStorage) {
     if (typeof o.front.name === 'string') front.name = o.front.name.slice(0, LIMITS.nameLen);
     if (typeof o.front.code === 'string') front.code = o.front.code.slice(0, LIMITS.codeLen);
     if (typeof o.front.map === 'string') front.map = o.front.map.slice(0, 60);
-    if (o.front.grid === 'square' || o.front.grid === 'hex') front.grid = o.front.grid;
   }
   const build = {};
   if (isObj(o.build)) for (const [k, v] of Object.entries(o.build).slice(0, LIMITS.builds)) if (isObj(v) && isObj(v.b) && Number.isFinite(v.at)) build[k] = { at: v.at, b: v.b };
@@ -56,7 +55,6 @@ export function keepFront(d, f) {
   if (f.name?.trim()) front.name = f.name.slice(0, LIMITS.nameLen);
   if (f.code?.trim()) front.code = f.code.slice(0, LIMITS.codeLen);
   if (f.map) front.map = f.map;
-  if (f.grid === 'hex') front.grid = f.grid;      // squares are the default; only a change is a draft
   return { ...d, front };
 }
 // One character's build draft. `key` is 'new' or a character id; `b` is the build screen's choices (JSON-able); `at` is a time in ms.

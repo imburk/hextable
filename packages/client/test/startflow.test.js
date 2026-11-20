@@ -32,11 +32,11 @@ test('a draft round-trips, and an empty one removes the key', () => {
   const s = mem();
   let d = F.loadDraft(s);
   assert.deepEqual(d, { v: 1, front: {}, build: {} });
-  d = F.keepFront(d, { name: 'Isaac', code: 'KX7Q2M', map: '', grid: 'square' });
+  d = F.keepFront(d, { name: 'Isaac', code: 'KX7Q2M', map: '' });
   d = F.keepBuild(d, 'new', { name: 'Tessa', class: 'fighter' }, 1000);
   assert.deepEqual(F.saveDraft(d, s), { ok: true });
   const back = F.loadDraft(s);
-  assert.deepEqual(back.front, { name: 'Isaac', code: 'KX7Q2M' });      // squares and no map are the defaults, so they are not a draft
+  assert.deepEqual(back.front, { name: 'Isaac', code: 'KX7Q2M' });      // no map is the default, so it is not a draft
   assert.equal(back.build.new.b.name, 'Tessa');
   assert.equal(F.hasDraft(back), true);
   assert.deepEqual(F.saveDraft(F.dropBuild(F.keepFront(back, {}), 'new'), s), { ok: true });
@@ -44,8 +44,8 @@ test('a draft round-trips, and an empty one removes the key', () => {
   assert.equal(F.hasDraft(F.loadDraft(s)), false);
 });
 
-test('a front page that went to hexes is a draft', () => {
-  assert.deepEqual(F.keepFront(F.loadDraft(mem()), { name: ' ', code: '', map: 'cave', grid: 'hex' }).front, { map: 'cave', grid: 'hex' });
+test('a front page keeps what has something in it: a blank name is not a draft, a chosen map is', () => {
+  assert.deepEqual(F.keepFront(F.loadDraft(mem()), { name: ' ', code: '', map: 'cave' }).front, { map: 'cave' });
 });
 
 test('storage that is missing, full or throws never throws and reads as no draft', () => {
@@ -56,11 +56,10 @@ test('storage that is missing, full or throws never throws and reads as no draft
 
 test('a draft that cannot be read is treated as none and what it holds is cut to size', () => {
   for (const raw of ['{', '[]', '"x"', JSON.stringify({ v: 2, front: { name: 'a' } }), JSON.stringify({ v: 1, front: 5, build: 5 })]) assert.equal(F.hasDraft(F.loadDraft(mem({ [F.DRAFT_KEY]: raw }))), false, raw);
-  const raw = JSON.stringify({ v: 1, front: { name: 'n'.repeat(99), code: 'abcdefghij', grid: 'tri', map: 5 }, build: { a: { at: 1, b: { x: 1 } }, bad: { at: 'x', b: {} }, worse: { at: 2, b: 7 } } });
+  const raw = JSON.stringify({ v: 1, front: { name: 'n'.repeat(99), code: 'abcdefghij', map: 5 }, build: { a: { at: 1, b: { x: 1 } }, bad: { at: 'x', b: {} }, worse: { at: 2, b: 7 } } });
   const d = F.loadDraft(mem({ [F.DRAFT_KEY]: raw }));
   assert.equal(d.front.name.length, F.LIMITS.nameLen);
   assert.equal(d.front.code, 'abcdef');
-  assert.equal(d.front.grid, undefined);
   assert.equal(d.front.map, undefined);
   assert.deepEqual(Object.keys(d.build), ['a']);
 });
