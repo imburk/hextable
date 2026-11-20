@@ -243,7 +243,7 @@ test; none is part of this spec's jobs. The letters in the last column are the a
 | 2 | Proficiency in skills of the player's choice, and Expertise | the domain, the college | **Says it** for "any skills" (`skills: { n, from: 'any' }`) and Expertise picks (`expertise: n`), and (A, built) for a choice from a short list: `skills: { n, from: [skill ids], expertise: true }`. | A |
 | 3 | Proficiency in an armour category, or martial weapons | the college | **Says it**: `proficiency`, and (A, built) for named weapons: `proficiency.weapons: ['martial'] or weapon ids`. | A |
 | 4 | Languages | the domain | **Does not**: a sheet has no languages (DEBT C9). `manual`. | none planned |
-| 5 | A Fighting Style chosen from a few | the college | **Says it**: `options` whose `feat` is an SRD Fighting Style feat. A style that is not an SRD feat would be a homebrew feat; `option.feat` naming a homebrew feat is not allowed today. | B |
+| 5 | A Fighting Style chosen from a few | the college | **Says it**: `options` whose `feat` is an SRD Fighting Style feat, or (B, built) a Fighting Style feat of the same pack. | B |
 | 6 | Extra Attack | the college | **Says it**: `extraAttack`. | none |
 | 7 | A Channel Divinity option: creatures that fail a save get a condition | the oath | **Says it**: an action with `cost: { resource: 'channel-divinity' }`, a target or area, `save` and `condition` steps (as Turn Undead). | none |
 | 8 | A Channel Divinity option: an edge against one chosen creature for a time | the oath | **Probably says it**: a modifier put on the holder that holds only against the target (`to: 'caster'`, `against: 'target'`, as Hunter's Mark) on a feature's action with a `duration`. Spells do this; a feature's action doing it is untested, so job B1 tests it before the reading claims it. | none, if the test passes |
@@ -270,8 +270,7 @@ named):
 
 - **A. Choices from a short list** (built, #544; see "Build notes: A"). `skills: { n, from: [skill ids], expertise? }`, with Expertise in the skills so picked, and
   `proficiency.weapons` naming weapon ids. `content/schema.js`, `content/reader.js`, `derive.js`, `validate`.
-- **B. A Fighting Style option that is a homebrew feat** of the same pack. `schema.js` (lintPack cross-check),
-  `derive.js`.
+- **B. A Fighting Style option that is a homebrew feat** of the same pack (built, #550; see "Build notes: B, a Fighting Style option"). `content/schema.js` (the gate's cross-check with the pack's feats), `content/reader.js`; `derive.js` needed no change.
 - **C. Proficiency for a time** (built, #540; see "Build notes: C"): a modifier op `proficient` on `check` with a scope, which `rolls.js` reads as
   proficiency, not as an add; and `choice: { of: 'skill' | 'tool', from? }` on a feature's action, the skill or tool the holder names when using it. `content/schema.js`, `content/reader.js`,
   `modifiers.js`, `engine/rolls.js`, `engine/features.js`.
@@ -391,7 +390,7 @@ the sketch:
   below level 3). A spell id is an SRD spell or one of the pack's, never another pack's; its level is compared with the
   highest slot the class has at that class level (Pact Magic by `slotLevel`).
 - **Options that are feats.** Allowed only for an SRD Fighting Style feat (survey item 5), with its id, name and tier: so
-  that option keeps the feat's id and is exempt from the prefix rule. A feat of the pack stays refused (addition B).
+  that option keeps the feat's id and is exempt from the prefix rule. A feat of the pack was refused here until addition B (#550).
 - **Amounts in a subclass's steps.** A subclass's `damage`, `heal` and `tempHp` steps may be a class amount, a save's `dc` and
   a heal's `addMod` an ability, and a modifier on a speed may reach 120 (the SRD's Draconic Sorcerer's Fly Speed 60; a modifier
   on any other hook is held to 40, as a feat's is). All the SRD subclasses, made homebrew, pass: a test holds them to it. The
@@ -849,3 +848,23 @@ Built to addition A. What was settled in building, and what differs from the ske
 - **State shape: no change, no version bump. What players are sent: the pack's copy carries the grants as written** (a subclass's data was already sent, B1; `dmNotes` stripped); a player's view of a character is unchanged in kind.
 - **Tests** (`homebrew-subclass-picks.test.js`, invented "Domain of the Open Page" and "College of Quiet Pages", pack "paper-folk"): the sheet and `derive` (Expertise only where the flag is, a second feature at level 6, one pick as a word, order, a second class); each validate sentence; a skill already held picked (a background skill, a class skill, the Expertise once); a sheet that lists every skill, with and without the picks; the pack away; off-list and surplus picks in `derive`; Expertise on a feature's skill (a bard);
   named weapons (valid, trained, a martial weapon not named refused, without the subclass and below its level refused, a weapon of the pack itself in a whole pack and not in another); the gate's shapes and refusals (list, `n`, extra keys, `expertise`, options, option, feat, item, weapons); the reading; `setSheet` (made, and refused with nothing changed), replay and `refresh`; the importer's picks (Fantasy Grounds cleric fixture, renamed domain; one skill short: none written); an SRD sheet unchanged. No existing test was changed.
+
+## Build notes: B, a Fighting Style option that is a feat of the pack (#550)
+
+Built to addition B. What was settled in building, and what differs from the sketch:
+
+- **Where.** `content/schema.js` (`lintSubclass`, a `featLookup` handed to it by `lintPack` and `lintEntry`), `content/reader.js` (the option's line, and `feats` passed on to the strict check). **`derive.js` needed no change**: an option that is a feat already took the feat's `grants` from `CONTENT.feats[o.feat]`, and inside `using` that table holds the pack's feats beside the SRD's, so a pack feat is applied by the line that applies an SRD one. The issue listed `derive.js`; it is
+  untouched on purpose. One existing test changed beyond the issue's list (`homebrew-subclass.test.js`, see below).
+- **The shape: nothing new.** An option is what it was for an SRD style: `{ id, name, tier, text, feat }` with `feat` equal to `id` and no `grants` of its own; the id is now the pack feat's id (`hb-<pack>-<name>`), and the feature's pick is that id in the sheet's `choices` for the feature, as an SRD style's is (`choices: { 'hb-p-stance': 'hb-p-reef-guard' }`). The option keeps the exemption from the option-id prefix rule and from "used once in the pack" (the id is the feat's, which is an entry of the pack
+  and is the same id however many subclasses offer it).
+- **The gate, a sentence for each** (`feature F: option O ...`): "names the feat \"x\", which is not a feat of this pack: add it to the pack's feats" (the pack's feat list is searched, so a pack with no `feats` refuses it); "names the feat \"x\" of another pack: an option can only be a feat of this same pack"; "which is not a Fighting Style feat (its category is general): an option can only be one";
+  "which gives ability points, skills or spells to choose: an option gives only what the feat's `grants` give, so the character would lose them" (`increase`, `proficiencies`, `spellPick`: an option applies `grants` alone, and the engine does not pretend); "which has a level or ability prerequisite: an option is not checked against one" (the feature's own level is the gate; the prerequisite `feature: fighting-style` every SRD style has is fine);
+  and the existing "has another name or tier than the feat". The single-entry gate (`lintEntry`, which the reader asks) knows the pack's feats only if `ctx.feats` (a list or a Map by id) is given; without it an id of this pack's prefix is let pass, as a spell id is, and an id of another pack is refused all the same.
+- **`validate`: the existing sentences are the ones.** A missing pick: "Choose an option for Tide Stance: Reef Guard, Shallows Shot, Defense."; a pick off the list (a feat of another pack, an id the feature does not list, an SRD style it does not offer): "Tide Stance has no option \"x\"." Nothing was added to `derive.js` for them; the test pins both.
+- **The missing-pack rule.** The feature belongs to the subclass: with the pack away the subclass is absent and so is its feature and the pick; nothing throws, an SRD sheet derives as before. The pack's feat and the subclass are in one pack, so a table never has one without the other.
+- **The reading.** "It is the Fighting Style feat \"hb-p-x\" of the same pack, read as its own entry: the character gets what that feat grants, and nothing else of it." The reader reads one entry and cannot say what the feat grants; the DM reads the feat on its own. (An id that is not of the entry's own pack, `source: homebrew:<pack>`, reads as before and is called unknown unless it is an SRD feat.)
+- **State shape: no change, no version bump. What players are sent: unchanged in kind.** A player's copy of a pack already carries its `feats` and its subclasses as written (B1), so the pack feat and the option reach a player as any pack entry does; the character's sheet holds the pick as a string in `choices`, as before.
+- **Tests** (`homebrew-subclass-style.test.js`, invented "Oath of the Low Tide" with feats "Reef Guard" and "Shallows Shot", pack "tide-wardens"): the gate (valid with an SRD style beside; missing, no feats at all, wrong category, another pack, ability points, proficiencies, level prerequisite, name, tier, id different from the feat's, grants of the option's own); the single-entry gate; `derive` (the Armor Class
+  of the feat, the feature in the record); each `validate` sentence; the pack away; the reading and a player's copy; `setSheet`, replay and `refresh`. **One existing test changed**: `homebrew-subclass.test.js` ("an option that is a feat ...") asserted that an option naming a feat of the pack is refused with the old sentence; it now asks the gate with the pack's feats given (none) and expects "not a feat of this pack". The SRD half of it is as it was.
+- **Compared against main:** the sheets of every SRD class at levels 1 to 20 (validate and derive) and the five imported characters of the owner's private pack, with and without the private pack lent, hash the same before and after.
+
