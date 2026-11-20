@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAssets } from "../src/assets.js";
 import { VERSION } from "../../rules/src/migrate.js";
-import { createTables, IDLE_MS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES } from "../src/tables.js";
+import { createTables, IDLE_MS, MAP_ACTIONS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
 // It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
@@ -563,6 +563,28 @@ test("action size cap: players and the DM are held to 4 KB, except the DM's map 
 
   // Even the DM's map actions have a ceiling.
   dm.say({ t: "act", action: { type: "mapEdit", ops: [{ op: "x", pad: "z".repeat(MAX_MAP_ACTION_BYTES) }] } });
+  assert.deepEqual(dm.got.at(-1), TOO_BIG);
+});
+
+test("action size cap: every action that carries a place's map (travel W2) is held to the map cap for the DM, and to 4 KB for a player", () => {
+  assert.deepEqual([...MAP_ACTIONS].sort(), ["enter", "goTo", "leave", "loadMap", "mapEdit", "nodeAdd", "resetPlace"]);
+  const tables = createTables({ seed: () => 5 });
+  const { dm, player } = seated(tables);
+  const TOO_BIG = { t: "error", error: "That action is too large." };
+  const map = structuredClone(dm.last("update").state.map);
+  assert.ok(JSON.stringify(map).length > MAX_ACTION_BYTES);
+  // A battle place added with its map: through the cap, and taken by the engine.
+  dm.say({ t: "act", action: { type: "nodeAdd", node: { name: "The old mill", kind: "map" }, map } });
+  assert.equal(dm.got.at(-1).t, "update");
+  assert.ok(tables.get(dm.last("welcome").code).state.parked["the-old-mill"]);
+  // The others get past the cap to the engine's own answer (none of them applies here), never "too large".
+  for (const type of ["enter", "leave", "goTo", "resetPlace"]) {
+    dm.say({ t: "act", action: { type, node: "the-old-mill", pin: "p", map } });
+    assert.notDeepEqual(dm.got.at(-1), TOO_BIG, type);
+    player.say({ t: "act", action: { type, node: "the-old-mill", pin: "p", map } });
+    assert.deepEqual(player.got.at(-1), TOO_BIG, `${type} from a player`);
+  }
+  dm.say({ t: "act", action: { type: "nodeAdd", node: { name: "X", kind: "map" }, map, pad: "z".repeat(MAX_MAP_ACTION_BYTES) } });
   assert.deepEqual(dm.got.at(-1), TOO_BIG);
 });
 
