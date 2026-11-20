@@ -1021,6 +1021,20 @@ the light (W6b) comes with the journeys (W6): both are the owner's answers of 15
 pin and goes between pins and places, never by cells, and every walk there is refused in the same words, so the answer never
 depends on a creature the player cannot see.
 
+**Build notes, W3 (#595, #597).** `WORLD_LIMITS` (`worldpack.js`) holds the spec's limits and these of the build's own
+**(design choice)**: other strings 200 letters (a map's own strings are at most 200, as `lintMap` has them), 50 pictures, JSON
+nesting 24, 20 foes a row, 20 battle maps bound to a place or pin and 20 wayside maps a route; a picture or a battle map that
+nothing names is refused ("leave it out"). A seated DM's WebSocket frame is 4 MB and 64 KB, for the `world` message; an action
+is still held to 1 MiB. The table keeps the pack beside the state without its pictures' bytes (they are in its file store, by
+the store's ids), a picture the last world had is used again byte for byte, and one nothing shows any more is deleted when a
+world replaces it; the DM cannot delete a picture the world uses, and a table export takes the world's pictures first. **The
+fill** runs after the size check and before `apply()`: in `enter`, `leave`, `loadMap { node }`, `goTo { stale: 'reset' }` and
+`resetPlace` a client's `map` is dropped and the pack's put in when the place is not in play or kept (a place made at the table
+keeps the DM's map); W6 adds `journey` and W8 a Teleport `cast` to `FILLED`, and W4 must translate a player's `pl` ids before
+the fill. **Loading a world clears the DM's undo history**, as removing a homebrew pack does: no undo step crosses into another
+world. The world budget is its own iterative walk with the homebrew budget's rules (prototype keys, control characters, plain
+data), not the homebrew scanner itself, which `content/schema.js` does not export: **sharing the code is an open question**.
+
 ## What stays manual
 
 - Getting lost, foraging and what a Search finds on the road: the DM, with the terrain's DC offered.

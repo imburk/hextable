@@ -200,6 +200,7 @@ async function classes(browser, url, label, opts) {
       });
 
       await run.do('Divine Intervention: the cleric picks a spell from the list and casts it with no slot', async () => {
+        await placeBeside(page, ids.Pala, ids.Cleo);       // Cure Wounds is a touch spell: where Pala spawned varies, so stand her next to the cleric (#547)
         await pick('Cleo');
         await feat('Divine Intervention');
         await waitShown(page, '#cp .cp-card');

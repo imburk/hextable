@@ -12,6 +12,7 @@ import {
   arrivalSpots, battleRecord, CAP_TEXT, depthOf, effectFate, emptyWorld, goingWith, isBattle, marchOrder, NODE_KINDS, nodeIdFor,
   nodeOf, parkedBattles, parkedOf, pinOf, placeName, newRecord, setPin, STALE_CHOICES, staleQuestion, TRAVEL_LIMITS,
 } from '../places.js';
+import { indexProblem } from '../worldpack.js';
 import { fail } from './shared.js';
 import { lookAround, unfollow } from './world.js';
 import { dawn } from './rests.js';
@@ -321,7 +322,48 @@ export function placeIn(s, a, ctx, ev) {
   if (inPlay) { for (const e of out.creatures) ev.push({ type: 'placed', id: e.id, to: e.pos }); lookAround(s, ev); }
 }
 
+// ---------- the index of an imported world (W3) ----------
+// `worldIndex { index }`: the table server (and the solo transport) send it once the DM's world pack has passed the
+// linter and its pictures are in the table's store (worldpack.js builds the index); a client cannot (the server refuses it
+// in an `act`, as it refuses `setPacks`). With a world already here it replaces it (Decision 11): the places made at the
+// table (`added`) are kept; a place in play or parked that the new pack lacks keeps its record and is marked `gone`; where
+// the party stands (`at`) and the entries it came by (`came`) are kept. The DM, only the DM, is told what changed.
+const n = (k, one, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+function worldIndex(s, a, ctx, ev) {
+  ctx.role === 'dm' || fail('Only the DM can load a world.');
+  !s.encounter || fail('A world cannot be loaded in the middle of a fight.');
+  !s.journey || fail('The party is on a journey: end it first.');
+  const problem = indexProblem(a.index);
+  problem === null || fail(`That world can't be used. ${problem}`);
+  const ix = a.index, old = s.world ?? null, oldNodes = old?.nodes ?? {};
+  if (old?.id === ix.id && Number.isInteger(old.version) && ix.version < old.version) fail(`This table has version ${old.version} of ${old.name ?? ix.name}; a world can be replaced by the same version or a newer one, not an older one.`);
+  const next = structuredClone(ix);
+  const held = new Set([s.place, ...Object.keys(s.parked ?? {})].filter((x) => typeof x === 'string'));
+  const gone = [];
+  for (const [id, was] of Object.entries(oldNodes)) {
+    if (was.added) {
+      !own(next.nodes, id) || fail(`The pack has a place "${id}", and a place of that id was made at this table (${was.name ?? id}). Give the pack's place another id.`);
+      next.nodes[id] = structuredClone(was);
+    } else if (held.has(id)) {
+      if (!own(next.nodes, id)) { next.nodes[id] = { ...structuredClone(was), gone: true }; gone.push(id); }
+      else isBattle(was) === isBattle(next.nodes[id]) || fail(`${placeName(s, id)} is kept at this table as ${isBattle(was) ? 'a battle map' : 'a navigation map or a scene'}, and the new pack makes it ${isBattle(was) ? 'a navigation map or a scene' : 'a battle map'}. Give the pack's place another id, or let the place go first.`);
+    }
+  }
+  // A place carried over whose parent the new pack lacks is put at the top.
+  for (const x of Object.values(next.nodes)) if (x.parent !== undefined && !own(next.nodes, x.parent)) delete x.parent;
+  const count = Object.keys(next.nodes).length;
+  count <= TRAVEL_LIMITS.nodes || fail(`With the places made or kept at this table, the world would have ${count} places; a world has at most ${TRAVEL_LIMITS.nodes}.`);
+  if (old?.at) next.at = structuredClone(old.at);
+  if (old?.came) next.came = structuredClone(old.came);
+  s.world = next;
+  const replaced = !!old?.id;
+  const goneText = gone.length ? ` ${gone.map((id) => placeName(s, id)).join(', ')} ${gone.length === 1 ? 'is' : 'are'} not in it: kept as left, marked gone.` : '';
+  ev.push({ type: 'worldLoaded', id: ix.id, name: ix.name, version: ix.version, ...(replaced ? { replaced: true } : {}), gone,
+    text: `${ix.name}, version ${ix.version}, was ${replaced ? 'loaded in place of the world this table had' : 'loaded'}: ${n(Object.keys(ix.nodes).length, 'place')}, ${n(ix.routes.length, 'route')}, ${n(ix.tables.length, 'encounter table')}.${goneText}` });
+}
+
 export const handlers = {
+  worldIndex,
   // { type: 'enter', pin, who?, map?, stale? }: from the navigation node in play into the place a pin leads to, at the
   // pin's entry (or that place's default). `who` defaults to the party at that pin or at no pin, or, with nobody there,
   // the whole party in the node (going between pins is `jump`, W5).

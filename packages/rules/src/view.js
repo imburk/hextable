@@ -930,6 +930,9 @@ export function viewEvents(events, state, viewer) {
       case 'sceneNpc':                                 // someone came or left, or a name or face changed; not a change to the DM's notes
         if (ev.prep !== true && (ev.change !== 'edited' || ev.changed?.some((k) => k !== 'notes'))) out.push(pick(ev, ['type', 'scene', 'npc', 'name', 'change']));
         break;
+      case 'ping':                                     // a spot pointed out: a cell the sender chose and their name, nothing of the game
+        out.push(pick(ev, ['type', 'from', 'name', 'at']));
+        break;
       case 'say':                                      // what is said at the table, everyone hears
         out.push(pick(ev, ['type', 'from', 'as', 'name', 'text', 'scene', 'line']));
         break;
