@@ -10,9 +10,13 @@ cpSync("packages/rules/src", "dist/shared", { recursive: true });
 // The script that made them is not part of the game.
 cpSync("assets/models", "dist/models", { recursive: true, filter: (src) => !src.endsWith("pack-models.mjs") });
 // packages/client/vendor/ (pinned third-party code, see its README) arrives in dist/vendor/ with the rest of the client.
-// Nothing imports it by default; only the Three.js renderer and the load check do. Fail the build if it did not arrive.
+// Nothing imports it by default; only the Three.js renderer and the load check do, and zip.js only through modulezip.js
+// when a module is opened. Fail the build if it did not arrive.
 for (const f of ["three.module.js", "three.core.js", "GLTFLoader.js", "BufferGeometryUtils.js", "SkeletonUtils.js", "LICENSE"])
   if (!existsSync(`dist/vendor/three/${f}`)) throw new Error(`dist/vendor/three/${f} is missing: the vendored Three.js did not build in`);
+for (const f of ["zip-core.js", "core/zip-reader.js", "core/zip-writer.js", "core/streams/zip-entry-stream.js", "LICENSE"])
+  if (!existsSync(`dist/vendor/zip.js/${f}`)) throw new Error(`dist/vendor/zip.js/${f} is missing: the vendored zip.js did not build in`);
+if (!existsSync("dist/modulezip.js")) throw new Error("dist/modulezip.js is missing: the module-zip wrapper did not build in");
 for (const f of ["kaykit-adventurers/Knight.glb", "kaykit-rig-medium/Rig_Medium.glb", "quaternius-monsters/Big_Orc.glb", "CREDITS.md"])
   if (!existsSync(`dist/models/${f}`)) throw new Error(`dist/models/${f} is missing: the creature models did not build in`);
 console.log("Built dist/");
