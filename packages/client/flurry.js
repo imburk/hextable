@@ -33,7 +33,7 @@ export function rearm(S, e, events) {
   const used = events.some((ev) => (ev.type === 'std' && ev.id === e.id && grantOf(e, ev.action)) || (ev.type === 'attack' && ev.actor === e.id && !ev.opportunity && ev.name === e.attacks.find((a) => a.id === g.with)?.name));
   if (!used) return null;
   const f = (e.feats ?? []).find((x) => x.action?.gain?.attacks?.with === g.with);
-  return { id: g.with, flurry: true, name: f?.name ?? 'Bonus attacks' };
+  return { kind: 'attack', id: g.with, flurry: true, name: f?.name ?? 'Bonus attacks' };
 }
 
 // "Flurry of Blows: 2 Unarmed Strikes. Tap a foe."

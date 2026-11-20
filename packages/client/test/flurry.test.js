@@ -53,7 +53,7 @@ test('after Flurry of Blows a tap makes the Unarmed Strike, not the first weapon
   assert.ok(first, 'a weapon reached before');
   // armed on the update that used it
   const m = rearm(s, lo, r.events);
-  assert.deepEqual(m, { id: 'unarmed-strike', flurry: true, name: 'Flurry of Blows' });
+  assert.deepEqual(m, { kind: 'attack', id: 'unarmed-strike', flurry: true, name: 'Flurry of Blows' });
   assert.equal(hintOf(s, lo, m), 'Flurry of Blows: 2 Unarmed Strikes. Tap a foe.');
   assert.match(spentWords(lo, r.events.find((e) => e.type === 'std')), /^Flurry of Blows: 1 Focus Point spent \(\d+ left\)\.$/);
   // two strikes, each with the Bonus Action's grant, and it is re-armed after the first
