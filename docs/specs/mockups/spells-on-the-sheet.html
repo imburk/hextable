@@ -61,7 +61,7 @@ body { margin: 0; background: #111614; color: #e8e4d8; font: 15px/1.4 'Segoe UI'
 h3 { position: sticky; top: var(--bar-h); z-index: 2; height: var(--grp-h); margin: 0 -16px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line);
   font-family: var(--display); font-size: 15px; letter-spacing: .04em; display: flex; gap: 10px; align-items: center; }
 h3 .ttl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-h3 .cnt { font-family: var(--body); letter-spacing: 0; color: var(--muted); font-size: 13px; font-weight: 400; min-width: 52px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+h3 .cnt { font-family: var(--body); letter-spacing: 0; color: var(--muted); font-size: 13px; font-weight: 400; min-width: 0; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 h3 .cnt.full { color: var(--good); }
 .rule { color: var(--muted); font-size: 13px; margin: 6px 0 4px; }
 .rule b { color: var(--ink); font-weight: 600; }
@@ -69,13 +69,15 @@ h3 .cnt.full { color: var(--good); }
 .feat b { color: var(--ink); }
 .window { margin-top: 12px; background: var(--panel-2); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 8px 10px; font-size: 14px; }
 .caster { color: var(--muted); font-size: 13px; margin-top: 10px; }
+.caster b { color: var(--ink); font-weight: 600; }
 .slots { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; margin-top: 6px; font-size: 14px; }
 .slots .pips { letter-spacing: 2px; color: var(--accent); font-size: 15px; }
 .slots .back { color: var(--muted); font-size: 12px; flex-basis: 100%; }
 .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
 .frame[data-size=phone] .tiles { grid-template-columns: repeat(2, 1fr); }
-.tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; min-height: 52px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; touch-action: manipulation; }
-.tile small { display: block; color: var(--muted); font-size: 12px; }
+.tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; height: 78px; overflow: hidden; text-align: left; font: inherit; color: var(--ink); cursor: pointer; touch-action: manipulation; }
+.tile small { display: block; color: var(--muted); font-size: 12px; line-height: 15px; }
+.tile small.what { height: 30px; overflow: hidden; }
 .tile b { font-size: 16px; }
 .lv { margin-top: 6px; }
 .lvl { position: sticky; top: calc(var(--bar-h) + var(--grp-h)); z-index: 1; height: var(--lvl-h); margin: 0 -16px; padding: 0 16px; background: var(--panel-2); border-bottom: 1px solid #ffffff18;
@@ -141,14 +143,14 @@ const INF = Infinity;
 const T = { cant: [3, 3, 3, 4, 4], prep: [4, 5, 6, 7, 9], top: [1, 1, 2, 2, 3], book: [6, 8, 10, 12, 14], slots: [[2], [3], [4, 2], [4, 3], [4, 3, 2]] };
 // The two characters, and the picks each made at each level (used by "Sheet is at level"; a real walk makes the same picks by tapping).
 const CHARS = {
-  wren: { name: 'Wren', cls: 'Wizard', list: 'w', abil: 'INT', wiz: true, mi: { list: 'c', abil: 'WIS', abilName: 'Wisdom' },
+  wren: { name: 'Wren', cls: 'Wizard', list: 'w', abil: 'INT', abilName: 'Intelligence', mod: 3, wiz: true, mi: { list: 'c', abil: 'WIS', abilName: 'Wisdom', mod: 2 },
     seed: [
       { cls: ['fire-bolt', 'light', 'mage-hand'], mi: ['guidance', 'sacred-flame'], mi1: ['bless'], known: ['magic-missile', 'shield', 'mage-armor', 'detect-magic', 'sleep', 'feather-fall'], prep: ['magic-missile', 'shield', 'mage-armor', 'sleep'] },
       { known: ['thunderwave', 'burning-hands'], prep: ['detect-magic'] },
       { known: ['misty-step', 'web'], prep: ['web'] },
       { cls: ['ray-of-frost'], known: ['scorching-ray', 'invisibility'], prep: ['misty-step'] },
       { known: ['fireball', 'counterspell'], prep: ['fireball', 'counterspell'] } ] },
-  brenna: { name: 'Brenna', cls: 'Cleric', list: 'c', abil: 'WIS', wiz: false, plus: 'Thaumaturge', mi: { list: 'w', abil: 'INT', abilName: 'Intelligence' },
+  brenna: { name: 'Brenna', cls: 'Cleric', list: 'c', abil: 'WIS', abilName: 'Wisdom', mod: 3, wiz: false, plus: 'Thaumaturge', mi: { list: 'w', abil: 'INT', abilName: 'Intelligence', mod: 2 },
     domain: [[3, 'Life Domain', ['aid', 'bless', 'cure-wounds', 'lesser-restoration']], [5, 'Life Domain', ['mass-healing-word', 'revivify']]],
     seed: [
       { cls: ['guidance', 'sacred-flame', 'spare-the-dying', 'thaumaturgy'], mi: ['fire-bolt', 'mage-hand'], mi1: ['mage-armor'], known: ['healing-word', 'guiding-bolt', 'shield-of-faith', 'command'] },
@@ -306,7 +308,16 @@ function poolIds(seg) {
   return Object.keys(POOL).filter((id) => POOL[id][2].includes(seg.list) && seg.lv.includes(POOL[id][1]) && !(seg.id === 'known' && granted.has(id)))
     .sort((a, b) => POOL[a][1] - POOL[b][1] || POOL[a][0].localeCompare(POOL[b][0]));
 }
-function groupIds(grp) { const set = new Set(grp.segs.flatMap(poolIds)); return [...set].sort((a, b) => POOL[a][1] - POOL[b][1] || POOL[a][0].localeCompare(POOL[b][0])); }
+// Round 3: which spells a moment lists. New and Level up: everything the source offers. After a Long Rest: what may be prepared (a Wizard: her spellbook; a Cleric: the Cleric list),
+// the Wizard cantrip list for the one cantrip swap, and what is chosen. Any other time: only what is chosen. Decided by the moment and the sheet, never by a tap.
+function shows(grp, id) {
+  const m = S.moment; if (m === 'new' || m === 'level') return true;
+  const chosen = grp.segs.some((g) => S.picks[g.id][id]);
+  if (m === 'long') return grp.id === 'cant' ? chosen || (CHARS[S.who].wiz && POOL[id][2].includes('w')) : grp.id === 'known' ? !CHARS[S.who].wiz || chosen : chosen;
+  if (grp.id === 'known' && CHARS[S.who].wiz) return !!S.picks.prep[id];   // any other time a Wizard's list is what she has prepared, not the whole book
+  return chosen;
+}
+function groupIds(grp) { const set = new Set(grp.segs.flatMap(poolIds).filter((id) => shows(grp, id))); return [...set].sort((a, b) => POOL[a][1] - POOL[b][1] || POOL[a][0].localeCompare(POOL[b][0])); }
 const hintFor = (grp) => {
   const c = CHARS[S.who], m = S.moment, seg = grp.segs[0], mi = seg.id === 'mi1';
   if (grp.id === 'cant') {
@@ -343,16 +354,18 @@ function draw() {
   if (S.moment === 'long') list.append(el('div', { class: 'window' }, c.wiz ? 'After your Long Rest you may change your prepared spells and one Wizard cantrip.' : 'After your Long Rest you may change your prepared spells.'));
   if (S.moment === 'new') list.append(el('div', { class: 'feat' }, el('b', { text: 'Feats › Background: Magic Initiate' }), ` · ${LN[c.mi.list]} list · ${c.mi.abilName}. Its 2 cantrips and its level 1 spell are chosen under Spells, below.`));
   const prof = lvl >= 5 ? 3 : 2;
-  list.append(el('div', { class: 'caster', text: `${c.cls} · ${c.abil} · save DC ${8 + prof + 3} · attack +${prof + 3} · Magic Initiate spells: ${c.mi.abil}` }));
-  list.append(el('div', { class: 'slots' }, el('b', { text: 'Slots' }), ...T.slots[lvl - 1].map((n, i) => el('span', {}, `Level ${i + 1} `, el('span', { class: 'pips', 'aria-label': `${n} slots`, text: '●'.repeat(n) }))), el('span', { class: 'back', text: 'All back on a Long Rest' })));
-  const tile = (label, key, id) => { const b = el('b'); refs[key] = b; return el('button', { class: 'tile', type: 'button', 'data-k': `tile-${key}`, onclick: () => { const t = document.getElementById(id); list.scrollTo({ top: t.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop - 93, behavior: 'smooth' }); } }, el('small', { text: label }), b); };
+  list.append(el('div', { class: 'caster', 'data-k': 'caster' }, el('div', {}, el('b', { text: `${c.cls} spells: ${c.abilName}` }), ` · Spell save DC ${8 + prof + c.mod} (targets save against this) · Spell attack +${prof + c.mod}`),
+    el('div', {}, el('b', { text: `Magic Initiate (${LN[c.mi.list]}) spells: ${c.mi.abilName}` }), `, chosen with the feat · Spell save DC ${8 + prof + c.mi.mod} · Spell attack +${prof + c.mi.mod}`)));
+  list.append(el('div', { class: 'slots' }, el('b', { text: 'Spell slots' }), ...T.slots[lvl - 1].map((n, i) => el('span', {}, `Level ${i + 1} `, el('span', { class: 'pips', 'aria-label': `${n} slots`, text: '●'.repeat(n) }))), el('span', { class: 'back', text: 'All back after a Long Rest' })));
+  const tile = (label, key, id, what) => { const b = el('b'); refs[key] = b; return el('button', { class: 'tile', type: 'button', 'data-k': `tile-${key}`, onclick: () => { const t = document.getElementById(id); list.scrollTo({ top: t.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop - 93, behavior: 'smooth' }); } }, el('small', { text: label }), b, el('small', { class: 'what', text: what })); };
   const domainN = (c.domain ?? []).filter(([l]) => lvl >= l).reduce((n, [, , ids]) => n + ids.length, 0);
-  list.append(el('div', { class: 'tiles' }, tile('Cantrips', 'tCant', 'g-cant'), tile('Prepared', 'tPrep', 'g-known'), tile('Always prepared', 'tAlways', c.domain && domainN ? 'g-always' : 'g-mi1'), c.wiz ? tile('Spellbook', 'tBook', 'g-known') : tile('Free casts', 'tFree', 'g-mi1')));
+  list.append(el('div', { class: 'tiles' }, tile('Cantrips', 'tCant', 'g-cant', 'cast any time, no slot'), tile('Spells prepared', 'tPrep', 'g-known', c.wiz ? 'chosen from your spellbook' : 'chosen from the Cleric list'), tile('Always prepared', 'tAlways', c.domain && domainN ? 'g-always' : 'g-mi1', 'do not count against your limit'), c.wiz ? tile('Spellbook', 'tBook', 'g-known', 'spells written in it; it only grows') : tile('Free casts', 'tFree', 'g-mi1', 'Magic Initiate spell, once per Long Rest')));
   refs.domainN = domainN;
 
   for (const grp of groupsOf()) {
     const seg = grp.segs[0], cnt = el('span', { class: 'cnt' }); refs.cnt[grp.id] = cnt;
-    const kids = [el('span', { class: 'ttl', text: grp.title }), cnt];
+    const bookHidden = grp.id === 'known' && c.wiz && S.moment === 'other';   // the book itself is not listed then: only what is prepared
+    const kids = [el('span', { class: 'ttl', text: bookHidden ? 'Prepared spells' : grp.title }), cnt];
     if (seg.starCap != null) { refs.cntPrep = el('span', { class: 'cnt' }); kids.push(refs.cntPrep); }
     const sec = el('section', { class: 'grp', id: `g-${grp.id}`, 'data-k': `sec-${grp.id}` }, el('h3', { 'data-k': `h-${grp.id}` }, ...kids));
     const hint = hintFor(grp); if (hint) sec.append(el('p', { class: 'rule', 'data-k': `r-${grp.id}`, text: hint }));
@@ -410,13 +423,13 @@ function refresh() {
       r.star.setAttribute('aria-disabled', on ? 'false' : 'true');
     }
   }
-  for (const grp of groupsOf()) { const n = grp.segs.reduce((t, g) => t + live(g.id), 0), cap = grp.segs.reduce((t, g) => t + g.cap, 0); refs.cnt[grp.id].textContent = `${n} of ${cap}`; refs.cnt[grp.id].classList.toggle('full', n === cap); }
+  for (const grp of groupsOf()) { const n = grp.segs.reduce((t, g) => t + live(g.id), 0), cap = grp.segs.reduce((t, g) => t + g.cap, 0); const hide = grp.id === 'known' && wiz && S.moment === 'other'; refs.cnt[grp.id].textContent = hide ? '' : `${n} of ${cap}`; refs.cnt[grp.id].classList.toggle('full', n === cap); }
   if (refs.cntPrep) { const n = live('prep'), cap = prepCap(); refs.cntPrep.textContent = `★ ${n} of ${cap}`; refs.cntPrep.classList.toggle('full', n === cap); }
   const sg = (id) => S.segs.find((g) => g.id === id);
   refs.tCant.textContent = `${live('cls') + live('mi')} known`;
   refs.tPrep.textContent = wiz ? `${live('prep')} of ${prepCap()}` : `${live('known')} of ${sg('known').cap}`;
-  refs.tAlways.textContent = String(refs.domainN + live('mi1'));
-  if (refs.tBook) refs.tBook.textContent = String(live('known')); if (refs.tFree) refs.tFree.textContent = '1 a day';
+  { const n = refs.domainN + live('mi1'); refs.tAlways.textContent = `${n} spell${n === 1 ? '' : 's'}`; }
+  if (refs.tBook) refs.tBook.textContent = `${live('known')} spell${live('known') === 1 ? '' : 's'}`; if (refs.tFree) refs.tFree.textContent = '1 per Long Rest';
   const n = totalFree();
   if (S.moment === 'other') { refs.need.textContent = 'Nothing to choose now'; refs.need.className = 'need'; refs.parts.textContent = ''; }
   else {

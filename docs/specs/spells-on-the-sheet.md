@@ -60,6 +60,11 @@ The owner tried the round 2 mockup, levelling the Wizard (his words, 20 November
 > have (lvl X). I like the info button. I'd prefer that it be a 3 second hover to display but
 > there's no equivalent on a touch screen is there?"
 
+He tried it again and added, at 06:32 ET (summarised, not word for word): he likes the directions and the caster
+stats and wants the stats on a combat page too; "save DC 13" is unclear; does Magic Initiate use Wisdom
+while Wizard spells use Intelligence; "All back on a Long Rest" and the four tiles are unclear; and the
+list should show only the spells available at each moment.
+
 Round 2's answers (one list, the level in the box, nothing moves) were not questioned and stand.
 
 | # | What he said | What the design does now | Where |
@@ -68,6 +73,12 @@ Round 2's answers (one list, the level in the box, nothing moves) were not quest
 | R3-2 | "The spell title should have (lvl X)" | Every spell row's name reads **"Magic Missile (lvl 1)"**, and a cantrip **"Fire Bolt (cantrip)"**, in the row's fixed 52 px: a long name is cut with an ellipsis and the tag is never cut. | Decision 9 (new) |
 | R3-3 | "I like the info button" | **Kept**, unchanged in size and place (28 px circle in a 44 px target at the end of every row). It now also brightens when the mouse is on its row, and the status line says "Tap ⓘ to read a spell." so it is the obvious tap. | Decision 9 |
 | R3-4 | "I'd prefer that it be a 3 second hover to display but there's no equivalent on a touch screen is there?" | **Desktop: yes, the card appears after the mouse rests on a row for 3 seconds** (it did in round 2; the mockup now says so at the top). **Touch: there is no hover, so there is no exact equivalent.** The nearest thing is a **press-and-hold of about half a second** on the row, which phones already use for "tell me more"; it is kept. A 3 second hold was not copied: a finger held still for 3 seconds feels like nothing is happening. **Nobody has to find the hold:** tapping the ⓘ is the way, on a phone and on a desktop, and it works the same everywhere. | Decision 9 |
+| R3-5 | He likes the directions and the caster stats; the stats should also be on a combat page | Kept on the sheet. **The same caster lines are also shown on the combat page** of the character screen (one-token menu, Character, where a player in a fight has Cast): same words, same numbers, read-only, from the same derived values; the mockup draws the sheet only. | Decision 11 |
+| R3-6 | "'save DC 13' is unclear" | The line reads **"Spell save DC 13 (targets save against this)"** and **"Spell attack +5"**. | Decision 11 |
+| R3-7 | Do Magic Initiate spells use Wisdom while Wizard spells use Intelligence? | **Yes, and it is the player's choice, not the class's.** SRD 5.2 (Magic Initiate, line 20040): "Intelligence, Wisdom, or Charisma is your spellcasting ability for this feat's spells (choose when you select this feat)." Wren chose Wisdom; her Wizard spells use Intelligence. The sheet says it plainly in its own line: **"Magic Initiate (Cleric) spells: Wisdom, chosen with the feat"**, with that line's own save DC and attack bonus. | Decision 11 |
+| R3-8 | "'All back on a Long Rest'" | Reads **"Spell slots: all back after a Long Rest"** (the label is on the row; Pact Magic's says "back after a Short Rest"). | Decision 11 |
+| R3-9 | "The four tiles are unclear" | Each tile now has a **label, a number with its unit, and one line saying what it counts**: "Cantrips: 6 known", "Spells prepared: 7 of 7", "Always prepared: 1 spell (do not count against your limit)", "Spellbook: 12 spells (written in it; it only grows)"; a Cleric's fourth tile is "Free casts: 1 per Long Rest". | Decision 11 |
+| R3-10 | Only show the spells available at each moment | **New character and Level up list everything to choose from. After a Long Rest the list shows only what can be prepared** (a Wizard: the spellbook's spells; a Cleric: the Cleric list) and, for a Wizard, the Wizard cantrip list for the one cantrip the rules let her swap. **At any other time it shows only what the character has: prepared spells, cantrips, always-prepared spells.** The set is fixed by the moment, so a tap still changes nothing else. | Decision 10 |
 
 ## The answers to his questions, in plain words
 
@@ -196,7 +207,7 @@ for a Wizard with Magic Initiate (Cleric):
 - **A row is** the box, the spell's name, and `ⓘ` (the #566 scroll card on a tap, and on a
   3-second hover or a long-press of the name, so a phone player never has to discover the
   long-press). Every spell row in this spec has the same card.
-- **Every spell the source offers is a row**, chosen or not, in a fixed order (cantrips, then
+- **Every spell the source offers is a row** (when the moment is one that chooses: a new character and a level-up; after a rest and at any other time the list is shorter, Decision 10), chosen or not, in a fixed order (cantrips, then
   spell level 1 up, each A to Z). A level-up adds rows when it opens a new spell level
   (level 5 adds level 3 spells); it never takes a row away or reorders them.
 - **There are no "open pick" rows** ("+ Choose a Wizard cantrip (1 left)" of round 1 is
@@ -537,6 +548,75 @@ regular weight and the muted colour; the name stays bold. The always-prepared ro
   second, not three, because a finger held for three seconds feels like a frozen screen, and
   because half a second is what phones already use for "tell me more".
 
+### Decision 10: each moment lists only what it can use (round 3)
+
+The owner: show only the spells available at each moment. Round 2 listed every spell the class
+may take at every moment, which is right for choosing and wrong for reading. What the list holds
+now depends on **the moment** (Decision 3's table), and on nothing a tap can change:
+
+| Moment | Cantrips | The spells group (spellbook or prepared) | The Magic Initiate spell | Always prepared |
+|---|---|---|---|---|
+| **New character**, **Level up** | every cantrip either list offers (Decision 1) | every spell of the levels the class has slots for | every level 1 spell on its list | all |
+| **After a Long Rest** | what is chosen; a Wizard also gets **every Wizard cantrip**, for the one cantrip the rules let her swap | a **Wizard: the spellbook's spells only** (the ★ prepares them); a **Cleric (Druid, Paladin, Ranger): the whole class list** of the levels she has slots for | what is chosen | all |
+| **After a Short Rest** (Wizard 5+, Memorize Spell) | as after a Long Rest, but without the cantrip swap: what is chosen | the spellbook's spells only | what is chosen | all |
+| **Any other time** | what is chosen | **what is prepared only** (a Wizard's group is headed "Prepared spells", not "Spellbook": the book itself is not listed) | what is chosen | all |
+
+- **Why a Wizard's Long Rest list is the book, and a Cleric's is the class list.** It is the
+  rule: a Wizard prepares from her spellbook; a Cleric from her whole list (the table under
+  "What the rules allow"). The Wizard's one cantrip swap is the only reason her cantrip list is long
+  then (cantrips are known, not prepared, and "replace 1 after a Long Rest" picks from the Wizard
+  list).
+- **Fewer rows, so shorter lists.** After a rest the Wizard's list is the 12 spells of her book, not
+  about 130 rows; at any other time it is her 7 prepared spells and her 6 cantrips (counts of the
+  mockup are in "The mockup"). The long list of Risks is the level-up and new-character moment only.
+- **Still one list that does not move.** The rows are decided when the sitting opens (Decision 7
+  point 1) from the moment and the sheet. A tap never adds or removes a row: a spell given up in a
+  swap stays as a dashed row until the swap is done; a spell chosen in a swap was already in the list.
+  The nothing-moves check was re-run inside each moment (see "The mockup").
+- **The headers and counts follow.** A group with no rows is not drawn; the level sub-headers are
+  those of the rows shown (Decision 8). The count tiles still count what the sheet holds, and a
+  tile whose group is not listed (the Wizard's Spellbook tile at any other time) scrolls to the
+  group nearest to it ("Prepared spells") and keeps its number: the book is counted, not listed.
+- **Not shown at any other time: the spellbook's unprepared spells.** That is the owner's ask and
+  the default; question 18 has the alternative.
+
+### Decision 11: the caster lines, the slots and the four tiles (round 3)
+
+Under the heading, in this order (the sheet, read-only at any moment; the same two lines and the
+slots row are also shown on the **combat page** of the character screen, one-token menu
+Character › Cast, so a player in a fight has them without opening the sheet; they are derived
+values, so the two places cannot disagree. The mockup draws the sheet only):
+
+```
+ Wizard spells: Intelligence · Spell save DC 13 (targets save against this) · Spell attack +5
+ Magic Initiate (Cleric) spells: Wisdom, chosen with the feat · Spell save DC 12 · Spell attack +4
+ Spell slots   Level 1 ●●●●   Level 2 ●●●        All back after a Long Rest
+```
+
+- **Spell save DC** is the number a target rolls its saving throw against; the bracket says so the
+  first time a player meets it. **Spell attack** is the bonus added to a spell's attack roll. Both
+  are the SRD's 8 + proficiency + the spellcasting modifier, and the proficiency bonus + that modifier.
+- **Each spell source has its own ability.** The class's (Wizard: Intelligence) and Magic Initiate's,
+  which the player chose with the feat (SRD 5.2: Intelligence, Wisdom or Charisma, "choose when you
+  select this feat"; reference line 20040). So a Wizard with Magic Initiate (Cleric) can have two lines
+  with two abilities and two DCs, as drawn. A species' spells (High Elf, with SP2) get a third line the
+  same way. A line shows only for a source the character has.
+- **Spell slots** is the row's own label, and "All back after a Long Rest" says when (Pact Magic:
+  "2 slots of level 3 · all back after a Short Rest").
+- **The four tiles** each carry a label, a number with its unit and one line saying what it counts.
+  A tap still scrolls to the group (Decision 4):
+
+  | Tile | Number | The line under it | What it counts |
+  |---|---|---|---|
+  | **Cantrips** | `6 known` | cast any time, no slot | every cantrip from every source (class, Magic Initiate, species) |
+  | **Spells prepared** | `7 of 7` (a Wizard: ★ prepared of the limit; a Cleric: chosen of the limit) | chosen from your spellbook / from the Cleric list | the spells counted against the Prepared Spells column; not the always-prepared ones |
+  | **Always prepared** | `1 spell` | do not count against your limit | spells a feature gives (a Cleric's domain spells, Magic Initiate's level 1 spell) |
+  | **Spellbook** (a Wizard) | `12 spells` | spells written in it; it only grows | every spell in the book, prepared or not |
+  | **Free casts** (everyone else, in the fourth place) | `1 per Long Rest` | Magic Initiate spell, once per Long Rest | the cast without a slot the feat gives |
+
+  A tile's height is fixed (78 px) with a one or two line "what it counts", so a number cannot change
+  its height.
+
 ## The words
 
 | Where | Words |
@@ -551,6 +631,10 @@ regular weight and the muted colour; the name stays bold. The always-prepared ro
 | Count, top | Choose {n} more · All chosen |
 | Count, what is open | {n} cantrips · {n} Initiate · {n} book · {n} to prepare |
 | Count, group heading | {have} of {cap} · ★ {have} of {cap} |
+| Caster line, class | {Class} spells: {Ability} · Spell save DC {n} (targets save against this) · Spell attack +{n} |
+| Caster line, feat | Magic Initiate ({List}) spells: {Ability}, chosen with the feat · Spell save DC {n} · Spell attack +{n} |
+| Slots | Spell slots · Level {n} ●●● · All back after a Long Rest (Pact Magic: after a Short Rest) |
+| Tiles | Cantrips: {n} known · Spells prepared: {n} of {cap} · Always prepared: {n} spells (do not count against your limit) · Spellbook: {n} spells (written in it) · Free casts: 1 per Long Rest |
 | Legend, status line | The number in a box is the level you chose the spell at. Tap ⓘ to read a spell. |
 | Spell name | {Name} (lvl {N}) · cantrip: {Name} (cantrip) |
 | ⓘ tooltip (mouse) | Read {Name} |
@@ -578,7 +662,9 @@ regular weight and the muted colour; the name stays bold. The always-prepared ro
 - **A spell the content lacks** (a homebrew pack not loaded): the row reads "{id}: not loaded
   at this table", kept, as subclasses are today.
 - **Read-only** (Character › Sheet › Spells with no window open): the same blocks, no Change
-  buttons, the group lines say when.
+  buttons, the group lines say when; only what the character has is listed (Decision 10).
+- **A group with no rows at a moment** (a Fighter with Magic Initiate has no spellbook group; a
+  character with no always-prepared spell has none) is not drawn, and neither is its header.
 
 ## The mockup
 
@@ -621,7 +707,8 @@ Shadows stays manual).
 
 ## Risks
 
-- **A long list.** A level 5 Wizard's list is about 130 rows (every cantrip and spell of her
+- **A long list** (a new character and a level-up only; after a rest and at other times the list is a
+  few dozen rows at most, Decision 10). A level 5 Wizard's list is about 130 rows (every cantrip and spell of her
   levels, chosen or not), about 6,800 px on a phone. That is the price of "nothing moves" and
   of one list; the count tiles jump to a group, and the bar keeps the count in view. A search
   that hid rows would move rows (question 11).
