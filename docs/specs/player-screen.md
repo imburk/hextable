@@ -1,5 +1,7 @@
 # Spec: the player's screen at the table
 
+Status: draft by an agent, to be reviewed by the design owner; superseded in part by `one-token-menu.md`.
+
 > **Superseded in part by [`one-token-menu.md`](one-token-menu.md) (#527).** The owner's
 > direction of 19 November 2026: a clean screen, one token that opens one menu, one overlay
 > at a time. Where the two differ, `one-token-menu.md` wins: the action panel at the foot of
