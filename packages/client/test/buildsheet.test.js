@@ -339,3 +339,25 @@ test('the rule a table roll is kept under: the table\'s now, and "every score" i
   assert.equal(resultOf({ stands: 'new', from: { total: 15 }, to: { total: 9 } }), 'new');
   assert.equal(resultOf({ stands: 'new', from: { total: 9 }, to: { total: 15 } }), undefined, 'a better new roll says nothing about which result stands');
 });
+
+test('after a reload: the page\'s own id finds the DM\'s record under an online user id, and a player\'s own past events (the history) give the kept roll; another member\'s are not ours (#578)', () => {
+  const g = TABLE(); const OND = { role: 'dm', userId: 'u-dm' }, BENX = { role: 'player', userId: 'ben' };
+  const a = apply(g, { type: 'rollAbilityScores' }, OND); assert.ok(a.ok, a.error);
+  const b = apply(g, { type: 'rollAbilityScores' }, ANAX); assert.ok(b.ok, b.error);
+  const c = apply(g, { type: 'rollAbilityScores' }, BENX); assert.ok(c.ok, c.error);
+  // The online DM, no event heard yet (a reload): the record under their own id, not Ana's or Ben's.
+  const dm = keptRoll(g, null, 'u-dm');
+  assert.deepEqual(dm.rolls.map((x) => x.dice), g.scoreRolls['u-dm'].sets.map((x) => x.dice));
+  assert.equal(keptRoll(g, null, 'nobody'), null, 'no record under an id that has not rolled: no kept roll');
+  // The same DM, told the history: the event number comes back.
+  const evs = viewEvents(a.events, g, OND), heardDm = { by: 'u-dm', at: evs[0].at, rolls: rollsOfEvent(evs[0]) };
+  assert.equal(keptRoll(g, heardDm, 'u-dm').at, evs[0].at);
+  // A player: no record in their view; the history holds their own full event and bare ones for others.
+  const hist = viewEvents([...a.events, ...b.events, ...c.events], g, ANAX);
+  assert.deepEqual(hist.filter((e) => e.sets).map((e) => e.by), ['ana'], 'only Ana\'s own roll is whole');
+  const mine = hist.find((e) => e.sets && e.by === 'ana'), pv = view(g, ANAX);
+  const kept = keptRoll(pv, { by: mine.by, at: mine.at, rolls: rollsOfEvent(mine) }, 'ana');
+  assert.deepEqual([kept.by, kept.at], ['table', mine.at]);
+  assert.deepEqual(kept.rolls.map((x) => x.dice), g.scoreRolls.ana.sets.map((x) => x.dice));
+  assert.equal(keptRoll(pv, null, 'ana'), null, 'nothing heard, nothing shown: the sheet does not guess');
+});

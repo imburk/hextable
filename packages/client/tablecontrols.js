@@ -82,12 +82,11 @@ export function initTableControls({ act, getState, isDM, toast }) {
   $('dm-xpshare').onchange = (ev) => act({ type: 'setting', key: 'xpShare', value: ev.target.value });
 
   // Rolled ability scores (docs/specs/ability-scores.md): may a score be rolled again, below what number, and which result stands. A section of its own after the one that
-  // holds the XP choice (it is not a fight rule). Each choice is a label over a select the whole width and at least 44 px high (a thumb), as the square rules are.
-  const stack = 'flex-direction:column;align-items:stretch;gap:4px', tall = 'width:100%;min-height:44px';
+  // holds the XP choice (it is not a fight rule). Each choice is a label over a select the whole width and at least 44 px high (a thumb), as the square rules are (`#dm-scores` in style.css).
   $('dm-xpshare').closest('section').insertAdjacentHTML('afterend', `<section id="dm-scores"><h3>Rolled ability scores</h3>
-    <label class="assign" style="${stack}">A score may be rolled again <select id="dm-score-reroll" style="${tall}">${SETTINGS.scoreReroll.map((v) => `<option value="${v}">${esc(SCORE_NAMES.reroll[v])}</option>`).join('')}</select></label>
-    <label class="assign" id="dm-score-below-label" style="${stack}">Rolled again if it is below <select id="dm-score-below" style="${tall}">${[...SETTINGS.scoreRerollBelow].sort((x, y) => x - y).map((v) => `<option value="${v}">${v}</option>`).join('')}</select></label>
-    <label class="assign" id="dm-score-result-label" style="${stack}">The result that stands <select id="dm-score-result" style="${tall}">${SETTINGS.scoreRerollResult.map((v) => `<option value="${v}">${esc(SCORE_NAMES.result[v])}</option>`).join('')}</select></label>
+    <label class="assign">A score may be rolled again <select id="dm-score-reroll">${SETTINGS.scoreReroll.map((v) => `<option value="${v}">${esc(SCORE_NAMES.reroll[v])}</option>`).join('')}</select></label>
+    <label class="assign" id="dm-score-below-label">Rolled again if it is below <select id="dm-score-below">${[...SETTINGS.scoreRerollBelow].sort((x, y) => x - y).map((v) => `<option value="${v}">${v}</option>`).join('')}</select></label>
+    <label class="assign" id="dm-score-result-label">The result that stands <select id="dm-score-result">${SETTINGS.scoreRerollResult.map((v) => `<option value="${v}">${esc(SCORE_NAMES.result[v])}</option>`).join('')}</select></label>
     <p class="note" id="dm-score-text"></p></section>`);
   for (const [id, key, num] of [['dm-score-reroll', 'scoreReroll', false], ['dm-score-below', 'scoreRerollBelow', true], ['dm-score-result', 'scoreRerollResult', false]]) $(id).onchange = (ev) => act({ type: 'setting', key, value: num ? +ev.target.value : ev.target.value });
   const scoreRule = (S) => {
