@@ -285,5 +285,5 @@ export async function openSec(page, id) { const bar = `#qb-acc-bar-${id}`; if ((
 export async function fighterBasics(page) {
   await openSec(page, 'skills');
   for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
-  if (await page.$('#qb-acc-bar-choices')) { await openSec(page, 'choices'); await page.check('#qb-choice-fighting-style-defense'); }
+  if (await page.$('#qb-acc-bar-choices')) { await openSec(page, 'choices'); await page.check('#qb-choice-fighting-style--defense'); }
 }

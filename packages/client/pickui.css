@@ -1,4 +1,6 @@
-/* pickui.js: the accordion, the pick row, the chips and the reveal button (#603). Every colour is a theme variable; every target is at least 44 px. */
+/* pickui.js: the accordion, the pick row, the chips and the reveal button (#603). Every colour is a theme variable; every target is at least 44 px.
+   Every rule is scoped by `.pk`: a screen that uses pickui.js must put the class `pk` on the element that holds it (the create-character panel does). Rules that
+   belong to one screen only (the class resource card, the slot rows, the pips, the chip sets of the build screen) live in that screen's own sheet. */
 .pk svg.i { width: 1.1em; height: 1.1em; vertical-align: -0.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .pk button { touch-action: manipulation; }
 
@@ -11,7 +13,7 @@
 .pk .acchead .t { flex: 1; min-width: 0; } .pk .acchead .t b { display: block; font-weight: 700; }
 .pk .acchead .t small { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pk .acchead .chev { color: var(--muted); font-size: 20px; transition: transform .3s; }
-.pk .acchead .need { flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 9px; background: color-mix(in srgb, var(--accent) 40%, var(--panel)); color: var(--ink); border: 2px solid var(--accent); white-space: nowrap; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+.pk .acchead .need { flex: none; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 9px; background: color-mix(in srgb, var(--accent) 40%, var(--panel)); color: var(--ink); border: 2px solid var(--accent); line-height: 1.25; max-width: 60%; text-align: center; overflow-wrap: anywhere; }
 .pk .acchead.compact { min-height: 44px; padding: 2px 12px; margin: 2px 0; }
 .pk .acchead.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); } .pk .acchead.on .chev { transform: rotate(90deg); }
 
@@ -36,10 +38,12 @@
 .pk .opt.dim > label, .pk .opt.static > label { cursor: default; }
 .pk .opt.static > label { padding-left: 2px; }
 .pk .opt .txt { min-width: 0; flex: 1; display: block; }
-.pk .opt .l1 { display: flex; align-items: center; gap: 6px; min-width: 0; font-weight: 700; }
-.pk .opt .l1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.pk .opt .l1 .lv { flex: none; font-weight: 400; color: var(--muted); white-space: pre; }
-.pk .opt .l1 .chip { flex: none; } .pk .opt .l1 .rt { margin-left: auto; font-weight: 800; flex: none; }
+/* the first line wraps: the name takes what room there is (and wraps itself when it must), the right-hand number stays beside it, the chips drop to a second line when they do not fit */
+.pk .opt .l1 { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; font-weight: 700; }
+.pk .opt .l1 .nm { order: 0; flex: 1 1 auto; min-width: min(9em, 100%); overflow-wrap: anywhere; }
+.pk .opt .l1 .lv { order: 1; flex: none; font-weight: 400; color: var(--muted); white-space: pre; }
+.pk .opt .l1 .rt { order: 2; margin-left: auto; font-weight: 800; flex: none; }
+.pk .opt .l1 .chip { order: 3; flex: none; }
 .pk .opt .l2 { display: block; color: var(--muted); font-size: 13px; line-height: 1.3; margin-top: 1px; }
 .pk .opt .l2.one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-size: 14px; }
 .pk .opt.dim .l2.one { color: var(--muted); }
@@ -59,29 +63,3 @@
 .pk .chip.good { border-color: var(--good); }
 .pk .chip.cost { background: color-mix(in srgb, var(--accent) 40%, var(--panel)); border: 2px solid var(--accent); font-weight: 700; }
 .pk .chip.tag { border: 2px solid var(--accent); font-weight: 700; }
-
-/* the class resource card */
-.pk .res { border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel-2); padding: 10px 12px; margin: 4px 0 8px; }
-.pk .res h3 { margin: 0; font: 700 18px var(--display, inherit); display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.pk .res h3 .alias { font: 400 13px var(--body, inherit); color: var(--muted); }
-.pk .res .big { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; }
-.pk .res .num { font: 800 34px/1 var(--body, inherit); }
-.pk .res .back { font-size: 14px; margin-top: 4px; }
-.pk .pk-pips { display: flex; gap: 6px; flex-wrap: wrap; }
-.pk .pip { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); border: 2px solid var(--accent); }
-.pk .slotrow { display: flex; align-items: center; gap: 10px; margin: 4px 0; } .pk .slotrow .lbl { width: 62px; font-weight: 600; font-size: 14px; }
-.pk .slotrow .pip { width: 16px; height: 16px; }
-.pk .feat-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
-.pk .feat-row .top2 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.pk .feat-row .nm { font-weight: 700; flex: 1; min-width: 0; }
-.pk .feat-row .sum { color: var(--ink); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pk .feat-row .top2 .ibtn { margin: -6px -6px -6px 0; }
-
-/* chips of choices (skills) */
-.pk .chipset { display: flex; flex-wrap: wrap; gap: 6px; }
-.pk .chipset label { position: relative; }
-.pk .chipset input { position: absolute; opacity: 0; inset: 0; margin: 0; width: 100%; height: 100%; }
-.pk .chipset span { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; }
-.pk .chipset input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
-.pk .chipset input:disabled + span { opacity: .45; }
-.pk .chipset input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }

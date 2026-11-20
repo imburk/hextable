@@ -468,7 +468,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
         for (const o of x.f.options) {
           const need = optionWhy(x, o, mine, b.spells), on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id) || !!need);
           const stale = on && optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells);
-          const row = pickRow({ id: `pick-${x.f.id}-${o.id}`, kind: 'check', checked: on, disabled: off, title: o.name, summary: firstSentence(o.text), why: taken.includes(o.id) ? '(chosen above)' : need || stale || '', info: { title: o.name, sub: x.f.name, text: o.text },
+          const row = pickRow({ id: `pick-${x.f.id}--${o.id}`, kind: 'check', checked: on, disabled: off, title: o.name, summary: firstSentence(o.text), why: taken.includes(o.id) ? '(chosen above)' : need || stale || '', info: { title: o.name, sub: x.f.name, text: o.text },
             onchange: (on2) => { const next = on2 ? [...mine, o.id] : mine.filter((i) => i !== o.id); if (next.length) b.choices[x.f.id] = next; else delete b.choices[x.f.id]; build(); } });
           row.dataset.option = o.id; box.append(row);
         }
@@ -476,7 +476,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
       } else {
         const cur = b.choices[x.f.id] ?? '', box = el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, groupHead(x.f.name, 'choose one'));
         for (const o of x.f.options) {
-          const row = pickRow({ id: `qb-choice-${x.f.id}-${o.id}`, kind: 'radio', name: `qb-choice-${x.f.id}`, checked: cur === o.id, title: o.name, summary: firstSentence(o.text), info: { title: o.name, sub: x.f.name, text: o.text }, onchange: () => { b.choices[x.f.id] = o.id; build(); } });
+          const row = pickRow({ id: `qb-choice-${x.f.id}--${o.id}`, kind: 'radio', name: `qb-choice-${x.f.id}`, checked: cur === o.id, title: o.name, summary: firstSentence(o.text), info: { title: o.name, sub: x.f.name, text: o.text }, onchange: () => { b.choices[x.f.id] = o.id; build(); } });
           row.dataset.option = o.id; box.append(row);
         }
         sec.append(box);
@@ -693,7 +693,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   const spellMeta = (s) => [TIME[s.time] ?? s.time, s.range === 'self' ? 'Self' : s.range === 'touch' ? 'Touch' : typeof s.range === 'number' ? `${s.range} ft` : s.range, s.concentration ? 'Concentration' : '', s.ritual ? 'Ritual' : ''].filter(Boolean).join(' · ');
   const spellRow = (s, o) => pickRow({ id: o.id, kind: 'check', checked: o.on, disabled: o.off, title: s.name, lead: s.level ? `(lvl ${s.level})` : '(cantrip)', chips: [spellTag(s)].filter(Boolean), summary: firstSentence(s.text), also: spellMeta(s), why: o.why, info: () => spellCard(s), onchange: o.onchange });
   const chipRadios = (id, label, options, value, onchange) => el('div', { class: 'abpick', id }, el('span', { class: 'pk-lead', text: label }),
-    el('div', { class: 'chipset', role: 'radiogroup', 'aria-label': label }, ...options.map(([v, t]) => el('label', {}, el('input', { type: 'radio', name: id, id: `${id}-${v || 'none'}`, checked: (value ?? '') === v, onchange: () => onchange(v) }), el('span', { text: t })))));
+    el('div', { class: 'chipset', role: 'radiogroup', 'aria-label': label }, ...options.map(([v, t]) => el('label', {}, el('input', { type: 'radio', name: id, id: `${id}-${v ? `o-${v}` : 'none'}`, checked: (value ?? '') === v, onchange: () => onchange(v) }), el('span', { text: t })))));
   function featsSection(slots) {
     const s = sheet();
     const setEntry = (at, f) => { const i = b.feats.findIndex((x) => x.at === at); if (i >= 0) b.feats.splice(i, 1); if (f) b.feats.push(f); };
@@ -709,7 +709,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
       const all = Object.values(CONTENT.feats).filter((f) => ids.has(f.id) || cats.has(f.category)).sort((x, y) => (ids.has(y.id) - ids.has(x.id)) || x.name.localeCompare(y.name));
       for (const f of all) {
         const on = sl.taken?.id === f.id, offered = ids.has(f.id);
-        box.append(pickRow({ id: `feat-${key}-${f.id}`, kind: 'radio', name: `feat-${key}`, checked: on, disabled: !offered && !on, why: offered || on ? '' : whyNot(f), title: f.name, chips: [chip('cat', nice(f.category))], summary: firstSentence(f.text),
+        box.append(pickRow({ id: `feat-${key}-opt-${f.id}`, kind: 'radio', name: `feat-${key}`, checked: on, disabled: !offered && !on, why: offered || on ? '' : whyNot(f), title: f.name, chips: [chip('cat', nice(f.category))], summary: firstSentence(f.text),
           info: { title: f.name, sub: `${nice(f.category)} feat`, text: f.text }, onchange: () => { setEntry(sl.at, { id: f.id, at: sl.at }); build(); } }));
         if (on) box.append(...featExtras(sl, f, key, setEntry));
       }

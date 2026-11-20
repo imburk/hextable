@@ -61,3 +61,24 @@
   .qb-why.has-needs ~ .qe-problems { display: none; }
   .qb-foot { padding-top: 4px; } .qb-why { font-size: 13px; margin: 0 0 4px; }
 }
+
+/* the build screen's own parts of the shared look: the class resource card, the slot rows, the pips, the chip sets */
+.pk .res { border: 2px solid var(--accent); border-radius: var(--radius); background: var(--panel-2); padding: 10px 12px; margin: 4px 0 8px; }
+.pk .res h3 { margin: 0; font: 700 18px var(--display, inherit); display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pk .res h3 .alias { font: 400 13px var(--body, inherit); color: var(--muted); }
+.pk .res .big { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px; }
+.pk .res .num { font: 800 34px/1 var(--body, inherit); }
+.pk .res .back { font-size: 14px; margin-top: 4px; }
+.pk .pk-pips { display: flex; gap: 6px; flex-wrap: wrap; }
+.pk .pip { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); border: 2px solid var(--accent); }
+.pk .slotrow { display: flex; align-items: center; gap: 10px; margin: 4px 0; } .pk .slotrow .lbl { width: 62px; font-weight: 600; font-size: 14px; }
+.pk .slotrow .pip { width: 16px; height: 16px; }
+
+/* chips of choices (skills) */
+.pk .chipset { display: flex; flex-wrap: wrap; gap: 6px; }
+.pk .chipset label { position: relative; }
+.pk .chipset input { position: absolute; opacity: 0; inset: 0; margin: 0; width: 100%; height: 100%; }
+.pk .chipset span { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel-2); border-radius: 999px; }
+.pk .chipset input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.pk .chipset input:disabled + span { opacity: .45; }
+.pk .chipset input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }

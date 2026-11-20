@@ -536,10 +536,10 @@ export async function casters(browser, url, label, opts) {
         await openSec(page, 'feats');
         const places = await page.$$eval('#qb-feats-pick [data-at]', (b) => b.map((x) => x.dataset.at));
         if (!places.includes('ability-score-improvement-4') || !places.includes('background')) throw new Error(`places: ${places}`);
-        await page.check('#feat-ability-score-improvement-4-ability-score-improvement');
-        await page.check('#feat-ability-score-improvement-4-a1-cha');
-        await page.check('#feat-ability-score-improvement-4-a2-con');
-        await page.check('#feat-background-skilled');
+        await page.check('#feat-ability-score-improvement-4-opt-ability-score-improvement');
+        await page.check('#feat-ability-score-improvement-4-a1-o-cha');
+        await page.check('#feat-ability-score-improvement-4-a2-o-con');
+        await page.check('#feat-background-opt-skilled');
         await wait(page, () => !!document.querySelector('#feat-background input[id*="-skill-"]'), null, 5000);
         await shot('build-feats');
         const probs = await page.$$eval('#qb-problems li', (l) => l.map((x) => x.textContent));

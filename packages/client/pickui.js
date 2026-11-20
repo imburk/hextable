@@ -16,6 +16,7 @@ import { attach as scrollOn, pop, hide as hideCard, cardOwner } from './scrollti
 export function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
+    if (k === 'spellcheck' && v != null) { e.setAttribute(k, String(v)); continue; }      // the property takes a boolean and `false` would be dropped below; the attribute must say "false"
     if (v === undefined || v === false || v === null) continue;
     if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v; else if (k in e && k !== 'list') e[k] = v; else e.setAttribute(k, v === true ? '' : v);
   }
@@ -46,7 +47,7 @@ export function accordion({ sections, open, onOpen, id = 'acc' }) {
   const by = Object.fromEntries(sections.map((s) => [s.id, s]));
   const bar = (sid) => {
     const s = by[sid], on = sid === body;
-    return el('button', { type: 'button', id: `${id}-bar-${sid}`, class: `acchead${on ? ' on' : ''}${compact ? ' compact' : ''}`, 'aria-expanded': String(on), 'aria-controls': `${id}-sec-${sid}`, onclick: () => onOpen(accNext(open, sid)) },
+    return el('button', { type: 'button', id: `${id}-bar-${sid}`, class: `acchead${on ? ' on' : ''}${compact ? ' compact' : ''}`, 'aria-expanded': String(on), 'aria-controls': on ? `${id}-sec-${sid}` : undefined, onclick: () => onOpen(accNext(open, sid)) },
       el('span', { class: 't' }, el('b', { text: s.title }), !compact && s.tip ? el('small', { text: s.tip }) : null),
       s.need ? el('span', { class: 'need', text: s.need }) : null, el('span', { class: 'chev', 'aria-hidden': 'true', text: '›' }));
   };
@@ -77,14 +78,19 @@ export function disclosure({ id, text, sub, open, onToggle }) {
 // `describe` is { title, sub?, text } or a function giving one (text may be a list of lines). The card opens by the i button, by 3 s of mouse rest, by a
 // 0.5 s press-hold, or by the I key on a focused row; Escape, leaving, a tap elsewhere or a scroll closes it. A plain tap on the row is left alone.
 const asCard = (d) => { const x = typeof d === 'function' ? d() : d; return x ? { ...x, text: Array.isArray(x.text) ? x.text.filter(Boolean).join('\n') : x.text } : null; };
+// Whether the card was open for this row when the i button was pressed. A pointer press closes an open card before the click arrives (a tap elsewhere hides it), so
+// the press is remembered, but only a press on an i button, and never for a key press: a click with `detail` 0 comes from the keyboard and reads the card as it is.
+export const infoWasOpen = ({ down, now, detail }) => (detail === 0 ? now : down ?? now);
 let downOwner = null, wired = false;
-function wire() { if (wired) return; wired = true; window.addEventListener('pointerdown', () => { downOwner = cardOwner(); }, true); }       // before the card's own "tap elsewhere hides it" runs
+export const noteDown = (target, owner) => { downOwner = target?.closest?.('.ibtn') ? owner : null; };
+export const pressSeen = () => downOwner;
+function wire() { if (wired) return; wired = true; window.addEventListener('pointerdown', (ev) => noteDown(ev.target, cardOwner()), true); }       // before the card's own "tap elsewhere hides it" runs
 export function reveal(row, describe) { wire(); return scrollOn(row, () => asCard(describe)); }
 function infoButton(row, label, describe) {
   const b = el('button', { type: 'button', class: 'ibtn', 'aria-label': `About ${label}`, 'aria-expanded': 'false' }, el('i', { text: 'i' }));
-  b.onclick = () => {
+  b.onclick = (ev) => {
     wire();
-    const was = downOwner ?? cardOwner(); downOwner = null;
+    const was = infoWasOpen({ down: downOwner, now: cardOwner(), detail: ev?.detail }); downOwner = null;
     if (was === row) { hideCard(); return; }
     const d = asCard(describe); if (!d?.text) return;
     pop(row, d, () => b.setAttribute('aria-expanded', 'false')); b.setAttribute('aria-expanded', 'true');

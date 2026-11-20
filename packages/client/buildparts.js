@@ -2,8 +2,8 @@
 // the class resource (Focus Points, Spell slots, ...), and the live sheet's lines. Read from the class data the client already has; no class is named here
 // (the one presentation table, RESOURCE_NICKNAME, holds a plain-words alias for a resource). No DOM, so it runs in Node under test. It decides no rule:
 // `derive` and `validate` do, and the numbers shown come from `derive`.
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
-export const nice = (id) => cap(String(id).replace(/-/g, ' '));
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+export const nice = (id) => cap(String(id ?? '').replace(/-/g, ' '));
 export const signed = (n) => (n >= 0 ? `+${n}` : `−${Math.abs(n)}`);
 
 // ---------- item texts (our own words; the numbers are the data's) ----------
