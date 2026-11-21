@@ -3,6 +3,7 @@
 !package.json
 !docker-entrypoint.mjs
 !scripts/build.mjs
+!scripts/backup.mjs
 !packages/client
 !packages/rules/src
 !packages/server/src

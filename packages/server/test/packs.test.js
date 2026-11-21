@@ -689,10 +689,11 @@ test("M1: a table file with a bad `packs` value does not stop the server or anot
     edit(bad.code, (r) => { r.packs = "x"; });
     edit(damaged.code, (r) => { r.members = 5; });             // makes a join throw inside the handler
     s = await startServer({ data: dir, stderr: "pipe" });       // rejects if the server exits early
-    assert.match(s.stderr(), /dropped at load/);
+    assert.doesNotMatch(s.stderr(), /dropped at load/, "tables are read when first used, not at start (#662)");
     const a = await talk(s.port);
     a.send({ t: "resume", code: bad.code, token: bad.token });
     const told = await a.until((g) => g.find((m) => m.t === "packs"));
+    assert.match(s.stderr(), /dropped at load/);
     assert.deepEqual(told.packs, []);
     assert.match(told.dropped[0].reason, /not a list/);
     const b = await talk(s.port);

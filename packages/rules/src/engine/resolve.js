@@ -815,6 +815,7 @@ export function awayTurn(s, e, ev) {
 // taken with the other adjustments, before Resistance (SRD "Order of Application").
 // `pierce`: the damage ignores Resistance and Immunity (Overchannel's Necrotic damage to its caster).
 export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut = null, pierce = false } = {}) {
+  if (t.dead) return;                                      // a dart or ray that lands after an earlier one killed it (Magic Missile's darts strike together): nothing left to hurt
   const parts = Array.isArray(amount) ? amount : [{ amount, type: dtype }];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   // A Reaction that gives Resistance to the damage being taken (Superior Hunter's Defense): the type it resists now.
