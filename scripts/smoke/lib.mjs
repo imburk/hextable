@@ -143,6 +143,7 @@ const openMenuTo = async (page, want) => {
 // A sheet closes by its handle, a wide menu by its x.
 export const closeMenu = async (page) => {
   if (!(await shown(page, '#drawer'))) return;
+  await page.waitForFunction(() => document.getElementById('dice')?.hidden !== false, null, { timeout: 8000 }).catch(() => {});      // dice in flight sit over everything and take the tap
   const clicked = await page.click('#drawer-close:visible, #drawer-handle:visible', { timeout: 3000 }).then(() => 'clicked', (e) => `not clicked: ${String(e.message).split('\n')[0]}`);
   await waitShown(page, '#drawer', false).catch(async (err) => {
     const at = await page.evaluate(() => { const d = document.getElementById('drawer'); return { path: d.dataset.path, open: window.hextable.drawer.isOpen, hidden: d.hidden, cls: d.className, active: document.activeElement?.id, bodyCls: document.body.className }; }).catch(() => null);

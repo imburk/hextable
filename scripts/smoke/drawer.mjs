@@ -243,8 +243,9 @@ async function drawerPass(browser, url, label, opts) {
         if (Math.abs(c.w - (c.vw - d.w)) > 2) throw new Error(`the canvas (${c.w}) did not give way to the menu (${d.w})`);
         if ((await page.getAttribute('#drawer', 'role')) !== 'complementary') throw new Error('a pinned menu is a landmark, not a dialog');
         if (await shown(page, '#drawer-scrim')) throw new Error('a pinned menu dims the map');
-        await page.mouse.click(1100, 300); await sleep(200);
-        if (!(await shown(page, '#drawer'))) throw new Error('a click on the map closed a pinned menu');
+        // A press and drag on the map (not a tap: the party stands near enemies, and a tap there starts a fight) must not close a pinned menu.
+        await page.mouse.move(1100, 300); await page.mouse.down(); await page.mouse.move(1100, 360, { steps: 4 }); await page.mouse.up(); await sleep(200);
+        if (!(await shown(page, '#drawer'))) throw new Error('a press on the map closed a pinned menu');
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-pinned.png` : '/dev/null' }).catch(() => {});
         await page.click('#drawer-pin'); await sleep(300);
         const c2 = await rectOf(page, '#gl');
