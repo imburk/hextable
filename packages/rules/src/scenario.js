@@ -1,6 +1,6 @@
 // Starter world: a small valley with a pond, woods, a ruin, a goblin camp and four heroes.
 import * as H from './hex.js';
-import { makeEntity } from './engine.js';
+import { apply, makeEntity } from './engine.js';
 import { MONSTERS, PREGENS } from './content/index.js';
 import { derive, validate } from './derive.js';
 import { VERSION } from './migrate.js';
@@ -39,9 +39,22 @@ export function partyProblems(party) {
   return bad;
 }
 
+// `opts.follow` (the table's new games, solo's included): the heroes after the first follow the first hero, as `partyFollow` does it, so one
+// hero's walk toward the goblins is the party's and a fight that starts takes them all in (PB-2, #671). Without it the heroes stand apart, as always.
 export function newGame(seed = 7, opts = {}) {
+  const s = valley(seed, opts);
+  const heroes = Object.values(s.entities).filter((e) => e.side === 'party');
+  if (opts?.follow && heroes.length > 1) {
+    const told = s.timeline.length, r = apply(s, { type: 'partyFollow', leader: heroes[0].id }, { role: 'dm' });
+    if (!r.ok) throw new Error(r.error);
+    s.timeline.length = told;                    // a new game's chronicle starts with its own two entries, not with the party falling in
+  }
+  return s;
+}
+
+function valley(seed, opts) {
   if (opts?.party !== undefined) { const bad = partyProblems(opts.party); if (bad.length) throw new Error(bad[0]); }
-  if (opts?.grid === 'square') return squareValley(newGame(seed, { party: opts.party }));
+  if (opts?.grid === 'square') return squareValley(valley(seed, { party: opts.party }));
   const tiles = {};
   const smooth = (h) => (hash(h.q, h.r, seed) + H.neighbors(h).reduce((a, n) => a + hash(n.q, n.r, seed), 0)) / 7;
   for (const h of H.range({ q: 0, r: 0 }, 13)) {

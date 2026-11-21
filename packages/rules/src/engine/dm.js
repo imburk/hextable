@@ -17,7 +17,7 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, up } from './shared.js';
-import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
 import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
@@ -149,6 +149,15 @@ export const handlers = {
     ev.push({ type: 'placed', id: e.id, to });
     lookAround(s, ev, [e]);
     if (s.encounter?.arena[col(to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+  },
+  // The party members outside a running fight walk in and roll Initiative. { type: 'joinFight', who?: [ids] } (all of them without `who`).
+  // The DM, or in solo the player; a hero the fight has not reached by the rules (no way there within 60 ft of the party) stays out and is told so.
+  joinFight(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can bring the others into the fight.');
+    s.encounter || fail('There is no fight to join.');
+    a.who === undefined || (Array.isArray(a.who) && a.who.every((id) => s.entities[id]?.side === 'party')) || fail('Name party members to bring in.');
+    const joined = bringIn(s, a.who, ev);
+    joined.length || ev.some((x) => x.type === 'note') || fail('Everyone in the party is in the fight already.');
   },
   // Show a region to the players, or take it back. { type: 'revealRegion', region, revealed: true|false }
   revealRegion(s, a, ctx, ev) {

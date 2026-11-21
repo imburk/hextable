@@ -1338,6 +1338,25 @@ function formationPlace(s, f, leader, mine, theirs, arena) {
   return best;
 }
 
+// The place nearest behind `leader` that `f` could have walked to inside `arena`: its place in the leader's formation when that is
+// free (E-P4), else the nearest along the leader's trail. { best, mine } (`best` null when there is none; `mine` is f's walking options).
+function placeBehind(s, f, leader, arena, walked, foes, G) {
+  const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
+  const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
+  const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
+  let best = null, bestKey = null;
+  const slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
+  if (slot) { best = slot; bestKey = null; }
+  else for (const [k, v] of mine) {
+    if (!v.canStop || !arena[col(v.h)]) continue;
+    const lc = theirs.get(k)?.cost;
+    if (lc === undefined || lc > CATCH_UP) continue;
+    const at = along(trail, v.h, G), rank = [at.d, at.i, lc, v.cost];
+    if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
+  }
+  return { best, mine };
+}
+
 // A fight is starting in `arena`. Everyone who was following a party member in it, and is not in
 // it already, is brought up to the nearest free place behind its leader that it could have walked
 // to (a path exists, and the place is at most CATCH_UP feet of walking from the leader).
@@ -1353,19 +1372,7 @@ export function catchUp(s, arena, walked, ev) {
     if (!f) return;
     pending.splice(pending.indexOf(f), 1);
     const leader = s.entities[f.follow];
-    const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
-    const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
-    const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
-    let best = null, bestKey = null;
-    const slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
-    if (slot) { best = slot; bestKey = null; }
-    else for (const [k, v] of mine) {
-      if (!v.canStop || !arena[col(v.h)]) continue;
-      const lc = theirs.get(k)?.cost;
-      if (lc === undefined || lc > CATCH_UP) continue;
-      const at = along(trail, v.h, G), rank = [at.d, at.i, lc, v.cost];
-      if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
-    }
+    const { best, mine } = placeBehind(s, f, leader, arena, walked, foes, G);
     if (!best || !up(f)) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     f.pos = best.v.h;
     ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
@@ -1374,5 +1381,29 @@ export function catchUp(s, arena, walked, ev) {
     lookAround(s, ev, r ? [f, r] : [f]);
     party.add(f.id);
   }
+}
+
+// A fight is running and these party members stand outside it (`ids`, or all of them): each walks in to the nearest free place behind the
+// party member in the fight that is closest to it, if it could have got there (as `catchUp`: a path, and at most CATCH_UP feet from that
+// member), then joins and rolls Initiative as any creature arriving does (`joinEncounter`). One that cannot get in stays out and is told so.
+// Returns who joined.
+export function bringIn(s, ids, ev) {
+  const arena = s.encounter.arena, G = gridOf(s.map), joined = [];
+  const foes = living(s).filter((o) => o.side !== 'party' && inFight(s, o.id) && !unseenAt(s.map, o.pos));
+  const out = living(s).filter((e) => e.side === 'party' && !inFight(s, e.id) && up(e) && !e.riding && !draggedBy(s, e).length && (!ids || ids.includes(e.id))).sort(byMarch);
+  for (const f of out) {
+    const near = living(s).filter((e) => e.side === 'party' && inFight(s, e.id)).sort((a, b) => G.dist(a.pos, f.pos) - G.dist(b.pos, f.pos));
+    const leader = near[0];
+    const { best, mine } = leader ? placeBehind(s, f, leader, arena, null, foes, G) : { best: null };
+    if (!best) { ev.push({ type: 'note', id: f.id, text: `${f.name} can't get to the fight.` }); continue; }
+    f.pos = best.v.h;
+    ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
+    const r = carry(s, f);
+    if (r) ev.push({ type: 'moved', id: r.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
+    lookAround(s, ev, r ? [f, r] : [f]);
+    joinEncounter(s, f, ev); joined.push(f.id);
+    if (r && !inFight(s, r.id)) { joinEncounter(s, r, ev); joined.push(r.id); }
+  }
+  return joined;
 }
 
