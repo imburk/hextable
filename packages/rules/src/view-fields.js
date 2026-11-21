@@ -11,6 +11,9 @@
 //               takes out or renames the ones the party does not know of (`scrub`, and the cases named beside the field).
 //   'withheld'  not sent: the DM's bookkeeping, or what only its controller and the DM are sent by another way.
 //
+// Known gap: `name` and `tpl` of a creature made from a homebrew monster or form can still reach players (DEBT T45). `forViewer` (view.js)
+// handles records the viewer does not control; this table does not fix it, and a change that does belongs with T45.
+//
 // Pure data and two small functions; it imports nothing.
 
 // ---------- a creature of the party ----------

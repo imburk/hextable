@@ -882,7 +882,7 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'chronicle':
-        if (ev.public === true) out.push(structuredClone(pick(ev, ['type', 'title', 'text', 'tags', 'scene', 'public'])));
+        if (ev.public === true) out.push(structuredClone(pick(ev, ['type', 'title', 'text', 'tags', 'scene', 'fight', 'public'])));
         break;
       case 'conclusion': {                             // the published rewards, shaped as the player's card (rewards.js)
         const { id, ...shaped } = playerConclusion({ ...ev, id: ev.fight, published: true }, (f) => foeName(state, f));

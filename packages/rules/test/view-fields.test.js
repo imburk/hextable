@@ -35,11 +35,18 @@ function creatureFields() {
     add(`${c} ${level}`, makeEntity(derive({ name: "X", class: c, level, abilities, skills: [], choices: {}, spells: [] }).record, { id: "x", kind: "pc", side: "party", pos: { q: 0, r: 0 } }));
   }
   add("a multiclass character", makeEntity(derive({ name: "X", classes: [{ class: "fighter", level: 3 }, { class: "wizard", level: 2 }], abilities, skills: [], choices: {}, spells: [] }).record, { id: "x", kind: "pc", side: "party", pos: { q: 0, r: 0 } }));
-  // What engine code writes onto a creature: `e.field = `, `fresh.field ??= `, `delete e.field`, and the list of what a remade creature keeps.
-  for (const f of SRC_FILES.filter((x) => x !== "engine.js")) {      // engine.js's `e` is an event (a stamp), not a creature
-    const text = rules(f);
-    for (const r of text.matchAll(/\b(?:e|fresh)\.([a-zA-Z]+)\s*(?:=(?!=)|\?\?=|\|\|=|\+=|-=)/g)) if (!seen.has(r[1])) seen.set(r[1], `${f}: ${r[0]}`);
-    for (const r of text.matchAll(/delete (?:e|fresh)\.([a-zA-Z]+)/g)) if (!seen.has(r[1])) seen.set(r[1], `${f}: ${r[0]}`);
+  // What engine code writes onto a creature: `e.f = `, `fresh.f ??= `, `delete e.f`, `entities[id].f = `, `x['f'] = `, and the keys of
+  // `Object.assign(creature, { ... })`, on any variable that holds a creature in the engine's code. In engine.js `e` is an event (a stamp), so
+  // only the forms that name a creature itself are read there.
+  const CREATURE = "e|fresh|t|rider|caster|master|foe|ally|tgt|target|actor|who|pc|ch|leader|fam|giver|taker|ent|entity|creature|member|steed|familiar|companion|summon|hero";
+  const HELD = "(?:s|state|next|copy)?\\.?entities\\[[^\\]]+\\]";
+  for (const f of SRC_FILES.filter((x) => x !== "derive.js")) {      // derive.js edits spell and feature data; the records it makes are read above
+    const text = rules(f), who = f === "engine.js" ? HELD : `(?:\\b(?:${CREATURE})\\b|${HELD})`;
+    const op = "\\s*(?:=(?!=)|\\?\\?=|\\|\\|=|\\+=|-=)";
+    const found = [...text.matchAll(new RegExp(`${who}\\.([a-zA-Z]+)${op}`, "g")), ...text.matchAll(new RegExp(`${who}\\[['"]([a-zA-Z]+)['"]\\]${op}`, "g")),
+      ...text.matchAll(new RegExp(`delete ${who}\\.([a-zA-Z]+)`, "g"))];
+    for (const r of found) if (!seen.has(r[1])) seen.set(r[1], `${f}: ${r[0]}`);
+    for (const r of text.matchAll(new RegExp(`Object\\.assign\\(${who}, \\{((?:[^{}]|\\{[^{}]*\\})*)\\}`, "g"))) for (const k of r[1].replace(/\{[^{}]*\}/g, "{}").matchAll(/(?:^|,)\s*([a-zA-Z]+)\s*[:,]/g)) if (!seen.has(k[1])) seen.set(k[1], `${f}: Object.assign`);
   }
   const keep = /for \(const k of \[('cond'[^\]]*)\]\) if \(e\[k\]/.exec(rules("engine/sheets.js"));
   for (const r of keep[1].matchAll(/'([A-Za-z]+)'/g)) if (!seen.has(r[1])) seen.set(r[1], "engine/sheets.js: carryPlay");
@@ -86,9 +93,13 @@ test("every field of a creature that holds another creature in a pocket dimensio
 });
 
 test("the tables hold only the three classes, and nothing in them is stale", () => {
+  // A key is live when some code reads or writes it as a property (`.key`, `key:` or `'key'`), in the rules or the client: a word in a comment is not enough.
+  const code = [SRC, ...["view.js", "vision.js", "sight.js", "scores.js", "market.js", "space.js", "modifiers.js"].map(rules),
+    ...readdirSync(new URL("../../client/", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => readFileSync(new URL(`../../client/${f}`, import.meta.url), "utf8"))]
+    .join("\n").replace(/\/\/.*$/gm, "");
   for (const table of [PARTY_FIELDS, SETTING_FIELDS]) for (const [k, v] of Object.entries(table)) {
     assert.ok(CLASSES.includes(v), `${k}: ${v}`);
-    assert.ok(new RegExp(`\\b${k}\\b`).test(SRC), `${k} is in no engine source: is it a field that has gone?`);
+    assert.ok(new RegExp(`\\.${k}\\b|\\b${k}\\s*:|['"]${k}['"]`).test(code), `${k} is used as a property nowhere: is it a field that has gone?`);
   }
 });
 
