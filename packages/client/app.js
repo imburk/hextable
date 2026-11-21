@@ -55,6 +55,7 @@ import { initConclusion, logLine, xpFact } from './conclusion.js';
 import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
 import { mountNewVersion } from './newversion.js';
+import { wire as wireUndo, nameOf } from './undobar.js';
 import { createHold, HOLD_MS } from './hold.js';
 import { createPings, cellAtPoint, pingColor } from './ping.js';
 
@@ -941,19 +942,21 @@ function renderMarch() {
 }
 
 // ---------- undo: the DM's Undo and Redo buttons say what they will take back ----------
+const TOP_UNDO = new Set(['btn-undo', 'btn-redo']);
 function showUndo() {
   const { undo = [], redo = [] } = T?.undoInfo ?? {}, dm = isDM();
-  for (const [id, list, verb] of [['btn-undo', undo, 'Undo'], ['ed-undo', undo, 'Undo'], ['dm-undo', undo, 'Undo'], ['dm-redo', redo, 'Redo']]) {
+  for (const [id, list, verb] of [['btn-undo', undo, 'Undo'], ['btn-redo', redo, 'Redo'], ['ed-undo', undo, 'Undo'], ['dm-undo', undo, 'Undo'], ['dm-redo', redo, 'Redo']]) {
     const b = $(id);
     b.disabled = !dm || !list.length;
-    b.title = list.length ? `${verb}: ${list[0]}` : `Nothing to ${verb.toLowerCase()}`;
-    b.setAttribute('aria-label', b.title);
+    b.setAttribute('aria-label', nameOf(verb, list));
+    if (!TOP_UNDO.has(id)) b.title = nameOf(verb, list);            // the top bar's two say it on a hold or a long hover (undobar.js), not in a browser tooltip
     const sub = b.querySelector('small'); if (sub) sub.textContent = list[0] ?? 'Nothing';
   }
-  $('btn-undo').hidden = !dm;
+  $('btn-undo').hidden = $('btn-redo').hidden = !dm;
 }
+wireUndo($('btn-undo'), 'Undo', () => T?.undoInfo?.undo); wireUndo($('btn-redo'), 'Redo', () => T?.undoInfo?.redo);
 const undo = () => isDM() && T.undo?.(), redo = () => isDM() && T.redo?.();
-$('btn-undo').onclick = undo; $('ed-undo').onclick = undo; $('dm-undo').onclick = undo; $('dm-redo').onclick = redo;
+$('btn-undo').onclick = undo; $('btn-redo').onclick = redo; $('ed-undo').onclick = undo; $('dm-undo').onclick = undo; $('dm-redo').onclick = redo;
 
 // ---------- taps ----------
 let lastMove = null;
@@ -1177,7 +1180,7 @@ function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('btn-undo').hidden = true; $('menu-session').hidden = true;
+  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = true; $('menu-session').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }

@@ -24,7 +24,7 @@ const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 function table() {
   const s = newGame(5);
   s.settings.autoEngage = false;
-  const d = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 }, skills: [], armour: 'leather-armor', weapons: ['quarterstaff'], spells: ['find-familiar', 'summon-dragon', 'animate-dead', 'shocking-grasp'] });
+  const d = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 }, skills: [], weapons: ['quarterstaff'], spells: ['find-familiar', 'summon-dragon', 'animate-dead', 'shocking-grasp'] });
   const f = s.entities.fighter.pos;
   s.entities.ven = makeEntity(d.record, { id: 'ven', kind: 'pc', side: 'party', pos: { q: f.q + 1, r: f.r, z: 0 } });
   ok(apply(s, { type: 'claim', entity: 'ven', user: 'pat', userName: 'Pat' }, PAT));

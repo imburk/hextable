@@ -22,7 +22,7 @@ function refused(s, action, ctx, words) {
   assert.equal(json(s), before, "a refused action changes nothing");
 }
 const ABIL = { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 };
-const sheet = (cls, spells) => ({ name: "Ven", class: cls, level: 17, abilities: ABIL, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells });
+const sheet = (cls, spells) => ({ name: "Ven", class: cls, level: 17, abilities: ABIL, skills: [], ...(cls === "wizard" ? {} : { armour: "leather-armor" }), weapons: ["quarterstaff"], spells });
 function spots(s, near, r, monster) {
   const G = gridOf(s.map), out = [];
   for (const h of G.range(near, r)) if (apply(structuredClone(s), { type: "spawn", monster, at: h }, DM).ok) out.push(h);

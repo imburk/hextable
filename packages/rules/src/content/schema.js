@@ -2403,7 +2403,7 @@ function lintPackCore(doc, opts) {
 const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
   'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look',
   // Made by derive() from a sheet (derive.js): features as the engine plays them, the Hit Die, what is worn.
-  'feats', 'hitDie', 'armour', 'shield', 'critOn', 'bonusActs', 'pact', 'conditionImmune',
+  'feats', 'hitDie', 'armour', 'shield', 'untrained', 'critOn', 'bonusActs', 'pact', 'conditionImmune',
   // A character with more than one class (derive.js): its classes and levels, its Hit Dice by size,
   // and the spellcasting ability of each spell whose class's differs from `castAbil`.
   'classes', 'hitDice', 'spellAbil',
@@ -2411,7 +2411,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
   'type'];
 // `abil` (the ability it uses), `weapon` (its equipment id) and `time: 'bonus'` (a Bonus Action
 // attack, the Monk's Unarmed Strike) come from derive().
-const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time', 'dc'];
+const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time', 'dc', 'untrained'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
   'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
@@ -2552,6 +2552,7 @@ export function lintRecord(r, { spells = {} } = {}) {
     if (a.type === 'melee' && !(within(a.reach, 5, 30) && a.reach % 5 === 0)) sub('a melee attack needs a reach in feet.');
     if (a.type === 'ranged' && !(Array.isArray(a.range) && a.range.length === 2 && a.range.every((n) => within(n, 5, 2000)) && a.range[0] <= a.range[1])) sub('a ranged attack needs a range of [normal, long] in feet.');
     if (a.finesse !== undefined && typeof a.finesse !== 'boolean') sub('finesse is true or false.');
+    if (a.untrained !== undefined && a.untrained !== true) sub('untrained is true or left out.');
     if (a.abil !== undefined && !['str', 'dex'].includes(a.abil)) sub('it uses Strength or Dexterity.');
     if (a.dc !== undefined && !['unarmed-strike', 'unarmed-strike-bonus'].includes(a.id)) sub('only an Unarmed Strike has a save DC.');
     else if (a.dc !== undefined && !within(a.dc, 1, 40)) sub('its save DC is a whole number from 1 to 40.');
@@ -2581,6 +2582,7 @@ export function lintRecord(r, { spells = {} } = {}) {
   if (r.spellAbil !== undefined && !(r.spellAbil && typeof r.spellAbil === 'object' && Object.entries(r.spellAbil).every(([id, a]) => (r.spells ?? []).includes(id) && ABILITIES.includes(a)))) say('Its spells\' abilities name spells it has and abilities.');
   if (r.armour !== undefined && !['none', 'light', 'medium', 'heavy'].includes(r.armour)) say('What it wears is none, light, medium or heavy armour.');
   for (const k of ['shield', 'pact']) if (r[k] !== undefined && r[k] !== true) say(`${k} is true or left out.`);
+  if (r.untrained !== undefined && !(Array.isArray(r.untrained) && r.untrained.length >= 1 && r.untrained.length <= 2 && r.untrained.every((x) => isText(x) && x.length <= 60))) say('What it wears without training is a list of one or two short names.');
   if (r.critOn !== undefined && !within(r.critOn, 15, 19)) say('Its Critical Hit range starts at 15 to 19.');
   if (r.bonusActs !== undefined && !(Array.isArray(r.bonusActs) && r.bonusActs.every((x) => BONUS_ACTS.includes(x)))) say(`Its Bonus Action options are ${BONUS_ACTS.join(', ')}.`);
   if (r.type !== undefined && !(CREATURE_TYPES.includes(r.type) && r.type !== 'humanoid')) say(`Its creature type is one of ${CREATURE_TYPES.filter((t) => t !== 'humanoid').join(', ')}, or left out for a Humanoid.`);

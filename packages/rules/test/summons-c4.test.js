@@ -28,7 +28,7 @@ const [srd] = PACKS;
 const CASTER = { attack: 9, dc: 17, pb: 6, mod: 3 };
 
 const ABIL = { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 };
-const sheet = (cls, spells, extra = {}) => ({ name: "Ven", class: cls, level: 17, abilities: ABIL, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells, ...extra });
+const sheet = (cls, spells, extra = {}) => ({ name: "Ven", class: cls, level: 17, abilities: ABIL, skills: [], ...(cls === "wizard" ? {} : { armour: "leather-armor" }), weapons: ["quarterstaff"], spells, ...extra });
 function spot(s, near, r = 3, n = 0, monster = "wolf") {
   const G = gridOf(s.map), out = [];
   for (const h of G.range(near, r)) if (apply(structuredClone(s), { type: "spawn", monster, at: h }, DM).ok) out.push(h);

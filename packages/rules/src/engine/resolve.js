@@ -1011,6 +1011,12 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   const v = typeof atk.via === 'string' && Object.hasOwn(s.entities, atk.via) ? s.entities[atk.via] : null;
   const from = v ? { ...e, pos: v.pos, size: v.size } : e;
   let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
+  // SRD "Weapon Mastery": a weapon the wielder lacks proficiency with gives no mastery property. The engine applies no mastery property to any
+  // weapon (DEBT T60), so there is nothing to withhold; a holder of the feature is told once a fight, so the DM does not apply it by hand.
+  if (atk.untrained && e.feats?.some((f) => f.id === 'weapon-mastery') && CONTENT.weapons[atk.weapon]?.mastery && s.encounter && !s.encounter.flags[`nomastery:${e.id}:${atk.weapon}`]) {
+    s.encounter.flags[`nomastery:${e.id}:${atk.weapon}`] = true;
+    ev.push({ type: 'manual', actor: e.id, name: 'Weapon Mastery', partial: true, text: `${e.name} is not proficient with the ${CONTENT.weapons[atk.weapon].name}, so it has no Weapon Mastery property (${CONTENT.weapons[atk.weapon].mastery}) and the attack adds no Proficiency Bonus. The DM applies no mastery effect for it.` });
+  }
   const heavy = heavyWeak(from, atk);
   if (heavy) { dis = [...dis, heavy]; mode = adv.length && !dis.length ? 'adv' : dis.length && !adv.length ? 'dis' : 'normal'; }
   // `advantageIf` (a creature's attack step: "with Advantage if the target is Grappled by it"): Advantage when every tag holds; a tag the

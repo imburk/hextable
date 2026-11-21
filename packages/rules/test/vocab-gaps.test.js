@@ -108,7 +108,7 @@ const PAT = { role: "player", userId: "pat" };
 function summoner() {
   const s = newGame(5);
   s.settings.autoEngage = false;
-  const d = derive({ name: "Ven", class: "wizard", level: 17, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 }, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells: ["animate-objects"] });
+  const d = derive({ name: "Ven", class: "wizard", level: 17, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 }, skills: [], weapons: ["quarterstaff"], spells: ["animate-objects"] });
   const G = gridOf(s.map);
   const spot = G.range(s.entities.fighter.pos, 4).find((h) => apply(structuredClone(s), { type: "spawn", monster: "wolf", at: h }, DM).ok);
   s.entities.ven = makeEntity(d.record, { id: "ven", kind: "pc", side: "party", pos: { ...spot, z: 0 } });

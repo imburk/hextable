@@ -122,6 +122,16 @@ export function aurasOn(s, e) {
 // Is a creature immune to a condition: its own immunity (a monster's), or an ally's aura (Aura of Courage)?
 export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id));
 
+// What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
+// worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
+export const untrainedGear = (e) => (e?.form || !Array.isArray(e?.untrained) ? [] : e.untrained);
+// ... and what that does: Disadvantage on every D20 Test that uses Strength or Dexterity (attack rolls, saving throws, ability checks, and
+// Initiative, which is a Dexterity check), as data for the modifiers below. The attack roll and the check say which ability they use
+// (`sit.ability`); a roll that does not say is not judged. Spellcasting is barred by the cast action (casting.js, slotsFor).
+const UNTRAINED = ['str', 'dex'].flatMap((ability) => [
+  { on: `save.${ability}`, op: 'disadvantage' }, { on: 'check', op: 'disadvantage', scope: { ability } }, { on: 'attack.roll', op: 'disadvantage', scope: { ability } },
+]).concat([{ on: 'initiative', op: 'disadvantage' }]);
+
 // Where a creature's modifiers come from, each with the name to show as the reason.
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
@@ -137,6 +147,7 @@ function* sources(s, e) {
   }
   for (const a of auras) if (a.modifiers.length) yield { name: a.name, modifiers: a.modifiers, level: 1 };
   for (const trait of CONTENT.monsters[e.tpl]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
+  for (const gear of untrainedGear(e)) yield { name: `${gear}, no training`, modifiers: UNTRAINED, level: 1 };
   // A form's stat block brings its traits (a wolf's Pack Tactics in Wild Shape; forms.js).
   for (const trait of CONTENT.monsters[e.form?.block]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
   // A built character's features that are always on (Danger Sense, Feral Instinct), as derive() made them.

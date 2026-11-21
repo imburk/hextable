@@ -135,11 +135,16 @@ export function headsUp(s) {
   if (a?.stealth) out.push('Disadvantage on Stealth checks');
   if (s.shield && !s.trained.armour.has('shield')) out.push('The Shield gives no AC (not trained)');
   if ((a || s.shield) && s.bare.length) out.push(`${s.bare.join(', ')} ${s.bare.length === 1 ? 'is' : 'are'} off`);
-  for (const w of s.weapons) if (!weaponTrained(w, s.trained.weapons)) out.push(`No Proficiency Bonus with the ${w.name}`);
+  for (const w of s.weapons) if (!weaponTrained(w, s.trained.weapons)) out.push(`No Proficiency Bonus or Weapon Mastery with the ${w.name}`);
   return out;
 }
 // The sentence a weapon row without training carries.
-export const weaponCost = (hit, prof) => `No Proficiency Bonus on the attack roll: ${signed(hit)} instead of ${signed(hit + prof)}`;
+export const weaponCost = (hit, prof) => `No Proficiency Bonus on the attack roll: ${signed(hit)} instead of ${signed(hit + prof)} \u00b7 no Weapon Mastery`;
+// The lines the info card of a row without training adds (the engine applies these: untrained gear, #648).
+export const weaponNoTrainLines = () => ['You are not proficient with this weapon. Its attack roll does not add your Proficiency Bonus, and it gives you no Weapon Mastery property.'];
+export const armourNoTrainLines = (a, caster) => [a.category === 'shield'
+  ? 'You have no training with Shields. Holding one gives you no Armor Class from it; nothing else changes.'
+  : `You have no training with ${a.category} armour. Wearing it gives you Disadvantage on every Strength and Dexterity D20 Test (attack rolls, saving throws, ability checks)${caster ? ', and you can\u2019t cast spells' : ''}.`];
 // The sentence an armour row without training carries, and its second line. `bare`: the features armour turns off (bareFeatures).
 export function armourCost(a, caster, bare = []) {
   if (a.category === 'shield') return `No AC bonus without training${bare.length ? ` \u00b7 turns off ${bare.join(', ')}` : ''}`;
