@@ -178,11 +178,12 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
       const tree = structuredClone(keep ? { ...p.tree, markets: null } : p.tree), owners = {};
       if (keep) tree.markets = p.tree.markets;                 // the market list as pinned, shared and never edited (see mark)
       for (const [id, e] of Object.entries(was.entities ?? {})) owners[id] = { owner: e.owner, ownerName: e.ownerName };
-      const rng = state.rng, seq = state.seq;
+      const rng = state.rng, seq = state.seq, fights = state.fightSeq;
       for (const k of Object.keys(state)) delete state[k];
       for (const [k, v] of Object.entries(tree)) state[k] = k === 'timeline' ? tl : v;
       state.rng = rng;
       if (Number.isInteger(seq)) state.seq = Math.max(seq, state.seq ?? 0);
+      if (Number.isInteger(fights)) state.fightSeq = Math.max(fights, state.fightSeq ?? 0);      // a fight fought again has a new number too
       for (const [id, e] of Object.entries(state.entities)) {
         if (!owners[id]) continue;
         for (const k of ['owner', 'ownerName']) { if (owners[id][k] === undefined) delete e[k]; else e[k] = owners[id][k]; }
@@ -257,7 +258,7 @@ export function describeStep(action, events, before, after) {
   function told(who, words) { return who === null ? null : `${who} ${words}`; }
   // A shop by the action's id, as it is after the step or was before it (closed, it is only in the state before).
   function shopName() {
-    const id = action.shop ?? events.find((e) => typeof e.shop === 'string')?.shop;
+    const id = events.find((e) => typeof e.shop === 'string')?.shop ?? action.shop;      // the events carry the shop's own id; a player's action, the number they were given
     const sh = (after.shops ?? []).find((x) => x.id === id) ?? (prior?.shops ?? []).find((x) => x.id === id);
     return sh?.name ?? 'A shop';
   }

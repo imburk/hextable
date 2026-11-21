@@ -15,6 +15,7 @@ import { concealed, inArea } from './space.js';
 import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
+import { playerShop } from './shopids.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { hasWorld, knownOf, partyAt, playerEntry, playerNode, playerPin, playerRoute } from './known.js';
@@ -371,7 +372,8 @@ export function viewShops(state, viewer) {
   if (isDM(viewer)) return structuredClone(Array.isArray(state.shops) ? state.shops : []);
   const env = marketEnv(), open = (id) => typeof id === 'string' && classify(state, id) === 'open', out = [];
   for (const shop of Array.isArray(state.shops) ? state.shops : []) {
-    if (!shownTo(shop, viewer?.userId)) continue;
+    const alias = playerShop(state, shop.id);       // the id a player is given (shopids.js), never the shop's own; a shop with none was shown to nobody
+    if (!shownTo(shop, viewer?.userId) || alias === null) continue;
     const market = marketOfShop(state, shop), store = shop.kind === 'store', ids = new Set(), lines = [];
     const all = [...(shop.lines ?? []), ...(shop.lists ?? []).flatMap((lid) => (market?.lists ?? []).find((x) => x?.id === lid)?.lines ?? [])];
     for (const l of all) {
@@ -384,7 +386,7 @@ export function viewShops(state, viewer) {
       lines.push({ id: l.id, name: lineName(l), ...(l.item !== undefined ? { item: l.item } : {}), ...(l.base !== undefined ? { base: l.base } : {}), ...(l.spell !== undefined ? { spell: l.spell } : {}),
         kind: kindOf(l, env), ...(l.art !== undefined ? { art: l.art } : {}), ...(l.note !== undefined ? { note: l.note } : {}), ...(price !== null ? { price } : {}), ...(left !== undefined ? { qty: left } : {}) });
     }
-    const rec = { id: shop.id, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
+    const rec = { id: alias, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
     if (!store) { rec.coins = { ...(shop.coins ?? {}) }; out.push(rec); continue; }
     rec.buys = buysOf(shop.buys);
     rec.quotes = (shop.quotes ?? []).filter((q) => open(q.for) && (q.line === undefined || ids.has(q.line)))
@@ -951,7 +953,11 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'checkAsked':                               // a request for a check is between the player who asked and the DM
-        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about'])));
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) {
+          const e = structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about']));
+          if (e.about) { const alias = playerShop(state, e.about.shop); if (alias === null) break; e.about.shop = alias; }      // a shop as the id the player was given
+          out.push(e);
+        }
         break;
       // Shops (docs/specs/shops.md, Decision 3 and X5): each trade event carries the shop's audience when it happened (`to`, `except`;
       // engine/trade.js) and goes to a player in it alone, live or from the record, shaped from an allow list; the audience is never sent,
@@ -962,7 +968,10 @@ function viewEventsOf(events, state, viewer) {
         const hears = (ev.to === 'all' || (Array.isArray(ev.to) && typeof u === 'string' && ev.to.includes(u))) && !(Array.isArray(ev.except) && typeof u === 'string' && ev.except.includes(u));
         const named = [ev.for, ev.buyer, ev.who, ...(Array.isArray(ev.split) ? ev.split : []), ...(Array.isArray(ev.payers) ? ev.payers.map((p) => p?.id) : [])].filter((x) => x !== undefined);
         if (!hears || named.some((id) => cls(id) === 'hidden')) break;
+        const alias = playerShop(state, ev.shop);      // a shop is named by the id the player was given (shopids.js); one never given is not named
+        if (alias === null) break;
         const e = structuredClone(pick(ev, TRADE_KEYS[ev.type]));
+        e.shop = alias;
         // A joint purchase ended because its buyer's player is no longer shown the store says, to the others, only that it ended: who
         // is shown a store is the DM's business (review of #598, M2).
         if (e.type === 'jointEnded' && e.why === 'hidden') e.why = 'ended';
