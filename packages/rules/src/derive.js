@@ -371,6 +371,10 @@ export function derive(sheet) {
   const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, gone = typeof sheet.shield === 'string' && !sheet.shieldStowed && !shieldEntry(sheet),
     shield = (!!sheet.shield && !sheet.shieldStowed && !gone) || !!shieldItem;   // a Shield id whose entry is not loaded (a pack removed) is no Shield held
   const shieldOk = shield && armourWords.has('shield');
+  // SRD "Armor Training": armour or a Shield worn without training gives Disadvantage on D20 Tests that use Strength or Dexterity and bars spellcasting.
+  // The record names what is worn untrained (`untrained`); modifiers.js and the cast action apply it.
+  const untrainedGear = [...(armour && !armourWords.has(armour.category) && trainedSuit !== armour.category ? [armour.name] : []),
+    ...(shield && !armourWords.has('shield') ? [shieldEntry(sheet, shieldItem)?.name ?? 'Shield'] : [])];
   const unarmoured = !armour, bare = unarmoured && !shield;
   const sum = (k) => G.reduce((n, g) => n + (typeof g[k] === 'number' ? g[k] : 0), 0);
 
@@ -466,7 +470,7 @@ export function derive(sheet) {
     const m = mod(abil[ab]), trained = weaponTrained(w, [...weaponWords]);
     const base = m + (trained ? pb : 0) + plus, die = monkWeapon ? bigger(w.damage, maDie) : w.damage;
     const dmg = (d) => (/^\d+$/.test(d) ? signed(+d + m + plus) : dice(d, m + plus));
-    const common = { dtype: it?.dtype ?? w.type, abil: ab, weapon: w.id, ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
+    const common = { dtype: it?.dtype ?? w.type, abil: ab, weapon: w.id, ...(trained ? {} : { untrained: true }), ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
     const reach = w.properties.includes('reach') ? 10 : 5;
     if (w.kind === 'melee') {
       add({ id: key, name: label, type: 'melee', bonus: base, damage: dmg(die), reach, ...common });
@@ -691,6 +695,7 @@ export function derive(sheet) {
     ...(multi ? { classes: ks.map((k) => ({ id: k.c.id, level: k.level, ...(k.subclass !== undefined ? { subclass: k.subclass } : {}) })) } : {}),
     ...(Object.keys(hitDice).length > 1 ? { hitDice } : {}),
     armour: armour?.category ?? 'none', ...(shield ? { shield: true } : {}),
+    ...(untrainedGear.length ? { untrained: untrainedGear } : {}),
     ...(critOn < 20 ? { critOn } : {}), ...(bonusActs.size ? { bonusActs: [...bonusActs] } : {}), ...(resist.size ? { resist: [...resist] } : {}), ...(condImmune.size ? { conditionImmune: [...condImmune] } : {}),
     ...(sheet.gear?.length ? { gear: [...sheet.gear] } : {}),
     ...(sheet.look ? { look: { ...sheet.look } } : {}),
@@ -856,13 +861,10 @@ export function validate(sheet) {
     const a = CONTENT.armour[sheet.armour];
     if (!a) say(`"${sheet.armour}" is not armour in the equipment tables.`);
     else if (a.category === 'shield') say(`"${sheet.armour}" is a Shield, not armour: use the Shield field of the sheet.`);
-    else if (!armourWords.has(a.category) && trainedSuit !== a.category) say(`${multi ? 'This character' : `A ${c.name}`} has no training with ${a.category} armour: wearing ${a.name} gives Disadvantage on Strength and Dexterity D20 Tests and stops spellcasting. The engine does not apply that; choose other armour.`);
   }
-  if (sheet.shield && !sheet.shieldStowed && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, and the engine does not yet apply the rules for holding one untrained, so it is refused.`);
   for (const id of sheet.weapons ?? []) {
     if (id === 'unarmed-strike') continue;
     if (!CONTENT.weapons[id]) say(`"${id}" is not a weapon in the equipment tables.`);
-    else if (!weaponTrained(CONTENT.weapons[id], [...weaponWords])) say(`${multi ? 'This character' : `A ${c.name}`} is not proficient with the ${CONTENT.weapons[id].name}, and the engine does not yet apply attacking without proficiency, so choose another weapon.`);
   }
 
   // Spells, for each class by its own level, as if it were the only one (Multiclassing, Spells Prepared).
@@ -1073,12 +1075,7 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
     if (x.charges !== undefined && !(def.charges && Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= def.charges.max)) say(def.charges ? `${name} has 0 to ${def.charges.max} charges.` : `${name} has no charges.`);
     // Worn or held.
     if (x.equipped === true && def.wear !== 'carried') (worn[def.wear] ??= []).push(name);
-    if (x.equipped === true && def.wear === 'armour') {
-      const b = itemBase(def, x);
-      if (b && !armourWords.has(b.category) && trainedSuit !== b.category) say(`${multi ? 'This character' : who} has no training with ${b.category} armour, so can't wear ${name}. Take it off.`);
-    }
-    if (x.equipped === true && def.wear === 'shield' && !armourWords.has('shield')) say(`${name}: no training with Shields. Take it off.`);
-    if (x.equipped === true && def.base?.weapon !== undefined) { const b = itemBase(def, x); if (b && !weaponTrained(b, [...weaponWords])) say(`${multi ? 'This character' : who} is not proficient with the ${b.name}, and the engine does not yet apply attacking without proficiency, so leave ${name} unequipped.`); }
+    // Worn without training (armour, a Shield) or a weapon without proficiency is allowed: derive() applies what the SRD says (Armor Training; Proficiency Bonus on attack rolls).
     // Attunement.
     if (x.attuned === true) {
       const why = attuneProblem(sheet, def);

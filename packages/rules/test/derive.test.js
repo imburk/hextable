@@ -80,7 +80,9 @@ test("attacks: finesse, thrown, versatile, reach, Archery, proficiency", () => {
   assert.deepEqual(at("dagger-thrown").range, [20, 60]);
   const wiz = derive({ ...SHEETS.wizard, weapons: ["longsword"] }).record;
   assert.equal(wiz.attacks[0].bonus, -1);                      // Str -1, not proficient
-  assert.match(validate({ ...SHEETS.wizard, weapons: ["longsword"] }).join(" "), /not proficient with the Longsword/);
+  assert.deepEqual(validate({ ...SHEETS.wizard, weapons: ["longsword"] }), []);           // allowed: it is played without the Proficiency Bonus
+  assert.equal(wiz.attacks[0].untrained, true);
+  assert.equal(at("longbow").untrained, undefined);
 });
 
 test("spellcasting: slots, always-prepared spells, pact magic", () => {
@@ -106,13 +108,13 @@ test("validate says what is wrong in plain words", () => {
   assert.match(v({ choices: {} }), /Choose an option for Fighting Style/);
   assert.match(v({ expertise: ["athletics"] }), /Expertise in 0 skills/);
   assert.match(v({ abilities: { ...SHEETS.fighter.abilities, str: 25 } }), /each 1 to 20/);
-  assert.match(validate({ ...SHEETS.wizard, armour: "chain-mail" }).join(" "), /no training with heavy armour/);
+  assert.deepEqual(validate({ ...SHEETS.wizard, armour: "chain-mail" }), []);            // allowed: Disadvantage and no spells (untrained-gear.test.js)
   assert.match(validate({ ...SHEETS.wizard, spells: ["fire-bolt", "cure-wounds"] }).join(" "), /Cure Wounds is not on the Wizard spell list/);
   assert.match(validate({ ...SHEETS.wizard, spells: ["fireball"] }).join(" "), /level 3; a level 1 Wizard casts spells up to level 1/);
   assert.match(validate({ ...SHEETS.wizard, spells: ["fire-bolt", "ray-of-frost", "light", "mage-hand"] }).join(" "), /knows 3 cantrips; 4 chosen/);
   assert.match(validate({ ...SHEETS.fighter, spells: ["fire-bolt"] }).join(" "), /no Spellcasting feature/);
   assert.deepEqual(validate({ ...SHEETS.cleric, armour: "chain-shirt", choices: { "divine-order": "thaumaturge" }, spells: ["sacred-flame", "light", "guidance", "thaumaturgy"] }), []);    // Thaumaturge: a fourth cantrip
-  assert.match(validate({ ...SHEETS.cleric, choices: { "divine-order": "thaumaturge" } }).join(" "), /no training with heavy armour/);
+  assert.deepEqual(derive({ ...SHEETS.cleric, choices: { "divine-order": "thaumaturge" } }).record.untrained, ["Chain Mail"]);     // Protector's heavy training is gone
 });
 
 test("every class derives a playable record at every level", () => {

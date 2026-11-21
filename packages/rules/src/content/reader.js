@@ -2366,7 +2366,7 @@ class ItemReading extends GrantReading {
     this.odd(b, BASE_FIELDS, 'The base');
     const what = (v, lookup) => (v === 'any' ? 'any one the sheet picks' : v === 'melee' ? 'any melee weapon the sheet picks' : Array.isArray(v) ? list(v.slice(0, 40).map((x) => nameOf(lookup, x)), 'or') : 'something unreadable');
     if (b.weapon !== undefined) this.line(`It is a weapon made from ${what(b.weapon, 'weapons')}, and the sheet says which. It attacks as that weapon does; a holder not proficient with it attacks without the Proficiency Bonus.`);
-    if (b.armour !== undefined) this.line(`It is armor made from ${what(b.armour, 'armour')}, and the sheet says which. The holder must be trained in that kind of armor to wear it, or the sheet is refused${this.def.trained === true ? ' (this item says it is worn as if trained)' : ''}.`);
+    if (b.armour !== undefined) this.line(`It is armor made from ${what(b.armour, 'armour')}, and the sheet says which. A holder who is not trained in that kind of armor may wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting${this.def.trained === true ? ' (this item says it is worn as if trained)' : ''}.`);
   }
   fBonus() {
     const n = this.def.bonus;
@@ -2899,7 +2899,7 @@ class WeaponReading extends GearReading {
     const abil = this.has('finesse') ? 'the better of the holder\'s Strength and Dexterity modifiers (Strength on a tie)' : d.kind === 'ranged' ? 'the holder\'s Dexterity modifier' : 'the holder\'s Strength modifier';
     const type = DAMAGE_TYPES.includes(d.type) ? `${d.type} damage` : 'damage of an unreadable type';
     this.line(`A hit deals ${flat ? `${dm} ${type} (a fixed number: no dice are rolled)` : `${isDice(dm) ? dm : '(unreadable dice)'} ${type}`}, plus ${abil}. A critical hit doubles the dice.`);
-    this.line(`The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in ${d.category === 'martial' ? 'martial' : 'simple'} weapons${d.category === 'martial' ? ' (some classes are trained only in martial weapons that have Light, or Finesse or Light)' : ''}. A sheet that lists it for a character who is not trained is refused by the engine.`);
+    this.line(`The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in ${d.category === 'martial' ? 'martial' : 'simple'} weapons${d.category === 'martial' ? ' (some classes are trained only in martial weapons that have Light, or Finesse or Light)' : ''}. A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.`);
     this.dmNotTrained = true;
   }
   fRange() {
@@ -2962,7 +2962,7 @@ class ArmourReading extends GearReading {
     if (!cat) this.bad('The armor\'s category is not one the engine knows.');
     this.line(`${this.titleQ()} (${cat ?? 'armor of an unreadable category'}).`);
     this.isShield = d.category === 'shield';
-    this.line(`A sheet that has a wearer in it who is not trained in ${this.isShield ? 'Shields' : `${d.category} armor`} is refused by the engine.`);
+    this.line(`A wearer who is not trained in ${this.isShield ? 'Shields' : `${d.category} armor`} may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.`);
     this.run();
     this.line('Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM\'s.');
   }

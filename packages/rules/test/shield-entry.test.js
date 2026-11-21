@@ -84,16 +84,14 @@ test("the shield action works with an id: away and back, Armor Class down and up
   });
 });
 
-test("an untrained weapon is refused with words that are true, and setSheet reads sensibly", () => {
+test("an untrained weapon is allowed: setSheet takes it, the attack carries no Proficiency Bonus", () => {
   const sh = wizard({ weapons: ["longsword"] });
-  const p = problems(sh);
-  assert.deepEqual(p, ["A Wizard is not proficient with the Longsword, and the engine does not yet apply attacking without proficiency, so choose another weapon."]);
-  const r = apply(newGame(3), { type: "setSheet", sheet: sh }, DM);
-  assert.equal(r.ok, false);
-  assert.match(r.error, /^That sheet can't be played yet\. A Wizard is not proficient with the Longsword, and the engine does not yet apply attacking without proficiency, so choose another weapon\.$/);
-  assert.ok(!/added without/.test(r.error));
+  assert.deepEqual(problems(sh), []);
+  assert.equal(apply(newGame(3), { type: "setSheet", sheet: sh }, DM).ok, true);
   const item = wizard({ items: [{ id: "i1", item: "weapon-plus-1", base: "longsword", equipped: true }] });
-  assert.ok(problems(item).some((x) => /not proficient with the Longsword, and the engine does not yet apply attacking without proficiency, so leave Longsword \+1 unequipped\./.test(x)), problems(item).join("|"));
+  assert.deepEqual(problems(item), []);
+  const a = derive(item).record.attacks.find((x) => x.weapon === "longsword" && x.id !== "longsword");
+  assert.ok(a?.untrained);
 });
 
 // ---- the review round of #455 ----
@@ -138,8 +136,9 @@ test("an id beside a worn Shield item is refused; an untrained wearer with an id
   using(ov(), () => {
     assert.ok(problems(fighter({ shield: HB.id, items: [{ id: "i1", item: "shield-plus-1", equipped: true }] })).some((p) => /one Shield at a time/.test(p)));
     assert.deepEqual(problems(fighter({ shield: HB.id, shieldStowed: true, items: [{ id: "i1", item: "shield-plus-1", equipped: true }] })), []);
-    assert.ok(problems(wizard({ shield: HB.id })).some((p) => /no training with Shields/.test(p)));
-    assert.equal(apply(newGame(3), { type: "setSheet", sheet: wizard({ shield: HB.id }) }, DM).ok, false);
+    assert.deepEqual(problems(wizard({ shield: HB.id })), []);
+    assert.deepEqual(derive(wizard({ shield: HB.id })).record.untrained, [HB.name]);        // allowed, played untrained
+    assert.equal(apply(newGame(3), { type: "setSheet", sheet: wizard({ shield: HB.id }) }, DM).ok, true);
     assert.deepEqual(problems(fighter({ shield: "shield" })), []);
     assert.equal(ac(fighter({ shield: "shield" })), ac(fighter({ shield: true })));
     assert.ok(derive(fighter({ shield: "shield" })).why.ac.includes("Shield +2"));

@@ -101,11 +101,14 @@ test("refusals change nothing: same state as asked, not its turn, no Shield, han
   refused(c, { type: "shield", actor: "hero", on: false }, /can't act/);
 });
 
-test("no training with a Shield: taking it up is refused in a sentence; a wizard sheet with a stowed Shield", () => {
+test("no training with a Shield: taking it up is allowed, and it is then worn untrained; a wizard sheet with a stowed Shield", () => {
   const sh = { name: "Wy", class: "wizard", level: 1, abilities: A, skills: ["arcana", "history"], weapons: [], shield: true, shieldStowed: true };
   const s = field(sh, { fight: false });
-  refused(s, { type: "shield", actor: "hero", on: true }, /no training with Shields/);
   assert.equal(derive(sh).record.shield, undefined);
+  ok(apply(s, { type: "shield", actor: "hero", on: true }, DM));
+  assert.deepEqual(s.entities.hero.untrained, ["Shield"]);
+  ok(apply(s, { type: "shield", actor: "hero", on: false }, DM));
+  assert.equal(s.entities.hero.untrained, undefined);
 });
 
 test("out of a fight it is free and needs no turn; no encounter, no budget", () => {

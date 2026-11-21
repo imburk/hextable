@@ -15,7 +15,7 @@ import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
-import { incapacitatedBy } from '../modifiers.js';
+import { incapacitatedBy, untrainedGear } from '../modifiers.js';
 
 // ---------- teleportation ----------
 // SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
@@ -491,6 +491,8 @@ function castSpell(s, a, ctx, ev, item) {
       ? `${sp.name} is cast as a Reaction, by ${e.name}'s standing instruction for it (set it with the reactions on the sheet).`
       : `${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
     !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
+    const unfit = untrainedGear(e);
+    unfit.length === 0 || fail(`${e.name} can't cast spells: ${unfit.join(' and ')} worn without training (SRD Armor Training).`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
     if (raging) fail(`${e.name} can't cast spells during ${raging.name}.`);
     const paysSlot = !!via?.freeCast.cost && a.pay === 'slot';      // a cast through a feature that spends a slot as the caster chose
