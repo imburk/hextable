@@ -71,6 +71,7 @@ const REGISTRY = {
   strikefirst: ['strikefirst'],
   undobar: ['undobar'],
   todo: ['todo'],
+  spawnfind: ['spawnfind'],
 };
 
 const only = process.env.SMOKE_ONLY;
