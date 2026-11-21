@@ -39,6 +39,13 @@ in a private repo, `imburk/hextable-ops`; you do not need them to take an issue.
   is honest (`assist` or `manual`) and say what was missing in the pull
   request. Set `checked: true` only if you compared every number in the
   entry against the SRD 5.2.1 text, and say so in the pull request.
+- **A feature that adds state players might not see lands with a `twin()` test.**
+  Hidden creatures, unexplored regions, DM notes, parked places, hidden shop lines, homebrew
+  monsters and the like: write one scenario in `packages/server/test/twin.js` form and give it
+  the hidden thing. It runs the script in two worlds through the table server, and fails unless
+  every player is sent the same bytes in both (views, patches, events, errors, message counts,
+  sequence numbers). Examples are in `packages/server/test/twin-worlds.test.js`. If it finds
+  a leak, do not hide it: file an issue and mark the test `todo` with its number.
 - **Never trust the client.** Anything a browser sends is checked on the
   server through `apply()`.
 - **Phones count.** Any UI change is checked at a phone-sized screen with
