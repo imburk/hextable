@@ -583,7 +583,7 @@ const TRADE_KEYS = {
 };
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
-const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
+const AS_IS = new Set(['hpRolled', 'hpRerolled', 'moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
   'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid', 'remains',
   'xp', 'levelReady', 'conclusionSkipped']);   // XP and levels are only ever a party character's; a skip says nothing but that
 

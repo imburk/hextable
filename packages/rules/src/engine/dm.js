@@ -389,9 +389,20 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // player's "need a break" does. Absent means the first. Words in SETTING_TEXT.
   away: AWAY, breaks: ['on', 'ask', 'off'],
   // Rolled ability scores (docs/specs/ability-scores.md, scores.js): whether a score may be rolled again (once), which, and which result stands. Absent means the first.
-  scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'] };
+  scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'],
+  // Hit Points (hitpoints.js, #638): fixed (the first, the SRD's default) or rolled at each level after the first; what a low roll does at a rolled table.
+  hpMethod: ['fixed', 'rolled'], hpRollLow: ['keep', 'reroll1', 'fixedMin'] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  hpMethod: {
+    fixed: 'Each level after the first adds the class\'s fixed Hit Point value: half the Hit Die, plus 1, plus Constitution (the default).',
+    rolled: 'Each level after the first adds a roll of the class\'s Hit Die, plus Constitution, at least 1. Level 1 stays the highest number of the die. The game rolls it, in the log for everyone, when a character levels up or is added above level 1.',
+  },
+  hpRollLow: {
+    keep: 'A Hit Point roll stands as rolled (the default).',
+    reroll1: 'A Hit Point roll of 1 is rolled again, once; the new roll stands, even if it is a 1.',
+    fixedMin: 'If a Hit Point roll is lower than the fixed value, the fixed value is taken instead.',
+  },
   watching: {
     live: 'A player whose characters are in another place watches the group in play live: its map, creatures and talk, under a band that says their characters are not there. The default.',
     off: 'A player whose characters are in another place is sent the band and the table\'s out-of-character talk only, not the scene in play. Use it when watching would spoil the scene.',

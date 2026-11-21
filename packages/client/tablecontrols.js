@@ -109,6 +109,18 @@ export function initTableControls({ act, getState, isDM, toast }) {
     $('dm-score-below-label').hidden = mode !== 'below'; $('dm-score-result-label').hidden = mode === 'none';
     $('dm-score-text').textContent = `${SETTING_TEXT.scoreReroll[mode]}${mode === 'none' ? '' : ` ${SETTING_TEXT.scoreRerollResult[res]}`}`;
   };
+  // Hit Points (#638): fixed (the SRD's default) or rolled at each level after the first, and what a low roll does. A section of its own after the scores, with the same full-width selects.
+  const HP_NAMES = { method: { fixed: 'Fixed (half the Hit Die plus 1)', rolled: 'Rolled by the game' }, low: { keep: 'The roll stands', reroll1: 'Roll a 1 again, once', fixedMin: 'Never below the fixed value' } };
+  $('dm-scores').insertAdjacentHTML('afterend', `<section id="dm-hp"><h3>Hit Points at each level</h3>
+    <label class="assign">Hit Points after level 1 <select id="dm-hp-method">${SETTINGS.hpMethod.map((v) => `<option value="${v}">${esc(HP_NAMES.method[v])}</option>`).join('')}</select></label>
+    <label class="assign" id="dm-hp-low-label">A low roll <select id="dm-hp-low">${SETTINGS.hpRollLow.map((v) => `<option value="${v}">${esc(HP_NAMES.low[v])}</option>`).join('')}</select></label>
+    <p class="note" id="dm-hp-text"></p></section>`);
+  for (const [id, key] of [['dm-hp-method', 'hpMethod'], ['dm-hp-low', 'hpRollLow']]) $(id).onchange = (ev) => act({ type: 'setting', key, value: ev.target.value });
+  const hpRule = (S) => {
+    const st = S?.settings ?? {}, m = st.hpMethod ?? 'fixed', low = st.hpRollLow ?? 'keep';
+    $('dm-hp-method').value = m; $('dm-hp-low').value = low; $('dm-hp-low-label').hidden = m !== 'rolled';
+    $('dm-hp-text').textContent = `${SETTING_TEXT.hpMethod[m]}${m === 'rolled' ? ` ${SETTING_TEXT.hpRollLow[low]}` : ''}`;
+  };
   // Loading a map over the game in progress asks first: a second tap, which lapses after a few seconds.
   const btn = $('dm-stock-go');
   let timer = null;
@@ -139,7 +151,7 @@ export function initTableControls({ act, getState, isDM, toast }) {
       $('dm-pace').value = pace;
       $('dm-conclusion').value = S?.settings?.conclusion ?? 'dm'; $('dm-xpshare').value = S?.settings?.xpShare ?? 'split';
       $('dm-conclusion-note').hidden = $('dm-conclusion').value !== 'auto';
-      scoreRule(S);
+      scoreRule(S); hpRule(S);
       const sf = strikeFirstRule(S?.settings);
       $('dm-strike-first').value = sf.value; $('dm-strike-first-text').textContent = sf.text;
       $('pace-table').textContent = `The DM has set the table to: ${PACE_NAME[pace] ?? pace}. ${dm ? '' : 'Only the DM can change this.'}`;

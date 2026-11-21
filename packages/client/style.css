@@ -141,8 +141,8 @@ button.quiet { background: transparent; }
 /* The square rules have long choices: the question above, the list under it, the full width. */
 #dm-square-rules .assign { flex-direction: column; align-items: stretch; gap: 4px; }
 #dm-square-rules .assign select { width: 100%; }
-#dm-scores .assign { flex-direction: column; align-items: stretch; gap: 4px; }
-#dm-scores .assign select { width: 100%; min-height: 44px; }
+#dm-scores .assign, #dm-hp .assign { flex-direction: column; align-items: stretch; gap: 4px; }
+#dm-scores .assign select, #dm-hp .assign select { width: 100%; min-height: 44px; }
 #dm-square-rules .note { margin-top: 0; }
 button.leave.sure { outline: 2px solid currentColor; }
 
