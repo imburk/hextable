@@ -72,7 +72,7 @@ test("GET /api/health has the agreed shape and holds no table or player data", a
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("cache-control"), "no-store");
   const body = await res.json();
-  assert.deepEqual(Object.keys(body).sort(), ["build", "connections", "crashes", "crashesByType", "ok", "proxy", "tables", "uptime"]);
+  assert.deepEqual(Object.keys(body).sort(), ["build", "clientErrors", "clientErrorsByType", "connections", "crashes", "crashesByType", "ok", "proxy", "tables", "uptime"]);
   assert.equal(body.ok, true);
   assert.ok(Number.isInteger(body.uptime) && body.uptime >= 0);
   assert.deepEqual(body.tables, { loaded: 1, saved: 1, archived: 0, active: 1 });

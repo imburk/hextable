@@ -6,7 +6,8 @@
 //   TIMELINE_CAP  timeline entries kept besides chronicle entries (default 5000)
 //   TRUST_PROXY, CLIENT_IP_HEADER   how to find the client address behind a proxy (default: socket address only)
 //   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
-//   FEEDBACK_GITHUB_REPO, FEEDBACK_GITHUB_TOKEN   optional: also file player feedback (POST /feedback) as GitHub issues, see feedback.js
+//   FEEDBACK_GITHUB_REPO, FEEDBACK_GITHUB_TOKEN   optional: also file player feedback (POST /feedback) as GitHub issues, see feedback.js; the same pair files engine crashes (label `crash`), see crashes.js
+//   Crash bundles are kept in DATA_DIR/crashes (the last 100; never served), the kinds of crash filed in DATA_DIR/crash-issues.json.
 //   Player feedback is kept in DATA_DIR/feedback.jsonl (five files of 5 MB: FEEDBACK_MAX_BYTES and FEEDBACK_FILES change that; when full, new reports are refused and nothing is deleted).
 //   LIMIT_FEEDBACK_FORWARD_HOUR / _DAY   the whole server's cap on feedback issues filed on GitHub (20 an hour, 100 a day)
 //   JOURNAL=off, JOURNAL_FILE_BYTES (5 MB), JOURNAL_FILES (5), JOURNAL_TOTAL_BYTES (500 MB)   the per-table action journal beside the table saves (DATA_DIR/ABC123.journal.*), see the README
@@ -30,6 +31,7 @@ import { assetRoute, handleAssets } from "./assets-http.js";
 import { acceptWebSocket } from "./ws.js";
 import { createFeedback, feedbackRoute } from "./feedback.js";
 import { createJournal, journalFromEnv } from "./journal.js";
+import { clientErrorRoute, createCrashes } from "./crashes.js";
 import { createStore } from "./store.js";
 import { backupDue, backupRunning, realish, runBackup } from "./backup.js";
 import { buildInfo } from "./build-info.js";
@@ -181,7 +183,9 @@ const { importAssets, dropAssets } = worldAssets(() => assets);
 const journal = createJournal({ dir: DATA, ...journalFromEnv(process.env) });
 const whole = (v, dflt) => (/^\d+$/.test(v ?? "") ? Number(v) : dflt);
 const evictMinutes = whole(process.env.IDLE_EVICT_MINUTES, 30), archiveDays = whole(process.env.ARCHIVE_DAYS, 90);
-const tables = createTables({ journal, save, loadHistory, index: () => store.list(), loadOne: (code) => store.read(code), archived: () => store.archived(), flushNow: flushOne,
+// Crash bundles, GitHub crash issues and the browser's error reports (crashes.js, #689). Bundles are in DATA_DIR/crashes, which no route serves.
+const crashReports = createCrashes({ dir: DATA, env: process.env, build: () => build.commit });
+const tables = createTables({ journal, crashes: crashReports, save, loadHistory, index: () => store.list(), loadOne: (code) => store.read(code), archived: () => store.archived(), flushNow: flushOne,
   evictMs: evictMinutes > 0 ? evictMinutes * 60_000 : Infinity, archiveMs: archiveDays > 0 ? archiveDays * 86_400_000 : Infinity,
   // A table's files and journals leave the counts before they move, and come back after they return.
   archive: (code) => { if (backupRunning()) return false; assets.release(code); const ok = store.archive(code); if (ok) journal.forget(code); else assets.adopt(code); return ok; },
@@ -238,6 +242,10 @@ const server = createServer(async (req, res) => {
     try { return feedback.handle(req, res, { limits, addr: addressOf(req) }); }
     catch (err) { console.error(`Feedback request failed: ${err.message}`); if (!res.headersSent) res.writeHead(500).end(); else res.destroy(); return; }
   }
+  if (clientErrorRoute(req.url)) {
+    try { return crashReports.handleHttp(req, res, { addr: addressOf(req) }); }
+    catch (err) { console.error(`Client error request failed: ${err.message}`); if (!res.headersSent) res.writeHead(500).end(); else res.destroy(); return; }
+  }
   const route = assetRoute(/^https?:/i.test(req.url) ? new URL(req.url).pathname : req.url);
   if (route) {
     try { return handleAssets(req, res, route, { assets, tables, limits, addr: addressOf(req), online }); }
@@ -260,7 +268,7 @@ const server = createServer(async (req, res) => {
     const { crashes, crashesByType } = tables.stats();
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({
       ok: true, uptime: Math.round(process.uptime()), tables: { loaded: tables.size(), saved: tables.savedSize(), archived: tables.archivedSize(), active: tables.activeSize() },
-      connections: [...peers.values()].reduce((n, set) => n + set.size, 0), crashes, crashesByType, build: build.commit,
+      connections: [...peers.values()].reduce((n, set) => n + set.size, 0), crashes, crashesByType, ...crashReports.stats(), build: build.commit,
       proxy: proxyReport(req, proxy),
     }));
     return;
@@ -333,6 +341,8 @@ server.on("upgrade", (req, socket) => {
     // legitimate client nothing.
     if (msg?.t === "ping") { ws.send(JSON.stringify({ t: "pong", n: Number.isSafeInteger(msg.n) ? msg.n : 0 })); return; }
     if (msg?.t === "link") { relayLink(peer, msg); return; }
+    // A browser's error report touches no table: nothing is sent back, saved or journalled, and a refused or throttled one is dropped silently.
+    if (msg?.t === "clientError") { try { crashReports.clientError(msg.report, { conn: peer, table: peer.code }); } catch { /* never in the way of play */ } return; }
     if ((msg?.t === "host" && !limits.allowHost(addr)) || (msg?.t === "join" && !limits.allowJoin(addr))) {
       ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
       return;

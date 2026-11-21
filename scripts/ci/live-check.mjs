@@ -3,6 +3,12 @@
 // Reads the head of main and the commit each live site reports at /build.json. When main's head is older than GRACE_MINUTES (default 20)
 // and a site reports a different commit (or does not answer), it opens the issue "Live site is not the merged version" (or adds a
 // comment to the one that is open) naming both shas; when every site matches again it comments and closes that issue.
+// Second check (#689): the server's /api/health counts engine crashes and browser errors. When either count has risen since the last run, it opens
+// the issue "Live site errors" (or comments on the one that is open) with the rise and the counts by type. The last counts seen are kept in the
+// issue itself, in a hidden marker in each comment it writes (`<!-- live-errors: {...} -->`): no cache or artifact to lose, and the issue is the
+// record. The counters belong to one server process, so a marker whose process start differs from the current one (a deploy or restart) is not
+// a baseline: everything counted since the start is new. When the issue was closed, a rise opens a new one. The job stays green for this check
+// (the issue is the signal); a health that cannot be read is printed and left to the build check above.
 // Node built-ins only. DRY_RUN=1 prints what it would do and touches nothing on GitHub. SITES overrides the list ("name=url,name=url").
 import { pathToFileURL } from "node:url";
 
@@ -11,6 +17,10 @@ export const DEFAULT_SITES = [
   { name: "Railway (table server)", url: "https://hextable-production.up.railway.app/build.json" },
   { name: "GitHub Pages (solo game)", url: "https://imburk.github.io/hextable/build.json" },
 ];
+export const ERRORS_TITLE = "Live site errors";
+export const DEFAULT_HEALTH = "https://hextable-production.up.railway.app/api/health";
+const MARKER = /<!-- live-errors: (\{.*?\}) -->/;
+const RESTART_SLACK_MS = 120_000;
 const same = (a, b) => typeof a === "string" && typeof b === "string" && a.length >= 7 && b.length >= 7 && (a.startsWith(b) || b.startsWith(a));
 
 // main: { sha, when: Date }; results: [{ name, url, commit?, error? }]; returns { stale, mismatches: [{ name, url, why }], ageMinutes }
@@ -31,6 +41,31 @@ export function report({ main, ageMinutes, mismatches, now }) {
   ].join("\n");
 }
 
+const num = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
+const typed = (o) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).filter(([k, v]) => /^[\w.?-]{1,40}$/.test(k) && Number.isFinite(v)).slice(0, 30));
+// health: the parsed /api/health; marker: the last { start, crashes, clientErrors, crashesByType, clientErrorsByType } reported, or null.
+// Returns { rose, restarted, now: the counts to remember, delta: { crashes, clientErrors }, byType: { crashes: [[type, count, rise]], clientErrors: [...] } }.
+export function healthRise({ health, marker, now = new Date() }) {
+  const start = new Date(now - num(health?.uptime) * 1000).toISOString();
+  const cur = { start, crashes: num(health?.crashes), clientErrors: num(health?.clientErrors), crashesByType: typed(health?.crashesByType), clientErrorsByType: typed(health?.clientErrorsByType) };
+  const restarted = !marker || !(Math.abs(Date.parse(cur.start) - Date.parse(marker.start)) <= RESTART_SLACK_MS);
+  const base = restarted ? { crashes: 0, clientErrors: 0, crashesByType: {}, clientErrorsByType: {} } : marker;
+  const delta = { crashes: Math.max(0, cur.crashes - num(base.crashes)), clientErrors: Math.max(0, cur.clientErrors - num(base.clientErrors)) };
+  const rows = (field) => Object.entries(cur[field]).map(([t, n]) => [t, n, Math.max(0, n - num(base[field]?.[t]))]).filter((r) => r[2] > 0).sort((a, b) => b[2] - a[2]);
+  return { rose: delta.crashes > 0 || delta.clientErrors > 0, restarted, now: cur, delta, byType: { crashes: rows("crashesByType"), clientErrors: rows("clientErrorsByType") } };
+}
+export function errorsReport({ rise, health, checked }) {
+  const list = (rows) => (rows.length ? rows.map(([t, n, d]) => `  - \`${t}\`: +${d} (${n} since the server started)`).join("\n") : "  - (none by type)");
+  return [
+    `Checked ${checked.toISOString()}. Build \`${typeof health?.build === "string" ? health.build.slice(0, 40) : "unknown"}\`, server started ${rise.now.start}.`, "",
+    `- Engine crashes: +${rise.delta.crashes} (${rise.now.crashes} since the server started)`, list(rise.byType.crashes),
+    `- Browser errors: +${rise.delta.clientErrors} (${rise.now.clientErrors} since the server started)`, list(rise.byType.clientErrors), "",
+    rise.restarted ? "The server restarted since the last report, so every count since it started is new." : "Counts are the rise since the last report on this issue.", "",
+    "Engine crashes by action type are the ten most frequent only. Each new kind of crash also has its own `crash` issue; the repro bundles are on the server (`packages/server/README.md`, Engine crashes). Browser errors are `client-error` lines in the server log.",
+    "", `<!-- live-errors: ${JSON.stringify(rise.now)} -->`,
+  ].join("\n");
+}
+
 async function fetchBuild(site) {
   let last;
   for (let i = 0; i < 2; i++) {
@@ -43,6 +78,29 @@ async function fetchBuild(site) {
     } catch (err) { last = err; await new Promise((r) => setTimeout(r, 3000)); }
   }
   return { ...site, error: String(last?.message ?? last) };
+}
+
+// The check of /api/health. gh(path) -> JSON; send(method, path, body). Returns a line for the log.
+export async function checkErrors({ gh, send, healthUrl, dry, now = new Date(), fetchHealth }) {
+  let health;
+  try { health = await fetchHealth(healthUrl); } catch (err) { return `health: ${String(err?.message ?? err)} (not checked)`; }
+  if (health?.clientErrors === undefined && health?.crashes === undefined) return "health: no error counts in the answer (not checked)";
+  const found = (await gh("/issues?state=all&per_page=100&sort=created&direction=desc")).filter((i) => !i.pull_request && i.title === ERRORS_TITLE);
+  const issue = found.find((i) => i.state === "open") ?? found[0] ?? null;
+  let marker = null;
+  if (issue) {
+    const texts = [issue.body ?? ""];
+    for (let page = 1; page <= 10; page++) { const c = await gh(`/issues/${issue.number}/comments?per_page=100&page=${page}`); texts.push(...c.map((x) => x.body ?? "")); if (c.length < 100) break; }
+    for (const t of texts) { const m = MARKER.exec(t); if (m) { try { marker = JSON.parse(m[1]); } catch { /* an unreadable marker is no baseline */ } } }
+  }
+  const rise = healthRise({ health, marker, now });
+  const line = `health: crashes ${rise.now.crashes} (+${rise.delta.crashes}), browser errors ${rise.now.clientErrors} (+${rise.delta.clientErrors})`;
+  if (!rise.rose) return `${line}; no rise`;
+  const body = errorsReport({ rise, health, checked: now });
+  if (dry) return `${line}\n${body}\nDRY_RUN: no issue touched.`;
+  if (issue?.state === "open") { await send("POST", `/issues/${issue.number}/comments`, { body }); return `${line}; commented on #${issue.number}`; }
+  const i = await send("POST", "/issues", { title: ERRORS_TITLE, body });
+  return `${line}; opened #${i.number}`;
 }
 
 async function main() {
@@ -61,6 +119,11 @@ async function main() {
   const now = new Date(), verdict = decide({ main: mainInfo, results, now, graceMinutes: Number(process.env.GRACE_MINUTES) || 20 });
   console.log(`main head ${mainInfo.sha.slice(0, 7)} is ${verdict.ageMinutes} minutes old; ${verdict.mismatches.length} site(s) differ; stale=${verdict.stale}`);
 
+  // The errors check runs whatever the build check finds, and never fails the job.
+  try {
+    const fetchHealth = async (url) => { const r = await fetch(url, { signal: AbortSignal.timeout(20_000), headers: { "cache-control": "no-cache" } }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); };
+    console.log(await checkErrors({ gh, send, healthUrl: process.env.HEALTH_URL || DEFAULT_HEALTH, dry, fetchHealth }));
+  } catch (err) { console.log(`health: the errors check failed: ${String(err?.message ?? err).slice(0, 200)}`); }
   const open = (await gh("/issues?state=open&per_page=100")).find((i) => !i.pull_request && i.title === TITLE);
   if (verdict.stale) {
     const body = report({ main: mainInfo, ...verdict, now });

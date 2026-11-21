@@ -513,6 +513,8 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   // Drop this connection for good (used when the player starts over with a different table).
   t.close = () => { hello = null; stopLink(); clearTimeout(heldTimer); held.length = 0; clearTimeout(pendingPack?.timer); pendingPack = null; clearTimeout(pendingWorld?.timer); pendingWorld = null; if (ws) { ws.onmessage = null; ws.close(); } };
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
+  // A report of an error the page raised (errorreport.js, #689). Nothing comes back and nothing waits; false when there is no open socket.
+  t.reportError = (report) => { if (ws?.readyState !== 1) return false; ws.send(JSON.stringify({ t: 'clientError', report })); return true; };
   // Leave the table for good and forget it on this device.
   t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); keeper.forget(); t.close(); };
   // Ask for past entries from the table's record: { types, since, limit }. The answer arrives on on.history.

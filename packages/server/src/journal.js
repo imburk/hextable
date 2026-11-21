@@ -54,7 +54,7 @@ export function hashState(state) {
 // The dice counter: a keyed generator's position, or the integer a seeded one has come to.
 export const diceOf = (state) => (state?.rng !== null && typeof state?.rng === "object" ? state.rng.n : state?.rng ?? null);
 
-const noop = { setCap() {}, before: () => null, accepted() {}, restored() {}, reset() {}, sweep() {}, close() {}, forget() {}, adopt() {}, flushSync() {}, idle: async () => {} };
+const noop = { setCap() {}, position: () => null, before: () => null, accepted() {}, restored() {}, reset() {}, sweep() {}, close() {}, forget() {}, adopt() {}, flushSync() {}, idle: async () => {} };
 
 export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, keep = FILES_KEPT, retryMs = RETRY_MS, queueMax = QUEUE_MAX_BYTES, totalMax = TOTAL_MAX_BYTES, now = Date.now, log = (line) => console.error(line) } = {}) {
   if (!enabled || !dir) return noop;
@@ -189,6 +189,13 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
     // The timeline cap createTables applies after each undoable action; every header records it, whichever path opens the file, so that a
     // replay trims the timeline as the server does. One source of truth: the journal does not know the rules package.
     setCap(cap) { if (Number.isInteger(cap) && cap >= 0) timelineCap = cap; },
+    // Where this table's journal stands now, for a crash bundle (crashes.js): the file the next line goes to, its snapshot and the number of the
+    // last line queued. The state a table holds between actions is the state after that line, so a replay up to it and the action reproduces
+    // a crash. Null when no file is open (no journal, or it failed). A crashed action is never journalled: it is not in the file.
+    position(code) {
+      const f = open.get(code);
+      return f && !f.failed ? { file: journalName(code, f.n), snapshot: snapshotName(code, f.n), line: f.lines } : null;
+    },
     // Open the file if need be and note the dice before the action. Null when there is no journal to write to: the action goes on all the same.
     before(t) {
       return guard(() => {

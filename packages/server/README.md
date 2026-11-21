@@ -110,10 +110,34 @@ text, names and anything else a player typed are never logged. The same applies 
 
 Per process, the server counts crashes and refusals in total and by action type (at most 200 types, then `other`).
 
+**Crash bundles, crash issues and browser errors (#689, `src/crashes.js`).** Each engine crash also writes a repro bundle,
+`DATA_DIR/crashes/<time>-<table code>.json`, and the `engine-crash` line names it (`bundle`). A bundle holds the action as the server applied it
+(player-typed text over 200 characters cut, the paths of the cuts listed in `cut`, a name an action carries as a member id), the sender's role and member id,
+the state version and the state's hash, the journal's position (`journal: { file, snapshot, line }`: the file the table's journal was writing, its
+snapshot, and the number of its last line; the state between actions is the state after that line, and a crashed action is never journalled), the build,
+and the stack. The last 100 are kept; a crash that repeats (same action type and top stack frame) is written at most 5 times an hour, 200 in all.
+The folder is in the data directory, which the server never serves (it serves `dist/` only) and no route reads: a bundle holds a table's code and
+actions, so treat it like the table's save. To reproduce, copy the bundle and the journal files it names into one folder and run
+`node scripts/replay.mjs --crash <bundle> [--data <folder>]`: it replays the journal to the bundle's line, runs the action, and says whether it
+still throws (exit 1) or no longer does (exit 0); 3 means the point cannot be reached (the journal keeps five files a table, so an old bundle's may be gone).
+
+With `FEEDBACK_GITHUB_REPO` and `FEEDBACK_GITHUB_TOKEN` set (the feedback settings), the first time a kind of crash is seen one issue labelled `crash` is
+filed: the action type, the build, the error class, the stack frames and the bundle's time. Nothing a player typed, no table code, no name, no member id:
+the error's message is left out unless it is one of a few fixed shapes with the value removed, the action type is shown only if the engine knows it, and
+the table code in the bundle's file name is left out. Repeats add a count comment on that issue at most once an hour; at most 10 issues are filed a
+UTC day (the rest are kept as bundles). Which kinds have an issue is kept in `DATA_DIR/crash-issues.json`, so a restart does not file them again.
+With no token nothing is filed and the log says so once.
+
+The browser reports its own errors (`window` `error` and `unhandledrejection`): `{ v, kind, message, stack, build, mode, screen, actions }`, with names already
+replaced as in feedback, the stack's addresses cut to file names, and the types (only) of the last five actions. Over the socket as `{"t":"clientError","report"}`
+(any connection, before or after joining; nothing is ever sent back, and the table is not touched), or, in a solo game with no socket, `POST /client-error`
+(JSON, at most 8 KB, CORS open like `/feedback`; answers 204, or 400/413/415/429). At most 5 a minute for a connection and 50 a day for a table; a report that
+fails the allow-list or the throttle is dropped. Each accepted one is logged as `{"event":"client-error",...}` and counted by kind (`error`, `rejection`).
+
 `GET /api/health` answers, with `cache-control: no-store`:
 
 ```json
-{"ok":true,"uptime":3600,"tables":{"loaded":2,"saved":12,"archived":40,"active":3},"connections":5,"crashes":0,"crashesByType":{},"build":"c1d5069",
+{"ok":true,"uptime":3600,"tables":{"loaded":2,"saved":12,"archived":40,"active":3},"connections":5,"crashes":0,"crashesByType":{},"clientErrors":0,"clientErrorsByType":{},"build":"c1d5069",
  "proxy":{"trustProxy":true,"hops":1,"clientIpHeader":null,"address":"203.0.113.9","socketAddress":"100.64.0.2","sawForwardedFor":true,"note":"TRUST_PROXY is on and the address below was read from the proxy's header. If it is your own public address, it is set right."}}
 ```
 
@@ -122,7 +146,7 @@ those in `archive/` and those active in the last 30 days;
 `proxy` is about the one request that asked (#662): `address` is the visitor address the server uses for this caller's limits, `socketAddress`
 the address of whatever connected to it (the proxy, behind one), `trustProxy` whether `TRUST_PROXY` is above 0, `sawForwardedFor` whether the request
 carried an `x-forwarded-for` header (its value is not shown), and `note` says in one sentence what it means. Nothing about any other caller;
-`connections` are open WebSockets; `crashesByType` is the ten most frequent action types; `build` is the commit of `/build.json`
+`connections` are open WebSockets; `crashesByType` is the ten most frequent action types; `clientErrors` are the browser reports accepted (by kind in `clientErrorsByType`); `build` is the commit of `/build.json`
 (or `null`). There is nothing per table or per person in it. It is limited to 30 reads a minute per address
 (`LIMIT_HEALTH_MINUTE`); over that it answers 429.
 

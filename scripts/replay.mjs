@@ -17,6 +17,15 @@
 // The snapshot and journal hold the table's whole state, dice key, DM notes and homebrew included: keep them private, as you would the
 // table's save, and never attach them to a public issue. This script says so each time it runs.
 // Exit status: 0 the journal replays exactly, 1 it diverges or cannot be read, 2 wrong use.
+//
+//   node scripts/replay.mjs --crash <bundle.json> [--data <folder>]
+//
+// Replays a crash bundle (packages/server/src/crashes.js, DATA_DIR/crashes/<time>-<table>.json): the journal file the bundle names, up to the
+// line it names, from its snapshot (both found in --data, by default the folder above the bundle's), then runs the bundle's action as the
+// server did and says whether it still throws. Exit status: 1 it still throws (the bug is there), 0 it no longer throws (the engine now
+// answers or refuses it), 2 wrong use, 3 the point could not be reached (files missing, or the journal differs from the bundle's hash).
+// The bundle's action has any player text over 200 characters cut, so a crash that needed the whole text may not reproduce; the bundle says
+// where it cut (`cut`). A bundle, its snapshot and its journal are private: never attach them to a public issue.
 import { readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -27,6 +36,7 @@ import { diceOf, hashState } from "../packages/server/src/journal.js";
 import { undoable } from "../packages/rules/src/history.js";
 import { capTimeline } from "../packages/rules/src/timeline.js";
 
+const USAGE_CRASH = "Usage: node scripts/replay.mjs --crash <bundle.json> [--data <folder with the journal files>]";
 const USAGE = "Usage: node scripts/replay.mjs <snapshot.json> <journal.jsonl> [<journal.jsonl> ...] [--quiet] [--strict]";
 const PRIVATE = "keep these files private: a snapshot holds the whole table state (dice key, DM notes, homebrew packs, player names), like the table's own save; never attach one to a public issue.";
 const MARKERS = new Set(["undo", "redo", "rewind", "break"]);
@@ -93,10 +103,72 @@ export function replayGame(snapshot, journals) {
       }
     }
   }
-  return { ok: true, lines: applied, restarts, lost, notes };
+  return { ok: true, lines: applied, restarts, lost, notes, state, overlay, snap };
+}
+
+// An action as a journal line or a bundle holds it, with a `{ $member }` name turned back into the member's name.
+function nameBack(action, snap) {
+  const a = structuredClone(action);
+  if (a?.userName?.$member !== undefined) {
+    const name = snap.members?.[a.userName.$member];
+    if (name === undefined) delete a.userName; else a.userName = name;
+  }
+  return a;
+}
+
+// bundle: the parsed bundle. read(name) -> the text of a file beside the journal, or null. Returns { reached, why?, crashed?, error?, result?, notes }.
+export function replayCrash(bundle, read) {
+  const notes = [];
+  const j = bundle?.journal;
+  if (!j || typeof j.file !== "string" || typeof j.snapshot !== "string" || !Number.isInteger(j.line)) return { reached: false, why: "the bundle holds no journal position (no journal was open, or the crash was not an action)", notes };
+  const snapText = read(j.snapshot), logText = read(j.file);
+  if (snapText === null) return { reached: false, why: `the snapshot ${j.snapshot} is not there (the journal keeps the last few files only)`, notes };
+  if (logText === null) return { reached: false, why: `the journal ${j.file} is not there`, notes };
+  let snapshot;
+  try { snapshot = JSON.parse(snapText); } catch { return { reached: false, why: `${j.snapshot} cannot be read`, notes }; }
+  // The lines up to the one the bundle names: the header has no number, and a closing line after it (written later) is dropped.
+  const rows = logText.split("\n").filter(Boolean);
+  const kept = [];
+  let last = 0;
+  for (const raw of rows) {
+    let row; try { row = JSON.parse(raw); } catch { kept.push(raw); continue; }
+    if (row.n === undefined || row.n <= j.line) { kept.push(raw); if (row.n !== undefined) last = Math.max(last, row.n); }
+  }
+  if (last < j.line) notes.push(`the journal on disk ends at line ${last}, the bundle says ${j.line} (the last lines were not written before the server stopped); the state may be earlier than the crash's`);
+  let r;
+  try { r = replayGame(snapshot, [{ name: j.file, text: kept.join("\n") + "\n", loadSnapshot: (n) => { const t = read(String(n)); try { return t === null ? null : JSON.parse(t); } catch { return null; } } }]); }
+  catch (e) { return { reached: false, why: `cannot replay: ${e.message}`, notes }; }
+  notes.push(...r.notes);
+  if (!r.ok) return { reached: false, why: `the journal diverges before the crash: ${r.diverged.file} line ${r.diverged.n}: ${r.diverged.why}`, notes };
+  if (typeof bundle.hash === "string" && hashState(r.state) !== bundle.hash) notes.push("the state reached does not match the bundle's hash; the journal or the rules differ from the crash's, so the result may not mean the same");
+  const action = nameBack(bundle.action, r.snap);
+  if (bundle.cut?.length) notes.push(`the bundle cut text from the action (${bundle.cut.slice(0, 5).join(", ")}); a crash that needed it may not reproduce`);
+  try {
+    const res = using(r.overlay, () => apply(r.state, action, { role: bundle.role, userId: bundle.uid }));
+    return { reached: true, crashed: false, result: res.ok ? "the engine accepts it" : `the engine refuses it: ${res.error}`, notes };
+  } catch (err) { return { reached: true, crashed: true, error: err, notes }; }
+}
+
+function mainCrash(argv, out, err) {
+  const take = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : undefined; };
+  const bundlePath = take("--crash");
+  if (!bundlePath || bundlePath.startsWith("--")) { err(USAGE_CRASH); return 2; }
+  const dir = take("--data") ?? join(dirname(bundlePath), "..");
+  let bundle;
+  try { bundle = JSON.parse(readFileSync(bundlePath, "utf8")); } catch (e) { err(`cannot read ${bundlePath}: ${e.message}`); return 3; }
+  const read = (name) => { try { return readFileSync(join(dir, basename(String(name))), "utf8"); } catch { return null; } };
+  const r = replayCrash(bundle, read);
+  for (const n of r.notes) out(`note: ${n}`);
+  out(`warning: ${PRIVATE}`);
+  if (!r.reached) { err(`cannot reach the crash: ${r.why}`); return 3; }
+  const a = bundle.action?.type ?? "?";
+  if (r.crashed) { out(`still crashes: ${a} throws ${r.error?.name ?? "Error"}: ${String(r.error?.message ?? r.error).slice(0, 200)}`); out(String(r.error?.stack ?? "").split("\n").slice(1, 5).join("\n")); return 1; }
+  out(`does not crash now: ${a}: ${r.result}`);
+  return 0;
 }
 
 export function main(argv, out = (s) => process.stdout.write(`${s}\n`), err = (s) => process.stderr.write(`${s}\n`)) {
+  if (argv.includes("--crash")) return mainCrash(argv, out, err);
   const quiet = argv.includes("--quiet"), strict = argv.includes("--strict"), args = argv.filter((a) => !a.startsWith("--"));
   if (args.length < 2) { err(USAGE); return 2; }
   let snapshot, journals;
