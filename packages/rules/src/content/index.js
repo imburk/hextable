@@ -65,6 +65,11 @@ export const CONTENT = { spells: byId(spells), monsters: byId(monsters), summons
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));
+// The roll a spell turns on, by id: 'attack', 'save:str' to 'save:cha', 'none', or null when nothing says (a homebrew spell with no `roll` and a
+// manual step). A table's homebrew spells answer too, while `using` lends them.
+export const spellRoll = (id) => SPELLS[id]?.roll ?? null;
+// The words a list shows for a roll, as short as a level: "Attack", "DEX save", "No roll"; '' when the roll is not known.
+export const rollLabel = (roll) => (roll === 'attack' ? 'Attack' : roll === 'none' ? 'No roll' : /^save:(str|dex|con|int|wis|cha)$/.test(roll ?? '') ? `${roll.slice(5).toUpperCase()} save` : '');
 
 // ---------- bridge to the engine's current shape, for monsters and pregens ----------
 // A monster plays from its actions, as data: each one's effect steps run through the effect

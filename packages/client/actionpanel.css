@@ -13,6 +13,9 @@
 .ap-row { text-align: left; display: grid; align-content: center; gap: 1px; min-height: 48px; padding: 6px 10px; min-width: 0; }
 .ap-row .ap-t { font-weight: 700; }
 .ap-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ap-roll { display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.5; padding: 0 6px; margin-right: 4px; color: var(--ink); background: transparent; border: 1.5px solid currentColor; white-space: nowrap; }
+.ap-row .ap-roll { color: var(--ink); } .ap-row.armed .ap-roll { color: var(--accent-ink); }
+.ap-roll[data-roll="attack"] { border-radius: 999px; } .ap-roll[data-roll="save"] { border-radius: 2px; } .ap-roll[data-roll="none"] { border-radius: 999px; border-style: dotted; font-weight: 600; }
 .ap-chip { flex: none; font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); }
 .ap-row small.ap-pips { color: var(--ink); } .ap-pips .pips { letter-spacing: 1px; color: var(--accent); }
 .ap-row.info { border: 1px dashed var(--line); border-radius: var(--radius); background: transparent; cursor: default; }

@@ -662,6 +662,16 @@ moves rows") is answered the other way, with the limits below.
    then); a search that only brightens matches and dims the rest (round 2's alternative: it keeps the
    list still but does not shorten it, which is what the owner wants the search for).
 
+### Decision 13: every spell row says its roll, as plainly as its level (round 4, #605)
+
+The owner, 20 November 2026: choosing spells (new character, level up, preparing after a Long Rest, the spell list in play), it
+must be very clear whether a spell needs a spell attack roll or makes the target roll a save, and which ability. Every spell row
+carries a tag beside its level, the same size: **Attack**, **DEX save** (STR, CON, INT, WIS, CHA) or **No roll**. It is read from
+the spell's `roll` (rules-expansion.md, "A spell's roll"), and shows nothing for a homebrew spell whose roll cannot be read. It is
+in words and has a shape of its own (solid outline, double outline, dotted outline), so colour is never the only difference, and it
+uses the theme's own line and text colours, so every theme shows it. Built in the in-play lists first; the create and level-up
+sheet takes it through `spellTag()` once the rework (#603) is merged.
+
 ## The words
 
 | Where | Words |

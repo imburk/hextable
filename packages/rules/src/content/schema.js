@@ -24,6 +24,10 @@ export const TIERS = ['auto', 'assist', 'manual'];
 // What a spell is for, in four words a player sorts by (docs/specs/table-ui.md, E12), in this fixed order.
 // A spell may carry them by hand in `kinds`; `spellKinds` (effects.js) derives them from the steps otherwise.
 export const SPELL_KINDS = ['damage', 'healing', 'control', 'utility'];
+// The roll a spell turns on, said as plainly as its level (docs/specs/rules-expansion.md, "A spell's roll", #605): `attack` (the caster
+// makes a spell attack roll), `save:<ability>` (the target makes that saving throw) or `none`. A spell with two rolls takes the one that
+// decides whether it works. Optional: `spellRoll` (effects.js) reads the steps when a spell does not say.
+export const SPELL_ROLLS = ['attack', 'save:str', 'save:dex', 'save:con', 'save:int', 'save:wis', 'save:cha', 'none'];
 // How long something lasts: "instant", a count of rounds, minutes, hours or days, or one of two
 // forms the engine cannot time ("until dispelled", "special").
 export const isDuration = (x) => typeof x === 'string' && (/^(instant|until dispelled|special)$/.test(x) || /^[1-9]\d* (round|minute|hour|day)s?$/.test(x));
@@ -648,6 +652,17 @@ function lintSpell(e, say) {
     if (!(Array.isArray(k) && k.length >= 1 && k.length <= SPELL_KINDS.length && k.every((x) => SPELL_KINDS.includes(x))
       && new Set(k).size === k.length && k.every((x, i) => i === 0 || SPELL_KINDS.indexOf(k[i - 1]) < SPELL_KINDS.indexOf(x)))) {
       say(`\`kinds\` is a list of one to four of ${SPELL_KINDS.join(', ')}, no repeats, in that order`);
+    }
+  }
+  // `roll`: one of SPELL_ROLLS, and it may not contradict the steps: an attack step makes it `attack`; otherwise a save step makes it one of the
+  // saves the steps make. (A spell with no such step may say any roll: the DM handles those.)
+  if (e.roll !== undefined) {
+    if (!SPELL_ROLLS.includes(e.roll)) say(`\`roll\` is one of ${SPELL_ROLLS.join(', ')}`);
+    else if (Array.isArray(e.effects)) {
+      let attack = false; const saves = new Set();
+      walkSteps(e.effects, (st) => { if (st && 'attack' in st) attack = true; if (st && 'save' in st) saves.add(`save:${st.save}`); });
+      if (attack && e.roll !== 'attack') say('has an attack step, so `roll` is "attack"');
+      else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make a ${[...saves].join(' and ')} saving throw, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
   const seen = lintSteps(e.effects, say);
@@ -2774,7 +2789,7 @@ const NOT_HERE = {
 };
 const AMOUNT_KEYS = ['perLevel', 'column', 'mod', 'min', 'die', 'byLevel', 'prof'];
 const SHAPES = {
-  spells: { what: 'a spell', keys: ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'duration', 'concentration', 'ritual', 'target', 'effects', 'higher', 'tier', 'checked', 'text', 'kinds', 'choice', 'costly', 'terrain', 'zone', 'reaction'] },
+  spells: { what: 'a spell', keys: ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'duration', 'concentration', 'ritual', 'target', 'effects', 'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'costly', 'terrain', 'zone', 'reaction'] },
   monsters: { what: 'a monster', keys: ['id', 'name', 'source', 'size', 'type', 'cr', 'xp', 'pb', 'ac', 'hp', 'speed', 'senses', 'abilities', 'initiative', 'languages', 'skills', 'resist', 'vulnerable', 'immune', 'conditionImmune', 'saves', 'hover', 'mount', 'traits', 'actions', 'tier', 'checked', 'text'] },
   items: { what: 'an item', keys: ['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'mithral', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'] },
   feats: { what: 'a feat', keys: ['id', 'name', 'category', 'prerequisite', 'repeatable', 'tier', 'source', 'checked', 'text', 'increase', 'proficiencies', 'spellPick', 'grants'] },

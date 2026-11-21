@@ -591,6 +591,28 @@ What the engine does with a spell today (task R2):
   a `when` it cannot judge, a spell marked `assist`, and a duration it
   cannot time each produce a note to the DM.
 
+### A spell's roll (amended 20 November 2026, #605)
+
+A spell has one optional field, `roll`, that says what it turns on, so a list can show it as plainly as the level:
+`"attack"` (the caster makes a spell attack roll), `"save:str"` to `"save:cha"` (the target makes that saving throw) or
+`"none"` (no attack roll and no saving throw). `SPELL_ROLLS` in `content/schema.js` is the list, `lintSpell` checks it, and the
+reader says it in words ("Its roll: the target makes a Dexterity saving throw").
+
+- **One value.** A spell with two rolls takes the one that decides whether it works: Ice Knife is `attack` (its Dexterity save
+  follows, hit or miss), Wall of Ice is `save:dex` (its Constitution save comes second). The spell's `text` names the other.
+  A spell whose rolls come only from options (Arcane Hand's Clenched Fist) takes the roll of its first option.
+- **Which saves count.** A save counts when the target makes it against the spell itself, even an unwilling creature's only
+  (Levitate, Enlarge/Reduce: `save:con`); one made later by a creature trying to escape (Forcecage, Magic Circle) does not (`none`),
+  and Advantage on saving throws (Haste, Beacon of Hope) is not a save the target makes (`none`).
+- **It may not contradict the steps.** An attack step makes it `attack`; otherwise a save step makes it one of the saves the steps
+  make. A spell with no attack or save step (a `manual` one, or one that rolls nothing) may say any roll, since the steps do not
+  show it. `spell-roll.test.js` holds all 339 SRD spells to this, so the data cannot drift.
+- **Optional for homebrew.** When a spell does not say, `spellRoll(def)` (`effects.js`) reads the steps: an attack step, else the
+  first save step, else `none` for a spell with no manual step, else nothing (null; the list shows no tag). `SPELLS[id].roll`
+  and `spellRoll(id)` (`content/index.js`) give it for any spell, a table's homebrew included.
+- **The screen.** A tag the size of the level: "Attack", "DEX save" or "No roll", in words and with a shape of its own (a solid
+  outline, a double one, a dotted one), never colour alone, in every theme. Where it shows is in `docs/specs/spells-on-the-sheet.md`.
+
 ### A monster
 
 ```js

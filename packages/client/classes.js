@@ -7,7 +7,7 @@
 // content offer (`feats`, `e.uses`, the pack's monsters), lets the player choose, and sends the
 // documented action. A refusal is shown in the panel in the engine's words and the choice is kept.
 // It shows only what the view gives; a creature's controller and the DM see these controls.
-import { CONTENT, SPELLS } from './shared/content/index.js';
+import { CONTENT, SPELLS, rollLabel } from './shared/content/index.js';
 import { targetCount } from './shared/effects.js';
 import { blocked, current, FT, checkBonus } from './shared/engine.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
@@ -478,7 +478,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     const list = freeSpells(f), st = mem(`${e.id}:${f.id}`, () => ({ spell: null })), fc = f.freeCast;
     if (!list.some((s) => s.id === st.spell)) st.spell = list[0]?.id ?? null;
     const sel = h('select', { id: 'cp-spell', 'aria-label': 'Spell', onchange: () => { st.spell = sel.value; } },
-      ...list.map((sp) => h('option', { value: sp.id, text: `${sp.name} (${sp.level ? `level ${sp.level}` : 'cantrip'})`, selected: sp.id === st.spell })));
+      ...list.map((sp) => h('option', { value: sp.id, text: `${sp.name} (${sp.level ? `level ${sp.level}` : 'cantrip'}${rollLabel(sp.roll) ? ` · ${rollLabel(sp.roll)}` : ''})`, selected: sp.id === st.spell })));
     const rules = [fc.atWill ? 'As often as you like, with no spell slot.' : `${usesLeft(e, f)} left. Casts with no spell slot.`, fc.self ? `On ${e.name} only.` : '', fc.dark ? 'Works only in Dim Light or Darkness.' : '',
       fc.sureSave ? 'Its saving throw is a success, with no roll.' : '', fc.time === 'action' ? 'A Magic action.' : ''].filter(Boolean).join(' ');
     return {
