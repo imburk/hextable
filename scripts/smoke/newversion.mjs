@@ -52,6 +52,7 @@ async function solo(browser, url, label, opts, phone) {
         now.commit = 'ccc3333';
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
         await bannerShown(page);
+        now.commit = null;                  // the reload brings the server's own page, which is the build it now answers
         const nav = page.waitForNavigation({ timeout: 10000 });
         await (phone ? page.tap('#new-version-reload') : page.click('#new-version-reload'));
         await nav;
