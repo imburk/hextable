@@ -15,8 +15,9 @@ import { restamp } from './durations.js';
 import { validFormation } from './engine/world.js';
 import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
+import { cleanPurse } from './market.js';
 
-export const VERSION = 27;
+export const VERSION = 28;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -188,6 +189,27 @@ export function migrate(state) {
   // where `autoEngage` was off, so it plays exactly as it did. An unset `autoEngage` counts as on, as the table's rules
   // are shown (settings.js). A state already at version 27 (one made by `newGame`, which does not set it) is left as it is.
   if (!(state.version >= 27) && state.settings && typeof state.settings === 'object') state.settings.strikeFirst = state.settings.autoEngage !== false ? 'casts' : 'off';
+  // Version 28: purses and shops (docs/specs/shops.md, X3; task P3). `markets` (the market packs the DM imported) and `shops` (the
+  // stores and loot packages of this game); a table saved before has none of either. A state already at 28 without them (one made by
+  // `newGame`) is left as it is: reading code takes an absent list as empty. A list that is not a list is put back to empty, and a shop
+  // that is not whole (no id, kind or name) is let go; one missing a part the actions read gets it empty. A creature's purse (`coins`)
+  // keeps only whole numbers of the five coins; one that is not a purse, or holds nothing, is taken away.
+  if (!(state.version >= 28)) Object.assign(state, { markets: Array.isArray(state.markets) ? state.markets : [], shops: Array.isArray(state.shops) ? state.shops : [] });
+  if (state.markets !== undefined && !Array.isArray(state.markets)) state.markets = [];
+  if (state.shops !== undefined) {
+    if (!Array.isArray(state.shops)) state.shops = [];
+    state.shops = state.shops.filter((x) => isRec(x) && typeof x.id === 'string' && ['store', 'loot'].includes(x.kind) && typeof x.name === 'string');
+    for (const x of state.shops) {
+      for (const k of ['lines', 'quotes', 'joint']) if (!Array.isArray(x[k])) x[k] = [];
+      for (const k of ['overrides', 'waits']) if (!isRec(x[k])) x[k] = {};
+      if (!(x.shown === 'none' || x.shown === 'all' || (Array.isArray(x.shown) && x.shown.every((u) => typeof u === 'string')))) x.shown = 'none';
+    }
+  }
+  for (const e of Object.values(state.entities)) {
+    if (e.coins === undefined) continue;
+    const p = cleanPurse(e.coins);
+    if (p && Object.keys(p).length) e.coins = p; else delete e.coins;
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

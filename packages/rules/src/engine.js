@@ -15,6 +15,7 @@ import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, NotBattleMap, settleBonds, settleHolds } from './engine/resolve.js';
 import { NO_WALK, staleCheck } from './places.js';
+import { learn, translate } from './known.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -25,6 +26,7 @@ import { handlers as rests } from './engine/rests.js';
 import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
 import { handlers as travel } from './engine/travel.js';
+import { handlers as trade, settleShops } from './engine/trade.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
 export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, controllerOf, FLY_CEILING, hbId, homebrewBlock, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
@@ -43,13 +45,14 @@ export { SETTINGS, SETTING_TEXT } from './engine/dm.js';
 export { DAWN, dawnsBetween } from './engine/rests.js';
 export { AWAY, awayHow, NOT_BATTLE } from './engine/resolve.js';
 export { TRAVEL_LIMITS } from './places.js';             // places of a world (docs/specs/travel.md, W2)
+export { lineName, marketEnv, marketOfShop, placeProblem, TRADE_LIMITS } from './engine/trade.js';     // purses and shops (docs/specs/shops.md, P3)
 
 export { FT };                       // feet per hex
 export { opportunityAttack };
 
 // Every action's handler, from the domain modules in engine/ (CLAUDE.md, Engine layout). An action
 // type is defined in one module only: if two defined it, the later spread would win silently.
-const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, travel, {
+const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, travel, trade, {
   // { type: 'react', prompt, take: reactionId | null, slot? }: the answer to the reaction an action
   // is waiting on (`pending`; reactions.js). Given by the reacting creature's controller or the DM
   // (the DM's answer overrides). `prompt` is the number it was asked under, so an answer to an
@@ -73,7 +76,7 @@ const handlers = buildHandlers([movement, attacks, casting, features, characters
     Object.assign(RUN, { action, ctx: was, answers: [...answers, answer], i: 0 });
     dispatch(s, action, was, ev);
   },
-}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'companions', 'travel', 'engine']);
+}], ['movement', 'attacks', 'casting', 'features', 'characters', 'rests', 'dm', 'companions', 'travel', 'trade', 'engine']);
 
 // Builds the table of handlers, a Map keyed by action type: a lookup can then never find what every
 // object has (`toString`, `constructor`, `__proto__`). Throws, naming both modules, if two modules
@@ -148,6 +151,9 @@ function dispatch(s, action, ctx, ev) {
   }
   // Only a string type that is in the table is an action; anything else (no action, no type, a type
   // that is not a string, `toString`) is refused as unknown.
+  // The places, pins and entries a player names are the ids they were given (known.js); each is turned into the world's own
+  // here, and one that is nothing to them is refused as a place that does not exist, before the handler looks at anything.
+  if (ctx.role !== 'dm') action = translate(s, action, fail);
   const type = action?.type;
   const h = (typeof type === 'string' && handlers.get(type)) || fail(`Unknown action: ${typeof type === 'object' && type !== null ? 'not a name' : typeof type === 'symbol' ? type.toString() : String(type)}`);
   // Nobody walks on a holding map (docs/specs/travel.md, Decision 1): on a navigation or scene node a group stands at a pin,
@@ -180,9 +186,13 @@ function freeze(s, terrain = true) {
   const m = s.map;
   const parked = isMap(s.parked) ? Object.entries(s.parked).filter(([, r]) => isMap(r) && isMap(r.map)) : [];
   const light = parked.length ? Object.fromEntries(Object.entries(s.parked).map(([k, r]) => [k, isMap(r) && isMap(r.map) ? { ...r, map: lighten(r.map) } : r])) : null;
-  const top = { ...s, timeline: null, ...(light ? { parked: light } : {}) };
+  // The imported market packs (`markets`, up to 20 of 128 KB; docs/specs/shops.md) are never changed in place either: `market` puts a new
+  // list in whole (engine/trade.js). So they too are held by reference, in their place among the keys.
+  const keepMarkets = Object.hasOwn(s, 'markets') && s.markets !== null && typeof s.markets === 'object';
+  const top = { ...s, timeline: null, ...(light ? { parked: light } : {}), ...(keepMarkets ? { markets: null } : {}) };
   const whole = terrain || !isMap(m);
   const copy = structuredClone(whole ? top : { ...top, map: lighten(m) });
+  if (keepMarkets) copy.markets = s.markets;
   if (!whole) copy.map = refill(m, copy.map);
   for (const [k, r] of parked) copy.parked[k].map = refill(r.map, copy.parked[k].map);
   return copy;
@@ -298,7 +308,8 @@ function applyInner(s, action, ctx) {
   setRun(null);
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds);
   // a grapple whose grappler is gone, Incapacitated or out of range ends (settleHolds).
-  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); checkEvents(ev); } catch (err) {
+  // A joint purchase that can no longer be paid ends (engine/trade.js, settleShops: a fight, a buyer out of the shop area, stock gone).
+  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); settleShops(s, ev); learn(s); checkEvents(ev); } catch (err) {
     if (err instanceof NotBattleMap) { stopWork(); delete s.stack; if (net) thaw(s, net); return { ok: false, error: err.message, events: [] }; }
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
     // A refusal here is not a refusal of the action: the handler is done and has changed the game. Letting it pass would leave that half-applied

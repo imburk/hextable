@@ -11,13 +11,15 @@
 // The engine never reads a view and never produces one. Design: docs/specs/hidden-information.md
 import { HEX, gridOf, col, parse } from './grid.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
-import { concealed } from './space.js';
+import { concealed, inArea } from './space.js';
 import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
-import { controllerOf, hbId, homebrewBlock, isPile, openContents, ownerOf, pileOpen } from './engine.js';
+import { hasWorld, knownOf, partyAt, playerEntry, playerNode, playerPin, playerRoute } from './known.js';
+import { controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
+import { buysOf, kindOf, listPrice } from './market.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -114,6 +116,9 @@ function unformed(e, rec) {
 // sent. The DM's is the state itself. Returns `base` itself when nothing changes, which is every game with no homebrew creature in the
 // party. Pure; `base` is not changed.
 export function forViewer(base, state, viewer) {
+  return placesView(homebrewView(base, state, viewer), state, viewer);
+}
+function homebrewView(base, state, viewer) {
   if (isDM(viewer)) return base;
   const uid = viewer?.userId, seen = new Set(), formed = new Set();
   let replaced = null;
@@ -236,7 +241,7 @@ const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
+  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: offWatcher(state, viewer) ? [] : viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
 }
 
 // An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
@@ -254,7 +259,7 @@ export function viewPrompt(state, viewer) {
   if (!p) return null;
   if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
   const t = state.entities[p.ask.reactor];
-  if (!t || typeof viewer?.userId !== 'string' || ownerOf(state, t) !== viewer.userId) return perceived(state, p) ? { waiting: true } : null;
+  if (!t || typeof viewer?.userId !== 'string' || ownerOf(state, t) !== viewer.userId) return !offWatcher(state, viewer) && perceived(state, p) ? { waiting: true } : null;
   const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => ({ ...pick(o, ['reaction', 'name', 'slots', 'ac']), ...(typeof o.against === 'string' && classify(state, o.against) !== 'hidden' ? { against: o.against } : {}) })) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
@@ -344,6 +349,7 @@ export function playerView(state) {
     effects: viewEffects(state),
     scene: viewScene(state),
     ...(sightRule(state) !== 'rooms' ? { sight: structuredClone(shownMap(state).sight) } : {}),
+    ...atlasField(state),
   };
 }
 
@@ -351,6 +357,49 @@ export function playerView(state) {
 export function viewHandouts(state, viewer) {
   return (state.handouts ?? []).filter((h) => shownTo(h, viewer?.userId))
     .map((h) => ({ id: h.id, title: h.title, ...(h.text !== undefined && { text: h.text }), ...(h.asset !== undefined && { asset: h.asset }) }));
+}
+
+// ---------- shops ----------
+// The shops shown to this viewer (docs/specs/shops.md, Decision 3), shaped from an allow list: for each, its id, kind, name, blurb and art;
+// the lines on its shelf (lines of its lists not taken off, its own lines not hidden) with the price after markup and overrides and how
+// many are left of a limited one; a loot package's coins; what a store pays when the party sells; the standing offers and the purchases
+// being paid together that concern the party; the cells of its shop area that this player is sent (`viewShopArea`) and which of the party
+// stand in it now. Never a shop not shown to them, a hidden line (its id, name, price or how many there are), `haggle`, `notes`, `from`,
+// `waits`, `keeper`, `at`, a quote's steps or roleplaying bonus, or anything of `state.markets`. The DM is sent the state itself.
+// A part of `view()`, and of the view the table server builds for each player itself (packages/server/src/tables.js, stateFor).
+export function viewShops(state, viewer) {
+  if (isDM(viewer)) return structuredClone(Array.isArray(state.shops) ? state.shops : []);
+  const env = marketEnv(), open = (id) => typeof id === 'string' && classify(state, id) === 'open', out = [];
+  for (const shop of Array.isArray(state.shops) ? state.shops : []) {
+    if (!shownTo(shop, viewer?.userId)) continue;
+    const market = marketOfShop(state, shop), store = shop.kind === 'store', ids = new Set(), lines = [];
+    const all = [...(shop.lines ?? []), ...(shop.lists ?? []).flatMap((lid) => (market?.lists ?? []).find((x) => x?.id === lid)?.lines ?? [])];
+    for (const l of all) {
+      if (!l || ids.has(l.id) || l.hidden === true || shop.overrides?.[l.id]?.gone) continue;
+      ids.add(l.id);
+      const price = store ? listPrice(l, shop, market, env) : null;
+      if (store && price === null) continue;
+      const left = shop.overrides?.[l.id]?.qty !== undefined ? shop.overrides[l.id].qty : l.qty;
+      if (!store && left !== undefined && left <= 0) continue;                    // a loot line with none left is gone (Decision 7)
+      lines.push({ id: l.id, name: lineName(l), ...(l.item !== undefined ? { item: l.item } : {}), ...(l.base !== undefined ? { base: l.base } : {}), ...(l.spell !== undefined ? { spell: l.spell } : {}),
+        kind: kindOf(l, env), ...(l.art !== undefined ? { art: l.art } : {}), ...(l.note !== undefined ? { note: l.note } : {}), ...(price !== null ? { price } : {}), ...(left !== undefined ? { qty: left } : {}) });
+    }
+    const rec = { id: shop.id, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
+    if (!store) { rec.coins = { ...(shop.coins ?? {}) }; out.push(rec); continue; }
+    rec.buys = buysOf(shop.buys);
+    rec.quotes = (shop.quotes ?? []).filter((q) => open(q.for) && (q.line === undefined || ids.has(q.line)))
+      .map((q) => ({ id: q.id, ...(q.line !== undefined ? { line: q.line } : {}), ...(q.item !== undefined ? { item: q.item } : {}), for: q.for, price: q.price, ...(q.sell ? { sell: true } : {}) }));
+    rec.joint = (shop.joint ?? []).filter((j) => open(j.buyer) && ids.has(j.line)).map((j) => ({ id: j.id, line: j.line, name: lineName(lines.find((l) => l.id === j.line)),
+      qty: j.qty, price: j.price, buyer: j.buyer, pledges: Object.fromEntries(Object.entries(j.pledges ?? {}).filter(([k]) => open(k))) }));
+    const area = viewShopArea(state, shop, viewer);
+    if (area) {
+      rec.area = area;
+      const a = (state.map.areas ?? []).find((x) => x?.id === shop.at.area);
+      if (!state.scene?.open) rec.here = Object.values(state.entities).filter((e) => e.side === 'party' && !e.dead && open(e.id) && inArea(state.map, a, e)).map((e) => e.id);
+    }
+    out.push(rec);
+  }
+  return out;
 }
 
 // ---------- shop areas ----------
@@ -520,6 +569,19 @@ const pick = (ev, keys) => {
   return out;
 };
 
+// What a player is told of each trade event (docs/specs/shops.md, X5), when they are in its audience.
+const TRADE_KEYS = {
+  shopShown: ['type', 'shop', 'name'], shopHidden: ['type', 'shop'], shopChanged: ['type', 'shop'], shopClosed: ['type', 'shop', 'name'],
+  goodsRevealed: ['type', 'shop', 'line', 'name', 'price', 'qty'],
+  quoted: ['type', 'shop', 'for', 'line', 'item', 'name', 'price', 'was', 'sell', 'check', 'withdrawn'],
+  bought: ['type', 'shop', 'id', 'line', 'name', 'qty', 'price', 'paid', 'change', 'joint', 'payers'],
+  sold: ['type', 'shop', 'id', 'item', 'name', 'qty', 'price'],
+  took: ['type', 'shop', 'id', 'line', 'name', 'qty', 'coins', 'split', 'each', 'left'],
+  jointOpened: ['type', 'shop', 'joint', 'line', 'name', 'qty', 'price', 'buyer'],
+  pledged: ['type', 'shop', 'joint', 'who', 'share'],
+  jointEnded: ['type', 'shop', 'joint', 'why'],
+};
+
 // Event types a player receives unchanged. A type not named in this file is dropped.
 const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
   'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid', 'remains',
@@ -527,6 +589,11 @@ const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed
 
 export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
+  // A player whose characters are in another place, with the table rule `watching: 'off'`, is told the table's out-of-character talk and what is shown
+  // to them, and nothing of the place in play.
+  return viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer);
+}
+function viewEventsOf(events, state, viewer) {
   // The faces of a damage, healing or Temporary Hit Points roll (docs/specs/dice.md) go with the
   // event only where the player has the number they add up to: always if one of theirs rolled
   // them (with `rolled`, what the dice made before halving or Resistance); otherwise only if the
@@ -876,11 +943,34 @@ export function viewEvents(events, state, viewer) {
       case 'ping':                                     // a spot pointed out: a cell the sender chose and their name, nothing of the game
         out.push(pick(ev, ['type', 'from', 'name', 'at']));
         break;
-      case 'say':                                      // what is said at the table, everyone hears
-        out.push(pick(ev, ['type', 'from', 'as', 'name', 'text', 'scene', 'line']));
+      case 'say': {                                    // what is said at the table, everyone hears
+        // But a line said in character by a group in a place that is not in play is heard only by the players there (`to`, who they were).
+        if (ev.far === true && !(typeof viewer?.userId === 'string' && Array.isArray(ev.to) && ev.to.includes(viewer.userId))) break;
+        const at = ev.node !== undefined ? playerNode(state, ev.node) : null;      // where, as the id they were given; a place they were not given is not named
+        out.push({ ...pick(ev, ['type', 'from', 'as', 'name', 'text', 'scene', 'line']), ...(at ? { node: at } : {}) });
         break;
+      }
       case 'checkAsked':                               // a request for a check is between the player who asked and the DM
-        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(pick(ev, ['type', 'actor', 'skill', 'by']));
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about'])));
+        break;
+      // Shops (docs/specs/shops.md, Decision 3 and X5): each trade event carries the shop's audience when it happened (`to`, `except`;
+      // engine/trade.js) and goes to a player in it alone, live or from the record, shaped from an allow list; the audience is never sent,
+      // nor a haggle's DC, steps or roleplaying bonus, nor how a price was reached (a hand-set price is just the price).
+      case 'shopShown': case 'shopHidden': case 'shopChanged': case 'shopClosed': case 'goodsRevealed': case 'quoted': case 'bought': case 'sold':
+      case 'took': case 'jointOpened': case 'pledged': case 'jointEnded': {
+        const u = viewer?.userId;
+        const hears = (ev.to === 'all' || (Array.isArray(ev.to) && typeof u === 'string' && ev.to.includes(u))) && !(Array.isArray(ev.except) && typeof u === 'string' && ev.except.includes(u));
+        const named = [ev.for, ev.buyer, ev.who, ...(Array.isArray(ev.split) ? ev.split : []), ...(Array.isArray(ev.payers) ? ev.payers.map((p) => p?.id) : [])].filter((x) => x !== undefined);
+        if (!hears || named.some((id) => cls(id) === 'hidden')) break;
+        const e = structuredClone(pick(ev, TRADE_KEYS[ev.type]));
+        // A joint purchase ended because its buyer's player is no longer shown the store says, to the others, only that it ended: who
+        // is shown a store is the DM's business (review of #598, M2).
+        if (e.type === 'jointEnded' && e.why === 'hidden') e.why = 'ended';
+        out.push(e);
+        break;
+      }
+      case 'coins':                                    // a purse changed: a party creature's, whose record the party is sent; never which shop
+        if (cls(ev.id) === 'open') out.push(structuredClone(pick(ev, ['type', 'id', 'coins', 'why', 'given', 'taken'])));
         break;
       case 'handoutShown':                             // that a handout was shown, to those it was shown to; never who else
         if (ev.to === 'all' || (Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId))) out.push(pick(ev, ['type', 'handout', 'title']));
@@ -898,4 +988,148 @@ export function viewEvents(events, state, viewer) {
   was = null; out.ev = null;
   const intro = (e) => e.type === 'revealed' || (e.type === 'unhidden' && cls(e.id) !== 'open');       // one of theirs needs no introduction
   return [...kept.filter(intro), ...kept.filter((e) => !intro(e))];
+}
+
+
+// ---------- the places of a world (docs/specs/travel.md, Decisions 4, 5 and 12; build row W4) ----------
+// What players are sent of an atlas, by allow list. With no world none of this adds a key: the view is the view it always was.
+const nodeIn = (state, id) => (Object.hasOwn(state.world?.nodes ?? {}, id) ? state.world.nodes[id] : null);
+
+// The shared part, `atlas`, the same for every player: the places they know, by the ids they were given, the routes they know, where
+// the table is (`here`: the place in play) and the markers, a group of the party for each place and pin it is at. Nothing of a
+// place they do not know, and nothing of a parked place but who of the party is there.
+export function atlasView(state) {
+  const k = knownOf(state);
+  if (!k || !k.nodes.length) return null;
+  const nodes = {};
+  for (const id of k.nodes) {
+    const n = nodeIn(state, id);
+    if (!n) continue;
+    const o = { id: playerNode(state, id), name: typeof n.name === 'string' ? n.name : 'A place', kind: n.kind, ...(n.scale !== undefined ? { scale: n.scale } : {}) };
+    const up = typeof n.parent === 'string' ? playerNode(state, n.parent) : null;
+    if (up) o.parent = up;
+    if (n.kind === 'nav') {
+      if (typeof n.image === 'string') o.image = n.image;                    // the picture's file, which the server lets them fetch with the node
+      o.pins = (k.pins[id] ?? []).flatMap((pid) => {
+        const p = (Array.isArray(n.pins) ? n.pins : []).find((x) => x?.id === pid);
+        if (!p) return [];
+        const to = typeof p.to === 'string' ? playerNode(state, p.to) : null;
+        const entry = to && typeof p.entry === 'string' ? playerEntry(state, p.to, p.entry) : null;
+        return [{ id: playerPin(state, id, pid), ...(typeof p.name === 'string' ? { name: p.name } : {}), ...(Array.isArray(p.at) ? { at: [...p.at] } : {}), ...(to ? { to } : {}), ...(entry ? { entry } : {}) }];
+      });
+    } else if (n.kind === 'map' || n.kind === 'vessel') {
+      o.entries = (k.entries[id] ?? []).flatMap((eid) => {
+        const en = (Array.isArray(n.entries) ? n.entries : []).find((x) => x?.id === eid);
+        return en ? [{ id: playerEntry(state, id, eid), name: en.name, kind: en.kind }] : [];
+      });
+    }
+    nodes[o.id] = o;
+  }
+  const end = (e) => {
+    const node = typeof e === 'string' ? e : e?.node, pn = typeof node === 'string' ? playerNode(state, node) : null;
+    if (!pn) return null;
+    const pin = typeof e?.pin === 'string' ? playerPin(state, node, e.pin) : null, entry = typeof e?.entry === 'string' ? playerEntry(state, node, e.entry) : null;
+    return { node: pn, ...(pin ? { pin } : {}), ...(entry ? { entry } : {}) };
+  };
+  const routes = [];
+  for (const rid of k.routes) {
+    const r = (state.world.routes ?? []).find((x) => x?.id === rid);
+    if (!r) continue;
+    let ends;
+    if (typeof r.node === 'string') {      // between two pins of one place
+      const n = playerNode(state, r.node), a = playerPin(state, r.node, r.from), b = playerPin(state, r.node, r.to);
+      ends = n && a && b ? { node: n, from: { pin: a }, to: { pin: b } } : null;
+    } else {
+      const a = end(r.from), b = end(r.to);
+      ends = a && b ? { from: a, to: b } : null;
+    }
+    if (!ends) continue;
+    routes.push({ id: playerRoute(state, rid), ...(typeof r.name === 'string' ? { name: r.name } : {}), ...ends, mode: r.mode, ...['miles', 'hours', 'minutes'].filter((f) => r[f] !== undefined).reduce((a, f) => ({ ...a, [f]: r[f] }), {}) });
+  }
+  const groups = new Map();
+  for (const [e, where] of partyAt(state)) {
+    if (where === null) continue;
+    const pin = typeof state.world.at?.[e.id] === 'string' && nodeIn(state, where)?.kind === 'nav' ? state.world.at[e.id] : null;
+    const key = `${where}\n${pin ?? ''}`;
+    if (!groups.has(key)) groups.set(key, { where, pin, ids: [] });
+    groups.get(key).ids.push(e.id);
+  }
+  const markers = [];
+  for (const g of groups.values()) {
+    const node = playerNode(state, g.where), pin = g.pin ? playerPin(state, g.where, g.pin) : null;
+    if (node) markers.push({ node, ...(pin ? { pin } : {}), ids: g.ids });
+  }
+  const here = typeof state.place === 'string' ? playerNode(state, state.place) : null;
+  return { name: state.world.name, here, nodes, routes, markers };
+}
+const atlasField = (state) => { const a = hasWorld(state) ? atlasView(state) : null; return a ? { atlas: a } : {}; };
+
+// Where this player's characters are: in the place in play, and in which parked places (the real ids). A creature is theirs by
+// `controllerOf`, as the homebrew rules read it, in the place it is kept in.
+function whereMine(state, viewer) {
+  const uid = viewer?.userId, out = { inPlay: false, parked: new Set() };
+  if (typeof uid !== 'string' || uid === '') return out;
+  const here = typeof state.place === 'string' ? state.place : null;
+  for (const e of Object.values(state.entities ?? {})) if (e.side === 'party' && controllerOf(state, e) === uid) out.inPlay = true;
+  for (const [id, rec] of Object.entries(state.parked ?? {})) {
+    if (id === here) continue;
+    for (const e of Object.values(rec?.entities ?? {})) if (e.side === 'party' && controllerOf({ entities: rec.entities }, e) === uid) out.parked.add(id);
+  }
+  return out;
+}
+// A player whose characters are all in places that are not in play: they watch the one that is.
+const watcher = (state, viewer) => {
+  if (isDM(viewer) || !hasWorld(state)) return null;
+  const w = whereMine(state, viewer);
+  return !w.inPlay && w.parked.size > 0 ? w : null;
+};
+export const offWatcher = (state, viewer) => state?.settings?.watching === 'off' && !!watcher(state, viewer);
+
+// A creature of the party kept in a parked place, as every player is sent it: its whole record (the party is open to the party), with
+// every mention of a creature that is not of the party scrubbed, as a record in the place in play is (`playerView`). One that carries a
+// homebrew block that is not the viewer's is sent as a foe they can see is.
+function awayRecord(rec, e, viewer) {
+  const pseudo = { entities: rec.entities }, party = new Set(Object.values(rec.entities).filter((x) => x.side === 'party').map((x) => x.id));
+  const others = new Set(Object.keys(rec.entities).filter((id) => !party.has(id)));
+  if (homebrewBlock(e) && !controlledBy(pseudo, e, viewer?.userId)) return seenRecord(e, null);
+  const out = structuredClone(e);
+  noSpeedSet(out);
+  delete out.reactions;
+  if (out.follow && !party.has(out.follow)) delete out.follow;
+  const slots = out.formation?.slots;
+  if (slots) for (const k of Object.keys(slots)) if (!party.has(k)) delete slots[k];
+  if (out.riding && !(typeof out.riding.on === 'string' && party.has(out.riding.on))) delete out.riding;
+  if (out.rider !== undefined && !(typeof out.rider === 'string' && party.has(out.rider))) delete out.rider;
+  const holds = out.cond?.grappled?.holds;
+  if (Array.isArray(holds) && holds.length) {
+    for (const h of holds) if (!party.has(h.by)) { delete h.escape; delete h.escapeDis; delete h.with; delete h.range; }
+    out.heldBy = holds.map((h) => (party.has(h.by) ? h.by : 'someone'));
+  }
+  if (out.pocket && typeof out.pocket === 'object') {
+    for (const [k, c] of Object.entries(out.pocket)) if (homebrewBlock(c) && !controlledBy(pseudo, c, viewer?.userId)) delete out.pocket[k];
+  }
+  return scrub(out, others);
+}
+
+// The parts of a player's view that are theirs by where their characters are: `away`, the party members kept in places that are not in play
+// (read-only sheets, to every player), and, for one whose characters are all in such places, `watching` ({ mode, at }: the places they are
+// at, as the ids they were given), and under the table rule `watching: 'off'` the band alone, with no map, no creatures and no fight.
+// With no world, `out` itself.
+function placesView(out, state, viewer) {
+  if (isDM(viewer) || !hasWorld(state)) return out;
+  const away = {};
+  for (const [id, rec] of Object.entries(state.parked ?? {})) {
+    if (id === state.place) continue;
+    const node = playerNode(state, id);
+    for (const e of Object.values(rec?.entities ?? {})) if (e.side === 'party' && node) away[e.id] = { node, record: awayRecord(rec, e, viewer) };
+  }
+  const w = watcher(state, viewer);
+  const extra = { ...(Object.keys(away).length ? { away } : {}), ...(w ? { watching: { mode: state.settings?.watching === 'off' ? 'off' : 'live', at: [...w.parked].map((id) => playerNode(state, id)).filter(Boolean) } } : {}) };
+  if (!Object.keys(extra).length) return out;
+  if (w && state.settings?.watching === 'off') {
+    const m = out.map ?? {};
+    return { version: out.version, clock: out.clock, settings: out.settings, map: { format: m.format, id: '', name: '', grid: m.grid, cellFeet: m.cellFeet, levels: [], walls: [], objects: [], regions: [], starts: [] },
+      entities: {}, encounter: null, conclusion: null, effects: [], scene: null, ...(out.atlas ? { atlas: out.atlas } : {}), ...extra };
+  }
+  return { ...out, ...extra };
 }

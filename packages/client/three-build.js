@@ -416,6 +416,7 @@ export function grapplePairs(s) {
   return out;
 }
 
+const BAD_TINT = [0.85, 0.15, 0.15, 0.4];
 // Highlights, lasting zones, the marks under fliers, rings, the editor's pins and the bars across steps a wall stops.
 export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bars = [], barZ = 0 }) {
   const G = gridOf(s.map), b = new Builder(G), c = th.hl;
@@ -431,7 +432,10 @@ export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bar
     }
   }
   for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
-  for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
+  // The edge of a spell's reach while it is aimed (issue #600) as a thin band; a theme without its own colour gets one made from its area colour.
+  for (const k of hl.range ?? []) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.005, 0.5, 0.98, c.range ?? [c.area[0], c.area[1], c.area[2], 0.4]); }
+  // An area aimed beyond the reach is drawn in the theme's "no" colour (red), so it reads as dimmed and refused whatever the theme's area colour is.
+  for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, hl.areaBad ? c.bad ?? BAD_TINT : c.area); }
   for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = G.toWorld(e.pos); b.flatHex(w.x, w.z, stand(s.map, { q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
   const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
     const e = s.entities[id]; if (!e) return;

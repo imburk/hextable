@@ -334,10 +334,11 @@ test("an old table loads unchanged but for its version", () => {
   s.version = 22;
   const was = structuredClone(s);
   migrate(s);
-  assert.equal(VERSION, 27);
-  assert.equal(s.version, 27);
-  const { world, place, parked, journey, ...rest } = s;                    // version 26 (#579) adds the places of a world, empty
+  assert.equal(VERSION, 28);
+  assert.equal(s.version, 28);
+  const { world, place, parked, journey, markets, shops, ...rest } = s;                    // version 26 (#579) adds the places of a world, empty
   assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });
+  assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 28 (#596) adds the markets and shops, empty
   const { strikeFirst, ...settings } = rest.settings;                      // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
   assert.equal(strikeFirst, "casts");
   assert.equal(json({ ...rest, settings, version: 22 }), json(was));

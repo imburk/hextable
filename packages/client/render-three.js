@@ -187,7 +187,7 @@ export class ThreeRenderer {
     this.blobGeom = new Piece(this, o(12)); this.blobGeom.show(false); this.#makeBlob();
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null, yawGoal: null }; this.turns = 0;      // turns: manual turns of the view so far (keyboard.md: a manual turn suspends following)
-    this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null };
+    this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null };
     this.G = HEX;                             // the grid the map is drawn on (gridOf(map) once there is one)
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;
     this.onTap = () => {}; this.onHover = () => {}; this.onPoint = null; this.onDrag = null;
@@ -424,7 +424,7 @@ export class ThreeRenderer {
   #dropGhost(g) { if (g.label) { g.el.remove(); g.src.piece.free(); } g.piece.free(); }
 
   setCeiling(z) { if (z !== this.ceiling) { this.ceiling = z; this.terrainKey = ''; if (this.state) this.setState(this.state, []); } }
-  setHighlights(hl) { this.hl = { move: [], area: [], targets: [], allies: [], selected: null, turn: null, ...hl }; if (this.state) this.#buildOverlay(); }
+  setHighlights(hl) { this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null, ...hl }; if (this.state) this.#buildOverlay(); }
   focus(id, snap = false) {
     const a = this.actors.get(id); if (!a) return;
     const end = a.way.length ? a.way[a.way.length - 1] : a;
