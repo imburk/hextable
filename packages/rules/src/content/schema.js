@@ -36,7 +36,10 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'summon', 'imbue', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'summon', 'imbue', 'manual',
+  // `stabilize: true`: a creature at 0 Hit Points that is not dead becomes Stable (Spare the Dying). `light: { bright, dim }`: the creature it works on carries a light for as long
+  // as the lasting effect it is part of runs (Light); `replaces: true`: casting it again ends the caster's earlier one. docs/specs/rules-expansion.md, "Build notes: Mage Armor, Spare the Dying and Light".
+  'stabilize', 'light'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -52,6 +55,8 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
+  // `baseAc`: the creature's base Armor Class becomes `{ base, ability }` (13 + its Dexterity modifier: Mage Armor), if that is better than the way it works its own out; only on the `ac` hook.
+  'baseAc',
   // `proficient` (addition C of docs/specs/homebrew-subclasses.md): proficiency with the one skill or tool its `scope` names, for as long as the lasting effect it is part of
   // holds; the Proficiency Bonus, once, on a check that is not already proficient. Only a modifier step of a subclass feature's action may have it.
   'proficient'];
@@ -115,7 +120,7 @@ function lintWhen(when, say) {
 // A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
 // `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
 export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion') };
-function lintModifier(m, say, rolledOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
+function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
@@ -177,6 +182,14 @@ function lintModifier(m, say, rolledOk = false) {      // `rolledOk`: the modifi
     const sc = m.scope, named = sc && typeof sc === 'object' ? ['skill', 'tool'].filter((k) => sc[k] !== undefined) : [];
     if (!(named.length === 1 && Object.keys(sc).length === 1)) say('`proficient` needs a `scope` that names one skill or one tool (and nothing else)');
     for (const k of Object.keys(m)) if (!['on', 'op', 'scope'].includes(k)) say(`\`proficient\` has no \`${k}\`: it gives proficiency with one skill or tool for as long as its effect lasts`);
+  }
+  // `baseAc` (Mage Armor): `value` is { base, ability }, on the `ac` hook, and nothing else about it.
+  if (m.op === 'baseAc') {
+    const v = m.value;
+    if (m.on !== 'ac') say('the op `baseAc` is on the ac hook');
+    if (!stepOk) say('the op `baseAc` is for a modifier step (a spell\'s, a creature\'s action, an item\'s): a trait, a grant or an aura cannot work an Armor Class out of a number the engine holds only for a creature a spell touched');
+    if (!(v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 2 && isInt(v.base) && v.base >= 1 && v.base <= 26 && ABILITIES.includes(v.ability))) say('`baseAc` needs a `value` of { base: a whole number, ability: an ability }');
+    for (const k of Object.keys(m)) if (!['on', 'op', 'value'].includes(k)) say(`\`baseAc\` has no \`${k}\`: it sets the base Armor Class and nothing else`);
   }
   lintWhen(m.when, say);
 }
@@ -369,7 +382,9 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'condition' || kind === 'modifier') {
       const ends = step.ends;
       if (ends !== undefined) {
-        if (!['turnStart', 'turnEnd', 'save', 'damaged'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd, save or damaged');
+        if (!['turnStart', 'turnEnd', 'save', 'damaged', 'armour'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd, save, damaged or armour');
+        // `armour`: it ends when its creature dons armour (Mage Armor); only for a modifier.
+        if (ends?.on === 'armour' && (kind !== 'modifier' || Object.keys(ends).length !== 1)) say('`ends: { on: "armour" }` is for a modifier step, with nothing else in it');
         // `at: 'damaged'`: the save is repeated whenever the creature takes damage (Dominate Monster).
         if (ends?.on === 'save' && !(ABILITIES.includes(ends.save) && ['turnStart', 'turnEnd', 'damaged'].includes(ends.at))) say('a condition that ends on a save needs `save` (an ability) and `at` (turnStart, turnEnd or damaged)');
         // `by: 'source'` on `damaged`: only damage from the source or its allies ends it (Charm Monster).
@@ -379,8 +394,15 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
         if (ends?.orDamaged !== undefined && !(ends.orDamaged === true && ends.on === 'save')) say('`ends.orDamaged` is true, on an ending on a save');
       }
     }
+    if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
+    // `light: { bright, dim }`: feet of Bright Light and then of Dim Light, multiples of 5 (as the DM's `setLight` takes them).
+    if (kind === 'light') {
+      const l = step.light, feet = (n) => isInt(n) && n >= 0 && n <= 600 && n % 5 === 0;
+      if (!(l && typeof l === 'object' && !Array.isArray(l) && Object.keys(l).length === 2 && feet(l.bright) && feet(l.dim) && l.bright + l.dim > 0)) say('`light` is { bright, dim }: feet of Bright and Dim Light, multiples of 5');
+      if (step.replaces !== undefined && step.replaces !== true) say('`replaces` is true or left out');
+    } else if (step.replaces !== undefined) say('`replaces` is for a light step');
     if (kind === 'modifier') {
-      lintModifier(step.modifier ?? {}, say, seen.rolledOk === true);
+      lintModifier(step.modifier ?? {}, say, seen.rolledOk === true, true);
       if (seen.inAttack && isRolled(step.modifier?.value)) say(ROLLED_IN_ATTACK);
       if (step.to !== undefined && step.to !== 'caster') say('a modifier step\'s `to` is "caster" or left out');
       if (step.modifier?.against !== undefined && step.to !== 'caster') say('`against: "target"` is for a modifier put on the caster (`to: "caster"`)');
@@ -714,11 +736,14 @@ function lintHigher(e, say) {
   const h = e.higher;
   if (h === undefined) return;
   if (!h || typeof h !== 'object') return say('`higher` must be an object');
-  for (const k of Object.keys(h)) if (!['level', 'targets', 'slot'].includes(k)) say(`\`higher.${k}\` is not something a spell can grow by`);
+  for (const k of Object.keys(h)) if (!['level', 'targets', 'slot', 'range'].includes(k)) say(`\`higher.${k}\` is not something a spell can grow by`);
   const byLevel = (x, ok) => x && typeof x === 'object' && Object.entries(x).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= 20 && ok(v));
   if (h.level !== undefined && !byLevel(h.level, isDice)) say('`higher.level` gives dice by character level');
   if (h.targets !== undefined && !byLevel(h.targets, (v) => isInt(v) && v >= 1 && v <= 20)) say('`higher.targets` gives a number of targets by character level');
   if (h.targets !== undefined && !e.target?.creature) say('`higher.targets` is for a spell aimed at creatures');
+  // `range`: the spell's range in feet by character level (Spare the Dying: 30 at 5, 60 at 11, 120 at 17), each a multiple of 5 and longer than the spell's own.
+  if (h.range !== undefined && !byLevel(h.range, (v) => isInt(v) && v % 5 === 0 && v > (typeof e.range === 'number' ? e.range : 0) && v <= 1000)) say('`higher.range` gives a range in feet (a multiple of 5, longer than the spell\'s own) by character level');
+  if (h.range !== undefined && typeof e.range !== 'number') say('`higher.range` is for a spell with a range in feet');
   if (h.slot !== undefined) {
     for (const k of Object.keys(h.slot ?? {})) if (!['damage', 'heal', 'tempHp', 'times', 'targets', 'value'].includes(k)) say(`\`higher.slot.${k}\` is not something a spell can grow by`);
     for (const k of ['damage', 'heal', 'tempHp']) if (h.slot[k] !== undefined && !isDice(h.slot[k])) say(`\`higher.slot.${k}\` must be dice`);
@@ -2418,7 +2443,7 @@ function lintPackCore(doc, opts) {
 // A finished record with its numbers already worked out, the same shape as a pregenerated
 // character. Only the fields listed here are accepted, so a record can never carry anything
 // else into the game (an owner, a side, a hidden flag). Returns a list of problems.
-const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
+const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'acBase', 'hp', 'speed', 'speeds', 'senses', 'hover', 'prof', 'abil', 'saveProf', 'skills', 'expertise', 'tools',
   'attacks', 'castAbil', 'spells', 'slots', 'features', 'gear', 'resist', 'vuln', 'immune', 'look',
   // Made by derive() from a sheet (derive.js): features as the engine plays them, the Hit Die, what is worn.
   'feats', 'hitDie', 'armour', 'shield', 'untrained', 'critOn', 'bonusActs', 'pact', 'conditionImmune',
@@ -2543,6 +2568,7 @@ export function lintRecord(r, { spells = {} } = {}) {
   if (!within(r.level, 1, 20)) say('Its level is 1 to 20.');
   if (r.size !== undefined && !SIZES.includes(r.size)) say(`Its size is one of ${SIZES.join(', ')}.`);
   if (!within(r.ac, 1, 40)) say('Its Armor Class is 1 to 40.');
+  if (r.acBase !== undefined && !within(r.acBase, 1, 40)) say('Its base Armor Class (what its armour or its way of working it out gives, before a Shield and bonuses) is 1 to 40.');
   if (!within(r.hp, 1, 999)) say('Its Hit Points are 1 to 999.');
   if (!(within(r.speed, 0, 300) && r.speed % 5 === 0)) say('Its Speed is a multiple of 5 feet.');
   if (r.speeds !== undefined && !(r.speeds && typeof r.speeds === 'object' && Object.entries(r.speeds).every(([m, v]) => MOVE_MODES.includes(m) && m !== 'walk' && within(v, 5, 300) && v % 5 === 0))) say(`Its other speeds are multiples of 5 feet for climb, swim, fly or burrow.`);
@@ -2805,7 +2831,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -2835,10 +2861,10 @@ const SHAPES = {
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
-  value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled'] },
+  value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged'] },
-  higher: { what: 'casting higher', keys: ['level', 'targets', 'slot'] },
+  higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
   zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare'] },
@@ -2899,7 +2925,7 @@ const CHILD = {
   target: { creature: 'creature', area: 'area' },
   modifier: { value: 'value', scope: 'scope' },
   value: { byLevel: 'levelMap' },
-  higher: { level: 'levelMap', targets: 'levelMap', slot: 'slot' },
+  higher: { level: 'levelMap', targets: 'levelMap', slot: 'slot', range: 'levelMap' },
   trait: { modifiers: 'modifier[]', reaction: 'reaction' },
   action: { target: 'target', effects: 'steps', uses: 'uses', multiattack: 'multiattack' },
   state: { light: 'light' },
@@ -3005,12 +3031,12 @@ export const HOMEBREW_RANGES = Object.freeze({
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
   'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
-  'targets.#': [1, 20], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
+  'targets.#': [1, 20], 'range.#': [5, 240], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
-  'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'byLevel.#': [-40, 40],
+  'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
@@ -3303,10 +3329,10 @@ export const HOMEBREW_TYPES = Object.freeze({
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
-  value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i' },
+  value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b' },
-  higher: { level: 'o', targets: 'o', slot: 'o' },
+  higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
   zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b' },
@@ -3355,8 +3381,8 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' },
-  imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.manual': { manual: 's' },
+  imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });
 // The check a key gets while the key lists are walked: its type, in words, or null.

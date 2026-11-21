@@ -36,7 +36,7 @@ export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
 export { aimArea, aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, holdsOf, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
 export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './engine/characters.js';
-export { checkBonus, passive, rollMode } from './engine/rolls.js';
+export { acBaseOf, acNow, acOf, acShown, checkBonus, passive, rollMode } from './engine/rolls.js';
 export { makeEntity } from './engine/sheets.js';
 export { ENGAGE_RANGE } from './engine/movement.js';
 export { actionSpent, attacksLeft, fromPool, partRefusal } from './engine/attacks.js';

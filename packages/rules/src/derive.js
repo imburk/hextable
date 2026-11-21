@@ -417,6 +417,7 @@ export function derive(sheet, opts = {}) {
       if (n > ac) { ac = n; acWhy = [`${x.f.name}: ${f.base}`, ...f.abilities.map((a) => `${nice(a)} ${signed(mod(abil[a]))}`)]; }
     }
   }
+  const acBase = ac;           // what the armour, or the best way to work it out unarmoured, gives: before a Shield and what features and items add (Mage Armor replaces this, never those)
   if (gone && !shieldItem) acWhy.push(`Shield "${sheet.shield.slice(0, 60)}": its entry is not loaded at this table, so it gives no Armor Class`);
   if (shieldOk) {
     const se = shieldEntry(sheet, shieldItem);
@@ -692,7 +693,7 @@ export function derive(sheet, opts = {}) {
   const record = {
     name: String(sheet.name ?? '').trim(), cls, level, size: sheet.size ?? sp?.sizes[0] ?? 'medium',
     ...(sp && sp.type !== 'humanoid' ? { type: sp.type } : {}),
-    ac, hp, speed, ...(Object.keys(speeds).length ? { speeds } : {}), ...(Object.keys(senses).length ? { senses } : {}),
+    ac, acBase, hp, speed, ...(Object.keys(speeds).length ? { speeds } : {}), ...(Object.keys(senses).length ? { senses } : {}),
     prof: pb, abil, saveProf: ABILITIES.filter((a) => saveProf.has(a)), skills, expertise,
     tools: [...(thieves ? ['thieves-tools'] : []), ...(sheet.tools ?? []), ...featTools].filter((t, i, l) => l.indexOf(t) === i),
     attacks,

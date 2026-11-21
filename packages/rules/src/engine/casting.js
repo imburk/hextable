@@ -3,7 +3,7 @@
 import { gridOf, col, key } from '../grid.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
-import { begin, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
+import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
 import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
@@ -146,7 +146,7 @@ function metamagicFor(s, e, sp, a, slot) {
   if (has.quickened) sp.time === 'action' || fail('Quickened Spell is for a spell cast as an action.');
   if (has.distant) {
     const r = sp.def.range;
-    out.range = r === 'touch' ? 30 : typeof r === 'number' && r >= 5 ? sp.range * 2 : fail('Distant Spell is for a spell with a range of Touch or of 5 feet or more.');
+    out.range = r === 'touch' ? 30 : typeof r === 'number' && r >= 5 ? rangeAt(sp.def, e.level) * 2 : fail('Distant Spell is for a spell with a range of Touch or of 5 feet or more.');
   }
   if (has.extended) {
     const m = durationMinutes(sp.def.duration);
@@ -543,7 +543,9 @@ function castSpell(s, a, ctx, ev, item) {
     const toucher = deliverFor(s, e, sp, a);
     // Eldritch Spear (`spellRange: { spell, add }`): that spell's range is longer by so many feet.
     const spear = (e.feats ?? []).reduce((n, f) => n + (f.spellRange?.spell === a.spell ? f.spellRange.add : 0), 0);
-    const range = typeof (mm.range ?? sp.range) === 'number' && spear ? (mm.range ?? sp.range) + spear : mm.range ?? sp.range;
+    // The range grown by character level (`higher.range`: Spare the Dying) is the spell's own before a Metamagic or the Spear changes it.
+    const grown = typeof sp.range === 'number' ? rangeAt(sp.def, casterLevel) : sp.range;
+    const range = typeof (mm.range ?? grown) === 'number' && spear ? (mm.range ?? grown) + spear : mm.range ?? grown;
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
     if (sp.aim === 'area') {
