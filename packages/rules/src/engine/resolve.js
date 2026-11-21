@@ -1,6 +1,7 @@
 // The engine's machinery for what actions do (engine.js): the attack roll, damage, falls, pushes
 // and teleports, reactions that answer them, the kit lent to the effect runner (effects.js), and how
 // a fight starts, passes from turn to turn and ends.
+import { noteRuns } from '../todo.js';
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
@@ -340,6 +341,7 @@ function beginTurn(s, e, ev) {
   e.reactionUsed = false;
   delete e.cond.dodging;
   ev.push({ type: 'turn', id: e.id, round: enc.round });
+  noteRuns(s, e, 'turn');                                              // abilities the DM runs for this creature (todo.js)
   // E23 with CAST_TAKES_FIRST_ACTION (casting.js): the hostile cast that started the fight was this turn's action (or
   // Bonus Action) and its one spell slot.
   const owed = enc.owed?.[e.id];

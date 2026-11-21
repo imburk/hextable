@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="./mycharacters.css">
 <link rel="stylesheet" href="./feedback.css">
 <link rel="stylesheet" href="./companions.css">
+<link rel="stylesheet" href="./todo.css">
 </head>
 <body>
 <canvas id="gl" aria-label="Game world"></canvas>
@@ -54,6 +55,7 @@
 </div>
 
 <footer id="dock">
+  <p id="todo-wait" role="status" hidden></p>
   <button type="button" id="pace-wait" hidden aria-label="Playing: tap to skip">…</button>
   <div id="party" aria-label="Characters"></div>
   <div id="card" hidden>
@@ -109,6 +111,7 @@
     </section>
     <section id="handouts" class="tabpanel" role="tabpanel" aria-labelledby="btn-handouts" hidden><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
     <section id="dm" class="tabpanel" role="tabpanel" aria-labelledby="tab-dm" hidden>
+  <section id="todo-mount" aria-label="To do" hidden></section>
   <div id="dm-table"></div>
   <section><h3>Take back</h3>
     <div class="row"><button type="button" id="dm-undo" class="undo" disabled><span>Undo</span><small></small></button><button type="button" id="dm-redo" class="undo" disabled><span>Redo</span><small></small></button></div>
