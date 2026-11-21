@@ -91,7 +91,7 @@ export function judge(tag, sit, s) {
     case 'target.halfCover': return sit.cover === undefined ? null : sit.cover === 'half';
     case 'target.threeQuartersCover': return sit.cover === undefined ? null : sit.cover === 'threeQuarters';
     case 'ally.adjacentToTarget':
-      return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && o.side === a.side && apart(s, o, t) <= 1) : null;
+      return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && !incapacitated(o) && o.side === a.side && apart(s, o, t) <= 1) : null;
     case 'enemy.adjacent':
       return a ? Object.values(s.entities).some((o) => upright(o) && o.side !== a.side && apart(s, o, a) <= 1) : null;
     default: return null;
