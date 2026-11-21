@@ -205,10 +205,11 @@ body.editing #dock, body.editing #hint { display: none !important; }
 @media (max-width: 480px) { #tools { gap: 4px; } #tools button { padding: 8px 8px; } }
 
 /* Undo: the DM's top-bar button and the pair in the DM panel */
-#btn-undo:disabled, button.undo:disabled { opacity: .45; }
+#btn-undo:disabled, #btn-redo:disabled, button.undo:disabled { opacity: .45; }
 button.undo { display: inline-flex; flex-direction: column; align-items: flex-start; flex: 1 1 10em; min-width: 0; }
 button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-@media (max-width: 480px) { #btn-undo { font-size: 0; min-width: 40px; } #btn-undo::before { content: "\21B6"; font-size: 18px; line-height: 1; } }
+@media (max-width: 480px) { #btn-undo, #btn-redo { font-size: 0; min-width: 44px; } #btn-undo::before { content: "\21B6"; font-size: 18px; line-height: 1; } #btn-redo::before { content: "\21B7"; font-size: 18px; line-height: 1; } }
+#btn-undo, #btn-redo { -webkit-touch-callout: none; user-select: none; }       /* a press-hold shows the line, not the browser's menu */
 
 /* the DM's marching order */
 #dm-march { list-style: none; margin: 0; padding: 0; }
@@ -352,5 +353,5 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 #readonly-bar { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 61; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: calc(100% - 40px); box-sizing: border-box; padding: 6px 12px; background: var(--bad); color: #fff; border: 2px solid var(--ink); border-radius: var(--radius); font-weight: 700; font-size: 13px; text-align: center; } #readonly-bar[hidden] { display: none; }
 #readonly-bar button { min-height: 36px; background: var(--panel); color: var(--ink); border: 1px solid var(--ink); }
 /* Controls that change the game are out of a read-only window, not only refused when used. */
-body.readonly #tab-dm, body.readonly #dm, body.readonly #btn-undo, body.readonly #menu-new, body.readonly #dm-new, body.readonly #btn-end, body.readonly #ap-body, body.readonly #ap-how { display: none !important; }
+body.readonly #tab-dm, body.readonly #dm, body.readonly #btn-undo, body.readonly #btn-redo, body.readonly #menu-new, body.readonly #dm-new, body.readonly #btn-end, body.readonly #ap-body, body.readonly #ap-how { display: none !important; }
 body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet select, body.readonly #sheet textarea { pointer-events: none; opacity: .5; }

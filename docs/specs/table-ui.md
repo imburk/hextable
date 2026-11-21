@@ -250,7 +250,7 @@ makes two.
 
 | Today (`index.html`) | Goes to |
 |---|---|
-| `#btn-undo` | Stays in the top bar for the DM: undoing must be one tap. |
+| `#btn-undo`, `#btn-redo` | Both stay in the top bar for the DM (#654): undoing must be one tap. Arrows only on a phone, words on a computer; each disabled when there is nothing to take back or put back. What a press would do ("Undo takes back: ...") shows only on a long hover or a 0.5 s press-hold (`undobar.js`, the scroll card of `scrolltip.js`); a hold does not also undo. Players never see them. The pop-outs (#626) keep Undo in the main window only. |
 | `#btn-tracker`, `#tracker` | Tab Turns / Party. The button is removed; `createTracker` gets the drawer section as its `root`. |
 | `#btn-log`, `#log` (`#log-list`, `#note-form`) | Tab Log. `#note-form` stays with it. |
 | In `#log`: `.dice-prefs`: `#dice-show`, `#pace-pick`, `#dice-auto-mine`, `#pace-table` | Tab Settings. They are device preferences. |

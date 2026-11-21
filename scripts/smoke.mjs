@@ -66,6 +66,7 @@ const REGISTRY = {
   allowance: ['allowance'],
   windows: ['windows'],
   newversion: ['newversion'],
+  undobar: ['undobar'],
 };
 
 const only = process.env.SMOKE_ONLY;
