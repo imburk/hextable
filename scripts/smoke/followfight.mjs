@@ -14,8 +14,8 @@ const walkIn = (page, id) => page.evaluate((who) => {
   return !!h.state.encounter;
 }, id);
 
-// The rogue stops following and stands well back (out of the arena the fight will have, in reach of it).
-const apart = (page) => page.evaluate(() => { const h = window.hextable; h.act({ type: 'follow', actor: 'rogue', leader: null }); h.act({ type: 'place', actor: 'rogue', to: { q: -9, r: 4, z: 0 } }); });
+// The rogue stops following: it stays where it started, nine hexes from where the fight will be, just outside its arena and in reach of it.
+const apart = (page) => page.evaluate(() => window.hextable.act({ type: 'follow', actor: 'rogue', leader: null }));
 
 async function pass(browser, url, label, opts) {
   await scenario(label, async (run) => {
@@ -50,7 +50,7 @@ async function pass(browser, url, label, opts) {
         await apart(page);
         if (!(await walkIn(page, 'fighter'))) throw new Error('no fight started');
         await wait(page, () => window.hextable.timeline && window.hextable.waiting === 0);
-        if (await inFight(page, 'rogue')) throw new Error('the rogue is in already');
+        if (await inFight(page, 'rogue')) throw new Error(`the rogue is in already: ${await state(page, (S) => JSON.stringify([S.entities.rogue.pos, S.entities.rogue.follow, S.entities.fighter.pos, S.encounter.center, S.encounter.order.map((o) => o.id)]))}`);
         await waitShown(page, '#join');
         const t = await page.textContent('#join-text');
         if (!/Bring the others in\?/.test(t) || !/Pip/.test(t)) throw new Error(`asks: ${t}`);
@@ -63,7 +63,9 @@ async function pass(browser, url, label, opts) {
       });
       await run.do('one tap brings the rogue in, rolls Initiative, and the question goes', async () => {
         await page.click('#join-yes');
-        await wait(page, () => window.hextable.state.encounter.order.some((o) => o.id === 'rogue'));
+        await wait(page, () => window.hextable.state.encounter.order.some((o) => o.id === 'rogue')).catch(async () => {
+          throw new Error(`the rogue did not join: ${await page.evaluate(() => JSON.stringify({ pos: window.hextable.state.entities.rogue.pos, fp: window.hextable.state.entities.fighter.pos, c: window.hextable.state.encounter.center, join: !document.querySelector('#join').hidden, log: [...document.querySelectorAll('#log-list li')].slice(-4).map((l) => l.textContent) }))}`);
+        });
         await waitShown(page, '#join', false);
         await calm(page);
         await shot(page, 'joined');

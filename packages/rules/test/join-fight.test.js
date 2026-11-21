@@ -78,3 +78,16 @@ test("joinFight is the DM's, needs a fight, and a refusal changes nothing", () =
   assert.equal(apply(s, { type: "joinFight" }, PAT).ok, false);
   assert.deepEqual(s, copy);
 });
+
+test("joinFight: a hero too far to get in stays out and is told so, in a note the screen can show", () => {
+  const s = newGame(7);
+  ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+  const [a, b] = party(s);
+  b.pos = { q: -13, r: 4, z: 0 };
+  ok(apply(s, { type: "startEncounter", center: { q: 2, r: -1 } }, DM));
+  assert.ok(!inOrder(s, b.id));
+  const r = ok(apply(s, { type: "joinFight", who: [b.id] }, DM));
+  assert.ok(!inOrder(s, b.id));
+  assert.ok(r.events.some((e) => e.type === "note" && e.id === b.id && e.why === "joinFight"));
+  assert.deepEqual(b.pos, { q: -13, r: 4, z: 0 }, "it did not move");
+});

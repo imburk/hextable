@@ -1395,7 +1395,7 @@ export function bringIn(s, ids, ev) {
     const near = living(s).filter((e) => e.side === 'party' && inFight(s, e.id)).sort((a, b) => G.dist(a.pos, f.pos) - G.dist(b.pos, f.pos));
     const leader = near[0];
     const { best, mine } = leader ? placeBehind(s, f, leader, arena, null, foes, G) : { best: null };
-    if (!best) { ev.push({ type: 'note', id: f.id, text: `${f.name} can't get to the fight.` }); continue; }
+    if (!best) { ev.push({ type: 'note', id: f.id, why: 'joinFight', text: `${f.name} can't get to the fight.` }); continue; }
     f.pos = best.v.h;
     ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
     const r = carry(s, f);

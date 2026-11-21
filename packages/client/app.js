@@ -489,6 +489,7 @@ function onUpdate(state, events, fresh) {
   if (refreshAsk && Date.now() - refreshAsk.at > 8000) refreshAsk = null;
   if (refreshAsk) { const say = refreshReport(events, (id) => known.get(id) ?? S.entities[id]?.name ?? 'Someone', refreshAsk); if (say) { refreshAsk = null; toast(say, !/Not refreshed/.test(say)); } }
   for (const e of Object.values(S.entities)) known.set(e.id, shownName(S, e));
+  for (const ev of events) if (ev.type === 'note' && ev.why === 'joinFight') toast(String(ev.text), true);      // a hero who could not get into the fight (`joinFight`)
   TL.setPace(pace());
   if (first) {
     LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
