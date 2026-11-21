@@ -25,7 +25,7 @@ Immune to the Poisoned condition: the engine never gives it that condition.
 Languages (shown to the DM only; the engine does nothing with them): "Understands one tongue but cannot speak", "telepathy 30 ft.".
 Trait "Pack Tactics": the engine runs this.
   Advantage on its attack rolls.
-    It holds only when an ally of the attacker is within 5 feet of the target.
+    It holds only when an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target.
   The engine knows this id, but sets a flag nothing reads: only the modifiers above do anything.
 Trait "Nimble Escape": the engine runs this.
   The engine knows this id: it lets the creature Disengage or Hide as a Bonus Action (and the monster AI Hides with it in the first round).

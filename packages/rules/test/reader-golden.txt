@@ -309,7 +309,7 @@ The caster gets +1d6 to a D20 Test it fails.
 The caster gets no Opportunity Attacks (it cannot make them).
   It lasts as long as the spell.
 The caster gets Advantage on attack rolls made against it.
-  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, an ally of the attacker is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack and the target is not a Fiend. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
+  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack and the target is not a Fiend. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 It is aimed at the caster alone.
 It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.

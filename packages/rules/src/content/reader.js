@@ -110,7 +110,7 @@ export const TAG_WORDS = {
   within5: 'the two are within 5 feet of each other', beyond5: 'the two are more than 5 feet apart', ranged: 'it is a ranged attack', melee: 'it is a melee attack',
   'attack.advantage': 'the attack roll has Advantage', 'attack.disadvantage': 'the attack roll has Disadvantage', 'target.prone': 'the target is Prone',
   'target.unconscious': 'the target is Unconscious', 'attacker.unseen': 'the target cannot see the attacker', 'target.unseen': 'the attacker cannot see the target',
-  'ally.adjacentToTarget': 'an ally of the attacker is within 5 feet of the target', 'enemy.adjacent': 'an enemy is within 5 feet of the attacker',
+  'ally.adjacentToTarget': 'an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target', 'enemy.adjacent': 'an enemy is within 5 feet of the attacker',
   'long.range': 'the attack is at long range', 'target.halfCover': 'the target has Half Cover', 'target.threeQuartersCover': 'the target has Three-Quarters Cover',
   'target.seesSource': 'the target can see the caster', 'attack.hit': 'the damage comes from an attack roll that hit', 'attack.weapon': 'the attack is made with a weapon (an Unarmed Strike is not)', 'attack.weaponOrUnarmed': 'the attack is made with a weapon or is an Unarmed Strike',
   'attack.str': 'the attack uses Strength', 'attack.spell': 'it is a spell\'s attack roll', 'self.notIncapacitated': 'it is not Incapacitated',
