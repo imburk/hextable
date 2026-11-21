@@ -344,7 +344,7 @@ stage named. Amendment lines for `homebrew.md` ("what the vocabulary can say") a
 4. **Feature action and item activation key `hit: { with, once? }`**, **`upTo`** on an activation (O3).
 5. **Step `nextHit: { effects }`** (O3).
 6. **Step `imbue`**, with `abil`, `die`, `plus` (`bySlot` amounts), `attackAdd`, `types`, `weapons`, `melee`,
-   `nonmagical`; **feature action key `withAttack: true`** (O4).
+   `nonmagical`; **feature action key `withAttack: true`** (O4, built in #666; see the build notes).
 7. **Step `weaponAttack: { abil, types, extra }`** (O5).
 8. **Tags `target.hurt`, `self.reckless`; op `twice`** (O6).
 9. Later, with the pact weapon: `slotCost: 'pact'` and `perSlot` on a feature action (Eldritch Smite).
@@ -461,4 +461,23 @@ Each has the default the jobs above are written to.
 
 ## Build notes
 
-None yet.
+**O4 (#666), built.** Where the build settled what the stage text left open:
+
+- **`imbue.js`** (new, pure) holds `armed(s, e, atk)`, so the client can import it as `./shared/imbue.js` and the engine reads the same function. The part on the effect is
+  `{ target, imbue: { weapon, name, abil?, die?, plus?, attackAdd?, types? } }`, numbers already worked out when it was made (the die by the caster's character level, `plus` by
+  the slot, `attackAdd` as `{ mod, min }` for the caster, `abil` as the caster's spellcasting ability for the spell). `weapon` is the record key (`quarterstaff`, `item-<id>`).
+- **`armed`**: `abil: 'spell'` is "you can use", so the better of the record's ability and the spell's is taken for attack and damage; `die` becomes the imbue die unless the
+  record's own (a Monk's) has the higher average; `plus` adds to attack and damage and makes the weapon magic; `attackAdd` adds to the attack roll alone and is the number it had
+  when used (Sacred Weapon: Charisma at that moment, at least +1); `types` becomes `alt`, and `resolveAttack` takes the type that hurts the target most (`bestType`, Q5).
+- **`melee: true`** means a Melee weapon (by the weapon's kind, a thrown handaxe included), checked when the weapon is named, not a limit to melee attacks.
+- **Naming the weapon.** `cast` takes `weapon` (a record key); with none named and exactly one that fits it is used; with none that fits, or several and none named, the cast is
+  refused before anything is spent. `nonmagical` ignores the caster's own earlier cast of the same spell, which the new one replaces.
+- **`attack` takes `use: <feature id>`** for a feature whose action has `withAttack` (free, on itself, with an `imbue` step). It goes with the attack that takes the Attack action in
+  a fight (a weapon's own Damage option; not pooled, Bonus Action or Flurry); the feature handler pays and runs it before the roll. `feature` by hand refuses it.
+- **Ending.** A new imbue by the same creature from the same spell or feature ends the old one (`rolls.js`, `imbue`). `settleImbue` (`engine/resolve.js`, called first in
+  `settleBonds`, so after every action with no change to `engine.js`) ends a part whose creature has no record of that weapon any more, and the effect when none is left.
+- **Old records (Q8).** A weapon record without `die` is not changed; the cast makes the effect and tells the DM with a `manual` naming it; it takes hold at the next remake.
+- **Records** gain `die`, `plus`, `trained` and `magic` (a magic item). `trained` repeats `untrained` the other way round; `untrained` stays.
+- **Tiers.** Shillelagh and Magic Weapon `auto`; Sacred Weapon `assist` (its light stays the DM's, a `manual` step).
+- **Client.** The Attacks tab and the sheet show the imbued numbers; a cast that changes a weapon asks which when more than one fits; Sacred Weapon is chosen with the attack on
+  the strike card, and its Features row says so.

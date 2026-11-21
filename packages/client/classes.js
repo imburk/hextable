@@ -283,7 +283,15 @@ export function strikeChoices(st, e, a) {
     out.cunning = { name: C.name, options: C.options, max: C.max, dice,
       why: !dice ? `${e.name} has no Sneak Attack.` : dice < 2 ? `${e.name}'s Sneak Attack is one die: none is left to spend.` : flags[`sneak:${e.id}`] ? `${e.name} has already dealt Sneak Attack this turn.` : '' };
   }
-  return out.brutal || out.cunning ? out : null;
+  // A feature used with the Attack action (`withAttack`: Sacred Weapon; imbue.js) is chosen with the attack that takes the action.
+  const W = (e.feats ?? []).find((f) => f.action?.withAttack);
+  // Offered only where it can be used: on the attack that takes the Attack action (the first), on its creature's own turn.
+  const b = enc?.budget;
+  if (W && a.weapon && CONTENT.weapons[a.weapon]?.kind === 'melee' && mine && b && b.action >= 1 && !b.attacks && !b.bonusAttacks) {
+    const left = e.uses?.[W.action.cost?.resource ?? W.id] ?? 0;
+    out.use = { id: W.id, name: W.name, why: left < (W.action.cost?.n ?? 1) ? `${e.name} has no uses of ${(e.feats ?? []).find((f) => f.id === W.action.cost?.resource)?.name ?? W.name} left.` : '' };
+  }
+  return out.brutal || out.cunning || out.use ? out : null;
 }
 
 export const metamagicKnown = (e) => (e.feats ?? []).filter((f) => f.metamagic);
@@ -658,15 +666,24 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   }
 
   // ---------- Brutal Strike and Cunning Strike: chosen with an attack ----------
-  const attackExtra = (st) => ({ ...(st.brutal ? { brutal: st.brutal } : {}), ...(st.cunning.length ? { cunning: [...st.cunning] } : {}) });
+  const attackExtra = (st) => ({ ...(st.use ? { use: st.use } : {}), ...(st.brutal ? { brutal: st.brutal } : {}), ...(st.cunning.length ? { cunning: [...st.cunning] } : {}) });
   function strikePanel(e, a) {
-    const ch = strikeChoices(S(), e, a) ?? { brutal: null, cunning: null }, key = `${e.id}:strike:${a.id}`;
-    const st = mem(key, () => ({ brutal: null, cunning: [] }));
+    const ch = strikeChoices(S(), e, a) ?? { brutal: null, cunning: null, use: null }, key = `${e.id}:strike:${a.id}`;
+    const st = mem(key, () => ({ brutal: null, cunning: [], use: null }));
+    if (!ch.use || ch.use.why) st.use = null;
     if (!ch.brutal || ch.brutal.why || !ch.brutal.options.some((o) => o.id === st.brutal)) st.brutal = null;
     if (!ch.cunning || ch.cunning.why) st.cunning = [];
     else st.cunning = st.cunning.filter((id) => ch.cunning.options.some((o) => o.id === id && !optionWhy(e, o)));
     const draw = () => show(strikePanel(e, a));
     const body = [];
+    if (ch.use) {
+      const u = ch.use;
+      body.push(h('div', { class: 'cp-f', 'data-part': 'use' }, h('span', { text: `${u.name}: used with this attack, it changes the weapon for 10 minutes` }),
+        u.why ? h('p', { class: 'cp-note cp-why', text: u.why }) : null,
+        h('label', { class: `cp-check cp-opt${u.why ? ' off' : ''}`, 'data-use': u.id },
+          h('input', { type: 'checkbox', checked: st.use === u.id, disabled: !!u.why, onchange: (ev) => { st.use = ev.target.checked ? u.id : null; draw(); } }),
+          h('span', {}, h('b', { text: u.name })))));
+    }
     if (ch.brutal) {
       const b = ch.brutal;
       body.push(h('div', { class: 'cp-f', 'data-part': 'brutal' }, h('span', { text: `${b.name}: give up Advantage from Reckless Attack for ${b.dice} more damage and one effect` }),
@@ -686,7 +703,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
             h('span', {}, h('b', { text: o.name }), ` · costs ${o.cost} ${o.cost === 1 ? 'die' : 'dice'}`, h('small', { text: why || optionNeeds(o).join('. ') })));
         })));
     }
-    const names = [st.brutal ? ch.brutal.options.find((o) => o.id === st.brutal).name : '', ...st.cunning.map((id) => ch.cunning.options.find((o) => o.id === id).name)].filter(Boolean);
+    const names = [st.use ? ch.use.name : '', st.brutal ? ch.brutal.options.find((o) => o.id === st.brutal).name : '', ...st.cunning.map((id) => ch.cunning.options.find((o) => o.id === id).name)].filter(Boolean);
     return {
       key, title: `${a.name}: strike options`, note: `${signedN(a.bonus)} to hit, ${a.damage} ${a.dtype}. Pick what goes with this attack, then tap the target. Nothing picked is a plain attack.`, body,
       buttons: [{ label: names.length ? `Choose target (${names.join(' + ')})` : 'Choose target', primary: true, id: 'cp-use', run: () => { close(); armAttack({ id: a.id, ...(names.length ? { label: names.join(' + '), extra: attackExtra(st) } : {}) }); } }],
