@@ -11,6 +11,7 @@ export function typed(s, id) {
 
 // A view or an event list as text, without the one `dc` a built hero's Unarmed Strike entry carries (the hero's own grapple save DC, not a DC the table keeps
 // secret). Every other `dc` stays in the text, so a leaked trap or monster DC is still found. For tests that look for a secret DC in what a player is sent.
+// (`startsWith`: a Monk's Bonus Action strike is `unarmed-strike-bonus`.)
 export const plain = (x) => JSON.stringify(x, function (k, v) { return k === "dc" && typeof this.id === "string" && this.id.startsWith("unarmed-strike") ? undefined : v; });
 
 // A new game whose starters are all hand-typed, as every valley was before they got sheets (#672): for the replays and goldens that

@@ -35,6 +35,7 @@ function run() {
 
 test("the plain new game with built heroes plays a fight and sends each player what it always sent", () => {
   const got = JSON.parse(JSON.stringify(run()));
+  assert.deepEqual(JSON.parse(JSON.stringify(run())), got, "two runs of the script give the same output");
   if (process.env.GOLDEN_WRITE) { writeFileSync(FIXTURE, JSON.stringify(got, null, 1) + "\n"); return; }
   const want = JSON.parse(readFileSync(FIXTURE, "utf8"));
   assert.equal(got.length, want.length);

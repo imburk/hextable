@@ -250,20 +250,21 @@ export function migrate(state) {
   return state;
 }
 
-// Is this creature still the starter the pack typed, in everything the pack says (its numbers, attacks, gear, skills, spells, saves, features), with nothing
-// added by hand? Play state (Hit Points, conditions, uses, slots spent, XP, place, look, owner, purse) does not count. The sheet derives all of it again at the next
-// Level up or Refresh, so a starter the DM edited in any of these is left typed: those edits would be lost.
-const PLAY_KEYS = new Set(['hp', 'tempHp', 'cond', 'uses', 'slots', 'xp', 'pos', 'look', 'id', 'kind', 'side', 'owner', 'ownerName', 'coins', 'death', 'dead', 'reactionUsed', 'maxHp', 'slotsMax', 'initiative']);
+// Is this creature still the starter the pack typed, in everything the pack says (its numbers, attacks, skills, spells, saves, features), with nothing built
+// onto it? Gear is play state (loot, purchases; `levelUp` keeps it), and so is everything else a creature picks up in play (hiding, light, reactions, following,
+// riding, a bond, a Speed the DM set...), none of which is compared. Only the keys that a built character alone has count against it. The sheet derives the compared
+// fields again at the next Level up or Refresh, so a starter the DM edited in any of them is left typed: those edits would be lost.
+const BUILT_ONLY = ['feats', 'hitDie', 'armour', 'shield', 'untrained', 'critOn', 'bonusActs', 'pact', 'conditionImmune', 'classes', 'sheet'];
 const DERIVED_EMPTY = ['speeds', 'senses', 'saveBonus', 'skillBonus', 'resist', 'vuln', 'immune'];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function isPackStarter(e, t) {
   if (e.tpl !== undefined || e.maxHp !== t.hp || !same(e.slotsMax ?? {}, t.slots ?? {}) || (e.size ?? 'medium') !== 'medium') return false;
-  for (const k of Object.keys(t)) if (!['hp', 'slots'].includes(k) && !same(e[k], t[k])) return false;
+  if (BUILT_ONLY.some((k) => e[k] !== undefined)) return false;
+  for (const k of Object.keys(t)) if (!['hp', 'slots', 'gear'].includes(k) && !same(e[k], t[k])) return false;
   for (const k of ['skills', 'expertise', 'tools', 'spells']) if (t[k] === undefined && !same(e[k] ?? [], [])) return false;
   if (t.features === undefined && !same(e.features ?? {}, {})) return false;
   for (const k of DERIVED_EMPTY) if (!same(e[k] ?? (['resist', 'vuln', 'immune'].includes(k) ? [] : {}), ['resist', 'vuln', 'immune'].includes(k) ? [] : {})) return false;
-  const known = new Set([...Object.keys(t), ...PLAY_KEYS, ...DERIVED_EMPTY, 'level', 'size', 'features', 'skills', 'expertise', 'tools', 'spells']);
-  return Object.keys(e).every((k) => known.has(k));
+  return true;
 }
 
 const isRec = (v) => !!v && typeof v === 'object' && !Array.isArray(v);

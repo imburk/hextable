@@ -42,7 +42,7 @@ test("an old save's starter, once it has its sheet, levels up and keeps what pla
 test("an old save's starter stays typed when the DM edited anything the sheet would derive again", () => {
   const edits = {
     fighter: (e) => { e.attacks[0].damage = "1d10+3"; },
-    rogue: (e) => { e.gear.push("Rope"); },
+    rogue: (e) => { e.attacks.push({ id: "x", name: "X", type: "melee", bonus: 1, damage: "1d4", dtype: "piercing", reach: 5 }); },
     cleric: (e) => { e.spells.push("bless"); },
     wizard: (e) => { e.skills.push("stealth"); },
   };
@@ -57,4 +57,17 @@ test("an old save's starter stays typed when the DM edited anything the sheet wo
   const play = typedGame(4), f = play.entities.fighter;      // play state alone does not count
   f.hp = 3; f.xp = 500; f.uses.secondWind = 0; f.cond.prone = {}; f.coins = { gp: 5 }; f.pos = { q: 1, r: 1, z: 0 };
   assert.ok(migrate(structuredClone(play)).entities.fighter.sheet);
+});
+
+test("an old save's starter keeps getting its sheet through ordinary play, and changed gear survives the first Level up", () => {
+  const old = typedGame(4), r = old.entities.rogue;
+  Object.assign(r, { hiding: { dc: 14 }, stealthNoted: true, hidden: true, light: "torch", reactions: { "opportunity-attack": "ask" }, follow: "fighter", march: 1, riding: { on: "m1" }, away: true, speedSet: { walk: 35 }, hd: 1 });
+  r.gear.push("Rope"); r.gear = r.gear.filter((g) => g !== "Shortbow");
+  const s = migrate(structuredClone(old));
+  assert.ok(s.entities.rogue.sheet, "play-state keys and changed gear do not strand a starter");
+  const sheet = { ...structuredClone(s.entities.rogue.sheet), level: 2 };
+  assert.ok(apply(s, { type: "levelUp", actor: "rogue", sheet }, DM).ok);
+  assert.ok(s.entities.rogue.gear.includes("Rope") && !s.entities.rogue.gear.includes("Shortbow"), "the hero's gear survives the Level up");
+  const built = typedGame(4); built.entities.cleric.feats = [{ id: "x" }];
+  assert.equal(migrate(structuredClone(built)).entities.cleric.sheet, undefined, "a key only a built character has keeps it typed");
 });
