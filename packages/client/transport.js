@@ -478,7 +478,7 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
 
   const open = () => {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-    ws.onopen = () => { retry = 0; if (everOpen) reconnects.push(Date.now()); everOpen = true; waitingPong = null; startLink(); ws.send(JSON.stringify(hello)); };
+    ws.onopen = () => { retry = 0; if (everOpen) { reconnects.push(Date.now()); t.on.reconnected?.(); } everOpen = true; waitingPong = null; startLink(); ws.send(JSON.stringify(hello)); };
     ws.onmessage = (m) => {
       const msg = JSON.parse(m.data);
       if (msg.t === 'welcome') {
