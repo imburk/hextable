@@ -181,10 +181,10 @@ test("shops: a stall opened and never shown to anyone is in nothing any player i
   twin(stallScenario, { hide: (w) => w.must(STALL), plain: (w) => { w.must({ ...STALL, name: "Burnt" }); w.must({ type: "closeShop", shop: Object.values(w.state.shops).find((x) => x.name === "Burnt").id }); } });
 });
 // Found by this harness: the shop's id (and the fight's number) count what players were not shown. Issue #630.
-test("shops: the id of a shop does not tell how many unshown shops there are", { todo: "#630" }, () => {
+test("shops: the id of a shop does not tell how many unshown shops there are", () => {
   twin(stallScenario, (w) => w.must(STALL));
 });
-test("creatures: a fight's number does not tell how many hidden creatures there are (DEBT T11)", { todo: "#630" }, () => {
+test("creatures: a fight's number does not tell how many hidden creatures there are (DEBT T11)", { todo: "DEBT T11: creature ids still share one counter (fight numbers fixed by #630)" }, () => {
   twin({
     players: ["Pat"],
     setup(w) { w.state.entities.fighter.owner = w.ids.Pat; w.must({ type: "setting", key: "autoEngage", value: false }); w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Seen" }); w.putIn(); w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 }); },
