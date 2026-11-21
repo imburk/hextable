@@ -54,6 +54,10 @@ test("an old save's starter stays typed when the DM edited anything the sheet wo
     const old = typedGame(4); edit(old.entities[id]);
     assert.equal(migrate(structuredClone(old)).entities[id].sheet, undefined, `${id} (speed, saves, features, resistance)`);
   }
+  for (const [id, edit] of Object.entries({ fighter: (e) => { e.hover = true; }, rogue: (e) => { e.castAbil = "int"; }, cleric: (e) => { e.acBase = 13; }, wizard: (e) => { e.type = "fey"; } })) {
+    const old = typedGame(4); edit(old.entities[id]);
+    assert.equal(migrate(structuredClone(old)).entities[id].sheet, undefined, `${id} (a record field the pack never gave it)`);
+  }
   const play = typedGame(4), f = play.entities.fighter;      // play state alone does not count
   f.hp = 3; f.xp = 500; f.uses.secondWind = 0; f.cond.prone = {}; f.coins = { gp: 5 }; f.pos = { q: 1, r: 1, z: 0 };
   assert.ok(migrate(structuredClone(play)).entities.fighter.sheet);

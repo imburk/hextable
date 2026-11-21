@@ -263,6 +263,8 @@ function isPackStarter(e, t) {
   for (const k of Object.keys(t)) if (!['hp', 'slots', 'gear'].includes(k) && !same(e[k], t[k])) return false;
   for (const k of ['skills', 'expertise', 'tools', 'spells']) if (t[k] === undefined && !same(e[k] ?? [], [])) return false;
   if (t.features === undefined && !same(e.features ?? {}, {})) return false;
+  // A record field the pack never gives this hero, set on it all the same, is an edit too (schema.js RECORD_FIELDS).
+  for (const k of ['acBase', 'hover', 'hitDice', 'spellAbil', 'type', 'castAbil']) if (t[k] === undefined && e[k] !== undefined) return false;
   for (const k of DERIVED_EMPTY) if (!same(e[k] ?? (['resist', 'vuln', 'immune'].includes(k) ? [] : {}), ['resist', 'vuln', 'immune'].includes(k) ? [] : {})) return false;
   return true;
 }

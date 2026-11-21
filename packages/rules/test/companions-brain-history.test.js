@@ -83,6 +83,7 @@ test("saves made by main's code before C7 load unchanged and the brain plays on 
   assert.equal(SAVES.length, 4);
   for (const { grid, at, state } of SAVES) {
     const raw = json(state), s = migrate(JSON.parse(raw));
+    assert.ok(s.entities.fighter?.sheet, "the migration ran on this save: its fighter has a sheet");
     for (const id of ["fighter", "rogue", "cleric", "wizard"]) delete s.entities[id]?.sheet;      // an old save's starters are given their sheets on load (#672): the one change not counted here
     const { packs, scoreRolls, world, place, parked, journey, markets, shops, fightSeq, ...rest } = s;                     // version 24 (#390) raises the version and adds `packs: []`; nothing else changes
     assert.deepEqual(packs, []); assert.deepEqual(scoreRolls, {});   // version 25 (#557) adds `scoreRolls`
