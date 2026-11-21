@@ -119,7 +119,7 @@ body[data-menu-shape="columns"][data-drawer="right"] .menu-level[data-new="true"
 /* a wide screen that cannot hold three columns folds the first level away while a screen is open under Table; the breadcrumb goes back */
 @media (max-width: 1099px) { body[data-menu-shape="columns"] #drawer[data-cols="3"] #menu-root { display: none; } }
 /* the pinned menu has no dimmed map; a wide menu's scrim starts below the top bar, which stays clear (the token closes it again, and Undo stays one tap away) */
-@media (min-width: 900px) { body:not(.drawer-pinned) #drawer { top: calc(max(10px, env(safe-area-inset-top)) + 54px); padding-top: 0 !important; } body[data-menu-shape="columns"] #drawer-scrim { top: calc(max(10px, env(safe-area-inset-top)) + 54px); } }
+@media (min-width: 900px), (max-height: 500px) { body:not(.drawer-pinned) #drawer { top: calc(max(10px, env(safe-area-inset-top)) + 54px); padding-top: 0 !important; } body[data-menu-shape="columns"] #drawer-scrim { top: calc(max(10px, env(safe-area-inset-top)) + 54px); } }
 @media (min-width: 1480px) { body[data-menu-shape="columns"] #drawer { bottom: 0; } }      /* the dock (max 760 wide, centred) is clear of it from here */
 body[data-menu-shape="columns"].drawer-pretable #drawer, body.drawer-pinned #drawer { bottom: 0; }
 .set-rules { margin: 0 0 8px; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
@@ -142,3 +142,15 @@ body[data-menu-shape="columns"].drawer-pretable #drawer, body.drawer-pinned #dra
 @media (prefers-reduced-motion: reduce) { .splash-bar i { animation: none; width: 100%; } #splash { transition: none; } }
 #splash-about { min-height: 44px; }
 #lobby-about { min-height: 44px; }
+
+/* a short screen (a phone on its side): the dock is the whole screen, so while the menu is open it steps aside and the menu takes the room down to the bottom edge */
+@media (max-height: 500px) {
+  body.drawer-open:not(.drawer-pretable) #dock { visibility: hidden; pointer-events: none; }
+  body.drawer-open #drawer, body[data-menu-shape="columns"] #drawer { bottom: 0; }
+  body.drawer-open #drawer-scrim { bottom: 0; }
+  body[data-menu-shape="columns"] .menu-level { padding-bottom: 84px; }
+}
+/* and the token cannot sit above a dock that fills the screen: on a short screen it takes the bottom-left corner, in the margin beside the dock */
+@media (max-height: 500px) {
+  body[data-token] #btn-menu { width: 56px; height: 56px; top: auto; right: auto; left: calc(4px + env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); transform: translateX(var(--tok-l, 0px)); }
+}

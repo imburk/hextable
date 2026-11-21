@@ -373,9 +373,55 @@ async function drawerTable(browser, url) {
   });
 }
 
+// A phone on its side is 390 high and the dock fills it: the menu must still be reachable and tappable, and the dock must come back.
+async function drawerLandscape(browser, url) {
+  await scenario('drawer at 844x390 with touch', async (run) => {
+    const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true });
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      await open(page, url); await playSolo(page); await wait(page, () => window.hextable.state.entities.fighter);
+      const boxOf = (sel) => page.evaluate((x) => { const r = document.querySelector(x).getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; }, sel);
+      await run.do('the token is on the screen and at least 44 px, with the dock showing', async () => {
+        const t = await boxOf('#btn-menu');
+        if (t.t < 0 || t.b > 390 || t.l < 0 || t.r > 844 || t.w < 44 || t.h < 44) throw new Error(`the token is at ${JSON.stringify(t)}`);
+        if (!(await shown(page, '#dock'))) throw new Error('no dock');
+      });
+      await run.do('the menu opens, the dock steps aside, every first-level row is tappable and none is under the token', async () => {
+        await page.tap('#btn-menu'); await waitShown(page, '#drawer');
+        await sleep(500);
+        const rows = await page.$$eval('#menu-root [data-go]', (x) => x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go, t: r.top, b: r.bottom, l: r.left, r: r.right, h: r.height }; }));
+        if (rows.length < 5) throw new Error(`rows: ${JSON.stringify(rows)}`);
+        const tok = await boxOf('#btn-menu');
+        for (const r of rows) {
+          if (r.h < 44) throw new Error(`row ${r.k} is ${r.h} high`);
+          if (r.l < tok.r && r.r > tok.l && r.b > tok.t && r.t < tok.b) throw new Error(`row ${r.k} is under the token`);
+        }
+        if (await shown(page, '#dock') && (await page.evaluate(() => getComputedStyle(document.getElementById('dock')).visibility)) !== 'hidden') throw new Error('the dock is still showing over the menu');
+        const dr = await boxOf('#drawer');
+        if (dr.h < 300) throw new Error(`the menu is only ${dr.h} high`);
+      });
+      await run.do('Settings is reached by taps, one setting changes, and closing brings the dock back', async () => {
+        await openMenu(page, 'table/settings');
+        await page.selectOption('#set-motion', 'appear');
+        if ((await page.evaluate(() => document.body.dataset.menuMotion)) !== 'appear') throw new Error('the motion setting did not take');
+        await page.selectOption('#set-motion', 'slide');
+        await closeMenu(page);
+        await sleep(300);
+        const vis = await page.evaluate(() => getComputedStyle(document.getElementById('dock')).visibility);
+        if (vis !== 'visible' || !(await shown(page, '#dock'))) throw new Error(`the dock did not come back (${vis})`);
+        const t = await boxOf('#btn-menu');
+        if (t.t < 0 || t.b > 390) throw new Error(`the token is off the screen: ${JSON.stringify(t)}`);
+      });
+      await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-landscape.png` : '/dev/null' }).catch(() => {});
+    } finally { await ctx.close(); }
+  });
+}
+
 // Registered in scripts/smoke.mjs as SMOKE_ONLY=drawer.
 export default async function (browser, url) {
   await drawerPass(browser, url, 'drawer at 1280x800', { viewport: { width: 1280, height: 800 } });
   await drawerPass(browser, url, 'drawer at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await drawerLandscape(browser, url);
   await drawerTable(browser, url);
 }
