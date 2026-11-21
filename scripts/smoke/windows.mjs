@@ -1,5 +1,5 @@
 // Several game windows in one browser, each its own seat (#625): the table session belongs to the window, a solo save has one writer.
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, openTab, closeMenu, selectAndMove } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, openTab, selectAndMove } from './lib.mjs';
 
 const text = (page, sel) => page.$eval(sel, (e) => e.textContent.trim());
 const seat = (page) => page.evaluate(() => JSON.parse(sessionStorage.getItem('hextable.session') ?? 'null'));
@@ -37,12 +37,12 @@ async function table(browser, url) {
         await pl.click('#lobby-else');
         if ((await pl.inputValue('#lobby-code')) !== code) throw new Error('the code was not filled in');
         await pl.fill('#lobby-name', 'Window Player'); await pl.click('#lobby-join');
-        await wait(pl, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
-        await openTab(dm, 'dm'); await waitShown(dm, '#dm');
+        await wait(pl, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent)).catch(async (e) => { throw new Error(`no wait message: "${await text(pl, '#lobby-msg')}" ${e.message.split('\n')[0]}`); });
+        await openTab(dm, 'dm').catch((e) => { throw new Error(`openTab: ${e.message.split('\n')[0]}`); });
         await dm.click('#dm-table button:has-text("Let in")');
-        await waitShown(pl, '#lobby', false);
-        await wait(pl, () => window.hextable.state?.entities?.fighter);
-        await closeMenu(dm);
+        await waitShown(pl, '#lobby', false).catch(async (e) => { throw new Error(`still in the lobby: "${await text(pl, '#lobby-msg')}" ${e.message.split('\n')[0]}`); });
+        await wait(pl, () => window.hextable.state?.entities?.fighter).catch((e) => { throw new Error(`no state after let in: ${e.message.split('\n')[0]}`); });
+        // The DM's drawer is left open: both windows render in software on one machine, and the DM has nothing more to tap.
         plSeat = await seat(pl);
         const dmSeat = await seat(dm);
         if (!plSeat || plSeat.token === dmSeat.token) throw new Error('the two windows share a seat');
@@ -80,9 +80,14 @@ async function table(browser, url) {
 
       await run.do('a dropped connection reconnects each window on its own, to its own seat', async () => {
         await pl.evaluate(() => window.hextable.dropSocket()); await dm.evaluate(() => window.hextable.dropSocket());
-        await sleep(300);
-        await dm.evaluate((i) => window.hextable.act({ type: 'setHp', actor: i, hp: 1 }), id);
-        await wait(pl, (i) => window.hextable.state.entities[i].hp === 1, id, 15000);
+        // The DM keeps acting until its connection is back (an action sent while it is down is refused, not queued); the player must then see it, on its own seat.
+        let seen = false;
+        for (let i = 0; i < 40 && !seen; i++) {
+          await dm.evaluate((c) => window.hextable.act({ type: 'setHp', actor: c, hp: 1 }), id);
+          seen = await pl.evaluate((c) => window.hextable.state.entities[c].hp === 1, id);
+          if (!seen) await sleep(500);
+        }
+        if (!seen) throw new Error('the player did not see the DM act after the connection came back');
         if ((await seat(pl)).token !== plSeat.token) throw new Error('the player window changed seat after reconnecting');
         if (!(await state(pl, (S, i) => !!S.entities[i].owner, id))) throw new Error('the player lost the character');
       });
