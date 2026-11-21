@@ -28,7 +28,6 @@ import { appendFileSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSyn
 import { appendFile, rename, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { TIMELINE_CAP } from "../../rules/src/timeline.js";
 
 export const JOURNAL_VERSION = 1;
 export const FILE_MAX_BYTES = 5 * 1024 * 1024;      // a journal file is closed when it passes this
@@ -55,9 +54,9 @@ export function hashState(state) {
 // The dice counter: a keyed generator's position, or the integer a seeded one has come to.
 export const diceOf = (state) => (state?.rng !== null && typeof state?.rng === "object" ? state.rng.n : state?.rng ?? null);
 
-const noop = { before: () => null, accepted() {}, restored() {}, reset() {}, sweep() {}, flushSync() {}, idle: async () => {} };
+const noop = { setCap() {}, before: () => null, accepted() {}, restored() {}, reset() {}, sweep() {}, flushSync() {}, idle: async () => {} };
 
-export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, keep = FILES_KEPT, retryMs = RETRY_MS, queueMax = QUEUE_MAX_BYTES, totalMax = TOTAL_MAX_BYTES, timelineCap = TIMELINE_CAP, now = Date.now, log = (line) => console.error(line) } = {}) {
+export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, keep = FILES_KEPT, retryMs = RETRY_MS, queueMax = QUEUE_MAX_BYTES, totalMax = TOTAL_MAX_BYTES, now = Date.now, log = (line) => console.error(line) } = {}) {
   if (!enabled || !dir) return noop;
   const open = new Map();           // table code -> { n, path, bytes, lines, failed, cap }: the file being written
   const wait = new Map();           // table code -> no new file before this time (after a failure)
@@ -65,6 +64,7 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
   const lastWhy = new Map();        // table code -> why the next file is a new one (undo, packs, lost, ...), for its header
   const pairs = new Map();          // "CODE n" -> { code, n, bytes, t, live }: every file pair on disk (snapshot and lines), for the caps
   const next = new Map();           // table code -> the number the next file takes
+  let timelineCap = null;           // the table's timeline cap: createTables owns it and hands it over (setCap)
   let total = 0, queue = [], pending = 0, running = null, inflight = null;
 
   // What the folder already holds, once: so a restart goes on from the highest number, never overwrites a file, and knows what the caps count.
@@ -151,7 +151,7 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
     const e = { code, n, bytes: sbytes, t: now(), live: true };
     pairs.set(`${code} ${n}`, e); total += sbytes;
     if (!enqueue({ op: "snapshot", code, file: f, path: join(dir, snapshotName(code, n)), text: snapshot })) return null;
-    write(code, f, JSON.stringify({ k: "open", v: JOURNAL_VERSION, table: code, file: n, at, sv: t.state.version ?? null, d: diceOf(t.state), h: hash, cap: timelineCap, snapshot: snapshotName(code, n), ...(why && { why }) }) + "\n");
+    write(code, f, JSON.stringify({ k: "open", v: JOURNAL_VERSION, table: code, file: n, at, sv: t.state.version ?? null, d: diceOf(t.state), h: hash, ...(timelineCap !== null && { cap: timelineCap }), snapshot: snapshotName(code, n), ...(why && { why }) }) + "\n");
     prune(code, n);
     return f;
   }
@@ -182,8 +182,10 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
   };
 
   return {
-    // Open the file if need be and note the dice before the action. The table's timeline cap (the option) goes in every header, whichever
-    // path opens the file, so that a replay trims the timeline as the server does. Null when there is no journal to write to: the action goes on all the same.
+    // The timeline cap createTables applies after each undoable action; every header records it, whichever path opens the file, so that a
+    // replay trims the timeline as the server does. One source of truth: the journal does not know the rules package.
+    setCap(cap) { if (Number.isInteger(cap) && cap >= 0) timelineCap = cap; },
+    // Open the file if need be and note the dice before the action. Null when there is no journal to write to: the action goes on all the same.
     before(t) {
       return guard(() => {
         if (!t?.state || typeof t.state !== "object") return null;

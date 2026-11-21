@@ -174,7 +174,7 @@ function save(t) {
 const { importAssets, dropAssets } = worldAssets(() => assets);
 
 // The action journal (journal.js, #659): beside each table's save, never in the way of an action.
-const journal = createJournal({ dir: DATA, ...(timelineCap !== undefined && { timelineCap }), ...journalFromEnv(process.env) });
+const journal = createJournal({ dir: DATA, ...journalFromEnv(process.env) });
 const tables = createTables({ journal, load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
 journal.sweep((code) => existsSync(file(code)));        // journals of tables whose save file is gone are removed at start; a save that cannot be read still counts as there (its journal is the best evidence)
 

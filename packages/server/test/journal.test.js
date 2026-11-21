@@ -19,7 +19,7 @@ function client(tables) {
   return { got, say: (m) => session.receive(m), last: (t) => got.findLast((m) => m.t === t) };
 }
 function setup(journalOpts = {}, dir = tmp(), logs = [], tableOpts = {}) {
-  const journal = createJournal({ dir, log: (l) => logs.push(l), ...(tableOpts.timelineCap !== undefined && { timelineCap: tableOpts.timelineCap }), ...journalOpts });
+  const journal = createJournal({ dir, log: (l) => logs.push(l), ...journalOpts });
   const tables = createTables({ seed: () => 5, key: () => KEY, journal, ...tableOpts });
   const dm = client(tables);
   dm.say({ t: "host", name: "Dana-Secret" });

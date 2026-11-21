@@ -97,8 +97,9 @@ export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
 
 // The action journal (journal.js, #659) is told of every accepted action; with none given the calls do nothing.
-const NO_JOURNAL = { before: () => null, accepted() {}, restored() {}, reset() {} };
+const NO_JOURNAL = { setCap() {}, before: () => null, accepted() {}, restored() {}, reset() {} };
 export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {}, journal = NO_JOURNAL } = {}) {
+  journal.setCap(timelineCap);          // one source of truth: the journal writes the cap this table applies into every file's header
   // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
   // rolls (an integer rng, as before version 16) unless they also give a key.
   key ??= seed ? () => null : () => randomBytes(32).toString("hex");
