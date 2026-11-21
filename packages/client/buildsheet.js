@@ -38,7 +38,7 @@ export const armourOptions = (armour, trained) => [['', 'None', false], ...armou
 // The line under the Armour list: what is greyed and why, or '' when nothing is.
 export function armourNote(c, trained, armour) {
   const no = ['light', 'medium', 'heavy', 'shield'].filter((k) => !trained.has(k) && (k === 'shield' || armour.some((a) => a.category === k)));
-  return no.length ? `A ${c.name} has no training with ${no.map((k) => (k === 'shield' ? 'Shields' : `${k} armour`)).join(', ')}, so ${no.length === 1 ? 'it is' : 'they are'} marked. It can still be picked: Disadvantage on Strength and Dexterity rolls and no spellcasting. A feat or a multiclass that gives the training lifts that.` : '';
+  return no.length ? `A ${c.name} has no training with ${no.map((k) => (k === 'shield' ? 'Shields' : `${k} armour`)).join(', ')}, so ${no.length === 1 ? 'it is' : 'they are'} marked. It can still be picked: armour costs Disadvantage on Strength and Dexterity rolls and no spellcasting; a Shield only loses its AC bonus. A feat or a multiclass that gives the training lifts that.` : '';
 }
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
 
@@ -512,7 +512,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     const npA = armour.filter((a) => !trained.has(a.category));
     if (npA.length) {
       const open = gearOpen.armour || npA.some((a) => b.armour === a.id);
-      sec.append(disclosure({ id: 'qb-armour-more', open, text: open ? 'Armour you are not proficient with' : `Show armour you are not proficient with (${npA.length})`, sub: `You can pick them. Each says what it costs: Disadvantage on Strength and Dexterity rolls, and no spellcasting.`, onToggle: (v) => { gearOpen.armour = v; build(); } }), ...(open ? npA.map((a) => ar(a, true)) : []));
+      sec.append(disclosure({ id: 'qb-armour-more', open, text: open ? 'Armour you are not proficient with' : `Show armour you are not proficient with (${npA.length})`, sub: `You can pick them. Armour costs Disadvantage on Strength and Dexterity rolls and no spellcasting; a Shield loses its AC bonus.`, onToggle: (v) => { gearOpen.armour = v; build(); } }), ...(open ? npA.map((a) => ar(a, true)) : []));
     }
     // shield
     const noSh = !trained.has('shield');

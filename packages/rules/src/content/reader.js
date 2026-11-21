@@ -2962,7 +2962,7 @@ class ArmourReading extends GearReading {
     if (!cat) this.bad('The armor\'s category is not one the engine knows.');
     this.line(`${this.titleQ()} (${cat ?? 'armor of an unreadable category'}).`);
     this.isShield = d.category === 'shield';
-    this.line(`A wearer who is not trained in ${this.isShield ? 'Shields' : `${d.category} armor`} may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.`);
+    this.line(this.isShield ? 'A wearer who is not trained in Shields may still hold it, but it gives no Armor Class.' : `A wearer who is not trained in ${d.category} armor may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.`);
     this.run();
     this.line('Tier: none. Armor has no tier: the engine works out the Armor Class and the Speed as said above, and the DM does what is listed as the DM\'s.');
   }

@@ -513,7 +513,7 @@ async function scrollPass(browser, url, label, opts, grid) {
         await tap('#qb-armour-more'); await waitShown(page, '#qb-armour-plate-armor');
         const rows = await page.$$eval('#qb-acc-sec-gear .opt:has(input[name="qb-armour"])', (l) => l.map((r) => [r.querySelector('input').id, r.querySelector('input').disabled, /Not proficient/.test(r.textContent), /Disadvantage on Strength and Dexterity rolls/.test(r.textContent)]));
         const bad = rows.filter(([id, off, np, cost]) => id !== 'qb-armour-none' && (off || !np || !cost)); if (bad.length || rows.length < 5) throw new Error(`armour rows: ${JSON.stringify(rows)}`);
-        const sh = await page.$eval('#qb-shield', (e) => [e.disabled, /Not proficient/.test(e.closest('.opt').textContent), /Disadvantage on Strength and Dexterity rolls/.test(e.closest('.opt').textContent)]); if (sh[0] || !sh[1] || !sh[2]) throw new Error(`the Shield is not pickable and marked: ${sh}`);
+        const sh = await page.$eval('#qb-shield', (e) => [e.disabled, /Not proficient/.test(e.closest('.opt').textContent), /No AC bonus without training/.test(e.closest('.opt').textContent)]); if (sh[0] || !sh[1] || !sh[2]) throw new Error(`the Shield is not pickable and marked: ${sh}`);
         // The info card says the penalty (a tap on the i button, which is a touch target).
         await tap('[data-row="qb-armour-plate-armor"] .ibtn'); await wait(page, () => !!document.querySelector('#scrolltip'));
         const ic = await text(page, '#scrolltip'); if (!/no training with heavy armour/.test(ic) || !/Disadvantage on every Strength and Dexterity D20 Test/.test(ic) || !/can.t cast spells/.test(ic)) throw new Error(`info card: ${ic}`);

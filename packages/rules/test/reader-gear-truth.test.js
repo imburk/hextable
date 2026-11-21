@@ -278,10 +278,10 @@ test('armour: training, the category on the table, and a Shield that is a mark o
     // A wizard has no armor training; a fighter has all of it.
     const wiz = a.category === 'shield' ? wizard({ shield: true }) : wizard({ armour: a.id });
     assert.equal(problems(wiz, /no training/).length, 0, `${a.id}: a wizard may wear it`);
-    assert.equal(rec(wiz).untrained?.length, 1, `${a.id}: and wears it untrained`);
+    assert.equal(rec(wiz).untrained?.length, cat === 'shield' ? undefined : 1, `${a.id}: armour is worn untrained, a Shield only loses its AC`);
     assert.equal(rec(a.category === 'shield' ? fighter({ shield: true }) : fighter({ armour: a.id })).untrained, undefined, `${a.id}: a fighter does not`);
     assert.equal(problems(a.category === 'shield' ? fighter({ shield: true }) : fighter({ armour: a.id }), /no training/).length, 0, `${a.id}: a fighter is not`);
-    assert.ok(say('armour', a).includes(`A wearer who is not trained in ${cat === 'shield' ? 'Shields' : `${cat} armor`} may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.`));
+    assert.ok(say('armour', a).includes(cat === 'shield' ? 'A wearer who is not trained in Shields may still hold it, but it gives no Armor Class.' : `A wearer who is not trained in ${cat} armor may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.`));
     if (cat !== 'shield') assert.equal(rec(fighter({ armour: a.id })).armour, cat, `${a.id}: the wearer's armor category on the table`);
   }
   assert.equal(apply(newGame(3), { type: 'setSheet', sheet: wizard({ armour: 'hb-rk-barkplate' }) }, DM).ok, true);

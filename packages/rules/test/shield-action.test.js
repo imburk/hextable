@@ -106,9 +106,8 @@ test("no training with a Shield: taking it up is allowed, and it is then worn un
   const s = field(sh, { fight: false });
   assert.equal(derive(sh).record.shield, undefined);
   ok(apply(s, { type: "shield", actor: "hero", on: true }, DM));
-  assert.deepEqual(s.entities.hero.untrained, ["Shield"]);
-  ok(apply(s, { type: "shield", actor: "hero", on: false }, DM));
-  assert.equal(s.entities.hero.untrained, undefined);
+  assert.equal(s.entities.hero.untrained, undefined, "an untrained Shield only loses its Armor Class");
+  assert.equal(s.entities.hero.ac, derive(sh).record.ac);
 });
 
 test("out of a fight it is free and needs no turn; no encounter, no budget", () => {

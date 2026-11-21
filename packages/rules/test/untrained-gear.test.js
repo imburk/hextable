@@ -1,4 +1,4 @@
-// Untrained gear (issue #648). SRD 5.2 "Armor Training": armour or a Shield worn without training gives Disadvantage on every D20 Test that
+// Untrained gear (issue #648). SRD 5.2 "Armor Training": armour worn without training gives Disadvantage on every D20 Test that
 // uses Strength or Dexterity and bars spellcasting. A weapon without proficiency adds no Proficiency Bonus to its attack roll and gives no
 // Weapon Mastery. derive() writes what is worn untrained on the record (`untrained`), modifiers.js turns it into Disadvantage, the cast action
 // and slotsFor refuse spells, and the attack of an untrained weapon is marked `untrained`.
@@ -8,7 +8,7 @@ import { apply, current, makeEntity } from "../src/engine.js";
 import { derive, validate } from "../src/derive.js";
 import { lintRecord } from "../src/content/schema.js";
 import { modifiers, untrainedGear } from "../src/modifiers.js";
-import { savingThrow, slotsFor } from "../src/engine/rolls.js";
+import { passive, savingThrow, slotsFor } from "../src/engine/rolls.js";
 import { SPELLS } from "../src/content/index.js";
 import { newGame } from "../src/scenario.js";
 import { view } from "../src/view.js";
@@ -40,12 +40,11 @@ function field(sh, { fight = true } = {}) {
 const roll = (s, attack) => apply(s, { type: "attack", actor: "hero", target: s.foe, attack }, DM);
 const atk = (r) => r.events.find((e) => e.type === "attack");
 
-test("derive names what is worn untrained: armour by its trained categories, a Shield, a magic suit, a trained wearer none", () => {
+test("derive names what is worn untrained: armour by its trained categories, a Shield never, a magic suit, a trained wearer none", () => {
   assert.equal(derive(wiz()).record.untrained, undefined);
   assert.deepEqual(derive(wiz({ armour: "chain-mail" })).record.untrained, ["Chain Mail"]);
-  assert.deepEqual(derive(wiz({ shield: true })).record.untrained, ["Shield"]);
-  assert.deepEqual(derive(wiz({ armour: "leather-armor", shield: true })).record.untrained, ["Leather Armor", "Shield"]);
-  assert.equal(derive(wiz({ shield: true, shieldStowed: true })).record.untrained, undefined, "a Shield put away is not worn");
+  assert.equal(derive(wiz({ shield: true })).record.untrained, undefined, "SRD Armor Training: an untrained Shield only loses its Armor Class bonus");
+  assert.deepEqual(derive(wiz({ armour: "leather-armor", shield: true })).record.untrained, ["Leather Armor"]);
   assert.equal(derive(fighter({ armour: "plate-armor", shield: true })).record.untrained, undefined);
   assert.deepEqual(derive({ ...SHEETS.rogue, armour: "chain-mail" }).record.untrained, ["Chain Mail"], "a rogue has light armour only");
   assert.equal(derive({ ...SHEETS.rogue, armour: "leather-armor" }).record.untrained, undefined);
@@ -77,9 +76,12 @@ test("Disadvantage on D20 Tests with Strength or Dexterity: saves, checks, attac
   assert.deepEqual(dis("initiative"), ["Chain Mail, no training"], "Initiative is a Dexterity check");
   assert.deepEqual(dis("save.death"), [], "a Death Saving Throw uses no ability");
   assert.deepEqual(dis("attack.roll", {}), [], "an attack that names no ability is not judged");
-  // Armour and a Shield both untrained: both are named, and Disadvantage does not stack.
+  // An untrained Shield beside untrained armour adds nothing more; alone it gives no Disadvantage.
   const both = field(wiz({ armour: "chain-mail", shield: true }), { fight: false }).entities.hero;
-  assert.equal(modifiers(s, both, "save.dex", { target: both }, "").disadvantage.length, 2);
+  assert.deepEqual(modifiers(s, both, "save.dex", { target: both }, "").disadvantage, ["Chain Mail, no training"]);
+  const sh0 = field(wiz({ shield: true }), { fight: false }).entities.hero;
+  assert.deepEqual(modifiers(s, sh0, "save.dex", { target: sh0 }, "").disadvantage, []);
+  assert.deepEqual(modifiers(s, sh0, "initiative", {}, "").disadvantage, []);
   // Trained: nothing. In a form (Wild Shape) the armour melds into it: nothing.
   const trained = field(fighter({ armour: "plate-armor", shield: true }), { fight: false }).entities.hero;
   assert.deepEqual(modifiers(s, trained, "save.dex", { target: trained }, "").disadvantage, []);
@@ -100,10 +102,9 @@ test("an attack by a character in untrained armour is rolled with Disadvantage a
   assert.deepEqual(roll(twin, "shortsword").events, r.events, "replays");
   const plain = field({ ...SHEETS.rogue, level: 1 }), p = atk(roll(plain, "shortsword"));
   assert.equal(p.mode, "normal");
-  // An untrained Shield does the same, by name.
+  // An untrained Shield gives no Disadvantage (SRD Armor Training: it only loses its Armor Class bonus).
   const sh = atk(roll(field(wiz({ shield: true })), "dagger"));
-  assert.equal(sh.mode, "dis");
-  assert.deepEqual(sh.why, ["Shield, no training"]);
+  assert.equal(sh.mode, "normal");
   // Disadvantage and Advantage cancel as ever: a prone foe within 5 feet gives Advantage to a melee attacker.
   const c = field(sheet); c.entities[c.foe].cond.prone = {};
   assert.equal(atk(roll(c, "shortsword")).mode, "normal");
@@ -117,13 +118,13 @@ test("a Strength or Dexterity saving throw is rolled with two dice in untrained 
   assert.equal(savingThrow(s, e, "str", 10).mode, "dis");
 });
 
-test("no spells in untrained armour or with an untrained Shield: refused with a sentence, nothing changes; trained, or without it, they are cast", () => {
-  for (const more of [{ armour: "chain-mail" }, { shield: true }]) {
+test("no spells in untrained armour: refused with a sentence, nothing changes; with only an untrained Shield, trained, or without it, they are cast", () => {
+  for (const more of [{ armour: "chain-mail" }, { armour: "chain-mail", shield: true }]) {
     const s = field(wiz(more)), before = bytes(s);
     for (const spell of ["fire-bolt", "magic-missile"]) {
       const r = apply(s, { type: "cast", actor: "hero", spell, target: s.foe }, DM);
       assert.equal(r.ok, false);
-      assert.match(r.error, /Tavin can't cast spells: (Chain Mail|Shield) worn without training/);
+      assert.match(r.error, /Tavin can't cast spells: Chain Mail worn without training/);
       assert.equal(bytes(s), before, "nothing changed, byte for byte");
     }
     assert.deepEqual(slotsFor(s, s.entities.hero, SPELLS["magic-missile"]), [], "no reaction spell either");
@@ -132,6 +133,9 @@ test("no spells in untrained armour or with an untrained Shield: refused with a 
   const bare = field(wiz());
   assert.ok(apply(bare, { type: "cast", actor: "hero", spell: "fire-bolt", target: bare.foe }, DM).ok);
   assert.deepEqual(slotsFor(bare, bare.entities.hero, SPELLS["fire-bolt"]), [0]);
+  const held = field(wiz({ shield: true }));
+  assert.ok(apply(held, { type: "cast", actor: "hero", spell: "fire-bolt", target: held.foe }, DM).ok, "a wizard holding a Shield casts");
+  assert.deepEqual(slotsFor(held, held.entities.hero, SPELLS["fire-bolt"]), [0]);
   // A cleric trained in armour and Shield casts in them.
   const cler = field({ ...SHEETS.cleric }), cast = apply(cler, { type: "cast", actor: "hero", spell: "sacred-flame", target: cler.foe }, DM);
   assert.ok(cast.ok, cast.error);
@@ -200,4 +204,13 @@ test("the record and its view: `untrained` is checked, kept through a rest or a 
   t.entities.hero.owner = "p1";
   const v = view(t, { role: "player", userId: "p1" });
   assert.deepEqual(v.entities.hero.untrained, ["Chain Mail"]);
+});
+
+test("passive Dexterity and Strength skills drop by 5 in untrained armour, as for Stealth Disadvantage; Wisdom ones do not", () => {
+  const s = field(wiz(), { fight: false }), bare = s.entities.hero;
+  const w = field(wiz({ armour: "chain-mail" }), { fight: false }).entities.hero;
+  for (const skill of ["stealth", "acrobatics", "athletics"]) assert.equal(passive(s, w, skill), passive(s, bare, skill) - 5, skill);
+  assert.equal(passive(s, w, "perception"), passive(s, bare, "perception"));
+  const sh = field(wiz({ shield: true }), { fight: false }).entities.hero;
+  assert.equal(passive(s, sh, "stealth"), passive(s, bare, "stealth"), "a Shield alone changes nothing");
 });

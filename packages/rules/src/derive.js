@@ -371,10 +371,9 @@ export function derive(sheet) {
   const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, gone = typeof sheet.shield === 'string' && !sheet.shieldStowed && !shieldEntry(sheet),
     shield = (!!sheet.shield && !sheet.shieldStowed && !gone) || !!shieldItem;   // a Shield id whose entry is not loaded (a pack removed) is no Shield held
   const shieldOk = shield && armourWords.has('shield');
-  // SRD "Armor Training": armour or a Shield worn without training gives Disadvantage on D20 Tests that use Strength or Dexterity and bars spellcasting.
-  // The record names what is worn untrained (`untrained`); modifiers.js and the cast action apply it.
-  const untrainedGear = [...(armour && !armourWords.has(armour.category) && trainedSuit !== armour.category ? [armour.name] : []),
-    ...(shield && !armourWords.has('shield') ? [shieldEntry(sheet, shieldItem)?.name ?? 'Shield'] : [])];
+  // SRD "Armor Training": armour worn without training gives Disadvantage on D20 Tests that use Strength or Dexterity and bars spellcasting.
+  // The record names it (`untrained`); modifiers.js and the cast action apply it. A Shield without training only loses its Armor Class bonus (`shieldOk`).
+  const untrainedGear = armour && !armourWords.has(armour.category) && trainedSuit !== armour.category ? [armour.name] : [];
   const unarmoured = !armour, bare = unarmoured && !shield;
   const sum = (k) => G.reduce((n, g) => n + (typeof g[k] === 'number' ? g[k] : 0), 0);
 

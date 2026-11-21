@@ -133,7 +133,7 @@ export function headsUp(s) {
   if (noTrain) { if (s.caster) out.push('Cannot cast spells'); out.push('Disadvantage on every Strength and Dexterity roll'); }
   if (a?.strength && (s.abil?.str ?? 10) < a.strength) out.push(`Speed −10 ft: ${a.name} needs Strength ${a.strength}`);
   if (a?.stealth) out.push('Disadvantage on Stealth checks');
-  if (s.shield && !s.trained.armour.has('shield')) { if (s.caster && !noTrain) out.push('Cannot cast spells'); if (!noTrain) out.push('Disadvantage on every Strength and Dexterity roll'); out.push('The Shield gives no AC (not trained)'); }
+  if (s.shield && !s.trained.armour.has('shield')) out.push('The Shield gives no AC (not trained)');
   if ((a || s.shield) && s.bare.length) out.push(`${s.bare.join(', ')} ${s.bare.length === 1 ? 'is' : 'are'} off`);
   for (const w of s.weapons) if (!weaponTrained(w, s.trained.weapons)) out.push(`No Proficiency Bonus or Weapon Mastery with the ${w.name}`);
   return out;
@@ -143,11 +143,11 @@ export const weaponCost = (hit, prof) => `No Proficiency Bonus on the attack rol
 // The lines the info card of a row without training adds (the engine applies these: untrained gear, #648).
 export const weaponNoTrainLines = () => ['You are not proficient with this weapon. Its attack roll does not add your Proficiency Bonus, and it gives you no Weapon Mastery property.'];
 export const armourNoTrainLines = (a, caster) => [a.category === 'shield'
-  ? `You have no training with Shields. Holding one gives it no Armor Class, gives you Disadvantage on every Strength and Dexterity D20 Test (attack rolls, saving throws, ability checks)${caster ? ', and you can\u2019t cast spells' : ''}.`
+  ? 'You have no training with Shields. Holding one gives you no Armor Class from it; nothing else changes.'
   : `You have no training with ${a.category} armour. Wearing it gives you Disadvantage on every Strength and Dexterity D20 Test (attack rolls, saving throws, ability checks)${caster ? ', and you can\u2019t cast spells' : ''}.`];
 // The sentence an armour row without training carries, and its second line. `bare`: the features armour turns off (bareFeatures).
 export function armourCost(a, caster, bare = []) {
-  if (a.category === 'shield') return `No AC bonus without training \u00b7 Disadvantage on Strength and Dexterity rolls${caster ? ' \u00b7 can\u2019t cast spells' : ''}${bare.length ? ` \u00b7 turns off ${bare.join(', ')}` : ''}`;
+  if (a.category === 'shield') return `No AC bonus without training${bare.length ? ` \u00b7 turns off ${bare.join(', ')}` : ''}`;
   return `Disadvantage on Strength and Dexterity rolls${caster ? ' \u00b7 can\u2019t cast spells' : ''}${bare.length ? ` \u00b7 turns off ${bare.join(', ')}` : ''}`;
 }
 export const armourAlso = (a) => [a.stealth ? 'Disadvantage on Stealth' : '', a.strength ? `Speed \u221210 ft unless Strength ${a.strength}` : ''].filter(Boolean).join(' \u00b7 ');

@@ -186,7 +186,7 @@ Tier: none. Armor has no tier: the engine works out the Armor Class and the Spee
 
 == armour hb-rk-lantern-shield
 "Lantern Shield" (a Shield).
-A wearer who is not trained in Shields may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.
+A wearer who is not trained in Shields may still hold it, but it gives no Armor Class.
 It adds 3 Armor Class to a wearer trained with Shields, when the sheet names it in its Shield field (a sheet's Shield field holds this entry's id). The plain Shield, written as true in that field, is a different entry with its own number, and the engine refuses a sheet that names a Shield as body armor.
 It asks for no Strength: a weak wearer loses nothing.
 It puts no penalty on Stealth.

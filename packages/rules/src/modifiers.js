@@ -122,7 +122,7 @@ export function aurasOn(s, e) {
 // Is a creature immune to a condition: its own immunity (a monster's), or an ally's aura (Aura of Courage)?
 export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id));
 
-// What a built character wears without training (SRD "Armor Training": armour or a Shield it lacks training with), by name, as derive()
+// What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
 // worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
 export const untrainedGear = (e) => (e?.form || !Array.isArray(e?.untrained) ? [] : e.untrained);
 // ... and what that does: Disadvantage on every D20 Test that uses Strength or Dexterity (attack rolls, saving throws, ability checks, and

@@ -137,7 +137,7 @@ test("an id beside a worn Shield item is refused; an untrained wearer with an id
     assert.ok(problems(fighter({ shield: HB.id, items: [{ id: "i1", item: "shield-plus-1", equipped: true }] })).some((p) => /one Shield at a time/.test(p)));
     assert.deepEqual(problems(fighter({ shield: HB.id, shieldStowed: true, items: [{ id: "i1", item: "shield-plus-1", equipped: true }] })), []);
     assert.deepEqual(problems(wizard({ shield: HB.id })), []);
-    assert.deepEqual(derive(wizard({ shield: HB.id })).record.untrained, [HB.name]);        // allowed, played untrained
+    assert.equal(derive(wizard({ shield: HB.id })).record.untrained, undefined);        // allowed; only its Armor Class is lost
     assert.equal(apply(newGame(3), { type: "setSheet", sheet: wizard({ shield: HB.id }) }, DM).ok, true);
     assert.deepEqual(problems(fighter({ shield: "shield" })), []);
     assert.equal(ac(fighter({ shield: "shield" })), ac(fighter({ shield: true })));
