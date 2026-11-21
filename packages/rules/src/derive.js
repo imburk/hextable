@@ -961,7 +961,12 @@ function checkFeats(sheet, { cf, chosen, before, skills }, say) {
     if (pr.feature && !hasFeature(cf, pr.feature)) say(`${def.name} needs the ${nice(pr.feature)} feature.`);
     const again = had.filter((z) => z.def.id === def.id);
     if (again.length && !def.repeatable) say(`${def.name} can be taken only once.`);
-    if (def.repeatable === 'list' && again.some((z) => z.x.list !== undefined && z.x.list === x.list)) say(`${def.name} is taken again only with another spell list.`);
+    // A feat repeatable "by list" (Magic Initiate) needs its list on every copy, and no two copies share one (#635).
+    if (def.repeatable === 'list') {
+      const all = def.spellPick?.lists ?? [], names = (ids) => ids.map(nice).join(', '), taken = again.map((z) => z.x.list).filter((l) => typeof l === 'string' && all.includes(l));
+      if (x.list === undefined) say(`${def.name}: choose a spell list (${names(all)}) for this copy; each copy needs its own${taken.length ? `, and ${names(taken)} ${taken.length === 1 ? 'is' : 'are'} already taken` : ''}.`);
+      else if (taken.includes(x.list)) say(`${def.name} is taken again only with another spell list: ${nice(String(x.list))} is already taken (taken: ${names(taken)}).`);
+    }
     if (styles.includes(def.id)) say(`${def.name} is already this character's Fighting Style.`);
     had.push(y);
     // Ability points: so many, to the abilities the feat names, none above its maximum.
@@ -1017,7 +1022,12 @@ export function featChoices(sheet) {
   return slots.map((sl) => {
     const taken = list.find((x) => x?.at === sl.at) ?? null, others = { ...sheet, feats: list.filter((x) => x?.at !== sl.at) };
     const was = new Set(validate(others));
-    const offer = Object.values(CONTENT.feats).filter((d) => validate({ ...others, feats: [...others.feats, { id: d.id, at: sl.at }] }).every((p) => was.has(p))).map((d) => d.id);
+    // A feat repeatable by list is tried with the first list the other copies have not taken (none left: not offered).
+    const offer = Object.values(CONTENT.feats).filter((d) => {
+      const e = { id: d.id, at: sl.at };
+      if (d.repeatable === 'list') { const free = (d.spellPick?.lists ?? []).find((l) => !others.feats.some((x) => x?.id === d.id && x.list === l)); if (free === undefined) return false; e.list = free; }
+      return validate({ ...others, feats: [...others.feats, e] }).every((p) => was.has(p));
+    }).map((d) => d.id);
     const def = taken && CONTENT.feats[taken.id], open = [];
     if (def?.increase && taken.abilities === undefined) open.push('abilities');
     if (def?.proficiencies && (taken.skills ?? []).length + (taken.tools ?? []).length < def.proficiencies.n) open.push('skills');
