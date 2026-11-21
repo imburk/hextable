@@ -12,7 +12,7 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Maps and objects](maps-and-objects.md) | Levels, walls, doors, regions, objects, traps, editor, handouts, tracing, Universal VTT | Agreed; M1 to M10, M12, M13 built; scenes beyond private notes (M11) and map generation (M14) not |
 | [Sight](sight.md) | Line of sight, cover, light, senses, hiding and finding, views by sight | Built: S1, S2, S4 to S7 |
 | [Dice](dice.md) | Faces of every roll in its event, `diceThrow`, thrown 3D dice | Built |
-| [Outside dice](outside-dice.md) | Players roll their own dice; typed, camera, Bluetooth | Draft |
+| [Outside dice](outside-dice.md) | Players roll their own dice; typed, camera, Bluetooth | Draft, amended to the owner's twelve answers of 20 November |
 | [On weapon hit](on-hit.md) | Smites, hit riders, weapon-changing spells | Draft; see its build notes |
 | [Companions and summons](companions.md) | The bond, turns, summon blocks, commands, corpses, riding | Draft; C1 to C8 built |
 | [Grapple and shove](grapple-shove.md) | The Grappled rules, monsters that grapple, the AI's part | Draft; built (see its build notes) |
