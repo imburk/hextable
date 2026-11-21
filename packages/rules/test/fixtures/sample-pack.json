@@ -353,6 +353,9 @@
           "cure": [
             "poisoned"
           ]
+        },
+        {
+          "stabilize": true
         }
       ],
       "tier": "auto",
@@ -434,6 +437,13 @@
             "op": "add",
             "value": 2
           }
+        },
+        {
+          "light": {
+            "bright": 10,
+            "dim": 10
+          },
+          "replaces": true
         }
       ],
       "tier": "auto",

@@ -19,6 +19,7 @@ import { scenarios, run } from "./e23-scenarios.js";
 // compared as they were, byte for byte: a punch given to anything else (a monster, a starter, a second or wrong one) still fails.
 const derive1 = (sheet) => {
   const d = derive(sheet), at = d.record.attacks, last = at.at(-1);
+  delete d.record.acBase;      // #674: the base of its Armor Class (for Mage Armor), which main's recording has not
   if (last?.id === "unarmed-strike" && !sheet.weapons?.includes("unarmed-strike") && !at.some((a) => a.id === "unarmed-strike-bonus")) at.pop();
   return d;
 };

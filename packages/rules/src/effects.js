@@ -84,6 +84,15 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
   return { steps, unscaled };
 }
 
+// A spell's range in feet for this caster, grown by character level (`higher.range`: Spare the Dying's 15 feet is 30 at level 5, 60 at 11 and 120 at 17).
+// Self and Touch have none to grow; the answer is in feet as `feet` gives them (Touch is 5), the spell's own where no level has been reached.
+export function rangeAt(def, casterLevel = 0) {
+  const byLevel = def.higher?.range;
+  if (!byLevel || typeof def.range !== 'number') return feet(def.range);
+  const reached = Object.keys(byLevel).map(Number).filter((l) => l <= casterLevel).sort((x, y) => y - x)[0];
+  return reached === undefined ? def.range : byLevel[reached];
+}
+
 // How many creatures (or rays, darts, beams) a spell aims at for this caster and slot:
 // `target.creature.count` (1 if not given), or the most reached in `higher.targets` by character
 // level (Eldritch Blast's beams), plus `higher.slot.targets` for each slot level above its own.
@@ -117,10 +126,13 @@ function summarise(def) {
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
   if (kind === 'summon' && step.on === 'corpse') return { short: 'summon', long: `Raises ${step.count && step.count !== 1 ? 'corpses' : 'a corpse'} as undead under the caster's control for 24 hours` };
   if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
+  if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
+  if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
-    const text = m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
+    const text = m.op === 'baseAc' ? `base AC ${m.value.base} + ${m.value.ability.toUpperCase()}`
+      : m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
       : m.op === 'add' && typeof m.value === 'string' ? `${m.value.startsWith('-') ? '' : '+'}${m.value} ${what}` : `${m.op} on ${what}`;
     return { short: text, long: `${text} for ${def.duration}${def.concentration ? ', Concentration' : ''}` };
   }
@@ -509,6 +521,8 @@ function exec(s, ev, kit, f, step, at) {
     return kit.condition(s, t, step.condition, ev, f, step);
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
+  if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
+  if (kind === 'light') return kit.shine(s, t, step, ev, f) || handOver(`${f.src.name} makes a light, but there is no lasting effect for the engine to hang it on. The DM hands it out with setLight and puts it out.`);
   if (kind === 'kill') return kit.kill(s, t, ev);
   if (kind === 'endConcentration') return kit.breakConcentration(s, ev, t.id, `${t.name} lost Concentration to ${f.src.name}`);
   if (kind === 'remains') {

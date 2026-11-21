@@ -8,8 +8,8 @@
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import { gridOf, col as cellCol } from './shared/grid.js';
-import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
-import { actionProfile } from './shared/effects.js';
+import { acShown, inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { actionProfile, rangeAt } from './shared/effects.js';
 import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
 import { LIGHTS } from './shared/content/lights.js';
 import { reactionsOf, canReact, WHEN } from './shared/reactions.js';
@@ -330,12 +330,13 @@ export function moveBudget(S, e) {
 const LONGER = { minute: '1 minute', hour: '1 hour' };
 export const castGroup = (sp) => (CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : 'Longer');
 const rangeWhy = (S, e, sp) => {
-  if (sp.aim !== 'creature' || !(sp.range > 0)) return '';
-  try { return targetsFor(S, e, { spell: sp.id }).length ? '' : `Nobody within ${sp.range} ft.`; } catch { return ''; }
+  const reach = rangeAt(sp.def, e.level);
+  if (sp.aim !== 'creature' || !(reach > 0)) return '';
+  try { return targetsFor(S, e, { spell: sp.id }).length ? '' : `Nobody within ${reach} ft.`; } catch { return ''; }
 };
 export function spellRow(S, e, id, { mode = null } = {}) {
   const sp = SPELLS[id], what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
-  const range = sp.aim === 'self' ? 'Self' : sp.range > 0 ? `${sp.range} ft` : '';
+  const reach = rangeAt(sp.def, e.level), range = sp.aim === 'self' ? 'Self' : reach > 0 ? `${reach} ft` : '';
   return { id: `spell:${id}`, kind: 'spell', spell: id, label: sp.name, sub: [sp.level ? `Level ${sp.level}` : 'Cantrip', range, sp.def.concentration ? 'Concentration' : '', sp.def.ritual ? 'Ritual' : '', what].filter(Boolean).join(' · '),
     why: spellWhy(S, e, sp) || rangeWhy(S, e, sp), chip: CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : (LONGER[sp.time] ?? sp.time), time: sp.time, armed: armedBy(mode, 'spell', id) && !mode.item,
     level: sp.level, roll: sp.roll ?? null, school: sp.def.school ?? '', cast: castGroup(sp), conc: !!sp.def.concentration, ritual: !!sp.def.ritual, kinds: sp.kinds ?? [] };
@@ -863,7 +864,7 @@ export function initActionPanel(ctx) {
       const showNumbers = full && (my || e.side === 'party');
       const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
       $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
-      $('c-ac').textContent = showNumbers ? `AC ${e.ac}` : '';
+      $('c-ac').textContent = showNumbers ? `AC ${acShown(S, e, ctx.isDM()).ac}` : '';
       $('btn-sheet').hidden = !showNumbers;
       setHtml($('c-level'), showNumbers && e.kind === 'pc' ? levelUpChip(S, e, { dm: ctx.isDM() }) : '');      // XP reached the next level: Level up (the DM), or why not (#672)
       $('btn-end').hidden = !(my && enc && cur === e.id);
