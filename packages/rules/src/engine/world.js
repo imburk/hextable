@@ -4,7 +4,7 @@
 import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong, squareAround, squareBlock, squareCone, squareDisc, squareStrip } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
-import { actionProfile, CUBE_AIM_MAX, loadOf, scaleSteps, targetCount, WORK } from '../effects.js';
+import { actionProfile, CUBE_AIM_MAX, loadOf, rangeAt, scaleSteps, targetCount, WORK } from '../effects.js';
 import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
@@ -1108,7 +1108,8 @@ export function targetsFor(s, e, { attack, spell, action }) {
     } else {
       const sp = SPELLS[spell];
       if (sp.aim !== 'creature') continue;
-      if (sp.harmful ? t.id !== e.id && d <= sp.range : d <= sp.range) out.push(t.id);
+      const reach = rangeAt(sp.def, e.level);       // grown by character level, where the spell says so (Spare the Dying)
+      if (sp.harmful ? t.id !== e.id && d <= reach : d <= reach) out.push(t.id);
     }
   }
   return out;

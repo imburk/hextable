@@ -178,9 +178,15 @@ export function renew(s, e, t) {
 }
 
 // Armor Class after anything that changes it.
+// A `baseAc` modifier (Mage Armor: 13 + Dexterity) replaces the base of an unarmoured character's Armor Class when it is better than the base its
+// own way of working it out gives (`acBase`, from derive: SRD "If you have multiple ways to calculate your Armor Class, you can benefit from only
+// one at a time"); what is added to the base (a Shield, a magic item, a feature) stays. A creature with no `acBase` (a monster, a hand-typed
+// record) is not known to wear nothing, so the modifier is never put on it (`modifier`, below) and nothing here changes its number.
 export function acOf(s, t) {
   const m = modifiers(s, t, 'ac', { target: t });
-  return bounded(m, (m.set ?? t.ac) + m.add);
+  let ac = m.set ?? t.ac;
+  if (m.baseAc !== null && Number.isInteger(t.acBase) && !t.form && (t.armour ?? 'none') === 'none' && m.baseAc > t.acBase) ac += m.baseAc - t.acBase;
+  return bounded(m, ac + m.add);
 }
 
 // The ending a step gives its condition or modifier, as the part keeps it: with the DC it is rolled against (the ending's own,
@@ -265,6 +271,12 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   if (fx.bound && !step.ends && !Number.isInteger(mod_.uses)) return false;
   const holder = step.to === 'caster' ? s.entities[f.actor] : t;
   if (!holder) return false;
+  // `baseAc` (Mage Armor, "a willing creature who isn't wearing armor"): put on only where the engine knows the creature wears no armour and how it
+  // works its Armor Class out (a built character, `acBase`, not in a form). Any other creature is the DM's: it is told, and nothing is put on.
+  if (mod_.op === 'baseAc' && !(Number.isInteger(holder.acBase) && !holder.form && (holder.armour ?? 'none') === 'none')) {
+    ev.push({ type: 'manual', actor: f.actor ?? holder.id, name: f.src.name, partial: true, text: `${holder.name} ${holder.form ? 'is in a form' : Number.isInteger(holder.acBase) ? 'is wearing armor' : 'is not a built character, so the engine does not know whether it wears armor or how its Armor Class is worked out'}. The engine did not change its Armor Class: the DM decides whether ${f.src.name} works and sets the number.` });
+    return true;
+  }
   const end = ending(s, step, f, ev, t);
   if (fx.bound && end.told && !end.part.ends && !Number.isInteger(mod_.uses)) return false;       // nothing could end it: the DM applies it and ends it
   const { against, except, ...m } = mod_;
@@ -276,6 +288,32 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
     ev.push({ type: 'maxHp', id: holder.id, maxHp: holder.maxHp, hp: holder.hp });
   }
   fx.parts.push(part);
+  return true;
+}
+
+// A `stabilize` step (Spare the Dying): a creature at 0 Hit Points that is not dead becomes Stable, as when its third Death Saving Throw succeeds
+// (both counts start again). Any other creature is left as it is, and the table is told why.
+export function stabilise(s, t, ev, f = null) {
+  const why = t.dead ? 'is dead' : t.hp > 0 ? 'is not at 0 Hit Points' : t.cond.stable ? 'is Stable already' : null;
+  if (why) return ev.push({ type: 'note', id: t.id, ...(f?.actor ? { actor: f.actor } : {}), text: `${t.name} ${why}, so ${f?.src.name ?? 'the spell'} does nothing.` });
+  t.cond.stable = {}; t.death = { s: 0, f: 0 };
+  ev.push({ type: 'cond', id: t.id, cond: 'stable' });
+}
+
+// A `light` step (Light): `t` carries a light for as long as the lasting effect that ran the step does, and it goes out with it (durations.js, endPart).
+// `replaces`: the caster casting it again ends the earlier one ("The spell ends if you cast it again"). A creature carries one light in the engine (`setLight`): one it
+// already carries, from elsewhere, is not put out or taken for this one, and the DM is told. Returns false where there is no lasting effect to hang it on.
+export function shine(s, t, step, ev, f) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound) return false;
+  if (step.replaces) for (const old of [...effectsOf(s)]) if (old !== fx && old.spell === fx.spell && old.source === fx.source) endEffect(s, ev, old, `${f.src.name} was cast again`);
+  if (t.light) {
+    ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name} already carries a light, and the engine keeps one light for a creature. It did not add ${f.src.name}'s: the DM tracks both, and sets the larger with setLight if they should show.` });
+    return true;
+  }
+  t.light = { bright: step.light.bright, dim: step.light.dim, fx: fx.id };
+  fx.parts.push({ target: t.id, light: true });
+  ev.push({ type: 'light', id: t.id, bright: step.light.bright, dim: step.light.dim, name: f.src.name });
   return true;
 }
 

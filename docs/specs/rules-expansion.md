@@ -913,6 +913,34 @@ Settled while adding the general vocabulary the party-spells table in `docs/DEBT
   a DM who reads it otherwise overrides by hand. Not built: a creature's attitude (Friendly), the
   Dominate spells' commands, and their longer Concentration from a higher slot.
 
+#### Build notes: Mage Armor, Spare the Dying and Light (amendment, #674)
+
+Three spells the engine used to hand to the DM, built to SRD 5.2.1 with the smallest additions to the vocabulary. Tests through
+`apply()` in `packages/rules/test/mage-armor-spare-light.test.js`.
+
+- **Op `baseAc`.** `{ on: 'ac', op: 'baseAc', value: { base, ability } }`, only in a modifier step (a trait, grant or aura is
+  refused: the engine holds the number only for a creature a spell touched). The creature's base Armor Class becomes `base` plus
+  that ability's modifier if that beats the base its own way of working it out gives; "you can benefit from only one" way
+  (SRD, Rules Glossary, Armor Class) is read as the better. `derive` records that base as `acBase` (the armour's, or 10 + Dexterity,
+  or the best Unarmored Defense, before a Shield and what features and items add); the spell replaces it and the rest still adds.
+  `acOf` does the sum. The modifier is put on only a built character with no armour and not in a form. Any other creature (a
+  monster, a hand-typed record, one in armour) gets a `manual` event and nothing is applied. Willingness is the table's.
+- **`ends: { on: 'armour' }`**, for a modifier step: the effect ends when its creature is made again wearing armour (`donned`,
+  `engine/sheets.js`, run by every route that remakes a character: `setSheet`, `equip`, `editCharacter`, `refresh`).
+- **Step `stabilize: true`.** A creature at 0 Hit Points that is not dead becomes Stable (the `stable` status, the Death Saving Throw
+  counts start again, a `cond` event). One that is up, already Stable, or dead is left, and a `note` says why. Dead is refused at the
+  cast, as for every spell.
+- **`higher.range`.** The spell's range in feet by character level (Spare the Dying: 30, 60, 120), read by `rangeAt` in `effects.js` for
+  the cast, the list of who can be aimed at, and Distant Spell.
+- **Step `light: { bright, dim }`, with `replaces?: true`.** The creature it works on carries that light while the lasting effect
+  runs, and it goes out with it (a `light` part, `durations.js`). `replaces`: the same caster casting the spell again ends the earlier
+  casting. A creature carries one light in the engine: one already carried (`setLight`) is not replaced and the DM is told.
+  Not built, so the DM's: Light on an object that lies elsewhere or is in someone's hands (the engine keeps the light on the caster, as
+  if carried), its colour, covering it, the Large-or-smaller limit. SRD 5.2 has no saving throw for a hostile creature's object, so
+  none is asked.
+- Not built: the character sheet's printed AC (`ac`) is the creature's own number, as it is for Barkskin; attack events and
+  `acOf` carry the spell's.
+
 ### A class
 
 ```js

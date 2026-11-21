@@ -193,6 +193,7 @@ export function armourWorn(e) {
 //     resist, vulnerable, immune,   (the last three: true for all damage, or a list of types)
 //     dice: [{ dice, name }],       dice to roll and add when the roll is made
 //     min, max,                     the least and the most the number may be (Barkskin: AC at least 17)
+//     baseAc                        the best base Armor Class a `baseAc` modifier gives (Mage Armor: 13 + Dexterity), or null
 //     dealt: [{ value, types, name }]   for damage.dealt: extra damage of those types, or added to the damage
 //     used: [parts]                 single-use modifiers that applied, for the roll's maker to use up
 //     floor, floorBy                a d20 lower than `floor` counts as it (Reliable Talent), and whose it is
@@ -204,7 +205,7 @@ export function armourWorn(e) {
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [] };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [], baseAc: null };
   // Proficiency for a time (addition C): found first, so that a modifier that asks `check.proficient` (Reliable Talent) counts it, whichever comes first.
   if (hook === 'check') {
     for (const src of sources(s, e)) {
@@ -232,6 +233,8 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (!inScope(m, sit)) continue;
       // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).
       if (m.stack === false) { if (once.has(src.name)) continue; once.add(src.name); }
+      // `baseAc` (Mage Armor): the best base Armor Class any of them gives, from the creature's own score (acOf, engine/rolls.js, says whether it is better than its own).
+      if (m.op === 'baseAc') { const sc = e.abil?.[m.value?.ability]; if (Number.isInteger(sc)) out.baseAc = Math.max(out.baseAc ?? -Infinity, m.value.base + Math.floor((sc - 10) / 2)); continue; }
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
       // `onFail`: dice added only after the roll failed (Bardic Inspiration, Peerless Skill); the

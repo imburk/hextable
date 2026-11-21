@@ -108,7 +108,7 @@ Tally, counted by kind from each monster's own traits and actions (a monster can
 
 ## Spells
 
-339 are entered; 47 play fully, 92 partly, 200 are applied by the DM (`npm run content`; the passes
+339 are entered; 48 play fully, 94 partly, 197 are applied by the DM (`npm run content`; the passes
 below give the counts at the time of each). What the vocabulary cannot say, by how much
 it would unlock:
 

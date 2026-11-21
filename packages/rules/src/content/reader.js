@@ -74,7 +74,7 @@ export const TIER_WORDS = {
   manual: 'Tier: manual. The DM applies this spell; the engine only shows the description.',
 };
 // What ends a lasting condition or modifier (`ends.on`; schema.js lintSteps).
-export const ENDS_ON = ['turnStart', 'turnEnd', 'save', 'damaged'];
+export const ENDS_ON = ['turnStart', 'turnEnd', 'save', 'damaged', 'armour'];
 // When a zone goes off (`zone.on`; schema.js lintZone).
 export const ZONE_ON_WORDS = { enter: 'enters the area (or the area reaches it)', turnStart: 'starts its turn there', turnEnd: 'ends its turn there' };
 
@@ -103,6 +103,7 @@ export const OP_WORDS = {
   crit: (v, h) => `a Critical Hit on every hit, among ${h}`,
   floor: (v, h) => `any d20 roll lower than ${v} counting as ${v} on ${h}`,
   proficient: (v, h) => `proficiency on ${h}`,
+  baseAc: (v, h) => `${h} worked out from a base of ${v}, in place of its own base if that is better (it uses one way of working it out, and a Shield and bonuses still add). The engine puts it only on a built character that wears no armor; for any other creature it tells the DM, who decides and sets the number`,
 };
 // Situations the engine tests (`when`, `advantageIf`).
 export const TAG_WORDS = {
@@ -268,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], stabilize: [], light: ['replaces'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
@@ -686,7 +687,7 @@ class Reading {
     const h = this.def.higher;
     if (h === undefined) return;
     if (!isObj(h)) return this.bad('`higher` is not an object.');
-    this.odd(h, ['level', 'targets', 'slot'], '`higher`');
+    this.odd(h, ['level', 'targets', 'slot', 'range'], '`higher`');
     const firstOf = (key) => { let f = null; this.walk((st, at) => { if (!f && key in st) f = { st, at }; }); return f; };
     const lvl = this.def.level;
     if (isObj(h.level)) {
@@ -708,6 +709,15 @@ class Reading {
       }
       if (parts.length) this.line(`As the caster gains levels, the number of targets becomes ${list(parts)}.`);
     }
+    if (isObj(h.range)) {
+      const keys = Object.keys(h.range).filter((x) => /^\d+$/.test(x)).sort((a, b) => a - b), parts = [];
+      for (const l of keys) {
+        this.num(`higher.range.${l}:key`, +l, 'character level');
+        const v = h.range[l];
+        if (isInt(v)) { this.num(`higher.range.${l}`, v, 'feet'); parts.push(`${v} feet at character level ${l}`); } else this.bad(`\`higher.range.${l}\` is not a whole number of feet.`);
+      }
+      if (parts.length) this.line(`As the caster gains levels, the range becomes ${list(parts)}.`);
+    } else if (h.range !== undefined) this.bad('`higher.range` is not a table by level.');
     if (h.slot !== undefined) {
       const s = h.slot;
       if (!isObj(s)) return this.bad('`higher.slot` is not an object.');
@@ -858,6 +868,10 @@ class Reading {
         return `${base}, against DC ${dc} (${own !== null ? 'the entry\'s own DC for it' : 'the DC of the save that put it on'}); a success ends it${more}.`;
       }
       text = `It makes ${/^[AEIOU]/.test(ab) ? 'an' : 'a'} ${ab} saving throw ${atw}, against the caster's spell save DC; a success ends it${ends.orDamaged === true ? '. Any damage it takes also ends it' : ''}${this.fx === 'spell' ? '. It also ends with the spell' : ''}.`;
+    } else if (ends.on === 'armour') {
+      // engine/sheets.js `donned`: made again wearing armour, the effect it is part of ends.
+      text = `It ends early if its creature dons armor${this.fx === 'spell' ? ', or with the spell' : ''}.`;
+      if (this.fx === 'bound') text += ' Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.';
     } else {
       text = `It ends when it takes damage${ends.by === 'source' ? ' from the caster or the caster\'s side' : ''}${this.fx === 'spell' ? ', or with the spell' : ''}.`;
       if (this.fx === 'bound') text += ' Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.';
@@ -1002,6 +1016,7 @@ export const STEP_SENTENCES = {
     this.odd(m, MOD_KEYS, `Step ${at}: the modifier`);
     const holder = st.to === 'caster' ? 'The caster' : Who;
     say(`${holder} gets ${modPhrase.call(this, m, `${at}.modifier`)}.`);
+    if (m.op === 'baseAc') this.dm(`Step ${at}: the Armor Class of a creature that is not a built character, or that wears armor.`);
     const extra = modExtras.call(this, m, `${at}.modifier`, st.to === 'caster');
     if (extra) this.line(extra, depth + 1);
     if (!this.fx) {
@@ -1070,6 +1085,20 @@ export const STEP_SENTENCES = {
     this.dm(`Step ${at}: what is left of a body that is not dead.`);
   },
   endConcentration({ Who, say }) { say(`${Who} loses Concentration on whatever it is concentrating on.`); },
+  // engine/rolls.js `stabilise`.
+  stabilize({ Who, say }) { say(`${Who} becomes Stable if it has 0 Hit Points and is not dead (its Death Saving Throw counts start again). Any other creature is left as it is, and the table is told.`); },
+  // engine/rolls.js `shine`: the light is carried by the creature the step works on, for as long as the lasting effect runs.
+  light({ st, at, depth, Who, say }) {
+    const l = isObj(st.light) ? st.light : {};
+    if (isInt(l.bright)) this.num(`${at}.light.bright`, l.bright, 'feet'); else this.bad(`Step ${at}: the light has no whole number of feet of Bright Light.`);
+    if (isInt(l.dim)) this.num(`${at}.light.dim`, l.dim, 'feet'); else this.bad(`Step ${at}: the light has no whole number of feet of Dim Light.`);
+    say(`${Who} carries a light: Bright Light in a ${l.bright}-foot radius and Dim Light for ${l.dim} feet more.`);
+    if (!this.fx || this.fx === 'bound' || this.obj) {
+      this.line(this.obj ? 'A thing on the map keeps no lasting effect, so the engine has nothing to hang this on: the DM applies it.' : 'The spell does not last, so the engine has nothing to hang this on: the DM hands out the light and puts it out.', depth + 1);
+      return this.dm(`The light of step ${at}: ${this.obj ? 'a thing on the map keeps no lasting effect' : 'the spell does not last'}.`);
+    }
+    this.line(`It goes out when the spell ends${st.replaces === true ? ', or when the caster casts the spell again: that earlier light goes out and this one takes its place' : ''}. A creature carries one light for the engine: one it already carries is not replaced, and the engine tells the DM.`, depth + 1);
+  },
   summon({ st, at, depth, say }) {
     if (this.obj) { say('This step would make a creature, but a thing on the map names no space for it: the engine tells the DM, who adds the creature.'); return this.dm(`Step ${at}: adding the creature it makes.`); }
     summonLines.call(this, st, at, depth, say);
@@ -1091,6 +1120,13 @@ function modPhrase(m, at) {
   if (!hook || !op) return 'a change the reader cannot read';
   if (hook === 'opportunity' && op === 'autoFail') return 'no Opportunity Attacks (it cannot make them)';
   if (op === 'crit') return `${OP_WORDS.crit('', HOOK_WORDS[hook])}`;
+  // Mage Armor: a base Armor Class of so much plus an ability modifier (engine/rolls.js `acOf`, `modifier`).
+  if (op === 'baseAc') {
+    const v = m.value;
+    if (hook !== 'ac' || !isObj(v) || !isInt(v.base) || !ABILITIES.includes(v.ability)) { this.bad(`${at}: \`baseAc\` is on ac and gives { base, ability }.`); return 'a base Armor Class the reader cannot read'; }
+    this.num(`${at}.value.base`, v.base, 'base Armor Class');
+    return OP_WORDS.baseAc(`${v.base} plus its ${ABILITY_WORDS[v.ability]} modifier`, HOOK_WORDS.ac);
+  }
   // Addition C of docs/specs/homebrew-subclasses.md: proficiency with one skill or tool, for as long as the effect lasts.
   if (op === 'proficient') {
     const sc = isObj(m.scope) ? m.scope : {}, skill = typeof sc.skill === 'string' && (sc.skill === 'chosen' || Object.hasOwn(SKILLS, sc.skill)) ? sc.skill : null, tool = typeof sc.tool === 'string' && /^(chosen|[a-z0-9]+(-[a-z0-9]+)*)$/.test(sc.tool) ? sc.tool : null;
