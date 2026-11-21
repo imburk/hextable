@@ -1,14 +1,14 @@
 // Operating the data (#662): idle tables leave memory and come back, tables are read lazily, old ones are archived and restored, the
 // nightly backup rotates, and /api/health says what address the server sees. The rig below wires createTables to real files the way index.js does.
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, symlinkSync, utimesSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { after, test } from "node:test";
 import { main as backupMain } from "../../../scripts/backup.mjs";
 import { backupDue, backupName, listBackups, runBackup } from "../src/backup.js";
 import { createJournal } from "../src/journal.js";
-import { proxyFromEnv, proxyReport } from "../src/limits.js";
+import { isInternalAddress, proxyFromEnv, proxyReport } from "../src/limits.js";
 import { createStore } from "../src/store.js";
 import { createTables } from "../src/tables.js";
 import { startServer, stopAll } from "./helpers.js";
@@ -361,6 +361,7 @@ test("a backup refuses to write into the data folder itself, and a failed one le
   const both = await Promise.all([runBackup({ dataDir: data, backupDir: out }), runBackup({ dataDir: data, backupDir: out })]);
   assert.equal(both.filter((x) => x.ok).length, 1);
   assert.match(both.find((x) => !x.ok).error, /already running/);
+  assert.equal(both.find((x) => !x.ok).busy, true);
 });
 
 test("a backup is due once a night: after the set hour, and not if there is one for today already", async () => {
@@ -400,6 +401,8 @@ test("proxyReport shows the address seen for this caller and whether TRUST_PROXY
   assert.equal(noHeader.address, "10.1.2.3");
   assert.match(noHeader.note, /could not read a visitor address/);
   assert.deepEqual(Object.keys(on).sort(), ["address", "clientIpHeader", "hops", "note", "sawForwardedFor", "socketAddress", "trustProxy"], "nothing else");
+  const outside = proxyReport(req("203.0.113.5", { "x-forwarded-for": "198.51.100.1" }), proxyFromEnv({ TRUST_PROXY: "1", CLIENT_IP_HEADER: "x-real-ip" }));
+  assert.deepEqual(Object.keys(outside).sort(), ["address", "hops", "note", "sawForwardedFor", "trustProxy"], "a caller from the internet is not told the server's setup");
 });
 
 const health = async (port, headers) => (await fetch(`http://localhost:${port}/api/health`, { headers })).json();
@@ -469,4 +472,91 @@ test("a table archived while the server was down is restored by resuming it, and
   assert.equal(back.find((m) => m.t === "welcome").role, "dm");
   assert.ok(existsSync(join(data, `${code}.json`)) && !existsSync(join(data, "archive", code)));
   assert.ok(statSync(join(data, `${code}.json`)).size > 0);
+});
+
+test("isInternalAddress knows the private, shared, link-local and special ranges and not public ones", () => {
+  for (const a of ["10.0.0.1", "172.16.0.1", "172.31.255.1", "192.168.1.1", "100.64.0.2", "127.0.0.1", "169.254.1.1", "0.0.0.0", "198.18.0.1", "198.19.9.9", "224.0.0.1", "::1", "fd12::1", "fe80::1", "febf::1"]) assert.equal(isInternalAddress(a), true, a);
+  for (const a of ["203.0.113.5", "8.8.8.8", "172.32.0.1", "100.63.0.1", "198.20.0.1", "2001:db8::1", "fec0::1"]) assert.equal(isInternalAddress(a), false, a);
+});
+
+test("a backup folder that is a symlink to the data folder, or to a folder inside it, is seen through", async () => {
+  const data = dataFolder(), base = tmp();
+  symlinkSync(data, join(base, "link"));
+  assert.equal((await runBackup({ dataDir: data, backupDir: join(base, "link") })).ok, false, "the same folder by another name");
+  symlinkSync(join(data, "assets"), join(base, "inner"));
+  const r = await runBackup({ dataDir: data, backupDir: join(base, "inner", "b"), now: () => new Date(Date.UTC(2026, 10, 1, 3)) });
+  assert.equal(r.ok, true);
+  assert.ok(!tree(join(data, "assets", "b", r.name)).some((f) => f.startsWith("assets/b")), "not copied into itself");
+  symlinkSync(data, join(base, "up"));
+  assert.equal((await runBackup({ dataDir: join(base, "up", "assets"), backupDir: data })).ok, false, "a folder that holds the data, through a link");
+});
+
+test("an empty or missing source is refused, and rotation never leaves fewer than N non-empty backups", async () => {
+  const out = tmp(), empty = tmp();
+  assert.match((await runBackup({ dataDir: empty, backupDir: out })).error, /nothing to back up/);
+  writeFileSync(join(empty, ".write-test"), "");
+  assert.match((await runBackup({ dataDir: empty, backupDir: out })).error, /nothing to back up/);
+  assert.match((await runBackup({ dataDir: join(empty, "gone"), backupDir: out })).error, /nothing to back up/);
+  assert.deepEqual(await listBackups(out), []);
+  // three good backups, then three empty folders that look like backups: a keep of 3 must not remove the good ones for them
+  const data = dataFolder();
+  for (const d of [1, 2, 3]) assert.equal((await runBackup({ dataDir: data, backupDir: out, keep: 3, now: () => new Date(Date.UTC(2026, 10, d, 3)) })).ok, true);
+  for (const d of [4, 5, 6]) mkdirSync(join(out, backupName(new Date(Date.UTC(2026, 10, d, 3)))));
+  const r = await runBackup({ dataDir: data, backupDir: out, keep: 3, now: () => new Date(Date.UTC(2026, 10, 7, 3)) });
+  assert.ok(r.ok);
+  const left = await listBackups(out);
+  assert.equal(left.filter((n) => readdirSync(join(out, n)).length > 0).length >= 3, true, "three non-empty ones remain");
+});
+
+test("a stray .partial folder from a cut-short run is cleaned up once it is old, and a fresh one is left", async () => {
+  const data = dataFolder(), out = tmp();
+  const old = join(out, "hextable-backup-20261101-030000.partial"), fresh = join(out, "hextable-backup-20261102-030000.partial");
+  mkdirSync(old); mkdirSync(fresh); writeFileSync(join(old, "x"), "1");
+  utimesSync(old, new Date(Date.now() - 7200_000), new Date(Date.now() - 7200_000));
+  assert.ok((await runBackup({ dataDir: data, backupDir: out, now: () => new Date(Date.UTC(2026, 10, 3, 3)) })).ok);
+  assert.ok(!existsSync(old) && existsSync(fresh));
+});
+
+test("a table only peeked at (a file request with a token) is not restored from the archive and not counted as used", () => {
+  const r = rig(tmp());
+  const { code, token } = hostedTable(r);
+  r.clock.offset = 31 * MIN; r.tables.sweep();
+  const before = statSync(join(r.dir, `${code}.json`)).mtimeMs;
+  const got = r.tables.member(code, token);
+  assert.equal(got.member.role, "dm", "the token is checked against the saved table");
+  assert.equal(r.tables.size(), 1);
+  r.clock.offset = 62 * MIN;
+  assert.deepEqual(r.tables.sweep().evicted, [code], "it is evicted again at the next sweep, since nobody sat down");
+  assert.equal(statSync(join(r.dir, `${code}.json`)).mtimeMs, before, "and its save was not rewritten");
+  r.clock.offset = 100 * DAY; r.tables.sweep();
+  assert.equal(r.tables.archivedSize(), 1);
+  assert.equal(r.tables.member(code, token), null, "an archived table is not brought back by a file request");
+  assert.equal(r.tables.archivedSize(), 1);
+  const dm = client(r.tables); dm.say({ t: "resume", code, token });
+  assert.equal(dm.last("welcome").role, "dm", "sitting down does");
+});
+
+test("a peeked table that someone then sits at is counted as used", () => {
+  const r = rig(tmp());
+  const { code, token } = hostedTable(r);
+  r.clock.offset = 31 * MIN; r.tables.sweep();
+  r.tables.member(code, token);
+  r.clock.offset = 50 * MIN;
+  const dm = client(r.tables); dm.say({ t: "resume", code, token });
+  dm.session.disconnect();
+  r.clock.offset = 70 * MIN;
+  assert.deepEqual(r.tables.sweep().evicted, [], "only 20 minutes since they left");
+});
+
+test("a table whose undo history could not be written is kept, and at most 50 tables leave memory in one sweep", () => {
+  const r = rig(tmp(), { flushNow: () => false });
+  const { code } = hostedTable(r);
+  r.clock.offset = 31 * MIN;
+  assert.deepEqual(r.tables.sweep().evicted, []);
+  assert.ok(r.tables.get(code));
+  const many = rig(tmp());
+  for (let i = 0; i < 53; i++) hostedTable(many, `H${i}`);
+  many.clock.offset = 31 * MIN;
+  assert.equal(many.tables.sweep().evicted.length, 50);
+  assert.equal(many.tables.sweep().evicted.length, 3);
 });

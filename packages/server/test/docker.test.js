@@ -88,5 +88,10 @@ test('the run-time stage carries scripts/backup.mjs and what it imports, and the
     const target = relative(rootDir, resolve(rootDir, 'scripts', spec)).split('\\').join('/');
     assert.ok(target.startsWith('packages/server/src/') && existsSync(join(rootDir, target)), `${target} is inside the copied server folder`);
   }
-  assert.match(read('docker-entrypoint.mjs'), /BACKUP_DIR/);
+  const entry = read('docker-entrypoint.mjs');
+  assert.match(entry, /BACKUP_DIR/);
+  assert.ok(!/chownTree\(BACKUP\)/.test(entry), 'the backup folder is not chowned recursively');
+  assert.match(entry, /isAbsolute\(BACKUP\)[^\n]*length < 2/, 'a relative path or one with fewer than two parts is refused');
+  // a failed chown of the backup folder warns in its own try/catch, before and apart from the decision to drop root
+  assert.ok(entry.indexOf('could not give BACKUP_DIR') > 0 && entry.indexOf('could not give BACKUP_DIR') < entry.indexOf('if (ok) {'));
 });

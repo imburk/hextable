@@ -70,6 +70,7 @@ export const IDLE_MS = 30 * 24 * 3600 * 1000;
 export const EVICT_MS = 30 * 60 * 1000;
 // A table that is not in memory and has been untouched this long is moved to the archive; joining its code brings it back.
 export const ARCHIVE_MS = 90 * 24 * 3600 * 1000;
+const EVICT_PER_SWEEP = 50;             // and at most this many leave memory in one sweep, so a restart's worth of idle tables does not hold the server
 const ARCHIVE_PER_SWEEP = 5;            // one sweep moves at most this many, so it never holds the server for long
 const ARCHIVE_RETRY_MS = 3600 * 1000;   // after a move that failed, not again for this long
 const SAVE_STALE_MS = 3600 * 1000;      // sitting down only rewrites the file when its stamp is this old
@@ -222,18 +223,22 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   if (index) { for (const { code, active } of index()) if (!tables.has(code)) known.set(code, active); for (const c of archived()) archivedCodes.add(c); }
   // The table for this code, read from its save (or brought back from the archive) if it is not in memory. Reading is synchronous, so a
   // code is never loaded twice. An unreadable save stays where it is and the code answers as unknown.
-  function tableFor(code) {
+  // `peek` (a request that only has a token to check, such as a file request) neither restores from the archive nor counts the table as used:
+  // a table read that way is evicted by the next sweep unless someone sits down at it, and eviction then does not rewrite its save.
+  const peeked = new WeakSet();
+  function tableFor(code, { peek = false } = {}) {
     if (typeof code !== "string") return undefined;
     const t = tables.get(code);
-    if (t) return t;
-    if (!known.has(code) && archivedCodes.has(code) && restore?.(code)) { archivedCodes.delete(code); known.set(code, now()); }
+    if (t) { if (!peek && peeked.has(t)) { peeked.delete(t); t.active = now(); } return t; }
+    if (!peek && !known.has(code) && archivedCodes.has(code) && restore?.(code)) { archivedCodes.delete(code); known.set(code, now()); }
     if (!known.has(code) || !loadOne) return undefined;
     let data = null;
     try { data = loadOne(code); } catch (err) { console.error(`Table ${code}: could not be loaded: ${err.message}`); }
     if (!data || typeof data !== "object" || data.code !== code) return undefined;
     known.delete(code);
     adopt(data);
-    data.active = now();                // being loaded is being used: it is not evicted before anyone has sat down
+    if (peek) peeked.add(data);
+    else data.active = now();           // being loaded is being used: it is not evicted before anyone has sat down
     return data;
   }
   const taken = (code) => tables.has(code) || known.has(code) || archivedCodes.has(code);
@@ -244,16 +249,16 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   function evict(code) {
     const t = tables.get(code);
     if (!t || !flushNow || watched(t)) return false;
-    save(t);
+    if (!peeked.has(t)) save(t);          // a table only peeked at has nothing new to write unless something already marked it
     if (flushNow(code) === false) return false;
     journal.close(code, "evict");
     tables.delete(code); kept.delete(code); dirtyHistory.delete(code);
-    known.set(code, now());
+    known.set(code, peeked.has(t) ? (t.active ?? now()) : now());
     return true;
   }
   function sweep() {
     const out = { evicted: [], archived: [] };
-    for (const [code, t] of [...tables]) if (!watched(t) && now() - (t.active ?? 0) >= evictMs && evict(code)) out.evicted.push(code);
+    for (const [code, t] of [...tables]) { if (out.evicted.length >= EVICT_PER_SWEEP) break; if (!watched(t) && now() - (t.active ?? 0) >= evictMs && evict(code)) out.evicted.push(code); }
     if (archive) {
       let n = 0;
       for (const [code, active] of [...known]) {
@@ -830,7 +835,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // Who holds this session token at this table, if they have been let in: for requests that do not
   // come over the socket (fetching and uploading files). Compared in constant time.
   function member(code, token) {
-    const t = tableFor(code);
+    const t = tableFor(code, { peek: true });
     if (!t || typeof token !== "string" || token.length < 16 || token.length > 64) return null;
     const want = Buffer.from(token);
     const m = t.members.find((x) => { const have = Buffer.from(x.token); return have.length === want.length && timingSafeEqual(have, want); });
@@ -852,7 +857,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // Whether a file of a table may be deleted (assets-http.js): not one the table's world uses (worldpack.js, worldPictures).
   // Returns null, or the sentence the deletion is refused with.
   function keepsAsset(code, id) {
-    const t = tableFor(code);
+    const t = tableFor(code, { peek: true });
     if (!t?.world) return null;
     return worldPictures(t.state, t.world).has(id) ? "That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first." : null;
   }

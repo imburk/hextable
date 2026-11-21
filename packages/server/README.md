@@ -154,6 +154,12 @@ copied unless `BACKUP_ARCHIVE=no`, or `auto` (the default) and it is over `BACKU
 `.partial` and renamed when whole; the only things ever removed are older backups past the kept number, and only folders named like ours. `BACKUP_DIR`
 must not be `DATA_DIR` or a folder that holds it; if it is inside `DATA_DIR` it is left out of the copy.
 
+A backup is refused (and says why in the log) when the source is missing or empty, when `BACKUP_DIR` (compared by real path, so a symlink does not hide it) is
+`DATA_DIR` or holds it, or when the disk has less than the copy's size plus a fifth free. Rotation never removes an old backup if that would leave fewer
+than `BACKUP_KEEP` non-empty ones. After a failed night the server waits one hour, then two, four, up to six, before trying again, and does not retry every ten minutes. Stray
+`.partial` folders over an hour old are cleaned up. While a backup runs, no table is moved to the archive (a restore still can be: the copy skips what vanishes).
+A `BACKUP_DIR` on the same disk as `DATA_DIR` is allowed and the log says at start that it does not protect against losing the disk.
+
 By hand: `node scripts/backup.mjs --to /backups` (defaults `DATA_DIR`, `BACKUP_DIR`, `BACKUP_KEEP`, `BACKUP_ARCHIVE`; flags `--data`, `--to`, `--keep`, `--archive yes|no|auto`).
 It is in the image. A scheduler outside the server (a Railway cron service) can run the same command instead of the built-in nightly one.
 
@@ -730,20 +736,31 @@ every visitor looks like the same one and they share the limits.
 4. If the note says to set `TRUST_PROXY`, add the variable `TRUST_PROXY` with the value `1` in **Variables**, let Railway redeploy, and look again.
    If `address` is still not yours, tell whoever helps you with the game; the section "Address" above explains the other setting.
 
-**2. Keep backups on a second volume.** A backup on the same disk as the tables is lost with it.
-1. In the project canvas click **New** (or right-click the canvas), choose **Volume**, and attach it to the Hextable service. Mount path: `/backups`.
-2. Click the service, **Variables**, add `BACKUP_DIR` with the value `/backups`. Railway redeploys.
-3. Leave `DATA_DIR` alone (`/data`, the first volume). Never use the same folder for both.
-4. A day later (or after 03:00 UTC), look in the service **Logs** for a line starting `backup hextable-backup-`. If it says `Backup failed`, the reason follows it.
+**2. Turn on Railway's own volume backups (recommended).** Railway allows one volume per service, so the tables' volume cannot be given a
+second volume for backups. Railway backs the volume up itself ([Railway docs: Volume Backups](https://docs.railway.com/volumes/backups)):
+1. Click the Hextable service, then **Settings**, then the **Backups** tab.
+2. Pick a schedule. Railway offers Daily (a backup every 24 hours, kept 6 days), Weekly (every 7 days, kept 27 days) and Monthly (every 30 days,
+   kept 89 days), and you can switch on more than one. Daily plus weekly is a good start. (Wording from the docs as read on 2026-11-21; Railway may change it.)
+3. To go back to one: in the same tab find the backup by its date and start the restore. Railway mounts a copy of that backup as a new volume
+   and shows the change on the project canvas; press **Deploy** to apply it. The old volume stays in the project, unmounted, until you remove it.
+   Backups live with the volume: wiping the volume deletes its backups too, and a backup can only be restored inside the same project and environment.
 
-**3. Download a backup.** Railway does not let you click a folder and download it, so use its command line once on your computer:
-1. Install the Railway command line (railway.com/docs/cli) and run `railway login`, then `railway link` and pick this project and service.
-2. Run `railway ssh` to open a shell in the running service, then `ls /backups` to see the dated folders; the newest has the latest date in its name.
-3. Make one file of it with `tar -czf /tmp/latest.tar.gz -C /backups <the newest folder name>` (the running service has `tar`), then leave the shell.
-   To fetch it, run `railway ssh -- cat /tmp/latest.tar.gz > latest.tar.gz` on your computer.
-If any step does not match what you see, stop and ask; nothing here changes your tables.
+**3. The server's own backup folder (`BACKUP_DIR`, optional).** The server can also copy its tables into a folder every night (see "Backups" above).
+On Railway that folder is on the same volume as the tables (there is only one), so it protects you from a table that was damaged or changed by mistake,
+but **not from losing the volume**: the folder goes with it. Only Railway's backups (step 2) do that. If you want it anyway:
+1. Add the variable `BACKUP_DIR` with the value `/data/backups` (a folder inside the volume; the server leaves it out of its own copies). Railway redeploys.
+2. The next night, look in the service **Logs** for a line starting `backup hextable-backup-`, or `Backup failed` and the reason. At start the log also says if
+   `BACKUP_DIR` is on the same disk as the tables.
+3. To download one, install the Railway command line (railway.com/docs/cli), run `railway login` and `railway link`, and register an SSH key with Railway (the
+   first `railway ssh` offers to do it; [Railway docs: SSH](https://docs.railway.com/cli/ssh)). Then use `scp`, which Railway's SSH supports, as in its docs:
+   `scp <service>@ssh.railway.com:/data/backups/<folder>/<file> ./` for a file, or add `-r` for a folder (add `-s` on an OpenSSH older than 9.0).
+   Take the exact address from the docs page; if a step does not match what you see, stop and ask.
+4. `RAILWAY_RUN_UID` stays unset (see above); the image handles the volume's ownership itself.
 
-**Restoring** (ask for help): stop the service, copy the contents of a backup folder over `/data`, start it.
+**Restoring from a `BACKUP_DIR` copy** (ask for help; do not try it alone). You cannot `railway ssh` into a stopped service, so the work is done on the running one
+and the new tables must not be mixed with the current ones. Outline: with the game closed to players, move everything now in `/data` (except the `backups` folder) into
+a new folder such as `/data/before-restore` rather than copying over it, then copy the chosen backup folder's contents into `/data`, and redeploy.
+The `before-restore` folder keeps the old tables until you are sure.
 
 ### How deploys are verified (review R1, #617)
 

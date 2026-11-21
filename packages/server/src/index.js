@@ -31,7 +31,7 @@ import { acceptWebSocket } from "./ws.js";
 import { createFeedback, feedbackRoute } from "./feedback.js";
 import { createJournal, journalFromEnv } from "./journal.js";
 import { createStore } from "./store.js";
-import { backupDue, runBackup } from "./backup.js";
+import { backupDue, backupRunning, realish, runBackup } from "./backup.js";
 import { buildInfo } from "./build-info.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
@@ -164,7 +164,7 @@ function flushOne(code) {
   try {
     const h = tables.exportHistory(code);
     if (h) { writeFileSync(historyFile(code) + ".tmp", JSON.stringify(h)); renameSync(historyFile(code) + ".tmp", historyFile(code)); }
-  } catch (err) { console.error(`Could not save undo history for table ${code}: ${err.message}`); }
+  } catch (err) { ok = false; console.error(`Could not save undo history for table ${code}: ${err.message}`); }       // false: a table is not evicted with its undo history unwritten
   return ok;
 }
 function flush() { for (const code of [...dirty.keys()]) flushOne(code); }
@@ -184,7 +184,7 @@ const evictMinutes = whole(process.env.IDLE_EVICT_MINUTES, 30), archiveDays = wh
 const tables = createTables({ journal, save, loadHistory, index: () => store.list(), loadOne: (code) => store.read(code), archived: () => store.archived(), flushNow: flushOne,
   evictMs: evictMinutes > 0 ? evictMinutes * 60_000 : Infinity, archiveMs: archiveDays > 0 ? archiveDays * 86_400_000 : Infinity,
   // A table's files and journals leave the counts before they move, and come back after they return.
-  archive: (code) => { assets.release(code); const ok = store.archive(code); if (ok) journal.forget(code); else assets.adopt(code); return ok; },
+  archive: (code) => { if (backupRunning()) return false; assets.release(code); const ok = store.archive(code); if (ok) journal.forget(code); else assets.adopt(code); return ok; },
   restore: (code) => { const ok = store.restore(code); if (ok) { assets.adopt(code); journal.adopt(code); } return ok; },
   importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
 const archivedAtStart = store.archived();
@@ -365,13 +365,24 @@ setInterval(() => {
 const BACKUP_DIR = (process.env.BACKUP_DIR ?? "").trim();
 if (BACKUP_DIR) {
   const hour = Math.min(23, whole(process.env.BACKUP_HOUR, 3));
+  // On the same disk as the tables a backup guards against a bad save, not against losing the disk: say so once at start.
+  Promise.all([realish(DATA), realish(BACKUP_DIR)]).then(async ([d, b]) => {
+    const { statSync } = await import("node:fs");
+    const dev = (p) => { for (let x = p; ; x = join(x, "..")) { try { return statSync(x).dev; } catch { if (x === join(x, "..")) return null; } } };
+    if (dev(d) !== null && dev(d) === dev(b)) console.error(`BACKUP_DIR ${BACKUP_DIR} is on the same disk as DATA_DIR ${DATA}: backups there help against a bad save but not if the disk is lost. Use the host's volume backups or a different disk as well.`);
+  }).catch(() => {});
+  let failures = 0, notBefore = 0;
   const nightly = async () => {
     try {
-      if (!(await backupDue(BACKUP_DIR, new Date(), hour))) return;
+      if (Date.now() < notBefore || !(await backupDue(BACKUP_DIR, new Date(), hour))) return;
       flush();
       const r = await runBackup({ dataDir: DATA, backupDir: BACKUP_DIR, keep: whole(process.env.BACKUP_KEEP, 7) || 7, archive: process.env.BACKUP_ARCHIVE || "auto",
         archiveMax: whole(process.env.BACKUP_ARCHIVE_MAX_MB, 500) * 1024 * 1024, log: (l) => console.log(l) });
-      if (!r.ok) console.error(`Backup failed: ${r.error}`);
+      if (r.busy) return;
+      if (r.ok) { failures = 0; return; }
+      // After a failed run, wait before the next: an hour, then two, then four, at most six, so a full disk costs a log line now and then, not a copy every ten minutes.
+      notBefore = Date.now() + Math.min(6, 2 ** failures++) * 3600_000;
+      console.error(`Backup failed: ${r.error} (next try in ${Math.min(6, 2 ** (failures - 1))} h)`);
     } catch (err) { console.error(`Backup failed: ${err?.message ?? err}`); }
   };
   setInterval(nightly, 10 * 60_000).unref();
