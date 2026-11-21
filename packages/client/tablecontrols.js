@@ -44,6 +44,10 @@ export const strikeFirstRule = (settings) => {
   return { value: v, text: SETTING_TEXT.strikeFirst[v] };
 };
 
+// Turning on 'Spells and attacks' ('all') asks first (#649); turning it off, or choosing the other values, does not. Plain words on what changes in play.
+export const STRIKE_FIRST_WARNING = 'From now on, an attack, a hostile spell or a monster\'s action at the other side lands first, before anyone rolls Initiative, whether you or a player makes it. This is a table rule that is not in the SRD, and it changes who gets the first blow in every fight.';
+export const strikeFirstNeedsAsk = (from, to) => to === 'all' && strikeFirstRule({ strikeFirst: from }).value !== 'all';
+
 // The lobby's last choice of grid for the starter valley, kept on the device.
 export const GRID_KEY = 'hextable.valleyGrid';
 export const stockMap = (id) => STOCK_MAPS.find((m) => m.id === id);
@@ -93,7 +97,19 @@ export function initTableControls({ act, getState, isDM, toast }) {
   // Strike first (#585): after the engage checkbox (app.js keeps that one). The select is at least 44 px high, for touch.
   $('dm-engage').closest('label').insertAdjacentHTML('afterend', `<label class="assign">${esc(STRIKE_FIRST_ASK)} <select id="dm-strike-first" style="min-height:44px">${SETTINGS.strikeFirst.map((v) => `<option value="${esc(v)}">${esc(STRIKE_FIRST_NAMES[v] ?? v)}</option>`).join('')}</select></label>
     <p class="note" id="dm-strike-first-text"></p>`);
-  $('dm-strike-first').onchange = (ev) => act({ type: 'setting', key: 'strikeFirst', value: ev.target.value });
+  // Turning on 'Spells and attacks' asks first, in the page's own dialog; Cancel puts the choice back as the table has it.
+  const sfAsk = $('strike-first-ask'), sfSelect = $('dm-strike-first');
+  const sfClose = () => { sfAsk.hidden = true; sfSelect.value = strikeFirstRule(getState()?.settings).value; };
+  $('strike-first-msg').textContent = STRIKE_FIRST_WARNING;
+  $('strike-first-cancel').onclick = () => { sfClose(); sfSelect.focus(); };
+  $('strike-first-on').onclick = () => { sfAsk.hidden = true; act({ type: 'setting', key: 'strikeFirst', value: 'all' }); sfSelect.focus(); };
+  sfAsk.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); $('strike-first-cancel').click(); } });
+  sfSelect.onchange = (ev) => {
+    const to = ev.target.value;
+    if (!isDM()) { sfSelect.value = strikeFirstRule(getState()?.settings).value; return; }
+    if (strikeFirstNeedsAsk(getState()?.settings?.strikeFirst, to)) { sfAsk.hidden = false; $('strike-first-cancel').focus(); return; }
+    act({ type: 'setting', key: 'strikeFirst', value: to });
+  };
 
   // Rolled ability scores (docs/specs/ability-scores.md): may a score be rolled again, below what number, and which result stands. A section of its own after the one that
   // holds the XP choice (it is not a fight rule). Each choice is a label over a select the whole width and at least 44 px high (a thumb), as the square rules are (`#dm-scores` in style.css).

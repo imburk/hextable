@@ -67,6 +67,7 @@ const REGISTRY = {
   rolledhp: ['rolledhp'],
   windows: ['windows'],
   newversion: ['newversion'],
+  strikefirst: ['strikefirst'],
 };
 
 const only = process.env.SMOKE_ONLY;
