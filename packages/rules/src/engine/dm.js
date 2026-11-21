@@ -156,8 +156,8 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can bring the others into the fight.');
     s.encounter || fail('There is no fight to join.');
     a.who === undefined || (Array.isArray(a.who) && a.who.every((id) => s.entities[id]?.side === 'party')) || fail('Name party members to bring in.');
-    const joined = bringIn(s, a.who, ev);
-    joined.length || ev.some((x) => x.type === 'note') || fail('Everyone in the party is in the fight already.');
+    const { joined, refused } = bringIn(s, a.who, ev);
+    joined.length || refused.length || fail('Everyone in the party is in the fight already.');
   },
   // Show a region to the players, or take it back. { type: 'revealRegion', region, revealed: true|false }
   revealRegion(s, a, ctx, ev) {

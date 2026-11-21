@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
+import { moveOptions } from "../src/engine/world.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -105,4 +106,86 @@ test("joinFight works from a hero standing apart, whatever the ground (the rogue
     assert.ok(inOrder(s, "rogue"), `seed ${seed}`);
   }
   assert.ok(fights >= 4, `${fights} fights`);
+});
+
+// ---- review of #693: where they land, and who is refused ----
+const grassy = (seed = 7) => {
+  const s = newGame(seed);
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+  ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+  for (const id of Object.keys(s.entities)) if (/^m\d+$/.test(id)) ok(apply(s, { type: "remove", actor: id }, DM));
+  for (const [id, q, r] of [["wizard", 0, 0], ["fighter", -2, 0], ["cleric", -1, 1], ["rogue", -9, 3]]) ok(apply(s, { type: "place", actor: id, to: { q, r } }, DM));
+  return s;
+};
+const spawnAt = (s, monster, q, r) => { const e = s.entities[ok(apply(s, { type: "spawn", monster, at: { q, r } }, DM)).events[0].id]; return e; };
+const turnOf = (s, id) => { for (let i = 0; i < 40 && s.encounter.order[s.encounter.turn].id !== id; i++) ok(apply(s, { type: "endTurn", actor: s.encounter.order[s.encounter.turn].id }, DM)); };
+const landing = (s) => { const c = structuredClone(s); ok(apply(c, { type: "joinFight", who: ["rogue"] }, DM)); return { ...c.entities.rogue.pos }; };
+
+test("joinFight: nobody lands in a lasting zone at the nearest place", () => {
+  const s = grassy();
+  spawnAt(s, "goblin-warrior", 4, 0);
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 6 }, DM));
+  const spot = landing(s);
+  Object.assign(s.entities.wizard, { slots: { 1: 4, 2: 3, 3: 3 }, slotsMax: { 1: 4, 2: 3, 3: 3 } });
+  s.entities.wizard.spells.push("moonbeam");
+  turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: spot.q, r: spot.r } }, DM));
+  const fx = s.effects.find((x) => x.name === "Moonbeam");
+  assert.ok(fx.zone.hexes.includes(`${spot.q},${spot.r}`), "the zone covers the place they would have taken");
+  ok(apply(s, { type: "joinFight", who: ["rogue"] }, DM));
+  assert.ok(inOrder(s, "rogue"));
+  const p = s.entities.rogue.pos;
+  assert.ok(!fx.zone.hexes.includes(`${p.q},${p.r}`), "it landed outside the zone");
+});
+
+test("joinFight: a hidden monster does not change where they land", () => {
+  const plain = grassy(), withHidden = grassy();
+  for (const s of [plain, withHidden]) spawnAt(s, "goblin-warrior", 4, 0);
+  const lurker = spawnAt(withHidden, "goblin-warrior", -6, 7);
+  for (const s of [plain, withHidden]) ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 6 }, DM));
+  lurker.hidden = true;
+  assert.deepEqual(landing(withHidden), landing(plain));
+  lurker.hidden = false; lurker.hiding = true;
+  assert.deepEqual(landing(withHidden), landing(plain), "hiding too");
+});
+
+test("joinFight: a hero who cannot act and is named gets the note and stays put", () => {
+  const s = grassy();
+  spawnAt(s, "goblin-warrior", 4, 0);
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 6 }, DM));
+  s.entities.rogue.hp = 0;
+  const unnamed = apply(s, { type: "joinFight" }, DM);
+  assert.equal(unnamed.ok, false, "the fallen are left be when nobody is named");
+  const r = ok(apply(s, { type: "joinFight", who: ["rogue"] }, DM));
+  assert.ok(r.events.some((e) => e.type === "note" && e.id === "rogue" && e.why === "joinFight"));
+  assert.ok(!inOrder(s, "rogue"));
+  assert.deepEqual(s.entities.rogue.pos, { q: -9, r: 3, z: 0 });
+});
+
+test("joinFight: a mounted hero comes with the mount, both in the fight", () => {
+  const s = grassy();
+  spawnAt(s, "goblin-warrior", 4, 0);
+  const horse = spawnAt(s, "warhorse", -9, 4);
+  horse.side = "party";
+  ok(apply(s, { type: "mount", actor: "rogue", mount: horse.id }, DM));
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 6 }, DM));
+  assert.ok(!inOrder(s, "rogue") && !inOrder(s, horse.id));
+  const r = ok(apply(s, { type: "joinFight" }, DM));
+  assert.ok(inOrder(s, horse.id) && inOrder(s, "rogue"));
+  const moves = r.events.filter((e) => e.type === "moved");
+  assert.deepEqual(moves.find((e) => e.id === "rogue").path, moves.find((e) => e.id === horse.id).path, "one route for the pair");
+  assert.deepEqual(s.entities.rogue.pos, horse.pos);
+});
+
+test("joinFight: a hero whose own walk is over 60 ft stays out, though an exploring walk would reach and its leader stands at the place", () => {
+  const s = grassy();
+  for (const [id, q, r] of [["fighter", -12, 1], ["wizard", -11, 0], ["cleric", -11, 1], ["rogue", 13, -5]]) ok(apply(s, { type: "place", actor: id, to: { q, r } }, DM));
+  spawnAt(s, "goblin-warrior", -8, 1);
+  ok(apply(s, { type: "startEncounter", center: { q: -12, r: 1 }, radius: 6 }, DM));
+  assert.ok(!inOrder(s, "rogue"));
+  const reach = [...moveOptions(s, s.entities.rogue)].filter(([, v]) => s.encounter.arena[`${v.h.q},${v.h.r}`] && v.canStop);
+  assert.ok(reach.length && Math.min(...reach.map(([, v]) => v.cost)) > 60, "an exploring walk reaches the arena, over 60 ft of it");
+  const r = ok(apply(s, { type: "joinFight", who: ["rogue"] }, DM));
+  assert.ok(!inOrder(s, "rogue"));
+  assert.ok(r.events.some((e) => e.type === "note" && e.id === "rogue" && e.why === "joinFight"));
 });
