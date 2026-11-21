@@ -65,6 +65,7 @@ const REGISTRY = {
   models: ['models'],
   allowance: ['allowance'],
   windows: ['windows'],
+  newversion: ['newversion'],
 };
 
 const only = process.env.SMOKE_ONLY;
