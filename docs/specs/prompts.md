@@ -20,6 +20,8 @@ A saving throw, DM only, through `apply()` like everything else:
 - `adv` is one more source of Advantage or Disadvantage, for every creature called. It combines with the others by the SRD's rule: any Advantage and any Disadvantage cancel to a plain roll, however many of each.
 - `damage` is rolled once for everyone (as one area spell's damage is). A creature that fails takes all of it; one that succeeds takes half, rounded down, only if `half`. It goes through the engine's usual damage path, so Resistance, Immunity, Vulnerability, Temporary Hit Points, a Concentration check and death saves all follow as for any damage.
 - `condition` goes on a creature that fails, unless it is immune (the DM is told with a `note`) or has it already. It lasts until the DM takes it off (`condition` with `on: false`); the engine says so with a `manual` event.
+- Evasion applies as it does to a spell's save: on a Dexterity save with `half`, a creature with Evasion takes no damage on a success and half on a failure, and a `note` says so.
+- A creature with Legendary Resistance that fails is put to the DM alone as a `manual` event (never sent to players). Spending a use is the DM's call; the engine applies the failure and does not decide.
 - `secret` keeps the DC and the outcome from the players (below).
 
 `adv` is also accepted, from the DM only, on `check`, `attack` and `act`: one source of Advantage or Disadvantage on the attack rolls that creature makes in that action, or on the check. A player who sends it is refused and nothing changes. A familiar's attack refuses it. If the action makes no attack roll to use it (the attack only starts a fight, or is a Shove or a Grapple), the engine says so to the DM with a `manual` event, and does not drop it quietly.
@@ -37,6 +39,10 @@ One `save` event per creature, in the order named, then the `damage`, `cond`, `n
 | not secret | the whole event: the roll, the bonus, why it had Advantage, the DC, the outcome | `id`, `abil`, `dc`, `success`, `called`; never the roll, the bonus or what modified it |
 | secret | the roll and its dice and bonus; no `dc`, no `success` | nothing |
 | a creature they cannot see | nothing | nothing |
+
+A creature of theirs that rolls a secret save is not told the outcome by anything else either: its `reroll` and `rescued` parts are left off, and the events that say what was spent to turn it (a Bardic Inspiration die ending) are marked `hush` and not sent to players. What a creature spends is still on its own sheet, which a player can read (a use of Indomitable, a die in their pool), so an attentive player can infer it from the sheet; the call does not hide the sheet.
+
+The attack events of an attack the DM granted Advantage or Disadvantage show `DM grants Advantage` or `DM grants Disadvantage` in `why`, to players as to the DM. A called Dexterity save has no point of origin, so cover never applies to it.
 
 The damage, the conditions and the notes that follow are told as they always are: what a player could see happen. `secret` hides the DC and the dice, not what visibly happens to a creature in view. The DM sees everything. Because the called save is an ordinary `save` event, it is also what the timeline and a player's view are built from; no new event type is told to anyone.
 

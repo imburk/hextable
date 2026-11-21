@@ -1,9 +1,10 @@
 // PB-5 (#676): a saving throw the DM calls for, and Advantage or Disadvantage the DM grants (docs/specs/prompts.md, "Call for a roll").
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply } from "../src/engine.js";
+import { apply, current, makeEntity } from "../src/engine.js";
+import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
-import { viewEvents } from "../src/view.js";
+import { view, viewEvents } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -177,4 +178,114 @@ test("the same game and the same calls give the same rolls, and the dice are the
   const [x, y] = [play(), play()];
   assert.deepEqual(x.r.events, y.r.events);
   assert.deepEqual(x.s, y.s);
+});
+
+const evasive = (s, id) => (s.entities[id].feats ??= []).push({ id: "evasion", name: "Evasion", evasion: true });
+
+test("Evasion: no damage on a successful Dexterity save for half, half on a failure, as a spell's save does", () => {
+  const win = game(), lose = game();
+  evasive(win, "rogue"); evasive(lose, "rogue");
+  const damage = { dice: "4d6", type: "fire", half: true };
+  const a = ok(call(win, { who: "rogue", ability: "dex", dc: 1, damage }));
+  assert.equal(hits(a).length, 0);
+  assert.ok(a.events.some((e) => e.type === "note" && e.text === "Evasion: no damage"));
+  const full = ok(call(game(), { who: "rogue", ability: "dex", dc: 40, damage: { dice: "4d6", type: "fire" } }));
+  const b = ok(call(lose, { who: "rogue", ability: "dex", dc: 40, damage }));
+  assert.equal(hits(b)[0].amount, Math.floor(hits(full)[0].amount / 2));
+  assert.ok(b.events.some((e) => e.type === "note" && e.text === "Evasion: half damage"));
+  // Not for another ability, nor without `half`, nor while Incapacitated.
+  const c = game(); evasive(c, "rogue");
+  assert.equal(hits(ok(call(c, { who: "rogue", ability: "con", dc: 40, damage }))).length, 1);
+  const d = game(); evasive(d, "rogue");
+  assert.equal(hits(ok(call(d, { who: "rogue", ability: "dex", dc: 40, damage: { dice: "4d6", type: "fire" } })))[0].amount, hits(full)[0].amount);
+});
+
+test("what bears on a save is applied: Aura of Protection, Bless, a magic item, Unconscious and Stunned", () => {
+  const base = (id) => { const e = game().entities[id]; return Math.floor((e.abil.wis - 10) / 2) + (e.saveProf.includes("wis") ? e.prof : 0); };
+  const rogueBase = base("rogue");
+  // Aura of Protection: the paladin's Charisma modifier for allies within 10 feet.
+  const A = { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 16 };
+  const s = game();
+  s.entities.hero = makeEntity(derive({ name: "Ka", class: "paladin", level: 6, subclass: "devotion", abilities: A, skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"] }).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  ok(apply(s, { type: "place", actor: "rogue", to: { q: 1, r: 0 } }, DM));
+  assert.equal(saves(ok(call(s, { who: "rogue", ability: "wis", dc: 10 })))[0].bonus, rogueBase + 3);
+  ok(apply(s, { type: "place", actor: "rogue", to: { q: 6, r: 0 } }, DM));
+  assert.equal(saves(ok(call(s, { who: "rogue", ability: "wis", dc: 10 })))[0].bonus, rogueBase);               // out of range
+  // Bless: a d4 on the roll, shown in `extra`.
+  const t = game();
+  t.entities.cleric.spells.push("bless");
+  ok(apply(t, { type: "cast", actor: "cleric", spell: "bless", targets: ["rogue"], slot: 1 }, DM));
+  const b = saves(ok(call(t, { who: "rogue", ability: "wis", dc: 10 })))[0];
+  assert.equal(b.extra[0].name, "Bless");
+  assert.equal(b.total, b.roll + rogueBase + b.extra[0].roll);
+  // A Ring of Protection, worn and attuned.
+  const u = game();
+  u.entities.ring = makeEntity(derive({ name: "Ria", class: "fighter", level: 5, subclass: "champion", abilities: { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 }, skills: ["athletics"], choices: { "fighting-style": "defense" }, weapons: ["longbow"],
+    items: [{ id: "i1", item: "ring-of-protection", equipped: true, attuned: true }] }).record, { id: "ring", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  const plain = game(); plain.entities.ring = makeEntity(derive({ name: "Ria", class: "fighter", level: 5, subclass: "champion", abilities: { str: 16, dex: 14, con: 14, int: 10, wis: 12, cha: 8 }, skills: ["athletics"], choices: { "fighting-style": "defense" }, weapons: ["longbow"] }).record, { id: "ring", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 } });
+  assert.equal(saves(ok(call(u, { who: "ring", ability: "wis", dc: 10 })))[0].bonus, saves(ok(call(plain, { who: "ring", ability: "wis", dc: 10 })))[0].bonus + 1);
+  // Unconscious and Stunned fail Strength and Dexterity saves outright, and not others.
+  for (const cond of ["unconscious", "stunned"]) {
+    const v = game();
+    ok(apply(v, { type: "condition", actor: "fighter", condition: cond, on: true }, DM));
+    const [str, dex, con] = ["str", "dex", "con"].map((ability) => saves(ok(call(v, { ability, dc: 1 })))[0]);
+    assert.deepEqual([str.success, str.roll, dex.success, dex.roll], [false, 0, false, 0], cond);
+    assert.notEqual(con.roll, 0, cond);
+  }
+});
+
+test("a secret save keeps its outcome from the owner: a reroll, a rescue and what was spent for them are not told", () => {
+  const s = game();
+  const save = { type: "save", id: "fighter", abil: "con", dc: 15, called: true, secret: true, roll: 4, total: 7, success: true, dice: [], bonus: 3, reroll: { name: "Indomitable", was: 2, n: 4 }, rescued: { name: "Bardic Inspiration", add: 5, dice: [] } };
+  const spent = { type: "effectEnd", fx: "fx1", why: "used", hush: true };
+  assert.deepEqual(viewEvents([spent, save], s, PAT).map((e) => e.type), ["save"]);
+  const seen = viewEvents([spent, save], s, PAT)[0];
+  assert.deepEqual([seen.reroll, seen.rescued, seen.success, seen.dc], [undefined, undefined, undefined, undefined]);
+  assert.equal(seen.total, 7);                                                                                  // their own roll
+  // The DM's own stream is untouched.
+  assert.equal(viewEvents([spent, save], s, DM).length, 2);
+  // And the handler marks what a secret save spends: nothing is marked when it is not secret.
+  const r = ok(call(game(), { dc: 15, secret: true }));
+  assert.ok(r.events.every((e) => e.type === "save" || e.hush));
+  assert.ok(ok(call(game(), { dc: 15 })).events.every((e) => !e.hush));
+});
+
+test("a creature with Legendary Resistance that fails is put to the DM alone, as a manual event", () => {
+  const s = game();
+  ok(apply(s, { type: "spawn", monster: "lich", at: { q: 3, r: 3 } }, DM));
+  const lich = Object.values(s.entities).find((e) => /Lich/.test(e.name));
+  const r = ok(call(s, { who: lich.id, ability: "wis", dc: 40 }));
+  const m = r.events.find((e) => e.type === "manual" && e.name === "Legendary Resistance");
+  assert.ok(m && m.partial && m.actor === lich.id);
+  assert.equal(saves(r)[0].success, false);
+  assert.deepEqual(viewEvents(r.events, s, PAT).filter((e) => e.type === "manual"), []);
+  const ok2 = ok(call(s, { who: lich.id, ability: "wis", dc: 1 }));
+  assert.equal(ok2.events.some((e) => e.type === "manual"), false);
+});
+
+test("act with adv, Shield set to ask, then the answer: the grant survives the question", () => {
+  const field = () => {
+    const s = newGame(7);
+    for (const id of Object.keys(s.entities)) if (!["wizard", "fighter", "m1"].includes(id)) delete s.entities[id];
+    for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
+    s.settings.autoEngage = false;
+    s.entities.wizard.spells.push("shield");
+    ok(apply(s, { type: "claim", entity: "wizard", user: "pat", userName: "Pat" }, PAT));
+    ok(apply(s, { type: "place", actor: "wizard", to: { q: 0, r: 0 } }, DM));
+    ok(apply(s, { type: "place", actor: "m1", to: { q: 1, r: 0 } }, DM));
+    ok(apply(s, { type: "place", actor: "fighter", to: { q: -3, r: 0 } }, DM));
+    for (const e of Object.values(s.entities)) e.hp = e.maxHp = 500;
+    ok(apply(s, { type: "reactions", actor: "wizard", set: { shield: "ask" } }, PAT));
+    s.entities.m1.actions.find((a) => a.id === "scimitar").effects[0].bonus = 40;
+    ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
+    for (let i = 0; i < 20 && current(s) !== "m1"; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    return s;
+  };
+  const s = field();
+  const r = ok(apply(s, { type: "act", actor: "m1", action: "scimitar", target: "wizard", adv: "advantage" }, DM));
+  assert.deepEqual(r.events.map((e) => e.type), ["reactionAsked"]);
+  const done = ok(apply(s, { type: "react", prompt: s.pending.n, take: "shield" }, PAT));
+  const atk = done.events.find((e) => e.type === "attack");
+  assert.equal(atk.mode, "adv");
+  assert.deepEqual(atk.why, ["DM grants Advantage"]);
 });

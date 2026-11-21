@@ -649,6 +649,7 @@ function viewEventsOf(events, state, viewer) {
   let casterOpen = false;                  // whether the one who cast the spell (or used the action) that the following saves answer is theirs
   for (const ev of events) {
     out.ev = ev;
+    if (ev.hush) continue;                 // spent to turn a secret save: the DM's (engine/dm.js `save`)
     was = Array.isArray(ev.unseen) ? ev.unseen : null;
     if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack' || ev.type === 'strikeOption') casterOpen = cls(ev.actor) === 'open';      // a save on a hit or a Shove answers the attacker: told the DC if the attacker is theirs, as said at the event that began it (a stamp is read there)
     if (ev.type === 'turn') {
@@ -714,7 +715,7 @@ function viewEventsOf(events, state, viewer) {
         if (ev.called) {
           if (cls(ev.id) === 'open') {
             const e = structuredClone(ev);
-            if (e.secret) { delete e.dc; delete e.success; }
+            if (e.secret) { delete e.dc; delete e.success; delete e.reroll; delete e.rescued; }
             out.push(e);
           } else if (cls(ev.id) !== 'hidden' && !ev.secret) out.push(pick(ev, ['type', 'id', 'abil', 'dc', 'success', 'called']));
           break;

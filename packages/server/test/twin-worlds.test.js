@@ -331,3 +331,18 @@ test("called save: a secret save naming a hidden creature is sent the same as on
     ],
   }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w) });
 });
+
+test("called save: an open call with damage and a condition naming a hidden creature is sent the same as one naming only the seen creature", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat" });
+    },
+    steps: [
+      { by: "dm", act: (w) => ({ type: "save", who: ["fighter", ...(byName(w, "Ghost") ? [byName(w, "Ghost").id] : [])], ability: "dex", dc: 15, damage: { dice: "2d6", type: "fire", half: true }, condition: "prone" }) },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w) });
+});

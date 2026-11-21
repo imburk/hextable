@@ -22,7 +22,7 @@ import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
 import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
-import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
+import { advanceTurn, AWAY, evades, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
 export const handlers = {
 
@@ -357,11 +357,19 @@ export const handlers = {
     }
     const r = dmg ? roll(s, dmg.dice) : null;
     for (const t of ts) {
+      const mark = ev.length;
       const { used, ...sv } = savingThrow(s, t, abil, a.dc, null, null, mode === 'disadvantage' ? GRANTS.disadvantage : null, mode === 'advantage' ? GRANTS.advantage : null, ev);
       ev.push({ type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv });
       useUp(s, ev, used ?? []);
-      if (dmg && (!sv.success || dmg.half) && !t.dead) {
-        const n = sv.success ? Math.floor(r.total / 2) : r.total;
+      // A secret save keeps its outcome from the owner too: what was spent to turn it (a Bardic Inspiration die, Indomitable) is not told to players (view.js, `hush`).
+      if (a.secret) for (let i = mark; i < ev.length; i++) if (ev[i].type !== 'save') ev[i].hush = true;
+      // Evasion (as effects.js has it): a Dexterity save for half damage does none on a success and half on a failure.
+      const evade = abil === 'dex' && dmg?.half && evades(t);
+      if (evade) ev.push({ type: 'note', id: t.id, text: sv.success ? 'Evasion: no damage' : 'Evasion: half damage' });
+      // Legendary Resistance is the DM's to spend: asked of the DM alone, never decided by the engine.
+      if (!sv.success && CONTENT.monsters[t.tpl]?.traits?.some((x) => x.id === 'legendary-resistance')) ev.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has Legendary Resistance. The DM decides whether it spends a use to succeed instead; the engine has applied the failure.` });
+      if (dmg && (!sv.success || dmg.half) && !t.dead && !(evade && sv.success)) {
+        const n = sv.success || evade ? Math.floor(r.total / 2) : r.total;
         if (n > 0) damage(s, t, [{ amount: n, type: dmg.type, dice: r.dice, bonus: r.bonus }], null, ev);
       }
       if (!sv.success && a.condition !== undefined && !t.dead) {
