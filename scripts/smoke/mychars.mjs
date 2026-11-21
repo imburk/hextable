@@ -600,7 +600,10 @@ async function scrollPass(browser, url, label, opts, grid) {
         await openSec(page, 'who'); await page.selectOption('#qb-class', 'sorcerer'); await page.selectOption('#qb-levelsel', '2'); await openSec(page, 'choices');
         const opt = await page.$('#qb [data-option]');
         if (opt) {
-          await page.focus('#qb [data-option] input'); await page.keyboard.press('i');
+          // Focus scrolls the panel to the option and the card hides on any scroll, an event that comes a frame later (#611): let the scroll land, then press the key.
+          await page.focus('#qb [data-option] input'); await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+          await page.keyboard.press('i');
+          await wait(page, () => document.querySelector('#scrolltip p')?.textContent, null, 3000).catch(() => {});
           const o = await card(); if (!o || !o.text) throw new Error('an option has no card'); await page.keyboard.press('Escape'); await gone();
         }
       });
