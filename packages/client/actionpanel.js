@@ -201,6 +201,8 @@ export function featureRows(S, e, { mode = null } = {}) {
     const f = (e.feats ?? []).find((x) => `feat:${x.id}` === r.id);
     if (!f) return r;
     const a = f.action, fr = free.find((x) => x.id === f.id);
+    // A feature that only heals its user (Second Wind of a built Fighter) is greyed at full Hit Points, as the hand-typed Second Wind was: the engine would spend the use for nothing.
+    if (!r.why && r.kind === 'send' && a?.target?.self && a.effects?.length && a.effects.every((x) => x.heal !== undefined) && e.hp >= e.maxHp) return { ...r, why: `${e.name} is at full Hit Points.` };
     // A feature that costs a spell slot (`cost.slot`): the row says so, with the lowest level and what a higher slot adds (the chooser of classes.js lets the player pick the level).
     if (r.kind === 'chooser' && slotAim(f)) return { ...r, sub: slotSub(e, f) };
     if (fr && r.kind === 'none') {

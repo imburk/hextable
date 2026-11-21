@@ -772,3 +772,11 @@ test('reactions: the familiarDamaged trigger has words in the sheet and the prom
   s.entities.mor.owner = 'u1';
   assert.equal(row().now, 'ask'); assert.equal(row().dflt, 'ask');
 });
+
+test('Features: a built Fighter\'s Second Wind is greyed at full Hit Points, with the words, and live once she is hurt (#672)', () => {
+  const s = newGame(7), e = s.entities.fighter;
+  const row = () => panelFeatureRows(s, e).find((r) => r.id === 'feat:second-wind');
+  assert.match(row().why, /Brenna is at full Hit Points\./);
+  e.hp = 5;
+  assert.equal(row().why, '');
+});
