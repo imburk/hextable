@@ -17,7 +17,7 @@ import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate as rawMigrate } from "../../rules/src/migrate.js";
 import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
-import { forViewer as rawForViewer, playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewShops as rawViewShops, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
+import { forViewer as rawForViewer, playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewShops as rawViewShops, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions, viewWaiting as rawViewWaiting } from "../../rules/src/view.js";
 import { forPlayers as packFilteredCopy, packForPlayer, packsMatch, PLAYER_PACK_KINDS, cleanPacks, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
 import { installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
@@ -168,6 +168,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     viewHandouts: (t, state, ctx) => scoped(t, () => rawViewHandouts(state, ctx)),
     viewShops: (t, state, ctx) => scoped(t, () => rawViewShops(state, ctx)),
     viewPrompt: (t, state, ctx) => scoped(t, () => rawViewPrompt(state, ctx)),
+    viewWaiting: (t, state, ctx) => scoped(t, () => rawViewWaiting(state, ctx)),
     viewReactions: (t, state, ctx) => scoped(t, () => rawViewReactions(state, ctx)),
   };
   // ===== end of the scoped engine =====
@@ -298,7 +299,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const baseFor = (t, m) => engine.forViewer(t, forPlayers(t).base, t.state, { role: m.role, userId: m.id });
   const stateFor = (t, m) => (m.role === "dm" ? { ...engine.view(t, t.state, { role: m.role, userId: m.id }), timeline: undefined }
     : { ...baseFor(t, m), handouts: engine.viewHandouts(t, t.state, { role: m.role, userId: m.id }), shops: engine.viewShops(t, t.state, { role: m.role, userId: m.id }), reactions: engine.viewReactions(t, t.state, { role: m.role, userId: m.id }),
-      prompt: engine.viewPrompt(t, t.state, { role: m.role, userId: m.id }) });
+      prompt: engine.viewPrompt(t, t.state, { role: m.role, userId: m.id }), waiting: engine.viewWaiting(t, t.state, { role: m.role, userId: m.id }) });
   // What was sent, for the next difference: a player's is the shared one with their handouts, the shops shown to them, their
   // own creatures' standing instructions for reactions, and a reaction they are asked about (or
   // only that the table is waiting). A player who was sent a creature as a seen record in place of the open one
@@ -322,7 +323,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     // `away` and `watching` (rules view.js, placesView) are this player's own, by where their characters are: only a table with a world has them.
     const places = {};
     for (const k of ["away", "watching"]) if (state[k] !== undefined) places[k] = JSON.stringify(state[k]);
-    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), shops: JSON.stringify(state.shops), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt), ...places } };
+    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), shops: JSON.stringify(state.shops), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt), waiting: JSON.stringify(state.waiting), ...places } };
   };
   const eventsFor = (t, m, events) => engine.viewEvents(t, events, t.state, { role: m.role, userId: m.id });
 

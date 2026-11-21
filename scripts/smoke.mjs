@@ -69,6 +69,7 @@ const REGISTRY = {
   newversion: ['newversion'],
   strikefirst: ['strikefirst'],
   undobar: ['undobar'],
+  todo: ['todo'],
 };
 
 const only = process.env.SMOKE_ONLY;

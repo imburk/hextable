@@ -36,6 +36,7 @@ import { claimWriter } from './solowriter.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
+import { initTodo } from './todo.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
@@ -794,6 +795,7 @@ function refresh() {
   tracker.render();
   TC.sync(S);
   if (isDM()) renderDM();
+  TD.sync(); TD.waiting();
   HO.refresh();
   SC.refresh();
   RP.refresh();
@@ -871,7 +873,7 @@ function renderDM() {
   QE.sync(S, selId);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
-  const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0);       // players waiting to be let in, and rewards waiting to be settled
+  const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0) + TD.count();       // players waiting to be let in, and rewards waiting to be settled
   $('dm-badge').hidden = !owed; $('dm-badge').textContent = owed;
   table.textContent = '';
   if (!T.solo) {
@@ -1265,6 +1267,7 @@ const PK = initPacks({ transport: () => T, isDM, toast, changed: () => {
   if (mode.kind === 'spell' && !SPELLS[mode.id]) mode = MOVE;
   if (S) refresh();
 } });
+const TD = initTodo({ mount: $('todo-mount'), state: () => S, isDM, act, toast, waitLine: $('todo-wait'), place: (id) => { select(id); closeDM(); setMode({ kind: 'place' }); toast('Tap where it goes.', true); } });      // the DM's to-do tray (todo.js)
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });

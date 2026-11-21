@@ -20,6 +20,7 @@ import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, u
 import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, heal } from './rolls.js';
 import { makeEntity } from './sheets.js';
+import { noteRuns, settle } from '../todo.js';
 import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
 export const handlers = {
@@ -134,6 +135,7 @@ export const handlers = {
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster && (!block || o.name?.startsWith(`${tpl.name} `))).length + 1;      // a block's variants are counted apart
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(type ? { type } : {}), ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
+    noteRuns(s, s.entities[id], 'added');                   // abilities the DM runs for it (todo.js)
     if (s.encounter?.arena[col(at)]) joinEncounter(s, s.entities[id], ev);
   },
   // { type: 'place', actor, to }: on the map in play. { type: 'place', who | actor, node, pin?, entry? }: anywhere in
@@ -323,6 +325,23 @@ export const handlers = {
     e.dead && fail(`${e.name} is dead.`);
     damage(s, e, n, a.dtype ?? 'untyped', ev);
     checkEnd(s, ev);
+  },
+  // The DM's Armor Class for a creature: its base number, as the sheet or stat block gives it (lasting effects and the like still
+  // add to it). For what the engine hands over, as Mage Armor's 13 + Dexterity. { type: 'setAc', actor, ac }. A character made again
+  // from its sheet (refresh, level up) has the sheet's number back.
+  setAc(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can set Armor Class.');
+    const e = ent(s, a.actor);
+    (Number.isInteger(a.ac) && a.ac >= 0 && a.ac <= 40) || fail('Armor Class must be a whole number from 0 to 40.');
+    a.ac !== e.ac || fail(`${e.name}'s Armor Class is already ${a.ac}.`);
+    e.ac = a.ac;
+    ev.push({ type: 'note', id: e.id, text: `${e.name}'s Armor Class is now ${a.ac}.` });
+  },
+  // Finish a card of the to-do tray (todo.js): { type: 'todoDone', n } or { type: 'todoDone', all: true }. Nothing is told to anyone.
+  todoDone(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can settle the to-do list.');
+    (a.all === true || Number.isInteger(a.n)) || fail('Name the card, or all of them.');
+    settle(s, a.all === true ? 'all' : a.n) || fail('That card is already done.');
   },
   mend(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can heal this way.');
