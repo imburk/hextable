@@ -558,8 +558,8 @@ function castSpell(s, a, ctx, ev, item) {
       if (slotted && s.encounter.flags.slot) fail('Only one spell slot can be spent per turn.');
       // Action Surge gives an action that can't be the Magic action: with it, one action spell a turn.
       if (time === 'action' && s.encounter.flags[`surge:${e.id}`] && s.encounter.flags[`magic:${e.id}`]) fail('The extra action from Action Surge can\'t be used to cast a spell.');
-      if (time === 'action') s.encounter.flags[`magic:${e.id}`] = true;
       if (sp.aim === 'creature') for (const t of targets) inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+      if (time === 'action') s.encounter.flags[`magic:${e.id}`] = true;      // after the last refusal above: a refused cast sets nothing (review R3, #617)
       s.encounter.budget[time]--;
       if (slotted) s.encounter.flags.slot = true;
     }

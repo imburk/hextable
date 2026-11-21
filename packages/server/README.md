@@ -52,7 +52,29 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
 - `src/ws.js` — a minimal WebSocket implementation on Node's `http` and `crypto`.
 - `src/assets.js` — the store of table files on disk: type sniffing, ids, limits. No network code.
 - `src/assets-http.js` — the `/assets` routes: who may upload, fetch and delete.
-- `src/index.js` — HTTP, static files (html, js, css, json and svg gzipped with Node's `zlib` when the client accepts it, compressed once per file and kept until the file changes; uploads are never compressed), `/api/ping`, `/assets`, `/ws`, and saving to disk.
+- `src/index.js` — HTTP, static files (html, js, css, json and svg gzipped with Node's `zlib` when the client accepts it, compressed once per file and kept until the file changes; uploads are never compressed), `/api/ping`, `/api/health`, `/assets`, `/ws`, and saving to disk.
+
+## Engine crashes and `/api/health`
+
+When the engine throws on an action (a malformed message, or a bug) the player still gets "The table couldn't make sense of that
+action." and the game is put back as it was. The server now also writes one JSON line to stderr (the container log) for each:
+`{"event":"engine-crash","at","table","action","role","stack"}`. `table` is the table code, never the join token; `action` is the
+action type (a name that is not plain letters and digits is logged as `?`); `role` is `dm` or `player`. The action's payload, chat
+text, names and anything else a player typed are never logged. The same applies to a throw while applying a pack list
+(`action: "setPacks"`) or a world pack (`"worldIndex"`).
+
+Per process, the server counts crashes and refusals in total and by action type (at most 200 types, then `other`).
+
+`GET /api/health` answers, with `cache-control: no-store`:
+
+```json
+{"ok":true,"uptime":3600,"tables":{"loaded":12,"active":3},"connections":5,"crashes":0,"crashesByType":{},"build":"c1d5069"}
+```
+
+`uptime` is seconds since the process started; `tables` are the tables held in memory and those active in the last 30 days;
+`connections` are open WebSockets; `crashesByType` is the ten most frequent action types; `build` is the commit of `/build.json`
+(or `null`). There is nothing per table or per person in it. It is limited to 30 reads a minute per address
+(`LIMIT_HEALTH_MINUTE`); over that it answers 429.
 
 ## Protocol
 
@@ -616,6 +638,20 @@ not need it: it starts as root, the entrypoint fixes the ownership and drops to 
 starts as root and drops the same way. Never mount the volume anywhere but `DATA_DIR`, or set
 `DATA_DIR` to the mount path. After a deploy, the log should show `Hextable table server at ...` and no
 `entrypoint:` warning.
+
+### How deploys are verified (review R1, #617)
+
+- **Before a merge.** The `Docker` workflow (`.github/workflows/docker.yml`) runs on every pull request and push to `main`. It builds the
+  image (with `--build-arg GITHUB_SHA=<head>` so `dist/build.json` names the commit), starts it with an empty data volume and runs
+  `scripts/ci/check-image.mjs`: `/api/ping`, `/build.json` (its commit must be the head sha), `/` and its script, and a WebSocket to `/ws`
+  that hosts a table and gets the answer to one action. It then requires a container log with no error and a table saved to the
+  volume after a clean stop. `packages/server/test/docker.test.js` also walks every relative import from `docker-entrypoint.mjs` and requires
+  the run-time stage to copy each file; a server that imports from a folder the stage leaves out fails there, not on Railway.
+- **After a merge.** The `Live check` workflow (`.github/workflows/live-check.yml`, every 30 minutes and on demand) reads the head of
+  `main` and `/build.json` on Railway (`https://hextable-production.up.railway.app`) and GitHub Pages (`https://imburk.github.io/hextable`).
+  When main's head is over 20 minutes old and a site reports another commit, it opens the issue **Live site is not the merged version**
+  (or comments on the open one) with both shas, and closes it when they match again. `DRY_RUN=1 node scripts/ci/live-check.mjs` shows
+  what it would do. It checks the commit only: not `TRUST_PROXY` or the volume on the live service (DEBT T3b, T15).
 
 ## Known limits
 

@@ -276,9 +276,23 @@ list of user ids, and only the DM changes it (`showShop`). A new shop starts at
   here?: [ creatureIds ] }                                                 // party characters standing in the area now (a store with an area, a map in play)
 ```
 
+
+**Amendment (issue #630): the id a player is given.** A shop's own id, `s<n>`, comes from one counter shared by every
+shop the DM opened, so a player shown the second would learn from `s2` that another exists. A player is never sent that
+id. They are sent `sh1`, `sh2`, ... numbered in the order shops were first shown to anyone (`state.shopAlias`, a list of
+the shops' own ids that only grows; a closed shop keeps its number; `shopids.js`, as places are `pl1`, `pl2` in `known.js`).
+It is in `shops[].id` and in every trade event that names a shop (`shopShown`, `shopHidden`, `shopChanged`, `shopClosed`,
+`goodsRevealed`, `quoted`, `bought`, `sold`, `took`, `jointOpened`, `pledged`, `jointEnded`) and in the `about.shop` of a
+`checkAsked`. A player's action is turned back at the top of `dispatch`, before anything else is looked at: a number never
+given, a guessed one, a shop's own id and a malformed value are all "No such shop.". The DM sends and is sent the own ids. The
+numbering is per table, not per player, so a player shown a shop that was shown before to someone else can see that its number
+is not 1; that is the one gap left (docs/DEBT.md, T11). A player's `showShop`, `shopEdit`, `closeShop`, `revealGoods` or `quote` is
+refused with one sentence for the action, whatever the id; every other shop action names only a shop shown to that player. Undo takes
+an alias back together with the showing it undoes; a rewind to the start of a fight or a rest keeps the list (and `shopSeq`), so a
+number never comes to mean another shop, and numbers the shops shown in a pin saved before version 29.
 | A player is sent | Never sent |
 |---|---|
-| shops shown to them, as above | a shop not shown to them: not its id, not that it exists |
+| shops shown to them, as above, each by a number `sh1`, `sh2`, ... in the order shops were first shown (amendment of #630, below) | a shop not shown to them: not its id, not that it exists; and never a shop's own id (`s<n>`), whose gaps would count the shops not shown |
 | revealed specials with their price and how many are left | a hidden special: not its id, its name, its price, or how many hidden lines there are |
 | quotes for party characters, and the purchases being paid together | `haggle` (step, DC, bonus), `roleplay`, `notes`, `from`, `waits`, `keeper`, `at` |
 | the outline of a shown store's shop area, and which of the party stand in it | the area of a shop not shown to them (it is not drawn on their map and not sent), and cells of an area in tiles they are not sent |

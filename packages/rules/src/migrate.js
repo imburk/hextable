@@ -17,7 +17,7 @@ import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
 import { cleanPurse } from './market.js';
 
-export const VERSION = 28;
+export const VERSION = 29;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -210,6 +210,21 @@ export function migrate(state) {
     const p = cleanPurse(e.coins);
     if (p && Object.keys(p).length) e.coins = p; else delete e.coins;
   }
+  // Version 29: players are not told how many shops or hidden creatures there are (issue #630; shopids.js). `fightSeq` is the number of
+  // the last fight, counted apart from `seq` (which counts every creature and lasting effect, hidden ones too); a table saved before
+  // has the highest number any fight in its state or record was given, so a fight begun now is numbered after it. `shopAlias` is the
+  // list of the shops shown to anyone, in the order they were first shown, from which a player's ids for shops are numbered: a table
+  // saved before gets those shops in the order of the list. A state already at 29 has neither until a fight or a showing makes it, and
+  // reading code takes an absent one as none; one that is not whole is put right.
+  if (!(state.version >= 29)) {
+    const nums = [state.encounter?.id, state.conclusion?.fight, state.conclusion?.id, ...(Array.isArray(state.timeline) ? state.timeline.map((x) => x?.fight) : [])].filter((n) => Number.isSafeInteger(n) && n > 0);
+    if (nums.length) state.fightSeq = Math.max(...nums);
+    const shown = (Array.isArray(state.shops) ? state.shops : []).filter((x) => x.shown === 'all' || (Array.isArray(x.shown) && x.shown.length)).map((x) => x.id);
+    if (shown.length) state.shopAlias = [...new Set(shown)];
+  }
+  if (state.fightSeq !== undefined && !(Number.isSafeInteger(state.fightSeq) && state.fightSeq >= 0)) delete state.fightSeq;
+  if (state.shopAlias !== undefined && !(Array.isArray(state.shopAlias) && state.shopAlias.every((x) => typeof x === 'string'))) delete state.shopAlias;
+  if (Array.isArray(state.shopAlias) && new Set(state.shopAlias).size !== state.shopAlias.length) state.shopAlias = [...new Set(state.shopAlias)];
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

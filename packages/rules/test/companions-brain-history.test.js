@@ -83,9 +83,10 @@ test("saves made by main's code before C7 load unchanged and the brain plays on 
   assert.equal(SAVES.length, 4);
   for (const { grid, at, state } of SAVES) {
     const raw = json(state), s = migrate(JSON.parse(raw));
-    const { packs, scoreRolls, world, place, parked, journey, markets, shops, ...rest } = s;                     // version 24 (#390) raises the version and adds `packs: []`; nothing else changes
+    const { packs, scoreRolls, world, place, parked, journey, markets, shops, fightSeq, ...rest } = s;                     // version 24 (#390) raises the version and adds `packs: []`; nothing else changes
     assert.deepEqual(packs, []); assert.deepEqual(scoreRolls, {});   // version 25 (#557) adds `scoreRolls`
     assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });   // version 26 (#579) adds the places of a world
+    assert.equal(fightSeq, state.encounter?.id);                    // version 29 (#630) adds `fightSeq`, the number of the fight in progress (none: absent)
     assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 27 (#596) adds the markets and shops, empty
     assert.equal(rest.settings.strikeFirst, state.settings.autoEngage !== false ? "casts" : "off"); // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
     const { strikeFirst, ...settings } = rest.settings;

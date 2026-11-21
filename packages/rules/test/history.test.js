@@ -211,14 +211,14 @@ test("pins count in the byte budget and are never trimmed to make room; steps ar
 
 test("rewind: one undoable step; the dice and the id counter go on; undo and redo are exact", () => {
   const s = newGame(9), h = createHistory();
-  const before = JSON.stringify({ ...s, timeline: null, rng: null, seq: null });
+  const before = JSON.stringify({ ...s, timeline: null, rng: null, seq: null, fightSeq: null });
   tracked(s, h, { type: "startEncounter", center: s.entities.m1.pos, radius: 30 });
   for (let i = 0; i < 12 && s.encounter; i++) tracked(s, h, aiStep(s, current(s)) ?? { type: "endTurn", actor: current(s) });
-  const lost = JSON.stringify(s), rng = s.rng, seq = s.seq;
+  const lost = JSON.stringify(s), rng = s.rng, seq = s.seq, fights = s.fightSeq;
   const r = h.rewind(s, "fight");
   assert.equal(r.label, "The table went back to the start of the fight");
-  assert.equal(JSON.stringify({ ...s, timeline: null, rng: null, seq: null }), before);
-  assert.deepEqual([s.rng, s.seq], [rng, seq]);
+  assert.equal(JSON.stringify({ ...s, timeline: null, rng: null, seq: null, fightSeq: null }), before);
+  assert.deepEqual([s.rng, s.seq, s.fightSeq], [rng, seq, fights]);      // the fight counter goes on too (#630)
   const after = JSON.stringify(s);
   assert.equal(h.list()[0], r.label);
   h.undo(s);

@@ -54,8 +54,10 @@ function stress(grid, rounds) {
     }
   };
   const act = (a, mine) => {
-    const r = apply(s, a, DM);
+    const was = json(s), r = apply(s, a, DM);
     stats.actions++;
+    // Invariant: a refused action leaves the game exactly as it was (review R3, #617).
+    if (!r.ok && json(s) !== was) bad.push(`refused ${json(a)} changed the game`);
     if (r.ok) for (const e of Object.values(s.entities)) for (const [l, n] of Object.entries(e.slots ?? {})) if (n < 0) bad.push(`${e.id} has ${n} level ${l} slots after ${json(a)}`);
     return r;
   };

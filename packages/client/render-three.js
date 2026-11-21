@@ -270,7 +270,8 @@ export class ThreeRenderer {
       a.wasDead = !!e.dead;
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
-      a.el.firstChild.textContent = sf ? `${e.name} ↑${e.pos.z - sf.z} ft` : e.name;
+      const shown = e.form?.name ? `${e.name} (${e.form.name})` : e.name;             // a druid in Wild Shape: 'Wren (Brown Bear)'
+      a.el.firstChild.textContent = sf ? `${shown} ↑${e.pos.z - sf.z} ft` : shown;
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
       const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging', e.follow && !state.encounter && 'following'].filter(Boolean);
       const mk = marks.join();

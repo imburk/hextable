@@ -144,6 +144,8 @@ test("publish: XP into each character's total, loot into gear, the record and a 
   assert.equal(pv.xp.base, undefined);
   assert.ok(pv.foes.every((f) => f.xp === undefined && f.tpl === undefined));
   const seen = viewEvents(r.events, s, PAT);
+  assert.equal(seen.find((e) => e.type === "chronicle").fight, chron.fight, "a player's chronicle of the fight keeps `fight` (the log reads it)");
+  assert.notEqual(chron.fight, undefined);
   assert.deepEqual(seen.map((e) => e.type).sort(), ["chronicle", "conclusion", "gear", "gear", "levelReady", ...seen.filter((e) => e.type === "xp").map(() => "xp")].sort());
 });
 

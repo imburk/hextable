@@ -1,0 +1,74 @@
+name: Docker
+
+# Builds the server image, runs it, and probes it like a player's browser would (review R1, #617).
+# `npm test` reads the Dockerfile as text; only this job proves the image builds, starts and serves.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: build and run the image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # A pull request's GITHUB_SHA is a merge commit; the commit that matters is the head of the branch.
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: hextable:ci
+          build-args: GITHUB_SHA=${{ env.SHA }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Start the container with an empty data volume
+        run: |
+          DATA="$(mktemp -d)"
+          echo "DATA=$DATA" >> "$GITHUB_ENV"
+          # Like a fresh Railway volume: owned by root; the entrypoint hands it to `node`.
+          docker run -d --name hextable -p 8080:8080 -v "$DATA:/data" hextable:ci
+      - name: Wait for the server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/ping >/dev/null 2>&1; then echo "up after ${i}s"; exit 0; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' hextable)" != "true" ]; then echo "::error::the container stopped before it answered"; docker logs hextable; exit 1; fi
+            sleep 1
+          done
+          echo "::error::no answer from /api/ping after 30 s"; docker logs hextable; exit 1
+      - name: Probe it (ping, build.json, game page, WebSocket table and action)
+        run: node scripts/ci/check-image.mjs http://localhost:8080 "$SHA"
+      - name: The container logs hold no error
+        run: |
+          docker logs hextable > "$RUNNER_TEMP/container.log" 2>&1
+          echo "---- container log ----"; cat "$RUNNER_TEMP/container.log"; echo "-----------------------"
+          if grep -Eiq 'error|exception|unhandled|fatal|could not|cannot find|ENOENT|EACCES|ERR_' "$RUNNER_TEMP/container.log"; then
+            echo "::error::the container log above holds an error"; exit 1
+          fi
+          if [ "$(docker inspect -f '{{.State.Running}}' hextable)" != "true" ]; then echo "::error::the container is no longer running"; exit 1; fi
+      - name: The table was saved to the volume
+        run: |
+          # Tables are written a second after a change; stopping the container (SIGTERM) saves any that are waiting.
+          docker stop hextable >/dev/null
+          # The entrypoint gave the folder to uid 1000, so the runner needs sudo to look inside.
+          sudo ls -laR "$DATA"
+          if ! sudo ls "$DATA" | grep -q .; then echo "::error::the server saved nothing to its data volume"; exit 1; fi
+          if [ "$(docker inspect -f '{{.State.ExitCode}}' hextable)" != "0" ]; then echo "::error::the container did not stop cleanly"; docker logs hextable; exit 1; fi
+      - name: Live check, dry run (reads only; proves the script and the API calls)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: DRY_RUN=1 node scripts/ci/live-check.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
