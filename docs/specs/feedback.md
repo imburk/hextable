@@ -149,7 +149,12 @@ anyone and never part of a report: a report still carries no table code, so the 
 - **How long:** the last 5 files of 5 MB per table, each with a snapshot of the state it begins from; older ones are deleted as new ones open.
   No other expiry.
 - **Use:** `node scripts/replay.mjs <snapshot> <journal...>` replays it through `apply()` and names the first line whose result differs.
-- Snapshots hold the dice key and the DM's hidden information: they are never attached to a public issue.
+- **Privacy, plainly.** A snapshot is a copy of the table's save: it holds the dice key, the DM's notes and hidden information, any homebrew packs
+  and the players' names. The journal and snapshot files are exactly as private as the table saves. They are never attached to a public issue,
+  never put in a report and never sent to anyone but the owner; `scripts/replay.mjs` prints that warning every time it runs. To reproduce a report
+  in public, replay it privately and describe the line that diverges.
+- **Bounds:** 5 MB a file counting its snapshot, 5 files a table, 500 MB for the whole server (oldest closed files go first), and at start the
+  journals of tables whose save is gone are removed.
 
 ## Review points
 

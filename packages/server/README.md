@@ -10,7 +10,7 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 |---|---|---|
 | `PORT` | `8080` | Port to listen on (`0`: any free port, printed at start) |
 | `DATA_DIR` | `./data` | Where tables are saved, one JSON file each |
-| `JOURNAL` / `JOURNAL_FILE_BYTES` / `JOURNAL_FILES` | on / `5242880` / `5` | The action journal (below): `JOURNAL=off` turns it off; a file is closed at this many bytes; this many files are kept per table |
+| `JOURNAL` / `JOURNAL_FILE_BYTES` / `JOURNAL_FILES` / `JOURNAL_TOTAL_BYTES` | on / `5242880` / `5` / `524288000` | The action journal (below): `JOURNAL=off` turns it off; a file (its snapshot counted in) is closed at this many bytes; this many files are kept per table; the cap on all journals on the server (500 MB) |
 | `TIMELINE_CAP` | `5000` | Timeline entries a table keeps besides chronicle entries (see below) |
 | `TRUST_PROXY` | `0` | Proxies in front of the server that append to `x-forwarded-for`. `0`: use the socket's address and ignore the header (see Address below) |
 | `CLIENT_IP_HEADER` | none | A header the platform sets itself and overwrites, such as `x-real-ip`; read instead of `x-forwarded-for` when `TRUST_PROXY` is above 0 |
@@ -63,37 +63,34 @@ Beside each table's save the server keeps a journal of the actions the table acc
 
 **Files**, in `DATA_DIR` (the Docker image's `/data`, so a volume that keeps the tables keeps these; nothing else in the image changes):
 `ABC123.journal.000007.snapshot.json` (the state the file begins from: `{journal, table, at, stateVersion, hash, state, packs, members}`) and
-`ABC123.journal.000007.jsonl`, one JSON object a line. A file starts with `{"k":"open", ...}`; then one `{"k":"act", n, at, role, uid, action, d0, d1, sv, h}`
+`ABC123.journal.000007.jsonl`, one JSON object a line. A file starts with `{"k":"open", file, at, sv, d, h, cap, why?, snapshot}` (`cap` is the table's timeline cap, which replay applies after each action that can be undone, as the server does; `why` says what made this a new file: `undo`, `redo`, `rewind`, `packs`, `world`, `approve`, or `lost`); then one `{"k":"act", n, at, role, uid, action, d0, d1, sv, h}`
 for each accepted action: the action as the server applied it, the sender's role, the sender's opaque member id (random, made when they sat
 down: not a name, an address or the join token), the dice counter before and after (`d0`, `d1`), the state version (`sv`), the line's
-number (`n`) and a hash of the whole state after it (`h`). Refused actions are not journalled, nor is a ping that changed nothing. Undo,
+number (`n`) and a hash of the state after it (`h`: everything but the timeline in full, and of the timeline its length and its first and last entry, so a long timeline does not cost the whole of it on every action). The line is written after the timeline is cut to its cap, so `h` is the state the table then held. Refused actions are not journalled, nor is a ping that changed nothing. Undo,
 redo and rewind are not actions the engine can run again: each writes a `{"k":"undo"|"redo"|"rewind", ...}` line and closes the file.
-A pack or world loaded, or someone sitting down, writes a `{"k":"break"}` line and closes it too. The next action opens a new file whose
+A pack or world loaded, or a player being let in (not a request waiting), writes a `{"k":"break"}` line and closes it too. The next action opens a new file whose
 snapshot is the state as it then is, so every file replays from its own start.
 
-**What is kept.** The action and nothing added to it: no chat or text a player typed beyond what the action itself carries (a spoken line is
+**What is kept.** (Privacy, plainly: the snapshot is a copy of the table's save. It holds the dice key, the DM's notes and hidden information, any homebrew packs and the players' names, so the files are as private as the table saves, and a journal or snapshot is never to be attached to a public issue or sent to anyone but the owner. `scripts/replay.mjs` says so each time it runs.) The action and nothing added to it: no chat or text a player typed beyond what the action itself carries (a spoken line is
 an action, so its text is in it, as it is in the table's save). An action's `userName` (a claim, a spoken line, a ping) is replaced by
 `{"$member": id}`; the names are in the snapshot's `members`, which is a file of the same kind as the table's save. **The snapshot holds the whole
 state, the dice key and the DM's secrets included: keep the files as private as the table saves; never attach one to a public issue.**
 A feedback report is matched to a journal by the build, the time and the table's owner asking: the report carries no table code.
 
-**Rotation and retention.** A file is closed when it passes 5 MB (`JOURNAL_FILE_BYTES`) and a new one starts at the next action; a new file also
+**Rotation and retention.** A file is closed when it, its snapshot counted in, passes 5 MB (`JOURNAL_FILE_BYTES`; sizes are bytes; a state bigger than 2.5 MB gets room for as many lines as it is big, or every line would be a new file) and a new one starts at the next action; a new file also
 starts at the first action after the server starts (a table nobody touches writes nothing). The last 5 files of a table are kept
-(`JOURNAL_FILES`), each with its snapshot; older ones are deleted when a new file opens. There is no time limit, so a table's journal is
-at most about 5 files of 5 MB plus 5 snapshots, and stays until the files rotate out or the owner deletes them. The journal of a table whose
-save has been deleted is not removed by the server.
+(`JOURNAL_FILES`), each with its snapshot; older ones are deleted when a new file opens. All journals together are held to `JOURNAL_TOTAL_BYTES` (500 MB): when a new file opens and the total is over, the oldest closed files of any table go first (a file being written never does). There is no time limit; a table's journal stays until its files rotate out. At start the server removes the journals of tables whose save no longer exists, as it does their uploaded files.
 
 **A write never fails or slows an action.** Lines go to an in-memory queue that one worker writes in order with asynchronous file calls; the
 action does not wait for the disk (a synchronous append on a network volume could stall every table on the process). The two costs on the
-action's path are a hash of the state (about 0.25 ms for the starter valley) and, once a file, the snapshot's `JSON.stringify`, which the
-table's own save does as often. Every error is caught: it is logged as one JSON line to stderr, `{"event":"journal-error","at","table","op","error"}`
-(at most one a minute a table), and the file is given up; nothing is tried again for 30 seconds, then a new file with a new snapshot is opened,
-so a full or missing disk costs one log line a minute and nothing else. A queue over 32 MB gives the file up the same way. On SIGTERM the lines
-still queued are written synchronously before the process exits; a crash can lose the last lines, and a replay then stops cleanly at the end.
+action's path are the hash of the state and, once a file, the snapshot's `JSON.stringify`, which the table's own save does as often. Measured here on a synthetic 1.56 MB state (a 5000-entry timeline of 1.08 MB, 12 parked places, and the 0.48 MB of everything else): hashing the whole state took 7.8 ms, this hash 2.9 ms, nearly all of it the 0.48 MB that is not the timeline; the starter valley (37 KB) takes 0.25 ms. A real table's number depends on how much else it holds; the write itself is off the action's path. Every error is caught: it is logged as one JSON line to stderr, `{"event":"journal-error","at","table","op","error"}`
+(at most one a minute a table), and the file is given up; nothing is tried again for 30 seconds, then a new file with a new snapshot is opened (its header says `why: "lost"`, which replay tells from an undo),
+so a full or missing disk costs one log line a minute and nothing else. A queue over 32 MB gives the file up the same way. On SIGTERM the write in flight is done again and the lines
+still queued are written synchronously before the process exits (a line that had landed is then written twice with the same `n`, which replay skips); a crash can lose the last lines or leave the last one cut short, which replay reports as a note and not a failure. A snapshot is written to a temporary name and renamed.
 
 **Replay.** `node scripts/replay.mjs <snapshot.json> <journal.jsonl> [<journal.jsonl> ...]` applies the lines through `apply()` (under the
 snapshot's homebrew packs) and checks the dice counter and the state hash after each. It prints `ok: N actions replayed` and exits 0, or
-names the first file and line that differs (a different state, different dice, or an action the engine now refuses) and exits 1. Given
+names the first file and line that differs (a different state, different dice, or an action the engine now refuses) and exits 1. `--strict` also exits 1 when a file restarts from its own snapshot because lines were lost (`why: "lost"`). Given
 several files in order, it starts again from a file's own snapshot (found beside it) where that file follows an undo, a pack or a join.
 
 ## Engine crashes and `/api/health`

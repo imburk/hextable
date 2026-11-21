@@ -1,6 +1,6 @@
 // The per-table action journal (#659): what is written, what is not, rotation, a failed write, and replay through scripts/replay.mjs.
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -18,9 +18,9 @@ function client(tables) {
   const session = tables.connect({ send: (m) => got.push(JSON.parse(JSON.stringify(m))) });
   return { got, say: (m) => session.receive(m), last: (t) => got.findLast((m) => m.t === t) };
 }
-function setup(journalOpts = {}, dir = tmp(), logs = []) {
+function setup(journalOpts = {}, dir = tmp(), logs = [], tableOpts = {}) {
   const journal = createJournal({ dir, log: (l) => logs.push(l), ...journalOpts });
-  const tables = createTables({ seed: () => 5, key: () => KEY, journal });
+  const tables = createTables({ seed: () => 5, key: () => KEY, journal, ...tableOpts });
   const dm = client(tables);
   dm.say({ t: "host", name: "Dana-Secret" });
   const w = dm.last("welcome");
@@ -82,7 +82,8 @@ test("replay reproduces a short multiplayer game exactly, across an undo, and fi
   // The command line agrees.
   const out = [], err = [];
   assert.equal(replayMain([join(c.dir, sf[0]), ...jf.map((n) => join(c.dir, n)), "--quiet"], (s) => out.push(s), (s) => err.push(s)), 0, err.join("\n"));
-  assert.match(out[0], /^ok: \d+ actions? replayed/);
+  assert.ok(out.some((l) => /^ok: \d+ actions? replayed/.test(l)));
+  assert.ok(out.some((l) => /^warning: keep these files private/.test(l)), "the privacy warning is printed every time");
   // Change one line's recorded hash: the script names that line.
   const bad = journals.map((j) => ({ ...j }));
   const k = bad.findIndex((j) => j.text.includes('"k":"act"'));
@@ -116,8 +117,8 @@ test("nothing personal is in the lines: no names, no join token, no address", as
 
 test("a file is closed at the size cap, a restart goes on from the next number, and only the last files are kept", async () => {
   const dir = tmp();
-  let c = setup({ fileMax: 600, keep: 2 }, dir);
-  for (let i = 0; i < 12; i++) c.dm.say({ t: "act", action: { type: "chronicle", title: `Entry ${i}` } });
+  let c = setup({ fileMax: 1, keep: 2 }, dir);        // the snapshot counts against a file, and a state bigger than half the cap gets room for as many lines as it is big
+  for (let i = 0; i < 1000; i++) c.dm.say({ t: "act", action: { type: "chronicle", title: `Entry ${i}` } });
   await c.journal.idle();
   let jf = files(dir, c.code, ".jsonl");
   assert.equal(jf.length, 2, `two kept (${jf})`);
@@ -131,7 +132,7 @@ test("a file is closed at the size cap, a restart goes on from the next number, 
     assert.equal(r.ok, true, JSON.stringify(r.diverged));
   }
   // A new process: a new file, with a higher number, though no action has yet been taken before it.
-  const again = createJournal({ dir, fileMax: 600, keep: 2 });
+  const again = createJournal({ dir, fileMax: 1, keep: 2 });
   const tables = createTables({ seed: () => 5, key: () => KEY, journal: again, load: () => [c.table] });
   const dm = client(tables);
   dm.say({ t: "resume", code: c.code, token: c.dmToken });
@@ -186,9 +187,10 @@ test("settings: JOURNAL=off writes nothing; the cap and count come from the envi
 test("flushSync writes what is still waiting", () => {
   const c = setup();
   c.dm.say({ t: "act", action: { type: "chronicle", title: "x" } });
-  c.journal.flushSync();
-  const [name] = files(c.dir, c.code, ".jsonl");
+  c.journal.flushSync();                        // the snapshot write is still in flight here: it is done again first
+  const [name] = files(c.dir, c.code, ".jsonl"), [snap] = files(c.dir, c.code, ".snapshot.json");
   assert.equal(lines(c.dir, name).filter((l) => l.k === "act").length, 1);
+  assert.equal(JSON.parse(readFileSync(join(c.dir, snap), "utf8")).table, c.code);
 });
 
 test("end to end: the real server writes the journal beside the table save, flushes it on SIGTERM, and the files replay", async () => {
@@ -212,4 +214,127 @@ test("end to end: the real server writes the journal beside the table save, flus
     assert.equal(replayMain([join(s.data, sf[0]), join(s.data, jf[0]), "--quiet"], () => {}, (e) => assert.fail(e)), 0);
     assert.equal(lines(s.data, jf[0]).filter((l) => l.k === "act").length, 1);
   } finally { await stopAll(); }
+});
+
+test("the timeline cap: the hash is of the capped state, the header names the cap, and replay trims the same way", async () => {
+  const c = setup({}, tmp(), [], { timelineCap: 3 });
+  for (let i = 0; i < 8; i++) c.dm.say({ t: "act", action: { type: "check", actor: "rogue", skill: "stealth" } });
+  await c.journal.idle();
+  const [jf] = files(c.dir, c.code, ".jsonl"), [sf] = files(c.dir, c.code, ".snapshot.json");
+  assert.equal(lines(c.dir, jf)[0].cap, 3);
+  const nonChron = c.table.state.timeline.filter((e) => e.type !== "chronicle").length;
+  assert.ok(nonChron <= 3 + 1, "the table's own timeline was cut");
+  const r = replayGame(JSON.parse(readFileSync(join(c.dir, sf), "utf8")), [{ name: jf, text: readFileSync(join(c.dir, jf), "utf8") }]);
+  assert.equal(r.ok, true, JSON.stringify(r.diverged));
+  assert.equal(r.lines, 8);
+  assert.equal(lines(c.dir, jf).at(-1).h, hashState(c.table.state));
+});
+
+test("the hash is cheap: it covers the timeline by length and ends, and still tells a changed state from a same one", () => {
+  const a = { version: 1, x: 1, timeline: [{ t: 1 }, { t: 2 }, { t: 3 }] };
+  assert.equal(hashState(a), hashState(structuredClone(a)));
+  assert.notEqual(hashState(a), hashState({ ...a, x: 2 }));
+  assert.notEqual(hashState(a), hashState({ ...a, timeline: [...a.timeline, { t: 4 }] }));
+  assert.notEqual(hashState(a), hashState({ ...a, timeline: a.timeline.slice(1) }), "cut at the front");
+  const big = { ...a, timeline: Array.from({ length: 5000 }, (_, i) => ({ t: i, type: "attack", text: "x".repeat(200) })) };
+  const t0 = performance.now(); for (let i = 0; i < 20; i++) hashState(big); const ms = (performance.now() - t0) / 20;
+  assert.ok(ms < 3, `a 5000-entry timeline costs ${ms.toFixed(2)} ms`);
+});
+
+test("someone waiting to be let in does not close the file; being let in does", async () => {
+  const c = setup();
+  c.dm.say({ t: "act", action: { type: "chronicle", title: "one" } });
+  const p = client(c.tables);
+  p.say({ t: "join", code: c.code, name: "Pat" });
+  c.dm.say({ t: "act", action: { type: "chronicle", title: "two" } });
+  await c.journal.idle();
+  assert.equal(files(c.dir, c.code, ".jsonl").length, 1, "an unapproved request writes nothing and closes nothing");
+  c.dm.say({ t: "approve", userId: p.last("welcome").userId, ok: true });
+  c.dm.say({ t: "act", action: { type: "chronicle", title: "three" } });
+  await c.journal.idle();
+  assert.equal(files(c.dir, c.code, ".jsonl").length, 2);
+  assert.ok(lines(c.dir, files(c.dir, c.code, ".jsonl")[0]).some((l) => l.k === "break" && l.why === "approve"));
+});
+
+test("undo, redo and rewind with nothing to take back write nothing", async () => {
+  const c = setup();
+  c.dm.say({ t: "undo" }); c.dm.say({ t: "redo" }); c.dm.say({ t: "rewind", to: "fight" });
+  await c.journal.idle();
+  assert.deepEqual(files(c.dir, c.code, ".jsonl"), []);
+  assert.equal(c.dm.got.filter((m) => m.t === "error").length, 3, "each was refused as before");
+});
+
+test("sizes are counted in bytes, with the snapshot, and the server-wide cap removes the oldest closed files of any table", async () => {
+  const dir = tmp();
+  const a = setup({ totalMax: 1 << 30 }, dir);
+  for (let i = 0; i < 3; i++) a.dm.say({ t: "act", action: { type: "chronicle", title: "é".repeat(100) } });
+  await a.journal.idle();
+  const [jf] = files(dir, a.code, ".jsonl"), [sf] = files(dir, a.code, ".snapshot.json");
+  const onDisk = readFileSync(join(dir, jf)).length + readFileSync(join(dir, sf)).length;
+  assert.equal(a.journal.usage().bytes, onDisk, "bytes, not characters, snapshot included");
+  // A second table under a small total: closing files makes the older table's files go.
+  const j = createJournal({ dir, totalMax: onDisk + 1000, fileMax: 400 });
+  const tables = createTables({ seed: () => 5, key: () => KEY, journal: j });
+  const dm = client(tables);
+  dm.say({ t: "host", name: "Eve" });
+  const code = dm.last("welcome").code;
+  for (let i = 0; i < 10; i++) dm.say({ t: "act", action: { type: "chronicle", title: `Entry ${i}` } });
+  await j.idle();
+  assert.ok(j.usage().bytes <= onDisk + 1000 + 40_000, "kept near the total");
+  assert.deepEqual(files(dir, a.code, ".jsonl"), [], "the older table's closed file was removed first");
+  assert.ok(files(dir, code, ".jsonl").length >= 1, "the open file is never removed");
+});
+
+test("the start-up sweep removes journals whose table save is gone", async () => {
+  const c = setup();
+  c.dm.say({ t: "act", action: { type: "chronicle", title: "x" } });
+  await c.journal.idle();
+  assert.ok(files(c.dir, c.code, ".jsonl").length);
+  const j2 = createJournal({ dir: c.dir });
+  j2.sweep((code) => code === c.code);
+  assert.ok(files(c.dir, c.code, ".jsonl").length, "a table that exists keeps its journal");
+  j2.sweep(() => false);
+  assert.deepEqual(readdirSync(c.dir), []);
+});
+
+test("a failed write marks the next file's header lost; --strict fails on such a restart; a torn last line is only a note", async () => {
+  // The marker a real loss leaves: first the journal's own, after a write that failed.
+  const dir = tmp(), blocker = join(dir, "f");
+  writeFileSync(blocker, "");
+  let clock = 9_000_000;
+  const logs = [];
+  const bad = setup({ now: () => clock, retryMs: 1000 }, join(blocker, "x"), logs);
+  bad.dm.say({ t: "act", action: { type: "chronicle", title: "lost" } });
+  await bad.journal.idle();
+  clock += 2000;
+  rmSync(blocker); mkdirSync(blocker);
+  bad.dm.say({ t: "act", action: { type: "chronicle", title: "after" } });
+  await bad.journal.idle();
+  const [h] = files(join(blocker, "x"), bad.code, ".jsonl");
+  assert.equal(lines(join(blocker, "x"), h)[0].why, "lost");
+  // The script: a file that restarts from its own snapshot, marked lost, fails --strict and passes without it.
+  const c = setup();
+  c.dm.say({ t: "act", action: { type: "chronicle", title: "one" } });
+  c.dm.say({ t: "act", action: { type: "undo" } });
+  c.dm.say({ t: "act", action: { type: "chronicle", title: "two" } });
+  c.dm.say({ t: "undo" });
+  c.dm.say({ t: "act", action: { type: "chronicle", title: "three" } });
+  await c.journal.idle();
+  const jf = files(c.dir, c.code, ".jsonl"), sf = files(c.dir, c.code, ".snapshot.json");
+  assert.ok(jf.length >= 2);
+  const args = [join(c.dir, sf[0]), ...jf.map((n) => join(c.dir, n))];
+  assert.equal(replayMain(args, () => {}, () => {}), 0);
+  const second = join(c.dir, jf[1]), text = readFileSync(second, "utf8"), [head, ...rest] = text.split("\n");
+  assert.equal(JSON.parse(head).why, "undo", "an undo is told from a loss");
+  writeFileSync(second, [JSON.stringify({ ...JSON.parse(head), why: "lost" }), ...rest].join("\n"));
+  const err = [];
+  assert.equal(replayMain([...args, "--strict"], () => {}, (e) => err.push(e)), 1);
+  assert.match(err.join("\n"), /lost lines/);
+  assert.equal(replayMain(args, () => {}, () => {}), 0, "without --strict it still replays");
+  // A torn last line of the last file.
+  const last = join(c.dir, jf.at(-1));
+  writeFileSync(last, readFileSync(last, "utf8").trimEnd() + '\n{"k":"act","n":9,"act');
+  const out = [], e2 = [];
+  assert.equal(replayMain(args, (l) => out.push(l), (e) => e2.push(e)), 0, e2.join("\n"));
+  assert.ok(out.some((l) => /cut short/.test(l)));
 });

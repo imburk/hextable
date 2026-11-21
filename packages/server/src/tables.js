@@ -433,7 +433,6 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         if (t.members.length >= MAX_MEMBERS) return error("That table is full.", true);
         const m = { id: makeId(), token: makeToken(), name: cleanName(msg.name), role: "player", approved: false };
         t.members.push(m);
-        journal.reset(t, "join");            // the snapshot names the members, so a new one starts a new file
         save(t);
         sit(t, m);
       },
@@ -449,6 +448,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         if (!m) return;
         if (msg.ok) {
           m.approved = true;
+          journal.reset(table, "approve");       // the snapshot names the members who may act, so a new one starts a new file
           tell(m, welcome(table, m));
           for (const c of conns(m)) { sendPacks(table, m, c); sendFull(table, m, c); }
           tell(m, { t: "history", entries: history(table, m, { limit: 50 }), recent: true });
@@ -524,7 +524,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         try { filled = fillMap(table.state, action, table.world?.data ?? null); } catch (err) { crashed(table.code, action?.type, me.role, err); return error("The table couldn't make sense of that action."); }
         // Taken before every action: for the undo history (claiming a seat is not undone), and to
         // put the game back if the engine throws part way through (review #132, L6).
-        const ticket = journal.before(table);        // never throws, never waits for the disk
+        const ticket = journal.before(table, { cap: timelineCap });        // never throws, never waits for the disk
         const was = mark(table.state), before = undoable(filled) ? was : null;
         const pingWas = action.type === "ping" ? JSON.stringify(was.tree) : null;
         try {
@@ -535,8 +535,6 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) { bump(refusalCount, filled?.type); return error(res.error); }
-        // A ping that changed nothing is not journalled (replaying it would do nothing).
-        if (action.type !== "ping" || JSON.stringify(mark(table.state).tree) !== pingWas) journal.accepted(ticket, { role: me.role, uid: me.id, action: filled });
         if (before) {
           // The timeline is capped here, not in apply(); what is dropped goes in the undo step so undo is exact.
           const dropped = capTimeline(table.state.timeline, timelineCap);
@@ -544,6 +542,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           undoOf(table).track(filled, res.events, before, table.state);
           dirtyHistory.add(table.code);
         }
+        // Journalled after the timeline is capped, so its hash is of the state the table now holds. A ping that changed nothing is not journalled.
+        if (action.type !== "ping" || JSON.stringify(mark(table.state).tree) !== pingWas) journal.accepted(ticket, { role: me.role, uid: me.id, action: filled });
         // A ping is no activity that keeps a table awake and nothing of it is kept, so it is neither touched nor saved, unless the passes that
         // follow every action changed the game (a tile made out under the light rule, say): then it is saved like any other change.
         if (action.type !== "ping" || JSON.stringify({ ...table.state, timeline: null }) !== pingWas) { touch(table); save(table); }
@@ -556,7 +556,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     for (const [kind, done] of [["undo", "undone"], ["redo", "redone"]]) {
       handlers[kind] = () => {
         if (me.role !== "dm") return error(`Only the DM can ${kind}.`);
-        const ticket = journal.before(table);
+        const can = kind === "undo" ? undoOf(table).list().length : undoOf(table).listRedo().length;
+        const ticket = can ? journal.before(table) : null;       // nothing to take back writes nothing
         const step = undoOf(table)[kind](table.state);
         if (!step) return error(`Nothing to ${kind}.`);
         journal.restored(ticket, kind, { role: me.role, uid: me.id });
@@ -575,10 +576,10 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       if (me.role !== "dm") return error("Only the DM can rewind.");
       const to = msg.to;
       if (to !== "fight" && to !== "rest") return error("Rewind to the start of the fight or to the last rest.");
-      const ticket = journal.before(table);
+      const ticket = undoOf(table).pins()[to] ? journal.before(table) : null;
       const step = undoOf(table).rewind(table.state, to);
-      if (step) journal.restored(ticket, "rewind", { role: me.role, uid: me.id, to });
       if (!step) return error(to === "fight" ? "No fight to go back to." : "No rest to go back to.");
+      journal.restored(ticket, "rewind", { role: me.role, uid: me.id, to });
       resyncPacks(table);
       dirtyHistory.add(table.code);
       touch(table);
