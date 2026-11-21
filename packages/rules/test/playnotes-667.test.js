@@ -84,3 +84,64 @@ test("note 1: darts that put a player character to 0 Hit Points: later darts are
   assert.equal(f.hp, 0);
   assert.equal(f.death.f, 2, "dart 2 and 3 each fail a death save (SRD: damage at 0 Hit Points)");
 });
+
+// ---------- 2. Critical hits ----------
+// SRD "Critical Hits": "Roll the attack's damage dice twice, add them together, and add any relevant modifiers as normal ...
+// If the attack involves other damage dice, such as from the Rogue's Sneak Attack feature, you also roll those dice twice."
+// The note says the damage was "two dice, not two dice and double the damage". Verdict: see each test.
+
+// What one hit did: every damage event on `who`, as total dice faces rolled and the flat bonus, by damage type.
+function tally(r, who) {
+  const out = {};
+  for (const e of r.events.filter((x) => x.type === "damage" && x.target === who)) {
+    const o = (out[e.dtype] ??= { dice: [], bonus: 0, amount: 0 });
+    o.dice.push(...(e.dice ?? []).map((d) => d.sides)); o.bonus += e.bonus ?? 0; o.amount += e.amount;
+    assert.equal(e.amount, sum(e.dice ?? []) + (e.bonus ?? 0), "the amount is the dice plus the bonus, nothing doubled");
+  }
+  return out;
+}
+const swings = (n) => (r) => r.events.find((x) => x.type === "attack").crit === n;
+
+test("note 2: a weapon crit doubles the weapon die and Sneak Attack dice, and adds the ability modifier once", () => {
+  const make = (seed) => { const s = field(sheets.rogue, seed); fight(s); return s; };
+  const act = (s) => apply(s, { type: "attack", actor: "hero", target: s.foe, attack: "shortsword" }, DM);
+  const crit = seeded(make, act, swings(true)), plain = seeded(make, act, (r) => swings(false)(r) && r.events.find((x) => x.type === "attack").hit);
+  const c = tally(crit.r, crit.s.foe).piercing, p = tally(plain.r, plain.s.foe).piercing;
+  assert.deepEqual(p.dice, [6, 6, 6, 6], "1d6 and 3d6 Sneak Attack");
+  assert.deepEqual(c.dice, Array(8).fill(6), "2d6 and 6d6");
+  assert.equal(c.bonus, 4, "Dexterity modifier once");
+  assert.equal(p.bonus, 4);
+});
+
+test("note 2: a spell attack crit doubles the cantrip's dice (Fire Bolt 2d10 at level 5 becomes 4d10)", () => {
+  const make = (seed) => { const s = field(sheets.wizard, seed, { foeAt: { q: 3, r: 0 } }); fight(s); return s; };
+  const act = (s) => apply(s, { type: "cast", actor: "hero", spell: "fire-bolt", target: s.foe }, DM);
+  const crit = seeded(make, act, swings(true));
+  const c = tally(crit.r, crit.s.foe).fire;
+  assert.deepEqual(c.dice, Array(4).fill(10), "level 5: 2d10, doubled");
+  assert.equal(c.bonus, 0);
+});
+
+test("note 2: Hunter's Mark's extra 1d6 is rolled twice on a critical hit, and a flat bonus is not doubled", () => {
+  const mark = CONTENT.spells["hunters-mark"].effects[0].modifier;
+  const make = (seed) => { const s = field(sheets.rogue, seed); fight(s); s.entities.hero.feats = [{ name: "Hunter's Mark", modifiers: [mark] }]; return s; };
+  const act = (s) => apply(s, { type: "attack", actor: "hero", target: s.foe, attack: "shortsword" }, DM);
+  const crit = seeded(make, act, swings(true));
+  const t = tally(crit.r, crit.s.foe);
+  assert.deepEqual(t.force.dice, [6, 6], "1d6 force, twice");
+  assert.equal(t.force.bonus, 0);
+  assert.equal(t.piercing.bonus, 4);
+});
+
+test("note 2: a monster's crit rolls its damage dice twice and adds its modifier once", () => {
+  const make = (seed) => { const s = field(sheets.wizard, seed, { hp: 900 }); s.entities.hero.ac = 1; s.entities.hero.hp = s.entities.hero.maxHp = 500; fight(s, s.foe); return s; };
+  const act = (s) => apply(s, { type: "attack", actor: s.foe, target: "hero", attack: "scimitar" }, DM);
+  const crit = seeded(make, act, swings(true));
+  assert.equal(CONTENT.monsters["goblin-warrior"].actions.find((x) => x.id === "scimitar").effects[0].onHit[0].damage, "1d6+2");
+  const t = tally(crit.r, "hero");
+  assert.deepEqual(t.slashing.dice, [6, 6]);
+  assert.equal(t.slashing.bonus, 2);
+});
+
+// Verdict note 2: not a bug. Every attack (weapon, spell, monster) rolls all its damage dice twice and adds the flat
+// modifier once. The "two dice" the owner saw is the doubled die (2d6 for a 1d6 weapon), not a missing modifier.
