@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply } from "../src/engine.js";
-import { newGame } from "../src/scenario.js";
+import { typedGame } from "./fixtures/typed.js";
 import { view, viewWaiting } from "../src/view.js";
 import { createHistory, mark } from "../src/history.js";
 import { derive } from "../src/derive.js";
@@ -14,8 +14,10 @@ import { acOf } from "../src/engine/rolls.js";
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
+// The starters hand-typed (fixtures/typed.js), as when these tests were written: a built wizard's Mage Armor is the engine's own (#672, #674),
+// and these tests need a spell the engine hands to the DM.
 function field() {
-  const s = newGame(5);
+  const s = typedGame(5);
   for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
   s.encounter = null; s.settings.autoEngage = false;
   return s;
