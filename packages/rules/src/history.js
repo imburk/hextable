@@ -313,6 +313,7 @@ export function describeStep(action, events, before, after) {
     // A called save (docs/specs/prompts.md): the DM's, and players are told nothing of the step (the save events say what they may know).
     case 'save': label = { label: `A ${a.ability ?? ''} saving throw was called`.replace('  ', ' '), shown: null }; break;
     case 'act': label = `${who} used ${after.entities[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? prior?.entities?.[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? 'an action'}`; break;
+    case 'joinFight': { const ids = events.filter((e) => e.type === 'joined').map((e) => e.id); label = ids.length ? `${who} brought ${names(ids, name)} into the fight` : `${who} tried to bring the others into the fight`; break; }
     case 'follow': label = a.leader === null || a.leader === undefined ? `${who} stopped following` : `${who} started following ${name(a.leader)}`; break;
     case 'partyFollow': label = `The party fell in behind ${name(a.leader)}${SHAPE_WORDS[a.shape] ? ` ${SHAPE_WORDS[a.shape]}` : ''}`; break;
     case 'formation': label = a.slots ? `The places behind ${name(a.leader)} were changed` : `The party walks behind ${name(a.leader)} ${SHAPE_WORDS[a.shape] ?? 'in a formation'}`; break;

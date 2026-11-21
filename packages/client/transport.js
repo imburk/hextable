@@ -131,8 +131,9 @@ async function sha256Hex(bytes) {
   return [...d].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// The valley's options for a grid and a party: squares if asked, a party if given (newGame's `party`, scenario.js), otherwise nothing (the hex valley with the four starters, as always).
-const valleyOptions = (grid, party) => (grid === 'square' || party ? { ...(grid === 'square' && { grid: 'square' }), ...(party && { party }) } : undefined);
+// The valley's options for a grid and a party: squares if asked, a party if given (newGame's `party`, scenario.js), otherwise the hex valley with the four starters.
+// Every new solo game starts with the party following the first hero (`follow`, #671).
+const valleyOptions = (grid, party) => ({ follow: true, ...(grid === 'square' && { grid: 'square' }), ...(party && { party }) });
 
 // Solo: the engine runs here and you are the DM and every hero.
 // `grid` is the grid a NEW game's valley is on ('square', or anything else for hexes); a saved game keeps its own.

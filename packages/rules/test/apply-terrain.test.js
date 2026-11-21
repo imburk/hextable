@@ -111,6 +111,7 @@ const SENSE2 = [
   { pre: (s) => { apply(s, { type: "give", actor: "fighter", item: "Rope" }, DM); apply(s, { type: "drop", actor: "fighter", item: "Rope" }, DM); }, a: (s) => ({ type: "pickUp", actor: "fighter", object: lastObj(s) }) },
   { pre: (s) => apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, { role: "player", userId: "pat" }), a: { type: "release", entity: "fighter" } },
   { pre: (s) => apply(s, { type: "stepAway", actor: "rogue" }, DM), a: { type: "stepBack", actor: "rogue" } },
+  { pre: (s) => { s.encounter.order = s.encounter.order.filter((o) => o.id !== "wizard"); }, a: { type: "joinFight" } },       // the wizard stands outside a fight that is running
   { pre: (s) => apply(s, { type: "mapEdit", ops: [{ op: "region", region: { id: "r1", name: "R", level: "ground", hexes: ["0,0", "1,0"] } }] }, DM), a: { type: "revealRegion", region: "r1", revealed: true } },
   // The DM's to-do tray (#675): a card from a note the engine handed over (a setting that changes nothing on the map), then Done.
   { pre: (s) => apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM), a: (s) => ({ type: "todoDone", n: s.todo?.cards?.[0]?.n }) },

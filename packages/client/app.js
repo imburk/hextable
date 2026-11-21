@@ -493,6 +493,7 @@ function onUpdate(state, events, fresh) {
   if (refreshAsk && Date.now() - refreshAsk.at > 8000) refreshAsk = null;
   if (refreshAsk) { const say = refreshReport(events, (id) => known.get(id) ?? S.entities[id]?.name ?? 'Someone', refreshAsk); if (say) { refreshAsk = null; toast(say, !/Not refreshed/.test(say)); } }
   for (const e of Object.values(S.entities)) known.set(e.id, shownName(S, e));
+  for (const ev of events) if (ev.type === 'note' && ev.why === 'joinFight') toast(String(ev.text), true);      // a hero who could not get into the fight (`joinFight`)
   TL.setPace(pace());
   if (first) {
     LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
@@ -695,10 +696,17 @@ function sizeDock() {
   R.inset = $('dock').offsetHeight * 0.85;
   document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray and the drawer sit above the dock
 }
+let joinNo = null;               // the fight whose "Bring the others in?" was put off
+// The party members a running fight has left outside, who could be brought in: alive, able, on their own feet (a rider goes with its mount).
+const outsiders = (st) => Object.values(st.entities).filter((x) => x.side === 'party' && !x.dead && up(x) && !x.riding && !x.hidden && !st.encounter.order.some((o) => o.id === x.id));
 function refresh() {
   if (!S) return;
   const enc = S.encounter, cur = current(S), e = S.entities[selId];
   document.body.classList.toggle('fight', !!enc);
+  // A fight with party members outside it: the DM (in solo, the player) is asked once per fight whether to bring them in (`joinFight`, #671).
+  const out = enc && isDM() && !T.readOnly && joinNo !== enc.id ? outsiders(S) : [];
+  $('join').hidden = !out.length;
+  if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
   $('mode').textContent = enc ? `Round ${enc.round}` : 'Exploring';
   $('clock').textContent = clockText(S.clock);
   $('btn-leave').hidden = isDM() || !!T.solo;
@@ -1063,6 +1071,8 @@ R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (
 
 // ---------- controls ----------
 $('btn-end').onclick = () => { if (CLS.askCure(S.entities[selId])) return; act({ type: 'endTurn', actor: selId }); };       // Self-Restoration with a choice asks first
+$('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
+$('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
 $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
 $('hint-go').onclick = () => {
   if (owedUi === 'offer') return setMode(OWED);

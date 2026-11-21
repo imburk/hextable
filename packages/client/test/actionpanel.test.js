@@ -780,3 +780,12 @@ test('Features: a built Fighter\'s Second Wind is greyed at full Hit Points, wit
   e.hp = 5;
   assert.equal(row().why, '');
 });
+
+test('Explore: a hurt leader\'s healing stays among the first four rows, ahead of Formation... (#671)', () => {
+  const s = newGame(7, { follow: true }), e = s.entities.fighter;
+  e.hp = 3;
+  const rows = rankExplore(s, e);
+  assert.ok(rows.some((r) => r.id === 'formation'), 'the fighter leads');
+  const heal = rows.find((r) => r.id === 'heal:secondWind' || r.id.startsWith('heal:'));
+  assert.ok(heal && heal.grid, `healing is on the grid: ${ids(rows)}`);
+});

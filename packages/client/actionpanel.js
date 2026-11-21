@@ -126,7 +126,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const holds = holdRows(S, e), hold = [...holds.escape, ...holds.letGo].map((r) => row(r));
   // 2. Following. "Lead the party" is for whoever controls `e` (a player for their own creature, the DM for anyone; this panel is only ever
   // drawn for a creature the viewer controls), and "Formation..." while someone follows `e` (formation.js).
-  const follows = [];
+  const follows = []; let formationRow = null;
   if (!inFight(S, e.id) && e.side === 'party') {
     const leader = e.follow && S.entities[e.follow];
     if (leader) follows.push(row({ id: 'stopFollow', kind: 'send', label: 'Stop following', sub: `Following ${leader.name}`, send: { type: 'follow', actor: e.id, leader: null } }));
@@ -137,7 +137,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
     }
     if (!enc) {
       const why = formationWhy(S, e, { dm: true, mine: true });
-      if (leads(S, e)) follows.push(row({ id: 'formation', kind: 'formation', label: 'Formation…', sub: `Now: ${shapeLabel(currentShape(e))}`, why }));
+      if (leads(S, e)) follows.push(formationRow = row({ id: 'formation', kind: 'formation', label: 'Formation…', sub: `Now: ${shapeLabel(currentShape(e))}`, why }));
       follows.push(row({ id: 'lead', kind: 'lead', label: 'Lead the party', sub: 'Everyone follows; then pick how', why, send: { type: 'partyFollow', leader: e.id } }));
     }
   }
@@ -180,7 +180,9 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const check = row({ id: 'check', kind: 'check', label: 'Check…', sub: 'Skills, on the sheet' });
 
   const head = [...hold, ...objects], tail = [...dark, hide, ...rituals, check];
-  const base = [...follows, ...aid, ...(weary ? rests : [])];
+  // A hurt creature's healing comes before Formation...: the party follows its first hero from the start of a solo game, so Formation... is
+  // there from the first turn and would push the healing under More (#671).
+  const base = aid.length && formationRow ? [...follows.filter((r) => r !== formationRow), ...aid, formationRow, ...(weary ? rests : [])] : [...follows, ...aid, ...(weary ? rests : [])];
   let list;
   if (found) list = [...head, search, ...base, ...tail];                                  // something was just found or sprung: Search moves up
   else if ((S.settings?.passiveFind ?? 'off') === 'off') {

@@ -333,7 +333,8 @@ function march(s, leader, walked, ev) {
     const reach = lurkers.length ? knownWays(s, f, lurkers) : moveOptions(s, f);
     const frontI = along(trail, front.pos, G).i;
     // The places it could stop, and where it stands now (staying put costs nothing).
-    const spots = [{ k: key(f.pos), h: f.pos, cost: 0 }, ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
+    const crowded = living(s).some((o) => o.id !== f.id && overlapAt(o, o.pos, f, f.pos, gridOf(s.map)));   // it stands where the one in front now does: it must move off
+    const spots = [...(crowded ? [] : [{ k: key(f.pos), h: f.pos, cost: 0 }]), ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
     let best = null, bestKey = null;
     for (const sp of spots) {
       const near = apartAt(s, front, front.pos, f, sp.h), at = along(trail, sp.h, G);
@@ -342,6 +343,7 @@ function march(s, leader, walked, ev) {
     }
     // It can get through if some way it could walk comes up beside the one in front (others in the party do not bar the way).
     const through = [...reach.values()].some((v) => apartAt(s, front, front.pos, f, v.h) <= 1);
+    if (crowded && (!up(f) || !best || !through)) fail(`${f.name} cannot make room.`);   // the move is refused whole (apply restores the game): nobody shares a place
     if (!up(f) || !best || !through) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     if (best.k !== key(f.pos)) {
       const had = !!s.encounter;
@@ -563,7 +565,7 @@ function moveOn(s, a, ctx, ev, own) {
     // provoking nothing (`free`). It is a move and nothing more: no other action reads it, and a creature that rides or is ridden never has any (opportunityRider).
     if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, diagonals: owedDiag(s, e), free: true };
     if (fighting && !bud) fail(steering(s, e) ? `${e.name} moves on ${steering(s, e).name}'s turn.` : `It isn't ${e.name}'s turn.`);
-    const reach = moveOptions(asItsTurn(s, e, bud), e);
+    const reach = moveOptions(asItsTurn(s, e, bud), e, { through: true });
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
     const column = [...reach.values()].filter((n) => col(n.h) === col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
