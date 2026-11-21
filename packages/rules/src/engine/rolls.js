@@ -156,7 +156,7 @@ export function rerollSave(s, t, abil, dc, onFail, from, ev) {
 // not barred from spells (Rage), and has not spent a spell slot already this turn (SRD: one a
 // turn). A cantrip needs none: [0]. Empty if it cannot.
 export function slotsFor(s, e, sp) {
-  if (untrainedGear(e).length) return [];                      // armour or a Shield without training bars spellcasting (SRD "Armor Training")
+  if (untrainedGear(e).length) return [];                      // armour worn without training bars spellcasting (SRD "Armor Training")
   if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return [];
   if (sp.level === 0) return [0];
   if (s.encounter && (current(s) === e.id ? s.encounter.flags.slot : s.encounter.flags[`slot:${e.id}`])) return [];

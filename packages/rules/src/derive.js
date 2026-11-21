@@ -1074,7 +1074,7 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
     if (x.charges !== undefined && !(def.charges && Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= def.charges.max)) say(def.charges ? `${name} has 0 to ${def.charges.max} charges.` : `${name} has no charges.`);
     // Worn or held.
     if (x.equipped === true && def.wear !== 'carried') (worn[def.wear] ??= []).push(name);
-    // Worn without training (armour, a Shield) or a weapon without proficiency is allowed: derive() applies what the SRD says (Armor Training; Proficiency Bonus on attack rolls).
+    // Armour worn without training, a Shield used without it (no AC), or a weapon without proficiency is allowed: derive() applies what the SRD says (Armor Training; Proficiency Bonus on attack rolls).
     // Attunement.
     if (x.attuned === true) {
       const why = attuneProblem(sheet, def);

@@ -101,7 +101,7 @@ test("refusals change nothing: same state as asked, not its turn, no Shield, han
   refused(c, { type: "shield", actor: "hero", on: false }, /can't act/);
 });
 
-test("no training with a Shield: taking it up is allowed, and it is then worn untrained; a wizard sheet with a stowed Shield", () => {
+test("no training with a Shield: taking it up is allowed, and it then gives no AC; a wizard sheet with a stowed Shield", () => {
   const sh = { name: "Wy", class: "wizard", level: 1, abilities: A, skills: ["arcana", "history"], weapons: [], shield: true, shieldStowed: true };
   const s = field(sh, { fight: false });
   assert.equal(derive(sh).record.shield, undefined);
