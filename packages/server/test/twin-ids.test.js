@@ -73,6 +73,12 @@ test("twin worlds: a shop opened and never shown does not change the id a player
     assert.ok(!/"s[0-9]+"/.test(all.replace(/"shop[A-Za-z]*"/g, "")), "a shop's own id reached a player");
   }
   assert.deepEqual(b.sam.receiver.state.shops, []);
+  // Sam, shown nothing, cannot count shops by trying the DM's actions: one answer for each action whatever the id, the same in both worlds.
+  const sent = (w, type, shop) => { const n = w.sam.got.length; w.sam.say({ t: "act", action: { type, shop, actor: "fighter", to: "all", set: { name: "x" }, line: "rope", for: "fighter", price: 1 } }); return refusal(w.sam.got.slice(n).find((m) => m.t === "error")); };
+  for (const type of ["shopEdit", "showShop", "closeShop", "revealGoods", "quote"]) {
+    const answers = [a, b].flatMap((w) => ["sh1", "sh2", "s1", "s2", "junk"].map((g) => sent(w, type, g)));
+    assert.equal(new Set(answers).size, 1, `${type}: ${JSON.stringify(answers)}`);
+  }
 });
 
 test("twin worlds: a creature the DM hid does not change the number of a fight (issue #630, part 2)", () => {

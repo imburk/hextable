@@ -68,11 +68,17 @@ test("a player names a shop by its number; every other id is refused in one sent
   // Kim, who was not shown it, is told the same of its number as of one that was never given.
   for (const g of ["sh1", "sh2", "sh9"]) assert.equal(reply(KIM, g, { actor: "rogue" }).error, "No such shop.", g);
   // Before the creature checks, the rest of the action, the place rule and the DM's own: the sentence is the same for every action that names a shop.
-  for (const [type, extra] of [["buy", { line: "x" }], ["sell", { item: "Rope" }], ["chipIn", { joint: "j1", share: 1 }], ["take", { line: "x" }], ["quote", { for: "fighter", line: "rope", price: 1 }],
-    ["shopEdit", { set: { name: "x" } }], ["showShop", { to: "all" }], ["revealGoods", { line: "x" }], ["closeShop", {}]]) {
-    assert.equal(apply(s, { type, actor: "fighter", shop: secret, ...extra }, PAT).error, "No such shop.", `${type} with the shop's own id`);
-    assert.equal(apply(s, { type, actor: "fighter", shop: "sh5", ...extra }, PAT).error, "No such shop.", `${type} with a number never given`);
+  for (const [type, extra] of [["buy", { line: "x" }], ["sell", { item: "Rope" }], ["chipIn", { joint: "j1", share: 1 }], ["take", { line: "x" }]]) {
+    for (const g of [secret, "sh5", "s1"]) assert.equal(apply(s, { type, actor: "fighter", shop: g, ...extra }, PAT).error, "No such shop.", `${type} ${g}`);
   }
+  const dmOnly = { quote: { for: "fighter", line: "rope", price: 1 }, shopEdit: { set: { name: "x" } }, showShop: { to: "all" }, revealGoods: { line: "x" }, closeShop: {} };
+  // The DM's actions are refused to a player in one sentence for the action, whatever the id: nothing tells which numbers exist.
+  const probe = (ctx) => Object.entries(dmOnly).map(([type, extra]) => ["sh1", "sh2", "sh9", "s1", secret, "junk", null].map((g) => apply(s, { type, actor: "fighter", shop: g, ...extra }, ctx).error));
+  for (const ctx of [PAT, KIM, { role: "player", userId: "nobody" }]) for (const row of probe(ctx)) assert.equal(new Set(row).size, 1, JSON.stringify(row));
+  assert.deepEqual(probe(PAT), probe(KIM));
+  // A number of a shop shown to someone else is no different from one never given, for the actions a player may send.
+  assert.equal(apply(s, { type: "buy", actor: "rogue", shop: "sh1", line: "rope" }, KIM).error, "No such shop.");
+  assert.equal(apply(s, { type: "askCheck", actor: "rogue", skill: "persuasion", about: { shop: "sh1", line: "rope" } }, KIM).error, "No such shop.");
   // A check asked about a shop: its number in, its number back; a guess is the same refusal.
   const asked = ok(apply(s, { type: "askCheck", actor: "fighter", skill: "persuasion", about: { shop: "sh1", line: "rope" } }, PAT));
   assert.equal(asked.events[0].about.shop, a, "the engine keeps the shop's own id");
@@ -84,7 +90,7 @@ test("a player names a shop by its number; every other id is refused in one sent
   assert.equal(apply(s, { type: "shopEdit", shop: "sh1", set: { blurb: "hi" } }, DM).error, "No such shop.");
   // The translation copies: the action it is given is not changed, and a world's own ids are not shared.
   const act = { type: "buy", shop: "sh1" };
-  assert.equal(translateShops(s, act, () => {}).shop, a);
+  assert.equal(translateShops(s, act, () => {}, PAT).shop, a);
   assert.equal(act.shop, "sh1");
   assert.equal(realShop(s, "sh1"), a);
   assert.equal(realShop(s, a), null);
@@ -224,4 +230,40 @@ test("a table saved before version 29 gets the highest fight number its record h
 test("shopids.js is pure: no clock, no dice, no I/O and no import", () => {
   const src = readFileSync(new URL("../src/shopids.js", import.meta.url), "utf8");
   assert.ok(!/Math\.random|Date\.now|new Date|performance\.|process\.|require\(|fetch\(|from\s+['"]/.test(src.replace(/\/\/.*$/gm, "")));
+});
+
+test("a rewind keeps the shop numbers and counter, and numbers the shops of a pin saved before version 29", () => {
+  const s = table();
+  const h = createHistory();
+  const act = (action) => { const before = mark(s), r = ok(apply(s, action, DM)); h.record(before, s, describeStep(action, r.events, before, s)); h.track(action, r.events, before, s); return r; };
+  const a = open(s, "Outfitter");
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Snag", at: { q: -4, r: 2 } }, DM));
+  act({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 3 });      // the pin: before this, no shop shown
+  act({ type: "endEncounter" });
+  act({ type: "showShop", shop: a, to: "all" });
+  const b = open(s, "Chandler");
+  act({ type: "showShop", shop: b, to: ["kim"] });
+  assert.deepEqual(s.shopAlias, [a, b]);
+  ok(h.rewind(s, "fight") ? { ok: true } : { ok: false, error: "no pin" });
+  assert.deepEqual(s.shopAlias, [a, b], "the numbers stay");
+  assert.ok(s.shopSeq >= 2, "the counter goes on");
+  assert.equal(open(s, "Later"), "s3");
+  assert.equal(playerShop(s, a), "sh1");
+});
+
+test("rewinding to a pin from before version 29 numbers the shops that pin shows", () => {
+  const s = table();
+  const a = open(s, "Outfitter");
+  ok(apply(s, { type: "showShop", shop: a, to: "all" }, DM));
+  const h = createHistory();
+  const old = JSON.parse(JSON.stringify(s)); delete old.shopAlias; old.version = 28;
+  const act = (action) => { const before = mark(s), r = ok(apply(s, action, DM)); h.record(before, s, describeStep(action, r.events, before, s)); h.track(action, r.events, before, s); return r; };
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Snag", at: { q: -4, r: 2 } }, DM));
+  act({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 3 });
+  // Swap the pin for the old tree.
+  const dump = h.dump(); dump.pins.fight.tree = JSON.parse(JSON.stringify(old)); delete dump.pins.fight.tree.timeline;
+  const h2 = createHistory(); assert.ok(h2.restore(JSON.parse(JSON.stringify(dump))));
+  delete s.shopAlias;
+  ok(h2.rewind(s, "fight") ? { ok: true } : { ok: false, error: "no pin" });
+  assert.deepEqual(viewShops(s, PAT).map((x) => x.id), ["sh1"], "players are not shown no shops until the next action");
 });

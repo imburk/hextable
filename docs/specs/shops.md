@@ -286,7 +286,10 @@ It is in `shops[].id` and in every trade event that names a shop (`shopShown`, `
 `checkAsked`. A player's action is turned back at the top of `dispatch`, before anything else is looked at: a number never
 given, a guessed one, a shop's own id and a malformed value are all "No such shop.". The DM sends and is sent the own ids. The
 numbering is per table, not per player, so a player shown a shop that was shown before to someone else can see that its number
-is not 1; that is the one gap left (docs/DEBT.md, T11).
+is not 1; that is the one gap left (docs/DEBT.md, T11). A player's `showShop`, `shopEdit`, `closeShop`, `revealGoods` or `quote` is
+refused with one sentence for the action, whatever the id; every other shop action names only a shop shown to that player. Undo takes
+an alias back together with the showing it undoes; a rewind to the start of a fight or a rest keeps the list (and `shopSeq`), so a
+number never comes to mean another shop, and numbers the shops shown in a pin saved before version 29.
 | A player is sent | Never sent |
 |---|---|
 | shops shown to them, as above, each by a number `sh1`, `sh2`, ... in the order shops were first shown (amendment of #630, below) | a shop not shown to them: not its id, not that it exists; and never a shop's own id (`s<n>`), whose gaps would count the shops not shown |

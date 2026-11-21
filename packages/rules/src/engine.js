@@ -155,7 +155,7 @@ function dispatch(s, action, ctx, ev) {
   // The places, pins and entries a player names are the ids they were given (known.js); each is turned into the world's own
   // here, and one that is nothing to them is refused as a place that does not exist, before the handler looks at anything.
   // The same for a shop: a player names it by the number it was given (shopids.js); any other id is refused as "No such shop.".
-  if (ctx.role !== 'dm') action = translateShops(s, translate(s, action, fail), fail);
+  if (ctx.role !== 'dm') action = translateShops(s, translate(s, action, fail), fail, ctx);
   const type = action?.type;
   const h = (typeof type === 'string' && handlers.get(type)) || fail(`Unknown action: ${typeof type === 'object' && type !== null ? 'not a name' : typeof type === 'symbol' ? type.toString() : String(type)}`);
   // Nobody walks on a holding map (docs/specs/travel.md, Decision 1): on a navigation or scene node a group stands at a pin,

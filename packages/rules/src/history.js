@@ -17,6 +17,7 @@
 // again rolls the same dice. The history is not part of the game state: it is never saved with the
 // game and never sent to players. Pure: no network, no clock, no randomness.
 import { viewEvents, classify, seenName } from './view.js';
+import { learnShops } from './shopids.js';
 
 export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
@@ -178,11 +179,14 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
       const tree = structuredClone(keep ? { ...p.tree, markets: null } : p.tree), owners = {};
       if (keep) tree.markets = p.tree.markets;                 // the market list as pinned, shared and never edited (see mark)
       for (const [id, e] of Object.entries(was.entities ?? {})) owners[id] = { owner: e.owner, ownerName: e.ownerName };
-      const rng = state.rng, seq = state.seq, fights = state.fightSeq;
+      const rng = state.rng, seq = state.seq, fights = state.fightSeq, shopSeq = state.shopSeq, aliases = state.shopAlias;
       for (const k of Object.keys(state)) delete state[k];
       for (const [k, v] of Object.entries(tree)) state[k] = k === 'timeline' ? tl : v;
       state.rng = rng;
       if (Number.isInteger(seq)) state.seq = Math.max(seq, state.seq ?? 0);
+      if (Number.isInteger(shopSeq)) state.shopSeq = Math.max(shopSeq, state.shopSeq ?? 0);                      // a shop opened again has a new id
+      if (Array.isArray(aliases) && aliases.length > (state.shopAlias?.length ?? 0)) state.shopAlias = [...aliases];      // a number given never comes to mean another shop
+      learnShops(state);                                                                                          // a pin from before version 29 has no list: the shops shown are numbered now
       if (Number.isInteger(fights)) state.fightSeq = Math.max(fights, state.fightSeq ?? 0);      // a fight fought again has a new number too
       for (const [id, e] of Object.entries(state.entities)) {
         if (!owners[id]) continue;

@@ -42,19 +42,30 @@ export function realShop(s, text) {
   return typeof id === 'string' ? id : null;
 }
 
-// The actions whose `shop` names a shop, and `askCheck`, whose `about.shop` does.
-const SHOP_ACTIONS = ['shopEdit', 'showShop', 'revealGoods', 'closeShop', 'quote', 'buy', 'chipIn', 'sell', 'take'];
+// The actions whose `shop` names a shop, and `askCheck`, whose `about.shop` does. The DM's own are refused to a player in one sentence for
+// each action, whatever the id (so that "Only the DM can..." for a number and "No such shop." for another can not tell a player which numbers exist).
+const DM_ONLY = { shopEdit: 'change a shop', showShop: 'show a shop', closeShop: 'close a shop', revealGoods: 'reveal goods', quote: 'quote a price' };
+const SHOP_ACTIONS = ['buy', 'chipIn', 'sell', 'take'];
+// Is the shop shown to this user (handouts.js, shownTo; not imported, so this file stays free of imports).
+const shownTo = (shop, userId) => !!shop && (shop.shown === 'all' || (Array.isArray(shop.shown) && typeof userId === 'string' && shop.shown.includes(userId)));
+// The shop's own id for a number this player was given and the shop is shown to them; null for any other.
+function mine(s, text, ctx) {
+  const id = realShop(s, text), shop = id === null || !Array.isArray(s.shops) ? null : s.shops.find((x) => x?.id === id);
+  return shop && shownTo(shop, ctx?.userId) ? id : null;
+}
 // A player's action with the shop ids they were given turned into the shops' own. `bad` (the engine's `fail`) is called with
-// `NO_SUCH_SHOP` for an id that is nothing to them, whichever kind. A copy: the action given is not changed.
-export function translateShops(s, action, bad) {
+// `NO_SUCH_SHOP` for an id that is nothing to them, whichever kind: a number never given, a guessed one, a shop's own id, a shop not
+// shown to them. A copy: the action given is not changed.
+export function translateShops(s, action, bad, ctx) {
   const t = action?.type;
+  if (Object.hasOwn(DM_ONLY, t)) bad(`Only the DM can ${DM_ONLY[t]}.`);
   if (SHOP_ACTIONS.includes(t)) {
-    const id = realShop(s, action.shop);
+    const id = mine(s, action.shop, ctx);
     if (id === null) bad(NO_SUCH_SHOP);
     return { ...action, shop: id };
   }
   if (t === 'askCheck' && action.about !== undefined) {
-    const ab = action.about, id = own(ab, 'shop') && !Array.isArray(ab) ? realShop(s, ab.shop) : null;
+    const ab = action.about, id = own(ab, 'shop') && !Array.isArray(ab) ? mine(s, ab.shop, ctx) : null;
     if (id === null) bad(NO_SUCH_SHOP);
     return { ...action, about: { ...ab, shop: id } };
   }
