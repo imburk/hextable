@@ -5,12 +5,14 @@
 import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
 import { startBar, loadDraft, saveDraft, keepBuild, dropBuild, whenLine } from './startflow.js';
-import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
+import { derive, validate, classesOf, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
+import { trimRolls } from './shared/hitpoints.js';
 import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, DEFAULT_RULE, BELOW, cleanRule, ruleText, pointsSpent, pointsLeft, rollScores, rollScore, mayReroll, rerollWhy, rerollOpen, topThree, tableRule,
   standing, applyBackground, checkScores, scoresLine, dmLine, setText, dayText } from './shared/scores.js';
 import { keyedRng } from './shared/rng.js';
 import { hide as scrollOff } from './scrolltip.js';
 import { el, accordion, pickRow, chip, groupHead, disclosure } from './pickui.js';
+import { SETTING_TEXT } from './shared/engine.js';
 import { signed, nice, usesText, weaponLines, weaponSummary, armourLines, armourSummary, armourCost, armourAlso, weaponCost, weaponWords, weaponTrained, trainLine, bareFeatures, featureWhen, firstSentence,
   resourcesOf, costText, groupedFeatures, slotList, attackRows, headsUp, spellTag } from './buildparts.js';
 export { usesText };
@@ -25,7 +27,7 @@ export const hexOf = (text) => { const m = /^#?([0-9a-fA-F]{6})$/.exec(String(te
 // Fields of a sheet this screen has no control for: kept as they were when a sheet is edited.
 // (`scoreBonus` is the DM's score bonus, e.g. from an import; this screen does not show it yet, DEBT C20. `species` is the sheet's species,
 // docs/specs/species.md: kept whole, its id and choices, until the species picker (SP9) gives it a control.)
-export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus', 'species'];
+export const KEEP = ['extraSkills', 'size', 'speed', 'senses', 'tools', 'gear', 'items', 'attuning', 'shieldStowed', 'scoreBonus', 'species', 'hpRolls'];
 // The DM's score bonus as a line ("DM bonus: +2 Charisma"), or '' when there is none; and a kept-fields object without it.
 export const bonusText = (sb) => { const l = ABILITIES.filter((a) => Number.isInteger(sb?.[a]) && sb[a] > 0).map((a) => `+${sb[a]} ${ABIL_NAME[a]}`); return l.length ? `DM bonus: ${l.join(', ')}` : ''; };
 export const withoutBonus = (keep) => { const { scoreBonus, ...rest } = keep; void scoreBonus; return rest; };
@@ -264,7 +266,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     if (b.spells.length) s.spells = [...b.spells];
     for (const k of KEEP) if (b.keep[k] !== undefined) s[k] = structuredClone(b.keep[k]);
     s.look = { color: b.color };
-    return s;
+    return s.hpRolls ? trimRolls(s, classesOf(s)) : s;      // the rolls kept from an earlier sheet are cut to the classes and levels this one has (hitpoints.js)
   }
   function fromSheet(s) {
     const x = fresh(s.class);
@@ -274,7 +276,10 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     x.keep = keptOf(s); x.sc = scoresDraft(s, keepRead(RULE_KEY)); x.hand = { ...x.abilities };
     return x;
   }
-  const safeDerive = (s) => { try { return derive(s); } catch { return null; } };
+  // A table that rolls its Hit Points (docs: settings hpMethod, #638): the numbers count the rolls the character has; the levels still to roll are the game's to roll when the sheet is saved.
+  const rolledTable = () => inGame() && getState()?.settings?.hpMethod === 'rolled';
+  const safeDerive = (s) => { try { return derive(s, rolledTable() ? { hp: 'rolled' } : {}); } catch { return null; } };
+  const unrolled = (e) => { const d = e?.sheet ? safeDerive(e.sheet) : null; return !!d && d.unrolledHp > 0; };
 
   // ---------- the draft (start flow only): what is filled in is kept in this browser, so Back never loses it ----------
   const snapshot = () => { const { c, ...rest } = b; void c; return JSON.stringify(rest); };
@@ -338,12 +343,25 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   }
   const needOf = (nd, sec) => { const l = nd.filter((x) => x.sec === sec); return l.length ? `Choose ${l.map((x) => x.t).join(', ')}` : ''; };
 
+  // A table that rolls Hit Points (#638) has a section of its own where there is something to roll: a level-up, a character added above level 1, a character with levels
+  // not rolled yet. One row in the shared pick-row layout, with the rule behind its i button; the roll itself is the button in the foot.
+  const rollsPending = () => mode === 'edit' && unrolled(getState()?.entities[target?.id]);
+  const hpShown = () => rolledTable() && (mode === 'levelup' || (mode === 'add' && b.level > 1) || rollsPending());
+  function hpSection(c) {
+    const sec = el('section', { class: 'qb-hp' }), what = mode === 'levelup' ? 'the level you gain' : mode === 'add' ? 'each level after the first' : 'each level not rolled';
+    const older = mode === 'levelup' ? (safeDerive(getState()?.entities[target?.id]?.sheet)?.unrolledHp ?? 0) : 0;      // earlier levels of this character still not rolled
+    sec.append(pickRow({ id: 'qb-hp-roll', kind: 'none', title: 'Roll hit points', chips: [chip('when', mode === 'edit' ? 'tap Roll hit points' : 'when you save')],
+      summary: `A d${c.hitDie} + Con for ${what}.`, also: `The game rolls it and the log shows every die. Level 1 is the die's highest number.${older ? ` ${older} earlier level${older === 1 ? ' is' : 's are'} not rolled yet and count the fixed value.` : ''}`,
+      info: { title: 'Rolled hit points', sub: `d${c.hitDie} + Constitution, at least 1 a level`, text: [SETTING_TEXT.hpMethod.rolled, SETTING_TEXT.hpRollLow[getState()?.settings?.hpRollLow ?? 'keep'], 'Until a level is rolled, the numbers beside this screen count the fixed value for it.'] } }));
+    return sec;
+  }
   function sectionList(L, c, locked, nd) {
     const s = sheet(), d = safeDerive({ ...s, abilities: Object.fromEntries(ABILITIES.map((a) => [a, Number.isInteger(s.abilities[a]) ? s.abilities[a] : 10])) }), r = d?.record;
     const res = resourcesOf(L.feats, r?.feats), sub = b.subclass && CONTENT.subclasses[b.subclass]?.name;
     const list = [];
     if (mode === 'levelup') list.push({ id: 'gain', title: `Level ${base?.level ?? ''} to ${b.level}`, tip: 'What this level brings', render: () => gainedBox() });
     list.push({ id: 'who', title: 'Who', tip: `${b.name.trim() || 'Unnamed'} · ${c.name} ${b.level}${sub ? ` · ${sub}` : b.subclass === c.subclass.id ? ` · ${c.subclass.name}` : ''}`, need: needOf(nd, 'who'), render: () => whoSection(c, locked) });
+    if (hpShown()) list.push({ id: 'hp', title: 'Hit points', tip: `${rollsPending() ? 'Rolled by the game' : 'Rolled at this table'} · d${c.hitDie} + Constitution a level`, render: () => hpSection(c) });
     list.push({ id: 'scores', title: 'Ability scores', tip: ABILITIES.map((a) => `${a.toUpperCase()} ${Number.isInteger(s.abilities[a]) ? s.abilities[a] : '–'}`).join(' · '), need: needOf(nd, 'scores'), render: () => scoresSection(c, locked) });
     list.push({ id: 'skills', title: 'Skills', tip: `${b.skills.length ? b.skills.map(nice).join(', ') : 'None chosen yet'} · ${b.skills.length} of ${L.skills}`, need: needOf(nd, 'skills'), render: () => skillsSection(L) });
     const slots = slotList(r?.slots), nFeat = L.feats.filter((x) => !x.f.feat).length;
@@ -378,11 +396,14 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     refs.derived = el('div', { id: 'qb-derived', class: 'qb-live', 'aria-label': 'The sheet so far' });
     refs.problems = el('ul', { class: 'qe-problems', id: 'qb-problems', 'aria-live': 'polite' });
     refs.why = el('p', { class: 'qb-why', id: 'qb-save-why', 'aria-live': 'polite' });
-    const label = mode === 'levelup' ? `Level up to ${b.level}` : mode === 'edit' ? 'Save changes' : mode === 'mine' ? 'Save to My characters' : 'Add to the table';
+    const roll = rolledTable() && (mode === 'levelup' || (mode === 'add' && b.level > 1));
+    const label = mode === 'levelup' ? `${roll ? 'Roll hit points and level up' : 'Level up'} to ${b.level}` : mode === 'edit' ? 'Save changes' : mode === 'mine' ? 'Save to My characters' : roll ? 'Roll hit points and add to the table' : 'Add to the table';
     refs.save = el('button', { type: 'button', id: 'qb-save', class: 'qe-save', text: label, onclick: save });
+    // A character with levels not rolled yet (the table began rolling after it was made): one tap rolls them all.
+    refs.rollHp = rollsPending() ? el('button', { type: 'button', id: 'qb-roll-hp', class: 'qe-save', text: 'Roll hit points', onclick: () => { pending = 'hpRolled'; refs.rollHp.disabled = true; update(); act({ type: 'rollHp', actor: target.id }); setTimeout(() => { if (pending === 'hpRolled') { pending = null; if (!panel.hidden) update(); } }, 4000); } }) : null;
     refs.needs = nd;
     panel.append(head, el('div', { class: 'qb-main' }, refs.derived, el('div', { class: 'qb-left' }, a.node)),
-      el('div', { class: 'qb-foot' }, refs.why, refs.problems, el('div', { class: 'row' }, refs.save, el('button', { type: 'button', id: 'qb-cancel', text: mode === 'mine' ? '← Back' : 'Cancel', onclick: close }))));
+      el('div', { class: 'qb-foot' }, refs.why, refs.problems, el('div', { class: 'row' }, ...(refs.rollHp ? [refs.rollHp] : []), refs.save, el('button', { type: 'button', id: 'qb-cancel', text: mode === 'mine' ? '← Back' : 'Cancel', onclick: close }))));
     update();
     if (refs.accBody && bodyOf === acc) refs.accBody.scrollTop = bodyScroll;
     if (focus && focus !== 'qb-name' && !/^qb-abil/.test(focus)) document.getElementById(focus)?.focus({ preventScroll: true });
@@ -783,7 +804,9 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     const was = base, now = safeDerive(sheet())?.record;
     if (!was || !now) return box;
     box.append(el('h3', { text: `Level ${was.level} to ${now.level}` }));
-    const lines = [`Hit Points ${was.hp} to ${now.hp} (${signed(now.hp - was.hp)})`];
+    const lines = [rolledTable() ? `Hit Points: roll a d${limits().c.hitDie} and add Constitution when you level up (the fixed value would make it ${was.hp} to ${now.hp})` : `Hit Points ${was.hp} to ${now.hp} (${signed(now.hp - was.hp)})`];
+    const older = rolledTable() ? (safeDerive(getState()?.entities[target?.id]?.sheet)?.unrolledHp ?? 0) : 0;
+    if (older) lines.push(`${older} earlier level${older === 1 ? ' has' : 's have'} not been rolled yet and count${older === 1 ? 's' : ''} the fixed value`);
     if (now.prof !== was.prof) lines.push(`Proficiency Bonus ${signed(was.prof)} to ${signed(now.prof)}`);
     if (now.ac !== was.ac) lines.push(`Armor Class ${was.ac} to ${now.ac}`);
     const wasSlots = JSON.stringify(was.slots ?? {}), nowSlots = JSON.stringify(now.slots ?? {});
@@ -856,6 +879,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     for (const p of problems) refs.problems.append(el('li', { text: p }));
     refs.problems.hidden = problems.length === 0;
     refs.save.disabled = problems.length > 0 || !!pending;
+    if (refs.rollHp) refs.rollHp.disabled = !!pending;      // a refused roll (a fight, a form, a table that went back to fixed) leaves neither button dead
     const nd = needs(limits());
     refs.why.textContent = problems.length ? (nd.length ? `Save is greyed. To choose: ${nd.map((x) => x.t).join(', ')}.` : 'Save is greyed. See below.') : '';
     refs.why.hidden = !problems.length; refs.why.classList.toggle('has-needs', nd.length > 0);
@@ -966,8 +990,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
       const done = events.find((ev) => ev.type === pending);
       if (!done) return;
       const name = getState()?.entities[done.id]?.name ?? 'The character';
-      const was = mode;
-      close(); toast(was === 'levelup' ? `${name} is now level ${getState()?.entities[done.id]?.level}.` : was === 'edit' ? `${name} corrected.` : `${name} joins the party.`, true);
+      const was = mode, rollOnly = pending === 'hpRolled', hp = events.find((ev) => ev.type === 'hpRolled'), dice = hp ? ` Hit points rolled: ${hp.levels.map((l) => l.dice.map((d) => d.value).join('>')).join(', ')} (+${hp.total}).` : '';
+      close(); toast(rollOnly ? `${name}'s hit points rolled.${dice}` : (was === 'levelup' ? `${name} is now level ${getState()?.entities[done.id]?.level}.` : was === 'edit' ? `${name} corrected.` : `${name} joins the party.`) + dice, true);
     },
     sheetOf: sheet, proficiencyFor,
   };

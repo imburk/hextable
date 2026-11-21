@@ -776,7 +776,7 @@ function build(root, ch, options) {
     const lint = lintRecord(record, { spells: SPELLS });
     problems.push(...lint);
     const cmp = (what, theirs, mine, why) => { if (theirs !== null && theirs !== undefined && theirs !== mine) R.numbers.push({ what, sheet: theirs, engine: mine, ...(why ? { why } : {}) }); };
-    cmp('Hit Points', int(kid(ch, 'hp'), 'total'), record.hp, 'The engine takes the fixed value per level plus Constitution; a sheet can hold rolled Hit Points, a feat or an item.');
+    cmp('Hit Points', int(kid(ch, 'hp'), 'total'), record.hp, 'The engine takes the fixed value per level plus Constitution (at a table that rolls Hit Points, the rolls the game makes, which an imported character has none of); a sheet can hold rolled Hit Points, a feat or an item.');
     cmp('Armor Class', int(kid(kid(ch, 'defenses'), 'ac'), 'total'), record.ac, 'The engine counts armour, Shield, Dexterity, Defense, Unarmored Defense and the SRD magic items on the sheet; items not in the pack and spells are not counted.');
     cmp('Speed', int(kid(ch, 'speed'), 'total'), record.speed);
     cmp('Proficiency Bonus', int(ch, 'profbonus'), record.prof, classes.length > 1 && level !== totalLevel ? 'The sheet uses its total level.' : undefined);

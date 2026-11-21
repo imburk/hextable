@@ -296,3 +296,6 @@ export function roomForCompanions(s, m, n = 1) {
 // on the master as `pocket = { [id]: record }`, so nothing on the map, in sight or in the fight sees them. Only the
 // master's own keys, in the order they were put there.
 export const pocketOf = (m) => (m?.pocket && typeof m.pocket === 'object' && !Array.isArray(m.pocket) ? Object.keys(m.pocket).map((k) => m.pocket[k]) : []);
+
+// What derive() needs to know of the table to count Hit Points: a rolled table counts the rolls kept on a sheet (hitpoints.js), a fixed one ignores them.
+export const hpOpts = (s) => ({ hp: s?.settings?.hpMethod === 'rolled' ? 'rolled' : 'fixed' });

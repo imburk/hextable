@@ -64,6 +64,7 @@ const REGISTRY = {
   slotforms: ['slotforms'],
   models: ['models'],
   allowance: ['allowance'],
+  rolledhp: ['rolledhp'],
   windows: ['windows'],
   newversion: ['newversion'],
 };

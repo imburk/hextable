@@ -7,7 +7,7 @@ import { ground, overlapAt } from '../space.js';
 import { xpFor } from '../rewards.js';
 import { barriers } from '../walls.js';
 import { classesOf, derive, missingOf, missingSpeciesOf, validate } from '../derive.js';
-import { fail, featOf, living, RuleError } from './shared.js';
+import { fail, featOf, hpOpts, living, RuleError } from './shared.js';
 import { fitsOn } from './world.js';
 import { effectsOf, endEffect } from '../durations.js';
 
@@ -48,7 +48,7 @@ export const newProblems = (before, sheet) => { const had = new Set(before ? val
 export function resheet(s, e, sheet, ev) {
   const problems = newProblems(e.sheet, sheet);
   problems.length === 0 || fail(`That can't be done. ${problems[0]}`);
-  remake(s, e, derive(sheet).record, sheet, ev);
+  remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
 }
 // A character made again from the sheet it already has (`refresh`): the sheet is checked whole, and a problem it has is named.
 // Unlike `resheet`, a problem the sheet had all along is not let through: the point is a sheet that plays as it is now.
@@ -58,7 +58,7 @@ export function refreshOne(s, e, ev) {
   !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
   // A stored sheet is old data and may be malformed in ways `validate` does not expect: any throw is a problem with the sheet.
   let sheet, problems, record;
-  try { sheet = structuredClone(e.sheet); problems = validate(sheet); if (problems.length === 0) record = derive(sheet).record; }
+  try { sheet = structuredClone(e.sheet); problems = validate(sheet); if (problems.length === 0) record = derive(sheet, hpOpts(s)).record; }
   catch (err) { fail(`Its sheet could not be read: ${err instanceof Error ? err.message : String(err)}`); }
   problems.length === 0 || fail(`${e.name}'s sheet can't be played as it is. ${problems[0]}`);
   remake(s, e, record, sheet, ev);
