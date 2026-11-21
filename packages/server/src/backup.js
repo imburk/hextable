@@ -17,6 +17,18 @@ export const BACKUP_PREFIX = "hextable-backup-";
 export const BACKUP_KEEP = 7;
 export const ARCHIVE_MAX_BYTES = 500 * 1024 * 1024;     // `archive: "auto"` leaves archive/ out of a backup when it is bigger than this
 let running = false;
+// What a backup of `data` will really copy, in bytes: not the backup folder `out` (it may sit inside the data), no .partial or .tmp, and the archive only if it goes in.
+export const copySize = (data, out, withArchive) => sizeOf(data, (p) => p === out || p.endsWith(".partial") || p.endsWith(".tmp") || (!withArchive && p === join(data, "archive")));
+// Whether a folder holds any file at all (stops at the first), and the newest modification time anywhere inside it (a copy in progress keeps changing it).
+async function hasFile(dir) {
+  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) if (e.isFile() || (e.isDirectory() && await hasFile(join(dir, e.name)))) return true;
+  return false;
+}
+async function newest(dir) {
+  let t = (await stat(dir).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs;
+  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) t = Math.max(t, e.isDirectory() ? await newest(join(dir, e.name)) : (await stat(join(dir, e.name)).catch(() => ({ mtimeMs: 0 }))).mtimeMs);
+  return t;
+}
 const PARTIAL = /^hextable-backup-\d{8}-\d{6}\.partial$/;
 const NAME = /^hextable-backup-(\d{8})-(\d{6})$/;
 const two = (n) => String(n).padStart(2, "0");
@@ -47,11 +59,12 @@ export async function backupDue(backupDir, now = new Date(), hour = 3) {
   return !last || NAME.exec(last)[1] < backupName(now).slice(BACKUP_PREFIX.length, BACKUP_PREFIX.length + 8);
 }
 
-async function sizeOf(dir) {
+async function sizeOf(dir, skip = () => false) {
   let total = 0;
   for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) total += await sizeOf(p);
+    if (skip(p, e)) continue;
+    if (e.isDirectory()) total += await sizeOf(p, skip);
     else if (e.isFile()) total += (await stat(p).catch(() => ({ size: 0 }))).size;
   }
   return total;
@@ -75,13 +88,14 @@ export async function runBackup({ dataDir, backupDir, keep = BACKUP_KEEP, archiv
     const archiveBytes = await sizeOf(join(data, "archive"));
     if (archiveState === "included" && archive === "auto" && archiveBytes > archiveMax) archiveState = "skipped";
     // Room first: a backup that fills the disk would stop the tables from being saved. Needs the size of what is copied and a fifth more.
-    const need = Math.ceil(((await sizeOf(data)) - (archiveState === "included" ? 0 : archiveBytes)) * 1.2);
+    const copied = await copySize(data, out, archiveState === "included");
+    const need = Math.ceil(copied * 1.2);
     await mkdir(out, { recursive: true });
     let free = Infinity;
     try { const f = statfsSync(out); free = Number(f.bavail) * Number(f.bsize); } catch { /* unknown: go on */ }
     if (free < need) return { ok: false, error: `not enough free space in ${backupDir} (${free} bytes free, ${need} needed)` };
     for (const n of await readdir(out)) {          // a .partial left by a run that was cut short (an hour old, so never one being written now)
-      if (PARTIAL.test(n) && Date.now() - (await stat(join(out, n)).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs > 3600_000) await rm(join(out, n), { recursive: true, force: true });
+      if (PARTIAL.test(n) && Date.now() - (await newest(join(out, n))) > 3600_000) await rm(join(out, n), { recursive: true, force: true });
     }
     await rm(partial, { recursive: true, force: true });       // same name: a leftover of this very minute's earlier run
     const stats = { files: 0, bytes: 0 };
@@ -107,7 +121,7 @@ export async function runBackup({ dataDir, backupDir, keep = BACKUP_KEEP, archiv
     // Rotation: only after a whole new backup, only our folders, and never so far that fewer than `keep` non-empty backups remain.
     const removed = [], all = await listBackups(out), n = Math.max(1, keep);
     const filled = new Set();
-    for (const b of all) if ((await sizeOf(join(out, b))) > 0) filled.add(b);
+    for (const b of all) if (await hasFile(join(out, b))) filled.add(b);
     for (const old of all.slice(0, Math.max(0, all.length - n))) {
       if (filled.has(old) && filled.size - 1 < n) continue;
       await rm(join(out, old), { recursive: true, force: true }); filled.delete(old); removed.push(old);

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { after, test } from "node:test";
 import { main as backupMain } from "../../../scripts/backup.mjs";
-import { backupDue, backupName, listBackups, runBackup } from "../src/backup.js";
+import { backupDue, backupName, copySize, listBackups, runBackup } from "../src/backup.js";
 import { createJournal } from "../src/journal.js";
 import { isInternalAddress, proxyFromEnv, proxyReport } from "../src/limits.js";
 import { createStore } from "../src/store.js";
@@ -512,7 +512,7 @@ test("a stray .partial folder from a cut-short run is cleaned up once it is old,
   const data = dataFolder(), out = tmp();
   const old = join(out, "hextable-backup-20261101-030000.partial"), fresh = join(out, "hextable-backup-20261102-030000.partial");
   mkdirSync(old); mkdirSync(fresh); writeFileSync(join(old, "x"), "1");
-  utimesSync(old, new Date(Date.now() - 7200_000), new Date(Date.now() - 7200_000));
+  for (const p of [join(old, "x"), old]) utimesSync(p, new Date(Date.now() - 7200_000), new Date(Date.now() - 7200_000));
   assert.ok((await runBackup({ dataDir: data, backupDir: out, now: () => new Date(Date.UTC(2026, 10, 3, 3)) })).ok);
   assert.ok(!existsSync(old) && existsSync(fresh));
 });
@@ -559,4 +559,43 @@ test("a table whose undo history could not be written is kept, and at most 50 ta
   many.clock.offset = 31 * MIN;
   assert.equal(many.tables.sweep().evicted.length, 50);
   assert.equal(many.tables.sweep().evicted.length, 3);
+});
+
+test("the free-space estimate counts only what is copied: not the backup folder inside the data, nor .partial files, nor an archive that is left out", async () => {
+  const data = dataFolder();
+  const base = await copySize(data, join(data, "backups"), true);
+  mkdirSync(join(data, "backups", "hextable-backup-20261101-030000.partial"), { recursive: true });
+  writeFileSync(join(data, "backups", "big"), "x".repeat(10_000));
+  writeFileSync(join(data, "ABC234.json.partial"), "y".repeat(10_000));
+  assert.equal(await copySize(data, join(data, "backups"), true), base);
+  assert.ok(await copySize(data, join(data, "backups"), true) > await copySize(data, join(data, "backups"), false), "the archive counts only when it goes in");
+  assert.ok(await copySize(data, join(data, "elsewhere"), true) > base, "a folder that is not the backup folder counts");
+});
+
+test("an undo history that could not be written is due again: the next sweep keeps the table, and evicts it once the disk works", () => {
+  const dir = tmp();
+  let failHistory = true, r2;
+  // the rig's own flush, but the undo file cannot be written while `failHistory`
+  const flushNow = (code) => {
+    const t = r2.dirty.get(code);
+    if (!t) return true;
+    r2.dirty.delete(code);
+    writeFileSync(join(dir, `${code}.json`), JSON.stringify(t));
+    const h = r2.tables.exportHistory(code);
+    if (h) { if (failHistory) { r2.tables.historyFailed(code); return false; } writeFileSync(join(dir, `${code}.undo.json`), JSON.stringify(h)); }
+    return true;
+  };
+  r2 = rig(dir, { flushNow });
+  const { code } = hostedTable(r2);
+  rmSync(join(dir, `${code}.undo.json`), { force: true });
+  r2.tables.historyFailed(code);          // the history is due
+  r2.clock.offset = 31 * MIN;
+  assert.deepEqual(r2.tables.sweep().evicted, [], "the write failed: kept");
+  assert.equal(existsSync(join(dir, `${code}.undo.json`)), false);
+  r2.clock.offset = 33 * MIN;
+  assert.deepEqual(r2.tables.sweep().evicted, [], "and the next sweep does not take 'nothing to write' for done");
+  failHistory = false;
+  r2.clock.offset = 35 * MIN;
+  assert.deepEqual(r2.tables.sweep().evicted, [code]);
+  assert.equal(JSON.parse(readFileSync(join(dir, `${code}.undo.json`), "utf8")).undos.length, 1, "the history was written once the disk worked");
 });

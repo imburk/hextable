@@ -862,5 +862,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return worldPictures(t.state, t.world).has(id) ? "That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first." : null;
   }
 
-  return { connect, exportHistory, member, keepsAsset, get: tableFor, has: (code) => taken(code), sweep, evict, size: () => tables.size, savedSize: () => tables.size + known.size, archivedSize: () => archivedCodes.size, activeSize: activeCount, stats };
+  // The undo history for this table was handed out by exportHistory but could not be written: it is due again, so the next sweep neither skips it nor evicts without it.
+  const historyFailed = (code) => { dirtyHistory.add(code); kept.delete(code); };
+  return { connect, exportHistory, historyFailed, member, keepsAsset, get: tableFor, has: (code) => taken(code), sweep, evict, size: () => tables.size, savedSize: () => tables.size + known.size, archivedSize: () => archivedCodes.size, activeSize: activeCount, stats };
 }

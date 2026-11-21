@@ -164,7 +164,7 @@ function flushOne(code) {
   try {
     const h = tables.exportHistory(code);
     if (h) { writeFileSync(historyFile(code) + ".tmp", JSON.stringify(h)); renameSync(historyFile(code) + ".tmp", historyFile(code)); }
-  } catch (err) { ok = false; console.error(`Could not save undo history for table ${code}: ${err.message}`); }       // false: a table is not evicted with its undo history unwritten
+  } catch (err) { ok = false; tables.historyFailed(code); console.error(`Could not save undo history for table ${code}: ${err.message}`); }       // false: a table is not evicted with its undo history unwritten
   return ok;
 }
 function flush() { for (const code of [...dirty.keys()]) flushOne(code); }

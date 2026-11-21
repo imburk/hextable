@@ -753,14 +753,17 @@ but **not from losing the volume**: the folder goes with it. Only Railway's back
    `BACKUP_DIR` is on the same disk as the tables.
 3. To download one, install the Railway command line (railway.com/docs/cli), run `railway login` and `railway link`, and register an SSH key with Railway (the
    first `railway ssh` offers to do it; [Railway docs: SSH](https://docs.railway.com/cli/ssh)). Then use `scp`, which Railway's SSH supports, as in its docs:
-   `scp <service>@ssh.railway.com:/data/backups/<folder>/<file> ./` for a file, or add `-r` for a folder (add `-s` on an OpenSSH older than 9.0).
-   Take the exact address from the docs page; if a step does not match what you see, stop and ask.
+   `scp myapp.up.railway.app@ssh.railway.com:/data/backups/<folder>/<file> ./` for a file, or add `-r` for a folder (add `-s` on an OpenSSH older than 9.0).
+   The part before the `@` is your service's domain (`myapp.up.railway.app` here is a stand-in for yours), or the service instance id if it has no domain.
+   The simpler route is `railway volume browse` (Railway docs: Volumes), which lets you look through the volume's files from the command line.
+   If a step does not match what you see, stop and ask.
 4. `RAILWAY_RUN_UID` stays unset (see above); the image handles the volume's ownership itself.
 
 **Restoring from a `BACKUP_DIR` copy** (ask for help; do not try it alone). You cannot `railway ssh` into a stopped service, so the work is done on the running one
 and the new tables must not be mixed with the current ones. Outline: with the game closed to players, move everything now in `/data` (except the `backups` folder) into
-a new folder such as `/data/before-restore` rather than copying over it, then copy the chosen backup folder's contents into `/data`, and redeploy.
-The `before-restore` folder keeps the old tables until you are sure.
+a new folder such as `/data/before-restore` rather than copying over it, check that the volume has room for the backup as well (`df -h /data`), then copy the chosen
+backup folder's contents into `/data`, and redeploy. The `before-restore` folder keeps the old tables until you are sure. If you have to do it a second time, leave
+`before-restore` where it is and use a new name (`before-restore-2`); never move a `before-restore` folder into another.
 
 ### How deploys are verified (review R1, #617)
 
