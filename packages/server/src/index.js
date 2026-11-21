@@ -9,9 +9,10 @@
 //   FEEDBACK_GITHUB_REPO, FEEDBACK_GITHUB_TOKEN   optional: also file player feedback (POST /feedback) as GitHub issues, see feedback.js
 //   Player feedback is kept in DATA_DIR/feedback.jsonl (five files of 5 MB: FEEDBACK_MAX_BYTES and FEEDBACK_FILES change that; when full, new reports are refused and nothing is deleted).
 //   LIMIT_FEEDBACK_FORWARD_HOUR / _DAY   the whole server's cap on feedback issues filed on GitHub (20 an hour, 100 a day)
+//   JOURNAL=off, JOURNAL_FILE_BYTES (5 MB), JOURNAL_FILES (5), JOURNAL_TOTAL_BYTES (500 MB)   the per-table action journal beside the table saves (DATA_DIR/ABC123.journal.*), see the README
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { gzip } from "node:zlib";
@@ -25,6 +26,7 @@ import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
 import { acceptWebSocket } from "./ws.js";
 import { createFeedback, feedbackRoute } from "./feedback.js";
+import { createJournal, journalFromEnv } from "./journal.js";
 import { buildInfo } from "./build-info.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
@@ -171,7 +173,10 @@ function save(t) {
 // A world pack's pictures go into the table's file store (tables.js, worldAssets).
 const { importAssets, dropAssets } = worldAssets(() => assets);
 
-const tables = createTables({ load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+// The action journal (journal.js, #659): beside each table's save, never in the way of an action.
+const journal = createJournal({ dir: DATA, ...journalFromEnv(process.env) });
+const tables = createTables({ journal, load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+journal.sweep((code) => existsSync(file(code)));        // journals of tables whose save file is gone are removed at start; a save that cannot be read still counts as there (its journal is the best evidence)
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
@@ -333,4 +338,4 @@ server.on("upgrade", (req, socket) => {
 });
 
 server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${server.address().port} (${tables.size()} saved tables)`));
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { flush(); process.exit(0); });
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { flush(); journal.flushSync(); process.exit(0); });

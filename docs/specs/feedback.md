@@ -136,6 +136,26 @@ small under "See what will be sent", a line such as "Build 15 Nov 2026, 11:13 (a
 #354, c1d5069)" in the viewer's local time; the report's `build` field is the same stamp.
 On Railway `when` is the time the image was built (the Docker build has no `.git`).
 
+## The action journal (#659)
+
+So that a report can be reproduced, the table server also keeps, per table, a journal of the actions it accepted and the state it began
+from (`packages/server/src/journal.js`; the README's "The action journal" has the file format). This is the owner's, never sent to
+anyone and never part of a report: a report still carries no table code, so the owner matches one to a journal by build and time.
+
+- **What is kept:** each accepted action as the server applied it (so a spoken line or a chronicle title is in it exactly as the action carries
+  it, and nothing more), the sender's role and an opaque random member id, the dice counter before and after, the state version, and a
+  hash of the state after. Never a name, an email, an address or a join token in a line (an action's `userName` becomes a reference to a
+  member; the names are in the snapshot, which is as private as the table's save). Refused actions are not kept.
+- **How long:** the last 5 files of 5 MB per table, each with a snapshot of the state it begins from; older ones are deleted as new ones open.
+  No other expiry.
+- **Use:** `node scripts/replay.mjs <snapshot> <journal...>` replays it through `apply()` and names the first line whose result differs.
+- **Privacy, plainly.** A snapshot is a copy of the table's save: it holds the dice key, the DM's notes and hidden information, any homebrew packs
+  and the players' names. The journal and snapshot files are exactly as private as the table saves. They are never attached to a public issue,
+  never put in a report and never sent to anyone but the owner; `scripts/replay.mjs` prints that warning every time it runs. To reproduce a report
+  in public, replay it privately and describe the line that diverges.
+- **Bounds:** 5 MB a file counting its snapshot, 5 files a table, 500 MB for the whole server (oldest closed files go first), and at start the
+  journals of tables whose save is gone are removed.
+
 ## Review points
 
 - Nothing hidden can leave through a report: the client builds it from what it displayed or
