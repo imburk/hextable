@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { CONTENT } from "../src/content/index.js";
+import { aiStep } from "../src/ai.js";
 import { newGame } from "../src/scenario.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -227,4 +228,44 @@ for (const c of ["stunned", "paralyzed", "unconscious", "incapacitated", "petrif
 });
 test("note 4: an ally with a condition that does not Incapacitate (Prone, Poisoned, Frightened) still gives Advantage", () => {
   for (const c of ["prone", "poisoned", "frightened"]) assert.equal(pack({ q: 2, r: 0 }, cond(c)).mode, "adv", c);
+});
+
+// ---------- 5. "Enemies with controlled movement shouldn't immediately use it after attacking" ----------
+// SRD "Actions" / "Movement": a creature may split its move before and after its action, so a monster that attacks and then
+// walks is legal; what the SRD forbids is leaving a foe's reach without Disengage (an Opportunity Attack), and a Disengage the
+// creature does not have. The note does not say which monster or what it saw, and it does not reproduce: the brain
+// (ai.js) only walks to close in on a foe it cannot yet reach (before its first attack, or between the attacks of one
+// Multiattack), never retreats, never sends Disengage, and every action it sends is accepted. Verdict: not reproduced, so not a bug;
+// this test is the guard, run over every SRD monster from two distances.
+
+test("note 5: no SRD monster's turn walks away after its action, leaves a foe's reach, disengages, or sends an action the engine refuses", () => {
+  const trouble = [];
+  for (const id of Object.keys(CONTENT.monsters)) for (const dist of [1, 3]) {
+    const s = newGame(11);
+    for (const k of Object.keys(s.entities)) if (k !== "fighter" && k !== "cleric") delete s.entities[k];
+    for (const tile of Object.values(s.map.levels[0].tiles)) tile.t = "grass";
+    s.settings.autoEngage = false;
+    apply(s, { type: "place", actor: "fighter", to: { q: 0, r: 0 } }, DM);
+    apply(s, { type: "place", actor: "cleric", to: { q: 0, r: 1 } }, DM);
+    const sp = apply(s, { type: "spawn", monster: id, at: { q: dist, r: 0 } }, DM);
+    if (!sp.ok) continue;
+    const m = sp.events[0].id;
+    for (const e of ["fighter", "cleric"]) Object.assign(s.entities[e], { hp: 900, maxHp: 900 });
+    if (!apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 12 }, DM).ok) continue;
+    for (let i = 0; i < 20 && current(s) !== m; i++) apply(s, { type: "endTurn", actor: current(s) }, DM);
+    let spentMain = false;
+    for (let i = 0; i < 20 && current(s) === m; i++) {
+      const a = aiStep(s, m);
+      if (!a || a.type === "endTurn") break;
+      const b = s.encounter.budget, def = a.action && CONTENT.monsters[id].actions?.find((x) => x.id === a.action);
+      if (a.type === "disengage") trouble.push(`${id} d${dist}: Disengage`);
+      if (a.type === "move" && spentMain) trouble.push(`${id} d${dist}: moves after its action`);
+      if (a.type === "move" && dist === 1 && !b.attacks?.length) trouble.push(`${id} d${dist}: walks off from beside a foe`);
+      const r = apply(s, a, DM);
+      if (!r.ok) { trouble.push(`${id} d${dist}: refused ${a.type} (${r.error})`); break; }
+      const after = s.encounter.budget;
+      if ((a.type === "attack" || a.type === "act") && def?.time !== "bonus" && !after.attacks?.length) spentMain = true;
+    }
+  }
+  assert.deepEqual(trouble, []);
 });
