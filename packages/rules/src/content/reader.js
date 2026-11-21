@@ -269,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], stabilize: [], light: ['replaces'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
@@ -1083,6 +1083,22 @@ export const STEP_SENTENCES = {
     if (/\.onKill\.\d+$/.test(at) || o.afterKill) return say(`What is left of its body is ${left}.`);
     say(`If it is dead, what is left of its body is ${left}. If it is not dead (a character at 0 Hit Points is not), the engine leaves it as it is and tells the DM, who applies the rest.`);
     this.dm(`Step ${at}: what is left of a body that is not dead.`);
+  },
+  // `imbue` (docs/specs/on-hit.md, Decision 8): one of the creature's weapons changes while the effect lasts.
+  imbue({ st, at, Who, say }) {
+    const i = st.imbue;
+    if (!isObj(i)) return this.bad(`Step ${at}: \`imbue\` is not a set of changes to a weapon.`);
+    const bits = [];
+    if (i.weapons !== undefined) bits.push(`only a ${[].concat(i.weapons).map(shown).join(' or ')}`);
+    if (i.melee === true) bits.push('a Melee weapon');
+    if (i.nonmagical === true) bits.push('a weapon that is not magic (the cast is refused on a magic one)');
+    const does = [];
+    if (i.abil === 'spell') does.push("it uses the caster's spellcasting ability for the attack and damage rolls when that is better");
+    if (i.die !== undefined) { does.push(typeof i.die === 'string' ? `its damage die is ${i.die}` : `its damage die grows with the caster's level (${Object.entries(i.die.byLevel ?? {}).map(([l, d]) => `${d} from level ${l}`).join(', ')})`); if (isObj(i.die)) deepNums(this, i.die, `${at}.imbue.die`, 'level'); }
+    if (i.plus !== undefined) { does.push(typeof i.plus === 'number' ? `it gets +${i.plus} to attack and damage rolls and counts as magic` : `it gets a bonus to attack and damage rolls that grows with the spell slot (${Object.entries(i.plus.bySlot ?? {}).map(([l, n]) => `+${n} from a level ${l} slot`).join(', ')}), and counts as magic`); if (isObj(i.plus)) deepNums(this, i.plus, `${at}.imbue.plus`, 'amount'); }
+    if (i.attackAdd !== undefined) { does.push(isObj(i.attackAdd) ? `its attack rolls add the holder's ${shown(i.attackAdd.mod)} modifier${isInt(i.attackAdd.min) ? ` (at least ${i.attackAdd.min})` : ''}` : `its attack rolls add ${i.attackAdd}`); if (isObj(i.attackAdd)) deepNums(this, i.attackAdd, `${at}.imbue.attackAdd`, 'amount'); }
+    if (Array.isArray(i.types)) does.push(`its damage may be ${i.types.map(shown).join(' or ')} instead of its own type (the engine takes the one that hurts the target most)`);
+    say(`${Who} changes ${bits.length ? bits.join(', ') : 'a weapon it holds'}, named when it is cast or used, for as long as the effect lasts: ${does.join('; ') || 'nothing the engine reads'}. The change ends if it is cast or used again, or the weapon is no longer held.`);
   },
   endConcentration({ Who, say }) { say(`${Who} loses Concentration on whatever it is concentrating on.`); },
   // engine/rolls.js `stabilise`.
@@ -2243,7 +2259,7 @@ class GrantReading extends Reading {
   // `action`: a use the feature gives (engine/features.js, `feature`).
   actionLines(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not an action.`);
-    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice'], 'The action');
+    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice', 'withAttack'], 'The action');
     if (!ACTION_TIMES.includes(v.time)) this.bad(`${at}.time is not one the engine knows.`);
     this.line(`Gives the holder an action to use with the feature action. It takes ${ACTION_TIME_WORDS[v.time] ?? 'an unreadable time'}${v.time === 'reaction' ? '; the engine does not take Reactions from features, so using it is refused and the DM applies it' : ''}.`, 1);
     if (isObj(v.cost)) {
@@ -2251,6 +2267,7 @@ class GrantReading extends Reading {
       if (v.cost.resource !== undefined || v.cost.slot === undefined) this.line(`It spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the holder's feature ${shown(v.cost.resource)}. ${featureNote(v.cost.resource)}`, 2);
       if (v.cost.slot !== undefined) this.slotCost(v, at);
     }
+    if (v.withAttack === true) this.line('It is used when the holder takes the Attack action: it is named on the attack, which it changes the weapon of.', 2);
     if (v.orSlot === true) this.line('With its uses spent, the holder may spend a spell slot instead (a Pact Magic slot for a Warlock), and the use comes back.', 2);
     if (v.duration !== undefined) { if (isDuration(v.duration)) { this.line(`What it does lasts ${v.duration === 'instant' ? 'no time' : `up to ${v.duration}`}.`, 2); if (/^\d/.test(v.duration)) this.num(`${at}.duration`, v.duration, 'duration'); } else this.bad(`${at}.duration is not a duration.`); }
     for (const k of ['form', 'gain', 'pool', 'modes', 'orCost', 'acts', 'after', 'orSlot', 'cure', 'unless', 'renew', 'noSpells', 'firstAttack', 'endsWhenIncapacitated']) if (v[k] !== undefined) deepNums(this, v[k], `${at}.${k}`, 'amount');

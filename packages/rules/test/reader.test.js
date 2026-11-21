@@ -52,6 +52,9 @@ const FIXTURES = [
     effects: [{ modifier: { on: 'ac', op: 'baseAc', value: { base: 13, ability: 'dex' } }, ends: { on: 'armour' } }] }),
   base('mercy-touch', 'Mercy Touch', { level: 0, range: 15, target: { creature: { count: 1 } }, effects: [{ stabilize: true }], higher: { range: { 5: 30, 11: 60, 17: 120 } } }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
+  // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
+  base('honed-edge', 'Honed Edge', { level: 2, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',
+    effects: [{ imbue: { weapons: ['club', 'quarterstaff'], melee: true, nonmagical: true, abil: 'spell', die: { byLevel: { 1: '1d8', 5: '1d10' } }, plus: { bySlot: { 2: 1, 3: 2 } }, attackAdd: { mod: 'cha', min: 1 }, types: ['force'] } }] }),
   base('dull-curse', 'Dull Curse', { target: { creature: {} }, effects: [{ modifier: { on: 'ac', op: 'add', value: -1 } }, { condition: 'deafened' }] }),
   base('stinging-mark', 'Stinging Mark', { target: { creature: {} },
     effects: [{ condition: 'grappled', ends: { on: 'turnEnd' } }, { condition: 'stunned' }, { modifier: { on: 'speed', op: 'set', value: 0 } }] }),

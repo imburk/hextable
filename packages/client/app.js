@@ -6,6 +6,7 @@ import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
+import { armed as imbued, fitting } from './shared/imbue.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { tapAttack, rearm, hintOf as flurryHint, spentWords } from './flurry.js';
@@ -17,6 +18,7 @@ import { holdWords, heldEndText, noteText, previewState, targetRefusals } from '
 import { slotMenu, slotFor } from './upcast.js';
 import { inReach, aimFeet, reachEdge, farWords } from './aimrange.js';
 import { offerOf, offers, waitingFor, reachOf, moveLabel, forgoLabel, offerWords, waitWords, giveUpLabel } from './allowance.js';
+import { initSpawnFind } from './spawnfind.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
@@ -36,6 +38,7 @@ import { claimWriter } from './solowriter.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
+import { initTodo } from './todo.js';
 import { initPacks } from './packmanager.js';
 import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
@@ -177,7 +180,7 @@ const colorOf = (state, id) => { const e = state?.entities[id]; return !e ? '#8a
 function preview(e, a) {
   const dice = [], from = (text) => { for (const m of String(text ?? '').matchAll(/(\d+)d(\d+)/g)) for (let i = 0; i < Math.min(+m[1], 6); i++) dice.push(+m[2]); };
   let what = 'Roll', sub = '';
-  if (a.type === 'attack') { const x = e.attacks?.find((y) => y.id === a.attack); dice.push(20); what = x?.name ?? 'Attack'; if (x) sub = `${signed(x.bonus)} to hit, ${x.damage} ${x.dtype} on a hit`; }
+  if (a.type === 'attack') { const x = e.attacks?.find((y) => y.id === a.attack); dice.push(20); what = x?.name ?? 'Attack'; if (x) { const w = imbued(S, e, x); sub = `${signed(w.bonus)} to hit, ${w.damage} ${[w.dtype, ...(w.alt ?? [])].join(' or ')} on a hit`; } }
   else if (a.type === 'act') { const def = e.actions?.find((d) => d.id === a.action), p = def ? actionProfile(def) : null; what = p?.name ?? 'Action'; if (p?.roll === 'melee' || p?.roll === 'ranged') dice.push(20); from(p?.short); sub = p?.short ?? ''; }
   else if (a.type === 'cast') { const sp = SPELLS[a.spell]; what = sp?.name ?? 'Spell'; if (/spell attack/.test(sp?.long ?? '')) dice.push(20); from(sp?.heal ? sp.heal.dice : sp?.short); sub = sp?.long ?? ''; }
   else if (a.type === 'feature') { const f = e.feats?.find((y) => y.id === a.feature); what = f?.name ?? 'Feature'; from(JSON.stringify(f?.action?.effects ?? '')); sub = f?.text ?? ''; }
@@ -591,7 +594,7 @@ const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level
 // A spell with nothing to aim is cast on the spot, unless there is a slot to choose first: then it is armed, and the hint bar asks (Cast / Cancel).
 const selfCast = (e, id) => {
   const sp = SPELLS[id];
-  if (slotMenu(e, sp)) return setMode({ kind: 'spell', id, aim: null, keep: false, picked: [] });
+  if (slotMenu(e, sp) || choicesOf(sp)) return setMode({ kind: 'spell', id, aim: null, keep: false, picked: [] });
   act({ type: 'cast', actor: e.id, spell: id, ...slotArg(e, sp), ...chosen(sp) });
 };
 function startSpell(e, id, armed) {
@@ -602,8 +605,23 @@ function startSpell(e, id, armed) {
 }
 // A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
 const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
-const choicesOf = (sp) => (sp?.def.choice ? sp.def.choice.from ?? CHOICES[sp.def.choice.of] : null);
-function chosen(sp) {
+// A spell that changes a weapon (Shillelagh, Magic Weapon; imbue.js) asks which weapon when more than one fits, and uses the only one otherwise.
+const imbueOf = (sp) => (sp?.def.effects ?? []).find((st) => st.imbue)?.imbue ?? null;
+// `holder`: the creature whose weapon it changes: the caster for a spell on itself, else the creature tapped (`mode.holder`), whose weapons are listed, not the caster's.
+const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitting(S, e, spec, ({ fx }) => fx.source === selId && fx.spell === sp.id) : []; };
+const holderOf = (sp) => (sp.aim === 'self' || sp.aim === 'none' ? selId : mode.holder ?? null);
+const choicesOf = (sp) => {
+  if (imbueOf(sp)) { const h = holderOf(sp), list = h ? weaponsOf(S.entities[h], sp) : []; return list.length > 1 ? list.map((a) => a.id) : null; }
+  return sp?.def.choice ? sp.def.choice.from ?? CHOICES[sp.def.choice.of] : null;
+};
+const weaponName = (id) => S.entities[holderOf(SPELLS[mode.id]) ?? selId]?.attacks?.find((a) => a.id === id)?.name ?? id;
+function chosen(sp, holder = null) {
+  if (imbueOf(sp)) {
+    const list = weaponsOf(S.entities[holder ?? selId], sp).map((a) => a.id);
+    if (list.length < 2) return {};
+    if (!list.includes(mode.choice)) mode.choice = list[0];
+    return { weapon: mode.choice };
+  }
   const list = choicesOf(sp);
   if (!list) return {};
   if (!list.includes(mode.choice)) mode.choice = list[0];
@@ -614,11 +632,11 @@ function showPick() {
   sel.hidden = !list || $('hint').hidden;
   if (sel.hidden) return;
   const key = `${sp.id}|${list.join()}`;
-  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = list.map((v) => `<option value="${v}">${esc(choiceLabel(sp.def.choice.of, v))}</option>`).join(''); }
+  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = list.map((v) => `<option value="${v}">${esc(imbueOf(sp) ? weaponName(v) : choiceLabel(sp.def.choice.of, v))}</option>`).join(''); }
   if (!list.includes(mode.choice)) mode.choice = list[0];
   sel.value = mode.choice;
 }
-$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; };
+$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; if (imbueOf(mode.kind === 'spell' ? SPELLS[mode.id] : null)) refresh(); };      // the hint names the weapon a second tap casts with
 // The slot to cast a levelled spell with (issue #604): shown while it is armed when the caster has more than one level to pay with and a higher one adds something.
 function showSlot() {
   const sel = $('hint-slot'), e = S.entities[selId], sp = mode.kind === 'spell' && !mode.item ? SPELLS[mode.id] : null, menu = sp && e ? slotMenu(e, sp) : null;
@@ -735,7 +753,7 @@ function refresh() {
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
-        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the slot, then Cast`; go = true; }
+        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the ${imbueOf(sp) ? 'weapon' : 'slot'}, then Cast`; go = true; }
         else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
           const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
@@ -758,7 +776,8 @@ function refresh() {
           if (most > 1 && picked.length) {
             hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
             go = true;
-          } else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
+          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then Cast (or tap ${name(mode.holder)} again to cast with ${weaponName(mode.choice ?? choicesOf(sp)?.[0])})`; go = true; }
+          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }
     }
@@ -794,6 +813,7 @@ function refresh() {
   tracker.render();
   TC.sync(S);
   if (isDM()) renderDM();
+  TD.sync(); TD.waiting();
   HO.refresh();
   SC.refresh();
   RP.refresh();
@@ -835,7 +855,7 @@ function renderSheet() {
     <p class="note">Saving throws: ${saves}</p>
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
       ${e.actions.map(actionProfile).map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bonus !== undefined ? signed(p.bonus) : p.dc ? `${p.save.toUpperCase()} DC ${p.dc}` : ''}</td><td>${esc(p.long)}${p.recharge ? ` · recharge ${p.recharge[0]}–6` : ''}${p.uses ? ` · ${p.uses.n}/day` : ''}</td><td>${p.far ? `${p.far} ft` : p.area ? `${p.area.size} ft ${p.area.shape}` : ''}</td></tr>`).join('')}</table></section>` : `<section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
-      ${e.attacks.map((a) => `<tr><td>${esc(a.name)}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${a.dtype}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`).join('')}</table></section>`}
+      ${e.attacks.map((a0) => { const a = imbued(S, e, a0); return `<tr><td>${esc(a.name)}${a.imbued?.length ? ` <small>(${esc(a.imbued.join(', '))})</small>` : ''}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${[a.dtype, ...(a.alt ?? [])].join(' or ')}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`; }).join('')}</table></section>`}
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
       ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
@@ -873,7 +893,7 @@ function renderDM() {
   QE.sync(S, selId);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
-  const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0);       // players waiting to be let in, and rewards waiting to be settled
+  const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0) + TD.count();       // players waiting to be let in, and rewards waiting to be settled
   $('dm-badge').hidden = !owed; $('dm-badge').textContent = owed;
   table.textContent = '';
   if (!T.solo) {
@@ -978,7 +998,7 @@ R.onTap = ({ hex, id }) => {
   const inZone = [...new Set(R.zonesAt(hex))];
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
   if (CP.tap(mode, hex, id)) return;
-  if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked });
+  if (mode.kind === 'spawn') { FIND.note(mode.monster); return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked }); }
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
   if (mode.kind === 'follow') {
@@ -999,11 +1019,13 @@ R.onTap = ({ hex, id }) => {
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
     const most = spellMost(e, sp);
-    if (most <= 1) return act(castAct({ target: id, ...chosen(sp) }));
+    // A spell that changes a weapon, aimed at a creature with more than one it could change: the menu lists that creature's weapons, and Cast follows the choice.
+    if (imbueOf(sp) && most <= 1 && mode.holder !== id && weaponsOf(S.entities[id], sp).length > 1) { mode.holder = id; mode.choice = null; mode.picked = [id]; return refresh(); }
+    if (most <= 1) return act(castAct({ target: id, ...chosen(sp, id) }));
     const picked = mode.picked ?? (mode.picked = []);
     if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back
     else picked.push(id);
-    if (picked.length >= most) return act(castAct({ targets: picked, ...chosen(sp) }));
+    if (picked.length >= most) return act(castAct({ targets: picked, ...chosen(sp, picked[0]) }));
     return refresh();
   }
   if (tapped) {
@@ -1053,7 +1075,7 @@ function castAimed() {
     const spare = sp.def.zone?.spare ? Object.values(S.entities).filter((x) => !x.dead && x.id !== selId && !hostile(x, me)).map((x) => x.id) : null;
     act(castAct({ hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
   }
-  else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id]) }));
+  else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id], mode.picked?.[0] ?? null) }));
   mode = MOVE;
 }
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
@@ -1194,13 +1216,9 @@ $('dm-new').onclick = newWorld;
 $('menu-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.
-function buildSpawn() {
-  $('dm-spawn').replaceChildren(...Object.entries(MONSTERS).map(([id, m]) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = `Add ${m.name}`; b.dataset.monster = id;
-    b.onclick = () => { closeDM(); setMode({ kind: 'spawn', monster: id }); };
-    return b;
-  }));
-}
+// A search box, a CR filter and a "recent" row sit above the buttons (spawnfind.js, #673); the recent list is kept per table on this device.
+const FIND = initSpawnFind({ list: $('dm-spawn'), store: prefs, key: () => `hextable.recent.monsters.${T?.you?.code ?? 'solo'}`, pick: (id) => { closeDM(); setMode({ kind: 'spawn', monster: id }); } });
+function buildSpawn() { FIND.set(Object.entries(MONSTERS), CONTENT.monsters); }
 buildSpawn();
 for (const b of document.querySelectorAll('[data-time]')) b.onclick = () => act({ type: 'advanceTime', minutes: +b.dataset.time });
 $('dm-chron').onsubmit = (ev) => { ev.preventDefault(); const t = $('chron-title').value.trim(); if (t) { act({ type: 'chronicle', title: t }); $('chron-title').value = ''; } };
@@ -1267,6 +1285,7 @@ const PK = initPacks({ transport: () => T, isDM, toast, changed: () => {
   if (mode.kind === 'spell' && !SPELLS[mode.id]) mode = MOVE;
   if (S) refresh();
 } });
+const TD = initTodo({ mount: $('todo-mount'), state: () => S, isDM, act, toast, waitLine: $('todo-wait'), place: (id) => { select(id); closeDM(); setMode({ kind: 'place' }); toast('Tap where it goes.', true); } });      // the DM's to-do tray (todo.js)
 const HO = initHandouts({ act, toast, transport: () => T, state: () => S, isDM, openPanel });
 const SC = initScenes({ act, toast, transport: () => T, state: () => S, isDM, startFight: () => { if (S.encounter) return; setMode({ kind: 'encounter' }); toast('Tap where the fight is: an open scene ends when it starts.', true); } });
 const TC = initTableControls({ act, getState: () => S, isDM, toast });

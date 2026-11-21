@@ -344,8 +344,9 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 
 /* The slot a spell is cast with (#604): a thumb-sized menu on touch, and the bar may wrap its buttons under the words on a narrow screen. */
 #hint { flex-wrap: wrap; }
-#hint #hint-slot { max-width: 100%; }
-@media (pointer: coarse) { #hint #hint-slot { min-height: 44px; } }
+#hint #hint-slot, #hint #hint-pick { max-width: 100%; }
+@media (pointer: coarse) { #hint #hint-slot, #hint #hint-pick { min-height: 44px; } }
+@media (max-width: 480px) { #hint #hint-pick { margin-left: 56px; max-width: calc(100% - 56px); } }   /* clear of the chat bubble at the left edge */
 /* One writer to a solo save (#625): the offer to a second window, and the bar of a read-only one. */
 #strike-first-ask { position: fixed; inset: 0; z-index: 41; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: #0009; } #strike-first-ask[hidden] { display: none; }
 #strike-first-card { width: min(420px, 100%); box-sizing: border-box; display: grid; gap: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; }

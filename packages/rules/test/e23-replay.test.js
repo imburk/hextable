@@ -20,6 +20,7 @@ import { scenarios, run } from "./e23-scenarios.js";
 const derive1 = (sheet) => {
   const d = derive(sheet), at = d.record.attacks, last = at.at(-1);
   delete d.record.acBase;      // #674: the base of its Armor Class (for Mage Armor), which main's recording has not
+  for (const a of at) if (a.weapon) { delete a.die; delete a.plus; delete a.magic; delete a.trained; }      // #666: what a weapon record now carries for `imbue` (imbue.js), which main's recording has not
   if (last?.id === "unarmed-strike" && !sheet.weapons?.includes("unarmed-strike") && !at.some((a) => a.id === "unarmed-strike-bonus")) at.pop();
   return d;
 };
