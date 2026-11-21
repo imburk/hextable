@@ -22,7 +22,7 @@ export const PARTY_FIELDS = {
   id: 'sent', name: 'sent', kind: 'sent', side: 'sent', tpl: 'sent', owner: 'sent', ownerName: 'sent', pos: 'sent', look: 'sent', size: 'sent', type: 'sent',
   level: 'sent', cls: 'sent', classes: 'sent', xp: 'sent', sheet: 'sent', coins: 'sent',
   // Its numbers: defences, speeds, senses, abilities, proficiencies.
-  ac: 'sent', hp: 'sent', maxHp: 'sent', tempHp: 'sent', tempFx: 'sent', speed: 'sent', speeds: 'sent', hover: 'sent', senses: 'sent', prof: 'sent', abil: 'sent', initBonus: 'sent',
+  ac: 'sent', acBase: 'sent', acNow: 'sent', acWhy: 'sent', hp: 'sent', maxHp: 'sent', tempHp: 'sent', tempFx: 'sent', speed: 'sent', speeds: 'sent', hover: 'sent', senses: 'sent', prof: 'sent', abil: 'sent', initBonus: 'sent',
   saveProf: 'sent', saveBonus: 'sent', skills: 'sent', expertise: 'sent', skillBonus: 'sent', tools: 'sent', resist: 'sent', vuln: 'sent', immune: 'sent', conditionImmune: 'sent',
   armour: 'sent', shield: 'sent', untrained: 'sent', critOn: 'sent', bonusActs: 'sent',
   // What it can do and what it has left.

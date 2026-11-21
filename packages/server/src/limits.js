@@ -252,3 +252,33 @@ export function clientAddress(req, proxy = {}) {
   if (chain.length < hops) return socket;                          // fewer entries than trusted proxies: not from our proxy
   return normaliseAddress(chain[chain.length - hops]) ?? socket;
 }
+
+// ---------- the proxy check, for /api/health (#662) ----------
+// An address a proxy or the host's own network uses rather than a visitor's: private ranges, shared (carrier-grade) space, loopback, link-local.
+export function isInternalAddress(a) {
+  const v4 = /^(\d{1,3})\.(\d{1,3})\./.exec(a);
+  if (v4) {
+    const [x, y] = [Number(v4[1]), Number(v4[2])];
+    return x === 0 || x === 10 || x === 127 || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168) || (x === 100 && y >= 64 && y <= 127) || (x === 169 && y === 254)
+      || (x === 198 && (y === 18 || y === 19)) || /^192\.0\.0\./.test(a) || x >= 224;
+  }
+  return /^(::1?$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i.test(a);
+}
+// What the server sees for this caller and whether TRUST_PROXY is on: only the caller's own request, nothing about anyone else.
+// `note` says in a sentence what it means, so the owner need not read the rest.
+export function proxyReport(req, proxy = {}) {
+  const socketAddress = normaliseAddress(req.socket?.remoteAddress) ?? "unknown";
+  const address = clientAddress(req, proxy);
+  const hops = proxy.trustProxy ?? 0, on = hops > 0;
+  const hasHeader = (name) => req.headers?.[name] !== undefined;
+  const sawForwardedFor = hasHeader("x-forwarded-for");
+  let note;
+  if (!on && (isInternalAddress(socketAddress) || sawForwardedFor)) note = "TRUST_PROXY is off, but this request came through a proxy: every visitor shares the proxy's address and its limits. Set TRUST_PROXY to 1 (see the README).";
+  else if (!on) note = "TRUST_PROXY is off and the request came straight to the server: right for a server with no proxy in front.";
+  else if (address === socketAddress) note = "TRUST_PROXY is on, but the server could not read a visitor address from the proxy's header, so it uses the connection's own address. Check the number set for TRUST_PROXY and CLIENT_IP_HEADER.";
+  else note = "TRUST_PROXY is on and the address below was read from the proxy's header. If it is your own public address, it is set right.";
+  // What the host's own network looks like is shown only to a caller who came through it; a caller who connected straight from the internet is told
+  // nothing about how the server is set up beyond whether TRUST_PROXY is on.
+  const inside = isInternalAddress(socketAddress);
+  return { trustProxy: on, hops, address, sawForwardedFor, ...(inside && { clientIpHeader: proxy.clientIpHeader ?? null, socketAddress }), note };
+}

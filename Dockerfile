@@ -15,6 +15,8 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 COPY package.json docker-entrypoint.mjs ./
+# scripts/backup.mjs: the same backup the server runs nightly, for a one-off run in the container (node scripts/backup.mjs)
+COPY scripts/backup.mjs scripts/
 COPY packages/rules/src packages/rules/src
 COPY packages/server/src packages/server/src
 COPY --from=build /app/dist dist
