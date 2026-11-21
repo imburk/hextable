@@ -169,6 +169,9 @@ export function createAssets({ dir, limits = {}, writeFile = writeFileSync }) {
       }
       return { assets, skipped, limit };
     },
+    // A table's folder was moved out of (release) or back into (adopt) the store by archiving (store.js, #662): the counts follow it.
+    release(code) { if (!tableDir(code)) return; total -= used(code); index.delete(code); },
+    adopt(code) { if (!tableDir(code)) return; index.delete(code); total += used(code); },
     // Table codes that have a folder of files, for clearing away those of tables that are gone.
     codes,
     usage: (code) => ({ files: records(code).size, bytes: used(code) }),

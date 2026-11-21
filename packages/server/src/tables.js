@@ -66,6 +66,13 @@ export const MAX_MEMBERS = 12;
 // A table nobody has touched for this long no longer counts against MAX_TABLES. It is kept, not
 // deleted: the next person to resume it makes it count again.
 export const IDLE_MS = 30 * 24 * 3600 * 1000;
+// A table with nobody connected for this long is saved and dropped from memory (#662); the next join or resume loads it again.
+export const EVICT_MS = 30 * 60 * 1000;
+// A table that is not in memory and has been untouched this long is moved to the archive; joining its code brings it back.
+export const ARCHIVE_MS = 90 * 24 * 3600 * 1000;
+const EVICT_PER_SWEEP = 50;             // and at most this many leave memory in one sweep, so a restart's worth of idle tables does not hold the server
+const ARCHIVE_PER_SWEEP = 5;            // one sweep moves at most this many, so it never holds the server for long
+const ARCHIVE_RETRY_MS = 3600 * 1000;   // after a move that failed, not again for this long
 const SAVE_STALE_MS = 3600 * 1000;      // sitting down only rewrites the file when its stamp is this old
 // The most an action may weigh as JSON. Everyone is held to the small cap, except that the DM
 // may send a whole map document with loadMap or mapEdit, which run to hundreds of kilobytes, and so do the actions
@@ -97,8 +104,13 @@ export { PLAYER_PACK_KINDS, packForPlayer };
 const PACK_PROBLEMS_SHOWN = 20;
 
 // The action journal (journal.js, #659) is told of every accepted action; with none given the calls do nothing.
-const NO_JOURNAL = { setCap() {}, before: () => null, accepted() {}, restored() {}, reset() {} };
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {}, journal = NO_JOURNAL } = {}) {
+const NO_JOURNAL = { setCap() {}, before: () => null, accepted() {}, restored() {}, reset() {}, close() {} };
+// Lazy loading (#662): with `index` (a function giving [{ code, active }], from the files' timestamps) and `loadOne(code)` the tables are
+// not read at start; only the index is kept, and a table is read on the first join, resume or file request for its code. `flushNow(code)`
+// writes a table's save and undo history now and returns false if it could not: eviction needs it, and without it nothing is evicted.
+// `archive(code)` and `restore(code)` move a table's files away and back (store.js) and return whether they did. `sweep()` does the
+// evicting and archiving; the server calls it once a minute.
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, evictMs = EVICT_MS, archiveMs = ARCHIVE_MS, index = null, loadOne = null, archived = () => [], archive = null, restore = null, flushNow = null, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {}, journal = NO_JOURNAL } = {}) {
   journal.setCap(timelineCap);          // one source of truth: the journal writes the cap this table applies into every file's header
   // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
   // rolls (an integer rng, as before version 16) unless they also give a key.
@@ -171,7 +183,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // t.active is when anyone last sat down, acted or left. Tables saved before it existed start fresh.
   const touch = (t) => { t.active = now(); };
   const isActive = (t) => now() - (t.active ?? 0) < idleMs;
-  const activeCount = () => { let n = 0; for (const t of tables.values()) if (isActive(t)) n++; return n; };
+  const activeCount = () => { let n = 0; for (const t of tables.values()) if (isActive(t)) n++; for (const a of known.values()) if (now() - a < idleMs) n++; return n; };
   // The DM's undo history, per table (see below). It is kept in a file beside the table's own.
   const undos = new WeakMap();
   const undoOf = (t) => { if (!undos.has(t)) undos.set(t, createHistory()); return undos.get(t); };
@@ -180,7 +192,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // state was migrated to a newer version) is not used, because its patches would not fit.
   const kept = new Map();       // code -> the seq of the last history handed out by exportHistory
   const dirtyHistory = new Set();
-  for (const t of load()) {
+  function adopt(t) {
     const was = t.state?.version;
     // The packs a file holds are checked before anything reads them: what fails is dropped (the DM is told), never sent, and the game's
     // `state.packs` is made to say what is installed. One table's bad file is that table's problem alone.
@@ -205,6 +217,61 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       else undoOf(t).clear();
     } catch { undoOf(t).clear(); }         // a damaged history file costs the undo history and nothing else
   }
+  for (const t of load()) adopt(t);
+  // Tables saved but not in memory: code -> when last active. Archived codes are kept as names only.
+  const known = new Map(), archivedCodes = new Set(), retryAt = new Map();
+  if (index) { for (const { code, active } of index()) if (!tables.has(code)) known.set(code, active); for (const c of archived()) archivedCodes.add(c); }
+  // The table for this code, read from its save (or brought back from the archive) if it is not in memory. Reading is synchronous, so a
+  // code is never loaded twice. An unreadable save stays where it is and the code answers as unknown.
+  // `peek` (a request that only has a token to check, such as a file request) neither restores from the archive nor counts the table as used:
+  // a table read that way is evicted by the next sweep unless someone sits down at it, and eviction then does not rewrite its save.
+  const peeked = new WeakSet();
+  function tableFor(code, { peek = false } = {}) {
+    if (typeof code !== "string") return undefined;
+    const t = tables.get(code);
+    if (t) { if (!peek && peeked.has(t)) { peeked.delete(t); t.active = now(); } return t; }
+    if (!peek && !known.has(code) && archivedCodes.has(code) && restore?.(code)) { archivedCodes.delete(code); known.set(code, now()); }
+    if (!known.has(code) || !loadOne) return undefined;
+    let data = null;
+    try { data = loadOne(code); } catch (err) { console.error(`Table ${code}: could not be loaded: ${err.message}`); }
+    if (!data || typeof data !== "object" || data.code !== code) return undefined;
+    known.delete(code);
+    adopt(data);
+    if (peek) peeked.add(data);
+    else data.active = now();           // being loaded is being used: it is not evicted before anyone has sat down
+    return data;
+  }
+  const taken = (code) => tables.has(code) || known.has(code) || archivedCodes.has(code);
+  const watched = (t) => t.members.some((m) => conns(m).size > 0);
+  // Save a table, drop it from memory, close its journal file. Refused (false, the table stays) if anybody is connected or the save
+  // could not be written. Nothing here awaits: between the save and the removal no message can be handled, and a join that comes after
+  // reads the file written just now.
+  function evict(code) {
+    const t = tables.get(code);
+    if (!t || !flushNow || watched(t)) return false;
+    if (!peeked.has(t)) save(t);          // a table only peeked at has nothing new to write unless something already marked it
+    if (flushNow(code) === false) return false;
+    journal.close(code, "evict");
+    tables.delete(code); kept.delete(code); dirtyHistory.delete(code);
+    known.set(code, peeked.has(t) ? (t.active ?? now()) : now());
+    return true;
+  }
+  function sweep() {
+    const out = { evicted: [], archived: [] };
+    for (const [code, t] of [...tables]) { if (out.evicted.length >= EVICT_PER_SWEEP) break; if (!watched(t) && now() - (t.active ?? 0) >= evictMs && evict(code)) out.evicted.push(code); }
+    if (archive) {
+      let n = 0;
+      for (const [code, active] of [...known]) {
+        if (n >= ARCHIVE_PER_SWEEP) break;
+        if (now() - active < archiveMs || now() < (retryAt.get(code) ?? 0)) continue;
+        n++;
+        if (archive(code)) { known.delete(code); archivedCodes.add(code); retryAt.delete(code); out.archived.push(code); }
+        else retryAt.set(code, now() + ARCHIVE_RETRY_MS);
+      }
+    }
+    return out;
+  }
+
   // member id -> Set of live connections (the same person may have two tabs open)
   const online = new Map();
 
@@ -417,7 +484,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       host(msg) {
         if (activeCount() >= MAX_TABLES) return error("This server is full. Try again later.", true);
         let code = makeCode();
-        while (tables.has(code)) code = makeCode();
+        while (taken(code)) code = makeCode();
         // The host may ask for the valley on squares (`grid: "square"`); anything else is the hex valley. The state is built
         // here from that one word, never taken from the client.
         const t = { code, state: newGame(seed(), msg.grid === "square" ? { grid: "square" } : undefined), packs: [], members: [], active: now() };
@@ -429,7 +496,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         sit(t, m);
       },
       join(msg) {
-        const t = tables.get(String(msg.code ?? "").trim().toUpperCase());
+        const t = tableFor(String(msg.code ?? "").trim().toUpperCase());
         if (!t) return error("No table has that code. Check it with your DM.", true);
         if (t.members.length >= MAX_MEMBERS) return error("That table is full.", true);
         const m = { id: makeId(), token: makeToken(), name: cleanName(msg.name), role: "player", approved: false };
@@ -438,7 +505,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         sit(t, m);
       },
       resume(msg) {
-        const t = tables.get(String(msg.code ?? ""));
+        const t = tableFor(String(msg.code ?? ""));
         const m = t?.members.find((x) => x.token === msg.token);
         if (!m) return error("That table is no longer available. Host or join again.", true);
         sit(t, m);
@@ -768,7 +835,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // Who holds this session token at this table, if they have been let in: for requests that do not
   // come over the socket (fetching and uploading files). Compared in constant time.
   function member(code, token) {
-    const t = typeof code === "string" ? tables.get(code) : undefined;
+    const t = tableFor(code, { peek: true });
     if (!t || typeof token !== "string" || token.length < 16 || token.length > 64) return null;
     const want = Buffer.from(token);
     const m = t.members.find((x) => { const have = Buffer.from(x.token); return have.length === want.length && timingSafeEqual(have, want); });
@@ -790,10 +857,12 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // Whether a file of a table may be deleted (assets-http.js): not one the table's world uses (worldpack.js, worldPictures).
   // Returns null, or the sentence the deletion is refused with.
   function keepsAsset(code, id) {
-    const t = typeof code === "string" ? tables.get(code) : undefined;
+    const t = tableFor(code, { peek: true });
     if (!t?.world) return null;
     return worldPictures(t.state, t.world).has(id) ? "That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first." : null;
   }
 
-  return { connect, exportHistory, member, keepsAsset, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount, stats };
+  // The undo history for this table was handed out by exportHistory but could not be written: it is due again, so the next sweep neither skips it nor evicts without it.
+  const historyFailed = (code) => { dirtyHistory.add(code); kept.delete(code); };
+  return { connect, exportHistory, historyFailed, member, keepsAsset, get: tableFor, has: (code) => taken(code), sweep, evict, size: () => tables.size, savedSize: () => tables.size + known.size, archivedSize: () => archivedCodes.size, activeSize: activeCount, stats };
 }
