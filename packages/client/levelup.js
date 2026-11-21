@@ -28,3 +28,13 @@ export function levelUpHtml(S, e, { dm = false, tag = 'lu' } = {}) {
     + `<button type="button" class="lu-go" data-levelup="${esc(e.id)}"${why ? ` disabled aria-describedby="${esc(id)}"` : ''}>Level up ${esc(e.name)}</button>`
     + (why ? `<p class="lu-why" id="${esc(id)}">${esc(why)}</p>` : '') + '</div>';
 }
+
+// The same, smaller, for the character card at the bottom of the screen (actionpanel.js): one short line and a button of 44 px, or the
+// reason in words. Nothing in a fight (the card is crowded then, and the sheet says it waits).
+export function levelUpChip(S, e, { dm = false } = {}) {
+  if (!levelReady(e) || (S?.encounter?.order ?? []).some((o) => o.id === e.id)) return '';
+  const why = levelUpWhy(S, e, { dm }), id = `chip-why-${e.id}`;
+  return `<div class="lu lu-chip"><span class="lu-line">Level ${levelNext(e)} is ready</span>`
+    + `<button type="button" class="lu-go" data-levelup="${esc(e.id)}" aria-label="Level up ${esc(e.name)}"${why ? ` disabled aria-describedby="${esc(id)}"` : ''}>Level up</button>`
+    + (why ? `<span class="lu-why" id="${esc(id)}">${esc(why)}</span>` : '') + '</div>';
+}

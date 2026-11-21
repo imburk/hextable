@@ -11,7 +11,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { levelReady, levelUpWhy, levelUpHtml } = await import(pathToFileURL(join(tmp, 'levelup.js')));
+const { levelReady, levelUpWhy, levelUpHtml, levelUpChip } = await import(pathToFileURL(join(tmp, 'levelup.js')));
 const { apply } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 
@@ -62,4 +62,16 @@ test('a name with markup in it is escaped', () => {
   const s = newGame(5), f = s.entities.fighter; f.xp = 300; f.name = '<b>"Bren"</b>';
   const html = levelUpHtml(s, f, { dm: true });
   assert.doesNotMatch(html, /<b>/); assert.match(html, /&lt;b&gt;/);
+});
+
+test('the character card chip: a live button for the DM, an off one with the reason for a player, nothing in a fight or when not ready', () => {
+  const s = newGame(5), f = s.entities.fighter;
+  assert.equal(levelUpChip(s, f, { dm: true }), '');
+  f.xp = 300;
+  const dm = levelUpChip(s, f, { dm: true });
+  assert.match(dm, /Level 2 is ready/); assert.match(dm, /aria-label="Level up Brenna"/); assert.doesNotMatch(dm, /disabled/);
+  const pl = levelUpChip(s, f, { dm: false });
+  assert.match(pl, /disabled aria-describedby="chip-why-fighter"/); assert.match(pl, /id="chip-why-fighter">Only the DM levels a character up at this table\. Ask your DM\./);
+  apply(s, { type: 'startEncounter', center: s.entities.m1.pos, radius: 40 }, DM);
+  assert.equal(levelUpChip(s, f, { dm: true }), '', 'nothing on the card in a fight');
 });

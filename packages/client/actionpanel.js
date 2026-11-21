@@ -22,6 +22,7 @@ import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
 import { slotChoices } from './upcast.js';
 import { shownName } from './tracker.js';
+import { levelUpChip } from './levelup.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
@@ -862,6 +863,7 @@ export function initActionPanel(ctx) {
       $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
       $('c-ac').textContent = showNumbers ? `AC ${e.ac}` : '';
       $('btn-sheet').hidden = !showNumbers;
+      setHtml($('c-level'), showNumbers && e.kind === 'pc' ? levelUpChip(S, e, { dm: ctx.isDM() }) : '');      // XP reached the next level: Level up (the DM), or why not (#672)
       $('btn-end').hidden = !(my && enc && cur === e.id);
       // A companion's player may hand its turns to the engine's companion brain (companions.md, Decision 9): { type: 'companion', actor, auto }.
       let letIt = $('btn-let');

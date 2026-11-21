@@ -5,7 +5,6 @@
 // Opportunity Attacks for the pair (the attacker choosing the rider or the mount), Find Steed as a controlled mount,
 // the rider's raised eye, and a stepped-away rider's mount taking its own turns (DEBT W14). On hexes and on the square
 // room, with twin runs for hidden creatures.
-import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, makeEntity } from "../src/engine.js";
@@ -292,7 +291,7 @@ for (const grid of GRIDS) {
 // A goblin of the DM's on a warhorse of the DM's (controlled: both foes, trained), beside Brenna (u1) whose
 // Opportunity Attack instruction is `ask`. On the goblin's turn the horse walks out of her reach.
 function oaTable(grid, { hideRider = false, noRider = false } = {}) {
-  const s = newGame(5); typed(s, "fighter");        // the attacker is hand-typed: its one Opportunity Attack option is the weapon one (a built hero also has the grapple one)
+  const s = newGame(5);
   if (grid === "square") ok(apply(s, { type: "loadMap", map: squareRoom() }, DM));
   ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
   for (const id of ["m1", "m2", "m3", "m4", "m5", "m6"]) if (s.entities[id]) ok(apply(s, { type: "remove", actor: id }, DM));
@@ -318,12 +317,14 @@ for (const grid of GRIDS) {
     const r = ok(apply(a.s, { type: "move", actor: a.horse, to: a.to }, DM));
     const asked = r.events.find((e) => e.type === "reactionAsked");
     assert.ok(asked, "Ann is asked");
-    assert.deepEqual(asked.ask.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
-    assert.equal(asked.ask.options[1].against, a.gob);
+    // (Brenna is built from her sheet now, so her Unarmed Strike's grapple Opportunity Attack is offered too: the two that matter here are the weapon one on the mount and the one on its rider.)
+    const sans = (list) => list.filter((o) => o.reaction !== "opportunity-attack-grapple");
+    assert.deepEqual(sans(asked.ask.options).map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
+    assert.equal(sans(asked.ask.options)[1].against, a.gob);
     assert.equal(asked.ask.by, a.horse, "set off by the mount");
     const v = view(a.s, U1).prompt;
-    assert.deepEqual(v.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
-    assert.equal(v.options[1].against, a.gob);
+    assert.deepEqual(sans(v.options).map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
+    assert.equal(sans(v.options)[1].against, a.gob);
     // Against the rider.
     const b = structuredClone(a.s);
     const r2 = ok(apply(b, { type: "react", prompt: asked.n, take: OPPORTUNITY_RIDER }, U1));
@@ -543,6 +544,9 @@ for (const grid of GRIDS) {
   test(`${grid}: an old save from main (C6a) loads and plays`, () => {
     const { horse, save } = OLD[grid];
     const s = migrate(structuredClone(save));
+    const starters = ["fighter", "rogue", "cleric", "wizard"].filter((id) => s.entities[id]?.sheet);
+    assert.ok(starters.length > 0, "the starters of an old save are given their sheets (#672)");
+    for (const id of starters) delete s.entities[id].sheet;      // ... which is the one thing the comparison below must not count as a change
     const { packs, scoreRolls, world, place, parked, journey, markets, shops, fightSeq, ...rest } = s;                    // version 24 (#390) raises the version and adds `packs: []`
     assert.deepEqual(packs, []); assert.deepEqual(scoreRolls, {});   // version 25 (#557) adds `scoreRolls`
     assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });   // version 26 (#579) adds the places of a world

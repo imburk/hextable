@@ -1287,6 +1287,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') selfCast(e, id); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
+$('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[data-levelup]'); if (b && !b.disabled) QE.levelUp(b.dataset.levelup); });
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
