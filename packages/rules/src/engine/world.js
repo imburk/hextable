@@ -1374,7 +1374,7 @@ export function catchUp(s, arena, walked, ev) {
   const inArena = (e) => !!arena[col(e.pos)];
   const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
   const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e) && !draggedBy(s, e).length).sort(byMarch);      // one that holds a creature does not follow or keep a place (Decision 6; march says so)
-  const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));       // (those in hiding are revealed as the fight starts, straight after: here they are as visible blockers)
+  const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !o.hiding && !unseenAt(s.map, o.pos));       // a creature that took the Hide action stays hidden through the fight start and sets no trail; one the DM hid is revealed as the fight starts, straight after, and is a visible blocker here
   for (;;) {
     const f = pending.find((x) => party.has(x.follow));
     if (!f) return;
