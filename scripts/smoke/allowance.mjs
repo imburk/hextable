@@ -75,12 +75,20 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         // The same ground every try (a flake, #633): the foes of the valley (they wake in a fight, walk up to Sir Bell and stand on the hexes the search needs), the goblins
         // left by the tries before and Sir Bell's own place after a tap are what made "no hex beside Sir Bell takes a goblin". Clear the foes, put her back where she began,
         // and stand one Guard four hexes off in the arena: a fight with only the goblin in it would end the moment her Opportunity Attack kills it, and the allowance with it.
-        await dm.evaluate(([b, h]) => {
-          for (const e of Object.values(window.hextable.state.entities)) if (e.side !== 'party') window.hextable.act({ type: 'remove', actor: e.id });
-          const p = window.hextable.state.entities[b].pos;
-          if (p.q !== h.q || p.r !== h.r) window.hextable.act({ type: 'place', actor: b, to: { q: h.q, r: h.r } });
-        }, [bell, home]);
-        await wait(dm, ([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 20000);
+        // Asked again until it holds, and said in words when it does not (#661): a removal refused (the fight had not quite ended) or a place taken leaves the foes or Sir Bell
+        // where they were, and a single try with one 20 s wait could only say that a predicate was false.
+        const cleared = () => dm.evaluate(([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home]);
+        for (let i = 0; i < 6 && !(await cleared()); i++) {
+          if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 20000); }
+          await dm.evaluate(([b, h]) => {
+            for (const e of Object.values(window.hextable.state.entities)) if (e.side !== 'party') window.hextable.act({ type: 'remove', actor: e.id });
+            const p = window.hextable.state.entities[b].pos;
+            if (p.q !== h.q || p.r !== h.r) window.hextable.act({ type: 'place', actor: b, to: { q: h.q, r: h.r } });
+          }, [bell, home]);
+          await idle(dm);
+          await wait(dm, ([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 4000).catch(() => {});
+        }
+        if (!(await cleared())) throw new Error(`the ground could not be cleared: ${await dm.evaluate(([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return `Bell at ${p.q},${p.r} wanted ${h.q},${h.r}; others ${Object.values(S.entities).filter((e) => e.id !== b && (e.side !== 'party' || (e.pos && e.pos.q === h.q && e.pos.r === h.r))).map((e) => `${e.name}/${e.side}@${e.pos?.q},${e.pos?.r}`).join(', ')}; encounter ${!!S.encounter}; prompt ${!!S.prompt} pending ${!!S.pending}; toast "${document.getElementById('toast')?.textContent ?? ''}"`; }, [bell, home])}`);
         const guardAt = await dm.evaluate(async (b) => {
           const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
           const S = window.hextable.state, G = gridOf(S.map), me = S.entities[b];
