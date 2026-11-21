@@ -297,11 +297,11 @@ export function route(reach, k) {
 // and stops where one cannot be dragged.
 // `opts.aerial`: lay out flying, climbing and ladder ways too, so `move` can tell a place only they reach from one too far.
 // `opts.unchecked`: do not ask whether the held creatures could follow (so `move` can tell that from "too far").
-// Those who follow `e`, or follow one who does (party creatures, up and free to walk).
+// Those who follow `e`, or follow one who does (party creatures that could walk off: not held, restrained, Paralysed or at Speed 0).
 export function followingChain(s, e) {
   const out = new Set();
   if (e.side !== 'party') return out;
-  for (let grew = true; grew;) { grew = false; for (const x of living(s)) if (x.follow && x.side === 'party' && !out.has(x.id) && x.id !== e.id && (x.follow === e.id || out.has(x.follow)) && !draggedBy(s, x).length && up(x)) { out.add(x.id); grew = true; } }
+  for (let grew = true; grew;) { grew = false; for (const x of living(s)) if (x.follow && x.side === 'party' && !out.has(x.id) && x.id !== e.id && (x.follow === e.id || out.has(x.follow)) && !draggedBy(s, x).length && up(x) && moveOptions(s, x).size > 0) { out.add(x.id); grew = true; } }
   return out;
 }
 export function moveOptions(s, e, opts = {}) {

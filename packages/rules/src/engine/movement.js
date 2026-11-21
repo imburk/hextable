@@ -343,6 +343,7 @@ function march(s, leader, walked, ev) {
     }
     // It can get through if some way it could walk comes up beside the one in front (others in the party do not bar the way).
     const through = [...reach.values()].some((v) => apartAt(s, front, front.pos, f, v.h) <= 1);
+    if (crowded && (!up(f) || !best || !through)) fail(`${f.name} cannot make room.`);   // the move is refused whole (apply restores the game): nobody shares a place
     if (!up(f) || !best || !through) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     if (best.k !== key(f.pos)) {
       const had = !!s.encounter;

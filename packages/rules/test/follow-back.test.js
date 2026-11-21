@@ -65,3 +65,51 @@ test("in a fight a follower's place is still taken", () => {
   assert.equal(r.ok, false);
   assert.equal(JSON.stringify(s), before);
 });
+
+for (const cond of ["restrained", "paralyzed"]) {
+  test(`a ${cond} follower cannot give way: the leader's move is refused and nothing changes`, () => {
+    const s = game([["fighter", 0, 0], ["rogue", -1, 0], ["cleric", 8, 8], ["wizard", 9, 9]]);
+    ok(apply(s, { type: "follow", actor: "rogue", leader: "fighter" }, DM));
+    ok(mv(s, "fighter", 3, 0));
+    ok(apply(s, { type: "condition", actor: "rogue", condition: cond, on: true }, DM));
+    const rq = s.entities.rogue.pos.q;
+    const before = JSON.stringify(s);
+    const r = mv(s, "fighter", rq, s.entities.rogue.pos.r);
+    assert.equal(r.ok, false);
+    assert.equal(JSON.stringify(s), before);
+  });
+}
+
+test("a follower surrounded as best can be: the move is refused whole, or nobody shares a hex", () => {
+  // The rogue is walled in by the cleric and wizard (not followers) and the fighter's way back is its only exit.
+  const s = game([["fighter", 0, 0], ["rogue", -1, 0], ["cleric", 8, 8], ["wizard", 9, 9]]);
+  ok(apply(s, { type: "follow", actor: "rogue", leader: "fighter" }, DM));
+  ok(mv(s, "fighter", 3, 0));
+  const { q, r } = s.entities.rogue.pos;
+  const ring = H.range({ q, r }, 1).filter((h) => !(h.q === q && h.r === r) && !(h.q === s.entities.fighter.pos.q + 0 && false));
+  const blockers = ["cleric", "wizard"];
+  // Surround every neighbour of the rogue but the leader's hex with the two non-followers plus the leader's approach: use monsters.
+  let n = 0;
+  for (const h of ring) {
+    if (h.q === 3 && h.r === 0) continue;
+    if (h.q === s.entities.fighter.pos.q && h.r === s.entities.fighter.pos.r) continue;
+    if (n < 2) { s.entities[blockers[n++]].pos = { q: h.q, r: h.r, z: 0 }; continue; }
+    ok(apply(s, { type: "spawn", monster: "goblin-minion", at: h }, DM));
+  }
+  const before = JSON.stringify(s);
+  const res = mv(s, "fighter", q, r);
+  if (res.ok) { alone(s); return; }
+  assert.equal(JSON.stringify(s), before);
+});
+
+test("a walk-back that starts a fight on the same move leaves nobody on a shared hex", () => {
+  const s = game([["fighter", 0, 0], ["rogue", -1, 0], ["cleric", 8, 8], ["wizard", 9, 9]]);
+  ok(apply(s, { type: "setting", key: "autoEngage", value: true }, DM));
+  ok(apply(s, { type: "follow", actor: "rogue", leader: "fighter" }, DM));
+  ok(mv(s, "fighter", 3, 0));
+  ok(apply(s, { type: "spawn", monster: "goblin-minion", at: { q: 4, r: -2 } }, DM));
+  const r = mv(s, "fighter", s.entities.rogue.pos.q, s.entities.rogue.pos.r);
+  assert.ok(r.ok, r.error);
+  assert.ok(s.encounter, 'a fight began on the same move');
+  alone(s);
+});
