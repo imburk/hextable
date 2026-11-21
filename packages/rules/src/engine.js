@@ -6,7 +6,7 @@
 // action against the rules, mutates state, and returns events. Renderers turn events
 // into numbers or animations; the server broadcasts them; the timeline records them;
 // an AI DM or AI character is just another caller of apply().
-import { noteManual } from './todo.js';
+import { noteManual, tidy } from './todo.js';
 import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
@@ -416,6 +416,7 @@ function record(s, ev) {
     s.timeline.push(structuredClone({ t: s.clock, ...e, ...(all.length ? { unseen: all } : {}) }));
     if (e.type === 'manual') noteManual(s, e);       // the DM's to-do tray (todo.js): a card, kept in the state
   }
+  tidy(s);
   return { ok: true, events: ev };
 }
 

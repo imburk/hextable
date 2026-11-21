@@ -6,6 +6,10 @@ import { apply } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewWaiting } from "../src/view.js";
 import { createHistory, mark } from "../src/history.js";
+import { derive } from "../src/derive.js";
+import { noteManual } from "../src/todo.js";
+import { makeEntity } from "../src/engine.js";
+import { acOf } from "../src/engine/rolls.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -109,4 +113,89 @@ test("players are never sent the tray; the caster is told only that their own sp
   assert.deepEqual(viewWaiting(s, { role: "player", userId: "sam" }), []);
   assert.deepEqual(viewWaiting(s, DM), []);
   assert.equal(view(s, DM), s, "the DM is given the state itself, cards and all");
+});
+
+const A = { str: 10, dex: 16, con: 12, int: 16, wis: 14, cha: 10 };
+function built() {
+  const s = field();
+  const sheet = { name: "Vex", class: "wizard", level: 1, abilities: A, skills: ["arcana", "history"], spells: ["light", "mage-armor"] };
+  const e = makeEntity(derive(sheet).record, { id: "vex", kind: "pc", side: "party", owner: "pat", ownerName: "Pat", pos: { q: 3, r: 3, z: 0 } });
+  e.sheet = structuredClone(sheet);
+  s.entities.vex = e;
+  return s;
+}
+
+test("Mage Armor on a built character, which the engine applies whole, makes no card and no 'waiting for the DM'", () => {
+  const s = built();
+  ok(apply(s, { type: "cast", actor: "vex", spell: "mage-armor", targets: ["vex"] }, DM));
+  assert.equal(acOf(s, s.entities.vex), 16, "the engine applied it");
+  assert.deepEqual(cards(s), []);
+  assert.deepEqual(view(s, PAT).waiting, []);
+});
+
+test("Mage Armor on a hand-typed creature (the engine cannot) makes one card, not two, and the caster waits", () => {
+  const s = field();
+  Object.assign(s.entities.wizard, { owner: "pat", ownerName: "Pat" });
+  s.entities.wizard.spells.push("mage-armor");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "mage-armor", targets: ["wizard"] }, DM));
+  assert.equal(cards(s).length, 1);
+  assert.deepEqual(view(s, PAT).waiting, [{ id: "wizard", name: "Mage Armor" }]);
+});
+
+test("a note for a part the engine left out (partial) makes a DM card but does not make the caster wait", () => {
+  const s = built();
+  s.todo = { n: 1, cards: [{ n: 1, t: 0, kind: "manual", actor: "vex", name: "Mage Armor", text: "x", ids: ["vex"], partial: true }] };
+  assert.deepEqual(view(s, PAT).waiting, []);
+});
+
+test("setAc moves a built character's acBase with it, so Mage Armor still gives the better base; in a form only the form's number is set", () => {
+  const s = built(), e = s.entities.vex;
+  const base = e.acBase, ac = e.ac;
+  ok(apply(s, { type: "setAc", actor: "vex", ac: ac + 2 }, DM));
+  assert.equal(e.acBase, base + 2);
+  ok(apply(s, { type: "cast", actor: "vex", spell: "mage-armor", targets: ["vex"] }, DM));
+  assert.equal(acOf(s, e), 16, "Mage Armor still gives 16: the better of its 13 + Dexterity and the new base");
+  const t = built(), f = t.entities.vex;
+  f.form = { block: "wolf" }; f.ac = 13;
+  ok(apply(t, { type: "setAc", actor: "vex", ac: 14 }, DM));
+  assert.equal(f.ac, 14);
+  assert.equal(f.acBase, base, "a form's number is not the character's base");
+});
+
+test("setAc on a foe tells players nothing of its number", () => {
+  const s = field();
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 2, r: 0 } }, DM));
+  const g = Object.values(s.entities).find((e) => e.side === "foe");
+  const r = ok(apply(s, { type: "setAc", actor: g.id, ac: 23 }, DM));
+  assert.ok(!JSON.stringify(r.events).includes("23"));
+});
+
+test("a 'You run' card comes when the creature is added and at its first turn, not again; it goes when the creature dies or is removed", () => {
+  const s = field();
+  ok(apply(s, { type: "spawn", monster: "mage", at: { q: 4, r: 0 } }, DM));
+  const id = Object.values(s.entities).find((e) => e.tpl === "mage").id;
+  ok(apply(s, { type: "todoDone", all: true }, DM));
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
+  let turns = 0;
+  for (let i = 0; i < 40 && turns < 3; i++) {
+    const cur = s.encounter?.order[s.encounter.turn]?.id;
+    if (!cur) break;
+    if (cur === id) { turns++; if (turns === 1) { assert.ok(cards(s).some((c) => c.actor === id), "a card at its first turn"); ok(apply(s, { type: "todoDone", all: true }, DM)); } else assert.ok(!cards(s).some((c) => c.actor === id), "not again"); }
+    if (!apply(s, { type: "endTurn", actor: cur }, DM).ok) break;
+  }
+  assert.ok(turns >= 2);
+  s.todo.cards.push({ n: 900, t: 0, kind: "run", actor: id, name: "Mage", runs: [], why: "added" });
+  ok(apply(s, { type: "harm", actor: id, amount: 9999 }, DM));
+  assert.ok(!cards(s).some((c) => c.kind === "run" && c.actor === id), "gone with its death");
+});
+
+test("a note made again comes up as new and counts; its text is capped", () => {
+  const s = field();
+  const ev = { type: "manual", actor: "wizard", name: "Thing", text: "x".repeat(900), partial: true };
+  noteManual(s, ev); noteManual(s, ev);
+  const c = cards(s);
+  assert.equal(c.length, 1);
+  assert.equal(c[0].count, 2);
+  assert.equal(c[0].n, 2, "a new number");
+  assert.ok(c[0].text.length <= 500);
 });

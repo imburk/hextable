@@ -24,7 +24,7 @@ test("todo: a hidden monster with Spellcasting makes a card for the DM and the p
   const burn = (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 8, r: -6 }, name: "Burnt", hidden: true }); };
   const { hidden } = twin({ players: ["Pat", "Sam"], setup: base, steps: SCRIPT },
     { hide: (w) => { w.must({ type: "spawn", monster: "mage", at: { q: 8, r: -6 }, name: "Burnt", hidden: true }); assert.ok(w.state.todo.cards.some((c) => c.kind === "run")); }, plain: burn });
-  assert.ok(hidden.raw.Pat.some((m) => JSON.stringify(m).includes("waiting")), "Pat was sent the waiting list");
+  assert.ok(hidden.raw.Pat.some((m) => (m.state?.waiting ?? m.patch?.waiting ?? []).some((x) => x.name === "Mage Armor")), "Pat was sent the waiting list");
   for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(hidden.raw[who]).includes("Spellcasting"), `${who} was told of the monster's abilities`);
 });
 
@@ -43,5 +43,13 @@ test("todo: the caster is told only the name of the spell, and Sam, who does not
   const waiting = (who) => plain.raw[who].map((m) => m.state?.waiting ?? m.patch?.waiting).filter(Boolean).flat();
   assert.deepEqual([...new Set(waiting("Pat").map((x) => x.name))], ["Mage Armor"]);
   assert.deepEqual(waiting("Sam"), []);
-  assert.ok(!JSON.stringify(plain.raw.Pat).includes("\"n\":1,\"cards\""));
+  assert.ok(!/"cards"/.test(JSON.stringify(plain.raw.Pat)), "no card was sent");
+});
+
+test("todo: setAc on a foe the party can see tells no player its number, by event, view or patch", () => {
+  const goblin = (w) => Object.values(w.state.entities).find((e) => e.side === "foe");
+  twin({ players: ["Pat", "Sam"],
+    setup(w) { base(w); w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -5, r: 3 }, name: "Seen" }); },
+    steps: [{ by: "Pat", act: { type: "move", actor: "wizard", to: { q: -7, r: 3 } }, allowError: true }] },
+  { hide: (w) => w.must({ type: "setAc", actor: goblin(w).id, ac: 23 }), plain: (w) => w.must({ type: "setAc", actor: goblin(w).id, ac: 21 }) });
 });

@@ -70,6 +70,8 @@ export function initTodo({ mount, state, isDM, act, toast, place, waitLine = nul
     sig = next;
     if (edit && !cards.some((c) => c.n === edit.n)) edit = null;
     mount.innerHTML = cards.length ? `<h3>To do <span class="todo-n">${cards.length}</span></h3><p class="note">What the engine left for you to apply. Done takes a card away.</p>${[...cards].reverse().map(card).join('')}${cards.length > 1 ? '<div class="row"><button type="button" class="quiet" data-done="all">Done with all</button></div>' : ''}` : '';
+    // A tool just opened is brought into view: on a phone the dock covers the foot of the menu.
+    if (edit) mount.querySelector('.todo-form')?.scrollIntoView({ block: 'nearest' });
   }
 
   mount?.addEventListener('click', (ev) => {

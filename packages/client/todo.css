@@ -21,3 +21,5 @@
 .todo-done { flex: 1; min-height: 48px; background: var(--accent); color: var(--accent-ink, #111); font-weight: 700; }
 #todo-wait { margin: 0; align-self: flex-start; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 4px 10px; font-size: 13px; }
 #todo-wait[hidden] { display: none; }
+.todo-form, .todo-foot { scroll-margin-bottom: 16px; }
+#todo-mount { padding-bottom: 14px; }

@@ -302,7 +302,7 @@ export function viewWaiting(state, viewer) {
   const out = [];
   if (isDM(viewer) || typeof viewer?.userId !== 'string') return out;
   for (const c of Array.isArray(state.todo?.cards) ? state.todo.cards : []) {
-    if (c.kind !== 'manual' || typeof c.actor !== 'string') continue;
+    if (c.kind !== 'manual' || typeof c.actor !== 'string' || c.waits !== true) continue;
     const e = state.entities[c.actor];
     if (!e || e.side !== 'party' || ownerOf(state, e) !== viewer.userId || !isOwnName(e, c.name)) continue;
     if (!out.some((x) => x.id === e.id && x.name === c.name)) out.push({ id: e.id, name: c.name });

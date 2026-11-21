@@ -26,7 +26,10 @@ async function solo(browser, url, label, opts) {
         await RIA(page);
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ria'));
         ria = await riaId(page);
-        await page.evaluate((i) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: [i] }), ria);
+        // Ria is built, so the engine puts Mage Armor on her itself; the hand-typed starter wizard it cannot, so that one is handed to the DM.
+        await page.evaluate(() => window.hextable.act({ type: 'place', actor: 'wizard', to: { q: -2, r: 3, z: 0 } }));
+        await wait(page, () => window.hextable.state.entities.wizard.pos.q === -2);
+        await page.evaluate((i) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: ['wizard'] }), ria);
         await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor'));
         await wait(page, () => !document.getElementById('menu-badge').hidden);
         if ((await badge(page)) !== 1) throw new Error(`badge ${await badge(page)}`);
@@ -35,7 +38,7 @@ async function solo(browser, url, label, opts) {
       await run.do('the DM tab starts with the card: the note, Ria, the tools, and Done', async () => {
         await openTab(page, 'dm'); await waitShown(page, '#todo-mount');
         const t = await page.textContent('#todo-mount');
-        if (!/Mage Armor/.test(t) || !/Ria/.test(t)) throw new Error(`card text: ${t}`);
+        if (!/Mage Armor/.test(t) || !/Ria/.test(t) || !/Tavin/.test(t)) throw new Error(`card text: ${t}`);
         for (const w of ['Place', 'Damage', 'Heal', 'Condition', 'AC', 'Done']) if (!(await page.locator(`#todo-mount button:text-is("${w}")`).count())) throw new Error(`no ${w} button`);
         const small = await page.evaluate(() => [...document.querySelectorAll('#todo-mount button')].filter((b) => b.getBoundingClientRect().height < 40).map((b) => b.textContent));
         if (touch && small.length) throw new Error(`buttons under 40px: ${small}`);
@@ -118,7 +121,9 @@ async function players(browser, url) {
       });
       const id = await riaId(host);
       await run.do('the phone casts Mage Armor: the phone says it waits for the DM, in words that carry nothing of the DM\'s note', async () => {
-        await phone.evaluate((i) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: [i] }), id);
+        await host.evaluate(() => window.hextable.act({ type: 'place', actor: 'wizard', to: { q: -2, r: 3, z: 0 } }));
+        await wait(host, () => window.hextable.state.entities.wizard.pos.q === -2);
+        await phone.evaluate((i) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: ['wizard'] }), id);
         await wait(host, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor'));
         await wait(phone, () => !document.getElementById('todo-wait').hidden);
         const line = await phone.textContent('#todo-wait');
