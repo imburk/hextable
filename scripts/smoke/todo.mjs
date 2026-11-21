@@ -38,14 +38,14 @@ async function solo(browser, url, label, opts) {
       await run.do('the DM tab starts with the card: the note, Ria, the tools, and Done', async () => {
         await openTab(page, 'dm'); await waitShown(page, '#todo-mount');
         const t = await page.textContent('#todo-mount');
-        if (!/Mage Armor/.test(t) || !/Ria/.test(t) || !/Tavin/.test(t)) throw new Error(`card text: ${t}`);
+        if (!/Mage Armor/.test(t) || !/Ria/.test(t) || !/Tavin/.test(t) || t.indexOf('Tavin') > t.lastIndexOf('Ria')) throw new Error(`card text: ${t}`);
         for (const w of ['Place', 'Damage', 'Heal', 'Condition', 'AC', 'Done']) if (!(await page.locator(`#todo-mount button:text-is("${w}")`).count())) throw new Error(`no ${w} button`);
         const small = await page.evaluate(() => [...document.querySelectorAll('#todo-mount button')].filter((b) => b.getBoundingClientRect().height < 40).map((b) => b.textContent));
         if (touch && small.length) throw new Error(`buttons under 40px: ${small}`);
         await shot(page, `todo-${tag}-card`);
       });
       await run.do('AC: the tool sets Ria to 15 in one step from the card', async () => {
-        await page.click('#todo-mount [data-tool="ac"]');
+        await page.click(`#todo-mount [data-id="${ria}"] [data-tool="ac"]`);
         await waitShown(page, '#todo-mount [data-f="ac"]');
         await page.fill('#todo-mount [data-f="ac"]', '15');
         await shot(page, `todo-${tag}-ac`);
@@ -55,13 +55,13 @@ async function solo(browser, url, label, opts) {
       await run.do('Damage, Heal and Condition from the card change Ria', async () => {
         const hp = () => state(page, (S, i) => S.entities[i].hp, ria);
         const was = await hp();
-        await page.click('#todo-mount [data-tool="harm"]'); await page.fill('#todo-mount [data-f="n"]', '2'); await page.click('#todo-mount [data-go="harm"]');
+        await page.click(`#todo-mount [data-id="${ria}"] [data-tool="harm"]`); await page.fill('#todo-mount [data-f="n"]', '2'); await page.click('#todo-mount [data-go="harm"]');
         await wait(page, ([i, h]) => window.hextable.state.entities[i].hp === h - 2, [ria, was]);
-        await page.click('#todo-mount [data-tool="mend"]'); await page.fill('#todo-mount [data-f="n"]', '1'); await page.click('#todo-mount [data-go="mend"]');
+        await page.click(`#todo-mount [data-id="${ria}"] [data-tool="mend"]`); await page.fill('#todo-mount [data-f="n"]', '1'); await page.click('#todo-mount [data-go="mend"]');
         await wait(page, ([i, h]) => window.hextable.state.entities[i].hp === h - 1, [ria, was]);
-        await page.click('#todo-mount [data-tool="cond"]'); await page.selectOption('#todo-mount [data-f="cond"]', 'prone'); await page.click('#todo-mount [data-go="condOn"]');
+        await page.click(`#todo-mount [data-id="${ria}"] [data-tool="cond"]`); await page.selectOption('#todo-mount [data-f="cond"]', 'prone'); await page.click('#todo-mount [data-go="condOn"]');
         await wait(page, (i) => window.hextable.state.entities[i].cond.prone, ria);
-        await page.click('#todo-mount [data-tool="cond"]'); await page.selectOption('#todo-mount [data-f="cond"]', 'prone'); await page.click('#todo-mount [data-go="condOff"]');
+        await page.click(`#todo-mount [data-id="${ria}"] [data-tool="cond"]`); await page.selectOption('#todo-mount [data-f="cond"]', 'prone'); await page.click('#todo-mount [data-go="condOff"]');
         await wait(page, (i) => !window.hextable.state.entities[i].cond.prone, ria);
       });
       await run.do('a reload finds the card still open, with the badge; Done takes it away and the badge goes', async () => {
@@ -138,7 +138,7 @@ async function players(browser, url) {
         await wait(host, () => !document.getElementById('menu-badge').hidden);
         await openTab(host, 'dm'); await waitShown(host, '#todo-mount');
         await shot(host, 'todo-host-card');
-        await host.click('#todo-mount [data-tool="ac"]'); await host.fill('#todo-mount [data-f="ac"]', '14'); await host.click('#todo-mount [data-go="acSet"]');
+        await host.click(`#todo-mount [data-id="${id}"] [data-tool="ac"]`); await host.fill('#todo-mount [data-f="ac"]', '14'); await host.click('#todo-mount [data-go="acSet"]');
         await wait(phone, (i) => window.hextable.state.entities[i].ac === 14, id);
         await host.click('#todo-mount [data-done]');
         await wait(phone, () => document.getElementById('todo-wait').hidden);
