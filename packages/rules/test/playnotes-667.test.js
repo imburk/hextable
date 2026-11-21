@@ -2,7 +2,10 @@
 // against SRD 5.2.1 (reference/srd52/srd52.txt). One test group per note; the verdict is in each group's comment.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, current, makeEntity } from "../src/engine.js";
+import { apply, current, hideProblem, makeEntity } from "../src/engine.js";
+import * as H from "../src/hex.js";
+import { newMap } from "../src/map.js";
+import { edgeSegment } from "../src/walls.js";
 import { derive } from "../src/derive.js";
 import { CONTENT } from "../src/content/index.js";
 import { aiStep } from "../src/ai.js";
@@ -268,4 +271,86 @@ test("note 5: no SRD monster's turn walks away after its action, leaves a foe's 
     }
   }
   assert.deepEqual(trouble, []);
+});
+
+// ---------- 6a. "Can a rogue hide?" ----------
+// SRD "Hide [Action]": DC 15 Dexterity (Stealth) check while Heavily Obscured or behind Three-Quarters or Total Cover and out of every
+// enemy's line of sight. Rogue "Cunning Action" (level 2): Dash, Disengage or Hide as a Bonus Action. Verdict: yes, implemented
+// (hide.test.js has the full set); here it is on a built rogue: refused in the open, accepted behind cover, an Action at level 1 and
+// a Bonus Action from level 2.
+
+function hallWith(sheet, seed = 5) {
+  const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 10).map((h) => [H.col(h), { t: "stone" }]));
+  const walls = [0, 1, 2, 3, 4, 5].map((i) => { const [a, b] = edgeSegment({ q: 2, r: 0 }, i); return { id: `p${i}`, level: "ground", a, b, kind: "wall" }; });
+  const s = newGame(seed);
+  ok(apply(s, { type: "loadMap", map: newMap({ id: "h", name: "Hall", starts: [{ q: -8, r: 0 }], levels: [{ id: "ground", name: "G", z: 0, tiles }], walls }) }, DM));
+  for (const id of Object.keys(s.entities)) delete s.entities[id];
+  s.settings.autoEngage = false;
+  s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: 1, r: 0, z: 0 } });
+  s.foe = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 } }, DM)).events[0].id;
+  return s;
+}
+for (const [level, how] of [[1, "action"], [2, "bonus"], [5, "bonus"]]) test(`note 6: a level ${level} rogue hides behind a pillar with ${how === "bonus" ? "a Bonus Action (Cunning Action)" : "its Action"}, and not in the open`, () => {
+  const s = hallWith({ ...sheets.rogue, level, subclass: level >= 3 ? "thief" : undefined });
+  const hero = s.entities.hero;
+  hero.pos = { q: 4, r: 3, z: 0 };
+  assert.match(hideProblem(s, hero), /can see/);
+  no(apply(s, { type: "hide", actor: "hero" }, DM), /can see/);
+  hero.pos = { q: 1, r: 0, z: 0 };
+  assert.equal(hideProblem(s, hero), "");
+  ok(apply(s, { type: "startEncounter", center: { q: 3, r: 0 }, radius: 8 }, DM));
+  turnOf(s, "hero");
+  const before = { ...s.encounter.budget };
+  if (how === "action") no(apply(s, { type: "hide", actor: "hero", bonus: true }, DM), /can't take that as a Bonus Action/);
+  const r = ok(apply(s, { type: "hide", actor: "hero", ...(how === "bonus" ? { bonus: true } : {}) }, DM));
+  const check = r.events.find((e) => e.type === "check");
+  assert.equal(check.skill, "stealth");
+  assert.equal(check.success, check.total >= 15, "DC 15");
+  const spent = how === "action" ? { action: before.action - 1, bonus: before.bonus } : { action: before.action, bonus: before.bonus - 1 };
+  assert.deepEqual({ action: s.encounter.budget.action, bonus: s.encounter.budget.bonus }, spent);
+});
+
+// ---------- 6b. "Are saves to prevent being knocked prone implemented?" ----------
+// SRD 5.2.1 gives Prone in three ways: by a save (a Shove, the Gladiator's Shield Bash, Bronze Dragon breath: the target
+// "must succeed on a Strength saving throw or have the Prone condition"), automatically on a hit (the Wolf: "If the target is a
+// Medium or smaller creature, it has the Prone condition", no save), and not at all to a creature too big. Verdict: all three are
+// implemented as the SRD has them. The wolf and its kin give no save because the SRD gives none.
+
+function prone(monster, attackId, { target = {}, save = null } = {}) {
+  const s = newGame(5);
+  for (const id of Object.keys(s.entities)) if (id !== "fighter") delete s.entities[id];
+  for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
+  s.settings.autoEngage = false;
+  apply(s, { type: "place", actor: "fighter", to: { q: 1, r: 0 } }, DM);
+  const m = ok(apply(s, { type: "spawn", monster, at: { q: 0, r: 0 } }, DM)).events[0].id;
+  Object.assign(s.entities.fighter, { ac: 40, hp: 500, maxHp: 500, ...target });
+  if (save) s.entities.fighter.saveBonus = { str: save === "pass" ? 40 : -40 };
+  fight(s, m);
+  const r = ok(apply(s, { type: "act", actor: m, action: attackId, target: "fighter" }, DM));
+  return { r, f: s.entities.fighter };
+}
+test("note 6: a Gladiator's Shield Bash gives a Strength save (DC 15); Prone only on a failure", () => {
+  const fail = prone("gladiator", "shield-bash", { save: "fail" }), pass = prone("gladiator", "shield-bash", { save: "pass" });
+  for (const x of [fail, pass]) { const sv = x.r.events.find((e) => e.type === "save"); assert.equal(sv.abil, "str"); assert.equal(sv.dc, 15); }
+  assert.ok(fail.f.cond.prone, "failed: Prone");
+  assert.equal(pass.f.cond.prone, undefined, "saved: not Prone");
+  assert.ok(!pass.r.events.some((e) => e.type === "damage"), "and no damage either");
+});
+test("note 6: a Wolf's bite is Prone on a hit with no save for a Medium target, and no Prone for a Large one (SRD gives no save)", () => {
+  const med = prone("wolf", "bite", { target: { ac: 1 } });
+  assert.equal(med.r.events.some((e) => e.type === "save"), false);
+  assert.equal(med.r.events.find((e) => e.type === "attack").hit, true);
+  assert.ok(med.f.cond.prone);
+  const big = prone("wolf", "bite", { target: { ac: 1, size: "large" } });
+  assert.equal(big.r.events.find((e) => e.type === "attack").hit, true);
+  assert.equal(big.f.cond.prone, undefined);
+});
+test("note 6: a player's Shove asks the target for a Strength or Dexterity save (DC 8 + Strength modifier + Proficiency Bonus) before Prone", () => {
+  const make = (rig) => { const s = field({ name: "Fi", class: "fighter", level: 5, subclass: "champion", abilities: { str: 16, dex: 14, con: 14, int: 10, wis: 8, cha: 8 }, skills: ["athletics"], choices: { "fighting-style": "defense" }, weapons: [] }, 5); s.entities[s.foe].saveBonus = { str: rig, dex: rig }; fight(s); return s; };
+  const shove = (s) => apply(s, { type: "attack", actor: "hero", target: s.foe, attack: "unarmed-strike", option: "shove", shove: "prone" }, DM);
+  const bad = make(-40), good = make(40), r = ok(shove(bad)), g = ok(shove(good));
+  assert.equal(r.events.find((e) => e.type === "save").dc, 14);
+  assert.ok(bad.entities[bad.foe].cond.prone);
+  assert.equal(good.entities[good.foe].cond.prone, undefined);
+  assert.equal(g.events.find((e) => e.type === "save").success, true);
 });
