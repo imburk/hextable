@@ -1,6 +1,7 @@
 // The DM's to-do tray: what the engine handed to the DM and the DM has not yet settled.
 //
-// `s.todo` is `{ n, cards }`: `n` counts the cards ever made (so no card number is used twice, undo aside, which puts
+// `s.todo` is `{ n, cards, ran? }`: `n` counts the numbers ever given (a card's own `n` is its identity, Done names it; `up` is the number it
+// last came up under, new when it is made again) (so no card number is used twice, undo aside, which puts
 // the whole of it back), `cards` are the open ones, oldest first. A card is DM-only: `s.todo` is one top-level key that
 // `playerView` does not list, so no player is sent it (docs/specs/dm-todo.md). It is kept in the state, not made on
 // the screen, so it survives a reload and a second tab, and an undo takes back both the card and its Done.
@@ -16,7 +17,11 @@
 import { CONTENT } from './content/index.js';
 
 export const MAX_CARDS = 150;
-const TEXT = 500;
+// Assist spells whose description, beyond what the engine plays, asks nothing of the DM (rules-expansion.md, build notes for #674: the engine
+// applies them whole to a built character; for anything it cannot, a note of its own says so). Guarded by test/todo.test.js.
+export const NO_DM_WORK = new Set(['mage-armor', 'light']);
+const TEXT = 700;
+const cut = (x, n) => (x.length > n ? `${x.slice(0, n - 1)}…` : x);
 
 // The abilities of a monster's block that the engine does not play. A trait with text and nothing the engine can read
 // (no modifiers, no effects, no reaction) whose name says it is one of these. When M5 and M6 are built the traits carry
@@ -57,22 +62,25 @@ export function namedIn(s, text, actor) {
 }
 
 // A `manual` event, told by `record` (engine.js) as it is written to the record.
-// `standing` (casting.js) is an assist spell's own description, said on every cast: where the engine applied the effect it is no
-// job for the DM, so it makes no card; the notes for what the engine left out say so themselves. Of a manual spell it is the only
-// word, so it does. `waits` marks a note for which the engine applied none of the spell: its caster is told it waits for the DM.
+// `standing` (casting.js) is a spell's own description, said on every cast of an assist or manual spell. Of a manual spell it is the
+// only word, so it makes a card, and its caster waits. Of an assist spell it is what the engine did not do (Haste's lethargy, Hold
+// Person's Humanoid check, Mind Blank, Geas): a card too, but the engine did its part, so the caster does not wait. Only a spell known
+// to leave the DM nothing once the engine applied it (NO_DM_WORK) makes none: the notes for what it left out say so themselves.
+// `waits` marks a note for which the engine applied none of the spell: its caster is told it waits for the DM.
 export function noteManual(s, ev) {
-  if (ev.standing === 'assist') return;
+  if (ev.standing === 'assist' && NO_DM_WORK.has(ev.spell)) return;
   const t = list(s);
   const actor = typeof ev.actor === 'string' && s.entities[ev.actor] ? ev.actor : null;
-  const name = String(ev.name ?? '').slice(0, 80), text = String(ev.text ?? '').slice(0, TEXT);
+  const name = String(ev.name ?? '').slice(0, 80), text = cut(String(ev.text ?? ''), TEXT);
   const waits = ev.waits === true || ev.partial !== true || ev.standing === 'manual';
   const i = t.cards.findIndex((c) => c.kind === 'manual' && c.actor === actor && c.name === name && c.text === text);
   if (i >= 0) {                                      // made again: it counts, and comes up as new (a new number, the clock now), so the DM sees it
     const [same] = t.cards.splice(i, 1);
-    t.cards.push({ ...same, n: ++t.n, t: Number.isFinite(s.clock) ? s.clock : 0, count: (same.count ?? 1) + 1 });
+    t.cards.push({ ...same, up: ++t.n, t: Number.isFinite(s.clock) ? s.clock : 0, count: (same.count ?? 1) + 1 });
     return;
   }
-  t.cards.push({ n: ++t.n, t: Number.isFinite(s.clock) ? s.clock : 0, kind: 'manual', actor, name, text, ids: namedIn(s, text, actor), ...(ev.partial ? { partial: true } : {}), ...(waits ? { waits: true } : {}) });
+  const n = ++t.n;
+  t.cards.push({ n, up: n, t: Number.isFinite(s.clock) ? s.clock : 0, kind: 'manual', actor, name, text, ids: namedIn(s, text, actor), ...(ev.partial ? { partial: true } : {}), ...(waits ? { waits: true } : {}) });
   keep(t);
 }
 
@@ -87,7 +95,8 @@ export function noteRuns(s, e, why) {
   if ((t.ran[e.id] ?? 0) >= stage) return;
   t.ran[e.id] = stage;
   t.cards = t.cards.filter((c) => !(c.kind === 'run' && c.actor === e.id));
-  t.cards.push({ n: ++t.n, t: Number.isFinite(s.clock) ? s.clock : 0, kind: 'run', actor: e.id, name: String(e.name).slice(0, 60), runs, why });
+  const n = ++t.n;
+  t.cards.push({ n, up: n, t: Number.isFinite(s.clock) ? s.clock : 0, kind: 'run', actor: e.id, name: String(e.name).slice(0, 60), runs, why });
   keep(t);
 }
 

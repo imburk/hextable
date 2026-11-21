@@ -196,6 +196,39 @@ test("a note made again comes up as new and counts; its text is capped", () => {
   const c = cards(s);
   assert.equal(c.length, 1);
   assert.equal(c[0].count, 2);
-  assert.equal(c[0].n, 2, "a new number");
-  assert.ok(c[0].text.length <= 500);
+  assert.equal(c[0].n, 1, "its identity stays, so Done on it works");
+  assert.equal(c[0].up, 2, "it comes up as new");
+  assert.equal(c[0].text.length, 700);
+  assert.ok(c[0].text.endsWith("…"), "cut text says so");
+  ok(apply(s, { type: "todoDone", n: 1 }, DM));
+  assert.deepEqual(cards(s), []);
+});
+
+function caster(spells) {
+  const s = field();
+  const sheet = { name: "Wyn", class: "wizard", level: 5, abilities: { ...A, int: 18 }, skills: ["arcana", "history"], spells };
+  const e = makeEntity(derive(sheet).record, { id: "wyn", kind: "pc", side: "party", owner: "pat", ownerName: "Pat", pos: { q: 3, r: 3, z: 0 } });
+  e.sheet = structuredClone(sheet);
+  s.entities.wyn = e;
+  return s;
+}
+
+test("an assist spell with work left for the DM and no manual step (Haste, Hold Person) makes a card, and its caster does not wait; Mage Armor and Light make none", () => {
+  const h = caster(["haste", "mage-armor", "light"]);
+  ok(apply(h, { type: "cast", actor: "wyn", spell: "haste", targets: ["wyn"] }, DM));
+  const hc = cards(h).filter((c) => c.name === "Haste");
+  assert.equal(hc.length, 1, "Haste leaves the lethargy to the DM");
+  assert.ok(!hc[0].waits);
+  assert.deepEqual(view(h, PAT).waiting, []);
+  const p = caster(["hold-person"]);
+  ok(apply(p, { type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 3 } }, DM));
+  const g = Object.values(p.entities).find((e) => e.side === "foe").id;
+  ok(apply(p, { type: "startEncounter", center: { q: 4, r: 3 }, radius: 8 }, DM));
+  for (let i = 0; i < 12 && p.encounter.order[p.encounter.turn].id !== "wyn"; i++) ok(apply(p, { type: "endTurn", actor: p.encounter.order[p.encounter.turn].id }, DM));
+  ok(apply(p, { type: "cast", actor: "wyn", spell: "hold-person", target: g }, DM));
+  assert.ok(cards(p).some((c) => c.name === "Hold Person"), "Hold Person");
+  const m = caster(["mage-armor", "light"]);
+  ok(apply(m, { type: "cast", actor: "wyn", spell: "mage-armor", targets: ["wyn"] }, DM));
+  ok(apply(m, { type: "cast", actor: "wyn", spell: "light", target: "wyn" }, DM));
+  assert.deepEqual(cards(m), [], "applied whole, nothing for the DM");
 });

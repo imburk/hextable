@@ -43,7 +43,8 @@ export function initTodo({ mount, state, isDM, act, toast, place, waitLine = nul
 
   function card(c) {
     const s = S();
-    const ids = [...new Set([c.actor, ...(c.ids ?? [])])].filter((id) => typeof id === 'string' && s.entities[id]).slice(0, 4);
+    // The creatures the words name come first, the actor last: the tool for the target sits under the note, not under the caster.
+    const named = (c.ids ?? []).filter((id) => id !== c.actor), ids = [...new Set([...named.slice(0, 3), c.actor, ...named.slice(3)])].filter((id) => typeof id === 'string' && s.entities[id]).slice(0, 4);
     const head = c.kind === 'run'
       ? `<b>You run: ${c.runs.map((r) => esc(r.name)).join(', ')}</b><span class="todo-who">${esc(c.name)}${c.why === 'turn' ? ' · its turn' : ' · added'}</span>`
       : `<b>${esc(c.name || 'A note for you')}</b>${c.actor && s.entities[c.actor] ? `<span class="todo-who">${esc(s.entities[c.actor].name)}</span>` : ''}${c.count > 1 ? `<span class="todo-count">×${c.count}</span>` : ''}`;
@@ -57,10 +58,10 @@ export function initTodo({ mount, state, isDM, act, toast, place, waitLine = nul
     if (!mount) return;
     const s = S(), cards = isDM() && s ? open() : [];
     // What was told of before: nothing on the first look at a table (a reload finds its cards waiting; it need not shout), then each new card once.
-    const top = cards.reduce((m, c) => Math.max(m, c.n), 0);
+    const top = cards.reduce((m, c) => Math.max(m, c.up ?? c.n), 0);
     if (seen === null) seen = top;
     else if (top > seen) {
-      const fresh = cards.filter((c) => c.n > seen);
+      const fresh = cards.filter((c) => (c.up ?? c.n) > seen);
       seen = top;
       if (fresh.length && document.body.classList.contains('drawer-open') === false) toast(fresh.length === 1 ? `To do: ${fresh[0].kind === 'run' ? `you run ${fresh[0].name}'s abilities` : fresh[0].name || 'a note'}` : `${fresh.length} new things to do`, true);
     }

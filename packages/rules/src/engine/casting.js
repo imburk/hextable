@@ -683,7 +683,7 @@ function castSpell(s, a, ctx, ev, item) {
     // Whatever the engine did not do, it says, so nothing is quietly skipped.
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
-    if (sp.def.tier !== 'auto' && !toldAlready) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier });
+    if (sp.def.tier !== 'auto' && !toldAlready) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
     if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);
     if (fx?.bound) settle(s, ev, fx, targets);
     else if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);
