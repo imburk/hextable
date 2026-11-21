@@ -279,7 +279,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   // A table that rolls its Hit Points (docs: settings hpMethod, #638): the numbers count the rolls the character has; the levels still to roll are the game's to roll when the sheet is saved.
   const rolledTable = () => inGame() && getState()?.settings?.hpMethod === 'rolled';
   const safeDerive = (s) => { try { return derive(s, rolledTable() ? { hp: 'rolled' } : {}); } catch { return null; } };
-  const unrolled = (e) => { const d = e?.sheet ? safeDerive(e.sheet) : null; return !!d && d.why.hp.some((x) => /not rolled yet/.test(x)); };
+  const unrolled = (e) => { const d = e?.sheet ? safeDerive(e.sheet) : null; return !!d && d.unrolledHp > 0; };
 
   // ---------- the draft (start flow only): what is filled in is kept in this browser, so Back never loses it ----------
   const snapshot = () => { const { c, ...rest } = b; void c; return JSON.stringify(rest); };
@@ -348,9 +348,10 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   const rollsPending = () => mode === 'edit' && unrolled(getState()?.entities[target?.id]);
   const hpShown = () => rolledTable() && (mode === 'levelup' || (mode === 'add' && b.level > 1) || rollsPending());
   function hpSection(c) {
-    const sec = el('section', { class: 'qb-hp' }), what = mode === 'levelup' ? 'the level you gain' : mode === 'add' ? `each of the ${b.level - 1} levels after the first` : 'each level not rolled yet';
+    const sec = el('section', { class: 'qb-hp' }), what = mode === 'levelup' ? 'the level you gain' : mode === 'add' ? 'each level after the first' : 'each level not rolled';
+    const older = mode === 'levelup' ? (safeDerive(getState()?.entities[target?.id]?.sheet)?.unrolledHp ?? 0) : 0;      // earlier levels of this character still not rolled
     sec.append(pickRow({ id: 'qb-hp-roll', kind: 'none', title: 'Roll hit points', chips: [chip('when', mode === 'edit' ? 'tap Roll hit points' : 'when you save')],
-      summary: `The game rolls a d${c.hitDie} for ${what}, plus Constitution.`, also: 'Level 1 is the highest number of the die. The log shows every die.',
+      summary: `A d${c.hitDie} + Con for ${what}.`, also: `The game rolls it and the log shows every die. Level 1 is the die's highest number.${older ? ` ${older} earlier level${older === 1 ? ' is' : 's are'} not rolled yet and count the fixed value.` : ''}`,
       info: { title: 'Rolled hit points', sub: `d${c.hitDie} + Constitution, at least 1 a level`, text: [SETTING_TEXT.hpMethod.rolled, SETTING_TEXT.hpRollLow[getState()?.settings?.hpRollLow ?? 'keep'], 'Until a level is rolled, the numbers beside this screen count the fixed value for it.'] } }));
     return sec;
   }
@@ -804,6 +805,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     if (!was || !now) return box;
     box.append(el('h3', { text: `Level ${was.level} to ${now.level}` }));
     const lines = [rolledTable() ? `Hit Points: roll a d${limits().c.hitDie} and add Constitution when you level up (the fixed value would make it ${was.hp} to ${now.hp})` : `Hit Points ${was.hp} to ${now.hp} (${signed(now.hp - was.hp)})`];
+    const older = rolledTable() ? (safeDerive(getState()?.entities[target?.id]?.sheet)?.unrolledHp ?? 0) : 0;
+    if (older) lines.push(`${older} earlier level${older === 1 ? ' has' : 's have'} not been rolled yet and count${older === 1 ? 's' : ''} the fixed value`);
     if (now.prof !== was.prof) lines.push(`Proficiency Bonus ${signed(was.prof)} to ${signed(now.prof)}`);
     if (now.ac !== was.ac) lines.push(`Armor Class ${was.ac} to ${now.ac}`);
     const wasSlots = JSON.stringify(was.slots ?? {}), nowSlots = JSON.stringify(now.slots ?? {});
@@ -876,6 +879,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     for (const p of problems) refs.problems.append(el('li', { text: p }));
     refs.problems.hidden = problems.length === 0;
     refs.save.disabled = problems.length > 0 || !!pending;
+    if (refs.rollHp) refs.rollHp.disabled = !!pending;      // a refused roll (a fight, a form, a table that went back to fixed) leaves neither button dead
     const nd = needs(limits());
     refs.why.textContent = problems.length ? (nd.length ? `Save is greyed. To choose: ${nd.map((x) => x.t).join(', ')}.` : 'Save is greyed. See below.') : '';
     refs.why.hidden = !problems.length; refs.why.classList.toggle('has-needs', nd.length > 0);

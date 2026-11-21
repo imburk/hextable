@@ -325,3 +325,11 @@ test("trimRolls only cuts: classes and levels the sheet no longer has; a build s
   assert.equal(trimRolls({ name: "x" }, []).hpRolls, undefined);
   assert.match(validate({ ...sh, level: 3 }).join("|"), /does not have|one entry/, "validate itself still refuses what was not cut");
 });
+
+test("derive counts the levels still to roll (unrolledHp): 0 at a fixed table, the nulls and missing entries at a rolled one", () => {
+  const sh = fighter(4, { hpRolls: { fighter: [5, null] } });
+  assert.equal(derive(sh).unrolledHp, 0);
+  assert.equal(derive(sh, { hp: "rolled" }).unrolledHp, 2);
+  assert.equal(derive(fighter(4, { hpRolls: { fighter: [5, 6, 7] } }), { hp: "rolled" }).unrolledHp, 0);
+  assert.equal(derive(fighter(1), { hp: "rolled" }).unrolledHp, 0);
+});

@@ -381,11 +381,13 @@ export function derive(sheet, opts = {}) {
   const con = mod(abil.con);
   let hp = 0;
   why.hp = [];
+  let unrolledHp = 0;                              // levels a rolled table has still to roll (0 at a fixed table)
   const rolled = opts?.hp === 'rolled';            // the table rolls its Hit Points (hitpoints.js): the sheet's rolls count, a level not rolled yet counts the fixed value
   ks.forEach((k, i) => {
     const fixed = fixedOf(k.c.hitDie), n = levelsOwed(k.level, i === 0), rolls = rolled ? rollsFor(sheet, k.c.id, n) : [];
     if (i === 0) { hp += Math.max(1, k.c.hitDie + con); why.hp.push(`${k.c.hitDie} at level 1`); }
     const got = rolls.filter((v) => v !== null), unrolled = n - got.length;
+    if (rolled) unrolledHp += unrolled;
     for (const v of got) hp += Math.max(1, v + con);
     hp += unrolled * Math.max(1, fixed + con);
     if (got.length) why.hp.push(`Rolled${multi ? ` for ${k.c.name}` : ''}: ${got.join(', ')} (d${k.c.hitDie})`);
@@ -717,7 +719,7 @@ export function derive(sheet, opts = {}) {
     why.species = [`${sp.name}${lin ? ` (${sp.lineage.name}: ${lin.name})` : ''}`, `${nice(record.size)}, Speed ${sp.speed} ft`,
       ...(sp.type !== 'humanoid' ? [`Creature type: ${nice(sp.type)}`] : []), ...(ab ? [`Spellcasting ability for its spells: ${ABILITY_NAMES[ab]}`] : [])];
   } else if (spGone.length) why.species = [`Species "${spGone[0].id.slice(0, 60)}": its entry is not loaded at this table, so it gives no traits.`];
-  return { record, why, missing: [...missingOf(sheet), ...spGone] };
+  return { record, why, unrolledHp, missing: [...missingOf(sheet), ...spGone] };
 }
 
 // ---------- what is wrong with a sheet ----------

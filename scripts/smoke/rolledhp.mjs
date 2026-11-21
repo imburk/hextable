@@ -1,4 +1,4 @@
-import { scenario, wait, open, playSolo, closePanels, waitShown, openTab } from './lib.mjs';
+import { scenario, wait, open, playSolo, closePanels, waitShown, openTab, fighterBasics } from './lib.mjs';
 
 // ---------- rolled Hit Points (#638): level up a fighter at a table that rolls them, at both sizes ----------
 // The DM's setting is a select of its own (full width, 44 px at least); the level-up screen says the game rolls and its button says so; one tap rolls the new
@@ -41,6 +41,8 @@ async function pass(browser, url, label, opts, touch) {
         if (!(await page.isVisible('#qb-hp-roll .ibtn'))) throw new Error('no i button for the rule');
         const small = await page.$$eval('#qb-hp-roll .ibtn, #qb-save', (es) => es.some((e) => e.getBoundingClientRect().height < 30));
         if (small) throw new Error('a control is too small to tap');
+        const clipped = await page.$eval('#qb-hp-roll .l2.one', (e) => e.scrollWidth > e.clientWidth + 1);      // the summary is one line with an ellipsis: it must fit
+        if (clipped) throw new Error(`the row's summary is clipped: "${await page.$eval('#qb-hp-roll .l2.one', (e) => e.textContent)}"`);
         await shot(page, `rolledhp-${touch ? 'phone' : 'desktop'}-2-levelup`);
       });
       await run.do('one tap rolls the level: the sheet keeps the roll, the Hit Points follow, the log shows the die', async () => {
@@ -55,6 +57,62 @@ async function pass(browser, url, label, opts, touch) {
         const line = await page.evaluate(() => { const e = window.hextable.state.timeline.find((x) => x.type === 'hpRolled'); return window.hextable.describe(e); });
         if (!/^Rolla rolls Hit Points: Fighter 2: \d+ of d10 = \d+\. \+\d+ in all\.$/.test(line ?? '')) throw new Error(`the log says "${line}"`);
         await shot(page, `rolledhp-${touch ? 'phone' : 'desktop'}-3-rolled`);
+      });
+
+      const toastText = () => page.evaluate(() => document.getElementById('toast')?.textContent ?? '');
+      const hpIds = () => page.evaluate(() => Object.values(window.hextable.state.entities).filter((e) => e.sheet?.name === 'Pending').map((e) => e.id));
+      await run.do('edit: a character with levels not rolled yet gets Roll hit points; a refused roll leaves the button alive; a roll goes through and closes the screen', async () => {
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await page.selectOption('#dm-hp-method', 'fixed'); await wait(page, () => window.hextable.state.settings.hpMethod === 'fixed');
+        await page.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet: { ...sheet, name: 'Pending', level: 3, subclass: 'champion' } }), SHEET);
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.sheet?.name === 'Pending'));
+        const [pid] = await hpIds();
+        await page.selectOption('#dm-hp-method', 'rolled'); await wait(page, () => window.hextable.state.settings.hpMethod === 'rolled');
+        await page.evaluate((i) => window.hextable.select(i), pid);
+        await tap('#qe-edit'); await waitShown(page, '#qb');
+        await waitShown(page, '#qb-roll-hp');
+        const save = await page.$eval('#qb-save', (e) => e.textContent);
+        if (save !== 'Save changes') throw new Error(`the edit button says "${save}"`);
+        // The table goes back to fixed under the open screen: the engine refuses the roll, and the buttons must not stay dead.
+        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'hpMethod', value: 'fixed' }));
+        await tap('#qb-roll-hp');
+        await wait(page, () => !document.getElementById('qb-roll-hp')?.disabled && !document.getElementById('qb-save')?.disabled, null, 9000).catch(() => { throw new Error('the Roll hit points or Save button stayed disabled after a refused roll'); });
+        if (await page.evaluate((i) => !!window.hextable.state.entities[i].sheet.hpRolls, pid)) throw new Error('a refused roll wrote rolls');
+        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'hpMethod', value: 'rolled' }));
+        await wait(page, () => window.hextable.state.settings.hpMethod === 'rolled');
+        await tap('#qb-roll-hp');
+        await wait(page, (i) => window.hextable.state.entities[i].sheet.hpRolls?.fighter?.length === 2, pid);
+        await wait(page, () => document.getElementById('qb')?.hidden !== false, null, 6000).catch(() => { throw new Error('the screen did not close after the roll'); });
+      });
+      await run.do('add above level 1 at a rolled table: the label says so, the Hit points section is there, and saving rolls every level after the first', async () => {
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await tap('#qb-add'); await waitShown(page, '#qb');
+        await page.fill('#qb-name', 'Added'); await page.selectOption('#qb-class', 'fighter'); await page.selectOption('#qb-levelsel', '3'); await fighterBasics(page);
+        await wait(page, () => document.querySelector('#qb-save') && !document.querySelector('#qb-save').disabled && document.querySelectorAll('#qb-problems li').length === 0).catch(async () => { throw new Error(`Save is not ready: ${await page.evaluate(() => [...document.querySelectorAll('#qb-problems li, #qb-save-why')].map((e) => e.textContent).join(' | '))}`); });
+        const save = await page.$eval('#qb-save', (e) => e.textContent);
+        if (save !== 'Roll hit points and add to the table') throw new Error(`the add button says "${save}"`);
+        if (!(await page.$('#qb-acc-bar-hp'))) throw new Error('no Hit points section when adding above level 1');
+        await tap('#qb-save');
+        await wait(page, () => /Hit points rolled: \d+, \d+/.test(document.getElementById('toast')?.textContent ?? ''), null, 6000).catch(async () => { throw new Error(`the toast says "${await toastText()}"`); });
+        const r = await page.evaluate(() => { const e = Object.values(window.hextable.state.entities).find((x) => x.sheet?.name === 'Added'); return e && e.sheet.hpRolls.fighter.length; });
+        if (r !== 2) throw new Error(`the new character has ${r} rolls`);
+      });
+      await run.do('a fixed table: no Hit points section, the plain labels, no roll button', async () => {
+        await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
+        await page.selectOption('#dm-hp-method', 'fixed'); await wait(page, () => window.hextable.state.settings.hpMethod === 'fixed');
+        if (await page.isVisible('#dm-hp-low')) throw new Error('the low-roll choice is shown at a fixed table');
+        await tap('#qb-add'); await waitShown(page, '#qb');
+        await page.selectOption('#qb-levelsel', '3');
+        if (await page.$('#qb-acc-bar-hp') || await page.$('#qb-roll-hp')) throw new Error('a Hit points section or roll button at a fixed table');
+        const add = await page.$eval('#qb-save', (e) => e.textContent);
+        if (add !== 'Add to the table') throw new Error(`the add button says "${add}"`);
+        await tap('#qb-cancel');
+        await page.evaluate(() => { const e = Object.values(window.hextable.state.entities).find((x) => x.sheet?.name === 'Added'); window.hextable.select(e.id); });
+        await tap('#qb-levelup'); await waitShown(page, '#qb');
+        const up = await page.$eval('#qb-save', (e) => e.textContent);
+        if (up !== 'Level up to 4') throw new Error(`the level-up button says "${up}"`);
+        if (await page.$('#qb-acc-bar-hp')) throw new Error('a Hit points section on a fixed level-up');
+        await tap('#qb-cancel');
       });
     } finally { await ctx.close(); }
   });
