@@ -17,6 +17,7 @@ import { holdWords, heldEndText, noteText, previewState, targetRefusals } from '
 import { slotMenu, slotFor } from './upcast.js';
 import { inReach, aimFeet, reachEdge, farWords } from './aimrange.js';
 import { offerOf, offers, waitingFor, reachOf, moveLabel, forgoLabel, offerWords, waitWords, giveUpLabel } from './allowance.js';
+import { initSpawnFind } from './spawnfind.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
@@ -978,7 +979,7 @@ R.onTap = ({ hex, id }) => {
   const inZone = [...new Set(R.zonesAt(hex))];
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
   if (CP.tap(mode, hex, id)) return;
-  if (mode.kind === 'spawn') return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked });
+  if (mode.kind === 'spawn') { FIND.note(mode.monster); return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked }); }
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
   if (mode.kind === 'encounter') { act({ type: 'startEncounter', center: hex }); return setMode(MOVE); }
   if (mode.kind === 'follow') {
@@ -1194,13 +1195,9 @@ $('dm-new').onclick = newWorld;
 $('menu-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.
-function buildSpawn() {
-  $('dm-spawn').replaceChildren(...Object.entries(MONSTERS).map(([id, m]) => {
-    const b = document.createElement('button'); b.type = 'button'; b.textContent = `Add ${m.name}`; b.dataset.monster = id;
-    b.onclick = () => { closeDM(); setMode({ kind: 'spawn', monster: id }); };
-    return b;
-  }));
-}
+// A search box, a CR filter and a "recent" row sit above the buttons (spawnfind.js, #673); the recent list is kept per table on this device.
+const FIND = initSpawnFind({ list: $('dm-spawn'), store: prefs, key: () => `hextable.recent.monsters.${T?.you?.code ?? 'solo'}`, pick: (id) => { closeDM(); setMode({ kind: 'spawn', monster: id }); } });
+function buildSpawn() { FIND.set(Object.entries(MONSTERS), CONTENT.monsters); }
 buildSpawn();
 for (const b of document.querySelectorAll('[data-time]')) b.onclick = () => act({ type: 'advanceTime', minutes: +b.dataset.time });
 $('dm-chron').onsubmit = (ev) => { ev.preventDefault(); const t = $('chron-title').value.trim(); if (t) { act({ type: 'chronicle', title: t }); $('chron-title').value = ''; } };
