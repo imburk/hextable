@@ -138,7 +138,7 @@ async function player(browser, url) {
       });
       await run.do('the phone card says the character can reach level 2 and why the button is off, in text; nothing is cut off', async () => {
         const mine = await phone.evaluate((i) => window.hextable.state.entities[i].name, id);
-        const text = await phone.textContent('#cc .lu');
+        const text = await phone.textContent(`#cc .lu[data-lu="${id}"]`);
         if (!new RegExp(`${mine} can reach level 2\\.`).test(text)) throw new Error(`the line says "${text}"`);
         const live = await phone.$$eval('#cc .lu-go', (b) => b.filter((x) => !x.disabled).length);
         if (live) throw new Error(`${live} live Level up buttons for a player`);
