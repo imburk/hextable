@@ -235,13 +235,20 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (!path.length) return false;
     const left = path.at(-1), row = $(left in TABS ? TABS[left].button : LISTS[left]?.button);
     go(path.slice(0, -1), { focus: null });
-    (row && !row.hidden && row.getClientRects().length ? row : title).focus({ preventScroll: true });
+    (row && !row.hidden && row.getClientRects().length && getComputedStyle(row).visibility !== 'hidden' ? row : title).focus({ preventScroll: true });
     return true;
   }
 
+  // ---- a level that has more below its fold fades at the bottom ----
+  const fade = (lv) => lv.classList.toggle('more', lv.getClientRects().length > 0 && lv.scrollTop + lv.clientHeight < lv.scrollHeight - 4);
+  const fadeAll = () => { for (const lv of el.querySelectorAll('.menu-level')) fade(lv); };
+  for (const lv of el.querySelectorAll('.menu-level')) lv.addEventListener('scroll', () => fade(lv), { passive: true });
+  addEventListener('resize', fadeAll);
+  new MutationObserver(() => requestAnimationFrame(fadeAll)).observe(el, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+
   // ---- rows and the way back ----
   el.addEventListener('click', (ev) => {
-    const row = ev.target.closest('[data-go]');
+    const row = ev.target.closest('.menu-row[data-go]');
     if (row && el.contains(row)) { const k = row.dataset.go; go(row.closest('#menu-table') ? ['table', k] : [k]); return; }
     const crumb = ev.target.closest('#crumb-list [data-path]');
     if (crumb) go(crumb.dataset.path ? crumb.dataset.path.split('/') : []);
@@ -273,6 +280,10 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (isOpen && !held && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && el.contains(ev.target)) {
       const row = ev.target.closest?.('.menu-row');
       const mine = (row || ev.target === title || !pinned());     // a pinned menu leaves the arrow keys to the map unless a row has the focus
+      if (mine && !row && ev.target === title && path.length === 0 && /^(ArrowDown|Home)$/.test(ev.key)) {      // the heading at the root: Down or Home reaches the first row
+        const first = [...rootList.querySelectorAll('.menu-row')].find((b) => !b.hidden && b.getClientRects().length);
+        if (first) { ev.preventDefault(); ev.stopImmediatePropagation(); first.focus({ preventScroll: true }); return; }
+      }
       if (mine && row && /^(ArrowUp|ArrowDown|Home|End)$/.test(ev.key)) {
         const rows = [...row.closest('ul').querySelectorAll('.menu-row')].filter((b) => !b.hidden);
         const i = rows.indexOf(row), next = ev.key === 'Home' ? rows[0] : ev.key === 'End' ? rows.at(-1) : rows[Math.max(0, Math.min(rows.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))];
@@ -280,6 +291,8 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       }
       if (mine && row && ev.key === 'ArrowRight') { ev.preventDefault(); ev.stopImmediatePropagation(); row.click(); return; }
       if (mine && (ev.key === 'ArrowLeft' || ev.key === 'Backspace') && path.length) { ev.preventDefault(); ev.stopImmediatePropagation(); back(); return; }
+      // At the root there is no back, but the key must not reach the game (ArrowLeft walks the party or turns the camera behind the menu).
+      if (!pinned() && !path.length && (ev.key === 'ArrowLeft' || ev.key === 'Backspace')) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
     }
     if (!typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && ev.key.toLowerCase() === 'm' && $('lobby').hidden) { ev.preventDefault(); toggle(); }
   }, true);

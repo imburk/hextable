@@ -127,22 +127,22 @@
     </div>
   </nav>
 <div id="drawer-body" class="menu-level">
-    <section id="tracker" class="tabpanel" role="tabpanel" aria-labelledby="tab-turns" hidden></section>
-    <section id="sheet" class="tabpanel" role="tabpanel" aria-labelledby="tab-sheet" hidden><div id="sheet-body"></div></section>
-    <section id="log" class="tabpanel" role="tabpanel" aria-labelledby="tab-log" hidden>
+    <section id="tracker" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden></section>
+    <section id="sheet" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden><div id="sheet-body"></div></section>
+    <section id="log" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
       <button type="button" id="log-rewards" hidden>Show the last rewards</button>
       <ol id="log-list"></ol>
       <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
     </section>
-    <section id="handouts" class="tabpanel" role="tabpanel" aria-labelledby="btn-handouts" hidden><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
-    <section id="dicepanel" class="tabpanel" role="tabpanel" aria-labelledby="tab-dice" hidden>
+    <section id="handouts" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
+    <section id="dicepanel" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
       <section><h3>Dice and animation, on this device</h3>
         <label class="assign">Dice <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label>
         <label class="assign">Animation <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label>
         <label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label>
       </section>
     </section>
-    <section id="dm" class="tabpanel" role="tabpanel" aria-labelledby="tab-dm" hidden>
+    <section id="dm" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
   <section id="todo-mount" aria-label="To do" hidden></section>
   <div id="dm-table"></div>
   <section><h3>Take back</h3>
@@ -229,7 +229,7 @@
   </section>
   <section id="dm-solo" hidden><h3>Solo game</h3><div class="row"><button type="button" id="dm-new">Start a new world</button></div></section>
 </section>
-    <section id="settings" class="tabpanel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+    <section id="settings" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
       <section><h3>Look</h3>
         <label class="assign">Theme <select id="set-theme"></select></label>
         <label class="assign">Floors <select id="set-floors"><option value="rooms">Rooms, with a faint grid</option><option value="hex" id="set-floors-each">Each hex on its own</option></select></label>
@@ -256,7 +256,7 @@
         <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave</button></div>
       </section>
     </section>
-    <section id="about" class="tabpanel" role="tabpanel" aria-labelledby="tab-about" hidden></section>
+    <section id="about" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden></section>
   </div>
   </div>
   <div id="drawer-live" class="sr-only" role="status" aria-live="polite"></div>

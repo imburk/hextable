@@ -144,6 +144,15 @@ async function drawerPass(browser, url, label, opts) {
         if ((await at()) !== 'tab-table') throw new Error(`Left left the focus on ${await at()}`);
         await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path === 'table');
         await page.keyboard.press('Backspace'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
+        // At the root there is no back, and the key must not reach the game (it would walk the party or turn the camera).
+        await page.evaluate(() => { window.__leaked = []; addEventListener('keydown', (e) => window.__leaked.push(e.key)); });
+        await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Backspace');
+        if ((await page.evaluate(() => window.__leaked.length)) !== 0) throw new Error('ArrowLeft or Backspace at the root reached the game');
+        // The heading: Down or Home reaches the first row.
+        await page.focus('#drawer-title'); await page.keyboard.press('ArrowDown');
+        if ((await at()) !== 'tab-sheet') throw new Error(`ArrowDown from the heading reached ${await at()}`);
+        await page.focus('#drawer-title'); await page.keyboard.press('Home');
+        if ((await at()) !== 'tab-sheet') throw new Error(`Home from the heading reached ${await at()}`);
         await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown');
         await openMenu(page, 'table/about'); await page.focus('#drawer-title');
         await page.keyboard.press('Escape'); await waitShown(page, '#drawer', false);
@@ -413,6 +422,7 @@ async function drawerLandscape(browser, url) {
         const t = await boxOf('#btn-menu');
         if (t.t < 0 || t.b > 390) throw new Error(`the token is off the screen: ${JSON.stringify(t)}`);
       });
+      if (process.env.SMOKE_SHOTS) { await openMenu(page, ''); await sleep(1200); await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-root-landscape.png` }).catch(() => {}); await closeMenu(page); }
       await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-landscape.png` : '/dev/null' }).catch(() => {});
     } finally { await ctx.close(); }
   });

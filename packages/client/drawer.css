@@ -59,9 +59,10 @@ body.drawer-pretable #drawer-scrim { bottom: 0; }
 
 #menu-levels { flex: 1; min-height: 0; position: relative; display: flex; }
 .menu-level { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--panel-solid, var(--panel)); }
+.menu-level.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent); }   /* more below: the last rows fade out, which says to scroll */
 .menu-list { list-style: none; margin: 0; padding: 12px 14px; display: grid; gap: 8px; }
 .menu-gap { margin-top: 10px; }
-.menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 8px 14px; text-align: left; background: var(--panel-2); }
+.menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 14px; text-align: left; background: var(--panel-2); }
 .menu-row[aria-current="true"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
 .mr-name { font-weight: 700; font-size: 16px; white-space: nowrap; }
 .mr-sum { flex: 1; min-width: 0; text-align: right; color: var(--muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
