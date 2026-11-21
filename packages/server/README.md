@@ -11,6 +11,10 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 | `PORT` | `8080` | Port to listen on (`0`: any free port, printed at start) |
 | `DATA_DIR` | `./data` | Where tables are saved, one JSON file each |
 | `JOURNAL` / `JOURNAL_FILE_BYTES` / `JOURNAL_FILES` / `JOURNAL_TOTAL_BYTES` | on / `5242880` / `5` / `524288000` | The action journal (below): `JOURNAL=off` turns it off; a file (its snapshot counted in) is closed at this many bytes; this many files are kept per table; the cap on all journals on the server (500 MB) |
+| `IDLE_EVICT_MINUTES` | `30` | A table with nobody connected for this long is saved and dropped from memory; the next join or resume loads it from its save. `0`: never |
+| `ARCHIVE_DAYS` | `90` | A table untouched for this long moves, with its journals and files, to `DATA_DIR/archive/<code>/`; joining its code brings it back. `0`: never |
+| `BACKUP_DIR` | none | Where the nightly backup goes. Unset: no backups (see "Backups") |
+| `BACKUP_KEEP` / `BACKUP_HOUR` / `BACKUP_ARCHIVE` / `BACKUP_ARCHIVE_MAX_MB` | `7` / `3` / `auto` / `500` | Backups kept; the hour (UTC) after which tonight's is made; whether `archive/` is copied (`yes`, `no`, or `auto`: only if it is under the size given) |
 | `TIMELINE_CAP` | `5000` | Timeline entries a table keeps besides chronicle entries (see below) |
 | `TRUST_PROXY` | `0` | Proxies in front of the server that append to `x-forwarded-for`. `0`: use the socket's address and ignore the header (see Address below) |
 | `CLIENT_IP_HEADER` | none | A header the platform sets itself and overwrites, such as `x-real-ip`; read instead of `x-forwarded-for` when `TRUST_PROXY` is above 0 |
@@ -50,6 +54,8 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
   one (`docs/specs/sight.md`). Under the `sight` table rules `los` and `light` a player's view also
   carries `sight: { rule, now, light? }`, the tiles the party sees now and the light on them.
 - `src/journal.js` — the per-table action journal (see "The action journal" below). Async, guarded, no dependencies; `scripts/replay.mjs` replays it.
+- `src/store.js` — the table saves as files: the index read at start (names and timestamps only), reading one save, and moving a table to `archive/` and back. No deletes.
+- `src/backup.js` — the dated folder copy of `DATA_DIR` and its rotation; `scripts/backup.mjs` runs it by hand.
 - `src/limits.js` — the per-address and per-connection limits, with an injectable clock.
 - `src/ws.js` — a minimal WebSocket implementation on Node's `http` and `crypto`.
 - `src/assets.js` — the store of table files on disk: type sniffing, ids, limits. No network code.
@@ -107,13 +113,55 @@ Per process, the server counts crashes and refusals in total and by action type 
 `GET /api/health` answers, with `cache-control: no-store`:
 
 ```json
-{"ok":true,"uptime":3600,"tables":{"loaded":12,"active":3},"connections":5,"crashes":0,"crashesByType":{},"build":"c1d5069"}
+{"ok":true,"uptime":3600,"tables":{"loaded":2,"saved":12,"archived":40,"active":3},"connections":5,"crashes":0,"crashesByType":{},"build":"c1d5069",
+ "proxy":{"trustProxy":true,"hops":1,"clientIpHeader":null,"address":"203.0.113.9","socketAddress":"100.64.0.2","sawForwardedFor":true,"note":"TRUST_PROXY is on and the address below was read from the proxy's header. If it is your own public address, it is set right."}}
 ```
 
-`uptime` is seconds since the process started; `tables` are the tables held in memory and those active in the last 30 days;
+`uptime` is seconds since the process started; `tables` are the tables held in memory (`loaded`), all saved ones (`saved`, loaded or not),
+those in `archive/` and those active in the last 30 days;
+`proxy` is about the one request that asked (#662): `address` is the visitor address the server uses for this caller's limits, `socketAddress`
+the address of whatever connected to it (the proxy, behind one), `trustProxy` whether `TRUST_PROXY` is above 0, `sawForwardedFor` whether the request
+carried an `x-forwarded-for` header (its value is not shown), and `note` says in one sentence what it means. Nothing about any other caller;
 `connections` are open WebSockets; `crashesByType` is the ten most frequent action types; `build` is the commit of `/build.json`
 (or `null`). There is nothing per table or per person in it. It is limited to 30 reads a minute per address
 (`LIMIT_HEALTH_MINUTE`); over that it answers 429.
+
+## Idle tables, lazy loading and the archive (#662)
+
+- **Lazy load.** At start the server does not read the saves. It lists them (code and the file's time) and keeps only that. A table is read the
+  first time its code is used: a join, a resume, or a request for one of its files. Joining a code the server does not hold, or whose save
+  cannot be read, answers "No table has that code" and leaves the file alone. `MAX_TABLES` counts the index as well as the tables in memory.
+- **Eviction.** Once a minute a sweep looks at the tables in memory. One with no connection at all (a player waiting to be let in counts as
+  connected) and nothing done for `IDLE_EVICT_MINUTES` is saved, its undo history is written, its journal file is ended with a `break` line
+  (`why: "evict"`), and it is dropped. If the save cannot be written the table stays in memory and is tried again next minute; with no way to
+  write it nothing is evicted. The game is single-threaded and none of this waits, so no message is handled between the save and the drop:
+  a join that arrives after reads the file just written, and a loaded table is counted as used, so it is not evicted again before anyone has sat down.
+  The journal then opens a new file from a snapshot of the reloaded state.
+- **Archive.** A table that is not in memory and whose save is `ARCHIVE_DAYS` old is moved by renaming: its save, undo history, journal files
+  and the folder of its files go to `DATA_DIR/archive/<code>/`, the save last. Joining or resuming that code moves it all back. A code in the
+  archive is never given to a new table. At most five are moved per sweep. If a move fails it is put back; if the server stopped in the middle,
+  the next start finishes putting it back. Nothing is deleted, and where a name is already taken at the other end the file is left where it is.
+  The age is the save's file time, which the server rewrites whenever a table is evicted or changes, so a copied or restored data folder starts the count again.
+
+## Backups (#662)
+
+Set `BACKUP_DIR` and the server makes a dated copy of `DATA_DIR` once a night, in a folder named `hextable-backup-YYYYMMDD-HHMMSS` (UTC),
+and keeps the newest `BACKUP_KEEP` (7). Once an hour-of-day (`BACKUP_HOUR`, default 3 UTC) has passed and there is no backup for today yet, the next
+check (every ten minutes) makes one, so a server that was down at night makes it up when it is back. It copies file by file without
+waiting for anything and never blocks a table. Each file in a copy is whole (saves are written whole); the copy is not one instant, which the server
+tolerates. It is a folder copy, not a tar.gz: a tar needs a program or a dependency the image does not have. Temporary files are left out. `archive/` is
+copied unless `BACKUP_ARCHIVE=no`, or `auto` (the default) and it is over `BACKUP_ARCHIVE_MAX_MB`. A backup is written under a name ending
+`.partial` and renamed when whole; the only things ever removed are older backups past the kept number, and only folders named like ours. `BACKUP_DIR`
+must not be `DATA_DIR` or a folder that holds it; if it is inside `DATA_DIR` it is left out of the copy.
+
+A backup is refused (and says why in the log) when the source is missing or empty, when `BACKUP_DIR` (compared by real path, so a symlink does not hide it) is
+`DATA_DIR` or holds it, or when the disk has less than the copy's size plus a fifth free. Rotation never removes an old backup if that would leave fewer
+than `BACKUP_KEEP` non-empty ones. After a failed night the server waits one hour, then two, four, up to six, before trying again, and does not retry every ten minutes. Stray
+`.partial` folders over an hour old are cleaned up. While a backup runs, no table is moved to the archive (a restore still can be: the copy skips what vanishes).
+A `BACKUP_DIR` on the same disk as `DATA_DIR` is allowed and the log says at start that it does not protect against losing the disk.
+
+By hand: `node scripts/backup.mjs --to /backups` (defaults `DATA_DIR`, `BACKUP_DIR`, `BACKUP_KEEP`, `BACKUP_ARCHIVE`; flags `--data`, `--to`, `--keep`, `--archive yes|no|auto`).
+It is in the image. A scheduler outside the server (a Railway cron service) can run the same command instead of the built-in nightly one.
 
 ## Protocol
 
@@ -678,6 +726,45 @@ starts as root and drops the same way. Never mount the volume anywhere but `DATA
 `DATA_DIR` to the mount path. After a deploy, the log should show `Hextable table server at ...` and no
 `entrypoint:` warning.
 
+### Steps for the owner (Railway, no engineering needed)
+
+**1. Check that the visitor addresses are right (`TRUST_PROXY`).** The game limits how much one visitor can do, by address. If the setting is wrong,
+every visitor looks like the same one and they share the limits.
+1. In Railway open your project, click the Hextable service, then **Variables**. Look for `TRUST_PROXY`.
+2. Open `https://<your site>/api/health` in a browser (your site is the address you use to play).
+3. Find `"proxy"`. Its `note` line tells you what to do. `address` should be your own public address (search "what is my IP" to compare).
+4. If the note says to set `TRUST_PROXY`, add the variable `TRUST_PROXY` with the value `1` in **Variables**, let Railway redeploy, and look again.
+   If `address` is still not yours, tell whoever helps you with the game; the section "Address" above explains the other setting.
+
+**2. Turn on Railway's own volume backups (recommended).** Railway allows one volume per service, so the tables' volume cannot be given a
+second volume for backups. Railway backs the volume up itself ([Railway docs: Volume Backups](https://docs.railway.com/volumes/backups)):
+1. Click the Hextable service, then **Settings**, then the **Backups** tab.
+2. Pick a schedule. Railway offers Daily (a backup every 24 hours, kept 6 days), Weekly (every 7 days, kept 27 days) and Monthly (every 30 days,
+   kept 89 days), and you can switch on more than one. Daily plus weekly is a good start. (Wording from the docs as read on 2026-11-21; Railway may change it.)
+3. To go back to one: in the same tab find the backup by its date and start the restore. Railway mounts a copy of that backup as a new volume
+   and shows the change on the project canvas; press **Deploy** to apply it. The old volume stays in the project, unmounted, until you remove it.
+   Backups live with the volume: wiping the volume deletes its backups too, and a backup can only be restored inside the same project and environment.
+
+**3. The server's own backup folder (`BACKUP_DIR`, optional).** The server can also copy its tables into a folder every night (see "Backups" above).
+On Railway that folder is on the same volume as the tables (there is only one), so it protects you from a table that was damaged or changed by mistake,
+but **not from losing the volume**: the folder goes with it. Only Railway's backups (step 2) do that. If you want it anyway:
+1. Add the variable `BACKUP_DIR` with the value `/data/backups` (a folder inside the volume; the server leaves it out of its own copies). Railway redeploys.
+2. The next night, look in the service **Logs** for a line starting `backup hextable-backup-`, or `Backup failed` and the reason. At start the log also says if
+   `BACKUP_DIR` is on the same disk as the tables.
+3. To download one, install the Railway command line (railway.com/docs/cli), run `railway login` and `railway link`, and register an SSH key with Railway (the
+   first `railway ssh` offers to do it; [Railway docs: SSH](https://docs.railway.com/cli/ssh)). Then use `scp`, which Railway's SSH supports, as in its docs:
+   `scp myapp.up.railway.app@ssh.railway.com:/data/backups/<folder>/<file> ./` for a file, or add `-r` for a folder (add `-s` on an OpenSSH older than 9.0).
+   The part before the `@` is your service's domain (`myapp.up.railway.app` here is a stand-in for yours), or the service instance id if it has no domain.
+   The simpler route is `railway volume browse` (Railway docs: Volumes), which lets you look through the volume's files from the command line.
+   If a step does not match what you see, stop and ask.
+4. `RAILWAY_RUN_UID` stays unset (see above); the image handles the volume's ownership itself.
+
+**Restoring from a `BACKUP_DIR` copy** (ask for help; do not try it alone). You cannot `railway ssh` into a stopped service, so the work is done on the running one
+and the new tables must not be mixed with the current ones. Outline: with the game closed to players, move everything now in `/data` (except the `backups` folder) into
+a new folder such as `/data/before-restore` rather than copying over it, check that the volume has room for the backup as well (`df -h /data`), then copy the chosen
+backup folder's contents into `/data`, and redeploy. The `before-restore` folder keeps the old tables until you are sure. If you have to do it a second time, leave
+`before-restore` where it is and use a new name (`before-restore-2`); never move a `before-restore` folder into another.
+
 ### How deploys are verified (review R1, #617)
 
 - **Before a merge.** The `Docker` workflow (`.github/workflows/docker.yml`) runs on every pull request and push to `main`. It builds the
@@ -690,7 +777,7 @@ starts as root and drops the same way. Never mount the volume anywhere but `DATA
   `main` and `/build.json` on Railway (`https://hextable-production.up.railway.app`) and GitHub Pages (`https://imburk.github.io/hextable`).
   When main's head is over 20 minutes old and a site reports another commit, it opens the issue **Live site is not the merged version**
   (or comments on the open one) with both shas, and closes it when they match again. `DRY_RUN=1 node scripts/ci/live-check.mjs` shows
-  what it would do. It checks the commit only: not `TRUST_PROXY` or the volume on the live service (DEBT T3b, T15).
+  what it would do. It checks the commit only: not the volume on the live service (DEBT T3b, T15). `TRUST_PROXY` is checked by hand through `/api/health` (see the owner's steps above).
 
 ## Known limits
 
