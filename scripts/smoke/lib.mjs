@@ -116,7 +116,13 @@ export const onCanvas = (page, x, y) => page.evaluate(([x0, y0]) => document.ele
 // The drawer holds every panel (docs/specs/table-ui.md, Decision 2): open it on a tab, close it.
 export const TAB_BUTTON = { handouts: '#btn-handouts' };
 // The drawer can be closing by itself (a fight starting closes it) when we look: then its close button is already gone, and what we want is that it ends hidden.
-export const closeMenu = async (page) => { if (await shown(page, '#drawer')) { await page.click('#drawer-close', { timeout: 3000 }).catch(() => {}); await waitShown(page, '#drawer', false); } };
+export const closeMenu = async (page) => {
+  for (let i = 0; i < 3 && (await shown(page, '#drawer')); i++) {
+    await page.click('#drawer-close', { timeout: 3000 }).catch(() => {});
+    await waitShown(page, '#drawer', false, 5000).catch(() => {});
+  }
+  await waitShown(page, '#drawer', false, 5000);
+};
 export const closePanels = closeMenu;
 export const openTab = async (page, tab) => {
   if (!(await shown(page, '#drawer'))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
