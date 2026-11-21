@@ -47,7 +47,7 @@ export function xpFact(e) {
   if (e?.kind !== 'pc' || typeof e.xp !== 'number') return '';
   return `<span>XP ${num(e.xp)}${e.level < 20 ? ` / ${num(xpFor(e.level + 1))}` : ''}</span>`;
 }
-export const xpToLevel = (e) => (typeof e?.xp !== 'number' ? '' : e.level < 20 ? `${num(e.xp)} / ${num(xpFor(e.level + 1))} to level ${e.level + 1}` : `${num(e.xp)} XP`);
+export const xpToLevel = (e) => (typeof e?.xp !== 'number' ? '' : e.level < 20 ? `${num(e.xp)} of ${num(xpFor(e.level + 1))} XP for level ${e.level + 1}` : `${num(e.xp)} XP`);
 // The engine's own helper says whether the XP has reached a level above the character's.
 export const readyToLevel = levelReady;
 
