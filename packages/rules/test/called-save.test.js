@@ -5,6 +5,8 @@ import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { view, viewEvents } from "../src/view.js";
+import { CONTENT } from "../src/content/index.js";
+import { loadPack, overlayOf, using } from "../src/content/registry.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" };
@@ -288,4 +290,44 @@ test("act with adv, Shield set to ask, then the answer: the grant survives the q
   const atk = done.events.find((e) => e.type === "attack");
   assert.equal(atk.mode, "adv");
   assert.deepEqual(atk.why, ["DM grants Advantage"]);
+});
+
+test("a secret save's Evasion note is the DM's: it would tell the outcome", () => {
+  const s = game();
+  evasive(s, "rogue");
+  const r = ok(call(s, { who: "rogue", ability: "dex", dc: 1, secret: true, damage: { dice: "2d6", type: "fire", half: true } }));
+  assert.ok(r.events.some((e) => e.type === "note" && /Evasion/.test(e.text)));
+  assert.deepEqual(viewEvents(r.events, s, PAT).map((e) => e.type), ["save"]);
+});
+
+test("Legendary Resistance on a homebrew-pack monster is found too", () => {
+  const lich = { ...structuredClone(CONTENT.monsters.lich), id: "hb-ember-folk-lich", name: "Ember Lich", source: "homebrew:ember-folk", checked: false, text: "An ember lich." };
+  const loaded = loadPack({ format: "hextable-pack", v: 1, pack: { id: "ember-folk", name: "ember-folk", version: 1, license: "CC0, by the author", attribution: "Written for a test." }, monsters: [lich] });
+  assert.ok(loaded.ok, loaded.problems?.join("; "));
+  using(overlayOf([loaded.pack]), () => {
+    const s = game();
+    ok(apply(s, { type: "spawn", monster: "hb-ember-folk-lich", at: { q: 3, r: 3 } }, DM));
+    const id = Object.keys(s.entities).find((k) => s.entities[k].tpl === "hb-ember-folk-lich");
+    assert.ok(id, "spawned");
+    const r = ok(call(s, { who: id, ability: "wis", dc: 40 }));
+    assert.ok(r.events.some((e) => e.type === "manual" && e.name === "Legendary Resistance" && e.actor === id));
+  });
+});
+
+test("a real rescue under a secret save is hushed: a Bardic Inspiration die spent to turn it", () => {
+  const A = { str: 10, dex: 14, con: 12, int: 10, wis: 12, cha: 16 };
+  let found = null;
+  for (let seed = 1; seed < 300 && !found; seed++) {
+    const s = game(seed);
+    s.entities.bard = makeEntity(derive({ name: "Bo", class: "bard", level: 5, subclass: "lore", abilities: A, skills: ["performance", "persuasion", "arcana"], weapons: ["dagger"] }).record, { id: "bard", kind: "pc", side: "party", pos: { q: -6, r: 4, z: 0 } });
+    const give = apply(s, { type: "feature", actor: "bard", feature: "bardic-inspiration", target: "fighter" }, DM);
+    if (!give.ok) continue;
+    const r = apply(s, { type: "save", who: "fighter", ability: "wis", dc: 14, secret: true }, DM);
+    if (r.ok && saves(r)[0].rescued) found = { s, r };
+  }
+  assert.ok(found, "some seed lets the die turn it");
+  const seen = viewEvents(found.r.events, found.s, PAT);
+  assert.deepEqual(seen.map((e) => e.type), ["save"]);
+  assert.equal(seen[0].rescued, undefined);
+  assert.ok(found.r.events.some((e) => e.hush), "what was spent is marked for the DM only");
 });

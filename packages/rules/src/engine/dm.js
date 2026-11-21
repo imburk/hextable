@@ -365,7 +365,7 @@ export const handlers = {
       if (a.secret) for (let i = mark; i < ev.length; i++) if (ev[i].type !== 'save') ev[i].hush = true;
       // Evasion (as effects.js has it): a Dexterity save for half damage does none on a success and half on a failure.
       const evade = abil === 'dex' && dmg?.half && evades(t);
-      if (evade) ev.push({ type: 'note', id: t.id, text: sv.success ? 'Evasion: no damage' : 'Evasion: half damage' });
+      if (evade) ev.push({ type: 'note', id: t.id, text: sv.success ? 'Evasion: no damage' : 'Evasion: half damage', ...(a.secret ? { hush: true } : {}) });      // a secret save's outcome is not told
       // Legendary Resistance is the DM's to spend: asked of the DM alone, never decided by the engine.
       if (!sv.success && CONTENT.monsters[t.tpl]?.traits?.some((x) => x.id === 'legendary-resistance')) ev.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has Legendary Resistance. The DM decides whether it spends a use to succeed instead; the engine has applied the failure.` });
       if (dmg && (!sv.success || dmg.half) && !t.dead && !(evade && sv.success)) {
