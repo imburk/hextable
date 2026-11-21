@@ -285,7 +285,7 @@ export async function screens(browser, url, label, opts) {
           const { derive } = await import('./shared/derive.js'), h = window.hextable;
           document.getElementById('dm-auto').checked = false;
           h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' });
-          const r = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 20, wis: 12, cha: 10 }, skills: ['arcana'], armour: 'leather-armor', weapons: ['quarterstaff'], spells: ['find-familiar', 'shocking-grasp', 'summon-dragon', 'animate-dead'] });
+          const r = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 20, wis: 12, cha: 10 }, skills: ['arcana'], weapons: ['quarterstaff'], spells: ['find-familiar', 'shocking-grasp', 'summon-dragon', 'animate-dead'] });
           if (!r.record) throw new Error(JSON.stringify(r));
           h.act({ type: 'addCharacter', record: r.record, at: { q: 0, r: 0, z: 0 } });
         });
@@ -510,7 +510,7 @@ export async function screensTable(browser, url) {
         await host.evaluate(async () => {
           const { derive } = await import('./shared/derive.js'), h = window.hextable;
           h.act({ type: 'setting', key: 'autoEngage', value: false }); h.act({ type: 'setting', key: 'diceThrow', value: 'auto' });
-          const r = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 20, wis: 12, cha: 10 }, skills: ['arcana'], armour: 'leather-armor', weapons: ['quarterstaff'], spells: ['find-familiar', 'summon-dragon', 'animate-dead'] });
+          const r = derive({ name: 'Ven', class: 'wizard', level: 17, abilities: { str: 10, dex: 14, con: 14, int: 20, wis: 12, cha: 10 }, skills: ['arcana'], weapons: ['quarterstaff'], spells: ['find-familiar', 'summon-dragon', 'animate-dead'] });
           h.act({ type: 'addCharacter', record: r.record, at: { q: 0, r: 0, z: 0 } });
         });
         await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'));

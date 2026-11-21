@@ -9,7 +9,7 @@ import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fro
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { SPELLS } from './content/index.js';
 import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effects.js';
-import { incapacitatedBy } from './modifiers.js';
+import { incapacitatedBy, untrainedGear } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
 import { unknown } from './vision.js';
@@ -270,7 +270,7 @@ export function casterStep(s, e, foes, lim = {}) {
   const enc = s.encounter, b = enc?.budget, id = e.id;
   // Not in a fight, in the middle of an Attack action, or nothing left to cast with.
   if (!enc || !b || b.attacks || (b.action < 1 && b.bonus < 1)) return null;
-  if (!e.spells?.length || e.actions || e.form || incapacitatedBy(e) || (s.effects ?? []).some((fx) => fx.source === id && fx.noSpells)) return null;
+  if (!e.spells?.length || e.actions || e.form || untrainedGear(e).length || incapacitatedBy(e) || (s.effects ?? []).some((fx) => fx.source === id && fx.noSpells)) return null;
   const flags = enc.flags ?? {};
   const known = [];
   e.spells.forEach((sid, i) => {

@@ -110,7 +110,9 @@ test("Armor Class, scores, speeds and senses from items flow into the record", (
   assert.equal(rec(fighter([{ id: "i1", item: "bracers-of-defense", equipped: true, attuned: true }], { armour: "chain-mail" })).ac, rec(fighter(undefined, { armour: "chain-mail" })).ac);
   // Elven Chain: a wizard is trained with it.
   assert.equal(problems(wizard([{ id: "i1", item: "elven-chain", base: "chain-shirt", equipped: true }])), "");
-  assert.match(problems(wizard([{ id: "i1", item: "armor-plus-1", base: "chain-shirt", equipped: true }])), /no training with medium armour/);
+  assert.equal(problems(wizard([{ id: "i1", item: "armor-plus-1", base: "chain-shirt", equipped: true }])), "");       // allowed, but worn untrained
+  assert.deepEqual(derive(wizard([{ id: "i1", item: "armor-plus-1", base: "chain-shirt", equipped: true }])).record.untrained, ["Chain Shirt"]);
+  assert.equal(derive(wizard([{ id: "i1", item: "elven-chain", base: "chain-shirt", equipped: true }])).record.untrained, undefined);
 });
 
 test("worn items work through apply(): resistance of the ring's type, cold cut, immunity, saves and checks", () => {
@@ -146,7 +148,7 @@ test("wearing and Attunement by the SRD: one of a kind, three attuned, one copy,
   assert.match(problems(fighter([{ id: "i1", item: "dwarven-plate", base: "chain-mail" }])), /can't be made from "chain-mail"/);
   assert.match(problems(fighter([{ id: "i1", item: "ring-of-resistance" }])), /Choose the damage type of Ring of Resistance/);
   assert.match(problems(fighter([{ id: "i1", item: "spell-scroll" }])), /Name the spell on the Spell Scroll/);
-  assert.match(problems(wizard([{ id: "i1", item: "weapon-plus-1", base: "greatsword", equipped: true }])), /not proficient with the Greatsword/);
+  assert.equal(problems(wizard([{ id: "i1", item: "weapon-plus-1", base: "greatsword", equipped: true }])), "");
   assert.match(problems(fighter([{ id: "i1", item: "no-such-thing" }])), /no magic item "no-such-thing"/);
   assert.match(problems(fighter([{ id: "i1", item: "chime-of-opening", charges: 11 }])), /0 to 10 charges/);
 });
