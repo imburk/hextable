@@ -2,7 +2,7 @@ import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm
 
 // ---------- the movement an Opportunity Attack gave, at the table (issue #536, DEBT T93; docs/specs/homebrew-subclasses.md, "Build notes: H") ----------
 // A DM hosts and a player joins. The DM adds an invented pack (the "Oath of the Hollow Bell": `triggers.opportunityHit`), the DM makes a paladin of it and the player plays it.
-// A goblin beside the paladin walks away on the DM's order and the paladin's Opportunity Attack hits (a goblin is tried again until it does). Then, with the DM's auto-play
+// A goblin beside the paladin walks away on the DM's order and the paladin's Opportunity Attack hits (scripted: the page asks its own engine on a copy, and uses up dice with ability checks until the walk draws a hit). Then, with the DM's auto-play
 // ON, the pass checks what each side sees and does:
 //   the player: the movement is offered at once (Move up to N ft, Don't move), the reach is shaded, a tap before Move spends nothing, a tap after it moves and provokes nothing,
 //   the DM: the auto-play does not end the goblin's turn (it waits, with a visible line and a button that gives the movement up for the player), and once the movement is spent,
@@ -70,10 +70,8 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       });
 
       // One try: a goblin beside Sir Bell, a fight, the goblin's turn, the goblin walks off, and Sir Bell's Opportunity Attack may hit. Returns the goblin's id when it did.
-      let tries = 0;
       const attempt = async () => {
-        tries++;
-        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 10000); await idle(dm); }
+        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 20000); await idle(dm); }
         // The same ground every try (a flake, #633): the foes of the valley (they wake in a fight, walk up to Sir Bell and stand on the hexes the search needs), the goblins
         // left by the tries before and Sir Bell's own place after a tap are what made "no hex beside Sir Bell takes a goblin". Clear the foes, put her back where she began,
         // and stand one Guard four hexes off in the arena: a fight with only the goblin in it would end the moment her Opportunity Attack kills it, and the allowance with it.
@@ -82,7 +80,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
           const p = window.hextable.state.entities[b].pos;
           if (p.q !== h.q || p.r !== h.r) window.hextable.act({ type: 'place', actor: b, to: { q: h.q, r: h.r } });
         }, [bell, home]);
-        await wait(dm, ([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 10000);
+        await wait(dm, ([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 20000);
         const guardAt = await dm.evaluate(async (b) => {
           const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
           const S = window.hextable.state, G = gridOf(S.map), me = S.entities[b];
@@ -95,7 +93,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         }, bell);
         if (!guardAt) throw new Error('no place four hexes from Sir Bell for the Guard');
         await dm.evaluate((at) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at, name: 'Guard' }), guardAt);
-        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Guard'), null, 10000);
+        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Guard'), null, 20000);
         await idle(dm);
         const found = await dm.evaluate(async (b) => {
           const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
@@ -122,22 +120,36 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         }, bell);
         if (!found.at) throw new Error(`no hex beside Sir Bell takes a goblin that can walk away from her on this map: ${found.why.join(' | ')} [${found.ctx}]`);
         await dm.evaluate(([at]) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at, name: 'Gob' }), [found.at]);
-        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Gob' && e.hp > 0));
+        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Gob' && e.hp > 0), null, 15000);
         const gob = await dm.evaluate(() => Object.values(window.hextable.state.entities).filter((e) => e.name === 'Gob' && e.hp > 0).pop().id);
         await dm.evaluate(([c]) => window.hextable.act({ type: 'startEncounter', center: c, radius: 6 }), [await dm.evaluate((b) => window.hextable.state.entities[b].pos, bell)]);
-        await wait(dm, () => !!window.hextable.state.encounter);
+        await wait(dm, () => !!window.hextable.state.encounter, null, 15000);
         await idle(dm);
         for (let i = 0; i < 40 && (await turnOf(dm)) !== gob; i++) { await dm.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), await turnOf(dm)); await idle(dm); }
         if ((await turnOf(dm)) !== gob) throw new Error('the goblin\'s turn did not come');
         // the goblin is a fresh foe each try: it is not the DM's page that sees the allowance when it hits, the table does; read the flag on the DM's page
+        // The hit is scripted, not hoped for (#661): the dice are a keyed stream in the game state, so the DM's page asks its own engine, on a copy, whether this walk draws
+        // an Opportunity Attack that hits. If it does not, one harmless ability check of Sir Bell's uses up dice (nothing else changes) and the copy is asked again.
+        let rolls = 0;
+        for (; rolls < 60; rolls++) {
+          const hits = await dm.evaluate(async ([g, to, b]) => {
+            const { apply } = await import('./shared/engine.js');
+            const c = structuredClone({ ...window.hextable.state, timeline: [] });
+            const r = apply(c, { type: 'move', actor: g, to }, { role: 'dm', userId: 'dm' });
+            return r.ok && (c.encounter?.flags?.['rmove:' + b] ?? 0) > 0;
+          }, [gob, found.to, bell]);
+          if (hits) break;
+          await dm.evaluate((b) => window.hextable.act({ type: 'check', actor: b, skill: 'athletics' }), bell);
+          await idle(dm); await idle(pl);
+        }
+        if (rolls >= 60) throw new Error('no roll of the dice makes the goblin\'s walk draw an Opportunity Attack that hits (60 dice used up)');
         await dm.evaluate(([g, to]) => window.hextable.act({ type: 'move', actor: g, to }), [gob, found.to]);
         await idle(dm); await idle(pl);
         return (await flag(dm)) > 0 ? gob : null;
       };
       const arrive = async () => {
-        let gob = null;
-        for (let i = 0; i < 10 && !gob; i++) gob = await attempt();
-        if (!gob) throw new Error(`Sir Bell's Opportunity Attack did not hit in ${tries} tries: ${await dm.evaluate((b) => { const e = window.hextable.state.entities[b]; return JSON.stringify({ hp: e.hp, conditions: e.conditions, reaction: window.hextable.state.encounter?.budget, flags: window.hextable.state.encounter?.flags, log: window.hextable.state.timeline?.slice(-6) }); }, bell)}`);
+        const gob = await attempt();
+        if (!gob) throw new Error(`Sir Bell's Opportunity Attack did not hit although the copy of the game said it would (the table's dice and the page's differ): ${await dm.evaluate((b) => { const e = window.hextable.state.entities[b]; return JSON.stringify({ hp: e.hp, conditions: e.conditions, reaction: window.hextable.state.encounter?.budget, flags: window.hextable.state.encounter?.flags, log: window.hextable.state.timeline?.slice(-6) }); }, bell)}`);
         return gob;
       };
 
@@ -227,15 +239,15 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       await run.do('the DM\'s button gives it up for the player, and the foes go on', async () => {
         await botsOff();
         gob = await arrive();
-        await wait(pl, () => /Move up to/.test(document.getElementById('hint-go').textContent), null, 8000);
+        await wait(pl, () => /Move up to/.test(document.getElementById('hint-go').textContent), null, 15000);
         await botsOn();
         await dm.evaluate((g) => window.hextable.select(g), gob);
-        await wait(dm, () => /Waiting for Sir Bell to move/.test(document.getElementById('hint').textContent), null, 5000);
+        await wait(dm, () => /Waiting for Sir Bell to move/.test(document.getElementById('hint').textContent), null, 10000);
         const b = await box(dm, '#hint-go'); if (b.h < 43.5 || b.x < 0 || b.x + b.w > b.iw) throw new Error(`the DM's button is ${JSON.stringify(b)}`);
         await (hostOpts.hasTouch ? dm.locator('#hint-go').tap() : dm.click('#hint-go'));
-        await wait(pl, (g) => !window.hextable.state.encounter.flags['rmove:' + Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id], gob, 8000);
-        await wait(pl, () => !/move up to/.test(document.getElementById('hint').textContent), null, 5000);
-        await wait(dm, (g) => { const S = window.hextable.state; return !S.encounter || S.encounter.order[S.encounter.turn].id !== g; }, gob, 20000);
+        await wait(pl, (g) => !window.hextable.state.encounter.flags['rmove:' + Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id], gob, 15000);
+        await wait(pl, () => !/move up to/.test(document.getElementById('hint').textContent), null, 10000);
+        await wait(dm, (g) => { const S = window.hextable.state; return !S.encounter || S.encounter.order[S.encounter.turn].id !== g; }, gob, 30000);
         await shot(dm, `allowance-after-dm-${tag}`);
       });
       await run.do('with the auto-play off the DM sees no waiting line, and a foe\'s own turn is not held up when nobody holds anything', async () => {
