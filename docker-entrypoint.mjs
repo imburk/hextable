@@ -2,11 +2,12 @@
 // `node` user (a volume is mounted root-owned, and files an older image wrote as root stay root-owned),
 // and then it gives up root for good and runs the table server as that user.
 // Started as another user already (docker run --user, Kubernetes), it changes nothing and just starts the server.
-import { lchownSync, lstatSync, readdirSync, accessSync, constants } from "node:fs";
+import { existsSync, lchownSync, lstatSync, readdirSync, accessSync, constants } from "node:fs";
 import { join } from "node:path";
 
 const UID = 1000, GID = 1000;                       // `node` in the official image
 const DATA = process.env.DATA_DIR || "/data";
+const BACKUP = (process.env.BACKUP_DIR ?? "").trim();       // a second volume for backups arrives root-owned too (#662)
 
 function chownTree(path) {
   const st = lstatSync(path);
@@ -16,10 +17,10 @@ function chownTree(path) {
 
 if (process.getuid() === 0) {
   let ok = true;
-  try { chownTree(DATA); }
+  try { chownTree(DATA); if (BACKUP && existsSync(BACKUP)) chownTree(BACKUP); }
   catch (err) {
     ok = false;
-    console.error(`entrypoint: could not give ${DATA} to user ${UID} (${err.code ?? err.message}). Staying root so the server can still save tables. Fix the volume's ownership, then restart.`);
+    console.error(`entrypoint: could not give ${DATA}${BACKUP ? ` or ${BACKUP}` : ""} to user ${UID} (${err.code ?? err.message}). Staying root so the server can still save tables. Fix the volume's ownership, then restart.`);
   }
   if (ok) {
     process.setgroups([]);

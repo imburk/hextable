@@ -77,3 +77,16 @@ test('every relative import reachable from the server entry point is copied into
   assert.ok(seen.size > 10 && seen.has('packages/server/src/index.js') && seen.has('packages/server/src/tables.js'), `the walk reached ${seen.size} files`);
   assert.deepEqual(problems, []);
 });
+
+// scripts/backup.mjs is run inside the container for a one-off backup (README, "Backups"): the run-time stage copies it, and the server file it imports.
+test('the run-time stage carries scripts/backup.mjs and what it imports, and the entrypoint hands BACKUP_DIR to the node user', () => {
+  const docker = read('Dockerfile');
+  const stage = docker.slice(docker.lastIndexOf('\nFROM '));
+  assert.match(stage, /^COPY scripts\/backup\.mjs scripts\/$/m);
+  assert.ok(read('.dockerignore').split('\n').includes('!scripts/backup.mjs'));
+  for (const spec of importsOf(join(rootDir, 'scripts/backup.mjs'))) {
+    const target = relative(rootDir, resolve(rootDir, 'scripts', spec)).split('\\').join('/');
+    assert.ok(target.startsWith('packages/server/src/') && existsSync(join(rootDir, target)), `${target} is inside the copied server folder`);
+  }
+  assert.match(read('docker-entrypoint.mjs'), /BACKUP_DIR/);
+});
