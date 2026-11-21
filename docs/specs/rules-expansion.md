@@ -928,8 +928,8 @@ Three spells the engine used to hand to the DM, built to SRD 5.2.1 with the smal
 - **`ends: { on: 'armour' }`**, for a modifier step: the effect ends when its creature is made again wearing armour (`donned`,
   `engine/sheets.js`, run by every route that remakes a character: `setSheet`, `equip`, `editCharacter`, `refresh`).
 - **Step `stabilize: true`.** A creature at 0 Hit Points that is not dead becomes Stable (the `stable` status, the Death Saving Throw
-  counts start again, a `cond` event). One that is up, already Stable, or dead is left, and a `note` says why. Dead is refused at the
-  cast, as for every spell.
+  counts start again, a `cond` event). One that is up or already Stable is left, and a `note` says why: the cast still spends the
+  action (the engine does not refuse a cast at an unhurt creature). Dead is refused at the cast, as for every spell.
 - **`higher.range`.** The spell's range in feet by character level (Spare the Dying: 30, 60, 120), read by `rangeAt` in `effects.js` for
   the cast, the list of who can be aimed at, and Distant Spell.
 - **Step `light: { bright, dim }`, with `replaces?: true`.** The creature it works on carries that light while the lasting effect
@@ -938,8 +938,10 @@ Three spells the engine used to hand to the DM, built to SRD 5.2.1 with the smal
   Not built, so the DM's: Light on an object that lies elsewhere or is in someone's hands (the engine keeps the light on the caster, as
   if carried), its colour, covering it, the Large-or-smaller limit. SRD 5.2 has no saving throw for a hostile creature's object, so
   none is asked.
-- Not built: the character sheet's printed AC (`ac`) is the creature's own number, as it is for Barkskin; attack events and
-  `acOf` carry the spell's.
+- **The Armor Class shown.** `ac` stays the creature's own number. The view adds `acNow` (the number that applies, from `acNow` in
+  `engine/rolls.js`) and `acWhy` (the names of what changed it: Mage Armor, Barkskin) for every party creature where they differ;
+  the DM works it out from the whole state (`acShown`). The sheet, the card and the attack log print it. A character saved before
+  `acBase` existed has it worked out again from its sheet (`acBaseOf`), so no state version changed.
 
 ### A class
 

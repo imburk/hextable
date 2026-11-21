@@ -10,7 +10,7 @@ import { SPELLS } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { derive } from "../src/derive.js";
 import { apply, makeEntity } from "../src/engine.js";
-import { acOf } from "../src/engine/rolls.js";
+import { acOf, acShown } from "../src/engine/rolls.js";
 import { rangeAt } from "../src/effects.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
@@ -108,7 +108,14 @@ test("Mage Armor: a built character with no armor has a base AC of 13 + Dexterit
   const [fx] = effectsOf(s, "mage-armor");
   assert.equal(fx.lasts, "8 hours");
   assert.equal(fx.until.clock, s.clock + 480);
-  assert.equal(s.entities.pim.ac, 12, "the number on the sheet is the creature's own: the spell is a lasting effect on top");
+  assert.equal(s.entities.pim.ac, 12, "the creature's own number is kept: the spell is a lasting effect on top");
+  // What each person at the table is shown is the number that applies, and what changed it.
+  s.entities.pim.owner = "pat";
+  const seen = view(s, { role: "player", userId: "pat" }).entities.pim;
+  assert.deepEqual({ ac: seen.ac, acNow: seen.acNow, acWhy: seen.acWhy }, { ac: 12, acNow: 15, acWhy: ["Mage Armor"] });
+  assert.deepEqual(acShown(s, s.entities.pim, true), { ac: 15, why: ["Mage Armor"] }, "the DM, who has the whole state");
+  assert.deepEqual(acShown(s, seen, false), { ac: 15, why: ["Mage Armor"] }, "a player, from what was sent");
+  assert.equal(view(s, { role: "player", userId: "pat" }).entities.vex.acNow, undefined, "nothing is sent where the number is the creature's own");
   // It runs out at 8 hours, not before.
   ok(apply(s, { type: "advanceTime", minutes: 479 }, DM));
   assert.equal(acOf(s, s.entities.pim), 15);
@@ -354,4 +361,27 @@ test("Light: refusals change nothing, and undo, redo and replay give the same ga
     { type: "cast", actor: "vex", spell: "light" },
     { type: "advanceTime", minutes: 61 },
   ]);
+});
+
+test("a character saved before records kept acBase still gets Mage Armor: its base is worked out again from its sheet", () => {
+  const s = table({ vex: wizard(), pim: wizard({ name: "Pim", abilities: { ...A, dex: 14 } }) });
+  delete s.entities.pim.acBase;
+  const r = ok(cast(s, "vex", "mage-armor", "pim"));
+  assert.deepEqual(manuals(r), []);
+  assert.equal(acOf(s, s.entities.pim), 15);
+  // A sheet that will not derive is said so, not called "not built".
+  const t = table({ vex: wizard(), pim: wizard({ name: "Pim" }) });
+  delete t.entities.pim.acBase; t.entities.pim.sheet = { class: "nonesuch" };
+  assert.match(manuals(ok(cast(t, "vex", "mage-armor", "pim")))[0].text, /sheet the engine could not work/);
+});
+
+test("Barkskin is named too, and a player is not sent the id of the effect that keeps a carried light", () => {
+  const s = table({ orsk: cleric(1, { spells: ["spare-the-dying", "barkskin"] }), pim: wizard({ name: "Pim" }) });
+  s.entities.orsk.level = 3; s.entities.orsk.slots = { 1: 4, 2: 3 }; s.entities.orsk.spells.push("barkskin");
+  s.entities.pim.owner = "pat";
+  ok(cast(s, "orsk", "barkskin", "pim", { slot: 2 }));
+  assert.deepEqual(view(s, { role: "player", userId: "pat" }).entities.pim.acWhy, ["Barkskin"]);
+  ok(cast(s, "pim", "light"));
+  const lit = view(s, { role: "player", userId: "pat" }).entities.pim.light;
+  assert.deepEqual(lit, { bright: 20, dim: 20 });
 });

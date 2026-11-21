@@ -10,6 +10,7 @@ import { apart, FT } from '../space.js';
 import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear } from '../modifiers.js';
+import { derive } from '../derive.js';
 import { current, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
 
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
@@ -182,12 +183,29 @@ export function renew(s, e, t) {
 // own way of working it out gives (`acBase`, from derive: SRD "If you have multiple ways to calculate your Armor Class, you can benefit from only
 // one at a time"); what is added to the base (a Shield, a magic item, a feature) stays. A creature with no `acBase` (a monster, a hand-typed
 // record) is not known to wear nothing, so the modifier is never put on it (`modifier`, below) and nothing here changes its number.
-export function acOf(s, t) {
+// The base of a character's Armor Class (derive's `acBase`). A character saved before the record kept it has it worked out again from its sheet,
+// once for each sheet (the sheet is replaced whole when the character is made again). null: not a built character, or a sheet that will not derive.
+const BASES = new WeakMap();
+export function acBaseOf(t) {
+  if (Number.isInteger(t.acBase)) return t.acBase;
+  if (t.kind !== 'pc' || !t.sheet || typeof t.sheet !== 'object') return null;
+  let n = BASES.get(t.sheet);
+  if (n === undefined) { try { n = derive(t.sheet).record.acBase ?? null; } catch { n = null; } BASES.set(t.sheet, n); }
+  return n;
+}
+export function acNow(s, t) {
   const m = modifiers(s, t, 'ac', { target: t });
   let ac = m.set ?? t.ac;
-  if (m.baseAc !== null && Number.isInteger(t.acBase) && !t.form && (t.armour ?? 'none') === 'none' && m.baseAc > t.acBase) ac += m.baseAc - t.acBase;
-  return bounded(m, ac + m.add);
+  const own = m.baseAc === null ? null : acBaseOf(t), base = own !== null && !t.form && (t.armour ?? 'none') === 'none' && m.baseAc > own;
+  if (base) ac += m.baseAc - own;
+  const now = bounded(m, ac + m.add);
+  // The names of what made it differ from the creature's own number, for the sheet ("AC 15: Mage Armor").
+  const why = now === t.ac ? [] : [...new Set([...(base ? [m.baseAcFrom] : []), ...m.from])];
+  return { ac: now, why };
 }
+export const acOf = (s, t) => acNow(s, t).ac;
+// The Armor Class to show: the DM has the whole state and works it out; a player is sent `acNow` (and `acWhy`) where it is not the creature's own number (view.js).
+export const acShown = (s, e, dm) => (dm ? acNow(s, e) : { ac: e.acNow ?? e.ac, why: e.acWhy ?? [] });
 
 // The ending a step gives its condition or modifier, as the part keeps it: with the DC it is rolled against (the ending's own,
 // `ends.dc`: an entry says it for a creature's action, and runAction fills it in from the save that put the condition on when
@@ -273,8 +291,8 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   if (!holder) return false;
   // `baseAc` (Mage Armor, "a willing creature who isn't wearing armor"): put on only where the engine knows the creature wears no armour and how it
   // works its Armor Class out (a built character, `acBase`, not in a form). Any other creature is the DM's: it is told, and nothing is put on.
-  if (mod_.op === 'baseAc' && !(Number.isInteger(holder.acBase) && !holder.form && (holder.armour ?? 'none') === 'none')) {
-    ev.push({ type: 'manual', actor: f.actor ?? holder.id, name: f.src.name, partial: true, text: `${holder.name} ${holder.form ? 'is in a form' : Number.isInteger(holder.acBase) ? 'is wearing armor' : 'is not a built character, so the engine does not know whether it wears armor or how its Armor Class is worked out'}. The engine did not change its Armor Class: the DM decides whether ${f.src.name} works and sets the number.` });
+  if (mod_.op === 'baseAc' && !(acBaseOf(holder) !== null && !holder.form && (holder.armour ?? 'none') === 'none')) {
+    ev.push({ type: 'manual', actor: f.actor ?? holder.id, name: f.src.name, partial: true, text: `${holder.name} ${holder.form ? 'is in a form' : (holder.armour ?? 'none') !== 'none' ? 'is wearing armor' : holder.sheet ? 'has a sheet the engine could not work its Armor Class out from' : 'is not a built character, so the engine does not know whether it wears armor or how its Armor Class is worked out'}. The engine did not change its Armor Class: the DM decides whether ${f.src.name} works and sets the number.` });
     return true;
   }
   const end = ending(s, step, f, ev, t);
