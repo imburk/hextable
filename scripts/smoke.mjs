@@ -27,6 +27,7 @@ const REGISTRY = {
   base: ['solo', 'multiplayer'],
   armed: ['armed'],
   aimrange: ['aimrange'],
+  upcast: ['upcast'],
   dice: ['dice'],
   reactions: ['reactions'],
   scenes: ['scenes'],
@@ -64,6 +65,7 @@ const REGISTRY = {
   models: ['models'],
   allowance: ['allowance'],
   rolledhp: ['rolledhp'],
+  windows: ['windows'],
 };
 
 const only = process.env.SMOKE_ONLY;

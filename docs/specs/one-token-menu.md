@@ -65,6 +65,8 @@ The owner tried the published mockup and said (his words quoted):
 | R19 | (round 4) "the symbols across the top are too many and there's no indicator that there are more ... add > & < symbols if required? I'd prefer to get down to just a few though. Not sure what leave means ... If the latter, it should be under settings." | Six symbols fit a phone's strip; when more do not fit (a solo party, say), ‹ and › appear at the ends where there is more. Leave means leaving the table (the game, on this device); it is now the last section of Setup, with a confirm (Decisions 4c and 4d) |
 | R20 | (round 5) "when i click on wren, the w on the menu, it does this weird skip thing where it moves past the display and comes back?"; then "actually that happens when I click on anything" | Two causes, both fixed. (1) Opening a place scrolled the clipped frame: the strip's `scrollIntoView` on the current symbol, called while the sheet was still sliding up (the symbol below the frame's edge), scrolled every ancestor that could scroll, the frame and the sheet included, so the whole picture jumped. (2) Choosing a place from the strip re-made the screen and slid it in again from off the edge (from the left on a wide screen, 462 px; from the right on a phone, 53 to 161 px) though it was already in place. Now the strip sets only its own `scrollLeft`, and switching places swaps the screen where it is. The rule "the menu never overshoots" (Decision 6) |
 | R21 | (round 5) "the display needs to be consistent. On the setup tab, you only have one item open at a time. On Wren's page, it can open multiple things at once. I think we go with the setup version where you have headers that hold top/bottom. When all of them are shown, they should have the tip info. When we're in one, they can hide the tip info in favor of showing more working space." | One accordion for every page with sections: the character's page, Roll dice, Log and chat, Setup and DM tools. One section open; the bars before it pinned at the top and after it at the bottom; with none open each bar shows its tip, with one open the others show their title only. In-place folds are gone (Decisions 4a and 4d) |
+| R22 | (round 6) "When I click and hold on the die menu, it should popup the dice I want to throw for fun, it's a fidget that only shows up on my screen. Unless changed, it should just be a d20." | Holding the die for a second pops up the **fidget die**, ready to throw (a flick or a tap, the usual throw); a single d20 unless changed in Setup › Dice › Fidget die. Only that screen ever sees it: nothing is sent, nothing is logged, the DM does not see it. Its numbers come from the device, never from the game's seed (Decision 1, "The fidget die") |
+| R23 | (round 6) "The combat menu is not clear on what's going on, I think it's Wren's turn in this shot but when I click on wren, nothing happens?" | Turns: the current row is filled with "▶ Now", the next row says "Next", and the heading names who acts ("Round 2 · Wren's turn — yours"). Every row does something when tapped: your own opens your character (on your turn, on "Attack and cast"); anyone else is shown on the map (a phone clears the menu: "Showing Goblin Warrior 3"); the unseen row says why there is nothing to show (Decision 4, Turns) |
 
 ## Rules that bind this design
 
@@ -266,13 +268,26 @@ tap outside clears it.** Reasons:
   die again, or on the map, folds the arc back. When something waits, the Waiting for you
   card sits above the arc. (At the start of my turn, if question 3 is answered yes, the
   Character screen opens instead.)
-- **Holding it for a second** (1 s, the finger still; round 3) **throws dice at once, for
-  fun**: the last roll made in Roll dice (a single d20 until one has been made), from the
-  die, with no menu. It is a plain roll through E-M2 (`freeRoll`), seen by the roller and
-  the DM only (question 22). The die lifts a little at 1 s so the finger knows it worked;
-  lifting the finger earlier is a tap. Roll dice itself stays on the Dice screen and in the
-  arc.
-- **Three holds, three places, never in conflict:** holding the **die** (1 s) throws for
+- **Holding it for a second** (1 s, the finger still) **pops up the fidget die** (round 6,
+  R22; it replaces round 3's instant throw of the last roll). The die lifts a little at 1 s
+  so the finger knows it worked, the menu and the arc fold if open, and the throw zone
+  rises with the fidget dice in it, ready: a flick or a tap throws them, as any throw
+  (Decision 9); Cancel, a tap on the map or Escape puts them away. Lifting the finger
+  earlier is a tap.
+  - **By default a single d20.** Setup › Dice › **Fidget die** chooses the dice (any pool
+    of d4 to d100, up to 12 dice, chips with their own −, "Back to a d20"). A second
+    setting, **Remember the last fidget dice**, is **off**: the chosen set always wins
+    (question 30). There is no modifier: a fidget has nothing to add to.
+  - **Only on this screen.** Nothing is sent to the table, so no other player and **not the
+    DM** sees it; it is not in the log or in Last rolls; its title says so: "Fidget: 1d20 ·
+    17 · only on your screen". It is not a plain roll (E-M2 is not used).
+  - **Not a game roll.** The fidget never uses the game's seed and never reaches the
+    engine: the client draws its numbers from the device's own random numbers
+    (`crypto.getRandomValues`, in the client only, kept out of the rules package), so a
+    fidget cannot change, predict or use up any game roll, and it does not replay. The
+    "rules package is pure" rule is untouched, since the rules package never sees it.
+  - It obeys the dice settings of this device (look, how long rolls stay, flick on or off).
+- **Three holds, three places, never in conflict:** holding the **die** (1 s) pops up the fidget die for
   fun; holding a **symbol in the arc** (0.5 s) opens Arrange; holding a **die type in Roll
   dice** (0.5 s) takes one die of that kind away. The die's hold is longer because a throw
   cannot be taken back and a tap must stay a tap.
@@ -489,10 +504,30 @@ character lives **on the first level**, never inside a character's screen:
 - The Character screen's head carries only the name, level and class: nothing in it
   changes which character it is.
 
-**Turns** (the tracker, `tracker.js`, unchanged inside): header "Round 2 · Goblin Warrior
-2's turn · you in 3"; rows as built, with **"You"** under each of the viewer's own
-creatures and their initiative roll shown as a die glyph with the number. Tapping a row
-selects the creature and moves the camera; on a phone it also clears the menu.
+**Turns** (the tracker, `tracker.js`; amended in round 6, R23, because the owner could not
+tell whose turn it was and a tap on Wren did nothing):
+
+- **The heading names who acts**: "Round 2 · **Wren's turn — yours**" on my turn;
+  "Round 2 · **Goblin Warrior 2's turn** · you're in 3" on another's; "Round 1 · Odessa's
+  turn · you're next". An unseen turn reads "Round 2 · Something moves unseen" (or nothing,
+  under `unseenTurns: 'quiet'`), as the turn line does.
+- **The current row is filled** in the accent colour, taller (60 px), with a **"▶ Now"**
+  tag before the name and `aria-current="step"`; not a border alone. **The next seen row**
+  has a **"Next"** tag and an accent outline. The viewer's own creatures say **"You"** under
+  the name, with their initiative as a number.
+- **Every row does something when tapped** (each row is a button with words for what it
+  does):
+  - **your own character** (or a companion you play): opens its page; on your turn it opens
+    on "Attack and cast". The row shows **"Open ›"**;
+  - **anyone else** the party can see: selects it and shows it on the map (the camera goes
+    to it and it is ringed); on a phone the menu clears so the map can be seen, with a
+    toast "Showing Goblin Warrior 3"; on a wide screen the menu stays. The row shows
+    "Show";
+  - **the unseen row** ("Something moves unseen") stays as it is: no name, no number; a tap
+    shows nothing on the map and says why: "Something moves unseen: the party can't see it,
+    so there is nothing to show."
+- What a row shows is unchanged: a foe's health in words, never a number; no initiative for
+  a creature whose roll players are not sent (`tracker.js` today).
 
 **Dice**: **Roll dice** at the top (Decision 8b), then the last rolls (Decision 8), then
 the dice settings in one place, the dice look among them (Decision 8a; they also live in
@@ -703,7 +738,7 @@ in this order:
 | Section | Holds |
 |---|---|
 | **Display and controls** | Theme; Health bars over creatures; Camera buttons on the map; Floors; Keys |
-| **Dice** | Dice look (and the primary-colour picker); Rolls stay on the board; Throw my dice with a flick; Other players' dice |
+| **Dice** | Fidget die (round 6: the dice the 1 s hold pops up, d20 by default; Remember the last fidget dice: off); Dice look (and the primary-colour picker); Rolls stay on the board; Throw my dice with a flick; Other players' dice |
 | **The menu** | Arrange the symbols; Labels under the symbols; The die sits; Menus: slide or appear; Open my character at the start of my turn |
 | **Characters and packs** | Who plays whom, adding, levelling (the DM's tools for it; a player sees their own); the packs the table uses (the DM adds and removes them here) |
 | **The table's rules** | The DM's rules in words for players; for the DM, the rules to set (Players see foes' health here too) |
@@ -964,7 +999,9 @@ is whose.
 
 The owner: "You should always be able to just roll dice, it's kind of fun."
 
-**Where.** The top of the **Dice** screen, and **Roll dice** in the arc. Holding the die for
+**Where.** The top of the **Dice** screen, and **Roll dice** in the arc. (Round 6: holding
+the die now pops up the private fidget die instead, which is not a plain roll; see Decision
+1.) Holding the die for
 a second throws the last roll at once without opening anything (round 3, Decision 1). In a
 fight, in a scene, while exploring: always reachable.
 
@@ -1210,7 +1247,12 @@ How the prompt fits each table rule:
 | Handle (spoken) | Close menu |
 | Arrange | Arrange the symbols · Drag a row by its six dots, or use ▲ ▼. The eye hides a symbol from the arc and the strip. Kept on this device. · Always shown: Your character is how you play. / Setup is where hidden symbols come back. / Help explains every symbol, hidden ones too. / Leaving must always be possible. · Reset order |
 | Setup, menu | Labels under the symbols: After 3 seconds / Always |
-| Hold-to-roll title | You (Wren): 1d20 · just for fun |
+| Fidget die, ready | Fidget die: 1d20 · Just for you: no one else sees it, and it is not a game roll. Change it in Setup › Dice. · Cancel |
+| Fidget die, thrown | Fidget: 1d20 · 17 · only on your screen |
+| Setup › Dice | Fidget die: 1d20 · Hold the die button for a second to throw these, just for you. Only your screen sees them. · Back to a d20 · Remember the last fidget dice: No: always these / Yes |
+| Turns heading | Round 2 · Wren's turn — yours · Round 2 · Goblin Warrior 2's turn · you're in 3 · Round 1 · Odessa's turn · you're next |
+| Turns rows | ▶ Now · Next · You · Open › · Show |
+| Turns, after a tap | Showing Goblin Warrior 3 · Something moves unseen: the party can't see it, so there is nothing to show. |
 | Many dice | +N more dice |
 | Roll dice, your roll | 6d20 − · 1d100 − · 2 × · **Clear all** · No dice yet: tap a die to add it. · Tap a die to add one. To take one away: its − in your roll above, a tap on it there, Shift+click, or press and hold the die. · At most 20 dice in one roll. |
 | Roll dice, refused | Not while the table waits for an answer. |
@@ -1244,6 +1286,8 @@ fling that lands on the (made-up) engine result; a reaction question folding the
 away. The address can set a picture, for screenshots: for example
 `#bare&theme=sunlit&state=mine&open=cast`, `#bare&frame=desktop&open=turns`,
 `#bare&prompt=initiative` (the names are listed at the top of the file).
+
+Round 6: hold the die for the private fidget die (and its Setup row); Turns with a filled "Now" row, "Next", a heading that names who acts, and rows that open your character or show others on the map. Round 6 screenshots: `/home/claude/shots/527-r6`.
 
 Round 5: no skip when a place opens (the strip no longer scrolls the frame; switching places swaps the screen in place), and one accordion on every page with sections, with the compact status block on the character's page. Round 5 screenshots: `/home/claude/shots/527-r5`.
 
@@ -1289,7 +1333,7 @@ through one helper (`openMenu(page, path)`) added in M1.
 | M8 | **The arc, the strip, the symbols and the names** (rounds 3 and 4; round 4: a few places, the die above the sheet and the arc, ‹ › on the strip, Setup's sections): the symbol set as one module (`client/symbols.js`, inline SVG strings, `currentColor`), the arc on a quick tap with its rings per position and More, labels after 3 s and the setting, the strip across the top of every screen, every heading its own name, the handle as the phone's close control | `drawer.js`, `symbols.js` (new), `style.css`, `settings.js`, a test that every place has a symbol and an accessible name | `drawer`, `settings`, `keys` | At 390 x 844 the arc at bottom centre has 14 slots on the screen, none under 44 px; at bottom left 15; labels appear after 3 s and at once to a screen reader; no phone screen has a × |
 | M10 | **One accordion for every page with sections** (rounds 4 and 5): Setup's seven sections, the character's six (with the compact status block), Roll dice, Log and chat, DM tools; one open at a time with the bars pinned above and below; tips shown only with none open; the no-overshoot test (R20); Leave with its confirm, the Dice row from Roll dice; and the closing test (every state, at both sizes, by the die, the map and Escape) | `settings.js`, `drawer.js`, `style.css`, a smoke pass `menuclose` | `settings`, `drawer` | All seven bars and 120 px of the open section fit at 390 x 844; no state fails to close |
 | M9 | **Arrange**: hold a symbol, Setup › Arrange, drag by six dots, ▲ ▼, hide, Reset order; the four that cannot be hidden | `drawer.js`, `settings.js`, a test for the order and the fixed four | `drawer` | A dragged order survives a reload; Setup, Help, Leave and the character cannot be hidden |
-| D6 | **Many dice**: separate paths, hops, friction, glancing, nudging apart, flat rest, the fade; the 1 s hold on the die for a plain roll | `dice.js`, `app.js`, a unit test (100 throws of 12 dice: no two resting dice overlap; every resting die's face is the sent one) | `dice` | 6d20 + 1d100 + 2d6 rests as 10 separate dice at both sizes |
+| D6 | **Many dice**: separate paths, hops, friction, glancing, nudging apart, flat rest, the fade; the 1 s hold on the die for the fidget die (device random numbers, in the client only; never sent, never logged) | `dice.js`, `app.js`, a unit test (100 throws of 12 dice: no two resting dice overlap; every resting die's face is the sent one) | `dice` | 6d20 + 1d100 + 2d6 rests as 10 separate dice at both sizes |
 | E-M3 | **Engine: foes' health for players, a table rule** (`settings.foeHealth`: `hidden`, `rough`, `exact`; Decision 7a) | `engine/dm.js` (`SETTINGS`), `migrate.js` (the next state version), `view.js` (the fraction under `exact`, seen creatures only), tests | — | Under `rough` no player message holds a foe's fraction; under `exact` a seen goblin's fraction is sent rounded to tenths and a hidden one's id is in no player message |
 | M7 | **Health bars** (client): the device preference, Rough's half bar with a notch, Hidden, the DM's setting in DM tools and in Setup; Exact once E-M3 is in | `render-three.js`, `three-build.js` (`hpFraction`), `settings.js`, `app.js` | `three-parity`, `actionpanel` | Each of the three rules draws as said at both sizes; the party's bars stay exact |
 | E-M1 | **Engine: initiative as a question under `throw`** (optional, owner question 7) | `engine/resolve.js` (`startEncounter`), `engine/shared.js` (`ask`), `engine.js` (the new action `throwInit` in the validation order), `view.js` (`viewPrompt`), `packages/server/README.md`, tests | — | A fight on `throw` waits for each connected player's throw; each roll is made at the answer from the seed; undo of an answer gives the question back; the DM's Throw the rest answers all; replay is exact |
@@ -1385,8 +1429,8 @@ Added in round 3:
 20. **The arc's capacity before More.** *Default: as in Decision 4c (14 at bottom centre on
     a phone, 15 in a corner); More holds the rest.*
 21. **Labels after 3 seconds, or always?** *Default: after 3 seconds; "Always" in Setup.*
-22. **Holding the die to throw for fun: who sees it?** *Default: you and the DM (the
-    table's log stays quiet); Roll dice offers "The table".*
+22. **Holding the die to throw for fun: who sees it?** *Settled by the owner in round 6: only
+    the person holding it (the fidget die).*
 23. **Should the DM be able to hide DM tools from the arc?** *Default: yes from the arc,
     never from the strip.*
 
@@ -1408,3 +1452,10 @@ Added in round 5:
     Inventory, Sheet). *Default: these.*
 29. **On my turn, open the character's page on "Attack and cast"?** *Default: yes; at other
     times it opens on what was open last.*
+
+Added in round 6:
+
+30. **Should the fidget remember the last dice it threw?** *Default: no; the dice chosen in
+    Setup › Dice › Fidget die always win.*
+31. **Tapping someone else on Turns on a wide screen: keep the menu open?** *Default: yes on
+    a wide screen (the map is visible beside it); on a phone the menu clears.*

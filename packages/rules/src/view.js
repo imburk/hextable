@@ -15,11 +15,13 @@ import { concealed, inArea } from './space.js';
 import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
+import { playerShop } from './shopids.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { hasWorld, knownOf, partyAt, playerEntry, playerNode, playerPin, playerRoute } from './known.js';
 import { controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
 import { buysOf, kindOf, listPrice } from './market.js';
+import { SETTING_FIELDS, partyFields, sentFields } from './view-fields.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -310,19 +312,12 @@ function scrub(x, hidden) {
 }
 const hiddenIds = (state) => new Set(Object.keys(state.entities).filter((id) => classify(state, id) === 'hidden'));
 
-// `speedSet` (engine/sheets.js) is the DM's bookkeeping, on a creature and on a familiar in its master's pocket dimension.
-function noSpeedSet(e) {
-  delete e.speedSet;
-  if (e.pocket && typeof e.pocket === 'object') for (const c of Object.values(e.pocket)) if (c && typeof c === 'object') delete c.speedSet;
-}
 export function playerView(state) {
   const entities = {}, hidden = hiddenIds(state);
   for (const [id, e] of Object.entries(state.entities)) {
     const c = classify(state, id);
     if (c === 'open') {
-      entities[id] = structuredClone(e);
-      noSpeedSet(entities[id]);                          // bookkeeping of the DM's `setSpeed`: the speeds themselves are already sent
-      delete entities[id].reactions;                     // standing instructions are their controller's and the DM's (viewReactions)
+      entities[id] = partyFields(e);                     // an allow-list: view-fields.js names every field of a creature and says if it is sent
       if (e.follow && classify(state, e.follow) !== 'open') delete entities[id].follow;     // only ever a party member, but never point at what they cannot see
       // A formation's places are party members' (#303); one for anyone else (a creature since gone, or no longer of the party) is not sent.
       const slots = entities[id].formation?.slots;
@@ -340,7 +335,7 @@ export function playerView(state) {
   return {
     // No `seq`: it counts creatures as they are added, so it would tick when the DM adds a hidden one.
     version: state.version, clock: state.clock,
-    settings: structuredClone(state.settings),
+    settings: sentFields(state.settings ?? {}, SETTING_FIELDS),
     map: structuredClone(shownMap(state).doc),
     entities,
     encounter: viewEncounter(state),
@@ -371,7 +366,8 @@ export function viewShops(state, viewer) {
   if (isDM(viewer)) return structuredClone(Array.isArray(state.shops) ? state.shops : []);
   const env = marketEnv(), open = (id) => typeof id === 'string' && classify(state, id) === 'open', out = [];
   for (const shop of Array.isArray(state.shops) ? state.shops : []) {
-    if (!shownTo(shop, viewer?.userId)) continue;
+    const alias = playerShop(state, shop.id);       // the id a player is given (shopids.js), never the shop's own; a shop with none was shown to nobody
+    if (!shownTo(shop, viewer?.userId) || alias === null) continue;
     const market = marketOfShop(state, shop), store = shop.kind === 'store', ids = new Set(), lines = [];
     const all = [...(shop.lines ?? []), ...(shop.lists ?? []).flatMap((lid) => (market?.lists ?? []).find((x) => x?.id === lid)?.lines ?? [])];
     for (const l of all) {
@@ -384,7 +380,7 @@ export function viewShops(state, viewer) {
       lines.push({ id: l.id, name: lineName(l), ...(l.item !== undefined ? { item: l.item } : {}), ...(l.base !== undefined ? { base: l.base } : {}), ...(l.spell !== undefined ? { spell: l.spell } : {}),
         kind: kindOf(l, env), ...(l.art !== undefined ? { art: l.art } : {}), ...(l.note !== undefined ? { note: l.note } : {}), ...(price !== null ? { price } : {}), ...(left !== undefined ? { qty: left } : {}) });
     }
-    const rec = { id: shop.id, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
+    const rec = { id: alias, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
     if (!store) { rec.coins = { ...(shop.coins ?? {}) }; out.push(rec); continue; }
     rec.buys = buysOf(shop.buys);
     rec.quotes = (shop.quotes ?? []).filter((q) => open(q.for) && (q.line === undefined || ids.has(q.line)))
@@ -650,7 +646,7 @@ function viewEventsOf(events, state, viewer) {
     if (ev.type === 'turn') {
       const hidden = cls(ev.id) === 'hidden', before = lastTurnHidden ?? turnBeforeUnseen(state, ev);
       lastTurnHidden = hidden;
-      if (!hidden) { out.push(structuredClone(ev)); continue; }
+      if (!hidden) { out.push(pick(ev, ['type', 'id', 'round'])); continue; }
       // Something moves where they cannot see: once for a run of such turns, and never who.
       if (unseenTurns(state) === 'say' && !before) out.push({ type: 'turn', round: ev.round, someone: true });
       continue;
@@ -775,7 +771,7 @@ function viewEventsOf(events, state, viewer) {
       case 'cond':
       case 'condEnd':                                  // gaining or losing a condition, if it is one you could see
         // A grapple's: who held it (`by`) only where they know of the grappler (docs/specs/grapple-shove.md, Decision 9).
-        if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) { const e = structuredClone(ev); if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by; out.push(e); }
+        if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) { const e = pick(ev, ['type', 'id', 'cond', 'level', 'by', 'why']); if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by; out.push(e); }
         break;
       case 'hold':
       case 'holdEnd':                                  // another grappler takes hold of a creature already Grappled, or one of two lets go: as the condition is seen
@@ -888,7 +884,7 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'chronicle':
-        if (ev.public === true) out.push(structuredClone(ev));
+        if (ev.public === true) out.push(structuredClone(pick(ev, ['type', 'title', 'text', 'tags', 'scene', 'fight', 'public'])));
         break;
       case 'conclusion': {                             // the published rewards, shaped as the player's card (rewards.js)
         const { id, ...shaped } = playerConclusion({ ...ev, id: ev.fight, published: true }, (f) => foeName(state, f));
@@ -929,7 +925,7 @@ function viewEventsOf(events, state, viewer) {
         break;
       case 'scoresRolled':                             // ability scores rolled (scores.js): the numbers are the roller's and the DM's; the others are told only that it happened
       case 'scoreRerolled':
-        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(ev));
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ev.type === 'scoresRolled' ? ['type', 'by', 'sets', 'at'] : ['type', 'by', 'index', 'from', 'to', 'stands', 'total', 'at'])));
         else out.push({ type: ev.type });
         break;
       case 'sceneStart':
@@ -951,7 +947,11 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'checkAsked':                               // a request for a check is between the player who asked and the DM
-        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about'])));
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) {
+          const e = structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about']));
+          if (e.about) { const alias = playerShop(state, e.about.shop); if (alias === null) break; e.about.shop = alias; }      // a shop as the id the player was given
+          out.push(e);
+        }
         break;
       // Shops (docs/specs/shops.md, Decision 3 and X5): each trade event carries the shop's audience when it happened (`to`, `except`;
       // engine/trade.js) and goes to a player in it alone, live or from the record, shaped from an allow list; the audience is never sent,
@@ -962,7 +962,10 @@ function viewEventsOf(events, state, viewer) {
         const hears = (ev.to === 'all' || (Array.isArray(ev.to) && typeof u === 'string' && ev.to.includes(u))) && !(Array.isArray(ev.except) && typeof u === 'string' && ev.except.includes(u));
         const named = [ev.for, ev.buyer, ev.who, ...(Array.isArray(ev.split) ? ev.split : []), ...(Array.isArray(ev.payers) ? ev.payers.map((p) => p?.id) : [])].filter((x) => x !== undefined);
         if (!hears || named.some((id) => cls(id) === 'hidden')) break;
+        const alias = playerShop(state, ev.shop);      // a shop is named by the id the player was given (shopids.js); one never given is not named
+        if (alias === null) break;
         const e = structuredClone(pick(ev, TRADE_KEYS[ev.type]));
+        e.shop = alias;
         // A joint purchase ended because its buyer's player is no longer shown the store says, to the others, only that it ended: who
         // is shown a store is the DM's business (review of #598, M2).
         if (e.type === 'jointEnded' && e.why === 'hidden') e.why = 'ended';
@@ -978,7 +981,7 @@ function viewEventsOf(events, state, viewer) {
       // A number about a creature (its Speed, a death save's roll) is not told of a homebrew creature that is not the viewer's.
       case 'speed':
       case 'deathSave':
-        if (!theirs(ev.id)) out.push(structuredClone(ev));
+        if (!theirs(ev.id)) out.push(structuredClone(pick(ev, ev.type === 'speed' ? ['type', 'id', 'mode', 'feet'] : ['type', 'id', 'roll', 'total', 'rolls', 'mode', 'extra', 'dice', 'bonus', 's', 'f', 'dead', 'stable', 'hp'])));
         break;
       default:
         if (AS_IS.has(ev.type)) out.push(structuredClone(ev));
@@ -1092,9 +1095,7 @@ function awayRecord(rec, e, viewer) {
   const pseudo = { entities: rec.entities }, party = new Set(Object.values(rec.entities).filter((x) => x.side === 'party').map((x) => x.id));
   const others = new Set(Object.keys(rec.entities).filter((id) => !party.has(id)));
   if (homebrewBlock(e) && !controlledBy(pseudo, e, viewer?.userId)) return seenRecord(e, null);
-  const out = structuredClone(e);
-  noSpeedSet(out);
-  delete out.reactions;
+  const out = partyFields(e);
   if (out.follow && !party.has(out.follow)) delete out.follow;
   const slots = out.formation?.slots;
   if (slots) for (const k of Object.keys(slots)) if (!party.has(k)) delete slots[k];

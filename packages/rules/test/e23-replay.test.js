@@ -22,7 +22,16 @@ const derive1 = (sheet) => {
   if (last?.id === "unarmed-strike" && !sheet.weapons?.includes("unarmed-strike") && !at.some((a) => a.id === "unarmed-strike-bonus")) at.pop();
   return d;
 };
-const M = { apply: E.apply, current: E.current, makeEntity: E.makeEntity, derive: derive1, newGame, squareRoom };
+// #630: a fight is numbered by `fightSeq` and no longer by the creature counter `seq`, which main's recording has it take from. So that the recording still
+// checks everything else byte for byte, the fight counter is made to read as main's counter did (it is set to `seq` before an action, so a fight begun is numbered
+// `seq + 1`) and `seq` is moved on by the one it used to take; the counter itself is then taken out of the state (below).
+const apply = (s, a, ctx) => {
+  s.fightSeq = s.seq;
+  const r = E.apply(s, a, ctx);
+  if (r.ok && s.fightSeq === s.seq + 1) s.seq++;
+  return r;
+};
+const M = { apply, current: E.current, makeEntity: E.makeEntity, derive: derive1, newGame, squareRoom };
 const REC = JSON.parse(readFileSync(new URL("./fixtures/e23-main-replay.json", import.meta.url), "utf8")).scenarios;
 const sha = (x) => createHash("sha256").update(x).digest("hex");
 
@@ -35,7 +44,7 @@ for (const sf of ["off", "casts"]) for (const sc of scenarios(kit(M), sf)) {
   test(`as on main (strikeFirst ${sf}): ${sc.name}`, () => {
     // Recorded at state version 23; the version has moved since (24, #390; 25, #557; 26, #579; 27, #585) and nothing else in the state: the version is read back as it was, and `packs: []` and `scoreRolls: {}` (also new) are left out (a new game holds none of the places of a world, #579).
     // #523 (addition F of homebrew-subclasses.md) adds `whit:<attacker>:<target>` to a fight's flags after a weapon hit: only those keys are taken out, so the pin still checks everything else is as on main.
-    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":28,/, '{"version":23,').replace(',"scoreRolls":{}', '').replace(',"packs":[]', '').replace(/"whit:[^"]*":true,?/g, '').replace(',"strikeFirst":"casts"', '').replace(/,\}/g, '}')));
+    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":29,/, '{"version":23,').replace(',"scoreRolls":{}', '').replace(',"packs":[]', '').replace(/"whit:[^"]*":true,?/g, '').replace(',"strikeFirst":"casts"', '').replace(/,"fightSeq":\d+/, '').replace(/,\}/g, '}')));
     assert.equal(got.length, REC[sc.name].length, "as many results");
     got.forEach((h, i) => assert.equal(h, REC[sc.name][i], `result ${i} of ${got.length} (the last is the state)`));
   });

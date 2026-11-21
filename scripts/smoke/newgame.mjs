@@ -9,7 +9,7 @@ const inView = (page, sel) => page.evaluate((s) => { const e = document.querySel
 // The drawer slides in: wait until the element has come to rest inside the screen, not for a fixed time.
 const settled = (page, sel) => wait(page, (s) => { const e = document.querySelector(s), r = e?.getBoundingClientRect(); return !!r && r.width > 0 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; }, sel).then(() => true, () => false);
 const text = (page, sel) => page.$eval(sel, (e) => e.textContent.trim());
-const session = (page) => page.evaluate(() => localStorage.getItem('hextable.session'));
+const session = (page) => page.evaluate(() => sessionStorage.getItem('hextable.session'));
 
 async function solo(browser, url, label, opts) {
   await scenario(label, async (run) => {

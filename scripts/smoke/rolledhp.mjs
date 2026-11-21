@@ -35,7 +35,12 @@ async function pass(browser, url, label, opts, touch) {
         await tap('#qb-levelup'); await waitShown(page, '#qb');
         const save = await page.$eval('#qb-save', (e) => e.textContent);
         if (save !== 'Roll hit points and level up to 2') throw new Error(`the button says "${save}"`);
-        if (!(await page.isVisible('#qb-hp-roll'))) throw new Error('no note that the game rolls');
+        await tap('#qb-acc-bar-hp'); await waitShown(page, '#qb-hp-roll');      // the Hit points section, in the screen's own pick-row layout
+        const row = await page.$eval('#qb-hp-roll', (e) => e.textContent);
+        if (!/Roll hit points/.test(row) || !/d10/.test(row)) throw new Error(`the row says "${row}"`);
+        if (!(await page.isVisible('#qb-hp-roll .ibtn'))) throw new Error('no i button for the rule');
+        const small = await page.$$eval('#qb-hp-roll .ibtn, #qb-save', (es) => es.some((e) => e.getBoundingClientRect().height < 30));
+        if (small) throw new Error('a control is too small to tap');
         await shot(page, `rolledhp-${touch ? 'phone' : 'desktop'}-2-levelup`);
       });
       await run.do('one tap rolls the level: the sheet keeps the roll, the Hit Points follow, the log shows the die', async () => {

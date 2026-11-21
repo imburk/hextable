@@ -10,12 +10,14 @@ import { trimRolls } from './shared/hitpoints.js';
 import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, DEFAULT_RULE, BELOW, cleanRule, ruleText, pointsSpent, pointsLeft, rollScores, rollScore, mayReroll, rerollWhy, rerollOpen, topThree, tableRule,
   standing, applyBackground, checkScores, scoresLine, dmLine, setText, dayText } from './shared/scores.js';
 import { keyedRng } from './shared/rng.js';
-import { attach as scrollOn, hide as scrollOff } from './scrolltip.js';
+import { hide as scrollOff } from './scrolltip.js';
+import { el, accordion, pickRow, chip, groupHead, disclosure } from './pickui.js';
+import { SETTING_TEXT } from './shared/engine.js';
+import { signed, nice, usesText, weaponLines, weaponSummary, armourLines, armourSummary, armourCost, armourAlso, weaponCost, weaponWords, weaponTrained, trainLine, bareFeatures, featureWhen, firstSentence,
+  resourcesOf, costText, groupedFeatures, slotList, attackRows, headsUp, spellTag } from './buildparts.js';
+export { usesText };
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
-const nice = (id) => cap(id.replace(/-/g, ' '));
-const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const DEFAULT_COLOR = '#3a7d44';
 // The colours a character's pawn can be, offered as a row of swatches (a theme has one colour for the whole party, so this set is the build screen's own).
 // The first four are the colours of the starter party. A sheet's colour is always `#rrggbb`, which is what the engine's linter takes.
@@ -154,15 +156,6 @@ export function keptRoll(S, heard, myId) {
   return { rolls, rule: tableRollRule(S?.settings, rolls, heard?.result), by: 'table', ...(at !== undefined ? { at } : {}), ...(heard?.result ? { result: heard.result } : {}) };
 }
 
-function el(tag, props = {}, ...kids) {
-  const e = document.createElement(tag);
-  for (const [k, v] of Object.entries(props)) {
-    if (v === undefined || v === false) continue;
-    if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v; else if (k in e && k !== 'list') e[k] = v; else e.setAttribute(k, v === true ? '' : v);
-  }
-  e.append(...kids.filter((x) => x != null));
-  return e;
-}
 const toggle = (list, v, on) => { const i = list.indexOf(v); if (on && i < 0) list.push(v); if (!on && i >= 0) list.splice(i, 1); };
 
 // How many options a feature that picks from a list takes at this level: a number (Metamagic), or by the class
@@ -185,14 +178,6 @@ export function featPoints(inc, first, second) {
   if (!inc || !first) return undefined;
   if (inc.points === 1) return { [first]: 1 };
   return second && second !== first ? { [first]: 1, [second]: 1 } : { [first]: 2 };
-}
-
-// How a feature's uses read: "3 uses, all back on a Long Rest (1 on a Short Rest)".
-export function usesText(u) {
-  if (!u) return '';
-  const n = `${u.max} use${u.max === 1 ? '' : 's'}`;
-  if (u.recharge === 'short') return `${n}, back on a Short Rest`;
-  return `${n}, back on a Long Rest${u.short ? ` (${u.short} on a Short Rest)` : ''}`;
 }
 
 // What the scroll card says of a spell: its name, "Level 2 · Wizard, Cleric" (or Cantrip), and its text from the pack.
@@ -249,7 +234,6 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   // In 'mine' mode (the start flow, issue #556): the trail the title shows, the key of this character's draft ('new' or its id), what the sheet
   // held when it was opened (a draft is kept only once it differs), and whether a draft was picked up.
   let trail = [], draftKey = null, baseline = '', pickedUp = null, opening = false, moreOpen = false;
-  const open = new Set(['spells-0']);          // spell groups left open across redraws
   // Rolling at the table (#578): what this page was told of its own roll, and whether a roll or reroll is sent and not yet answered.
   let heard = null, waiting = null, checked = false, rolledOut = false;       // checked: the table's history of this member's rolls has come; rolledOut: the engine said this member has rolled and none is known here
   const inGame = () => mode !== 'mine' && !!getState();
@@ -257,8 +241,9 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   const unwait = () => { clearTimeout(waiting?.timer); waiting = null; };
   const refs = {};
 
-  const panel = el('aside', { id: 'qb', class: 'panel qe qb', hidden: true, 'aria-label': 'Build a character from class and level' });
+  const panel = el('aside', { id: 'qb', class: 'panel qe qb pk', hidden: true, 'aria-label': 'Build a character from class and level' });
   document.body.append(panel);
+  window.matchMedia('(min-width: 900px)').addEventListener?.('change', () => { if (!panel.hidden) build(); });       // the live sheet is a strip or a panel by the width
 
   function fresh(cls = classIds[0]) {
     const c = CONTENT.classes[cls];
@@ -337,8 +322,61 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   }
 
   // ---------- drawing ----------
+  // The screen is one accordion (pickui.js) of sections, with the live sheet pinned beside it: a strip above it on a phone, a panel on its right on a wide screen.
+  let acc = 'who';                                  // the open section (an id) or null
+  const gearOpen = { armour: false, weapons: false };       // the "not proficient with" lists that were opened by hand
+  let liveFolded = false, lastSig = {};
+  const wide = () => window.matchMedia('(min-width: 900px)').matches;
+  const flagOf = (k) => (k === 'armour' ? gearOpen.armour : gearOpen.weapons);
+
+  // What is still to choose, in words, by section: the same facts `validate` reads (it is the engine's word that decides Save; this says where to look).
+  function needs(L) {
+    const out = [], s = sheet();
+    if (!b.name.trim()) out.push({ sec: 'who', t: 'a name' });
+    if (b.level >= 3 && !b.subclass) out.push({ sec: 'who', t: 'a subclass' });
+    if (b.sc.method !== 'hand' && scoreParts(b.sc, dayNow()).problems.length) out.push({ sec: 'scores', t: 'ability scores' });
+    const n = L.skills - b.skills.length;
+    if (n > 0) out.push({ sec: 'skills', t: `${n} skill${n === 1 ? '' : 's'}` });
+    for (const x of L.feats.filter((y) => y.f.options && !y.option && !y.f.pick && !b.choices[y.f.id])) out.push({ sec: 'choices', t: x.f.name });
+    for (const sl of featChoices(s)) if (sl.taken && sl.open.length) out.push({ sec: 'feats', t: `${CONTENT.feats[sl.taken.id]?.name ?? sl.taken.id}: ${sl.open.join(', ')}` });
+    return out;
+  }
+  const needOf = (nd, sec) => { const l = nd.filter((x) => x.sec === sec); return l.length ? `Choose ${l.map((x) => x.t).join(', ')}` : ''; };
+
+  // A table that rolls Hit Points (#638) has a section of its own where there is something to roll: a level-up, a character added above level 1, a character with levels
+  // not rolled yet. One row in the shared pick-row layout, with the rule behind its i button; the roll itself is the button in the foot.
+  const rollsPending = () => mode === 'edit' && unrolled(getState()?.entities[target?.id]);
+  const hpShown = () => rolledTable() && (mode === 'levelup' || (mode === 'add' && b.level > 1) || rollsPending());
+  function hpSection(c) {
+    const sec = el('section', { class: 'qb-hp' }), what = mode === 'levelup' ? 'the level you gain' : mode === 'add' ? `each of the ${b.level - 1} levels after the first` : 'each level not rolled yet';
+    sec.append(pickRow({ id: 'qb-hp-roll', kind: 'none', title: 'Roll hit points', chips: [chip('when', mode === 'edit' ? 'tap Roll hit points' : 'when you save')],
+      summary: `The game rolls a d${c.hitDie} for ${what}, plus Constitution.`, also: 'Level 1 is the highest number of the die. The log shows every die.',
+      info: { title: 'Rolled hit points', sub: `d${c.hitDie} + Constitution, at least 1 a level`, text: [SETTING_TEXT.hpMethod.rolled, SETTING_TEXT.hpRollLow[getState()?.settings?.hpRollLow ?? 'keep'], 'Until a level is rolled, the numbers beside this screen count the fixed value for it.'] } }));
+    return sec;
+  }
+  function sectionList(L, c, locked, nd) {
+    const s = sheet(), d = safeDerive({ ...s, abilities: Object.fromEntries(ABILITIES.map((a) => [a, Number.isInteger(s.abilities[a]) ? s.abilities[a] : 10])) }), r = d?.record;
+    const res = resourcesOf(L.feats, r?.feats), sub = b.subclass && CONTENT.subclasses[b.subclass]?.name;
+    const list = [];
+    if (mode === 'levelup') list.push({ id: 'gain', title: `Level ${base?.level ?? ''} to ${b.level}`, tip: 'What this level brings', render: () => gainedBox() });
+    list.push({ id: 'who', title: 'Who', tip: `${b.name.trim() || 'Unnamed'} · ${c.name} ${b.level}${sub ? ` · ${sub}` : b.subclass === c.subclass.id ? ` · ${c.subclass.name}` : ''}`, need: needOf(nd, 'who'), render: () => whoSection(c, locked) });
+    if (hpShown()) list.push({ id: 'hp', title: 'Hit points', tip: `${rollsPending() ? 'Rolled by the game' : 'Rolled at this table'} · d${c.hitDie} + Constitution a level`, render: () => hpSection(c) });
+    list.push({ id: 'scores', title: 'Ability scores', tip: ABILITIES.map((a) => `${a.toUpperCase()} ${Number.isInteger(s.abilities[a]) ? s.abilities[a] : '–'}`).join(' · '), need: needOf(nd, 'scores'), render: () => scoresSection(c, locked) });
+    list.push({ id: 'skills', title: 'Skills', tip: `${b.skills.length ? b.skills.map(nice).join(', ') : 'None chosen yet'} · ${b.skills.length} of ${L.skills}`, need: needOf(nd, 'skills'), render: () => skillsSection(L) });
+    const slots = slotList(r?.slots), nFeat = L.feats.filter((x) => !x.f.feat).length;
+    list.push({ id: 'power', title: res.length ? `${res[0].title} and features` : L.cast ? 'Spell slots and features' : 'Class features',
+      tip: [res.length ? `${res[0].title} ${res[0].max}, back on ${REST[res[0].recharge]}` : '', L.cast && slots.length ? `Spell slots ${slots.map(([, n]) => n).join('·')}` : '', `${nFeat} features`].filter(Boolean).join(' · '), render: () => powerSection(L, c, r, res) });
+    const asks = L.feats.filter((x) => x.f.options && !x.option);
+    if (asks.length) list.push({ id: 'choices', title: 'Class choices', tip: asks.map((x) => `${x.f.name}${b.choices[x.f.id] ? `: ${Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id].length : (x.f.options.find((o) => o.id === b.choices[x.f.id])?.name ?? '')}` : ''}`).join(' · '), need: needOf(nd, 'choices'), render: () => choicesSection(asks) });
+    const fs = featChoices(s);
+    if (fs.length) list.push({ id: 'feats', title: 'Feats', tip: fs.map((sl) => `${/\(level (\d+)\)/.test(sl.name) ? `Level ${/\(level (\d+)\)/.exec(sl.name)[1]}` : sl.name.replace(/:.*$/, '')}: ${sl.taken ? CONTENT.feats[sl.taken.id]?.name : 'none'}`).join(' · '), need: needOf(nd, 'feats'), render: () => featsSection(fs) });
+    list.push({ id: 'gear', title: 'Armour and weapons', tip: gearTip(L, c), render: () => gearSection(L, c, d) });
+    if (L.cast) list.push({ id: 'spells', title: 'Spells', tip: spellTip(L), render: () => spellsSection(L) });
+    return list;
+  }
+
   function build() {
-    const scroll = panel.scrollTop, focus = document.activeElement?.id;
+    const prevBody = refs.accBody, bodyScroll = prevBody?.scrollTop ?? 0, bodyOf = refs.accOpen, focus = document.activeElement?.id;
     panel.textContent = ''; scrollOff();
     for (const k of Object.keys(refs)) delete refs[k];
     if (b.sc.roll?.by === 'table' && !b.sc.saved && inGame()) b.sc.roll.rule = tableRollRule(getState().settings, b.sc.roll.rolls, b.sc.roll.result);       // the rule it is kept under is the table's, as it stands when saved
@@ -350,109 +388,177 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
       const bar = startBar(el, { backId: 'qb-close', titleId: 'qb-title', onBack: close });
       bar.show(trail); head = bar.bar;
     }
-    const parts = [head];
-    if (mode === 'mine') parts.push(draftBar());
-    if (mode === 'levelup') parts.push(gainedBox());
-    if (mode === 'add' && importButton) parts.push(el('div', { class: 'row' }, importButton(), el('small', { class: 'note', text: 'Or start from a Fantasy Grounds export.' })));
-
-    // Who: name, colour, class, subclass, level
-    const sel = (label, id, options, value, onchange, disabled, wide) => {
-      const s = el('select', { id: `qb-${id}`, disabled }, ...options.map(([v, t]) => el('option', { value: v, text: t })));
-      s.value = value; s.onchange = () => onchange(s.value);
-      return el('label', { class: wide ? 'qe-f wide' : 'qe-f' }, el('span', { text: label }), s);
-    };
-    const name = el('input', { id: 'qb-name', type: 'text', value: b.name, maxLength: 40, autocomplete: 'off', autocapitalize: 'words', spellcheck: false, oninput: (ev) => { b.name = ev.target.value; update(); } });
-    const color = colourField();
-    parts.push(el('section', {}, el('h3', { text: 'Who' }), el('div', { class: 'qe-grid qe-2' },
-      el('label', { class: 'qe-f wide' }, el('span', { text: 'Name' }), name),
-      sel('Class', 'class', classIds.map((id) => [id, CONTENT.classes[id].name]), b.class, (v) => {
-        const keep = { name: b.name, color: b.color, abilities: b.abilities, abilText: b.abilText, hand: b.hand, sc: b.sc, level: b.level, keep: b.keep };   // a new class starts with no feats
-        b = Object.assign(fresh(v), keep); autoSubclass(); build();
-      }, locked || mode === 'edit'),
-      sel('Level', 'levelsel', Array.from({ length: 20 }, (_, i) => [String(i + 1), String(i + 1)]), String(b.level), (v) => { b.level = +v; autoSubclass(); build(); }, locked),
-      sel('Subclass', 'subclass', subclassChoices(c, b.level, b.subclass), b.subclass ?? '', (v) => { b.subclass = v || undefined; build(); }, false, true),
-      el('div', { class: 'qe-f wide', role: 'group', 'aria-labelledby': 'qb-color-label' }, el('span', { id: 'qb-color-label', text: 'Colour' }), color)),
-      ...(subclassNote(c, b.subclass) ? [el('p', { class: 'note', id: 'qb-subclass-note', text: subclassNote(c, b.subclass) })] : [])));
-
-    // Abilities: four ways to make the scores (docs/specs/ability-scores.md)
-    parts.push(scoresSection(c, locked));
-
-    // Features that ask for a choice
-    const asks = L.feats.filter((x) => x.f.options && !x.option);
-    // A feature that picks several options from a list (Metamagic: up to 2 at level 2, 2 more at 10): ticks, none twice across features.
-    const pickList = (x) => {
-      const mine = Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id] : [], taken = asks.filter((y) => y !== x && y.f.pick).flatMap((y) => b.choices[y.f.id] ?? []);
-      return el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, el('h4', { text: `${x.f.name}: choose up to ${pickLimit(x)}` }),
-        el('p', { class: 'note', id: `count-${x.f.id}`, text: `${mine.length} of ${pickLimit(x)} chosen` }),
-        ...x.f.options.map((o) => {
-          const need = optionWhy(x, o, mine, b.spells), on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id) || !!need);
-          return scrollOn(el('label', { class: 'check qe-tick', 'data-option': o.id }, el('input', { type: 'checkbox', id: `pick-${x.f.id}-${o.id}`, checked: on, disabled: off,
-            onchange: (ev) => { const next = ev.target.checked ? [...mine, o.id] : mine.filter((i) => i !== o.id); if (next.length) b.choices[x.f.id] = next; else delete b.choices[x.f.id]; build(); } }),
-            el('span', {}, o.name + (taken.includes(o.id) ? ' (chosen above)' : ''), need || (on && optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)) ? el('small', { class: 'note', text: ` ${need || optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells)}` }) : null)), () => ({ title: o.name, sub: x.f.name, text: o.text }));
-        }));
-    };
-    if (asks.length) parts.push(el('section', {}, el('h3', { text: 'Choices' }), ...asks.map((x) => x.f.pick ? pickList(x) : el('div', {},
-      sel(x.f.name, `choice-${x.f.id}`, [['', 'Choose…'], ...x.f.options.map((o) => [o.id, o.name])], b.choices[x.f.id] ?? '', (v) => { if (v) b.choices[x.f.id] = v; else delete b.choices[x.f.id]; build(); }),
-      b.choices[x.f.id] ? el('p', { class: 'note', text: x.f.options.find((o) => o.id === b.choices[x.f.id])?.text ?? '' }) : null))));
-
-    // Feats: Ability Score Improvement places, the origin feats (the engine's `featChoices` says what each place offers)
-    const feats = featsSection();
-    if (feats) parts.push(feats);
-
-    // Skills
-    const picked = b.skills.length, full = picked >= L.skills;
-    const skillTick = (k) => {
-      const on = b.skills.includes(k);
-      const c1 = el('input', { type: 'checkbox', id: `qb-skill-${k}`, checked: on, disabled: !on && full, onchange: (ev) => { toggle(b.skills, k, ev.target.checked); if (!ev.target.checked) toggle(b.expertise, k, false); build(); } });
-      const row = [el('label', { class: 'check qe-tick' }, c1, el('span', { text: `${nice(k)} (${SKILLS[k].toUpperCase()})` }))];
-      if (L.expertise && on) {
-        const ex = b.expertise.includes(k);
-        row.push(el('label', { class: 'check qe-tick qe-exp' }, el('input', { type: 'checkbox', id: `qb-exp-${k}`, checked: ex, disabled: !ex && b.expertise.length >= L.expertise, onchange: (ev) => { toggle(b.expertise, k, ev.target.checked); build(); } }), el('span', { text: 'Expertise' })));
-      }
-      return el('div', { class: 'qe-sk' }, ...row);
-    };
-    const skillsSec = el('section', {}, el('h3', { text: `Skills: ${picked} of ${L.skills}` }), el('div', { class: 'qe-skills' }, ...L.fromClass.map(skillTick)));
-    if (L.extraAny) skillsSec.append(el('h4', { text: 'Any other skill (a feature allows these)' }), el('div', { class: 'qe-skills' }, ...Object.keys(SKILLS).filter((k) => !L.fromClass.includes(k)).map(skillTick)));
-    if (L.expertise) skillsSec.append(el('p', { class: 'note', text: `Expertise: ${b.expertise.length} of ${L.expertise}. Tick it under a skill you are proficient in.` }));
-    parts.push(skillsSec);
-
-    // Armour, shield, weapons
-    const armour = Object.values(CONTENT.armour).filter((a) => a.category !== 'shield');
-    const wp = Object.values(CONTENT.weapons);
-    const weaponTick = (w) => {
-      const on = b.weapons.includes(w.id);
-      return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `qb-weapon-${w.id}`, checked: on, onchange: (ev) => { toggle(b.weapons, w.id, ev.target.checked); update(); } }),
-        el('span', { text: `${w.name} (${w.damage})` }));
-    };
-    const trained = armourTrained(c, L.feats.map((x) => x.f.grants).filter(Boolean)), aNote = armourNote(c, trained, armour), shieldNo = !trained.has('shield');
-    const opts = armourOptions(armour, trained, b.armour), armourSel = sel('Armour', 'armour', opts.map(([v, t]) => [v, t]), b.armour ?? '', (v) => { b.armour = v || null; update(); });
-    [...armourSel.querySelectorAll('option')].forEach((o, i) => { o.disabled = opts[i][2]; });
-    parts.push(el('section', {}, el('h3', { text: 'Armour and weapons' }), el('div', { class: 'qe-grid qe-2' },
-      armourSel,
-      el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: 'qb-shield', checked: b.shield, disabled: shieldNo && !b.shield, onchange: (ev) => { b.shield = ev.target.checked; update(); } }), el('span', { text: `Shield (+2 AC)${shieldNo ? ' (no training)' : ''}` }))),
-      ...(aNote ? [el('p', { class: 'note', id: 'qb-armour-note', text: aNote })] : []),
-      ...['simple', 'martial'].map((cat) => el('div', {}, el('h4', { text: `${cap(cat)} weapons` }),
-        el('div', { class: 'qe-ticks' }, ...wp.filter((w) => w.category === cat).map(weaponTick)))),
-      el('div', { class: 'qe-ticks' }, el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: 'qb-weapon-unarmed-strike', checked: b.weapons.includes('unarmed-strike'), onchange: (ev) => { toggle(b.weapons, 'unarmed-strike', ev.target.checked); update(); } }), el('span', { text: 'Unarmed Strike' })))));
-
-    // Spells
-    if (L.cast) parts.push(spellsSection(L));
-
-    // Live numbers, then Save
-    refs.derived = el('section', { id: 'qb-derived', class: 'qb-derived' });
-    parts.push(refs.derived);
+    const nd = needs(L), secs = sectionList(L, c, locked, nd);
+    if (acc !== null && !secs.some((x) => x.id === acc)) acc = 'who';
+    const a = accordion({ sections: secs, open: acc, id: 'qb-acc', onOpen: (id) => { acc = id; build(); } });
+    refs.accBody = a.body; refs.accOpen = acc;
+    refs.derived = el('div', { id: 'qb-derived', class: 'qb-live', 'aria-label': 'The sheet so far' });
     refs.problems = el('ul', { class: 'qe-problems', id: 'qb-problems', 'aria-live': 'polite' });
+    refs.why = el('p', { class: 'qb-why', id: 'qb-save-why', 'aria-live': 'polite' });
     const roll = rolledTable() && (mode === 'levelup' || (mode === 'add' && b.level > 1));
     const label = mode === 'levelup' ? `${roll ? 'Roll hit points and level up' : 'Level up'} to ${b.level}` : mode === 'edit' ? 'Save changes' : mode === 'mine' ? 'Save to My characters' : roll ? 'Roll hit points and add to the table' : 'Add to the table';
     refs.save = el('button', { type: 'button', id: 'qb-save', class: 'qe-save', text: label, onclick: save });
     // A character with levels not rolled yet (the table began rolling after it was made): one tap rolls them all.
-    const toRoll = mode === 'edit' && rolledTable() && unrolled(getState()?.entities[target?.id]);
-    refs.rollHp = toRoll ? el('button', { type: 'button', id: 'qb-roll-hp', class: 'qe-save', text: 'Roll hit points', onclick: () => { pending = 'hpRolled'; refs.rollHp.disabled = true; act({ type: 'rollHp', actor: target.id }); setTimeout(() => { if (pending === 'hpRolled') { pending = null; if (!panel.hidden) update(); } }, 4000); } }) : null;
-    parts.push(el('div', { class: 'qe-foot' }, refs.problems, el('div', { class: 'row' }, ...(refs.rollHp ? [refs.rollHp] : []), refs.save, el('button', { type: 'button', id: 'qb-cancel', text: mode === 'mine' ? '\u2190 Back' : 'Cancel', onclick: close }))));
-    panel.append(...parts);
+    refs.rollHp = rollsPending() ? el('button', { type: 'button', id: 'qb-roll-hp', class: 'qe-save', text: 'Roll hit points', onclick: () => { pending = 'hpRolled'; refs.rollHp.disabled = true; act({ type: 'rollHp', actor: target.id }); setTimeout(() => { if (pending === 'hpRolled') { pending = null; if (!panel.hidden) update(); } }, 4000); } }) : null;
+    refs.needs = nd;
+    panel.append(head, el('div', { class: 'qb-main' }, refs.derived, el('div', { class: 'qb-left' }, a.node)),
+      el('div', { class: 'qb-foot' }, refs.why, refs.problems, el('div', { class: 'row' }, ...(refs.rollHp ? [refs.rollHp] : []), refs.save, el('button', { type: 'button', id: 'qb-cancel', text: mode === 'mine' ? '← Back' : 'Cancel', onclick: close }))));
     update();
-    panel.scrollTop = scroll;
+    if (refs.accBody && bodyOf === acc) refs.accBody.scrollTop = bodyScroll;
     if (focus && focus !== 'qb-name' && !/^qb-abil/.test(focus)) document.getElementById(focus)?.focus({ preventScroll: true });
+  }
+
+  // ---------- Who ----------
+  function whoSection(c, locked) {
+    const mk = (label, id, options, value, onchange, disabled, wide2) => {
+      const s = el('select', { id: `qb-${id}`, disabled }, ...options.map(([v, t]) => el('option', { value: v, text: t })));
+      s.value = value; s.onchange = () => onchange(s.value);
+      return el('label', { class: wide2 ? 'qe-f wide' : 'qe-f' }, el('span', { text: label }), s);
+    };
+    const name = el('input', { id: 'qb-name', type: 'text', value: b.name, maxLength: 40, autocomplete: 'off', autocapitalize: 'words', spellcheck: false, oninput: (ev) => { b.name = ev.target.value; update(); } });
+    const sec = el('section', {});
+    if (mode === 'mine') sec.append(draftBar());
+    if (mode === 'add' && importButton) sec.append(el('div', { class: 'row' }, importButton(), el('small', { class: 'note', text: 'Or start from a Fantasy Grounds export.' })));
+    sec.append(el('div', { class: 'qe-grid qe-2' },
+      el('label', { class: 'qe-f wide' }, el('span', { text: 'Name' }), name),
+      mk('Class', 'class', classIds.map((id) => [id, CONTENT.classes[id].name]), b.class, (v) => {
+        const keepB = { name: b.name, color: b.color, abilities: b.abilities, abilText: b.abilText, hand: b.hand, sc: b.sc, level: b.level, keep: b.keep };   // a new class starts with no feats
+        b = Object.assign(fresh(v), keepB); autoSubclass(); build();
+      }, locked || mode === 'edit'),
+      mk('Level', 'levelsel', Array.from({ length: 20 }, (_, i) => [String(i + 1), String(i + 1)]), String(b.level), (v) => { b.level = +v; autoSubclass(); build(); }, locked),
+      mk('Subclass', 'subclass', subclassChoices(c, b.level, b.subclass), b.subclass ?? '', (v) => { b.subclass = v || undefined; build(); }, false, true),
+      el('div', { class: 'qe-f wide', role: 'group', 'aria-labelledby': 'qb-color-label' }, el('span', { id: 'qb-color-label', text: 'Colour' }), colourField())),
+      ...(subclassNote(c, b.subclass) ? [el('p', { class: 'note', id: 'qb-subclass-note', text: subclassNote(c, b.subclass) })] : []));
+    return sec;
+  }
+
+  // ---------- Skills ----------
+  // Chips (a short list of single words): tick up to the class's number; Expertise, where a feature gives it, is a second row of chips for the skills ticked.
+  function skillsSection(L) {
+    const picked = b.skills.length, full = picked >= L.skills;
+    const chipTick = (id, text, on, off, onchange) => el('label', {}, el('input', { type: 'checkbox', id, checked: on, disabled: off, onchange }), el('span', { text }));
+    const skillTick = (k) => chipTick(`qb-skill-${k}`, `${nice(k)} (${SKILLS[k].toUpperCase()})`, b.skills.includes(k), !b.skills.includes(k) && full, (ev) => { toggle(b.skills, k, ev.target.checked); if (!ev.target.checked) toggle(b.expertise, k, false); build(); });
+    const sec = el('section', {}, el('h3', { text: `Skills: ${picked} of ${L.skills}` }), el('p', { class: 'pk-lead', text: `Choose ${L.skills} from the ${L.c.name}'s list. ${picked} of ${L.skills} chosen.${full ? ' Untick one to change your mind.' : ''}` }), el('div', { class: 'chipset' }, ...L.fromClass.map(skillTick)));
+    if (L.extraAny) sec.append(groupHead('Any other skill', 'a feature allows these'), el('div', { class: 'chipset' }, ...Object.keys(SKILLS).filter((k) => !L.fromClass.includes(k)).map(skillTick)));
+    if (L.expertise) {
+      sec.append(groupHead('Expertise', `${b.expertise.length} of ${L.expertise}`), b.skills.length ? el('div', { class: 'chipset' }, ...b.skills.map((k) => chipTick(`qb-exp-${k}`, nice(k), b.expertise.includes(k), !b.expertise.includes(k) && b.expertise.length >= L.expertise, (ev) => { toggle(b.expertise, k, ev.target.checked); build(); })))
+        : el('p', { class: 'pk-lead', text: 'Tick a skill above first.' }));
+    }
+    return sec;
+  }
+
+  // ---------- Class resource and features ----------
+  const dots = (n, cls = '') => el('span', { class: 'pk-pips', 'aria-hidden': 'true' }, ...Array.from({ length: Math.min(n, 12) }, () => el('span', { class: `pip${cls}` })));
+  function featureRow(f0, res, u) {
+    const f = f0.grants || f0.feat ? f0 : (featuresOf(sheet()).find((x) => x.f.id === f0.id)?.f ?? f0);       // a record's feature has no grants: read the class's own entry for when it is used
+    const when = featureWhen(f), own = u ?? f0.uses ?? f.uses;
+    return pickRow({ id: `qb-feature-${f.id}`, kind: 'none', title: f.name, chips: [res ? chip('cost', costText(res, f)) : null, chip('when', when)].filter(Boolean), summary: firstSentence(f.text), also: own && !res ? usesText(own.max !== undefined && typeof own.max === 'number' ? own : null) : '',
+      info: { title: f.name, sub: `${when}${res ? ` · costs ${costText(res, f)}` : ''}`, text: f.text } });
+  }
+  function powerSection(L, c, r, res) {
+    const sec = el('section', { class: 'qb-power' }), recFeats = new Map((r?.feats ?? []).map((f) => [f.id, f]));
+    const dcOf = (f) => { const e = (f.grants?.action?.effects ?? []).find((x) => typeof x.dc === 'string'); return e?.dc; };
+    for (const x of res) {
+      const dcAb = x.spenders.map(dcOf).find(Boolean), dc = dcAb && r ? 8 + r.prof + mod(r.abil[dcAb]) : null;
+      sec.append(el('div', { class: 'res', id: `qb-res-${x.id}` }, el('h3', {}, x.title, el('span', { class: 'alias', text: x.alias })),
+        el('div', { class: 'big' }, el('span', { class: 'num', id: `qb-res-${x.id}-n`, text: String(x.max) }), dots(x.max)),
+        el('div', { class: 'back' }, el('b', { text: `All back on ${REST[x.recharge]}` }), x.recharge === 'short' ? ' (or a Long Rest).' : x.short ? ` (${x.short} on a Short Rest).` : '.', dc !== null ? ` Save DC ${dc} (8 + ${dcAb.toUpperCase()} ${signed(mod(r.abil[dcAb]))} + Proficiency ${signed(r.prof)}).` : '')));
+      sec.append(groupHead('What spends it', `${costText(x, x.spenders[0])} each`), ...x.spenders.map((f) => featureRow(f, x, recFeats.get(f.id)?.uses)));
+    }
+    if (L.cast) {
+      const slots = slotList(r?.slots);
+      sec.append(el('div', { class: 'res', id: 'qb-res-slots' }, el('h3', {}, 'Spell slots', el('span', { class: 'alias', text: 'what casting spends' })),
+        ...(slots.length ? slots.map(([l, n]) => el('div', { class: 'slotrow' }, el('span', { class: 'lbl', text: `Level ${l}` }), dots(n), el('span', { text: String(n) }))) : [el('p', { class: 'back', text: 'None at this level.' })]),
+        el('div', { class: 'back' }, el('b', { text: `All back on ${L.cast.kind === 'pact' ? 'a Short Rest' : 'a Long Rest'}.` }), r?.castAbil ? ` Spell save DC ${8 + r.prof + mod(r.abil[r.castAbil])}, spell attack ${signed(r.prof + mod(r.abil[r.castAbil]))}.` : '')));
+    }
+    for (const [g, fs] of groupedFeatures(L.feats, res)) sec.append(groupHead(g), ...fs.map((f) => featureRow(f, null, recFeats.get(f.id)?.uses)));
+    if (!sec.children.length) sec.append(el('p', { class: 'pk-lead', text: 'No class features yet at this level.' }));
+    return sec;
+  }
+
+  // ---------- Class choices (a feature that asks) ----------
+  function choicesSection(asks) {
+    const sec = el('section', {});
+    // A feature that picks several options from a list (Metamagic: up to 2 at level 2, 2 more at 10): ticks, none twice across features.
+    for (const x of asks) {
+      if (x.f.pick) {
+        const mine = Array.isArray(b.choices[x.f.id]) ? b.choices[x.f.id] : [], taken = asks.filter((y) => y !== x && y.f.pick).flatMap((y) => b.choices[y.f.id] ?? []);
+        const box = el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, groupHead(`${x.f.name}: choose up to ${pickLimit(x)}`));
+        box.append(el('p', { class: 'pk-lead', id: `count-${x.f.id}`, text: `${mine.length} of ${pickLimit(x)} chosen` }), el('p', { class: 'pk-lead', text: firstSentence(x.f.text) }));
+        for (const o of x.f.options) {
+          const need = optionWhy(x, o, mine, b.spells), on = mine.includes(o.id), off = !on && (mine.length >= pickLimit(x) || taken.includes(o.id) || !!need);
+          const stale = on && optionWhy(x, o, mine.filter((i) => i !== o.id), b.spells);
+          const row = pickRow({ id: `pick-${x.f.id}--${o.id}`, kind: 'check', checked: on, disabled: off, title: o.name, summary: firstSentence(o.text), why: taken.includes(o.id) ? '(chosen above)' : need || stale || '', info: { title: o.name, sub: x.f.name, text: o.text },
+            onchange: (on2) => { const next = on2 ? [...mine, o.id] : mine.filter((i) => i !== o.id); if (next.length) b.choices[x.f.id] = next; else delete b.choices[x.f.id]; build(); } });
+          row.dataset.option = o.id; box.append(row);
+        }
+        sec.append(box);
+      } else {
+        const cur = b.choices[x.f.id] ?? '', box = el('div', { class: 'qb-pick', id: `choice-${x.f.id}` }, groupHead(x.f.name, 'choose one'));
+        for (const o of x.f.options) {
+          const row = pickRow({ id: `qb-choice-${x.f.id}--${o.id}`, kind: 'radio', name: `qb-choice-${x.f.id}`, checked: cur === o.id, title: o.name, summary: firstSentence(o.text), info: { title: o.name, sub: x.f.name, text: o.text }, onchange: () => { b.choices[x.f.id] = o.id; build(); } });
+          row.dataset.option = o.id; box.append(row);
+        }
+        sec.append(box);
+      }
+    }
+    return sec;
+  }
+
+  // ---------- Armour and weapons ----------
+  const gearTip = (L, c) => {
+    const trained = armourTrained(c, L.feats.map((x) => x.f.grants).filter(Boolean)), words = weaponWords(c, L.feats.map((x) => x.f.grants).filter(Boolean));
+    const a = b.armour ? CONTENT.armour[b.armour] : null, no = (a && !trained.has(a.category)) || (b.shield && !trained.has('shield')) || b.weapons.some((id) => CONTENT.weapons[id] && !weaponTrained(CONTENT.weapons[id], words));
+    return `${a ? a.name : 'No armour'}${b.shield ? ' + Shield' : ''} · ${b.weapons.length} weapon${b.weapons.length === 1 ? '' : 's'}${no ? ' · not proficient with something' : ' · all trained'}`;
+  };
+  function gearSection(L, c, d) {
+    const G = L.feats.map((x) => x.f.grants).filter(Boolean), trained = armourTrained(c, G), words = weaponWords(c, G), bare = bareFeatures(L.feats);
+    const s = sheet(), abil = Object.fromEntries(ABILITIES.map((a) => [a, Number.isInteger(s.abilities[a]) ? s.abilities[a] : 10]));
+    const what = (patch) => safeDerive({ ...s, abilities: abil, ...patch })?.record;
+    const armour = Object.values(CONTENT.armour).filter((a) => a.category !== 'shield'), shield = CONTENT.armour.shield, wp = Object.values(CONTENT.weapons);
+    const sec = el('section', { class: 'qb-gear' });
+    sec.append(el('p', { class: 'pk-lead' }, el('b', { text: `${c.name} training. ` }), trainLine(c, trained, words)));
+    if (bare.length) {
+      const off = !!(b.armour || b.shield);
+      sec.append(el('div', { class: `pk-note${off ? ' alert' : ''}`, id: 'qb-bare-note' }, el('div', {}, el('b', { text: off ? 'Right now these are OFF: ' : 'Armour or a Shield turns off ' }), `${bare.join(', ')}${off ? ', because of the armour or Shield.' : `. A ${c.name} keeps them by wearing nothing.`}`)));
+    }
+    // armour
+    const ar = (a, np) => pickRow({ id: `qb-armour-${a.id}`, kind: 'radio', name: 'qb-armour', checked: b.armour === a.id, disabled: np && b.armour !== a.id, np: np, title: a.name, chips: np ? [chip('np', 'Not proficient')] : [],
+      summary: armourSummary(a), cost: np ? armourCost(a, !!L.cast, bare) : '', also: np ? armourAlso(a) : '', info: { title: a.name, sub: `${nice(a.category)} armour`, text: armourLines(a) }, onchange: () => { b.armour = a.id; build(); } });
+    const none = what({ armour: undefined, shield: undefined });
+    sec.append(groupHead('Armour', 'one suit'),
+      pickRow({ id: 'qb-armour-none', kind: 'radio', name: 'qb-armour', checked: !b.armour, title: 'No armour', chips: [chip('good', 'Trained')], summary: none ? `AC ${none.ac}${bare.length ? ` · keeps ${bare.join(', ')}` : ''}` : '', onchange: () => { b.armour = null; build(); } }),
+      ...armour.filter((a) => trained.has(a.category)).map((a) => ar(a, false)));
+    const npA = armour.filter((a) => !trained.has(a.category));
+    if (npA.length) {
+      const open = gearOpen.armour || npA.some((a) => b.armour === a.id);
+      sec.append(disclosure({ id: 'qb-armour-more', open, text: open ? 'Armour you are not proficient with' : `Show armour you are not proficient with (${npA.length})`, sub: `Each says what it costs. The game cannot apply these costs yet, so they cannot be picked.`, onToggle: (v) => { gearOpen.armour = v; build(); } }), ...(open ? npA.map((a) => ar(a, true)) : []));
+    }
+    // shield
+    const noSh = !trained.has('shield');
+    sec.append(groupHead('Shield'), pickRow({ id: 'qb-shield', kind: 'check', checked: b.shield, disabled: noSh && !b.shield, np: noSh, title: 'Shield', chips: noSh ? [chip('np', 'Not proficient')] : [], summary: '+2 AC if you are trained', cost: noSh ? armourCost(shield, !!L.cast, bare) : '',
+      info: { title: 'Shield', sub: 'Shield', text: armourLines(shield) }, onchange: (on) => { b.shield = on; build(); } }));
+    // weapons
+    const prof = d?.record?.prof ?? proficiencyFor(b.level), has = (id) => b.weapons.includes(id);
+    const bonusOf = (w) => { const q = what({ weapons: [...new Set([...b.weapons, w.id])] }); const at = q?.attacks.find((x) => x.id === w.id); return at ? at.bonus : null; };
+    const martial = L.feats.some((x) => x.f.grants?.martialArts), isOwn = (w) => martial && w.kind === 'melee' && (w.category === 'simple' || w.properties.includes('light'));
+    const wRow = (w, ok) => { const hit = bonusOf(w); return pickRow({ id: `qb-weapon-${w.id}`, kind: 'check', checked: has(w.id), disabled: !ok && !has(w.id), np: !ok, title: w.name, chips: ok ? [] : [chip('np', 'Not proficient')], right: hit === null ? '' : signed(hit),
+      summary: weaponSummary(w), cost: !ok && hit !== null ? `${weaponCost(hit, prof)}${martial && w.kind === 'melee' ? '. Not a ' + c.name + ' weapon: no Martial Arts die.' : ''}` : '', info: { title: w.name, sub: `${nice(w.category)} ${w.kind} weapon`, text: weaponLines(w) },
+      onchange: (on) => { toggle(b.weapons, w.id, on); build(); } }); };
+    const okW = wp.filter((w) => weaponTrained(w, words)), npW = wp.filter((w) => !weaponTrained(w, words));
+    sec.append(groupHead('Weapons', 'tick what you carry'));
+    if (martial) {
+      const own = okW.filter(isOwn), rest = okW.filter((w) => !isOwn(w)), un = what({ weapons: b.weapons })?.attacks.find((x) => x.id === 'unarmed-strike');
+      sec.append(groupHead(`${c.name} weapons`, 'Martial Arts die and Dexterity'), pickRow({ id: 'qb-weapon-unarmed-strike', kind: 'none', title: 'Unarmed Strike', chips: [chip('good', `${c.name} weapon`)], right: un ? signed(un.bonus) : '', summary: un ? `Always available · ${un.damage} ${un.dtype}` : 'Always available',
+        info: { title: 'Unarmed Strike', sub: 'Always available', text: ['You can always strike with fist, elbow, knee or foot.', 'With Martial Arts, no armour and no Shield it uses the Martial Arts die and Dexterity.'] } }), ...own.map((w) => wRow(w, true)));
+      if (rest.length) sec.append(groupHead(`Trained, but not ${c.name} weapons`, 'normal damage'), ...rest.map((w) => wRow(w, true)));
+    } else for (const [cat, list] of [['simple', okW.filter((w) => w.category === 'simple')], ['martial', okW.filter((w) => w.category === 'martial')]]) if (list.length) sec.append(groupHead(`${nice(cat)} weapons`, 'you are proficient'), ...list.map((w) => wRow(w, true)));
+    if (npW.length) {
+      const ticked = npW.filter((w) => has(w.id)).length, open = gearOpen.weapons || ticked > 0;
+      sec.append(disclosure({ id: 'qb-weapons-more', open, text: open ? 'Weapons you are not proficient with' : `Show weapons you are not proficient with (${npW.length})`, sub: `${ticked ? `${ticked} ticked. ` : ''}They add no Proficiency Bonus to the attack roll. The game cannot apply that yet, so they cannot be picked.`, onToggle: (v) => { gearOpen.weapons = v; build(); } }), ...(open ? npW.map((w) => wRow(w, false)) : []));
+    }
+    void flagOf;
+    return sec;
   }
 
   // ---------- ability scores ----------
@@ -601,85 +707,92 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   }
 
   // ---------- feats (C13): `sheet.feats` is [{ id, at, abilities?, skills?, list?, ability?, spells? }]; the places and what each offers are `featChoices` ----------
-  function featsSection() {
-    const slots = featChoices(sheet());
-    if (!slots.length) return null;
+  // Every feat of the place's kinds is a row: its category, a one-line summary and the i button before anything is chosen; one the place does not offer is greyed
+  // with the engine's own sentence (why it cannot be taken). Radio rows: one feat a place.
+  const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', minute: '1 minute', hour: '1 hour' };
+  const spellMeta = (s) => [TIME[s.time] ?? s.time, s.range === 'self' ? 'Self' : s.range === 'touch' ? 'Touch' : typeof s.range === 'number' ? `${s.range} ft` : s.range, s.concentration ? 'Concentration' : '', s.ritual ? 'Ritual' : ''].filter(Boolean).join(' · ');
+  const spellRow = (s, o) => pickRow({ id: o.id, kind: 'check', checked: o.on, disabled: o.off, title: s.name, lead: s.level ? `(lvl ${s.level})` : '(cantrip)', chips: [spellTag(s)].filter(Boolean), summary: firstSentence(s.text), also: spellMeta(s), why: o.why, info: () => spellCard(s), onchange: o.onchange });
+  const chipRadios = (id, label, options, value, onchange) => el('div', { class: 'abpick', id }, el('span', { class: 'pk-lead', text: label }),
+    el('div', { class: 'chipset', role: 'radiogroup', 'aria-label': label }, ...options.map(([v, t]) => el('label', {}, el('input', { type: 'radio', name: id, id: `${id}-${v ? `o-${v}` : 'none'}`, checked: (value ?? '') === v, onchange: () => onchange(v) }), el('span', { text: t })))));
+  function featsSection(slots) {
+    const s = sheet();
     const setEntry = (at, f) => { const i = b.feats.findIndex((x) => x.at === at); if (i >= 0) b.feats.splice(i, 1); if (f) b.feats.push(f); };
-    const pickOne = (id, label, options, value, onchange) => {
-      const sl = el('select', { id }, ...options.map(([v, t]) => el('option', { value: v, text: t })));
-      sl.value = value ?? ''; sl.onchange = () => onchange(sl.value);
-      return el('label', { class: 'qe-f' }, el('span', { text: label }), sl);
-    };
     const sec = el('section', { id: 'qb-feats-pick' }, el('h3', { text: 'Feats' }),
-      el('p', { class: 'note', text: 'Ability scores above are the scores before these feats: a feat that raises one adds its points for you.' }));
+      el('p', { class: 'pk-lead', text: 'Ability scores above are the scores before these feats: a feat that raises one adds its points for you. Each feat says what it does in one line; the i button, a 3 second rest of the mouse or a press-hold shows all of it.' }));
     for (const sl of slots) {
-      const def = sl.taken ? CONTENT.feats[sl.taken.id] : null, key = sl.at.replace(/[^a-z0-9]+/gi, '-');
-      const ids = new Set(sl.offer); if (sl.taken && !ids.has(sl.taken.id)) ids.add(sl.taken.id);
-      const box = el('div', { class: 'qb-pick', id: `feat-${key}`, 'data-at': sl.at }, pickOne(`feat-${key}-id`, sl.name,
-        [['', 'None'], ...[...ids].map((id) => [id, CONTENT.feats[id].name])], sl.taken?.id, (v) => { setEntry(sl.at, v ? { id: v, at: sl.at } : null); build(); }));
-      if (def) {
-        const t = sl.taken, put = (patch) => { const next = { ...t, ...patch }; for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k]; setEntry(sl.at, next); };
-        box.append(el('p', { class: 'note', text: def.text ?? '' }));
-        const inc = def.increase;
-        if (inc) {
-          const [first, second] = Object.keys(t.abilities ?? {}), two = inc.points === 2 && Object.keys(t.abilities ?? {}).length === 1 && Object.values(t.abilities)[0] === 2;
-          const opts = (none) => [['', none], ...inc.from.map((a) => [a, ABIL_NAME[a]])];
-          box.append(el('div', { class: 'qe-grid qe-2' },
-            pickOne(`feat-${key}-a1`, inc.points === 2 ? 'Ability score (+2, or +1 with a second)' : 'Ability score (+1)', opts('Choose…'), first, (v) => { put({ abilities: featPoints(inc, v, two ? undefined : second) }); build(); }),
-            inc.points === 2 ? pickOne(`feat-${key}-a2`, 'Second ability score (+1 each)', opts('None: +2 to the first'), two ? '' : second, (v) => { put({ abilities: featPoints(inc, first, v) }); build(); }) : null));
-        }
-        if (def.proficiencies) {
-          const n = def.proficiencies.n, mine = t.skills ?? [];
-          box.append(el('h4', { text: `Skills: ${mine.length} of ${n}` }), el('div', { class: 'qe-skills' }, ...Object.keys(SKILLS).map((k) => {
-            const on = mine.includes(k), had = b.skills.includes(k);
-            return el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `feat-${key}-skill-${k}`, checked: on, disabled: !on && (had || mine.length >= n),
-              onchange: (ev) => { const next = ev.target.checked ? [...mine, k] : mine.filter((i) => i !== k); put({ skills: next.length ? next : undefined }); build(); } }), el('span', { text: `${nice(k)}${had ? ' (already proficient)' : ''}` }));
-          })));
-        }
-        const sp = def.spellPick;
-        if (sp) {
-          const spells = t.spells ?? [], list = t.list, pool = list ? Object.values(CONTENT.spells).filter((x) => x.classes.includes(list)) : [];
-          box.append(el('div', { class: 'qe-grid qe-2' },
-            pickOne(`feat-${key}-list`, 'Spell list', [['', 'Choose…'], ...sp.lists.map((l) => [l, nice(l)])], list, (v) => { put({ list: v || undefined, spells: undefined }); build(); }),
-            pickOne(`feat-${key}-ability`, 'Spellcasting ability', [['', 'Choose…'], ...sp.abilities.map((a) => [a, ABIL_NAME[a]])], t.ability, (v) => { put({ ability: v || undefined }); build(); })));
-          for (const [lv, most, name] of [[0, sp.cantrips, 'Cantrips'], [1, sp.level1, 'Level 1 spells']]) {
-            if (!most) continue;
-            const here = spells.filter((id) => CONTENT.spells[id]?.level === lv);
-            box.append(el('h4', { text: `${name}: ${here.length} of ${most}` }), !list ? el('p', { class: 'note', text: 'Choose a spell list first.' }) : el('div', { class: 'qe-ticks' }, ...pool.filter((x) => x.level === lv).sort((a, z) => a.name.localeCompare(z.name)).map((x) => {
-              const on = spells.includes(x.id);
-              return scrollOn(el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `feat-${key}-spell-${x.id}`, checked: on, disabled: !on && here.length >= most,
-                onchange: (ev) => { const next = ev.target.checked ? [...spells, x.id] : spells.filter((i) => i !== x.id); put({ spells: next.length ? next : undefined }); build(); } }), el('span', { text: x.name })), () => spellCard(x));
-            })));
-          }
-        }
+      const key = sl.at.replace(/[^a-z0-9]+/gi, '-'), ids = new Set(sl.offer); if (sl.taken && !ids.has(sl.taken.id)) ids.add(sl.taken.id);
+      const cats = new Set([...sl.offer].map((id) => CONTENT.feats[id]?.category));
+      const others = { ...s, feats: (s.feats ?? []).filter((x) => x.at !== sl.at) }, was = new Set(validate(others));
+      const whyNot = (f) => validate({ ...others, feats: [...others.feats, { id: f.id, at: sl.at }] }).filter((p) => !was.has(p))[0] ?? 'This feat cannot be taken here.';
+      const box = el('div', { class: 'qb-pick', id: `feat-${key}`, 'data-at': sl.at }, groupHead(sl.name, 'choose one'));
+      box.append(pickRow({ id: `feat-${key}-none`, kind: 'radio', name: `feat-${key}`, checked: !sl.taken, title: 'None', summary: 'No feat here', onchange: () => { setEntry(sl.at, null); build(); } }));
+      const all = Object.values(CONTENT.feats).filter((f) => ids.has(f.id) || cats.has(f.category)).sort((x, y) => (ids.has(y.id) - ids.has(x.id)) || x.name.localeCompare(y.name));
+      for (const f of all) {
+        const on = sl.taken?.id === f.id, offered = ids.has(f.id);
+        box.append(pickRow({ id: `feat-${key}-opt-${f.id}`, kind: 'radio', name: `feat-${key}`, checked: on, disabled: !offered && !on, why: offered || on ? '' : whyNot(f), title: f.name, chips: [chip('cat', nice(f.category))], summary: firstSentence(f.text),
+          info: { title: f.name, sub: `${nice(f.category)} feat`, text: f.text }, onchange: () => { setEntry(sl.at, { id: f.id, at: sl.at }); build(); } }));
+        if (on) box.append(...featExtras(sl, f, key, setEntry));
       }
       sec.append(box);
     }
     return sec;
   }
+  // What a chosen feat still asks: ability points, skills, a spell list and spells.
+  function featExtras(sl, def, key, setEntry) {
+    const t = sl.taken, out = [], put = (patch) => { const next = { ...t, ...patch }; for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k]; setEntry(sl.at, next); };
+    const inc = def.increase;
+    if (inc) {
+      const [first, second] = Object.keys(t.abilities ?? {}), two = inc.points === 2 && Object.keys(t.abilities ?? {}).length === 1 && Object.values(t.abilities)[0] === 2;
+      const opts = (none) => [['', none], ...inc.from.map((a) => [a, a.toUpperCase()])];
+      out.push(chipRadios(`feat-${key}-a1`, inc.points === 2 ? 'Ability score (+2, or +1 with a second)' : 'Ability score (+1)', opts('None yet'), first, (v) => { put({ abilities: featPoints(inc, v, two ? undefined : second) }); build(); }));
+      if (inc.points === 2) out.push(chipRadios(`feat-${key}-a2`, 'Second ability score (+1 each)', opts('None: +2 to the first'), two ? '' : second, (v) => { put({ abilities: featPoints(inc, first, v) }); build(); }));
+    }
+    if (def.proficiencies) {
+      const n = def.proficiencies.n, mine = t.skills ?? [];
+      out.push(el('p', { class: 'pk-lead', text: `Skills: ${mine.length} of ${n}` }), el('div', { class: 'chipset' }, ...Object.keys(SKILLS).map((k) => {
+        const on = mine.includes(k), had = b.skills.includes(k);
+        return el('label', {}, el('input', { type: 'checkbox', id: `feat-${key}-skill-${k}`, checked: on, disabled: !on && (had || mine.length >= n), onchange: (ev) => { const next = ev.target.checked ? [...mine, k] : mine.filter((i) => i !== k); put({ skills: next.length ? next : undefined }); build(); } }), el('span', { text: `${nice(k)}${had ? ' (already proficient)' : ''}` }));
+      })));
+    }
+    const sp = def.spellPick;
+    if (sp) {
+      const spells = t.spells ?? [], list = t.list, pool = list ? Object.values(CONTENT.spells).filter((x) => x.classes.includes(list)) : [];
+      out.push(chipRadios(`feat-${key}-list`, 'Spell list', [['', 'Choose…'], ...sp.lists.map((l) => [l, nice(l)])], list, (v) => { put({ list: v || undefined, spells: undefined }); build(); }),
+        chipRadios(`feat-${key}-ability`, 'Spellcasting ability', [['', 'Choose…'], ...sp.abilities.map((a) => [a, ABIL_NAME[a]])], t.ability, (v) => { put({ ability: v || undefined }); build(); }));
+      for (const [lv, most, name] of [[0, sp.cantrips, 'Cantrips'], [1, sp.level1, 'Level 1 spells']]) {
+        if (!most) continue;
+        const here = spells.filter((id) => CONTENT.spells[id]?.level === lv);
+        out.push(groupHead(name, `${here.length} of ${most}`), ...(!list ? [el('p', { class: 'pk-lead', text: 'Choose a spell list first.' })] : pool.filter((x) => x.level === lv).sort((a, z) => a.name.localeCompare(z.name)).map((x) => {
+          const on = spells.includes(x.id);
+          return spellRow(x, { id: `feat-${key}-spell-${x.id}`, on, off: !on && here.length >= most, onchange: (c2) => { const next = c2 ? [...spells, x.id] : spells.filter((i) => i !== x.id); put({ spells: next.length ? next : undefined }); build(); } });
+        })));
+      }
+    }
+    return out;
+  }
 
+  // ---------- spells ----------
+  const spellTip = (L) => {
+    const have = b.spells.map((id) => CONTENT.spells[id]).filter(Boolean), cantrips = have.filter((s) => s.level === 0).length;
+    return `${cantrips} of ${L.cantrips} cantrips · ${have.length - cantrips} of ${L.prepared} prepared`;
+  };
   function spellsSection(L) {
     const have = b.spells.map((id) => CONTENT.spells[id]).filter(Boolean);
     const cantrips = have.filter((s) => s.level === 0).length, prepared = have.length - cantrips;
     const slots = derive(sheet())?.record?.slots ?? {};
     const slotText = Object.entries(slots).map(([l, n]) => `level ${l}: ${n}`).join(' · ');
     const sec = el('section', {}, el('h3', { text: 'Spells' }),
-      el('p', { class: 'note', id: 'qb-spell-counts', text: `Cantrips ${cantrips} of ${L.cantrips} · Prepared spells ${prepared} of ${L.prepared} · Spell slots ${slotText || 'none'}${L.cast.kind === 'pact' ? ' (Pact Magic: back on a Short Rest)' : ''}` }));
+      el('p', { class: 'pk-lead', id: 'qb-spell-counts', text: `Cantrips ${cantrips} of ${L.cantrips} · Prepared spells ${prepared} of ${L.prepared} · Spell slots ${slotText || 'none'}${L.cast.kind === 'pact' ? ' (Pact Magic: back on a Short Rest)' : ''}` }));
     const all = Object.values(CONTENT.spells).filter((s) => s.classes.some((k) => L.lists.has(k)) && s.level <= L.top);
     const always = new Set(derive(sheet())?.record?.spells ?? []);
     for (let lv = 0; lv <= L.top; lv++) {
       const list = all.filter((s) => s.level === lv).sort((a, z) => a.name.localeCompare(z.name));
       if (!list.length) continue;
-      const mine = list.filter((s) => b.spells.includes(s.id)).length;
-      const full = lv === 0 ? cantrips >= L.cantrips : prepared >= L.prepared;
-      const d = el('details', { id: `qb-spells-${lv}`, open: open.has(`spells-${lv}`) || mine > 0 }, el('summary', { text: `${lv === 0 ? 'Cantrips' : `Level ${lv}`}${mine ? ` (${mine} chosen)` : ''}` }),
-        el('div', { class: 'qe-ticks' }, ...list.map((s) => {
-          const on = b.spells.includes(s.id), auto = !on && always.has(s.id);
-          return scrollOn(el('label', { class: 'check qe-tick' }, el('input', { type: 'checkbox', id: `qb-spell-${s.id}`, checked: on || auto, disabled: auto || (!on && full),
-            onchange: (ev) => { toggle(b.spells, s.id, ev.target.checked); build(); } }), el('span', { text: auto ? `${s.name} (always prepared)` : s.name })), () => spellCard(s));
-        })));
-      d.ontoggle = () => (d.open ? open.add(`spells-${lv}`) : open.delete(`spells-${lv}`));
-      sec.append(d);
+      const mine = list.filter((s) => b.spells.includes(s.id)).length, full = lv === 0 ? cantrips >= L.cantrips : prepared >= L.prepared;
+      sec.append(groupHead(lv === 0 ? 'Cantrips' : `Level ${lv}`, mine ? `${mine} chosen` : ''), ...list.map((s) => {
+        const on = b.spells.includes(s.id), auto = !on && always.has(s.id);
+        return spellRow(s, { id: `qb-spell-${s.id}`, on: on || auto, off: auto || (!on && full), why: auto ? 'Always prepared' : '', onchange: (c2) => { toggle(b.spells, s.id, c2); build(); } });
+      }));
     }
     return sec;
   }
@@ -705,13 +818,12 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     const old = new Map((was.feats ?? []).map((f) => [f.id, f]));
     const fresh = (now.feats ?? []).filter((f) => !old.has(f.id));
     const grown = (now.feats ?? []).filter((f) => old.has(f.id) && f.uses && JSON.stringify(f.uses) !== JSON.stringify(old.get(f.id).uses));
-    if (fresh.length) box.append(el('h4', { text: 'New features' }), ...fresh.map(featureRow));
+    if (fresh.length) box.append(el('h4', { text: 'New features' }), ...fresh.map((f) => featureRow(f)));
     if (grown.length) box.append(el('h4', { text: 'Features that grow' }), ...grown.map((f) => el('p', { class: 'note', text: `${f.name}: ${usesText(old.get(f.id).uses)} becomes ${usesText(f.uses)}` })));
     if (!fresh.length && !grown.length) box.append(el('p', { class: 'note', text: 'No new features at this level.' }));
     box.append(el('p', { class: 'note', text: 'Anything below that needs a choice (a subclass, skills, spells, ability scores for a feat) is listed beside the button.' }));
     return box;
   }
-  const featureRow = (f) => el('details', { class: 'qb-feat' }, scrollOn(el('summary', { text: `${f.name}${f.uses ? ` · ${usesText(f.uses)}` : ''}` }), () => ({ title: f.name, text: f.text })), el('p', { class: 'note', text: f.text ?? '' }));
 
   // The colour: a row of swatches (44 px each, a tick on the chosen one) and "More", which opens a box for any `#rrggbb`. No browser dialog.
   function colourField() {
@@ -751,7 +863,11 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     return el('div', { class: 'sf-draft', id: 'qb-draft' }, el('p', { class: 'note', id: 'qb-draft-note', text: pickedUp ? `Picked up where you left off (saved ${whenLine(pickedUp)}). It is kept here until you save or start over.` : 'What you fill in is kept on this device if you go Back.' }), over);
   }
 
-  // The live numbers and the problems; redrawn after every change.
+  // The live sheet and the problems; redrawn after every change. Numbers are `derive`'s: this draws them and decides no rule.
+  const initOf = (s, r) => {
+    const G = [...featuresOf(s).map((x) => x.f.grants), ...(s.feats ?? []).map((f) => CONTENT.feats[f.id]?.grants)].filter(Boolean);
+    return mod(r.abil.dex) + G.flatMap((g) => g.modifiers ?? []).filter((m) => m.on === 'initiative' && m.op === 'add').reduce((n, m) => n + (typeof m.value === 'number' ? m.value : (m.value?.prof ?? 0) * r.prof), 0);
+  };
   function update() {
     if (!refs.derived) return;
     keepDraft();
@@ -760,18 +876,43 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     for (const p of problems) refs.problems.append(el('li', { text: p }));
     refs.problems.hidden = problems.length === 0;
     refs.save.disabled = problems.length > 0 || !!pending;
+    const nd = needs(limits());
+    refs.why.textContent = problems.length ? (nd.length ? `Save is greyed. To choose: ${nd.map((x) => x.t).join(', ')}.` : 'Save is greyed. See below.') : '';
+    refs.why.hidden = !problems.length; refs.why.classList.toggle('has-needs', nd.length > 0);
     const D = refs.derived; D.textContent = '';
-    if (!d) return void D.append(el('h3', { text: 'Numbers' }), el('p', { class: 'note', text: 'These cannot be worked out until the sheet is filled in.' }));
-    const r = d.record, stat = (k, v, id) => el('div', { class: 'qb-stat', id }, el('small', { text: k }), el('b', { text: String(v) }));
-    const cast = r.castAbil ? 8 + r.prof + mod(r.abil[r.castAbil]) : null;
-    D.append(el('h3', { text: 'The numbers' }), el('div', { class: 'qb-stats' }, stat('Hit Points', r.hp, 'qb-hp'), stat('Armor Class', r.ac, 'qb-ac'), stat('Speed', `${r.speed} ft`, 'qb-speed'), stat('Proficiency', signed(r.prof), 'qb-prof'),
-      ...(cast !== null ? [stat('Spell save DC', cast, 'qb-dc'), stat('Spell attack', signed(r.prof + mod(r.abil[r.castAbil])), 'qb-spell-attack')] : [])));
-    D.append(el('p', { class: 'note', id: 'qb-saves', text: `Saving throws: ${ABILITIES.map((a) => `${a.toUpperCase()} ${signed(mod(r.abil[a]) + (r.saveProf.includes(a) ? r.prof : 0))}${r.saveProf.includes(a) ? '*' : ''}`).join(' · ')}  (* proficient)` }));
-    D.append(el('p', { class: 'note', id: 'qb-why', text: `Hit Points: ${d.why.hp.join(', ')}. Armor Class: ${d.why.ac.join(', ')}.` }));
-    if (rolledTable() && (mode === 'add' || mode === 'levelup')) D.append(el('p', { class: 'note', id: 'qb-hp-roll', text: 'This table rolls Hit Points: the game rolls each level after the first (the Hit Die plus Constitution) when you save, and the log shows every die. Until then the number above counts the fixed value for those levels.' }));
-    if (r.attacks.length) D.append(el('h4', { text: 'Attacks' }), el('table', { id: 'qb-attacks' }, el('tr', {}, el('th', { text: 'Attack' }), el('th', { text: 'To hit' }), el('th', { text: 'Damage' })),
-      ...r.attacks.map((a) => el('tr', {}, el('td', { text: a.name }), el('td', { text: signed(a.bonus) }), el('td', { text: `${a.damage} ${a.dtype}` })))));
-    if (r.feats?.length) D.append(el('h4', { text: 'Features' }), el('div', { id: 'qb-feats' }, ...r.feats.map(featureRow)));
+    D.classList.toggle('wide', wide());
+    if (!d) return void D.append(el('p', { class: 'note', text: 'These cannot be worked out until the sheet is filled in.' }));
+    const r = d.record, c = classOf(s), L = limits();
+    const stat = (k, v, id, key) => el('span', { class: `stat${key ? ' key' : ''}`, id }, `${k} `, el('b', { text: String(v) }));
+    const res = resourcesOf(L.feats, r.feats), slots = slotList(r.slots);
+    const cast = r.castAbil ? { dc: 8 + r.prof + mod(r.abil[r.castAbil]), atk: r.prof + mod(r.abil[r.castAbil]) } : null;
+    const resStat = res[0] ? stat(res[0].title, res[0].max, 'qb-live-res', true) : slots.length ? stat('Slots', slots.map(([, n]) => n).join('·'), 'qb-live-res', true) : null;
+    const chips = el('div', { class: 'chips' }, stat('AC', r.ac, 'qb-ac', true), stat('HP', r.hp, 'qb-hp'), stat('Speed', `${r.speed} ft`, 'qb-speed'), stat(wide() ? 'Initiative' : 'Init', signed(initOf(s, r)), 'qb-init'), ...(wide() ? [stat('Proficiency', signed(r.prof), 'qb-prof')] : []), ...(wide() && resStat ? [resStat] : []),
+      ...(wide() && cast ? [stat('Spell save DC', cast.dc, 'qb-dc'), stat('Spell attack', signed(cast.atk), 'qb-spell-attack')] : []));
+    const rows = attackRows(r.attacks), sig = {}, flash = [];
+    const list = el('ul', { class: 'alist', id: 'qb-attacks', 'aria-live': 'polite' }, ...rows.map((a) => {
+      sig[a.id] = a.sig; const changed = lastSig[a.id] !== a.sig && Object.keys(lastSig).length > 0;
+      const li = el('li', { class: `arow${changed ? ' flash' : ''}`, 'data-aid': a.id }, el('span', { class: 'n', text: a.name }), el('span', { class: 'h', text: a.hit }), el('span', { class: 'dm', text: `${a.dmg}${a.dtype ? ` ${a.dtype}` : ''}` }));
+      if (changed) flash.push(li); return li;
+    }));
+    lastSig = sig;
+    const heads = headsUp({ armour: b.armour ? CONTENT.armour[b.armour] : null, shield: b.shield, weapons: b.weapons.map((id) => CONTENT.weapons[id]).filter(Boolean), abil: r.abil, trained: { armour: armourTrained(c, L.feats.map((x) => x.f.grants).filter(Boolean)), weapons: weaponWords(c, L.feats.map((x) => x.f.grants).filter(Boolean)) }, caster: !!L.cast, bare: bareFeatures(L.feats) });
+    const warn = heads.length ? el('div', { class: 'heads', id: 'qb-heads' }, el('ul', {}, ...heads.map((t) => el('li', { text: t })))) : null;
+    const note = c && L.feats.some((x) => x.f.grants?.extraAttack) ? 'more than one per Attack action' : '1 per Attack action';
+    if (wide()) {
+      D.append(el('h3', { class: 'live-name', text: b.name.trim() || 'Unnamed' }), el('p', { class: 'sub', text: `${c.name} ${r.level}. This sheet follows every choice.` }), chips,
+        el('p', { class: 'acwhy', id: 'qb-why', text: `AC ${r.ac} = ${d.why.ac.join(', ')}. HP ${r.hp}: ${d.why.hp.join(', ')}.` }));
+      if (res[0]) D.append(el('h4', { text: res[0].title }), el('div', { class: 'chips' }, el('span', { class: 'stat key' }, el('b', { text: String(res[0].max) }), ` of ${res[0].max} `, dots(res[0].max)), el('span', { class: 'stat', text: `back on ${REST[res[0].recharge]}` })),
+        el('p', { class: 'acwhy', text: `Spent on ${res[0].spenders.map((f) => f.name).join(', ')}.` }));
+      if (slots.length) D.append(el('h4', { text: 'Spell slots' }), el('div', { class: 'chips' }, ...slots.map(([l, n]) => el('span', { class: 'stat' }, `Level ${l} `, dots(n)))));
+      D.append(el('h4', {}, 'Attacks ', el('small', { text: note })), list, ...(warn ? [warn] : []),
+        el('p', { class: 'acwhy', id: 'qb-saves', text: `Saving throws: ${ABILITIES.map((a) => `${a.toUpperCase()} ${signed(mod(r.abil[a]) + (r.saveProf.includes(a) ? r.prof : 0))}${r.saveProf.includes(a) ? '*' : ''}`).join(' · ')}  (* proficient)` }));
+    } else {
+      const fold = el('button', { type: 'button', id: 'qb-live-fold', 'aria-expanded': String(!liveFolded), 'aria-label': `${liveFolded ? 'Show' : 'Hide'} the attacks list`, text: liveFolded ? '▾' : '▴', onclick: () => { liveFolded = !liveFolded; update(); } });
+      D.append(chips, el('div', { class: 'livehead' }, ...(resStat ? [resStat] : []), el('b', { text: 'Attacks' }), el('span', { class: 'note1', text: note }), el('span', { class: 'sp' }), fold), ...(liveFolded ? [] : [list]), ...(warn ? [warn] : []));
+      if (!liveFolded) list.scrollTop = 0;
+    }
+    if (flash.length) { const f = flash[0]; list.scrollTop = Math.max(0, f.offsetTop - list.offsetTop - 2); }
   }
 
   // What the table said of this page's own roll (the events a roller is sent whole): written to `heard`, and to the draft if its roll is a table's.
@@ -813,7 +954,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     // { mode: 'add' } | { mode: 'edit', entity } | { mode: 'levelup', entity } | { mode: 'mine', sheet?, onSave }
     open(o = { mode: 'add' }) {
       if (!getState()) { heard = null; checked = false; rolledOut = false; }                // no game: whatever an earlier table said is no one's now
-      unwait(); mode = o.mode; pending = null; target = o.entity ? { id: o.entity.id, name: o.entity.name } : null;
+      unwait(); mode = o.mode; pending = null; acc = o.mode === 'levelup' ? 'gain' : 'who'; gearOpen.armour = gearOpen.weapons = false; lastSig = {}; liveFolded = false; target = o.entity ? { id: o.entity.id, name: o.entity.name } : null;
       keep = mode === 'mine' ? o.onSave : null;
       trail = o.trail ?? ['New character']; draftKey = mode === 'mine' ? (o.cid ?? 'new') : null; base0 = mode === 'mine' ? (o.sheet ?? null) : null; pickedUp = null; moreOpen = false;
       panel.classList.toggle('over-lobby', mode === 'mine');             // it opens over the lobby, which is above the usual panels

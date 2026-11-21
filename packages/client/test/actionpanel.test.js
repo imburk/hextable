@@ -267,6 +267,12 @@ test('spell rows carry level, cost, range, concentration and kinds; a spell with
   assert.ok(by['cure-wounds'].kinds.includes('healing'));
 });
 
+test('every spell row says its roll (#605): a save names the ability, a heal says none, and the tag is in the markup rules the CSS styles', () => {
+  const s = newGame(7), by = Object.fromEntries(spellRows(s, cleric(s)).map((r) => [r.spell, r]));
+  assert.equal(by['sacred-flame'].roll, 'save:dex'); assert.equal(by['cure-wounds'].roll, 'none'); assert.equal(by['healing-word'].roll, 'none');
+  for (const r of Object.values(by)) assert.ok(/^(attack|none|save:(str|dex|con|int|wis|cha))$/.test(r.roll), r.spell);
+});
+
 test('the slot strip: one entry per level with what is left; Pact slots are one row labelled so', () => {
   const s = newGame(7), e = cleric(s);
   assert.deepEqual(slotStrip(e), [{ level: 1, left: 2, max: 2, label: 'Level 1' }]);

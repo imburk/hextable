@@ -34,7 +34,7 @@ const turnOf = (s, id) => { for (let i = 0; i < 40 && current(s) !== id; i++) ap
 let n = 0;
 // An invented spell, installed where the engine looks spells up (the way durations.test.js does).
 function learn(s, who, over) {
-  const def = { ...structuredClone(CONTENT.spells['fire-bolt']), id: `hb-when-${++n}`, name: `Probe ${n}`, higher: undefined, level: 1, range: 60, ...over };
+  const def = { ...structuredClone(CONTENT.spells['fire-bolt']), id: `hb-when-${++n}`, name: `Probe ${n}`, higher: undefined, roll: undefined, level: 1, range: 60, ...over };
   SPELLS[def.id] = spellProfile(def);
   s.entities[who].spells.push(def.id);
   return def;

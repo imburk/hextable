@@ -24,6 +24,11 @@ export const TIERS = ['auto', 'assist', 'manual'];
 // What a spell is for, in four words a player sorts by (docs/specs/table-ui.md, E12), in this fixed order.
 // A spell may carry them by hand in `kinds`; `spellKinds` (effects.js) derives them from the steps otherwise.
 export const SPELL_KINDS = ['damage', 'healing', 'control', 'utility'];
+// The roll a spell turns on, said as plainly as its level (docs/specs/rules-expansion.md, "A spell's roll", #605): `attack` (the caster
+// makes a spell attack roll), `save:<ability>` (the target makes that saving throw) or `none`. A spell with two rolls takes the one that
+// decides whether it works. Optional: `spellRoll` (effects.js) reads the steps when a spell does not say.
+const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+export const SPELL_ROLLS = ['attack', 'save:str', 'save:dex', 'save:con', 'save:int', 'save:wis', 'save:cha', 'none'];
 // How long something lasts: "instant", a count of rounds, minutes, hours or days, or one of two
 // forms the engine cannot time ("until dispelled", "special").
 export const isDuration = (x) => typeof x === 'string' && (/^(instant|until dispelled|special)$/.test(x) || /^[1-9]\d* (round|minute|hour|day)s?$/.test(x));
@@ -648,6 +653,20 @@ function lintSpell(e, say) {
     if (!(Array.isArray(k) && k.length >= 1 && k.length <= SPELL_KINDS.length && k.every((x) => SPELL_KINDS.includes(x))
       && new Set(k).size === k.length && k.every((x, i) => i === 0 || SPELL_KINDS.indexOf(k[i - 1]) < SPELL_KINDS.indexOf(x)))) {
       say(`\`kinds\` is a list of one to four of ${SPELL_KINDS.join(', ')}, no repeats, in that order`);
+    }
+  }
+  // `roll`: one of SPELL_ROLLS, and it may not contradict the steps: an attack step makes it `attack`; otherwise a save step that runs when the spell is cast
+  // (a top-level one, in a spell that is not a zone or whose zone goes off at the cast) makes it one of those saves. A save inside another step's branch or
+  // made only on later turns is a side case the text names, so `none` may stand beside it. A spell with no such step may say any roll (the DM handles it).
+  if (e.roll !== undefined) {
+    if (!SPELL_ROLLS.includes(e.roll)) say(`\`roll\` is one of ${SPELL_ROLLS.join(', ')}`);
+    else if (Array.isArray(e.effects)) {
+      let attack = false; const saves = new Set();
+      walkSteps(e.effects, (st) => { if (st && 'attack' in st) attack = true; });
+      if (!e.zone || e.zone.atCast) for (const st of e.effects) if (st && 'save' in st && ABILITIES.includes(st.save)) saves.add(`save:${st.save}`);
+      const words = [...saves].map((x) => `a ${ABILITY_NAMES[x.slice(5)]} saving throw`);
+      if (attack && e.roll !== 'attack') say('has an attack step, so `roll` is "attack"');
+      else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make ${words.join(' and ')} when it is cast, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
   const seen = lintSteps(e.effects, say);
@@ -2774,7 +2793,7 @@ const NOT_HERE = {
 };
 const AMOUNT_KEYS = ['perLevel', 'column', 'mod', 'min', 'die', 'byLevel', 'prof'];
 const SHAPES = {
-  spells: { what: 'a spell', keys: ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'duration', 'concentration', 'ritual', 'target', 'effects', 'higher', 'tier', 'checked', 'text', 'kinds', 'choice', 'costly', 'terrain', 'zone', 'reaction'] },
+  spells: { what: 'a spell', keys: ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'duration', 'concentration', 'ritual', 'target', 'effects', 'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'costly', 'terrain', 'zone', 'reaction'] },
   monsters: { what: 'a monster', keys: ['id', 'name', 'source', 'size', 'type', 'cr', 'xp', 'pb', 'ac', 'hp', 'speed', 'senses', 'abilities', 'initiative', 'languages', 'skills', 'resist', 'vulnerable', 'immune', 'conditionImmune', 'saves', 'hover', 'mount', 'traits', 'actions', 'tier', 'checked', 'text'] },
   items: { what: 'an item', keys: ['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'mithral', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'] },
   feats: { what: 'a feat', keys: ['id', 'name', 'category', 'prerequisite', 'repeatable', 'tier', 'source', 'checked', 'text', 'increase', 'proficiencies', 'spellPick', 'grants'] },
@@ -3240,7 +3259,7 @@ const fits = (spec, v) => spec.split('|').some((t) => (t === 'id' ? isId(v) : t 
   : t === 's[]' ? Array.isArray(v) && v.every((x) => typeof x === 'string') : t === 'i[]' ? Array.isArray(v) && v.every((x) => typeof x === 'number') : t === '?'));
 const describe = (spec) => spec.split('|').map((t) => WORDS[t] ?? t).join(' or ');
 export const HOMEBREW_TYPES = Object.freeze({
-  spells: { id: 's', name: 's', source: 's', level: 'i', school: 's', classes: 'id[]', time: 's', range: 'i|s', components: 'id[]', duration: 's', concentration: 'b', ritual: 'b', target: 'o', effects: 'a', higher: 'o', tier: 's', checked: 'b', text: 's', kinds: 's[]', choice: 'o', costly: 'b', terrain: 'o', zone: 'o', reaction: 'o' },
+  spells: { id: 's', name: 's', source: 's', level: 'i', school: 's', classes: 'id[]', time: 's', range: 'i|s', components: 'id[]', duration: 's', concentration: 'b', ritual: 'b', target: 'o', effects: 'a', higher: 'o', tier: 's', checked: 'b', text: 's', kinds: 's[]', choice: 'o', costly: 'b', terrain: 'o', zone: 'o', reaction: 'o', roll: 's' },
   monsters: { id: 's', name: 's', source: 's', size: 's', type: 's', cr: 'n', xp: 'i', pb: 'i', ac: 'i', hp: 'i', speed: 'o', senses: 'o', abilities: 'o', initiative: 'i', languages: 's[]', skills: 'o', resist: 's[]', vulnerable: 's[]', immune: 's[]', conditionImmune: 's[]', saves: 'o', hover: '?', mount: 's', traits: 'a', actions: 'a', tier: 's', checked: 'b', text: 's' },
   items: { id: 's', name: 's', category: 's', rarity: 's', attune: 'b|o', wear: 's', base: 'o', bonus: 'i', damageType: 's', properties: 's[]', trained: 'b', mithral: 'b', grants: 'o', variant: 's', charges: 'o', activate: 'a', tier: 's', source: 's', checked: 'b', text: 's' },
   feats: { id: 's', name: 's', category: 's', prerequisite: 'o', repeatable: 's|b', tier: 's', source: 's', checked: 'b', text: 's', increase: 'o', proficiencies: 'o', spellPick: 'o', grants: 'o' },

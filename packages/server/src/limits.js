@@ -7,6 +7,7 @@
 //   const bucket = limits.messageBucket();          // one per connection; bucket.take() -> boolean
 //   limits.allowPack(key)                           // false when a table's DM has sent too many pack messages (add, update, remove) in the window (key: the table code)
 //   limits.allowPackData(key)                       // false when a member has asked for pack data too often (key: the member id)
+//   limits.allowHealth(addr)                        // false when the address has read /api/health too often
 //   limits.allowUpload(addr)                        // false when over the window's budget of uploads
 //   const slot = limits.uploadSlot(addr, code)      // { release } or { refused: "server" | "address" | "table" }
 //   limits.uploadPace(elapsedMs, bytes)             // null, "slow" or "deadline": cut an upload body off?
@@ -52,6 +53,7 @@ export const DEFAULT_LIMITS = {
   feedbackPerHour: 30,                 // and per hour
   forwardPerHour: 20,                  // feedback issues filed on GitHub by the whole server per hour (a report over the cap is kept locally only)
   forwardPerDay: 100,                  // and per day
+  healthPerMinute: 30,                 // GET /api/health per address per minute
 };
 
 // Each limit can be set from the environment (useful for tests and for unusual hosts).
@@ -75,6 +77,7 @@ export function limitsFromEnv(env = {}) {
     assetReadBurst: n("LIMIT_ASSET_READ_BURST", d.assetReadBurst), assetReadsPerSecond: n("LIMIT_ASSET_READ_RATE", d.assetReadsPerSecond),
     feedbackPerMinute: n("LIMIT_FEEDBACK_MINUTE", d.feedbackPerMinute), feedbackPerHour: n("LIMIT_FEEDBACK_HOUR", d.feedbackPerHour),
     forwardPerHour: n("LIMIT_FEEDBACK_FORWARD_HOUR", d.forwardPerHour), forwardPerDay: n("LIMIT_FEEDBACK_FORWARD_DAY", d.forwardPerDay),
+    healthPerMinute: n("LIMIT_HEALTH_MINUTE", d.healthPerMinute),
   };
 }
 
@@ -88,6 +91,7 @@ export function createLimits(config = {}, now = Date.now) {
   const uploads = new Map();       // address -> timestamps of recent uploads and deletions
   const uploading = { all: 0, byAddr: new Map(), byTable: new Map() };   // upload bodies being read now
   const reads = new Map();         // address -> { tokens, last }: file reads
+  const healthReads = new Map();   // address -> timestamps of recent /api/health reads
   const feedback = new Map();      // address (an IPv6 one as its /64) -> timestamps of feedback reports in the last hour
   const forwards = [];             // timestamps of issues filed in the last day, whole server
   const bump = (map, key, by) => { const n = (map.get(key) ?? 0) + by; if (n > 0) map.set(key, n); else map.delete(key); };
@@ -118,6 +122,7 @@ export function createLimits(config = {}, now = Date.now) {
     allowJoin: (addr) => admit(joins, addr, c.joins, c.joinWindowMs),
     allowPack: (key) => admit(packMsgs, key, c.packs, c.packWindowMs),
     allowPackData: (key) => admit(packDatas, key, c.packData, c.packDataWindowMs),
+    allowHealth: (addr) => admit(healthReads, rateKey(addr), c.healthPerMinute, 60_000),
     allowUpload: (addr) => admit(uploads, addr, c.uploads, c.uploadWindowMs),
     // Two windows at once: a report is admitted only if both the minute's and the hour's budget have room (a refusal costs nothing).
     allowFeedback(address) {
@@ -179,6 +184,7 @@ export function createLimits(config = {}, now = Date.now) {
       for (const [map, windowMs] of [[hosts, c.hostWindowMs], [joins, c.joinWindowMs], [uploads, c.uploadWindowMs], [packMsgs, c.packWindowMs], [packDatas, c.packDataWindowMs]]) {
         for (const [addr, list] of map) if (!list.some((x) => t - x < windowMs)) map.delete(addr);
       }
+      for (const [addr, list] of healthReads) if (!list.some((x) => t - x < 60_000)) healthReads.delete(addr);
       for (const [addr, list] of feedback) if (!list.some((x) => t - x < 3_600_000)) feedback.delete(addr);
       for (const [addr, b] of reads) if (b.tokens + ((t - b.last) / 1000) * c.assetReadsPerSecond >= c.assetReadBurst) reads.delete(addr);
     },
