@@ -7,8 +7,17 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
-import { apply, current } from "../src/engine.js";
+import * as E from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
+const { current } = E;
+// #630: a fight is numbered by `fightSeq` and no longer by the creature counter `seq`, which it took a number from when this was recorded. So that the recording still
+// checks everything else byte for byte, the fight counter is made to read as that counter did (set to `seq` before an action) and `seq` is moved on by the one it used to take.
+const apply = (s, a, ctx) => {
+  s.fightSeq = s.seq;
+  const r = E.apply(s, a, ctx);
+  if (r.ok && s.fightSeq === s.seq + 1) s.seq++;
+  return r;
+};
 import { squareRoom } from "./fixtures/square-room.js";
 import { bringBackSpells, putAwaySpells } from "./ai-casting-kit.js";
 
@@ -59,7 +68,7 @@ test("the monster AI is byte-identical to main for creatures with no bond: the r
     assert.equal(actions.filter((a) => a.refused).length, want.refused, `${sc.name}: refused`);
     assert.equal(sha(actions), want.actions, `${sc.name}: the actions chosen`);
     // Recorded at version 23; the version has moved (24, #390; 25, #557) and `packs: []` and `scoreRolls: {}` are new; nothing else in the state.
-    const { packs, scoreRolls, ...rest } = s;
+    const { packs, scoreRolls, fightSeq, ...rest } = s;      // (`fightSeq` is taken out: see `apply` above)
     assert.equal(sha({ ...rest, version: 23 }), want.state, `${sc.name}: the end state`);
     assert.equal(!s.encounter, want.ended);
   }

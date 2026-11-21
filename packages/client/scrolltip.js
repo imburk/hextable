@@ -36,7 +36,7 @@ export function placeCard(a, w, h, vw, vh, gap = 10, margin = 12) {
   return { left, top, width: cw, maxH };
 }
 
-let card = null, owner = null, ownerTimer = null, wired = false;
+let card = null, owner = null, ownerTimer = null, ownerEnd = null, wired = false;
 const ID = 'scrolltip';
 function cssOnce() {
   if (document.getElementById('scrolltip-css')) return;
@@ -46,7 +46,12 @@ export function hide() {
   if (!card) return;
   card.remove(); card = null; ownerTimer?.reset(); ownerTimer = null;
   owner?.removeAttribute('aria-describedby'); owner = null;
+  const end = ownerEnd; ownerEnd = null; end?.();
 }
+// Open the card by hand (an info button's tap): `end()` is called once when the card goes away. `owns(node)`: is the card up for this node?
+export function pop(anchor, d, end = null) { show(anchor, d, null); ownerEnd = end; }
+export const owns = (node) => !!card && owner === node;
+export const cardOwner = () => (card ? owner : null);
 function show(anchor, d, timer) {
   hide(); cssOnce();
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = text; return e; };

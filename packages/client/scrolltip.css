@@ -9,7 +9,7 @@
 .scrolltip-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .scrolltip b { display: block; font-size: 15px; margin-bottom: 2px; }
 .scrolltip small { display: block; color: var(--ink-soft); margin-bottom: 6px; }
-.scrolltip p { margin: 0; }
+.scrolltip p { margin: 0; white-space: pre-line; }
 .has-scroll { -webkit-touch-callout: none; }
 @media (pointer: coarse) { .has-scroll { -webkit-user-select: none; user-select: none; } }
 @media (prefers-reduced-motion: no-preference) { .scrolltip { animation: scrolltip-in .14s ease-out; } @keyframes scrolltip-in { from { opacity: 0; transform: translateY(-3px); } } }
