@@ -58,7 +58,8 @@ test("DEBT T34 fixed (#404): the client's Add a monster list is built again when
   const at = src.indexOf("function buildSpawn() {");
   assert.ok(at > 0, "the function that makes the buttons");
   assert.match(src.slice(at, at + 600), /Object\.entries\(MONSTERS\)/, "it reads MONSTERS when it runs");
-  assert.match(src.slice(at, at + 600), /\$\('dm-spawn'\)\.replaceChildren/, "it fills #dm-spawn");
+  assert.match(src.slice(at, at + 600), /FIND\.set\(/, "it hands them to the monster search, which fills #dm-spawn (#682)");
+  assert.match(src, /initSpawnFind\(\{ list: \$\('dm-spawn'\)/, "the search is the one that draws #dm-spawn");
   assert.match(src, /initPacks\(\{[^]*?changed: \(\) => \{\s*buildSpawn\(\)/, "and it runs again when the packs change");
   assert.equal(src.split("\n").filter((l) => l.includes("'dm-spawn'")).length, 1, "nothing else fills the list");
 });

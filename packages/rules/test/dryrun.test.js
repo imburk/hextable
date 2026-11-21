@@ -42,7 +42,9 @@ test("the sample pack covers every step kind, every branch it can, every area sh
     if (sp.higher?.slot) slot = true;
     if (sp.higher?.level) { level = true; if (sp.level === 0) cantrip = true; }
   }
-  assert.deepEqual([...STEPS].filter((k) => !steps.has(k)), [], "a step kind no sample spell uses");
+  // `imbue` is exempt from this coverage check on purpose: a dry run casts in a throw-away game whose caster carries no weapon for it to change,
+  // so no sample spell can use it and the dry run only says so; imbue.test.js casts it for real (docs/specs/on-hit.md, O4 build notes).
+  assert.deepEqual([...STEPS].filter((k) => k !== "imbue" && !steps.has(k)), [], "a step kind no sample spell uses");
   assert.deepEqual([...AREA_SHAPES].filter((k) => !shapes.has(k)), [], "an area shape no sample spell uses");
   for (const b of ["onHit", "onFail", "onZero", "onKill", "blocked"]) assert.ok(branches.has(b), `branch ${b}`);
   assert.deepEqual({ half, attack, ends, zone, push, heal, slot, level, cantrip, manual: manual === 1 }, { half: true, attack: true, ends: true, zone: true, push: true, heal: true, slot: true, level: true, cantrip: true, manual: true });

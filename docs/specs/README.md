@@ -20,6 +20,7 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Renderer](renderer.md) | Rooms from the map, timeline, models, the renderer interface, Three.js | Draft; Three.js default and the old renderer removed (R14) |
 | [Table UI](table-ui.md) | Drawer, tracker, action panel, defeat, rewards, log by combat | Draft; largely built |
 | [One token, one menu](one-token-menu.md) | One token that opens one menu; supersedes the player's screen where they differ | Draft |
+| [The DM's to-do tray](dm-todo.md) | A card for each note the engine hands the DM, with tools and Done; "You run" cards; the caster's "waiting for the DM" | Built (#675) |
 | [Player's screen](player-screen.md) | The moments of a player at the table | Draft; superseded in part |
 | [Starting page](start-page.md) | Play and Tools, Carry on | Draft |
 | [Keyboard](keyboard.md) | WASD and arrows, follow camera, key maps | Built (#357) |

@@ -11,7 +11,8 @@ import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear } from '../modifiers.js';
 import { derive } from '../derive.js';
-import { current, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { castAbilOf, current, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { baked, weaponKey } from '../imbue.js';
 
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
 export function kill(s, t, ev) {
@@ -322,7 +323,7 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   // `baseAc` (Mage Armor, "a willing creature who isn't wearing armor"): put on only where the engine knows the creature wears no armour and how it
   // works its Armor Class out (a built character, `acBase`, not in a form). Any other creature is the DM's: it is told, and nothing is put on.
   if (mod_.op === 'baseAc' && !(acBaseOf(holder) !== null && !holder.form && (holder.armour ?? 'none') === 'none')) {
-    ev.push({ type: 'manual', actor: f.actor ?? holder.id, name: f.src.name, partial: true, text: `${holder.name} ${holder.form ? 'is in a form' : (holder.armour ?? 'none') !== 'none' ? 'is wearing armor' : holder.sheet ? 'has a sheet the engine could not work its Armor Class out from' : 'is not a built character, so the engine does not know whether it wears armor or how its Armor Class is worked out'}. The engine did not change its Armor Class: the DM decides whether ${f.src.name} works and sets the number.` });
+    ev.push({ type: 'manual', actor: f.actor ?? holder.id, name: f.src.name, partial: true, waits: true, text: `${holder.name} ${holder.form ? 'is in a form' : (holder.armour ?? 'none') !== 'none' ? 'is wearing armor' : holder.sheet ? 'has a sheet the engine could not work its Armor Class out from' : 'is not a built character, so the engine does not know whether it wears armor or how its Armor Class is worked out'}. The engine did not change its Armor Class: the DM decides whether ${f.src.name} works and sets the number.` });
     return true;
   }
   const end = ending(s, step, f, ev, t);
@@ -336,6 +337,27 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
     ev.push({ type: 'maxHp', id: holder.id, maxHp: holder.maxHp, hp: holder.hp });
   }
   fx.parts.push(part);
+  return true;
+}
+
+// The `imbue` step (imbue.js; docs/specs/on-hit.md, Decision 8): a part on the lasting effect, naming the weapon the cast or the use named (`src.weapon`, the key
+// of one of the holder's weapon records). An earlier imbue of the same spell or feature by the same creature ends ("ends if cast again", "or until you use this
+// feature again"). Returns false when there is nothing to hang it on or no weapon, and the step is handed to the DM.
+export function imbue(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null, key = f?.src.weapon, spec = step.imbue;
+  if (!fx || typeof key !== 'string' || !spec) return false;
+  const rec = (t.attacks ?? []).find((a) => a.weapon && weaponKey(a) === key);
+  if (!rec) return false;
+  const caster = s.entities[f.actor] ?? t, level = caster.level ?? 1;
+  const reach = (map, n) => { const k = Object.keys(map ?? {}).map(Number).filter((l) => l <= n).sort((x, y) => y - x)[0]; return k === undefined ? null : map[k]; };
+  for (const x of [...effectsOf(s)]) if (x !== fx && x.source === fx.source && x.name === fx.name && x.parts.some((p) => p.imbue && !p.ended)) endEffect(s, ev, x, `${fx.name} was used again`);
+  const die = typeof spec.die === 'string' ? spec.die : spec.die ? reach(spec.die.byLevel, level) : null;
+  const plus = typeof spec.plus === 'number' ? spec.plus : spec.plus ? reach(spec.plus.bySlot, f.src.slot ?? 0) : null;
+  const abil = spec.abil === 'spell' ? castAbilOf(caster, f.src.spell) : null;
+  fx.parts.push({ target: t.id, imbue: { weapon: key, name: f.src.name, ...(abil ? { abil } : {}), ...(die ? { die } : {}), ...(plus ? { plus } : {}),
+    ...(spec.attackAdd !== undefined ? { attackAdd: typeof spec.attackAdd === 'number' ? spec.attackAdd : Math.max(spec.attackAdd.min ?? -Infinity, mod(caster.abil?.[spec.attackAdd.mod] ?? 10)) } : {}),
+    ...(spec.types ? { types: [...spec.types] } : {}) } });
+  if (!baked(rec)) ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text: `${t.name}'s ${rec.name} was made before the engine could change a weapon, so ${f.src.name} does not change its numbers yet (they change at its next remake: equipping, resting or levelling). The DM applies ${f.src.name} to ${rec.name} until then.` });
   return true;
 }
 
@@ -415,7 +437,7 @@ export function rescue(s, t, hook, short, ev) {
 
 // Of the damage types a creature may choose among (Divine Strike: Necrotic or Radiant), the one
 // that hurts the target most: one it is Vulnerable to, then one it does not resist, then the first.
-function bestType(s, t, types) {
+export function bestType(s, t, types) {
   if (!t) return types[0];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const has = (list, own, k) => list === true || list.includes(k) || (own ?? []).includes(k);

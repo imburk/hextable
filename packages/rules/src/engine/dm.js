@@ -22,6 +22,7 @@ import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
 import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
+import { noteRuns, settle } from '../todo.js';
 import { advanceTurn, AWAY, evades, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
 export const handlers = {
@@ -136,6 +137,7 @@ export const handlers = {
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster && (!block || o.name?.startsWith(`${tpl.name} `))).length + 1;      // a block's variants are counted apart
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(type ? { type } : {}), ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
+    noteRuns(s, s.entities[id], 'added');                   // abilities the DM runs for it (todo.js)
     if (s.encounter?.arena[col(at)]) joinEncounter(s, s.entities[id], ev);
   },
   // { type: 'place', actor, to }: on the map in play. { type: 'place', who | actor, node, pin?, entry? }: anywhere in
@@ -379,6 +381,27 @@ export const handlers = {
       }
     }
     checkEnd(s, ev);
+  },
+  // The DM's Armor Class for a creature: the number it has now, as the sheet or stat block gives it (lasting effects and the like still
+  // add to it). For what the engine hands over, as a base AC the engine could not work out. { type: 'setAc', actor, ac }.
+  // A built character's `acBase` (what Mage Armor is measured against, rolls.js) moves by the same amount, so a better base still
+  // gives its own number afterwards. In a form (Wild Shape) it is the form's number that is set: the character's own is kept with the
+  // form and comes back when it ends, and `acBase` is not touched, since a form does not use it. A character made again from its
+  // sheet (refresh, level up) has the sheet's number back. Told to the party's own only: a foe's exact number is the DM's.
+  setAc(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can set Armor Class.');
+    const e = ent(s, a.actor);
+    (Number.isInteger(a.ac) && a.ac >= 0 && a.ac <= 40) || fail('Armor Class must be a whole number from 0 to 40.');
+    a.ac !== e.ac || fail(`${e.name}'s Armor Class is already ${a.ac}.`);
+    if (Number.isInteger(e.acBase) && !e.form) e.acBase += a.ac - e.ac;
+    e.ac = a.ac;
+    if (e.side === 'party') ev.push({ type: 'note', id: e.id, text: `${e.name}'s Armor Class is now ${a.ac}.` });
+  },
+  // Finish a card of the to-do tray (todo.js): { type: 'todoDone', n } or { type: 'todoDone', all: true }. Nothing is told to anyone.
+  todoDone(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can settle the to-do list.');
+    (a.all === true || Number.isInteger(a.n)) || fail('Name the card, or all of them.');
+    settle(s, a.all === true ? 'all' : a.n) || fail('That card is already done.');
   },
   mend(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can heal this way.');

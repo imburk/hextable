@@ -58,7 +58,7 @@ const SENSE = [
   { type: "reactions", actor: "wizard", set: { shield: "always" } }, { type: "endTurn", actor: "fighter" },
   { type: "cast", actor: "wizard", spell: "fire-bolt", target: GOB }, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: 3, r: -1 } }, { type: "cast", actor: "wizard", spell: "web", hex: { q: 3, r: -1 } },
   { type: "secondWind", actor: "fighter" }, { type: "feature", actor: "fighter", feature: "second-wind" }, { type: "use", actor: "fighter", object: "lever", verb: "pull" }, { type: "use", actor: "fighter", object: "door", verb: "open" },
-  { type: "check", actor: "fighter", skill: "perception" }, { type: "search", actor: "rogue" }, { type: "hide", actor: "rogue" },
+  { type: "check", actor: "fighter", skill: "perception" }, { type: "save", who: ["fighter", "rogue"], ability: "dex", dc: 12, damage: { dice: "2d6", type: "fire", half: true } }, { type: "search", actor: "rogue" }, { type: "hide", actor: "rogue" },
   { type: "setSpeed", actor: "fighter", mode: "fly", feet: 30 }, { type: "setSize", actor: "fighter", size: "large" }, { type: "give", actor: "fighter", item: "Rope" }, { type: "drop", actor: "fighter", item: "Rope" },
   { type: "pass", actor: "fighter", item: "Rope", to: "rogue" }, { type: "levelUp", actor: "fighter" },
   { type: "rest" }, { type: "shortRest" }, { type: "advanceTime", minutes: 60 }, { type: "chronicle", title: "t" }, { type: "conclusion", edit: {} },
@@ -66,7 +66,7 @@ const SENSE = [
   { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, { type: "endEncounter" }, { type: "spawn", monster: "wolf", at: { q: 2, r: 2 } }, { type: "place", actor: "fighter", to: { q: 1, r: 0 } },
   { type: "place", actor: "fighter", to: { q: 2, r: 0 } }, { type: "revealRegion", region: "r1", revealed: true }, { type: "setObject", object: "door", state: "open" }, { type: "setObject", object: "pit", state: "open" },
   { type: "remove", actor: GOB }, { type: "setLight", actor: "fighter", item: "torch" }, { type: "reveal", actor: GOB, hidden: true }, { type: "condition", actor: "fighter", condition: "prone", on: true },
-  { type: "setHp", actor: "fighter", hp: 3 }, { type: "harm", actor: "fighter", amount: 4 }, { type: "mend", actor: "fighter", amount: 4 },
+  { type: "setHp", actor: "fighter", hp: 3 }, { type: "harm", actor: "fighter", amount: 4 }, { type: "mend", actor: "fighter", amount: 4 }, { type: "setAc", actor: "fighter", ac: 17 },
   { type: "handout", id: "h1", title: "T", text: "x" }, { type: "note", to: "pat", text: "x" }, { type: "scene", id: "s1", title: "S" }, { type: "endScene" }, { type: "say", text: "hi" },
   { type: "askCheck", actor: "fighter", skill: "perception", dc: 10 }, { type: "setting", key: "autoEngage", value: true }, { type: "setPacks", packs: [] }, { type: "worldIndex", index: WORLD_INDEX },
   { type: "bond", actor: GOB, to: "wizard", kind: "pet" }, { type: "companionOrder", actor: GOB, order: "follow" }, { type: "command", actor: "wizard", ids: [GOB], order: "attack" },
@@ -93,6 +93,8 @@ function places(s) {
   if (s.world.nodes.here) s.world.nodes.here.parent = "top";
 }
 const SENSE2 = [
+  // A ping on the fighter's own cell, so it is reached by a script and not only by a lucky fuzz payload.
+  { a: (s) => ({ type: "ping", at: { q: s.entities.fighter.pos.q, r: s.entities.fighter.pos.r } }) },
   // A hold (docs/specs/grapple-shove.md, stage G2): the fighter holds the goblin, or the goblin the fighter, with a range no base passes.
   { pre: (s) => { s.entities[GOB].cond.grappled = { source: "fighter", holds: [{ by: "fighter", with: "hand", escape: 10, range: 300 }] }; }, a: { type: "letGo", actor: "fighter", target: GOB } },
   { pre: (s) => { s.entities.fighter.cond.grappled = { source: GOB, holds: [{ by: GOB, with: "hand", escape: 10, range: 300 }] }; }, a: { type: "escape", actor: "fighter" } },
@@ -109,6 +111,8 @@ const SENSE2 = [
   { pre: (s) => apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, { role: "player", userId: "pat" }), a: { type: "release", entity: "fighter" } },
   { pre: (s) => apply(s, { type: "stepAway", actor: "rogue" }, DM), a: { type: "stepBack", actor: "rogue" } },
   { pre: (s) => apply(s, { type: "mapEdit", ops: [{ op: "region", region: { id: "r1", name: "R", level: "ground", hexes: ["0,0", "1,0"] } }] }, DM), a: { type: "revealRegion", region: "r1", revealed: true } },
+  // The DM's to-do tray (#675): a card from a note the engine handed over (a setting that changes nothing on the map), then Done.
+  { pre: (s) => apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM), a: (s) => ({ type: "todoDone", n: s.todo?.cards?.[0]?.n }) },
   { a: { type: "handout", handout: { title: "H", text: "x" } } },
   { pre: (s) => apply(s, { type: "handout", handout: { title: "H", text: "x" } }, DM), a: (s) => ({ type: "showHandout", handout: s.handouts?.[0]?.id, to: "all" }) },
   { pre: (s) => apply(s, { type: "handout", handout: { title: "H", text: "x" } }, DM), a: (s) => ({ type: "hideHandout", handout: s.handouts?.[0]?.id }) },
