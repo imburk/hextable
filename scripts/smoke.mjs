@@ -68,6 +68,7 @@ const REGISTRY = {
   windows: ['windows'],
   newversion: ['newversion'],
   strikefirst: ['strikefirst'],
+  undobar: ['undobar'],
 };
 
 const only = process.env.SMOKE_ONLY;
