@@ -20,11 +20,11 @@
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
 import { ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
-  GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
+  GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
 import { CONTENT } from './index.js';
-import { actionProfile, aimable, BENEFICIAL_CONDITIONS, spellKinds, WORK } from '../effects.js';
+import { actionProfile, aimable, BENEFICIAL_CONDITIONS, spellKinds, spellRoll, WORK } from '../effects.js';
 
 // ---------- limits ----------
 export const READER_LIMITS = { depth: 24, nodes: 5000, string: 4000, quote: 600, title: 80, text: 2000, lines: 400, line: 900, problems: 20, numbers: 1000 };
@@ -65,6 +65,8 @@ export const SUMMON_ONE_WORDS = {
   replace: 'If the caster already has one from this spell, casting it again replaces that one.',
 };
 export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition' };
+// A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
+export const ROLL_WORDS = (r) => (r === 'attack' ? 'the caster makes a spell attack roll' : r === 'none' ? 'no attack roll and no saving throw' : `the target makes a ${ABILITY_WORDS[r.slice(5)] ?? r.slice(5)} saving throw`);
 export const KIND_WORDS = { damage: 'damage', healing: 'healing', control: 'control', utility: 'utility' };
 export const TIER_WORDS = {
   auto: 'Tier: auto. The engine rolls and applies all of this.',
@@ -262,7 +264,7 @@ export function sha256(text) {
 // ---------- the reading ----------
 // Keys the engine reads, per object; any other key is said to be unused (strict lint, task B1, refuses them).
 const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'costly', 'duration', 'concentration', 'ritual', 'target', 'effects',
-  'higher', 'tier', 'checked', 'text', 'kinds', 'choice', 'terrain', 'zone', 'reaction'];
+  'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'terrain', 'zone', 'reaction'];
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
@@ -473,8 +475,12 @@ class Reading {
     if (d.ritual === true) this.line('It is marked as a ritual. The engine has no ritual casting: casting it as a ritual is the DM\'s.');
     if (Array.isArray(d.classes) && d.classes.length) this.line(`On the spell lists of: ${list(d.classes.slice(0, 20).map((c) => (typeof c === 'string' && ID.test(c) ? c : 'an unreadable class')))}.`);
     if (d.kinds !== undefined && !(Array.isArray(d.kinds) && d.kinds.every((x) => SPELL_KINDS.includes(x)))) this.bad('`kinds` is not a list of damage, healing, control and utility.');
+    if (d.roll !== undefined && !SPELL_ROLLS.includes(d.roll)) this.bad(`\`roll\` is not one of ${SPELL_ROLLS.join(', ')}.`);
     const kinds = this.structOk() ? spellKinds(d) : [];
     this.line(kinds.length ? `Sorted under: ${list(kinds.map((x) => KIND_WORDS[x]))}.` : 'Sorted under no kind: the engine cannot tell what it is for, so the list shows it under every kind.');
+    const roll = this.structOk() ? spellRoll(d) : null;
+    if (roll) this.line(`Its roll: ${ROLL_WORDS(roll)}${d.roll === undefined ? ' (read from its steps, since the entry does not say)' : ''}.`);
+    else if (this.structOk()) this.line('Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.');
   }
 
   casting() {

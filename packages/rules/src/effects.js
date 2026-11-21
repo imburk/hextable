@@ -9,7 +9,7 @@
 // ask a player about a reaction (engine.js, apply, which also holds the react handler) is put back whole and run again from its start
 // with the answer, so nothing here ever waits half-way.
 // Design: docs/specs/rules-expansion.md, decisions 2 and 4.
-import { BRANCHES, SIZES, SPELL_KINDS, STEPS } from './content/schema.js';
+import { BRANCHES, SIZES, SPELL_KINDS, SPELL_ROLLS, STEPS } from './content/schema.js';
 import { roll } from './rng.js';
 import { srcOf } from './homebrew.js';
 import { effectsOf, useUp } from './durations.js';
@@ -143,7 +143,7 @@ export const BENEFICIAL_CONDITIONS = ['invisible'];
 // behind an attack roll or a save, gets no kind: the engine cannot tell what it is for and does not guess. Every
 // SRD spell is tagged or derives a kind; a homebrew spell may still have none, and the client shows such a spell
 // under every kind, marked as not known.
-export { SPELL_KINDS };
+export { SPELL_KINDS, SPELL_ROLLS };
 function hinders(m) {
   const neg = (typeof m.value === 'number' && m.value < 0) || (typeof m.value === 'string' && m.value.startsWith('-'));
   if (m.on.startsWith('attack.received')) return m.op === 'advantage' || m.op === 'crit';
@@ -155,6 +155,17 @@ function hinders(m) {
 export function spellKinds(def) {
   if (Array.isArray(def.kinds)) return SPELL_KINDS.filter((x) => def.kinds.includes(x));
   return derivedKinds(def);
+}
+// The roll a spell turns on: 'attack', 'save:<ability>' or 'none' (docs/specs/rules-expansion.md, "A spell's roll"). A spell's own `roll` wins; otherwise
+// the steps say it (an attack step, else the first save step), and a spell whose steps have no roll and no manual step is 'none'. Null when the
+// steps cannot say (a manual step may hide a roll): the screen shows nothing then.
+export function spellRoll(def) {
+  if (SPELL_ROLLS.includes(def?.roll)) return def.roll;
+  if (!Array.isArray(def?.effects)) return null;
+  let attack = false, save = null, manual = false;
+  walk(def.effects, (st) => { if ('attack' in st) attack = true; else if ('save' in st) save ??= `save:${st.save}`; else if ('manual' in st) manual = true; });
+  const found = attack ? 'attack' : save;
+  return found && SPELL_ROLLS.includes(found) ? found : manual ? null : 'none';
 }
 // The kinds read from a spell's steps alone, as if it carried no tag.
 export function derivedKinds(def) {
@@ -201,6 +212,7 @@ export function spellProfile(def) {
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight
     kinds: spellKinds(def),                        // what it is for: damage, healing, control, utility
+    roll: spellRoll(def),                          // what it turns on: 'attack', 'save:dex' and so on, 'none', or null when not known
     // A teleport: the `cast` action names the destination in `hex` (docs/specs/rules-expansion.md).
     ...(tp ? { teleport: { feet: tp.teleport, see: !!tp.see } } : {}),
     // A summon: the `cast` action names its choices and a space for each creature in `summon` (engine/casting.js).
