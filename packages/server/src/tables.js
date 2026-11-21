@@ -299,7 +299,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const baseFor = (t, m) => engine.forViewer(t, forPlayers(t).base, t.state, { role: m.role, userId: m.id });
   const stateFor = (t, m) => (m.role === "dm" ? { ...engine.view(t, t.state, { role: m.role, userId: m.id }), timeline: undefined }
     : { ...baseFor(t, m), handouts: engine.viewHandouts(t, t.state, { role: m.role, userId: m.id }), shops: engine.viewShops(t, t.state, { role: m.role, userId: m.id }), reactions: engine.viewReactions(t, t.state, { role: m.role, userId: m.id }),
-      prompt: engine.viewPrompt(t, t.state, { role: m.role, userId: m.id }), waiting: engine.viewWaiting(t, t.state, { role: m.role, userId: m.id }) });
+      prompt: engine.viewPrompt(t, t.state, { role: m.role, userId: m.id }), waiting: orNone(engine.viewWaiting(t, t.state, { role: m.role, userId: m.id })) });
+  // A player who waits on the DM for nothing is sent no `waiting` field at all, as in rules view.js.
+  function orNone(list) { return Array.isArray(list) && list.length ? list : undefined; }
   // What was sent, for the next difference: a player's is the shared one with their handouts, the shops shown to them, their
   // own creatures' standing instructions for reactions, and a reaction they are asked about (or
   // only that the table is waiting). A player who was sent a creature as a seen record in place of the open one
@@ -321,9 +323,10 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const { snap, base } = forPlayers(t);
     if (state.entities !== base.entities || state.encounter !== base.encounter || state.effects !== base.effects) return snapshot(state);
     // `away` and `watching` (rules view.js, placesView) are this player's own, by where their characters are: only a table with a world has them.
+    // `waiting` (the DM's to-do tray) is theirs too, and only there when they wait on something.
     const places = {};
-    for (const k of ["away", "watching"]) if (state[k] !== undefined) places[k] = JSON.stringify(state[k]);
-    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), shops: JSON.stringify(state.shops), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt), waiting: JSON.stringify(state.waiting), ...places } };
+    for (const k of ["away", "watching", "waiting"]) if (state[k] !== undefined) places[k] = JSON.stringify(state[k]);
+    return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), shops: JSON.stringify(state.shops), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt), ...places } };
   };
   const eventsFor = (t, m, events) => engine.viewEvents(t, events, t.state, { role: m.role, userId: m.id });
 

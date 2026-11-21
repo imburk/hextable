@@ -130,7 +130,7 @@ test("Mage Armor on a built character, which the engine applies whole, makes no 
   ok(apply(s, { type: "cast", actor: "vex", spell: "mage-armor", targets: ["vex"] }, DM));
   assert.equal(acOf(s, s.entities.vex), 16, "the engine applied it");
   assert.deepEqual(cards(s), []);
-  assert.deepEqual(view(s, PAT).waiting, []);
+  assert.equal(view(s, PAT).waiting, undefined);
 });
 
 test("Mage Armor on a hand-typed creature (the engine cannot) makes one card, not two, and the caster waits", () => {
@@ -145,7 +145,7 @@ test("Mage Armor on a hand-typed creature (the engine cannot) makes one card, no
 test("a note for a part the engine left out (partial) makes a DM card but does not make the caster wait", () => {
   const s = built();
   s.todo = { n: 1, cards: [{ n: 1, t: 0, kind: "manual", actor: "vex", name: "Mage Armor", text: "x", ids: ["vex"], partial: true }] };
-  assert.deepEqual(view(s, PAT).waiting, []);
+  assert.equal(view(s, PAT).waiting, undefined);
 });
 
 test("setAc moves a built character's acBase with it, so Mage Armor still gives the better base; in a form only the form's number is set", () => {
@@ -219,7 +219,7 @@ test("an assist spell with work left for the DM and no manual step (Haste, Hold 
   const hc = cards(h).filter((c) => c.name === "Haste");
   assert.equal(hc.length, 1, "Haste leaves the lethargy to the DM");
   assert.ok(!hc[0].waits);
-  assert.deepEqual(view(h, PAT).waiting, []);
+  assert.equal(view(h, PAT).waiting, undefined);
   const p = caster(["hold-person"]);
   ok(apply(p, { type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 3 } }, DM));
   const g = Object.values(p.entities).find((e) => e.side === "foe").id;

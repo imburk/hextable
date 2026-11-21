@@ -251,8 +251,10 @@ const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: offWatcher(state, viewer) ? [] : viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer), waiting: viewWaiting(state, viewer) };
+  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: offWatcher(state, viewer) ? [] : viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer), waiting: orNone(viewWaiting(state, viewer)) };
 }
+// An empty list is not sent at all, so a player who waits on nothing is sent what they were sent before the tray (and no field named for waiting).
+const orNone = (list) => (list.length ? list : undefined);
 
 // An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
 // may know of it. The player who controls the creature being asked gets the question:
