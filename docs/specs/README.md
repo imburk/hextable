@@ -34,5 +34,6 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Travel](travel.md) | Atlas of nested maps, places, parking, journeys, vessels | Draft; W1 to W3 built |
 | [Shops and loot](shops.md) | Market pack, shops, purses, haggling | Draft; P1, P2, P3a built |
 | [Adventure modules](adventure-module.md) | A zip the DM prepares and adds to a game | Draft; A0b (the zip library) built |
+| [DM helper](dm-helper.md) | A goal for the encounter, an intention for each NPC, the queue of recommended moves, shifts, leaving a fight and truce, recurring villains; the other DM and player helpers, ranked | Draft; nothing built |
 
 Still to write: prompts (reactions and decisions made after a roll), persistent world and the AI DM interface.
