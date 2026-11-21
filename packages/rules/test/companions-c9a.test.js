@@ -139,7 +139,7 @@ for (const grid of [null, "square"]) {
 // Wild Companion (9205-9211): "the familiar is Fey and disappears when you finish a Long Rest." No pack spell sets
 // `ends: ['longRest']` until Wild Companion is entered, so these tests set it on the familiar's bond by hand, as the
 // C1/C2 tests do. A Long Rest is finished by its master whether the familiar is on the map or in the pocket dimension.
-const wizard = { name: "Ven", class: "wizard", level: 5, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells: ["find-familiar"] };
+const wizard = { name: "Ven", class: "wizard", level: 5, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, skills: [], weapons: ["quarterstaff"], spells: ["find-familiar"] };
 function wizTable(grid) {
   const s = grid ? newGame(5, { grid }) : newGame(5);
   s.settings.autoEngage = false;
