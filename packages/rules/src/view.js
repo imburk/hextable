@@ -19,7 +19,7 @@ import { playerShop } from './shopids.js';
 import { playerConclusion } from './rewards.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { hasWorld, knownOf, partyAt, playerEntry, playerNode, playerPin, playerRoute } from './known.js';
-import { controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
+import { acNow, controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
 import { buysOf, kindOf, listPrice } from './market.js';
 import { isOwnName } from './todo.js';
 import { SETTING_FIELDS, partyFields, sentFields } from './view-fields.js';
@@ -74,6 +74,13 @@ function holdsShown(state, rec) {
     if (state.entities[h.by]?.side !== 'party') { delete h.escape; delete h.escapeDis; }
     if (classify(state, h.by) === 'hidden') { delete h.with; delete h.range; }       // a grappler the party does not know of is only "someone" (scrub renames `by`)
   }
+}
+// The Armor Class that applies now, where it is not the creature's own number (Mage Armor, Barkskin): `acNow`, and the names of what changed it, `acWhy`.
+function acShown(state, e) {
+  const { ac, why } = acNow(state, e);
+  // A carried light is sent without the id of the lasting effect that keeps it (`fx`): that is the engine's bookkeeping.
+  const light = e.light?.fx !== undefined ? { light: { bright: e.light.bright, dim: e.light.dim, ...(e.light.item ? { item: e.light.item } : {}) } } : {};
+  return { ...(ac === e.ac ? {} : { acNow: ac, acWhy: why }), ...light };
 }
 function seenRecord(e, state) {
   const cond = {};
@@ -344,6 +351,7 @@ export function playerView(state) {
       if (e.riding && !(typeof e.riding.on === 'string' && classify(state, e.riding.on) !== 'hidden')) delete entities[id].riding;
       if (e.rider !== undefined && !(typeof e.rider === 'string' && classify(state, e.rider) !== 'hidden')) delete entities[id].rider;
       holdsShown(state, entities[id]);
+      Object.assign(entities[id], acShown(state, e));
       Object.assign(entities[id], heldBy(state, e));
       scrub(entities[id], hidden);
     }
@@ -1124,6 +1132,7 @@ function awayRecord(rec, e, viewer) {
   const others = new Set(Object.keys(rec.entities).filter((id) => !party.has(id)));
   if (homebrewBlock(e) && !controlledBy(pseudo, e, viewer?.userId)) return seenRecord(e, null);
   const out = partyFields(e);
+  Object.assign(out, acShown({ entities: rec.entities, effects: rec.effects ?? [] }, e));
   if (out.follow && !party.has(out.follow)) delete out.follow;
   const slots = out.formation?.slots;
   if (slots) for (const k of Object.keys(slots)) if (!party.has(k)) delete slots[k];
