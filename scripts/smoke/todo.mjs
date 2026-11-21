@@ -9,6 +9,13 @@ const RIA = async (page) => page.evaluate(async () => {
   const rec = D.derive({ name: 'Ria', class: 'wizard', level: 3, abilities: { str: 8, dex: 14, con: 14, int: 17, wis: 12, cha: 10 }, skills: ['arcana', 'history'], spells: ['mage-armor', 'fire-bolt'] }).record;
   h.act({ type: 'addCharacter', record: rec, at: { q: -3, r: 3, z: 0 } });
 });
+// The one Mage Armor is handed to the DM for: a character typed in with no `acBase` (the built starters have one, so the engine puts the spell on them itself, #683).
+const TAVIN = async (page) => page.evaluate(async () => {
+  const { PREGENS } = await import('./shared/content/index.js'), h = window.hextable;
+  h.act({ type: 'remove', actor: 'wizard' });                 // the built Tavin leaves; the pack's own record (no `acBase`) takes the name
+  h.act({ type: 'addCharacter', record: PREGENS.wizard, at: { q: -2, r: 3, z: 0 } });
+});
+const tavinId = (page) => state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Tavin' && !e.sheet)?.id);
 const riaId = (page) => state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Ria')?.id);
 const cards = (page) => state(page, (S) => (S.todo?.cards ?? []).map((c) => [c.kind, c.name, c.n]));
 const badge = (page) => page.evaluate(() => { const b = document.getElementById('menu-badge'); return b.hidden ? 0 : Number(b.textContent); });
@@ -26,10 +33,11 @@ async function solo(browser, url, label, opts) {
         await RIA(page);
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ria'));
         ria = await riaId(page);
-        // Ria is built, so the engine puts Mage Armor on her itself; the hand-typed starter wizard it cannot, so that one is handed to the DM.
-        await page.evaluate(() => window.hextable.act({ type: 'place', actor: 'wizard', to: { q: -2, r: 3, z: 0 } }));
-        await wait(page, () => window.hextable.state.entities.wizard.pos.q === -2);
-        await page.evaluate((i) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: ['wizard'] }), ria);
+        // Ria is built, so the engine puts Mage Armor on her itself; a typed-in character it cannot, so Tavin is added that way and the spell is handed to the DM.
+        await TAVIN(page);
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin' && !e.sheet));
+        const tav = await tavinId(page);
+        await page.evaluate(([i, t]) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: [t] }), [ria, tav]);
         await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor'));
         await wait(page, () => !document.getElementById('menu-badge').hidden);
         if ((await badge(page)) !== 1) throw new Error(`badge ${await badge(page)}`);
@@ -121,9 +129,10 @@ async function players(browser, url) {
       });
       const id = await riaId(host);
       await run.do('the phone casts Mage Armor: the phone says it waits for the DM, in words that carry nothing of the DM\'s note', async () => {
-        await host.evaluate(() => window.hextable.act({ type: 'place', actor: 'wizard', to: { q: -2, r: 3, z: 0 } }));
-        await wait(host, () => window.hextable.state.entities.wizard.pos.q === -2);
-        await phone.evaluate((i) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: ['wizard'] }), id);
+        await TAVIN(host);
+        await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin' && !e.sheet));
+        const tav = await tavinId(host);
+        await phone.evaluate(([i, t]) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: [t] }), [id, tav]);
         await wait(host, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor'));
         await wait(phone, () => !document.getElementById('todo-wait').hidden);
         const line = await phone.textContent('#todo-wait');
