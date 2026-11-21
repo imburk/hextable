@@ -405,7 +405,7 @@ test("proxyReport shows the address seen for this caller and whether TRUST_PROXY
   assert.deepEqual(Object.keys(outside).sort(), ["address", "hops", "note", "sawForwardedFor", "trustProxy"], "a caller from the internet is not told the server's setup");
 });
 
-const health = async (port, headers) => (await fetch(`http://localhost:${port}/api/health`, { headers })).json();
+const health = async (port, headers) => (await fetch(`http://127.0.0.1:${port}/api/health`, { headers })).json();
 function talk(port, messages, done) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://localhost:${port}/ws`), got = [];
