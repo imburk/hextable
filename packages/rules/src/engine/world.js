@@ -1340,10 +1340,14 @@ function formationPlace(s, f, leader, mine, theirs, arena) {
 
 // The place nearest behind `leader` that `f` could have walked to inside `arena`: its place in the leader's formation when that is
 // free (E-P4), else the nearest along the leader's trail. { best, mine } (`best` null when there is none; `mine` is f's walking options).
-function placeBehind(s, f, leader, arena, walked, foes, G) {
+// `afoot`: the leader is in a fight that is running, where its options are the rest of its turn's movement (none off its turn): its walking is
+// then measured as it would be outside combat, which is what "could have walked to" means for a hero joining a fight in progress.
+function placeBehind(s, f, leader, arena, walked, foes, G, afoot = false) {
   const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
   const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
-  const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
+  const mine = moveOptions(s, f);
+  let theirs;
+  if (afoot && s.encounter) { const enc = s.encounter; s.encounter = null; try { theirs = moveOptions(s, leader); } finally { s.encounter = enc; } } else theirs = moveOptions(s, leader);
   let best = null, bestKey = null;
   const slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
   if (slot) { best = slot; bestKey = null; }
@@ -1394,7 +1398,7 @@ export function bringIn(s, ids, ev) {
   for (const f of out) {
     const near = living(s).filter((e) => e.side === 'party' && inFight(s, e.id)).sort((a, b) => G.dist(a.pos, f.pos) - G.dist(b.pos, f.pos));
     const leader = near[0];
-    const { best, mine } = leader ? placeBehind(s, f, leader, arena, null, foes, G) : { best: null };
+    const { best, mine } = leader ? placeBehind(s, f, leader, arena, null, foes, G, true) : { best: null };
     if (!best) { ev.push({ type: 'note', id: f.id, why: 'joinFight', text: `${f.name} can't get to the fight.` }); continue; }
     f.pos = best.v.h;
     ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });

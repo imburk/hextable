@@ -91,3 +91,18 @@ test("joinFight: a hero too far to get in stays out and is told so, in a note th
   assert.ok(r.events.some((e) => e.type === "note" && e.id === b.id && e.why === "joinFight"));
   assert.deepEqual(b.pos, { q: -13, r: 4, z: 0 }, "it did not move");
 });
+
+test("joinFight works from a hero standing apart, whatever the ground (the rogue's start is outside the arena)", () => {
+  let fights = 0;
+  for (const seed of [7919, 15838, 23757, 31676, 39595, 47514]) {
+    const s = newGame(seed, { follow: true });
+    ok(apply(s, { type: "follow", actor: "rogue", leader: null }, DM));
+    for (let i = 0; i < 20 && !s.encounter; i++) apply(s, { type: "move", actor: "fighter", to: { q: 2, r: -1, z: 0 } }, DM);
+    if (!s.encounter) continue;
+    fights++;
+    assert.ok(!inOrder(s, "rogue"));
+    ok(apply(s, { type: "joinFight" }, DM));
+    assert.ok(inOrder(s, "rogue"), `seed ${seed}`);
+  }
+  assert.ok(fights >= 4, `${fights} fights`);
+});
