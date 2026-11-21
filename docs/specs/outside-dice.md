@@ -1,8 +1,12 @@
 # Spec: outside dice
 
-Status: draft by an agent, to be reviewed by the design owner. Issue #351 (the
-owner's request on the project board, 15 November 2026). Nothing here is built. No
-code is written by this spec. Browser and device facts were checked on 15 November
+Status: draft by an agent, amended on 20 November 2026 to the owner's twelve
+answers on #351 (see "Questions for the owner"); to be reviewed by the design owner.
+Issue #351 (the owner's request on the project board, 15 November 2026). Nothing
+here is built. No code is written by this spec. Where the owner went against a
+default, the amended text says so: a player may take the game's dice at any time
+(Decision 4), nobody sees the shadow die (Decision 3), Pixels dice come before our
+own profile (stage O8), and a built-in recognition model is wanted (stage O6). Browser and device facts were checked on 15 November
 2026 against the sources listed at the end ("Sources"); each is cited where it is used.
 
 The owner wrote:
@@ -46,7 +50,7 @@ browser supports today.
   right sides, each in range. It never takes a total, a hit, a success or an
   amount from a client: it works those out from the faces, as it does from its own.
 - **The rules package is pure.** No clock, no network, no `Math.random`. The rules
-  cannot time anything out; the host (the server, or the solo tab) runs the clock
+  cannot time anything out; the host (the server) runs the clock; solo play has none (below)
   and sends the fallback as an action. An outside face is part of the recorded
   input, so a game still follows from its state and its actions alone.
 - **Any game replays exactly.** The faces are kept with the waiting action
@@ -71,8 +75,9 @@ browser supports today.
   rolling it), "Critical Hits" (roll the attack's damage dice twice, Sneak Attack's
   too) and "Damage against Multiple Targets" (roll the damage once for all targets).
 - **No dependency, no bundler, no network at run time** beyond the table server.
-  A vendored library or a connection to another service needs a reason written in
-  `docs/DESIGN.md`, as the Three.js exception was argued.
+  A vendored library, a model file or a connection to another service needs a reason
+  written in `docs/DESIGN.md`, as the Three.js exception was argued (the recogniser,
+  stage O6b, is one; the owner said yes on 20 November).
 - **Phones are first-class.** The prompt, the number pad and the camera capture
   work at 390 x 844 with touch; the phone is the device most players would roll
   beside.
@@ -211,10 +216,11 @@ only faces.**
   `{ reactor, take, slot? }` that already live there. A waiting table can be
   saved, loaded, sent, undone and replayed, as today.
 - *When the action finishes:* each roll event carries
-  `outside: { from, by }` (`from`: `typed`, `camera`, `bluetooth`, `roller:<name>`,
-  or `dm` when the DM typed them; `by`: `player` or `dm`) and, for the DM only,
-  `game: [faces]`, what the game's dice gave at that point. The timeline keeps the
-  event as it keeps every event.
+  `outside: { from, by }` (`from`: `typed`, `camera`, `bluetooth`, `pixels`,
+  `roller:<name>`, or `dm` when the DM typed them; `by`: `player` or `dm`), or
+  `outside: { took: 'player' | 'dm' }` or `{ lapsed }` when the game's dice were used
+  (Decision 4). No field of any event holds the die the game set aside (Decision 3).
+  The timeline keeps the event as it keeps every event.
 - *Replaying:* the answer is an action (`roll { prompt, faces, from }`), so a list
   of actions replays the outside faces exactly, as a list with `react` replays
   reactions. Undo and redo restore state patches, which hold the outside faces
@@ -262,9 +268,21 @@ roller or not.
   fallback is not a second chance drawn later in the stream.
 - Undo of the answer gives the question back with the same shadow die.
 
-**Cost.** The DM can see, on the DM's own screen, what the game would have rolled
-(`game`). That is the DM's to know: the DM holds the key already
-(`hidden-information.md` section 7). A player is never sent it.
+**Nobody sees it (owner, 20 November).** Not a player, and not the DM. The engine
+never puts the shadow die in an event, a view, a log line, a tally, a patch sent
+anywhere or an export; the DM's screen has no "what the game would have rolled". It
+is not stored beside the question either: the state goes back to before the action,
+seed included, so the run that follows draws the same die again. Two things follow.
+First, the DM decides a question (Accept, Use the game's dice, Ask again) without
+knowing what the game's die was. Second, taking the game's dice is a blind draw
+(Decision 4), which is what keeps it from being a free peek at a better number.
+**What this does not claim:** the DM's view still holds the seed's key, as
+`hidden-information.md` records, and a determined DM could work a die out with tools
+outside the game. The design gives the DM no way in the game to see it. Whether to
+keep the key from the DM too is a change to that spec, asked as question 16.
+
+**Cost.** A test needs the shadow die (the twin run compares it); tests read the
+state directly, and no client path can.
 
 ### Decision 4: the question, the answer, the lapse and the fallback
 
@@ -285,6 +303,9 @@ the asked player's screen:
 > counts) + 1d4 (Bless).
 
 > **Odessa: Initiative.** Roll 1d20.
+
+The card has the number pad, the sources and a button, **Use the game's dice**
+(below).
 
 The label follows `dice.md` 5.1 (`titleOf`): who, and what for, built only from
 what the asked player's own view tells them (Decision 6). `bonus` is shown because
@@ -310,23 +331,25 @@ client turns these into faces, the engine accepts only 1 to sides.
 
 **The DM.**
 
-- `roll { prompt, game: true }` (DM only): use the game's dice for this roll. The
-  shadow faces are taken; the roll event says `outside: { lapsed: 'dm' }`.
+- `roll { prompt, game: true }` (the roller's controller or the DM): use the game's
+  dice for this roll. The shadow faces are taken; the roll event says
+  `outside: { took: 'player' }` or `{ took: 'dm' }`. The lapse alone is not sent by a
+  person: it is the host's.
 - `roll { prompt, faces, from: 'dm' }`: the DM types the faces for the player
   ("Brenna rolled a 14 at my end of the table").
 - With `outsideCheck: 'dm'`, a player's answer does not resume the action: it is
-  kept on the question (`pending.ask.answer`) and the DM is shown it beside the
-  shadow faces, with **Accept**, **Use the game's dice** and **Ask again** (the new
+  kept on the question (`pending.ask.answer`) and the DM is shown the faces and
+  where they came from (never the shadow faces, Decision 3), with **Accept**, **Use the game's dice** and **Ask again** (the new
   `diceOk { prompt, take: 'accept' | 'game' | 'again' }`). Ask again clears the
   answer and keeps the question (the same `n`, the same shadow die) so the player
-  rolls again.
+  rolls again. A player who is asked again may still take the game's dice.
 - After a roll has been applied, the DM's **Undo** gives back the question with its
   answer cleared: the step before the answer held `pending`, so undoing the answer
   restores it. That is how the DM overrules after the fact; Redo puts the same
   answer back.
 
 **The lapse.** The rules have no clock, so the host runs it: the server in
-`tables.js` (the solo transport in a tab). On `diceAsked` it starts a timer of
+`tables.js`. **Solo play offers outside dice with no time limit** (owner, 20 November): the solo player is the DM and the only one asked, so no timer runs in a tab and `outsideWait` is not offered there; the solo player takes the game's dice or answers when they like. On `diceAsked` it starts a timer of
 `outsideWait` seconds for that `n`; on an answer, an undo, a rewind or a new
 question it drops it. When it runs out it applies, with the DM's role and a
 server marker, `roll { prompt: n, lapse: true }`. The engine then does what
@@ -336,13 +359,34 @@ server marker, `roll { prompt: n, lapse: true }`. The engine then does what
 further timer. The timer is not in the state: after a server restart a waiting
 question gets a fresh full wait. `outsideWait: 0` sets no timer.
 
-**The player may not switch to the game's dice once asked.** The asked player's
-prompt has the number pad and the sources, and no "use the game's dice" button. A
-player who has lost their dice asks the DM, or lets it lapse. Reason: a player who
-could take the game's dice after seeing their own die would get a free second roll
-of every bad one (Decision 9). Before being asked, a player can turn outside dice
-off for their character at any time (`diceFrom`), which applies to the next
-question, not to one already waiting.
+**A player may take the game's dice at any time (owner, 20 November).** From the
+moment the prompt is shown until the player sends faces, **Use the game's dice** is
+on the card; it sends `roll { prompt, game: true }` and the roll is the game's, the
+die the seed gave there, which nobody has seen. This replaces the earlier rule that a
+player could not (the old "no second chance"). What it does and does not allow:
+
+- *It is a blind draw, not a peek.* The player has seen their own die and not the
+  game's. Dropping a 3 for the game's d20 is a gamble that favours the player (the
+  game's die averages 10.5), so a player who rolls and takes the game's dice only
+  when the physical roll is bad has, over a night, a better average than an honest
+  one: **fishing is possible and is a form of the risk the DM accepted** (Decision 8).
+  It is the lesser of the cheats the design already cannot stop (entering any face,
+  rolling again), because the player's second chance is a fair die they cannot see.
+- *Sending is final.* Once faces are sent they stand, unless the DM undoes them or
+  asks again (below); a player cannot retract an answer. A DM who asks again is
+  giving the player a new try on purpose.
+- *What the DM sees.* The log line says "Brenna took the game's dice for Longsword
+  damage" with the roll's faces as the result, marked, beside the lines for typed
+  rolls; the tally (Decision 9) counts, per creature, rolls typed, rolls the game made
+  at the player's request and lapses, so a table that sees "took the game's dice: 9 of
+  14" can ask why. The faces a player rolled and discarded are never known to the
+  game and are not recorded, except the number of rolls a Bluetooth or Pixels die
+  reported before the take (`rolls`, a count; Decision 10).
+- *Nothing is lost for the table.* The game's die was drawn at the same point as ever
+  (Decision 3); a take changes no other roll.
+
+Before being asked, a player can turn outside dice off for their character at any
+time (`diceFrom`), which applies to the next question, not to one already waiting.
 
 **What others see.** Every other player gets, while the question waits,
 `{ waiting: true, on: <roller> }` ("Waiting for Brenna's dice") only when the party
@@ -354,8 +398,8 @@ reactions today.
 
 **Reasons.** The owner asked for a prompt to a named person for named dice. The
 timeout and fallback stop one absent player stalling the table, and putting the
-clock in the host keeps the rules pure. Taking the shadow die at a lapse means the
-lapse gives the very result a table without outside dice would have had.
+clock in the host keeps the rules pure. Taking the shadow die at a lapse, or when a player asks for the game's dice, means
+the game's roll is the very result a table without outside dice would have had.
 
 **Cost.** Three actions (`roll`, `diceOk`, `diceFrom`) and three events
 (`diceAsked`, `diceAnswered`, `diceLapsed`); `roll` and `diceOk` join
@@ -454,7 +498,7 @@ roll they are sent at all.
 
 **Never sent to any player:**
 
-- `game`, the shadow faces;
+- the shadow faces, in any field (Decision 3);
 - the DM's tally (Decision 9);
 - a question for a roll the player would not be sent, or for a creature they do
   not control;
@@ -468,8 +512,8 @@ roll they are sent at all.
 - a picture, or anything a camera, a Bluetooth die or another service gave the
   device beyond the faces the player sends (Decision 10).
 
-**The DM** gets everything: every question, every answer, the shadow faces, lapses
-and who sent what.
+**The DM** gets every question, every answer, lapses, takes and who sent what, and
+**not** the shadow faces: nobody is sent those (Decision 3).
 
 ### Decision 7: undo, redo, rewind, save and load
 
@@ -487,8 +531,8 @@ and who sent what.
 - **Save and load.** `pending` with its answers is in the saved state, so a table
   saved while waiting for Brenna's dice loads still waiting for them. The timer is
   the host's and starts again in full.
-- **History sent to players** is made of events through `viewEvents`, so `game` is
-  stripped there too.
+- **History sent to players** is made of events through `viewEvents`; no event holds
+  the shadow faces to begin with.
 
 ### Decision 8: trust, and the portable history
 
@@ -497,14 +541,15 @@ beside the choice, in plain words:
 
 > Players may roll their own dice and enter the faces. The game cannot check a
 > die it did not roll: a player can enter any face, roll again until they like
-> it, or let a roll lapse when they see a bad one. Every such roll is marked in
-> the log as rolled outside, with who entered it and how. You can see every
-> question, take the game's dice instead, or ask again.
+> it, take the game's dice when they see a bad roll, or let a roll lapse. Every
+> such roll is marked in the log as rolled outside, with who entered it and how,
+> or as "took the game's dice". You can see every question, use the game's dice
+> instead, or ask again.
 
 **What is recorded.** In the game: the `outside` mark on every roll event, with
 `from` and `by`; `diceAsked`, `diceAnswered` and `diceLapsed` in the timeline. The
 log line of a roll gains a small die-in-hand glyph with words ("rolled at the
-table, typed"); the log gains a filter "Rolled outside". `from` is the device's
+table, typed", "took the game's dice"); the log gains a filter "Rolled outside". `from` is the device's
 claim about how the faces were got: the display never says a camera or Bluetooth
 roll was checked, only "read by camera" or "from a Bluetooth die".
 
@@ -514,7 +559,8 @@ spec proposes, as an amendment to that spec made in its own job (stage O5, not
 here):
 
 - `lineageStep` counts the character's rolls marked `outside` (not lapsed) since
-  the last block: a number, no faces;
+  the last block: a number, no faces
+  (rolls where the player took the game's dice are the game's, and are not counted);
 - a block carries `outside: n` and the table's `outsideDice` value at sealing
   (`off`, `players`, `everyone`), both words or numbers, as that spec's closed
   list requires;
@@ -543,24 +589,26 @@ The engine does not pretend otherwise, and the spec does not promise detection.
 
 **What the design closes.**
 
-- No second chance from the game: a player cannot take the game's dice after
-  seeing a prompt (Decision 4); a lapse takes the shadow die that was already
-  fixed, not a new one; the DM can set `outsideLapse: 'dm'` so that a lapse is the
-  DM's call, not a reroll.
-- No guessing ahead: the client never knows the shadow die, and never sends faces
-  before it is asked.
+- No second chance from the game *that the player can see*: a player may take the
+  game's dice (Decision 4), but the die is fixed before the question and nobody has
+  seen it; a lapse takes the same die; the DM can set `outsideLapse: 'dm'` so that a
+  lapse is the DM's call. What stays open is fishing (rolling, then taking the game's
+  dice when the roll is bad), which the tally exposes by counting takes.
+- No guessing ahead: no client, and no DM screen, ever shows the shadow die, and a
+  client never sends faces before it is asked.
 - No early exit: an action that asked cannot be withdrawn by the player; only the
   DM's undo takes it back.
 - Every outside roll is attributed (`by`) and its source recorded (`from`).
 
 **What the DM can see (DM only).** A tally per creature, built by the client from
-the DM's timeline (no engine state): how many rolls it made outside, how many
-lapsed, and, per die size, the average face against the expected average
+the DM's timeline (no engine state): how many rolls it made outside, how many times the player took the game's dice, how
+many lapsed, and, per die size, the average face against the expected average
 ("Brenna, outside d20s: 41 rolls, average 13.2; a fair d20 averages 10.5"), with
 the warning that a few dozen rolls swing widely and that this is not evidence of
 anything. For Bluetooth dice, the number of times the die reported a roll between
 the question and the answer (Decision 10, stage O8), since a die that is rolled
-four times before one result is entered says so.
+four times before one result is entered, or before the game's dice are taken, says
+so.
 
 **Reasons.** Honest tools for the DM, no false accusations by the software.
 
@@ -579,6 +627,9 @@ source only as the word in `from`. A source module has one shape:
 
 The prompt card always has the number pad; other sources fill it in and the player
 taps **Send**. Nothing a source produces besides the faces leaves the device.
+
+The words `from` may take are a closed list: `typed`, `camera`, `bluetooth` (a
+Hextable-profile die), `pixels` (a Pixels die), `roller:<name>`, `dm`.
 
 #### Stage O3: typed entry (first)
 
@@ -635,19 +686,53 @@ answer's `from` is `camera` only when every face sent is the one the reader read
 if the player changed one it is `typed`. A reading the reader is not sure of is
 left empty, never guessed.
 
-**What a recogniser would need.** Reading numerals well needs a trained model. That
-means, at the least: (1) weights, a data file trained outside the repo on pictures
-of dice whose licence allows it (none exist in the repo; collecting and labelling
-them is a project of its own); (2) code to run the model: either a vendored
-inference library (a large download, a WebAssembly or WebGL runtime, and a pinned
-version to keep, the same kind of cost the Three.js exception weighed), or a small
-hand-written forward pass for a small network in plain JavaScript (feasible for a
-classifier of a cropped face, a few hundred lines, testable with fixed inputs);
-(3) a written reason in `docs/DESIGN.md`, the files vendored with their release
-and SHA-256 as in `packages/client/vendor/README.md`, loaded only when a player
-opens the camera source, never on the default page load. The pictures never leave
-the device: no picture is sent to the table server or anyone else, so the
-recogniser runs where the picture is. This is question 10.
+**The recogniser (owner, 20 November: yes).** A built-in recognition model reads the
+numerals on d4, d8, d10, d12 and d20 faces. It is an addition to the stack and needs
+its reason written in `docs/DESIGN.md` (a row in the stack table, as for Three.js and
+zip.js), put there when stage O6b picks the files, not before; the reason it will
+give is: *reading a numeral on a face seen at an angle, in any font, colour and
+finish, is a general recognition problem that classical pixel code does not solve
+reliably (stage O6a's own limit); a small trained classifier does, runs on the
+device, and keeps the pictures there, which no online service can.* The player still
+confirms every face.
+
+- **Where it runs.** On the device, in the page. Classical code (stage O6a) finds the
+  dice and crops each face; the model classifies the crop and says how sure it is;
+  below a threshold the field stays empty. No picture, crop or score leaves the
+  device: inference makes no request, the CSP stays `connect-src 'self'`, and a
+  transport test (stage O6a's) watches for pictures in every message.
+- **Which model and runtime.** Named only after checking, and **not yet checked**:
+  the page fetches for the candidates' licences and sizes were not permitted when
+  this was written, so no licence is claimed here. Candidates to check first, in this
+  order: (1) a small classifier of our own, its forward pass written in plain
+  JavaScript (no runtime to vendor, no runtime licence; the weights are ours, trained
+  on the project's own photographs and licensed with the repo under the project's
+  licence); (2) a vendored inference runtime such as ONNX Runtime Web or TensorFlow.js
+  / LiteRT, taken only if (1) misses the accuracy bar, and only after reading its
+  licence, whether it ships plain ES modules in its repository (as zip.js was chosen
+  for), its file list and its size. Pretrained third-party weights are used only if
+  their licence allows redistribution under AGPL-3.0-or-later and is read first.
+- **How the model file is vendored.** Like the other vendored code: files under
+  `packages/client/vendor/<name>/` copied unchanged, with the release or training
+  recipe, upstream commit, raw and gzip size and SHA-256 of each file in the `README`
+  there; for our own weights, the training set's description, the script's commit
+  (the script lives outside the runtime, in `scripts/`), the accuracy and the file's
+  SHA-256. Nothing is installed from the network; the build copies the files into
+  `dist/`; a test checks each file's hash against the `README`.
+- **Size budget (proposed, question 15).** Weights at most 1 MB gzipped; a vendored
+  runtime, if one is needed, at most 500 KB gzipped, so the whole camera source at
+  most 1.5 MB, loaded **only when a player opens the camera source** (never by the
+  default page load, never by a player who types), and kept by the browser's cache.
+- **Accuracy bar.** Measured on held-out photographs the training never saw, written
+  in the PR: at least 98% of confident reads right, per die size, in good light on a
+  plain surface; below that the model is not shipped for that die and the camera
+  keeps d6 pips and typing for it.
+- **Jev considered, not used for photos.** The owner named Jev
+  (https://console.typesafe.ai/), an online AI, in his first message and again on
+  20 November. It has not been looked at here. A picture of dice on a table sent to an
+  online service leaves the device, which the design forbids, so it is **not** used
+  to read photographs. Nothing in the design depends on it; it may be considered
+  for something that sends no player data, if the owner names a use.
 
 #### Stage O7: other dice rollers
 
@@ -710,20 +795,41 @@ Until then the player rolls in the other app and types the faces (stage O3).
   today, per the Pixels extension's own requirements page [Owlbear: Pixels] and a
   GoDice API issue [GoDice issue 16]; a die is paired again each session.
 
-**Existing dice.** Pixels dice have an MIT-licensed web library on Web Bluetooth
-that reports a `roll` event with the face, and say "only Chromium based browsers
-such as Chrome, Edge and Opera have support for these APIs" [Pixels: web-connect];
-GoDice publish a JavaScript API on GitHub [GoDice issue 16]. Using either means
-vendoring their code (a dependency, with its reason) or writing their protocol
-here from their published documents, after a licence check.
+**Order (owner, 20 November): Pixels dice first, then our own profile.** A licence
+check of Pixels' library comes before any Pixels code; the Hextable profile follows.
 
-**The owner's own dice.** The owner wants to make Bluetooth dice. The game's side
-is small and can be fixed first: a **Hextable dice profile**, a GATT service with
+**Existing dice: Pixels.** Pixels dice have a web library on Web Bluetooth
+(`GameWithPixels/pixels-js`) that reports a `roll` event with the face; its own
+documentation says "only Chromium based browsers such as Chrome, Edge and Opera have
+support for these APIs" [Pixels: web-connect], and a documentation page calls it
+MIT-licensed. That is a claim from a page, **not a licence read from the repository**.
+
+*The licence check (stage O8a, first).* Read the repository's licence file and those
+of the packages the web library imports through `gh api` on the repository only:
+read-only, nothing installed, no clone, no script run. Record here, before any code:
+the licence (SPDX name) of each package, the exact files that would be vendored (path,
+size) and their own dependencies and licences. Vendor only if every one is
+compatible with AGPL-3.0-or-later (MIT, BSD, Apache-2.0 are; none stated, or a
+non-commercial or no-derivatives term, is not); then follow the zip.js route (DESIGN.md
+row, `vendor/` README with release, commit, SHA-256). If any is not compatible, do not
+vendor, and do not copy their protocol into the repo without reading what their
+documents allow; stop and ask (question 14).
+
+**Status of the check: not done.** The amending session was not allowed to attach
+that repository, so no licence is recorded here and no file list exists. The row is
+O8a below.
+
+GoDice publish a JavaScript API on GitHub [GoDice issue 16]; an adapter for them is
+for later, after the same check.
+
+**The owner's own dice, after Pixels.** The owner wants to make Bluetooth dice. The
+game's side is small and is fixed after the Pixels adapter, which proves the source
+interface on real dice: a **Hextable dice profile**, a GATT service with
 its own UUID and one characteristic that notifies
 `{ seq, sides, face, settled, rolls }` (a counter per roll the die felt, so the
 game can tell a die rolled once from one rolled four times). The die's hardware and
 firmware are outside this repo. The profile is written as its own short document
-when stage O8 starts (question 9).
+when stage O8c starts.
 
 **How a Bluetooth answer is taken.**
 
@@ -735,7 +841,9 @@ when stage O8 starts (question 9).
   `rolls` (a number), which the DM's tally shows (Decision 9). A die that reports
   the wrong size for the question is ignored with a line ("That die is a d12; this
   roll needs a d20.").
-- `from: 'bluetooth'`. The device id and name are not sent.
+- `from: 'pixels'` or `'bluetooth'`. The device id and name are not sent. If the
+  player takes the game's dice after a die reported rolls, the count goes with
+  `roll { game: true, rolls }`.
 
 **Trust.** Better evidence of *when* a die was rolled and *how often*, not proof:
 the browser can be made to send anything. The record says "from a Bluetooth die",
@@ -743,9 +851,10 @@ not "verified".
 
 **Reasons for the order.** Typing works everywhere at once and is the base every
 other source fills in. The camera serves the most players (every phone has one)
-but can only promise d6 pips without a recogniser. Other rollers need the owner to
-name one and a network exception. Bluetooth reaches only Chromium browsers and no
-iPhone, and the owner's own dice are a hardware project.
+and reads d6 pips with no model; the recogniser (owner: yes) extends it to numerals.
+Other rollers need the owner to name one and a network exception. Bluetooth reaches
+only Chromium browsers and no iPhone; the owner chose existing Pixels dice before his
+own, whose hardware is a separate project.
 
 ## What players are sent and never sent (summary)
 
@@ -757,9 +866,9 @@ iPhone, and the owner's own dice are a hardware project.
 | `sofar` | the full events | through `viewEvents` | no |
 | The waiting notice | the full `pending` | — | "Waiting for Brenna's dice" when perceived and a party roll; else `{ waiting: true }` or nothing |
 | The answer's faces | yes | yes | in the roll event, where they are sent that roll today |
-| `outside: { from, by }`, `lapsed` | yes | yes | with the roll event, where it is sent |
-| `game` (the shadow faces) | yes | **never** | **never** |
-| The tally | yes | **never** | **never** |
+| `outside: { from, by }`, `took`, `lapsed` | yes | yes | with the roll event, where it is sent |
+| The shadow faces (the die the game set aside) | **never** | **never** | **never** |
+| The tally (typed, took the game's dice, lapsed) | yes | **never** | **never** |
 | A question asked of the DM, a hidden creature's roll | yes | **never** | **never** |
 | Pictures, Bluetooth device ids, third-party keys | — | stay on their device | — |
 
@@ -792,7 +901,7 @@ iPhone, and the owner's own dice are a hardware project.
 | `setting { key, value }` (existing) | DM | the four rules |
 | `diceFrom { actor, kinds }` | the creature's controller, or the DM | sets or clears `dice` (Decision 1) |
 | `roll { prompt, faces, from }` | the roller's controller, or the DM (`from: 'dm'`) | answers a dice question (Decision 4) |
-| `roll { prompt, game: true }` | DM | takes the shadow faces |
+| `roll { prompt, game: true, rolls? }` | the roller's controller, or the DM | takes the game's dice (the shadow faces, unseen); `rolls` is a die's count |
 | `roll { prompt, lapse: true }` | the host's timer, with the DM's role | does what `outsideLapse` says |
 | `diceOk { prompt, take }` | DM, under `outsideCheck: 'dm'` | accept, game, again |
 
@@ -809,7 +918,7 @@ has no `roll`, `diceOk` or `diceFrom` today).
 | `diceAsked { n, id, to, ask }` | yes | the player `to` names only, through `viewPrompt` |
 | `diceAnswered { n, id, from, by }` | yes | those who will be sent the roll |
 | `diceLapsed { n, id, how: 'game' \| 'dm' }` | yes | those who will be sent the roll |
-| every roll event: `outside`, and `game` | yes | `outside` only, where the event is sent |
+| every roll event: `outside` (`from`, `by`, `took` or `lapsed`) | yes | yes, where the event is sent |
 
 ## What the engine, server and client must add
 
@@ -820,11 +929,11 @@ has no `roll`, `diceOk` or `diceFrom` today).
 | X3 | `roll`, `diceOk` handlers beside `react`; `apply()` keeps a dice question as it keeps a reaction | `engine.js` |
 | X4 | `diceFrom`; the four rules in `SETTINGS` and `SETTING_TEXT` (the words of Decision 8) | `engine/characters.js` or `engine/dm.js`, `engine/dm.js` |
 | X5 | `mayAsk` true at a table with an outside roller; `WHILE_WAITING` | `reactions.js` |
-| X6 | `viewPrompt` for dice; `diceAsked` and the other events; `outside` kept and `game` stripped on every roll event; `dice` on creatures | `view.js` |
+| X6 | `viewPrompt` for dice; `diceAsked` and the other events; `outside` kept on every roll event (no event holds the shadow faces); `dice` on creatures | `view.js` |
 | X7 | Labels | `history.js` |
 | X8 | Version and migration | `migrate.js` |
 | X9 | The timer and the lapse; the protocol | `packages/server/src/tables.js`, `packages/server/README.md` |
-| X10 | The prompt card with the number pad, the DM's card, the tracker mark, the log glyph and filter, the four rules in the drawer, the joining line, the solo timer | `client/dicein.js` (new), `reactionprompt.js`, `tracker.js`, `logview.js`, `settings.js` or `tablecontrols.js`, `transport.js`, `dice.js` (an outside roll is shown lying still with the mark, not thrown) |
+| X10 | The prompt card with the number pad and "Use the game's dice", the DM's card, the tracker mark, the log glyph and filter, the four rules in the drawer, the joining line (no timer in solo) | `client/dicein.js` (new), `reactionprompt.js`, `tracker.js`, `logview.js`, `settings.js` or `tablecontrols.js`, `transport.js`, `dice.js` (an outside roll is shown lying still with the mark, not thrown) |
 
 ## Build plan
 
@@ -835,22 +944,25 @@ with a smoke pass. "Engine lane" is the strongest model: these change `engine.js
 
 | # | Stage | Lane | Files | Done when |
 |---|---|---|---|---|
-| O0 | **The owner's answers.** | lead | this spec | The questions below are answered or confirmed; the spec amended. |
-| O1a | **The mechanism, for rolls in a player's own action.** `rollFor`, the dice question, `roll`, `diceFrom`, the four rules, `view.js`, labels, version. Roll sites: attack rolls with their modifier dice, damage after a hit (crit, Sneak Attack, Brutal Strike), a spell's damage and healing (`effects.js`), checks, Hide, Second Wind, Hit Dice. | engine lane | X1 to X8 for those sites; `packages/rules/test/outside-dice.test.js` (new) | **Twin run:** over a seeded fight on hexes and on squares, every outside answer equal to the shadow faces gives the identical state and events as the same fight with `outsideDice: 'off'`, but for the `outside` marks; an answer with other faces changes exactly that roll's outcome; a refused answer (wrong count, 0, 7 on a d6, a non-integer, the wrong `prompt`, another player's) changes nothing and the question waits; a player's `roll { game: true }` is refused; undo of the answer gives the question back and redo the same result; save and load mid-question; the canary test: no player message holds `game`, a DC, or a hidden creature's id; a Search's Dim Light die is never asked. |
+| O0 | **The owner's answers.** Done 20 November 2026: the twelve answers on #351 are in this spec (the amendment). | lead | this spec | Done. Questions 13 to 16 are new. |
+| O1a | **The mechanism, for rolls in a player's own action.** `rollFor`, the dice question, `roll`, `diceFrom`, the four rules, `view.js`, labels, version. Roll sites: attack rolls with their modifier dice, damage after a hit (crit, Sneak Attack, Brutal Strike), a spell's damage and healing (`effects.js`), checks, Hide, Second Wind, Hit Dice. | engine lane | X1 to X8 for those sites; `packages/rules/test/outside-dice.test.js` (new) | **Twin run:** over a seeded fight on hexes and on squares, every outside answer equal to the shadow faces gives the identical state and events as the same fight with `outsideDice: 'off'`, but for the `outside` marks; an answer with other faces changes exactly that roll's outcome; a refused answer (wrong count, 0, 7 on a d6, a non-integer, the wrong `prompt`, another player's) changes nothing and the question waits; a player's `roll { game: true }` before sending is accepted and gives the game's faces, one after sending is refused; a take changes no other roll (the twin run holds with it); undo of the answer gives the question back and redo the same result; save and load mid-question; the canary test: no message to anyone, the DM included, holds the shadow faces of a roll answered from outside, a DC, or a hidden creature's id; a Search's Dim Light die is never asked. |
 | O1b | **Rolls inside someone else's action.** Saves (a spell's, a trap's), Concentration, Death Saving Throws, opportunity attacks, reactions' own dice, rerolls by instruction, rescue dice, the Resistance cantrip's d4 as a face. | engine lane | X2 for those sites, `reactions.js`, tests | A monster's attack stops for a Concentration save and goes on; a hidden caster's spell asks for a save whose label has no source and whose `sofar` names nobody hidden; a reaction prompt and a dice question in one action are answered in order; the walk over every roll site matches Decision 5's table. |
 | O1c | **Group questions.** Initiative and a save step over several targets ask everyone at once. | engine lane | `engine/shared.js`, `engine/world.js`, `effects.js`, `view.js`, tests | A Fireball over four outside rollers asks four questions at once; answers in any order; one lapse takes its shadow die and the rest stand; the twin run still holds. |
 | O2 | **The server's clock.** | engine lane | `packages/server/src/tables.js`, `packages/server/README.md`, `packages/server/test/` | A question lapses after `outsideWait` and takes the shadow die (or goes to the DM); an answer, undo, rewind or a new question drops the timer; a restart gives a full wait; a player cannot send `lapse`. |
-| O3 | **Typed entry.** The prompt card, the DM's card (with Accept, Game's dice, Ask again), the tracker mark, the log glyph and filter, the settings with their words, the joining line, the solo timer. | client agent | X10, `scripts/smoke/outsidedice.mjs` (new), `test/` | At a two-browser table a player is asked for damage after a hit, types it, and both screens show the same result marked "rolled outside"; a lapse at 30 s takes the game's dice; on a phone the number pad fits with the turn order and the dock. |
-| O4 | **The DM's tally.** | client agent | `client/dicetally.js` (new), `tablecontrols.js`, `test/` | The card shows counts and averages per creature and die size from the timeline, with its warning; a player's screen never builds it. |
+| O3 | **Typed entry.** The prompt card (with Use the game's dice), the DM's card (with Accept, Game's dice, Ask again; it shows no shadow faces), the tracker mark, the log glyph and filter, the settings with their words, the joining line (no timer in solo). | client agent | X10, `scripts/smoke/outsidedice.mjs` (new), `test/` | At a two-browser table a player is asked for damage after a hit, types it, and both screens show the same result marked "rolled outside"; a lapse at 30 s takes the game's dice (at a server table; solo has no timer); on a phone the number pad fits with the turn order and the dock. |
+| O4 | **The DM's tally.** | client agent | `client/dicetally.js` (new), `tablecontrols.js`, `test/` | The card shows counts (typed, took the game's dice, lapsed) and averages per creature and die size from the timeline, with its warning; a player's screen never builds it. |
 | O5 | **The portable history.** Amend `portable-characters.md` (Decision 8 here) in its own job; then `lineageStep` and the meter's mark, after that spec's P1 and P2. | lead (amendment), then engine lane | `docs/specs/portable-characters.md`, `packages/rules/src/lineage.js`, `client/levelmeter.js` | A block counts outside rolls and records the setting; the meter's words say so; no faces are in a block. |
 | O6a | **Camera, no model.** The `capture` input and a live view; pip counting for d6; the player confirms. | client agent | `client/dicecamera.js` (new), `client/dicein.js`, `test/` (fixed pictures under `packages/client/test/fixtures/`, taken by the project, licensed with the repo) | Reads the test pictures' d6s correctly; leaves unsure faces empty; `from` is `typed` when the player changed a face; no picture appears in any network message (a test on the transport); works on Chrome for Android and Safari on iOS (looked at on real phones, or said in the PR that it was not). |
-| O6b | **A recogniser for numerals**, only if the owner says yes (question 10) and after the reason is in `docs/DESIGN.md`. | design, then client agent | `docs/DESIGN.md`, `packages/client/vendor/` or `client/diceread.js` (new), the weights | Accuracy measured on a held-out set of pictures and written in the PR; loaded only when the camera source is opened. |
+| O6b | **The recogniser for numerals** (owner: yes, 20 November). First the check of the candidates' licences, sizes and file lists, written into this spec; then the reason as a stack-table row in `docs/DESIGN.md`; then the code. | design, then client agent | `docs/DESIGN.md`, `packages/client/vendor/` (the runtime if any, the weights, their `README`), `client/diceread.js` (new), `scripts/` (training, outside the runtime), `test/` | The budget and the accuracy bar of Decision 10 met and written in the PR; loaded only when the camera source is opened; the hash test passes; no picture in any message (the transport test). |
 | O7 | **One third-party roller**, once the owner names it. | design, then client agent | `docs/DESIGN.md` (the network exception), `packages/server/src/index.js` (CSP), `client/sources/<name>.js` (new) | Rolls made in that service reach a waiting question; the key is only in the device's storage; the CSP allows that origin only. |
-| O8 | **Bluetooth dice.** The Hextable dice profile as a document; the source module; first-roll-after-question and the roll count; an adapter for an existing die only after a licence check. | design, then client agent | `docs/specs/dice-profile.md` (new, its own issue), `client/sources/bluetooth.js` (new) | In Chrome on Android and on a desktop, a die of the profile answers a question; a roll before the question is ignored; the count reaches the DM's tally; on Safari and Firefox the source is not offered and says why in one line. |
+| O8a | **Pixels licence check** (the owner's order: first). Read `GameWithPixels/pixels-js` through `gh api` only; record the licence of each package and the files that would be vendored in this spec. | lead | this spec | The licence and the file list are written here; the decision to vendor or stop follows the rule in Decision 10. **Not done at the amendment.** |
+| O8b | **Pixels dice.** The vendored library (after O8a) behind the source interface; first-roll-after-question and the roll count; `from: 'pixels'`. | design (DESIGN.md row), then client agent | `docs/DESIGN.md`, `packages/client/vendor/` (the library, its `README`), `client/sources/pixels.js` (new) | In Chrome on Android and on a desktop, a Pixels die answers a question; a roll before the question is ignored; the count reaches the DM's tally; on Safari and Firefox the source is not offered and says why in one line. |
+| O8c | **Hextable's own dice profile**, after O8b. The profile as a document; the source module. | design, then client agent | `docs/specs/dice-profile.md` (new, its own issue), `client/sources/bluetooth.js` (new) | A die of the profile answers a question through the same interface as Pixels. |
 
 O1a comes first; O1b, O2 and O3 can follow in parallel; O1c after O1b; O4 after
-O3; O5 after the portable-characters jobs it names; O6a after O3; O6b, O7 and O8
-after the owner's answers.
+O3; O5 after the portable-characters jobs it names; O6a after O3; O6b after O6a and
+its own check; O7 only when the owner names a service; O8a at any time (it reads
+only); O8b after O3 and O8a; O8c after O8b.
 
 ## What stays manual
 
@@ -866,16 +978,21 @@ after the owner's answers.
 ## Security and hidden-information review points
 
 1. **Faces only.** `roll` carries faces, a prompt number and a source word. A test
-   sends a forged `total`, `hit`, `success`, `amount` and `game` with an answer and
-   asserts they are ignored and the outcome comes from the faces.
+   sends a forged `total`, `hit`, `success` and `amount` with an answer and
+   asserts they are ignored and the outcome comes from the faces; an answer with both
+   `faces` and `game: true` is refused as ambiguous.
 2. **Validated before anything changes.** Count, sides, whole numbers, range, the
    prompt's number, the sender's control of the roller: each refused with a
    sentence, and a refused answer leaves `pending` byte-identical.
-3. **No second chance.** A player's `roll { game: true }` and `roll { lapse: true }`
-   are refused; only the DM and the host's timer may send them; a lapse takes the
-   shadow die fixed before the question, never a new draw.
-4. **The shadow die is the DM's.** `game` is in no player view, patch, event or
-   history entry: the canary test of `hidden-information.md` extended to it.
+3. **A take is blind, and a lapse is not the player's.** A `roll { game: true }` is
+   accepted only from the roller's controller or the DM, only while the question
+   waits and before faces are sent, and gives the die fixed before the question; a
+   player's `roll { lapse: true }` is refused (only the host's timer sends it); a lapse
+   takes the same die, never a new draw.
+4. **The shadow die is nobody's to see.** No field in any player's or the DM's view,
+   patch, event, history entry, log, tally or export holds it before it is used as the
+   roll's result: the canary test of `hidden-information.md` extended to it, run for
+   the DM too.
 5. **A question only where faces would be sent.** A test walks every roll site and
    checks Decision 5's table, and that no player is asked for a roll whose event
    they are not sent; twin runs with a hidden foe and without show the same
@@ -887,9 +1004,9 @@ after the owner's answers.
    a question asked of the DM sends nothing to players.
 8. **Sources are claims.** No screen says "verified"; `from` is a closed word and
    any other is refused.
-9. **Nothing leaves the device but faces.** No picture, Bluetooth id or
-   third-party key in any message, table file, export or undo file; a transport
-   test watches for it.
+9. **Nothing leaves the device but faces.** No picture, crop, model score, Bluetooth id
+   or third-party key in any message, table file, export or undo file; a transport
+   test watches for it. The model file is fetched from the table's own origin.
 10. **The clock is the server's.** A client cannot shorten or lengthen a wait; a
     lapse after an answer is refused by the prompt number.
 11. **Undo and rewind.** Undo of an answer restores the question; rewind withdraws
@@ -913,8 +1030,15 @@ after the owner's answers.
   rather than using faces for a question nobody was asked.
 - **Players will cheat sometimes.** The design says so and gives the DM the
   record; it does not promise detection.
-- **The camera promises less than the owner hopes.** Without a recogniser only d6
-  pips are dependable. The spec says so; question 10 decides the rest.
+- **The camera may promise less than the owner hopes.** Without a recogniser only d6
+  pips are dependable. The recogniser is wanted (owner), but it ships only past the
+  accuracy bar, and its download is a new cost to the page, paid only on opening the
+  camera.
+- **Fishing.** A player may take the game's dice after seeing a bad roll (owner's
+  choice). The die is unseen, the tally counts takes, and the DM accepted the risk;
+  the spec does not claim to prevent it.
+- **The Pixels licence is unchecked.** If it is incompatible, the Pixels step ends and
+  the Hextable profile is next (question 14).
 - **No iPhone can use Bluetooth dice in a browser** (Decision 10). A table of
   iPhones gets typing and the camera, or a die paired to the DM's laptop.
 - **Plain-HTTP LAN servers get no camera or Bluetooth** (secure contexts only).
@@ -925,42 +1049,61 @@ after the owner's answers.
 
 ## Questions for the owner
 
-Each has the default the build proceeds on if he does not answer.
+The owner answered the twelve questions on #351 on 20 November 2026 (his chat of
+about 19:15 UTC). Where he went against the default, the spec above is changed;
+where he confirmed it, it stands. New questions follow, each with the default the
+build proceeds on.
 
-1. **"Perhaps a good place to use Jev or ???".** What is Jev? A tool, a library, a
-   service, a person or a model? The spec does not guess. *Default: nothing in the
-   design depends on it; it is added when he says what it is.*
-2. **Rolls inside other people's actions.** Should outside rollers be asked for
-   saves, Concentration and Death Saving Throws that happen in a monster's turn,
-   which stops that turn until they answer? *Default: yes, every kind the player
-   chooses; a player who wants only their own turn's rolls picks `attack`,
-   `damage` and `check`.*
-3. **The wait and the lapse.** *Default: 60 seconds, then the game's dice (the
-   shadow die); the DM may choose 30, 120 or no limit, and "hand it to the DM".*
-4. **May a player take the game's dice after seeing a prompt?** *Default: no, only
-   the DM or the lapse, so a bad physical roll cannot be swapped for a game roll.*
-5. **Should the DM approve every outside roll?** *Default: no (`outsideCheck:
-   'none'`); the DM sees every one and can undo it, which gives the question back.*
-6. **The DM's own dice for monsters.** *Default: allowed under `everyone`, off by
-   default; the monster AI then waits for the DM's dice on each roll.*
-7. **The official server.** May its tables allow outside dice, and are levels
-   gained there still "official" in a character's record? *Default: allowed;
-   levels stay official in grade, with the mark and the count of Decision 8; the
-   operator may forbid outside dice for all its tables.*
-8. **Which third-party roller first, if any?** *Default: none is built; players
-   roll in any app and type the faces.*
-9. **Bluetooth dice.** Your own design first (the Hextable dice profile), or an
-   existing brand's dice (Pixels, GoDice) first? *Default: the profile first, as a
-   short document of its own, so your dice and any adapter speak one language;
-   an existing brand only after a licence check of its protocol and code.*
-10. **A model for reading numerals from the camera.** Is a vendored recogniser (a
-    weights file and either a vendored runtime or our own small forward pass)
-    acceptable, under the same kind of exception as Three.js? *Default: no for
-    now; the camera reads d6 pips and the player confirms or types the rest.*
-11. **Does the DM see the shadow die?** *Default: yes, on the DM's screen only,
-    beside each outside roll.*
-12. **Solo play.** *Default: outside dice are offered in solo too (the solo player
-    is the DM), with no lapse.*
+1. **Jev.** *Answered 20 November.* Jev is https://console.typesafe.ai/, an online AI.
+   Not yet looked at. Not used for photographs (it would send them off the device);
+   see question 10. Nothing in the design depends on it.
+2. **Rolls inside other people's actions.** *Answered 20 November: yes.* Each player
+   picks the kinds, saves, Concentration and Death Saving Throws in others' turns
+   included. (The default stands.)
+3. **The wait and the lapse.** *Answered 20 November: the default.* 60 seconds, a
+   table setting (30, 60, 120 or no limit).
+4. **May a player take the game's dice after seeing a prompt?** *Answered 20 November:
+   YES, at any time. Against the default.* Invariant 3 ("no second chance") is
+   dropped; Decision 4 and the security points are rewritten, and the DM sees takes in
+   the log and the tally.
+5. **Should the DM approve every outside roll?** *Answered 20 November: no.* The DM
+   sees every roll and can undo it. (The default stands.)
+6. **The DM's own dice for monsters.** *Answered 20 November: allowed, off by
+   default.* (The default stands.)
+7. **The official server.** *Answered 20 November: allowed.* Levels stay official,
+   marked with the count. (The default stands.)
+8. **Which third-party roller first?** *Answered 20 November: none.* No third-party
+   roller; players type the faces. (The default stands.)
+9. **Bluetooth dice.** *Answered 20 November: Pixels dice first, before our own
+   profile. Against the default.* Stage O8a (the licence check) comes first, then O8b
+   (Pixels), then O8c (the Hextable profile). The check is **not yet done**.
+10. **A model for reading numerals from the camera.** *Answered 20 November: YES.
+    Against the default.* Stage O6b; the reason goes in `docs/DESIGN.md`'s stack table
+    when the files are picked; candidates, vendoring, size budget and accuracy bar in
+    Decision 10; photographs never leave the device; Jev is not used.
+11. **Does the DM see the shadow die?** *Answered 20 November: NO ONE sees it, the DM
+    included. Against the default.* Decision 3 and every place that showed it to the
+    DM are rewritten.
+12. **Solo play.** *Answered 20 November: yes, with no time limit.* The solo player is
+    the DM; no lapse timer is run in solo. (The default stands.)
+
+New, from the amendment:
+
+13. **Is a sent answer final for the player?** With question 4 a player may take the
+    game's dice until they send faces. *Default: yes, final once sent; only the DM's
+    Undo or Ask again takes it back.*
+14. **If the Pixels licence check finds a licence we cannot vendor under
+    AGPL-3.0-or-later (or none),** what then? *Default: no Pixels code enters the repo,
+    stage O8c (our own profile) goes next, and the owner is told what was found.*
+15. **The recogniser's budget and bar.** Weights at most 1 MB gzipped, a runtime (if any)
+    at most 500 KB gzipped, loaded only when the camera source is opened; at least 98%
+    of confident reads right per die size on held-out photographs; the project takes
+    the training photographs itself and licenses them with the repo. *Default: as
+    written; a die size below the bar is not shipped.*
+16. **Keep the seed's key from the DM too?** Nobody is shown the shadow die in the
+    game, but the DM's state still holds the key (`hidden-information.md`), so a
+    determined DM could work a die out outside the game. Closing that is a change to
+    that spec. *Default: no; the game shows it to no one and claims nothing more.*
 
 ## Sources
 
