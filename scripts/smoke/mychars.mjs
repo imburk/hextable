@@ -484,7 +484,7 @@ async function scoresPass(browser, url, label, opts, grid) {
 }
 
 // ---------- untrained armour and the scroll card in the build screen (#566) ----------
-// Armour the class has no training in is greyed in the Armour list (a wizard: all of it, and the Shield), with a line saying why; a fighter's is not.
+// Armour the class has no training in is marked in the Armour list (a wizard: all of it, and the Shield) with what it costs, and can be picked (#648); a fighter's is not marked.
 // A spell's text comes up in a parchment card after 3 s of hover (nothing before), after a 500 ms touch press (and the press does not tick the spell),
 // or on focus plus the I key; Escape, moving away or a tap elsewhere hides it; at 390x844 it is inside the screen.
 async function scrollPass(browser, url, label, opts, grid) {
@@ -505,15 +505,30 @@ async function scrollPass(browser, url, label, opts, grid) {
       await tap('#lobby-party > summary').catch(() => {}); if (!(await shown(page, '#lobby-mychars'))) await tap('#lobby-party > summary');
       await tap('#lobby-mychars'); await waitShown(page, '#mychars'); await tap('#mc-new'); await waitShown(page, '#qb');
 
-      await run.do('a wizard\'s armour is trained-first: none is trained, so the rest sits behind a counted disclosure; opened, each is greyed with a Not proficient chip and what it costs; the Shield too', async () => {
+      await run.do('a wizard\'s armour is trained-first: none is trained, so the rest sits behind a counted disclosure; opened, each has a Not proficient chip and what it costs and can be picked; the Shield too; its info card says the penalty', async () => {
         await page.selectOption('#qb-class', 'wizard'); await openSec(page, 'gear');
         if (!(await page.isChecked('#qb-armour-none')) || await page.$eval('#qb-armour-none', (e) => e.disabled)) throw new Error('None is not choosable');
         if (await page.$('#qb-armour-plate-armor')) throw new Error('the untrained armour is listed before the disclosure is opened');
         const label = await text(page, '#qb-armour-more'); if (!/^Show armour you are not proficient with \(\d+\)/.test(label)) throw new Error(`disclosure: ${label}`);
         await tap('#qb-armour-more'); await waitShown(page, '#qb-armour-plate-armor');
         const rows = await page.$$eval('#qb-acc-sec-gear .opt:has(input[name="qb-armour"])', (l) => l.map((r) => [r.querySelector('input').id, r.querySelector('input').disabled, /Not proficient/.test(r.textContent), /Disadvantage on Strength and Dexterity rolls/.test(r.textContent)]));
-        const bad = rows.filter(([id, off, np, cost]) => id !== 'qb-armour-none' && !(off && np && cost)); if (bad.length || rows.length < 5) throw new Error(`armour rows: ${JSON.stringify(rows)}`);
-        const sh = await page.$eval('#qb-shield', (e) => [e.disabled, /Not proficient/.test(e.closest('.opt').textContent)]); if (!sh[0] || !sh[1]) throw new Error('the Shield is not greyed and marked');
+        const bad = rows.filter(([id, off, np, cost]) => id !== 'qb-armour-none' && (off || !np || !cost)); if (bad.length || rows.length < 5) throw new Error(`armour rows: ${JSON.stringify(rows)}`);
+        const sh = await page.$eval('#qb-shield', (e) => [e.disabled, /Not proficient/.test(e.closest('.opt').textContent), /Disadvantage on Strength and Dexterity rolls/.test(e.closest('.opt').textContent)]); if (sh[0] || !sh[1] || !sh[2]) throw new Error(`the Shield is not pickable and marked: ${sh}`);
+        // The info card says the penalty (a tap on the i button, which is a touch target).
+        await tap('[data-row="qb-armour-plate-armor"] .ibtn'); await wait(page, () => !!document.querySelector('#scrolltip'));
+        const ic = await text(page, '#scrolltip'); if (!/no training with heavy armour/.test(ic) || !/Disadvantage on every Strength and Dexterity D20 Test/.test(ic) || !/can.t cast spells/.test(ic)) throw new Error(`info card: ${ic}`);
+        const box = await page.$eval('#scrolltip', (e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height, vw: document.documentElement.clientWidth, vh: innerHeight, vis: getComputedStyle(e).visibility, op: getComputedStyle(e).opacity }; });
+        if (!(box.l >= 0 && box.t >= 0 && box.r <= box.vw && box.b <= box.vh && box.w > 50 && box.h > 20)) throw new Error(`info card is not inside the screen: ${JSON.stringify(box)}`);
+        await page.waitForTimeout(400);
+        await shot('1a-armour-card');
+        await page.keyboard.press('Escape'); await page.mouse.click(2, 2).catch(() => {}); await wait(page, () => !document.querySelector('#scrolltip'));
+        // Pick it: the radio takes, and the heads-up lists the costs; Plate Armor's row stays where it is.
+        await tap('[data-row="qb-armour-plate-armor"] label'); await wait(page, () => document.querySelector('#qb-armour-plate-armor')?.checked);
+        const hu = await text(page, '#qb-heads'); if (!/Disadvantage on every Strength and Dexterity roll/.test(hu) || !/Cannot cast spells/.test(hu)) throw new Error(`heads-up: ${hu}`);
+        await tap('[data-row="qb-shield"] label'); await wait(page, () => document.querySelector('#qb-shield')?.checked);
+        await shot('1c-armour-picked');
+        await tap('[data-row="qb-armour-none"] label'); await wait(page, () => document.querySelector('#qb-armour-none')?.checked);
+        await tap('[data-row="qb-shield"] label'); await wait(page, () => !document.querySelector('#qb-shield')?.checked);
         if (!/Wizard training\./.test(await text(page, '#qb-acc-sec-gear .pk-lead')) || !/Shields: no/.test(await text(page, '#qb-acc-sec-gear .pk-lead'))) throw new Error('the training line is missing');
         if (!(await page.isChecked('#qb-armour-none'))) throw new Error('the armour choice changed');
         await shot('1-armour');
@@ -534,7 +549,13 @@ async function scrollPass(browser, url, label, opts, grid) {
         if (await page.$('#qb-weapon-longsword')) throw new Error('an untrained weapon is listed before the disclosure is opened');
         await tap('#qb-weapons-more'); await waitShown(page, '#qb-weapon-longsword');
         const l = await page.$eval('#qb-weapon-longsword', (e) => [e.disabled, /Not proficient/.test(e.closest('.opt').textContent), /No Proficiency Bonus on the attack roll: [+\u2212]\d+ instead of \+\d+/.test(e.closest('.opt').textContent)]);
-        if (!l[0] || !l[1] || !l[2]) throw new Error(`longsword row: ${l}`);
+        if (l[0] || !l[1] || !l[2]) throw new Error(`longsword row: ${l}`);
+        await tap('[data-row="qb-weapon-longsword"] label'); await wait(page, () => document.querySelector('#qb-weapon-longsword')?.checked);
+        const hw = await text(page, '#qb-heads'); if (!/No Proficiency Bonus or Weapon Mastery with the Longsword/.test(hw)) throw new Error(`weapon heads-up: ${hw}`);
+        await tap('[data-row="qb-weapon-longsword"] .ibtn'); await wait(page, () => !!document.querySelector('#scrolltip'));
+        if (!/not proficient with this weapon.*no Weapon Mastery/.test(await text(page, '#scrolltip'))) throw new Error('weapon info card lacks the penalty');
+        await page.keyboard.press('Escape'); await page.mouse.click(2, 2).catch(() => {});
+        await tap('[data-row="qb-weapon-longsword"] label'); await wait(page, () => !document.querySelector('#qb-weapon-longsword')?.checked);
         await page.check('#qb-weapon-shortsword'); await wait(page, () => /Shortsword/.test(document.querySelector('#qb-attacks')?.textContent ?? '') || !!document.querySelector('#qb-weapon-shortsword:checked'));
         await shot('1b-monk-gear');
         await openSec(page, 'who'); await page.selectOption('#qb-class', 'wizard'); await openSec(page, 'gear');

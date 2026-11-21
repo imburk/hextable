@@ -11,7 +11,7 @@ import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, 
 import { keyedRng } from './shared/rng.js';
 import { hide as scrollOff } from './scrolltip.js';
 import { el, accordion, pickRow, chip, groupHead, disclosure } from './pickui.js';
-import { signed, nice, usesText, weaponLines, weaponSummary, armourLines, armourSummary, armourCost, armourAlso, weaponCost, weaponWords, weaponTrained, trainLine, bareFeatures, featureWhen, firstSentence,
+import { signed, nice, usesText, weaponLines, weaponSummary, armourLines, armourSummary, armourCost, armourAlso, weaponCost, weaponNoTrainLines, armourNoTrainLines, weaponWords, weaponTrained, trainLine, bareFeatures, featureWhen, firstSentence,
   resourcesOf, costText, groupedFeatures, slotList, attackRows, headsUp, spellTag } from './buildparts.js';
 export { usesText };
 
@@ -32,13 +32,13 @@ export const withoutBonus = (keep) => { const { scoreBonus, ...rest } = keep; vo
 export const keptOf = (s) => Object.fromEntries(KEEP.filter((k) => s[k] !== undefined).map((k) => [k, structuredClone(s[k])]));
 // Armour a class (and what a feature grants) gives training in: the categories 'light', 'medium', 'heavy', 'shield'. `grants` are the features' `grants` objects.
 export const armourTrained = (c, grants = []) => new Set([...(c?.armour ?? []), ...grants.flatMap((g) => g?.proficiency?.armour ?? [])]);
-// The Armour list's choices: [id, label, disabled]. Armour with no training is greyed and says so; `current` (a sheet already wearing it) stays choosable, so
-// the screen shows it as it is and the sheet's own sentence from `validate` still speaks.
-export const armourOptions = (armour, trained, current) => [['', 'None', false], ...armour.map((a) => { const no = !trained.has(a.category); return [a.id, `${a.name} (AC ${a.ac}, ${a.category})${no ? ' (no training)' : ''}`, no && a.id !== current]; })];
+// The Armour list's choices: [id, label, disabled]. Armour with no training is marked "(no training)" and can be picked: the engine applies the SRD's
+// costs (Disadvantage on Strength and Dexterity D20 Tests, no spellcasting; #648), so none is disabled.
+export const armourOptions = (armour, trained) => [['', 'None', false], ...armour.map((a) => [a.id, `${a.name} (AC ${a.ac}, ${a.category})${trained.has(a.category) ? '' : ' (no training)'}`, false])];
 // The line under the Armour list: what is greyed and why, or '' when nothing is.
 export function armourNote(c, trained, armour) {
   const no = ['light', 'medium', 'heavy', 'shield'].filter((k) => !trained.has(k) && (k === 'shield' || armour.some((a) => a.category === k)));
-  return no.length ? `A ${c.name} has no training with ${no.map((k) => (k === 'shield' ? 'Shields' : `${k} armour`)).join(', ')}, so ${no.length === 1 ? 'it is' : 'they are'} greyed out. A feat or a multiclass that gives the training lifts that.` : '';
+  return no.length ? `A ${c.name} has no training with ${no.map((k) => (k === 'shield' ? 'Shields' : `${k} armour`)).join(', ')}, so ${no.length === 1 ? 'it is' : 'they are'} marked. It can still be picked: Disadvantage on Strength and Dexterity rolls and no spellcasting. A feat or a multiclass that gives the training lifts that.` : '';
 }
 const REST = { short: 'a Short Rest', long: 'a Long Rest' };
 
@@ -503,8 +503,8 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
       sec.append(el('div', { class: `pk-note${off ? ' alert' : ''}`, id: 'qb-bare-note' }, el('div', {}, el('b', { text: off ? 'Right now these are OFF: ' : 'Armour or a Shield turns off ' }), `${bare.join(', ')}${off ? ', because of the armour or Shield.' : `. A ${c.name} keeps them by wearing nothing.`}`)));
     }
     // armour
-    const ar = (a, np) => pickRow({ id: `qb-armour-${a.id}`, kind: 'radio', name: 'qb-armour', checked: b.armour === a.id, disabled: np && b.armour !== a.id, np: np, title: a.name, chips: np ? [chip('np', 'Not proficient')] : [],
-      summary: armourSummary(a), cost: np ? armourCost(a, !!L.cast, bare) : '', also: np ? armourAlso(a) : '', info: { title: a.name, sub: `${nice(a.category)} armour`, text: armourLines(a) }, onchange: () => { b.armour = a.id; build(); } });
+    const ar = (a, np) => pickRow({ id: `qb-armour-${a.id}`, kind: 'radio', name: 'qb-armour', checked: b.armour === a.id, np: np, title: a.name, chips: np ? [chip('np', 'Not proficient')] : [],
+      summary: armourSummary(a), cost: np ? armourCost(a, !!L.cast, bare) : '', also: np ? armourAlso(a) : '', info: { title: a.name, sub: `${nice(a.category)} armour`, text: [...armourLines(a), ...(np ? armourNoTrainLines(a, !!L.cast) : [])] }, onchange: () => { b.armour = a.id; build(); } });
     const none = what({ armour: undefined, shield: undefined });
     sec.append(groupHead('Armour', 'one suit'),
       pickRow({ id: 'qb-armour-none', kind: 'radio', name: 'qb-armour', checked: !b.armour, title: 'No armour', chips: [chip('good', 'Trained')], summary: none ? `AC ${none.ac}${bare.length ? ` · keeps ${bare.join(', ')}` : ''}` : '', onchange: () => { b.armour = null; build(); } }),
@@ -512,18 +512,18 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     const npA = armour.filter((a) => !trained.has(a.category));
     if (npA.length) {
       const open = gearOpen.armour || npA.some((a) => b.armour === a.id);
-      sec.append(disclosure({ id: 'qb-armour-more', open, text: open ? 'Armour you are not proficient with' : `Show armour you are not proficient with (${npA.length})`, sub: `Each says what it costs. The game cannot apply these costs yet, so they cannot be picked.`, onToggle: (v) => { gearOpen.armour = v; build(); } }), ...(open ? npA.map((a) => ar(a, true)) : []));
+      sec.append(disclosure({ id: 'qb-armour-more', open, text: open ? 'Armour you are not proficient with' : `Show armour you are not proficient with (${npA.length})`, sub: `You can pick them. Each says what it costs: Disadvantage on Strength and Dexterity rolls, and no spellcasting.`, onToggle: (v) => { gearOpen.armour = v; build(); } }), ...(open ? npA.map((a) => ar(a, true)) : []));
     }
     // shield
     const noSh = !trained.has('shield');
-    sec.append(groupHead('Shield'), pickRow({ id: 'qb-shield', kind: 'check', checked: b.shield, disabled: noSh && !b.shield, np: noSh, title: 'Shield', chips: noSh ? [chip('np', 'Not proficient')] : [], summary: '+2 AC if you are trained', cost: noSh ? armourCost(shield, !!L.cast, bare) : '',
-      info: { title: 'Shield', sub: 'Shield', text: armourLines(shield) }, onchange: (on) => { b.shield = on; build(); } }));
+    sec.append(groupHead('Shield'), pickRow({ id: 'qb-shield', kind: 'check', checked: b.shield, np: noSh, title: 'Shield', chips: noSh ? [chip('np', 'Not proficient')] : [], summary: '+2 AC if you are trained', cost: noSh ? armourCost(shield, !!L.cast, bare) : '',
+      info: { title: 'Shield', sub: 'Shield', text: [...armourLines(shield), ...(noSh ? armourNoTrainLines(shield, !!L.cast) : [])] }, onchange: (on) => { b.shield = on; build(); } }));
     // weapons
     const prof = d?.record?.prof ?? proficiencyFor(b.level), has = (id) => b.weapons.includes(id);
     const bonusOf = (w) => { const q = what({ weapons: [...new Set([...b.weapons, w.id])] }); const at = q?.attacks.find((x) => x.id === w.id); return at ? at.bonus : null; };
     const martial = L.feats.some((x) => x.f.grants?.martialArts), isOwn = (w) => martial && w.kind === 'melee' && (w.category === 'simple' || w.properties.includes('light'));
-    const wRow = (w, ok) => { const hit = bonusOf(w); return pickRow({ id: `qb-weapon-${w.id}`, kind: 'check', checked: has(w.id), disabled: !ok && !has(w.id), np: !ok, title: w.name, chips: ok ? [] : [chip('np', 'Not proficient')], right: hit === null ? '' : signed(hit),
-      summary: weaponSummary(w), cost: !ok && hit !== null ? `${weaponCost(hit, prof)}${martial && w.kind === 'melee' ? '. Not a ' + c.name + ' weapon: no Martial Arts die.' : ''}` : '', info: { title: w.name, sub: `${nice(w.category)} ${w.kind} weapon`, text: weaponLines(w) },
+    const wRow = (w, ok) => { const hit = bonusOf(w); return pickRow({ id: `qb-weapon-${w.id}`, kind: 'check', checked: has(w.id), np: !ok, title: w.name, chips: ok ? [] : [chip('np', 'Not proficient')], right: hit === null ? '' : signed(hit),
+      summary: weaponSummary(w), cost: !ok && hit !== null ? `${weaponCost(hit, prof)}${martial && w.kind === 'melee' ? '. Not a ' + c.name + ' weapon: no Martial Arts die.' : ''}` : '', info: { title: w.name, sub: `${nice(w.category)} ${w.kind} weapon`, text: [...weaponLines(w), ...(ok ? [] : weaponNoTrainLines())] },
       onchange: (on) => { toggle(b.weapons, w.id, on); build(); } }); };
     const okW = wp.filter((w) => weaponTrained(w, words)), npW = wp.filter((w) => !weaponTrained(w, words));
     sec.append(groupHead('Weapons', 'tick what you carry'));
@@ -535,7 +535,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     } else for (const [cat, list] of [['simple', okW.filter((w) => w.category === 'simple')], ['martial', okW.filter((w) => w.category === 'martial')]]) if (list.length) sec.append(groupHead(`${nice(cat)} weapons`, 'you are proficient'), ...list.map((w) => wRow(w, true)));
     if (npW.length) {
       const ticked = npW.filter((w) => has(w.id)).length, open = gearOpen.weapons || ticked > 0;
-      sec.append(disclosure({ id: 'qb-weapons-more', open, text: open ? 'Weapons you are not proficient with' : `Show weapons you are not proficient with (${npW.length})`, sub: `${ticked ? `${ticked} ticked. ` : ''}They add no Proficiency Bonus to the attack roll. The game cannot apply that yet, so they cannot be picked.`, onToggle: (v) => { gearOpen.weapons = v; build(); } }), ...(open ? npW.map((w) => wRow(w, false)) : []));
+      sec.append(disclosure({ id: 'qb-weapons-more', open, text: open ? 'Weapons you are not proficient with' : `Show weapons you are not proficient with (${npW.length})`, sub: `${ticked ? `${ticked} ticked. ` : ''}You can pick them. They add no Proficiency Bonus to the attack roll and give no Weapon Mastery.`, onToggle: (v) => { gearOpen.weapons = v; build(); } }), ...(open ? npW.map((w) => wRow(w, false)) : []));
     }
     void flagOf;
     return sec;

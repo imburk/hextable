@@ -85,8 +85,11 @@ test('the heads-up lines: untrained armour, a Strength it needs, Stealth, an unt
   assert.ok(lines.includes('Disadvantage on every Strength and Dexterity roll'));
   assert.ok(lines.some((l) => /Speed .* ft: Plate Armor needs Strength 15/.test(l)));
   assert.ok(lines.includes('Disadvantage on Stealth checks') && lines.includes('The Shield gives no AC (not trained)'));
-  assert.ok(lines.includes('Martial Arts is off') && lines.includes('No Proficiency Bonus with the Longsword'));
+  assert.ok(lines.includes('Martial Arts is off') && lines.includes('No Proficiency Bonus or Weapon Mastery with the Longsword'));
   assert.ok(P.headsUp({ ...base, caster: true }).includes('Cannot cast spells'));
+  // An untrained Shield alone costs the same as untrained armour.
+  const sh = P.headsUp({ ...base, armour: null, weapons: [], caster: true });
+  assert.ok(sh.includes('Cannot cast spells') && sh.includes('Disadvantage on every Strength and Dexterity roll') && sh.includes('The Shield gives no AC (not trained)'), sh.join('|'));
   assert.deepEqual(P.headsUp({ ...base, armour: null, shield: false, weapons: [CONTENT.weapons.shortsword] }), []);
 });
 
@@ -104,8 +107,11 @@ test('item texts: every property and mastery in the data has our own words, and 
 test('attack rows fold a Bonus Action twin into its base row, and the cost sentences carry the numbers', () => {
   const rows = P.attackRows(derive({ ...sheet('monk'), weapons: ['shortsword'] }).record.attacks);
   assert.deepEqual(rows.map((r) => r.id), ['shortsword', 'unarmed-strike']);
-  assert.equal(P.weaponCost(0, 3), 'No Proficiency Bonus on the attack roll: +0 instead of +3');
+  assert.equal(P.weaponCost(0, 3), 'No Proficiency Bonus on the attack roll: +0 instead of +3 \u00b7 no Weapon Mastery');
   assert.match(P.armourCost(CONTENT.armour['chain-mail'], true), /can.t cast spells/);
-  assert.equal(P.armourCost(CONTENT.armour.shield, false), 'No AC bonus without training');
+  assert.equal(P.armourCost(CONTENT.armour.shield, false), 'No AC bonus without training \u00b7 Disadvantage on Strength and Dexterity rolls');
+  assert.match(P.armourCost(CONTENT.armour.shield, true), /can.t cast spells/);
+  assert.match(P.armourNoTrainLines(CONTENT.armour['plate-armor'], true)[0], /Disadvantage on every Strength and Dexterity D20 Test.*can.t cast spells/);
+  assert.match(P.weaponNoTrainLines()[0], /no Weapon Mastery|no Weapon Mastery property/);
   assert.ok(classOf(sheet('monk')));
 });

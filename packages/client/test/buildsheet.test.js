@@ -290,20 +290,19 @@ test('a saved sheet opens on its own method; a sheet with no record, or one that
   assert.deepEqual([p.scores.by, p.scores.at], ['table', 41], 'where it was rolled is kept when a sheet is edited');
 });
 
-test('armour: what a class has no training in is greyed and says so; what it is trained in is not; a sheet already wearing it can still show it (#566)', () => {
+test('armour: what a class has no training in says so and can still be picked; what it is trained in does not (#566, #648)', () => {
   const armour = Object.values(CONTENT.armour).filter((a) => a.category !== 'shield');
   const wiz = armourTrained(CONTENT.classes.wizard), fig = armourTrained(CONTENT.classes.fighter);
   const w = armourOptions(armour, wiz, null), f = armourOptions(armour, fig, null);
   assert.deepEqual(w[0], ['', 'None', false]);
-  assert.ok(w.slice(1).every(([, t, off]) => off && /\(no training\)$/.test(t)), 'a wizard is trained in none');
+  assert.ok(w.slice(1).every(([, t, off]) => !off && /\(no training\)$/.test(t)), 'a wizard is trained in none, and may pick any');
   assert.ok(f.slice(1).every(([, t, off]) => !off && !/no training/.test(t)), 'a fighter is trained in all');
-  assert.equal(armourOptions(armour, wiz, 'plate-armor').find(([v]) => v === 'plate-armor')[2], false, 'the armour already worn stays choosable');
-  assert.match(armourNote(CONTENT.classes.wizard, wiz, armour), /^A Wizard has no training with light armour, medium armour, heavy armour, Shields, so they are greyed out/);
+  assert.match(armourNote(CONTENT.classes.wizard, wiz, armour), /^A Wizard has no training with light armour, medium armour, heavy armour, Shields, so they are marked\. It can still be picked/);
   assert.equal(armourNote(CONTENT.classes.fighter, fig, armour), '');
 });
-test('armour: a class with some training greys only the rest, and a feature that grants training lifts it', () => {
+test('armour: a class with some training marks only the rest, and a feature that grants training lifts it', () => {
   const armour = Object.values(CONTENT.armour).filter((a) => a.category !== 'shield');
-  const cleric = CONTENT.classes.cleric, t = armourTrained(cleric), off = new Set(armourOptions(armour, t, null).filter(([, , d]) => d).map(([v]) => CONTENT.armour[v]?.category));
+  const cleric = CONTENT.classes.cleric, t = armourTrained(cleric), off = new Set(armourOptions(armour, t, null).filter(([, label]) => /no training/.test(label)).map(([v]) => CONTENT.armour[v]?.category));
   for (const k of ['light', 'medium', 'heavy']) assert.equal(off.has(k), !cleric.armour.includes(k), k);
   assert.ok(armourTrained(CONTENT.classes.wizard, [{ proficiency: { armour: ['heavy'] } }]).has('heavy'));
 });
