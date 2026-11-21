@@ -8,6 +8,8 @@ COPY scripts/build.mjs scripts/
 COPY packages/client packages/client
 COPY packages/rules/src packages/rules/src
 COPY assets/models assets/models
+# CI passes the commit it built (--build-arg GITHUB_SHA=...) so dist/build.json names it; Railway passes nothing and the server reads its own variables instead.
+ARG GITHUB_SHA
 RUN npm run build
 
 FROM node:22-alpine

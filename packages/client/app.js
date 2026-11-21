@@ -8,11 +8,13 @@ import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, area
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
+import { tapAttack, rearm, hintOf as flurryHint, spentWords } from './flurry.js';
 import { coverOf } from './shared/sight.js';
 import { autoPlays } from './shared/ai.js';
 import { aiAction } from './standin.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { holdWords, heldEndText, noteText, previewState, targetRefusals } from './grapple.js';
+import { slotMenu, slotFor } from './upcast.js';
 import { inReach, aimFeet, reachEdge, farWords } from './aimrange.js';
 import { offerOf, offers, waitingFor, reachOf, moveLabel, forgoLabel, offerWords, waitWords, giveUpLabel } from './allowance.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
@@ -29,7 +31,8 @@ import { initSettings } from './settings.js';
 import { aboutHTML } from './about.js';
 import { VERSION } from './shared/migrate.js';
 import { THEMES, setLook } from './themes.js';
-import { localTransport, serverTransport, savedSession, hasSoloGame, forgetSession, forgetSolo, prefs, downloadTable } from './transport.js';
+import { localTransport, serverTransport, savedSession, lastSession, hasSoloGame, forgetSession, forgetLastSession, forgetSolo, windowSoloKey, setWindowSoloKey, newCopyKey, SOLO_KEY, prefs, downloadTable } from './transport.js';
+import { claimWriter } from './solowriter.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
@@ -136,10 +139,10 @@ const summonedName = (st, e) => {
 };
 const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? 'Someone');
 
-function toast(msg, info = false) {
+function toast(msg, info = false, ms = info ? 1600 : 3200) {
   const el = $('toast');
   el.textContent = msg; el.classList.toggle('info', info); el.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), info ? 1600 : 3200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
 function setMode(m) { mode = m; refresh(); }
 R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
@@ -337,7 +340,7 @@ function words(ev) {
     case 'down': return [`${n(ev.id)} drops to 0 Hit Points and is dying.`, 'bad'];
     case 'died': return [`${n(ev.id)} dies.`, 'bad'];
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
-    case 'std': return [`${n(ev.id)} uses ${ev.action}.`];
+    case 'std': return [spentWords(S.entities[ev.id], ev) || `${n(ev.id)} uses ${ev.action}.`];
     case 'note': return [noteText(ev, n)];
     case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
     case 'condEnd': return [ev.cond === 'grappled' ? heldEndText(ev, n) : `${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
@@ -451,6 +454,7 @@ function beat(ev, ctx) {
   played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
   const line = describe(ev);
   LV.add(ev, line, S.clock); FB.shown(line, ev.type);
+  if (ev.type === 'std' && S.entities[ev.id] && mine(S.entities[ev.id]) && spentWords(S.entities[ev.id], ev)) toast(line[0], true);      // the cost of Flurry of Blows, and what is left
   const f = floatOf(ev);
   if (f) {
     if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };
@@ -499,6 +503,8 @@ function onUpdate(state, events, fresh) {
   // A player is shown the movement an Opportunity Attack gave as soon as it comes: their creature is selected and looked at (the DM keeps their own choice; solo is both).
   if (!isDM() || T.solo) { const o = offers(S).find((x) => !hadOffer.has(x.id) && mine(S.entities[x.id])); if (o) { select(o.id); R.focus(o.id); } }
   if (mode.kind === 'attack' || mode.kind === 'famAttack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
+  // Attacks a feature granted (Flurry of Blows) are armed for the player at once, and again after each strike, so a tap on a foe makes them (flurry.js).
+  { const me = S.entities[selId], fl = me && mine(me) && up(me) ? rearm(S, me, events) : null; if (fl && mode === MOVE) mode = fl; }
   clearTimeout(aiTimer);
   aiSent = null;
   tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
@@ -536,7 +542,7 @@ function idled() {
   const plays = cur && autoPlays(S, cur.id, { offline });
   // It also waits while a party creature holds movement from an Opportunity Attack (DEBT T93 4b): ending the mover's turn would lapse it before its player can act.
   // The DM's screen says who it waits for and can give the movement up for them (refresh, below).
-  if (plays && isDM() && $('dm-auto').checked && !tookBack && !autoWaits().length) {
+  if (plays && isDM() && !T.readOnly && $('dm-auto').checked && !tookBack && !autoWaits().length) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
     // server never waits. Otherwise as before, 800 ms after the update. The table's homebrew is installed around the call (standin.js).
@@ -565,12 +571,22 @@ const CP = initCompanions({ state: () => S, act: (a) => act(a), toast: (m) => to
 // An item casts at the lowest caster level, at `level` when extra charges raise it.
 const castAct = (aim) => (mode.item
   ? { type: 'use', actor: selId, item: mode.item.key, which: mode.item.which, ...(mode.item.level > mode.item.base ? { level: mode.item.level } : {}), ...aim }
-  : { type: 'cast', actor: selId, spell: mode.id, ...(mode.deliver ? { deliver: mode.deliver } : {}), ...aim });
-const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level ?? mode.item.base) : CLS.most(e, sp, targetCount(sp.def, e.level)));
+  : { type: 'cast', actor: selId, spell: mode.id, ...(mode.deliver ? { deliver: mode.deliver } : {}), ...slotArg(S.entities[selId], SPELLS[mode.id]), ...aim });
+// The slot a levelled spell is cast with (issue #604): the one chosen in the hint bar while it is armed, else the lowest left at its level or above.
+// Sent as `slot` only above the spell's own level (the engine's default); a spell from an item has its own level. The engine checks it.
+const slotOf = (e, sp) => slotFor(e, sp, mode.kind === 'spell' && mode.id === sp.id && !mode.item ? mode.slot : null);
+const slotArg = (e, sp) => { const l = e && sp.level > 0 ? slotOf(e, sp) : null; return l && l > sp.level ? { slot: l } : {}; };
+const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level ?? mode.item.base) : CLS.most(e, sp, targetCount(sp.def, e.level, slotOf(e, sp) ?? sp.level)));
+// A spell with nothing to aim is cast on the spot, unless there is a slot to choose first: then it is armed, and the hint bar asks (Cast / Cancel).
+const selfCast = (e, id) => {
+  const sp = SPELLS[id];
+  if (slotMenu(e, sp)) return setMode({ kind: 'spell', id, aim: null, keep: false, picked: [] });
+  act({ type: 'cast', actor: e.id, spell: id, ...slotArg(e, sp), ...chosen(sp) });
+};
 function startSpell(e, id, armed) {
   const sp = SPELLS[id];
   if (isSummon(id)) return armed ? setMode(MOVE) : CP.openChooser(e, id);       // a summon asks for its picks first (companions.js)
-  if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) });
+  if (sp.aim === 'self' || sp.aim === 'none') { if (armed) setMode(MOVE); else selfCast(e, id); }
   else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] });
 }
 // A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
@@ -592,6 +608,16 @@ function showPick() {
   sel.value = mode.choice;
 }
 $('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; };
+// The slot to cast a levelled spell with (issue #604): shown while it is armed when the caster has more than one level to pay with and a higher one adds something.
+function showSlot() {
+  const sel = $('hint-slot'), e = S.entities[selId], sp = mode.kind === 'spell' && !mode.item ? SPELLS[mode.id] : null, menu = sp && e ? slotMenu(e, sp) : null;
+  sel.hidden = !menu || $('hint').hidden;
+  if (sel.hidden) return;
+  const key = `${sp.id}|${menu.levels.map((r) => r.label).join('|')}`;
+  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = menu.levels.map((r) => `<option value="${r.level}">${esc(r.label)}</option>`).join(''); }
+  sel.value = String(slotOf(e, sp));
+}
+$('hint-slot').onchange = (ev) => { mode.slot = +ev.target.value; refresh(); };
 
 // What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
 function aimHow(area, range) {
@@ -693,18 +719,20 @@ function refresh() {
         hint = hl.targets.length ? `${a.name}${mode.label ? ` with ${mode.label}` : ''}: tap a target${coverHint(e, hl.targets)}${bad.length ? ` (${bad[0].why})` : ''}`
           : bad.length ? `${a.name} with ${mode.label}: ${bad[0].why}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
+      if (mode.kind === 'attack' && mode.flurry && hl.targets.length) hint = flurryHint(S, e, mode) || hint;
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
-        if (sp.area) {
+        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the slot, then Cast`; go = true; }
+        else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
           const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
           hl.area = hexes.map(cellKey);
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(cellCol(x.pos)));
           const how = aimHow(sp.area, sp.range);
           // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
-          if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, mode.item ? spellMost(e, sp) : targetCount(sp.def, e.level)).map((x) => x.id);
+          if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, spellMost(e, sp)).map((x) => x.id);
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
           hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
@@ -741,7 +769,7 @@ function refresh() {
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   hintWords(offer, waits);
-  showPick();
+  showPick(); showSlot();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
   R.setHighlights(ED.on ? ED.marks() : hl);
@@ -951,6 +979,7 @@ R.onTap = ({ hex, id }) => {
   }
   if (mode.kind === 'spell') {
     const sp = SPELLS[mode.id];
+    if (sp.aim === 'self' || sp.aim === 'none') return;       // armed only to choose the slot: Cast or Cancel in the hint bar
     if (sp.area) return aimTap(hex);
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
@@ -972,8 +1001,8 @@ R.onTap = ({ hex, id }) => {
         if (x) return act({ type: 'act', actor: e.id, action: x.id, target: tapped.id });
         return toast(`${tapped.name} is ${d} ft away. Move closer, or pick an action.`);
       }
-      const a = e.attacks.find((x) => (x.type === 'melee' ? d <= x.reach : d <= x.range[1] && d > 5)) || e.attacks.find((x) => x.type === 'ranged' && d <= x.range[1]);
-      if (a) return act({ type: 'attack', actor: e.id, target: tapped.id, attack: a.id });
+      const a = tapAttack(S, e, d);      // a granted attack (Flurry of Blows) first, then one the Attack action allows, then the first that reaches
+      if (a) return act({ type: 'attack', actor: e.id, target: tapped.id, attack: a });
       return toast(`${tapped.name} is ${d} ft away. Move closer, or pick a spell.`);
     }
     select(tapped.id); return refresh();
@@ -1002,6 +1031,7 @@ $('hint-go').onclick = () => {
 };
 function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
+  else if (SPELLS[mode.id].aim === 'self' || SPELLS[mode.id].aim === 'none') act(castAct({ ...chosen(SPELLS[mode.id]) }));
   else if (SPELLS[mode.id].area) {
     const sp = SPELLS[mode.id], me = S.entities[selId];
     // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.
@@ -1235,7 +1265,7 @@ function syncCards() {
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   armAttack: (m) => setMode({ kind: 'attack', ...m }),
-  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
+  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') selfCast(e, id); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
@@ -1271,6 +1301,9 @@ function start(transport, map = null) {
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
   T = transport; S = null;
+  if (!T.solo) { soloClaim?.release(); soloClaim = null; }       // a table is not a solo save: let the claim go
+  $('readonly-bar').hidden = $('readonly-frame').hidden = !T.readOnly; document.body.classList.toggle('readonly', !!T.readOnly);
+  T.on.saveError = (msg) => toast(msg, false, 12000);          // the browser would not keep the game (review R17)
   PK.attach(T);                 // the table's homebrew packs: kept while this table is open (packmanager.js)
   $('splash-text').textContent = T.solo ? 'Opening your game\u2026' : 'Connecting to the table\u2026';
   lobbyBusy(!T.solo);
@@ -1281,7 +1314,7 @@ function start(transport, map = null) {
     flick = null; refreshAsk = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
-    if (expired) { TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
+    if (expired) { if (rejoinedLast) forgetLastSession(); rejoinedLast = false; TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
     else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (three-build.js, arenaFlashCells)
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);
       if (lastMove && Date.now() - lastMove.at < 4000) window.dispatchEvent(new CustomEvent('hextable-arena-flash', { detail: lastMove.hex }));
@@ -1323,10 +1356,13 @@ function start(transport, map = null) {
   T.start();
 }
 // The lobby says what this device holds: a remembered table (Rejoin or Forget) and a saved solo game (Continue or New game).
+// A table belongs to the window that joined it (#625): this window's own seat, or, for a window with none, the one the device used last, offered as a suggestion.
 function showLobby(msg = '') {
-  const sess = savedSession(), solo = hasSoloGame();
+  const own = savedSession(), last = own ? null : lastSession(), sess = own ?? last, solo = hasSoloGame(windowSoloKey());
   $('lobby-remember').hidden = !sess;
-  if (sess) $('lobby-table').textContent = `This device remembers table ${sess.code}.`;
+  $('lobby-else').hidden = !last;
+  if (own) { $('lobby-table').textContent = `This window remembers table ${own.code}.`; $('lobby-rejoin').textContent = 'Rejoin'; }
+  else if (last) { $('lobby-table').textContent = `This window has no seat yet. This device last sat at table ${last.code}${last.name ? ` as ${last.name}` : ''}.`; $('lobby-rejoin').textContent = `Rejoin ${last.code}${last.name ? ` as ${last.name}` : ''}`; }
   $('lobby-solo').textContent = solo ? 'Continue solo game' : 'Play solo on this device';
   $('lobby-new').hidden = !solo;
   $('lobby-msg').textContent = msg;
@@ -1334,21 +1370,51 @@ function showLobby(msg = '') {
   $('lobby').hidden = false;
   (sess ? $('lobby-rejoin') : $('lobby-solo')).focus?.({ preventScroll: true });
 }
-$('lobby-rejoin').onclick = () => { const sess = savedSession(); if (!sess) return showLobby(); $('lobby-msg').textContent = `Rejoining table ${sess.code}\u2026`; start(serverTransport({ t: 'resume', ...sess })); };
-$('lobby-forget').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to forget', '', () => { forgetSession(); showLobby('Table forgotten.'); });
+let rejoinedLast = false;         // the table being rejoined came from the device's suggestion, not this window's own seat
+$('lobby-else').onclick = () => {
+  const last = lastSession(); $('lobby-remember').hidden = true;
+  if (last) $('lobby-code').value = last.code;
+  $('lobby-msg').textContent = 'Enter your name and Join: the DM lets you in as a new seat.'; $('lobby-name').focus?.({ preventScroll: true });
+};
+$('lobby-rejoin').onclick = () => { const own = savedSession(), sess = own ?? lastSession(); if (!sess) return showLobby(); rejoinedLast = !own; $('lobby-msg').textContent = `Rejoining table ${sess.code}\u2026`; start(serverTransport({ t: 'resume', code: sess.code, token: sess.token })); };
+$('lobby-forget').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to forget', '', () => { if (savedSession()) forgetSession(); else forgetLastSession(); showLobby('Table forgotten.'); });
 // A new solo game starts with the party chosen in the lobby (mycharacters.js); one that cannot be played is said, and nothing starts.
 const MC = initMyCharacters({ twoTap, toast });
-function newSolo() {
+function newSolo(key = windowSoloKey()) {
   const { party, problems } = MC.party();
   if (!party) { $('lobby-party').open = true; $('lobby-msg').textContent = `The party is not ready. ${problems[0]}`; return false; }
-  $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid(), party }), TC.lobbyChoice());
+  $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid(), party, saveKey: key }), TC.lobbyChoice());
   return true;
 }
-$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { if (!MC.party().party) return newSolo(); forgetSolo(); newSolo(); });
+// ---------- one writer to a solo save (#625; solowriter.js) ----------
+// A window that plays a solo game holds it. A second window of this browser that asks for the same save is told, and may only look (read-only) or play on a copy.
+let soloClaim = null;
+async function soloGuard() {
+  const key = windowSoloKey();
+  if (soloClaim?.key === key) return key;
+  soloClaim?.release(); soloClaim = null;
+  const got = await claimWriter(key.slice('hextable.'.length));
+  if (got.ok) { soloClaim = { ...got, key }; return key; }
+  soloBusy(key); return null;
+}
+function soloBusy(key) {
+  const box = $('solo-busy'); box.hidden = false;
+  $('solo-busy-read').onclick = () => { box.hidden = true; $('lobby').hidden = true; start(localTransport({ saveKey: key, readOnly: true })); };
+  $('solo-busy-copy').onclick = async () => {
+    const copy = newCopyKey(), got = await claimWriter(copy.slice('hextable.'.length));
+    if (!got.ok) { $('solo-busy-msg').textContent = 'That copy could not be made. Try again.'; return; }
+    soloClaim?.release(); soloClaim = { ...got, key: copy }; setWindowSoloKey(copy); box.hidden = true; $('lobby').hidden = true;
+    start(localTransport({ saveKey: copy, copyOf: key, grid: TC.lobbyGrid(), party: MC.party().party ?? undefined }), TC.lobbyChoice());
+  };
+  $('solo-busy-close').onclick = () => { box.hidden = true; };
+  $('solo-busy-read').focus?.({ preventScroll: true });
+}
+$('readonly-copy').onclick = () => soloBusy(windowSoloKey());
+$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', async () => { const key = await soloGuard(); if (!key) return; if (!MC.party().party) return newSolo(key); forgetSolo(key); newSolo(key); });
 const lobbyName = () => $('lobby-name').value.trim() || 'Adventurer';
 $('lobby-host').onclick = () => { lobbyAt(['Host a table', 'Connecting'], leaveWaiting); start(serverTransport({ t: 'host', name: lobbyName(), grid: TC.lobbyGrid() }), TC.lobbyChoice()); };
 $('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) { lobbyAt(['Join a table', `Table ${code.toUpperCase()}`, 'Connecting'], leaveWaiting); start(serverTransport({ t: 'join', code, name: lobbyName() })); } else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
-$('lobby-solo').onclick = () => (hasSoloGame() ? ($('lobby').hidden = true, start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice())) : newSolo());
+$('lobby-solo').onclick = async () => { const key = await soloGuard(); if (!key) return; if (hasSoloGame(key)) { $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid(), saveKey: key }), TC.lobbyChoice()); } else newSolo(key); };
 $('lobby-card').onsubmit = (ev) => ev.preventDefault();
 
 // ---------- the start flow says where you are, has a Back, and keeps what was filled in (issue #556; startflow.js) ----------
@@ -1390,6 +1456,6 @@ $('lobby-startover').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to cl
 (async () => {
   let server = false;
   try { const r = await fetch('./api/ping', { cache: 'no-store' }); server = r.ok && (await r.json()).ok === true; } catch { /* no table server: solo */ }
-  if (!server) return start(localTransport());
+  if (!server) { const key = await soloGuard(); if (key) start(localTransport({ saveKey: key })); return; }
   showLobby();
 })();

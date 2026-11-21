@@ -13,6 +13,8 @@
 <link rel="stylesheet" href="./scenes.css">
 <link rel="stylesheet" href="./reactionprompt.css">
 <link rel="stylesheet" href="./classes.css">
+<link rel="stylesheet" href="./pickui.css">
+<link rel="stylesheet" href="./buildsheet.css">
 <link rel="stylesheet" href="./drawer.css">
 <link rel="stylesheet" href="./defeat.css">
 <link rel="stylesheet" href="./conclusion.css">
@@ -40,7 +42,7 @@
   </nav>
 </header>
 <ol id="order" aria-label="Turn order"></ol>
-<div id="hint" role="status" hidden><span id="hint-text"></span><select id="hint-pick" aria-label="Choice" hidden></select><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button></div>
+<div id="hint" role="status" hidden><span id="hint-text"></span><select id="hint-pick" aria-label="Choice" hidden></select><select id="hint-slot" aria-label="Spell slot" hidden></select><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button></div>
 
 <div id="cam" aria-label="Camera">
   <button type="button" id="cam-l" aria-label="Rotate left">⟲</button>
@@ -246,6 +248,7 @@
     <div id="lobby-remember" hidden>
       <p id="lobby-table"></p>
       <div class="row"><button type="button" id="lobby-rejoin">Rejoin</button><button type="button" id="lobby-forget" class="quiet">Forget</button></div>
+      <div class="row"><button type="button" id="lobby-else" class="quiet" hidden>Join as someone else</button></div>
     </div>
     <details id="lobby-party">
       <summary id="lobby-party-sum">Solo party</summary>
@@ -272,6 +275,13 @@
   <p id="viewer-text" hidden></p>
 </div>
 <div id="toast" role="alert" hidden></div>
+<div id="solo-busy" role="alertdialog" aria-labelledby="solo-busy-title" hidden>
+  <h2 id="solo-busy-title">This game is open in another window</h2>
+  <p id="solo-busy-msg">Another window of this browser is already playing this solo game. Two windows writing to one save would overwrite each other, so only one may play it.</p>
+  <div class="row"><button type="button" id="solo-busy-read">Open read-only</button><button type="button" id="solo-busy-copy">Make a copy</button><button type="button" id="solo-busy-close" class="quiet">Cancel</button></div>
+</div>
+<div id="readonly-frame" aria-hidden="true" hidden></div>
+<div id="readonly-bar" role="status" hidden><span>Read-only: another window is playing this game.</span> <button type="button" id="readonly-copy" class="quiet">Make a copy</button></div>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

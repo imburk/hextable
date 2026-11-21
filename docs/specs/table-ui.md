@@ -1816,7 +1816,7 @@ following, which stays as it was.
   one dead or gone, or no longer following, is dropped from `slots` when the leader next walks.
 - **Accepted (review of #310).** A party-side creature the DM hid that stands on a slot's place changes the shape
   without a word (the follower takes another place), as a plain `move` onto that cell says "occupied".
-- **Fight start.** Unchanged: `catchUp` brings everyone up as before (followers are set down, not walked).
+- **Fight start.** `catchUp` brings everyone up (followers are set down, not walked). Amended by E-P4 (#615): see the build notes of `docs/specs/player-screen.md`.
 - **Also in this PR.** `joinEncounter` (world.js) renames stamps still in the old index form before it re-sorts the
   order, as `settleOrder` does (review of #306); a test in `step-away.test.js`.
 - **Left** (DEBT P28): no narrowing from four across to two abreast, the whole shape falls to the column; a

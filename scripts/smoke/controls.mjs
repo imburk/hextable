@@ -140,7 +140,7 @@ async function controlsTable(browser, url) {
         const leak = frames.find((f) => /fg-import|Imported from Fantasy|ADJUSTMENTS|"chronicle"/.test(f));
         if (leak) throw new Error(`the phone was sent the report: ${leak.match(/.{0,60}(fg-import|Imported from Fantasy|ADJUSTMENTS|"chronicle").{0,60}/)?.[0]}`);
         const asked = await phone.evaluate(() => new Promise((resolve) => {
-          const sess = JSON.parse(localStorage.getItem('hextable.session')), got = [];
+          const sess = JSON.parse(sessionStorage.getItem('hextable.session')), got = [];
           const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
           ws.onopen = () => ws.send(JSON.stringify({ t: 'resume', ...sess }));
           ws.onmessage = (m) => { got.push(m.data); if (JSON.parse(m.data).t === 'welcome') { ws.send(JSON.stringify({ t: 'history', types: ['chronicle'], limit: 200 })); ws.send(JSON.stringify({ t: 'history', limit: 500 })); } };

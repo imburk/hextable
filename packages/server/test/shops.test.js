@@ -52,11 +52,11 @@ test("a shop shown to a player reaches them through patches as view() has it; on
   act({ type: "showShop", shop: "s2", to: [patId] });
   check();
   act({ type: "give", actor: "fighter", coins: { gp: 5 } });
-  pat.say({ t: "act", action: { type: "buy", actor: "fighter", shop: "s2", line: "rope" } });       // the valley is a map with no shop area: refused
+  pat.say({ t: "act", action: { type: "buy", actor: "fighter", shop: "sh1", line: "rope" } });       // a player names the shop by the number they were given (shopids.js); the valley is a map with no shop area: refused
   assert.equal(pat.last("error")?.error ?? pat.last("error")?.message ?? JSON.stringify(pat.last("error")), "The Outfitter has no place on this map.");
   act({ type: "buy", actor: "fighter", shop: "s2", line: "rope" });
   check();
-  assert.deepEqual(pat.receiver.state.shops.map((x) => [x.id, x.name]), [["s2", "Outfitter"]]);
+  assert.deepEqual(pat.receiver.state.shops.map((x) => [x.id, x.name]), [["sh1", "Outfitter"]]);
   assert.deepEqual(sam.receiver.state.shops, []);
   for (const [who, c] of [["Pat", pat], ["Sam", sam]]) {
     const all = JSON.stringify(c.raw);

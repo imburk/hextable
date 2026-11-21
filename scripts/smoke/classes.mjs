@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { martial } from './paneltabs.mjs';
-import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab } from './lib.mjs';
+import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
@@ -513,12 +513,12 @@ export async function casters(browser, url, label, opts) {
         await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
         await tap(page, '#qb-add'); await waitShown(page, '#qb');
         await page.selectOption('#qb-class', 'warlock');
-        await page.selectOption('#qb-levelsel', '5');
+        await page.selectOption('#qb-levelsel', '5'); await openSec(page, 'choices');
         const count5 = await text('#count-eldritch-invocations');
         if (count5 !== '0 of 5 chosen') throw new Error(`level 5: ${count5}`);
         const gated = await page.$$eval('#choice-eldritch-invocations [data-option]', (l) => l.filter((x) => /Needs Warlock level/.test(x.textContent)).map((x) => [x.dataset.option, x.querySelector('input').disabled]));
         if (!gated.length || gated.some(([, off]) => !off)) throw new Error(`prerequisites: ${JSON.stringify(gated)}`);
-        await page.selectOption('#qb-levelsel', '15');
+        await openSec(page, 'who'); await page.selectOption('#qb-levelsel', '15'); await openSec(page, 'choices');
         const count15 = await text('#count-eldritch-invocations');
         if (count15 !== '0 of 9 chosen') throw new Error(`level 15: ${count15}`);
         const free = await page.$$eval('#choice-eldritch-invocations input:not(:disabled)', (b) => b.map((x) => x.id));
@@ -526,19 +526,20 @@ export async function casters(browser, url, label, opts) {
         const full = await text('#count-eldritch-invocations');
         const left = await page.$$eval('#choice-eldritch-invocations input:not(:disabled):not(:checked)', (b) => b.length);
         if (full !== '9 of 9 chosen' || left) throw new Error(`at the limit: ${full}, ${left} still open`);
-        await page.fill('#qb-name', 'Builder');
+        await openSec(page, 'who'); await page.fill('#qb-name', 'Builder');
         await shot('build-invocations');
         const box = await page.$eval('#qb', (x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, innerWidth]; });
         if (box[0] < -1 || box[1] > box[2] + 1) throw new Error(`the build screen does not fit: ${box}`);
       });
 
       await step('the build screen: a feat is chosen for each place, and its ability points are placed', async () => {
+        await openSec(page, 'feats');
         const places = await page.$$eval('#qb-feats-pick [data-at]', (b) => b.map((x) => x.dataset.at));
         if (!places.includes('ability-score-improvement-4') || !places.includes('background')) throw new Error(`places: ${places}`);
-        await page.selectOption('#feat-ability-score-improvement-4-id', 'ability-score-improvement');
-        await page.selectOption('#feat-ability-score-improvement-4-a1', 'cha');
-        await page.selectOption('#feat-ability-score-improvement-4-a2', 'con');
-        await page.selectOption('#feat-background-id', 'skilled');
+        await page.check('#feat-ability-score-improvement-4-opt-ability-score-improvement');
+        await page.check('#feat-ability-score-improvement-4-a1-o-cha');
+        await page.check('#feat-ability-score-improvement-4-a2-o-con');
+        await page.check('#feat-background-opt-skilled');
         await wait(page, () => !!document.querySelector('#feat-background input[id*="-skill-"]'), null, 5000);
         await shot('build-feats');
         const probs = await page.$$eval('#qb-problems li', (l) => l.map((x) => x.textContent));

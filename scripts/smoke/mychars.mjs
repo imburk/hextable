@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, openTab, playSolo } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, openTab, playSolo, openSec, fighterBasics } from './lib.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { validate } from '../../packages/rules/src/derive.js';
 import { rollScores } from '../../packages/rules/src/scores.js';
@@ -25,8 +25,7 @@ async function buildFighter(page, name, level) {
   await page.fill('#qb-name', name);
   await page.selectOption('#qb-class', 'fighter');
   await page.selectOption('#qb-levelsel', String(level));
-  for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
-  const style = await page.$('#qb-choice-fighting-style'); if (style) await page.selectOption('#qb-choice-fighting-style', 'defense');
+  await fighterBasics(page);
   await wait(page, () => document.querySelector('#qb-save') && !document.querySelector('#qb-save').disabled && document.querySelectorAll('#qb-problems li').length === 0);
   await page.click('#qb-save');
 }
@@ -141,7 +140,7 @@ async function pass(browser, url, label, opts, grid) {
         await wait(page, () => /the Bold/.test(document.querySelector('.mc-row strong')?.textContent ?? ''));
         await tap('.mc-row [id^="mc-edit-"]'); await waitShown(page, '#qb');
         if (!(await topAt(page, '#qb'))) throw new Error('the build screen is under the panels');
-        await page.uncheck('#qb-skill-perception'); await page.check('#qb-skill-survival');
+        await openSec(page, 'skills'); await page.uncheck('#qb-skill-perception'); await page.check('#qb-skill-survival');
         await wait(page, () => !document.querySelector('#qb-save').disabled);
         await page.click('#qb-save'); await waitShown(page, '#qb', false);
         const f = (await stored(page))[0];
@@ -323,12 +322,11 @@ async function scoresPass(browser, url, label, opts, grid) {
       const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
       const sheets = () => stored(page).then((l) => l.map((f) => f.sheet));
       const fill = async (name) => {
-        await page.fill('#qb-name', name); await page.selectOption('#qb-class', 'fighter');
-        for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
-        const style = await page.$('#qb-choice-fighting-style'); if (style) await page.selectOption('#qb-choice-fighting-style', 'defense');
+        await openSec(page, 'who'); await page.fill('#qb-name', name); await page.selectOption('#qb-class', 'fighter');
+        await fighterBasics(page); await openSec(page, 'scores');
       };
       const saveable = () => wait(page, () => document.querySelector('#qb-save') && !document.querySelector('#qb-save').disabled && document.querySelectorAll('#qb-problems li').length === 0);
-      const fresh = async () => { await tap('#lobby-party > summary').catch(() => {}); if (!(await shown(page, '#lobby-mychars'))) await tap('#lobby-party > summary'); await tap('#lobby-mychars'); await waitShown(page, '#mychars'); await tap('#mc-new'); await waitShown(page, '#qb'); };
+      const fresh = async () => { await tap('#lobby-party > summary').catch(() => {}); if (!(await shown(page, '#lobby-mychars'))) await tap('#lobby-party > summary'); await tap('#lobby-mychars'); await waitShown(page, '#mychars'); await tap('#mc-new'); await waitShown(page, '#qb'); await openSec(page, 'scores'); };
       const val = (sel) => page.inputValue(sel);
       const txt = (sel) => text(page, sel);
       const clean = async (what) => { const s = await txt('#qb-scores'); if (/\bnull\b|undefined|NaN/.test(s)) throw new Error(`${what}: stray words in the score section: ${s.slice(0, 120)}`); };
@@ -432,7 +430,7 @@ async function scoresPass(browser, url, label, opts, grid) {
       });
 
       await run.do('opening the saved roll again: the same dice, no roll button, and no roll can be rolled again', async () => {
-        await tap('.mc-row:last-child [id^="mc-edit-"]'); await waitShown(page, '#qb');
+        await tap('.mc-row:last-child [id^="mc-edit-"]'); await waitShown(page, '#qb'); await openSec(page, 'scores');
         if ((await page.getAttribute('#qb-method-roll', 'aria-pressed')) !== 'true') throw new Error('it did not open on its method');
         if (await page.$('#qb-roll')) throw new Error('a saved roll offers a new roll');
         if (await page.$('[id^="qb-reroll-"]')) throw new Error('a saved roll can be rolled again');
@@ -442,14 +440,14 @@ async function scoresPass(browser, url, label, opts, grid) {
       });
 
       await run.do('a roll made and not saved stays on the device: closing the panel is not a new roll; "below 10" lets only a low score be rolled again', async () => {
-        await tap('#mc-new'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        await tap('#mc-new'); await waitShown(page, '#qb'); await openSec(page, 'scores'); await tap('#qb-method-roll');
         await page.selectOption('#qb-rule-reroll', 'below'); if ((await val('#qb-rule-below')) !== '10') throw new Error('below defaults to 10');
         await tap('#qb-roll'); await waitShown(page, '#qb-chips');
         const open = await page.$$eval('[id^="qb-reroll-"]', (b) => b.map((x) => +x.id.slice(10)));
         const lows = first.map(topOf).flatMap((n, i) => (n < 10 ? [i] : []));
         if (open.join() !== lows.join()) throw new Error(`rerollable ${open}, expected ${lows} of ${first.map(topOf)}`);
         const why = await page.$$eval('[id^="qb-noreroll-"]', (e) => e.map((x) => x.textContent)); if (why.length + open.length !== 6 || why.some((w) => !/is not below 10/.test(w))) throw new Error(`reasons: ${why}`);
-        await page.click('#qb-cancel'); await tap('#mc-new'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        await page.click('#qb-cancel'); await tap('#mc-new'); await waitShown(page, '#qb'); await openSec(page, 'scores'); await tap('#qb-method-roll');
         if (await page.$('#qb-roll')) throw new Error('closing the panel gave a new roll');
         const again = await page.$$eval('.sc-chip', (c) => c.map((x) => +x.dataset.score)); if (again.join() !== first.map(topOf).join()) throw new Error('not the same roll');
         await page.click('#qb-cancel');
@@ -474,7 +472,7 @@ async function scoresPass(browser, url, label, opts, grid) {
       await run.do('a level-up shows how the scores were made and offers no way to change them', async () => {
         await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
         await wait(page, () => !document.getElementById('qb-levelup')?.disabled);
-        await tap('#qb-levelup'); await waitShown(page, '#qb');
+        await tap('#qb-levelup'); await waitShown(page, '#qb'); await openSec(page, 'scores');
         const line = await txt('#qb-sc-line');
         if (!/^Rolled on a device, \d+ \w+ 2026\. A level-up does not change them/.test(line)) throw new Error(`line: ${line}`);
         if (await page.$('.sc-method') || await page.$('#qb-roll') || await page.$('[id^="qb-reroll-"]')) throw new Error('a level-up offers to change the scores');
@@ -501,32 +499,49 @@ async function scrollPass(browser, url, label, opts, grid) {
       const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
       const card = () => page.evaluate(() => { const c = document.querySelector('#scrolltip'); if (!c) return null; const r = c.getBoundingClientRect(); return { text: c.querySelector('p')?.textContent, title: c.querySelector('b')?.textContent, sub: c.querySelector('small')?.textContent, l: r.left, t: r.top, r: r.right, b: r.bottom, vw: document.documentElement.clientWidth, vh: innerHeight }; });
       const gone = () => wait(page, () => !document.querySelector('#scrolltip'));
-      const SP = 'fire-bolt', ROW = `label:has(#qb-spell-${SP})`, want = CONTENT.spells[SP];
+      const SP = 'fire-bolt', ROW = `.opt:has(#qb-spell-${SP}) > label`, want = CONTENT.spells[SP];
       const inside = (c) => c.l >= 0 && c.t >= 0 && c.r <= c.vw && c.b <= c.vh;
       await open(page, url, { grid });
       await tap('#lobby-party > summary').catch(() => {}); if (!(await shown(page, '#lobby-mychars'))) await tap('#lobby-party > summary');
       await tap('#lobby-mychars'); await waitShown(page, '#mychars'); await tap('#mc-new'); await waitShown(page, '#qb');
 
-      await run.do('a wizard\'s Armour list greys every armour with "(no training)", the Shield is greyed too, and a line says why', async () => {
-        await page.selectOption('#qb-class', 'wizard');
-        const o = await page.$$eval('#qb-armour option', (l) => l.map((x) => [x.value, x.disabled, x.textContent]));
-        if (o[0][0] !== '' || o[0][1]) throw new Error(`None is not choosable: ${JSON.stringify(o[0])}`);
-        const bad = o.slice(1).filter(([, d, t]) => !d || !/\(no training\)$/.test(t)); if (bad.length || o.length < 5) throw new Error(`armour options: ${JSON.stringify(o)}`);
-        if (!(await page.$eval('#qb-shield', (e) => e.disabled)) || !/no training/.test(await text(page, '#qb-shield + span'))) throw new Error('the Shield is not greyed');
-        if (!/A Wizard has no training with .*Shields/.test(await text(page, '#qb-armour-note'))) throw new Error(`note: ${await page.textContent('#qb-armour-note').catch(() => null)}`);
-        if ((await page.inputValue('#qb-armour')) !== '') throw new Error('the Armour list changed');
-        await page.$eval('#qb-armour', (e) => e.scrollIntoView({ block: 'center' })); await shot('1-armour');
+      await run.do('a wizard\'s armour is trained-first: none is trained, so the rest sits behind a counted disclosure; opened, each is greyed with a Not proficient chip and what it costs; the Shield too', async () => {
+        await page.selectOption('#qb-class', 'wizard'); await openSec(page, 'gear');
+        if (!(await page.isChecked('#qb-armour-none')) || await page.$eval('#qb-armour-none', (e) => e.disabled)) throw new Error('None is not choosable');
+        if (await page.$('#qb-armour-plate-armor')) throw new Error('the untrained armour is listed before the disclosure is opened');
+        const label = await text(page, '#qb-armour-more'); if (!/^Show armour you are not proficient with \(\d+\)/.test(label)) throw new Error(`disclosure: ${label}`);
+        await tap('#qb-armour-more'); await waitShown(page, '#qb-armour-plate-armor');
+        const rows = await page.$$eval('#qb-acc-sec-gear .opt:has(input[name="qb-armour"])', (l) => l.map((r) => [r.querySelector('input').id, r.querySelector('input').disabled, /Not proficient/.test(r.textContent), /Disadvantage on Strength and Dexterity rolls/.test(r.textContent)]));
+        const bad = rows.filter(([id, off, np, cost]) => id !== 'qb-armour-none' && !(off && np && cost)); if (bad.length || rows.length < 5) throw new Error(`armour rows: ${JSON.stringify(rows)}`);
+        const sh = await page.$eval('#qb-shield', (e) => [e.disabled, /Not proficient/.test(e.closest('.opt').textContent)]); if (!sh[0] || !sh[1]) throw new Error('the Shield is not greyed and marked');
+        if (!/Wizard training\./.test(await text(page, '#qb-acc-sec-gear .pk-lead')) || !/Shields: no/.test(await text(page, '#qb-acc-sec-gear .pk-lead'))) throw new Error('the training line is missing');
+        if (!(await page.isChecked('#qb-armour-none'))) throw new Error('the armour choice changed');
+        await shot('1-armour');
       });
 
-      await run.do('a fighter\'s armour is not greyed', async () => {
-        await page.selectOption('#qb-class', 'fighter');
-        if (await page.$('#qb-armour option:disabled') || await page.$('#qb-armour-note') || await page.$eval('#qb-shield', (e) => e.disabled)) throw new Error('a fighter has something greyed');
-        await page.selectOption('#qb-armour', 'plate-armor'); await page.check('#qb-shield');
-        await page.selectOption('#qb-class', 'wizard');
-        if ((await page.$$eval('#qb-armour option:disabled', (l) => l.length)) < 4) throw new Error('the wizard list is not greyed again');
+      await run.do('a fighter\'s armour is not greyed, and has no disclosure for it', async () => {
+        await openSec(page, 'who'); await page.selectOption('#qb-class', 'fighter'); await openSec(page, 'gear');
+        if (await page.$('#qb-armour-more') || await page.$('#qb-acc-sec-gear .chip.np') || await page.$eval('#qb-shield', (e) => e.disabled)) throw new Error('a fighter has something greyed');
+        await page.check('#qb-armour-plate-armor'); await page.check('#qb-shield');
+        await openSec(page, 'who'); await page.selectOption('#qb-class', 'wizard'); await openSec(page, 'gear');
+        if (!(await page.isChecked('#qb-armour-none')) || !(await page.$('#qb-armour-more'))) throw new Error('the wizard\'s list is not back to trained-first');
+      });
+
+      await run.do('a monk\'s gear says armour or a Shield turns off Unarmored Defense, Martial Arts and Unarmored Movement, and lists untrained weapons behind a count', async () => {
+        await openSec(page, 'who'); await page.selectOption('#qb-class', 'monk'); await page.selectOption('#qb-levelsel', '5'); await openSec(page, 'gear');
+        const note = await text(page, '#qb-bare-note'); if (!/Armour or a Shield turns off/.test(note) || !/Martial Arts/.test(note) || !/Unarmored Defense/.test(note) || !/Unarmored Movement/.test(note)) throw new Error(`monk note: ${note}`);
+        if (!/Show weapons you are not proficient with \(\d+\)/.test(await text(page, '#qb-weapons-more'))) throw new Error('no counted weapons disclosure');
+        if (await page.$('#qb-weapon-longsword')) throw new Error('an untrained weapon is listed before the disclosure is opened');
+        await tap('#qb-weapons-more'); await waitShown(page, '#qb-weapon-longsword');
+        const l = await page.$eval('#qb-weapon-longsword', (e) => [e.disabled, /Not proficient/.test(e.closest('.opt').textContent), /No Proficiency Bonus on the attack roll: [+\u2212]\d+ instead of \+\d+/.test(e.closest('.opt').textContent)]);
+        if (!l[0] || !l[1] || !l[2]) throw new Error(`longsword row: ${l}`);
+        await page.check('#qb-weapon-shortsword'); await wait(page, () => /Shortsword/.test(document.querySelector('#qb-attacks')?.textContent ?? '') || !!document.querySelector('#qb-weapon-shortsword:checked'));
+        await shot('1b-monk-gear');
+        await openSec(page, 'who'); await page.selectOption('#qb-class', 'wizard'); await openSec(page, 'gear');
       });
 
       await run.do(touch ? 'a 500 ms press on a spell shows its scroll card inside the screen, does not tick the spell, and a tap elsewhere hides it' : 'hovering a spell shows nothing before 3 s, then its scroll card; Escape and moving away hide it', async () => {
+        await openSec(page, 'spells');
         await page.$eval(ROW, (e) => e.scrollIntoView({ block: 'center' }));
         const sel = ROW;
         if (!touch) {
@@ -554,7 +569,7 @@ async function scrollPass(browser, url, label, opts, grid) {
           if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('the press ticked the spell');
           if (!(await card())) throw new Error('lifting the finger hid the card');
           await shot('2-press');
-          await page.touchscreen.tap(8, 8); await gone();
+          await page.touchscreen.tap(370, 30); await gone();       // blank space: a tap near a button is snapped to the button by the browser
           await tap(sel); if (!(await page.isChecked(`#qb-spell-${SP}`))) throw new Error('a plain tap no longer ticks the spell');
           await tap(sel); if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('a second tap did not untick');
         }
@@ -565,10 +580,10 @@ async function scrollPass(browser, url, label, opts, grid) {
         const c = await card(); if (!c || c.text !== want.text) throw new Error(`key card: ${JSON.stringify(c)}`);
         await page.keyboard.press('Escape'); await gone();
         if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('the I key ticked the spell');
-        await page.selectOption('#qb-class', 'sorcerer'); await page.selectOption('#qb-levelsel', '2');
-        const opt = await page.$('#qb label[data-option]');
+        await openSec(page, 'who'); await page.selectOption('#qb-class', 'sorcerer'); await page.selectOption('#qb-levelsel', '2'); await openSec(page, 'choices');
+        const opt = await page.$('#qb [data-option]');
         if (opt) {
-          await page.focus('#qb label[data-option] input'); await page.keyboard.press('i');
+          await page.focus('#qb [data-option] input'); await page.keyboard.press('i');
           const o = await card(); if (!o || !o.text) throw new Error('an option has no card'); await page.keyboard.press('Escape'); await gone();
         }
       });
@@ -617,7 +632,7 @@ async function gamePass(browser, url, label, opts, grid) {
       });
 
       await run.do('in the game the sheet says the table\'s rule, and Roll sends the action: the six scores are the game\'s dice', async () => {
-        await tap('#qb-add'); await waitShown(page, '#qb');
+        await tap('#qb-add'); await waitShown(page, '#qb'); await openSec(page, 'scores');
         await tap('#qb-method-roll');
         if (!/^This table: A score below 11 may be rolled again, once\. The higher of the two stands\./.test(await txt('#qb-rule-text'))) throw new Error(await txt('#qb-rule-text'));
         if (await page.$('#qb-rule-reroll')) throw new Error('the device\'s rule choices are offered in a game');
@@ -648,9 +663,8 @@ async function gamePass(browser, url, label, opts, grid) {
       });
 
       await run.do('placed and saved: by table, the event\'s number, the rule it was rolled under; the sheet validates; the DM line says so', async () => {
-        await page.fill('#qb-name', 'Tabel Roe'); await page.selectOption('#qb-class', 'fighter');
-        for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
-        const style = await page.$('#qb-choice-fighting-style'); if (style) await page.selectOption('#qb-choice-fighting-style', 'defense');
+        await openSec(page, 'who'); await page.fill('#qb-name', 'Tabel Roe'); await page.selectOption('#qb-class', 'fighter');
+        await fighterBasics(page); await openSec(page, 'scores');
         for (const [i, a] of ABIL.entries()) await page.selectOption(`#qb-place-${a}`, String(i));
         const line = await txt('#qb-dm-line'); if (!/Rolled at the table \(event \d+\), under the rule "A score below 11/.test(line) || /Not witnessed/.test(line) || /More rerolls/.test(line)) throw new Error(line);
         await wait(page, () => document.querySelector('#qb-save') && !document.querySelector('#qb-save').disabled && document.querySelectorAll('#qb-problems li').length === 0);
@@ -665,7 +679,7 @@ async function gamePass(browser, url, label, opts, grid) {
       });
 
       await run.do('a new character in the same game is shown the kept roll, not a new roll button (the DM may roll a fresh set)', async () => {
-        await tap('#qb-add'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        await tap('#qb-add'); await waitShown(page, '#qb'); await openSec(page, 'scores'); await tap('#qb-method-roll');
         if (await page.$('#qb-roll')) throw new Error('a kept roll is offered a new roll button');
         const sets = await rolls(), top = (d) => d.reduce((a, b) => a + b, 0) - Math.min(...d);
         const chips = await page.$$eval('.sc-chip', (c) => c.map((x) => +x.dataset.score));
@@ -684,7 +698,7 @@ async function gamePass(browser, url, label, opts, grid) {
       await run.do('a table that allows no reroll offers none, and says why on each score', async () => {
         await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
         await page.selectOption('#dm-score-reroll', 'none'); await wait(page, () => window.hextable.state.settings.scoreReroll === 'none');
-        await tap('#qb-add'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        await tap('#qb-add'); await waitShown(page, '#qb'); await openSec(page, 'scores'); await tap('#qb-method-roll');
         if (await page.$('[id^="qb-reroll-"]')) throw new Error('a reroll is offered where the table allows none');
         const why = await page.$$eval('[id^="qb-noreroll-"]', (e) => e.map((x) => x.textContent)); if (why.length !== 6 || why.some((w) => !/does not allow/.test(w))) throw new Error(`reasons: ${why}`);
         await page.click('#qb-cancel');
@@ -696,7 +710,7 @@ async function gamePass(browser, url, label, opts, grid) {
         await page.reload(); await waitShown(page, '#lobby');
         await tap('#lobby-solo'); await wait(page, () => window.hextable?.state?.entities);
         await openTab(page, 'dm'); await waitShown(page, '#tab-dm');
-        await tap('#qb-add'); await waitShown(page, '#qb'); await tap('#qb-method-roll');
+        await tap('#qb-add'); await waitShown(page, '#qb'); await openSec(page, 'scores'); await tap('#qb-method-roll');
         if (await page.$('#qb-roll')) throw new Error('a Roll button after a reload, beside a kept roll');
         const chips = await page.$$eval('.sc-chip', (c) => c.length); if (chips !== 6) throw new Error(`${chips} chips`);
         if (!new RegExp(`Rolled at the table \\(event ${was}\\)`).test(await txt('#qb-rule-text'))) throw new Error(`${await txt('#qb-rule-text')} (the game's counter is ${was})`);

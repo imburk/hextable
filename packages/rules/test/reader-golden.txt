@@ -3,6 +3,7 @@
 Components: Verbal, Somatic and Material (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: the target makes a Dexterity saving throw (read from its steps, since the entry does not say).
 Each creature in a 20-foot sphere makes a Dexterity saving throw.
 On a failure it takes 8d6 fire damage; on a success, half.
 A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
@@ -19,6 +20,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under no kind: the engine cannot tell what it is for, so the list shows it under every kind.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
 The engine does not do this; the DM does this: "Summons three wolves that fight for you and obey spoken commands."
 It is aimed at the caster alone.
 It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
@@ -34,6 +36,7 @@ DM: Whatever the description says beyond the steps above.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
+Its roll: the caster makes a spell attack roll (read from its steps, since the entry does not say).
 The caster makes a ranged spell attack roll against one creature within 120 feet.
 On a hit:
   It takes 1d10 cold damage.
@@ -57,6 +60,7 @@ DM: Whatever the description says beyond the steps above.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: the caster makes a spell attack roll (read from its steps, since the entry does not say).
 The caster makes a melee weapon attack roll with +5 to hit against one creature the caster touches.
 On a hit:
   It takes 2d6+3 necrotic damage, rolled 2 times and added up.
@@ -75,6 +79,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
+Its roll: the target makes a Wisdom saving throw (read from its steps, since the entry does not say).
 Each of up to 2 creatures within 60 feet makes a Wisdom saving throw against DC 14.
 It has Advantage on this save if the caster's side is fighting the target.
 On a failure:
@@ -105,6 +110,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 One creature within 60 feet has the Poisoned condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   Nothing in the engine ends it: the DM removes it.
 It gets -2 to its Armor Class.
@@ -124,6 +130,7 @@ DM: The modifier of step effects.1: nothing in the spell ends it.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 One creature within 60 feet gets -1 to its Armor Class.
   The spell does not last, so the engine has nothing to hang this on: the DM applies it.
 It has the Deafened condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
@@ -141,6 +148,7 @@ DM: Removing the Deafened condition that step effects.1 puts on.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 One creature within 60 feet has the Grappled condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
   It ends at the end of its next turn, or when the fight ends.
   The engine applies part of what Grappled does; the DM applies the rest.
@@ -160,6 +168,7 @@ DM: The modifier of step effects.2: nothing in the spell ends it.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage, control and utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 When casting it, the caster chooses a skill (stealth or arcana); each step below that says "chosen" uses that choice.
 The caster gets +1d4 to checks with the chosen skill.
   It lasts as long as the spell.
@@ -269,6 +278,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 When casting it, the caster chooses a damage type; each step below that says "chosen" uses that choice.
 It is aimed at one creature within 90 feet.
 The caster gets +1d6 damage of the chosen type added to the damage it deals.
@@ -287,6 +297,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 The caster teleports up to 500 feet to a space the caster names when casting, one the caster can see. With no space named, the DM moves it.
 If that space turns out to be taken:
   The caster takes 4d6 force damage.
@@ -301,6 +312,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 When casting it, the caster chooses a condition (Blinded or Deafened); each step below that says "chosen" uses that choice.
 One creature the caster touches regains 2d8 plus the caster's spellcasting ability modifier Hit Points, and at least 1.
 It gains 1d4+4 Temporary Hit Points, at least 2; they replace what it has only if they are more.
@@ -318,6 +330,7 @@ DM: The extra 1d6 per slot level: different dice from 2d8.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage, control and utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 Each creature in a 10-foot cube falls 20 feet, taking 2d6 bludgeoning damage, and lands Prone if that hurt it.
 Each of them falls 5 feet, too short a fall to hurt it.
 Each of them falls to the surface below it, taking 1d6 bludgeoning damage for each 10 feet of the drop (up to 20d6), and lands Prone if that hurt it. One already standing on a surface does not fall; one that is riding or being ridden, or has no surface under it, is left to the DM, who is told.
@@ -343,6 +356,7 @@ DM: Whatever the description says beyond the steps above.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
+Its roll: the target makes a Dexterity saving throw (read from its steps, since the entry does not say).
 Each creature in a cylinder 20 feet in radius and 40 feet high makes a Dexterity saving throw.
 On a failure it takes 2d10 bludgeoning damage and 4d6 cold damage; on a success, half.
 A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
@@ -360,6 +374,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 Each creature in a 15-foot cone takes 3d6 thunder damage, rolled 3 times and added up.
 The cone spreads from the caster in a direction the caster picks; it catches every creature in it except the caster; a wall between the area's origin and a creature keeps that creature out.
 Damage that is not behind an attack roll is rolled once, and every creature caught takes the same roll.
@@ -372,6 +387,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 Each creature in a line 100 feet long and 10 feet wide takes 6d6 lightning damage.
 The line runs from the caster in a direction the caster picks; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
 Of those caught, the caster picks up to 3 creatures; only they are affected.
@@ -388,6 +404,7 @@ DM: The extra 1d8 per slot level: different dice from 6d6.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 The engine cannot lay out this area (a line placed at a distance is the DM's to place), so it has nobody to apply the steps to: it hands each step below to the DM.
 Each creature affected takes 2d6 acid damage.
 The area is a line 60 feet long and 5 feet wide; the DM decides who is caught.
@@ -401,6 +418,7 @@ DM: Every step of this spell: the engine cannot lay out its area.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: the target makes a Dexterity saving throw (read from its steps, since the entry does not say).
 The engine cannot lay out this area (the caster arranges 10 of these shapes), so it has nobody to apply the steps to: it hands each step below to the DM.
 Each creature affected makes a Dexterity saving throw.
 On a failure it takes 7d10 fire damage; on a success, half.
@@ -417,6 +435,7 @@ DM: Every step of this spell: the engine cannot lay out its area.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 Each creature in a 15-foot cube takes 2d8 radiant damage.
 The cube is laid out from the caster in a direction the caster picks; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
 The entry limits the area to Undead or Fiend: of the creatures caught, only those are affected.
@@ -430,6 +449,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
+Its roll: the target makes a Constitution saving throw (read from its steps, since the entry does not say).
 A 10-foot emanation stays for as long as the spell lasts. It moves with the caster and never affects the caster.
 As it appears, the steps below run on each creature in it.
 From then on, the steps below run on a creature each time it starts its turn there or enters the area (or the area reaches it), at most once a turn for each creature. Each creature rolls its own damage.
@@ -453,6 +473,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: the target makes a Wisdom saving throw (read from its steps, since the entry does not say).
 A 10-foot emanation stays for as long as the spell lasts. It moves with the caster and never affects the caster.
 As it appears it affects nobody.
 From then on, the steps below run on a creature each time it enters the area (or the area reaches it). Each creature rolls its own damage.
@@ -472,6 +493,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and control.
+Its roll: the target makes a Strength saving throw (read from its steps, since the entry does not say).
 A 15-foot sphere stays for as long as the spell lasts. It stays where it was laid out.
 As it appears it affects nobody.
 From then on, the steps below run on a creature each time it ends its turn there. Each creature rolls its own damage.
@@ -495,6 +517,7 @@ PROBLEM: Step effects.0: success steps beside half are never run.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask, or only when it turns a hit into a miss; the default is never, so nothing happens until the player sets it), when an attack roll hits the caster.
 Being aimed at by "Magic Missile" or "hb-test-unknown" also sets it off, and while it lasts that spell does the caster no damage.
 The caster gets +5 to its Armor Class.
@@ -509,6 +532,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and utility.
+Its roll: the target makes a Dexterity saving throw (read from its steps, since the entry does not say).
 It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask; the default is never, so nothing happens until the player sets it), when a hostile creature the caster can see within the spell's range damages the caster; it is aimed at that creature.
 One creature within 60 feet makes a Dexterity saving throw.
 On a failure it takes 2d10 fire damage; on a success, half.
@@ -528,6 +552,7 @@ DM: Removing the Invisible condition that step effects.1 puts on.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: control.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It is cast as a Reaction, by the caster's standing instruction for it (never, always, or ask; the default is never, so nothing happens until the player sets it), when the caster sees a hostile creature within the spell's range casting a spell; it is aimed at that creature.
 It is aimed at one creature within 60 feet.
 The spell whose casting set off this reaction fails.
@@ -541,6 +566,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It is cast as a Reaction, but it names nothing that sets it off. The engine does not cast it; the DM applies it.
 The caster gains 2d4 Temporary Hit Points; they replace what it has only if they are more.
 It is aimed at the caster alone.
@@ -554,6 +580,7 @@ DM: Casting it: a Reaction with nothing named to set it off.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 The caster makes a creature in unoccupied space it names within the spell's range: one form the caster picks from "Wolf" or "hb-test-hound".
   The caster picks its creature type from Beast or Fey.
   If the caster already has one from this spell, casting it again gives that one the new form instead of making another.
@@ -569,6 +596,7 @@ Not checked against any rulebook.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It takes 1 minute to cast, so it cannot be cast during a fight.
 The caster raises corpses it names (dead Small or Medium Humanoids), as many as 1 plus 2 for each slot level above 3, each as "Zombie", under the caster's control.
   Instead, the caster may take back control of 4 of its own creatures from this spell.
@@ -583,6 +611,7 @@ Components: Verbal and Somatic (speaking it gives away a hidden caster).
 It is marked as a ritual. The engine has no ritual casting: casting it as a ritual is the DM's.
 On the spell lists of: wizard.
 Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It takes 10 minutes to cast, so it cannot be cast during a fight.
 The caster makes a creature in unoccupied space it names within the spell's range: a Beast of challenge rating exactly 0.5, which the caster picks.
   The caster picks one of "swift" or "sturdy".
@@ -598,6 +627,7 @@ DM: Ending the spell: it lasts until dispelled.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: utility.
+Its roll: the target makes a Intelligence saving throw (read from its steps, since the entry does not say).
 It takes 8 hours to cast, so it cannot be cast during a fight.
 When casting it, the caster chooses an ability; each step below that says "chosen" uses that choice.
 The caster makes an Intelligence saving throw.
@@ -622,6 +652,7 @@ DM: Whatever the description says beyond the steps above.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: damage and healing.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 When casting it, the caster chooses a damage type; each step below that says "chosen" uses that choice.
 One creature within 60 feet takes 2d6 damage of the chosen type.
 It regains 1d4+2 Hit Points.
@@ -639,6 +670,7 @@ DM: The extra 1d8 per slot level: different dice from 2d6.
 Components: Verbal, Somatic and Material (speaking it gives away a hidden caster); the Material component has a cost or is used up, so Subtle Spell cannot hide the casting.
 On the spell lists of: wizard.
 Sorted under: damage.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It takes 24 hours to cast, so it cannot be cast during a fight.
 Each of up to 3 targets (rays, darts or beams) within 60 feet takes 4d4 slashing damage.
 If this damage drops it to 0 Hit Points:
@@ -657,6 +689,7 @@ DM: Step effects.0.onZero.0: what is left of a body that is not dead.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It takes 1 hour to cast, so it cannot be cast during a fight.
 The caster gains (unreadable dice) Temporary Hit Points; they replace what it has only if they are more, and they vanish when the spell ends.
 It is aimed at the caster alone.
@@ -670,6 +703,7 @@ PROBLEM: Step effects.0: the Temporary Hit Points are not dice.
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
 On the spell lists of: wizard.
 Sorted under: healing.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
 It takes 12 hours to cast, so it cannot be cast during a fight.
 The caster regains 1d4 Hit Points.
 It is aimed at the caster alone.

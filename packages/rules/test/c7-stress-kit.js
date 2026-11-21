@@ -126,7 +126,8 @@ export function stress(grid, rounds) {
       lastKey = k; present.set(k, upNow());
     } else { const now = upNow(), p = present.get(k); for (const id of [...p]) if (!now.has(id)) p.delete(id); }
   };
-  const act = (a) => { const r = apply(s, a, DM); if (r.ok) after(r); else stats.refused++; return r; };
+  // Invariant: a refused action leaves the game exactly as it was (review R3, #617).
+  const act = (a) => { const was = json(s), r = apply(s, a, DM); if (r.ok) after(r); else { stats.refused++; assert.equal(json(s), was, `refused ${json(a)} changed the game`); } return r; };
   // Players who are offline now (the client's lobby): they go and come back, also in the middle of a round.
   const away = new Set(), OPTS = { offline: (u) => away.has(u) };
   let turnsThisRound = 0, roundSeen = null;

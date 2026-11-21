@@ -224,6 +224,16 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end('{"ok":true}');
     return;
   }
+  if (path === `${sep}api${sep}health`) {
+    if (!limits.allowHealth(addressOf(req))) { res.writeHead(429, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({ ok: false, error: LIMIT_MESSAGE })); return; }
+    // Counts only: nothing about any table, member, code or token (docs: README, /api/health).
+    const { crashes, crashesByType } = tables.stats();
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({
+      ok: true, uptime: Math.round(process.uptime()), tables: { loaded: tables.size(), active: tables.activeSize() },
+      connections: [...peers.values()].reduce((n, set) => n + set.size, 0), crashes, crashesByType, build: build.commit,
+    }));
+    return;
+  }
   const target = join(SITE, path.endsWith(sep) ? path + "index.html" : path);
   if (target !== SITE && !target.startsWith(SITE + sep)) { res.writeHead(403).end(); return; }
   try {

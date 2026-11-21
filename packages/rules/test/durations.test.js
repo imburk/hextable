@@ -15,7 +15,7 @@ const melee = { name: "Sword", type: "melee", bonus: 5, reach: 5 };
 const pack = { id: "test", name: "t", license: "x", attribution: "x" };
 
 function learn(s, who, over) {
-  const def = { ...structuredClone(CONTENT.spells["fire-bolt"]), higher: undefined, level: 1, range: 60, ...over };
+  const def = { ...structuredClone(CONTENT.spells["fire-bolt"]), higher: undefined, roll: undefined, level: 1, range: 60, ...over };
   assert.deepEqual(lintPack({ pack, spells: [def] }), [], def.id);
   SPELLS[def.id] = spellProfile(def);
   s.entities[who].spells.push(def.id);

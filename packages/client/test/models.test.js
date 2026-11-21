@@ -18,6 +18,15 @@ const { THEMES } = await import(pathToFileURL(join(tmp, 'themes.js')).href);
 const { UNIT } = await import(pathToFileURL(join(tmp, 'three-build.js')).href);
 const pack = THEMES.classic.models;
 
+test('a creature in a form (Wild Shape) is drawn as the form, never as its own model', () => {
+  const p = { models: { a: {}, b: {}, c: {}, d: {} }, byId: { gob: 'a' }, byType: { beast: 'b' }, byClass: { druid: 'd' } };
+  const druid = { kind: 'pc', cls: 'Druid', look: { model: 'c' } };
+  assert.equal(M.modelFor(p, druid), 'c', 'the druid as herself');
+  assert.equal(M.modelFor(p, { ...druid, form: { block: 'gob', name: 'Goblin' } }, () => 'humanoid'), 'a', 'the form\'s own model');
+  assert.equal(M.modelFor(p, { ...druid, form: { block: 'wolf', name: 'Wolf' } }, (t) => (t === 'wolf' ? 'beast' : null)), 'b', 'then its type');
+  assert.equal(M.modelFor(p, { ...druid, form: { block: 'cat', name: 'Cat' } }, () => 'plant'), null, 'no model for the form: the pawn, not the druid');
+});
+
 test('a creature gets the model of its monster id, then its type, then its own look, then its class', () => {
   const p = { models: { a: {}, b: {}, c: {}, d: {} }, byId: { gob: 'a' }, byType: { fey: 'b', undead: 'b' }, byClass: { fighter: 'd', wizard: 'c' } };
   assert.equal(M.modelFor(p, { tpl: 'gob' }, () => 'fey'), 'a', 'the id wins over the type');

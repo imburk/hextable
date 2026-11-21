@@ -14,12 +14,13 @@ import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.j
 import { LIGHTS } from './shared/content/lights.js';
 import { reactionsOf, canReact, WHEN } from './shared/reactions.js';
 import { conditionName, conditionDef } from './shared/modifiers.js';
-import { SPELLS, MONSTERS, CONTENT } from './shared/content/index.js';
+import { SPELLS, MONSTERS, CONTENT, rollLabel } from './shared/content/index.js';
 import { lightAt } from './shared/sight.js';
 import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
+import { slotChoices } from './upcast.js';
 import { shownName } from './tracker.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
@@ -95,7 +96,7 @@ export function nearestAlly(S, e) {
 }
 // Why a spell cannot be cast now, in the engine's words ('' if it can).
 export function spellWhy(S, e, sp) {
-  return blocked(S, e, sp.time) || (sp.level > 0 && !(e.slots[sp.level] > 0) && `${e.name} has no level ${sp.level} spell slots left.`) ||
+  return blocked(S, e, sp.time) || (sp.level > 0 && !slotChoices(e, sp).length && `${e.name} has no level ${sp.level} spell slots left.`) ||
     (sp.level > 0 && S.encounter?.flags.slot && 'Only one spell slot can be spent per turn.') || '';
 }
 // Features and spells that give Hit Points back, found by what the record says.
@@ -171,7 +172,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   // 8. Rituals: cast like any spell today (ritual casting is an engine item, E15).
   const rituals = (e.spells ?? []).filter((id) => SPELLS[id]?.def.ritual).map((id) => {
     const sp = SPELLS[id], armed = mode?.kind === 'spell' && mode.id === id;
-    return row({ id: `ritual:${id}`, kind: 'ritual', spell: id, armed, label: sp.name, sub: `Ritual · ${sp.level ? 'Slot' : 'Cantrip'}`, why: spellWhy(S, e, sp) });
+    return row({ id: `ritual:${id}`, kind: 'ritual', spell: id, armed, label: sp.name, sub: `Ritual · ${sp.level ? 'Slot' : 'Cantrip'}`, roll: sp.roll ?? null, why: spellWhy(S, e, sp) });
   });
   // 9. A check, from the sheet's skills.
   const check = row({ id: 'check', kind: 'check', label: 'Check…', sub: 'Skills, on the sheet' });
@@ -257,7 +258,7 @@ export function attackRows(S, e, { mode = null } = {}) {
     const time = flurry || pooled ? null : bonusTime ? 'bonus' : 'action';
     const reach = a.type === 'melee' ? `reach ${a.reach ?? 5} ft` : a.range ? `range ${a.range[0]}/${a.range[1]} ft` : '';
     const row = { id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(a.bonus)} to hit`, `${a.damage} ${a.dtype}`, reach].filter(Boolean).join(' · '), why: blocked(S, e, time),
-      chip: flurry ? 'Flurry' : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed: armed && !mode.extra, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } };
+      chip: flurry ? `Flurry: ${b.bonusAttacks.left} left` : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed: armed && !mode.extra, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } };
     rows.push(row);
     const strike = strikeRow(S, e, a, row, mode);
     if (strike) rows.push(strike);
@@ -334,7 +335,7 @@ export function spellRow(S, e, id, { mode = null } = {}) {
   const range = sp.aim === 'self' ? 'Self' : sp.range > 0 ? `${sp.range} ft` : '';
   return { id: `spell:${id}`, kind: 'spell', spell: id, label: sp.name, sub: [sp.level ? `Level ${sp.level}` : 'Cantrip', range, sp.def.concentration ? 'Concentration' : '', sp.def.ritual ? 'Ritual' : '', what].filter(Boolean).join(' · '),
     why: spellWhy(S, e, sp) || rangeWhy(S, e, sp), chip: CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : (LONGER[sp.time] ?? sp.time), time: sp.time, armed: armedBy(mode, 'spell', id) && !mode.item,
-    level: sp.level, school: sp.def.school ?? '', cast: castGroup(sp), conc: !!sp.def.concentration, ritual: !!sp.def.ritual, kinds: sp.kinds ?? [] };
+    level: sp.level, roll: sp.roll ?? null, school: sp.def.school ?? '', cast: castGroup(sp), conc: !!sp.def.concentration, ritual: !!sp.def.ritual, kinds: sp.kinds ?? [] };
 }
 
 // The slot strip: one entry per spell level the creature has slots of (`e.slots` left, `e.slotsMax`); Pact Magic's are one row of the pact level.
@@ -718,10 +719,12 @@ export function initActionPanel(ctx) {
 
   const pipDots = (p) => (p.max <= 8 ? `<span class="pips" aria-hidden="true">${'●'.repeat(Math.max(0, Math.min(p.left, p.max)))}${'○'.repeat(Math.max(0, p.max - p.left))}</span> ` : '');
   const pipsHtml = (p) => (p ? `<small class="ap-pips">${pipDots(p)}<b>${p.left} / ${p.max}${p.unit ? ` ${esc(p.unit)}` : ''}</b>${p.text ? ` · ${esc(p.text)}` : ''}</small>` : '');
+  // A spell's roll as a tag the size of its level, in words and in a shape of its own (never colour alone): Attack, DEX save, No roll.
+  const rollTagHtml = (roll) => (rollLabel(roll) ? `<span class="ap-roll" data-roll="${roll === 'attack' || roll === 'none' ? roll : 'save'}">${esc(rollLabel(roll))}</span> ` : '');
   const rowHtml = (r) => {
     const wid = `ap-w-${esc(r.id).replace(/[^\w-]/g, '_')}`, tag = r.kind === 'none' && !r.why ? 'div' : 'button';
     return `<${tag}${tag === 'button' ? ' type="button"' : ''} class="ap-row${r.armed ? ' armed' : ''}${r.why ? ' off' : ''}${tag === 'div' ? ' info' : ''}" data-row="${esc(r.id)}"${tag === 'button' ? ` aria-disabled="${r.why ? 'true' : 'false'}"` : ''}${r.why ? ` aria-describedby="${wid}"` : ''}>
-    <span class="ap-top"><span class="ap-t">${esc(r.label)}</span>${r.chip ? `<span class="ap-chip">${esc(r.chip)}</span>` : ''}</span>${r.sub ? `<small class="ap-s">${esc(r.sub)}</small>` : ''}${pipsHtml(r.pips)}${r.why ? `<small class="ap-why" id="${wid}">${esc(r.why)}</small>` : ''}</${tag}>`;
+    <span class="ap-top"><span class="ap-t">${esc(r.label)}</span>${r.chip ? `<span class="ap-chip">${esc(r.chip)}</span>` : ''}</span>${r.sub || rollLabel(r.roll) ? `<small class="ap-s">${rollTagHtml(r.roll)}${esc(r.sub ?? '')}</small>` : ''}${pipsHtml(r.pips)}${r.why ? `<small class="ap-why" id="${wid}">${esc(r.why)}</small>` : ''}</${tag}>`;
   };
   const listHtml = (head, list) => `${head}<div class="ap-list">${list.map(rowHtml).join('')}</div>`;
   // The Move tab's meter: the Speed left this turn.

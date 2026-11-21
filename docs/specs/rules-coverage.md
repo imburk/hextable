@@ -1,5 +1,7 @@
 # Rules coverage review
 
+Status: review, done.
+
 Question from the project owner: if licensing for the full current rules
 could be arranged, would the design in `rules-expansion.md` support them?
 And would it support the house rules tables commonly use?
