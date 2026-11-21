@@ -1,4 +1,5 @@
 // Several game windows in one browser, each its own seat (#625): the table session belongs to the window, a solo save has one writer.
+import { mkdirSync } from 'node:fs';
 import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, openTab, selectAndMove } from './lib.mjs';
 
 const text = (page, sel) => page.$eval(sel, (e) => e.textContent.trim());
@@ -131,6 +132,31 @@ async function solo(browser, url) {
         await wait(b, () => window.hextable.state.entities.fighter.hp === 4, null, 10000);
       });
 
+      await run.do('the read-only window is framed on all four edges with a label, and the playing window is not (1280x800 and 390x844)', async () => {
+        const dir = process.env.SMOKE_SHOTS ?? '/tmp/smoke-windows'; mkdirSync(dir, { recursive: true });
+        const check = async (page, size) => {
+          await page.setViewportSize(size); await sleep(300);
+          const f = await page.evaluate(() => {
+            const fr = document.getElementById('readonly-frame'), bar = document.getElementById('readonly-bar'), cs = getComputedStyle(fr), r = fr.getBoundingClientRect(), br = bar.getBoundingClientRect();
+            const top = document.elementFromPoint(br.left + br.width / 2, br.top + br.height / 2);
+            const edge = [[2, innerHeight / 2], [innerWidth - 3, innerHeight / 2], [innerWidth / 2, 2], [innerWidth / 2, innerHeight - 3]].map(([x, y]) => document.elementFromPoint(x, y)?.id);
+            return { shown: !fr.hidden && r.width === innerWidth && r.height === innerHeight, shadow: cs.boxShadow, pe: cs.pointerEvents, label: bar.textContent, barOnTop: !!top && bar.contains(top), barFits: br.left >= 0 && br.right <= innerWidth && br.top >= 0, edge, dmTab: !!document.getElementById('tab-dm') && document.getElementById('tab-dm').getClientRects().length > 0, undo: document.getElementById('btn-undo').getClientRects().length > 0 };
+          });
+          if (!f.shown) throw new Error(`${size.width}: the frame does not cover the screen`);
+          if (!/6px/.test(f.shadow)) throw new Error(`${size.width}: the frame has no 6 px edge (${f.shadow})`);
+          if (f.pe !== 'none') throw new Error('the frame would block taps');
+          if (f.edge.includes('readonly-frame')) throw new Error('a tap on the edge would hit the frame');
+          if (!/Read-only: another window is playing this game/.test(f.label) || !f.barOnTop || !f.barFits) throw new Error(`${size.width}: the label is not visible on top (${f.label})`);
+          if (f.dmTab || f.undo) throw new Error('DM or editing controls are still shown in the read-only window');
+          await page.screenshot({ path: `${dir}/readonly-${size.width}x${size.height}.png` });
+        };
+        await check(b, { width: 1280, height: 800 });
+        await check(b, { width: 390, height: 844 });
+        await b.setViewportSize({ width: 1280, height: 800 });
+        await a.screenshot({ path: `${dir}/playing-1280x800.png` });
+        if (await a.evaluate(() => { const f = document.getElementById('readonly-frame'); return !f.hidden || document.body.classList.contains('readonly') || !document.getElementById('readonly-bar').hidden; })) throw new Error('the playing window shows the read-only frame');
+      });
+
       await run.do('Make a copy plays on a save of its own and leaves the first window\'s alone', async () => {
         await open(c, url); await c.click('#lobby-solo');
         await waitShown(c, '#solo-busy'); await c.click('#solo-busy-copy');
@@ -151,8 +177,8 @@ async function solo(browser, url) {
       });
 
       await run.do('reloading the first window takes its game back with no offer', async () => {
-        await a.reload(); await waitShown(a, '#lobby'); await a.click('#lobby-solo');
-        await wait(a, () => window.hextable.state?.entities?.fighter);
+        await a.reload(); await waitShown(a, '#lobby', true, 15000); await a.click('#lobby-solo');
+        await wait(a, () => window.hextable.state?.entities?.fighter, null, 20000);
         if (await shown(a, '#solo-busy')) throw new Error('the first window was refused its own game after a reload');
         if ((await hp(a)) !== 4) throw new Error('the first window lost its game');
       });

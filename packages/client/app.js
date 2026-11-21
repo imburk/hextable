@@ -1273,7 +1273,7 @@ function start(transport, map = null) {
   ED.stop();
   T = transport; S = null;
   if (!T.solo) { soloClaim?.release(); soloClaim = null; }       // a table is not a solo save: let the claim go
-  $('readonly-bar').hidden = !T.readOnly;
+  $('readonly-bar').hidden = $('readonly-frame').hidden = !T.readOnly; document.body.classList.toggle('readonly', !!T.readOnly);
   T.on.saveError = (msg) => toast(msg, false, 12000);          // the browser would not keep the game (review R17)
   PK.attach(T);                 // the table's homebrew packs: kept while this table is open (packmanager.js)
   $('splash-text').textContent = T.solo ? 'Opening your game\u2026' : 'Connecting to the table\u2026';
