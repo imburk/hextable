@@ -5,7 +5,8 @@
 import { ABILITIES, SKILLS } from './shared/content/schema.js';
 import { CONTENT } from './shared/content/index.js';
 import { startBar, loadDraft, saveDraft, keepBuild, dropBuild, whenLine } from './startflow.js';
-import { derive, validate, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
+import { derive, validate, classesOf, featuresOf, classOf, mod, proficiencyFor, pickFor, featChoices, missingOf } from './shared/derive.js';
+import { trimRolls } from './shared/hitpoints.js';
 import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, DEFAULT_RULE, BELOW, cleanRule, ruleText, pointsSpent, pointsLeft, rollScores, rollScore, mayReroll, rerollWhy, rerollOpen, topThree, tableRule,
   standing, applyBackground, checkScores, scoresLine, dmLine, setText, dayText } from './shared/scores.js';
 import { keyedRng } from './shared/rng.js';
@@ -280,7 +281,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     if (b.spells.length) s.spells = [...b.spells];
     for (const k of KEEP) if (b.keep[k] !== undefined) s[k] = structuredClone(b.keep[k]);
     s.look = { color: b.color };
-    return s;
+    return s.hpRolls ? trimRolls(s, classesOf(s)) : s;      // the rolls kept from an earlier sheet are cut to the classes and levels this one has (hitpoints.js)
   }
   function fromSheet(s) {
     const x = fresh(s.class);

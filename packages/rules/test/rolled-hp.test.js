@@ -269,3 +269,59 @@ test("rollHp and rerollHp are refused for what cannot have them, changing nothin
   no(apply(s, { type: "rerollHp", actor: id, class: "fighter", level: 2.5 }, DM));
   assert.equal(json(s), before);
 });
+
+test("the real edit flow: a rolled level 5 fighter edited down to level 3, to a lower level in another class, with hpRolls in the sent sheet; values are still never changed", () => {
+  const s = table(), { id } = add(s, fighter(5));
+  const held = [...s.entities[id].sheet.hpRolls.fighter], sent = structuredClone(s.entities[id].sheet);
+  assert.equal(held.length, 4);
+  // down to level 3: the client sends the held rolls back whole; the engine cuts them
+  const down = { ...sent, level: 3 };
+  const r = ok(apply(s, { type: "setSheet", actor: id, sheet: down }, DM));
+  assert.equal(r.events.some((e) => e.type === "hpRolled"), false);
+  assert.deepEqual(s.entities[id].sheet.hpRolls.fighter, held.slice(0, 2));
+  assert.equal(hpOf(s, id), 12 + held.slice(0, 2).reduce((n, v) => n + Math.max(1, v + 2), 0));
+  // a value changed on a level still owed is refused, even with a longer list
+  const before = json(s);
+  no(apply(s, { type: "setSheet", actor: id, sheet: { ...sent, level: 3, hpRolls: { fighter: [held[0] === 10 ? 9 : 10, held[1], held[2], held[3]] } } }, DM), /cannot be changed/);
+  assert.equal(json(s), before);
+  // another class: the fighter's rolls are cut away, nothing is kept for a class it does not have
+  const wiz = { name: "Brann", class: "wizard", level: 2, abilities: A, skills: ["arcana", "history"], hpRolls: sent.hpRolls };
+  const w = ok(apply(s, { type: "setSheet", actor: id, sheet: wiz }, DM));
+  assert.equal(w.events.some((e) => e.type === "hpRolled"), false);
+  assert.equal(s.entities[id].sheet.hpRolls, undefined);
+  assert.equal(hpOf(s, id), 6 + 2 + 4 + 2, "pending: the fixed value until rolled");
+  // levelUp with a longer list than the new level owes is accepted when it only has to be cut
+  const t = table(), c = add(t, fighter(4)).id, long = t.entities[c].sheet;
+  ok(apply(t, { type: "levelUp", actor: c, sheet: { ...long, level: 5, hpRolls: { fighter: [...long.hpRolls.fighter, null, 7, 7] } } }, DM));
+});
+
+test("switching hpMethod tells only the DM, in a manual line, and changes nobody until they are rebuilt; the rolls come back when switched back", () => {
+  const s = table({}), { id } = add(s, fighter(3));
+  const on = ok(apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM));
+  const line = on.events.find((e) => e.type === "manual");
+  assert.ok(line && line.partial && /next time they are rebuilt/.test(line.text));
+  assert.equal(viewEvents(on.events, s, { role: "player", userId: "ana" }).some((e) => e.type === "manual"), false);
+  assert.equal(ok(apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM)).events.length, 0, "no change, no line");
+  assert.equal(hpOf(s, id), fixedHp(3));
+  ok(apply(s, { type: "rollHp", actor: id }, DM));
+  const rolledHp = hpOf(s, id), rolls = [...s.entities[id].sheet.hpRolls.fighter];
+  ok(apply(s, { type: "setting", key: "hpMethod", value: "fixed" }, DM));
+  ok(apply(s, { type: "refresh", actor: id }, DM));
+  assert.equal(hpOf(s, id), fixedHp(3));
+  assert.deepEqual(s.entities[id].sheet.hpRolls.fighter, rolls, "kept");
+  ok(apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM));
+  ok(apply(s, { type: "refresh", actor: id }, DM));
+  assert.equal(hpOf(s, id), rolledHp);
+});
+
+test("trimRolls only cuts: classes and levels the sheet no longer has; a build screen's 'mine' sheet is cut the same way", async () => {
+  const { trimRolls } = await import("../src/hitpoints.js");
+  const { classesOf } = await import("../src/derive.js");
+  const sh = fighter(5, { hpRolls: { fighter: [3, 4, 5, 6], wizard: [2] } });
+  const cut = trimRolls({ ...sh, level: 3 }, classesOf({ ...sh, level: 3 }));
+  assert.deepEqual(cut.hpRolls, { fighter: [3, 4] });
+  assert.deepEqual(validate({ ...cut }), []);
+  assert.equal(trimRolls({ ...sh, level: 1 }, classesOf({ ...sh, level: 1 })).hpRolls, undefined);
+  assert.equal(trimRolls({ name: "x" }, []).hpRolls, undefined);
+  assert.match(validate({ ...sh, level: 3 }).join("|"), /does not have|one entry/, "validate itself still refuses what was not cut");
+});

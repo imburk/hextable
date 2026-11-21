@@ -351,11 +351,14 @@ export const handlers = {
     const name = String(a.userName ?? '').trim().slice(0, 40) || (dm ? 'DM' : 'A player');
     ev.push({ type: 'ping', from: dm ? 'dm' : ctx.userId, name, at: { q: at.q, r: at.r, z: land.z } });
   },
-  setting(s, a, ctx) {
+  setting(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
     SETTINGS[a.key].includes(a.value) || fail(`That setting can be: ${SETTINGS[a.key].join(', ')}.`);
+    const was = a.key === 'hpMethod' ? (s.settings.hpMethod ?? 'fixed') : null;
     s.settings[a.key] = a.value;
+    // Hit Points are counted when a character is built or rebuilt, so a switch changes nobody on the spot: the DM is told (and only the DM).
+    if (was !== null && was !== a.value) ev.push({ type: 'manual', actor: null, name: 'Hit Points', partial: true, text: `Hit Points are now ${a.value === 'rolled' ? 'rolled' : 'fixed'}. Existing characters change the next time they are rebuilt (level up, edit, refresh); rolls already made are kept and count again if you switch back.` });
   },
   // Which homebrew packs the game needs: `{ packs: [{ id, version, hash }] }`, replacing the list (docs/specs/homebrew.md,
   // Decision 3, row H5). Ids, versions and hashes only: the server holds the pack data, checks it, and then sends this.
@@ -396,7 +399,7 @@ export const SETTINGS = { sight: SIGHT_RULES,
 export const SETTING_TEXT = {
   hpMethod: {
     fixed: 'Each level after the first adds the class\'s fixed Hit Point value: half the Hit Die, plus 1, plus Constitution (the default).',
-    rolled: 'Each level after the first adds a roll of the class\'s Hit Die, plus Constitution, at least 1. Level 1 stays the highest number of the die. The game rolls it, in the log for everyone, when a character levels up or is added above level 1.',
+    rolled: 'Each level after the first adds a roll of the class\'s Hit Die, plus Constitution, at least 1. Level 1 stays the highest number of the die. The game rolls it, in the log for everyone, when a character levels up or is added above level 1. Existing characters change the next time they are rebuilt; rolls already made are kept and count again if you switch back.',
   },
   hpRollLow: {
     keep: 'A Hit Point roll stands as rolled (the default).',

@@ -53,3 +53,22 @@ export function sameRolls(sheet, held, ks) {
   return ks.every((k, i) => { const n = levelsOwed(k.level, i === 0), id = k.c?.id; return JSON.stringify(rollsFor(sheet, id, n)) === JSON.stringify(rollsFor(held, id, n)); })
     && Object.keys(sheet?.hpRolls ?? {}).every((id) => ks.some((k) => k.c?.id === id));
 }
+
+// A sheet whose rolls are cut to the classes and levels it has now: the rolls of a class it no longer has, and of levels it no longer has, go (a level or a class
+// changed in an edit). It only ever cuts: no value is changed or added. A shape that is not rolls is left for validate to say so. Returns a copy, or the sheet itself
+// if there is nothing to cut. `ks` is classesOf(sheet).
+export function trimRolls(sheet, ks) {
+  const r = sheet?.hpRolls;
+  if (!isObj(r)) return sheet;
+  const out = {};
+  ks.forEach((k, i) => {
+    const id = k.c?.id;
+    if (!id || !Object.hasOwn(r, id)) return;
+    const list = r[id], n = levelsOwed(k.level, i === 0);
+    const cut = Array.isArray(list) ? list.slice(0, n) : list;
+    if (!Array.isArray(cut) || cut.length) out[id] = cut;
+  });
+  const copy = { ...sheet };
+  if (Object.keys(out).length) copy.hpRolls = out; else delete copy.hpRolls;
+  return copy;
+}

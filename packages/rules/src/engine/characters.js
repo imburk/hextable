@@ -17,7 +17,7 @@ import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpe
 import { handHolds } from '../weapons.js';
 import { rollScore, rollScores, mayReroll, tableRule, topThree } from '../scores.js';
 import { cleanPurse, COINS } from '../market.js';
-import { isRolled, levelsOwed, levelOfEntry, lowRule, rollLevel, rollsFor, sameRolls } from '../hitpoints.js';
+import { isRolled, levelsOwed, levelOfEntry, lowRule, rollLevel, rollsFor, sameRolls, trimRolls } from '../hitpoints.js';
 import { mod } from '../derive.js';
 
 const COIN_MOST = 10_000_000;        // coins of one kind a purse holds (docs/specs/shops.md, Decision 4)
@@ -79,6 +79,8 @@ function keepRolls(e, sheet) {
   ks.forEach((k, i) => { const n = levelsOwed(k.level, i === 0), list = rollsFor(held, k.c?.id, n); if (list.some((v) => v !== null)) (out.hpRolls ??= {})[k.c.id] = list; });
   return out;
 }
+// The sheet a client sent, with its rolls cut to the classes and levels it has (an edit that lowers a level or changes a class); values are never changed.
+const trimmed = (sheet) => { try { return sheet && typeof sheet === 'object' && !Array.isArray(sheet) && sheet.hpRolls !== undefined ? trimRolls(sheet, classesOf(sheet)) : sheet; } catch { return sheet; } };
 const hpEvent = (type, e, ctx, done, con, more = {}) => ({ type, id: e.id, name: e.name, by: ctx.userId ?? 'dm', con, levels: done, total: done.reduce((n, x) => n + x.hp, 0), ...more });
 
 export const handlers = {
@@ -229,11 +231,11 @@ export const handlers = {
   // kept on the creature, so it can be made again. A hand-typed record has no sheet and is untouched.
   setSheet(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change a character.');
-    const problems = validate(a.sheet);
+    const given = trimmed(a.sheet), problems = validate(given);
     problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
     if (a.actor === undefined) {
       // A new character: rolls that came with the sheet were not made at this table and are not kept. At a rolled table the game rolls every level after the first.
-      const sheet = structuredClone(a.sheet);
+      const sheet = structuredClone(given);
       delete sheet.hpRolls;
       const rng0 = structuredClone(s.rng);
       try {
@@ -246,7 +248,7 @@ export const handlers = {
       } catch (err) { s.rng = rng0; throw err; }
       return;
     }
-    const e = ent(s, a.actor), sheet = keepRolls(e, a.sheet);
+    const e = ent(s, a.actor), sheet = keepRolls(e, given);
     remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
   },
   // Make a character again from its own stored sheet, so one saved before a content change picks up what the content
@@ -292,10 +294,10 @@ export const handlers = {
       (more.every((n) => n >= 0) && more.reduce((x, y) => x + y, 0) === 1 && (now.length === was.length || now[now.length - 1].level === 1))
         || fail(`${e.name} gains one level: one more in one class, or level 1 in a new one.`);
     }
-    const problems = validate(a.sheet);
+    const given = trimmed(a.sheet), problems = validate(given);
     problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
     // The levels it has already keep their rolls; at a rolled table the game rolls the one it gains, with the table's seed.
-    const sheet = keepRolls(e, a.sheet), rng0 = structuredClone(s.rng);
+    const sheet = keepRolls(e, given), rng0 = structuredClone(s.rng);
     try {
       const rolled = isRolled(s.settings) ? rollInto(s, sheet, (i, j) => (now ? (now[i].level - (was[i]?.level ?? 0)) === 1 && j === levelsOwed(now[i].level, i === 0) - 1 : j === levelsOwed(sheet.level, true) - 1)) : { done: [], con: 0 };
       remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
