@@ -63,6 +63,7 @@ const REGISTRY = {
   slotforms: ['slotforms'],
   models: ['models'],
   allowance: ['allowance'],
+  rolledhp: ['rolledhp'],
 };
 
 const only = process.env.SMOKE_ONLY;
