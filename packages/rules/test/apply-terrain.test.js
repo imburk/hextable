@@ -66,7 +66,7 @@ const SENSE = [
   { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, { type: "endEncounter" }, { type: "spawn", monster: "wolf", at: { q: 2, r: 2 } }, { type: "place", actor: "fighter", to: { q: 1, r: 0 } },
   { type: "place", actor: "fighter", to: { q: 2, r: 0 } }, { type: "revealRegion", region: "r1", revealed: true }, { type: "setObject", object: "door", state: "open" }, { type: "setObject", object: "pit", state: "open" },
   { type: "remove", actor: GOB }, { type: "setLight", actor: "fighter", item: "torch" }, { type: "reveal", actor: GOB, hidden: true }, { type: "condition", actor: "fighter", condition: "prone", on: true },
-  { type: "setHp", actor: "fighter", hp: 3 }, { type: "harm", actor: "fighter", amount: 4 }, { type: "mend", actor: "fighter", amount: 4 },
+  { type: "setHp", actor: "fighter", hp: 3 }, { type: "harm", actor: "fighter", amount: 4 }, { type: "mend", actor: "fighter", amount: 4 }, { type: "setAc", actor: "fighter", ac: 17 },
   { type: "handout", id: "h1", title: "T", text: "x" }, { type: "note", to: "pat", text: "x" }, { type: "scene", id: "s1", title: "S" }, { type: "endScene" }, { type: "say", text: "hi" },
   { type: "askCheck", actor: "fighter", skill: "perception", dc: 10 }, { type: "setting", key: "autoEngage", value: true }, { type: "setPacks", packs: [] }, { type: "worldIndex", index: WORLD_INDEX },
   { type: "bond", actor: GOB, to: "wizard", kind: "pet" }, { type: "companionOrder", actor: GOB, order: "follow" }, { type: "command", actor: "wizard", ids: [GOB], order: "attack" },
@@ -109,6 +109,8 @@ const SENSE2 = [
   { pre: (s) => apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, { role: "player", userId: "pat" }), a: { type: "release", entity: "fighter" } },
   { pre: (s) => apply(s, { type: "stepAway", actor: "rogue" }, DM), a: { type: "stepBack", actor: "rogue" } },
   { pre: (s) => apply(s, { type: "mapEdit", ops: [{ op: "region", region: { id: "r1", name: "R", level: "ground", hexes: ["0,0", "1,0"] } }] }, DM), a: { type: "revealRegion", region: "r1", revealed: true } },
+  // The DM's to-do tray (#675): a card from a note the engine handed over (a setting that changes nothing on the map), then Done.
+  { pre: (s) => apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM), a: (s) => ({ type: "todoDone", n: s.todo?.cards?.[0]?.n }) },
   { a: { type: "handout", handout: { title: "H", text: "x" } } },
   { pre: (s) => apply(s, { type: "handout", handout: { title: "H", text: "x" } }, DM), a: (s) => ({ type: "showHandout", handout: s.handouts?.[0]?.id, to: "all" }) },
   { pre: (s) => apply(s, { type: "handout", handout: { title: "H", text: "x" } }, DM), a: (s) => ({ type: "hideHandout", handout: s.handouts?.[0]?.id }) },

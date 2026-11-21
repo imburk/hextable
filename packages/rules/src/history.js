@@ -221,7 +221,7 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
 // one event must have reached them. Otherwise `shown` is null and they are told nothing.
 const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage action', dodge: 'took the Dodge action', secondWind: 'used Second Wind', reactions: 'set standing instructions for reactions',
   endTurn: 'ended their turn', use: 'used something', check: 'made a check', search: 'searched', setSpeed: 'had their speed changed',
-  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed',
+  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed', setAc: 'had their Armor Class set',
   condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide',
   feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', rollHp: 'rolled Hit Points', rerollHp: 'rolled a Hit Point die again', rollAbilityScores: 'rolled ability scores', rerollAbilityScore: 'rolled an ability score again', levelUp: 'levelled up', equip: 'put on or took off an item', shield: 'put a Shield away or took it up', attune: 'chose an item to attune to',
   forgoMove: 'gave up their movement', drop: 'dropped something', pickUp: 'picked something up', escape: 'tried to escape a grapple' };
@@ -321,6 +321,7 @@ export function describeStep(action, events, before, after) {
     case 'showHandout': label = 'A handout was shown'; break;
     case 'hideHandout': label = 'A handout was taken back'; break;
     case 'removeHandout': label = 'A handout was removed'; break;
+    case 'todoDone': label = { label: a.all === true ? 'Every to-do card was done' : 'A to-do card was done', shown: null }; break;     // the DM's alone (todo.js)
     // Shops (docs/specs/shops.md, Decision 9). The DM's steps are the DM's: players are told nothing of them, and no label shown to a
     // player names a shop, a line or a price (a player the shop is not shown to hears the step too; the gear and coins events say what
     // changed hands to those who may know).
