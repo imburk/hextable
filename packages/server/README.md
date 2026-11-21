@@ -52,7 +52,29 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
 - `src/ws.js` — a minimal WebSocket implementation on Node's `http` and `crypto`.
 - `src/assets.js` — the store of table files on disk: type sniffing, ids, limits. No network code.
 - `src/assets-http.js` — the `/assets` routes: who may upload, fetch and delete.
-- `src/index.js` — HTTP, static files (html, js, css, json and svg gzipped with Node's `zlib` when the client accepts it, compressed once per file and kept until the file changes; uploads are never compressed), `/api/ping`, `/assets`, `/ws`, and saving to disk.
+- `src/index.js` — HTTP, static files (html, js, css, json and svg gzipped with Node's `zlib` when the client accepts it, compressed once per file and kept until the file changes; uploads are never compressed), `/api/ping`, `/api/health`, `/assets`, `/ws`, and saving to disk.
+
+## Engine crashes and `/api/health`
+
+When the engine throws on an action (a malformed message, or a bug) the player still gets "The table couldn't make sense of that
+action." and the game is put back as it was. The server now also writes one JSON line to stderr (the container log) for each:
+`{"event":"engine-crash","at","table","action","role","stack"}`. `table` is the table code, never the join token; `action` is the
+action type (a name that is not plain letters and digits is logged as `?`); `role` is `dm` or `player`. The action's payload, chat
+text, names and anything else a player typed are never logged. The same applies to a throw while applying a pack list
+(`action: "setPacks"`) or a world pack (`"worldIndex"`).
+
+Per process, the server counts crashes and refusals in total and by action type (at most 200 types, then `other`).
+
+`GET /api/health` answers, with `cache-control: no-store`:
+
+```json
+{"ok":true,"uptime":3600,"tables":{"loaded":12,"active":3},"connections":5,"crashes":0,"crashesByType":{},"build":"c1d5069"}
+```
+
+`uptime` is seconds since the process started; `tables` are the tables held in memory and those active in the last 30 days;
+`connections` are open WebSockets; `crashesByType` is the ten most frequent action types; `build` is the commit of `/build.json`
+(or `null`). There is nothing per table or per person in it. It is limited to 30 reads a minute per address
+(`LIMIT_HEALTH_MINUTE`); over that it answers 429.
 
 ## Protocol
 
