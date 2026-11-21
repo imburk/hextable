@@ -321,6 +321,7 @@ export function describeStep(action, events, before, after) {
     case 'showHandout': label = 'A handout was shown'; break;
     case 'hideHandout': label = 'A handout was taken back'; break;
     case 'removeHandout': label = 'A handout was removed'; break;
+    case 'todoDone': label = { label: a.all === true ? 'Every to-do card was done' : 'A to-do card was done', shown: null }; break;     // the DM's alone (todo.js)
     // Shops (docs/specs/shops.md, Decision 9). The DM's steps are the DM's: players are told nothing of them, and no label shown to a
     // player names a shop, a line or a price (a player the shop is not shown to hears the step too; the gear and coins events say what
     // changed hands to those who may know).
