@@ -3,10 +3,13 @@ import { scenario, wait, open, playSolo, closePanels, sleep, waitShown } from '.
 // ---------- "A new version is ready" (#646): the build id is checked on load, when the tab is shown again (solo) and when a table reconnects ----------
 const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
 
-// The page's own /build.json answers come from here, so the "deploy" is one assignment: { commit } is what the server says now.
+// build.json answers come from here: the server's real stamp (the build the page carries in its meta) until `now.commit` is set, which is the "deploy".
 async function fakeBuild(ctx) {
-  const now = { commit: 'aaa1111' };
-  await ctx.route('**/build.json', (route) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify({ ...now, when: '2026-11-20T10:00:00Z' }) }));
+  const now = { commit: null };
+  await ctx.route('**/build.json', async (route) => {
+    const real = await (await route.fetch()).json();
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(now.commit ? { ...real, commit: now.commit } : real) });
+  });
   return now;
 }
 const rect = (page, sel) => page.evaluate((s) => { const e = document.querySelector(s); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); return r.width ? { l: r.left, t: r.top, r: r.right, b: r.bottom } : null; }, sel);
@@ -29,7 +32,7 @@ async function solo(browser, url, label, opts, phone) {
       const now = await fakeBuild(ctx);
       const page = await ctx.newPage(); run.watch(page);
       const { width: vw, height: vh } = opts.viewport;
-      await run.do('open solo play: the build is the same, no banner', async () => { await open(page, url); await playSolo(page); await closePanels(page); await sleep(300); if (await rect(page, '#new-version')) throw new Error('a banner with no new build'); });
+      await run.do('open solo play: the page carries its build, and it is the same, so no banner', async () => { await open(page, url); if (!(await page.locator('meta[name="hextable-build"]').getAttribute('content'))) throw new Error('no build meta in the page'); await playSolo(page); await closePanels(page); await sleep(300); if (await rect(page, '#new-version')) throw new Error('a banner with no new build'); });
       await run.do('the tab is shown again with the same build: still no banner', async () => { await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await sleep(400); if (await rect(page, '#new-version')) throw new Error('banner'); });
       await run.do('a new build, the tab is shown: the banner offers a reload and is clear of the bars and the action panel', async () => {
         now.commit = 'bbb2222';

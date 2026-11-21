@@ -1,7 +1,7 @@
 // The comparison behind "A new version is ready" (#646). No DOM here: the banner is checked in a browser; this is its decision.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildId, compareBuilds, shouldOffer, mountNewVersion } from '../newversion.js';
+import { buildId, compareBuilds, shouldOffer, stampOfMeta, chooseLoaded, mountNewVersion } from '../newversion.js';
 
 const A = { commit: 'abc1234', when: '2026-11-19T10:00:00Z' }, B = { commit: 'def5678', when: '2026-11-20T10:00:00Z' };
 
@@ -25,11 +25,26 @@ test('unknown never offers, and "Later" holds until the build changes again', ()
   assert.equal(shouldOffer(A, { commit: 'zzz9999' }, buildId(B)), true);
 });
 
+test('commits are compared when both have one, else the build time', () => {
+  assert.equal(compareBuilds({ when: 'w1' }, { commit: 'abc1234', when: 'w1' }), 'same', 'a page built without git, a server told its commit by its host');
+  assert.equal(compareBuilds({ when: 'w1' }, { commit: 'abc1234', when: 'w2' }), 'different');
+  assert.equal(compareBuilds({ commit: 'abc1234', when: 'w1' }, { commit: 'def5678', when: 'w1' }), 'different');
+});
+test('the page\'s own build is the stamped one, else the first answer', () => {
+  assert.deepEqual(stampOfMeta('abc1234|2026-11-19T10:00:00Z'), A);
+  assert.deepEqual(stampOfMeta('|2026-11-19T10:00:00Z'), { when: '2026-11-19T10:00:00Z' });
+  for (const bad of [null, undefined, '', 'abc|x', 'zzzzzzz|w', 'abc1234', 'abc1234|', '|']) assert.equal(stampOfMeta(bad), null, String(bad));
+  assert.deepEqual(chooseLoaded('abc1234|2026-11-19T10:00:00Z', B), A, 'the stamp wins over a newer first answer');
+  assert.deepEqual(chooseLoaded(null, B), B, 'no stamp: the first answer');
+  assert.equal(chooseLoaded(null, null), null);
+  assert.equal(chooseLoaded('junk', {}), null);
+});
+
 // The triggers, with a stand-in document that has just what the module uses.
 function fakeDoc() {
   const mk = () => ({ children: [], dataset: {}, hidden: false, attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, append(...c) { this.children.push(...c); } });
   const listeners = {};
-  return { hidden: false, body: mk(), createElement: mk, addEventListener: (t, f) => { (listeners[t] ??= []).push(f); }, fire: (t) => listeners[t]?.forEach((f) => f()), listeners };
+  return { hidden: false, meta: null, querySelector() { return this.meta; }, body: mk(), createElement: mk, addEventListener: (t, f) => { (listeners[t] ??= []).push(f); }, fire: (t) => listeners[t]?.forEach((f) => f()), listeners };
 }
 test('the first answer is the loaded build; a later different one shows the banner once; Reload reloads; Later hides it', async () => {
   const doc = fakeDoc(); let now = A, reloads = 0;
@@ -54,4 +69,9 @@ test('a failing fetch says nothing, and solo checks when the tab is shown', asyn
   doc.hidden = true; doc.fire('visibilitychange'); assert.equal(calls, 2, 'hidden: no check');
   solo = false; doc.hidden = false; doc.fire('visibilitychange'); assert.equal(calls, 2, 'at a table: the reconnect is the trigger');
   solo = true; doc.fire('visibilitychange'); await new Promise((r) => setTimeout(r, 0)); assert.equal(doc.body.children.length, 1);
+});
+test('a page stamped with an older build is offered the reload on its first check', async () => {
+  const doc = fakeDoc(); doc.meta = { getAttribute: () => 'abc1234|2026-11-19T10:00:00Z' };
+  const nv = mountNewVersion({ fetchBuild: async () => B, doc, reload() {} });
+  await nv.check(); assert.equal(doc.body.children.length, 1);
 });

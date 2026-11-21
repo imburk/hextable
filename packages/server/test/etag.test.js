@@ -21,6 +21,7 @@ const get = (port, path, headers = {}, method = "GET") => new Promise((resolve, 
   });
   req.on("error", reject); req.end();
 });
+const SECURITY = ["content-security-policy", "x-content-type-options"];
 const at = (n) => `/${NAME}/${n}`;
 
 test("a file is sent with a strong ETag and no-cache, and keeps its other headers", async () => {
@@ -31,8 +32,9 @@ test("a file is sent with a strong ETag and no-cache, and keeps its other header
     assert.match(r.headers.etag, /^"[A-Za-z0-9_-]{27}"$/, `${n}: strong (no W/), quoted`);
     assert.equal(r.headers["cache-control"], "no-cache", n);
     assert.ok(r.headers["content-type"], n);
+    assert.equal(r.headers.vary, n === "pic.png" ? undefined : "Accept-Encoding", `${n}: Vary on the 200`);
     assert.equal(Number(r.headers["content-length"]), r.body.length, n);
-    assert.ok(r.headers["content-security-policy"] || r.headers["x-content-type-options"], `${n}: the security headers are still there`);
+    for (const h of SECURITY) assert.ok(r.headers[h], `${n}: ${h} is still there`);
   }
   assert.equal((await get(port, at("a.js"))).headers["content-type"], "text/javascript; charset=utf-8");
   assert.equal((await get(port, at("index.html"))).headers["content-type"], "text/html; charset=utf-8");
@@ -50,7 +52,8 @@ test("a matching If-None-Match is a 304 with no body; a stale or absent one is a
     assert.equal(r.headers.etag, etag, inm);
     assert.equal(r.headers["cache-control"], "no-cache", inm);
     assert.equal(r.headers["content-length"], undefined, inm);
-    assert.ok(r.headers["content-security-policy"] || r.headers["x-content-type-options"], `${inm}: security headers kept on a 304`);
+    for (const h of SECURITY) assert.ok(r.headers[h], `${inm}: ${h} kept on a 304`);
+    assert.equal(r.headers.vary, "Accept-Encoding", `${inm}: Vary kept on a 304`);
   }
   for (const inm of ['"other"', '"' + etag.slice(1, -1) + 'x"', ""]) {
     const r = await get(port, at("a.js"), { "if-none-match": inm });
@@ -58,6 +61,7 @@ test("a matching If-None-Match is a 304 with no body; a stale or absent one is a
     assert.deepEqual(r.body, BIG);
   }
   assert.equal((await get(port, at("index.html"), { "if-none-match": (await get(port, at("index.html"))).headers.etag })).status, 304, "index.html too");
+  assert.equal((await get(port, at("a.js"), { "if-none-match": "*", "accept-encoding": "gzip" })).status, 304, "* with the gzip variant");
   assert.equal((await get(port, at("missing.js"), { "if-none-match": "*" })).status, 404, "* does not make a missing file exist");
 });
 
@@ -78,6 +82,10 @@ test("HEAD answers as GET does, without a body", async () => {
   const g = await get(port, at("a.js")), h = await get(port, at("a.js"), {}, "HEAD");
   assert.equal(h.status, 200); assert.equal(h.body.length, 0);
   for (const k of ["etag", "cache-control", "content-type", "content-length"]) assert.equal(h.headers[k], g.headers[k], k);
+  const gzG = await get(port, at("a.js"), { "accept-encoding": "gzip" }), gzH = await get(port, at("a.js"), { "accept-encoding": "gzip" }, "HEAD");
+  assert.equal(gzH.status, 200); assert.equal(gzH.body.length, 0);
+  for (const k of ["etag", "cache-control", "content-type", "content-length", "content-encoding", "vary"]) assert.equal(gzH.headers[k], gzG.headers[k], `gzip HEAD ${k}`);
+  assert.equal((await get(port, at("a.js"), { "accept-encoding": "gzip", "if-none-match": gzG.headers.etag }, "HEAD")).status, 304);
   const h304 = await get(port, at("a.js"), { "if-none-match": g.headers.etag }, "HEAD");
   assert.equal(h304.status, 304); assert.equal(h304.body.length, 0); assert.equal(h304.headers.etag, g.headers.etag);
 });
@@ -97,4 +105,11 @@ test("files are read per request: a changed file has a new tag at once, without 
 test("build.json and the API stay uncached (no-store), as the update check needs", async () => {
   const { port } = await startServer();
   for (const p of ["/build.json", "/api/ping"]) assert.equal((await get(port, p)).headers["cache-control"], "no-store", p);
+});
+
+test("a path out of the site is still refused, validators or not", async () => {
+  const { port } = await startServer();
+  for (const p of ["/%2e%2e/package.json", "/..%2fpackage.json", `/${NAME}/%2e%2e/%2e%2e/package.json`]) {
+    for (const h of [{}, { "if-none-match": "*" }]) { const r = await get(port, p, h); assert.ok(r.status === 403 || r.status === 404, `${p}: ${r.status}`); assert.equal(r.headers.etag, undefined, p); }
+  }
 });

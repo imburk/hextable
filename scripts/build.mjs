@@ -37,6 +37,13 @@ const stamp = {
 };
 writeFileSync("dist/build.json", JSON.stringify(stamp) + "\n");
 console.log(`Build stamp: ${JSON.stringify(stamp)}`);
+// The build this page is, in the page itself (#646): <meta name="hextable-build" content="<commit>|<when>">, read by newversion.js, which asks the
+// server later whether it is still this build. A page served by a table server is the one the server's files were built as, whatever the server's env says.
+{
+  const html = readFileSync("dist/index.html", "utf8");
+  if (!html.includes('<meta charset="utf-8">')) throw new Error("dist/index.html has no meta charset to put the build stamp after");
+  writeFileSync("dist/index.html", html.replace('<meta charset="utf-8">', () => `<meta charset="utf-8">\n<meta name="hextable-build" content="${stamp.commit ?? ""}|${stamp.when}">`));
+}
 
 // HEXTABLE_FEEDBACK_URL: the table server the feedback button posts to when this build is not served by one (the solo game on GitHub Pages).
 // Only an http(s) address is taken, reduced to its origin; the page gets <meta name="hextable-feedback-url" content="<origin>/feedback">.
