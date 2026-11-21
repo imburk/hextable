@@ -27,7 +27,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       const dm = await hostCtx.newPage(), pl = await playerCtx.newPage();
       run.watch(dm, ' (DM)'); run.watch(pl, ' (player)');
       const touch = !!playerOpts.hasTouch;
-      let bell = null;
+      let bell = null, home = null;
       const text = (page, sel) => page.evaluate((s) => document.querySelector(s)?.textContent ?? '', sel);
       const hintOf = (page) => page.evaluate(() => { const h = document.getElementById('hint'); return h.hidden ? '' : h.textContent; });
       const turnOf = (page) => page.evaluate(() => { const S = window.hextable.state; return S.encounter ? S.encounter.order[S.encounter.turn].id : null; });
@@ -61,6 +61,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await dm.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet }), SHEET);
         await wait(pl, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Sir Bell'), null, 10000);
         bell = await pl.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id);
+        home = await pl.evaluate((b) => window.hextable.state.entities[b].pos, bell);
         await pl.locator('#party button:has-text("Play as Sir Bell")').click();
         await wait(dm, (b) => !!window.hextable.state.entities[b].owner, bell);
         await botsOff();
@@ -73,6 +74,15 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       const attempt = async () => {
         tries++;
         if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 10000); await idle(dm); }
+        // The same ground every try (a flake, #633): the foes of the valley (they wake in a fight, walk up to Sir Bell and stand on the hexes the search needs), the goblins
+        // left by the tries before and Sir Bell's own place after a tap are what made "no hex beside Sir Bell takes a goblin". Clear the foes and put her back where she began.
+        await dm.evaluate(async ([b, home]) => {
+          const S = () => window.hextable.state;
+          for (const e of Object.values(S().entities)) if (e.side !== 'party' && e.id !== b) window.hextable.act({ type: 'remove', actor: e.id });
+          if (S().entities[b].pos.q !== home.q || S().entities[b].pos.r !== home.r) window.hextable.act({ type: 'place', actor: b, to: { q: home.q, r: home.r } });
+        }, [bell, home]);
+        await wait(dm, ([b, home]) => { const S = window.hextable.state; const p = S.entities[b].pos; return p.q === home.q && p.r === home.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 10000);
+        await idle(dm);
         const found = await dm.evaluate(async (b) => {
           const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
           const S = window.hextable.state, G = gridOf(S.map), me = S.entities[b], DM = { role: 'dm', userId: 'dm' };
@@ -93,9 +103,10 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
               const m = apply(k, { type: 'move', actor: gid, to: d }, DM); if (m.ok) return { at: h, to: d }; why.push(`move: ${m.error}`);
             }
           }
-          return { why: [...new Set(why)].slice(0, 6) };
+          const near = Object.values(S.entities).filter((x) => x.id !== b && G.dist(me.pos, x.pos) <= 3).map((x) => `${x.name}@${x.pos.q},${x.pos.r} hp${x.hp}`);
+          return { why: [...new Set(why)].slice(0, 6), at: undefined, ctx: `Bell@${me.pos.q},${me.pos.r} hp${me.hp} cond ${JSON.stringify(me.conditions ?? [])}; prompt ${!!S.prompt} pending ${!!S.pending}; encounter ${!!S.encounter}; near ${near.join(', ')}` };
         }, bell);
-        if (!found.at) throw new Error(`no hex beside Sir Bell takes a goblin that can walk away from her on this map: ${found.why.join(' | ')}`);
+        if (!found.at) throw new Error(`no hex beside Sir Bell takes a goblin that can walk away from her on this map: ${found.why.join(' | ')} [${found.ctx}]`);
         await dm.evaluate(([at]) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at, name: 'Gob' }), [found.at]);
         await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Gob' && e.hp > 0));
         const gob = await dm.evaluate(() => Object.values(window.hextable.state.entities).filter((e) => e.name === 'Gob' && e.hp > 0).pop().id);
