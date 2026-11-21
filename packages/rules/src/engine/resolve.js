@@ -24,6 +24,7 @@ import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cur
 import { makeEntity, tryLand } from './sheets.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 import { investIn } from '../summons.js';
+import { nextFight } from '../shopids.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -168,7 +169,7 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   if (!who.length) fail('Nobody is close enough to fight here.');
   for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
-    id: ++s.seq, center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
+    id: nextFight(s), center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
     order: null, where: fightPlace(s, center), ...(opts?.owed ? { owed: structuredClone(opts.owed) } : {}),
   };
   // Each rolls, in the order the creatures are kept, but a companion whose turn is its master's and whose master

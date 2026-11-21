@@ -104,6 +104,24 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   // code -> { code, state, packs: [{ id, version, hash, data }], members: [{ id, token, name, role, approved }] }
   const tables = new Map();
 
+  // Counters kept for this process (never saved): engine exceptions and refusals, by action type. An exception is the engine
+  // throwing where it should have refused: a malformed message or a bug. Each one is logged once as a single JSON line with the
+  // table code, the action type, the sender's role and the stack, and nothing the player sent (no payload, text or names).
+  const crashCount = { total: 0, byType: new Map() }, refusalCount = { total: 0, byType: new Map() };
+  const typeKey = (type) => (typeof type === "string" && /^[A-Za-z][A-Za-z0-9_.-]{0,39}$/.test(type) ? type : "?");
+  const bump = (c, type) => {
+    c.total++;
+    let k = typeKey(type);
+    if (!c.byType.has(k) && c.byType.size >= 200) k = "other";      // the table of types stays small however many names are sent
+    c.byType.set(k, (c.byType.get(k) ?? 0) + 1);
+  };
+  const crashed = (code, type, role, err) => {
+    bump(crashCount, type);
+    console.error(JSON.stringify({ event: "engine-crash", at: new Date().toISOString(), table: String(code), action: typeKey(type), role: typeof role === "string" ? role.slice(0, 10) : null, stack: String(err?.stack ?? err).slice(0, 4000) }));
+  };
+  const top = (c, n) => Object.fromEntries([...c.byType].sort((a, b) => b[1] - a[1]).slice(0, n));
+  const stats = () => ({ crashes: crashCount.total, crashesByType: top(crashCount, 10), refusals: refusalCount.total, refusalsByType: top(refusalCount, 10) });
+
   // ===== scoped engine: the one place the engine, the views, history labels and migration are called =====
   // A table's homebrew is added to the content lookups for the length of one synchronous call (content/registry.js `using`).
   // Everything that reads content for a table goes through `engine`, which lends that table's overlay; a test fails if
@@ -500,18 +518,19 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // dropped first: the server never plays a client's map where the pack has one. The size above was checked on what
         // the client sent; what is applied and recorded is the action as filled.
         let filled;
-        try { filled = fillMap(table.state, action, table.world?.data ?? null); } catch { return error("The table couldn't make sense of that action."); }
+        try { filled = fillMap(table.state, action, table.world?.data ?? null); } catch (err) { crashed(table.code, action?.type, me.role, err); return error("The table couldn't make sense of that action."); }
         // Taken before every action: for the undo history (claiming a seat is not undone), and to
         // put the game back if the engine throws part way through (review #132, L6).
         const was = mark(table.state), before = undoable(filled) ? was : null;
         const pingWas = action.type === "ping" ? JSON.stringify(was.tree) : null;
         try {
           res = engine.apply(table, table.state, filled, { role: me.role, userId: me.id });
-        } catch {
+        } catch (err) {
           putBack(table.state, was);
+          crashed(table.code, filled?.type, me.role, err);
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
-        if (!res.ok) return error(res.error);
+        if (!res.ok) { bump(refusalCount, filled?.type); return error(res.error); }
         if (before) {
           // The timeline is capped here, not in apply(); what is dropped goes in the undo step so undo is exact.
           const dropped = capTimeline(table.state.timeline, timelineCap);
@@ -606,7 +625,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       const was = mark(t.state);
       let res;
       try { res = engine.apply(t, t.state, { type: "setPacks", packs: next.map((p) => ({ id: p.id, version: p.version, hash: p.hash })) }, { role: me.role, userId: me.id }); }
-      catch { putBack(t.state, was); return error("The table couldn't make sense of that pack message."); }
+      catch (err) { putBack(t.state, was); crashed(t.code, "setPacks", me.role, err); return error("The table couldn't make sense of that pack message."); }
       if (!res.ok) return error(res.error);
       t.packs = next;                                                // the record changes only now: the table is told next
       delete t.packsDropped;                                         // the DM has dealt with the packs that were dropped at load
@@ -656,7 +675,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       const was = mark(t.state);
       let res;
       try { res = engine.apply(t, t.state, { type: "worldIndex", index }, ctx); }
-      catch { putBack(t.state, was); res = { ok: false, error: "The table couldn't make sense of that world." }; }
+      catch (err) { putBack(t.state, was); crashed(t.code, "worldIndex", me.role, err); res = { ok: false, error: "The table couldn't make sense of that world." }; }
       if (!res.ok) { dropAssets(t.code, stored.added); return refuse([res.error]); }
       const before = t.world;
       t.world = { id: index.id, version: index.version, hash: r.hash, data: kept, assets: stored.assets };
@@ -757,5 +776,5 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     return worldPictures(t.state, t.world).has(id) ? "That picture belongs to the table's world (a place or one of its maps shows it). Load a world without it first." : null;
   }
 
-  return { connect, exportHistory, member, keepsAsset, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount };
+  return { connect, exportHistory, member, keepsAsset, get: (code) => tables.get(code), size: () => tables.size, activeSize: activeCount, stats };
 }

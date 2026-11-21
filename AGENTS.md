@@ -4,6 +4,7 @@ This file is for any AI coding agent (Claude, Gemini, Grok or another).
 Project rules live in [CLAUDE.md](CLAUDE.md); read it first, whichever agent
 you are. Architecture is in [docs/DESIGN.md](docs/DESIGN.md) and agreed
 designs are in [docs/specs](docs/specs).
+The guides (CLAUDE.md's layout, DESIGN, ROADMAP, the specs index) are tested by `packages/rules/test/guides.test.js`: a pull request that adds a rules module, changes a quoted content count, or adds a spec updates them, or the test fails.
 What is wrong or missing is listed in [docs/DEBT.md](docs/DEBT.md). The
 maintainer's working notes (hand-over, agent brief, session records) are kept
 in a private repo, `imburk/hextable-ops`; you do not need them to take an issue.
@@ -39,6 +40,13 @@ in a private repo, `imburk/hextable-ops`; you do not need them to take an issue.
   is honest (`assist` or `manual`) and say what was missing in the pull
   request. Set `checked: true` only if you compared every number in the
   entry against the SRD 5.2.1 text, and say so in the pull request.
+- **A feature that adds state players might not see lands with a `twin()` test.**
+  Hidden creatures, unexplored regions, DM notes, parked places, hidden shop lines, homebrew
+  monsters and the like: write one scenario in `packages/server/test/twin.js` form and give it
+  the hidden thing. It runs the script in two worlds through the table server, and fails unless
+  every player is sent the same bytes in both (views, patches, events, errors, message counts,
+  sequence numbers). Examples are in `packages/server/test/twin-worlds.test.js`. If it finds
+  a leak, do not hide it: file an issue and mark the test `todo` with its number.
 - **Never trust the client.** Anything a browser sends is checked on the
   server through `apply()`.
 - **Phones count.** Any UI change is checked at a phone-sized screen with
