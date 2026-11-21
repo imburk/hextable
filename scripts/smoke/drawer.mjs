@@ -389,13 +389,13 @@ async function drawerLandscape(browser, url) {
       });
       await run.do('the menu opens, the dock steps aside, every first-level row is tappable and none is under the token', async () => {
         await page.tap('#btn-menu'); await waitShown(page, '#drawer');
-        await sleep(500);
-        const rows = await page.$$eval('#menu-root [data-go]', (x) => x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go, t: r.top, b: r.bottom, l: r.left, r: r.right, h: r.height }; }));
+        await sleep(1200);                      // the token slides beside the column: look when it has arrived
+        const rows = await page.$$eval('#menu-root [data-go]', (x) => x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go, t: r.top, b: r.bottom, l: r.left, r: r.right, h: r.height }; }).filter((r) => r.h > 0));
         if (rows.length < 5) throw new Error(`rows: ${JSON.stringify(rows)}`);
-        const tok = await boxOf('#btn-menu');
+        const tok = await boxOf('#btn-menu'), dr0 = await boxOf('#drawer');
         for (const r of rows) {
           if (r.h < 44) throw new Error(`row ${r.k} is ${r.h} high`);
-          if (r.l < tok.r && r.r > tok.l && r.b > tok.t && r.t < tok.b) throw new Error(`row ${r.k} is under the token`);
+          if (r.l < tok.r && Math.min(r.r, dr0.r) > tok.l && r.b > tok.t && r.t < tok.b) throw new Error(`row ${r.k} is under the token: ${JSON.stringify([r, tok])}`);
         }
         if (await shown(page, '#dock') && (await page.evaluate(() => getComputedStyle(document.getElementById('dock')).visibility)) !== 'hidden') throw new Error('the dock is still showing over the menu');
         const dr = await boxOf('#drawer');

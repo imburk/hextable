@@ -153,4 +153,5 @@ body[data-menu-shape="columns"].drawer-pretable #drawer, body.drawer-pinned #dra
 /* and the token cannot sit above a dock that fills the screen: on a short screen it takes the bottom-left corner, in the margin beside the dock */
 @media (max-height: 500px) {
   body[data-token] #btn-menu { width: 56px; height: 56px; top: auto; right: auto; left: calc(4px + env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); transform: translateX(var(--tok-l, 0px)); }
+  body.drawer-open[data-token] #btn-menu { transform: translateX(calc(var(--tok-l, 0px) + 8px)); }
 }
