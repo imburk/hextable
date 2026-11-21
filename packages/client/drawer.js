@@ -172,6 +172,10 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     const w = open && pinned() ? el.offsetWidth || 360 : 0;
     document.body.style.setProperty('--inset-l', side === 'left' ? `${w}px` : '0px');
     document.body.style.setProperty('--inset-r', side === 'right' ? `${w}px` : '0px');
+    // Columns open over the bottom of the map where the token sits: it moves to the middle of the map that is left (a sheet has a footer for it).
+    const tw = open && cols ? el.offsetWidth : 0;
+    document.body.style.setProperty('--tok-l', side === 'left' ? `${tw}px` : '0px');
+    document.body.style.setProperty('--tok-r', side === 'right' ? `${tw}px` : '0px');
     token.setAttribute('aria-expanded', String(open));
     // A dialog while it covers the map; a complementary landmark when it sits beside it.
     if (modal()) { el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); } else { el.setAttribute('role', 'complementary'); el.removeAttribute('aria-modal'); }

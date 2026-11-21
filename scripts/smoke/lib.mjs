@@ -61,7 +61,7 @@ export async function scenario(label, fn) {
   const run = new Run(label);
   try { await fn(run); }
   catch (err) {
-    const msg = `FAIL [${label}] step "${run.step}": ${process.env.SMOKE_VERBOSE ? String(err.message).split('\n').slice(0, 14).join(' | ') : String(err.message).split('\n')[0]}`;
+    const msg = `FAIL [${label}] step "${run.step}": ${process.env.SMOKE_VERBOSE ? String(err.message).split('\n').slice(0, 14).join(' | ') : String(err.message).split('\n')[0]}${process.env.SMOKE_VERBOSE ? ' @ ' + String(err.stack).split('\n').filter((l) => /scripts\/smoke/.test(l)).slice(0, 4).map((l) => l.trim().replace(/^.*scripts\/smoke\//, '')).join(' < ') : ''}`;
     console.log('  ' + msg);
     failures.push(msg);
   }
@@ -122,6 +122,12 @@ const menuAt = (page) => page.evaluate(() => document.getElementById('drawer').d
 const waitMenuAt = (page, want) => page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want.join('/'), { timeout: 5000 });
 export const openMenu = async (page, path = []) => {
   const want = menuPath(path);
+  try { await openMenuTo(page, want); } catch (err) {
+    const at = await page.evaluate(() => { const d = document.getElementById('drawer'), h = window.hextable.drawer; return { path: d.dataset.path, open: h.isOpen, hidden: d.hidden, cls: d.className, scrim: !document.getElementById('drawer-scrim').hidden }; }).catch(() => null);
+    throw new Error(`openMenu(${want.join('/')}) stopped at ${JSON.stringify(at)}: ${String(err.message).split('\n')[0]}`);
+  }
+};
+const openMenuTo = async (page, want) => {
   if (!(await page.evaluate(() => window.hextable.drawer.isOpen))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
   for (let i = 0; i < 4; i++) {           // up until what is open is on the way to the place wanted
     const have = (await menuAt(page)).split('/').filter(Boolean);
@@ -135,7 +141,14 @@ export const openMenu = async (page, path = []) => {
 };
 // The drawer can be closing by itself (a fight starting closes it) when we look: then its close control is already gone, and what we want is that it ends hidden.
 // A sheet closes by its handle, a wide menu by its x.
-export const closeMenu = async (page) => { if (await shown(page, '#drawer')) { await page.click('#drawer-close:visible, #drawer-handle:visible', { timeout: 3000 }).catch(() => {}); await waitShown(page, '#drawer', false); } };
+export const closeMenu = async (page) => {
+  if (!(await shown(page, '#drawer'))) return;
+  const clicked = await page.click('#drawer-close:visible, #drawer-handle:visible', { timeout: 3000 }).then(() => 'clicked', (e) => `not clicked: ${String(e.message).split('\n')[0]}`);
+  await waitShown(page, '#drawer', false).catch(async (err) => {
+    const at = await page.evaluate(() => { const d = document.getElementById('drawer'); return { path: d.dataset.path, open: window.hextable.drawer.isOpen, hidden: d.hidden, cls: d.className, active: document.activeElement?.id, bodyCls: document.body.className }; }).catch(() => null);
+    throw new Error(`closeMenu: the menu stayed up (${clicked}) at ${JSON.stringify(at)}: ${String(err.message).split('\n')[0]}`);
+  });
+};
 export const closePanels = closeMenu;
 export const openTab = (page, tab) => openMenu(page, tab);
 

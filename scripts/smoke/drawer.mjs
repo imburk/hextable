@@ -165,15 +165,15 @@ async function drawerPass(browser, url, label, opts) {
       await run.do('the token sits at the bottom centre, right or left as chosen, and keeps its place', async () => {
         await openMenu(page, 'settings');
         for (const at of ['left', 'right']) {
-          await page.selectOption('#set-token', at); await sleep(100);
+          await page.selectOption('#set-token', at); await closeMenu(page); await sleep(100);
           const b = await rectOf(page, '#btn-menu');
           if (at === 'left' ? b.l > 40 : b.vw - b.r > 40) throw new Error(`the token is not at the ${at}: ${JSON.stringify(b)}`);
           if ((await page.evaluate(() => localStorage.getItem('hextable.menuToken'))) !== JSON.stringify(at)) throw new Error('the place was not stored');
+          await openMenu(page, 'settings');
         }
-        await page.selectOption('#set-token', 'center'); await sleep(100);
+        await page.selectOption('#set-token', 'center'); await closeMenu(page); await sleep(100);
         const b = await rectOf(page, '#btn-menu');
         if (Math.abs((b.l + b.r) / 2 - b.vw / 2) > 2) throw new Error('the token did not come back to the centre');
-        await closeMenu(page);
       });
       await run.do('the menu slides by default, and under "Just appear" or reduced motion nothing moves at all', async () => {
         // The rectangles of the menu and its screen on every frame for a while after the token is tapped.
@@ -211,12 +211,14 @@ async function drawerPass(browser, url, label, opts) {
         await openMenu(page, 'table/settings'); await sleep(900);
         const cols = await page.evaluate(() => ['menu-root', 'menu-table', 'drawer-body'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), r.width > 0]; }));
         if (!cols.every((c, i) => c[2] && (!i || c[0] >= cols[i - 1][1] - 1))) throw new Error(`the three levels are not side by side: ${JSON.stringify(cols)}`);
+        const tb = await rectOf(page, '#btn-menu'), dr = await rectOf(page, '#drawer');
+        if (tb.l < dr.r - 1) throw new Error(`the token is over the columns: token ${tb.l}-${tb.r}, columns to ${dr.r}`);
         await page.selectOption('#set-side', 'right'); await sleep(900);
         const r = await rectOf(page, '#drawer');
         if (Math.abs(r.r - r.vw) > 2) throw new Error(`not on the right: ${JSON.stringify(r)}`);
         if ((await page.evaluate(() => localStorage.getItem('hextable.drawerSide'))) !== '"right"') throw new Error('the side was not stored');
         const b = await rectOf(page, '#btn-menu');
-        if (Math.abs((b.l + b.r) / 2 - b.vw / 2) > 2) throw new Error('the token moved with the side');
+        if (b.r > r.l + 1) throw new Error(`the token is over the columns: token ${b.l}-${b.r}, columns from ${r.l}`);
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-right-wide.png` : '/dev/null' }).catch(() => {});
         await page.selectOption('#set-side', 'left'); await sleep(900); await closeMenu(page);
       });
