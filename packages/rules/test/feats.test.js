@@ -226,3 +226,45 @@ test("the importer puts an SRD feat on the sheet by name and flags a 5.2 version
   const high = importFgxml(xml.replace(/(<wisdom>\s*<score type="number">)\d+/, "$123")).report;
   assert.ok(high.adjustments.some((a) => a.what === "WIS score" && a.from === "23" && /Epic Boon/.test(a.why)), JSON.stringify(high.adjustments));
 });
+
+test("Magic Initiate is taken again only with another list, and each copy names its own (#635)", () => {
+  const places = featSlots(fighter(8)).map((sl) => sl.at).filter((a) => a !== "species");
+  assert.deepEqual(places.slice(0, 4), ["background", "ability-score-improvement-4", "ability-score-improvement-6", "ability-score-improvement-8"]);
+  const mi = (list, i, more = {}) => ({ id: "magic-initiate", at: places[i], list, ...more });
+  // Three copies, Cleric, Druid and Wizard, each at its own place.
+  assert.equal(problems(fighter(8, [mi("cleric", 0), mi("druid", 1), mi("wizard", 2)])), "");
+  // The same list twice is refused, naming the feat and the lists taken.
+  assert.match(problems(fighter(8, [mi("wizard", 0), mi("wizard", 1)])), /Magic Initiate is taken again only with another spell list: Wizard is already taken \(taken: Wizard\)/);
+  // A copy with no list is refused, whether the first or a repeat, with a plain sentence.
+  assert.match(problems(fighter(1, [{ id: "magic-initiate", at: "background" }])), /Magic Initiate: choose a spell list \(Cleric, Druid, Wizard\) for this copy/);
+  assert.match(problems(fighter(8, [mi("cleric", 0), { id: "magic-initiate", at: places[1] }])), /choose a spell list \(Cleric, Druid, Wizard\) for this copy; each copy needs its own, and Cleric is already taken/);
+  // Picks must come from the copy's own list.
+  assert.match(problems(fighter(8, [mi("cleric", 0), mi("druid", 1, { spells: ["fire-bolt"] })])), /Fire Bolt is not on the Druid spell list/);
+  // The screen's offer leaves the feat out of a place when every list is taken, and offers it while one is free.
+  const two = featChoices(fighter(8, [mi("cleric", 0), mi("druid", 1)])).find((x) => x.at === places[2]);
+  assert.ok(two.offer.includes("magic-initiate"));
+  const three = featChoices(fighter(8, [mi("cleric", 0), mi("druid", 1), mi("wizard", 2)]));
+  assert.equal(three.find((x) => x.at === places[3]).offer.includes("magic-initiate"), false, "no list left");
+  assert.deepEqual(three[0].taken.list, "cleric");
+  // The server refuses such a sheet at setSheet, changing nothing, and levelUp does the same.
+  const s = newGame(3);
+  no(apply(s, { type: "setSheet", sheet: fighter(1, [{ id: "magic-initiate", at: "background" }]) }, DM), /choose a spell list/);
+  const id = ok(apply(s, { type: "setSheet", sheet: fighter(3, [mi("wizard", 0)]) }, DM)).events.find((x) => x.type === "spawned").id;
+  const before = structuredClone(s.entities[id]);
+  no(apply(s, { type: "levelUp", actor: id, sheet: fighter(4, [mi("wizard", 0), mi("wizard", 1)]) }, DM), /another spell list/);
+  assert.deepEqual(s.entities[id], before);
+  ok(apply(s, { type: "levelUp", actor: id, sheet: fighter(4, [mi("wizard", 0), mi("druid", 1)]) }, DM));
+});
+
+test("an imported Magic Initiate with no list is reported and left off the sheet; one with a list goes on (#635)", () => {
+  const xml = (feats) => readFileSync(new URL("./fixtures/fgxml-cleric.xml", import.meta.url), "utf8").replace(/<featlist>[\s\S]*?<\/featlist>/, `<featlist>${feats.map((n, i) => `<id-0000${i + 1}><name type="string">${n}</name></id-0000${i + 1}>`).join("")}</featlist>`);
+  const bare = importFgxml(xml(["Magic Initiate"]));
+  assert.deepEqual(validate(bare.character), []);
+  assert.equal(bare.report.loadable, true, bare.report.problems.join("; "));
+  assert.ok((bare.character.feats ?? []).every((f) => f.id !== "magic-initiate"));
+  assert.ok(bare.report.feats.some((f) => f.name === "Magic Initiate" && /needs its own spell list/.test(f.why)));
+  const named = importFgxml(xml(["Magic Initiate (Wizard)", "Magic Initiate (Wizard)", "Magic Initiate (Cleric)"]));
+  assert.deepEqual(validate(named.character), []);
+  assert.deepEqual(named.character.feats.filter((f) => f.id === "magic-initiate").map((f) => f.list), ["wizard", "cleric"]);
+  assert.ok(named.report.feats.some((f) => /needs another list/.test(f.why)));
+});

@@ -577,11 +577,19 @@ function build(root, ch, options) {
     if (!n) continue;
     if (!def) { note('feats', n, 'A 2014 feat that is not in SRD 5.2; it can only be a DM-entered note.'); continue; }
     if (featNames.includes(def.id) && !def.repeatable) continue;
+    // A feat taken once per spell list (Magic Initiate) needs its list, which the sheet gives only in the name, "Magic Initiate (Wizard)":
+    // with no list, or one a copy already has, the feat is reported and left off the sheet, never put on it invalid (#635).
+    let list;
+    if (def.repeatable === 'list') {
+      list = (def.spellPick?.lists ?? []).find((l) => new RegExp(`\\b${l}\\b`, 'i').test(n.match(/\(([^)]*)\)/)?.[1] ?? ''));
+      if (!list) { note('feats', n, `An SRD 5.2 feat, but each copy needs its own spell list (${def.spellPick.lists.map((l) => l[0].toUpperCase() + l.slice(1)).join(', ')}) and the sheet does not give it; not on the sheet. Add it in the build screen with its list.`); continue; }
+      if ((sheet.feats ?? []).some((x) => x.id === def.id && x.list === list)) { note('feats', n, `A second ${def.name} with the ${list} list; each copy needs another list, so it is not on the sheet.`); continue; }
+    }
     featNames.push(def.id);
     const was = new Set(validate(sheet)), places = featSlots(sheet).filter((sl) => sl.at !== 'species' && !(sheet.feats ?? []).some((x) => x.at === sl.at));
-    const at = places.find((sl) => validate({ ...sheet, feats: [...(sheet.feats ?? []), { id: def.id, at: sl.at }] }).every((p) => was.has(p)));
+    const at = places.find((sl) => validate({ ...sheet, feats: [...(sheet.feats ?? []), { id: def.id, at: sl.at, ...(list ? { list } : {}) }] }).every((p) => was.has(p)));
     if (!at) { note('feats', n, `An SRD 5.2 feat, but this character has no free place for a feat it can take (${def.name}: ${def.category} feat); not on the sheet.`); continue; }
-    (sheet.feats ??= []).push({ id: def.id, at: at.at });
+    (sheet.feats ??= []).push({ id: def.id, at: at.at, ...(list ? { list } : {}) });
     const open = def.increase || def.proficiencies || def.spellPick;
     note('feats', n, `An SRD 5.2 feat, taken at ${at.name} (${def.tier}).${open ? ' Its choices (ability points, skills or spells) are not on the sheet: left open, so the sheet\'s scores and skills stand as they are.' : ''}`, { feat: def.id, at: at.at, tier: def.tier });
     if (FEAT_CHANGED.has(def.id)) R.ruleDifferences.push({ name: n, why: `5.2 version: the engine builds the SRD 5.2 ${def.name}, whose rules differ from the 2014 feat of that name.` });
