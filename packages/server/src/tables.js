@@ -61,6 +61,8 @@ const makeId = () => randomBytes(9).toString("base64url");
 const makeToken = () => randomBytes(24).toString("base64url");
 const cleanName = (name) => String(name ?? "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 24) || "Adventurer";
 
+// The engine's action names, for the crash reports (crashes.js), which may not read the engine themselves (packs.test.js).
+export const KNOWN_ACTIONS = Object.freeze([...ACTION_TYPES, "setPacks", "worldIndex"]);
 export const MAX_TABLES = 500;
 export const MAX_MEMBERS = 12;
 // A table nobody has touched for this long no longer counts against MAX_TABLES. It is kept, not

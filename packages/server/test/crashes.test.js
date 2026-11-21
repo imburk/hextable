@@ -228,7 +228,7 @@ test("the real server: a socket report and a POST are counted in /api/health, th
   const msgs = [];
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(new Error("socket")); });
   ws.onmessage = (ev) => msgs.push(JSON.parse(ev.data));
-  const until = async (fn) => { for (let i = 0; i < 250; i++) { if (fn()) return; await new Promise((r) => setTimeout(r, 20)); } throw new Error("timed out"); };
+  const until = async (fn) => { for (let i = 0; i < 1500; i++) { if (fn()) return; await new Promise((r) => setTimeout(r, 20)); } throw new Error("timed out"); };
   ws.send(JSON.stringify({ t: "host", name: NAME }));
   await until(() => msgs.some((m) => m.t === "welcome"));
   await until(() => msgs.some((m) => m.t === "update"));

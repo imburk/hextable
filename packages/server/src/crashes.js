@@ -26,7 +26,7 @@
 //    an allow-list, logged as one `client-error` line and counted by kind. Nothing about one is sent to any table or to GitHub.
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ACTION_TYPES } from "../../rules/src/engine.js";
+import { KNOWN_ACTIONS } from "./tables.js";
 import { hashState } from "./journal.js";
 import { fence, int, list, oneOf, shape, str } from "./feedback.js";
 import { rateKey } from "./limits.js";
@@ -123,7 +123,7 @@ const ERROR_NAMES = new Set(["Error", "TypeError", "RangeError", "ReferenceError
 const errorName = (err) => (err instanceof Error && ERROR_NAMES.has(err.name) ? err.name : "Error");
 
 // ---------- the issue ----------
-const KNOWN_TYPES = new Set([...ACTION_TYPES, "setPacks", "worldIndex"]);
+const KNOWN_TYPES = new Set(KNOWN_ACTIONS);
 export const publicType = (type) => (typeof type === "string" && KNOWN_TYPES.has(type) ? type : "(unknown)");
 export const bundleTime = (name) => /^(\d{8}T\d{9}Z)-/.exec(String(name))?.[1] ?? null;
 export function crashIssue({ type, build, err, stack, at, bundle }) {
