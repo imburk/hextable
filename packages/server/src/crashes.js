@@ -41,9 +41,9 @@ export const COMMENT_GAP_MS = 3_600_000;       // a count comment on an issue at
 export const CLIENT_PER_MINUTE = 5;            // browser reports a connection may send in a minute
 export const CLIENT_PER_TABLE_DAY = 50;        // and a table in a UTC day
 export const CLIENT_BODY_MAX = 8 * 1024;       // POST /client-error
-const KINDS_KEPT = 500;
+const KINDS_KEPT = 500;                        // kinds of crash remembered with their issue
 export const CLIENT_KEYS_MAX = 5000;           // addresses the POST throttle remembers at once; past this a new one is refused
-const CUT_MAX = 50;                            // entries in a bundle's `cut`                        // kinds of crash remembered with their issue
+const CUT_MAX = 50;                            // entries in a bundle's `cut`
 
 // ---------- the bundle ----------
 // A copy of the action that holds no more than a bundle should: strings cut to TEXT_MAX, long lists and objects cut, nesting limited. `cut` lists
@@ -101,7 +101,8 @@ export function frames(stack) {
 }
 // The stack's frames after the error's message: a message is what a player may have typed, and may carry lines that look like frames.
 export function stackFrames(err, stack = err?.stack) {
-  const text = String(stack ?? ""), msg = String(err?.message ?? "");
+  if (!(err instanceof Error) || typeof err.stack !== "string") return [];      // a thrown string or plain object has no stack of ours: whatever it carries is not one
+  const text = String(stack ?? ""), msg = String(err.message ?? "");
   const header = msg ? `${err?.name}: ${msg}` : String(err?.name);      // how V8 begins a stack: exactly this, then the frames
   return text.startsWith(header) ? frames(text.slice(header.length)) : [];
 }
@@ -110,13 +111,16 @@ const frameText = (f) => `${f.fn} (${f.file}:${f.line})`;
 export const topFrame = (stack, err) => { const fs = err ? stackFrames(err, stack) : frames(stack); return fs.find((f) => f.file.startsWith("packages/")) ?? fs[0] ?? null; };
 // An error's message may hold what a player typed (`Unknown spell ${action.spell}`), so none goes in a public issue except these shapes, with the value left out.
 export function publicMessage(err) {
-  const m = String(err?.message ?? "");
+  if (!(err instanceof Error)) return null;
+  const m = String(err.message ?? "");
   if (/^Cannot (read|set) properties of (undefined|null)/.test(m)) return `Cannot ${m.startsWith("Cannot set") ? "set" : "read"} properties of ${/of null/.test(m) ? "null" : "undefined"}`;
   if (/^[A-Za-z_$][\w$.]{0,80} is not (a function|iterable|a constructor|defined)$/.test(m)) return m;
   if (m === "Maximum call stack size exceeded") return m;
   return null;
 }
-const errorName = (err) => (/^[A-Za-z][A-Za-z0-9]{0,30}$/.test(String(err?.name)) ? String(err.name) : "Error");
+// Only the built-in error classes are named in a public issue; a name anything else chose is "Error".
+const ERROR_NAMES = new Set(["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError"]);
+const errorName = (err) => (err instanceof Error && ERROR_NAMES.has(err.name) ? err.name : "Error");
 
 // ---------- the issue ----------
 const KNOWN_TYPES = new Set([...ACTION_TYPES, "setPacks", "worldIndex"]);
@@ -254,7 +258,7 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
   // The crash: write the bundle, file or count the issue. Returns the bundle's name, or null when none was written (a kind that repeats too often).
   function engineCrash({ table, role, uid, action, err, journal }) {
     const t = now();
-    const full = String(err?.stack ?? err), stack = full.slice(0, 4000);
+    const full = err instanceof Error && typeof err.stack === "string" ? err.stack : "", stack = String(err?.stack ?? err).slice(0, 4000);
     const type = typeof action?.type === "string" ? action.type : "?";
     const top = topFrame(full, err);
     const kind = `${publicType(type)}|${top ? `${top.fn} ${top.file}` : "unknown"}`;

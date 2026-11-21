@@ -400,3 +400,27 @@ test("the health count names only action types the engine knows; bundles are cut
   const repo = createCrashes({ dir: tmp(), env: { FEEDBACK_GITHUB_REPO: "../x", FEEDBACK_GITHUB_TOKEN: "t" }, log: () => {} });
   assert.ok(repo);
 });
+
+test("a thrown string, a plain object with a stack field, and a custom-named error reach neither the issue nor the kind", async () => {
+  const gh = stub(), dir = tmp();
+  const crashes = createCrashes({ dir, env: ENV, build: () => "c1d5069", fetch: gh.fetch, log: () => {} });
+  const table = fakeTable();
+  class Evil extends Error { constructor(m) { super(m); this.name = "Evil-www.evil.example"; } }
+  const plain = { name: "TypeError", message: "m", stack: "TypeError: m\n    at pwn (/app/packages/www.evil.example/a.js:1:1)" };
+  const hostile = [
+    "undefined\n    at f (/app/packages/www.evil.example/a.js:1:1)",
+    plain,
+    new Evil("custom"),
+    Object.assign(new Error("m"), { name: "Pwned" }),
+  ];
+  for (const e of hostile) { crashes.engineCrash({ table, role: "dm", uid: "m", action: { type: "advanceTime" }, err: e }); await settle(); }
+  const all = JSON.stringify(gh.calls.map((c) => c.body));
+  assert.ok(!/evil|pwn|Pwned|Evil/i.test(all), "nothing hostile in any title or body");
+  assert.equal(stackFrames("a string").length, 0);
+  assert.equal(stackFrames(plain).length, 0);
+  assert.deepEqual(frames(plain.stack).length, 1, "frames() alone still reads text; the guard is in stackFrames");
+  // The string and the plain object have no frames and share one kind; the two real Errors have their own real frames (the name they chose is not read).
+  assert.equal(gh.calls.length, 2);
+  for (const c of gh.calls) assert.match(c.body.body, /- Error: Error\n/, "named Error whatever name was chosen");
+  assert.ok(gh.calls.some((c) => /Top frame: `unknown`/.test(c.body.body)));
+});
