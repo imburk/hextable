@@ -1299,7 +1299,7 @@ function cryptWithWolf(dm, state) {
 }
 const fightHere = (dm, state) => dm.say({ t: "act", action: { type: "startEncounter", center: state.entities.m1.pos, radius: 30 } });
 const turns = (dm, state, n) => { for (let i = 0; i < n && state.encounter; i++) dm.say({ t: "act", action: aiStep(state, current(state)) ?? { type: "endTurn", actor: current(state) } }); };
-const withoutDice = (state) => JSON.stringify({ ...state, rng: null, seq: null, timeline: null });
+const withoutDice = (state) => JSON.stringify({ ...state, rng: null, seq: null, fightSeq: null, timeline: null });
 
 test("rewind: the DM takes the table back to the start of the fight, with new dice; undo brings the lost fight back", () => {
   const tables = createTables({ seed: () => 5 });

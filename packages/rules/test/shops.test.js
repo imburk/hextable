@@ -3,7 +3,8 @@
 // round the party's camp.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apply, ACTION_TYPES } from "../src/engine.js";
+import { apply as applyRaw, ACTION_TYPES } from "../src/engine.js";
+import { playerShop } from "../src/shopids.js";
 import * as H from "../src/hex.js";
 import { footprint } from "../src/space.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
@@ -14,6 +15,13 @@ import { PREGENS } from "../src/content/index.js";
 
 const DM = { role: "dm", userId: "dm" };
 const PAT = { role: "player", userId: "pat" }, KIM = { role: "player", userId: "kim" }, LEE = { role: "player", userId: "lee" };
+// A player names a shop by the number they were given (shopids.js), so the tests, which hold the shops' own ids, turn one that has a number into it
+// for a player's action. A shop with none (never shown) is sent as it is, and is refused as any other id is.
+const apply = (s, a, ctx) => {
+  if (ctx?.role !== "player") return applyRaw(s, a, ctx);
+  const n = (id) => playerShop(s, id) ?? id;
+  return applyRaw(s, { ...a, ...(typeof a.shop === "string" ? { shop: n(a.shop) } : {}), ...(a.about && typeof a.about.shop === "string" ? { about: { ...a.about, shop: n(a.about.shop) } } : {}) }, ctx);
+};
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const no = (r, error) => { assert.equal(r.ok, false); if (error) assert.equal(r.error, error); return r; };
 const GP = 100;
@@ -75,7 +83,7 @@ test("import a market, open three shops from one template, add a special to two;
   no(apply(s, { type: "shopEdit", shop: "s1", add: [{ id: "rope", name: "Rope", price: "2 GP", kind: "gear" }] }, DM), "Harbour Outfitter has a line \"rope\" already.");
   no(apply(s, { type: "shopEdit", shop: "s3", add: [{ id: "bad", item: "wand-of-magic-misiles" }] }, DM));
   for (const id of ids) ok(apply(s, { type: "showShop", shop: id, to: "all" }, DM));
-  const shelf = (id) => viewShops(s, PAT).find((x) => x.id === id).lines.map((l) => `${l.id}:${l.price}`).sort();
+  const shelf = (id) => viewShops(s, PAT).find((x) => x.id === playerShop(s, id)).lines.map((l) => `${l.id}:${l.price}`).sort();
   assert.deepEqual(shelf("s1"), ["longsword:1500", "potion-of-healing:5000", "rations:50", "ring-of-swimming:40000", "rope:100"]);
   assert.deepEqual(shelf("s3"), ["longsword:1500", "potion-of-healing:5000", "rations:50", "rope:100"]);
   // Version 2 of the pack makes rope 2 GP: every shop reading the list has it.
@@ -175,11 +183,11 @@ test("a hidden line and a store not shown never reach a player message, a view o
   }
   // Revealed, the special turns up with its price, for those the store is shown to.
   const rev = act({ type: "revealGoods", shop, line: "canary-orb" }, DM);
-  assert.deepEqual(viewEvents(rev.events, s, KIM), [{ type: "goodsRevealed", shop, line: "canary-orb", name: "CANARY ORB", price: 99900, qty: 1 }]);
-  assert.ok(viewShops(s, KIM).find((x) => x.id === shop).lines.some((l) => l.id === "canary-orb"));
+  assert.deepEqual(viewEvents(rev.events, s, KIM), [{ type: "goodsRevealed", shop: playerShop(s, shop), line: "canary-orb", name: "CANARY ORB", price: 99900, qty: 1 }]);
+  assert.ok(viewShops(s, KIM).find((x) => x.id === playerShop(s, shop)).lines.some((l) => l.id === "canary-orb"));
   // Shown to Pat alone: Kim is told it was taken from them, and from then on hears nothing of it.
   const hid = act({ type: "showShop", shop, to: ["pat"] }, DM);
-  assert.deepEqual(viewEvents(hid.events, s, KIM), [{ type: "shopHidden", shop }]);
+  assert.deepEqual(viewEvents(hid.events, s, KIM), [{ type: "shopHidden", shop: playerShop(s, shop) }]);
   assert.deepEqual(viewEvents(hid.events, s, PAT), []);
   assert.deepEqual(viewShops(s, KIM), []);
   const later = act({ type: "buy", actor: "fighter", shop, line: "rope" }, PAT);
@@ -225,8 +233,8 @@ test("a table saved at version 27 migrates to 28: no markets, no shops, purses c
   s.entities.cleric.coins = "35 gp";
   s.entities.wizard.coins = {};
   migrate(s);
-  assert.equal(VERSION, 28);
-  assert.equal(s.version, 28);
+  assert.equal(VERSION, 29);
+  assert.equal(s.version, 29);
   assert.deepEqual([s.markets, s.shops], [[], []]);
   assert.deepEqual(s.entities.fighter.coins, { gp: 12 });
   for (const id of ["rogue", "cleric", "wizard"]) assert.equal(s.entities[id].coins, undefined, id);
@@ -359,7 +367,7 @@ test("loot packages: take a line, take coins, the DM shares the coins out; give 
   assert.deepEqual(r.events[0].each, { sp: 10, gp: 25 });
   assert.deepEqual(r.events[0].left, { sp: 1 });
   assert.deepEqual(s.entities.rogue.coins, { gp: 45, sp: 10 });
-  assert.deepEqual(viewShops(s, PAT)[0], { id: box, kind: "loot", name: "A strongbox", lines: [{ id: "dagger", name: "Dagger", item: "dagger", kind: "weapon", qty: 1 }], coins: { sp: 1 } });
+  assert.deepEqual(viewShops(s, PAT)[0], { id: playerShop(s, box), kind: "loot", name: "A strongbox", lines: [{ id: "dagger", name: "Dagger", item: "dagger", kind: "weapon", qty: 1 }], coins: { sp: 1 } });
   // give coins, and take them back.
   ok(apply(s, { type: "give", actor: "fighter", coins: { pp: 2 } }, DM));
   no(apply(s, { type: "give", actor: "fighter", coins: { pp: 3 }, take: true }, DM), "Brenna has no 3 PP to take.");
@@ -404,7 +412,7 @@ test("a joint purchase ended because its buyer's player was dropped from the sto
   assert.deepEqual(s.shops[0].joint[0].pledges, {});
   const r = ok(apply(s, { type: "showShop", shop, to: ["kim"] }, DM));
   assert.equal(r.events.find((e) => e.type === "jointEnded").why, "hidden");
-  assert.deepEqual(viewEvents(r.events, s, KIM).filter((e) => e.type === "jointEnded"), [{ type: "jointEnded", shop, joint: "j1", why: "ended" }]);
+  assert.deepEqual(viewEvents(r.events, s, KIM).filter((e) => e.type === "jointEnded"), [{ type: "jointEnded", shop: playerShop(s, shop), joint: "j1", why: "ended" }]);
   // A pledger who leaves the table ends the purchase.
   ok(apply(s, { type: "showShop", shop, to: "all" }, DM));
   s.entities.cleric.pos = { ...s.entities.fighter.pos, q: s.entities.fighter.pos.q + 1, r: s.entities.fighter.pos.r - 1 };
