@@ -36,13 +36,13 @@ const dying = (e, death = { s: 0, f: 0 }) => Object.assign(e, { hp: 0, cond: { u
 
 test("W1: a Long Rest restores Hit Points, slots and features, and lowers Exhaustion by one level", () => {
   const s = newGame(3), { fighter, wizard } = s.entities;
-  fighter.hp = 3; fighter.uses.secondWind = 0;
+  fighter.hp = 3; fighter.uses["second-wind"] = 0;        // a built Fighter keeps its uses under the feature's id
   wizard.slots[1] = 0;
   ok(apply(s, { type: "condition", actor: "fighter", condition: "exhaustion", level: 3 }, DM));
   ok(apply(s, { type: "condition", actor: "wizard", condition: "exhaustion", level: 1 }, DM));
   ok(apply(s, { type: "rest" }, DM));
   assert.equal(fighter.hp, fighter.maxHp);
-  assert.equal(fighter.uses.secondWind, fighter.features.secondWind);
+  assert.equal(fighter.uses["second-wind"], fighter.feats.find((f) => f.id === "second-wind").uses.max);
   assert.deepEqual(wizard.slots, wizard.slotsMax);
   assert.equal(fighter.cond.exhaustion.level, 2);
   assert.equal(wizard.cond.exhaustion, undefined);

@@ -7,7 +7,7 @@ const SPELL_IDS = { fireBolt: 'fire-bolt', sacredFlame: 'sacred-flame', magicMis
 const MONSTER_IDS = { goblin: 'goblin-warrior' };
 
 import { migrateMap } from './map.js';
-import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
+import { MONSTERS, MONSTER_ACTIONS, PREGENS, PREGEN_SHEETS } from './content/index.js';
 import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
@@ -231,6 +231,14 @@ export function migrate(state) {
     if (MONSTER_IDS[e.tpl]) e.tpl = MONSTER_IDS[e.tpl];
   }
   for (const entry of state.timeline ?? []) if (SPELL_IDS[entry.spell]) entry.spell = SPELL_IDS[entry.spell];
+  // The four starter heroes are built from sheets now (#672), so they level up. A game saved before has them as hand-typed records:
+  // each one that is still exactly what the pack typed (the same name, class, level, scores, Hit Points and Armor Class) is given its sheet and
+  // nothing else, so no number changes today; the sheet is what Level up and Refresh from sheet then work from. One the DM changed by hand
+  // (a corrected score, a different level) is left typed, as it was. No version of its own: running it again finds nothing to do.
+  for (const e of Object.values(state.entities)) {
+    const t = e.kind === 'pc' && !e.sheet && Object.hasOwn(PREGENS, e.id) ? PREGENS[e.id] : null;
+    if (t && e.tpl === undefined && e.name === t.name && e.cls === t.cls && e.level === t.level && e.maxHp === t.hp && e.ac === t.ac && JSON.stringify(e.abil) === JSON.stringify(t.abil)) e.sheet = structuredClone(PREGEN_SHEETS[e.id]);
+  }
   // Version 10: a creature made from a pack monster plays from its actions (Multiattack, breath
   // weapons, saves), carried on the creature. One saved before then takes them from its template.
   for (const e of Object.values(state.entities)) if (!e.actions && MONSTER_ACTIONS[e.tpl]) e.actions = structuredClone(MONSTER_ACTIONS[e.tpl]);

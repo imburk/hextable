@@ -22,6 +22,7 @@ import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
 import { slotChoices } from './upcast.js';
 import { shownName } from './tracker.js';
+import { levelUpChip } from './levelup.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
@@ -200,6 +201,8 @@ export function featureRows(S, e, { mode = null } = {}) {
     const f = (e.feats ?? []).find((x) => `feat:${x.id}` === r.id);
     if (!f) return r;
     const a = f.action, fr = free.find((x) => x.id === f.id);
+    // A feature that only heals its user (Second Wind of a built Fighter) is greyed at full Hit Points, as the hand-typed Second Wind was: the engine would spend the use for nothing.
+    if (!r.why && r.kind === 'send' && a?.target?.self && a.effects?.length && a.effects.every((x) => x.heal !== undefined) && e.hp >= e.maxHp) return { ...r, why: `${e.name} is at full Hit Points.` };
     // A feature that costs a spell slot (`cost.slot`): the row says so, with the lowest level and what a higher slot adds (the chooser of classes.js lets the player pick the level).
     if (r.kind === 'chooser' && slotAim(f)) return { ...r, sub: slotSub(e, f) };
     if (fr && r.kind === 'none') {
@@ -863,6 +866,7 @@ export function initActionPanel(ctx) {
       $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
       $('c-ac').textContent = showNumbers ? `AC ${acShown(S, e, ctx.isDM()).ac}` : '';
       $('btn-sheet').hidden = !showNumbers;
+      setHtml($('c-level'), showNumbers && e.kind === 'pc' ? levelUpChip(S, e, { dm: ctx.isDM() }) : '');      // XP reached the next level: Level up (the DM), or why not (#672)
       $('btn-end').hidden = !(my && enc && cur === e.id);
       // A companion's player may hand its turns to the engine's companion brain (companions.md, Decision 9): { type: 'companion', actor, auto }.
       let letIt = $('btn-let');
