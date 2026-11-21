@@ -1,0 +1,572 @@
+[
+ {
+  "type": "scene",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "sceneStart",
+    "scene": "sc1",
+    "title": "The inn"
+   }
+  ],
+  "sam": [
+   {
+    "type": "sceneStart",
+    "scene": "sc1",
+    "title": "The inn"
+   }
+  ],
+  "vpat": "ab9873bf8703533e",
+  "vsam": "ab9873bf8703533e"
+ },
+ {
+  "type": "sceneNpc",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "sceneNpc",
+    "scene": "sc1",
+    "npc": "npc1",
+    "name": "Barkeep",
+    "change": "added"
+   }
+  ],
+  "sam": [
+   {
+    "type": "sceneNpc",
+    "scene": "sc1",
+    "npc": "npc1",
+    "name": "Barkeep",
+    "change": "added"
+   }
+  ],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "say",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "say",
+    "from": "pat",
+    "as": null,
+    "name": "Pat",
+    "text": "Hello",
+    "scene": "sc1",
+    "line": 1
+   }
+  ],
+  "sam": [
+   {
+    "type": "say",
+    "from": "pat",
+    "as": null,
+    "name": "Pat",
+    "text": "Hello",
+    "scene": "sc1",
+    "line": 1
+   }
+  ],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "say",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "say",
+    "from": "pat",
+    "as": "fighter",
+    "name": "Brenna",
+    "text": "In character",
+    "scene": "sc1",
+    "line": 2
+   }
+  ],
+  "sam": [
+   {
+    "type": "say",
+    "from": "pat",
+    "as": "fighter",
+    "name": "Brenna",
+    "text": "In character",
+    "scene": "sc1",
+    "line": 2
+   }
+  ],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "say",
+  "ok": false,
+  "error": "You can speak only as your own character.",
+  "pat": [],
+  "sam": [],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "say",
+  "ok": false,
+  "error": "You can speak only as your own character.",
+  "pat": [],
+  "sam": [],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "say",
+  "ok": false,
+  "error": "You can speak only as your own character.",
+  "pat": [],
+  "sam": [],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "say",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "say",
+    "from": "dm",
+    "as": "npc1",
+    "name": "Barkeep",
+    "text": "Welcome",
+    "scene": "sc1",
+    "line": 3
+   }
+  ],
+  "sam": [
+   {
+    "type": "say",
+    "from": "dm",
+    "as": "npc1",
+    "name": "Barkeep",
+    "text": "Welcome",
+    "scene": "sc1",
+    "line": 3
+   }
+  ],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "say",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "say",
+    "from": "sam",
+    "as": "cleric",
+    "name": "Odessa",
+    "text": "Bless you",
+    "scene": "sc1",
+    "line": 4
+   }
+  ],
+  "sam": [
+   {
+    "type": "say",
+    "from": "sam",
+    "as": "cleric",
+    "name": "Odessa",
+    "text": "Bless you",
+    "scene": "sc1",
+    "line": 4
+   }
+  ],
+  "vpat": "0aa4ab405dd38840",
+  "vsam": "0aa4ab405dd38840"
+ },
+ {
+  "type": "advanceTime",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "time",
+    "minutes": 1
+   }
+  ],
+  "sam": [
+   {
+    "type": "time",
+    "minutes": 1
+   }
+  ],
+  "vpat": "05af6cce8e2ef172",
+  "vsam": "05af6cce8e2ef172"
+ },
+ {
+  "type": "say",
+  "ok": false,
+  "error": "This scene has gone on long enough. Start a new one.",
+  "pat": [],
+  "sam": [],
+  "vpat": "05af6cce8e2ef172",
+  "vsam": "05af6cce8e2ef172"
+ },
+ {
+  "type": "say",
+  "ok": false,
+  "error": "This scene has gone on long enough. Start a new one.",
+  "pat": [],
+  "sam": [],
+  "vpat": "05af6cce8e2ef172",
+  "vsam": "05af6cce8e2ef172"
+ },
+ {
+  "type": "say",
+  "ok": false,
+  "error": "This scene has gone on long enough. Start a new one.",
+  "pat": [],
+  "sam": [],
+  "vpat": "05af6cce8e2ef172",
+  "vsam": "05af6cce8e2ef172"
+ },
+ {
+  "type": "endScene",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "sceneEnd",
+    "scene": "sc1",
+    "title": "The inn"
+   }
+  ],
+  "sam": [
+   {
+    "type": "sceneEnd",
+    "scene": "sc1",
+    "title": "The inn"
+   }
+  ],
+  "vpat": "f50f902148b03279",
+  "vsam": "f50f902148b03279"
+ },
+ {
+  "type": "spawn",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "spawned",
+    "id": "m11"
+   }
+  ],
+  "sam": [
+   {
+    "type": "spawned",
+    "id": "m11"
+   }
+  ],
+  "vpat": "b53d99f821c2df02",
+  "vsam": "b53d99f821c2df02"
+ },
+ {
+  "type": "startEncounter",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "encounterStart",
+    "fight": 12,
+    "where": "The valley",
+    "center": {
+     "q": -6,
+     "r": 2,
+     "z": 0
+    },
+    "radius": 30,
+    "order": [
+     {
+      "id": "m5"
+     },
+     {
+      "id": "rogue",
+      "init": 19,
+      "dex": 17,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 16
+       }
+      ],
+      "bonus": 3
+     },
+     {
+      "id": "m11"
+     },
+     {
+      "id": "m3"
+     },
+     {
+      "id": "wizard",
+      "init": 15,
+      "dex": 14,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 13
+       }
+      ],
+      "bonus": 2
+     },
+     {
+      "id": "fighter",
+      "init": 15,
+      "dex": 13,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 14
+       }
+      ],
+      "bonus": 1
+     },
+     {
+      "id": "m2"
+     },
+     {
+      "id": "m4"
+     },
+     {
+      "id": "m6"
+     },
+     {
+      "id": "cleric",
+      "init": 5,
+      "dex": 10,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 5
+       }
+      ],
+      "bonus": 0
+     },
+     {
+      "id": "m1"
+     }
+    ]
+   },
+   {
+    "type": "turn",
+    "id": "m5",
+    "round": 1
+   }
+  ],
+  "sam": [
+   {
+    "type": "encounterStart",
+    "fight": 12,
+    "where": "The valley",
+    "center": {
+     "q": -6,
+     "r": 2,
+     "z": 0
+    },
+    "radius": 30,
+    "order": [
+     {
+      "id": "m5"
+     },
+     {
+      "id": "rogue",
+      "init": 19,
+      "dex": 17,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 16
+       }
+      ],
+      "bonus": 3
+     },
+     {
+      "id": "m11"
+     },
+     {
+      "id": "m3"
+     },
+     {
+      "id": "wizard",
+      "init": 15,
+      "dex": 14,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 13
+       }
+      ],
+      "bonus": 2
+     },
+     {
+      "id": "fighter",
+      "init": 15,
+      "dex": 13,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 14
+       }
+      ],
+      "bonus": 1
+     },
+     {
+      "id": "m2"
+     },
+     {
+      "id": "m4"
+     },
+     {
+      "id": "m6"
+     },
+     {
+      "id": "cleric",
+      "init": 5,
+      "dex": 10,
+      "dice": [
+       {
+        "sides": 20,
+        "value": 5
+       }
+      ],
+      "bonus": 0
+     },
+     {
+      "id": "m1"
+     }
+    ]
+   },
+   {
+    "type": "turn",
+    "id": "m5",
+    "round": 1
+   }
+  ],
+  "vpat": "351f9bfc6b39b8cd",
+  "vsam": "351f9bfc6b39b8cd"
+ },
+ {
+  "type": "move",
+  "ok": false,
+  "error": "It isn't Brenna's turn.",
+  "pat": [],
+  "sam": [],
+  "vpat": "351f9bfc6b39b8cd",
+  "vsam": "351f9bfc6b39b8cd"
+ },
+ {
+  "type": "endTurn",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "turn",
+    "id": "rogue",
+    "round": 1
+   }
+  ],
+  "sam": [
+   {
+    "type": "turn",
+    "id": "rogue",
+    "round": 1
+   }
+  ],
+  "vpat": "840c98a5a1b491fb",
+  "vsam": "840c98a5a1b491fb"
+ },
+ {
+  "type": "endTurn",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "turn",
+    "id": "m11",
+    "round": 1
+   }
+  ],
+  "sam": [
+   {
+    "type": "turn",
+    "id": "m11",
+    "round": 1
+   }
+  ],
+  "vpat": "fc116369e91f2906",
+  "vsam": "fc116369e91f2906"
+ },
+ {
+  "type": "endEncounter",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "encounterEnd",
+    "result": "ended",
+    "rounds": 1,
+    "fight": 12
+   }
+  ],
+  "sam": [
+   {
+    "type": "encounterEnd",
+    "result": "ended",
+    "rounds": 1,
+    "fight": 12
+   }
+  ],
+  "vpat": "0f1dea656eb54eda",
+  "vsam": "0f1dea656eb54eda"
+ },
+ {
+  "type": "shortRest",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "rest",
+    "short": true
+   }
+  ],
+  "sam": [
+   {
+    "type": "rest",
+    "short": true
+   }
+  ],
+  "vpat": "7320635d6e5d1022",
+  "vsam": "7320635d6e5d1022"
+ },
+ {
+  "type": "rest",
+  "ok": true,
+  "error": null,
+  "pat": [
+   {
+    "type": "rest"
+   }
+  ],
+  "sam": [
+   {
+    "type": "rest"
+   }
+  ],
+  "vpat": "d83cc532bc30e7e6",
+  "vsam": "d83cc532bc30e7e6"
+ }
+]

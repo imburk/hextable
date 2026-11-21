@@ -1433,6 +1433,49 @@ A14 waits for DEBT P12. The work can stop after any row: after A4 a DM can run t
 example solo and add a second module; after A6 a DM runs a campaign of one-map
 modules at a table with their scenes, handouts and encounters.
 
+### Build notes: A1 (the format and the linter, PR #610)
+
+What was settled while building `adventure.js`, where the spec was silent or two parts disagreed. Each is the build's
+choice, open to the owner.
+
+- **Result shape.** `lintAdventure` returns `{ ok, problems, more, unsupported, missing, unused, encounters }`. `ok` means
+  nothing refuses the module; `unsupported` (the atlas, markets, stores, an embedded pack, `start.node`, a link's `from` and
+  `node`) are named as "not in this game yet" and do not refuse it; `missing` is the lean copy's pictures; `unused` the
+  pictures no section names. It never throws: anything unexpected is one refusal sentence. The JSON form's reader also returns
+  `notices` (fingerprints not checked when no hash function is given).
+- **`needs.homebrew`** that is not empty is refused (Decision 3, until homebrew B5); an embedded `homebrew` section in an
+  SRD-only module is refused.
+- **Settings.** Keys are `SETTINGS` plus `characters` and `takeaway`; `level` is a whole level or `{ min, max }` (Decision 2
+  writes one, `portable-characters.md` the other). **Any other key is refused**, including `role`, `dm` and `members`;
+  hostile case 18's "named and dropped" is not built, since it conflicts with case 11 and Decision 5's closed lists.
+- **Text.** No control characters, U+2028, U+2029 or direction overrides anywhere; a line feed, carriage return and tab are
+  allowed in the long-text fields only (read-aloud, notes, dm, roleplay, tactics, text, weather, blurb, attribution, srd),
+  as the engine's `cleanText` keeps them.
+- **Caps the spec did not give**: `by` 200 letters, `licence.attribution` 500, `licence.srd` 1,000, any one string 8,000, a key
+  200, ids 40, a scene's `present` 20 (the scene limit), party sizes 1 to 12, nesting 16 counting the document as level 1, 100
+  problems kept. "40 creatures each" is the sum of `count` in one encounter, and "1,000 in all" the sum over the module;
+  placing stops once the total is over.
+- **Creatures.** A cell holds one creature (`count` above 1 is refused: use a region). Placing is `spawn`'s own standing and
+  fit tests, in the order of the region's cell list, first free cell for each, no dice. `placeIn` computes afresh on every
+  call; the linter's working copy lives for one call.
+- **Maps.** Linted with `migrateMap` and `lintMap`, with a closed list of fields at every level of the map document (read
+  from `map.js` and the stock maps) and heights and points within 100,000 feet; a level's picture names the module's asset
+  id. `lintMap` is not total (`levels: [null]`, or an object where a string is expected, throws inside it); the call is
+  wrapped, and making `map.js` total is a follow-up outside A1.
+  The lists were read from every place that writes a map: `map.js` (`EDITS`, `migrateMap`), `client/editor.js` (a start and a
+  ladder's `to` carry `z`; an object's `at` may too), the Universal VTT importer and the stock maps; a pile's `contents` are
+  allowed (at most `PILE_MAX`, each with the keys `engine/world.js` reads). A pile's `by` and `left` are the play record of a
+  creature the party did not know of, and a module holds no progress, so they are refused as unknown fields: "Save as
+  module" (A9) must drop them. A map's own `lintMap` sentences are listed before the module's field-list ones.
+- **Links.** `{ to, text }`; `from` and `node` are read and reported as not in this game yet (A11).
+- **Licence statement.** `SRD_ATTRIBUTION` is the text of `reference/srd52/README.md` ("SRD 5.2", straight quotes), as
+  Decision 9 says. `content/srd52/pack.js` says "SRD 5.2.1" and `client/about.js` has curly quotes. **Question for the owner:**
+  which is the module's statement?
+- **The worked example does not lint as printed**, and the fixture (`test/fixtures/adventure-flooded-mill.json`) fixes it:
+  terrain `"wood"` is not a terrain (it is `stone`), the chest has no `state` (`"closed"`), and one-hex regions cannot hold six
+  rats (the cellar has 12 cells, the loft 4). A reader of the printed example should not copy those three.
+- **Not built in A1**: `summarise`, the market, world and pack linters, `libraryProblems`.
+
 ## Hostile file tests
 
 Each is a test in `modulezip.test.js`, `adventure.test.js` or the server's tests.
