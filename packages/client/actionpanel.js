@@ -46,6 +46,22 @@ export function reactionState(S, e, { dm = false } = {}) {
 }
 
 // The panel is a function of the state and the selected creature. `mine`: the viewer controls `e` (the DM controls all).
+// Whether a turn opens on Spells although the creature has attacks (issue 678). The rule: a character (not a monster, and not a creature in a form such as
+// Wild Shape, which opens on Attacks) opens on Spells when it can cast something worth casting and has no weapon worth using. "A weapon worth using" is any attack
+// that is not Unarmed Strike (with its Bonus Action twin, Grapple and Shove, which are rows of it) and not an improvised weapon; a cleric with a mace, or a paladin
+// with a greatsword, has one and opens on Attacks. "Something worth casting" is a spell that can be cast on this creature's turn at all (`time: 'action'`) and either a
+// cantrip whose roll is an attack or a saving throw, or a levelled spell with a slot left. The action economy is left out on purpose (a spent Action does not flip
+// the tab), and `initActionPanel` keeps the tab chosen at the start of a turn, so it does not change under the player when slots run out. A tab the player picked wins over all of this.
+export function opensOnSpells(S, e) {
+  if (e.form || e.actions || !e.spells?.length) return false;
+  if ((e.attacks ?? []).some((a) => !/^unarmed-strike/.test(a.id) && !/improvised/i.test(`${a.id} ${a.name}`) && a.weapon !== 'improvised')) return false;
+  return e.spells.some((id) => {
+    const sp = SPELLS[id];
+    if (!sp || sp.time !== 'action') return false;
+    return sp.level > 0 ? slotChoices(e, sp).length > 0 : sp.roll === 'attack' || /^save:/.test(sp.roll ?? '');
+  });
+}
+
 // Returns { situation, tabs: [{ id, label, built, ... }], default } with every tab the spec names; the shell draws the built ones.
 export function panelContext(S, e, { mine = true, dm = false } = {}) {
   if (!e) return { situation: 'none', tabs: [], default: null };
@@ -56,7 +72,7 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
   if (!fight) return { situation: 'explore', tabs: ['explore', 'spells', 'features', 'items'].map((id) => tab(id)), default: 'explore' };
   if (current(S) === e.id) {
     const armed = attackRows(S, e).length > 0;
-    return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed ? 'attacks' : 'spells' };
+    return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed && !opensOnSpells(S, e) ? 'attacks' : 'spells' };
   }
   const r = reactionState(S, e, { dm });
   return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending, free: r.free } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
@@ -886,6 +902,7 @@ export function initActionPanel(ctx) {
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
       if (sel.key !== key) sel = { key, tab: null };
       const tab = tabsNow.some((t) => t.id === sel.tab) ? sel.tab : defaultTab(ctxNow, tabsNow, { pref: pref(), last: last() });
+      if (ctxNow.situation === 'turn' && tab && !sel.tab) sel.tab = tab;       // the tab a turn opens on stays for the turn: spending the last slot does not move it (opensOnSpells)
 
       // the tabs
       tabsEl.hidden = tabsNow.length < 2;

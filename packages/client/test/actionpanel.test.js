@@ -12,7 +12,8 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, handRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { SPELLS } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
+const { opensOnSpells, panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, handRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { reactionsHtml } = await import(pathToFileURL(join(tmp, 'reactionsheet.js')));
 const { chooserButtons, kindOf, strikeChoices, payFor, optionWhy } = await import(pathToFileURL(join(tmp, 'classes.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
@@ -772,3 +773,50 @@ test('reactions: the familiarDamaged trigger has words in the sheet and the prom
   s.entities.mor.owner = 'u1';
   assert.equal(row().now, 'ask'); assert.equal(row().dflt, 'ask');
 });
+
+// ---------- #678: a caster with no weapon worth using opens its turn on Spells ----------
+{
+  const AB = { str: 12, dex: 14, con: 14, int: 16, wis: 14, cha: 16 };
+  const sheetOf = (o) => ({ name: 'Cas', level: 5, abilities: AB, skills: ['arcana', 'perception'], ...o });
+  const turnTab = (sheet, tweak) => {
+    const s = hero(sheetOf(sheet)); const e = inFightAs(s, 'hero'); tweak?.(s, e);
+    const c = panelContext(s, e, { dm: true });
+    return { s, e, c, tab: defaultTab(c, visibleTabs(c)) };
+  };
+  test('678: a wizard (no weapon, slots and cantrips) opens on Spells', () => {
+    const { e, tab } = turnTab({ class: 'wizard', spells: ['fire-bolt', 'mage-hand', 'magic-missile', 'shield'] });
+    assert.equal(opensOnSpells(newGame(7), e), true); assert.equal(tab, 'spells');
+  });
+  test('678: a fighter opens on Attacks', () => {
+    assert.equal(turnTab({ class: 'fighter', weapons: ['longsword'] }).tab, 'attacks');
+  });
+  test('678: a paladin with a greatsword (has spells and slots) opens on Attacks', () => {
+    const { e, tab } = turnTab({ class: 'paladin', weapons: ['greatsword'], spells: ['bless', 'cure-wounds'] });
+    assert.ok(e.spells?.length && Object.keys(e.slotsMax ?? {}).length, 'the paladin does cast'); assert.equal(tab, 'attacks');
+  });
+  test('678: a cleric with a mace and spells opens on Attacks', () => {
+    const { e, tab } = turnTab({ class: 'cleric', weapons: ['mace'], spells: ['guidance', 'sacred-flame', 'bless', 'cure-wounds'] });
+    assert.ok(e.spells?.length); assert.equal(tab, 'attacks');
+  });
+  test('678: a sorcerer out of slots but with an attack cantrip opens on Spells; with no such cantrip, on Attacks', () => {
+    const out = (s, e) => { for (const l of Object.keys(e.slots ?? {})) e.slots[l] = 0; };
+    const r = turnTab({ class: 'sorcerer', spells: ['fire-bolt', 'light', 'magic-missile', 'shield'] }, out);
+    assert.ok(r.e.spells.some((id) => SPELLS[id]?.level === 0 && (SPELLS[id].roll === 'attack' || /^save:/.test(SPELLS[id].roll ?? ''))), 'has an attack or save cantrip');
+    assert.equal(r.tab, 'spells');
+    assert.equal(turnTab({ class: 'sorcerer', spells: ['fire-bolt', 'light', 'magic-missile', 'shield'] }, (s, e) => { out(s, e); e.spells = e.spells.filter((id) => SPELLS[id]?.level > 0); }).tab, 'attacks', 'nothing left to cast: Attacks');
+  });
+  test('678: a druid in Wild Shape opens on Attacks', () => {
+    const s = hero(sheetOf({ class: 'druid', level: 6, weapons: [], spells: ['produce-flame', 'thorn-whip', 'entangle'] })), e0 = s.entities.hero;
+    assert.equal(opensOnSpells(s, e0), true, 'in its own shape a druid with no weapon opens on Spells');
+    ok(apply(s, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: 'wolf' }, DM));
+    const e = inFightAs(s, 'hero'); assert.ok(e.form, 'it is a wolf');
+    const c = panelContext(s, e, { dm: true });
+    assert.equal(defaultTab(c, visibleTabs(c)), 'attacks');
+  });
+  test('678: a tab the player picked is kept; only the default changes', () => {
+    const { c } = turnTab({ class: 'wizard', spells: ['fire-bolt', 'mage-hand', 'magic-missile', 'shield'] });
+    assert.equal(defaultTab(c, visibleTabs(c)), 'spells');
+    assert.equal(defaultTab(c, visibleTabs(c), { pref: 'remember', last: { turn: 'attacks' } }), 'attacks', 'a remembered choice beats the default');
+    assert.ok(visibleTabs(c).some((t) => t.id === 'attacks'), 'Attacks stays one tap away');
+  });
+}
