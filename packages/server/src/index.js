@@ -13,6 +13,7 @@
 import { createServer } from "node:http";
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { extname, join, normalize, sep } from "node:path";
@@ -42,7 +43,17 @@ const TYPES = {
 const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg"]);
 const GZIP_MIN = 1024;
 const gzipAsync = promisify(gzip);
-const siteCache = new Map();                 // target path -> { key: "mtimeMs:size", raw: Promise<Buffer>, gz: Promise<Buffer> | null }
+const siteCache = new Map();                 // target path -> { key: "mtimeMs:size", raw: Promise<Buffer>, gz: Promise<Buffer> | null, tag: string | null }
+
+// Validators (#646). Every file of the game is sent with a strong ETag (a hash of its bytes, taken once per read of the file, so a file
+// changed on disk, which the cache above notices by mtime and size on every request, gets a new tag) and `Cache-Control: no-cache`: the browser
+// keeps its copy and asks each time, and an unchanged file is answered 304 with no body. The gzipped form is other bytes, so its tag ends `-gzip`.
+const tagOf = (raw) => `"${createHash("sha256").update(raw).digest("base64url").slice(0, 27)}"`;
+// Does an If-None-Match header match this tag? The weak comparison of RFC 9110: `W/` is ignored, and `*` matches any file that exists.
+export function noneMatch(header, tag) {
+  if (typeof header !== "string") return false;
+  return header.split(",").some((x) => { const t = x.trim().replace(/^W\//, ""); return t === "*" || t === tag; });
+}
 
 // Does an Accept-Encoding header allow gzip? A listed q of 0 refuses it; "*" allows it unless gzip is listed.
 function acceptsGzip(header) {
@@ -64,15 +75,17 @@ async function siteFile(target, compress) {
   const key = `${st.mtimeMs}:${st.size}`;
   let e = siteCache.get(target);
   if (!e || e.key !== key) {
-    e = { key, raw: readFile(target), gz: null };
+    e = { key, raw: readFile(target), gz: null, tag: null };
     siteCache.set(target, e);
     e.raw.catch(() => { if (siteCache.get(target) === e) siteCache.delete(target); });
   }
   const raw = await e.raw;
-  if (!compress || raw.length < GZIP_MIN) return { body: raw, gzipped: false };
+  e.tag ??= tagOf(raw);
+  const tag = e.tag;
+  if (!compress || raw.length < GZIP_MIN) return { body: raw, gzipped: false, etag: tag };
   e.gz ??= gzipAsync(raw, { level: 9 });
-  try { return { body: await e.gz, gzipped: true }; }
-  catch { e.gz = null; return { body: raw, gzipped: false }; }
+  try { return { body: await e.gz, gzipped: true, etag: `${tag.slice(0, -1)}-gzip"` }; }
+  catch { e.gz = null; return { body: raw, gzipped: false, etag: tag }; }
 }
 
 // A frame is an action plus a little envelope. Until someone is seated as the DM, frames are small:
@@ -239,9 +252,11 @@ const server = createServer(async (req, res) => {
   try {
     const ext = extname(target);
     const text = COMPRESSIBLE.has(ext);
-    const { body, gzipped } = await siteFile(target, text && req.headers.range === undefined && acceptsGzip(req.headers["accept-encoding"]));
-    const headers = { "content-type": TYPES[ext] || "application/octet-stream", "content-length": body.length };
+    const { body, gzipped, etag } = await siteFile(target, text && req.headers.range === undefined && acceptsGzip(req.headers["accept-encoding"]));
+    const headers = { "content-type": TYPES[ext] || "application/octet-stream", etag, "cache-control": "no-cache" };
     if (text) headers.vary = "Accept-Encoding";
+    if (noneMatch(req.headers["if-none-match"], etag)) { res.writeHead(304, headers).end(); return; }       // the browser's copy is current: no body
+    headers["content-length"] = body.length;
     if (gzipped) headers["content-encoding"] = "gzip";
     res.writeHead(200, headers).end(body);
   } catch {
