@@ -70,7 +70,7 @@ export function opportunityAttack(o, s = null) {
 export function opportunityAttacks(o, s = null) {
   if (o.bond?.noAttack) return [];
   if (o.actions) return o.actions.filter((a) => !a.multiattack && a.target?.creature?.reach && a.effects[0]?.attack === 'melee');
-  const a = steadiest(o, (o.attacks ?? []).filter((x) => x.type === 'melee' && !handsFull(s, o, x)));
+  const a = steadiest(o, (o.attacks ?? []).filter((x) => x.type === 'melee' && !handsFull(s, o, x)), s);
   return a ? [a] : [];
 }
 

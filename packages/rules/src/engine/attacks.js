@@ -86,7 +86,7 @@ function reactToAttacker(s, e, ev) {
       const w = instruction(t, r, s);
       if (w === 'never') continue;
       const d = apart(s, t, e) * FT;
-      const atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !a.spell && !isUnarmed(a) && !handsFull(s, t, a) && d <= (a.reach ?? 5)));
+      const atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !a.spell && !isUnarmed(a) && !handsFull(s, t, a) && d <= (a.reach ?? 5)), s);
       if (!atk || !unblocked(s, t, e) || !sensesFor(s, t, e)) continue;
       if (w === 'ask') {
         // An attacker the party is not told of is not named in the question.

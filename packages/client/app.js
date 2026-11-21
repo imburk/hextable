@@ -605,17 +605,18 @@ function startSpell(e, id, armed) {
 const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
 // A spell that changes a weapon (Shillelagh, Magic Weapon; imbue.js) asks which weapon when more than one fits, and uses the only one otherwise.
 const imbueOf = (sp) => (sp?.def.effects ?? []).find((st) => st.imbue)?.imbue ?? null;
-const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitting(S, e, spec, ({ fx }) => fx.source === e.id && fx.spell === sp.id) : []; };
+// `holder`: the creature whose weapon it changes: the caster for a spell on itself, else the creature tapped (`mode.holder`), whose weapons are listed, not the caster's.
+const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitting(S, e, spec, ({ fx }) => fx.source === selId && fx.spell === sp.id) : []; };
+const holderOf = (sp) => (sp.aim === 'self' || sp.aim === 'none' ? selId : mode.holder ?? null);
 const choicesOf = (sp) => {
-  if (imbueOf(sp)) { const list = weaponsOf(S.entities[selId], sp); return list.length > 1 ? list.map((a) => a.id) : null; }
+  if (imbueOf(sp)) { const h = holderOf(sp), list = h ? weaponsOf(S.entities[h], sp) : []; return list.length > 1 ? list.map((a) => a.id) : null; }
   return sp?.def.choice ? sp.def.choice.from ?? CHOICES[sp.def.choice.of] : null;
 };
-const weaponName = (id) => S.entities[selId]?.attacks?.find((a) => a.id === id)?.name ?? id;
+const weaponName = (id) => S.entities[holderOf(SPELLS[mode.id]) ?? selId]?.attacks?.find((a) => a.id === id)?.name ?? id;
 function chosen(sp, holder = null) {
   if (imbueOf(sp)) {
-    // For another creature's weapon (Magic Weapon on an ally), the only one that fits is named by the engine; with more, the first (the screen does not yet pick among an ally's).
-    const own = !holder || holder === selId, list = own ? choicesOf(sp) : weaponsOf(S.entities[holder], sp).map((a) => a.id);
-    if (!list || list.length < 2) return {};
+    const list = weaponsOf(S.entities[holder ?? selId], sp).map((a) => a.id);
+    if (list.length < 2) return {};
     if (!list.includes(mode.choice)) mode.choice = list[0];
     return { weapon: mode.choice };
   }
@@ -773,7 +774,8 @@ function refresh() {
           if (most > 1 && picked.length) {
             hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
             go = true;
-          } else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
+          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then Cast`; go = true; }
+          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }
     }
@@ -1012,6 +1014,8 @@ R.onTap = ({ hex, id }) => {
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
     const most = spellMost(e, sp);
+    // A spell that changes a weapon, aimed at a creature with more than one it could change: the menu lists that creature's weapons, and Cast follows the choice.
+    if (imbueOf(sp) && most <= 1 && mode.holder !== id && weaponsOf(S.entities[id], sp).length > 1) { mode.holder = id; mode.choice = null; mode.picked = [id]; return refresh(); }
     if (most <= 1) return act(castAct({ target: id, ...chosen(sp, id) }));
     const picked = mode.picked ?? (mode.picked = []);
     if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back

@@ -289,3 +289,25 @@ test("homebrew monsters: one the DM hid outside the arena, through a fight, is i
   assert.ok(JSON.stringify(hidden.raw.dm).includes("Shape in the reeds"), "the DM has the creature");
   assert.ok(![HB_NAME, HB_TEXT, HB_NOTE, HB_ATTACK, WRAITH, "Shape in the reeds"].some((x) => everything(hidden).includes(x)));
 });
+
+// ---- imbue: what a refused Magic Weapon on a foe says of the foe's weapons (O4, #666) ----
+test("imbue: a player's Magic Weapon refused on a foe is told the same whether the foe's club is magic or it has no weapon", () => {
+  const club = { id: "club", name: "Club", weapon: "club", bonus: 4, damage: "1d4+2", dtype: "bludgeoning", type: "melee", die: "1d4", plus: 1, magic: true };
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", spells: [...(s.entities.fighter.spells ?? []), "magic-weapon"], slots: { 2: 2 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Foe" });
+      byName(w, "Foe").attacks = [];
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "fighter", spell: "magic-weapon", target: byName(w, "Foe").id, weapon: "club" }) },
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "fighter", spell: "magic-weapon", target: byName(w, "Foe").id }) },
+    ],
+  }, (w) => { byName(w, "Foe").attacks = [club]; });
+});

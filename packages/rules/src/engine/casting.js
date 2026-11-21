@@ -452,19 +452,23 @@ export const handlers = {
 // The weapon a spell with an `imbue` step changes (imbue.js; docs/specs/on-hit.md, Decision 8): `a.weapon` names one of the weapons of the creature it works on
 // (the key of its attack record, such as "quarterstaff"); with none named and only one that fits, that one. Refused, before anything is spent, when none fits
 // or more than one does and none is named. Returns the key, or null for a spell that changes no weapon.
-function imbueFor(s, e, sp, a, targets) {
+function imbueFor(s, e, sp, a, targets, ctx) {
   let step = null;
   walkSteps(sp.def.effects ?? [], (st) => { if (!step && 'imbue' in st) step = st; });
   if (!step) { a.weapon === undefined || fail(`${sp.name} changes no weapon: leave out "weapon".`); return null; }
   const holder = targets[0] ?? e, list = weaponsFor(s, holder, step.imbue, ({ fx }) => fx.source === e.id && fx.spell === sp.id), fits = list.filter(([, why]) => !why).map(([r]) => r);
   const nameOf = (r) => `${r.name} (${r.id})`;
+  // What the caster may be told of another's gear: for a creature outside the party (and to a player), only whether it has a weapon this can change (a refusal that listed weapons and reasons would tell a player what a foe carries).
+  const mine = ctx.role === 'dm' || holder.side === 'party';
+  const none = `${holder.name} has no weapon ${sp.name} can change`;
   if (a.weapon === undefined) {
     if (fits.length === 1) return fits[0].id;
-    if (fits.length > 1) fail(`Name the weapon ${sp.name} changes: ${fits.map(nameOf).join(', ')}.`);
-    fail(`${holder.name} has no weapon ${sp.name} can change${list.length ? ` (${list.map(([r, why]) => `${r.name}: ${why}`).join('; ')})` : ' (it has no weapon)'}.`);
+    if (fits.length > 1) mine ? fail(`Name the weapon ${sp.name} changes: ${fits.map(nameOf).join(', ')}.`) : fail(`Name the weapon ${sp.name} changes.`);
+    fail(mine ? `${none}${list.length ? ` (${list.map(([r, why]) => `${r.name}: ${why}`).join('; ')})` : ' (it has no weapon)'}.` : `${none}.`);
   }
   typeof a.weapon === 'string' || fail('Name the weapon by its id.');
-  const hit = list.find(([r]) => r.id === a.weapon) ?? fail(`${holder.name} has no weapon "${a.weapon}".`);
+  const hit = list.find(([r]) => r.id === a.weapon);
+  if (!hit || (hit[1] && !mine)) fail(mine ? `${holder.name} has no weapon "${a.weapon}".` : `${none}.`);
   if (hit[1]) fail(`${sp.name} can't change ${hit[0].name}: it is ${hit[1]}.`);
   return hit[0].id;
 }
@@ -558,7 +562,7 @@ function castSpell(s, a, ctx, ev, item) {
     const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx, via?.freeCast);
     const evo = item ? {} : evokerFor(e, sp, a, slot, via, targets);
     const repel = repelFor(e, sp, a);
-    const weapon = imbueFor(s, e, sp, a, targets);
+    const weapon = imbueFor(s, e, sp, a, targets, ctx);
 
     // What it costs.
     if (sp.level > 0 && (!via || paysSlot) && !item) {

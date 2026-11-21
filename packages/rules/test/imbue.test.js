@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { armed } from "../src/imbue.js";
+import { steadiest } from "../src/weapons.js";
 import { lintPack } from "../src/content/schema.js";
 import { newGame } from "../src/scenario.js";
 
@@ -189,5 +190,63 @@ test("the vocabulary: the entries lint, and a bad imbue is refused by the linter
   const bad = (i) => lintPack(spell(i), { strict: true }).length > 0;
   assert.equal(bad({ plus: 1 }), false);
   assert.equal(bad({ die: { byLevel: { 1: "1d8", 5: "1d10" } }, abil: "spell", types: ["force"], weapons: ["club"], melee: true, nonmagical: true, attackAdd: { mod: "cha", min: 1 } }), false);
-  for (const i of [{}, { plus: 7 }, { die: "big" }, { abil: "wis" }, { types: ["fluff"] }, { plus: 1, banana: true }, { weapons: [] }, { attackAdd: { mod: "xx" } }]) assert.equal(bad(i), true, JSON.stringify(i));
+  for (const i of [{}, { plus: 7 }, { die: "big" }, { abil: "wis" }, { types: ["fluff"] }, { plus: 1, banana: true }, { weapons: [] }, { attackAdd: { mod: "xx" } }, { die: "1000d1000" }, { die: "100d100" }]) assert.equal(bad(i), true, JSON.stringify(i));
+});
+
+test("Magic Weapon on an ally: the ally's weapons are listed, a recast replaces the first, and a chosen weapon is not overwritten by a default", () => {
+  const s = field(paladin(5, { weapons: ["longsword"] }));
+  s.entities.hero.spells.push("magic-weapon"); s.entities.hero.slots = { 2: 3, 3: 1 };
+  const ally = derive({ ...paladin(5, { weapons: ["longsword", "mace"] }), name: "Ally" }).record;
+  s.entities.rogue = makeEntity(ally, { id: "rogue", kind: "pc", side: "party", pos: { q: 0, r: 1, z: 0 } });
+  const have = [...new Set(s.entities.rogue.attacks.filter((a) => a.weapon).map((a) => a.id.replace(/-(two-handed|thrown)$/, "")))];
+  assert.ok(have.length >= 2, `the ally has two weapons: ${have}`);
+  no(apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "rogue" }, DM), new RegExp(`Name the weapon.*${have[1]}`));
+  ok(apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "rogue", weapon: have[0] }, DM));
+  assert.equal(imbued(s, "rogue").length, 1);
+  // The recast on the same ally, from a higher slot: the first no longer makes the weapon magic, so it is not refused.
+  ok(apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "rogue", weapon: have[0], slot: 3 }, DM));
+  assert.equal(imbued(s, "rogue").length, 1);
+  assert.equal(imbued(s, "rogue")[0].parts[0].imbue.plus, 2);
+});
+
+test("Wild Shape does not end Magic Weapon or Shillelagh: a creature in a form keeps its gear", () => {
+  const s = field(druid(2, { weapons: ["quarterstaff"] }));
+  ok(apply(s, { type: "cast", actor: "hero", spell: "shillelagh" }, DM));
+  s.entities.hero.form = { id: "wolf" };
+  s.entities.hero.attacks = [];
+  ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+  assert.equal(imbued(s).length, 1, "still in force in the form");
+});
+
+test("an old record that could be a magic item is refused for Magic Weapon until it is remade", () => {
+  const s = field(paladin(5, { weapons: ["longsword"] }));
+  s.entities.hero.spells.push("magic-weapon"); s.entities.hero.slots = { 2: 2 };
+  for (const a of s.entities.hero.attacks) { delete a.die; a.id = `item-i1${a.id.slice("longsword".length)}`; }
+  no(apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "hero", weapon: "item-i1" }, DM), /before the engine could tell/);
+  assert.equal(s.entities.hero.slots[2], 2);
+});
+
+test("a refusal does not tell a player what a foe carries", () => {
+  const s = field(paladin(5, { weapons: ["longsword"] }));
+  s.entities.hero.spells.push("magic-weapon"); s.entities.hero.slots = { 2: 2 };
+  s.entities.hero.owner = "pat"; s.entities.hero.ownerName = "Pat";
+  const P = { role: "player", userId: "pat" };
+  const refused = (m) => apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "m1", ...m }, P);
+  const club = { id: "club", name: "Club", weapon: "club", bonus: 4, damage: "1d4+2", dtype: "bludgeoning", type: "melee", die: "1d4" };
+  s.entities.m1.attacks = [{ ...club, plus: 1, magic: true }];
+  const a = refused({ weapon: "club" }), b = refused({});
+  s.entities.m1.attacks = [];
+  const c = refused({ weapon: "club" }), d = refused({});
+  // The same words whether its club is magic, it has none, or the weapon named is not there.
+  for (const r of [a, b, c, d]) { assert.equal(r.ok, false); assert.equal(r.error, a.error); }
+  assert.doesNotMatch(a.error, /\(|already|not a|club/i);
+  // A DM, and the party's own, are told why.
+  s.entities.m1.attacks = [{ ...club, plus: 1, magic: true }];
+  no(apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "m1", weapon: "club" }, DM), /already a magic weapon/);
+});
+
+test("an Opportunity Attack and a Reaction prefer the imbued weapon record", () => {
+  const s = field(druid(1, { weapons: ["quarterstaff", "club"] }));
+  ok(apply(s, { type: "cast", actor: "hero", spell: "shillelagh", weapon: "club" }, DM));
+  assert.equal(steadiest(s.entities.hero, s.entities.hero.attacks.filter((a) => a.weapon && a.type === "melee"), s).weapon, "club");
 });

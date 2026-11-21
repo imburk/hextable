@@ -1258,7 +1258,7 @@ export function reactAgainst(s, t, e, on, ev, why) {
 // player when it says `ask`. It attacks with its first melee attack, as an Opportunity Attack is made (weapons.js, steadiest: not a Heavy one it is weak with, if another will do).
 // Returns true if it was taken.
 function strikeBack(s, t, e, r, ev, why) {
-  const x = r.reaction, atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, t, a)));       // one it may make (weapons.js)
+  const x = r.reaction, atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, t, a)), s);       // one it may make (weapons.js)
   if (!atk || t.actions || apart(s, t, e) * FT > x.within) return false;
   if (atk.reach !== undefined && apart(s, t, e) * FT > atk.reach) return false;
   const w = instruction(t, r);
@@ -1636,6 +1636,7 @@ export function settleImbue(s, ev) {
     for (const p of fx.parts) {
       if (!p.imbue || p.ended) continue;
       const h = Object.hasOwn(s.entities, p.target) ? s.entities[p.target] : null;
+      if (h?.form && !h.dead) continue;                                  // in a form (Wild Shape) its gear is still its own, held or not
       if (h && !h.dead && (h.attacks ?? []).some((a) => a.weapon && weaponKey(a) === p.imbue.weapon)) continue;
       p.ended = true; ended = true;
     }

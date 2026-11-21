@@ -3,6 +3,7 @@
 // monster AI (ai.js), so they cannot disagree. Only an attack that names its weapon (`atk.weapon`, a built character's) has
 // properties: a monster's stat-block attack is the creature's own and is held to none.
 import { CONTENT } from './content/index.js';
+import { armed } from './imbue.js';
 
 const weaponOf = (atk) => (typeof atk?.weapon === 'string' ? CONTENT.weapons[atk.weapon] ?? null : null);
 export const isLoading = (atk) => !!weaponOf(atk)?.properties?.includes('loading');
@@ -82,4 +83,8 @@ export const spareStrike = (e, a) => a.id === 'unarmed-strike' && !e.sheet?.weap
 // Among attacks a creature may make (in its own order), the one it takes: the first, unless that swings a Heavy weapon with
 // Disadvantage and another allowed weapon attack does not, then the first of those. The spare Unarmed Strike is not another weapon
 // to prefer: a character with only a Heavy weapon still swings it. Returns the first when none is better, undefined for none.
-export const steadiest = (e, list) => list.find((a) => !heavyWeak(e, a) && !spareStrike(e, a)) ?? list[0];
+// With the game (`s`), an attack with a weapon a spell or feature has changed (imbue.js) comes before the plain ones: a Druid's Opportunity Attack is made with the Shillelagh staff.
+export const steadiest = (e, list, s = null) => {
+  const lead = s ? [...list.filter((a) => armed(s, e, a).imbued), ...list.filter((a) => !armed(s, e, a).imbued)] : list;
+  return lead.find((a) => !heavyWeak(e, a) && !spareStrike(e, a)) ?? lead[0];
+};

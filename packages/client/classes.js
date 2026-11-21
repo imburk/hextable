@@ -14,6 +14,7 @@ import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gridOf } from './shared/grid.js';
 import { conditionName, modifiers } from './shared/modifiers.js';
 import { mod } from './shared/derive.js';
+import { armed } from './shared/imbue.js';
 
 const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', free: 'No action' };
 export const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[cr] ?? String(cr);
@@ -669,6 +670,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   const attackExtra = (st) => ({ ...(st.use ? { use: st.use } : {}), ...(st.brutal ? { brutal: st.brutal } : {}), ...(st.cunning.length ? { cunning: [...st.cunning] } : {}) });
   function strikePanel(e, a) {
     const ch = strikeChoices(S(), e, a) ?? { brutal: null, cunning: null, use: null }, key = `${e.id}:strike:${a.id}`;
+    const shown = armed(S(), e, a);                      // the numbers as a spell or feature has changed them (imbue.js)
     const st = mem(key, () => ({ brutal: null, cunning: [], use: null }));
     if (!ch.use || ch.use.why) st.use = null;
     if (!ch.brutal || ch.brutal.why || !ch.brutal.options.some((o) => o.id === st.brutal)) st.brutal = null;
@@ -705,7 +707,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     }
     const names = [st.use ? ch.use.name : '', st.brutal ? ch.brutal.options.find((o) => o.id === st.brutal).name : '', ...st.cunning.map((id) => ch.cunning.options.find((o) => o.id === id).name)].filter(Boolean);
     return {
-      key, title: `${a.name}: strike options`, note: `${signedN(a.bonus)} to hit, ${a.damage} ${a.dtype}. Pick what goes with this attack, then tap the target. Nothing picked is a plain attack.`, body,
+      key, title: `${a.name}: strike options`, note: `${signedN(shown.bonus)} to hit, ${shown.damage} ${shown.alt ? `${shown.dtype} or ${shown.alt.join(' or ')}` : shown.dtype}. Pick what goes with this attack, then tap the target. Nothing picked is a plain attack.`, body,
       buttons: [{ label: names.length ? `Choose target (${names.join(' + ')})` : 'Choose target', primary: true, id: 'cp-use', run: () => { close(); armAttack({ id: a.id, ...(names.length ? { label: names.join(' + '), extra: attackExtra(st) } : {}) }); } }],
       reopen: () => strikePanel(e, a),
     };

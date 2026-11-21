@@ -86,9 +86,10 @@ export function weaponsFor(s, e, spec, skip = null) {
     if (spec.weapons && !spec.weapons.includes(a.weapon)) why = `not a ${spec.weapons.map((id) => CONTENT.weapons[id]?.name ?? id).join(' or ')}`;
     else if (spec.melee && w?.kind !== 'melee') why = 'not a Melee weapon';
     else if (spec.nonmagical && now.magic) why = 'already a magic weapon';
+    else if (spec.nonmagical && !baked(a) && (key.startsWith('item-') || a.magic || a.plus > 0)) why = 'made before the engine could tell whether it is magic; remake it first';
     out.push([a, why]);
   }
   return out;
 }
 // Of those, the ones that fit.
-export const fitting = (s, e, spec) => weaponsFor(s, e, spec).filter(([, why]) => !why).map(([a]) => a);
+export const fitting = (s, e, spec, skip = null) => weaponsFor(s, e, spec, skip).filter(([, why]) => !why).map(([a]) => a);
