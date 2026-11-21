@@ -14,6 +14,7 @@ import { autoPlays } from './shared/ai.js';
 import { aiAction } from './standin.js';
 import { conditionName, conditionPhrase } from './shared/modifiers.js';
 import { holdWords, heldEndText, noteText, previewState, targetRefusals } from './grapple.js';
+import { slotMenu, slotFor } from './upcast.js';
 import { inReach, aimFeet, reachEdge, farWords } from './aimrange.js';
 import { offerOf, offers, waitingFor, reachOf, moveLabel, forgoLabel, offerWords, waitWords, giveUpLabel } from './allowance.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
@@ -569,12 +570,22 @@ const CP = initCompanions({ state: () => S, act: (a) => act(a), toast: (m) => to
 // An item casts at the lowest caster level, at `level` when extra charges raise it.
 const castAct = (aim) => (mode.item
   ? { type: 'use', actor: selId, item: mode.item.key, which: mode.item.which, ...(mode.item.level > mode.item.base ? { level: mode.item.level } : {}), ...aim }
-  : { type: 'cast', actor: selId, spell: mode.id, ...(mode.deliver ? { deliver: mode.deliver } : {}), ...aim });
-const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level ?? mode.item.base) : CLS.most(e, sp, targetCount(sp.def, e.level)));
+  : { type: 'cast', actor: selId, spell: mode.id, ...(mode.deliver ? { deliver: mode.deliver } : {}), ...slotArg(S.entities[selId], SPELLS[mode.id]), ...aim });
+// The slot a levelled spell is cast with (issue #604): the one chosen in the hint bar while it is armed, else the lowest left at its level or above.
+// Sent as `slot` only above the spell's own level (the engine's default); a spell from an item has its own level. The engine checks it.
+const slotOf = (e, sp) => slotFor(e, sp, mode.kind === 'spell' && mode.id === sp.id && !mode.item ? mode.slot : null);
+const slotArg = (e, sp) => { const l = e && sp.level > 0 ? slotOf(e, sp) : null; return l && l > sp.level ? { slot: l } : {}; };
+const spellMost = (e, sp) => (mode.item ? targetCount(sp.def, 1, mode.item.level ?? mode.item.base) : CLS.most(e, sp, targetCount(sp.def, e.level, slotOf(e, sp) ?? sp.level)));
+// A spell with nothing to aim is cast on the spot, unless there is a slot to choose first: then it is armed, and the hint bar asks (Cast / Cancel).
+const selfCast = (e, id) => {
+  const sp = SPELLS[id];
+  if (slotMenu(e, sp)) return setMode({ kind: 'spell', id, aim: null, keep: false, picked: [] });
+  act({ type: 'cast', actor: e.id, spell: id, ...slotArg(e, sp), ...chosen(sp) });
+};
 function startSpell(e, id, armed) {
   const sp = SPELLS[id];
   if (isSummon(id)) return armed ? setMode(MOVE) : CP.openChooser(e, id);       // a summon asks for its picks first (companions.js)
-  if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id, ...chosen(sp) });
+  if (sp.aim === 'self' || sp.aim === 'none') { if (armed) setMode(MOVE); else selfCast(e, id); }
   else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] });
 }
 // A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
@@ -596,6 +607,16 @@ function showPick() {
   sel.value = mode.choice;
 }
 $('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; };
+// The slot to cast a levelled spell with (issue #604): shown while it is armed when the caster has more than one level to pay with and a higher one adds something.
+function showSlot() {
+  const sel = $('hint-slot'), e = S.entities[selId], sp = mode.kind === 'spell' && !mode.item ? SPELLS[mode.id] : null, menu = sp && e ? slotMenu(e, sp) : null;
+  sel.hidden = !menu || $('hint').hidden;
+  if (sel.hidden) return;
+  const key = `${sp.id}|${menu.levels.map((r) => r.label).join('|')}`;
+  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = menu.levels.map((r) => `<option value="${r.level}">${esc(r.label)}</option>`).join(''); }
+  sel.value = String(slotOf(e, sp));
+}
+$('hint-slot').onchange = (ev) => { mode.slot = +ev.target.value; refresh(); };
 
 // What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
 function aimHow(area, range) {
@@ -702,14 +723,15 @@ function refresh() {
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
-        if (sp.area) {
+        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the slot, then Cast`; go = true; }
+        else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
           const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
           hl.area = hexes.map(cellKey);
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(cellCol(x.pos)));
           const how = aimHow(sp.area, sp.range);
           // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
-          if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, mode.item ? spellMost(e, sp) : targetCount(sp.def, e.level)).map((x) => x.id);
+          if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, spellMost(e, sp)).map((x) => x.id);
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
           hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
@@ -746,7 +768,7 @@ function refresh() {
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
   hintWords(offer, waits);
-  showPick();
+  showPick(); showSlot();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
   R.setHighlights(ED.on ? ED.marks() : hl);
@@ -956,6 +978,7 @@ R.onTap = ({ hex, id }) => {
   }
   if (mode.kind === 'spell') {
     const sp = SPELLS[mode.id];
+    if (sp.aim === 'self' || sp.aim === 'none') return;       // armed only to choose the slot: Cast or Cancel in the hint bar
     if (sp.area) return aimTap(hex);
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
@@ -1007,6 +1030,7 @@ $('hint-go').onclick = () => {
 };
 function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
+  else if (SPELLS[mode.id].aim === 'self' || SPELLS[mode.id].aim === 'none') act(castAct({ ...chosen(SPELLS[mode.id]) }));
   else if (SPELLS[mode.id].area) {
     const sp = SPELLS[mode.id], me = S.entities[selId];
     // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.
@@ -1240,7 +1264,7 @@ function syncCards() {
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   armAttack: (m) => setMode({ kind: 'attack', ...m }),
-  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') act({ type: 'cast', actor: e.id, spell: id }); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
+  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') selfCast(e, id); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
