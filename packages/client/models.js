@@ -38,10 +38,18 @@ export function clipFor(clips, beat) {
 }
 
 // Which model of a pack a creature is drawn with (Decision 4): its monster's id, then its creature type (`typeOf(monster id)`), then the
-// character's own `look.model`, then its class. null is the pawn. Only a model the pack really has is answered.
+// character's own `look.model`, then its class; a creature in a form, its form's monster first. null is the pawn. Only a model the pack really has is answered.
 export function modelFor(pack, e, typeOf = () => null) {
   if (!pack?.models || !e) return null;
   const has = (id) => (typeof id === 'string' && Object.hasOwn(pack.models, id) ? id : null);
+  // A creature in a form (Wild Shape, Polymorph: rules forms.js) is drawn as the form's monster; with no model for it, as the pawn of its
+  // new size, never as its own model, so the change can be seen.
+  const block = typeof e.form?.block === 'string' ? e.form.block : null;
+  if (block) {
+    const own = has(pack.byId?.[block]); if (own) return own;
+    const type = typeOf(block), byType = type && has(pack.byType?.[type]); if (byType) return byType;
+    return null;
+  }
   if (e.tpl) {
     const own = has(pack.byId?.[e.tpl]); if (own) return own;
     const type = typeOf(e.tpl), byType = type && has(pack.byType?.[type]); if (byType) return byType;
