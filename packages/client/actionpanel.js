@@ -47,14 +47,21 @@ export function reactionState(S, e, { dm = false } = {}) {
 
 // The panel is a function of the state and the selected creature. `mine`: the viewer controls `e` (the DM controls all).
 // Whether a turn opens on Spells although the creature has attacks (issue 678). The rule: a character (not a monster, and not a creature in a form such as
-// Wild Shape, which opens on Attacks) opens on Spells when it can cast something worth casting and has no weapon worth using. "A weapon worth using" is any attack
-// that is not Unarmed Strike (with its Bonus Action twin, Grapple and Shove, which are rows of it) and not an improvised weapon; a cleric with a mace, or a paladin
-// with a greatsword, has one and opens on Attacks. "Something worth casting" is a spell that can be cast on this creature's turn at all (`time: 'action'`) and either a
-// cantrip whose roll is an attack or a saving throw, or a levelled spell with a slot left. The action economy is left out on purpose (a spent Action does not flip
-// the tab), and `initActionPanel` keeps the tab chosen at the start of a turn, so it does not change under the player when slots run out. A tab the player picked wins over all of this.
+// Wild Shape, which opens on Attacks) opens on Spells when it can cast something worth casting and has no weapon worth using; otherwise Attacks.
+// "A weapon worth using" is a weapon attack that hits for 5.5 or more on average (WEAPON_WORTH: a Mace with a +2 modifier, a Rapier, a Greatsword). Unarmed Strike (with its
+// Bonus Action twin, Grapple and Shove, which are rows of it), improvised weapons and the d4 and d6 weapons a wizard carries (a Dagger, a Quarterstaff, also two-handed) are not: a
+// wizard's cantrip beats them and grows with level. So a cleric with a mace and a paladin with a greatsword open on Attacks, a wizard with a dagger on Spells.
+// "Something worth casting" is a spell that can be cast on this creature's turn at all (`time: 'action'`) and either a cantrip whose roll is an attack or a
+// saving throw, or a levelled spell with a slot left. The action economy is left out on purpose (a spent Action does not flip the tab), and `initActionPanel` keeps
+// the tab a turn opened on, so it does not move under the player when the last slot goes. A tab the player picked wins over all of this.
+export const WEAPON_WORTH = 5.5;
+const damageAvg = (d) => {
+  const m = /^\s*(?:(\d+)d(\d+))?\s*([+-]\s*\d+)?\s*$/.exec(String(d ?? ''));
+  return m ? (m[1] ? (+m[1] * (+m[2] + 1)) / 2 : 0) + (m[3] ? +m[3].replace(/\s/g, '') : 0) : 0;
+};
 export function opensOnSpells(S, e) {
   if (e.form || e.actions || !e.spells?.length) return false;
-  if ((e.attacks ?? []).some((a) => !/^unarmed-strike/.test(a.id) && !/improvised/i.test(`${a.id} ${a.name}`) && a.weapon !== 'improvised')) return false;
+  if ((e.attacks ?? []).some((a) => !/^unarmed-strike|-two-handed$/.test(a.id) && !/improvised/i.test(`${a.id} ${a.name}`) && damageAvg(a.damage) >= WEAPON_WORTH)) return false;
   return e.spells.some((id) => {
     const sp = SPELLS[id];
     if (!sp || sp.time !== 'action') return false;

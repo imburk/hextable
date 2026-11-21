@@ -787,6 +787,9 @@ test('reactions: the familiarDamaged trigger has words in the sheet and the prom
     const { e, tab } = turnTab({ class: 'wizard', spells: ['fire-bolt', 'mage-hand', 'magic-missile', 'shield'] });
     assert.equal(opensOnSpells(newGame(7), e), true); assert.equal(tab, 'spells');
   });
+  test('678: a wizard with only a dagger or a quarterstaff still opens on Spells', () => {
+    assert.equal(turnTab({ class: 'wizard', weapons: ['dagger', 'quarterstaff'], spells: ['fire-bolt', 'magic-missile'] }).tab, 'spells');
+  });
   test('678: a fighter opens on Attacks', () => {
     assert.equal(turnTab({ class: 'fighter', weapons: ['longsword'] }).tab, 'attacks');
   });
@@ -795,7 +798,7 @@ test('reactions: the familiarDamaged trigger has words in the sheet and the prom
     assert.ok(e.spells?.length && Object.keys(e.slotsMax ?? {}).length, 'the paladin does cast'); assert.equal(tab, 'attacks');
   });
   test('678: a cleric with a mace and spells opens on Attacks', () => {
-    const { e, tab } = turnTab({ class: 'cleric', weapons: ['mace'], spells: ['guidance', 'sacred-flame', 'bless', 'cure-wounds'] });
+    const { e, tab } = turnTab({ class: 'cleric', abilities: { ...AB, str: 14 }, weapons: ['mace'], spells: ['guidance', 'sacred-flame', 'bless', 'cure-wounds'] });
     assert.ok(e.spells?.length); assert.equal(tab, 'attacks');
   });
   test('678: a sorcerer out of slots but with an attack cantrip opens on Spells; with no such cantrip, on Attacks', () => {
