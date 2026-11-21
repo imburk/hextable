@@ -34,5 +34,6 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Travel](travel.md) | Atlas of nested maps, places, parking, journeys, vessels | Draft; W1 to W3 built |
 | [Shops and loot](shops.md) | Market pack, shops, purses, haggling | Draft; P1, P2, P3a built |
 | [Adventure modules](adventure-module.md) | A zip the DM prepares and adds to a game | Draft; A0b (the zip library) built |
+| [Legendary actions and Legendary Resistance](legendary.md) | The window after each turn, the DM's one-tap choice, Legendary Resistance asked of the DM, the monster data (DEBT M5) | Draft; nothing built |
 
 Still to write: prompts (reactions and decisions made after a roll), persistent world and the AI DM interface.
