@@ -70,17 +70,17 @@ async function pass(browser, url, label, opts, grid) {
       await run.do('a new Druid or Cleric starts with no spell chosen: Prepared 0 of 4, only the always-prepared spell ticked and greyed, Save says what is missing (#637)', async () => {
         await page.selectOption('#lobby-slot-4', '__new'); await waitShown(page, '#qb');
         for (const [cls, always] of [['druid', ['speak-with-animals']], ['cleric', []]]) {
-          await page.selectOption('#qb-class', cls);
-          await wait(page, () => document.querySelector('#qb-spell-counts'));
+          await openSec(page, 'who'); await page.selectOption('#qb-class', cls);
+          await openSec(page, 'spells'); await wait(page, () => document.querySelector('#qb-spell-counts'));
           const got = await page.evaluate(() => ({ counts: document.querySelector('#qb-spell-counts').textContent,
-            ticked: [...document.querySelectorAll('#qb input[id^="qb-spell-"]:checked')].map((i) => ({ id: i.id.slice(9), off: i.disabled, label: i.parentElement.textContent })),
-            problems: [...document.querySelectorAll('#qb-problems li')].map((l) => l.textContent), saveOff: document.querySelector('#qb-save').disabled }));
+            ticked: [...document.querySelectorAll('#qb input[id^="qb-spell-"]:checked')].map((i) => ({ id: i.id.slice(9), off: i.disabled, label: i.closest('[data-row]').textContent })),
+            problems: [...document.querySelectorAll('#qb-problems li')].map((l) => l.textContent), saveOff: document.querySelector('#qb-save').disabled, why: document.querySelector('#qb-save-why')?.textContent ?? '' }));
           if (!/Prepared spells 0 of 4/.test(got.counts)) throw new Error(`${cls}: counts say "${got.counts}"`);
           if (got.ticked.map((t) => t.id).join() !== always.join()) throw new Error(`${cls}: ticked ${got.ticked.map((t) => t.id)}, want ${always}`);
-          if (got.ticked.some((t) => !t.off || !/always prepared/.test(t.label))) throw new Error(`${cls}: a ticked spell is not the greyed always-prepared one: ${JSON.stringify(got.ticked)}`);
-          if (!got.saveOff || !got.problems.some((x) => /chooses 2 skills/.test(x))) throw new Error(`${cls}: Save does not say what is missing: ${got.problems}`);
+          if (got.ticked.some((t) => !t.off || !/always prepared/i.test(t.label))) throw new Error(`${cls}: a ticked spell is not the greyed always-prepared one: ${JSON.stringify(got.ticked)}`);
+          if (!got.saveOff || !got.problems.some((x) => /chooses 2 skills/.test(x)) || !/Save is greyed/.test(got.why)) throw new Error(`${cls}: Save does not say what is missing: ${got.problems} / ${got.why}`);
         }
-        await tap('#qb-startover'); await tap('#qb-startover');         // the draft is not kept for the next step
+        await openSec(page, 'who'); await page.selectOption('#qb-class', await page.$eval('#qb-class option', (o) => o.value));       // back to the first class: the sheet is as it opened, so no draft is kept for the next step
         await tap('#qb-close'); await waitShown(page, '#qb', false);
       });
 
