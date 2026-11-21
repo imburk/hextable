@@ -499,8 +499,8 @@ test("an ordinary move is a small message, and patches leak nothing a full view 
   const mine = JSON.stringify(player.raw.at(-1)), theirs = JSON.stringify(dm.raw.at(-1));
   assert.ok(player.raw.at(-1).patch);
   assert.ok(fullSize > 20000);
-  assert.ok(mine.length < 3000, `a move cost the player ${mine.length} bytes`);       // a patch carries the whole record of whoever moved: a hero built from a sheet is about 2.5 KB (#672)
-  assert.ok(theirs.length < 3000, `a move cost the DM ${theirs.length} bytes`);
+  assert.ok(mine.length < 2800, `a move cost the player ${mine.length} bytes`);       // a patch carries the whole record of whoever moved: a hero built from a sheet is about 2.5 KB (#672)
+  assert.ok(theirs.length < 2800, `a move cost the DM ${theirs.length} bytes`);
 
   // A monster moves: the player's patch carries its public record only.
   dm.say({ t: "act", action: { type: "move", actor: "m1", to: freeHex(state, "m1") } });

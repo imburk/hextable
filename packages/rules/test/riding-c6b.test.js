@@ -319,6 +319,7 @@ for (const grid of GRIDS) {
     assert.ok(asked, "Ann is asked");
     // (Brenna is built from her sheet now, so her Unarmed Strike's grapple Opportunity Attack is offered too: the two that matter here are the weapon one on the mount and the one on its rider.)
     const sans = (list) => list.filter((o) => o.reaction !== "opportunity-attack-grapple");
+    assert.deepEqual(asked.ask.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER, "opportunity-attack-grapple"], "a built hero's list is exactly these three");
     assert.deepEqual(sans(asked.ask.options).map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
     assert.equal(sans(asked.ask.options)[1].against, a.gob);
     assert.equal(asked.ask.by, a.horse, "set off by the mount");

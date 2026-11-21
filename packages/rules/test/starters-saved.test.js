@@ -38,3 +38,23 @@ test("an old save's starter, once it has its sheet, levels up and keeps what pla
   const e = s.entities.fighter;
   assert.deepEqual([e.level, e.xp, e.gear.includes("Rope"), e.hp > 5], [2, 300, true, true]);
 });
+
+test("an old save's starter stays typed when the DM edited anything the sheet would derive again", () => {
+  const edits = {
+    fighter: (e) => { e.attacks[0].damage = "1d10+3"; },
+    rogue: (e) => { e.gear.push("Rope"); },
+    cleric: (e) => { e.spells.push("bless"); },
+    wizard: (e) => { e.skills.push("stealth"); },
+  };
+  for (const [id, edit] of Object.entries(edits)) {
+    const old = typedGame(4); edit(old.entities[id]);
+    assert.equal(migrate(structuredClone(old)).entities[id].sheet, undefined, `${id} edited by hand stays typed`);
+  }
+  for (const [id, edit] of Object.entries({ fighter: (e) => { e.speed = 40; }, rogue: (e) => { e.saveProf.push("wis"); }, cleric: (e) => { e.features = { x: 1 }; }, wizard: (e) => { e.resist = ["fire"]; } })) {
+    const old = typedGame(4); edit(old.entities[id]);
+    assert.equal(migrate(structuredClone(old)).entities[id].sheet, undefined, `${id} (speed, saves, features, resistance)`);
+  }
+  const play = typedGame(4), f = play.entities.fighter;      // play state alone does not count
+  f.hp = 3; f.xp = 500; f.uses.secondWind = 0; f.cond.prone = {}; f.coins = { gp: 5 }; f.pos = { q: 1, r: 1, z: 0 };
+  assert.ok(migrate(structuredClone(play)).entities.fighter.sheet);
+});

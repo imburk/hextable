@@ -236,8 +236,7 @@ export function migrate(state) {
   // nothing else, so no number changes today; the sheet is what Level up and Refresh from sheet then work from. One the DM changed by hand
   // (a corrected score, a different level) is left typed, as it was. No version of its own: running it again finds nothing to do.
   for (const e of Object.values(state.entities)) {
-    const t = e.kind === 'pc' && !e.sheet && Object.hasOwn(PREGENS, e.id) ? PREGENS[e.id] : null;
-    if (t && e.tpl === undefined && e.name === t.name && e.cls === t.cls && e.level === t.level && e.maxHp === t.hp && e.ac === t.ac && JSON.stringify(e.abil) === JSON.stringify(t.abil)) e.sheet = structuredClone(PREGEN_SHEETS[e.id]);
+    if (e.kind === 'pc' && !e.sheet && Object.hasOwn(PREGENS, e.id) && isPackStarter(e, PREGENS[e.id])) e.sheet = structuredClone(PREGEN_SHEETS[e.id]);
   }
   // Version 10: a creature made from a pack monster plays from its actions (Multiattack, breath
   // weapons, saves), carried on the creature. One saved before then takes them from its template.
@@ -249,6 +248,22 @@ export function migrate(state) {
   // Also version 11: a monster's Initiative modifier, from the template (only where the SRD gives one).
   for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
   return state;
+}
+
+// Is this creature still the starter the pack typed, in everything the pack says (its numbers, attacks, gear, skills, spells, saves, features), with nothing
+// added by hand? Play state (Hit Points, conditions, uses, slots spent, XP, place, look, owner, purse) does not count. The sheet derives all of it again at the next
+// Level up or Refresh, so a starter the DM edited in any of these is left typed: those edits would be lost.
+const PLAY_KEYS = new Set(['hp', 'tempHp', 'cond', 'uses', 'slots', 'xp', 'pos', 'look', 'id', 'kind', 'side', 'owner', 'ownerName', 'coins', 'death', 'dead', 'reactionUsed', 'maxHp', 'slotsMax', 'initiative']);
+const DERIVED_EMPTY = ['speeds', 'senses', 'saveBonus', 'skillBonus', 'resist', 'vuln', 'immune'];
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function isPackStarter(e, t) {
+  if (e.tpl !== undefined || e.maxHp !== t.hp || !same(e.slotsMax ?? {}, t.slots ?? {}) || (e.size ?? 'medium') !== 'medium') return false;
+  for (const k of Object.keys(t)) if (!['hp', 'slots'].includes(k) && !same(e[k], t[k])) return false;
+  for (const k of ['skills', 'expertise', 'tools', 'spells']) if (t[k] === undefined && !same(e[k] ?? [], [])) return false;
+  if (t.features === undefined && !same(e.features ?? {}, {})) return false;
+  for (const k of DERIVED_EMPTY) if (!same(e[k] ?? (['resist', 'vuln', 'immune'].includes(k) ? [] : {}), ['resist', 'vuln', 'immune'].includes(k) ? [] : {})) return false;
+  const known = new Set([...Object.keys(t), ...PLAY_KEYS, ...DERIVED_EMPTY, 'level', 'size', 'features', 'skills', 'expertise', 'tools', 'spells']);
+  return Object.keys(e).every((k) => known.has(k));
 }
 
 const isRec = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
