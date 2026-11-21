@@ -33,8 +33,10 @@ export function featureButtons(S, e) {
     const live = !!(S.effects ?? []).find((fx) => fx.source === e.id && fx.feature === f.id);
     const why = (time && blocked(S, e, time)) || (f.uses && !(f.action.renew && live) && left < cost && `${e.name} has no uses of ${f.name} left.`) ||
       (f.action.unless === 'heavy' && e.armour === 'heavy' && `${e.name} can't use ${f.name} in Heavy armor.`) || (!time && blocked(S, e, null)) || '';
-    out.push({ label: live && f.action.renew ? `${f.name} (extend)` : f.name, cls: time === 'bonus' || f.action.time === 'free' ? 'bonus' : '', why,
-      sub: [TIME[f.action.time], f.uses ? `${left} left` : ''].filter(Boolean).join(' · '), send: { type: 'feature', actor: e.id, feature: f.id }, ...(aim ? { aim: f.id } : {}), feature: f.id, time: f.action.time });
+    // `withAttack` (imbue.js): used with the attack that takes the Attack action, chosen on that attack in the Attacks tab, never by itself.
+    const withAttack = f.action.withAttack === true;
+    out.push({ label: live && f.action.renew ? `${f.name} (extend)` : f.name, cls: time === 'bonus' || f.action.time === 'free' ? 'bonus' : '', why: withAttack ? `${f.name} is used with the attack that takes the Attack action: choose it on that weapon attack in the Attacks tab.` : why,
+      sub: [withAttack ? 'With the Attack action' : TIME[f.action.time], f.uses ? `${left} left` : ''].filter(Boolean).join(' · '), send: { type: 'feature', actor: e.id, feature: f.id }, ...(aim ? { aim: f.id } : {}), feature: f.id, time: f.action.time });
   }
   return out;
 }
