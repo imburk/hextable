@@ -29,7 +29,8 @@ import { initSettings } from './settings.js';
 import { aboutHTML } from './about.js';
 import { VERSION } from './shared/migrate.js';
 import { THEMES, setLook } from './themes.js';
-import { localTransport, serverTransport, savedSession, hasSoloGame, forgetSession, forgetSolo, prefs, downloadTable } from './transport.js';
+import { localTransport, serverTransport, savedSession, lastSession, hasSoloGame, forgetSession, forgetLastSession, forgetSolo, windowSoloKey, setWindowSoloKey, newCopyKey, SOLO_KEY, prefs, downloadTable } from './transport.js';
+import { claimWriter } from './solowriter.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
 import { initHandouts } from './handouts.js';
@@ -136,10 +137,10 @@ const summonedName = (st, e) => {
 };
 const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? 'Someone');
 
-function toast(msg, info = false) {
+function toast(msg, info = false, ms = info ? 1600 : 3200) {
   const el = $('toast');
   el.textContent = msg; el.classList.toggle('info', info); el.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), info ? 1600 : 3200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
 function setMode(m) { mode = m; refresh(); }
 R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
@@ -536,7 +537,7 @@ function idled() {
   const plays = cur && autoPlays(S, cur.id, { offline });
   // It also waits while a party creature holds movement from an Opportunity Attack (DEBT T93 4b): ending the mover's turn would lapse it before its player can act.
   // The DM's screen says who it waits for and can give the movement up for them (refresh, below).
-  if (plays && isDM() && $('dm-auto').checked && !tookBack && !autoWaits().length) {
+  if (plays && isDM() && !T.readOnly && $('dm-auto').checked && !tookBack && !autoWaits().length) {
     clearTimeout(aiTimer);
     // `wait`: the next step comes a short pause after the picture is still, so monsters act at the pace the DM sees; the
     // server never waits. Otherwise as before, 800 ms after the update. The table's homebrew is installed around the call (standin.js).
@@ -1271,6 +1272,9 @@ function start(transport, map = null) {
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
   T = transport; S = null;
+  if (!T.solo) { soloClaim?.release(); soloClaim = null; }       // a table is not a solo save: let the claim go
+  $('readonly-bar').hidden = !T.readOnly;
+  T.on.saveError = (msg) => toast(msg, false, 12000);          // the browser would not keep the game (review R17)
   PK.attach(T);                 // the table's homebrew packs: kept while this table is open (packmanager.js)
   $('splash-text').textContent = T.solo ? 'Opening your game\u2026' : 'Connecting to the table\u2026';
   lobbyBusy(!T.solo);
@@ -1281,7 +1285,7 @@ function start(transport, map = null) {
     flick = null; refreshAsk = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
-    if (expired) { TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
+    if (expired) { if (rejoinedLast) forgetLastSession(); rejoinedLast = false; TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
     else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (three-build.js, arenaFlashCells)
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);
       if (lastMove && Date.now() - lastMove.at < 4000) window.dispatchEvent(new CustomEvent('hextable-arena-flash', { detail: lastMove.hex }));
@@ -1323,10 +1327,13 @@ function start(transport, map = null) {
   T.start();
 }
 // The lobby says what this device holds: a remembered table (Rejoin or Forget) and a saved solo game (Continue or New game).
+// A table belongs to the window that joined it (#625): this window's own seat, or, for a window with none, the one the device used last, offered as a suggestion.
 function showLobby(msg = '') {
-  const sess = savedSession(), solo = hasSoloGame();
+  const own = savedSession(), last = own ? null : lastSession(), sess = own ?? last, solo = hasSoloGame(windowSoloKey());
   $('lobby-remember').hidden = !sess;
-  if (sess) $('lobby-table').textContent = `This device remembers table ${sess.code}.`;
+  $('lobby-else').hidden = !last;
+  if (own) { $('lobby-table').textContent = `This window remembers table ${own.code}.`; $('lobby-rejoin').textContent = 'Rejoin'; }
+  else if (last) { $('lobby-table').textContent = `This window has no seat yet. This device last sat at table ${last.code}${last.name ? ` as ${last.name}` : ''}.`; $('lobby-rejoin').textContent = `Rejoin ${last.code}${last.name ? ` as ${last.name}` : ''}`; }
   $('lobby-solo').textContent = solo ? 'Continue solo game' : 'Play solo on this device';
   $('lobby-new').hidden = !solo;
   $('lobby-msg').textContent = msg;
@@ -1334,21 +1341,51 @@ function showLobby(msg = '') {
   $('lobby').hidden = false;
   (sess ? $('lobby-rejoin') : $('lobby-solo')).focus?.({ preventScroll: true });
 }
-$('lobby-rejoin').onclick = () => { const sess = savedSession(); if (!sess) return showLobby(); $('lobby-msg').textContent = `Rejoining table ${sess.code}\u2026`; start(serverTransport({ t: 'resume', ...sess })); };
-$('lobby-forget').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to forget', '', () => { forgetSession(); showLobby('Table forgotten.'); });
+let rejoinedLast = false;         // the table being rejoined came from the device's suggestion, not this window's own seat
+$('lobby-else').onclick = () => {
+  const last = lastSession(); $('lobby-remember').hidden = true;
+  if (last) $('lobby-code').value = last.code;
+  $('lobby-msg').textContent = 'Enter your name and Join: the DM lets you in as a new seat.'; $('lobby-name').focus?.({ preventScroll: true });
+};
+$('lobby-rejoin').onclick = () => { const own = savedSession(), sess = own ?? lastSession(); if (!sess) return showLobby(); rejoinedLast = !own; $('lobby-msg').textContent = `Rejoining table ${sess.code}\u2026`; start(serverTransport({ t: 'resume', code: sess.code, token: sess.token })); };
+$('lobby-forget').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to forget', '', () => { if (savedSession()) forgetSession(); else forgetLastSession(); showLobby('Table forgotten.'); });
 // A new solo game starts with the party chosen in the lobby (mycharacters.js); one that cannot be played is said, and nothing starts.
 const MC = initMyCharacters({ twoTap, toast });
-function newSolo() {
+function newSolo(key = windowSoloKey()) {
   const { party, problems } = MC.party();
   if (!party) { $('lobby-party').open = true; $('lobby-msg').textContent = `The party is not ready. ${problems[0]}`; return false; }
-  $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid(), party }), TC.lobbyChoice());
+  $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid(), party, saveKey: key }), TC.lobbyChoice());
   return true;
 }
-$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', () => { if (!MC.party().party) return newSolo(); forgetSolo(); newSolo(); });
+// ---------- one writer to a solo save (#625; solowriter.js) ----------
+// A window that plays a solo game holds it. A second window of this browser that asks for the same save is told, and may only look (read-only) or play on a copy.
+let soloClaim = null;
+async function soloGuard() {
+  const key = windowSoloKey();
+  if (soloClaim?.key === key) return key;
+  soloClaim?.release(); soloClaim = null;
+  const got = await claimWriter(key.slice('hextable.'.length));
+  if (got.ok) { soloClaim = { ...got, key }; return key; }
+  soloBusy(key); return null;
+}
+function soloBusy(key) {
+  const box = $('solo-busy'); box.hidden = false;
+  $('solo-busy-read').onclick = () => { box.hidden = true; $('lobby').hidden = true; start(localTransport({ saveKey: key, readOnly: true })); };
+  $('solo-busy-copy').onclick = async () => {
+    const copy = newCopyKey(), got = await claimWriter(copy.slice('hextable.'.length));
+    if (!got.ok) { $('solo-busy-msg').textContent = 'That copy could not be made. Try again.'; return; }
+    soloClaim?.release(); soloClaim = { ...got, key: copy }; setWindowSoloKey(copy); box.hidden = true; $('lobby').hidden = true;
+    start(localTransport({ saveKey: copy, copyOf: key, grid: TC.lobbyGrid(), party: MC.party().party ?? undefined }), TC.lobbyChoice());
+  };
+  $('solo-busy-close').onclick = () => { box.hidden = true; };
+  $('solo-busy-read').focus?.({ preventScroll: true });
+}
+$('readonly-copy').onclick = () => soloBusy(windowSoloKey());
+$('lobby-new').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to erase the saved game', '', async () => { const key = await soloGuard(); if (!key) return; if (!MC.party().party) return newSolo(key); forgetSolo(key); newSolo(key); });
 const lobbyName = () => $('lobby-name').value.trim() || 'Adventurer';
 $('lobby-host').onclick = () => { lobbyAt(['Host a table', 'Connecting'], leaveWaiting); start(serverTransport({ t: 'host', name: lobbyName(), grid: TC.lobbyGrid() }), TC.lobbyChoice()); };
 $('lobby-join').onclick = () => { const code = $('lobby-code').value.trim(); if (code) { lobbyAt(['Join a table', `Table ${code.toUpperCase()}`, 'Connecting'], leaveWaiting); start(serverTransport({ t: 'join', code, name: lobbyName() })); } else $('lobby-msg').textContent = 'Enter the table code your DM gave you.'; };
-$('lobby-solo').onclick = () => (hasSoloGame() ? ($('lobby').hidden = true, start(localTransport({ grid: TC.lobbyGrid() }), TC.lobbyChoice())) : newSolo());
+$('lobby-solo').onclick = async () => { const key = await soloGuard(); if (!key) return; if (hasSoloGame(key)) { $('lobby').hidden = true; start(localTransport({ grid: TC.lobbyGrid(), saveKey: key }), TC.lobbyChoice()); } else newSolo(key); };
 $('lobby-card').onsubmit = (ev) => ev.preventDefault();
 
 // ---------- the start flow says where you are, has a Back, and keeps what was filled in (issue #556; startflow.js) ----------
@@ -1390,6 +1427,6 @@ $('lobby-startover').onclick = (ev) => twoTap(ev.currentTarget, 'Tap again to cl
 (async () => {
   let server = false;
   try { const r = await fetch('./api/ping', { cache: 'no-store' }); server = r.ok && (await r.json()).ok === true; } catch { /* no table server: solo */ }
-  if (!server) return start(localTransport());
+  if (!server) { const key = await soloGuard(); if (key) start(localTransport({ saveKey: key })); return; }
   showLobby();
 })();

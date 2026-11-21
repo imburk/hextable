@@ -339,3 +339,9 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 @keyframes ping-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .hold-ring { animation: none; border-style: dashed; } .ping i { animation: none; } .ping-name { animation: none; }
   .hold-ring::after { content: 'Keep holding'; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 4px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; background: #000b; padding: 1px 6px; border-radius: 8px; } }
+
+/* One writer to a solo save (#625): the offer to a second window, and the bar of a read-only one. */
+#solo-busy { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 40; width: min(420px, calc(100% - 32px)); box-sizing: border-box; display: grid; gap: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; } #solo-busy[hidden] { display: none; }
+#solo-busy h2 { margin: 0; font-size: 1.1em; } #solo-busy p { margin: 0; } #solo-busy .row { display: flex; flex-wrap: wrap; gap: 8px; } #solo-busy button { min-height: 44px; }
+#readonly-bar { position: fixed; left: 0; right: 0; top: 0; z-index: 19; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 6px 10px; background: var(--panel-2); color: var(--ink); border-bottom: 1px solid var(--line); font-weight: 600; } #readonly-bar[hidden] { display: none; }
+#readonly-bar button { min-height: 36px; }
