@@ -941,7 +941,7 @@ function viewEventsOf(events, state, viewer) {
       // and pin it arrived by and where it came from are never sent. A group none of whom they may know of, or a place they were not given, is no event.
       case 'arrived': {
         const at = typeof ev.node === 'string' ? playerNode(state, ev.node) : null;
-        const ids = (Array.isArray(ev.ids) ? ev.ids : []).filter((id) => typeof id === 'string' && (cls(id) === 'open' || partyParked(state, id)));
+        const ids = (Array.isArray(ev.ids) ? ev.ids : []).filter((id) => typeof id === 'string' && (cls(id) === 'open' || (!was?.includes(id) && partyParked(state, id))));
         if (at && ids.length) out.push({ type: 'arrived', node: at, name: typeof nodeIn(state, ev.node)?.name === 'string' ? nodeIn(state, ev.node).name : 'A place', ids });
         break;
       }

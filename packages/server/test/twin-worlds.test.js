@@ -161,9 +161,9 @@ test("travel: a group's arrival line is sent the same with and without a place i
       w.must({ type: "loadMap", node: "keep", entry: "gate" });
     },
     steps: [
-      { by: "dm", act: { type: "loadMap", node: "tavern", entry: "door", who: ["fighter", "rogue"] } },       // the keep keeps the others
+      { by: "dm", act: (w) => ({ type: "loadMap", node: w.tav ?? "tavern", entry: w.door ?? "door", who: ["fighter", "rogue"] }) },       // the keep keeps the others
       { by: "dm", act: { type: "goTo", node: "keep" } },
-      { by: "dm", act: { type: "loadMap", node: "tavern", entry: "door", who: ["cleric", "wizard"] } },        // the whole party, at the tavern
+      { by: "dm", act: (w) => ({ type: "loadMap", node: w.tav ?? "tavern", entry: w.door ?? "door", who: ["cleric", "wizard"] }) },        // the whole party, at the tavern
       { by: "Pat", act: { type: "loadMap", node: "vault" } },                                                   // refused the same as a place that is nothing
       { by: "Sam", act: { type: "enter", pin: "p-vault" } },
       { by: "dm", act: { type: "advanceTime", minutes: 10 } },
@@ -174,6 +174,14 @@ test("travel: a group's arrival line is sent the same with and without a place i
     p.maps["vault-map"] = { ...structuredClone(p.maps["tavern-map"]), id: "vault-map", name: SECRET };
     p.nodes.push({ id: "vault", kind: "map", scale: "tactical", parent: "continent", map: "vault-map", name: SECRET });
     p.nodes[0].pins.push({ id: "p-vault", at: [400, 400], name: SECRET, to: "vault" });
+    // The same place under another node id and another entry id in the hidden world: a raw id in a player's stream is a difference.
+    w.tav = "tavern-zzz-raw"; w.door = "door-zzz-raw";
+    const tav = p.nodes.find((n) => n.id === "tavern");
+    tav.id = w.tav;
+    for (const pin of p.nodes.find((n) => n.id === "port").pins) { pin.to = w.tav; pin.entry = w.door; }
+    const m = p.maps["tavern-map"];
+    m.entries[0].id = w.door;
+    for (const st of m.starts) if (st.entry === "door") st.entry = w.door;
   });
   const arrivals = (who, w) => w.raw[who].flatMap((m) => (m.events ?? []).filter((e) => e.type === "arrived"));
   for (const who of ["Pat", "Sam"]) {
@@ -183,8 +191,9 @@ test("travel: a group's arrival line is sent the same with and without a place i
     assert.ok(got.every((e) => /^pl[0-9]+$/.test(e.node) && typeof e.name === "string"));
     assert.ok(!JSON.stringify(plain.raw[who]).includes(SECRET));
   }
-  assert.ok(arrivals("dm", hidden).every((e) => ["keep", "tavern"].includes(e.node)), "the DM is sent the arrivals, with the pack's ids");
-  assert.ok(arrivals("dm", hidden).some((e) => e.entry === "door"));
+  assert.ok(arrivals("dm", hidden).every((e) => ["keep", "tavern-zzz-raw"].includes(e.node)), "the DM is sent the arrivals, with the pack's ids");
+  assert.ok(arrivals("dm", hidden).some((e) => e.entry === "door-zzz-raw"));
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(hidden.raw[who]).includes("zzz-raw"), "no raw id");
   assert.ok(JSON.stringify(hidden.raw.dm).includes(SECRET), "the vault is there, for the DM");
 });
 

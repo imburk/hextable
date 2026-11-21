@@ -326,3 +326,28 @@ test("an arrival at a place a player was not given, or by a group they may not k
   ok(apply(t, { type: "setting", key: "watching", value: "live" }, DM));
   assert.equal(json(viewEvents(arrival, t, SAM)), json(viewEvents(arrival, t, PAT)));
 });
+
+test("the record stamps the creatures of an arrival the party did not know of, and an old arrival is told as it was when its group is parked now", () => {
+  const s = world(newGame(5));
+  ok(apply(s, { type: "loadMap", node: "keep", map: keepMap(), entry: "gate" }, DM));
+  const gob = ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Snagtooth", at: { q: s.entities.fighter.pos.q + 3, r: s.entities.fighter.pos.r } }, DM)).events[0].id;
+  ok(apply(s, { type: "reveal", actor: gob, hidden: true }, DM));
+  const r = apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter", gob] }, DM);
+  assert.ok(r.ok, r.error);
+  {
+    const e = s.timeline.findLast((x) => x.type === "arrived");
+    assert.deepEqual(e.unseen, [gob], "stamped at event time");
+    assert.deepEqual(viewEvents([e], s, PAT)[0].ids, ["fighter"]);
+    s.entities[gob] && (s.entities[gob].hidden = false);                // known now: the record still does not name it
+    assert.ok(!json(viewEvents([e], s, PAT)).includes(gob));
+  }
+  // Replay: the group has moved on and is parked; the record's line is the same as it was told.
+  const t = world(newGame(5));
+  ok(apply(t, { type: "loadMap", node: "keep", map: keepMap(), entry: "gate" }, DM));
+  const rec = t.timeline.filter((x) => x.type === "arrived");
+  ok(apply(t, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter", "rogue"] }, DM));
+  ok(apply(t, { type: "goTo", node: "keep" }, DM));          // the fighter and rogue are parked at the cave
+  assert.ok(!t.entities.fighter && t.parked.cave.entities.fighter);
+  const old = viewEvents(rec, t, PAT).filter((x) => x.type === "arrived");
+  assert.deepEqual(old.map((x) => [x.node, x.name, x.ids.sort()]), [["pl2", "The keep", ["cleric", "fighter", "rogue", "wizard"]]]);
+});

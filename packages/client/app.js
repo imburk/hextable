@@ -137,7 +137,7 @@ const summonedName = (st, e) => {
   const t = MONSTERS[e?.tpl]?.name ?? (typeof CONTENT.summons[e?.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : null);
   return base || t || 'creature';
 };
-const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? 'Someone');
+const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? S.away?.[id]?.record?.name ?? 'Someone');
 
 function toast(msg, info = false, ms = info ? 1600 : 3200) {
   const el = $('toast');
