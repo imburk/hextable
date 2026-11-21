@@ -138,7 +138,7 @@ const summonedName = (st, e) => {
   const t = MONSTERS[e?.tpl]?.name ?? (typeof CONTENT.summons[e?.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : null);
   return base || t || 'creature';
 };
-const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? 'Someone');
+const name = (id) => (S.entities[id] ? shownName(S, S.entities[id]) : known.get(id) ?? S.away?.[id]?.record?.name ?? 'Someone');
 
 function toast(msg, info = false, ms = info ? 1600 : 3200) {
   const el = $('toast');
@@ -377,6 +377,12 @@ function words(ev) {
     }
     case 'map': return [`The scene changes: ${ev.name}.`];
     case 'region': return [`The party sees ${ev.name}.`];
+    // A group came to a place of the world (travel.md; the view sends it only for a place and a group the viewer may know of).
+    case 'arrived': {
+      const who = (Array.isArray(ev.ids) ? ev.ids : []).map(n);
+      if (!who.length || typeof ev.name !== 'string') return null;
+      return [`${who.length > 1 ? `${who.slice(0, -1).join(', ')} and ${who[who.length - 1]}` : who[0]} ${who.length > 1 ? 'arrive' : 'arrives'} at ${ev.name}.`];
+    }
     case 'check': {
       const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.escape !== undefined ? `tries to break free of ${ev.escape === 'someone' ? 'someone' : n(ev.escape)} (${(ev.skill ?? ev.ability ?? 'a check').replace(/-/g, ' ')})` : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
       const how = ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : '';
@@ -426,6 +432,9 @@ function words(ev) {
     // Ability scores rolled at the table (scores.js): the numbers only for the DM and the roller; the rest are told that it happened.
     case 'scoresRolled': return [ev.sets ? `Ability scores rolled: ${ev.sets.map((x) => x.total).join(', ')}.` : 'Someone rolled their ability scores.'];
     case 'scoreRerolled': return [ev.from ? `Ability score ${ev.index + 1} rolled again: ${ev.from.total}, then ${ev.to.total}; ${ev.stands === 'old' ? 'the first stands' : 'the new roll stands'} (${ev.total}).` : 'Someone rolled one ability score again.'];
+    // Hit Points rolled at a rolled table (hitpoints.js): told to everyone, each die shown.
+    case 'hpRolled': return [`${ev.name} rolls Hit Points: ${(ev.levels ?? []).map((l) => `${l.className} ${l.level}: ${l.dice.map((d) => (d.drop ? `${d.value} (rolled again)` : d.low ? `${d.value} (fixed value instead)` : d.value)).join(' then ')} of d${l.die} = ${l.hp}`).join('; ')}. +${ev.total} in all.`];
+    case 'hpRerolled': return [`${ev.name} rolls Hit Points again for ${ev.levels[0].className} ${ev.levels[0].level}: ${ev.from}, then ${ev.levels[0].value} (${ev.levels[0].hp} Hit Points).`];
     case 'undone': return [`Taken back: ${ev.label}.`, 'head'];
     case 'redone': return [`Done again: ${ev.label}.`, 'head'];
     // The transcript of a scene, one line each, until the scene screen is built.

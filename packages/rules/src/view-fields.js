@@ -52,7 +52,7 @@ export const PARTY_FIELDS = {
 export const SETTING_FIELDS = {
   sight: 'sent', diagonals: 'sent', squareRange: 'sent', areaFill: 'sent', squareCover: 'sent', autoEngage: 'sent', passiveFind: 'sent', vertical: 'sent', climbing: 'sent',
   cover: 'sent', creatureCover: 'sent', engageRange: 'sent', unseenTurns: 'sent', diceThrow: 'sent', pace: 'sent', conclusion: 'sent', xpShare: 'sent', watching: 'sent',
-  strikeFirst: 'sent', away: 'sent', breaks: 'sent', scoreReroll: 'sent', scoreRerollBelow: 'sent', scoreRerollResult: 'sent',
+  strikeFirst: 'sent', away: 'sent', breaks: 'sent', scoreReroll: 'sent', scoreRerollBelow: 'sent', scoreRerollResult: 'sent', hpMethod: 'sent', hpRollLow: 'sent',
 };
 
 // The fields of `rec` that `table` sends, in the record's own order, each copied. A field the table does not list, or lists as 'withheld',
