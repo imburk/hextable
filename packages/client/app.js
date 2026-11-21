@@ -634,7 +634,7 @@ function showPick() {
   if (!list.includes(mode.choice)) mode.choice = list[0];
   sel.value = mode.choice;
 }
-$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; };
+$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; if (imbueOf(mode.kind === 'spell' ? SPELLS[mode.id] : null)) refresh(); };      // the hint names the weapon a second tap casts with
 // The slot to cast a levelled spell with (issue #604): shown while it is armed when the caster has more than one level to pay with and a higher one adds something.
 function showSlot() {
   const sel = $('hint-slot'), e = S.entities[selId], sp = mode.kind === 'spell' && !mode.item ? SPELLS[mode.id] : null, menu = sp && e ? slotMenu(e, sp) : null;
@@ -774,7 +774,7 @@ function refresh() {
           if (most > 1 && picked.length) {
             hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
             go = true;
-          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then Cast`; go = true; }
+          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then Cast (or tap ${name(mode.holder)} again to cast with ${weaponName(mode.choice ?? choicesOf(sp)?.[0])})`; go = true; }
           else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }

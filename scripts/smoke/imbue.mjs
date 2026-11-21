@@ -115,6 +115,10 @@ async function ally(browser, url, label, opts) {
         const v = await page.evaluate(() => { const sel = document.getElementById('hint-pick'); return { shown: !sel.hidden && sel.getClientRects().length > 0, options: [...sel.options].map((o) => o.value), hint: document.getElementById('hint').textContent }; });
         if (!v.shown || !v.options.some((o) => o.startsWith('longsword')) || !v.options.includes('mace')) throw new Error(`the ally's weapon menu: ${JSON.stringify(v)}`);
         await page.selectOption('#hint-pick', pick);
+        // Cast and Cancel, wrapped or not, stay on screen and nothing (the chat bubble) sits over them.
+        const hit = await page.evaluate(() => ['hint-pick', 'hint-go', 'hint-cancel'].map((id) => { const el = document.getElementById(id), r = el.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return { id, ok: r.width > 0 && r.x >= 0 && r.right <= window.innerWidth && (top === el || el.contains(top)), r: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)], top: top?.id || top?.tagName }; }));
+        if (hit.some((x) => !x.ok)) throw new Error(`the hint controls are clipped or covered: ${JSON.stringify(hit)}`);
         await shot(`menu-${pick}`);
         await page.click('#hint-go');
         await wait(page, (w) => (window.hextable.state.effects ?? []).some((fx) => fx.name === 'Magic Weapon' && fx.parts.some((p) => p.imbue && !p.ended && p.imbue.weapon === w)), pick, 10000);

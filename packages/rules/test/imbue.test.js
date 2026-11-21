@@ -250,3 +250,25 @@ test("an Opportunity Attack and a Reaction prefer the imbued weapon record", () 
   ok(apply(s, { type: "cast", actor: "hero", spell: "shillelagh", weapon: "club" }, DM));
   assert.equal(steadiest(s.entities.hero, s.entities.hero.attacks.filter((a) => a.weapon && a.type === "melee"), s).weapon, "club");
 });
+
+test("an imbued weapon is preferred only when it is no worse: a +1 dagger does not replace a greatsword", () => {
+  const s = field(paladin(5, { weapons: ["greatsword", "dagger"] }));
+  s.entities.hero.spells.push("magic-weapon"); s.entities.hero.slots = { 2: 2 };
+  ok(apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "hero", weapon: "dagger" }, DM));
+  const melee = s.entities.hero.attacks.filter((a) => a.weapon && a.type === "melee" && !a.id.endsWith("-thrown"));
+  assert.ok(melee.some((a) => a.weapon === "dagger") && melee.some((a) => a.weapon === "greatsword"));
+  assert.equal(steadiest(s.entities.hero, melee, s).weapon, "greatsword");
+});
+
+test("a player told of a foe with two fitting weapons gets the same sentence as for none", () => {
+  const s = field(paladin(5, { weapons: ["longsword"] }));
+  s.entities.hero.spells.push("magic-weapon"); s.entities.hero.slots = { 2: 2 };
+  s.entities.hero.owner = "pat"; s.entities.hero.ownerName = "Pat";
+  const P = { role: "player", userId: "pat" };
+  const mk = (id) => ({ id, name: id, weapon: id, bonus: 4, damage: "1d4+2", dtype: "bludgeoning", type: "melee", die: "1d4", plus: 0 });
+  const cast = () => apply(s, { type: "cast", actor: "hero", spell: "magic-weapon", target: "m1" }, P);
+  s.entities.m1.attacks = []; const none = cast();
+  s.entities.m1.attacks = [mk("club"), mk("mace")]; const two = cast();
+  assert.equal(none.ok, false); assert.equal(two.ok, false);
+  assert.equal(two.error, none.error);
+});

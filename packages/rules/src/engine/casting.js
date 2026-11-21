@@ -463,7 +463,7 @@ function imbueFor(s, e, sp, a, targets, ctx) {
   const none = `${holder.name} has no weapon ${sp.name} can change`;
   if (a.weapon === undefined) {
     if (fits.length === 1) return fits[0].id;
-    if (fits.length > 1) mine ? fail(`Name the weapon ${sp.name} changes: ${fits.map(nameOf).join(', ')}.`) : fail(`Name the weapon ${sp.name} changes.`);
+    if (fits.length > 1) fail(mine ? `Name the weapon ${sp.name} changes: ${fits.map(nameOf).join(', ')}.` : `${none}.`);
     fail(mine ? `${none}${list.length ? ` (${list.map(([r, why]) => `${r.name}: ${why}`).join('; ')})` : ' (it has no weapon)'}.` : `${none}.`);
   }
   typeof a.weapon === 'string' || fail('Name the weapon by its id.');

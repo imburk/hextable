@@ -84,7 +84,13 @@ export const spareStrike = (e, a) => a.id === 'unarmed-strike' && !e.sheet?.weap
 // Disadvantage and another allowed weapon attack does not, then the first of those. The spare Unarmed Strike is not another weapon
 // to prefer: a character with only a Heavy weapon still swings it. Returns the first when none is better, undefined for none.
 // With the game (`s`), an attack with a weapon a spell or feature has changed (imbue.js) comes before the plain ones: a Druid's Opportunity Attack is made with the Shillelagh staff.
+const avgDamage = (d) => { const m = /^(?:(\d+)d(\d+))?([+-]\d+)?$/.exec(String(d ?? '').replace(/\s/g, '')); return m ? (m[1] ? +m[1] * (+m[2] + 1) / 2 : 0) + (m[3] ? +m[3] : 0) : 0; };
 export const steadiest = (e, list, s = null) => {
-  const lead = s ? [...list.filter((a) => armed(s, e, a).imbued), ...list.filter((a) => !armed(s, e, a).imbued)] : list;
-  return lead.find((a) => !heavyWeak(e, a) && !spareStrike(e, a)) ?? lead[0];
+  const ok = (a) => !heavyWeak(e, a) && !spareStrike(e, a);
+  const plain = list.find(ok) ?? list[0];
+  if (!s) return plain;
+  // An imbued weapon is chosen only when it is no worse than the plain pick (a +1 dagger does not replace a greatsword).
+  const now = (a) => armed(s, e, a), best = plain && now(plain);
+  const imb = list.find((a) => now(a).imbued && ok(a));
+  return imb && best && avgDamage(now(imb).damage) >= avgDamage(best.damage) && now(imb).bonus >= best.bonus ? imb : plain;
 };
