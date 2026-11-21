@@ -33,3 +33,10 @@ body.drawer-modal #cc-chip, body.rp-open #cc-chip { display: none; }
 #log-rewards { margin: 0 0 8px; min-height: 44px; }
 @media (prefers-reduced-motion: reduce) { .cc-card { animation: none; } }
 body.editing #cc, body.editing #cc-chip, body.editing #cc-wait { display: none; }
+/* "Brenna can reach level 2." and its button, on the rewards card and the sheet (levelup.js) */
+.cc-ready { padding: 4px 0 8px; list-style: none; }
+.lu { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.lu-line { margin: 0; flex: 1 1 100%; color: var(--accent); font-weight: 700; }
+.lu-go { min-height: 48px; padding: 0 16px; flex: 1 1 180px; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.lu-go:disabled { background: var(--panel-2); color: var(--muted); border-color: var(--border, var(--muted)); font-weight: 400; }
+.lu-why { margin: 0; flex: 1 1 100%; color: var(--text); font-size: 14px; }
