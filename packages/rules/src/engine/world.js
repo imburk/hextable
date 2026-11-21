@@ -5,11 +5,12 @@ import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { actionProfile, CUBE_AIM_MAX, loadOf, scaleSteps, targetCount, WORK } from '../effects.js';
-import { apart, apartAt, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
+import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule, unknown } from '../vision.js';
 import { hiddenFrom } from '../sight.js';
+import { holds, zonesOf } from '../zones.js';
 import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { itemName } from '../derive.js';
 import { effectsOf, restamp } from '../durations.js';
@@ -1157,6 +1158,7 @@ export function areaTargets(s, e, def, hex) {
 // fight, those behind walk after it in marching order (`march`, lowest first), each by its own
 // way of moving, to the free place nearest behind the leader's path. When a fight breaks out,
 // those who were following are brought up behind their leader before initiative is rolled.
+export const KEEP_UP = 2;                   // cells: a follower stays this close to the one in front where the ground allows
 export const CATCH_UP = 60;          // feet: the furthest from its leader a follower is brought up to when a fight starts
 export const byMarch = (a, b) => (a.march ?? Infinity) - (b.march ?? Infinity);
 
@@ -1292,6 +1294,50 @@ export function slotsFor(leader, followers) {
   return slots;
 }
 
+// Would a careful walker stop here? Not on a trap the party knows of that goes off on stepping there or
+// coming near (as moveOptions keeps every way off a spotted trap), nor where a lasting zone the party
+// knows of (its maker is not hidden from them) would take it in: Web, Spirit Guardians, Moonbeam. A
+// trap or zone the party does not know of plays no part: it springs on a walk as on any walk.
+export function peril(s, f, h) {
+  const G = gridOf(s.map), far = measure(s, G), parts = footprint(f, h, G);
+  for (const o of s.map.objects) {
+    const def = objectDef(o);
+    if (!def.triggers?.length || def.states[o.state]?.hidden || Math.abs(objectZ(s, o) - h.z) > STEP_MAX) continue;
+    const near = Math.min(...parts.map((x) => far(x, o.at)));
+    if (def.triggers.some((t) => t.effects && t.from.includes(o.state) && (t.who !== 'party' || f.side === 'party') && (t.on === 'enter' ? near === 0 : t.on !== 'leave' && near * FT <= t.feet))) return true;
+  }
+  const there = { ...f, pos: h };
+  const known = (o) => !!o && (o.side === 'party' || (!concealed(s.map, o) && (sightRule(s) === 'rooms' || !unknown(s, o))));       // as view.js classifies it
+  return zonesOf(s).some((fx) => known(s.entities[fx.source]) && (fx.zone.on ?? []).length > 0 && holds(s, fx, there) && !holds(s, fx, f));
+}
+// E-P4: where `f` would stand in its leader's formation when a fight starts: the place nearest its slot's point (in the frame
+// of the way the leader last faced), if it is one `catchUp` could use anyway (standable, in the arena, within CATCH_UP feet of
+// the leader's walking), not ahead of the leader by more than half a cell, and free. It asks `moveOptions`, which knows every
+// creature that stands, seen or not, so a place held by one the party cannot see is simply not free, as for any other
+// occupant, and nothing is said. Null (today's trail) for no formation, no slot, no facing yet, a mount or its rider,
+// or a follower that cannot walk (Grappled, Speed 0).
+function formationPlace(s, f, leader, mine, theirs, arena) {
+  const fm = leader.formation;
+  if (!fm || fm.shape === 'column' || fm.face === undefined || mountOf(s, f) || riderOf(s, f) || f.cond?.grappled) return null;
+  const members = living(s).filter((x) => x.side === 'party' && x.follow === leader.id && !draggedBy(s, x).length).sort(byMarch);
+  const sl = slotsFor(leader, members)?.[f.id];
+  if (!sl) return null;
+  const G = gridOf(s.map), F = frameOf(G, leader.pos, fm.face), uu = F.u.x ** 2 + F.u.z ** 2, T = slotPoint(F, sl);
+  const o0 = G.toWorld(ORIGIN), cell = Math.min(...G.neighbors(ORIGIN).map((n) => Math.hypot(G.toWorld(n).x - o0.x, G.toWorld(n).z - o0.z)));
+  let best = null, bestKey = null;
+  for (const [k, v] of mine) {
+    if (!v.canStop || !arena[col(v.h)]) continue;
+    const lc = theirs.get(k)?.cost;
+    if (lc === undefined || lc > CATCH_UP || unseenAt(s.map, v.h)) continue;           // a place the party has not seen is no place for the shape: the trail, as if it were blocked
+    if (lc > 2 * FT * (G.dist(leader.pos, v.h) + KEEP_UP) || peril(s, f, v.h)) continue;   // joined to the leader (no thin wall between) and no known trap or zone, as the walking layout asks
+    const w = G.toWorld(v.h), d = Math.hypot(w.x - T.x, w.z - T.z) / cell, fwd = ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu;
+    if (d > 0.75 + 1e-9 || fwd > 0.5 + 1e-9) continue;
+    const rank = [d, fwd, Math.abs(v.h.z - f.pos.z), v.cost];
+    if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
+  }
+  return best;
+}
+
 // A fight is starting in `arena`. Everyone who was following a party member in it, and is not in
 // it already, is brought up to the nearest free place behind its leader that it could have walked
 // to (a path exists, and the place is at most CATCH_UP feet of walking from the leader).
@@ -1311,7 +1357,9 @@ export function catchUp(s, arena, walked, ev) {
     const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
     const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
     let best = null, bestKey = null;
-    for (const [k, v] of mine) {
+    const slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
+    if (slot) { best = slot; bestKey = null; }
+    else for (const [k, v] of mine) {
       if (!v.canStop || !arena[col(v.h)]) continue;
       const lc = theirs.get(k)?.cost;
       if (lc === undefined || lc > CATCH_UP) continue;

@@ -12,7 +12,7 @@ import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { SIZES as SIZE_LIST } from '../content/schema.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
-import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { partRefusal } from './attacks.js';
 import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
@@ -297,7 +297,6 @@ function riderTarget(s, o, r, prev) {
   if (o.side === 'party' && unknown(s, r)) return null;
   return apartAt(s, o, o.pos, r, prev) <= 1 && clear(s, o.pos, prev) && canSee(s, o, r) !== 'no' ? r : null;
 }
-const KEEP_UP = 2;                   // cells: a follower stays this close to the one in front where the ground allows
 const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.march ?? -1)) + 1;
 
 // The leader has walked `walked` (from where it set off). Everyone following it, and everyone
@@ -462,22 +461,6 @@ function formation(s, leader, walked, pending, ev) {
     done.push(f);
   }
   return done;
-}
-// Would a careful walker stop here? Not on a trap the party knows of that goes off on stepping there or
-// coming near (as moveOptions keeps every way off a spotted trap), nor where a lasting zone the party
-// knows of (its maker is not hidden from them) would take it in: Web, Spirit Guardians, Moonbeam. A
-// trap or zone the party does not know of plays no part: it springs on a walk as on any walk.
-function peril(s, f, h) {
-  const G = gridOf(s.map), far = measure(s, G), parts = footprint(f, h, G);
-  for (const o of s.map.objects) {
-    const def = objectDef(o);
-    if (!def.triggers?.length || def.states[o.state]?.hidden || Math.abs(objectZ(s, o) - h.z) > STEP_MAX) continue;
-    const near = Math.min(...parts.map((x) => far(x, o.at)));
-    if (def.triggers.some((t) => t.effects && t.from.includes(o.state) && (t.who !== 'party' || f.side === 'party') && (t.on === 'enter' ? near === 0 : t.on !== 'leave' && near * FT <= t.feet))) return true;
-  }
-  const there = { ...f, pos: h };
-  const known = (o) => !!o && (o.side === 'party' || (!concealed(s.map, o) && (sightRule(s) === 'rooms' || !unknown(s, o))));       // as view.js classifies it
-  return zonesOf(s).some((fx) => known(s.entities[fx.source]) && (fx.zone.on ?? []).length > 0 && holds(s, fx, there) && !holds(s, fx, f));
 }
 // A held or custom formation forgets the places of those no longer following its leader, or gone.
 function pruneSlots(s, leader) {
