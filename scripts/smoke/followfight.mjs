@@ -11,6 +11,8 @@ const inFight = (page, id) => state(page, (S, i) => !!S.encounter?.order.some((o
 const walkIn = (page, id) => page.evaluate((who) => {
   const h = window.hextable;
   for (let i = 0; i < 20 && !h.state.encounter; i++) h.act({ type: 'move', actor: who, to: { q: 2, r: -1, z: 0 } });
+  // A random valley may wall the walk off (rock, water): the fight is called where the goblins are, as the DM would.
+  if (!h.state.encounter) h.act({ type: 'startEncounter', center: { q: 2, r: -1 } });
   return !!h.state.encounter;
 }, id);
 
