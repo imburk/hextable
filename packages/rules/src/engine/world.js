@@ -297,6 +297,13 @@ export function route(reach, k) {
 // and stops where one cannot be dragged.
 // `opts.aerial`: lay out flying, climbing and ladder ways too, so `move` can tell a place only they reach from one too far.
 // `opts.unchecked`: do not ask whether the held creatures could follow (so `move` can tell that from "too far").
+// Those who follow `e`, or follow one who does (party creatures, up and free to walk).
+export function followingChain(s, e) {
+  const out = new Set();
+  if (e.side !== 'party') return out;
+  for (let grew = true; grew;) { grew = false; for (const x of living(s)) if (x.follow && x.side === 'party' && !out.has(x.id) && x.id !== e.id && (x.follow === e.id || out.has(x.follow)) && !draggedBy(s, x).length && up(x)) { out.add(x.id); grew = true; } }
+  return out;
+}
 export function moveOptions(s, e, opts = {}) {
   // A rider goes where its mount goes (stage C6a): its ways are the mount's, and `move` sent for it moves the mount.
   const steed = mountOf(s, e);
@@ -311,7 +318,10 @@ export function moveOptions(s, e, opts = {}) {
   const bud = fighting ? turnBudget(s, e) : null;
   if (fighting && !bud) return new Map();
   const pair = partnerOf(s, e);
-  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id && o !== pair);
+  // `opts.through`: outside a fight, a party creature may step into the place of one that follows it, directly or down the chain
+  // (those walk after it and make room: `march`).
+  const giving = opts.through && !fighting ? followingChain(s, e) : null;
+  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id && o !== pair && !giving?.has(o.id));
   // The surfaces of each column are looked up many times over; keep them for the length of this search.
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);

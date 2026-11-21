@@ -772,3 +772,12 @@ test('reactions: the familiarDamaged trigger has words in the sheet and the prom
   s.entities.mor.owner = 'u1';
   assert.equal(row().now, 'ask'); assert.equal(row().dflt, 'ask');
 });
+
+test('Explore: a hurt leader\'s healing stays among the first four rows, ahead of Formation... (#671)', () => {
+  const s = newGame(7, { follow: true }), e = s.entities.fighter;
+  e.hp = 3;
+  const rows = rankExplore(s, e);
+  assert.ok(rows.some((r) => r.id === 'formation'), 'the fighter leads');
+  const heal = rows.find((r) => r.id === 'heal:secondWind' || r.id.startsWith('heal:'));
+  assert.ok(heal && heal.grid, `healing is on the grid: ${ids(rows)}`);
+});
