@@ -78,7 +78,6 @@ test("the AI with an area without `choose` still will not aim where an ally woul
 
 // Fix round 1 of #422 (M2): a player picks only among creatures the party is told of. A hidden creature in the area is never counted, so it
 // can neither make the action refused nor be affected by a pick; the player's results and view are the same with and without it.
-import { view, viewEvents } from "../src/view.js";
 const PLAYER = { role: "player", userId: "u1" };
 function playerField(withHidden) {
   const s = newGame(7);
@@ -96,22 +95,8 @@ function playerField(withHidden) {
   if (ghost) ghost.hidden = true;          // the fight's start reveals creatures; the DM hides it again
   return { s, a, b, ghost };
 }
-test("a player's area action with `choose` gives byte-identical results and views with and without a hidden creature in the area", () => {
-  const out = [];
-  for (const withHidden of [false, true]) {
-    const { s, ghost } = playerField(withHidden);
-    const refused = apply(s, { type: "act", actor: "fighter", action: "blast", targets: ["nobody"] }, PLAYER);
-    s.rng = 987654;                                    // the same dice for both runs (the hidden creature's spawn used some)
-    const from = s.timeline.length;
-    const r = apply(s, { type: "act", actor: "fighter", action: "blast" }, PLAYER);          // two visible creatures, choose 2: no pick needed
-    assert.equal(r.ok, true, `${withHidden}: ${r.error}`);
-    // The setup differs by one spawn (a counter in the record), so compare what the action did, and the view's creatures and map.
-    const v = view(s, PLAYER);
-    out.push(JSON.stringify({ refused, did: viewEvents(s.timeline.slice(from), s, PLAYER), rng: s.rng, creatures: v.entities ?? v.creatures, map: v.map }));
-    if (ghost) assert.equal(ghost.hp, 500, "the hidden creature was not affected by it");
-  }
-  assert.equal(out[0], out[1]);
-});
+// The twin run that was here (the player's results and view the same with and without a hidden creature in the area) is now
+// `creatures:` in packages/server/test/twin-worlds.test.js, through the table server.
 test("the DM sees every creature in the area when running a player's creature", () => {
   const { s } = playerField(true);
   const r = apply(s, { type: "act", actor: "fighter", action: "blast" }, DM);

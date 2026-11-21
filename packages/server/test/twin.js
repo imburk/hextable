@@ -17,12 +17,14 @@
 //               { by: "Pat", act: {...} }      an action sent as that player ("dm" for the DM)
 //               { by: "Pat", send: {...} }     any message (sync, history, undo, redo ...)
 //               { by: "dm", act, allowError }  a DM step that is allowed to be refused
+//               { by, act: (w) => ({...}) }    the action made when its turn comes (for an id the setup made)
 //               (w) => ...                     code run in both worlds (it may use w.act, w.say, w.t.state)
+//   mask      (w) => [strings]: ids a world makes at random (picture ids...) that are told as <mask:n>, n by their order in the list
 //   final     default true: when the steps are done every player asks for a full sync and for the record, so the
 //             patches they were sent are also checked against what a fresh view says.
 //
 // `hidden` is the one thing that differs, one of:
-//   (w) => ...                      run in the hidden world only, after setup and before the steps.
+//   (w) => ...                      run in the hidden world only, after setup and before the steps, or where setup calls w.putIn().
 //   { hide(w), plain(w), at }       `hide` runs in the hidden world and `plain` in the plain one (for what the hidden
 //                                   thing costs both worlds equally, like a counter); both after `at` steps (default 0).
 // The table's dice are put back after it runs, so a spawn that rolled does not change the dice the script sees.
@@ -69,6 +71,7 @@ export function diffStreams(plain, hidden, players) {
       diffs.push({
         who, index: i, plainCount: a.length, hiddenCount: b.length, step: what(a[i]?.step ?? b[i]?.step ?? null),
         path: m?.path ?? (a[i] ? "(the plain world sent a message the hidden one did not)" : "(the hidden world sent a message the plain one did not)"),
+        plainMsg: a[i]?.text.slice(0, 240) ?? "(none)", hiddenMsg: b[i]?.text.slice(0, 240) ?? "(none)",
         plain: m ? show(m.a) : a[i] ? show(JSON.parse(a[i].text)) : "(no message)", hidden: m ? show(m.b) : b[i] ? show(JSON.parse(b[i].text)) : "(no message)",
       });
       break;       // the first difference of a player; what follows is noise
@@ -79,7 +82,7 @@ export function diffStreams(plain, hidden, players) {
 export function describe(diffs) {
   return diffs.map((d) => `${d.who} was not sent the same in both worlds.\n` +
     `  first difference: message #${d.index + 1} (the plain world sent ${d.plainCount} messages in all, the hidden one ${d.hiddenCount}), at ${d.step}\n` +
-    `  path:   ${d.path}\n  plain:  ${d.plain}\n  hidden: ${d.hidden}`).join("\n");
+    `  path:   ${d.path}\n  plain:  ${d.plain}\n  hidden: ${d.hidden}\n  that message in the plain world:  ${d.plainMsg}\n  that message in the hidden world: ${d.hiddenMsg}`).join("\n");
 }
 
 // ---- one world ----
@@ -140,14 +143,20 @@ function runWorld(scenario, variant) {
   const mine = variant === "hidden" ? hidden.hide : hidden.plain;
   const at = hidden.at ?? 0;
   const labelOf = (s, i) => (typeof s === "function" ? `step ${i + 1} (a function)` : `step ${i + 1} (${s.by ?? "dm"} ${s.act ? `act ${JSON.stringify(s.act).slice(0, 120)}` : `send ${JSON.stringify(s.send).slice(0, 120)}`})`);
+  let putIn = false;
+  const putInNow = () => { putIn = true; const was = step; step = { label: "the hidden thing being put in" }; hide(mine); step = was; };
+  // A setup that needs the hidden thing in at a point of its own (before a fight starts, say) calls w.putIn() there.
+  w.putIn = () => { assert.ok(!putIn, "the hidden thing was already put in"); putInNow(); };
   step = { label: "setup" };
   scenario.setup?.(w);
   settle();
   const steps = scenario.steps ?? [];
   for (let i = 0; i <= steps.length; i++) {
-    if (i === at) { step = { label: "the hidden thing being put in" }; hide(mine); }
+    if (i === at && !putIn) putInNow();
     if (i === steps.length) break;
-    const s = steps[i];
+    let s = steps[i];
+    if (typeof s?.act === "function") s = { ...s, act: s.act(w) };
+    if (typeof s?.send === "function") s = { ...s, send: s.send(w) };
     step = { label: labelOf(s, i) };
     if (typeof s === "function") { s(w); settle(); continue; }
     const by = s.by ?? "dm";
@@ -164,6 +173,8 @@ function runWorld(scenario, variant) {
   }
   // The world's own ids, codes and tokens are random; every world is told in the same words.
   const swaps = [[code, "<code>"], ...Object.entries(ids).map(([n, id]) => [id, `<id:${n}>`]), ...tokens.map((tk, i) => [tk, `<token:${i}>`])];
+  const masks = (scenario.mask?.(w) ?? []).map((m, i) => [m, `<mask:${i}>`]);
+  swaps.push(...masks);
   const norm = (text) => swaps.reduce((s, [from, to]) => s.split(from).join(to), text);
   for (const k of Object.keys(streams)) streams[k] = streams[k].map((x) => ({ ...x, text: norm(x.text) }));
   return { streams, raw, names, w };
