@@ -145,3 +145,49 @@ test("note 2: a monster's crit rolls its damage dice twice and adds its modifier
 
 // Verdict note 2: not a bug. Every attack (weapon, spell, monster) rolls all its damage dice twice and adds the flat
 // modifier once. The "two dice" the owner saw is the doubled die (2d6 for a 1d6 weapon), not a missing modifier.
+
+// ---------- 3. Burning Hands (and every save-for-half area spell) ----------
+// SRD "Burning Hands": "Each creature in a 15-foot Cone makes a Dexterity saving throw. On a failed save, a creature takes
+// 3d6 Fire damage, or half as much damage on a successful one." SRD "Damage against Multiple Targets": roll once for all.
+// Verdict: not a bug. One 3d6 roll is shared by everyone in the cone, the failed save takes it whole, the successful save
+// takes half rounded down; a slot above 1 adds 1d6 per level.
+
+function cone(seed, slot = 1) {
+  const s = field(sheets.wizard, seed, { foeAt: { q: 1, r: 0 }, hp: 900, ac: 10 });
+  const extra = [{ q: 1, r: 1 }, { q: 2, r: -1 }].map((at) => ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM)).events[0].id);
+  s.foes = [s.foe, ...extra];
+  for (const id of s.foes) Object.assign(s.entities[id], { hp: 900, maxHp: 900 });
+  fight(s);
+  return { s, act: () => apply(s, { type: "cast", actor: "hero", spell: "burning-hands", hex: { q: 3, r: 0 }, slot }, DM) };
+}
+
+for (const slot of [1, 2]) test(`note 3: Burning Hands from a level ${slot} slot: one ${2 + slot}d6 roll, half (rounded down) on a saved target, whole on a failed one`, () => {
+  let mixed = false;
+  for (let seed = 1; seed < 200 && !mixed; seed++) {
+    const { s, act } = cone(seed, slot), r = ok(act());
+    const saves = r.events.filter((e) => e.type === "save" && s.foes.includes(e.id)), dmg = r.events.filter((e) => e.type === "damage" && s.foes.includes(e.target));
+    assert.equal(saves.length, dmg.length, "every creature in the cone saved and was hurt");
+    assert.ok(saves.length >= 2);
+    const full = sum(dmg[0].dice);                       // the shared roll
+    assert.equal(dmg[0].dice.length, 2 + slot);
+    for (const sv of saves) {
+      assert.equal(sv.abil, "dex");
+      const d = dmg.find((x) => x.target === sv.id);
+      assert.deepEqual(d.dice, dmg[0].dice, "everyone is hit by the same roll");
+      assert.equal(d.amount, sv.success ? Math.floor(full / 2) : full, `${sv.success ? "saved" : "failed"} save`);
+    }
+    if (saves.some((x) => x.success) && saves.some((x) => !x.success)) mixed = true;
+  }
+  assert.ok(mixed, "some seed had both a success and a failure");
+});
+
+test("note 3: the same half-on-save path serves another area spell (Thunderwave 2d8 Constitution; Fireball)", () => {
+  const s = field({ ...sheets.wizard, spells: ["fireball", "thunderwave"] }, 9, { hp: 900 });
+  s.entities.hero.slots = { 1: 4, 2: 3, 3: 3 };
+  for (const at of [{ q: 3, r: 0 }, { q: 3, r: 1 }]) { const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM)).events[0].id; Object.assign(s.entities[id], { hp: 900, maxHp: 900 }); }
+  fight(s);
+  const r = ok(apply(s, { type: "cast", actor: "hero", spell: "fireball", hex: { q: 3, r: 0 } }, DM));
+  const sv = r.events.filter((e) => e.type === "save"), dm = r.events.filter((e) => e.type === "damage");
+  assert.ok(sv.length >= 2);
+  for (const v of sv) { const d = dm.find((x) => x.target === v.id), full = sum(dm[0].dice); assert.equal(d.dice.length, 8); assert.equal(d.amount, v.success ? Math.floor(full / 2) : full); }
+});
