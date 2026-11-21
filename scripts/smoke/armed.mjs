@@ -243,7 +243,9 @@ async function flurry(browser, url, label, opts) {
         }, foe);
         await settle(page, foe);
         const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), foe);
-        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the foe is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
+        // on a slow runner the action panel may still be folding away: give the map a moment to be reachable
+        for (let t = 0; pt && t < 20 && !(await onCanvas(page, pt.x, pt.y)); t++) await page.waitForTimeout(150);
+        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the foe is not on screen where a tap can reach it: ${JSON.stringify(pt)}; on top: ` + await page.evaluate(([x,y])=>{const e=document.elementFromPoint(x,y);const ch=[];for(let n=e;n;n=n.parentElement)ch.push(n.tagName+'#'+n.id+'.'+n.className);return ch.join(' < ')},[pt.x,pt.y]));
         await tapAt(page, touch, pt.x, pt.y);
       };
       let lo, foe;
