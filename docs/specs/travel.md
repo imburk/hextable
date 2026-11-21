@@ -1055,6 +1055,15 @@ kept on its record (`said`, as a scene's). Undo can give back a table whose `kno
 an id that an undone one had; the whole view is resent after an undo and nothing from the undone future is kept, so this leaks
 nothing.
 
+**Build notes, arrival line (#650).** The owner's answer of 21 November: besides the atlas marker moving, a group that arrives at a place
+is told in the log, "Tor and Mira arrive at The Keep." It is the engine's `arrived` event (`arrive()`, so `loadMap { node }`, `enter` and
+`leave`, and the arrivals W6 and W8 will make through it), which the DM has always been sent whole. A player is sent it, by allow list
+(`view.js`), only as `{ node, name, ids }`: `node` is the id they were given (`known.js`, `playerNode`) and `name` the name the atlas gives
+it, `ids` only the party's creatures (those in play or kept in a parked place). With no id they may know of, or a place they were not given,
+the player is sent no event at all. The entry and pin it came by and the place it came from are never sent. A player whose group is
+parked under `watching: 'off'` is sent nothing of the place in play, as before. `goTo` (a cut) and `place` (`relocated`) have no line.
+Tests: `rules/test/travel-view.test.js` and, through the table server, `server/test/twin-worlds.test.js`.
+
 ## What stays manual
 
 - Getting lost, foraging and what a Search finds on the road: the DM, with the terrain's DC offered.

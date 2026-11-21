@@ -405,7 +405,7 @@ function record(s, ev) {
   const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
   for (const e of ev) {
     if (e.type === 'moved' || e.type === 'ping') continue;       // a ping is seen once by those at the table and kept nowhere (docs/specs/table-ui.md, Ping)
-    const ids = [e.id, e.actor, e.target, e.by, e.src, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
+    const ids = [e.id, e.actor, e.target, e.by, e.src, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(e.type === 'arrived' && Array.isArray(e.ids) ? e.ids : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
     // A copy all through: an event may hold an object of the state itself (`placed` its creature's `pos`), and
     // an entry sharing it would change with it; undo and redo, which put the state back field by field, then
     // could not give the record back as it was (#320).

@@ -272,3 +272,82 @@ test("a new version of the same world (another hash) starts what the players kno
   assert.deepEqual(knownOf(s).nodes, ["continent", "keep"], "only what the party stands in");
   assert.equal(view(s, PAT).atlas.nodes.pl2.name, "The keep");
 });
+
+// ---- the arrival line (#650) ----
+test("a group's arrival is told to the DM whole, and to a player as the place they were given and the party's own, nothing of how it came", () => {
+  const s = world(newGame(5));
+  const ev = ok(apply(s, { type: "loadMap", node: "keep", map: keepMap(), entry: "gate" }, DM)).events;
+  const dm = ev.find((e) => e.type === "arrived");
+  assert.equal(dm.node, "keep");
+  assert.equal(viewEvents(ev, s, DM), ev, "the DM is sent the events as they are");
+  for (const ctx of [PAT, SAM]) {
+    const told = viewEvents(ev, s, ctx).filter((e) => e.type === "arrived");
+    assert.equal(told.length, 1);
+    assert.deepEqual(told[0], { type: "arrived", node: "pl2", name: "The keep", ids: dm.ids }, "the id they were given and the atlas's name; no entry, pin or from");
+    assert.equal(told[0].node, view(s, ctx).atlas.here, "the place the atlas says they are at");
+  }
+  // A later move of a few of the party: the same line, with who went; the others are told it too.
+  const more = ok(apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter", "rogue"] }, DM)).events;
+  assert.deepEqual(viewEvents(more, s, SAM).filter((e) => e.type === "arrived").map((e) => [e.node, e.name, e.ids.sort()]), [["pl3", "The cave", ["fighter", "rogue"]]]);
+  // From the record later, with the group parked elsewhere, the line is the same.
+  ok(apply(s, { type: "goTo", node: "keep" }, DM));
+  assert.equal(json(viewEvents(more, s, PAT).filter((e) => e.type === "arrived")), json([{ type: "arrived", node: "pl3", name: "The cave", ids: ["fighter", "rogue"] }]));
+});
+
+test("an arrival at a place a player was not given, or by a group they may not know of, is no event for them; a watcher with watching: off gets nothing", () => {
+  const s = world(newGame(5));
+  const ev = ok(apply(s, { type: "loadMap", node: "keep", map: keepMap(), entry: "gate" }, DM)).events;
+  // The place is not one they know of (the lists name nothing: a new version of the world).
+  const old = s.world.hash;
+  s.world.hash = "c".repeat(64);
+  assert.equal(knownOf(s), null);
+  assert.deepEqual(viewEvents(ev, s, PAT).filter((e) => e.type === "arrived"), []);
+  assert.equal(viewEvents(ev, s, DM).filter((e) => e.type === "arrived").length, 1, "the DM always");
+  s.world.hash = old;
+  // The pack's own id of a place the players are not given is never in the event: a DM-only place arrived at without being known leaves no id.
+  const forged = [{ type: "arrived", node: "secret-lair", name: "CANARYNAME the lair", ids: ["fighter"] }];
+  assert.deepEqual(viewEvents(forged, s, PAT), []);
+  // A group none of whom the players may know of (a creature that is not of the party and cannot be seen) is not told.
+  const gob = ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Snagtooth", at: { q: s.entities.fighter.pos.q + 3, r: s.entities.fighter.pos.r } }, DM)).events[0].id;
+  ok(apply(s, { type: "reveal", actor: gob, hidden: true }, DM));
+  const withGob = [{ type: "arrived", node: "keep", name: "The keep", ids: [gob, "fighter"] }, { type: "arrived", node: "keep", name: "The keep", ids: [gob] }];
+  const told = viewEvents(withGob, s, PAT);
+  assert.deepEqual(told.map((e) => e.ids), [["fighter"]], "the hidden creature is not named; a group of nobody they know is no line");
+  assert.ok(!json(told).includes(gob));
+  // A watcher whose characters are in another place, with watching off, is sent nothing of the place in play.
+  const t = split();
+  ok(apply(t, { type: "setting", key: "watching", value: "off" }, DM));
+  const arrival = ok(apply(t, { type: "loadMap", node: "continent", who: ["fighter"] }, DM)).events;
+  assert.ok(arrival.some((e) => e.type === "arrived" && e.node === "continent"));
+  assert.deepEqual(view(t, SAM).watching, { mode: "off", at: ["pl2"] }, "Sam's characters are at the keep");
+  assert.deepEqual(viewEvents(arrival, t, SAM), [], "nothing of the place in play");
+  assert.deepEqual(viewEvents(arrival, t, PAT).filter((e) => e.type === "arrived").map((e) => [e.node, e.name, e.ids]), [["pl1", "The continent", ["fighter"]]]);
+  // Under watching: live a watcher is told as the players there are.
+  ok(apply(t, { type: "setting", key: "watching", value: "live" }, DM));
+  assert.equal(json(viewEvents(arrival, t, SAM)), json(viewEvents(arrival, t, PAT)));
+});
+
+test("the record stamps the creatures of an arrival the party did not know of, and an old arrival is told as it was when its group is parked now", () => {
+  const s = world(newGame(5));
+  ok(apply(s, { type: "loadMap", node: "keep", map: keepMap(), entry: "gate" }, DM));
+  const gob = ok(apply(s, { type: "spawn", monster: "goblin-warrior", name: "Snagtooth", at: { q: s.entities.fighter.pos.q + 3, r: s.entities.fighter.pos.r } }, DM)).events[0].id;
+  ok(apply(s, { type: "reveal", actor: gob, hidden: true }, DM));
+  const r = apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter", gob] }, DM);
+  assert.ok(r.ok, r.error);
+  {
+    const e = s.timeline.findLast((x) => x.type === "arrived");
+    assert.deepEqual(e.unseen, [gob], "stamped at event time");
+    assert.deepEqual(viewEvents([e], s, PAT)[0].ids, ["fighter"]);
+    s.entities[gob] && (s.entities[gob].hidden = false);                // known now: the record still does not name it
+    assert.ok(!json(viewEvents([e], s, PAT)).includes(gob));
+  }
+  // Replay: the group has moved on and is parked; the record's line is the same as it was told.
+  const t = world(newGame(5));
+  ok(apply(t, { type: "loadMap", node: "keep", map: keepMap(), entry: "gate" }, DM));
+  const rec = t.timeline.filter((x) => x.type === "arrived");
+  ok(apply(t, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter", "rogue"] }, DM));
+  ok(apply(t, { type: "goTo", node: "keep" }, DM));          // the fighter and rogue are parked at the cave
+  assert.ok(!t.entities.fighter && t.parked.cave.entities.fighter);
+  const old = viewEvents(rec, t, PAT).filter((x) => x.type === "arrived");
+  assert.deepEqual(old.map((x) => [x.node, x.name, x.ids.sort()]), [["pl2", "The keep", ["cleric", "fighter", "rogue", "wizard"]]]);
+});
