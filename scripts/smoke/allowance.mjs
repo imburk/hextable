@@ -75,13 +75,27 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         tries++;
         if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 10000); await idle(dm); }
         // The same ground every try (a flake, #633): the foes of the valley (they wake in a fight, walk up to Sir Bell and stand on the hexes the search needs), the goblins
-        // left by the tries before and Sir Bell's own place after a tap are what made "no hex beside Sir Bell takes a goblin". Clear the foes and put her back where she began.
-        await dm.evaluate(async ([b, home]) => {
-          const S = () => window.hextable.state;
-          for (const e of Object.values(S().entities)) if (e.side !== 'party' && e.id !== b) window.hextable.act({ type: 'remove', actor: e.id });
-          if (S().entities[b].pos.q !== home.q || S().entities[b].pos.r !== home.r) window.hextable.act({ type: 'place', actor: b, to: { q: home.q, r: home.r } });
+        // left by the tries before and Sir Bell's own place after a tap are what made "no hex beside Sir Bell takes a goblin". Clear the foes, put her back where she began,
+        // and stand one Guard four hexes off in the arena: a fight with only the goblin in it would end the moment her Opportunity Attack kills it, and the allowance with it.
+        await dm.evaluate(([b, h]) => {
+          for (const e of Object.values(window.hextable.state.entities)) if (e.side !== 'party') window.hextable.act({ type: 'remove', actor: e.id });
+          const p = window.hextable.state.entities[b].pos;
+          if (p.q !== h.q || p.r !== h.r) window.hextable.act({ type: 'place', actor: b, to: { q: h.q, r: h.r } });
         }, [bell, home]);
-        await wait(dm, ([b, home]) => { const S = window.hextable.state; const p = S.entities[b].pos; return p.q === home.q && p.r === home.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 10000);
+        await wait(dm, ([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 10000);
+        const guardAt = await dm.evaluate(async (b) => {
+          const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+          const S = window.hextable.state, G = gridOf(S.map), me = S.entities[b];
+          for (const h of G.range(me.pos, 4)) {
+            if (G.dist(me.pos, h) !== 4) continue;
+            const c = structuredClone({ ...S, timeline: [] });
+            if (apply(c, { type: 'spawn', monster: 'goblin-warrior', at: h, name: 'Guard' }, { role: 'dm', userId: 'dm' }).ok && !c.encounter) return h;     // a place that does not begin the fight by itself
+          }
+          return null;
+        }, bell);
+        if (!guardAt) throw new Error('no place four hexes from Sir Bell for the Guard');
+        await dm.evaluate((at) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at, name: 'Guard' }), guardAt);
+        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Guard'), null, 10000);
         await idle(dm);
         const found = await dm.evaluate(async (b) => {
           const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
@@ -123,7 +137,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       const arrive = async () => {
         let gob = null;
         for (let i = 0; i < 10 && !gob; i++) gob = await attempt();
-        if (!gob) throw new Error(`Sir Bell's Opportunity Attack did not hit in ${tries} tries`);
+        if (!gob) throw new Error(`Sir Bell's Opportunity Attack did not hit in ${tries} tries: ${await dm.evaluate((b) => { const e = window.hextable.state.entities[b]; return JSON.stringify({ hp: e.hp, conditions: e.conditions, reaction: window.hextable.state.encounter?.budget, flags: window.hextable.state.encounter?.flags, log: window.hextable.state.timeline?.slice(-6) }); }, bell)}`);
         return gob;
       };
 
