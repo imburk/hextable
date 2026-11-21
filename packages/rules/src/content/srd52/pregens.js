@@ -1,6 +1,7 @@
 // Level 1 pregenerated characters built from SRD 5.2.1 options. Data only.
-// These are finished records with their numbers worked out by hand, the same as a character
-// typed in through quick entry. They become built sheets when derive() exists (task R7).
+// Each is a build sheet (`sheet`: the choices, derive.js) beside the finished record worked out from it.
+// A new game builds the heroes from the sheet (scenario.js), so they level up like any built character;
+// the record's numbers are kept for the starter lists and tests, and derive.test.js fails if the two drift.
 export const pregens = [
   {
     id: "fighter", name: "Brenna", cls: "Fighter", level: 1, ac: 18, hp: 12, speed: 30, prof: 2,
@@ -12,6 +13,9 @@ export const pregens = [
       { id: "javelin", name: "Javelin", type: "ranged", bonus: 5, damage: "1d6+3", dtype: "piercing", range: [30, 120] },
     ],
     gear: ["Chain Mail", "Shield", "Longsword", "4 Javelins", "Explorer's Pack"],
+    sheet: { name: "Brenna", class: "fighter", level: 1, abilities: { str: 17, dex: 13, con: 15, int: 8, wis: 12, cha: 10 },
+      skills: ["perception", "survival"], extraSkills: ["athletics", "intimidation"], choices: { "fighting-style": "archery" },
+      armour: "chain-mail", shield: true, weapons: ["longsword", "javelin"], gear: ["Chain Mail", "Shield", "Longsword", "4 Javelins", "Explorer's Pack"] },
   },
   {
     id: "rogue", name: "Pip", cls: "Rogue", level: 1, ac: 14, hp: 10, speed: 30, prof: 2,
@@ -23,6 +27,9 @@ export const pregens = [
       { id: "shortbow", name: "Shortbow", type: "ranged", bonus: 5, damage: "1d6+3", dtype: "piercing", range: [80, 320] },
     ],
     gear: ["Leather Armor", "Shortsword", "Shortbow", "20 Arrows", "Thieves' Tools"],
+    sheet: { name: "Pip", class: "rogue", level: 1, abilities: { str: 8, dex: 17, con: 14, int: 10, wis: 12, cha: 14 },
+      skills: ["acrobatics", "deception", "investigation", "perception"], extraSkills: ["sleight-of-hand", "stealth"], expertise: ["sleight-of-hand", "stealth"],
+      armour: "leather-armor", weapons: ["shortsword", "shortbow"], gear: ["Leather Armor", "Shortsword", "Shortbow", "20 Arrows", "Thieves' Tools"] },
   },
   {
     id: "cleric", name: "Odessa", cls: "Cleric", level: 1, ac: 18, hp: 10, speed: 30, prof: 2,
@@ -31,6 +38,9 @@ export const pregens = [
     castAbil: "wis", spells: ["sacred-flame", "cure-wounds", "healing-word", "shield-of-faith"], slots: { 1: 2 },
     attacks: [{ id: "mace", name: "Mace", type: "melee", bonus: 4, damage: "1d6+2", dtype: "bludgeoning", reach: 5 }],
     gear: ["Chain Mail", "Shield", "Mace", "Holy Symbol", "Priest's Pack"],
+    sheet: { name: "Odessa", class: "cleric", level: 1, abilities: { str: 14, dex: 10, con: 14, int: 8, wis: 17, cha: 12 },
+      skills: ["medicine", "persuasion"], extraSkills: ["insight", "religion"], choices: { "divine-order": "protector" },
+      armour: "chain-mail", shield: true, weapons: ["mace"], spells: ["sacred-flame", "cure-wounds", "healing-word", "shield-of-faith"], gear: ["Chain Mail", "Shield", "Mace", "Holy Symbol", "Priest's Pack"] },
   },
   {
     id: "wizard", name: "Tavin", cls: "Wizard", level: 1, ac: 12, hp: 8, speed: 30, prof: 2,
@@ -39,5 +49,8 @@ export const pregens = [
     castAbil: "int", spells: ["fire-bolt", "magic-missile", "burning-hands"], slots: { 1: 2 },
     attacks: [{ id: "dagger", name: "Dagger", type: "melee", bonus: 4, damage: "1d4+2", dtype: "piercing", reach: 5, finesse: true }],
     gear: ["Dagger", "Arcane Focus", "Spellbook", "Scholar's Pack"],
+    sheet: { name: "Tavin", class: "wizard", level: 1, abilities: { str: 8, dex: 14, con: 14, int: 17, wis: 12, cha: 10 },
+      skills: ["insight", "investigation"], extraSkills: ["arcana", "history"], weapons: ["dagger"], spells: ["fire-bolt", "magic-missile", "burning-hands"],
+      gear: ["Dagger", "Arcane Focus", "Spellbook", "Scholar's Pack"] },
   },
 ];
