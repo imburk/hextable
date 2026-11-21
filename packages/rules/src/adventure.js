@@ -243,7 +243,7 @@ function placeAt(P, map, level, h, body, taken) {
   return { ok: true, at: [to] };
 }
 
-// The map document's own fields (map.js: lintMap, EDITS, migrateMap; the stock maps): a closed list at every level, so
+// The map document's own fields (map.js: lintMap, its edit operations, migrateMap; the stock maps): a closed list at every level, so
 // a map cannot carry what no map has (hostile case 11), and heights and points within a range a map can stand in.
 const MAP_KEYS = {
   map: ['format', 'id', 'name', 'grid', 'cellFeet', 'levels', 'walls', 'objects', 'regions', 'starts', 'entries', 'areas', 'seen', 'holding'],
