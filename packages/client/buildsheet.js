@@ -400,7 +400,7 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
     const label = mode === 'levelup' ? `${roll ? 'Roll hit points and level up' : 'Level up'} to ${b.level}` : mode === 'edit' ? 'Save changes' : mode === 'mine' ? 'Save to My characters' : roll ? 'Roll hit points and add to the table' : 'Add to the table';
     refs.save = el('button', { type: 'button', id: 'qb-save', class: 'qe-save', text: label, onclick: save });
     // A character with levels not rolled yet (the table began rolling after it was made): one tap rolls them all.
-    refs.rollHp = rollsPending() ? el('button', { type: 'button', id: 'qb-roll-hp', class: 'qe-save', text: 'Roll hit points', onclick: () => { pending = 'hpRolled'; refs.rollHp.disabled = true; act({ type: 'rollHp', actor: target.id }); setTimeout(() => { if (pending === 'hpRolled') { pending = null; if (!panel.hidden) update(); } }, 4000); } }) : null;
+    refs.rollHp = rollsPending() ? el('button', { type: 'button', id: 'qb-roll-hp', class: 'qe-save', text: 'Roll hit points', onclick: () => { pending = 'hpRolled'; refs.rollHp.disabled = true; update(); act({ type: 'rollHp', actor: target.id }); setTimeout(() => { if (pending === 'hpRolled') { pending = null; if (!panel.hidden) update(); } }, 4000); } }) : null;
     refs.needs = nd;
     panel.append(head, el('div', { class: 'qb-main' }, refs.derived, el('div', { class: 'qb-left' }, a.node)),
       el('div', { class: 'qb-foot' }, refs.why, refs.problems, el('div', { class: 'row' }, ...(refs.rollHp ? [refs.rollHp] : []), refs.save, el('button', { type: 'button', id: 'qb-cancel', text: mode === 'mine' ? '← Back' : 'Cancel', onclick: close }))));
