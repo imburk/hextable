@@ -54,6 +54,7 @@ import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
+import { mountNewVersion } from './newversion.js';
 import { createHold, HOLD_MS } from './hold.js';
 import { createPings, cellAtPoint, pingColor } from './ping.js';
 
@@ -1056,6 +1057,9 @@ const tracker = createTracker({ root: $('tracker'), state: () => S, isDM, mine, 
   openSheet: (id) => { select(id); D.open('sheet'); refresh(); } });
 // The drawer holds every panel (drawer.js); what it shows is rendered here once its tab is the one open.
 // The feedback button (feedback.js): a report is built only from what was shown or sent here.
+// A new build on the server (newversion.js, #646): checked on load, when a table's socket opens again, and (solo) when the tab is shown again.
+const NV = mountNewVersion({ fetchBuild: () => fetch('./build.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : Promise.reject(new Error('no build.json')))) });
+NV.check(); NV.solo(() => !T || T.solo);
 const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
 
 const D = initDrawer({ prefs, state: () => S, isDM, change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
@@ -1303,6 +1307,7 @@ function start(transport, map = null) {
   T = transport; S = null;
   if (!T.solo) { soloClaim?.release(); soloClaim = null; }       // a table is not a solo save: let the claim go
   $('readonly-bar').hidden = $('readonly-frame').hidden = !T.readOnly; document.body.classList.toggle('readonly', !!T.readOnly);
+  T.on.reconnected = () => NV.onReconnect();       // a table that comes back may have been redeployed meanwhile
   T.on.saveError = (msg) => toast(msg, false, 12000);          // the browser would not keep the game (review R17)
   PK.attach(T);                 // the table's homebrew packs: kept while this table is open (packmanager.js)
   $('splash-text').textContent = T.solo ? 'Opening your game\u2026' : 'Connecting to the table\u2026';
