@@ -8,6 +8,7 @@ import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, area
 import { actionProfile, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
+import { tapAttack, rearm, hintOf as flurryHint, spentWords } from './flurry.js';
 import { coverOf } from './shared/sight.js';
 import { autoPlays } from './shared/ai.js';
 import { aiAction } from './standin.js';
@@ -337,7 +338,7 @@ function words(ev) {
     case 'down': return [`${n(ev.id)} drops to 0 Hit Points and is dying.`, 'bad'];
     case 'died': return [`${n(ev.id)} dies.`, 'bad'];
     case 'deathSave': return [`${n(ev.id)} rolls a Death Save: ${ev.roll}. ${ev.hp > 0 ? 'Back on their feet with 1 Hit Point!' : ev.dead ? 'Dead.' : ev.stable ? 'Stable.' : `${ev.s} successes, ${ev.f} failures.`}`, ev.dead ? 'bad' : ''];
-    case 'std': return [`${n(ev.id)} uses ${ev.action}.`];
+    case 'std': return [spentWords(S.entities[ev.id], ev) || `${n(ev.id)} uses ${ev.action}.`];
     case 'note': return [noteText(ev, n)];
     case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
     case 'condEnd': return [ev.cond === 'grappled' ? heldEndText(ev, n) : `${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
@@ -451,6 +452,7 @@ function beat(ev, ctx) {
   played.push({ type: ev.type, t: performance.now(), hp: TL.shown()?.entities[ev.target ?? ev.id]?.hp }); played.splice(0, Math.max(0, played.length - 80));
   const line = describe(ev);
   LV.add(ev, line, S.clock); FB.shown(line, ev.type);
+  if (ev.type === 'std' && S.entities[ev.id] && mine(S.entities[ev.id]) && spentWords(S.entities[ev.id], ev)) toast(line[0], true);      // the cost of Flurry of Blows, and what is left
   const f = floatOf(ev);
   if (f) {
     if (floatRun.id !== ctx.update.id) floatRun = { id: ctx.update.id, n: 0 };
@@ -499,6 +501,8 @@ function onUpdate(state, events, fresh) {
   // A player is shown the movement an Opportunity Attack gave as soon as it comes: their creature is selected and looked at (the DM keeps their own choice; solo is both).
   if (!isDM() || T.solo) { const o = offers(S).find((x) => !hadOffer.has(x.id) && mine(S.entities[x.id])); if (o) { select(o.id); R.focus(o.id); } }
   if (mode.kind === 'attack' || mode.kind === 'famAttack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
+  // Attacks a feature granted (Flurry of Blows) are armed for the player at once, and again after each strike, so a tap on a foe makes them (flurry.js).
+  { const me = S.entities[selId], fl = me && mine(me) && up(me) ? rearm(S, me, events) : null; if (fl && mode === MOVE) mode = fl; }
   clearTimeout(aiTimer);
   aiSent = null;
   tookBack = events.some((e) => e.type === 'undone' || e.type === 'redone');     // a monster would only do the same again
@@ -693,6 +697,7 @@ function refresh() {
         hint = hl.targets.length ? `${a.name}${mode.label ? ` with ${mode.label}` : ''}: tap a target${coverHint(e, hl.targets)}${bad.length ? ` (${bad[0].why})` : ''}`
           : bad.length ? `${a.name} with ${mode.label}: ${bad[0].why}` : `${a.name}: nobody in reach (${a.type === 'melee' ? a.reach : a.range[1]} ft)`;
       }
+      if (mode.kind === 'attack' && mode.flurry && hl.targets.length) hint = flurryHint(S, e, mode) || hint;
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
@@ -972,8 +977,8 @@ R.onTap = ({ hex, id }) => {
         if (x) return act({ type: 'act', actor: e.id, action: x.id, target: tapped.id });
         return toast(`${tapped.name} is ${d} ft away. Move closer, or pick an action.`);
       }
-      const a = e.attacks.find((x) => (x.type === 'melee' ? d <= x.reach : d <= x.range[1] && d > 5)) || e.attacks.find((x) => x.type === 'ranged' && d <= x.range[1]);
-      if (a) return act({ type: 'attack', actor: e.id, target: tapped.id, attack: a.id });
+      const a = tapAttack(S, e, d);      // a granted attack (Flurry of Blows) first, then one the Attack action allows, then the first that reaches
+      if (a) return act({ type: 'attack', actor: e.id, target: tapped.id, attack: a });
       return toast(`${tapped.name} is ${d} ft away. Move closer, or pick a spell.`);
     }
     select(tapped.id); return refresh();
