@@ -4,6 +4,7 @@
   --bg: #1d2622; --panel: #26322dee; --panel-2: #31403a; --ink: #efe9d8; --muted: #a9b3a6;
   --accent: #d7a84a; --accent-ink: #1d2622; --line: #4a5a52; --good: #7fc48a; --bad: #e0685a;
   --display: 'Vollkorn SC', Georgia, serif; --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif; --radius: 6px;
+  --panel-solid: #26322d; --die: #c99a3e; --die-ink: #2a1d08; --die-edge: #f3d68a; --scrim: rgba(10, 14, 12, .55);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }

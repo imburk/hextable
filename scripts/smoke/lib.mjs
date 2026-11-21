@@ -108,16 +108,36 @@ export async function settle(page, id) {
 }
 export const tapAt = (page, touch, x, y) => (touch ? page.touchscreen.tap(x, y) : page.mouse.click(x, y));
 export const onCanvas = (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl', [x, y]);
-// The drawer holds every panel (docs/specs/table-ui.md, Decision 2): open it on a tab, close it.
-export const TAB_BUTTON = { handouts: '#btn-handouts' };
-// The drawer can be closing by itself (a fight starting closes it) when we look: then its close button is already gone, and what we want is that it ends hidden.
-export const closeMenu = async (page) => { if (await shown(page, '#drawer')) { await page.click('#drawer-close', { timeout: 3000 }).catch(() => {}); await waitShown(page, '#drawer', false); } };
-export const closePanels = closeMenu;
-export const openTab = async (page, tab) => {
-  if (!(await shown(page, '#drawer'))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
-  await page.click(TAB_BUTTON[tab] ?? `#tab-${tab}`);
-  await waitShown(page, `#${{ turns: 'tracker' }[tab] ?? tab}`);
+// The menu (docs/specs/one-token-menu.md, stage M1): the token opens it on its first level, a row goes down a level, the breadcrumb's
+// back arrow goes up, a tap on the dimmed map closes every level. A place is a path of row names: 'turns', 'table/settings',
+// ['table', 'dm'], or [] for the first level. The old tab names work too: 'settings', 'dm' and 'about' are under Table, and 'character'
+// is 'sheet'. It leaves the menu open on that place and waits until the screen is drawn.
+const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log', handouts: 'handouts', settings: 'settings', dm: 'dm', about: 'about' };
+const UNDER_TABLE = new Set(['settings', 'dm', 'about']);
+export const menuPath = (p = []) => {
+  const segs = (Array.isArray(p) ? p : String(p).split('/')).filter(Boolean).map((k) => ({ character: 'sheet', party: 'turns', root: '' })[k] ?? k).filter(Boolean);
+  return segs.length === 1 && UNDER_TABLE.has(segs[0]) ? ['table', segs[0]] : segs;
 };
+const menuAt = (page) => page.evaluate(() => document.getElementById('drawer').dataset.path || '');
+const waitMenuAt = (page, want) => page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want.join('/'), { timeout: 5000 });
+export const openMenu = async (page, path = []) => {
+  const want = menuPath(path);
+  if (!(await page.evaluate(() => window.hextable.drawer.isOpen))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
+  for (let i = 0; i < 4; i++) {           // up until what is open is on the way to the place wanted
+    const have = (await menuAt(page)).split('/').filter(Boolean);
+    if (have.every((k, j) => want[j] === k)) break;
+    await page.click('#drawer-back'); await page.waitForFunction((n) => (document.getElementById('drawer').dataset.path || '').split('/').filter(Boolean).length < n, have.length, { timeout: 5000 });
+  }
+  const have = (await menuAt(page)).split('/').filter(Boolean);
+  for (let j = have.length; j < want.length; j++) { await page.click(`#drawer [data-go="${want[j]}"]`); await waitMenuAt(page, want.slice(0, j + 1)); }
+  const leaf = want.at(-1);
+  if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);
+};
+// The drawer can be closing by itself (a fight starting closes it) when we look: then its close control is already gone, and what we want is that it ends hidden.
+// A sheet closes by its handle, a wide menu by its x.
+export const closeMenu = async (page) => { if (await shown(page, '#drawer')) { await page.click('#drawer-close:visible, #drawer-handle:visible', { timeout: 3000 }).catch(() => {}); await waitShown(page, '#drawer', false); } };
+export const closePanels = closeMenu;
+export const openTab = (page, tab) => openMenu(page, tab);
 
 // Select a character by its chip and move it one hex by tapping the map. Returns the new position.
 export async function selectAndMove(page, touch, id, name) {

@@ -72,7 +72,10 @@ export function initSettings(ctx) {
   $('set-arena-edge').value = LOOK.arenaEdge;
   $('set-arena-edge').onchange = (ev) => { prefs.set('hextable.arenaEdge', ev.target.value); ctx.look('arenaEdge', ev.target.value); };
 
-  // The drawer: which side, and (wide screens) pinned.
+  // The menu: where the token sits, whether menus slide or just appear (reduced motion always means appear), which side a wide
+  // screen's columns come from, and (wide screens) pinned.
+  $('set-token').value = drawer.token; $('set-token').onchange = (ev) => drawer.setToken(ev.target.value);
+  $('set-motion').value = drawer.motion; $('set-motion').onchange = (ev) => drawer.setMotion(ev.target.value);
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
   $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);
 
@@ -105,7 +108,7 @@ export function initSettings(ctx) {
       const dm = ctx.isDM();
       $('set-dm-box').hidden = !dm;
       $('set-table-box').hidden = !S;
-      $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
+      $('set-token').value = drawer.token; $('set-motion').value = drawer.motion; $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
       if (!S) return;
       const lines = rulesLines(S.settings), sig = JSON.stringify([lines, dm]);
       if (sig === last) return;

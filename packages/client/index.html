@@ -40,7 +40,6 @@
   <nav id="tools">
     <button type="button" id="btn-undo" hidden disabled>Undo</button>
     <button type="button" id="btn-redo" hidden disabled>Redo</button>
-    <button type="button" id="btn-menu" aria-label="Menu" aria-expanded="false" aria-controls="drawer"><span class="burger" aria-hidden="true"><i></i><i></i><i></i></span><b id="menu-badge" hidden></b></button>
   </nav>
 </header>
 <ol id="order" aria-label="Turn order"></ol>
@@ -78,28 +77,54 @@
   </div>
 </footer>
 
+<!-- The token (docs/specs/one-token-menu.md, Decision 1): one die at the bottom of the screen opens the menu. Its id is kept from the old burger. -->
+<button type="button" id="btn-menu" class="token" aria-label="Menu" aria-expanded="false" aria-controls="drawer">
+  <svg viewBox="0 0 68 68" aria-hidden="true" focusable="false">
+    <circle class="tk-disc" cx="34" cy="34" r="31"/>
+    <g transform="translate(34 34)">
+      <polygon class="tk-face" points="0,-21 18,-10.5 18,10.5 0,21 -18,10.5 -18,-10.5"/>
+      <polyline class="tk-line" points="0,-21 -10,6 10,6 0,-21"/><polyline class="tk-line" points="-18,-10.5 -10,6 0,21 10,6 18,-10.5"/>
+      <text class="tk-num" y="1">20</text>
+    </g>
+  </svg>
+  <b id="menu-badge" hidden></b>
+</button>
+
 <aside id="drawer" aria-labelledby="drawer-title" hidden>
+  <button type="button" id="drawer-handle" aria-label="Close menu" title="Close menu (or drag down)"><i></i></button>
   <header id="drawer-head">
-    <h2 id="drawer-title" tabindex="-1">Turns</h2>
+    <nav id="drawer-crumb" aria-label="Where you are">
+      <button type="button" id="drawer-back" aria-label="Back" hidden>&lsaquo;</button>
+      <ol id="crumb-list"><li id="crumb-here"><h2 id="drawer-title" tabindex="-1">Menu</h2></li></ol>
+    </nav>
     <button type="button" id="drawer-pin" aria-pressed="false" aria-label="Keep the menu open beside the map" title="Keep open">Pin</button>
     <button type="button" id="drawer-close" aria-label="Close the menu">&times;</button>
   </header>
-  <div id="menu-session" hidden>
-    <button type="button" id="menu-new" class="leave" hidden>New game</button>
-    <button type="button" id="menu-leave" class="leave" hidden>Leave table</button>
-    <p id="menu-note" class="note" role="status" hidden></p>
-  </div>
-  <div id="drawer-tabs" role="tablist" aria-label="Menu">
-    <button type="button" role="tab" id="tab-turns" data-tab="turns" aria-controls="tracker" aria-selected="false" tabindex="-1">Turns</button>
-    <button type="button" role="tab" id="tab-sheet" data-tab="sheet" aria-controls="sheet" aria-selected="false" tabindex="-1">Sheet</button>
-    <button type="button" role="tab" id="tab-log" data-tab="log" aria-controls="log" aria-selected="false" tabindex="-1">Log</button>
-    <!-- the Handouts tab keeps the id handouts.js looks for: the button and its badge -->
-    <button type="button" role="tab" id="btn-handouts" data-tab="handouts" aria-controls="handouts" aria-selected="false" tabindex="-1" hidden>Handouts<b id="ho-badge" hidden></b></button>
-    <button type="button" role="tab" id="tab-dm" data-tab="dm" aria-controls="dm" aria-selected="false" tabindex="-1" hidden>DM<b id="dm-badge" hidden></b></button>
-    <button type="button" role="tab" id="tab-settings" data-tab="settings" aria-controls="settings" aria-selected="false" tabindex="-1">Settings</button>
-    <button type="button" role="tab" id="tab-about" data-tab="about" aria-controls="about" aria-selected="false" tabindex="-1">About</button>
-  </div>
-  <div id="drawer-body">
+  <div id="menu-levels">
+  <nav id="menu-root" class="menu-level" aria-label="Menu">
+    <ul class="menu-list">
+      <li><button type="button" class="menu-row" id="tab-sheet" data-go="sheet"><span class="mr-name">Character</span><span class="mr-sum" id="sum-sheet"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li><button type="button" class="menu-row" id="tab-turns" data-go="turns"><span class="mr-name">Turns</span><span class="mr-sum" id="sum-turns"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li><button type="button" class="menu-row" id="tab-dice" data-go="dice"><span class="mr-name">Dice</span><span class="mr-sum" id="sum-dice"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li><button type="button" class="menu-row" id="tab-log" data-go="log"><span class="mr-name">Log and chat</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <!-- the Handouts row keeps the id handouts.js looks for: the button and its badge -->
+      <li><button type="button" class="menu-row" id="btn-handouts" data-go="handouts" hidden><span class="mr-name">Handouts</span><span class="mr-sum"><b id="ho-badge" hidden></b></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li class="menu-gap"><button type="button" class="menu-row" id="tab-table" data-go="table"><span class="mr-name">Table</span><span class="mr-sum"><b id="table-badge" hidden></b></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    </ul>
+  </nav>
+  <nav id="menu-table" class="menu-level" aria-label="Table">
+    <ul class="menu-list">
+      <li><button type="button" class="menu-row" id="tab-settings" data-go="settings"><span class="mr-name">Setup</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li><button type="button" class="menu-row" id="tab-dm" data-go="dm" hidden><span class="mr-name">DM tools</span><span class="mr-sum"><b id="dm-badge" hidden></b></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li><button type="button" class="menu-row" id="tab-about" data-go="about"><span class="mr-name">About</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    </ul>
+    <div id="menu-session" hidden>
+      <button type="button" id="menu-new" class="leave" hidden>New game</button>
+      <button type="button" id="menu-leave" class="leave" hidden>Leave table</button>
+      <p id="menu-note" class="note" role="status" hidden></p>
+    </div>
+  </nav>
+<div id="drawer-body" class="menu-level">
     <section id="tracker" class="tabpanel" role="tabpanel" aria-labelledby="tab-turns" hidden></section>
     <section id="sheet" class="tabpanel" role="tabpanel" aria-labelledby="tab-sheet" hidden><div id="sheet-body"></div></section>
     <section id="log" class="tabpanel" role="tabpanel" aria-labelledby="tab-log" hidden>
@@ -108,6 +133,13 @@
       <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
     </section>
     <section id="handouts" class="tabpanel" role="tabpanel" aria-labelledby="btn-handouts" hidden><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
+    <section id="dicepanel" class="tabpanel" role="tabpanel" aria-labelledby="tab-dice" hidden>
+      <section><h3>Dice and animation, on this device</h3>
+        <label class="assign">Dice <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label>
+        <label class="assign">Animation <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label>
+        <label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label>
+      </section>
+    </section>
     <section id="dm" class="tabpanel" role="tabpanel" aria-labelledby="tab-dm" hidden>
   <div id="dm-table"></div>
   <section><h3>Take back</h3>
@@ -203,17 +235,14 @@
         <p class="note" id="set-look-note" hidden></p>
       </section>
       <section><h3>Controls</h3>
-        <label class="assign">Menu opens from the <select id="set-side"><option value="right">Right</option><option value="left">Left</option></select></label>
+        <label class="assign">The menu token sits <select id="set-token"><option value="center">Bottom centre</option><option value="right">Bottom right</option><option value="left">Bottom left</option></select></label>
+        <label class="assign">Menus <select id="set-motion"><option value="slide">Slide in and out</option><option value="appear">Just appear</option></select></label>
+        <label class="assign">On a wide screen the menu opens from the <select id="set-side"><option value="left">Left</option><option value="right">Right</option></select></label>
         <label class="check" id="set-pin-row"><input type="checkbox" id="set-pin"> Keep the menu open beside the map</label>
         <p class="note" id="set-pin-note">Wide screens only. The map makes room for it.</p>
       </section>
       <section><h3>Actions, on this device</h3>
         <label class="assign">Action tab <select id="set-paneltab"><option value="auto">Pick the likely one</option><option value="remember">Remember my last one</option></select></label>
-      </section>
-      <section><h3>Animation and dice, on this device</h3>
-        <label class="assign">Dice <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label>
-        <label class="assign">Animation <select id="pace-pick"><option value="">Follow the table (wait for it)</option><option value="flow">Flow: act while it plays</option><option value="instant">Instant: no animation</option></select></label>
-        <label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label>
       </section>
       <section id="set-dm-box" hidden><h3>For the DM, on this device</h3>
         <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me</label>
@@ -225,6 +254,7 @@
       </section>
     </section>
     <section id="about" class="tabpanel" role="tabpanel" aria-labelledby="tab-about" hidden></section>
+  </div>
   </div>
   <div id="drawer-live" class="sr-only" role="status" aria-live="polite"></div>
 </aside>
