@@ -1,5 +1,7 @@
 # Hextable — working notes for Claude
 
+Layout last checked 2026-11-20; `packages/rules/test/guides.test.js` fails if a rules module is missing from it.
+
 Read `docs/DESIGN.md` before changing architecture and `docs/ROADMAP.md` to see
 what is in scope right now. Agreed designs are in `docs/specs`; build to them.
 `AGENTS.md` has the working agreement for every coding agent, including you.
@@ -29,6 +31,25 @@ by the engine. Must work on PC, phone and tablet.
   `space.js` is where things can stand: levels, heights, surfaces. `map.js`
   is the map document: its format, its linter, its migration and its edits.
   `walls.js` works out what walls and doors block.
+  The rest of `packages/rules/src`, one line each: `ai.js` (monster brain),
+  `derive.js` (a character built from class and level), `forms.js` (Wild Shape
+  and other forms), `grid.js` (the geometry of hexes or squares behind one
+  interface) and `hex.js` (hex maths), `handouts.js` (handouts and private
+  notes), `history.js` (undo and redo), `homebrew.js` (which creatures carry a
+  homebrew monster), `import-fgxml.js` and `import-uvtt.js` (Fantasy Grounds
+  characters, Universal VTT maps), `market.js` (shops: the market document and
+  money), `migrate.js` (brings a saved game up to date), `patch.js` (sending only
+  what changed), `places.js` (a world's atlas as state: the place in play and
+  parked ones), `reactions.js` (standing instructions and prompts), `rewards.js`
+  (XP and loot), `rng.js` (seeded dice), `scenario.js` (the starter valley),
+  `scenes.js` (scenes with no map), `scores.js` (making ability scores),
+  `summons.js` (summon blocks), `terrain.js` (what lasting spells do to the
+  ground and air), `timeline.js` (trimming the timeline), `view.js` (what each
+  person at the table may know), `vision.js` (what the party sees and
+  remembers), `weapons.js` (what a weapon attack may do) and `worldpack.js`
+  (the DM's world pack: atlas, pins, routes), `known.js` (which places of a world players know, and their player ids),
+  `adventure.js` (an adventure module's format and its checker) and `shopids.js` (the numbers players are
+  given for shops).
   `view-fields.js` classifies every field of a party creature and every setting as sent, scrubbed or withheld; `view.js` builds a player's view from it.
   `content/sizes.js` is the table of creature sizes. Design:
   `docs/specs/maps-and-objects.md`, whose build notes say what was settled.
@@ -45,11 +66,12 @@ by the engine. Must work on PC, phone and tablet.
   of Magic and Wild Shape, use, check, search, hide), `characters.js`
   (adding, editing, levelling, gear, attunement), `rests.js` (rests, time,
   chronicle, rewards) and `dm.js` (DM tools, the map, light, settings,
-  handouts, scenes) and `companions.js` (the DM's `bond`, a master's `command`,
-  and a familiar's `dismiss` and `recall`; design `docs/specs/companions.md`) and `trade.js` (purses and shops:
+  handouts, scenes), `companions.js` (the DM's `bond`, a master's `command`,
+  and a familiar's `dismiss` and `recall`; design `docs/specs/companions.md`), `trade.js` (purses and shops:
   `market`, `openShop`, `shopEdit`, `showShop`, `revealGoods`, `closeShop`, `quote`, `buy`, `chipIn`, `sell`,
   `take`, the place rule; design `docs/specs/shops.md`, its money arithmetic in the pure `market.js` beside
-  `engine.js`). Under them, helpers used by more than one domain, in
+  `engine.js`) and `travel.js` (the atlas's places: `enter`, `leave`, `goTo`, parking; design
+  `docs/specs/travel.md`). Under them, helpers used by more than one domain, in
   layers that import only downwards: `shared.js` (basics: `fail`, `ent`,
   `control`, dice, asking a player) ← `world.js` (moving and fitting,
   regions, objects, hidden creatures, areas and targets, marching) and
@@ -66,7 +88,7 @@ by the engine. Must work on PC, phone and tablet.
   that enforces it; `index.js` loads packs. `registry.js` holds a table's own
   homebrew pack: `loadPack` checks one, `overlayOf` joins a table's packs,
   `using` lends them to the content lookups for one synchronous call
-  (`docs/specs/homebrew.md`). `npm run content` prints what is
+  (`docs/specs/homebrew.md`); `packs.js` is what a game says about the packs it needs and `reader.js` reads an entry back in plain words; `dryrun.js` casts a homebrew spell in a throw-away game. `npm run content` prints what is
   entered and at which tier.
 - `packages/client` — the browser app: WebGL renderer, table UI, themes, and
   the transport that talks to either an in-tab engine (solo) or a server.
