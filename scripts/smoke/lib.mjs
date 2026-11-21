@@ -68,7 +68,12 @@ export async function scenario(label, fn) {
 }
 
 // ---------- page helpers ----------
-export const wait = (page, fn, arg, timeout = 8000) => page.waitForFunction(fn, arg, { timeout });
+// A timeout names the wait that failed (its condition and its limit), not only "page.waitForFunction: Timeout 10000ms exceeded" (#661).
+export const wait = (page, fn, arg, timeout = 8000) => page.waitForFunction(fn, arg, { timeout }).catch((err) => {
+  if (!/Timeout/.test(String(err?.message))) throw err;
+  const src = String(fn).replace(/\s+/g, ' ').slice(0, 160);
+  throw new Error(`wait of ${timeout} ms timed out for ${src}${arg === undefined || arg === null ? '' : ` (arg ${JSON.stringify(arg).slice(0, 60)})`}`);
+});
 export const state = (page, fn, arg) => page.evaluate(`(${fn})(window.hextable.state, ${JSON.stringify(arg ?? null)})`);
 export const shown = (page, sel) => page.evaluate((s) => { const e = document.querySelector(s); return !!e && !e.hidden && e.getClientRects().length > 0; }, sel);
 export const waitShown = (page, sel, on = true, timeout = 5000) =>

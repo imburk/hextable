@@ -17,7 +17,7 @@ So the claim holds, with three small exceptions (section 1).
 
 | Kind | Entered | Engine runs all of it (auto) | Engine runs part (assist) | DM runs it (manual) |
 |---|---|---|---|---|
-| Spells | 339 | 47 (14 %) | 92 (27 %) | 200 (59 %) |
+| Spells | 339 | 48 (14 %) | 94 (28 %) | 197 (58 %) |
 | Spells of levels 0 to 3 (what characters of levels 1 to 6 cast) | 183 | 37 (20 %) | 48 (26 %) | 98 (54 %) |
 | Monsters | 329 | 57 (17 %) | 270 (82 %) | 2 |
 | Monsters of Challenge Rating 4 or lower | 216 | 53 (25 %) | 161 | 2 |
