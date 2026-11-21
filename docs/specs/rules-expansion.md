@@ -941,7 +941,11 @@ Three spells the engine used to hand to the DM, built to SRD 5.2.1 with the smal
 - **The Armor Class shown.** `ac` stays the creature's own number. The view adds `acNow` (the number that applies, from `acNow` in
   `engine/rolls.js`) and `acWhy` (the names of what changed it: Mage Armor, Barkskin) for every party creature where they differ;
   the DM works it out from the whole state (`acShown`). The sheet, the card and the attack log print it. A character saved before
-  `acBase` existed has it worked out again from its sheet (`acBaseOf`), so no state version changed.
+  `acBase` existed has it worked out again from its sheet (`acBaseOf`), so no state version changed. That is done with the content lent
+  at the moment (a table's homebrew, inside `using`) and trusted only when nothing is missing and the sheet gives the creature's own `ac`
+  and armour; otherwise Mage Armor goes to the DM. A legacy character with homebrew gear may need a refresh (`refresh` writes `acBase`).
+  A null or a failure is never kept; a kept answer is checked against `ac` and armour on every use, since `sheet.items` is emptied in
+  place for a creature that vanishes or goes to a pocket dimension (`engine/resolve.js`).
 
 ### A class
 

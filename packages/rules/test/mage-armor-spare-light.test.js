@@ -10,7 +10,7 @@ import { SPELLS } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { derive } from "../src/derive.js";
 import { apply, makeEntity } from "../src/engine.js";
-import { acOf, acShown } from "../src/engine/rolls.js";
+import { acBaseOf, acOf, acShown } from "../src/engine/rolls.js";
 import { rangeAt } from "../src/effects.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
@@ -384,4 +384,30 @@ test("Barkskin is named too, and a player is not sent the id of the effect that 
   ok(cast(s, "pim", "light"));
   const lit = view(s, { role: "player", userId: "pat" }).entities.pim.light;
   assert.deepEqual(lit, { bright: 20, dim: 20 });
+});
+
+test("a Barkskin of a hidden creature on a party creature is sent as its name only: acWhy never names who cast it", () => {
+  const s = table({ orsk: cleric(3), pim: wizard({ name: "Pim" }) });
+  s.entities.pim.owner = "pat";
+  s.entities.ghost = makeEntity({ ...s.entities.orsk, name: "Ghost" }, { id: "ghost", kind: "npc", side: "foe", pos: { q: 9, r: 0, z: 0 }, hidden: true });
+  s.effects = [{ id: "fx900", name: "Barkskin", spell: "barkskin", source: "ghost", conc: false, lasts: "1 hour", until: { clock: s.clock + 60 }, parts: [{ target: "pim", modifier: { on: "ac", op: "min", value: 17 } }] }];
+  const seen = view(s, { role: "player", userId: "pat" });
+  assert.deepEqual({ acNow: seen.entities.pim.acNow, acWhy: seen.entities.pim.acWhy }, { acNow: 17, acWhy: ["Barkskin"] });
+  assert.equal(JSON.stringify(seen.entities.pim).includes("ghost"), false);
+  assert.equal(seen.effects[0].source, undefined, "the effect list says it as it always did");
+});
+
+test("the base of a saved character is worked out again only where the sheet gives what the creature has, and a failure is never kept", () => {
+  const s = table({ vex: wizard(), pim: wizard({ name: "Pim", abilities: { ...A, dex: 14 } }) });
+  const pim = s.entities.pim;
+  delete pim.acBase;
+  pim.ac += 1;                                                    // the DM's hand-edit: the sheet no longer says what the creature has
+  const r = ok(cast(s, "vex", "mage-armor", "pim"));
+  assert.match(manuals(r)[0].text, /sheet the engine could not work/);
+  assert.equal(acBaseOf(pim), null);
+  pim.ac -= 1;                                                    // put right: the answer is asked again, not remembered as null
+  assert.equal(acBaseOf(pim), 12);
+  pim.sheet.items = [];                                           // in place, as the pocket dimension does
+  pim.ac = 99;
+  assert.equal(acBaseOf(pim), null, "a kept answer is used only while ac and armour match");
 });

@@ -184,14 +184,24 @@ export function renew(s, e, t) {
 // one at a time"); what is added to the base (a Shield, a magic item, a feature) stays. A creature with no `acBase` (a monster, a hand-typed
 // record) is not known to wear nothing, so the modifier is never put on it (`modifier`, below) and nothing here changes its number.
 // The base of a character's Armor Class (derive's `acBase`). A character saved before the record kept it has it worked out again from its sheet,
-// once for each sheet (the sheet is replaced whole when the character is made again). null: not a built character, or a sheet that will not derive.
+// with whatever content is lent at that moment (a table's homebrew, when called inside `using`). The answer is trusted only if that derive finds
+// nothing missing and comes to the very `ac` and armour the creature has: a sheet with homebrew gear whose pack is not lent, or one the DM has
+// edited by hand, gives null (not a built character as far as Mage Armor can tell; refreshing the character writes `acBase` for good). A null or a
+// throw is never kept, so a later call with the content lent is asked again. A kept answer is for one sheet and the `ac` and armour it matched:
+// sheet.items edited in place (vanishUnseen and the pocket dimension empty it, engine/resolve.js) leave the sheet object the same, which is why
+// the match is checked on every use, not only when it was made.
 const BASES = new WeakMap();
 export function acBaseOf(t) {
   if (Number.isInteger(t.acBase)) return t.acBase;
   if (t.kind !== 'pc' || !t.sheet || typeof t.sheet !== 'object') return null;
-  let n = BASES.get(t.sheet);
-  if (n === undefined) { try { n = derive(t.sheet).record.acBase ?? null; } catch { n = null; } BASES.set(t.sheet, n); }
-  return n;
+  const had = BASES.get(t.sheet);
+  if (had && had.ac === t.ac && had.armour === (t.armour ?? 'none')) return had.base;
+  try {
+    const d = derive(t.sheet);
+    if (d.missing?.length || !Number.isInteger(d.record.acBase) || d.record.ac !== t.ac || (d.record.armour ?? 'none') !== (t.armour ?? 'none')) return null;
+    BASES.set(t.sheet, { ac: t.ac, armour: t.armour ?? 'none', base: d.record.acBase });
+    return d.record.acBase;
+  } catch { return null; }
 }
 export function acNow(s, t) {
   const m = modifiers(s, t, 'ac', { target: t });
