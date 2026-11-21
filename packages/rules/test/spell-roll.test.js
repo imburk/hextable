@@ -14,6 +14,9 @@ const fromSteps = (def) => {
   return { attack, saves: [...saves] };
 };
 
+// The saves that run when the spell is cast: top-level save steps of a spell that is not a zone, or whose zone goes off at the cast.
+const castSaves = (def) => (!def.zone || def.zone.atCast ? def.effects.filter((st) => "save" in st).map((st) => `save:${st.save}`) : []);
+
 test("every SRD spell has a roll from the closed list", () => {
   assert.equal(spells.length, 339);
   for (const s of spells) assert.ok(SPELL_ROLLS.includes(s.roll), `${s.id}: roll ${JSON.stringify(s.roll)}`);
@@ -24,7 +27,8 @@ test("the roll agrees with the steps wherever the steps hold an attack or a save
   for (const s of spells) {
     const { attack, saves } = fromSteps(s);
     if (attack) { assert.equal(s.roll, "attack", `${s.id} has an attack step`); checked++; }
-    else if (saves.length) { assert.ok(saves.includes(s.roll), `${s.id}: steps make ${saves.join(" and ")}, roll is ${s.roll}`); checked++; }
+    else if (castSaves(s).length) { assert.ok(castSaves(s).includes(s.roll), `${s.id}: steps make ${castSaves(s).join(" and ")} on the cast, roll is ${s.roll}`); checked++; }
+    else if (saves.length) { assert.ok(saves.includes(s.roll) || s.roll === "none", `${s.id}: a later or nested save, roll is ${s.roll}`); checked++; }
     else assert.ok(!s.roll.startsWith("save:") || s.tier !== "auto", `${s.id}: an auto spell with no save step cannot say a save`);
   }
   assert.ok(checked >= 80, `only ${checked} spells checked`);
@@ -33,13 +37,13 @@ test("the roll agrees with the steps wherever the steps hold an attack or a save
 test("a spell's roll is not 'none' while its steps make one, and a spell with no roll step that says 'attack' is a hand-over to the DM", () => {
   for (const s of spells) {
     if (s.roll === "attack" && !fromSteps(s).attack) assert.notEqual(s.tier, "auto", `${s.id}`);
-    if (s.roll === "none") { const { attack, saves } = fromSteps(s); assert.ok(!attack && !saves.length, s.id); }
+    if (s.roll === "none") assert.ok(!fromSteps(s).attack && !castSaves(s).length, s.id);
   }
 });
 
 test("the counts by kind of roll", () => {
   const n = {}; for (const s of spells) n[s.roll] = (n[s.roll] ?? 0) + 1;
-  assert.deepEqual(n, { attack: 20, "save:dex": 39, none: 193, "save:wis": 39, "save:cha": 9, "save:con": 28, "save:str": 8, "save:int": 3 });
+  assert.deepEqual(n, { attack: 21, "save:dex": 37, none: 197, "save:wis": 39, "save:cha": 10, "save:con": 25, "save:str": 7, "save:int": 3 });
 });
 
 test("well-known spells", () => {
@@ -71,9 +75,17 @@ test("the linter takes the field as optional, refuses another value, and refuses
   assert.deepEqual(ok(bare), []);
   assert.deepEqual(ok({ ...bare, roll: "save:dex" }), []);
   assert.match(ok({ ...bare, roll: "save:luck" }).join(), /`roll` is one of attack, save:str/);
-  assert.match(ok({ ...bare, roll: "none" }).join(), /saving throw, so `roll` is "save:dex"/);
+  assert.match(ok({ ...bare, roll: "none" }).join(), /a Dexterity saving throw when it is cast, so `roll` is "save:dex"/);
   assert.match(ok({ ...bare, roll: "save:wis" }).join(), /so `roll` is "save:dex"/);
   assert.match(ok({ ...CONTENT.spells["fire-bolt"], roll: "save:dex" }).join(), /attack step, so `roll` is "attack"/);
+  // A save inside another step's branch (a repeat or a side case) does not forbid none; an attack step still does.
+  const nested = { ...bare, effects: [{ attack: "ranged", kind: "spell", onHit: [{ save: "con", onFail: [{ damage: "1d6", type: "fire" }] }] }] };
+  assert.deepEqual(ok({ ...nested, roll: "attack" }), []);
+  assert.match(ok({ ...nested, roll: "none" }).join(), /attack step/);
+  const later = { ...bare, effects: [{ save: "dex", onFail: [{ save: "con", onFail: [{ condition: "prone" }] }] }] };
+  assert.deepEqual(ok({ ...later, roll: "save:dex" }), []);
+  const zone = { ...bare, duration: "1 minute", concentration: true, zone: { on: ["turnEnd"], once: "turn" }, effects: [{ save: "dex", onFail: [{ damage: "1d6", type: "fire" }] }] };
+  assert.deepEqual(ok({ ...zone, roll: "none" }), []);       // a zone's save made only on later turns is a side case
   // A manual spell may say any roll: the steps do not show it.
   assert.deepEqual(ok({ ...CONTENT.spells["bestow-curse"], roll: "save:wis" }), []);
 });

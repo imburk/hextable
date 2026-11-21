@@ -224,9 +224,9 @@ export const spells7 = [
     target: {"self":true},
     effects: [{"manual":"Symbol: the SRD duration is until dispelled or triggered. The caster inscribes a nearly imperceptible harmful glyph (Wisdom (Perception) against the spell save DC to notice) up to 10 feet across on a surface or inside a closable object, with a chosen trigger and effect: Death, Discord, Fear, Pain, Sleep or Stunning. When triggered it fills a 60-foot-radius Sphere with Dim Light for 10 minutes, then the spell ends, targeting each creature in it and each creature that enters or ends its turn there (once per turn). Death: Constitution save, 10d10 Necrotic damage or half. Discord: Wisdom save or argue for 1 minute, with Disadvantage on attack rolls and ability checks. Fear: Wisdom save or Frightened for 1 minute, moving at least 30 feet away each turn. Pain: Constitution save or Incapacitated for 1 minute. Sleep: Wisdom save or Unconscious for 10 minutes (waking on damage or being shaken). Stunning: Wisdom save or Stunned for 1 minute. The DM runs the glyph."}],
     kinds: ["damage", "control"],
-    roll: "save:con",
+    roll: "save:wis",
     tier: "manual", checked: true,
-    text: "A hidden glyph with a chosen trigger and one of six harmful effects (death, discord, fear, pain, sleep, stunning) that bursts in a 60-foot sphere when triggered. Death and pain call for a Constitution save (the roll shown); discord, fear, sleep and stunning for a Wisdom save.",
+    text: "A hidden glyph with a chosen trigger and one of six harmful effects (death, discord, fear, pain, sleep, stunning) that bursts in a 60-foot sphere when triggered. Discord, fear, sleep and stunning call for a Wisdom save (the roll shown); death and pain for a Constitution save.",
   },
   {
     id: "teleport", name: "Teleport", source: "SRD 5.2.1",

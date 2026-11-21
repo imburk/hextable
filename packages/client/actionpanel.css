@@ -48,7 +48,7 @@
 
 /* A greyed row keeps its reason at full strength: only the name and the numbers fade, so the words can be read without a hover. */
 button.ap-row.off { opacity: 1; border-style: dashed; }
-.ap-row.off .ap-top, .ap-row.off .ap-s, .ap-row.off .ap-pips { opacity: .55; }
+.ap-row.off .ap-top, .ap-row.off .ap-pips { opacity: .55; } .ap-row.off .ap-s { opacity: .75; }   /* the roll tag sits in it: kept readable */
 
 
 /* Under a pane with more rows than fit: how many are below. */

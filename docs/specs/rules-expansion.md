@@ -601,11 +601,15 @@ reader says it in words ("Its roll: the target makes a Dexterity saving throw").
 - **One value.** A spell with two rolls takes the one that decides whether it works: Ice Knife is `attack` (its Dexterity save
   follows, hit or miss), Wall of Ice is `save:dex` (its Constitution save comes second). The spell's `text` names the other.
   A spell whose rolls come only from options (Arcane Hand's Clenched Fist) takes the roll of its first option.
-- **Which saves count.** A save counts when the target makes it against the spell itself, even an unwilling creature's only
-  (Levitate, Enlarge/Reduce: `save:con`); one made later by a creature trying to escape (Forcecage, Magic Circle) does not (`none`),
-  and Advantage on saving throws (Haste, Beacon of Hope) is not a save the target makes (`none`).
-- **It may not contradict the steps.** An attack step makes it `attack`; otherwise a save step makes it one of the saves the steps
-  make. A spell with no attack or save step (a `manual` one, or one that rolls nothing) may say any roll, since the steps do not
+- **Which roll the tag names.** The roll that decides, when the spell is cast, whether it works on its target. A save made only on
+  later turns, only to escape, or only by an unwilling creature is still named when it is the spell's only way to resist
+  (Levitate, Enlarge/Reduce: `save:con`). A save that applies only to one optional mode or a side case is `none`, and the text
+  names it: Forcecage and Magic Circle (a creature escaping), Power Word Stun (the save only ends it later), Heat Metal (the damage
+  is automatic; the save decides dropping the object), Wall of Stone, Control Water, Detect Thoughts (probing), Haste and Beacon of
+  Hope (Advantage on saves is not a save the target makes). Melee spell attacks the caster makes each turn count as `attack`
+  (Spiritual Weapon, Flame Blade, Conjure Fey).
+- **It may not contradict the steps.** An attack step makes it `attack`; otherwise a save step that runs when the spell is cast (a top-level one, not inside another step's branch and not a
+  zone's later turns) makes it one of those saves. A spell with no attack or save step (a `manual` one, or one that rolls nothing) may say any roll, since the steps do not
   show it. `spell-roll.test.js` holds all 339 SRD spells to this, so the data cannot drift.
 - **Optional for homebrew.** When a spell does not say, `spellRoll(def)` (`effects.js`) reads the steps: an attack step, else the
   first save step, else `none` for a spell with no manual step, else nothing (null; the list shows no tag). `SPELLS[id].roll`

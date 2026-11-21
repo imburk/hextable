@@ -27,6 +27,7 @@ export const SPELL_KINDS = ['damage', 'healing', 'control', 'utility'];
 // The roll a spell turns on, said as plainly as its level (docs/specs/rules-expansion.md, "A spell's roll", #605): `attack` (the caster
 // makes a spell attack roll), `save:<ability>` (the target makes that saving throw) or `none`. A spell with two rolls takes the one that
 // decides whether it works. Optional: `spellRoll` (effects.js) reads the steps when a spell does not say.
+const ABILITY_NAMES = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 export const SPELL_ROLLS = ['attack', 'save:str', 'save:dex', 'save:con', 'save:int', 'save:wis', 'save:cha', 'none'];
 // How long something lasts: "instant", a count of rounds, minutes, hours or days, or one of two
 // forms the engine cannot time ("until dispelled", "special").
@@ -654,15 +655,18 @@ function lintSpell(e, say) {
       say(`\`kinds\` is a list of one to four of ${SPELL_KINDS.join(', ')}, no repeats, in that order`);
     }
   }
-  // `roll`: one of SPELL_ROLLS, and it may not contradict the steps: an attack step makes it `attack`; otherwise a save step makes it one of the
-  // saves the steps make. (A spell with no such step may say any roll: the DM handles those.)
+  // `roll`: one of SPELL_ROLLS, and it may not contradict the steps: an attack step makes it `attack`; otherwise a save step that runs when the spell is cast
+  // (a top-level one, in a spell that is not a zone or whose zone goes off at the cast) makes it one of those saves. A save inside another step's branch or
+  // made only on later turns is a side case the text names, so `none` may stand beside it. A spell with no such step may say any roll (the DM handles it).
   if (e.roll !== undefined) {
     if (!SPELL_ROLLS.includes(e.roll)) say(`\`roll\` is one of ${SPELL_ROLLS.join(', ')}`);
     else if (Array.isArray(e.effects)) {
       let attack = false; const saves = new Set();
-      walkSteps(e.effects, (st) => { if (st && 'attack' in st) attack = true; if (st && 'save' in st) saves.add(`save:${st.save}`); });
+      walkSteps(e.effects, (st) => { if (st && 'attack' in st) attack = true; });
+      if (!e.zone || e.zone.atCast) for (const st of e.effects) if (st && 'save' in st && ABILITIES.includes(st.save)) saves.add(`save:${st.save}`);
+      const words = [...saves].map((x) => `a ${ABILITY_NAMES[x.slice(5)]} saving throw`);
       if (attack && e.roll !== 'attack') say('has an attack step, so `roll` is "attack"');
-      else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make a ${[...saves].join(' and ')} saving throw, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
+      else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make ${words.join(' and ')} when it is cast, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
   const seen = lintSteps(e.effects, say);

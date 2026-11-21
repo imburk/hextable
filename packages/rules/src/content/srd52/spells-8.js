@@ -176,9 +176,9 @@ export const spells8 = [
     target: {"creature":{"count":1}},
     effects: [{"manual":"Power Word Stun: a visible creature in range with 150 Hit Points or fewer has the Stunned condition, and a creature with more has its Speed reduced to 0 until the start of the caster's next turn. There is no initial save. The Stunned target makes a Constitution save at the end of each of its turns, ending the condition on a success. The engine cannot judge a target's Hit Points against the threshold, so the DM applies the right effect."}],
     kinds: ["control"],
-    roll: "save:con",
+    roll: "none",
     tier: "manual", checked: true,
-    text: "A creature with 150 hit points or fewer is stunned (Constitution save each turn to end it); a tougher one just has its speed reduced to 0 briefly.",
+    text: "A creature with 150 hit points or fewer is stunned (Constitution save each turn to end it; nothing is rolled to resist it at first); a tougher one just has its speed reduced to 0 briefly.",
   },
   {
     id: "sunburst", name: "Sunburst", source: "SRD 5.2.1",

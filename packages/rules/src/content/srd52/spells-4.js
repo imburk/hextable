@@ -131,9 +131,9 @@ export const spells4 = [
     target: {"area":{"shape":"cube","size":100}},
     effects: [{"manual":"Control Water: for up to 10 minutes the caster controls water in a Cube up to 100 feet on a side with one effect, repeatable or changeable with a Magic action on later turns. Flood: standing water rises up to 20 feet, or in a large body of water a 20-foot wave sweeps across and crashes (Huge or smaller vehicles are carried along, 25 percent chance of capsizing). Part Water: a trench opens across the area with the water walled to either side. Redirect Flow: flowing water moves in a chosen direction, even uphill. Whirlpool: in an area at least 50 feet square and 25 feet deep, a whirlpool 5 feet wide at the base, 50 feet at the top and 25 feet tall pulls creatures in the water within 25 feet 10 feet toward it; a creature entering it first on a turn or ending its turn there makes a Strength save, taking 2d8 Bludgeoning damage or half on a success, and swimming away takes an action and a Strength (Athletics) check against the spell save DC. The DM runs it."}],
     kinds: ["damage", "control", "utility"],
-    roll: "save:str",
+    roll: "none",
     tier: "manual", checked: true,
-    text: "The caster controls water in a cube up to 100 feet wide: flood it, part it, redirect its flow, or form a damaging whirlpool.",
+    text: "The caster controls water in a cube up to 100 feet wide: flood it, part it, redirect its flow, or form a damaging whirlpool, where a creature makes a Strength save.",
   },
   {
     id: "death-ward", name: "Death Ward", source: "SRD 5.2.1",

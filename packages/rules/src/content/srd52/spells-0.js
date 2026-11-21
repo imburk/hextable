@@ -99,7 +99,7 @@ export const spells0 = [
     target: { self: true },
     effects: [{ manual: "Light: the caster touches one Large or smaller object that no one else is wearing or carrying. It sheds Bright Light in a 20-foot radius and Dim Light for 20 feet beyond, in a colour the caster chooses. Covering it blocks the light; casting Light again ends the spell. The DM marks the lit object." }],
     kinds: ["utility"],
-    roll: "save:dex",
+    roll: "none",
     tier: "manual", checked: true,
     text: "A touched object glows like a torch for an hour, in a colour the caster picks.",
   },

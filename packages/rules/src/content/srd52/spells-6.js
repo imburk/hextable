@@ -47,7 +47,7 @@ export const spells6 = [
     target: {"self":true},
     effects: [{"manual":"Conjure Fey: a Medium Feywild spirit appears in range for up to 10 minutes, looking like a Fey creature the caster chooses. When it appears, and as a Bonus Action on later turns after teleporting it to an unoccupied space the caster can see within 30 feet of where it was, the caster can make a melee spell attack against a creature within 5 feet of it. On a hit the target takes Psychic damage equal to 3d12 plus the spellcasting ability modifier (+1d12 per slot level above 6) and is Frightened until the start of the caster's next turn, the caster and the spirit both being the source of fear. The DM runs the spirit and its attacks."}],
     kinds: ["damage", "control"],
-    roll: "none",
+    roll: "attack",
     tier: "manual", checked: true,
     text: "A fey spirit the caster teleports each turn to strike with a melee spell attack for 3d12 plus modifier psychic damage and fear, for up to 10 minutes.",
   },

@@ -452,8 +452,8 @@ export const spells5 = [
     target: {"self":true},
     effects: [{"manual":"Wall of Stone: a nonmagical stone wall appears at a point in range for up to 10 minutes: ten contiguous 10-by-10-foot panels 6 inches thick, or 10-by-20-foot panels 3 inches thick. A creature the wall cuts through is pushed to a side of the caster's choice, and one that would be fully enclosed can make a Dexterity save to use its Reaction to move out. It can take any shape but must merge with and be supported by existing stone; panels of a span over 20 feet must be halved for supports. Each panel has AC 15, 30 Hit Points per inch of thickness and Immunity to Poison and Psychic damage; at 0 Hit Points it is destroyed. If the caster concentrates for the full duration the wall becomes permanent. The DM places the wall and tracks its panels."}],
     kinds: ["control", "utility"],
-    roll: "save:dex",
+    roll: "none",
     tier: "manual", checked: true,
-    text: "A solid stone wall of ten 10-foot panels that can be shaped; it becomes permanent if the caster concentrates for the full 10 minutes.",
+    text: "A solid stone wall of ten 10-foot panels that can be shaped; it becomes permanent if the caster concentrates for the full 10 minutes. A creature the wall would trap can make a Dexterity save.",
   },
 ];

@@ -107,7 +107,7 @@ export const spells9 = [
     kinds: ["damage", "control"],
     roll: "save:dex",
     tier: "manual", checked: true,
-    text: "A wall or globe of seven layered colors that blinds the nearby and punishes anyone passing through, one layer at a time, for 10 minutes. Each layer makes a creature make a Dexterity save (the roll shown); the blinding of the nearby is a Constitution save.",
+    text: "A wall or globe of seven layered colors that blinds the nearby and punishes anyone passing through, one layer at a time, for 10 minutes. Passing through its layers calls for saves (mostly Dexterity; some layers Constitution or Wisdom).",
   },
   {
     id: "shapechange", name: "Shapechange", source: "SRD 5.2.1",
