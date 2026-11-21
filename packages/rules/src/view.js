@@ -936,6 +936,15 @@ function viewEventsOf(events, state, viewer) {
       case 'sceneNpc':                                 // someone came or left, or a name or face changed; not a change to the DM's notes
         if (ev.prep !== true && (ev.change !== 'edited' || ev.changed?.some((k) => k !== 'notes'))) out.push(pick(ev, ['type', 'scene', 'npc', 'name', 'change']));
         break;
+      // A group came to a place of the world (docs/specs/travel.md; issue #650): told only where the place is one the players know (the id
+      // they were given and the name the atlas gives it) and only of the creatures of the party they may know of; the pack's own id, the entry
+      // and pin it arrived by and where it came from are never sent. A group none of whom they may know of, or a place they were not given, is no event.
+      case 'arrived': {
+        const at = typeof ev.node === 'string' ? playerNode(state, ev.node) : null;
+        const ids = (Array.isArray(ev.ids) ? ev.ids : []).filter((id) => typeof id === 'string' && (cls(id) === 'open' || partyParked(state, id)));
+        if (at && ids.length) out.push({ type: 'arrived', node: at, name: typeof nodeIn(state, ev.node)?.name === 'string' ? nodeIn(state, ev.node).name : 'A place', ids });
+        break;
+      }
       case 'ping':                                     // a spot pointed out: a cell the sender chose and their name, nothing of the game
         out.push(pick(ev, ['type', 'from', 'name', 'at']));
         break;
@@ -996,6 +1005,8 @@ function viewEventsOf(events, state, viewer) {
 
 // ---------- the places of a world (docs/specs/travel.md, Decisions 4, 5 and 12; build row W4) ----------
 // What players are sent of an atlas, by allow list. With no world none of this adds a key: the view is the view it always was.
+// Whether `id` is a creature of the party that is kept in a place that is not in play (so not in `state.entities`).
+const partyParked = (state, id) => Object.values(state.parked ?? {}).some((rec) => Object.hasOwn(rec?.entities ?? {}, id) && rec.entities[id]?.side === 'party');
 const nodeIn = (state, id) => (Object.hasOwn(state.world?.nodes ?? {}, id) ? state.world.nodes[id] : null);
 
 // The shared part, `atlas`, the same for every player: the places they know, by the ids they were given, the routes they know, where

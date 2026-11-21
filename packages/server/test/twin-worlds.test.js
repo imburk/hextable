@@ -144,6 +144,50 @@ test("travel: a place nobody has been to, in a world with a split party, is in n
   assert.ok(JSON.stringify(hidden.raw.dm).includes(SECRET), "the vault is there, for the DM");
 });
 
+// ---- travel: the arrival line (#650): a group arrives at places the players know, and a vault in the pack that nobody has been told of stays out ----
+test("travel: a group's arrival line is sent the same with and without a place in the pack nobody has been to, and says nothing of it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hextable-twin-"));
+  dirs.push(dir);
+  const { plain, hidden } = twin({
+    tables: () => worldAssets(() => createAssets({ dir })),
+    mask: (w) => Object.values(w.t.world?.assets ?? {}).map((a) => a.id),
+    setup(w) {
+      w.pack = riverPack();
+      w.putIn();
+      w.dm.say({ t: "world", pack: w.pack });
+      assert.equal(w.last("dm", "error")?.error, undefined);
+      for (const id of ["fighter", "rogue"]) w.state.entities[id].owner = w.ids.Pat;
+      for (const id of ["cleric", "wizard"]) w.state.entities[id].owner = w.ids.Sam;
+      w.must({ type: "loadMap", node: "keep", entry: "gate" });
+    },
+    steps: [
+      { by: "dm", act: { type: "loadMap", node: "tavern", entry: "door", who: ["fighter", "rogue"] } },       // the keep keeps the others
+      { by: "dm", act: { type: "goTo", node: "keep" } },
+      { by: "dm", act: { type: "loadMap", node: "tavern", entry: "door", who: ["cleric", "wizard"] } },        // the whole party, at the tavern
+      { by: "Pat", act: { type: "loadMap", node: "vault" } },                                                   // refused the same as a place that is nothing
+      { by: "Sam", act: { type: "enter", pin: "p-vault" } },
+      { by: "dm", act: { type: "advanceTime", minutes: 10 } },
+      { by: "Sam", send: { t: "history", types: ["arrived"] } },
+    ],
+  }, (w) => {
+    const p = w.pack;
+    p.maps["vault-map"] = { ...structuredClone(p.maps["tavern-map"]), id: "vault-map", name: SECRET };
+    p.nodes.push({ id: "vault", kind: "map", scale: "tactical", parent: "continent", map: "vault-map", name: SECRET });
+    p.nodes[0].pins.push({ id: "p-vault", at: [400, 400], name: SECRET, to: "vault" });
+  });
+  const arrivals = (who, w) => w.raw[who].flatMap((m) => (m.events ?? []).filter((e) => e.type === "arrived"));
+  for (const who of ["Pat", "Sam"]) {
+    const got = arrivals(who, plain);
+    assert.ok(got.length >= 2, `${who} is told of the arrivals`);
+    for (const e of got) assert.deepEqual(Object.keys(e).sort(), ["ids", "name", "node", "type"], "an allow list: no entry, pin or from");
+    assert.ok(got.every((e) => /^pl[0-9]+$/.test(e.node) && typeof e.name === "string"));
+    assert.ok(!JSON.stringify(plain.raw[who]).includes(SECRET));
+  }
+  assert.ok(arrivals("dm", hidden).every((e) => ["keep", "tavern"].includes(e.node)), "the DM is sent the arrivals, with the pack's ids");
+  assert.ok(arrivals("dm", hidden).some((e) => e.entry === "door"));
+  assert.ok(JSON.stringify(hidden.raw.dm).includes(SECRET), "the vault is there, for the DM");
+});
+
 // ---- shops: a hidden line and a stall nobody was shown (was shops.test.js) ----
 const market = (hiddenLine) => ({
   format: "hextable-market", v: 1, id: "port-goods", name: "Port city goods", version: 1,

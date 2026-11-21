@@ -376,6 +376,12 @@ function words(ev) {
     }
     case 'map': return [`The scene changes: ${ev.name}.`];
     case 'region': return [`The party sees ${ev.name}.`];
+    // A group came to a place of the world (travel.md; the view sends it only for a place and a group the viewer may know of).
+    case 'arrived': {
+      const who = (Array.isArray(ev.ids) ? ev.ids : []).map(n);
+      if (!who.length || typeof ev.name !== 'string') return null;
+      return [`${who.length > 1 ? `${who.slice(0, -1).join(', ')} and ${who[who.length - 1]}` : who[0]} ${who.length > 1 ? 'arrive' : 'arrives'} at ${ev.name}.`];
+    }
     case 'check': {
       const what = ev.search ? 'searches' : ev.hide ? 'tries to hide' : ev.escape !== undefined ? `tries to break free of ${ev.escape === 'someone' ? 'someone' : n(ev.escape)} (${(ev.skill ?? ev.ability ?? 'a check').replace(/-/g, ' ')})` : ev.what ? `tries: ${ev.what}` : `rolls ${ev.skill ? `${SKILLS[ev.skill].toUpperCase()} (${ev.skill.replace(/-/g, ' ')})` : ev.ability.toUpperCase()}`;
       const how = ev.mode === 'adv' ? ' with Advantage' : ev.mode === 'dis' ? ' with Disadvantage' : '';
