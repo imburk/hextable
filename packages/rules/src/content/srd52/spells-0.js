@@ -220,10 +220,10 @@ export const spells0 = [
     time: "bonus", range: "self", components: ["v", "s", "m"],
     duration: "1 minute", concentration: false, ritual: false,
     target: { self: true },
-    effects: [{ manual: "Shillelagh: the Club or Quarterstaff the caster holds uses the caster's spellcasting ability instead of Strength for its attack and damage rolls, and its damage die becomes a d8 (d10 at character level 5, d12 at 11, 2d6 at 17). Its damage can be Force or its normal type. The spell ends if cast again or if the caster lets go of the weapon. The DM applies the changes to the caster's attacks." }],
+    effects: [{ imbue: { weapons: ["club", "quarterstaff"], melee: true, abil: "spell", die: { byLevel: { 1: "1d8", 5: "1d10", 11: "1d12", 17: "2d6" } }, types: ["force"] } }],
     kinds: ["damage"],
     roll: "none",
-    tier: "manual", checked: true,
+    tier: "auto", checked: true,
     text: "A held club or quarterstaff becomes magical for a minute: it hits with the caster's spellcasting ability and a bigger damage die.",
   },
   {

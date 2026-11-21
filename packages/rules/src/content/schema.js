@@ -36,7 +36,7 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
   'paralyzed', 'petrified', 'poisoned', 'prone', 'restrained', 'stunned', 'unconscious'];
 
 // What an effect can do. One key from this list names the step; the rest are its details.
-export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'summon', 'manual'];
+export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'summon', 'imbue', 'manual'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -310,6 +310,20 @@ export function nearProblem(steps) {
   for (let i = 0; i < n; i++) if (steps[i].when !== undefined || steps[i].onKill !== undefined || steps[i].onZero !== undefined) return 'a second target near the first takes the damage steps the action begins with, and those must have no `when`, `onKill` or `onZero`';
   return null;
 }
+const byKey = (x, ok) => x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).length > 0 && Object.entries(x).every(([l, v]) => isInt(+l) && +l >= 0 && +l <= 20 && ok(v));
+function lintImbue(i, say) {
+  if (!i || typeof i !== 'object' || Array.isArray(i)) return say('`imbue` is { weapons?, melee?, nonmagical?, abil?, die?, plus?, attackAdd?, types? }');
+  for (const k of Object.keys(i)) if (!['weapons', 'melee', 'nonmagical', 'abil', 'die', 'plus', 'attackAdd', 'types'].includes(k)) say(`imbue: "${k}" is not something an imbue has`);
+  if (i.weapons !== undefined && !(Array.isArray(i.weapons) && i.weapons.length && i.weapons.length <= 20 && i.weapons.every((w) => typeof w === 'string' && ID.test(w)))) say('imbue.weapons lists weapon ids');
+  for (const k of ['melee', 'nonmagical']) if (i[k] !== undefined && i[k] !== true) say(`imbue.${k} is true or left out`);
+  if (i.abil !== undefined && i.abil !== 'spell') say('imbue.abil is "spell" (the spellcasting ability) or left out');
+  if (i.die !== undefined && !(isDice(i.die) && !/[+-]/.test(i.die)) && !(i.die && typeof i.die === 'object' && Object.keys(i.die).length === 1 && byKey(i.die.byLevel, (v) => isDice(v) && !/[+-]/.test(v)))) say('imbue.die is dice like 1d8, or { byLevel: { level: dice } }');
+  if (i.plus !== undefined && !(i.plus === 1 || i.plus === 2 || i.plus === 3 || (i.plus && typeof i.plus === 'object' && Object.keys(i.plus).length === 1 && byKey(i.plus.bySlot, (v) => isInt(v) && v >= 1 && v <= 3)))) say('imbue.plus is 1 to 3, or { bySlot: { slot level: 1 to 3 } }');
+  const a = i.attackAdd;
+  if (a !== undefined && !(isInt(a) || (a && typeof a === 'object' && Object.keys(a).every((k) => ['mod', 'min'].includes(k)) && ABILITIES.includes(a.mod) && (a.min === undefined || isInt(a.min))))) say('imbue.attackAdd is a number, or { mod: ability, min? }');
+  if (i.types !== undefined && !(Array.isArray(i.types) && i.types.length && i.types.every((x) => DAMAGE_TYPES.includes(x)))) say('imbue.types lists damage types');
+  if (!['die', 'plus', 'attackAdd', 'abil', 'types'].some((k) => i[k] !== undefined)) say('an imbue changes something: die, plus, attackAdd, abil or types');
+}
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   { const p = rolledIn(steps); if (p) say(p); }
@@ -375,6 +389,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       if (!(isInt(step.move) && step.move > 0 && step.move % 5 === 0)) say('`move` must be a distance in feet, a multiple of 5');
       if (!['away', 'toward'].includes(step.dir)) say('a move step needs `dir`: away or toward');
     }
+    // `imbue` (docs/specs/on-hit.md, Decision 8): one of its weapons changes for as long as the effect lasts.
+    if (kind === 'imbue') lintImbue(step.imbue, say);
     if (kind === 'fall' && !(step.fall === 'surface' || (isInt(step.fall) && step.fall > 0))) say('`fall` must be a number of feet or "surface"');
     if (kind === 'set') {
       if (!ID.test(step.set ?? '')) say('`set` must name a state');
@@ -1194,7 +1210,7 @@ function lintGrants(g, cls, say) {
   if (g.action !== undefined && !(g.action && typeof g.action === 'object' && !Array.isArray(g.action))) say('action is { time, target, effects, ... }');
   else if (g.action !== undefined) {
     const a = g.action;
-    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
+    for (const k of Object.keys(a ?? {})) if (!['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice', 'withAttack'].includes(k)) say(`action: "${k}" is not something a feature's action has`);
     // `after: 'hit'`: used on a creature its creature hit with an attack roll this turn, once a turn; `orSlot`: with
     // its uses spent, a spell slot (a Pact Magic slot for a Warlock) restores one (Hurl Through Hell; addition E of docs/specs/homebrew-subclasses.md for any caster).
     // `after: 'weaponHit'` (addition F): the same, after a hit with a weapon (a spell attack and an Unarmed Strike are not one).
@@ -1202,6 +1218,8 @@ function lintGrants(g, cls, say) {
     // A feature's `after` is a hit on the creature the action is aimed at: a pool of healing or an extra action (`pool`, `gain`) has no creature to have hit.
     if (a?.after !== undefined && (a.pool !== undefined || a.gain !== undefined)) say('an action with `after` follows a hit on the creature it is aimed at, and cannot also have `pool` or `gain`: neither has a creature to have hit');
     if (a?.orSlot !== undefined && !(a.orSlot === true)) say('action orSlot is true or left out');
+    // `withAttack` (docs/specs/on-hit.md, Decision 8): used when its creature takes the Attack action (Sacred Weapon), named on the attack; free, on the creature itself, with an `imbue` step.
+    if (a?.withAttack !== undefined && !(a.withAttack === true && a.time === 'free' && a.target?.self && Array.isArray(a.effects) && a.effects.some((st) => st && 'imbue' in st))) say('action withAttack is true, on a free action aimed at its creature itself with an `imbue` step');
     // `inForm: <feature id>` (#525, addition J): the action is used only while its holder is in a form that feature gave (Combat Wild Shape: "while in a Wild Shape form").
     if (a?.inForm !== undefined) {
       if (!(typeof a.inForm === 'string' && ID.test(a.inForm))) say('action inForm names the feature whose form the holder must be in (a feature id)');
@@ -2411,7 +2429,7 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'hp', 'speed', 'spe
   'type'];
 // `abil` (the ability it uses), `weapon` (its equipment id) and `time: 'bonus'` (a Bonus Action
 // attack, the Monk's Unarmed Strike) come from derive().
-const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time', 'dc', 'untrained'];
+const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time', 'dc', 'untrained', 'die', 'plus', 'magic', 'trained'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
 const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
   'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
@@ -2553,6 +2571,10 @@ export function lintRecord(r, { spells = {} } = {}) {
     if (a.type === 'ranged' && !(Array.isArray(a.range) && a.range.length === 2 && a.range.every((n) => within(n, 5, 2000)) && a.range[0] <= a.range[1])) sub('a ranged attack needs a range of [normal, long] in feet.');
     if (a.finesse !== undefined && typeof a.finesse !== 'boolean') sub('finesse is true or false.');
     if (a.untrained !== undefined && a.untrained !== true) sub('untrained is true or left out.');
+    if (a.trained !== undefined && a.trained !== true) sub('trained is true or left out.');
+    if (a.magic !== undefined && a.magic !== true) sub('magic is true or left out.');
+    if (a.plus !== undefined && !within(a.plus, 0, 3)) sub('plus is a magic bonus from 0 to 3.');
+    if (a.die !== undefined && !isDice(a.die)) sub('die is the dice its damage rolls.');
     if (a.abil !== undefined && !['str', 'dex'].includes(a.abil)) sub('it uses Strength or Dexterity.');
     if (a.dc !== undefined && !['unarmed-strike', 'unarmed-strike-bonus'].includes(a.id)) sub('only an Unarmed Strike has a save DC.');
     else if (a.dc !== undefined && !within(a.dc, 1, 40)) sub('its save DC is a whole number from 1 to 40.');
@@ -2783,7 +2805,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -2841,6 +2863,7 @@ const SHAPES = {
   check: { what: 'a check', keys: ['ability', 'skill', 'tool', 'dc'] },
   activate: { what: 'an item use', keys: ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'upTo', 'self', 'dc', 'effects'] },
   attune: { what: 'attunement', keys: ['by', 'spellcaster'] },
+  imbue: { what: 'an imbue step', keys: ['weapons', 'melee', 'nonmagical', 'abil', 'die', 'plus', 'attackAdd', 'types'] },
   base: { what: 'a base item', keys: ['weapon', 'armour'] },
   charges: { what: 'charges', keys: ['max', 'regain'] },
   prerequisite: { what: 'a prerequisite', keys: ['level', 'abilities', 'feature'] },
@@ -2915,7 +2938,7 @@ export function lintKeys(kind, entry, say, visit) {
           if (!allowed.includes(k)) { say(`${p}: "${k}" is not something a ${kinds[0]} step has`); continue; }
           visit?.(`step.${kinds[0]}`, k, st[k], `${p}.${k}`, st);
           const child = BRANCHES.includes(k) ? 'steps' : kinds[0] === 'summon' ? { bond: 'bond', count: 'count', reassert: 'count', over: 'over', forms: Array.isArray(st.forms) ? 'open' : 'forms' }[k] ?? 'open'
-            : k === 'modifier' ? 'modifier' : k === 'ends' ? 'ends' : 'open';
+            : k === 'modifier' ? 'modifier' : k === 'imbue' ? 'imbue' : k === 'ends' ? 'ends' : 'open';
           stack.push([st[k], child, `${p}.${k}`]);
         }
       });
@@ -2976,6 +2999,8 @@ export const HOMEBREW_RANGES = Object.freeze({
   'saves.*': [-10, 30], 'skills.*': [-10, 40], 'senses.*': [0, 300], 'senseRange.*': [0, 150], 'speed.*': [0, 300], 'speeds.*': [0, 100],
   'action.recharge': [2, 6], 'uses.n': [1, 10], 'multiattack.times': [1, 10], 'or.times': [1, 10], 'reaction.ac': [1, 10],
   'forms.cr': [0, 60, 8],
+  // an imbue step (docs/specs/on-hit.md, Decision 8): a magic bonus, a bonus to attack rolls, and the levels and slot levels they are given by
+  'imbue.plus': [1, 3], 'imbue.attackAdd': [-5, 10], 'imbue.min': [-5, 10], 'attackAdd.min': [-5, 10], 'bySlot.*': [1, 3],
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
@@ -3021,7 +3046,7 @@ const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
 // The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
 // SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
 export const HOMEBREW_LENGTHS = Object.freeze({
-  '*.step': 20, '*.blocks': 2, 'area.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
   'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
@@ -3330,7 +3355,8 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' },
+  imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' }, 'step.manual': { manual: 's' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });
 // The check a key gets while the key lists are walked: its type, in words, or null.
