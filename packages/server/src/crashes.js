@@ -29,6 +29,7 @@ import { join } from "node:path";
 import { ACTION_TYPES } from "../../rules/src/engine.js";
 import { hashState } from "./journal.js";
 import { fence, int, list, oneOf, shape, str } from "./feedback.js";
+import { rateKey } from "./limits.js";
 
 export const KEEP = 100;                       // bundles kept
 export const BUNDLE_MAX = 128 * 1024;          // one bundle's size
@@ -40,14 +41,17 @@ export const COMMENT_GAP_MS = 3_600_000;       // a count comment on an issue at
 export const CLIENT_PER_MINUTE = 5;            // browser reports a connection may send in a minute
 export const CLIENT_PER_TABLE_DAY = 50;        // and a table in a UTC day
 export const CLIENT_BODY_MAX = 8 * 1024;       // POST /client-error
-const KINDS_KEPT = 500;                        // kinds of crash remembered with their issue
+const KINDS_KEPT = 500;
+export const CLIENT_KEYS_MAX = 5000;           // addresses the POST throttle remembers at once; past this a new one is refused
+const CUT_MAX = 50;                            // entries in a bundle's `cut`                        // kinds of crash remembered with their issue
 
 // ---------- the bundle ----------
 // A copy of the action that holds no more than a bundle should: strings cut to TEXT_MAX, long lists and objects cut, nesting limited. `cut` lists
 // where something was cut ("action.note"), so that a replay that does not crash is explained by it. A name the action carries (`userName`: a
 // claim, a spoken line, a ping) is the member's id, as in the journal; a name that is no member's is dropped and listed.
 export function scrubAction(action, members = []) {
-  const cut = [];
+  const all = [];
+  const cut = { push: (x) => { if (all.length < CUT_MAX) all.push(x); else if (all.length === CUT_MAX) all.push("(more)"); }, includes: (x) => all.includes(x) };
   let nodes = 0;
   const walk = (v, path, depth) => {
     if (++nodes > 5000) { if (!cut.includes("(rest)")) cut.push("(rest)"); return null; }
@@ -74,7 +78,7 @@ export function scrubAction(action, members = []) {
     const id = typeof name === "string" ? members.find((m) => m.name === name)?.id : undefined;
     if (id !== undefined) out.userName = { $member: id }; else cut.push("action.userName");
   }
-  return { action: out, cut };
+  return { action: out, cut: all };
 }
 
 // ---------- stacks ----------
@@ -90,13 +94,20 @@ export function frames(stack) {
   const out = [];
   for (const l of String(stack ?? "").split("\n")) {
     const m = FRAME.exec(l);
-    if (m) out.push({ fn: (m[1] ?? "(anonymous)").replace(/[^\w$.<> ]/g, "").trim().slice(0, 60) || "(anonymous)", file: shortPath(m[2]).replace(/[^\w$./-]/g, "").slice(0, 80), line: Number(m[3]) });
+    // Only the game's own code and Node's: a frame from anywhere else (a path in a message, say) is not one.
+    if (m && (/(^|[\\/])packages[\\/]/.test(m[2]) || m[2].startsWith("node:"))) out.push({ fn: (m[1] ?? "(anonymous)").replace(/[^\w$.<> ]/g, "").trim().slice(0, 60) || "(anonymous)", file: shortPath(m[2]).replace(/[^\w$./-]/g, "").slice(0, 80), line: Number(m[3]) });
   }
   return out;
 }
+// The stack's frames after the error's message: a message is what a player may have typed, and may carry lines that look like frames.
+export function stackFrames(err, stack = err?.stack) {
+  const text = String(stack ?? ""), msg = String(err?.message ?? "");
+  const header = msg ? `${err?.name}: ${msg}` : String(err?.name);      // how V8 begins a stack: exactly this, then the frames
+  return text.startsWith(header) ? frames(text.slice(header.length)) : [];
+}
 const frameText = (f) => `${f.fn} (${f.file}:${f.line})`;
 // The frame a kind of crash is told apart by: the first one in the game's own code, else the first.
-export const topFrame = (stack) => { const fs = frames(stack); return fs.find((f) => f.file.startsWith("packages/")) ?? fs[0] ?? null; };
+export const topFrame = (stack, err) => { const fs = err ? stackFrames(err, stack) : frames(stack); return fs.find((f) => f.file.startsWith("packages/")) ?? fs[0] ?? null; };
 // An error's message may hold what a player typed (`Unknown spell ${action.spell}`), so none goes in a public issue except these shapes, with the value left out.
 export function publicMessage(err) {
   const m = String(err?.message ?? "");
@@ -112,7 +123,7 @@ const KNOWN_TYPES = new Set([...ACTION_TYPES, "setPacks", "worldIndex"]);
 export const publicType = (type) => (typeof type === "string" && KNOWN_TYPES.has(type) ? type : "(unknown)");
 export const bundleTime = (name) => /^(\d{8}T\d{9}Z)-/.exec(String(name))?.[1] ?? null;
 export function crashIssue({ type, build, err, stack, at, bundle }) {
-  const fs = frames(stack), top = topFrame(stack), msg = publicMessage(err);
+  const fs = stackFrames(err, stack), top = fs.find((f) => f.file.startsWith("packages/")) ?? fs[0] ?? null, msg = publicMessage(err);
   const title = `Engine crash: ${publicType(type)}${top ? ` at ${top.file}:${top.line}` : ""}`;
   const body = [
     "An engine crash on the live table server. There is no player text, table code, name or member id in this issue: the repro bundle is on the server.",
@@ -156,7 +167,7 @@ const stamp = (t) => new Date(t).toISOString().replace(/[-:.]/g, "");
 // options: dir (DATA_DIR), env, build() -> the commit or null, log (console.error), fetch (tests), now, keep.
 export function createCrashes({ dir, env = {}, build = () => null, log = (m) => console.error(m), fetch: doFetch = globalThis.fetch, now = Date.now, keep = KEEP } = {}) {
   const crashDir = join(dir, "crashes"), indexFile = join(dir, "crash-issues.json");
-  const repo = /^[\w.-]+\/[\w.-]+$/.test(env.FEEDBACK_GITHUB_REPO ?? "") ? env.FEEDBACK_GITHUB_REPO : null;
+  const repo = /^(?!\.)[\w.-]+\/(?!\.)[\w.-]+$/.test(env.FEEDBACK_GITHUB_REPO ?? "") && !env.FEEDBACK_GITHUB_REPO.includes("..") ? env.FEEDBACK_GITHUB_REPO : null;
   const token = typeof env.FEEDBACK_GITHUB_TOKEN === "string" && env.FEEDBACK_GITHUB_TOKEN.trim() ? env.FEEDBACK_GITHUB_TOKEN.trim() : null;
   let api = "https://api.github.com";
   if (env.FEEDBACK_GITHUB_API) {
@@ -173,10 +184,11 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
   const fresh = (list, t) => { while (list.length && t - list[0] >= 3_600_000) list.shift(); return list; };
   function writeBundle(code, t, data) {
     mkdirSync(crashDir, { recursive: true });
+    for (const f of readdirSync(crashDir)) if (f.endsWith(".json.tmp")) { try { unlinkSync(join(crashDir, f)); } catch { /* already gone */ } }      // a write cut short by a crash
     let name = `${stamp(t)}-${String(code).replace(/[^A-Z0-9]/gi, "").slice(0, 12) || "X"}.json`;
     for (let n = 2; existsSync(join(crashDir, name)); n++) name = name.replace(/(-\d+)?\.json$/, `-${n}.json`);
     let text = JSON.stringify(data, null, 1);
-    if (text.length > BUNDLE_MAX) {                // too big even after scrubbing: keep what is needed to find the action
+    if (Buffer.byteLength(text) > BUNDLE_MAX) {                // too big even after scrubbing: keep what is needed to find the action
       data = { ...data, action: { type: data.action?.type ?? null }, cut: [...data.cut, "action (whole: over the bundle's size)"] };
       text = JSON.stringify(data, null, 1);
     }
@@ -189,7 +201,7 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
 
   // ----- issues -----
   let book = { day: "", filed: 0, kinds: {} };     // kinds: key -> { number, count, reported, at, commented }
-  try { const j = JSON.parse(readFileSync(indexFile, "utf8")); if (j && typeof j === "object" && j.kinds && typeof j.kinds === "object") book = { day: String(j.day ?? ""), filed: Number(j.filed) || 0, kinds: j.kinds }; } catch { /* none yet */ }
+  try { const j = JSON.parse(readFileSync(indexFile, "utf8")); if (j && typeof j === "object" && j.kinds && typeof j.kinds === "object") book = { day: String(j.day ?? ""), filed: Number(j.filed) || 0, kinds: Object.fromEntries(Object.entries(j.kinds).filter(([, v]) => Number.isInteger(v?.number))) }; } catch { /* none yet */ }
   const saveBook = () => {
     const keys = Object.keys(book.kinds);
     if (keys.length > KINDS_KEPT) for (const k of keys.sort((a, b) => (book.kinds[a].at > book.kinds[b].at ? 1 : -1)).slice(0, keys.length - KINDS_KEPT)) delete book.kinds[k];
@@ -209,7 +221,7 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
   async function file(kind, info) {
     if (!repo || !token) { if (!said.token) { said.token = true; log("crashes: FEEDBACK_GITHUB_REPO and FEEDBACK_GITHUB_TOKEN are not both set, so engine crashes are not filed on GitHub; their bundles are kept in the data directory's crashes folder."); } return; }
     const t = now();
-    if (book.day !== day(t)) { book.day = day(t); book.filed = 0; said.cap = false; }
+    if (book.day !== day(t)) { book.day = day(t); book.filed = 0; said.cap = false; saveBook(); }
     const known = book.kinds[kind];
     if (known) {
       known.count++;
@@ -225,9 +237,13 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
     book.filed++;
     const entry = book.kinds[kind] = { number: null, count: 1, reported: 1, at: new Date(t).toISOString(), commented: t };
     const { title, body } = crashIssue({ ...info, build: build(), at: entry.at });
-    const r = await gh("POST", "/issues", { title, body, labels: ["crash"] });
+    saveBook();
+    let r;
+    // A request that fails or times out spends nothing: the kind is forgotten and the day's count given back, so the next crash of it tries again.
+    try { r = await gh("POST", "/issues", { title, body, labels: ["crash"] }); }
+    catch (err) { delete book.kinds[kind]; book.filed = Math.max(0, book.filed - 1); saveBook(); throw err; }
     if (r.ok && Number.isInteger(r.json?.number)) { entry.number = r.json.number; saveBook(); }
-    else { delete book.kinds[kind]; saveBook(); log(`crashes: GitHub refused the crash issue (status ${r.status}); the bundle is in ${crashDir}.`); }
+    else { delete book.kinds[kind]; book.filed = Math.max(0, book.filed - 1); saveBook(); log(`crashes: GitHub refused the crash issue (status ${r.status}); the bundle is in ${crashDir}.`); }
   }
   const fileLater = (kind, info) => {
     if (filing >= 3) return;
@@ -238,10 +254,10 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
   // The crash: write the bundle, file or count the issue. Returns the bundle's name, or null when none was written (a kind that repeats too often).
   function engineCrash({ table, role, uid, action, err, journal }) {
     const t = now();
-    const stack = String(err?.stack ?? err).slice(0, 4000);
+    const full = String(err?.stack ?? err), stack = full.slice(0, 4000);
     const type = typeof action?.type === "string" ? action.type : "?";
-    const top = topFrame(stack);
-    const kind = `${publicType(type)}|${top ? `${top.fn} ${top.file}:${top.line}` : "unknown"}`;
+    const top = topFrame(full, err);
+    const kind = `${publicType(type)}|${top ? `${top.fn} ${top.file}` : "unknown"}`;
     let name = null;
     const times = fresh(hourly.get(kind) ?? [], t);
     hourly.set(kind, times);
@@ -257,7 +273,7 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
         });
       });
     }
-    fileLater(kind, { type, err, stack, bundle: name });
+    fileLater(kind, { type, err, stack: full, bundle: name });
     return name;
   }
 
@@ -267,11 +283,16 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
   const perMinute = (key, t) => {
     const map = typeof key === "object" && key !== null ? conns : addrs;
     let l = map.get(key);
-    if (!l) { l = []; map.set(key, l); }
+    if (!l) {
+      if (map === addrs && addrs.size >= CLIENT_KEYS_MAX) {
+        for (const [k, v] of addrs) if (!v.length || t - v[v.length - 1] >= 60_000) addrs.delete(k);
+        if (addrs.size >= CLIENT_KEYS_MAX) return false;         // full of addresses that are all busy: a new one waits
+      }
+      l = []; map.set(key, l);
+    }
     while (l.length && t - l[0] >= 60_000) l.shift();
     if (l.length >= CLIENT_PER_MINUTE) return false;
     l.push(t);
-    if (map === addrs && addrs.size > 2000) for (const [k, v] of addrs) if (!v.length || t - v[v.length - 1] >= 60_000) addrs.delete(k);
     return true;
   };
   const perDay = (code, t) => {
@@ -316,7 +337,7 @@ export function createCrashes({ dir, env = {}, build = () => null, log = (m) => 
       done = true; clearTimeout(stop);
       let report;
       try { report = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { return send(400); }
-      const r = clientError(report, { conn: `addr:${addr}`, table: null });
+      const r = clientError(report, { conn: `addr:${rateKey(addr)}`, table: null });
       send(r === "ok" ? 204 : r === "throttled" ? 429 : 400);
     });
   }

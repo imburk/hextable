@@ -190,7 +190,7 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
     // replay trims the timeline as the server does. One source of truth: the journal does not know the rules package.
     setCap(cap) { if (Number.isInteger(cap) && cap >= 0) timelineCap = cap; },
     // Where this table's journal stands now, for a crash bundle (crashes.js): the file the next line goes to, its snapshot and the number of the
-    // last line queued. The state a table holds between actions is the state after that line, so a replay up to it and the action reproduces
+    // last line queued (it may not have reached the disk yet; replay --crash says so when the file ends earlier). The state a table holds between actions is the state after that line, so a replay up to it and the action reproduces
     // a crash. Null when no file is open (no journal, or it failed). A crashed action is never journalled: it is not in the file.
     position(code) {
       const f = open.get(code);

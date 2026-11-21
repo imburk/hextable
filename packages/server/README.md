@@ -114,8 +114,8 @@ Per process, the server counts crashes and refusals in total and by action type 
 `DATA_DIR/crashes/<time>-<table code>.json`, and the `engine-crash` line names it (`bundle`). A bundle holds the action as the server applied it
 (player-typed text over 200 characters cut, the paths of the cuts listed in `cut`, a name an action carries as a member id), the sender's role and member id,
 the state version and the state's hash, the journal's position (`journal: { file, snapshot, line }`: the file the table's journal was writing, its
-snapshot, and the number of its last line; the state between actions is the state after that line, and a crashed action is never journalled), the build,
-and the stack. The last 100 are kept; a crash that repeats (same action type and top stack frame) is written at most 5 times an hour, 200 in all.
+snapshot, and the number of its last line queued (it may not have reached the disk when the server stopped; replay says so); the state between actions is the state after that line, and a crashed action is never journalled), the build,
+and the stack. The last 100 are kept; a crash that repeats (same action type, function and file of the top stack frame; the line is not part of it, so a deploy does not make a new kind) is written at most 5 times an hour, 200 in all.
 The folder is in the data directory, which the server never serves (it serves `dist/` only) and no route reads: a bundle holds a table's code and
 actions, so treat it like the table's save. To reproduce, copy the bundle and the journal files it names into one folder and run
 `node scripts/replay.mjs --crash <bundle> [--data <folder>]`: it replays the journal to the bundle's line, runs the action, and says whether it
@@ -124,7 +124,7 @@ still throws (exit 1) or no longer does (exit 0); 3 means the point cannot be re
 With `FEEDBACK_GITHUB_REPO` and `FEEDBACK_GITHUB_TOKEN` set (the feedback settings), the first time a kind of crash is seen one issue labelled `crash` is
 filed: the action type, the build, the error class, the stack frames and the bundle's time. Nothing a player typed, no table code, no name, no member id:
 the error's message is left out unless it is one of a few fixed shapes with the value removed, the action type is shown only if the engine knows it, and
-the table code in the bundle's file name is left out. Repeats add a count comment on that issue at most once an hour; at most 10 issues are filed a
+the table code in the bundle's file name is left out. Stack frames are read only after the error's message and only from the game's own code and Node's, so a message a player shaped to look like frames changes nothing. Repeats add a count comment on that issue at most once an hour; at most 10 issues are filed a
 UTC day (the rest are kept as bundles). Which kinds have an issue is kept in `DATA_DIR/crash-issues.json`, so a restart does not file them again.
 With no token nothing is filed and the log says so once.
 

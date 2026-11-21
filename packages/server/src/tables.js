@@ -10,7 +10,7 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 // What reads content for a table (the engine, the views, the history's labels, migration) is imported under a raw_ name and
 // called only inside the "scoped engine" block of createTables, which lends the table's homebrew to every call.
-import { apply as rawApply, recall as rawRecall } from "../../rules/src/engine.js";
+import { ACTION_TYPES, apply as rawApply, recall as rawRecall } from "../../rules/src/engine.js";
 import { diff, snapshot } from "../../rules/src/patch.js";
 import { createHistory, describeStep as rawDescribeStep, mark, undoable } from "../../rules/src/history.js";
 import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
@@ -132,8 +132,10 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   };
   // `more` is what the crash bundle needs (crashes.js, #689): { table, me, action }. The bundle's name goes in the log line; a bundle that
   // cannot be written never changes what the player is answered or whether the game is put back.
+  // /api/health shows the types, so only a type the engine knows is named there: whatever else a client sent counts as "?".
+  const KNOWN = new Set([...ACTION_TYPES, "setPacks", "worldIndex"]);
   const crashed = (code, type, role, err, more = null) => {
-    bump(crashCount, type);
+    bump(crashCount, KNOWN.has(type) ? type : "?");
     let bundle = null;
     if (crashes && more?.table) {
       try { bundle = crashes.engineCrash({ table: more.table, role, uid: more.me?.id ?? null, action: more.action ?? { type }, err, journal: journal.position?.(code) ?? null }); }

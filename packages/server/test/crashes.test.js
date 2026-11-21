@@ -1,6 +1,6 @@
 // Crash reports we can act on (#689): the repro bundle, the GitHub issue, the browser's error reports, and replay --crash.
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +9,7 @@ import { ACTION_TYPES, apply } from "../../rules/src/engine.js";
 import { newGame } from "../../rules/src/scenario.js";
 import { createTables } from "../src/tables.js";
 import { createJournal } from "../src/journal.js";
-import { CLIENT_PER_MINUTE, CLIENT_PER_TABLE_DAY, createCrashes, crashIssue, frames, publicMessage, scrubAction, topFrame } from "../src/crashes.js";
+import { CLIENT_KEYS_MAX, CLIENT_PER_MINUTE, CLIENT_PER_TABLE_DAY, createCrashes, crashIssue, frames, publicMessage, scrubAction, stackFrames, topFrame } from "../src/crashes.js";
 import { replayCrash } from "../../../scripts/replay.mjs";
 import { startServer, stopAll } from "./helpers.js";
 
@@ -291,7 +291,7 @@ test("replay --crash runs the bundle's action at its point and says whether it s
   assert.equal(fixed.crashed, false);
   assert.match(fixed.result, /accepts/);
   assert.match(replayCrash({ ...bundle, journal: null }, fileRead).why, /no journal position/);
-  assert.match(replayCrash(bundle, () => null).why, /not there/);
+  assert.match(replayCrash(bundle, () => null).why, /not in the folder/);
   // The command line, end to end: exit status 1 for a crash that is still there, 0 for one that is not, 3 when the point cannot be reached.
   const { main } = await import("../../../scripts/replay.mjs");
   const out = [], err = [];
@@ -301,4 +301,102 @@ test("replay --crash runs the bundle's action at its point and says whether it s
   assert.ok(out.some((l) => /^warning: keep these files private/.test(l)));
   assert.equal(main(["--crash", join(dir, "crashes", name), "--data", tmp()], () => {}, () => {}), 3);
   assert.equal(main(["--crash"], () => {}, () => {}), 2);
+});
+
+test("a message that looks like stack frames cannot write the issue, the top frame or the kind", async () => {
+  const fake = "Unknown spell x\n    at pwn (/srv/packages/rules/src/evil.js:1:1)\n    at www.evil.example/phish (https://www.evil.example/packages/a.js:2:2)";
+  const e = new Error(fake);
+  const fs = frames(e.stack);
+  assert.ok(fs.some((f) => f.fn === "pwn"), "frames() alone reads every line it is given");
+  const real = stackFramesOf(e);
+  assert.ok(real.length > 0 && real.every((f) => f.fn !== "pwn" && !/evil/.test(f.file)), "after the message only the real frames are read");
+  const issue = crashIssue({ type: "advanceTime", build: "c1d5069", err: e, stack: e.stack, at: "t", bundle: null });
+  assert.ok(!/evil|pwn|phish/.test(issue.title + issue.body));
+  // Frames outside the game's code and Node's are dropped, and a stack that does not begin with its message yields none.
+  assert.deepEqual(frames("Error\n    at f (/home/x/other/file.js:1:1)\n    at g (node:internal/a:2:2)").map((f) => f.fn), ["g"]);
+  assert.deepEqual(stackFramesOf(Object.assign(new Error("m"), { stack: "Error: other\n    at f (/p/packages/a.js:1:1)" })), []);
+  // The dedupe kind: the same for the same message-free frames, whatever a player typed.
+  const gh = stub(), dir = tmp();
+  const crashes = createCrashes({ dir, env: ENV, fetch: gh.fetch, log: () => {} });
+  const table = fakeTable();
+  const thrower = (m) => { try { null.x; } catch { /* a real throw */ } return new Error(m); };
+  for (const m of [fake, "other text\n    at q (/packages/rules/src/x.js:9:9)"]) { crashes.engineCrash({ table, role: "dm", uid: "m", action: { type: "advanceTime" }, err: thrower(m) }); await settle(); }
+  assert.equal(gh.calls.length, 1, "player text cannot make a second kind");
+});
+const stackFramesOf = (e) => stackFrames(e);
+
+test("a kind is told by function and file, not line, so a deploy does not file it again", async () => {
+  const gh = stub(), dir = tmp();
+  const crashes = createCrashes({ dir, env: ENV, fetch: gh.fetch, log: () => {} });
+  const table = fakeTable();
+  const err = (line) => Object.assign(new Error("m"), { stack: `Error: m\n    at cast (file:///app/packages/rules/src/engine/casting.js:${line}:3)` });
+  crashes.engineCrash({ table, role: "dm", uid: "m", action: { type: "cast" }, err: err(10) }); await settle();
+  crashes.engineCrash({ table, role: "dm", uid: "m", action: { type: "cast" }, err: err(12) }); await settle();
+  assert.equal(gh.calls.length, 1);
+});
+
+test("a GitHub network error gives the day's allowance back and the next crash of the kind tries again", async () => {
+  const dir = tmp(), log = [];
+  let down = true;
+  const gh = stub();
+  const crashes = createCrashes({ dir, env: ENV, log: (m) => log.push(m), fetch: (u, i) => (down ? Promise.reject(new Error("ECONNRESET")) : gh.fetch(u, i)) });
+  const table = fakeTable();
+  const hit = () => { crashes.engineCrash({ table, role: "dm", uid: "m", action: { type: "advanceTime" }, err: boom() }); return settle(); };
+  await hit();
+  assert.ok(log.some((l) => /could not file/.test(l)));
+  assert.equal(JSON.parse(readFileSync(join(dir, "crash-issues.json"), "utf8")).filed, 0);
+  down = false;
+  await hit();
+  assert.equal(gh.calls.length, 1, "filed on the next crash");
+  // A kind left half-done on disk (no issue number) is not remembered across a restart.
+  const dir2 = tmp();
+  writeFileSync(join(dir2, "crash-issues.json"), JSON.stringify({ day: "2026-11-21", filed: 1, kinds: { "advanceTime|x y": { number: null, count: 1 } } }));
+  const gh2 = stub();
+  const again = createCrashes({ dir: dir2, env: ENV, fetch: gh2.fetch, log: () => {} });
+  again.engineCrash({ table, role: "dm", uid: "m", action: { type: "advanceTime" }, err: boom() }); await settle();
+  assert.equal(gh2.calls.length, 1);
+});
+
+test("the address limiter has a hard cap on keys and counts an IPv6 address by its /64", () => {
+  let t = Date.UTC(2026, 10, 21, 10);
+  const crashes = createCrashes({ dir: tmp(), env: {}, now: () => t, log: () => {} });
+  const ok = { v: 1, kind: "error", message: "m", build: "b", mode: "solo", screen: { w: 1, h: 1 } };
+  const send = (addr) => new Promise((resolve) => {
+    const req = { method: "POST", headers: { "content-type": "application/json" }, on(ev, f) { if (ev === "data") setImmediate(() => f(Buffer.from(JSON.stringify(ok)))); if (ev === "end") setImmediate(() => setImmediate(f)); return this; }, pause() {}, destroy() {} };
+    const res = { writeHead(status) { resolve(status); return { end() {} }; } };
+    crashes.handleHttp(req, res, { addr });
+  });
+  return (async () => {
+    const seen = [];
+    for (let i = 0; i < 6; i++) seen.push(await send(`2001:db8:1:2::${i + 1}`));
+    assert.deepEqual(seen, [204, 204, 204, 204, 204, 429], "six addresses in one /64 share five a minute");
+    // The cap, driven directly (each report from its own table, so the day's budget is not what refuses).
+    const rep = { ...ok, kind: "error" };
+    for (let i = 0; i < CLIENT_KEYS_MAX - 1; i++) assert.equal(crashes.clientError(rep, { conn: `addr:a${i}`, table: `T${i}` }), "ok");
+    assert.equal(crashes.clientError(rep, { conn: "addr:new", table: "Tn" }), "throttled", "with every slot busy a new address is refused");
+    t += 61_000;
+    assert.equal(crashes.clientError(rep, { conn: "addr:new", table: "Tn" }), "ok", "and taken again once slots are free");
+  })();
+});
+
+test("the health count names only action types the engine knows; bundles are cut by bytes, `cut` is capped, stray .tmp files go", () => {
+  const tables = createTables({ seed: () => 5 });
+  const got = [];
+  const session = tables.connect({ send: (m) => got.push(JSON.parse(JSON.stringify(m))) });
+  session.receive({ t: "host", name: "Dana" });
+  tables.get(got.find((m) => m.t === "welcome").code).state.timeline.push = () => { throw new Error("x"); };
+  const real = console.error; console.error = () => {};
+  try { session.receive({ t: "act", action: { type: "advanceTime", minutes: 1 } }); } finally { console.error = real; }
+  assert.deepEqual(tables.stats().crashesByType, { advanceTime: 1 });
+  const dir = tmp();
+  mkdirSync(join(dir, "crashes"));
+  writeFileSync(join(dir, "crashes", "20260101T000000000Z-ABC123.json.tmp"), "half");
+  const crashes = createCrashes({ dir, env: {}, log: () => {} });
+  const wide = "é".repeat(150);           // 2 bytes a character
+  const name = crashes.engineCrash({ table: fakeTable(), role: "dm", uid: "m", action: { type: "mapEdit", rows: Array.from({ length: 100 }, () => ({ a: wide, b: wide, c: wide, d: wide, e: wide, f: wide, g: wide, h: wide })), ...Object.fromEntries(Array.from({ length: 90 }, (_, i) => [`k${i}`, "z".repeat(300)])) }, err: boom() });
+  assert.ok(Buffer.byteLength(readFileSync(join(crashes.dir, name), "utf8")) <= 128 * 1024);
+  assert.ok(JSON.parse(readFileSync(join(crashes.dir, name), "utf8")).cut.length <= 52);
+  assert.ok(!existsSync(join(dir, "crashes", "20260101T000000000Z-ABC123.json.tmp")));
+  const repo = createCrashes({ dir: tmp(), env: { FEEDBACK_GITHUB_REPO: "../x", FEEDBACK_GITHUB_TOKEN: "t" }, log: () => {} });
+  assert.ok(repo);
 });

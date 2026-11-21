@@ -122,8 +122,10 @@ export function replayCrash(bundle, read) {
   const j = bundle?.journal;
   if (!j || typeof j.file !== "string" || typeof j.snapshot !== "string" || !Number.isInteger(j.line)) return { reached: false, why: "the bundle holds no journal position (no journal was open, or the crash was not an action)", notes };
   const snapText = read(j.snapshot), logText = read(j.file);
-  if (snapText === null) return { reached: false, why: `the snapshot ${j.snapshot} is not there (the journal keeps the last few files only)`, notes };
-  if (logText === null) return { reached: false, why: `the journal ${j.file} is not there`, notes };
+  if (snapText === null || logText === null) {
+    const gone = [snapText === null && j.snapshot, logText === null && j.file].filter(Boolean).join(" and ");
+    return { reached: false, why: `${gone} ${snapText === null && logText === null ? "are" : "is"} not in the folder: the journal keeps only the last few files of a table, so a bundle older than that cannot be replayed (copy the journal files beside it, or point --data at the folder that holds them)`, notes };
+  }
   let snapshot;
   try { snapshot = JSON.parse(snapText); } catch { return { reached: false, why: `${j.snapshot} cannot be read`, notes }; }
   // The lines up to the one the bundle names: the header has no number, and a closing line after it (written later) is dropped.

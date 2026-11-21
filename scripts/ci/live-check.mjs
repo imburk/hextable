@@ -43,28 +43,44 @@ export function report({ main, ageMinutes, mismatches, now }) {
 
 const num = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
 const typed = (o) => Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).filter(([k, v]) => /^[\w.?-]{1,40}$/.test(k) && Number.isFinite(v)).slice(0, 30));
-// health: the parsed /api/health; marker: the last { start, crashes, clientErrors, crashesByType, clientErrorsByType } reported, or null.
-// Returns { rose, restarted, now: the counts to remember, delta: { crashes, clientErrors }, byType: { crashes: [[type, count, rise]], clientErrors: [...] } }.
+export const CLIENT_THRESHOLD = 25;                 // browser errors alone report only from this many new ones...
+export const CLIENT_GAP_MS = 24 * 3_600_000;        // ...and at most once a day. Crashes always report.
+const PROCS_KEPT = 4;
+// health: the parsed /api/health; marker: what the last report left, { procs: [{ start, crashes, clientErrors, crashesByType, clientErrorsByType }], clientAt? }, or null.
+// A process is told by its start time (now - uptime, to a couple of minutes), and each one has its own baseline, so a restart, or two instances
+// answering in turn, never makes the whole count new again. Returns { rose, restarted, why, now: the entry for this process, marker: what to leave, delta, byType }.
 export function healthRise({ health, marker, now = new Date() }) {
   const start = new Date(now - num(health?.uptime) * 1000).toISOString();
   const cur = { start, crashes: num(health?.crashes), clientErrors: num(health?.clientErrors), crashesByType: typed(health?.crashesByType), clientErrorsByType: typed(health?.clientErrorsByType) };
-  const restarted = !marker || !(Math.abs(Date.parse(cur.start) - Date.parse(marker.start)) <= RESTART_SLACK_MS);
-  const base = restarted ? { crashes: 0, clientErrors: 0, crashesByType: {}, clientErrorsByType: {} } : marker;
+  const procs = Array.isArray(marker?.procs) ? marker.procs.filter((p) => p && typeof p.start === "string") : [];
+  const known = procs.find((p) => Math.abs(Date.parse(cur.start) - Date.parse(p.start)) <= RESTART_SLACK_MS);
+  const restarted = !known;
+  const base = known ?? { crashes: 0, clientErrors: 0, crashesByType: {}, clientErrorsByType: {} };
   const delta = { crashes: Math.max(0, cur.crashes - num(base.crashes)), clientErrors: Math.max(0, cur.clientErrors - num(base.clientErrors)) };
   const rows = (field) => Object.entries(cur[field]).map(([t, n]) => [t, n, Math.max(0, n - num(base[field]?.[t]))]).filter((r) => r[2] > 0).sort((a, b) => b[2] - a[2]);
-  return { rose: delta.crashes > 0 || delta.clientErrors > 0, restarted, now: cur, delta, byType: { crashes: rows("crashesByType"), clientErrors: rows("clientErrorsByType") } };
+  const clientAt = typeof marker?.clientAt === "string" ? Date.parse(marker.clientAt) : NaN;
+  const clientDue = delta.clientErrors >= CLIENT_THRESHOLD && !(now - clientAt < CLIENT_GAP_MS);
+  const why = delta.crashes > 0 ? "crashes" : clientDue ? "client" : null;
+  const keep = procs.filter((p) => p !== known).slice(-(PROCS_KEPT - 1));
+  return {
+    rose: why !== null, restarted, why, now: cur, delta, byType: { crashes: rows("crashesByType"), clientErrors: rows("clientErrorsByType") },
+    marker: { procs: [...keep, cur], ...(why === "client" ? { clientAt: now.toISOString() } : typeof marker?.clientAt === "string" ? { clientAt: marker.clientAt } : {}) },
+  };
 }
 export function errorsReport({ rise, health, checked }) {
   const list = (rows) => (rows.length ? rows.map(([t, n, d]) => `  - \`${t}\`: +${d} (${n} since the server started)`).join("\n") : "  - (none by type)");
   return [
-    `Checked ${checked.toISOString()}. Build \`${typeof health?.build === "string" ? health.build.slice(0, 40) : "unknown"}\`, server started ${rise.now.start}.`, "",
+    `Checked ${checked.toISOString()}. Build \`${typeof health?.build === "string" ? health.build.replace(/[^\w.-]/g, "").slice(0, 40) : "unknown"}\`, server started ${rise.now.start}.`, "",
     `- Engine crashes: +${rise.delta.crashes} (${rise.now.crashes} since the server started)`, list(rise.byType.crashes),
     `- Browser errors: +${rise.delta.clientErrors} (${rise.now.clientErrors} since the server started)`, list(rise.byType.clientErrors), "",
-    rise.restarted ? "The server restarted since the last report, so every count since it started is new." : "Counts are the rise since the last report on this issue.", "",
-    "Engine crashes by action type are the ten most frequent only. Each new kind of crash also has its own `crash` issue; the repro bundles are on the server (`packages/server/README.md`, Engine crashes). Browser errors are `client-error` lines in the server log.",
-    "", `<!-- live-errors: ${JSON.stringify(rise.now)} -->`,
+    rise.restarted ? "This server process was not in the last report, so every count since it started is new." : "Counts are the rise since the last report on this issue.", "",
+    "Engine crashes by action type are the ten most frequent only. Each new kind of crash also has its own `crash` issue; the repro bundles are on the server (`packages/server/README.md`, Engine crashes). Browser errors are `client-error` lines in the server log, and are reported here only with a crash or when 25 or more are new (once a day at most).",
+    "", `<!-- live-errors: ${JSON.stringify(rise.marker)} -->`,
   ].join("\n");
 }
+export const ERRORS_LABEL = "live-errors";
+// Only what this workflow wrote counts: an issue or comment by the Actions bot. Anyone else's text, marker or not, is ignored.
+const ours = (x) => x?.user?.type === "Bot" && x?.user?.login === "github-actions[bot]";
 
 async function fetchBuild(site) {
   let last;
@@ -81,25 +97,26 @@ async function fetchBuild(site) {
 }
 
 // The check of /api/health. gh(path) -> JSON; send(method, path, body). Returns a line for the log.
+// The issue is found by its label (not its title, and not among the first 100 of all issues), and its marker is read only from the Actions bot's text.
 export async function checkErrors({ gh, send, healthUrl, dry, now = new Date(), fetchHealth }) {
   let health;
   try { health = await fetchHealth(healthUrl); } catch (err) { return `health: ${String(err?.message ?? err)} (not checked)`; }
   if (health?.clientErrors === undefined && health?.crashes === undefined) return "health: no error counts in the answer (not checked)";
-  const found = (await gh("/issues?state=all&per_page=100&sort=created&direction=desc")).filter((i) => !i.pull_request && i.title === ERRORS_TITLE);
+  const found = (await gh(`/issues?state=all&labels=${ERRORS_LABEL}&per_page=100&sort=created&direction=desc`)).filter((i) => !i.pull_request && ours(i));
   const issue = found.find((i) => i.state === "open") ?? found[0] ?? null;
   let marker = null;
   if (issue) {
     const texts = [issue.body ?? ""];
-    for (let page = 1; page <= 10; page++) { const c = await gh(`/issues/${issue.number}/comments?per_page=100&page=${page}`); texts.push(...c.map((x) => x.body ?? "")); if (c.length < 100) break; }
+    for (let page = 1; page <= 10; page++) { const c = await gh(`/issues/${issue.number}/comments?per_page=100&page=${page}`); texts.push(...c.filter(ours).map((x) => x.body ?? "")); if (c.length < 100) break; }
     for (const t of texts) { const m = MARKER.exec(t); if (m) { try { marker = JSON.parse(m[1]); } catch { /* an unreadable marker is no baseline */ } } }
   }
   const rise = healthRise({ health, marker, now });
   const line = `health: crashes ${rise.now.crashes} (+${rise.delta.crashes}), browser errors ${rise.now.clientErrors} (+${rise.delta.clientErrors})`;
-  if (!rise.rose) return `${line}; no rise`;
+  if (!rise.rose) return `${line}; nothing to report`;
   const body = errorsReport({ rise, health, checked: now });
   if (dry) return `${line}\n${body}\nDRY_RUN: no issue touched.`;
   if (issue?.state === "open") { await send("POST", `/issues/${issue.number}/comments`, { body }); return `${line}; commented on #${issue.number}`; }
-  const i = await send("POST", "/issues", { title: ERRORS_TITLE, body });
+  const i = await send("POST", "/issues", { title: ERRORS_TITLE, body, labels: [ERRORS_LABEL] });
   return `${line}; opened #${i.number}`;
 }
 
