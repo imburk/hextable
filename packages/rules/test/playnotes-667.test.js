@@ -354,3 +354,43 @@ test("note 6: a player's Shove asks the target for a Strength or Dexterity save 
   assert.equal(good.entities[good.foe].cond.prone, undefined);
   assert.equal(g.events.find((e) => e.type === "save").success, true);
 });
+
+// ---------- 7. A short sword used from 20 feet ----------
+// SRD "Attack Rolls"/"Melee Attacks": a melee attack reaches 5 feet unless the weapon has Reach (10 feet); "Thrown" lets a melee weapon be
+// thrown for a ranged attack at its listed range (Dagger 20/60, Handaxe 20/60, Javelin 30/120 ...), and a Short Sword has no Thrown property.
+// So a Short Sword attack on a creature 20 feet away must be refused, a Dagger thrown from 20 feet is a ranged attack, and a Spear (Thrown 20/60) too.
+
+const atRange = (hexes, weapons, attack, extra = {}) => {
+  const sheet = { ...sheets.rogue, weapons };
+  const s = field(sheet, 5, { foeAt: { q: hexes, r: 0 }, ac: 1 });
+  fight(s);
+  const snap = JSON.stringify(s);
+  return { s, snap, r: apply(s, { type: "attack", actor: "hero", target: s.foe, attack, ...extra }, DM) };
+};
+
+test("note 7: a Short Sword attack on a creature 20 feet (4 hexes) away is refused and changes nothing", () => {
+  for (const d of [2, 3, 4, 6]) {
+    const { s, snap, r } = atRange(d, ["shortsword"], "shortsword");
+    no(r, /Shortsword reaches 5 ft/);
+    assert.equal(JSON.stringify(s), snap, "a refusal changes nothing");
+  }
+});
+test("note 7: a Short Sword reaches the creature next to it", () => {
+  assert.ok(atRange(1, ["shortsword"], "shortsword").r.ok);
+});
+test("note 7: a Dagger (Thrown 20/60) may be thrown from 20 feet but not stabbed from there; a Short Sword has no thrown attack", () => {
+  const sheet = { ...sheets.rogue, weapons: ["dagger", "shortsword"] };
+  const rec = derive(sheet).record;
+  const ids = rec.attacks.map((a) => `${a.id}:${a.type}:${a.range ?? a.reach}`);
+  assert.ok(rec.attacks.some((a) => a.id.startsWith("dagger") && a.type === "ranged"), ids.join(" "));
+  assert.ok(!rec.attacks.some((a) => a.id.startsWith("shortsword") && a.type === "ranged"), "no thrown Short Sword: " + ids.join(" "));
+  const thrown = rec.attacks.find((a) => a.id.startsWith("dagger") && a.type === "ranged");
+  const t = atRange(4, ["dagger", "shortsword"], thrown.id);
+  assert.ok(t.r.ok, t.r.error);
+  no(atRange(4, ["dagger", "shortsword"], "dagger").r, /reaches 5 ft/);
+});
+test("note 7: a monster's melee action beyond its reach is refused too", () => {
+  const s = field(sheets.wizard, 5, { foeAt: { q: 4, r: 0 } });
+  fight(s, s.foe);
+  no(apply(s, { type: "act", actor: s.foe, action: "scimitar", target: "hero" }, DM), /reaches 5 ft/);
+});
