@@ -191,3 +191,40 @@ test("note 3: the same half-on-save path serves another area spell (Thunderwave 
   assert.ok(sv.length >= 2);
   for (const v of sv) { const d = dm.find((x) => x.target === v.id), full = sum(dm[0].dice); assert.equal(d.dice.length, 8); assert.equal(d.amount, v.success ? Math.floor(full / 2) : full); }
 });
+
+// ---------- 4. Pack Tactics ----------
+// SRD "Pack Tactics" (a Hobgoblin, Kobold or Dire Wolf's trait): "Advantage on an attack roll against a creature if at least
+// one of the [monster's] allies is within 5 feet of the creature and the ally doesn't have the Incapacitated condition."
+// Verdict: a bug. The engine tested that the ally stood within 5 feet and had Hit Points, but never that the ally was not
+// Incapacitated: a Stunned, Paralyzed or sleeping (Incapacitated) wolf still gave its pack Advantage.
+
+// A wolf at 0,0 beside the fighter at 1,0; a second wolf at `ally`. Wolf one's attack on the fighter: its mode and reasons.
+function pack(ally, prep = () => {}) {
+  const s = newGame(5);
+  for (const id of Object.keys(s.entities)) if (id !== "fighter") delete s.entities[id];
+  for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
+  s.settings.autoEngage = false;
+  apply(s, { type: "place", actor: "fighter", to: { q: 1, r: 0 } }, DM);
+  const spawn = (at) => ok(apply(s, { type: "spawn", monster: "wolf", at }, DM)).events[0].id;
+  const a = spawn({ q: 0, r: 0 }), b = spawn(ally);
+  s.entities.fighter.ac = 30;
+  prep(s, s.entities[b]);
+  fight(s, a);
+  const e = ok(apply(s, { type: "attack", actor: a, target: "fighter", attack: "bite" }, DM)).events.find((x) => x.type === "attack");
+  return { mode: e.mode, why: e.why };
+}
+const cond = (c) => (s, o) => { o.cond[c] = {}; };
+
+test("note 4: a wolf has Advantage from Pack Tactics when a conscious ally is within 5 feet of the target", () => {
+  assert.deepEqual(pack({ q: 2, r: 0 }), { mode: "adv", why: ["Pack Tactics"] });
+});
+test("note 4: no Advantage when the ally is 10 feet from the target, or is the attacker alone", () => {
+  assert.equal(pack({ q: 3, r: 0 }).mode, "normal");
+  assert.equal(pack({ q: 0, r: 5 }).mode, "normal");
+});
+for (const c of ["stunned", "paralyzed", "unconscious", "incapacitated", "petrified"]) test(`note 4: no Advantage when the ally has the ${c} condition (Incapacitated)`, () => {
+  assert.equal(pack({ q: 2, r: 0 }, cond(c)).mode, "normal");
+});
+test("note 4: an ally with a condition that does not Incapacitate (Prone, Poisoned, Frightened) still gives Advantage", () => {
+  for (const c of ["prone", "poisoned", "frightened"]) assert.equal(pack({ q: 2, r: 0 }, cond(c)).mode, "adv", c);
+});
