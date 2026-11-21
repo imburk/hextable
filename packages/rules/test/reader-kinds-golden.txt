@@ -25,7 +25,7 @@ Immune to the Poisoned condition: the engine never gives it that condition.
 Languages (shown to the DM only; the engine does nothing with them): "Understands one tongue but cannot speak", "telepathy 30 ft.".
 Trait "Pack Tactics": the engine runs this.
   Advantage on its attack rolls.
-    It holds only when an ally of the attacker is within 5 feet of the target.
+    It holds only when an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target.
   The engine knows this id, but sets a flag nothing reads: only the modifiers above do anything.
 Trait "Nimble Escape": the engine runs this.
   The engine knows this id: it lets the creature Disengage or Hide as a Bonus Action (and the monster AI Hides with it in the first round).
@@ -326,8 +326,16 @@ Action "Whisper": an action. In a fight it spends the creature's action.
   It affects the creature itself.
   The engine does not do this; the DM does this: "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
   The monster AI never picks this action by itself: the DM sends it.
+Action "Mercy Rite": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 30 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  The target becomes Stable if it has 0 Hit Points and is not dead (its Death Saving Throw counts start again). Any other creature is left as it is, and the table is told.
+  The target gets its Armor Class worked out from a base of 13 plus its Dexterity modifier, in place of its own base if that is better (it uses one way of working it out, and a Shield and bonuses still add). The engine puts it only on a built character that wears no armor; for any other creature it tells the DM, who decides and sets the number.
+    The action does not last, so the engine has nothing to hang this on: the DM applies it.
+  The target carries a light: Bright Light in a 10-foot radius and Dim Light for 10 feet more.
+    The action does not last, so the engine has nothing to hang this on: the DM hands out the light and puts it out.
+  The monster AI never picks this action by itself: the DM sends it.
 Tier: manual. The entry says the DM runs most of this creature; the engine runs only what is listed above as run by the engine.
-Why: 1 trait only the DM runs; 7 things the DM does by hand, listed below.
+Why: 1 trait only the DM runs; 10 things the DM does by hand, listed below.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
 Not checked against any rulebook.
 DM: The trait "Lair Presence": text only.
@@ -337,6 +345,9 @@ DM: Step actions.2.effects.2: setting a map object's state.
 DM: Step actions.2.effects.3: a resource.
 DM: Every step of the action "Falling Stones": the engine cannot lay out its area.
 DM: "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
+DM: Step actions.5.effects.1: the Armor Class of a creature that is not a built character, or that wears armor.
+DM: The modifier of step actions.5.effects.1: the action does not last.
+DM: The light of step actions.5.effects.2: the action does not last.
 DM: Whatever the description says beyond the lines above.
 
 == monster hb-rk-types

@@ -289,3 +289,27 @@ test("homebrew monsters: one the DM hid outside the arena, through a fight, is i
   assert.ok(JSON.stringify(hidden.raw.dm).includes("Shape in the reeds"), "the DM has the creature");
   assert.ok(![HB_NAME, HB_TEXT, HB_NOTE, HB_ATTACK, WRAITH, "Shape in the reeds"].some((x) => everything(hidden).includes(x)));
 });
+
+// ---- Armor Class: an effect of a DM-hidden creature, on that creature (#674) ----
+// The view sends `acNow` and `acWhy` for the party's creatures from the effects that sit on them. A hidden creature's Barkskin on itself changes
+// nothing a player is sent; one on a party creature would be sent as any effect of a hidden source is (its name, never its source).
+test("armor class: a hidden creature's Barkskin on itself changes nothing the players are sent, `acNow` and `acWhy` included", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      w.state.entities.fighter.owner = w.ids.Pat;
+      w.putIn();
+    },
+    steps: [
+      { by: "Pat", act: { type: "check", actor: "fighter", skill: "athletics" } },
+      { by: "Pat", act: { type: "check", actor: "fighter", skill: "perception" } },
+    ],
+  }, {
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 8, r: -6 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost");
+      w.state.effects.push({ id: `fx${++w.state.seq}`, name: "Barkskin", spell: "barkskin", source: g.id, conc: false, lasts: "1 hour", until: { clock: w.state.clock + 60 }, parts: [{ target: g.id, modifier: { on: "ac", op: "min", value: 17 } }] });
+    },
+    plain: (w) => { burn(w); w.state.seq++; },
+  });
+});

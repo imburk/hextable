@@ -54,7 +54,7 @@ export function hashState(state) {
 // The dice counter: a keyed generator's position, or the integer a seeded one has come to.
 export const diceOf = (state) => (state?.rng !== null && typeof state?.rng === "object" ? state.rng.n : state?.rng ?? null);
 
-const noop = { setCap() {}, before: () => null, accepted() {}, restored() {}, reset() {}, sweep() {}, flushSync() {}, idle: async () => {} };
+const noop = { setCap() {}, before: () => null, accepted() {}, restored() {}, reset() {}, sweep() {}, close() {}, forget() {}, adopt() {}, flushSync() {}, idle: async () => {} };
 
 export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, keep = FILES_KEPT, retryMs = RETRY_MS, queueMax = QUEUE_MAX_BYTES, totalMax = TOTAL_MAX_BYTES, now = Date.now, log = (line) => console.error(line) } = {}) {
   if (!enabled || !dir) return noop;
@@ -67,19 +67,23 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
   let timelineCap = null;           // the table's timeline cap: createTables owns it and hands it over (setCap)
   let total = 0, queue = [], pending = 0, running = null, inflight = null;
 
-  // What the folder already holds, once: so a restart goes on from the highest number, never overwrites a file, and knows what the caps count.
-  try {
-    for (const name of readdirSync(dir)) {
-      const m = FILE.exec(name);
-      if (!m) continue;
-      const code = m[1], n = Number(m[2]);
-      next.set(code, Math.max(next.get(code) ?? 1, n + 1));
-      let st; try { st = statSync(join(dir, name)); } catch { continue; }
-      const e = pairs.get(`${code} ${n}`) ?? { code, n, bytes: 0, t: 0, live: false };
-      e.bytes += st.size; e.t = Math.max(e.t, st.mtimeMs); total += st.size;
-      pairs.set(`${code} ${n}`, e);
-    }
-  } catch { /* an unreadable folder fails again, and is logged, when the first file is made */ }
+  // What the folder already holds: so a restart goes on from the highest number, never overwrites a file, and knows what the caps count.
+  // `only` limits it to one table (a table restored from the archive, #662).
+  const scan = (only) => {
+    try {
+      for (const name of readdirSync(dir)) {
+        const m = FILE.exec(name);
+        if (!m || (only && m[1] !== only)) continue;
+        const code = m[1], n = Number(m[2]);
+        next.set(code, Math.max(next.get(code) ?? 1, n + 1));
+        let st; try { st = statSync(join(dir, name)); } catch { continue; }
+        const e = pairs.get(`${code} ${n}`) ?? { code, n, bytes: 0, t: 0, live: false };
+        e.bytes += st.size; e.t = Math.max(e.t, st.mtimeMs); total += st.size;
+        pairs.set(`${code} ${n}`, e);
+      }
+    } catch { /* an unreadable folder fails again, and is logged, when the first file is made */ }
+  };
+  scan();
 
   const fail = (code, op, err) => {
     const t = now();
@@ -222,6 +226,18 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
         if (!lastWhy.has(t.code)) lastWhy.set(t.code, why);
       }, t?.code);
     },
+    // The table is leaving memory (#662): its file is ended with a line saying why, nothing more is appended, and the next action after
+    // it is loaded again opens a new file from its own snapshot. What is queued is still written, in order.
+    close(code, why = "evict") {
+      guard(() => {
+        const f = open.get(code);
+        if (f) closeFile(code, f, JSON.stringify({ k: "break", n: ++f.lines, at: new Date(now()).toISOString(), why }) + "\n");
+        if (!lastWhy.has(code)) lastWhy.set(code, why);
+      }, code);
+    },
+    // The table's files were moved to the archive: they no longer count against the caps. `adopt` counts them again when they are back.
+    forget(code) { for (const [k, e] of [...pairs]) if (e.code === code) { pairs.delete(k); total -= e.bytes; } },
+    adopt(code) { scan(code); },
     // At start: the journals of tables whose save no longer exists are removed (`has(code)` says whether a table is there).
     sweep(has) {
       try {

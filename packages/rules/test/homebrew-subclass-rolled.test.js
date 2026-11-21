@@ -172,7 +172,8 @@ test("what players are sent: the pack's copy carries the data; the view and even
   assert.deepEqual(copy.features[0].grants.action.effects[1].modifier.value, { rolled: true });
   assert.equal(copy.features[0].grants.action.after, "weaponHit");
   using(ON, () => {
-    const keys = (s) => Object.keys(view(s, PAT).entities.hero).sort();
+    // acNow and acWhy are sent only while something changes the AC (#674), so they are left out of the comparison.
+    const keys = (s) => Object.keys(view(s, PAT).entities.hero).filter((k) => k !== 'acNow' && k !== 'acWhy').sort();
     const srd = field({ ...bard(), subclass: "lore", skills: ["performance", "persuasion", "insight", "history", "arcana", "deception"] });
     const s = hitFight();
     assert.deepEqual(keys(s), keys(srd), "a hero with the pack's subclass is sent the same fields of a creature as one of an SRD subclass");

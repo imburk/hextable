@@ -4,8 +4,8 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
-import { moveOptions, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
-import { actionProfile, targetCount } from './shared/effects.js';
+import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
+import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { tapAttack, rearm, hintOf as flurryHint, spentWords } from './flurry.js';
@@ -824,6 +824,8 @@ function renderLog() { LV.render(); }
 // What is lent to the creature for a time (a feature of a subclass: DEBT T96): the skills and tools, and what lent them. The sheet itself is not changed.
 const lentLine = (e) => { const l = lentList(S, e); return l.length ? `<p class="note" id="sheet-lent">Proficiency lent for a time: ${l.map((x) => `${esc(niceId(x.skill ?? x.tool))} (${esc(x.name)}${x.lasts ? `, ${esc(x.lasts)}` : ''})`).join('; ')}.</p>` : ''; };
 
+// The Armor Class that applies, and what changed it ("15 (Mage Armor)").
+function acLine(e) { const a = acShown(S, e, isDM()); return a.why.length ? `${a.ac} (${a.why.join(', ')})` : `${a.ac}`; }
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
   const st = e.castAbil ? spellStats(e, S) : null;
@@ -835,7 +837,7 @@ function renderSheet() {
     <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(classTitle(e))}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
     ${isDM() && missingText(e) ? `<p class="note" id="sheet-subclass-missing">${esc(missingText(e))}</p>` : ''}
     ${CLS.sheetBanner(e)}
-    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span>AC ${e.ac}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
+    <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span id="sheet-ac">AC ${acLine(e)}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
     ${isDM() && e.sheet && dmLine(e.sheet, tableRule(S.settings)) ? `<p class="note" id="sheet-scores-line">${esc(dmLine(e.sheet, tableRule(S.settings)))}</p>` : ''}
     <p class="note">Saving throws: ${saves}</p>
@@ -844,7 +846,7 @@ function renderSheet() {
       ${e.attacks.map((a) => `<tr><td>${esc(a.name)}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${a.dtype}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`).join('')}</table></section>`}
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
-      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : sp.range === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${sp.range} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
+      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
     ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}
     ${featuresHtml(e, mine(e))}
     ${mine(e) ? pocketHtml(e) : ''}
