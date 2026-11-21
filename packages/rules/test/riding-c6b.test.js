@@ -5,6 +5,7 @@
 // Opportunity Attacks for the pair (the attacker choosing the rider or the mount), Find Steed as a controlled mount,
 // the rider's raised eye, and a stepped-away rider's mount taking its own turns (DEBT W14). On hexes and on the square
 // room, with twin runs for hidden creatures.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, makeEntity } from "../src/engine.js";
@@ -291,7 +292,7 @@ for (const grid of GRIDS) {
 // A goblin of the DM's on a warhorse of the DM's (controlled: both foes, trained), beside Brenna (u1) whose
 // Opportunity Attack instruction is `ask`. On the goblin's turn the horse walks out of her reach.
 function oaTable(grid, { hideRider = false, noRider = false } = {}) {
-  const s = newGame(5);
+  const s = newGame(5); typed(s, "fighter");        // the attacker is hand-typed: its one Opportunity Attack option is the weapon one (a built hero also has the grapple one)
   if (grid === "square") ok(apply(s, { type: "loadMap", map: squareRoom() }, DM));
   ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
   for (const id of ["m1", "m2", "m3", "m4", "m5", "m6"]) if (s.entities[id]) ok(apply(s, { type: "remove", actor: id }, DM));

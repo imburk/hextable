@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { test } from "node:test";
 import { apply, current } from "../src/engine.js";
-import { newGame } from "../src/scenario.js";
+import { typedGame as newGame } from "./fixtures/typed.js";        // recorded when the starters were hand-typed: the game is made that way here (#672)
 import { view, viewEvents } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" }, SAM = { role: "player", userId: "sam" };

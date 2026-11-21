@@ -162,7 +162,7 @@ const whys = (rows) => rows.filter((r) => r.why);
 test('Attacks: a character\'s attacks with bonus, damage and reach; greyed with the engine\'s words once the action is spent', () => {
   const s = newGame(7), e = inFightAs(s, 'fighter');
   let rows = attackRows(s, e);
-  assert.deepEqual(ids(rows), e.attacks.map((a) => `atk:${a.id}`));
+  assert.deepEqual(ids(rows).filter((i) => i.startsWith('atk:')), e.attacks.map((a) => `atk:${a.id}`));       // (a built hero also has the Unarmed Strike's grapple, push and prone rows)
   assert.match(rows[0].sub, /^\+\d+ to hit · .+ · reach 5 ft$/); assert.equal(rows[0].why, ''); assert.equal(rows[0].chip, 'Action');
   assert.deepEqual(rows[0].mode, { kind: 'attack', id: e.attacks[0].id });
   assert.equal(attackRows(s, e, { mode: rows[0].mode })[0].armed, true);

@@ -1,4 +1,5 @@
 // Regions: a place revealed room by room (task M3 of docs/specs/maps-and-objects.md).
+import { plain } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, inFight } from "../src/engine.js";
@@ -41,7 +42,7 @@ function delve({ engage = false } = {}) {
 }
 const region = (s, id) => s.map.regions.find((r) => r.id === id);
 // Everything a player would be sent after an action: their view and their events.
-const sent = (s, res) => JSON.stringify([view(s, PAT), viewEvents(res?.events ?? [], s, PAT)]);
+const sent = (s, res) => plain([view(s, PAT), viewEvents(res?.events ?? [], s, PAT)]);
 const secret = (text, gob) => [`"${gob}"`, "Goblin", '"3,0"', '"1,0"', "gate", "Portcullis", "vault", "The vault", "\"dc\""].filter((w) => text.includes(w));
 
 test("a map starts with only the party's own region revealed, and players are sent nothing of the rest", () => {
@@ -96,7 +97,7 @@ test("opening a door reveals the room behind it and whoever is in it", () => {
   assert.equal(v.entities[gob].name, s.entities[gob].name);
   assert.deepEqual(v.map.objects.map((o) => o.id), ["door", "gate"]);
   assert.ok(v.map.levels[0].tiles["3,0"]);
-  assert.equal(JSON.stringify(v).includes("\"dc\""), false);                  // still never a DC
+  assert.equal(plain(v).includes("\"dc\""), false);                  // still never a DC
 });
 
 test("a door opened from the far side shows nothing until someone from the party is there to look", () => {
@@ -114,7 +115,7 @@ test("a door opened from the far side shows nothing until someone from the party
 
 test("to a player, a creature or an object somewhere unseen does not exist", () => {
   const { s, gob } = delve(), before = JSON.stringify(s);
-  const real = apply(s, { type: "attack", actor: "fighter", target: gob, attack: "javelin" }, PAT), fake = apply(s, { type: "attack", actor: "fighter", target: "m999", attack: "javelin" }, PAT);
+  const real = apply(s, { type: "attack", actor: "fighter", target: gob, attack: "javelin-thrown" }, PAT), fake = apply(s, { type: "attack", actor: "fighter", target: "m999", attack: "javelin-thrown" }, PAT);
   assert.deepEqual(real, fake);
   assert.equal(real.error, "No such creature.");
   ok(apply(s, { type: "place", actor: "fighter", to: { q: 0, r: 0 } }, DM));
