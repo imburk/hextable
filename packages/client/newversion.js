@@ -38,7 +38,7 @@ export const shouldOffer = (loaded, now, dismissed = null) => compareBuilds(load
 // { check, onReconnect, solo } : `check()` asks now; `onReconnect()` is for a table's transport when its socket opens again;
 // `solo(isSolo)` starts the solo trigger (a check when the tab comes back into view, while `isSolo()`; a table has the reconnect instead).
 export function mountNewVersion({ fetchBuild, doc = document, reload = () => location.reload() }) {
-  let loaded = chooseLoaded(doc.querySelector?.('meta[name="hextable-build"]')?.getAttribute('content'), null), dismissed = null, shownFor = null, busy = false, el = null;
+  let loaded = chooseLoaded(doc.querySelector?.('meta[name="hextable-build"]')?.getAttribute('content'), null), dismissed = null, shownFor = null, busy = false, again = false, el = null;
   const show = (id) => {
     if (!el) {
       el = doc.createElement('div'); el.id = 'new-version'; el.setAttribute('role', 'status');
@@ -50,13 +50,21 @@ export function mountNewVersion({ fetchBuild, doc = document, reload = () => loc
     }
     shownFor = id; el.hidden = false;
   };
+  // A check asked for while one is on its way is not dropped: it runs once more when that one ends, so a deploy
+  // seen by the later trigger is never missed (the earlier answer may have been fetched before the deploy).
   async function check() {
-    if (busy) return; busy = true;
+    if (busy) { again = true; return; }
+    busy = true;
     try {
-      const now = await fetchBuild();
-      if (loaded === null) { loaded = chooseLoaded(null, now); return; }        // run from source, no stamp in the page: the first answer is the build this page is
-      if (shouldOffer(loaded, now, dismissed)) show(buildId(now));
-    } catch { /* offline or no build.json: say nothing */ } finally { busy = false; }
+      do {
+        again = false;
+        try {
+          const now = await fetchBuild();
+          if (loaded === null) { loaded = chooseLoaded(null, now); continue; } // run from source, no stamp in the page: the first answer is the build this page is
+          if (shouldOffer(loaded, now, dismissed)) show(buildId(now));
+        } catch { /* offline or no build.json: say nothing */ }
+      } while (again);
+    } finally { busy = false; }
   }
   return {
     check, onReconnect: check,

@@ -75,3 +75,18 @@ test('a page stamped with an older build is offered the reload on its first chec
   const nv = mountNewVersion({ fetchBuild: async () => B, doc, reload() {} });
   await nv.check(); assert.equal(doc.body.children.length, 1);
 });
+
+// A trigger that comes while a check is on its way is not lost (the smoke on CI found it: the first answer was fetched
+// before the deploy, and the trigger after the deploy was dropped as "busy", so no banner).
+test('a check asked for during another one runs once more afterwards, so a deploy in between is not missed', async () => {
+  const doc = fakeDoc(); let now = A, release, calls = 0;
+  const nv = mountNewVersion({ fetchBuild: () => { calls++; const v = now; return calls === 2 ? new Promise((r) => { release = () => r(v); }) : Promise.resolve(v); }, doc, reload() {} });
+  await nv.check();                                  // loaded = A
+  const first = nv.check();                          // on its way, will answer A
+  now = B; const second = nv.check();                // the deploy, while the first is on its way
+  release(); await first; await second;
+  assert.equal(calls, 3, 'the dropped trigger ran once more');
+  assert.equal(doc.body.children[0]?.hidden, false, 'the banner shows for B');
+  const before = calls; const a = nv.check(), b = nv.check(), c = nv.check(); await Promise.all([a, b, c]);
+  assert.ok(calls - before <= 2, 'many triggers at once make at most one more fetch');
+});
