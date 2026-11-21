@@ -15,7 +15,7 @@ const base = CONTENT.spells["fire-bolt"];
 
 // Teach the wizard a spell that is not in the pack. It must pass the linter like any other.
 function learn(s, over) {
-  const def = { ...structuredClone(base), higher: undefined, ...over };
+  const def = { ...structuredClone(base), higher: undefined, roll: undefined, ...over };
   assert.deepEqual(lintPack({ pack: { id: "test", name: "t", license: "x", attribution: "x" }, spells: [def] }), [], def.id);
   SPELLS[def.id] = spellProfile(def);
   s.entities.wizard.spells.push(def.id);

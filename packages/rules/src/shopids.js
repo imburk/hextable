@@ -58,6 +58,7 @@ function mine(s, text, ctx) {
 // shown to them. A copy: the action given is not changed.
 export function translateShops(s, action, bad, ctx) {
   const t = action?.type;
+  if (typeof t !== 'string') return action; // not a name: the dispatcher refuses it as unknown
   if (Object.hasOwn(DM_ONLY, t)) bad(`Only the DM can ${DM_ONLY[t]}.`);
   if (SHOP_ACTIONS.includes(t)) {
     const id = mine(s, action.shop, ctx);
