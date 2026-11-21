@@ -10,6 +10,7 @@
 import { gridOf, col as cellCol } from './shared/grid.js';
 import { acShown, inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile, rangeAt } from './shared/effects.js';
+import { armed } from './shared/imbue.js';
 import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
 import { LIGHTS } from './shared/content/lights.js';
 import { reactionsOf, canReact, WHEN } from './shared/reactions.js';
@@ -219,9 +220,9 @@ export function featureRows(S, e, { mode = null } = {}) {
 function strikeRow(S, e, a, base, mode) {
   const ch = strikeChoices(S, e, a);
   if (!ch) return null;
-  const what = ch.brutal && ch.cunning ? `${ch.brutal.name} or ${ch.cunning.name}` : (ch.brutal ?? ch.cunning).name;
-  const bits = [ch.brutal ? `${ch.brutal.dice} more damage and an effect, no Advantage` : '', ch.cunning ? `${ch.cunning.dice} dice of Sneak Attack${ch.cunning.dice ? ' for effects' : ''}` : ''].filter(Boolean);
-  const offered = [ch.brutal, ch.cunning].filter(Boolean), stuck = offered.every((o) => o.why);
+  const what = [ch.use, ch.brutal, ch.cunning].filter(Boolean).map((o) => o.name).join(' or ');
+  const bits = [ch.use ? `${ch.use.name} changes the weapon` : '', ch.brutal ? `${ch.brutal.dice} more damage and an effect, no Advantage` : '', ch.cunning ? `${ch.cunning.dice} dice of Sneak Attack${ch.cunning.dice ? ' for effects' : ''}` : ''].filter(Boolean);
+  const offered = [ch.use, ch.brutal, ch.cunning].filter(Boolean), stuck = offered.every((o) => o.why);
   return { id: `strike:${a.id}`, kind: 'strike', attack: a.id, label: `${a.name} with ${what}`, sub: bits.join(' · '), chip: base.chip, time: base.time, armed: armedBy(mode, 'attack', a.id) && !!mode.extra,
     why: base.why || (stuck ? offered[0].why : '') };
 }
@@ -233,6 +234,8 @@ function strikeRow(S, e, a, base, mode) {
 // row. `time` is what it costs ('action', 'bonus', 'reaction', 'free' or null) and `chip` its words. The Bonus tab is a filter on the others by `time`.
 const armedBy = (mode, kind, id) => !!mode && mode.kind === kind && mode.id === id;
 
+// The attack record as it stands under a spell or feature that changes the weapon (imbue.js): a new record, or the same one.
+export const imbuedAttack = (S, e, a) => armed(S, e, a);
 // Attacks: a character's `attacks`, or a monster's `actions` (Multiattack, recharge, uses a day).
 export function attackRows(S, e, { mode = null } = {}) {
   const b = S.encounter?.budget, mineTurn = !!b && current(S) === e.id, rows = [];
@@ -257,7 +260,8 @@ export function attackRows(S, e, { mode = null } = {}) {
     const bonusTime = !flurry && a.time === 'bonus', pooled = mineTurn && !flurry && !bonusTime && !!b.attacks && fromPool(b, a.id);
     const time = flurry || pooled ? null : bonusTime ? 'bonus' : 'action';
     const reach = a.type === 'melee' ? `reach ${a.reach ?? 5} ft` : a.range ? `range ${a.range[0]}/${a.range[1]} ft` : '';
-    const row = { id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(a.bonus)} to hit`, `${a.damage} ${a.dtype}`, reach].filter(Boolean).join(' · '), why: blocked(S, e, time),
+    const w = imbuedAttack(S, e, a);       // a weapon a spell or feature has changed shows its changed numbers (imbue.js)
+    const row = { id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(w.bonus)} to hit`, `${w.damage} ${[w.dtype, ...(w.alt ?? [])].join(' or ')}`, reach, ...(w.imbued ?? [])].filter(Boolean).join(' · '), why: blocked(S, e, time),
       chip: flurry ? `Flurry: ${b.bonusAttacks.left} left` : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed: armed && !mode.extra, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } };
     rows.push(row);
     const strike = strikeRow(S, e, a, row, mode);

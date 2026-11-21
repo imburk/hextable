@@ -20,9 +20,10 @@ import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
 import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { shine, stabilise } from './rolls.js';       // `stabilize` and `light` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
+import { armed, weaponKey } from '../imbue.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 import { investIn } from '../summons.js';
 import { nextFight } from '../shopids.js';
@@ -1259,7 +1260,7 @@ export function reactAgainst(s, t, e, on, ev, why) {
 // player when it says `ask`. It attacks with its first melee attack, as an Opportunity Attack is made (weapons.js, steadiest: not a Heavy one it is weak with, if another will do).
 // Returns true if it was taken.
 function strikeBack(s, t, e, r, ev, why) {
-  const x = r.reaction, atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, t, a)));       // one it may make (weapons.js)
+  const x = r.reaction, atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, t, a)), s);       // one it may make (weapons.js)
   if (!atk || t.actions || apart(s, t, e) * FT > x.within) return false;
   if (atk.reach !== undefined && apart(s, t, e) * FT > atk.reach) return false;
   const w = instruction(t, r);
@@ -1283,7 +1284,9 @@ function strikeBack(s, t, e, r, ev, why) {
 // Attack dice is taken off before the dice are rolled, and their steps run after the damage, only if
 // Sneak Attack is dealt. One that keeps its creature hidden (Stealth Attack) holds off the attack's
 // unhiding to the end of the turn (attacks.js, endTurn); if it is not paid for, the attack unhides it.
-export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cunning = null } = {}) {
+export function resolveAttack(s, e, t, atk0, ev, extra = {}, { brutal = null, cunning = null } = {}) {
+  // A weapon changed by a spell or a feature (imbue.js): every attack with it reads the record through `armed`; the type that hurts the target most is taken.
+  const atk0b = armed(s, e, atk0), atk = atk0b.alt ? { ...atk0b, dtype: bestType(s, t, [atk0b.dtype, ...atk0b.alt]) } : atk0b;
   const keepHidden = !!e.hiding && !!cunning?.some((o) => o.keepHidden);
   const { hit, crit, mode, cut } = rollToHit(s, e, t, atk, ev, extra, { forgo: !!brutal, keepHidden });
   if (!hit) { if (keepHidden) unhide(s, e, ev, 'attack'); return; }
@@ -1627,11 +1630,28 @@ function vanishUnseen(s, e, why, ev) {
   checkEnd(s, ev);
 }
 
+// A weapon changed for a while (imbue.js) that its creature no longer has a record for (put away, a remake without it, the creature gone) is not changed any more
+// ("The spell ends early if ... you let go of the weapon"; Sacred Weapon: "if you aren't carrying the weapon"). Run with the settle pass after every action.
+export function settleImbue(s, ev) {
+  for (const fx of [...effectsOf(s)]) {
+    let ended = false;
+    for (const p of fx.parts) {
+      if (!p.imbue || p.ended) continue;
+      const h = Object.hasOwn(s.entities, p.target) ? s.entities[p.target] : null;
+      if (h?.form && !h.dead) continue;                                  // in a form (Wild Shape) its gear is still its own, held or not
+      if (h && !h.dead && (h.attacks ?? []).some((a) => a.weapon && weaponKey(a) === p.imbue.weapon)) continue;
+      p.ended = true; ended = true;
+    }
+    if (ended && fx.parts.every((p) => p.ended)) endEffect(s, ev, fx, 'the weapon is no longer held');
+  }
+}
+
 // After every action (engine.js, apply): a companion at 0 Hit Points whose bond says it vanishes, one
 // kept by a lasting effect that no longer holds it (its `summon` part ended, or the effect did: durations.js,
 // holds), one whose bond ends when its master dies and whose master is dead, and one farther than its leash
 // from its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
 export function settleBonds(s, ev) {
+  settleImbue(s, ev);                                                  // a weapon no longer held is no longer imbued (imbue.js)
   settleRiders(s, ev);
   const n = ev.length;
   for (const e of Object.values(s.entities).filter((x) => x.bond)) {
@@ -2030,5 +2050,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { stabilise, shine, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { stabilise, shine, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

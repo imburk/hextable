@@ -8,13 +8,15 @@ import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, n
 import { rollMode } from './rolls.js';
 import { aimAction, holdsOf, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
-import { SPELLS } from '../content/index.js';
+import { CONTENT, SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
 import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
+import { handlers as featureHandlers } from './features.js';
+import { isWeapon, weaponKey } from '../imbue.js';
 
 function checkRange(s, e, t, atk) {
   const d = apart(s, e, t);
@@ -84,7 +86,7 @@ function reactToAttacker(s, e, ev) {
       const w = instruction(t, r, s);
       if (w === 'never') continue;
       const d = apart(s, t, e) * FT;
-      const atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !a.spell && !isUnarmed(a) && !handsFull(s, t, a) && d <= (a.reach ?? 5)));
+      const atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !a.spell && !isUnarmed(a) && !handsFull(s, t, a) && d <= (a.reach ?? 5)), s);
       if (!atk || !unblocked(s, t, e) || !sensesFor(s, t, e)) continue;
       if (w === 'ask') {
         // An attacker the party is not told of is not named in the question.
@@ -305,6 +307,20 @@ function familiarAttack(s, a, ctx, ev) {
 }
 
 // Fields only the Unarmed Strike reads: a pack monster's action has none of them (its stat block says how it grapples).
+// `use: <feature id>` on an attack (docs/specs/on-hit.md, Decision 8): a feature whose action has `withAttack` (Sacred Weapon), used when its creature takes the
+// Attack action, on the attack that takes it: in a fight, a weapon's own attack (not an Unarmed Strike or a pooled, Bonus Action or Flurry attack), the Damage
+// option. The feature's own price and the weapon's fit are checked when it is used (a refusal then puts the whole attack back). Returns the feature's id.
+function useWithAttack(s, e, a, atk, option, flurry, bonusTime, pooled) {
+  const f = typeof a.use === 'string' ? featOf(e, a.use) : null;
+  (f?.action?.withAttack) || fail(`${e.name} has no feature that is used with the Attack action by that name.`);
+  isWeapon(atk) || fail(`${f.name} changes a weapon: attack with a weapon.`);
+  option === 'damage' || fail(`${f.name} goes with a weapon attack that does damage.`);
+  !(flurry || bonusTime || pooled) || fail(`${f.name} is used when ${e.name} takes the Attack action: it goes with the attack that takes the action, not a later one, a Bonus Action one or a Flurry of Blows one.`);
+  const melee = (f.action.effects ?? []).find((st) => st.imbue)?.imbue;
+  if (melee?.melee && CONTENT.weapons[atk.weapon]?.kind !== 'melee') fail(`${f.name} changes a Melee weapon; ${atk.name} is not one.`);
+  return f.id;
+}
+
 function noStrikeFields(a) {
   ((a.option ?? 'damage') === 'damage' && a.shove === undefined && !a.grab) || fail('Grapple and Shove are options of the Unarmed Strike, and Punch and Grab goes with it.');
 }
@@ -359,6 +375,7 @@ export const handlers = {
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
       noStrikeFields(a);
+      a.use === undefined || fail('A feature used with the Attack action goes with a weapon attack.');
       (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
@@ -374,6 +391,7 @@ export const handlers = {
     checkRange(s, e, t, atk);
     walled(s, e, t);
     const option = optionOf(s, e, t, atk, a);
+    a.use === undefined || s.encounter || fail('A feature used with the Attack action is used on a turn in a fight.');
     // Outside a fight the attack starts the fight and is not made (the SRD's way): it is made on the attacker's turn. With
     // the table rule `strikeFirst` at 'all', an attack at a creature of another side is made first, a plain one (what needs a
     // turn in a fight is refused before anything changes), then the fight starts (resolve.js, thenFight; #585).
@@ -402,6 +420,7 @@ export const handlers = {
     const slot = flurry || bonusTime ? 'bonus' : 'action';
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    const using = a.use === undefined ? null : useWithAttack(s, e, a, atk, option, flurry, bonusTime, pooled);
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
     const cunning = a.cunning === undefined ? null : cunningFor(s, e, t, atk, a.cunning);
     const prey = a.prey === undefined ? null : preyFor(s, e, t, a.prey);
@@ -416,6 +435,8 @@ export const handlers = {
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack + (surged ? b.attacks[0][0].left : 0) }]];
       attackActionTaken(s, e, ev);
     }
+    // Sacred Weapon and the like: "When you take the Attack action", paid and imbued before the roll, so this first attack has it.
+    if (using) { featureHandlers.feature(s, { type: 'feature', actor: e.id, feature: using }, ctx, ev, { withAttack: true, weapon: weaponKey(atk) }); }
     if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
     if (option === 'damage' && !reactToAttacker(s, e, ev)) return checkEnd(s, ev);              // addition I: a creature under an effect of a foe's attacks

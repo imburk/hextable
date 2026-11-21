@@ -15,6 +15,7 @@ import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
+import { weaponsFor } from '../imbue.js';
 import { incapacitatedBy, untrainedGear } from '../modifiers.js';
 
 // ---------- teleportation ----------
@@ -448,6 +449,30 @@ export const handlers = {
   },
 };
 
+// The weapon a spell with an `imbue` step changes (imbue.js; docs/specs/on-hit.md, Decision 8): `a.weapon` names one of the weapons of the creature it works on
+// (the key of its attack record, such as "quarterstaff"); with none named and only one that fits, that one. Refused, before anything is spent, when none fits
+// or more than one does and none is named. Returns the key, or null for a spell that changes no weapon.
+function imbueFor(s, e, sp, a, targets, ctx) {
+  let step = null;
+  walkSteps(sp.def.effects ?? [], (st) => { if (!step && 'imbue' in st) step = st; });
+  if (!step) { a.weapon === undefined || fail(`${sp.name} changes no weapon: leave out "weapon".`); return null; }
+  const holder = targets[0] ?? e, list = weaponsFor(s, holder, step.imbue, ({ fx }) => fx.source === e.id && fx.spell === sp.id), fits = list.filter(([, why]) => !why).map(([r]) => r);
+  const nameOf = (r) => `${r.name} (${r.id})`;
+  // What the caster may be told of another's gear: for a creature outside the party (and to a player), only whether it has a weapon this can change (a refusal that listed weapons and reasons would tell a player what a foe carries).
+  const mine = ctx.role === 'dm' || holder.side === 'party';
+  const none = `${holder.name} has no weapon ${sp.name} can change`;
+  if (a.weapon === undefined) {
+    if (fits.length === 1) return fits[0].id;
+    if (fits.length > 1) fail(mine ? `Name the weapon ${sp.name} changes: ${fits.map(nameOf).join(', ')}.` : `${none}.`);
+    fail(mine ? `${none}${list.length ? ` (${list.map(([r, why]) => `${r.name}: ${why}`).join('; ')})` : ' (it has no weapon)'}.` : `${none}.`);
+  }
+  typeof a.weapon === 'string' || fail('Name the weapon by its id.');
+  const hit = list.find(([r]) => r.id === a.weapon);
+  if (!hit || (hit[1] && !mine)) fail(mine ? `${holder.name} has no weapon "${a.weapon}".` : `${none}.`);
+  if (hit[1]) fail(`${sp.name} can't change ${hit[0].name}: it is ${hit[1]}.`);
+  return hit[0].id;
+}
+
 function castSpell(s, a, ctx, ev, item) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const sp = SPELLS[a.spell];
@@ -539,6 +564,7 @@ function castSpell(s, a, ctx, ev, item) {
     const summoning = summonFor(s, e, sp, a, Math.max(slot, sp.level), range, ctx, via?.freeCast);
     const evo = item ? {} : evokerFor(e, sp, a, slot, via, targets);
     const repel = repelFor(e, sp, a);
+    const weapon = imbueFor(s, e, sp, a, targets, ctx);
 
     // What it costs.
     if (sp.level > 0 && (!via || paysSlot) && !item) {
@@ -661,7 +687,7 @@ function castSpell(s, a, ctx, ev, item) {
       src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
-        spell: sp.id, ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
+        spell: sp.id, slot: Math.max(slot, sp.level), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
         ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}), ...(toucher ? { via: toucher.id } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
