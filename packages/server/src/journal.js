@@ -28,6 +28,7 @@ import { appendFileSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSyn
 import { appendFile, rename, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { TIMELINE_CAP } from "../../rules/src/timeline.js";
 
 export const JOURNAL_VERSION = 1;
 export const FILE_MAX_BYTES = 5 * 1024 * 1024;      // a journal file is closed when it passes this
@@ -36,24 +37,27 @@ export const RETRY_MS = 30_000;                     // after a failed write, no 
 export const TOTAL_MAX_BYTES = 500 * 1024 * 1024; // all journals on the server, snapshots included; the oldest closed files go first
 export const QUEUE_MAX_BYTES = 32 * 1024 * 1024;    // lines waiting for the disk; past this a file is given up
 
-const FILE = /^([A-Z0-9]{6})\.journal\.(\d{6})\.(jsonl|snapshot\.json)$/;
+const FILE = /^([A-Z0-9]{6})\.journal\.(\d{6})\.(jsonl|snapshot\.json|snapshot\.json\.tmp)$/;
 const pad = (n) => String(n).padStart(6, "0");
 export const journalName = (code, n) => `${code}.journal.${pad(n)}.jsonl`;
 export const snapshotName = (code, n) => `${code}.journal.${pad(n)}.snapshot.json`;
 // A hash of the state that does not cost the whole timeline on every action: everything but the timeline in full, and of the timeline its
-// length and its first and last entries (it only grows at the end and is cut at the front, so the cap and any new entry show).
+// length, its first entry and its last HASHED_TAIL entries (it only grows at the end and is cut at the front, so the cap and what an action
+// just added show). The limit: an entry in the middle, older than the last 20, that changed without the length or the first entry changing
+// would not be seen by the hash; the engine only appends to the timeline, so that would be a bug elsewhere.
+const HASHED_TAIL = 20;
 const sha = (text) => createHash("sha256").update(text).digest("hex");
 export function hashState(state) {
   const tl = Array.isArray(state?.timeline) ? state.timeline : null;
   const rest = sha(JSON.stringify(tl ? { ...state, timeline: null } : state));
-  return sha(rest + (tl ? `|${tl.length}|${tl.length ? sha(JSON.stringify(tl[0])) + sha(JSON.stringify(tl.at(-1))) : ""}` : "")).slice(0, 32);
+  return sha(rest + (tl ? `|${tl.length}|${tl.length ? sha(JSON.stringify(tl[0])) + sha(JSON.stringify(tl.slice(-HASHED_TAIL))) : ""}` : "")).slice(0, 32);
 }
 // The dice counter: a keyed generator's position, or the integer a seeded one has come to.
 export const diceOf = (state) => (state?.rng !== null && typeof state?.rng === "object" ? state.rng.n : state?.rng ?? null);
 
 const noop = { before: () => null, accepted() {}, restored() {}, reset() {}, sweep() {}, flushSync() {}, idle: async () => {} };
 
-export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, keep = FILES_KEPT, retryMs = RETRY_MS, queueMax = QUEUE_MAX_BYTES, totalMax = TOTAL_MAX_BYTES, now = Date.now, log = (line) => console.error(line) } = {}) {
+export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, keep = FILES_KEPT, retryMs = RETRY_MS, queueMax = QUEUE_MAX_BYTES, totalMax = TOTAL_MAX_BYTES, timelineCap = TIMELINE_CAP, now = Date.now, log = (line) => console.error(line) } = {}) {
   if (!enabled || !dir) return noop;
   const open = new Map();           // table code -> { n, path, bytes, lines, failed, cap }: the file being written
   const wait = new Map();           // table code -> no new file before this time (after a failure)
@@ -108,7 +112,7 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
   const kick = () => { running ??= pump().finally(() => { running = null; if (queue.length) kick(); }); };
   const enqueue = (job) => {
     job.size = Buffer.byteLength(job.text ?? "");
-    if (pending + job.size > queueMax) { fail(job.code, "queue", new Error("too many lines waiting")); return false; }
+    if (job.op !== "unlink" && pending + job.size > queueMax) { fail(job.code, "queue", new Error("too many lines waiting")); return false; }
     queue.push(job); pending += job.size; kick();
     return true;
   };
@@ -116,7 +120,7 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
   // Which files go: a table keeps its last `keep`; and over the server's total the oldest closed files of any table go.
   const drop = (e) => {
     pairs.delete(`${e.code} ${e.n}`); total -= e.bytes;
-    for (const path of [join(dir, journalName(e.code, e.n)), join(dir, snapshotName(e.code, e.n))]) enqueue({ op: "unlink", code: e.code, file: gone, path, text: "" });
+    for (const path of [join(dir, journalName(e.code, e.n)), join(dir, snapshotName(e.code, e.n)), join(dir, snapshotName(e.code, e.n) + ".tmp")]) enqueue({ op: "unlink", code: e.code, file: gone, path, text: "" });
   };
   const prune = (code, n) => {
     for (const e of [...pairs.values()]) if (e.code === code && !e.live && e.n <= n - keep) drop(e);
@@ -125,7 +129,7 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
 
   // The file for this table's next line, opened if there is none. The snapshot is the state as it is now, which is the state before
   // the action about to be applied (or just after the one before it): the file always begins from exactly where the last one ended.
-  function ensure(t, cap) {
+  function ensure(t) {
     const code = t.code;
     let f = open.get(code);
     if (f && f.bytes >= f.max) { closeFile(code, f); f = null; }
@@ -147,7 +151,7 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
     const e = { code, n, bytes: sbytes, t: now(), live: true };
     pairs.set(`${code} ${n}`, e); total += sbytes;
     if (!enqueue({ op: "snapshot", code, file: f, path: join(dir, snapshotName(code, n)), text: snapshot })) return null;
-    write(code, f, JSON.stringify({ k: "open", v: JOURNAL_VERSION, table: code, file: n, at, sv: t.state.version ?? null, d: diceOf(t.state), h: hash, ...(cap !== undefined && { cap }), snapshot: snapshotName(code, n), ...(why && { why }) }) + "\n");
+    write(code, f, JSON.stringify({ k: "open", v: JOURNAL_VERSION, table: code, file: n, at, sv: t.state.version ?? null, d: diceOf(t.state), h: hash, cap: timelineCap, snapshot: snapshotName(code, n), ...(why && { why }) }) + "\n");
     prune(code, n);
     return f;
   }
@@ -178,12 +182,12 @@ export function createJournal({ dir, enabled = true, fileMax = FILE_MAX_BYTES, k
   };
 
   return {
-    // Open the file if need be and note the dice before the action. `cap` is the table's timeline cap, which the header records so that a
-    // replay trims the timeline as the server does. Null when there is no journal to write to: the action goes on all the same.
-    before(t, { cap } = {}) {
+    // Open the file if need be and note the dice before the action. The table's timeline cap (the option) goes in every header, whichever
+    // path opens the file, so that a replay trims the timeline as the server does. Null when there is no journal to write to: the action goes on all the same.
+    before(t) {
       return guard(() => {
         if (!t?.state || typeof t.state !== "object") return null;
-        const f = ensure(t, cap);
+        const f = ensure(t);
         return f ? { t, f, d0: diceOf(t.state) } : null;
       }, t?.code);
     },

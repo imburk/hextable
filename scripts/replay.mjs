@@ -9,6 +9,8 @@
 // line is where a bug report diverges (or where the rules changed since the game was played).
 // A file that follows an undo, a redo, a rewind, a loaded pack or world, or someone joining begins from a snapshot of its own; when the
 // state we hold is not the one it begins from, the script starts again from that snapshot (found beside the file) and says so.
+// What the hash does not check: the state in full, but of the timeline only its length, its first entry and its last 20 entries, so a change
+// in the middle of a long timeline that leaves those alone goes unseen (the engine only appends to it).
 // The timeline is cut to the cap in a file's header after each action that can be undone, as the server does.
 // A last line cut short by a crash is a note, not a failure. `--strict` also fails (exit 1) when a file starts again from its own snapshot
 // because lines were lost (the journal's own write failed: its header says `lost`), which a replay cannot otherwise tell from an undo.
@@ -43,7 +45,8 @@ export function replayGame(snapshot, journals) {
   if (hashState(state) !== snap.hash) return { ok: false, lines: 0, restarts, notes, diverged: { file: "(snapshot)", n: 0, why: "the snapshot's state does not match its own hash (the file was changed or damaged)" } };
   const stop = (file, n, why, extra = {}) => ({ ok: false, lines: applied, restarts, notes, diverged: { file, n, why, ...extra } });
   for (const [ji, j] of journals.entries()) {
-    let lineNo = 0, lastN = 0;
+    let lineNo = 0;
+    const seen = new Set();
     const rows = j.text.split("\n").filter(Boolean);
     for (const [ri, raw] of rows.entries()) {
       lineNo++;
@@ -53,8 +56,8 @@ export function replayGame(snapshot, journals) {
         if (ji === journals.length - 1 && ri === rows.length - 1) { notes.push(`${j.name}: the last line is cut short (a crash while writing); replayed up to it`); break; }
         return stop(j.name, lineNo, "the line is not JSON (a write cut short by a crash is expected only at the very end of the last file)");
       }
-      if (line.k === "act" && line.n === lastN) { notes.push(`${j.name} line ${line.n}: written twice (a shutdown redid it); the repeat is skipped`); continue; }
-      if (line.n) lastN = line.n;
+      if (line.k === "act" && seen.has(line.n)) { notes.push(`${j.name} line ${line.n}: written twice (a shutdown redid it); the repeat is skipped`); continue; }
+      if (line.k === "act") seen.add(line.n);
       if (line.k === "open") {
         cap = Number.isInteger(line.cap) ? line.cap : null;
         if (line.why === "lost") lost++;

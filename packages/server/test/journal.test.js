@@ -19,7 +19,7 @@ function client(tables) {
   return { got, say: (m) => session.receive(m), last: (t) => got.findLast((m) => m.t === t) };
 }
 function setup(journalOpts = {}, dir = tmp(), logs = [], tableOpts = {}) {
-  const journal = createJournal({ dir, log: (l) => logs.push(l), ...journalOpts });
+  const journal = createJournal({ dir, log: (l) => logs.push(l), ...(tableOpts.timelineCap !== undefined && { timelineCap: tableOpts.timelineCap }), ...journalOpts });
   const tables = createTables({ seed: () => 5, key: () => KEY, journal, ...tableOpts });
   const dm = client(tables);
   dm.say({ t: "host", name: "Dana-Secret" });
@@ -337,4 +337,42 @@ test("a failed write marks the next file's header lost; --strict fails on such a
   const out = [], e2 = [];
   assert.equal(replayMain(args, (l) => out.push(l), (e) => e2.push(e)), 0, e2.join("\n"));
   assert.ok(out.some((l) => /cut short/.test(l)));
+});
+
+test("a file opened by someone leaving (not by an action) carries the cap, and replays", async () => {
+  const c = setup({}, tmp(), [], { timelineCap: 3 });
+  const pat = join_(c, "Pat");
+  pat.say({ t: "act", action: { type: "claim", entity: "rogue" } });
+  join_(c, "Sam");                                   // being let in closes the file
+  pat.say({ t: "leave" });                           // the release opens file 2
+  for (let i = 0; i < 8; i++) c.dm.say({ t: "act", action: { type: "check", actor: "fighter", skill: "athletics" } });
+  await c.journal.idle();
+  const jf = files(c.dir, c.code, ".jsonl"), sf = files(c.dir, c.code, ".snapshot.json");
+  assert.ok(jf.length >= 2);
+  for (const n of jf) assert.equal(lines(c.dir, n)[0].cap, 3, `${n} names the cap`);
+  assert.ok(lines(c.dir, jf[1]).some((l) => l.k === "act" && l.action.type === "release"), "the release is the file's first action");
+  const read = (n) => readFileSync(join(c.dir, n), "utf8");
+  const r = replayGame(JSON.parse(read(sf[0])), jf.map((name) => ({ name, text: read(name), loadSnapshot: (x) => JSON.parse(read(x)) })));
+  assert.equal(r.ok, true, JSON.stringify(r.diverged));
+});
+
+test("the hash sees a change in the last 20 timeline entries, not only the ends", () => {
+  const a = { version: 1, timeline: Array.from({ length: 100 }, (_, i) => ({ t: i })) };
+  const b = structuredClone(a); b.timeline[90].t = 999;
+  assert.notEqual(hashState(a), hashState(b));
+});
+
+test("a leftover snapshot .tmp file is counted and removed with its pair", async () => {
+  const dir = tmp();
+  writeFileSync(join(dir, "ABC123.journal.000001.jsonl"), "x");
+  writeFileSync(join(dir, "ABC123.journal.000001.snapshot.json"), "x");
+  writeFileSync(join(dir, "ABC123.journal.000001.snapshot.json.tmp"), "xxx");
+  const j = createJournal({ dir, keep: 1, log: () => {} });
+  assert.equal(j.usage().bytes, 5);
+  const tables = createTables({ seed: () => 5, key: () => KEY, journal: j, load: () => [{ code: "ABC123", state: (() => { const t = createTables({ seed: () => 5, key: () => KEY }); const d = client(t); d.say({ t: "host", name: "x" }); return t.get(d.last("welcome").code).state; })(), packs: [], members: [{ id: "m", token: "t".repeat(20), name: "D", role: "dm", approved: true }] }] });
+  const dm = client(tables);
+  dm.say({ t: "resume", code: "ABC123", token: "t".repeat(20) });
+  dm.say({ t: "act", action: { type: "chronicle", title: "a" } });
+  await j.idle();
+  assert.deepEqual(readdirSync(dir).filter((n) => /000001/.test(n)), [], "the old pair, tmp included, is pruned");
 });

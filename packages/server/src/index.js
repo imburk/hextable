@@ -12,7 +12,7 @@
 //   JOURNAL=off, JOURNAL_FILE_BYTES (5 MB), JOURNAL_FILES (5), JOURNAL_TOTAL_BYTES (500 MB)   the per-table action journal beside the table saves (DATA_DIR/ABC123.journal.*), see the README
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { gzip } from "node:zlib";
@@ -174,9 +174,9 @@ function save(t) {
 const { importAssets, dropAssets } = worldAssets(() => assets);
 
 // The action journal (journal.js, #659): beside each table's save, never in the way of an action.
-const journal = createJournal({ dir: DATA, ...journalFromEnv(process.env) });
+const journal = createJournal({ dir: DATA, ...(timelineCap !== undefined && { timelineCap }), ...journalFromEnv(process.env) });
 const tables = createTables({ journal, load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
-journal.sweep((code) => !!tables.get(code));        // journals of tables whose save is gone are removed at start (as table files are, below)
+journal.sweep((code) => existsSync(file(code)));        // journals of tables whose save file is gone are removed at start; a save that cannot be read still counts as there (its journal is the best evidence)
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });

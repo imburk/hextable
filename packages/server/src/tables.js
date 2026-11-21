@@ -447,8 +447,8 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         const m = table.members.find((x) => x.id === msg.userId && !x.approved);
         if (!m) return;
         if (msg.ok) {
-          m.approved = true;
-          journal.reset(table, "approve");       // the snapshot names the members who may act, so a new one starts a new file
+          if (!m.approved) journal.reset(table, "approve");
+          m.approved = true;       // the snapshot names the members who may act, so a new one starts a new file
           tell(m, welcome(table, m));
           for (const c of conns(m)) { sendPacks(table, m, c); sendFull(table, m, c); }
           tell(m, { t: "history", entries: history(table, m, { limit: 50 }), recent: true });
@@ -524,7 +524,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         try { filled = fillMap(table.state, action, table.world?.data ?? null); } catch (err) { crashed(table.code, action?.type, me.role, err); return error("The table couldn't make sense of that action."); }
         // Taken before every action: for the undo history (claiming a seat is not undone), and to
         // put the game back if the engine throws part way through (review #132, L6).
-        const ticket = journal.before(table, { cap: timelineCap });        // never throws, never waits for the disk
+        const ticket = journal.before(table);        // never throws, never waits for the disk
         const was = mark(table.state), before = undoable(filled) ? was : null;
         const pingWas = action.type === "ping" ? JSON.stringify(was.tree) : null;
         try {
