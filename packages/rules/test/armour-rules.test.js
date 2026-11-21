@@ -1,6 +1,7 @@
 // Armour and saves the engine used to leave out (issue #434): Stealth Disadvantage from armour.
 // SRD 5.2.1, Equipment, "Armor": "Stealth. If the table shows 'Disadvantage' in the Stealth column for an armor
 // type, the wearer has Disadvantage on Dexterity (Stealth) checks."
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, makeEntity, passive } from "../src/engine.js";
@@ -74,8 +75,8 @@ test("a sheet with no armour on it, only a Shield, has no Disadvantage", () => {
   assert.equal(stealth(s).mode, undefined);
 });
 
-test("a starter with no sheet lists Chain Mail in its gear: one die is rolled and the DM is told, in words, to apply it if worn", () => {
-  const s = newGame(3);
+test("a hand-typed character lists Chain Mail in its gear: one die is rolled and the DM is told, in words, to apply it if worn", () => {
+  const s = newGame(3); typed(s, "fighter");
   const r = ok(apply(s, { type: "check", actor: "fighter", skill: "stealth" }, DM));
   assert.equal(r.events.find((e) => e.type === "check").mode, undefined);
   const note = r.events.find((e) => e.type === "manual");

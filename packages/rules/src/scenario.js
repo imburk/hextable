@@ -1,7 +1,7 @@
 // Starter world: a small valley with a pond, woods, a ruin, a goblin camp and four heroes.
 import * as H from './hex.js';
 import { makeEntity } from './engine.js';
-import { MONSTERS, PREGENS } from './content/index.js';
+import { MONSTERS, PREGEN_SHEETS } from './content/index.js';
 import { derive, validate } from './derive.js';
 import { VERSION } from './migrate.js';
 import { newMap } from './map.js';
@@ -63,7 +63,8 @@ export function newGame(seed = 7, opts = {}) {
   const add = (tpl, over) => { flat(over.pos); s.entities[over.id] = makeEntity(tpl, over); };
   (opts?.party ?? STARTERS.map((pregen) => ({ pregen }))).forEach((p, i) => {
     const [q, r] = PARTY_SPOTS[i], pos = { q, r, z: 0 };
-    if (p.pregen) return add(PREGENS[p.pregen], { id: p.pregen, kind: 'pc', side: 'party', pos, look: { color: COLORS[p.pregen] } });
+    // A starter is built from its sheet like any other hero (so it levels up), but keeps its own id and colour.
+    if (p.pregen) { add(derive(PREGEN_SHEETS[p.pregen]).record, { id: p.pregen, kind: 'pc', side: 'party', pos, look: { color: COLORS[p.pregen] } }); s.entities[p.pregen].sheet = structuredClone(PREGEN_SHEETS[p.pregen]); return; }
     add(derive(p.sheet).record, { id: `pc${i + 1}`, kind: 'pc', side: 'party', pos });
     s.entities[`pc${i + 1}`].sheet = structuredClone(p.sheet);
   });

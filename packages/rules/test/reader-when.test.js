@@ -162,7 +162,7 @@ function play(hook, tag, withMod, how = {}) {
     return r.events.find((e) => e.type === 'concentration')?.bonus ?? 'no concentration save';
   }
   if (attackHook) {
-    if (path === 'sheet') { turnOf(s, 'fighter'); setUp(); const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: how.ranged ? 'javelin' : 'longsword' }, DM);
+    if (path === 'sheet') { turnOf(s, 'fighter'); setUp(); const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: how.ranged ? 'javelin-thrown' : 'longsword' }, DM);
       return hook === 'damage.dealt' ? (assert.ok(r.ok, r.error), r.events.find((e) => e.type === 'damage')?.amount) : bonusOf(r); }
     if (path === 'steps') {
       turnOf(s, M.id); setUp();

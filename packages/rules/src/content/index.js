@@ -109,13 +109,15 @@ function legacyMonster(m) {
     attacks: m.actions.filter(playableAction).map(legacyAttack),
   };
 }
-const legacyPregen = ({ id, ...record }) => structuredClone(record);
+const legacyPregen = ({ id, sheet, ...record }) => structuredClone(record);
 // What a creature carries of each action: everything but the text, which stays in the pack.
 const runtimeAction = ({ text, ...a }) => structuredClone(a);
 
 const table = (list, make) => Object.fromEntries(list.map((e) => [e.id, make(e)]));
 export const MONSTERS = table(monsters, legacyMonster);
 export const PREGENS = table(pregens, legacyPregen);
+// The build sheet each starter hero is made from (derive.js); a new game keeps a copy on the hero.
+export const PREGEN_SHEETS = table(pregens, (p) => structuredClone(p.sheet));
 export const MONSTER_ACTIONS = table(monsters, (m) => m.actions.map(runtimeAction));
 
 // ---------- what one entry adds to the lookups above (content/registry.js) ----------

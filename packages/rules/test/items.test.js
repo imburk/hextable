@@ -1,6 +1,7 @@
 // Magic items (SRD 5.2.1 "Magic Items", #189): the pack's items, items on a sheet, what they change through
 // derive() and modifiers.js, wearing and Attunement by the SRD's rules, giving them, loot, views and the
 // state version.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -32,6 +33,7 @@ const problems = (sheet) => validate(sheet).join("\n");
 function field(sheet) {
   const s = newGame(7);
   for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
+  typed(s, "rogue");                                         // the rogue stays a hand-typed character (no sheet), for the tests of what that cannot do
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
   s.entities.hero = makeEntity(rec(sheet), { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: "pat", ownerName: "Pat" });
@@ -252,6 +254,7 @@ test("migration 19 to 20: a saved table loads unchanged; an attuning naming no i
   const before = structuredClone(s.entities);
   migrate(s);
   assert.equal(s.version, VERSION); assert.equal(VERSION, 29);
+  assert.ok(s.entities.rogue.sheet, "the one change: a starter still as the pack typed it is given its sheet (#672)"); delete s.entities.rogue.sheet;
   assert.deepEqual(s.entities, before);
   s.entities.hero.sheet.attuning = { item: "i9" };
   s.version = 19;

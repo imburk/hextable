@@ -2,6 +2,7 @@
 // effect steps on the drinker, charges are spent, a consumed item leaves the sheet, a Spell Scroll checks its
 // reader, and a spell cast from an item goes through the cast path (#284), as do Spell Scrolls; charges come back
 // at dawn (rests.js).
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, dawnsBetween, itemUsesFor, makeEntity, scrollStats } from "../src/engine.js";
@@ -28,6 +29,7 @@ const cleric = (items) => ({ name: "Mara", class: "cleric", level: 5, subclass: 
 function field(sheet, seed = 7) {
   const s = newGame(seed);
   for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
+  typed(s, "rogue");                                         // the rogue stays a hand-typed character (no sheet), for the tests of what that cannot do
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
   s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: "pat", ownerName: "Pat" });

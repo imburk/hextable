@@ -227,7 +227,7 @@ async function items(browser, url, label, opts, tag) {
         await waitShown(page, '#ap-items [data-give-to="rogue"]');
         await raise(); await shotG('3-fight-give');
         await tap('#ap-items [data-give-to="rogue"]');
-        await wait(page, () => window.hextable.state.entities.rogue.gear.includes('Staff of Striking'));
+        await wait(page, () => { const r = window.hextable.state.entities.rogue; return r.gear.includes('Staff of Striking') || !!r.sheet?.items?.some((x) => x.item === 'staff-of-striking'); })       // the rogue is built from a sheet now (#672): the staff lands on it;
         await idle(page);
         const left = await sheetOf();
         if (left.items.some((x) => x.item === 'staff-of-striking')) throw new Error('the staff is still on her sheet');

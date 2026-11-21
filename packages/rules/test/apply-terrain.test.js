@@ -4,6 +4,7 @@
 // whose terrain is deeply frozen (a write to it in place would throw), and the terrain's hash is compared before and after each. Then: an
 // action that is on the list still restores the terrain, objects (a door opened, a trap fired) are restored with the copy, and the copy
 // does not grow with the map.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ACTION_TYPES, apply, current, TERRAIN_ACTIONS } from "../src/engine.js";
@@ -103,7 +104,7 @@ const SENSE2 = [
   { pre: (s) => { apply(s, { type: "setSize", actor: GOB, size: "large" }, DM); apply(s, { type: "mount", actor: "fighter", mount: GOB }, DM); }, a: { type: "dismount", actor: "fighter" } },
   { a: (s) => ({ type: "attack", actor: "fighter", attack: s.entities.fighter.actions?.[0]?.id ?? "x", target: GOB }) },
   { pre: (s) => turnOf(s, GOB), a: (s) => ({ type: "act", actor: GOB, action: s.entities[GOB].actions?.[0]?.id, target: "fighter" }) },
-  { pre: (s) => apply(s, { type: "setHp", actor: "fighter", hp: 3 }, DM), a: { type: "secondWind", actor: "fighter" } },
+  { pre: (s) => { typed(s, "fighter"); apply(s, { type: "setHp", actor: "fighter", hp: 3 }, DM); }, a: { type: "secondWind", actor: "fighter" } },        // the old action is for a hand-typed Fighter; a built one uses `feature`
   { pre: (s) => apply(s, { type: "place", actor: "fighter", to: { q: -2, r: 1 } }, DM), a: { type: "use", actor: "fighter", object: "lever", verb: "pull" } },
   { pre: (s) => apply(s, { type: "give", actor: "fighter", item: "Rope" }, DM), a: { type: "pass", actor: "fighter", item: "Rope", to: "rogue" } },
   { pre: (s) => apply(s, { type: "give", actor: "fighter", item: "Rope" }, DM), a: { type: "drop", actor: "fighter", item: "Rope" } },

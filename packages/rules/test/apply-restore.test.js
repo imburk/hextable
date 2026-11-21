@@ -6,6 +6,7 @@
 // pushes the first event of a given type (handlers push their events after they have changed the state, and the test checks that the
 // state had changed by then); the settle phase is made to throw by an accessor on a creature (read by `gravity`) and on the settings
 // (read by `look`) that throws only when the engine is in that function (read from the stack).
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current } from "../src/engine.js";
@@ -40,7 +41,7 @@ const CASES = [
   { family: "attacks", name: "endTurn", make: table, action: () => ({ type: "endTurn", actor: "wizard" }), at: "turn" },
   { family: "attacks", name: "dodge", make: table, action: () => ({ type: "dodge", actor: "wizard" }), at: "std" },
   { family: "casting", name: "cast", make: table, action: ({ g }) => ({ type: "cast", actor: "wizard", spell: "fire-bolt", target: g }), at: "damage" },
-  { family: "features", name: "secondWind", make: () => { const t = table(); t.s.entities.fighter.hp = 3; for (let i = 0; i < 30 && current(t.s) !== "fighter"; i++) ok(apply(t.s, { type: "endTurn", actor: current(t.s) }, DM)); return t; }, action: () => ({ type: "secondWind", actor: "fighter" }), at: "heal" },
+  { family: "features", name: "secondWind", make: () => { const t = table(); typed(t.s, "fighter").hp = 3; for (let i = 0; i < 30 && current(t.s) !== "fighter"; i++) ok(apply(t.s, { type: "endTurn", actor: current(t.s) }, DM)); return t; }, action: () => ({ type: "secondWind", actor: "fighter" }), at: "heal" },
   { family: "characters", name: "setSpeed", make: table, action: () => ({ type: "setSpeed", actor: "wizard", mode: "walk", feet: 40 }), at: "speed" },
   { family: "rests", name: "shortRest", make: afterFight, action: () => ({ type: "shortRest" }), at: "rest" },
   { family: "rests", name: "advanceTime", make: afterFight, action: () => ({ type: "advanceTime", minutes: 30 }), at: "time" },
