@@ -14,7 +14,7 @@ import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } f
 import { able, actTime, castAbilOf, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
 import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
-import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
+import { boundEffect, checkBonus, GRANTS, grantOf, heal, passive, settle, tempHp } from './rolls.js';
 import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
@@ -120,12 +120,13 @@ function initiativeFeatures(s, ev) {
 // (Search uses it for what it can see only dimly); it is not part of what is shown.
 // `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
 const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}), ...(what.tool ? { tool: what.tool } : {}) });
-function abilityCheck(s, e, what, dimToo = false, dis = []) {
+function abilityCheck(s, e, what, dimToo = false, dis = [], adv = []) {
   const ability = what.ability ?? SKILLS[what.skill];
   // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
   const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
   const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what, m.lent) + m.add;
   if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
+  if (adv.length) m.advantage = [...m.advantage, ...adv];
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
   const lends = (k, v) => m.lent.some((x) => x[k] === v);      // a proficiency lent for a time counts as one (addition C of docs/specs/homebrew-subclasses.md)
@@ -521,7 +522,7 @@ export const handlers = {
       ctx.role === 'dm' || fail('Only the DM sets a DC.');
       (Number.isInteger(a.dc) && a.dc > 0 && a.dc <= 40) || fail('A DC is a whole number from 1 to 40.');
     }
-    const r = abilityCheck(s, e, { ability, skill });
+    const grant = grantOf(a, ctx), r = abilityCheck(s, e, { ability, skill }, false, grant === 'disadvantage' ? [GRANTS.disadvantage] : [], grant === 'advantage' ? [GRANTS.advantage] : []);
     ev.push({ type: 'check', id: e.id, ability, ...(skill ? { skill } : {}), ...r, ...(a.dc !== undefined ? { dc: a.dc, success: r.total >= a.dc, secret: true } : {}) });
     if (skill === 'stealth') stealthGearNote(e, ev);
   },

@@ -3,7 +3,7 @@
 // handouts and scenes, and table settings.
 import { gridOf, col } from '../grid.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate } from '../content/index.js';
-import { effectsOf, endEffect } from '../durations.js';
+import { effectsOf, endEffect, useUp } from '../durations.js';
 import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, surfaces, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
@@ -18,7 +18,9 @@ import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, up } from './shared.js';
 import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
-import { condition, heal } from './rolls.js';
+import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
+import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
+import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
 import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
@@ -322,6 +324,52 @@ export const handlers = {
     (Number.isInteger(n) && n > 0 && n <= 9999) || fail('Damage must be a whole number above 0.');
     e.dead && fail(`${e.name} is dead.`);
     damage(s, e, n, a.dtype ?? 'untyped', ev);
+    checkEnd(s, ev);
+  },
+  // A called saving throw (docs/specs/prompts.md, "Call for a roll"):
+  // { type: 'save', who: id | [id, ...], ability, dc, secret?: true, adv?: 'advantage' | 'disadvantage',
+  //   damage?: { dice, type, half?: true }, condition?: id }.
+  // Each creature rolls its own save with everything that bears on it (proficiency, Aura of Protection, conditions, items, Bless,
+  // an automatic failure the rules give), and `adv` is one more source of Advantage or Disadvantage for all of them. The damage is rolled once
+  // for all; a creature that fails takes it all, one that succeeds takes half (rounded down) if `half`. It goes through the damage path,
+  // so Resistance, Temporary Hit Points and Concentration apply. A failure also puts `condition` on it, unless it is immune; it lasts until
+  // the DM takes it off. `secret` keeps the DC and the outcome from the players (view.js): they see only the roll of their own creature.
+  save(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM calls for a saving throw.');
+    const ids = Array.isArray(a.who) ? a.who : [a.who];
+    (ids.length > 0 && ids.length <= 40 && new Set(ids).size === ids.length) || fail('Name from 1 to 40 different creatures to save.');
+    const ts = ids.map((id) => ent(s, id));
+    for (const t of ts) { !t.dead || fail(`${t.name} is dead.`); (t.abil && t.saveProf) || fail(`${t.name} makes no saving throws.`); }
+    const abil = (ABILITIES.includes(a.ability) && a.ability) || fail('Name an ability to save with.');
+    (Number.isInteger(a.dc) && a.dc > 0 && a.dc <= 40) || fail('A DC is a whole number from 1 to 40.');
+    (a.secret === undefined || typeof a.secret === 'boolean') || fail('`secret` is true or false.');
+    const mode = grantOf(a, ctx);
+    const dmg = a.damage;
+    if (dmg !== undefined) {
+      (dmg && typeof dmg === 'object' && !Array.isArray(dmg)) || fail('`damage` is { dice, type, half? }.');
+      (typeof dmg.dice === 'string' && /^[1-9]\d?d(?:4|6|8|10|12|20|100)(?:[+-]\d{1,3})?$/.test(dmg.dice)) || fail('Damage dice are like 2d6 or 8d6+4.');
+      DAMAGE_TYPES.includes(dmg.type) || fail(`Damage is one of ${DAMAGE_TYPES.join(', ')}.`);
+      (dmg.half === undefined || typeof dmg.half === 'boolean') || fail('`half` is true or false.');
+    }
+    if (a.condition !== undefined) {
+      const def = typeof a.condition === 'string' ? conditionDef(a.condition) : null;
+      (def && CONTENT.conditions[a.condition]) || fail('Unknown condition.');
+    }
+    const r = dmg ? roll(s, dmg.dice) : null;
+    for (const t of ts) {
+      const { used, ...sv } = savingThrow(s, t, abil, a.dc, null, null, mode === 'disadvantage' ? GRANTS.disadvantage : null, mode === 'advantage' ? GRANTS.advantage : null, ev);
+      ev.push({ type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv });
+      useUp(s, ev, used ?? []);
+      if (dmg && (!sv.success || dmg.half) && !t.dead) {
+        const n = sv.success ? Math.floor(r.total / 2) : r.total;
+        if (n > 0) damage(s, t, [{ amount: n, type: dmg.type, dice: r.dice, bonus: r.bonus }], null, ev);
+      }
+      if (!sv.success && a.condition !== undefined && !t.dead) {
+        if (immuneTo(s, t, a.condition)) ev.push({ type: 'note', id: t.id, text: `${t.name} is immune to ${conditionDef(a.condition).name}` });
+        else if (!t.cond[a.condition]) condition(s, t, a.condition, ev);
+        else ev.push({ type: 'note', id: t.id, text: `${t.name} is already ${conditionDef(a.condition).name}` });
+      }
+    }
     checkEnd(s, ev);
   },
   mend(s, a, ctx, ev) {

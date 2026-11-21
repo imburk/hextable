@@ -709,6 +709,16 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'save': {
+        // A save the DM called for (`called`): told in full of a creature of theirs, with the DC and the outcome only if it is not `secret`;
+        // of any other, only the outcome and the DC, and not at all if secret. Never a monster's modifiers.
+        if (ev.called) {
+          if (cls(ev.id) === 'open') {
+            const e = structuredClone(ev);
+            if (e.secret) { delete e.dc; delete e.success; }
+            out.push(e);
+          } else if (cls(ev.id) !== 'hidden' && !ev.secret) out.push(pick(ev, ['type', 'id', 'abil', 'dc', 'success', 'called']));
+          break;
+        }
         // A save names the creature whose DC it is (`src`, only a homebrew one: the DC is a number of its block): told to the player who runs
         // it and to no other, whoever the target is. Any other save: the target's own, or the caster of the step it follows, as ever.
         const told = ev.src !== undefined ? runs(ev.src) : null;

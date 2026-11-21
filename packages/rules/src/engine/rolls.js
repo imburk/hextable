@@ -11,7 +11,7 @@ import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear } from '../modifiers.js';
 import { derive } from '../derive.js';
-import { current, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { current, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
 
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
 export function kill(s, t, ev) {
@@ -111,6 +111,25 @@ export function tempHp(s, t, amount, ev, f = null, r = null) {
   ev.push({ type: 'tempHp', id: t.id, amount, tempHp: amount, ...rolledOf(r, amount) });
 }
 
+// ---------- Advantage and Disadvantage the DM grants (`adv` on check, save, attack and act; docs/specs/prompts.md, "Call for a roll") ----------
+// Only the DM may send it. It is one more source of Advantage or Disadvantage, combined with every other by the SRD's rule (any of each cancels).
+export const GRANTS = { advantage: 'DM grants Advantage', disadvantage: 'DM grants Disadvantage' };
+export function grantOf(a, ctx) {
+  if (a.adv === undefined) return null;
+  ctx.role === 'dm' || fail('Only the DM grants Advantage or Disadvantage.');
+  return Object.hasOwn(GRANTS, a.adv) ? a.adv : fail("`adv` is 'advantage' or 'disadvantage'.");
+}
+// A grant for the attack rolls one creature makes while a handler runs (rollMode reads it). Cleared however the handler ends, a refusal included.
+// Said to the DM if no attack roll was made to use it (a Shove has none), never dropped quietly.
+let GRANT = null;
+export function withGrant(s, e, mode, ev, fn) {
+  if (!mode) return fn();
+  const own = { who: e.id, mode, used: false };
+  GRANT = own;
+  try { fn(); } finally { GRANT = null; }
+  if (!own.used) ev.push({ type: 'manual', actor: e.id, name: GRANTS[mode], partial: true, text: `${GRANTS[mode]} on ${e.name}'s attack, but no attack roll was made, so it was not applied.` });
+}
+
 // Advantage and Disadvantage for an attack, with the reasons. Any of each cancels to a normal roll.
 // Conditions and traits supply theirs as data (modifiers.js); the two rules written out here
 // belong to ranged attacks themselves. Also returns `add` (a bonus or penalty to the roll) and
@@ -122,6 +141,7 @@ export function rollMode(s, e, t, atk) {
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
+  if (GRANT && GRANT.who === e.id) { GRANT.used = true; (GRANT.mode === 'advantage' ? adv : dis).push(GRANTS[GRANT.mode]); }
   // SRD Ranged Attacks in Close Combat: only an enemy within 5 feet who can see the attacker and is not Incapacitated counts.
   if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && apart(s, o, e) <= 1 && canSee(s, o, e) !== 'no')) dis.push('enemy within 5 ft');
   // SRD Unseen Attackers and Targets. Blinded and Invisible say so in their own data (as "attacker

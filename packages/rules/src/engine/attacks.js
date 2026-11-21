@@ -5,7 +5,7 @@ import { effectsOf, startEffect } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { canReact, checkInstructions, instruction, reactionsOf, underEffect } from '../reactions.js';
 import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, need, steering, tellDM, unblocked, up, walled } from './shared.js';
-import { rollMode } from './rolls.js';
+import { grantOf, rollMode, withGrant } from './rolls.js';
 import { aimAction, holdsOf, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
 import { SPELLS } from '../content/index.js';
@@ -347,7 +347,7 @@ function grabFor(s, e, pooled, flurry, bonusTime) {
   return true;
 }
 
-export const handlers = {
+const base = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
   // monster) attacks with the action of that id; others with their flat attack records.
@@ -511,3 +511,12 @@ export const handlers = {
   },
 };
 
+// `attack` and `act` take the DM's `adv` ('advantage' | 'disadvantage'): a source of Advantage or Disadvantage on the attack rolls the actor
+// makes in the action, combined with the others by the SRD's rule (rolls.js, withGrant). A player sending it is refused, changing nothing.
+const granted = (fn) => (s, a, ctx, ev) => {
+  const mode = grantOf(a, ctx);
+  if (!mode) return fn(s, a, ctx, ev);
+  a.familiar === undefined || fail("A familiar's attack takes no Advantage or Disadvantage from the DM.");
+  return withGrant(s, ent(s, a.actor), mode, ev, () => fn(s, a, ctx, ev));
+};
+export const handlers = { ...base, attack: granted(base.attack), act: granted(base.act) };
