@@ -267,6 +267,7 @@ test("the real server: a socket report and a POST are counted in /api/health, th
 
 test("replay --crash runs the bundle's action at its point and says whether it still throws", async () => {
   // The crash is made by the server's test hook (#691), not by the engine, so the rules run on the same action by `replay --crash` do not throw.
+  // 4242 minutes is reserved for the test-only crash hook (HEXTABLE_TEST_CRASH in index.js); no other test uses it.
   const crashTest = (a) => { if (a?.type === "advanceTime" && a.minutes === 4242) throw new TypeError("test crash"); };
   let throws = false;
   try { apply(newGame(5), { type: "advanceTime", minutes: 4242 }, { role: "dm" }); } catch { throws = true; }

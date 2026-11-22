@@ -187,7 +187,7 @@ const evictMinutes = whole(process.env.IDLE_EVICT_MINUTES, 30), archiveDays = wh
 const crashReports = createCrashes({ dir: DATA, env: process.env, build: () => build.commit });
 // Tests only (#691): with HEXTABLE_TEST_CRASH set, an advanceTime of 4242 minutes throws inside the engine call, so the crash path can be tested
 // with no malformed action to rely on. Without the variable nothing is hooked.
-const crashTest = process.env.HEXTABLE_TEST_CRASH ? (a) => { if (a?.type === "advanceTime" && a.minutes === 4242) throw new TypeError("test crash (HEXTABLE_TEST_CRASH)"); } : null;
+const crashTest = process.env.HEXTABLE_TEST_CRASH ? (a) => { if (a?.type === "advanceTime" && a.minutes === 4242 /* reserved for this test-only crash hook */) throw new TypeError("test crash (HEXTABLE_TEST_CRASH)"); } : null;
 const tables = createTables({ journal, crashes: crashReports, crashTest, save, loadHistory, index: () => store.list(), loadOne: (code) => store.read(code), archived: () => store.archived(), flushNow: flushOne,
   evictMs: evictMinutes > 0 ? evictMinutes * 60_000 : Infinity, archiveMs: archiveDays > 0 ? archiveDays * 86_400_000 : Infinity,
   // A table's files and journals leave the counts before they move, and come back after they return.

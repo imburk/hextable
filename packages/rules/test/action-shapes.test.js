@@ -25,7 +25,7 @@ test("a bare startEncounter is refused with a sentence, and nothing changes", ()
     assert.match(r.error, /centred/);
     assert.equal(JSON.stringify(s), before);
   }
-  for (const radius of ["x", NaN, -1, 1.5, {}, [], 1e9]) {
+  for (const radius of ["x", NaN, -1, 0, 1.5, {}, [], 101, 1e9]) {
     const s = world(false), before = JSON.stringify(s);
     assert.equal(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius }, DM).ok, false);
     assert.equal(JSON.stringify(s), before);
@@ -38,17 +38,20 @@ test("every action refuses malformed fields without throwing, and leaves the gam
   const threw = [], changed = [];
   for (const type of ACTION_TYPES) for (const [fight, ctx] of [[false, DM], [true, DM], [false, PLAYER]]) {
     const base = world(fight), good = GOOD(base);
-    let cur = structuredClone(base);
+    const baseText = JSON.stringify(base);
+    let cur = structuredClone(base), before = baseText;       // `before` is the last "after": the game is only written out once per action
     const variants = [{ type }];
     for (const k of Object.keys(good)) for (const v of WRONG) variants.push({ type, ...good, [k]: v });
     for (const v of WRONG) variants.push({ type, ...Object.fromEntries(Object.keys(good).map((k) => [k, v])) });
     for (const a of variants) {
-      const before = JSON.stringify(cur);
       let r;
-      try { r = apply(cur, structuredClone(a), ctx); } catch (e) { threw.push(`${ctx.role} ${JSON.stringify(a).slice(0, 160)}: ${e.message}`); cur = structuredClone(base); continue; }
-      if (r.ok) { cur = structuredClone(base); continue; }
+      try { r = apply(cur, structuredClone(a), ctx); } catch (e) { threw.push(`${ctx.role} ${JSON.stringify(a).slice(0, 160)}: ${e.message}`); cur = structuredClone(base); before = baseText; continue; }
+      if (r.ok) { cur = structuredClone(base); before = baseText; continue; }
       assert.equal(typeof r.error, "string");
-      if (JSON.stringify(cur) !== before) { changed.push(`${ctx.role} ${JSON.stringify(a).slice(0, 160)}`); cur = structuredClone(base); }
+      const after = JSON.stringify(cur);
+      // apply() puts the game back after a refusal that had already changed something, so a handler that mutates and then refuses cannot be seen
+      // from here (refusal-fuzz.test.js's cast-flag case guards the restore itself); this checks what a caller sees: nothing changed.
+      if (after !== before) { changed.push(`${ctx.role} ${JSON.stringify(a).slice(0, 160)}`); cur = structuredClone(base); before = baseText; } else before = after;
     }
   }
   assert.deepEqual(threw.slice(0, 5), [], "no action throws on a malformed shape");

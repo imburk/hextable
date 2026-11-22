@@ -106,7 +106,7 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can call for initiative.');
     !s.encounter || fail('A fight is already under way.');
     spot(a.center, 'where the fight is centred');
-    (a.radius === undefined || a.radius === null || (Number.isInteger(a.radius) && a.radius >= 0 && a.radius <= 100)) || fail('The fight\'s radius is a whole number of hexes, 1 to 100.');
+    (a.radius === undefined || a.radius === null || (Number.isInteger(a.radius) && a.radius >= 1 && a.radius <= 100)) || fail('The fight\'s radius is a whole number of hexes, 1 to 100.');
     startEncounter(s, a.center, ev, a.radius || ARENA_RADIUS);
   },
   endEncounter(s, a, ctx, ev) {
