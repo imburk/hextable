@@ -155,8 +155,10 @@ const openMenuTo = async (page, want) => {
   const have = (await menuAt(page)).split('/').filter(Boolean);
   for (let j = have.length; j < want.length; j++) {
     // M4: the characters are rows of the first level (Decision 4b); the Character screen is opened by the selected one's row (it is first, and marked `sel`).
-    const row = want[j] === 'sheet' ? '#menu-root #party button.sel, #menu-root #party button:first-child' : `#drawer [data-go="${want[j]}"]`;
-    await page.click(row); await waitMenuAt(page, want.slice(0, j + 1));
+    // A creature with no row (the DM has selected a monster on the map or in Turns) has its screen opened by the menu itself, as a tap on the map's pawn does.
+    if (want[j] === 'sheet' && !(await page.$('#menu-root #party button.sel'))) await page.evaluate(() => window.hextable.drawer.open('sheet'));
+    else await page.click(want[j] === 'sheet' ? '#menu-root #party button.sel' : `#drawer [data-go="${want[j]}"]`);
+    await waitMenuAt(page, want.slice(0, j + 1));
   }
   const leaf = want.at(-1);
   if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);

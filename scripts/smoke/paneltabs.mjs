@@ -114,7 +114,7 @@ async function tabs(browser, url, label, opts) {
         if (await shown(page, '#ap-bar-features')) throw new Error('Second Wind is in Features as well as Heal');
         await visit(page, 'heal');
         const t = await text(page, '#ap-heal [data-row="feat:second-wind"]');
-        if (!/1 \/ 2/.test(t) || !/Back on a Long Rest \(1 back on a Short Rest\)/.test(t) || !/Bonus/.test(t)) throw new Error(`pips or recharge text missing: ${t}`);
+        if (!/2 \/ 2/.test(t) || !/Back on a Long Rest \(1 back on a Short Rest\)/.test(t) || !/Bonus/.test(t)) throw new Error(`pips or recharge text missing: ${t}`);
         await visit(page, 'bonus');
         await waitShown(page, '#ap-cost [data-row="feat:second-wind"]');
         if ((await page.getAttribute('#ap-cost [data-row="feat:second-wind"]', 'aria-disabled')) !== 'false') throw new Error('Second Wind is greyed with hit points missing and a Bonus Action to spend');
