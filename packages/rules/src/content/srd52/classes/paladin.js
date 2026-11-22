@@ -631,12 +631,14 @@ export const paladin = {
         "id": "sacred-weapon",
         "name": "Sacred Weapon",
         "level": 3,
-        "tier": "manual",
+        "tier": "assist",
         "checked": true,
         "text": "When you take the Attack action, spend Channel Divinity: for 10 minutes add your Charisma modifier (at least +1) to attack rolls with a Melee weapon you hold, which may deal Radiant damage and sheds light.",
         "grants": {
           "action": {
             "time": "free",
+            "duration": "10 minutes",
+            "withAttack": true,
             "cost": {
               "resource": "channel-divinity"
             },
@@ -645,7 +647,19 @@ export const paladin = {
             },
             "effects": [
               {
-                "manual": "Sacred Weapon: for 10 minutes, add Charisma modifier (at least +1) to attack rolls with the held Melee weapon; its hits can deal Radiant damage; it sheds Bright Light 20 feet and Dim Light 20 feet beyond."
+                "imbue": {
+                  "melee": true,
+                  "attackAdd": {
+                    "mod": "cha",
+                    "min": 1
+                  },
+                  "types": [
+                    "radiant"
+                  ]
+                }
+              },
+              {
+                "manual": "Sacred Weapon: the weapon sheds Bright Light in a 20-foot radius and Dim Light 20 feet beyond that. The DM applies the light."
               }
             ]
           }

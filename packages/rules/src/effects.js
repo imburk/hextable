@@ -542,6 +542,7 @@ function exec(s, ev, kit, f, step, at) {
       ? `${f.src.name} changes a number, but nothing in it says when that ends, and the engine keeps only what ends by itself. The DM applies it and ends it.`
       : `${f.src.name} changes a number for a while, but it has no duration for the engine to hang that on. The DM applies it.`);
   }
+  if (kind === 'imbue') return kit.imbue(s, t, step, f, ev) || handOver(`${f.src.name} changes what a weapon does for a while, but no weapon of ${t.name}'s was named for it (or it has no lasting effect to hang that on). The DM applies it.`);
   if (kind === 'fall') return kit.fall(s, t, step.fall, ev);
   // `largest`: only a creature of that size or smaller is moved (Repelling Blast: Large).
   if (kind === 'move') {

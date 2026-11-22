@@ -297,6 +297,13 @@ export function route(reach, k) {
 // and stops where one cannot be dragged.
 // `opts.aerial`: lay out flying, climbing and ladder ways too, so `move` can tell a place only they reach from one too far.
 // `opts.unchecked`: do not ask whether the held creatures could follow (so `move` can tell that from "too far").
+// Those who follow `e`, or follow one who does (party creatures that could walk off: not held, restrained, Paralysed or at Speed 0).
+export function followingChain(s, e) {
+  const out = new Set();
+  if (e.side !== 'party') return out;
+  for (let grew = true; grew;) { grew = false; for (const x of living(s)) if (x.follow && x.side === 'party' && !out.has(x.id) && x.id !== e.id && (x.follow === e.id || out.has(x.follow)) && !draggedBy(s, x).length && up(x) && moveOptions(s, x).size > 0) { out.add(x.id); grew = true; } }
+  return out;
+}
 export function moveOptions(s, e, opts = {}) {
   // A rider goes where its mount goes (stage C6a): its ways are the mount's, and `move` sent for it moves the mount.
   const steed = mountOf(s, e);
@@ -311,7 +318,10 @@ export function moveOptions(s, e, opts = {}) {
   const bud = fighting ? turnBudget(s, e) : null;
   if (fighting && !bud) return new Map();
   const pair = partnerOf(s, e);
-  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id && o !== pair);
+  // `opts.through`: outside a fight, a party creature may step into the place of one that follows it, directly or down the chain
+  // (those walk after it and make room: `march`).
+  const giving = opts.through && !fighting ? followingChain(s, e) : null;
+  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id && o !== pair && !giving?.has(o.id));
   // The surfaces of each column are looked up many times over; keep them for the length of this search.
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
@@ -1339,6 +1349,32 @@ function formationPlace(s, f, leader, mine, theirs, arena) {
   return best;
 }
 
+// The place nearest behind `leader` that `f` could have walked to inside `arena`: its place in the leader's formation when that is
+// free (E-P4), else the nearest along the leader's trail. { best, mine } (`best` null when there is none; `mine` is f's walking options).
+// `afoot`: the leader is in a fight that is running, where its options are the rest of its turn's movement (none off its turn): its walking is
+// then measured as it would be outside combat, which is what "could have walked to" means for a hero joining a fight in progress. The joiner's
+// own walk is capped at CATCH_UP feet too (its options are an exploring creature's, EXPLORE_BUDGET, and the walk spends nothing of any turn).
+function placeBehind(s, f, leader, arena, walked, foes, G, afoot = false) {
+  const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
+  const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
+  const mine = moveOptions(s, f);
+  let theirs;
+  if (afoot && s.encounter) { const enc = s.encounter; s.encounter = null; try { theirs = moveOptions(s, leader); } finally { s.encounter = enc; } } else theirs = moveOptions(s, leader);
+  let best = null, bestKey = null;
+  let slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
+  if (slot && afoot && slot.v.cost > CATCH_UP) slot = null;
+  if (slot) { best = slot; bestKey = null; }
+  else for (const [k, v] of mine) {
+    if (!v.canStop || !arena[col(v.h)] || peril(s, f, v.h)) continue;      // no known trap or lasting zone (Web, Moonbeam), as the formation's places
+    if (afoot && v.cost > CATCH_UP) continue;                               // a hero joining a fight in progress walks at most CATCH_UP feet itself
+    const lc = theirs.get(k)?.cost;
+    if (lc === undefined || lc > CATCH_UP) continue;
+    const at = along(trail, v.h, G), rank = [at.d, at.i, lc, v.cost];
+    if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
+  }
+  return { best, mine };
+}
+
 // A fight is starting in `arena`. Everyone who was following a party member in it, and is not in
 // it already, is brought up to the nearest free place behind its leader that it could have walked
 // to (a path exists, and the place is at most CATCH_UP feet of walking from the leader).
@@ -1348,25 +1384,13 @@ export function catchUp(s, arena, walked, ev) {
   const inArena = (e) => !!arena[col(e.pos)];
   const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
   const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e) && !draggedBy(s, e).length).sort(byMarch);      // one that holds a creature does not follow or keep a place (Decision 6; march says so)
-  const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));
+  const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !o.hiding && !unseenAt(s.map, o.pos));       // a creature that took the Hide action stays hidden through the fight start and sets no trail; one the DM hid is revealed as the fight starts, straight after, and is a visible blocker here
   for (;;) {
     const f = pending.find((x) => party.has(x.follow));
     if (!f) return;
     pending.splice(pending.indexOf(f), 1);
     const leader = s.entities[f.follow];
-    const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
-    const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
-    const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
-    let best = null, bestKey = null;
-    const slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
-    if (slot) { best = slot; bestKey = null; }
-    else for (const [k, v] of mine) {
-      if (!v.canStop || !arena[col(v.h)]) continue;
-      const lc = theirs.get(k)?.cost;
-      if (lc === undefined || lc > CATCH_UP) continue;
-      const at = along(trail, v.h, G), rank = [at.d, at.i, lc, v.cost];
-      if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
-    }
+    const { best, mine } = placeBehind(s, f, leader, arena, walked, foes, G);
     if (!best || !up(f)) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     f.pos = best.v.h;
     ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
@@ -1375,5 +1399,30 @@ export function catchUp(s, arena, walked, ev) {
     lookAround(s, ev, r ? [f, r] : [f]);
     party.add(f.id);
   }
+}
+
+// A fight is running and these party members stand outside it (`ids`, or all of them): each walks in to the nearest free place behind the
+// party member in the fight that is closest to it, if it could have got there (as `catchUp`: a path, and at most CATCH_UP feet from that
+// member, and at most CATCH_UP feet of its own walking), then joins and rolls Initiative as any creature arriving does (`joinEncounter`).
+// One that cannot get in stays out and is told so. Returns { joined, refused }: the ids of each.
+export function bringIn(s, ids, ev) {
+  const arena = s.encounter.arena, G = gridOf(s.map), joined = [], refused = [];
+  const foes = living(s).filter((o) => o.side !== 'party' && inFight(s, o.id) && !o.hidden && !o.hiding && !unseenAt(s.map, o.pos));
+  const out = living(s).filter((e) => e.side === 'party' && !inFight(s, e.id) && !e.riding && !draggedBy(s, e).length && (ids ? ids.includes(e.id) : up(e))).sort(byMarch);      // one named that cannot act is told so; unnamed, the fallen are left be
+  for (const f of out) {
+    const near = living(s).filter((e) => e.side === 'party' && inFight(s, e.id)).sort((a, b) => G.dist(a.pos, f.pos) - G.dist(b.pos, f.pos));
+    const leader = near[0];
+    const { best, mine } = leader && up(f) ? placeBehind(s, f, leader, arena, null, foes, G, true) : { best: null };
+    if (!best) { ev.push({ type: 'note', id: f.id, why: 'joinFight', text: `${f.name} can't get to the fight.` }); refused.push(f.id); continue; }
+    f.pos = best.v.h;
+    const path = route(mine, best.k).map((x) => x.h);
+    ev.push({ type: 'moved', id: f.id, path, caughtUp: true });
+    const r = carry(s, f);
+    if (r) ev.push({ type: 'moved', id: r.id, path, caughtUp: true });
+    lookAround(s, ev, r ? [f, r] : [f]);
+    joinEncounter(s, f, ev); joined.push(f.id);
+    if (r && !inFight(s, r.id)) { joinEncounter(s, r, ev); joined.push(r.id); }
+  }
+  return { joined, refused };
 }
 

@@ -48,7 +48,7 @@ test('before publishing a player has a marker and nothing to draw from; after it
 test('the same foes are counted together, and XP against the next level reads from the character', () => {
   assert.equal(foeLine([{ name: 'Goblin warrior 1', counts: true }, { name: 'Goblin warrior 2', counts: true }, { name: 'Wolf', counts: true }, { name: 'Ogre', counts: false }]), 'Goblin warrior x2, Wolf');
   const e = { kind: 'pc', level: 3, xp: 1150 };
-  assert.equal(xpToLevel(e), '1,150 / 2,700 to level 4');
+  assert.equal(xpToLevel(e), '1,150 of 2,700 XP for level 4');
   assert.match(xpFact(e), /XP 1,150 \/ 2,700/);
   assert.equal(readyToLevel(e), false);
   assert.equal(readyToLevel({ ...e, xp: 2700 }), true);

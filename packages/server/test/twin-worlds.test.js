@@ -290,6 +290,28 @@ test("homebrew monsters: one the DM hid outside the arena, through a fight, is i
   assert.ok(![HB_NAME, HB_TEXT, HB_NOTE, HB_ATTACK, WRAITH, "Shape in the reeds"].some((x) => everything(hidden).includes(x)));
 });
 
+// ---- imbue: what a refused Magic Weapon on a foe says of the foe's weapons (O4, #666) ----
+test("imbue: a player's Magic Weapon refused on a foe is told the same whether the foe's club is magic or it has no weapon", () => {
+  const club = { id: "club", name: "Club", weapon: "club", bonus: 4, damage: "1d4+2", dtype: "bludgeoning", type: "melee", die: "1d4", plus: 1, magic: true };
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", spells: [...(s.entities.fighter.spells ?? []), "magic-weapon"], slots: { 2: 2 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Foe" });
+      byName(w, "Foe").attacks = [];
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "fighter", spell: "magic-weapon", target: byName(w, "Foe").id, weapon: "club" }) },
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "fighter", spell: "magic-weapon", target: byName(w, "Foe").id }) },
+    ],
+  }, (w) => { byName(w, "Foe").attacks = [club]; });
+});
+
 // ---- Armor Class: an effect of a DM-hidden creature, on that creature (#674) ----
 // The view sends `acNow` and `acWhy` for the party's creatures from the effects that sit on them. A hidden creature's Barkskin on itself changes
 // nothing a player is sent; one on a party creature would be sent as any effect of a hidden source is (its name, never its source).
@@ -312,4 +334,37 @@ test("armor class: a hidden creature's Barkskin on itself changes nothing the pl
     },
     plain: (w) => { burn(w); w.state.seq++; },
   });
+});
+
+// ---- called saves (#676, docs/specs/prompts.md): the DM calls a secret save for a seen creature and a hidden one ----
+test("called save: a secret save naming a hidden creature is sent the same as one naming only the seen creature", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat" });
+    },
+    // The hidden creature's save is the last roll: it takes dice from the one seed, as any creature's roll does.
+    steps: [
+      { by: "dm", act: { type: "save", who: "fighter", ability: "dex", dc: 15, damage: { dice: "1d4", type: "fire" }, condition: "poisoned" } },
+      { by: "dm", act: (w) => ({ type: "save", who: ["fighter", ...(byName(w, "Ghost") ? [byName(w, "Ghost").id] : [])], ability: "con", dc: 15, secret: true }) },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w) });
+});
+
+test("called save: an open call with damage and a condition naming a hidden creature is sent the same as one naming only the seen creature", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat" });
+    },
+    steps: [
+      { by: "dm", act: (w) => ({ type: "save", who: ["fighter", ...(byName(w, "Ghost") ? [byName(w, "Ghost").id] : [])], ability: "dex", dc: 15, damage: { dice: "2d6", type: "fire", half: true }, condition: "prone" }) },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w) });
 });

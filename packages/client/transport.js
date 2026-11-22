@@ -131,8 +131,9 @@ async function sha256Hex(bytes) {
   return [...d].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// The valley's options for a grid and a party: squares if asked, a party if given (newGame's `party`, scenario.js), otherwise nothing (the hex valley with the four starters, as always).
-const valleyOptions = (grid, party) => (grid === 'square' || party ? { ...(grid === 'square' && { grid: 'square' }), ...(party && { party }) } : undefined);
+// The valley's options for a grid and a party: squares if asked, a party if given (newGame's `party`, scenario.js), otherwise the hex valley with the four starters.
+// Every new solo game starts with the party following the first hero (`follow`, #671).
+const valleyOptions = (grid, party) => ({ follow: true, ...(grid === 'square' && { grid: 'square' }), ...(party && { party }) });
 
 // Solo: the engine runs here and you are the DM and every hero.
 // `grid` is the grid a NEW game's valley is on ('square', or anything else for hexes); a saved game keeps its own.
@@ -513,6 +514,8 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   // Drop this connection for good (used when the player starts over with a different table).
   t.close = () => { hello = null; stopLink(); clearTimeout(heldTimer); held.length = 0; clearTimeout(pendingPack?.timer); pendingPack = null; clearTimeout(pendingWorld?.timer); pendingWorld = null; if (ws) { ws.onmessage = null; ws.close(); } };
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
+  // A report of an error the page raised (errorreport.js, #689). Nothing comes back and nothing waits; false when there is no open socket.
+  t.reportError = (report) => { if (ws?.readyState !== 1) return false; ws.send(JSON.stringify({ t: 'clientError', report })); return true; };
   // Leave the table for good and forget it on this device.
   t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); keeper.forget(); t.close(); };
   // Ask for past entries from the table's record: { types, since, limit }. The answer arrives on on.history.

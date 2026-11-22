@@ -10,14 +10,14 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 // What reads content for a table (the engine, the views, the history's labels, migration) is imported under a raw_ name and
 // called only inside the "scoped engine" block of createTables, which lends the table's homebrew to every call.
-import { apply as rawApply, recall as rawRecall } from "../../rules/src/engine.js";
+import { ACTION_TYPES, apply as rawApply, recall as rawRecall } from "../../rules/src/engine.js";
 import { diff, snapshot } from "../../rules/src/patch.js";
 import { createHistory, describeStep as rawDescribeStep, mark, undoable } from "../../rules/src/history.js";
 import { capTimeline, TIMELINE_CAP } from "../../rules/src/timeline.js";
 import { migrate as rawMigrate } from "../../rules/src/migrate.js";
 import { keyedRng } from "../../rules/src/rng.js";
 import { newGame } from "../../rules/src/scenario.js";
-import { forViewer as rawForViewer, playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewShops as rawViewShops, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions } from "../../rules/src/view.js";
+import { forViewer as rawForViewer, playerView as rawPlayerView, view as rawView, viewEvents as rawViewEvents, viewHandouts as rawViewHandouts, viewShops as rawViewShops, viewPrompt as rawViewPrompt, viewReactions as rawViewReactions, viewWaiting as rawViewWaiting } from "../../rules/src/view.js";
 import { forPlayers as packFilteredCopy, packForPlayer, packsMatch, PLAYER_PACK_KINDS, cleanPacks, usesIn, inUse, vetAdd, vetPacks, vetUpdate } from "../../rules/src/content/packs.js";
 import { installed, overlayOf, PackError, using } from "../../rules/src/content/registry.js";
 import { HOMEBREW_LIMITS } from "../../rules/src/content/schema.js";
@@ -61,6 +61,8 @@ const makeId = () => randomBytes(9).toString("base64url");
 const makeToken = () => randomBytes(24).toString("base64url");
 const cleanName = (name) => String(name ?? "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 24) || "Adventurer";
 
+// The engine's action names, for the crash reports (crashes.js), which may not read the engine themselves (packs.test.js).
+export const KNOWN_ACTIONS = Object.freeze([...ACTION_TYPES, "setPacks", "worldIndex"]);
 export const MAX_TABLES = 500;
 export const MAX_MEMBERS = 12;
 // A table nobody has touched for this long no longer counts against MAX_TABLES. It is kept, not
@@ -110,7 +112,7 @@ const NO_JOURNAL = { setCap() {}, before: () => null, accepted() {}, restored() 
 // writes a table's save and undo history now and returns false if it could not: eviction needs it, and without it nothing is evicted.
 // `archive(code)` and `restore(code)` move a table's files away and back (store.js) and return whether they did. `sweep()` does the
 // evicting and archiving; the server calls it once a minute.
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, evictMs = EVICT_MS, archiveMs = ARCHIVE_MS, index = null, loadOne = null, archived = () => [], archive = null, restore = null, flushNow = null, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {}, journal = NO_JOURNAL } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, evictMs = EVICT_MS, archiveMs = ARCHIVE_MS, index = null, loadOne = null, archived = () => [], archive = null, restore = null, flushNow = null, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {}, journal = NO_JOURNAL, crashes = null } = {}) {
   journal.setCap(timelineCap);          // one source of truth: the journal writes the cap this table applies into every file's header
   // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
   // rolls (an integer rng, as before version 16) unless they also give a key.
@@ -130,9 +132,18 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     if (!c.byType.has(k) && c.byType.size >= 200) k = "other";      // the table of types stays small however many names are sent
     c.byType.set(k, (c.byType.get(k) ?? 0) + 1);
   };
-  const crashed = (code, type, role, err) => {
-    bump(crashCount, type);
-    console.error(JSON.stringify({ event: "engine-crash", at: new Date().toISOString(), table: String(code), action: typeKey(type), role: typeof role === "string" ? role.slice(0, 10) : null, stack: String(err?.stack ?? err).slice(0, 4000) }));
+  // `more` is what the crash bundle needs (crashes.js, #689): { table, me, action }. The bundle's name goes in the log line; a bundle that
+  // cannot be written never changes what the player is answered or whether the game is put back.
+  // /api/health shows the types, so only a type the engine knows is named there: whatever else a client sent counts as "?".
+  const KNOWN = new Set([...ACTION_TYPES, "setPacks", "worldIndex"]);
+  const crashed = (code, type, role, err, more = null) => {
+    bump(crashCount, KNOWN.has(type) ? type : "?");
+    let bundle = null;
+    if (crashes && more?.table) {
+      try { bundle = crashes.engineCrash({ table: more.table, role, uid: more.me?.id ?? null, action: more.action ?? { type }, err, journal: journal.position?.(code) ?? null }); }
+      catch (e) { try { console.error(`crashes: could not record the crash (${String(e?.message ?? e).slice(0, 120)})`); } catch { /* a log that fails is not a reason to fail */ } }
+    }
+    console.error(JSON.stringify({ event: "engine-crash", at: new Date().toISOString(), table: String(code), action: typeKey(type), role: typeof role === "string" ? role.slice(0, 10) : null, ...(bundle && { bundle }), stack: String(err?.stack ?? err).slice(0, 4000) }));
   };
   const top = (c, n) => Object.fromEntries([...c.byType].sort((a, b) => b[1] - a[1]).slice(0, n));
   const stats = () => ({ crashes: crashCount.total, crashesByType: top(crashCount, 10), refusals: refusalCount.total, refusalsByType: top(refusalCount, 10) });
@@ -168,6 +179,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     viewHandouts: (t, state, ctx) => scoped(t, () => rawViewHandouts(state, ctx)),
     viewShops: (t, state, ctx) => scoped(t, () => rawViewShops(state, ctx)),
     viewPrompt: (t, state, ctx) => scoped(t, () => rawViewPrompt(state, ctx)),
+    viewWaiting: (t, state, ctx) => scoped(t, () => rawViewWaiting(state, ctx)),
     viewReactions: (t, state, ctx) => scoped(t, () => rawViewReactions(state, ctx)),
   };
   // ===== end of the scoped engine =====
@@ -298,7 +310,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   const baseFor = (t, m) => engine.forViewer(t, forPlayers(t).base, t.state, { role: m.role, userId: m.id });
   const stateFor = (t, m) => (m.role === "dm" ? { ...engine.view(t, t.state, { role: m.role, userId: m.id }), timeline: undefined }
     : { ...baseFor(t, m), handouts: engine.viewHandouts(t, t.state, { role: m.role, userId: m.id }), shops: engine.viewShops(t, t.state, { role: m.role, userId: m.id }), reactions: engine.viewReactions(t, t.state, { role: m.role, userId: m.id }),
-      prompt: engine.viewPrompt(t, t.state, { role: m.role, userId: m.id }) });
+      prompt: engine.viewPrompt(t, t.state, { role: m.role, userId: m.id }), waiting: orNone(engine.viewWaiting(t, t.state, { role: m.role, userId: m.id })) });
+  // A player who waits on the DM for nothing is sent no `waiting` field at all, as in rules view.js.
+  function orNone(list) { return Array.isArray(list) && list.length ? list : undefined; }
   // What was sent, for the next difference: a player's is the shared one with their handouts, the shops shown to them, their
   // own creatures' standing instructions for reactions, and a reaction they are asked about (or
   // only that the table is waiting). A player who was sent a creature as a seen record in place of the open one
@@ -320,8 +334,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
     const { snap, base } = forPlayers(t);
     if (state.entities !== base.entities || state.encounter !== base.encounter || state.effects !== base.effects) return snapshot(state);
     // `away` and `watching` (rules view.js, placesView) are this player's own, by where their characters are: only a table with a world has them.
+    // `waiting` (the DM's to-do tray) is theirs too, and only there when they wait on something.
     const places = {};
-    for (const k of ["away", "watching"]) if (state[k] !== undefined) places[k] = JSON.stringify(state[k]);
+    for (const k of ["away", "watching", "waiting"]) if (state[k] !== undefined) places[k] = JSON.stringify(state[k]);
     return { ...snap, top: { ...snap.top, handouts: JSON.stringify(state.handouts), shops: JSON.stringify(state.shops), reactions: JSON.stringify(state.reactions), prompt: JSON.stringify(state.prompt), ...places } };
   };
   const eventsFor = (t, m, events) => engine.viewEvents(t, events, t.state, { role: m.role, userId: m.id });
@@ -589,7 +604,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
         // dropped first: the server never plays a client's map where the pack has one. The size above was checked on what
         // the client sent; what is applied and recorded is the action as filled.
         let filled;
-        try { filled = fillMap(table.state, action, table.world?.data ?? null); } catch (err) { crashed(table.code, action?.type, me.role, err); return error("The table couldn't make sense of that action."); }
+        try { filled = fillMap(table.state, action, table.world?.data ?? null); } catch (err) { crashed(table.code, action?.type, me.role, err, { table, me, action }); return error("The table couldn't make sense of that action."); }
         // Taken before every action: for the undo history (claiming a seat is not undone), and to
         // put the game back if the engine throws part way through (review #132, L6).
         const ticket = journal.before(table);        // never throws, never waits for the disk
@@ -599,7 +614,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
           res = engine.apply(table, table.state, filled, { role: me.role, userId: me.id });
         } catch (err) {
           putBack(table.state, was);
-          crashed(table.code, filled?.type, me.role, err);
+          crashed(table.code, filled?.type, me.role, err, { table, me, action: filled });
           return error("The table couldn't make sense of that action.");   // malformed input, not a rules refusal
         }
         if (!res.ok) { bump(refusalCount, filled?.type); return error(res.error); }
@@ -704,7 +719,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       const was = mark(t.state);
       let res;
       try { res = engine.apply(t, t.state, { type: "setPacks", packs: next.map((p) => ({ id: p.id, version: p.version, hash: p.hash })) }, { role: me.role, userId: me.id }); }
-      catch (err) { putBack(t.state, was); crashed(t.code, "setPacks", me.role, err); return error("The table couldn't make sense of that pack message."); }
+      catch (err) { putBack(t.state, was); crashed(t.code, "setPacks", me.role, err, { table: t, me, action: { type: "setPacks" } }); return error("The table couldn't make sense of that pack message."); }
       if (!res.ok) return error(res.error);
       t.packs = next;                                                // the record changes only now: the table is told next
       journal.reset(t, "packs");                                     // the journal's file began from a state that no longer holds
@@ -755,7 +770,7 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
       const was = mark(t.state);
       let res;
       try { res = engine.apply(t, t.state, { type: "worldIndex", index }, ctx); }
-      catch (err) { putBack(t.state, was); crashed(t.code, "worldIndex", me.role, err); res = { ok: false, error: "The table couldn't make sense of that world." }; }
+      catch (err) { putBack(t.state, was); crashed(t.code, "worldIndex", me.role, err, { table: t, me, action: { type: "worldIndex" } }); res = { ok: false, error: "The table couldn't make sense of that world." }; }
       if (!res.ok) { dropAssets(t.code, stored.added); return refuse([res.error]); }
       const before = t.world;
       t.world = { id: index.id, version: index.version, hash: r.hash, data: kept, assets: stored.assets };

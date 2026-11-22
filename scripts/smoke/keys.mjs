@@ -167,6 +167,17 @@ async function desktop(browser, url) {
       await run.do('in a fight a key\'s step spends movement exactly as a click on the same hex does', async () => {
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         const here = await posOf(page, id);
+        // The others walk behind the fighter (they follow it since #671) and a fight sets them around it, maybe on the hex the key steps to:
+        // they stop following and are put out of its way, behind it (the walk's own cost is what this step is about).
+        const others = await state(page, (S, me) => Object.values(S.entities).filter((e) => e.side === 'party' && e.id !== me).map((e) => e.id), id);
+        const spare = [4, 5, 3, 6, 7].flatMap((k) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0]].map(([a, b]) => ({ q: here.q - dir[0] * k + a, r: here.r - dir[1] * k + b })));
+        for (const o of others) {
+          await act({ type: 'follow', actor: o, leader: null });
+          for (const at of spare) {
+            await act({ type: 'place', actor: o, to: at });
+            if (await state(page, (S, [i, h]) => { const p = S.entities[i].pos; return p.q === h.q && p.r === h.r; }, [o, at])) break;
+          }
+        }
         // A foe, behind and out of the way: a fight needs one. The map is random, so the hex the engine takes the spawn on is asked of the
         // engine, nearest first behind the fighter, and the foe is checked to be there. (A refused spawn left a fight of heroes only, which
         // ended at the first end of turn: #406.)

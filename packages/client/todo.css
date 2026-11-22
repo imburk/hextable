@@ -1,0 +1,25 @@
+/* The DM's to-do tray (todo.js) and the line a player sees while the DM applies what they used. */
+#todo-mount { border: 1px solid var(--accent); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 12px; }
+#todo-mount[hidden] { display: none; }
+#todo-mount h3 { margin: 0 0 4px; }
+.todo-n { background: var(--accent); color: var(--accent-ink, #111); border-radius: 999px; font-size: 12px; padding: 1px 8px; vertical-align: middle; }
+.todo-card { border-top: 1px solid var(--line); padding: 8px 0; display: grid; gap: 6px; }
+.todo-card > header { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.todo-who, .todo-count { color: var(--muted); font-size: 13px; }
+.todo-text { margin: 0; overflow-wrap: anywhere; }
+.todo-card details { margin: 0; } .todo-card summary { min-height: 32px; display: flex; align-items: center; cursor: pointer; }
+.todo-cr { background: var(--panel-2); border-radius: var(--radius); padding: 6px 8px; display: grid; gap: 6px; }
+.todo-line { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; } .todo-line span { color: var(--muted); font-size: 13px; }
+.todo-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+.todo-tools button { min-height: 44px; min-width: 56px; padding: 4px 10px; }
+.todo-tools button.on { border-color: var(--accent); background: var(--panel); }
+.todo-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.todo-form input, .todo-form select { min-height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: inherit; padding: 4px 8px; min-width: 0; }
+.todo-form input[type=number] { width: 5.5em; }
+.todo-form button { min-height: 44px; }
+.todo-foot { display: flex; }
+.todo-done { flex: 1; min-height: 48px; background: var(--accent); color: var(--accent-ink, #111); font-weight: 700; }
+#todo-wait { margin: 0; align-self: flex-start; background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 4px 10px; font-size: 13px; }
+#todo-wait[hidden] { display: none; }
+.todo-form, .todo-foot { scroll-margin-bottom: 16px; }
+#todo-mount { padding-bottom: 14px; }

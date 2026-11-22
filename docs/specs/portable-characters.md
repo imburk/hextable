@@ -1173,7 +1173,7 @@ was settled while building:
 - **The party.** `newGame(seed, { party })` in `scenario.js` takes 1 to 6 entries, `{ pregen: id }` (a starter, once at most) or `{ sheet }`
   (`validate` must pass; a bad party throws and nothing is made). Built heroes are `pc1`..`pc6` and keep their sheet (as `setSheet` keeps it);
   the starters keep their ids. This was less engine change than a `setSheet` per hero after `newGame`, which could not take the four starters
-  away. Hex and square valleys both place up to six. Without the option the valley is exactly what it was. The lobby remembers the last party
+  away. Hex and square valleys both place up to six. Without the option the valley has the four starters, built from their sheets (#672: `PREGEN_SHEETS` in `content/srd52/pregens.js`, through `derive`; the typed record beside each sheet is kept for the starter lists and tests, and `derive.test.js` fails if they drift). The lobby remembers the last party
   (`hextable.party`, `{ count, picks }`) and **Continue** keeps the saved game as it is; **New game** (two taps, in the lobby or in the menu) starts with the remembered party.
 - **Not built, as the issue says:** keys, blocks, servers, the level meter (P7), Import from Fantasy Grounds with no table, species and
   background (a sheet has no field for them), a multiclass sheet in the build screen (`fromSheet` reads one class: such a character can be listed,

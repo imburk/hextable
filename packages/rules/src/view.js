@@ -21,6 +21,7 @@ import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { hasWorld, knownOf, partyAt, playerEntry, playerNode, playerPin, playerRoute } from './known.js';
 import { acNow, controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
 import { buysOf, kindOf, listPrice } from './market.js';
+import { isOwnName } from './todo.js';
 import { SETTING_FIELDS, partyFields, sentFields } from './view-fields.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
@@ -250,8 +251,10 @@ const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: offWatcher(state, viewer) ? [] : viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
+  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: offWatcher(state, viewer) ? [] : viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer), waiting: orNone(viewWaiting(state, viewer)) };
 }
+// An empty list is not sent at all, so a player who waits on nothing is sent what they were sent before the tray (and no field named for waiting).
+const orNone = (list) => (list.length ? list : undefined);
 
 // An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
 // may know of it. The player who controls the creature being asked gets the question:
@@ -290,6 +293,22 @@ export function viewReactions(state, viewer) {
   const out = {};
   if (typeof viewer?.userId !== 'string') return out;
   for (const [id, e] of Object.entries(state.entities)) if (e.reactions && ownerOf(state, e) === viewer.userId) out[id] = structuredClone(e.reactions);
+  return out;
+}
+
+// What a player's own creatures wait on the DM for: [{ id, name }], one for each spell or feature of theirs that the engine
+// handed to the DM and the DM has not yet settled (todo.js). Only the name of what they used, which they know, and never
+// the DM's words or a note about anything else; no card number, so the count of the DM's cards is not told. The DM has the
+// cards themselves in the state, and so gets nothing here.
+export function viewWaiting(state, viewer) {
+  const out = [];
+  if (isDM(viewer) || typeof viewer?.userId !== 'string') return out;
+  for (const c of Array.isArray(state.todo?.cards) ? state.todo.cards : []) {
+    if (c.kind !== 'manual' || typeof c.actor !== 'string' || c.waits !== true) continue;
+    const e = state.entities[c.actor];
+    if (!e || e.side !== 'party' || ownerOf(state, e) !== viewer.userId || !isOwnName(e, c.name)) continue;
+    if (!out.some((x) => x.id === e.id && x.name === c.name)) out.push({ id: e.id, name: c.name });
+  }
   return out;
 }
 
@@ -649,6 +668,7 @@ function viewEventsOf(events, state, viewer) {
   let casterOpen = false;                  // whether the one who cast the spell (or used the action) that the following saves answer is theirs
   for (const ev of events) {
     out.ev = ev;
+    if (ev.hush) continue;                 // spent to turn a secret save: the DM's (engine/dm.js `save`)
     was = Array.isArray(ev.unseen) ? ev.unseen : null;
     if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack' || ev.type === 'strikeOption') casterOpen = cls(ev.actor) === 'open';      // a save on a hit or a Shove answers the attacker: told the DC if the attacker is theirs, as said at the event that began it (a stamp is read there)
     if (ev.type === 'turn') {
@@ -709,6 +729,16 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'save': {
+        // A save the DM called for (`called`): told in full of a creature of theirs, with the DC and the outcome only if it is not `secret`;
+        // of any other, only the outcome and the DC, and not at all if secret. Never a monster's modifiers.
+        if (ev.called) {
+          if (cls(ev.id) === 'open') {
+            const e = structuredClone(ev);
+            if (e.secret) { delete e.dc; delete e.success; delete e.reroll; delete e.rescued; }
+            out.push(e);
+          } else if (cls(ev.id) !== 'hidden' && !ev.secret) out.push(pick(ev, ['type', 'id', 'abil', 'dc', 'success', 'called']));
+          break;
+        }
         // A save names the creature whose DC it is (`src`, only a homebrew one: the DC is a number of its block): told to the player who runs
         // it and to no other, whoever the target is. Any other save: the target's own, or the caster of the step it follows, as ever.
         const told = ev.src !== undefined ? runs(ev.src) : null;

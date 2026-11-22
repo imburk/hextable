@@ -14,6 +14,7 @@
 //               shows `buildLine()` and the report's `build` field carries `buildId()`. onBuild() is called when it has arrived.
 import { VERSION } from './shared/migrate.js';
 import { MONSTERS } from './shared/content/index.js';
+import { createErrorReporter } from './errorreport.js';
 
 export const COMMENT_MAX = 2000, REPORT_MAX = 24 * 1024, LOG_LINES = 30, ACTIONS = 15, ERRORS = 10, LINE_MAX = 300;
 const DRAFT = 'hextable.feedback.draft';
@@ -172,8 +173,29 @@ export function initFeedback({ look, onBuild }) {
   const rec = createRecorder({ scrub: (t) => { learn(); return scrubber.text(t); }, changed: () => live() });
   let stamp = null;                                      // build.json, fetched once; a failure is silent and the report says state-v<N>
   fetch('./build.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((b) => { if (validStamp(b)) { stamp = b; onBuild?.(); } }).catch(() => {});
-  addEventListener('error', (ev) => rec.error(ev.message, ev.filename ? `${String(ev.filename).split('/').pop()}:${ev.lineno ?? 0}` : ''));
-  addEventListener('unhandledrejection', (ev) => rec.error(`Unhandled: ${ev.reason?.message ?? ev.reason}`, ''));
+  // The page's errors also go to the server (errorreport.js, #689): scrubbed, throttled, never waited for. Over the socket when this is a table;
+  // else a POST, if there is a table server to take it (asked once, quietly).
+  let transport = null, serverHere = null;
+  const errorUrl = () => { const u = document.querySelector('meta[name="hextable-feedback-url"]')?.content?.trim(); return u ? u.replace(/\/feedback$/, '/client-error') : './client-error'; };
+  const post = async (r) => {
+    if (navigator.onLine === false) return;
+    if (serverHere === null) { const u = document.querySelector('meta[name="hextable-feedback-url"]')?.content?.trim(); try { serverHere = u ? true : (await fetch('./api/ping', { cache: 'no-store' })).ok; } catch { serverHere = false; } }
+    if (serverHere) await fetch(errorUrl(), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(r), credentials: 'omit', cache: 'no-store', keepalive: true });
+  };
+  const reporter = createErrorReporter({
+    scrub: (t) => { learn(); return scrubber.text(t); },
+    facts: () => ({ build: buildId(stamp), mode: transport && transport.solo === false ? 'table' : 'solo', screen: { w: innerWidth, h: innerHeight }, actions: rec.actions().map((a) => a.type) }),
+    send: (r) => { if (transport?.reportError?.(r)) return; post(r).catch(() => {}); },
+  });
+  addEventListener('error', (ev) => {
+    const at = ev.filename ? `${String(ev.filename).split('/').pop()}:${ev.lineno ?? 0}` : '';
+    rec.error(ev.message, at);
+    reporter.report('error', ev.message, ev.error?.stack, at);
+  });
+  addEventListener('unhandledrejection', (ev) => {
+    rec.error(`Unhandled: ${ev.reason?.message ?? ev.reason}`, '');
+    reporter.report('rejection', ev.reason?.message ?? ev.reason, ev.reason?.stack);
+  });
 
   const btn = document.createElement('button');
   btn.type = 'button'; btn.id = 'fb-btn'; btn.setAttribute('aria-label', 'Send feedback'); btn.setAttribute('aria-haspopup', 'dialog'); btn.setAttribute('aria-expanded', 'false'); btn.title = 'Send feedback';
@@ -298,6 +320,7 @@ export function initFeedback({ look, onBuild }) {
     // Watch a transport: each action it is sent, and each answer. A refusal is the engine's own text. An answer arrives in the order the
     // actions were sent; an update after an action with no refusal before it counts as accepted.
     attach(T) {
+      transport = T;
       const send0 = T.send.bind(T), prevError = T.on.error, prevUpdate = T.on.update;
       T.send = (action) => { rec.sent(action); return send0(action); };
       T.on.error = (m, ...rest) => { const p = rec.pending()[0]; if (p) rec.answer(p, `refused: ${m}`); return prevError?.(m, ...rest); };

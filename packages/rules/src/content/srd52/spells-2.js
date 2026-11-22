@@ -416,10 +416,10 @@ export const spells2 = [
     time: "bonus", range: "touch", components: ["v", "s"],
     duration: "1 hour", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Magic Weapon: the caster touches a nonmagical weapon, which becomes a magic weapon with a +1 bonus to attack rolls and damage rolls for 1 hour. The bonus is +2 with a level 3 to 5 slot and +3 with a level 6 or higher slot. The spell ends early if cast again. Weapons are not yet something a spell can modify, so the DM applies the bonus."}],
+    effects: [{ imbue: { nonmagical: true, plus: { bySlot: { 2: 1, 3: 2, 6: 3 } } } }],
     kinds: ["damage"],
     roll: "none",
-    tier: "manual", checked: true,
+    tier: "auto", checked: true,
     text: "A touched nonmagical weapon becomes magic with +1 to attack and damage rolls for an hour (+2 with a level 3 to 5 slot, +3 with level 6 or higher).",
   },
   {

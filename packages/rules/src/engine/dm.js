@@ -3,7 +3,7 @@
 // handouts and scenes, and table settings.
 import { gridOf, col } from '../grid.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate } from '../content/index.js';
-import { effectsOf, endEffect } from '../durations.js';
+import { effectsOf, endEffect, useUp } from '../durations.js';
 import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, surfaces, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
@@ -17,10 +17,13 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, up } from './shared.js';
-import { airspace, AREA_FILLS, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
-import { condition, heal } from './rolls.js';
+import { airspace, AREA_FILLS, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
+import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
+import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
+import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
-import { advanceTurn, AWAY, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
+import { noteRuns, settle } from '../todo.js';
+import { advanceTurn, AWAY, evades, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
 export const handlers = {
 
@@ -134,6 +137,7 @@ export const handlers = {
     const n = Object.values(s.entities).filter((o) => o.tpl === a.monster && (!block || o.name?.startsWith(`${tpl.name} `))).length + 1;      // a block's variants are counted apart
     s.entities[id] = makeEntity(tpl, { id, tpl: a.monster, name: a.name || `${tpl.name} ${n}`, pos: at, ...(type ? { type } : {}), ...(a.hidden ? { hidden: true } : {}) });
     ev.push({ type: 'spawned', id });
+    noteRuns(s, s.entities[id], 'added');                   // abilities the DM runs for it (todo.js)
     if (s.encounter?.arena[col(at)]) joinEncounter(s, s.entities[id], ev);
   },
   // { type: 'place', actor, to }: on the map in play. { type: 'place', who | actor, node, pin?, entry? }: anywhere in
@@ -149,6 +153,15 @@ export const handlers = {
     ev.push({ type: 'placed', id: e.id, to });
     lookAround(s, ev, [e]);
     if (s.encounter?.arena[col(to)] && !inFight(s, e.id) && !e.dead) joinEncounter(s, e, ev);
+  },
+  // The party members outside a running fight walk in and roll Initiative. { type: 'joinFight', who?: [ids] } (all of them without `who`).
+  // The DM, or in solo the player; a hero the fight has not reached by the rules (no way there within 60 ft of the party) stays out and is told so.
+  joinFight(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can bring the others into the fight.');
+    s.encounter || fail('There is no fight to join.');
+    a.who === undefined || (Array.isArray(a.who) && a.who.every((id) => s.entities[id]?.side === 'party')) || fail('Name party members to bring in.');
+    const { joined, refused } = bringIn(s, a.who, ev);
+    joined.length || refused.length || fail('Everyone in the party is in the fight already.');
   },
   // Show a region to the players, or take it back. { type: 'revealRegion', region, revealed: true|false }
   revealRegion(s, a, ctx, ev) {
@@ -323,6 +336,81 @@ export const handlers = {
     e.dead && fail(`${e.name} is dead.`);
     damage(s, e, n, a.dtype ?? 'untyped', ev);
     checkEnd(s, ev);
+  },
+  // A called saving throw (docs/specs/prompts.md, "Call for a roll"):
+  // { type: 'save', who: id | [id, ...], ability, dc, secret?: true, adv?: 'advantage' | 'disadvantage',
+  //   damage?: { dice, type, half?: true }, condition?: id }.
+  // Each creature rolls its own save with everything that bears on it (proficiency, Aura of Protection, conditions, items, Bless,
+  // an automatic failure the rules give), and `adv` is one more source of Advantage or Disadvantage for all of them. The damage is rolled once
+  // for all; a creature that fails takes it all, one that succeeds takes half (rounded down) if `half`. It goes through the damage path,
+  // so Resistance, Temporary Hit Points and Concentration apply. A failure also puts `condition` on it, unless it is immune; it lasts until
+  // the DM takes it off. `secret` keeps the DC and the outcome from the players (view.js): they see only the roll of their own creature.
+  save(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM calls for a saving throw.');
+    const ids = Array.isArray(a.who) ? a.who : [a.who];
+    (ids.length > 0 && ids.length <= 40 && new Set(ids).size === ids.length) || fail('Name from 1 to 40 different creatures to save.');
+    const ts = ids.map((id) => ent(s, id));
+    for (const t of ts) { !t.dead || fail(`${t.name} is dead.`); (t.abil && t.saveProf) || fail(`${t.name} makes no saving throws.`); }
+    const abil = (ABILITIES.includes(a.ability) && a.ability) || fail('Name an ability to save with.');
+    (Number.isInteger(a.dc) && a.dc > 0 && a.dc <= 40) || fail('A DC is a whole number from 1 to 40.');
+    (a.secret === undefined || typeof a.secret === 'boolean') || fail('`secret` is true or false.');
+    const mode = grantOf(a, ctx);
+    const dmg = a.damage;
+    if (dmg !== undefined) {
+      (dmg && typeof dmg === 'object' && !Array.isArray(dmg)) || fail('`damage` is { dice, type, half? }.');
+      (typeof dmg.dice === 'string' && /^[1-9]\d?d(?:4|6|8|10|12|20|100)(?:[+-]\d{1,3})?$/.test(dmg.dice)) || fail('Damage dice are like 2d6 or 8d6+4.');
+      DAMAGE_TYPES.includes(dmg.type) || fail(`Damage is one of ${DAMAGE_TYPES.join(', ')}.`);
+      (dmg.half === undefined || typeof dmg.half === 'boolean') || fail('`half` is true or false.');
+    }
+    if (a.condition !== undefined) {
+      const def = typeof a.condition === 'string' ? conditionDef(a.condition) : null;
+      (def && CONTENT.conditions[a.condition]) || fail('Unknown condition.');
+    }
+    const r = dmg ? roll(s, dmg.dice) : null;
+    for (const t of ts) {
+      const mark = ev.length;
+      const { used, ...sv } = savingThrow(s, t, abil, a.dc, null, null, mode === 'disadvantage' ? GRANTS.disadvantage : null, mode === 'advantage' ? GRANTS.advantage : null, ev);
+      ev.push({ type: 'save', id: t.id, abil, dc: a.dc, called: true, ...(a.secret ? { secret: true } : {}), ...sv });
+      useUp(s, ev, used ?? []);
+      // A secret save keeps its outcome from the owner too: what was spent to turn it (a Bardic Inspiration die, Indomitable) is not told to players (view.js, `hush`).
+      if (a.secret) for (let i = mark; i < ev.length; i++) if (ev[i].type !== 'save') ev[i].hush = true;
+      // Evasion (as effects.js has it): a Dexterity save for half damage does none on a success and half on a failure.
+      const evade = abil === 'dex' && dmg?.half && evades(t);
+      if (evade) ev.push({ type: 'note', id: t.id, text: sv.success ? 'Evasion: no damage' : 'Evasion: half damage', ...(a.secret ? { hush: true } : {}) });      // a secret save's outcome is not told
+      // Legendary Resistance is the DM's to spend: asked of the DM alone, never decided by the engine.
+      if (!sv.success && CONTENT.monsters[t.tpl]?.traits?.some((x) => x.id === 'legendary-resistance')) ev.push({ type: 'manual', actor: t.id, name: 'Legendary Resistance', partial: true, text: `${t.name} failed the saving throw and has Legendary Resistance. The DM decides whether it spends a use to succeed instead; the engine has applied the failure.` });
+      if (dmg && (!sv.success || dmg.half) && !t.dead && !(evade && sv.success)) {
+        const n = sv.success || evade ? Math.floor(r.total / 2) : r.total;
+        if (n > 0) damage(s, t, [{ amount: n, type: dmg.type, dice: r.dice, bonus: r.bonus }], null, ev);
+      }
+      if (!sv.success && a.condition !== undefined && !t.dead) {
+        if (immuneTo(s, t, a.condition)) ev.push({ type: 'note', id: t.id, text: `${t.name} is immune to ${conditionDef(a.condition).name}` });
+        else if (!t.cond[a.condition]) condition(s, t, a.condition, ev);
+        else ev.push({ type: 'note', id: t.id, text: `${t.name} is already ${conditionDef(a.condition).name}` });
+      }
+    }
+    checkEnd(s, ev);
+  },
+  // The DM's Armor Class for a creature: the number it has now, as the sheet or stat block gives it (lasting effects and the like still
+  // add to it). For what the engine hands over, as a base AC the engine could not work out. { type: 'setAc', actor, ac }.
+  // A built character's `acBase` (what Mage Armor is measured against, rolls.js) moves by the same amount, so a better base still
+  // gives its own number afterwards. In a form (Wild Shape) it is the form's number that is set: the character's own is kept with the
+  // form and comes back when it ends, and `acBase` is not touched, since a form does not use it. A character made again from its
+  // sheet (refresh, level up) has the sheet's number back. Told to the party's own only: a foe's exact number is the DM's.
+  setAc(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can set Armor Class.');
+    const e = ent(s, a.actor);
+    (Number.isInteger(a.ac) && a.ac >= 0 && a.ac <= 40) || fail('Armor Class must be a whole number from 0 to 40.');
+    a.ac !== e.ac || fail(`${e.name}'s Armor Class is already ${a.ac}.`);
+    if (Number.isInteger(e.acBase) && !e.form) e.acBase += a.ac - e.ac;
+    e.ac = a.ac;
+    if (e.side === 'party') ev.push({ type: 'note', id: e.id, text: `${e.name}'s Armor Class is now ${a.ac}.` });
+  },
+  // Finish a card of the to-do tray (todo.js): { type: 'todoDone', n } or { type: 'todoDone', all: true }. Nothing is told to anyone.
+  todoDone(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can settle the to-do list.');
+    (a.all === true || Number.isInteger(a.n)) || fail('Name the card, or all of them.');
+    settle(s, a.all === true ? 'all' : a.n) || fail('That card is already done.');
   },
   mend(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can heal this way.');

@@ -36,7 +36,7 @@ by the engine. Must work on PC, phone and tablet.
   and other forms), `grid.js` (the geometry of hexes or squares behind one
   interface) and `hex.js` (hex maths), `handouts.js` (handouts and private
   notes), `history.js` (undo and redo), `hitpoints.js` (rolled hit points: the rolls kept on a sheet and the table's low-roll rule), `homebrew.js` (which creatures carry a
-  homebrew monster), `import-fgxml.js` and `import-uvtt.js` (Fantasy Grounds
+  homebrew monster), `imbue.js` (a weapon a spell or feature changes for a while: Shillelagh, Magic Weapon, Sacred Weapon; `armed` reads every attack record through it), `import-fgxml.js` and `import-uvtt.js` (Fantasy Grounds
   characters, Universal VTT maps), `market.js` (shops: the market document and
   money), `migrate.js` (brings a saved game up to date), `patch.js` (sending only
   what changed), `places.js` (a world's atlas as state: the place in play and
@@ -44,7 +44,7 @@ by the engine. Must work on PC, phone and tablet.
   (XP and loot), `rng.js` (seeded dice), `scenario.js` (the starter valley),
   `scenes.js` (scenes with no map), `scores.js` (making ability scores),
   `summons.js` (summon blocks), `terrain.js` (what lasting spells do to the
-  ground and air), `timeline.js` (trimming the timeline), `view.js` (what each
+  ground and air), `timeline.js` (trimming the timeline), `todo.js` (the DM's to-do tray: a card for each note the engine hands over), `view.js` (what each
   person at the table may know), `vision.js` (what the party sees and
   remembers), `weapons.js` (what a weapon attack may do) and `worldpack.js`
   (the DM's world pack: atlas, pins, routes), `known.js` (which places of a world players know, and their player ids),
