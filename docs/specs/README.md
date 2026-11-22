@@ -23,6 +23,7 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [The DM's to-do tray](dm-todo.md) | A card for each note the engine hands the DM, with tools and Done; "You run" cards; the caster's "waiting for the DM" | Built (#675) |
 | [Player's screen](player-screen.md) | The moments of a player at the table | Draft; superseded in part |
 | [Starting page](start-page.md) | Play and Tools, Carry on | Draft |
+| [Flying and swimming control](fly-swim-control.md) | A column of translucent cubes to pick a height, then a plane of reachable cells; swimming needs one engine step | Draft; nothing built |
 | [Keyboard](keyboard.md) | WASD and arrows, follow camera, key maps | Built (#357) |
 | [Feedback button](feedback.md) | A comment with what the player was just shown | Built (first version) |
 | [Portable characters](portable-characters.md) | A character file with a signed history and level meter | Draft; nothing built |
