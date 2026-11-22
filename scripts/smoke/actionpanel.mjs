@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab, open, chip, chipPick } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab, open, chip, chipPick, openMenu } from './lib.mjs';
 
 // ---------- the action panel (docs/specs/table-ui.md, Decision 6, task T3) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch: Explore first with the ranking and the DM's rests, the Features tab
@@ -74,14 +74,15 @@ async function solo(browser, url, label, opts) {
 
       await run.do('a condition is a pill; tapping it says how it ends, tapping again closes it', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'condition', actor: 'fighter', condition: 'poisoned', on: true }));
+        await openMenu(page, 'sheet');                       // the status block (conditions) is the top of the Character screen now
         await waitShown(page, '#c-res [data-how="cond:poisoned"]');
         await page.click('#c-res [data-how="cond:poisoned"]');
         await waitShown(page, '#ap-how');
         const t = await page.$eval('#ap-how', (e) => e.textContent);
         if (!/Poisoned/.test(t) || !/Until the DM removes it/.test(t)) throw new Error(`the card does not say how it ends: ${t}`);
         if ((await page.getAttribute('#c-res [data-how="cond:poisoned"]', 'aria-expanded')) !== 'true') throw new Error('the pill is not marked open');
-        await clear(page, touch, false);
         await page.click('#ap-how [data-close]'); await waitShown(page, '#ap-how', false);
+        await closeMenu(page);
         await page.evaluate(() => window.hextable.act({ type: 'condition', actor: 'fighter', condition: 'poisoned', on: false }));
       });
 
