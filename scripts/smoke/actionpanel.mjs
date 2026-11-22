@@ -10,7 +10,13 @@ const tabOf = (page) => openGroup(page);
 const rows = (page) => page.$$eval('#ap-explore [data-row]', (b) => b.map((x) => x.dataset.row));
 const pick = async (page, name) => { await chip(page, `${name}`); await wait(page, () => !document.querySelector('#card').hidden); };
 // The menu on the selected character's screen, and the group `id` open there.
-const waitTab = async (page, id) => { await openMenu(page, 'sheet'); await wait(page, (t) => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec === t, id); };
+const waitTab = async (page, id) => {
+  await openMenu(page, 'sheet');
+  await wait(page, (t) => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec === t, id).catch(async (err) => {
+    const at = await page.evaluate(() => ({ sel: document.getElementById('c-name')?.textContent, bars: [...document.querySelectorAll('#ap-body .ap-sec:not([hidden]) .ap-bar')].map((b) => `${b.dataset.sec}:${b.getAttribute('aria-expanded')}`), empty: document.getElementById('ap-empty')?.textContent, mode: window.hextable.mode.kind }));
+    throw new Error(`${err.message.split('\n')[0]} (the page: ${JSON.stringify(at)})`);
+  });
+};
 
 // The dock is gone (M4): with the menu closed nothing but the map, the turn line and the token is on the screen, the action rows are not drawn, a point in the free band
 // above the turn line is the canvas, and neither the turn line nor the token is under anything. With the menu open the sheet stops short of the token and the token is on top.

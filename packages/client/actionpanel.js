@@ -997,7 +997,7 @@ export function initActionPanel(ctx) {
         if (id === 'cost') continue;
         const g = G.groups.find((x) => x.id === id), on = !!g?.shown;
         secs[id].hidden = !on;
-        if (!on) { panes[id].hidden = true; if (panes[id].dataset.sig) setHtml(panes[id], ''); continue; }      // a group that is gone leaves nothing behind
+        if (!on) { bars[id].setAttribute('aria-expanded', 'false'); panes[id].hidden = true; if (panes[id].dataset.sig) setHtml(panes[id], ''); continue; }      // a group that is gone leaves nothing behind
         secs[id].style.order = sorted.indexOf(g);
         const bt = bars[id].querySelector('.ap-bt'), tp = bars[id].querySelector('.ap-tip');
         if (bt.textContent !== g.label) bt.textContent = g.label;
