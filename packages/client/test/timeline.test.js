@@ -1,7 +1,7 @@
 // The timeline is pure and imports nothing, so it is loaded directly and driven by a fake clock.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createTimeline, planBeats, paceFor, durationOf } from '../timeline.js';
+import { createTimeline, planBeats, paceFor, durationOf, settle } from '../timeline.js';
 
 const ent = (id, q, hp = 10) => ({ id, hp, tempHp: 0, dead: false, pos: { q, r: 0, z: 0 }, cond: {} });
 const world = (...es) => ({ entities: Object.fromEntries(es.map((e) => [e.id, e])) });
@@ -187,4 +187,29 @@ test('paceFor: the table sets the pace, a player may only go quicker, reduced mo
   assert.equal(paceFor({ reduced: true }), 'instant');
   assert.equal(paceFor({ reduced: true, mine: 'wait' }), 'wait');
   assert.equal(paceFor({ table: 'bogus', mine: 'bogus' }), 'wait');
+});
+
+test('settle (issue #705): an action meeting playing beats finishes them first, in order, and is never held back or lost', () => {
+  const r = rig({ pace: 'wait' });
+  const s1 = world(ent('g', 0), ent('h', 1, 0)), s2 = world(ent('g', 0), ent('h', 1, 0));
+  r.tl.push(s1, hit()); r.tl.push(s2, [{ type: 'turn', id: 'h' }]);
+  r.run(0.3);
+  assert.ok(r.tl.busy());
+  const sent = [];
+  assert.equal(settle(r.tl), true);                     // beats were playing: all of them are finished now
+  sent.push('action');                                  // the caller sends right after, so the action goes out in the same tick
+  assert.equal(r.tl.busy(), false);
+  assert.deepEqual(r.done, [1, 2]);                     // every update finished, in order
+  assert.deepEqual(r.log.filter((x) => x[0] !== 'idle').map((x) => x[0]), ['attack', 'damage', 'down', 'died', 'turn']);
+  assert.equal(r.tl.shown(), s2);                       // the picture is the true state again
+  assert.deepEqual(sent, ['action']);
+  assert.equal(settle(r.tl), false);                    // nothing playing: nothing to finish
+});
+
+test('settle leaves other paces alone: nothing queues there, so nothing is held', () => {
+  const r = rig({ pace: 'flow' });
+  r.tl.push(world(ent('g', 0), ent('h', 1)), hit());
+  assert.ok(r.tl.busy());
+  assert.equal(settle(r.tl), false);                    // `flow` keeps playing; the action is sent beside it, as before
+  assert.ok(r.tl.busy());
 });
