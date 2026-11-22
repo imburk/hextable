@@ -5,6 +5,7 @@ import { apply, current, makeEntity } from "../src/engine.js";
 import { derive } from "../src/derive.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
+import { migrate, VERSION } from "../src/migrate.js";
 import { view, viewEvents, viewPrompt, viewReactions } from "../src/view.js";
 import { lintPack } from "../src/content/schema.js";
 import { SPELLS } from "../src/content/index.js";
@@ -443,6 +444,53 @@ test("an old save: a paladin made before Paladin's Smite had a free cast has slo
   ok(hit(s));
   assert.deepEqual(s.pending.ask.options.map((o) => o.reaction), ["divine-smite"]);
   assert.ok(answer(s, "divine-smite", 1));
+});
+
+// A game saved before #700 (state version 29): the paladin has the feature with no free cast and no use of it, and has its sheet.
+const savedBefore = (sheet = paladin(5)) => {
+  const s = field({ sheet });
+  s.entities.hero.sheet = structuredClone(sheet);
+  for (const f of s.entities.hero.feats.filter((x) => /paladins-smite$/.test(x.id))) { delete f.freeCast; delete f.uses; delete s.entities.hero.uses[f.id]; }
+  s.version = 29;
+  return JSON.parse(JSON.stringify(s));
+};
+
+test("migration to version 30: a saved paladin gets Paladin's Smite's free use, as a new one has it", () => {
+  assert.equal(VERSION, 30);
+  const fresh = derive(paladin(5)).record.feats.find((x) => x.id === "paladins-smite");
+  const old = savedBefore();
+  const m = migrate(structuredClone(old));
+  const f = m.entities.hero.feats.find((x) => x.id === "paladins-smite");
+  assert.deepEqual([f.freeCast, f.uses, m.entities.hero.uses["paladins-smite"], m.version], [fresh.freeCast, fresh.uses, 1, 30]);
+  assert.deepEqual(migrate(structuredClone(m)), m, "loading it again changes nothing");
+  // It plays: the free cast is offered at a hit and costs no slot.
+  const s = m; fight(s); turnOf(s, "hero");
+  ok(hit(s));
+  assert.deepEqual(s.pending.ask.options.map((o) => o.reaction), ["divine-smite", "divine-smite@paladins-smite"]);
+  const r = answer(s, "divine-smite@paladins-smite");
+  assert.ok(dice(r.events) >= 2);
+  assert.equal(s.entities.hero.uses["paladins-smite"], 0);
+  assert.equal(s.entities.hero.slots[1], derive(paladin(5)).record.slots[1], "no slot spent");
+});
+
+test("migration to version 30: a multiclass paladin too; a paladin of level 1, a non-paladin and a typed record are left as they were", () => {
+  const multi = { ...paladin(6), class: undefined, level: undefined, subclass: undefined, classes: [{ class: "paladin", level: 6, subclass: "devotion" }, { class: "bard", level: 8, subclass: "lore", spells: ["vicious-mockery"] }],
+    skills: ["athletics", "religion", "performance", "persuasion", "insight"], expertise: [] };
+  const mm = migrate(savedBefore(multi));
+  assert.deepEqual(mm.entities.hero.feats.find((x) => x.id === "paladins-smite").freeCast, { spells: ["divine-smite"] });
+  assert.equal(mm.entities.hero.uses["paladins-smite"], 1);
+  // Level 1 has no such feature; a typed paladin (no sheet) has the DM's own record; the rogue is not a paladin.
+  const l1 = savedBefore(paladin(1));
+  assert.deepEqual(migrate(structuredClone(l1)), { ...l1, version: 30 });
+  const typed = savedBefore(); delete typed.entities.hero.sheet;
+  assert.deepEqual(migrate(structuredClone(typed)), { ...typed, version: 30 });
+  const sans = savedBefore(); delete sans.entities.hero;
+  assert.deepEqual(migrate(structuredClone(sans)).entities, sans.entities, "the rogue and the goblin are not touched");
+});
+
+test("migration to version 30: a migrated game replays exactly", () => {
+  const run = () => { const s = migrate(savedBefore()); fight(s); turnOf(s, "hero"); ok(hit(s)); answer(s, "divine-smite@paladins-smite"); return JSON.stringify(s); };
+  assert.equal(run(), run());
 });
 
 test("lint: withHit and hit belong together", () => {

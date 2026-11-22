@@ -16,8 +16,9 @@ import { validFormation } from './engine/world.js';
 import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
 import { cleanPurse } from './market.js';
+import { derive } from './derive.js';
 
-export const VERSION = 29;
+export const VERSION = 30;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -225,6 +226,27 @@ export function migrate(state) {
   if (state.fightSeq !== undefined && !(Number.isSafeInteger(state.fightSeq) && state.fightSeq >= 0)) delete state.fightSeq;
   if (state.shopAlias !== undefined && !(Array.isArray(state.shopAlias) && state.shopAlias.every((x) => typeof x === 'string'))) delete state.shopAlias;
   if (Array.isArray(state.shopAlias) && new Set(state.shopAlias).size !== state.shopAlias.length) state.shopAlias = [...new Set(state.shopAlias)];
+  // Version 30: Paladin's Smite's free cast (docs/specs/on-hit.md, Q8 as amended by #701). A paladin of level 2 or more built before #700 has the
+  // feature with no `freeCast` and no use of it, so it would smite with slots only and tell no one. Each such character that has a sheet gets
+  // what a new one gets: the feature's `freeCast` and `uses` as the sheet derives them now, and the one use unspent (it could not have been
+  // spent). Nothing else of the character is touched (a full remake would carry in every other change of the rules since). A multiclass paladin
+  // is read the same way. One with no sheet (typed in by hand) or a sheet that cannot be read is left as it was; the DM's own record stands.
+  if (!(state.version >= 30)) {
+    for (const e of Object.values(state.entities)) {
+      const mine = Array.isArray(e.feats) ? e.feats.filter((f) => isRec(f) && /(^|-)paladins-smite$/.test(f.id) && f.freeCast === undefined) : [];
+      if (!mine.length || !isRec(e.sheet)) continue;
+      let fresh;
+      try { fresh = derive(structuredClone(e.sheet)).record.feats ?? []; } catch { continue; }
+      for (const f of mine) {
+        const g = fresh.find((x) => x.id === f.id && x.freeCast && x.uses);
+        if (!g) continue;
+        f.freeCast = structuredClone(g.freeCast);
+        f.uses = structuredClone(g.uses);
+        if (!isRec(e.uses)) e.uses = {};
+        e.uses[f.id] = g.uses.max;
+      }
+    }
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
