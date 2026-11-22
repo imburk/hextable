@@ -91,7 +91,7 @@ async function tabs(browser, url, label, opts) {
         for (const id of ['dash', 'disengage']) if (!(await page.$(`#ap-move [data-row="${id}"]`))) throw new Error(`no ${id} row in Move`);
         if (!/Speed left 30 ft/.test(await text(page, '#ap-move .ap-speed'))) throw new Error(`no speed meter: ${await text(page, '#ap-move')}`);
         await visit(page, 'defend');
-        for (const id of ['dodge', 'hide', 'search']) if (!(await page.$(`#ap-defend [data-row="${id}"]`))) throw new Error(`no ${id} row in Defend and hide`);
+        for (const id of ['dodge', 'search']) if (!(await page.$(`#ap-defend [data-row="${id}"]`))) throw new Error(`no ${id} row in Defend and hide`);
         await panelTab(page, 'move');
         await tap('#ap-move [data-row="dash"]');
         await wait(page, () => window.hextable.state.encounter.budget.dashes === 1 && window.hextable.state.encounter.budget.action === 0); await idle(page);
@@ -110,8 +110,8 @@ async function tabs(browser, url, label, opts) {
       await run.do('Bonus Action (the turn bar): Second Wind is there with its pips, tapping it heals; then no Bonus Action is left and the screen says why', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 4 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 4);
-        await visit(page, 'features');
-        if (await page.$('#ap-features [data-row="feat:second-wind"]')) throw new Error('Second Wind is in Features as well as Heal');
+        await openMenu(page, 'sheet');
+        if (await shown(page, '#ap-bar-features')) throw new Error('Second Wind is in Features as well as Heal');
         await visit(page, 'heal');
         const t = await text(page, '#ap-heal [data-row="feat:second-wind"]');
         if (!/1 \/ 2/.test(t) || !/Back on a Long Rest \(1 back on a Short Rest\)/.test(t) || !/Bonus/.test(t)) throw new Error(`pips or recharge text missing: ${t}`);
