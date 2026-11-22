@@ -91,11 +91,19 @@ export async function showMap(pg, map) {
 export const MAPS = ['valley', 'dungeon', 'cave', 'square'];
 // The square fight: an ogre (a Large creature) on four squares, a fight in a room, highlights, and the camera on the ogre. Then nine taps, on the
 // ogre's four squares and elsewhere, recorded as the hex each picked and whether it was the ogre. Both are exported for the recording script.
+const FIGHT_INSET = 90;       // the same as showMap's, for the maps' views
 export async function squareFightSetup(page) {
-  await page.evaluate(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); h.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }); });
+  await page.evaluate(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); });
+  await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000);      // an action sent while beats play is dropped (app.js act: skipping)
+  await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }));
   await wait(page, () => !!window.hextable.state.encounter && window.hextable.waiting === 0, null, 20000);
   const ogre = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.size === 'large').id);
-  await page.evaluate(() => { const R = window.hextable.R; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5; });
+  await page.evaluate((INSET) => { const R = window.hextable.R; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5;
+    // Where a square is on the screen depends on `inset`, which the app sets from the dock's height (app.js, sizeDock: 0.85 of it) each time the dock is resized, and the dock's height follows what the
+    // turn shows: a caster's turn that opens the Spells tab makes it 8 px taller at 390x844 and ~2 px at 1280x800 (PR #696: every screenOf y off by exactly that, x identical). That is the dock, not
+    // the camera or the picking, so the check pins `inset` (the renderer's own, which the app's later writes would reach) and compares in a frame that does not depend on the dock.
+    Object.defineProperty(c, 'inset', { configurable: true, get: () => INSET, set() {} });
+  }, FIGHT_INSET);
   await sleep(1200);
   return ogre;
 }
