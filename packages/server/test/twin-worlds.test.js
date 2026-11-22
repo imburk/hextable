@@ -13,7 +13,8 @@ import { CONTENT } from "../../rules/src/content/index.js";
 import { riverPack } from "../../rules/test/fixtures/world-pack.js";
 import { createAssets } from "../src/assets.js";
 import { worldAssets } from "../src/tables.js";
-import { current } from "../../rules/src/engine.js";
+import { current, makeEntity } from "../../rules/src/engine.js";
+import { derive } from "../../rules/src/derive.js";
 import { twin } from "./twin.js";
 
 const dirs = [];
@@ -367,4 +368,38 @@ test("called save: an open call with damage and a condition naming a hidden crea
       { by: "dm", act: (w) => ({ type: "save", who: ["fighter", ...(byName(w, "Ghost") ? [byName(w, "Ghost").id] : [])], ability: "dex", dc: 15, damage: { dice: "2d6", type: "fire", half: true }, condition: "prone" }) },
     ],
   }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w) });
+});
+
+// ---- on-hit O1: a smite asked at the hit (docs/specs/on-hit.md, Decisions 6 and 11): the question, its answer, the cast and its damage ----
+test("on-hit: a player's Divine Smite, asked at the hit and answered, sends the same with and without a hidden creature beside the fight", () => {
+  const { plain } = twin({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      const sheet = { name: "Ka", class: "paladin", level: 5, subclass: "devotion", abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 }, skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"] };
+      s.entities.fighter = makeEntity(derive(sheet).record, { id: "fighter", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
+      Object.assign(s.entities.fighter, { hp: 500, maxHp: 500 });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500, ac: 1 });
+      w.putIn();
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 4 });
+      turnOf(w, "fighter");
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "hitChoices", actor: "fighter", set: { "divine-smite": "ask" } }) },
+      { by: "Pat", act: (w) => ({ type: "attack", actor: "fighter", attack: "longsword", target: byName(w, "Seen").id }) },
+      { by: "Sam", act: (w) => ({ type: "endTurn", actor: "rogue" }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "react", prompt: w.state.pending.n, take: "divine-smite", slot: 2 }) },
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -5, r: 2 }, name: "Lurker", hidden: true }); }, plain: burn });
+  const text = JSON.stringify(plain.raw.Pat);
+  assert.ok(text.includes("ownHit"), "Pat was asked");
+  assert.ok(text.includes("Divine Smite"), "and the smite was cast");
+  assert.ok(!JSON.stringify(plain.raw.Sam).includes("ownHit"), "Sam was not told what the question was");
+  assert.ok(!JSON.stringify(plain.raw.Sam).includes("divine-smite\":\"ask"), "nor the instruction");
 });

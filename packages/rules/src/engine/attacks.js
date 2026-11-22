@@ -3,6 +3,7 @@
 import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf, startEffect } from '../durations.js';
 import { apart, FT } from '../space.js';
+import { checkHitChoices } from '../hitchoices.js';
 import { canReact, checkInstructions, instruction, reactionsOf, underEffect } from '../reactions.js';
 import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, need, steering, tellDM, unblocked, up, walled } from './shared.js';
 import { grantOf, rollMode, withGrant } from './rolls.js';
@@ -12,7 +13,7 @@ import { CONTENT, SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
+import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 import { handlers as featureHandlers } from './features.js';
@@ -271,7 +272,7 @@ function familiarAttack(s, a, ctx, ev) {
   f.bond?.to === m.id || fail(`${f.name} is not bonded to ${m.name}.`);
   const spell = (forgo ?? quick).spell;
   (f.bond.kind === 'familiar' && f.bond.source === spell) || fail(`${f.name} is bonded to ${m.name}, but is not a familiar from ${SPELLS[spell]?.name ?? spell}, which ${via.name} needs.`);
-  (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey are not for a familiar's attack.`);
+  (a.brutal === undefined && a.cunning === undefined && a.prey === undefined && a.onHit === undefined) || fail(`Brutal Strike, Cunning Strike, Superior Hunter's Prey and choices after a hit are not for a familiar's attack.`);
   noStrikeFields(a);                                                // its attacks are a pack monster's actions
   s.encounter || fail(`${via.name} works in a fight. Start one first.`);
   need(s, m, quick ? 'bonus' : null);
@@ -376,6 +377,7 @@ const base = {
     if (def) {
       noStrikeFields(a);
       a.use === undefined || fail('A feature used with the Attack action goes with a weapon attack.');
+      a.onHit === undefined || fail('A choice after a hit goes with a weapon or an Unarmed Strike attack.');
       (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
@@ -392,6 +394,7 @@ const base = {
     walled(s, e, t);
     const option = optionOf(s, e, t, atk, a);
     a.use === undefined || s.encounter || fail('A feature used with the Attack action is used on a turn in a fight.');
+    a.onHit === undefined || (s.encounter && option === 'damage') || fail('A choice named for a hit goes with a damaging attack on a turn in a fight.');
     // Outside a fight the attack starts the fight and is not made (the SRD's way): it is made on the attacker's turn. With
     // the table rule `strikeFirst` at 'all', an attack at a creature of another side is made first, a plain one (what needs a
     // turn in a fight is refused before anything changes), then the fight starts (resolve.js, thenFight; #585).
@@ -421,6 +424,7 @@ const base = {
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
     const using = a.use === undefined ? null : useWithAttack(s, e, a, atk, option, flurry, bonusTime, pooled);
+    const named = hitNamed(s, e, atk, a.onHit, bonusTime ? 1 : 0);      // what to do if it hits (on-hit.md, Decision 1): checked before anything is spent
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
     const cunning = a.cunning === undefined ? null : cunningFor(s, e, t, atk, a.cunning);
     const prey = a.prey === undefined ? null : preyFor(s, e, t, a.prey);
@@ -443,7 +447,7 @@ const base = {
     const from = ev.length;
     if (option !== 'damage') strikeOption(s, e, t, atk, option, a.shove, ev);
     else {
-      resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
+      resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning, onHit: named });
       // Punch and Grab: the Grapple option too, only if the Damage hit, and only then is it used for the turn.
       const last = ev.slice(from).findLast((x) => x.type === 'attack' && x.actor === e.id && x.target === t.id);
       if (grab && last?.hit) {
@@ -517,6 +521,17 @@ const base = {
     for (const [k, w] of Object.entries(a.set)) { const r = mine.find((x) => x.id === k); if (w === r.dflt && !r.dfltPlayer) delete out[k]; else out[k] = w; }
     if (Object.keys(out).length) e.reactions = out; else delete e.reactions;
     ev.push({ type: 'reactionsSet', id: e.id, set: { ...a.set } });
+  },
+  // { type: 'hitChoices', actor, set: { [choice id]: when } }: standing instructions for what a creature may do after its attack hits (hitchoices.js; docs/specs/on-hit.md,
+  // Decision 5): ask, crit, always or never. Set by whoever controls it at any time. Private to its controller and the DM (view.js).
+  hitChoices(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    const bad = checkHitChoices(e, a.set);
+    if (bad) fail(bad);
+    const out = { ...(e.hitChoices ?? {}) };
+    for (const [k, w] of Object.entries(a.set)) out[k] = w;      // kept whatever it is, so a claim or a release does not turn a choice into the other default
+    if (Object.keys(out).length) e.hitChoices = out; else delete e.hitChoices;
+    ev.push({ type: 'hitChoicesSet', id: e.id, set: { ...a.set } });
   },
   endTurn(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);

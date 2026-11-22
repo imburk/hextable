@@ -35,7 +35,7 @@ by the engine. Must work on PC, phone and tablet.
   `derive.js` (a character built from class and level), `forms.js` (Wild Shape
   and other forms), `grid.js` (the geometry of hexes or squares behind one
   interface) and `hex.js` (hex maths), `handouts.js` (handouts and private
-  notes), `history.js` (undo and redo), `hitpoints.js` (rolled hit points: the rolls kept on a sheet and the table's low-roll rule), `homebrew.js` (which creatures carry a
+  notes), `history.js` (undo and redo), `hitchoices.js` (what a creature may choose after its attack hits: Divine Smite and its standing instructions), `hitpoints.js` (rolled hit points: the rolls kept on a sheet and the table's low-roll rule), `homebrew.js` (which creatures carry a
   homebrew monster), `imbue.js` (a weapon a spell or feature changes for a while: Shillelagh, Magic Weapon, Sacred Weapon; `armed` reads every attack record through it), `import-fgxml.js` and `import-uvtt.js` (Fantasy Grounds
   characters, Universal VTT maps), `market.js` (shops: the market document and
   money), `migrate.js` (brings a saved game up to date), `patch.js` (sending only

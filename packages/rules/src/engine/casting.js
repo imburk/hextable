@@ -13,7 +13,7 @@ import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, f
 import { aimArea, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, counterWindow, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
 import { incapacitatedBy, untrainedGear } from '../modifiers.js';
@@ -73,18 +73,6 @@ function blockSpell(s, caster, spellId, targets, ev) {
   return out;
 }
 
-// `e` is casting `sp`. Anyone who would counter it (Counterspell) gets the chance, in the order
-// the table lists them, until one does. Returns the id of the creature that countered it, or null.
-// Only a spell with Verbal, Somatic or Material components can be seen being cast (SRD).
-// `comps` is the components this casting has: a spell's own, or fewer from an item (castSpell, below).
-function counterWindow(s, e, sp, ev, comps = sp.def.components ?? []) {
-  if (!comps.some((c) => ['v', 's', 'm'].includes(c))) return null;
-  for (const o of living(s)) {
-    const src = reactAgainst(s, o, e, 'cast', ev, `${e.name} is casting a spell.`);
-    if (src?.countered) return o.id;
-  }
-  return null;
-}
 // Put the caster's choice where a spell's steps say "chosen".
 function chooseIn(steps, of, value) {
   const visit = (list) => { for (const st of list) {
@@ -510,6 +498,8 @@ function castSpell(s, a, ctx, ev, item) {
     else sp || fail(`${item.name} casts a spell the engine does not know.`);
     // A companion that can't attack (a familiar) makes no attack roll by a spell either (review of #313, M3).
     if (e.bond?.noAttack) { let roll = false; walkSteps(sp.def.effects ?? [], (st) => { if ('attack' in st) roll = true; }); !roll || fail(`${e.name} can't attack, and ${sp.name} makes an attack roll.`); }
+    // A spell cast right after a hit is a choice made at the hit (engine/resolve.js, castOnHit), never cast by hand (docs/specs/on-hit.md, Decision 2).
+    !sp.def.hit || fail(`${sp.name} is cast right after a hit: answer the question when the attack hits, or name it in \`onHit\` on the attack.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (sp.time === 'reaction') fail(sp.def.reaction

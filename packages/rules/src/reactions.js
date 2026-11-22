@@ -34,6 +34,7 @@ import { handsFull, isUnarmed, steadiest } from './weapons.js';
 import { incapacitated } from './modifiers.js';
 import { SIZES } from './content/schema.js';
 import { ownerOf } from './engine/shared.js';
+import { mayAskHit } from './hitchoices.js';
 
 export const OPPORTUNITY = 'opportunity-attack';
 // The answer to an Opportunity Attack prompt that Grapples with the Unarmed Strike instead of making its damage (stage G6 of
@@ -167,7 +168,7 @@ export const canReact = (e) => !!e && !e.dead && e.hp > 0 && !e.reactionUsed && 
 // A companion is asked through its master's player (ownerOf).
 // A default of `ask` counts too (Investment of the Chain Master's Resistance for a master a player runs: `dfltPlayer`), read from the
 // feature itself so that this stays cheap; no other reaction has a default of `ask`.
-export const mayAsk = (s) => Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
+export const mayAsk = (s) => mayAskHit(s) || Object.values(s.entities).some((e) => ((e.reactions && Object.values(e.reactions).includes('ask'))
   || (e.feats ?? []).some((f) => f.invest?.ward && !e.reactions?.[f.id])) && ownerOf(s, e));
 
 // Check a `reactions` action's settings against what the creature has. Returns an error text, or null.

@@ -272,8 +272,11 @@ export function viewPrompt(state, viewer) {
   if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
   const t = state.entities[p.ask.reactor];
   if (!t || typeof viewer?.userId !== 'string' || ownerOf(state, t) !== viewer.userId) return !offWatcher(state, viewer) && perceived(state, p) ? { waiting: true } : null;
-  const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => ({ ...pick(o, ['reaction', 'name', 'slots', 'ac']), ...(typeof o.against === 'string' && classify(state, o.against) !== 'hidden' ? { against: o.against } : {}) })) };
+  const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => ({ ...pick(o, ['reaction', 'name', 'slots', 'ac', 'kind', 'ends', 'free']), ...(typeof o.against === 'string' && classify(state, o.against) !== 'hidden' ? { against: o.against } : {}) })) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
+  // A choice after the creature's own hit (docs/specs/on-hit.md, Decision 6): the target only where the party knows of it.
+  if (typeof q.target === 'string' && classify(state, q.target) !== 'hidden') out.target = q.target;
+  if (q.moment !== undefined) out.moment = q.moment;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
   for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype']) if (q[k] !== undefined) out[k] = q[k];
   return structuredClone(out);
@@ -292,7 +295,8 @@ function perceived(state, p) {
 export function viewReactions(state, viewer) {
   const out = {};
   if (typeof viewer?.userId !== 'string') return out;
-  for (const [id, e] of Object.entries(state.entities)) if (e.reactions && ownerOf(state, e) === viewer.userId) out[id] = structuredClone(e.reactions);
+  // The standing instructions for choices after a hit (hitchoices.js) go with them: the ids cannot meet, a spell cast after a hit being a Bonus Action.
+  for (const [id, e] of Object.entries(state.entities)) if ((e.reactions || e.hitChoices) && ownerOf(state, e) === viewer.userId) out[id] = structuredClone({ ...e.reactions, ...e.hitChoices });
   return out;
 }
 
@@ -718,7 +722,7 @@ function viewEventsOf(events, state, viewer) {
         break;
       case 'damage':
       case 'heal': {
-        const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'note', 'hp']), ...facesFor(ev) };
+        const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'from', 'note', 'hp']), ...facesFor(ev) };
         if (cls(ev.target) === 'seen') {
           const t = state.entities[ev.target];
           e.hp = ev.hp > 0 ? 1 : 0;
