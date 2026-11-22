@@ -295,6 +295,15 @@ async function part4(browser, url, label, opts) {
       await run.do('the DM panel\'s Refresh the party with nobody built from a sheet: the engine\'s refusal is shown, nothing changes', async () => {
         await open(page, url); await playSolo(page);
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+        // The four starters are built from sheets now (#683), so the table is made the typed-in one this step and the next are about: the starters leave, and
+        // Brenna comes back as a record with no sheet behind it (addCharacter takes the finished record, derive's, and keeps no sheet).
+        await page.evaluate(async () => {
+          const D = await import('./shared/derive.js'), h = window.hextable;
+          for (const id of ['rogue', 'cleric', 'wizard', 'fighter']) h.act({ type: 'remove', actor: id });
+          const rec = D.derive({ name: 'Brenna', class: 'fighter', level: 3, subclass: 'champion', abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 8 }, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, weapons: [] }).record;
+          h.act({ type: 'addCharacter', record: rec, at: { q: -6, r: 2, z: 0 } });
+        });
+        await wait(page, () => { const P = Object.values(window.hextable.state.entities).filter((e) => e.kind === 'pc'); return P.length === 1 && P[0].name === 'Brenna' && !P[0].sheet; });
         await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
         const was = await state(page, (S) => S.timeline.length);
         await tap('#dm-refresh-party');

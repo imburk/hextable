@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as E from "../src/engine.js";
 import { derive } from "../src/derive.js";
-import { newGame } from "../src/scenario.js";
+import { typedGame as newGame } from "./fixtures/typed.js";        // recorded when the starters were hand-typed: the game is made that way here (#672)
 import { squareRoom } from "./fixtures/square-room.js";
 import { kit } from "./e23-kit.js";
 import { scenarios, run } from "./e23-scenarios.js";

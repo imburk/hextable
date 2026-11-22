@@ -23,6 +23,7 @@ import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
 import { slotChoices } from './upcast.js';
 import { shownName } from './tracker.js';
+import { levelUpChip } from './levelup.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
@@ -125,7 +126,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const holds = holdRows(S, e), hold = [...holds.escape, ...holds.letGo].map((r) => row(r));
   // 2. Following. "Lead the party" is for whoever controls `e` (a player for their own creature, the DM for anyone; this panel is only ever
   // drawn for a creature the viewer controls), and "Formation..." while someone follows `e` (formation.js).
-  const follows = [];
+  const follows = []; let formationRow = null;
   if (!inFight(S, e.id) && e.side === 'party') {
     const leader = e.follow && S.entities[e.follow];
     if (leader) follows.push(row({ id: 'stopFollow', kind: 'send', label: 'Stop following', sub: `Following ${leader.name}`, send: { type: 'follow', actor: e.id, leader: null } }));
@@ -136,7 +137,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
     }
     if (!enc) {
       const why = formationWhy(S, e, { dm: true, mine: true });
-      if (leads(S, e)) follows.push(row({ id: 'formation', kind: 'formation', label: 'Formation…', sub: `Now: ${shapeLabel(currentShape(e))}`, why }));
+      if (leads(S, e)) follows.push(formationRow = row({ id: 'formation', kind: 'formation', label: 'Formation…', sub: `Now: ${shapeLabel(currentShape(e))}`, why }));
       follows.push(row({ id: 'lead', kind: 'lead', label: 'Lead the party', sub: 'Everyone follows; then pick how', why, send: { type: 'partyFollow', leader: e.id } }));
     }
   }
@@ -179,7 +180,9 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const check = row({ id: 'check', kind: 'check', label: 'Check…', sub: 'Skills, on the sheet' });
 
   const head = [...hold, ...objects], tail = [...dark, hide, ...rituals, check];
-  const base = [...follows, ...aid, ...(weary ? rests : [])];
+  // A hurt creature's healing comes before Formation...: the party follows its first hero from the start of a solo game, so Formation... is
+  // there from the first turn and would push the healing under More (#671).
+  const base = aid.length && formationRow ? [...follows.filter((r) => r !== formationRow), ...aid, formationRow, ...(weary ? rests : [])] : [...follows, ...aid, ...(weary ? rests : [])];
   let list;
   if (found) list = [...head, search, ...base, ...tail];                                  // something was just found or sprung: Search moves up
   else if ((S.settings?.passiveFind ?? 'off') === 'off') {
@@ -201,6 +204,8 @@ export function featureRows(S, e, { mode = null } = {}) {
     const f = (e.feats ?? []).find((x) => `feat:${x.id}` === r.id);
     if (!f) return r;
     const a = f.action, fr = free.find((x) => x.id === f.id);
+    // A feature that only heals its user (Second Wind of a built Fighter) is greyed at full Hit Points, as the hand-typed Second Wind was: the engine would spend the use for nothing.
+    if (!r.why && r.kind === 'send' && a?.target?.self && a.effects?.length && a.effects.every((x) => x.heal !== undefined) && e.hp >= e.maxHp) return { ...r, why: `${e.name} is at full Hit Points.` };
     // A feature that costs a spell slot (`cost.slot`): the row says so, with the lowest level and what a higher slot adds (the chooser of classes.js lets the player pick the level).
     if (r.kind === 'chooser' && slotAim(f)) return { ...r, sub: slotSub(e, f) };
     if (fr && r.kind === 'none') {
@@ -867,6 +872,7 @@ export function initActionPanel(ctx) {
       $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
       $('c-ac').textContent = showNumbers ? `AC ${acShown(S, e, ctx.isDM()).ac}` : '';
       $('btn-sheet').hidden = !showNumbers;
+      setHtml($('c-level'), showNumbers && e.kind === 'pc' ? levelUpChip(S, e, { dm: ctx.isDM() }) : '');      // XP reached the next level: Level up (the DM), or why not (#672)
       $('btn-end').hidden = !(my && enc && cur === e.id);
       // A companion's player may hand its turns to the engine's companion brain (companions.md, Decision 9): { type: 'companion', actor, auto }.
       let letIt = $('btn-let');

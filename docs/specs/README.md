@@ -33,7 +33,8 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Spells on the sheet](spells-on-the-sheet.md) | One Cantrips list, changes by SRD rule, the Wizard's spellbook | Draft |
 | [Square grid](square-grid.md) | Squares beside hexes behind one geometry interface | Agreed; S0 to S14 built |
 | [Travel](travel.md) | Atlas of nested maps, places, parking, journeys, vessels | Draft; W1 to W3 built |
+| [Prompts](prompts.md) | The DM's call for a roll (a called save, DM-granted Advantage or Disadvantage); later, choices after a roll | Draft; the engine part of "Call for a roll" built (#676) |
 | [Shops and loot](shops.md) | Market pack, shops, purses, haggling | Draft; P1, P2, P3a built |
 | [Adventure modules](adventure-module.md) | A zip the DM prepares and adds to a game | Draft; A0b (the zip library) built |
 
-Still to write: prompts (reactions and decisions made after a roll), persistent world and the AI DM interface.
+Still to write: the rest of prompts (reactions and decisions made after a roll), persistent world and the AI DM interface.

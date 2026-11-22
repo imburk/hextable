@@ -33,7 +33,7 @@ test("on open ground there is no cover, and a wall right across is total cover",
   const { s: shut, add: add2 } = floor([wall("wall", -100, 100)]), behind = add2(2, 0);
   assert.equal(coverOf(shut, shut.entities.fighter, behind), "total");
   assert.equal(unblocked(shut, shut.entities.fighter, behind), false);
-  assert.equal(apply(shut, { type: "attack", actor: "fighter", target: behind.id, attack: "javelin" }, PAT).error, `There is a wall between Brenna and ${behind.name}.`);
+  assert.equal(apply(shut, { type: "attack", actor: "fighter", target: behind.id, attack: "javelin-thrown" }, PAT).error, `There is a wall between Brenna and ${behind.name}.`);
 });
 
 test("a low wall gives half cover, which is +2 to Armor Class, and the attack says so", () => {
@@ -41,7 +41,7 @@ test("a low wall gives half cover, which is +2 to Armor Class, and the attack sa
   assert.equal(coverOf(s, s.entities.fighter, gob), "half");
   ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 6 }, DM));
   fightAs(s, "fighter");
-  const res = ok(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin" }, PAT)), atk = res.events[0];
+  const res = ok(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin-thrown" }, PAT)), atk = res.events[0];
   assert.equal(atk.cover, "half");
   assert.equal(atk.ac, 15 + 2);
   assert.equal(viewEvents(res.events, s, PAT)[0].cover, "half");            // the player is told why it was harder

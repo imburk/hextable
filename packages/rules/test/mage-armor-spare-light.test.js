@@ -14,6 +14,7 @@ import { acBaseOf, acOf, acShown } from "../src/engine/rolls.js";
 import { rangeAt } from "../src/effects.js";
 import { createHistory, describeStep, mark } from "../src/history.js";
 import { newGame } from "../src/scenario.js";
+import { typedGame } from "./fixtures/typed.js";
 import { lightAt } from "../src/sight.js";
 import { view } from "../src/view.js";
 
@@ -155,7 +156,7 @@ test("Mage Armor is not put on a creature wearing armor, nor one the engine know
   assert.equal(acOf(s, s.entities.kay), s.entities.kay.ac, "nothing changed");
   assert.ok(!(effectsOf(s, "mage-armor")[0]?.parts ?? []).some((p) => p.modifier), "no modifier was put on");
   // A creature typed in by hand (no sheet, so no known base and no known armor) is the DM's too.
-  const t = newGame(7);
+  const t = typedGame(7);                   // the starters hand-typed: built ones (#672) have a known base
   const fighter = t.entities.fighter, wiz = t.entities.wizard;
   assert.equal(fighter.acBase, undefined);
   fighter.pos = { q: wiz.pos.q + 1, r: wiz.pos.r, z: 0 };

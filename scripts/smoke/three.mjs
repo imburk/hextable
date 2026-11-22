@@ -197,7 +197,7 @@ export async function arenaEdge(browser, url, label, { grid, ...opts }) {
           const H = window.hextable, S = H.state, ent = S.entities[S.encounter.order[S.encounter.turn].id], lv = S.map.levels[0]; let best = null;
           for (let dq = -9; dq <= 9; dq++) for (let dr = -9; dr <= 9; dr++) {
             const q = ent.pos.q + dq, r = ent.pos.r + dr, k = `${q},${r}`; if (!lv.tiles[k] || S.encounter.arena[k]) continue;
-            const p = H.R.screenOf({ q, r, z: ent.pos.z ?? 0 }); if (!p || p.x < 20 || p.y < 70 || p.x > innerWidth - 80 || p.y > innerHeight - 20 || document.elementFromPoint(p.x, p.y)?.id !== 'gl') continue;
+            const p = H.R.screenOf({ q, r, z: ent.pos.z ?? 0 }); if (!p || p.x < 20 || p.y < 170 || p.x > innerWidth - 80 || p.y > innerHeight - 20 || document.elementFromPoint(p.x, p.y)?.id !== 'gl') continue;
             const d = Math.hypot(dq, dr); if (!best || d < best.d) best = { d, p, id: ent.id };
           }
           return best && { x: best.p.x, y: best.p.y };

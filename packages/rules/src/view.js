@@ -668,6 +668,7 @@ function viewEventsOf(events, state, viewer) {
   let casterOpen = false;                  // whether the one who cast the spell (or used the action) that the following saves answer is theirs
   for (const ev of events) {
     out.ev = ev;
+    if (ev.hush) continue;                 // spent to turn a secret save: the DM's (engine/dm.js `save`)
     was = Array.isArray(ev.unseen) ? ev.unseen : null;
     if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack' || ev.type === 'strikeOption') casterOpen = cls(ev.actor) === 'open';      // a save on a hit or a Shove answers the attacker: told the DC if the attacker is theirs, as said at the event that began it (a stamp is read there)
     if (ev.type === 'turn') {
@@ -728,6 +729,16 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'save': {
+        // A save the DM called for (`called`): told in full of a creature of theirs, with the DC and the outcome only if it is not `secret`;
+        // of any other, only the outcome and the DC, and not at all if secret. Never a monster's modifiers.
+        if (ev.called) {
+          if (cls(ev.id) === 'open') {
+            const e = structuredClone(ev);
+            if (e.secret) { delete e.dc; delete e.success; delete e.reroll; delete e.rescued; }
+            out.push(e);
+          } else if (cls(ev.id) !== 'hidden' && !ev.secret) out.push(pick(ev, ['type', 'id', 'abil', 'dc', 'success', 'called']));
+          break;
+        }
         // A save names the creature whose DC it is (`src`, only a homebrew one: the DC is a number of its block): told to the player who runs
         // it and to no other, whoever the target is. Any other save: the target's own, or the caster of the step it follows, as ever.
         const told = ev.src !== undefined ? runs(ev.src) : null;

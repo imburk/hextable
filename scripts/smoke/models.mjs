@@ -66,6 +66,9 @@ async function models(browser, url, label, opts) {
       });
       await run.do('a strike: the hero plays its attack clip, turns to the goblin, and goes back to idle', async () => {
         await placeBeside(page, 'fighter', 'm1');
+        // The strike turns the hero only when its pawn is not walking (render-three.js #strike), so let every pawn arrive and the timeline run out first: the
+        // table's other three heroes follow the first one now (#671) and walk after a place, which on a slow machine had not finished when the swing began.
+        await wait(page, () => { const R1 = window.__R(), h = window.hextable; return h.waiting === 0 && !h.timeline.busy() && [...R1.actors.values()].every((a) => !a.way.length); }, null, 20000);
         // The first blow of a table at peace starts the fight, and then the fighter must have the turn: swing whenever it is the fighter's (or nobody's), end the
         // party's other turns, and let the goblins' play. The clip is looked for as it plays.
         await page.evaluate(() => { const p = window.__R().actors.get('fighter').pup, once = p.once.bind(p); window.__beats = []; const A = window.__R().actors.get('fighter'), T = window.__R().actors.get('m1'); p.once = (b) => { window.__beats.push(b); if (b === 'attack') window.__aim = { face: A.face, want: Math.atan2(T.x - A.x, T.z - A.z) }; return once(b); }; });      // every clip asked of it is written down: a frame can miss a short one

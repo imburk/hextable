@@ -7,7 +7,7 @@ const SPELL_IDS = { fireBolt: 'fire-bolt', sacredFlame: 'sacred-flame', magicMis
 const MONSTER_IDS = { goblin: 'goblin-warrior' };
 
 import { migrateMap } from './map.js';
-import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
+import { MONSTERS, MONSTER_ACTIONS, PREGENS, PREGEN_SHEETS } from './content/index.js';
 import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
@@ -231,6 +231,13 @@ export function migrate(state) {
     if (MONSTER_IDS[e.tpl]) e.tpl = MONSTER_IDS[e.tpl];
   }
   for (const entry of state.timeline ?? []) if (SPELL_IDS[entry.spell]) entry.spell = SPELL_IDS[entry.spell];
+  // The four starter heroes are built from sheets now (#672), so they level up. A game saved before has them as hand-typed records:
+  // each one that is still exactly what the pack typed (the same name, class, level, scores, Hit Points and Armor Class) is given its sheet and
+  // nothing else, so no number changes today; the sheet is what Level up and Refresh from sheet then work from. One the DM changed by hand
+  // (a corrected score, a different level) is left typed, as it was. No version of its own: running it again finds nothing to do.
+  for (const e of Object.values(state.entities)) {
+    if (e.kind === 'pc' && !e.sheet && Object.hasOwn(PREGENS, e.id) && isPackStarter(e, PREGENS[e.id])) e.sheet = structuredClone(PREGEN_SHEETS[e.id]);
+  }
   // Version 10: a creature made from a pack monster plays from its actions (Multiattack, breath
   // weapons, saves), carried on the creature. One saved before then takes them from its template.
   for (const e of Object.values(state.entities)) if (!e.actions && MONSTER_ACTIONS[e.tpl]) e.actions = structuredClone(MONSTER_ACTIONS[e.tpl]);
@@ -241,6 +248,25 @@ export function migrate(state) {
   // Also version 11: a monster's Initiative modifier, from the template (only where the SRD gives one).
   for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
   return state;
+}
+
+// Is this creature still the starter the pack typed, in everything the pack says (its numbers, attacks, skills, spells, saves, features), with nothing built
+// onto it? Gear is play state (loot, purchases; `levelUp` keeps it), and so is everything else a creature picks up in play (hiding, light, reactions, following,
+// riding, a bond, a Speed the DM set...), none of which is compared. Only the keys that a built character alone has count against it. The sheet derives the compared
+// fields again at the next Level up or Refresh, so a starter the DM edited in any of them is left typed: those edits would be lost.
+const BUILT_ONLY = ['feats', 'hitDie', 'armour', 'shield', 'untrained', 'critOn', 'bonusActs', 'pact', 'conditionImmune', 'classes', 'sheet'];
+const DERIVED_EMPTY = ['speeds', 'senses', 'saveBonus', 'skillBonus', 'resist', 'vuln', 'immune'];
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function isPackStarter(e, t) {
+  if (e.tpl !== undefined || e.maxHp !== t.hp || !same(e.slotsMax ?? {}, t.slots ?? {}) || (e.size ?? 'medium') !== 'medium') return false;
+  if (BUILT_ONLY.some((k) => e[k] !== undefined)) return false;
+  for (const k of Object.keys(t)) if (!['hp', 'slots', 'gear'].includes(k) && !same(e[k], t[k])) return false;
+  for (const k of ['skills', 'expertise', 'tools', 'spells']) if (t[k] === undefined && !same(e[k] ?? [], [])) return false;
+  if (t.features === undefined && !same(e.features ?? {}, {})) return false;
+  // A record field the pack never gives this hero, set on it all the same, is an edit too (schema.js RECORD_FIELDS).
+  for (const k of ['acBase', 'hover', 'hitDice', 'spellAbil', 'type', 'castAbil']) if (t[k] === undefined && e[k] !== undefined) return false;
+  for (const k of DERIVED_EMPTY) if (!same(e[k] ?? (['resist', 'vuln', 'immune'].includes(k) ? [] : {}), ['resist', 'vuln', 'immune'].includes(k) ? [] : {})) return false;
+  return true;
 }
 
 const isRec = (v) => !!v && typeof v === 'object' && !Array.isArray(v);

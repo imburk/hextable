@@ -1,6 +1,7 @@
 // Purses and shops, the engine (docs/specs/shops.md, task P3, issue #596). Each test is one item of the row's "Done when" list, or one
 // of the review points (Security and hidden-information review points 1 to 11), on the valley of `newGame` with a shop area drawn
 // round the party's camp.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply as applyRaw, ACTION_TYPES } from "../src/engine.js";
@@ -50,6 +51,7 @@ const market = (over = {}) => ({
 // The valley with the party's players seated and a shop area ("quay") of the cells round Brenna; Pip stands outside it.
 function table() {
   const s = newGame(5);
+  typed(s, "fighter");                                       // Brenna is hand-typed here: these tests count gear by name (a built hero keeps items on its sheet)
   for (const [id, u] of [["fighter", "pat"], ["rogue", "kim"], ["cleric", "lee"]]) { s.entities[id].owner = u; s.entities[id].ownerName = u; }
   const f = s.entities.fighter.pos;
   s.map.areas = [
