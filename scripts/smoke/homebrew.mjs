@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT, chip, chipPick, openMenu } from './lib.mjs';
 
 // ---------- homebrew packs, the client side (issue #404, docs/specs/homebrew.md, row B7) ----------
 // A DM hosts and a player joins on a second screen. The DM reads the sample pack in the pack manager and adds it, a bad file is refused locally and
@@ -67,7 +67,7 @@ export async function choiceSolo(browser, url, label, opts, tag) {
         await page.click('#pm .pm-close'); await waitShown(page, '#pm', false); await closeMenu(page);
         await page.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet }), ILSE);
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ilse'), null, 10000);
-        await page.click('#party button:has-text("Ilse")'); await wait(page, () => !document.querySelector('#card').hidden && /Ilse/.test(document.querySelector('#c-name').textContent));
+        await chip(page, 'Ilse'); await wait(page, () => !document.querySelector('#card').hidden && /Ilse/.test(document.querySelector('#c-name').textContent));
         await panelTab(page, 'features');
         const rows = await page.$$eval('#ap-features [data-row]', (l) => l.map((x) => x.textContent));
         for (const n of ['Quill Any', 'Quill Tool', 'Quill Fixed']) if (!rows.some((t) => t.includes(n))) throw new Error(`no row for ${n}: ${rows.join(' | ')}`);
@@ -102,7 +102,7 @@ export async function choiceSolo(browser, url, label, opts, tag) {
       });
       await run.do('the sheet shows Arcana as lent with its bonus (+4), says what lent it, and Perception is as it was', async () => {
         await calm(page);
-        await tap('#btn-sheet'); await waitShown(page, '#sheet-body');
+        await openMenu(page, 'sheet'); await waitShown(page, '#sheet-body');
         const arcana = await page.textContent('#sheet-body [data-skill="arcana"]'), perc = await page.textContent('#sheet-body [data-skill="perception"]');
         if (!/arcana \+4 · lent/.test(arcana)) throw new Error(`Arcana: ${arcana}`);
         if (/lent/.test(perc) || !/perception \+3/.test(perc)) throw new Error(`Perception: ${perc}`);
@@ -127,7 +127,7 @@ export async function choiceSolo(browser, url, label, opts, tag) {
         await tap('#cp-use');
         await wait(page, () => (window.hextable.state.effects ?? []).some((fx) => fx.parts?.some((p) => p.modifier?.scope?.tool === 'herbalism-kit')), null, 10000);
         await calm(page);
-        await tap('#btn-sheet'); await waitShown(page, '#sheet-body');
+        await openMenu(page, 'sheet'); await waitShown(page, '#sheet-body');
         const line = await page.textContent('#sheet-lent');
         if (!/Herbalism kit \(Quill Tool/.test(line) || !/Arcana \(Quill Any/.test(line)) throw new Error(line);
         await closeMenu(page);
@@ -278,7 +278,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         });
         await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'), null, 10000).catch(async () => { throw new Error(`no Ven: ${await host.evaluate(() => document.getElementById('toast')?.textContent)}`); });
         ven = await player.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Ven').id);
-        await player.locator('#party button:has-text("Play as Ven")').click();
+        await chipPick(player, 'Play as Ven', 'click');
         await wait(host, (v) => !!window.hextable.state.entities[v].owner, ven);
         await calm(player);
       });
@@ -772,7 +772,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
       player.on('websocket', (ws) => ws.on('framereceived', (f) => got.push(String(f.payload))));
       const idOf = (page) => page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Orsolya')?.id ?? null);
       const sub = (page) => page.textContent('#c-sub');
-      const chip = async (page) => { await closeMenu(page); await page.click('#party button:has-text("Orsolya")'); await wait(page, () => !document.querySelector('#card').hidden && /Orsolya/.test(document.querySelector('#c-name').textContent)); };
+      const chip = async (page) => { await closeMenu(page); await chip(page, 'Orsolya'); await wait(page, () => !document.querySelector('#card').hidden && /Orsolya/.test(document.querySelector('#c-name').textContent)); };
       const noSideways = async (page, sel) => { await sleep(500); return page.$eval(sel, (e) => ({ sx: e.scrollWidth, cx: e.clientWidth, r: e.getBoundingClientRect().right, iw: innerWidth })).then((m) => { if (m.sx > m.cx + 1 || m.r > m.iw + 1) throw new Error(`${sel} overflows sideways: ${JSON.stringify(m)}`); }); };
       const openManager = async () => { if (!(await shown(host, '#pm'))) { await openTab(host, 'dm'); await host.click('#pm-open'); await waitShown(host, '#pm'); } };
       const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
@@ -797,7 +797,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
         await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Orsolya'), null, 10000);
         await chip(host); await chip(player);
         for (const [who, page] of [['DM', host], ['player', player]]) if (!/Level 5 Paladin \(subclass not loaded\)/.test(await sub(page))) throw new Error(`${who}'s header: ${await sub(page)}`);
-        await host.click('#btn-sheet'); await waitShown(host, '#sheet-body');
+        await openMenu(host, 'sheet'); await waitShown(host, '#sheet-body');
         const t = await host.textContent('#sheet-subclass-missing');
         if (!t.includes(OATH) || !/is not loaded at this table/.test(t)) throw new Error(t);
         await noSideways(host, '#sheet-body');
@@ -832,7 +832,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
         await host.click('#pm .pm-close'); await waitShown(host, '#pm', false); await closeMenu(host);
       });
       await run.do('Refresh from sheet brings the oath in: the DM\'s note is gone and both headers name it', async () => {
-        await chip(host); await host.click('#btn-sheet'); await waitShown(host, '#sheet-body');
+        await chip(host); await openMenu(host, 'sheet'); await waitShown(host, '#sheet-body');
         const back = await host.textContent('#sheet-subclass-missing');
         if (!/the table has it again/.test(back) || !/Refresh from sheet/.test(back)) throw new Error(`with the pack back and the record not remade: ${back}`);
         await host.click('#sheet-refresh');

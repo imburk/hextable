@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab, open } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab, open, chip, chipPick } from './lib.mjs';
 
 // ---------- the action panel (docs/specs/table-ui.md, Decision 6, task T3) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch: Explore first with the ranking and the DM's rests, the Features tab
@@ -9,7 +9,7 @@ import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, op
 const go = (page, url) => open(page, url);
 const tabOf = (page) => page.evaluate(() => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab ?? null);
 const rows = (page) => page.$$eval('#ap-explore [data-row]', (b) => b.map((x) => x.dataset.row));
-const pick = async (page, name) => { await page.click(`#party button:has-text("${name}")`); await wait(page, () => !document.querySelector('#card').hidden); };
+const pick = async (page, name) => { await chip(page, `${name}`); await wait(page, () => !document.querySelector('#card').hidden); };
 const waitTab = (page, id) => wait(page, (t) => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab === t, id);
 
 // The map must stay tappable and the chips and the strip must not be covered: the card sits under both, and a point in the middle
@@ -174,7 +174,7 @@ async function table(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        await phone.locator('#party button:has-text("Play as")').first().tap();
+        await chipPick(phone, 'Play as', 'tap');
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.owner));
       });
       await run.do('the player\'s Explore has Follow and Search, Lead the party (formations, #304) and no rests', async () => {

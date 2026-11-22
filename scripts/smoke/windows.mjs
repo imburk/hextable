@@ -1,6 +1,6 @@
 // Several game windows in one browser, each its own seat (#625): the table session belongs to the window, a solo save has one writer.
 import { mkdirSync } from 'node:fs';
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, openTab, selectAndMove } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, openTab, selectAndMove, openMenu, closeMenu } from './lib.mjs';
 
 const text = (page, sel) => page.$eval(sel, (e) => e.textContent.trim());
 const seat = (page) => page.evaluate(() => JSON.parse(sessionStorage.getItem('hextable.session') ?? 'null'));
@@ -51,10 +51,10 @@ async function table(browser, url) {
       });
 
       await run.do('both act: the player takes a character and moves it, the DM changes another and the player sees it', async () => {
-        const b = pl.locator('#party button:has-text("Play as")').first();
+        await openMenu(pl, []); const b = pl.locator('#menu-root #party button:has-text("Play as")').first();
         name = (await b.textContent()).replace('Play as ', '').trim();
         id = await pl.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(pl);
         await wait(dm, (i) => !!window.hextable.state.entities[i].owner, id);
         const pos = await selectAndMove(pl, false, id, name);
         await wait(dm, ([i, p]) => { const q = window.hextable.state.entities[i].pos; return q.q === p.q && q.r === p.r && q.z === p.z; }, [id, pos]);

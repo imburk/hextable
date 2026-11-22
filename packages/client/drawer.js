@@ -12,7 +12,7 @@
 // The old tab names still open their screens (`open('dm')` is ['table', 'dm']; `open('character')` is `open('sheet')`).
 //
 // Preferences it keeps (client only, through `prefs`): hextable.drawerSide ('left' | 'right': where a wide screen's columns come from),
-// hextable.drawerPin (bool), hextable.menuMotion ('slide' | 'appear'), hextable.menuToken ('center' | 'left' | 'right': where the token sits).
+// hextable.drawerPin (bool), hextable.menuMotion ('slide' | 'appear'), hextable.menuToken ('center' | 'left' | 'right': where the token sits; it sits there whatever is open).
 // Where the menu is open is in memory only, and a closed menu opens on its first level.
 import { current } from './shared/engine.js';
 
@@ -172,10 +172,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     const w = open && pinned() ? el.offsetWidth || 360 : 0;
     document.body.style.setProperty('--inset-l', side === 'left' ? `${w}px` : '0px');
     document.body.style.setProperty('--inset-r', side === 'right' ? `${w}px` : '0px');
-    // Columns open over the bottom of the map where the token sits: it moves to the middle of the map that is left (a sheet has a footer for it).
-    const tw = open && cols ? el.offsetWidth : 0;
-    document.body.style.setProperty('--tok-l', side === 'left' ? `${tw}px` : '0px');
-    document.body.style.setProperty('--tok-r', side === 'right' ? `${tw}px` : '0px');
+    // The token does not move for the menu (round 6, R25): the sheet and the columns keep their bottom strip empty for it (drawer.css).
     token.setAttribute('aria-expanded', String(open));
     // A dialog while it covers the map; a complementary landmark when it sits beside it.
     if (modal()) { el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); } else { el.setAttribute('role', 'complementary'); el.removeAttribute('aria-modal'); }

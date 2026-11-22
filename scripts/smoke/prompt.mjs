@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, placeBeside, chip, chipPick, openMenu } from './lib.mjs';
 
 // ---------- the reaction question ----------
 // A DM, a phone player (Wren, a wizard who knows Shield) and a second player who watches. Wren's Shield is set to
@@ -46,7 +46,7 @@ async function prompt(browser, url) {
         await wait(host, hasWren, null, 20000);
         await wait(phone, hasWren, null, 20000);
         wren = await state(host, (S) => Object.values(S.entities).find((e) => e.name === 'Wren').id);
-        await phone.locator('#party button:has-text("Play as Wren")').tap();
+        await chipPick(phone, 'Play as Wren', 'tap');
         await wait(host, (W) => !!window.hextable.state.entities[W].owner, wren);
         foe = await host.evaluate(() => {
           const h = window.hextable;
@@ -57,8 +57,8 @@ async function prompt(browser, url) {
       });
 
       await run.do("the phone sets Wren's Shield to ask on her sheet", async () => {
-        await phone.click('#party button:has-text("Wren")');
-        await phone.locator('#btn-sheet').tap();
+        await chip(phone, 'Wren');
+        await openMenu(phone, 'sheet');
         await waitShown(phone, '#sheet-reactions');
         await phone.selectOption('#rx-shield', 'ask');
         await wait(phone, (W) => window.hextable.state.reactions?.[W]?.shield === 'ask', wren);

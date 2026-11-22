@@ -197,9 +197,14 @@ export function initFeedback({ look, onBuild }) {
     reporter.report('rejection', ev.reason?.message ?? ev.reason, ev.reason?.stack);
   });
 
-  const btn = document.createElement('button');
-  btn.type = 'button'; btn.id = 'fb-btn'; btn.setAttribute('aria-label', 'Send feedback'); btn.setAttribute('aria-haspopup', 'dialog'); btn.setAttribute('aria-expanded', 'false'); btn.title = 'Send feedback';
-  btn.innerHTML = ICON;
+  // The button is the row "Help and feedback" of the menu's Table list (index.html; M3 took the floating icon off the screen). A page without that row
+  // (a test page) gets the old floating button.
+  let btn = document.getElementById('fb-btn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.type = 'button'; btn.id = 'fb-btn'; btn.setAttribute('aria-label', 'Send feedback'); btn.setAttribute('aria-haspopup', 'dialog'); btn.setAttribute('aria-expanded', 'false'); btn.title = 'Send feedback';
+    btn.innerHTML = ICON; document.body.append(btn);
+  }
   const panel = document.createElement('section');
   panel.id = 'fb-panel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-labelledby', 'fb-title');
   panel.innerHTML = `
@@ -218,8 +223,6 @@ export function initFeedback({ look, onBuild }) {
       <div id="fb-actions"><button type="button" id="fb-send">Send</button><button type="button" id="fb-copy" class="quiet">Copy</button></div>
     </div>
     <div id="fb-done" hidden><p id="fb-thanks" role="status"></p><details id="fb-sent"><summary>What was sent</summary><pre id="fb-sent-pre" tabindex="0"></pre></details><div id="fb-actions2"><button type="button" id="fb-again" class="quiet">Write another</button><button type="button" id="fb-done-close">Close</button></div></div>`;
-  const top = document.getElementById('top');
-  if (top) top.after(btn); else document.body.append(btn);        // right after the header, so the keyboard reaches it early
   document.body.append(panel);
   const $ = (id) => panel.querySelector('#' + id);
   const text = $('fb-text'), inc = $('fb-inc'), msg = $('fb-msg'), pre = $('fb-preview');

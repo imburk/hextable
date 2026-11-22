@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, tapGuarded, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, openTab, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
+import { sleep, tapGuarded, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, openTab, panelTab, settle, tapAt, onCanvas, placeBeside, chip, openMenu } from './lib.mjs';
 
 // ---------- Grapple, Shove, Escape and Let go; the familiar's attacks and Investment; Refresh from sheet (issue #486, stage G7 of docs/specs/grapple-shove.md) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Part 1: on the fighter's turn the Unarmed Strike has Grapple, Shove away and Shove Prone rows; a tap arms
@@ -50,7 +50,7 @@ async function part1(browser, url, label, opts) {
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         // A built character has an Unarmed Strike; the valley's hand-typed party has none (DEBT T61, C19), so one is added: a level 5 fighter, Strength 16.
         hero = await addFighter(page);
-        await closePanels(page); await page.click('#party button:has-text("Gru")');
+        await closePanels(page); await chip(page, 'Gru');
         foe = await spawnNear(page, 'goblin-warrior', { near: hero, min: 1, radius: 3 });
         await placeBeside(page, foe, hero);
         await send(page, { type: 'condition', actor: foe, condition: 'paralyzed', on: true });
@@ -289,7 +289,7 @@ async function part4(browser, url, label, opts) {
       const shot = (n) => (process.env.SMOKE_SHOTS ? (mkdirSync(process.env.SMOKE_SHOTS, { recursive: true }), page.screenshot({ path: `${process.env.SMOKE_SHOTS}/grapple-${n}-${phone ? 'phone' : 'wide'}.png` }).catch(() => {})) : null);
       const toastNow = () => page.evaluate(() => { const t = document.getElementById('toast'); return t.hidden ? '' : t.textContent.replace(/\s+/g, ' ').trim(); });
       const toastHas = (re) => wait(page, (src) => { const t = document.getElementById('toast'); return !t.hidden && new RegExp(src).test(t.textContent); }, re.source, 8000);
-      const sheetOf = async (id) => { await closePanels(page); await page.evaluate((i) => window.hextable.select(i), id); await waitShown(page, '#card'); await page.click('#btn-sheet'); await waitShown(page, '#sheet-refresh'); };
+      const sheetOf = async (id) => { await closePanels(page); await page.evaluate((i) => window.hextable.select(i), id); await waitShown(page, '#card'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet-refresh'); };
       let gru = null;
 
       await run.do('the DM panel\'s Refresh the party with nobody built from a sheet: the engine\'s refusal is shown, nothing changes', async () => {

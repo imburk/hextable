@@ -7,10 +7,9 @@ body[data-menu-motion="appear"] :is(#drawer, #drawer .menu-level, #drawer-scrim,
 
 /* the token: one die at the bottom of the screen, drawn by the theme (its colours are the theme's --die tokens) */
 #btn-menu { position: fixed; z-index: 6; width: 64px; height: 64px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: none; display: block; touch-action: manipulation;
-  bottom: calc(var(--dock-h, 0px) + max(16px, env(safe-area-inset-bottom))); left: 50%; transform: translateX(calc(-50% + (var(--tok-l, 0px) - var(--tok-r, 0px)) / 2));
-  transition: transform var(--menu-col) cubic-bezier(.16, .84, .3, 1); }      /* beside open columns it sits in the middle of the map that is left */
-body[data-token="left"] #btn-menu { left: calc(16px + env(safe-area-inset-left)); transform: translateX(var(--tok-l, 0px)); }
-body[data-token="right"] #btn-menu { left: auto; right: calc(16px + env(safe-area-inset-right)); transform: translateX(calc(-1 * var(--tok-r, 0px))); }
+  bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); }      /* the token never moves (round 6, R25): not with the dock, not with the menu; everything else leaves room for it */
+body[data-token="left"] #btn-menu { left: calc(16px + env(safe-area-inset-left)); transform: none; }
+body[data-token="right"] #btn-menu { left: auto; right: calc(16px + env(safe-area-inset-right)); transform: none; }
 #btn-menu svg { width: 100%; height: 100%; display: block; overflow: visible; filter: var(--tk-shadow, drop-shadow(0 3px 6px #0007)); }
 #btn-menu .tk-disc { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; }
 #btn-menu .tk-face { fill: var(--die); stroke: var(--die-edge); stroke-width: 2.5; stroke-linejoin: var(--tk-join, round); }
@@ -21,15 +20,30 @@ body[data-token="right"] #btn-menu { left: auto; right: calc(16px + env(safe-are
 #btn-menu[aria-expanded="true"] .tk-disc { stroke: var(--accent); stroke-width: 2.5; }
 body.drawer-pretable #btn-menu, body:has(#dice-tray) #btn-menu { visibility: hidden; }       /* no table yet; or a throw is waiting where the token sits */
 #menu-badge { position: absolute; top: -2px; right: -2px; background: var(--bad); color: #fff; border-radius: 11px; min-width: 22px; height: 22px; padding: 0 5px; font: 700 13px/22px var(--body); text-align: center; }
-#tools { align-items: flex-start; } #tools button { min-height: 44px; }
+
+/* the turn line: one line above the token in a fight (it rides above the dock, which is not the token) */
+#turnline { position: fixed; z-index: 3; left: calc(50% + (var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); transform: translateX(-50%); bottom: calc(var(--dock-h, 0px) + 6px); width: max-content; max-width: calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px));
+  display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 2px 2px 4px; font-size: 14px; }
+#turnline[hidden] { display: none; }
+#turnline.mine { border-color: var(--accent); }
+#turn-text { min-height: 44px; padding: 0 10px; background: none; border: 0; font: inherit; font-size: 13px; line-height: 1.2; font-weight: 600; text-align: left; min-width: 0; }
+#btn-end { min-height: 44px; padding: 4px 14px; white-space: nowrap; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#btn-end[hidden] { display: none; }
+/* beside the token: the DM's undo and redo (curved arrows) and the connection dot. Each at least 44 px. */
+#chips { position: fixed; z-index: 6; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 10px); left: calc(50% + 42px); display: flex; align-items: center; gap: 6px; }
+body[data-token="left"] #chips { left: calc(16px + 64px + 8px + env(safe-area-inset-left)); }
+body[data-token="right"] #chips { left: auto; right: calc(16px + 64px + 8px + env(safe-area-inset-right)); flex-direction: row-reverse; }
+#chips button { min-width: 44px; min-height: 44px; padding: 0 8px; background: var(--panel); position: relative; display: inline-flex; align-items: center; justify-content: center; }
+#chips button[hidden] { display: none; }
+#chips .sym, button.undo .sym { width: 24px; height: 24px; display: block; }
+button.undo { flex-direction: row; align-items: center; gap: 10px; } button.undo small { flex: 1; min-width: 0; text-align: left; }
+body.drawer-pretable #chips { visibility: hidden; }
+body:not([data-cam="on"]) #cam { display: none; }
 
 /* where a pinned menu is, the rest of the table keeps clear of it */
 body { --inset-l: 0px; --inset-r: 0px; }
 canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--inset-l) - var(--inset-r)); height: 100%; }
 #labels { inset: 0 var(--inset-r) 0 var(--inset-l); }
-#top { left: var(--inset-l); right: var(--inset-r); }
-#order { left: calc(12px + var(--inset-l)); right: calc(12px + var(--inset-r)); }
-#order li { pointer-events: auto; cursor: pointer; }
 #hint, #join { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
 #cam { right: calc(12px + var(--inset-r)); }
 #dock, #editor { left: var(--inset-l); right: var(--inset-r); }
@@ -38,9 +52,8 @@ canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--i
 #drawer { position: fixed; z-index: 5; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border: 1px solid var(--line); backdrop-filter: blur(6px); overflow: hidden; }
 #drawer.held { display: none; }
 body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-index: 11; }
-#drawer-scrim { position: fixed; inset: 0 0 var(--dock-h, 0px) 0; z-index: 4; background: var(--scrim, #0006); }
+#drawer-scrim { position: fixed; inset: 0; z-index: 4; background: var(--scrim, #0006); }
 #drawer-scrim:not([hidden]) { animation: scrim-in var(--menu-in) ease; } @keyframes scrim-in { from { opacity: 0; } }
-body.drawer-pretable #drawer-scrim { bottom: 0; }
 @media (max-width: 899px) { #drawer-pin, #set-pin-row, #set-pin-note { display: none; } }
 
 #drawer-handle { display: none; }
@@ -81,10 +94,9 @@ body.drawer-pretable #drawer-scrim { bottom: 0; }
 
 /* the sheet: below 900 px it rises from the bottom, stops 12 % below the top (the dimmed map there is the clear zone) and above the dock,
    and pushes one level at a time from the right. There is no x: the handle is the close control. */
-body[data-menu-shape="sheet"] #drawer { left: 0; right: 0; margin: 0 auto; width: min(100%, 560px); top: max(12vh, env(safe-area-inset-top)); bottom: var(--dock-h, 0px);
+body[data-menu-shape="sheet"] #drawer { left: 0; right: 0; margin: 0 auto; width: min(100%, 560px); top: max(12vh, env(safe-area-inset-top)); bottom: 0;
   border-width: 1px 1px 0; border-radius: 16px 16px 0 0; transform: translateY(100%); transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
 body[data-menu-shape="sheet"] #drawer.open { transform: none; transition: transform var(--menu-in) cubic-bezier(.16, .84, .3, 1); }
-body[data-menu-shape="sheet"].drawer-pretable #drawer { bottom: 0; }
 body[data-menu-shape="sheet"] #drawer-handle { display: grid; place-items: center; flex: none; width: 100%; height: 44px; min-height: 44px; padding: 0; background: none; border: 0; border-radius: 16px 16px 0 0; touch-action: none; }
 body[data-menu-shape="sheet"] #drawer-handle[hidden] { display: none; }
 #drawer-handle i { display: block; width: 56px; height: 6px; border-radius: 3px; background: var(--muted); opacity: .6; }
@@ -92,7 +104,7 @@ body[data-menu-shape="sheet"] #drawer-head { touch-action: none; padding-top: 0;
 body[data-menu-shape="sheet"] #drawer-close { display: none; }
 body[data-menu-shape="sheet"] .menu-level { position: absolute; inset: 0; width: auto; visibility: hidden; opacity: .35; transform: translateX(100%);
   transition: transform var(--menu-level) cubic-bezier(.2, .8, .2, 1), opacity var(--menu-level) ease, visibility 0s linear var(--menu-level); }
-/* the footer: the token sits over the bottom of the sheet, so no screen scrolls under it */
+/* the footer: the token stays where it is, over the bottom of the sheet, so the sheet leaves room for it and no screen scrolls under it */
 body[data-menu-shape="sheet"] #menu-levels { margin-bottom: 84px; }
 body[data-menu-shape="sheet"].drawer-pretable #menu-levels { margin-bottom: 0; }
 body[data-menu-shape="sheet"] .menu-level[data-pos="here"] { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
@@ -101,7 +113,7 @@ body[data-menu-shape="sheet"] .menu-level > .menu-list { padding-bottom: 12px; }
 #drawer-body { overflow-y: auto; }
 
 /* columns: from 900 px (or a phone on its side) the menu comes from the side and the levels are beside each other; the map is the clear zone */
-body[data-menu-shape="columns"] #drawer { top: 0; bottom: var(--dock-h, 0px); width: max-content; max-width: 100vw; transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); }
+body[data-menu-shape="columns"] #drawer { top: 0; bottom: 0; width: max-content; max-width: 100vw; transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); }
 body[data-menu-shape="columns"] #drawer.open { transition: transform var(--menu-col) cubic-bezier(.16, .84, .3, 1); }
 body[data-menu-shape="columns"][data-drawer="left"] #drawer { left: 0; right: auto; border-left: 0; transform: translateX(-100%); padding: env(safe-area-inset-top) 0 0 env(safe-area-inset-left); }
 body[data-menu-shape="columns"][data-drawer="right"] #drawer { right: 0; left: auto; border-right: 0; transform: translateX(100%); padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0; }
@@ -119,10 +131,8 @@ body[data-menu-shape="columns"] .menu-level[data-new="true"] { animation: col-in
 body[data-menu-shape="columns"][data-drawer="right"] .menu-level[data-new="true"] { animation-name: col-in-r; }
 /* a wide screen that cannot hold three columns folds the first level away while a screen is open under Table; the breadcrumb goes back */
 @media (max-width: 1099px) { body[data-menu-shape="columns"] #drawer[data-cols="3"] #menu-root { display: none; } }
-/* the pinned menu has no dimmed map; a wide menu's scrim starts below the top bar, which stays clear (the token closes it again, and Undo stays one tap away) */
-@media (min-width: 900px), (max-height: 500px) { body:not(.drawer-pinned) #drawer { top: calc(max(10px, env(safe-area-inset-top)) + 54px); padding-top: 0 !important; } body[data-menu-shape="columns"] #drawer-scrim { top: calc(max(10px, env(safe-area-inset-top)) + 54px); } }
-@media (min-width: 1480px) { body[data-menu-shape="columns"] #drawer { bottom: 0; } }      /* the dock (max 760 wide, centred) is clear of it from here */
-body[data-menu-shape="columns"].drawer-pretable #drawer, body.drawer-pinned #drawer { bottom: 0; }
+/* the menu covers the map, so the dock (what is left of it) steps aside while it is open: one overlay at a time */
+body.drawer-modal:not(.drawer-pretable) #dock { visibility: hidden; pointer-events: none; }
 .set-rules { margin: 0 0 8px; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
 .set-rules a, .set-rules button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; margin-left: 6px; }
 #set-theme, #set-floors, #set-side { max-width: 60%; }
@@ -151,8 +161,16 @@ body[data-menu-shape="columns"].drawer-pretable #drawer, body.drawer-pinned #dra
   body.drawer-open #drawer-scrim { bottom: 0; }
   body[data-menu-shape="columns"] .menu-level { padding-bottom: 84px; }
 }
-/* and the token cannot sit above a dock that fills the screen: on a short screen it takes the bottom-left corner, in the margin beside the dock */
+/* a short screen (a phone on its side) has no room for a strip under the dock: the token takes the bottom-left corner, in a margin the dock keeps clear, and stays there;
+   the chips go to the top right corner */
 @media (max-height: 500px) {
-  body[data-token] #btn-menu { width: 56px; height: 56px; top: auto; right: auto; left: calc(4px + env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); transform: translateX(var(--tok-l, 0px)); }
-  body.drawer-open[data-token] #btn-menu { transform: translateX(calc(var(--tok-l, 0px) + 8px)); }
+  body[data-token] #btn-menu { width: 56px; height: 56px; top: auto; right: auto; left: calc(4px + env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); transform: none; }
+  body[data-token] #chips { left: auto; right: calc(8px + env(safe-area-inset-right)); bottom: auto; top: max(8px, env(safe-area-inset-top)); flex-direction: row-reverse; }
+  body[data-token] #turnline { left: calc(50% + 30px); }
+  #dock { padding-left: calc(64px + env(safe-area-inset-left)) !important; padding-bottom: max(8px, env(safe-area-inset-bottom)) !important; }
 }
+
+/* the party chips (they left the dock for the top of the first level; docs/specs/one-token-menu.md, Decision 4b, M4 makes them rows) */
+#menu-root #party { padding: 12px 14px 0; flex-wrap: wrap; overflow: visible; }
+#menu-root #party:empty { display: none; }
+#menu-root #party button { min-height: 44px; padding: 4px 14px; }

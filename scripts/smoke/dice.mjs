@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, diceDuel, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, diceDuel, placeBeside, chip, openMenu } from './lib.mjs';
 
 // ---------- dice on the screen (PR #117) ----------
 // A DM (desktop) and a player (`opts`: desktop or phone). The player's dice are thrown in the table's default
@@ -54,10 +54,10 @@ async function dice(browser, url, label, opts) {
         await host.click('#dm-table button:has-text("Let in")');
         await wait(me, () => window.hextable.state?.entities?.fighter, null, 30000);
         await closeMenu(host);
-        const b = me.locator('#party button:has-text("Play as")').first();
+        await openMenu(me, []); const b = me.locator('#menu-root #party button:has-text("Play as")').first();
         const name = (await b.textContent()).replace('Play as ', '').trim();
         pc = await me.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await (touch ? b.tap() : b.click());
+        await (touch ? b.tap() : b.click()); await closeMenu(me);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, pc);
       });
 
@@ -125,7 +125,7 @@ async function dice(browser, url, label, opts) {
       await run.do('nothing is left on the screen: no dice canvas, and the action panel takes a touch', async () => {
         await idle();
         if (await shown(me, '#dice')) throw new Error('the dice canvas is still over the screen with nothing in the air');
-        await me.click(`#party button:has-text("${await me.evaluate((p) => window.hextable.state.entities[p].name, pc)}")`).catch(() => {});
+        await chip(me, `${await me.evaluate((p) => window.hextable.state.entities[p].name, pc)}`).catch(() => {});
         const r = await me.evaluate(() => {
           const bar = document.getElementById('ap-body'), b = bar && [...bar.querySelectorAll('[data-row], #actions button')].find((x) => x.getClientRects().length);
           if (!b) return { none: true };

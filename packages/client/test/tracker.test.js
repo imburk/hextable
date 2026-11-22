@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { trackerRows, rowHTML, turnLine } = await import(pathToFileURL(join(tmp, 'tracker.js')));
+const { trackerRows, rowHTML, turnLine, screenTurnLine } = await import(pathToFileURL(join(tmp, 'tracker.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { view } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
@@ -177,4 +177,22 @@ test("a party creature a player is sent as a seen record (a homebrew companion t
   const S = structuredClone(theirs);
   S.encounter.turn = S.encounter.order.findIndex((o) => o.id === id);
   assert.match(turnLine(S), /Ember wolfling's turn/);
+});
+
+// The turn line of the clean screen (docs/specs/one-token-menu.md, M3): one line, in a fight only, saying whose turn and when mine comes.
+test('the clean screen\'s turn line: nothing out of a fight, "Your turn" on mine, whose turn and "you in N" otherwise', () => {
+  const s0 = newGame(7);
+  assert.equal(screenTurnLine(s0, () => true), null);
+  const { s } = fight();
+  const V = view(s, PAT), mineOnly = (e) => e.id === 'fighter';
+  const out = [];
+  for (let i = 0; i < V.encounter.order.length * 2 + 2; i++) {
+    const t = screenTurnLine(view(s, PAT), mineOnly);
+    out.push(t);
+    ok(apply(s, { type: 'endTurn', actor: current(s) }, DM));
+  }
+  assert.ok(out.every((t) => /^Round \d+/.test(t.text)));
+  assert.ok(out.some((t) => t.mine && t.text.endsWith('Your turn')), 'my own turn says so');
+  assert.ok(out.some((t) => !t.mine && /'s turn · you (next|in \d+)$/.test(t.text)), 'another\'s turn says when mine comes');
+  assert.ok(!out.some((t) => t.mine && /you/.test(t.text.replace('Your turn', ''))), 'my turn has no countdown');
 });

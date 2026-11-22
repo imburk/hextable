@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, settle, onCanvas, tapAt } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, settle, onCanvas, tapAt, chipPick } from './lib.mjs';
 
 // ---------- the movement an Opportunity Attack gave, at the table (issue #536, DEBT T93; docs/specs/homebrew-subclasses.md, "Build notes: H") ----------
 // A DM hosts and a player joins. The DM adds an invented pack (the "Oath of the Hollow Bell": `triggers.opportunityHit`), the DM makes a paladin of it and the player plays it.
@@ -62,7 +62,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await wait(pl, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Sir Bell'), null, 10000);
         bell = await pl.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id);
         home = await pl.evaluate((b) => window.hextable.state.entities[b].pos, bell);
-        await pl.locator('#party button:has-text("Play as Sir Bell")').click();
+        await chipPick(pl, 'Play as Sir Bell', 'click');
         await wait(dm, (b) => !!window.hextable.state.entities[b].owner, bell);
         await botsOff();
         const feat = await dm.evaluate((b) => window.hextable.state.entities[b].feats.some((f) => f.triggers?.opportunityHit), bell);

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, openMenu } from './lib.mjs';
 
 // ---------- scenes ----------
 // The scene screen (packages/client/scenes.js): a DM and a phone. Prepare, open, speak, undo, step out.
@@ -30,9 +30,9 @@ async function scenes(browser, url) {
         await host.click('#dm-table button:has-text("Let in")');
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
         const name = (await b.textContent()).replace('Play as ', '').trim();
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(phone, (n) => Object.values(window.hextable.state.entities).some((e) => e.name === n && e.owner), name);
       });
 

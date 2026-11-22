@@ -323,8 +323,8 @@ async function drawerTable(browser, url) {
         await openMenu(host, 'dm'); await host.click('#dm-table button:has-text("Let in")');
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        await b.click();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        await b.click(); await closeMenu(phone);
         await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.owner));
       });
       let secret;

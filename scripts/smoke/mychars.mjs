@@ -477,7 +477,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         await page.selectOption('#lobby-slot-0', `mine:${cid}`);
         await tap('#lobby-solo'); await wait(page, () => window.hextable?.state?.entities);
         await page.evaluate(() => { const S = window.hextable.state, e = Object.values(S.entities).find((x) => x.name === 'Rolla Kerr'); window.hextable.select(e.id); });
-        await tap('#btn-sheet'); await waitShown(page, '#sheet-body');
+        await openMenu(page, 'sheet'); await waitShown(page, '#sheet-body');
         const line = await page.evaluate(() => document.getElementById('sheet-scores-line')?.textContent ?? '');
         const who = await page.$eval('#sheet-body h2', (h) => h.textContent);
         if (who !== 'Rolla Kerr') throw new Error(`the sheet is ${who}'s`);

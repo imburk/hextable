@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, openMenu } from './lib.mjs';
 
 // ---------- the connection dot (issue #246) ----------
 // A DM on a desktop and a phone player at one table. The address says ?link=fast, which shortens the link thresholds (linkquality.js,
@@ -54,10 +54,10 @@ async function link(browser, url) {
         await waitShown(phone, '#lobby', false);
         await closeMenu(host);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
-        const b = phone.locator('#party button:has-text("Play as")').first();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
         const name = (await b.textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
       });
 

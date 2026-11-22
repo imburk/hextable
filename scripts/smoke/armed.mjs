@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside, chip } from './lib.mjs';
 
 // ---------- armed class features ----------
 // Stunning Strike, a row of the Features tab (packages/client/actionpanel.js, features.js): arm it, then tap a creature. A monk
@@ -61,7 +61,7 @@ async function armed(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, lo, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Lo")');
+        await chip(page, 'Lo');
         await page.evaluate(async (a) => {          // both creatures in view
           const H = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, S = window.hextable.state;
           const m = (p, q) => ({ q: (p.q + q.q) / 2, r: (p.r + q.r) / 2 });
@@ -155,7 +155,7 @@ async function aimLock(browser, url, label, opts) {
         }
         await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000).catch(async () => { throw new Error(`no turn for the wizard: ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify([S.encounter?.order.map((o) => o.id), S.encounter?.turn, S.timeline.slice(-3).map((e) => e.type), document.getElementById('toast')?.textContent]); })}`); });
         await closePanels(page);
-        await page.click('#party button:has-text("Tavin")');
+        await chip(page, 'Tavin');
         await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'burning-hands');
@@ -282,7 +282,7 @@ async function flurry(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, lo, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Lo")');
+        await chip(page, 'Lo');
         await panelTab(page, 'attacks');
       });
 

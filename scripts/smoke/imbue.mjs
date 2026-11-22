@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, closePanels, panelTab, tapGuarded, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, closePanels, panelTab, tapGuarded, placeBeside, chip } from './lib.mjs';
 
 // ---------- a weapon a spell changes (docs/specs/on-hit.md, stage O4; #666) ----------
 // A level 1 druid with Shillelagh, a Quarterstaff and a Club (two weapons fit). Armed, the hint bar asks which weapon (a thumb-sized control on touch); cast on the
@@ -33,7 +33,7 @@ async function imbue(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, ven, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Ven")');
+        await chip(page, 'Ven');
       });
 
       await run.do('before: the Quarterstaff rolls Strength (+2 to hit)', async () => {
@@ -103,7 +103,7 @@ async function ally(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, wyn, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Wyn")');
+        await chip(page, 'Wyn');
       });
 
       const cast = async (pick) => {
@@ -139,7 +139,7 @@ async function ally(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, wyn, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Wyn")');
+        await chip(page, 'Wyn');
         await cast('longsword');
         const on = await state(page, (S) => (S.effects ?? []).filter((f) => f.name === 'Magic Weapon' && f.parts.some((p) => p.imbue && !p.ended)).flatMap((f) => f.parts.filter((p) => p.imbue && !p.ended).map((p) => p.imbue.weapon)));
         if (on.join() !== 'longsword') throw new Error(`Magic Weapon is on ${on}`);

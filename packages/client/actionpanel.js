@@ -862,7 +862,7 @@ export function initActionPanel(ctx) {
     // Draws the card for `e` (or hides it): the head, the status, the tabs and the open tab. `mode` is app.js's current mode.
     render(e, mode, { my, full }) {
       const S = ctx.state(), enc = S.encounter, cur = current(S);
-      card.hidden = !e;
+      card.hidden = !e; $('status-block').hidden = !e;
       if (!e) { tabsEl.hidden = true; return; }
       $('c-name').textContent = shownName(S, e);
       $('c-sub').textContent = e.bond && ctx.comp?.subLine(e) ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)} · ${ctx.comp.subLine(e)}` : e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${classTitle(e)}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
@@ -871,15 +871,14 @@ export function initActionPanel(ctx) {
       const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
       $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
       $('c-ac').textContent = showNumbers ? `AC ${acShown(S, e, ctx.isDM()).ac}` : '';
-      $('btn-sheet').hidden = !showNumbers;
       setHtml($('c-level'), showNumbers && e.kind === 'pc' ? levelUpChip(S, e, { dm: ctx.isDM() }) : '');      // XP reached the next level: Level up (the DM), or why not (#672)
-      $('btn-end').hidden = !(my && enc && cur === e.id);
+      $('c-end').hidden = !(my && enc && cur === e.id);      // the turn line's own End turn (`#btn-end`, app.js) follows the same rule
       // A companion's player may hand its turns to the engine's companion brain (companions.md, Decision 9): { type: 'companion', actor, auto }.
       let letIt = $('btn-let');
       if (!letIt) {
         letIt = document.createElement('label'); letIt.id = 'btn-let'; letIt.className = 'check'; letIt.style.cssText = 'margin:0;white-space:nowrap;font-size:.85em'; letIt.innerHTML = '<input type="checkbox"> Let it act';
         letIt.querySelector('input').onchange = (ev) => { const id = letIt.dataset.id; if (id) ctx.act({ type: 'companion', actor: id, auto: ev.target.checked }); };
-        $('btn-sheet').parentElement.prepend(letIt);
+        $('c-row').prepend(letIt);
       }
       letIt.hidden = !(my && e.bond); letIt.dataset.id = e.id; letIt.querySelector('input').checked = !!e.bond?.auto;
       { const why = my && e.bond ? ctx.dry?.({ type: 'companion', actor: e.id, auto: !e.bond.auto }) ?? '' : ''; letIt.querySelector('input').disabled = !!why; letIt.title = why; letIt.classList.toggle('off', !!why); }

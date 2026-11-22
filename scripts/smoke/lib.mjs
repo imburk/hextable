@@ -164,11 +164,26 @@ export const closeMenu = async (page) => {
 };
 export const closePanels = closeMenu;
 export const openTab = (page, tab) => openMenu(page, tab);
+// The party chips are the top of the menu's first level (M3: they left the dock). `chip` opens the menu, taps the character's chip, and closes the menu,
+// so the map is free again and the character is the selected one.
+export const chip = async (page, name) => {
+  await openMenu(page, []);
+  await page.click(`#menu-root #party button:has-text("${name}")`);
+  await closeMenu(page);
+};
+
+// The same for a chip found by its words (a player claiming a character: "Play as ..."), tapped or clicked.
+export const chipPick = async (page, text, how = 'click') => {
+  await openMenu(page, []);
+  const b = page.locator(`#menu-root #party button:has-text("${text}")`).first();
+  await (how === 'tap' ? b.tap() : b.click());
+  await closeMenu(page);
+};
 
 // Select a character by its chip and move it one hex by tapping the map. Returns the new position.
 export async function selectAndMove(page, touch, id, name) {
   await closePanels(page);
-  await page.click(`#party button:has-text("${name}")`);
+  await chip(page, name);
   await wait(page, (i) => document.querySelector('#card') && !document.querySelector('#card').hidden, id);
   const from = await state(page, (S, i) => S.entities[i].pos, id);
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -179,7 +194,7 @@ export async function selectAndMove(page, touch, id, name) {
       if (Object.values(S.entities).some((o) => o.pos && o.pos.q === q && o.pos.r === r)) return null;
       return window.hextable.R.screenOf({ q, r, z: e.pos.z }); }, [id, dir]);
     if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;    // off screen or under a panel: try another side
-    await page.click(`#party button:has-text("${name}")`);                              // still the one selected
+    await chip(page, name);                                                             // still the one selected
     await tapAt(page, touch, pt.x, pt.y);
     try {
       await wait(page, ([i, f]) => { const p = window.hextable.state.entities[i].pos; return p.q !== f.q || p.r !== f.r; }, [id, from], 2500);

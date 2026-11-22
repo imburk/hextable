@@ -22,7 +22,8 @@ import { initSpawnFind } from './spawnfind.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
-import { createTracker, shownName } from './tracker.js';
+import { createTracker, shownName, screenTurnLine } from './tracker.js';
+import { symbol } from './symbols.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
 import { initActionPanel } from './actionpanel.js';
@@ -692,6 +693,16 @@ function hintWords(offer, waits) {
   if (owedUi === 'offer') go.hidden = mode.kind === 'owed';       // pressed: the next tap on a shaded place is the move
   else if (owedUi === 'wait') go.hidden = false;
 }
+// The turn line (tracker.js `screenTurnLine`): one line above the token in a fight, with End turn on the viewer's own turn.
+function showTurnLine() {
+  const plays = (e) => mine(e) && (!isDM() || e.side === 'party'), tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
+  box.hidden = !tl;
+  if (!tl) return;
+  if ($('turn-text').textContent !== tl.text) $('turn-text').textContent = tl.text;
+  box.classList.toggle('mine', tl.mine);
+  const now = S.entities[current(S)];
+  $('btn-end').hidden = !(now && mine(now) && !T.readOnly);
+}
 function sizeDock() {
   R.inset = $('dock').offsetHeight * 0.85;
   document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray and the drawer sit above the dock
@@ -707,19 +718,10 @@ function refresh() {
   const out = enc && isDM() && !T.readOnly && joinNo !== enc.id ? outsiders(S) : [];
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
-  $('mode').textContent = enc ? `Round ${enc.round}` : 'Exploring';
-  $('clock').textContent = clockText(S.clock);
+  showTurnLine();
   $('btn-leave').hidden = isDM() || !!T.solo;
   $('menu-session').hidden = false; $('menu-new').hidden = !T.solo; $('menu-leave').hidden = !!T.solo;
   showUndo();
-
-  // turn order
-  $('order').innerHTML = enc ? enc.order.map((o, i) => {
-    if (o.someone) return `<li data-side="unseen" class="${i === enc.turn ? 'now' : ''}">Someone unseen</li>`;
-    const x = S.entities[o.id]; if (!x) return '';
-    return `<li data-side="${x.side}" class="${o.id === cur ? 'now' : ''} ${up(x) ? '' : 'out'}">${esc(shownName(S, x))}</li>`;
-  }).join('') : '';
-  $('order').querySelector('.now')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 
   // character chips
   const party = $('party'); party.textContent = '';
@@ -975,18 +977,31 @@ function renderMarch() {
 }
 
 // ---------- undo: the DM's Undo and Redo buttons say what they will take back ----------
-const TOP_UNDO = new Set(['btn-undo', 'btn-redo']);
+const CHIP_IDS = new Set(['btn-undo', 'btn-redo']);
+let chipsUntil = 0, chipTimer = null, chipSig = null;
+// The DM's undo and redo chips beside the token show for 8 s after each action (and while a finger or the pointer rests on them), then go; the same two are
+// always the first row of DM tools (docs/specs/one-token-menu.md, "Every control today"). They are the standard curved arrows, not words.
+function chipsShow(on) { const dm = isDM(); $('btn-undo').hidden = $('btn-redo').hidden = !(dm && on); }
+function raiseChips() {
+  chipsShow(true); clearTimeout(chipTimer);
+  chipTimer = setTimeout(function tick() { if ($('chips').matches(':hover, :focus-within')) { chipTimer = setTimeout(tick, 1500); return; } chipsShow(false); }, 8000);
+}
 function showUndo() {
   const { undo = [], redo = [] } = T?.undoInfo ?? {}, dm = isDM();
   for (const [id, list, verb] of [['btn-undo', undo, 'Undo'], ['btn-redo', redo, 'Redo'], ['ed-undo', undo, 'Undo'], ['dm-undo', undo, 'Undo'], ['dm-redo', redo, 'Redo']]) {
     const b = $(id);
     b.disabled = !dm || !list.length;
     b.setAttribute('aria-label', nameOf(verb, list));
-    if (!TOP_UNDO.has(id)) b.title = nameOf(verb, list);            // the top bar's two say it on a hold or a long hover (undobar.js), not in a browser tooltip
+    if (!CHIP_IDS.has(id)) b.title = nameOf(verb, list);            // the chips say it on a hold or a long hover (undobar.js), not in a browser tooltip
     const sub = b.querySelector('small'); if (sub) sub.textContent = list[0] ?? 'Nothing';
   }
-  $('btn-undo').hidden = $('btn-redo').hidden = !dm;
+  // A change in what there is to take back or put back is an action: the chips come up for 8 s. What was there on arrival is not news.
+  const sig = JSON.stringify([undo.length, redo.length, undo[0], redo[0]]);
+  if (chipSig !== null && sig !== chipSig && dm && (undo.length || redo.length)) raiseChips();
+  chipSig = sig;
+  if (!dm) chipsShow(false);
 }
+for (const [id, key] of [['btn-undo', 'undo'], ['btn-redo', 'redo'], ['dm-undo', 'undo'], ['dm-redo', 'redo']]) { const b = $(id), slot = b.querySelector('.sym-slot'); (slot ?? b).innerHTML = symbol(key); }
 wireUndo($('btn-undo'), 'Undo', () => T?.undoInfo?.undo); wireUndo($('btn-redo'), 'Redo', () => T?.undoInfo?.redo);
 const undo = () => isDM() && T.undo?.(), redo = () => isDM() && T.redo?.();
 $('btn-undo').onclick = undo; $('btn-redo').onclick = redo; $('ed-undo').onclick = undo; $('dm-undo').onclick = undo; $('dm-redo').onclick = redo;
@@ -1070,7 +1085,9 @@ R.onTap = ({ hex, id }) => {
 R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
-$('btn-end').onclick = () => { if (CLS.askCure(S.entities[selId])) return; act({ type: 'endTurn', actor: selId }); };       // Self-Restoration with a choice asks first
+const endTurn = (id) => { if (CLS.askCure(S.entities[id])) return; act({ type: 'endTurn', actor: id }); };       // Self-Restoration with a choice asks first
+$('btn-end').onclick = () => endTurn(current(S));          // the turn line's End turn is for whoever's turn it is, when it is the viewer's
+$('c-end').onclick = () => endTurn(selId);       // Self-Restoration with a choice asks first
 $('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
 $('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
 $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
@@ -1094,7 +1111,7 @@ function castAimed() {
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 // The connection dot (linkdot.js, issue #246): the top bar's own at a table, and the DM's view of each player's in the tracker.
-const DOT = mountDot({ transport: () => T, parent: $('tools'), before: $('btn-undo') });
+const DOT = mountDot({ transport: () => T, parent: $('chips'), before: $('btn-undo') });
 const linkOf = (e) => {
   const who = ownerOf(S, e);      // a companion shows its master's player
   if (!who || T.solo) return null;
@@ -1113,8 +1130,7 @@ const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, sel
 
 const D = initDrawer({ prefs, state: () => S, isDM, selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
-$('btn-sheet').onclick = () => D.open('sheet');
-$('order').onclick = () => D.open('turns');
+$('turn-text').onclick = () => D.open('turns');       // the turn line opens Turns
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
 const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version, buildLine: FB.buildLine() }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
@@ -1217,7 +1233,7 @@ function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = true; $('menu-session').hidden = true;
+  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }

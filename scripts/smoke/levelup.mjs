@@ -1,4 +1,4 @@
-import { scenario, wait, state, shown, open, playSolo, closeMenu, closePanels, openTab, waitShown, calm, sleep } from './lib.mjs';
+import { scenario, wait, state, shown, open, playSolo, closeMenu, closePanels, openTab, waitShown, calm, sleep, openMenu } from './lib.mjs';
 
 // ---------- Level up where the player looks (#672) ----------
 // The four starters are built from sheets, so Level up works for them; the button is on the rewards card, on the character card at the bottom of the screen
@@ -125,9 +125,9 @@ async function player(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, (await b.textContent()).replace('Play as ', '').trim());
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
         await host.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         await host.evaluate(WIN);

@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas, chip } from './lib.mjs';
 
 // ---------- the action panel's Attacks, Bonus, Move and Features tabs (docs/specs/table-ui.md, Decision 6, task T4a) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Exploring: a healing shortcut goes to the Features row. In a fight: the fighter's
@@ -37,7 +37,7 @@ async function tabs(browser, url, label, opts) {
       await run.do('exploring, a hurt fighter is offered Second Wind, and the shortcut lands on its Features row', async () => {
         await open(page, url); await playSolo(page);
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
-        await closePanels(page); await page.click('#party button:has-text("Brenna")');
+        await closePanels(page); await chip(page, 'Brenna');
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 3 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 3);
         await panelTab(page, 'explore');

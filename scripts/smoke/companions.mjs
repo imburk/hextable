@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt, chipPick, openMenu } from './lib.mjs';
 
 // ---------- companions ----------
 // The client side of companions C1 (docs/specs/companions.md; issue #318). Solo at both sizes, the DM bonds a foe to Brenna as a familiar that
@@ -113,10 +113,10 @@ async function table(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
         name = (await b.textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
       });
       await run.do('the DM bonds a foe to that character: the phone gets a chip for it and the DM\'s record has no owner for it', async () => {
@@ -128,7 +128,7 @@ async function table(browser, url) {
         }, [id]);
         await wait(phone, (p) => window.hextable.state.entities[p]?.bond, pet);
         const want = await phone.evaluate((p) => `${window.hextable.state.entities[window.hextable.state.entities[p].bond.to].name}'s `, pet);
-        await phone.waitForSelector(`#party button:has-text("${want}")`, { timeout: 8000 });
+        await phone.waitForSelector(`#party button:has-text("${want}")`, { state: 'attached', timeout: 8000 });
         if (await host.evaluate((p) => !!window.hextable.state.entities[p].owner, pet)) throw new Error('the companion has an owner of its own');
         await shot(phone, 'companions-chips-phone');
       });
@@ -358,7 +358,7 @@ export async function screens(browser, url, label, opts) {
         await page.click('#ap-features [data-cc-dismiss]:not([data-forever]):has-text("pocket")');
         await wait(page, (v) => Object.keys(window.hextable.state.entities[v].pocket ?? {}).length === 1, ven);
         // the sheet says who is in the pocket (DEBT S7)
-        await page.click('#btn-sheet');
+        await openMenu(page, 'sheet');
         await wait(page, () => /Pocket dimension/.test(document.getElementById('sheet-body')?.textContent ?? ''));
         await closeMenu(page);
         await page.click(rowOf('features', 'Recall…'));
@@ -515,7 +515,7 @@ export async function screensTable(browser, url) {
         });
         await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'));
         ven = await phone.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Ven').id);
-        await phone.locator('#party button:has-text("Play as Ven")').click();
+        await chipPick(phone, 'Play as Ven', 'click');
         await wait(host, (v) => !!window.hextable.state.entities[v].owner, ven);
         await calm(phone);
       });
