@@ -37,8 +37,9 @@ export async function probeView(page, touch) {
     // and the axes are the way the plane moves under a finger: right along the screen's x, up along its y
     const c = [Math.round(W / 2), Math.round(Hh / 2)], p0 = R.planePoint(c[0], c[1], 0), dir = (p) => { const d = [p[0] - p0[0], p[1] - p0[1]], l = Math.hypot(...d) || 1; return [d[0] / l, d[1] / l]; };
     const ax = R.screenAxes(), mx = dir(R.planePoint(c[0] + 20, c[1], 0)), my = dir(R.planePoint(c[0], c[1] - 20, 0));
+    // a point in the token's strip is the menu's (it was the dock's), not the map's: it counts as the interface
     return {
-      hexes, pts, canvas: pts.map(([x, y]) => document.elementFromPoint(x, y)?.id === 'gl'), trip: trip.length ? Math.max(...trip) : 1e9,
+      hexes, pts, canvas: pts.map(([x, y]) => { const t = document.getElementById('btn-menu').getBoundingClientRect(); return document.elementFromPoint(x, y)?.id === 'gl' && !(x > t.left - 20 && x < t.right + 20 && y > t.top - 20 && y < t.bottom + 20); }), trip: trip.length ? Math.max(...trip) : 1e9,
       axisErr: Math.max(Math.hypot(mx[0] - ax.right[0], mx[1] - ax.right[1]), Math.hypot(my[0] - ax.up[0], my[1] - ax.up[1])),
       screen: hexes.map((hx) => xy(R.screenOf(hx))), plane: pts.map(([x, y]) => [R.planeHex(x, y, 0), pair(R.planePoint(x, y, 0)), pair(R.planePoint(x, y, 10))]),
       point: [[0, 0, 0], [10, 10, 0], [30, -20, 10]].map((a) => xy(R.screenPoint(...a))), axes: { right: ax.right.map(rd), up: ax.up.map(rd) },
@@ -95,7 +96,7 @@ export async function squareFightSetup(page) {
   await page.evaluate(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); h.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }); });
   await wait(page, () => !!window.hextable.state.encounter && window.hextable.waiting === 0, null, 20000);
   const ogre = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.size === 'large').id);
-  await page.evaluate(() => { const R = window.hextable.R; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5; });
+  await page.evaluate(() => { const R = window.hextable.R; R.inset = 90; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5; });
   await sleep(1200);
   return ogre;
 }
