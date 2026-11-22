@@ -24,7 +24,10 @@ const whole = async (page, pane) => {
 // Every greyed row of the pane writes its reason on screen, where it can be read (not only in a title).
 const reasons = (page, pane) => page.$$eval(`${pane} [aria-disabled="true"]`, (rows) => rows.map((r) => { const w = r.querySelector('.ap-why'); const q = w?.getBoundingClientRect(); return { row: r.dataset.row, why: w?.textContent.trim() ?? '', seen: !!q && q.width > 0 && q.height > 0 }; }));
 const visit = async (page, tab) => { await panelTab(page, tab); await whole(page, paneOf(tab)); };
-const sec = (page, id) => wait(page, (t) => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec === t, id, 20000);
+const sec = (page, id) => wait(page, (t) => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec === t, id, 20000).catch(async (err) => {
+  const at = await page.evaluate(() => ({ sel: document.getElementById('c-name')?.textContent, open: document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec ?? null, bars: [...document.querySelectorAll('#ap-body .ap-sec:not([hidden])')].map((x) => `${x.dataset.sec}:${x.querySelector('.ap-tip').textContent}`), empty: document.getElementById('ap-empty')?.textContent, path: document.getElementById('drawer').dataset.path }));
+  throw new Error(`${err.message.split('\n')[0]} (the page: ${JSON.stringify(at)})`);
+});
 const gone = async (page, row) => { if (await page.$(`#ap-body .ap-sec:not([hidden]) [data-row="${row}"]`)) throw new Error(`${row} is still offered`); };
 const text = (page, sel) => page.$eval(sel, (e) => e.textContent.replace(/\s+/g, ' ').trim());
 

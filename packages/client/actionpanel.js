@@ -991,7 +991,7 @@ export function initActionPanel(ctx) {
         const b = bonusRows(S, e, { mode, fly });
         rowsBy.cost = list;
         setHtml(panes.cost, listHtml(list.length ? '' : `<p class="ap-why-line">${esc(cost === 'bonus' && !b.available ? `No Bonus Action: ${b.why}` : `Nothing you can do now costs your ${COSTS[cost]}.`)}</p>`, list));
-      } else panes.cost.hidden = true;
+      } else { panes.cost.hidden = true; bars.cost.setAttribute('aria-expanded', 'false'); }
       const first = ctxNow.situation === 'turn' ? sorted[0] : null;
       for (const id of Object.keys(secs)) {
         if (id === 'cost') continue;
