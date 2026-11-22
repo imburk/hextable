@@ -1111,7 +1111,7 @@ const NV = mountNewVersion({ fetchBuild: () => fetch('./build.json', { cache: 'n
 NV.check(); NV.solo(() => !T || T.solo);
 const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
 
-const D = initDrawer({ prefs, state: () => S, isDM, change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
+const D = initDrawer({ prefs, state: () => S, isDM, selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 $('btn-sheet').onclick = () => D.open('sheet');
 $('order').onclick = () => D.open('turns');

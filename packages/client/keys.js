@@ -27,9 +27,10 @@ export const WALK_LOOK = { forward: 'tiltUp', back: 'tiltDown', left: 'lookLeft'
 export const FIXED = [
   { words: 'Look around without moving (hold, with the walk keys)', keys: ['Shift'], codes: ['ShiftLeft', 'ShiftRight'] },
   { words: 'Undo, redo (the DM)', keys: ['Ctrl+Z', 'Ctrl+Shift+Z', 'Ctrl+Y'], codes: [] },
-  { words: 'Cancel what is armed', keys: ['Escape'], codes: ['Escape'] },
+  { words: 'Cancel what is armed, or close the menu', keys: ['Escape'], codes: ['Escape'] },
   { words: 'Choose an action tab', keys: ['1 to 9'], codes: ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'] },
   { words: 'Open or close the menu', keys: ['M'], codes: ['KeyM'] },
+  { words: 'In the menu: move between rows, open one, go back a level', keys: ['Up, Down', 'Right, Enter', 'Left, Backspace'], codes: [] },      // the menu's own: with it open and a row focused, the arrow keys are its, not the walk keys
   { words: 'Move the focus', keys: ['Tab', 'Shift+Tab'], codes: ['Tab'] },
 ];
 
