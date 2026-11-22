@@ -1148,7 +1148,8 @@ foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
 $('party').addEventListener('click', (ev) => {
   const b = ev.target.closest('button[data-id]'), x = b && S?.entities[b.dataset.id]; if (!x) return;
   if (x.kind === 'pc' && !isDM() && !x.owner && !Object.values(S.entities).some((y) => y.owner === T.you.userId)) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name });
-  if (x.id !== selId) { select(x.id); R.focus(x.id); }      // a row opens that creature's Character screen and selects it (the one already selected keeps what it has armed)
+  if (x.id !== selId) select(x.id);
+  R.focus(x.id);      // a row opens that creature's Character screen and selects it (the one already selected keeps what it has armed)
   D.open('sheet'); refresh();
 });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).

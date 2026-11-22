@@ -31,7 +31,7 @@ async function scenes(browser, url) {
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
         await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
-        const name = (await b.textContent()).replace('Play as ', '').trim();
+        const name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         await b.click(); await closeMenu(phone);
         await wait(phone, (n) => Object.values(window.hextable.state.entities).some((e) => e.name === n && e.owner), name);
       });

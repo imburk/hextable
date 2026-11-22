@@ -55,7 +55,7 @@ async function dice(browser, url, label, opts) {
         await wait(me, () => window.hextable.state?.entities?.fighter, null, 30000);
         await closeMenu(host);
         await openMenu(me, []); const b = me.locator('#menu-root #party button:has-text("Play as")').first();
-        const name = (await b.textContent()).replace('Play as ', '').trim();
+        const name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         pc = await me.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
         await (touch ? b.tap() : b.click()); await closeMenu(me);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, pc);

@@ -187,14 +187,14 @@ export const openTab = (page, tab) => openMenu(page, tab);
 // so the map is free again and the character is the selected one.
 export const chip = async (page, name) => {
   await openMenu(page, []);
-  await page.click(`#menu-root #party button:has-text("${name}")`);
+  await page.click(`#menu-root #party .pr:has-text("${name}")`);
   await closeMenu(page);
 };
 
 // The same for a chip found by its words (a player claiming a character: "Play as ..."), tapped or clicked.
 export const chipPick = async (page, text, how = 'click') => {
   await openMenu(page, []);
-  const b = page.locator(`#menu-root #party button:has-text("${text}")`).first();
+  const b = page.locator(`#menu-root #party .pr:has-text("${text}")`).first();
   await (how === 'tap' ? b.tap() : b.click());
   await closeMenu(page);
 };
