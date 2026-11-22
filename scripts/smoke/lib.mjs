@@ -143,7 +143,14 @@ const openMenuTo = async (page, want) => {
   for (let j = have.length; j < want.length; j++) { await page.click(`#drawer [data-go="${want[j]}"]`); await waitMenuAt(page, want.slice(0, j + 1)); }
   const leaf = want.at(-1);
   if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);
+  await menuStill(page);
 };
+// The levels slide in (about .7 s): a check that measures the screen mid-slide sees a control hang out of the menu. Wait until the menu's own boxes stop moving.
+export const menuStill = (page) => page.evaluate(() => new Promise((ok) => {
+  const key = () => ['drawer', 'menu-levels', 'drawer-body'].map((i) => { const r = document.getElementById(i)?.getBoundingClientRect(); return r ? [r.left, r.top, r.width].map(Math.round).join() : ''; }).join('|');
+  let last = '', n = 0; const t0 = Date.now();
+  const t = setInterval(() => { const k = key(); n = k === last ? n + 1 : 0; last = k; if (n >= 3 || Date.now() - t0 > 3000) { clearInterval(t); ok(); } }, 60);
+}));
 // The drawer can be closing by itself (a fight starting closes it) when we look: then its close control is already gone, and what we want is that it ends hidden.
 // A sheet closes by its handle, a wide menu by its x.
 export const closeMenu = async (page) => {

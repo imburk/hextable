@@ -1,5 +1,5 @@
 
-import { scenario, wait, state, waitShown, open, playSolo, closePanels, placeBeside } from './lib.mjs';
+import { scenario, wait, state, waitShown, open, playSolo, closePanels, placeBeside, menuStill } from './lib.mjs';
 
 // ---------- reactions on the sheet ----------
 // A wizard who knows Shield stands beside a goblin. Her sheet lists her reactions (and only those she has),
@@ -18,6 +18,7 @@ async function reactions(browser, url, label, opts) {
         await page.click('#party button:has-text("Wren")');
         await (touch ? page.locator('#btn-sheet').tap() : page.click('#btn-sheet'));
         await waitShown(page, '#sheet');
+        await menuStill(page);
       };
 
       await run.do('a level 5 wizard who knows Shield, beside a goblin', async () => {
