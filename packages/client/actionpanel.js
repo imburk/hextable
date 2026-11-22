@@ -972,7 +972,7 @@ export function initActionPanel(ctx) {
       const kinds = G.shown;
       const costOk = (id) => /^cost:(action|bonus)$/.test(id) && G.fight && ctxNow.situation === 'turn';
       const wanted = sel.tab !== null && (sel.tab === '' || costOk(sel.tab) || kinds.some((g) => g.id === sel.tab)) ? sel.tab : null;
-      const tab = wanted ?? defaultTab(ctxNow, kinds, { pref: pref(), last: last() }) ?? '';
+      const tab = wanted ?? (ctxNow.situation === 'wait' && kinds.some((g) => g.id === 'reactions') ? 'reactions' : defaultTab(ctxNow, kinds, { pref: pref(), last: last() })) ?? '';
       openNow = tab;
       // the status block's turn bar says which segment is open
       setHtml($('c-res'), statusHtml(S, e, { mine: my, full, formLabel: ctx.formLabel(e), budget: !!enc && cur === e.id && up(e) && full ? ctx.budget(e) : null, open: openNow }));
