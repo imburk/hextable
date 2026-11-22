@@ -70,6 +70,7 @@ export function judge(tag, sit, s) {
     case 'attack.spell': return sit.spell === undefined ? null : sit.spell;        // the attack roll of a spell (Innate Sorcery)
     case 'spell.cantrip': return sit.cantrip === undefined ? null : sit.cantrip;   // damage from a cantrip (Potent Spellcasting)
     case 'target.notFiend': return t ? (t.type ?? CONTENT.monsters[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null)) !== 'fiend' : null;   // Hurl Through Hell
+    case 'target.fiendOrUndead': return t ? ['fiend', 'undead'].includes(t.type ?? CONTENT.monsters[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null)) : null;   // Divine Smite's extra die
     case 'attack.opportunity': return sit.opportunity === undefined ? null : sit.opportunity;   // an Opportunity Attack (Escape the Horde)
     case 'check.proficient': return sit.proficient === undefined ? null : sit.proficient;   // a check with one of its skill or tool proficiencies (Reliable Talent)
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)

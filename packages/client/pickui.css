@@ -75,3 +75,5 @@
 .spawn-list { max-height: min(46vh, 380px); overflow-y: auto; overscroll-behavior: contain; align-content: flex-start; }
 .spawn-list button { min-height: 44px; touch-action: manipulation; }
 body.sf-typing #drawer { bottom: 0; }      /* while the finder's box has the focus the menu covers the dock, so the results are above the keyboard */
+body.sf-typing #btn-menu { visibility: hidden; }      /* the token sits over the bottom of the window, where a short screen's first result is */
+body.sf-typing[data-menu-shape="sheet"] #menu-levels { margin-bottom: 0; }

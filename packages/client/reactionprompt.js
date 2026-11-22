@@ -17,6 +17,7 @@ export function triggerText(q, whom, nameOf = () => undefined) {
   switch (q.trigger) {
     case 'hit': return `${by} attacks ${you}${q.attack ? ` with ${q.attack}` : ''}${q.total !== undefined ? `: ${q.total}${q.ac !== undefined ? ` against Armor Class ${q.ac}` : ''}` : ''}${q.crit ? ', a critical hit' : ''}.`;
     case 'targeted': return `${by} casts ${q.spell ? SPELLS[q.spell]?.name ?? 'a spell' : 'a spell'} and ${you === 'you' ? 'you are' : `${you} is`} a target.`;
+    case 'ownHit': return `${you === 'you' ? 'You hit' : `${you} hit`}${q.target !== undefined ? ` ${nameOf(q.target) ?? 'a creature'}` : ''}${q.attack ? ` with ${q.attack}` : ''}${q.crit ? ', a critical hit' : ''}.`;
     case 'leave': return `${by} is leaving ${you === 'you' ? 'your' : `${you}'s`} reach.`;
     case 'cast': return `${by} is casting a spell.`;
     case 'damaged': return `${by} has just damaged ${you}.`;
@@ -40,7 +41,7 @@ export function initReactionPrompt({ act, state, isDM }) {
   // What set it off, as far as the view says, in words. `me` is the creature asked.
   const trigger = (q, whom) => triggerText(q, whom, nameOf);
 
-  const cost = (o) => [o.slots?.length ? (o.slots.length === 1 ? `Spends a level ${o.slots[0]} spell slot` : `Spends a spell slot (level ${o.slots[0]} to ${o.slots.at(-1)})`) : '', o.ac !== undefined ? `Adds ${o.ac} to Armor Class` : '', 'Uses your Reaction'].filter(Boolean).join(' · ');
+  const cost = (o) => [o.slots?.length ? (o.slots.length === 1 ? `Spends a level ${o.slots[0]} spell slot` : `Spends a spell slot (level ${o.slots[0]} to ${o.slots.at(-1)})`) : '', o.ac !== undefined ? `Adds ${o.ac} to Armor Class` : '', o.kind === 'spell' ? `Uses your Bonus Action${o.free ? ' and one use of the feature' : ''}${o.ends ? `; ends your Concentration on ${o.ends}` : ''}` : 'Uses your Reaction'].filter(Boolean).join(' · ');
 
   function answer(n, take, slot) {
     if (sent || performance.now() < armedAt) return;
@@ -57,11 +58,11 @@ export function initReactionPrompt({ act, state, isDM }) {
         <button type="button" class="rp-take" data-take="${esc(o.reaction)}"${pick !== undefined ? ` data-slot-now="${pick}"` : ''}${sent ? ' disabled' : ''}>${dm ? 'Use' : 'Use'} ${esc(o.name)}${pick !== undefined && slots.length ? ` (level ${pick})` : ''}</button></div>`;
     }).join('');
     return `<div class="rp-card" role="alertdialog" aria-modal="${dm ? 'false' : 'true'}" aria-labelledby="rp-title" aria-describedby="rp-why">
-      <h2 id="rp-title">${dm ? `${esc(who)} can use a reaction` : 'Use a reaction?'}</h2>
+      <h2 id="rp-title">${q.trigger === 'ownHit' ? (dm ? `${esc(who)} may smite` : 'Add a smite?') : dm ? `${esc(who)} can use a reaction` : 'Use a reaction?'}</h2>
       <p id="rp-why" class="rp-why">${esc(trigger(q, dm ? who : null))}</p>
       ${dm ? `<p class="rp-dm note">A player is being asked. The table waits until it is answered; you may answer for them.</p>` : ''}
       ${opts}
-      <button type="button" class="rp-no" data-take=""${sent ? ' disabled' : ''}>${dm ? 'No reaction' : 'Do not react'}</button>
+      <button type="button" class="rp-no" data-take=""${sent ? ' disabled' : ''}>${q.trigger === 'ownHit' ? 'Not now' : dm ? 'No reaction' : 'Do not react'}</button>
       <p class="rp-err" id="rp-err" role="alert"${error ? '' : ' hidden'}>${esc(error)}</p></div>`;
   }
 

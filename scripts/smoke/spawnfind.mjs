@@ -101,7 +101,7 @@ async function solo(browser, url, label, opts) {
         await openTab(page, 'dm'); await page.locator('.spawn-find').scrollIntoViewIfNeeded();
         await page.setViewportSize({ width: 390, height: 480 });
         await page.tap('.sf-q'); await typeIn(page, 'wolf'); await sleep(900);
-        const r = await page.evaluate(() => { const q = document.querySelector('.sf-q').getBoundingClientRect(), b = document.querySelector('#dm-spawn button')?.getBoundingClientRect(); return { qt: q.top, qb: q.bottom, bt: b?.top, bb: b?.bottom, vh: innerHeight, hit: b ? document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest('#dm-spawn') !== null : false }; });
+        const r = await page.evaluate(() => { const q = document.querySelector('.sf-q').getBoundingClientRect(), b = document.querySelector('#dm-spawn button')?.getBoundingClientRect(); return { qt: q.top, qb: q.bottom, bt: b?.top, bb: b?.bottom, vh: innerHeight, hit: b ? document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest('#dm-spawn') !== null : false, top: b ? (() => { const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return e ? `${e.tagName}#${e.id}.${e.className}` : null; })() : null }; });
         if (r.qt < 0 || r.bt == null || r.bb > r.vh || r.bt < r.qb || !r.hit) throw new Error(`the box and a result are not both in view: ${JSON.stringify(r)}`);
         await shot(page, 'spawn-phone-5-keyboard');
         await page.keyboard.press('Enter');

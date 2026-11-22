@@ -56,7 +56,7 @@ const SENSE = [
   { type: "marchingOrder", order: ["rogue", "fighter", "cleric", "wizard"] }, { type: "partyFollow", leader: "fighter", shape: "line" }, { type: "formation", leader: "fighter", shape: "line" },
   { type: "mount", actor: "fighter", mount: GOB }, { type: "dismount", actor: "fighter" },
   { type: "attack", actor: "fighter", target: GOB }, { type: "act", actor: GOB, action: "scimitar", target: "fighter" }, { type: "dodge", actor: "fighter" },
-  { type: "reactions", actor: "wizard", set: { shield: "always" } }, { type: "endTurn", actor: "fighter" },
+  { type: "reactions", actor: "wizard", set: { shield: "always" } }, { type: "hitChoices", actor: "fighter", set: { "divine-smite": "ask" } }, { type: "endTurn", actor: "fighter" },
   { type: "cast", actor: "wizard", spell: "fire-bolt", target: GOB }, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: 3, r: -1 } }, { type: "cast", actor: "wizard", spell: "web", hex: { q: 3, r: -1 } },
   { type: "secondWind", actor: "fighter" }, { type: "feature", actor: "fighter", feature: "second-wind" }, { type: "use", actor: "fighter", object: "lever", verb: "pull" }, { type: "use", actor: "fighter", object: "door", verb: "open" },
   { type: "check", actor: "fighter", skill: "perception" }, { type: "save", who: ["fighter", "rogue"], ability: "dex", dc: 12, damage: { dice: "2d6", type: "fire", half: true } }, { type: "search", actor: "rogue" }, { type: "hide", actor: "rogue" },
@@ -204,7 +204,7 @@ test("no action type outside TERRAIN_ACTIONS changes the terrain: every type pla
   // The types the scripted payloads never got accepted (they need a built sheet, a waiting question, a reward, a scene, a spell's lasting effect or a
   // companion of a spell): only their refusals were played with the terrain frozen; the static scan below covers what they could do.
   const never = ACTION_TYPES.filter((x) => !accepted.has(x) && !TERRAIN_ACTIONS.has(x));
-  const KNOWN = ["rollHp", "rerollHp", "rerollAbilityScore", "attack", "reactions", "endEffect", "feature", "hide", "addCharacter", "editCharacter", "setSheet", "refresh", "levelUp", "equip", "shield", "attune", "conclusion", "scene", "sceneNpc", "sceneChronicle", "companionOrder", "command", "dismiss", "recall", "react"];
+  const KNOWN = ["rollHp", "rerollHp", "rerollAbilityScore", "attack", "reactions", "hitChoices", "endEffect", "feature", "hide", "addCharacter", "editCharacter", "setSheet", "refresh", "levelUp", "equip", "shield", "attune", "conclusion", "scene", "sceneNpc", "sceneChronicle", "companionOrder", "command", "dismiss", "recall", "react"];
   assert.deepEqual(never.filter((x) => !KNOWN.includes(x)), [], "an action type that used to be reached is no longer: extend the payloads");
   assert.ok(accepted.size >= 25, `the payloads were accepted for ${accepted.size} action types`);
 });

@@ -91,20 +91,34 @@ export async function showMap(pg, map) {
 export const MAPS = ['valley', 'dungeon', 'cave', 'square'];
 // The square fight: an ogre (a Large creature) on four squares, a fight in a room, highlights, and the camera on the ogre. Then nine taps, on the
 // ogre's four squares and elsewhere, recorded as the hex each picked and whether it was the ogre. Both are exported for the recording script.
+const FIGHT_INSET = 90;       // the same as showMap's, for the maps' views
 export async function squareFightSetup(page) {
-  await page.evaluate(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); h.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }); });
+  await page.evaluate(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); });
+  await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000);      // an action sent while beats play is dropped (app.js act: skipping)
+  await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }));
   await wait(page, () => !!window.hextable.state.encounter && window.hextable.waiting === 0, null, 20000);
   const ogre = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.size === 'large').id);
-  await page.evaluate(() => { const R = window.hextable.R; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5; });
+  await page.evaluate((INSET) => { const R = window.hextable.R; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5;
+    // Where a square is on the screen depends on `inset`, which the app sets from the dock's height (app.js, sizeDock: 0.85 of it) each time the dock is resized, and the dock's height follows what the
+    // turn shows: a caster's turn that opens the Spells tab makes it 8 px taller at 390x844 and ~2 px at 1280x800 (PR #696: every screenOf y off by exactly that, x identical). That is the dock, not
+    // the camera or the picking, so the check pins `inset` (the renderer's own, which the app's later writes would reach) and compares in a frame that does not depend on the dock.
+    Object.defineProperty(c, 'inset', { configurable: true, get: () => INSET, set() {} });
+  }, FIGHT_INSET);
   await sleep(1200);
   return ogre;
 }
+// A touch is snapped to a button within a few pixels (Chromium's touch adjustment), which elementFromPoint does not know: PR #696 makes a caster's turn's dock 8 px taller, so the party chip
+// moved up to 7 px under a tap meant for the ogre's third square and the tap selected the chip. A point is on the canvas only if the canvas is also not within 10 px of a button.
+const clearOfUi = async (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl' && ![...document.querySelectorAll('button, a, input, select, summary, [role=button]')].some((b) => {
+  const r = b.getBoundingClientRect(), v = getComputedStyle(b);
+  return r.width > 0 && v.visibility !== 'hidden' && v.pointerEvents !== 'none' && x0 > r.left - 10 && x0 < r.right + 10 && y0 > r.top - 10 && y0 < r.bottom + 10;
+}), [x, y]);
 export async function squareTaps(page, touch, width, ogre) {
   const pts = await page.evaluate(() => { const R = window.hextable.R; return [[9, 9, -1, -1], [10, 9, 1, -1], [9, 10, -1, 1], [10, 10, 1, 1], [5, 5, 0, 0], [5, 5, 0.9, 0.9], [5, 5, 0.9, -0.9], [6, 5, -0.97, 0], [8, 8, 0, 0]].map(([q, r, a, b]) => [q, r, R.screenPoint(5 * q + a * 0.8 * 2.5, 5 * r + b * 0.8 * 2.5, 0)]); });
   await page.evaluate(() => { const R = window.hextable.R; window.__tap = R.onTap; window.__hit = null; R.onTap = (hit) => { window.__hit = hit; }; });
   const hits = [];
   for (const [q, r, p] of pts) {
-    if (!p || p.x < 4 || p.y < 4 || p.x > width - 60 || !(await onCanvasAt(page, p.x, p.y))) { hits.push('ui'); continue; }
+    if (!p || p.x < 4 || p.y < 4 || p.x > width - 60 || !(await clearOfUi(page, p.x, p.y))) { hits.push('ui'); continue; }
     await page.evaluate(() => { window.__hit = null; });
     await tapAt(page, touch, p.x, p.y);
     hits.push(await page.evaluate(() => window.__hit && { hex: window.__hit.hex, id: window.__hit.id }));

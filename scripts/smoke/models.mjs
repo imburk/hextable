@@ -71,7 +71,7 @@ async function models(browser, url, label, opts) {
         await wait(page, () => { const R1 = window.__R(), h = window.hextable; return h.waiting === 0 && !h.timeline.busy() && [...R1.actors.values()].every((a) => !a.way.length); }, null, 20000);
         // The first blow of a table at peace starts the fight, and then the fighter must have the turn: swing whenever it is the fighter's (or nobody's), end the
         // party's other turns, and let the goblins' play. The clip is looked for as it plays.
-        await page.evaluate(() => { const p = window.__R().actors.get('fighter').pup, once = p.once.bind(p); window.__beats = []; const A = window.__R().actors.get('fighter'), T = window.__R().actors.get('m1'); p.once = (b) => { window.__beats.push(b); if (b === 'attack') window.__aim = { face: A.face, want: Math.atan2(T.x - A.x, T.z - A.z) }; return once(b); }; });      // every clip asked of it is written down: a frame can miss a short one
+        await page.evaluate(() => { const p = window.__R().actors.get('fighter').pup, once = p.once.bind(p); window.__beats = []; const A = window.__R().actors.get('fighter'), T = window.__R().actors.get('m1'); p.once = (b) => { window.__beats.push(b); if (b === 'attack') { const at = [...(window.hextable.state.timeline ?? [])].reverse().find((e) => e.type === 'attack' && e.actor === 'fighter'), G = window.__R().actors.get(at?.target) ?? T; window.__aim = { face: A.face, want: Math.atan2(G.x - A.x, G.z - A.z), target: at?.target }; } return once(b); }; });      // every clip asked of it is written down: a frame can miss a short one. The swing it turns for is whichever attack the fighter makes (an Opportunity Attack on a goblin walking away is one too), at the target that attack names
         try {
           await wait(page, () => {
             const h = window.hextable, S = h.state, cur = S.encounter?.order[S.encounter.turn]?.id, now = performance.now();
@@ -100,7 +100,8 @@ async function models(browser, url, label, opts) {
         await calm(page);
         await page.evaluate(() => { const p = window.__R().actors.get('m1').pup, go = p.go.bind(p); window.__goes = []; p.go = (b, o) => { window.__goes.push(b); return go(b, o); }; });
         const r = await page.evaluate(() => { const h = window.hextable, R1 = window.__R(); h.act({ type: 'setHp', actor: 'm1', hp: 0 }); h.act({ type: 'harm', actor: 'm1', amount: 1 }); const p = R1.actors.get('m1').pup; return { base: p.base, cur: p.curKey, hp: h.state.entities.m1.hp, dead: h.state.entities.m1.dead }; });
-        if (r.base !== 'die' && !(await page.evaluate(() => window.__R().actors.get('m1').pup.base === 'die'))) throw new Error(`it did not fall: ${JSON.stringify(r)}`);
+        // The renderer shows the blow when the timeline plays it (the hit clip first), so the fall begins a moment after the state says dead: wait for it, do not look once.
+        await wait(page, () => window.__R().actors.get('m1').pup.base === 'die', null, 8000).catch(async () => { throw new Error(`it did not fall: ${JSON.stringify(r)} ${await page.evaluate(() => { const p = window.__R().actors.get('m1').pup; return JSON.stringify({ base: p.base, cur: p.curKey, goes: window.__goes }); })}`); });
         await sleep(900);
         const held = await page.evaluate(() => { const p = window.__R().actors.get('m1').pup; return { base: p.base, cur: p.curKey, goes: window.__goes }; });
         if (held.base !== 'die' || held.cur !== 'die' || !held.goes.includes('die')) throw new Error(`the fall did not play and hold: ${JSON.stringify(held)}`);

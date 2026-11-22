@@ -1,4 +1,4 @@
-import { scenario, wait, state, shown, open, playSolo, closeMenu, openTab, waitShown, sleep } from './lib.mjs';
+import { scenario, wait, calm, state, shown, open, playSolo, closeMenu, openTab, waitShown, sleep } from './lib.mjs';
 
 // ---------- the DM's to-do tray (#675) ----------
 // A manual note becomes a card on the DM's screen with the nearest tools and Done; the menu button counts the open cards; the cards survive a
@@ -30,13 +30,15 @@ async function solo(browser, url, label, opts) {
       await run.do('a wizard casts Mage Armor: a card, a badge on the menu button, a toast, and no card before it', async () => {
         await open(page, url); await playSolo(page); await closeMenu(page);
         if ((await cards(page)).length) throw new Error('cards before anything happened');
+        await calm(page);      // act() is dropped while beats play (app.js skipping(): a tap skips them instead), so every send below waits for a still timeline (slow under load)
         await RIA(page);
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ria'));
         ria = await riaId(page);
         // Ria is built, so the engine puts Mage Armor on her itself; a typed-in character it cannot, so Tavin is added that way and the spell is handed to the DM.
-        await TAVIN(page);
+        await calm(page); await TAVIN(page);
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin' && !e.sheet));
         const tav = await tavinId(page);
+        await calm(page);
         await page.evaluate(([i, t]) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: [t] }), [ria, tav]);
         await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor'));
         await wait(page, () => !document.getElementById('menu-badge').hidden);
@@ -86,6 +88,7 @@ async function solo(browser, url, label, opts) {
       });
       await run.do('a Mage added gets a "You run: Spellcasting" card', async () => {
         await closeMenu(page);
+        await calm(page);      // act() is dropped while beats play (a tap skips them instead): the reload's own beats must be done
         const at = await state(page, (S) => { const p = S.entities.fighter.pos; return { q: p.q + 6, r: p.r + 4 }; });
         await page.evaluate((a) => window.hextable.act({ type: 'spawn', monster: 'mage', at: a }), at);
         await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.kind === 'run'));
@@ -132,6 +135,7 @@ async function players(browser, url) {
         await TAVIN(host);
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Tavin' && !e.sheet));
         const tav = await tavinId(host);
+        await calm(phone); await calm(host);      // the phone's act() is dropped while the host's remove and add are still playing there
         await phone.evaluate(([i, t]) => window.hextable.act({ type: 'cast', actor: i, spell: 'mage-armor', targets: [t] }), [id, tav]);
         await wait(host, () => window.hextable.state.todo?.cards?.some((c) => c.name === 'Mage Armor'));
         await wait(phone, () => !document.getElementById('todo-wait').hidden);
