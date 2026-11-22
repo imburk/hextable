@@ -305,7 +305,9 @@ export function initFeedback({ look, onBuild }) {
     $('fb-form').hidden = false; $('fb-done').hidden = true; frozen = null; count(); say(''); build(); probe();
     text.focus({ preventScroll: true });
   };
-  const close = () => { if (panel.hidden) return; panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); (opener && document.contains(opener) && opener !== document.body ? opener : btn).focus?.({ preventScroll: true }); };
+  const close = () => { if (panel.hidden) return; panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); // A row of the menu that has folded away cannot take the focus back: the token it came from does.
+    const back = opener && document.contains(opener) && opener !== document.body && !opener.closest('[inert], [hidden]') ? opener : (document.getElementById('btn-menu') ?? btn);
+    back.focus?.({ preventScroll: true }); };
   btn.onclick = () => (panel.hidden ? open() : close());
   $('fb-close').onclick = close; $('fb-done-close').onclick = close;
   $('fb-again').onclick = () => { $('fb-form').hidden = false; $('fb-done').hidden = true; say(''); build(); text.focus(); };

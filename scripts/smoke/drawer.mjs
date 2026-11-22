@@ -30,13 +30,15 @@ async function drawerPass(browser, url, label, opts) {
         await waitShown(page, '#btn-menu'); await waitShown(page, '#drawer', false);
         for (const id of ['btn-tracker', 'btn-log', 'btn-look', 'btn-dm']) if (await page.$('#' + id)) throw new Error(`#${id} is still on the page`);
       });
-      await run.do('the token is one 64 px die at the bottom centre, over the map and clear of the top bar', async () => {
+      await run.do('the token is one 64 px die at the bottom centre, over the map, and the dock leaves its strip clear', async () => {
         const r = await rectOf(page, '#btn-menu');
         if (Math.abs(r.w - 64) > 1 || Math.abs(r.h - 64) > 1) throw new Error(`the token is ${r.w} x ${r.h}`);
         if (Math.abs((r.l + r.r) / 2 - r.vw / 2) > 2) throw new Error(`the token is not at the centre: ${JSON.stringify(r)}`);
-        const k = await rectOf(page, '#dock');      // until the dock goes (stage M3) the token sits just above it
-        if (r.b > k.t + 1 || k.t - r.b > 24) throw new Error(`the token is not at the bottom, above the dock: ${JSON.stringify(r)} dock ${k.t}`);
-        if (await page.$('#top #btn-menu')) throw new Error('the token is still in the top bar');
+        // M3 (round 6): the token is at the bottom edge and stays there; the dock (what is left of it: the action rows) stops above it.
+        if (r.vh - r.b > 24 || r.vh - r.b < 8) throw new Error(`the token is not at the bottom edge: ${JSON.stringify(r)}`);
+        const under = await page.evaluate(() => { const t = document.getElementById('btn-menu').getBoundingClientRect(); return [...document.querySelectorAll('#dock > *')].filter((e) => !e.hidden && e.getClientRects().length).map((e) => e.getBoundingClientRect()).filter((q) => q.width && q.height && q.left < t.right && q.right > t.left && q.top < t.bottom && q.bottom > t.top).length; });
+        if (under) throw new Error('something in the dock is under the token');
+        for (const gone of ['#top', '#order', '#status']) if (await page.$(gone)) throw new Error(`${gone} is still on the page (M3 took it away)`);
         const who = await page.evaluate(() => { const b = document.getElementById('btn-menu'), q = b.getBoundingClientRect(); return { hit: document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2)?.closest('#btn-menu') !== null, name: b.getAttribute('aria-label'), face: getComputedStyle(b.querySelector('.tk-face')).fill }; });
         if (!who.hit) throw new Error('something covers the token');
         if (who.name !== 'Menu') throw new Error(`the token is called ${who.name}`);
@@ -84,11 +86,27 @@ async function drawerPass(browser, url, label, opts) {
         await page.click('#crumb-list [data-path=""]'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
         await waitShown(page, '#tracker', false);
       });
-      if (phone) await run.do('on a phone it stops above the dock and the dock stays usable', async () => {
-        const d = await rectOf(page, '#drawer'), k = await rectOf(page, '#dock');
-        if (d.b > k.t + 1) throw new Error(`the menu (${d.b}) covers the dock (${k.t})`);
-        const hit = await page.evaluate(() => { const r = document.querySelector('#party button').getBoundingClientRect(); return document.elementFromPoint(r.left + 8, r.top + 8)?.closest('#party') !== null; });
+      if (phone) await run.do('on a phone the sheet runs to the bottom edge, its levels end above the token, and the character chips are its first row', async () => {
+        const d = await rectOf(page, '#drawer'), t = await rectOf(page, '#btn-menu');
+        if (d.vh - d.b > 1) throw new Error(`the sheet stops ${d.vh - d.b} px short of the bottom`);
+        const lv = await page.evaluate(() => document.getElementById('menu-levels').getBoundingClientRect().bottom);
+        if (lv > t.t + 1) throw new Error(`the levels (${lv}) run under the token (${t.t})`);
+        await openMenu(page, []);
+        const hit = await page.evaluate(() => { const r = document.querySelector('#menu-root #party button').getBoundingClientRect(); return document.elementFromPoint(r.left + 8, r.top + 8)?.closest('#party') !== null; });
         if (!hit) throw new Error('the character chips are not reachable');
+      });
+      await run.do('the token stays exactly where it is while the menu opens, goes down a level, shows a screen, and closes', async () => {
+        const at = () => page.evaluate(() => { const r = document.getElementById('btn-menu').getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(); });
+        await closeMenu(page); await sleep(200);
+        const home = await at(); const seen = [];
+        await page.click('#btn-menu'); await waitShown(page, '#drawer');
+        for (let i = 0; i < 6; i++) { seen.push(await at()); await sleep(150); }       // mid-slide too
+        for (const where of ['sheet', 'turns', 'table/settings', 'dice']) { await openMenu(page, where); seen.push(await at()); }
+        await closeMenu(page);
+        for (let i = 0; i < 6; i++) { seen.push(await at()); await sleep(150); }
+        const moved = seen.filter((x) => x !== home);
+        if (moved.length) throw new Error(`the token moved: home ${home}, then ${[...new Set(moved)].join(' | ')}`);
+        await openMenu(page, []);                  // the next step starts with the menu open on its first level
       });
       await run.do('the token, Escape, the handle or x, and the dimmed map each close it, and focus returns to the token', async () => {
         await page.click('#btn-menu'); await waitShown(page, '#drawer', false);
@@ -221,13 +239,17 @@ async function drawerPass(browser, url, label, opts) {
         const cols = await page.evaluate(() => ['menu-root', 'menu-table', 'drawer-body'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), r.width > 0]; }));
         if (!cols.every((c, i) => c[2] && (!i || c[0] >= cols[i - 1][1] - 1))) throw new Error(`the three levels are not side by side: ${JSON.stringify(cols)}`);
         const tb = await rectOf(page, '#btn-menu'), dr = await rectOf(page, '#drawer');
-        if (tb.l < dr.r - 1) throw new Error(`the token is over the columns: token ${tb.l}-${tb.r}, columns to ${dr.r}`);
+        // The token does not move for the columns (round 6): the columns leave its strip empty, so no level runs under it.
+        const lvB = await page.evaluate(() => document.getElementById('menu-levels').getBoundingClientRect().bottom);
+        if (lvB > tb.t + 1) throw new Error(`a column runs under the token: levels end at ${lvB}, token starts at ${tb.t}`);
+        if (Math.abs(tb.l + tb.w / 2 - tb.vw / 2) > 2) throw new Error(`the token moved off the centre: ${JSON.stringify(tb)}`);
         await page.selectOption('#set-side', 'right'); await sleep(900);
         const r = await rectOf(page, '#drawer');
         if (Math.abs(r.r - r.vw) > 2) throw new Error(`not on the right: ${JSON.stringify(r)}`);
         if ((await page.evaluate(() => localStorage.getItem('hextable.drawerSide'))) !== '"right"') throw new Error('the side was not stored');
         const b = await rectOf(page, '#btn-menu');
-        if (b.r > r.l + 1) throw new Error(`the token is over the columns: token ${b.l}-${b.r}, columns from ${r.l}`);
+        if (Math.abs(b.l + b.w / 2 - b.vw / 2) > 2) throw new Error(`the token moved when the columns changed side: ${JSON.stringify(b)}`);
+        if ((await page.evaluate(() => document.getElementById('menu-levels').getBoundingClientRect().bottom)) > b.t + 1) throw new Error('a column runs under the token');
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-right-wide.png` : '/dev/null' }).catch(() => {});
         await page.selectOption('#set-side', 'left'); await sleep(900); await closeMenu(page);
       });
@@ -289,7 +311,7 @@ async function drawerPass(browser, url, label, opts) {
         if (!/^Round 1 · .+'s turn$/.test(await page.$eval('#sum-turns', (e) => e.textContent.trim()))) throw new Error('the row does not say whose turn it is');
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-turns-${phone ? 'phone' : 'wide'}.png` : '/dev/null' }).catch(() => {});
       });
-      await run.do('a tap on a row selects that creature, and on a phone closes the drawer; the order strip opens it again', async () => {
+      await run.do('a tap on a row selects that creature, and on a phone closes the drawer; the turn line opens it again', async () => {
         const id = await state(page, (S) => S.encounter.order.at(-1).id);
         if (phone) await page.tap(`#tr-list li[data-id="${id}"] .tr-main`); else await page.click(`#tr-list li[data-id="${id}"] .tr-main`);
         await wait(page, (i) => window.hextable.state && document.querySelector('#c-name')?.textContent === window.hextable.state.entities[i].name, id);
@@ -297,7 +319,7 @@ async function drawerPass(browser, url, label, opts) {
         else { await closeMenu(page); }
         // The fight starts at a foe with the party far off, so "The party has fallen" can be up by now (it comes when the beats are still): put it aside, it is not what this step is about.
         if (await shown(page, '#df .df-card')) { await page.click('#df [data-df="aside"]'); await waitShown(page, '#df .df-card', false); }
-        await page.click('#order li'); await waitShown(page, '#drawer'); await waitShown(page, '#tracker');
+        await page.click('#turn-text'); await waitShown(page, '#drawer'); await waitShown(page, '#tracker');
         await closeMenu(page);
       });
     } finally { await ctx.close(); }
@@ -399,7 +421,8 @@ async function drawerLandscape(browser, url) {
       await run.do('the menu opens, the dock steps aside, every first-level row is tappable and none is under the token', async () => {
         await page.tap('#btn-menu'); await waitShown(page, '#drawer');
         await sleep(1200);                      // the token slides beside the column: look when it has arrived
-        const rows = await page.$$eval('#menu-root [data-go]', (x) => x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go, t: r.top, b: r.bottom, l: r.left, r: r.right, h: r.height }; }).filter((r) => r.h > 0));
+        // A row is under the token only where it is seen: the level scrolls inside the strip above the token, so what lies below that edge is clipped.
+        const rows = await page.$$eval('#menu-root [data-go]', (x) => { const clip = document.getElementById('menu-levels').getBoundingClientRect().bottom; return x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go, t: r.top, b: Math.min(r.bottom, clip), l: r.left, r: r.right, h: r.height }; }).filter((r) => r.h > 0); });
         if (rows.length < 5) throw new Error(`rows: ${JSON.stringify(rows)}`);
         const tok = await boxOf('#btn-menu'), dr0 = await boxOf('#drawer');
         for (const r of rows) {

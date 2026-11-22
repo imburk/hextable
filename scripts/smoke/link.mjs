@@ -10,11 +10,11 @@ const rowDot = (page, id) => page.evaluate((i) => { const d = document.querySele
 const waitRow = (page, id, want, timeout = 15000) => wait(page, ([i, w]) => { const d = document.querySelector(`#tr-list li[data-id="${i}"] .tr-link .ld`); return !!d && d.classList.contains(`ld-${w}`); }, [id, want], timeout);
 // Screenshots for a person to look at: written where SMOKE_SHOTS says (the workflow uploads them on failure), else nowhere.
 const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
-// Does the dot keep clear of the round card, the initiative strip and the menu button?
+// Does the dot keep clear of the turn line, the menu token and the DM's undo and redo chips?
 const overlaps = (page) => page.evaluate(() => {
   const r = (s) => document.querySelector(s)?.getBoundingClientRect(), dot = r('#link-dot');
   const hit = (a, b) => a && b && a.width && b.width && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  return ['#status', '#btn-menu', '#order', '#btn-undo'].filter((s) => hit(dot, r(s)));
+  return ['#turnline', '#btn-menu', '#btn-undo', '#btn-redo'].filter((s) => hit(dot, r(s)));
 });
 
 async function link(browser, url) {

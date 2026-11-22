@@ -12,20 +12,20 @@ const rows = (page) => page.$$eval('#ap-explore [data-row]', (b) => b.map((x) =>
 const pick = async (page, name) => { await chip(page, `${name}`); await wait(page, () => !document.querySelector('#card').hidden); };
 const waitTab = (page, id) => wait(page, (t) => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab === t, id);
 
-// The map must stay tappable and the chips and the strip must not be covered: the card sits under both, and a point in the middle
-// of the free band is the canvas.
+// The map must stay tappable and the turn line and the token must not be covered: the card (the action rows, what is left of the dock) sits under
+// both, and a point in the middle of the free band above them is the canvas. (M3: the chips and the order strip are gone from the screen.)
 async function clear(page, touch, fight) {
   const g = await page.evaluate(() => {
-    const r = (s) => document.querySelector(s).getBoundingClientRect();
-    return { party: r('#party').top, card: r('#card').top, cardB: r('#card').bottom, order: r('#order').bottom, h: innerHeight, w: innerWidth, orderHas: document.querySelectorAll('#order li').length };
+    const r = (s) => { const e = document.querySelector(s); return e && !e.hidden && e.getClientRects().length ? e.getBoundingClientRect() : null; };
+    const card = r('#card'), turn = r('#turnline');
+    return { top: Math.min(card ? card.top : innerHeight, turn ? turn.top : innerHeight), cardB: card ? card.bottom : 0, turn: !!turn, h: innerHeight, w: innerWidth };
   });
   if (g.cardB > g.h + 1) throw new Error(`the card runs off the screen: ${JSON.stringify(g)}`);
-  if (fight && g.orderHas && g.party < g.order + 40) throw new Error(`the panel leaves no room for the map under the initiative strip: ${JSON.stringify(g)}`);
-  const y = (Math.max(g.order, 110) + g.party) / 2;
-  if (g.party - y < 40) throw new Error(`no map left to tap: ${JSON.stringify(g)}`);
-  if (!(await onCanvas(page, g.w / 2 - 120, y))) throw new Error(`the free band is not the map (left of the menu token, which sits at the centre above the dock): ${JSON.stringify(g)}`);
-  // chips and strip are not under anything
-  const hit = await page.evaluate(() => { const bad = []; for (const s of ['#party button', '#order li']) for (const el of document.querySelectorAll(s)) { const r = el.getBoundingClientRect(); if (r.left < 0 || r.right > innerWidth) continue; const x = r.left + 6, e = document.elementFromPoint(x, r.top + r.height / 2); if (e && !el.contains(e) && e !== el) bad.push(`${s} under ${e.id || e.className || e.tagName}`); } return bad; });
+  const y = g.top / 2;
+  if (g.top - 60 < 40) throw new Error(`no map left to tap: ${JSON.stringify(g)}`);
+  if (!(await onCanvas(page, g.w / 2 - 120, y))) throw new Error(`the free band is not the map: ${JSON.stringify(g)}`);
+  // the turn line and the token are not under anything
+  const hit = await page.evaluate(() => { const bad = []; for (const s of ['#turnline button', '#btn-menu']) for (const el of document.querySelectorAll(s)) { if (el.hidden || !el.getClientRects().length) continue; const r = el.getBoundingClientRect(); if (r.left < 0 || r.right > innerWidth) continue; const x = r.left + 6, e = document.elementFromPoint(x, r.top + r.height / 2); if (e && !el.contains(e) && e !== el) bad.push(`${s} under ${e.id || e.className || e.tagName}`); } return bad; });
   if (hit.length) throw new Error(hit.join('; '));
 }
 

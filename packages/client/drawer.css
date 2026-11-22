@@ -121,7 +121,10 @@ body[data-menu-shape="columns"] #drawer.open { transform: none; }
 body[data-menu-shape="columns"] #drawer-head { cursor: grab; touch-action: pan-y; }
 body[data-menu-shape="columns"] #menu-levels { overflow: hidden; }
 body[data-menu-shape="columns"][data-drawer="right"] #menu-levels { flex-direction: row-reverse; }
-body[data-menu-shape="columns"] .menu-level { flex: none; width: 240px; border-right: 1px solid var(--line); padding-bottom: 96px; }
+/* the columns end above the token's strip (it does not move for them: round 6, R25) */
+body[data-menu-shape="columns"] #menu-levels { margin-bottom: 84px; }
+body[data-menu-shape="columns"].drawer-pretable #menu-levels { margin-bottom: 0; }
+body[data-menu-shape="columns"] .menu-level { flex: none; width: 240px; border-right: 1px solid var(--line); padding-bottom: 12px; }
 body[data-menu-shape="columns"][data-drawer="right"] .menu-level { border-right: 0; border-left: 1px solid var(--line); }
 body[data-menu-shape="columns"] .menu-level[data-active="false"] { display: none; }
 body[data-menu-shape="columns"] #drawer[data-depth="1"] #drawer-body { width: min(420px, 45vw); }
@@ -159,7 +162,7 @@ body.drawer-modal:not(.drawer-pretable) #dock { visibility: hidden; pointer-even
   body.drawer-open:not(.drawer-pretable) #dock { visibility: hidden; pointer-events: none; }
   body.drawer-open #drawer, body[data-menu-shape="columns"] #drawer { bottom: 0; }
   body.drawer-open #drawer-scrim { bottom: 0; }
-  body[data-menu-shape="columns"] .menu-level { padding-bottom: 84px; }
+  body[data-menu-shape="columns"] #menu-levels { margin-bottom: 72px; }
 }
 /* a short screen (a phone on its side) has no room for a strip under the dock: the token takes the bottom-left corner, in a margin the dock keeps clear, and stays there;
    the chips go to the top right corner */

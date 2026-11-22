@@ -984,7 +984,9 @@ let chipsUntil = 0, chipTimer = null, chipSig = null;
 function chipsShow(on) { const dm = isDM(); $('btn-undo').hidden = $('btn-redo').hidden = !(dm && on); }
 function raiseChips() {
   chipsShow(true); clearTimeout(chipTimer);
-  chipTimer = setTimeout(function tick() { if ($('chips').matches(':hover, :focus-within')) { chipTimer = setTimeout(tick, 1500); return; } chipsShow(false); }, 8000);
+  // They stay while a mouse rests on them or a keyboard has the focus in them (a tap leaves neither behind), then go.
+  const held = () => { const c = $('chips'), f = document.activeElement; return (matchMedia('(hover: hover)').matches && c.matches(':hover')) || (c.contains(f) && f.matches(':focus-visible')); };
+  chipTimer = setTimeout(function tick() { if (held()) { chipTimer = setTimeout(tick, 1500); return; } chipsShow(false); }, 8000);
 }
 function showUndo() {
   const { undo = [], redo = [] } = T?.undoInfo ?? {}, dm = isDM();
@@ -1130,6 +1132,8 @@ const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, sel
 
 const D = initDrawer({ prefs, state: () => S, isDM, selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
+// Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
+$('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
 $('turn-text').onclick = () => D.open('turns');       // the turn line opens Turns
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
