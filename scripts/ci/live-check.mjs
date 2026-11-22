@@ -106,9 +106,16 @@ export async function checkErrors({ gh, send, healthUrl, dry, now = new Date(), 
   const issue = found.find((i) => i.state === "open") ?? found[0] ?? null;
   let marker = null;
   if (issue) {
-    const texts = [issue.body ?? ""];
-    for (let page = 1; page <= 10; page++) { const c = await gh(`/issues/${issue.number}/comments?per_page=100&page=${page}`); texts.push(...c.filter(ours).map((x) => x.body ?? "")); if (c.length < 100) break; }
-    for (const t of texts) { const m = MARKER.exec(t); if (m) { try { marker = JSON.parse(m[1]); } catch { /* an unreadable marker is no baseline */ } } }
+    // The newest marker wins, so read from the newest end: start at the last page (the issue's own comment count says which it is) and step back
+    // only while a page holds no marker of ours (up to 10 pages). However long the issue grows, the newest marker is on one of the last pages;
+    // the issue body is the fallback. (Reading oldest first and stopping at 10 pages missed it past 1000 comments.)
+    const last = Math.max(1, Math.ceil((typeof issue.comments === "number" ? issue.comments : 0) / 100));
+    const read = (t) => { const m = MARKER.exec(t ?? ""); if (!m) return null; try { return JSON.parse(m[1]); } catch { return null; /* an unreadable marker is no baseline */ } };
+    for (let page = last; page >= Math.max(1, last - 9) && !marker; page--) {
+      const c = await gh(`/issues/${issue.number}/comments?per_page=100&page=${page}`);
+      for (const x of c.filter(ours)) marker = read(x.body) ?? marker;
+    }
+    marker ??= read(issue.body);
   }
   const rise = healthRise({ health, marker, now });
   const line = `health: crashes ${rise.now.crashes} (+${rise.delta.crashes}), browser errors ${rise.now.clientErrors} (+${rise.delta.clientErrors})`;
