@@ -117,6 +117,36 @@ test('checkErrors trusts only the Actions bot: a planted issue or marker is igno
   assert.match(await run(unlabelled, health({ crashes: 1 }), NOW), /opened #/, 'found by label, not by title');
 });
 
+test('checkErrors reads the newest end of a long issue: the marker past 1000 comments is the baseline', async () => {
+  const mk = (n, crashes) => ({ user: BOT, body: `<!-- live-errors: ${JSON.stringify({ procs: [{ start: new Date(NOW).toISOString(), crashes, clientErrors: 0, crashesByType: {}, clientErrorsByType: {} }] })} -->` + ' #' + n });
+  const comments = Array.from({ length: 1234 }, (_, i) => mk(i, i === 1233 ? 7 : 1));
+  const calls = [];
+  const issue = { number: 5, title: ERRORS_TITLE, state: 'open', labels: [ERRORS_LABEL], user: BOT, body: '', comments: comments.length };
+  const sent = [];
+  const send = async (m, path, body) => { sent.push(path); return {}; };
+  const gh = async (path) => {
+    if (path.startsWith('/issues?')) return [issue];
+    calls.push(path);
+    const page = Number(/&page=(\d+)/.exec(path)[1]);
+    return comments.slice((page - 1) * 100, page * 100);
+  };
+  const same = await checkErrors({ gh, send, healthUrl: 'x', dry: false, now: later(60_000), fetchHealth: async () => health({ uptime: 60, crashes: 7 }) });
+  assert.match(same, /nothing to report/, 'the newest marker (7 crashes) is the baseline, not the 1000th (1)');
+  assert.deepEqual(calls, ['/issues/5/comments?per_page=100&page=13'], 'one request: the last page');
+  const rose = await checkErrors({ gh, send, healthUrl: 'x', dry: false, now: later(60_000), fetchHealth: async () => health({ uptime: 60, crashes: 8 }) });
+  assert.match(rose, /commented on #5/);
+  assert.deepEqual(sent, ['/issues/5/comments']);
+});
+
+test('checkErrors steps back past a last page with no marker of ours', async () => {
+  const marked = { user: BOT, body: `<!-- live-errors: ${JSON.stringify({ procs: [{ start: new Date(NOW).toISOString(), crashes: 4, clientErrors: 0 }] })} -->` };
+  const comments = [marked, ...Array.from({ length: 150 }, () => ({ user: HUMAN, body: 'hi' }))];
+  const issue = { number: 5, title: ERRORS_TITLE, state: 'open', labels: [ERRORS_LABEL], user: BOT, body: '', comments: comments.length };
+  const gh = async (path) => (path.startsWith('/issues?') ? [issue] : comments.slice((Number(/&page=(\d+)/.exec(path)[1]) - 1) * 100, Number(/&page=(\d+)/.exec(path)[1]) * 100));
+  const out = await checkErrors({ gh, send: async () => ({}), healthUrl: 'x', dry: false, now: later(60_000), fetchHealth: async () => health({ uptime: 60, crashes: 4 }) });
+  assert.match(out, /nothing to report/);
+});
+
 test('checkErrors leaves an unreadable or old health alone, and a dry run touches nothing', async () => {
   const f = fakeGitHub();
   assert.match(await run(f, null, NOW, { fetchHealth: async () => { throw new Error('HTTP 502'); } }), /not checked/);
