@@ -35,6 +35,12 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       const flag = (page) => page.evaluate(() => window.hextable.state.encounter?.flags?.['rmove:' + Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id] ?? 0);
       const asked = (page) => page.evaluate(() => !!(window.hextable.state.prompt || window.hextable.state.pending));
       const idle = (page) => calm(page, 20000);
+      // What a stuck fight looks like from the page (#688): whose turn, what it waits for, what is asked, the last events and refusals, whether the auto-play is on.
+      const dump = (page) => page.evaluate(() => { const h = window.hextable, S = h.state, E = S?.encounter, t = document.getElementById('toast'); return JSON.stringify({ encounter: E && { turn: E.order[E.turn]?.id, round: E.round, order: E.order.map((o) => o.id), budget: E.budget, flags: E.flags, waiting: E.waiting }, prompt: S?.prompt ?? null, pending: S?.pending ?? null, auto: document.getElementById('dm-auto')?.checked, busy: h.timeline.busy(), waits: h.waiting, pace: h.timeline.pace, hint: document.getElementById('hint')?.hidden ? '' : document.getElementById('hint')?.textContent, toast: t?.hidden ? '' : t?.textContent, log: (S?.timeline ?? []).slice(-20).map((x) => x.type + (x.id ? ':' + x.id : '') + (x.actor ? ':' + x.actor : '')), hp: Object.values(S?.entities ?? {}).map((e) => `${e.name}/${e.side}:${e.hp}${e.dead ? 'x' : ''}`) }); });
+      const endFight = async (page) => {
+        await page.evaluate(() => window.__still({ type: 'endEncounter' }));
+        await wait(page, () => !window.hextable.state.encounter, null, 20000).catch(async (e) => { throw new Error(`${e.message}; the DM's page: ${await dump(dm)}; the player's: ${await dump(pl)}`); });
+      };
       const botsOff = () => dm.evaluate(() => { document.getElementById('dm-auto').checked = false; });
       const botsOn = () => dm.evaluate(() => { const c = document.getElementById('dm-auto'); c.checked = true; c.dispatchEvent(new Event('change')); });
       const box = (page, sel) => page.evaluate((s) => { const b = document.querySelector(s)?.getBoundingClientRect(); return b && { x: b.x, y: b.y, w: b.width, h: b.height, iw: innerWidth, ih: innerHeight }; }, sel);
@@ -72,7 +78,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
 
       // One try: a goblin beside Sir Bell, a fight, the goblin's turn, the goblin walks off, and Sir Bell's Opportunity Attack may hit. Returns the goblin's id when it did.
       const attempt = async () => {
-        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.__still({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 20000); await idle(dm); }
+        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await endFight(dm); await idle(dm); }
         // The same ground every try (a flake, #633): the foes of the valley (they wake in a fight, walk up to Sir Bell and stand on the hexes the search needs), the goblins
         // left by the tries before and Sir Bell's own place after a tap are what made "no hex beside Sir Bell takes a goblin". Clear the foes, put her back where she began,
         // and stand one Guard four hexes off in the arena: a fight with only the goblin in it would end the moment her Opportunity Attack kills it, and the allowance with it.
@@ -80,7 +86,7 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         // where they were, and a single try with one 20 s wait could only say that a predicate was false.
         const cleared = () => dm.evaluate(([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home]);
         for (let i = 0; i < 6 && !(await cleared()); i++) {
-          if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.__still({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 20000); }
+          if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await endFight(dm); }
           await dm.evaluate(async ([b, h]) => {
             for (const e of Object.values(window.hextable.state.entities)) if (e.side !== 'party') await window.__still({ type: 'remove', actor: e.id });
             const p = window.hextable.state.entities[b].pos;
