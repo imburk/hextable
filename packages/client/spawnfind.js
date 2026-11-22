@@ -71,8 +71,12 @@ export function initSpawnFind({ list, store, key, pick }) {
   // a moment after the focus does, so a tap on a result is not moved out from under the finger by the menu changing size.
   let off = 0;
   const typing = (on) => { clearTimeout(off); if (on) document.body.classList.add('sf-typing'); else off = setTimeout(() => document.body.classList.remove('sf-typing'), 450); };
-  input.onfocus = () => { typing(true); setTimeout(() => input.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250); };
-  input.onblur = () => typing(false);
+  // The keyboard arrives after the focus and resizes the window, and a scroll made before that has nowhere to go: the box stays low and the
+  // first result sits where the menu's token is. So the box is brought to the top again whenever the window changes size while it has the focus.
+  let bring = 0;
+  const onSize = () => { clearTimeout(bring); bring = setTimeout(() => { if (document.activeElement === input) input.scrollIntoView({ block: 'start', behavior: 'auto' }); }, 120); };
+  input.onfocus = () => { typing(true); setTimeout(() => input.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250); window.addEventListener('resize', onSize); window.visualViewport?.addEventListener('resize', onSize); };
+  input.onblur = () => { typing(false); clearTimeout(bring); window.removeEventListener('resize', onSize); window.visualViewport?.removeEventListener('resize', onSize); };
   input.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } };      // Enter shuts a phone's keyboard
   bands.onclick = (ev) => { const b = ev.target.closest('.sf-band'); if (!b) return; band = b.dataset.band; draw(); };
   return {
