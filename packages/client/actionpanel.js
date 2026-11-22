@@ -997,7 +997,7 @@ export function initActionPanel(ctx) {
         if (id === 'cost') continue;
         const g = G.groups.find((x) => x.id === id), on = !!g?.shown;
         secs[id].hidden = !on;
-        if (!on) { panes[id].hidden = true; continue; }
+        if (!on) { panes[id].hidden = true; if (panes[id].dataset.sig) setHtml(panes[id], ''); continue; }      // a group that is gone leaves nothing behind
         secs[id].style.order = sorted.indexOf(g);
         const bt = bars[id].querySelector('.ap-bt'), tp = bars[id].querySelector('.ap-tip');
         if (bt.textContent !== g.label) bt.textContent = g.label;
@@ -1012,7 +1012,7 @@ export function initActionPanel(ctx) {
         lk.hidden = !top;
         if (top) { lk.dataset.rid = top.id; const t = `${top.label}${top.sub ? ` · ${top.sub}` : ''}`; if (lk.textContent !== t) lk.textContent = t; lk.setAttribute('aria-label', `${g.label}: ${top.label}`); }
         order++;
-        if (!isOpen) continue;
+        if (!isOpen) { if (panes[id].dataset.sig) setHtml(panes[id], ''); continue; }
         if (id === 'explore') { rowsBy.explore = g.rows; setHtml(panes.explore, exploreHtml(g.rows)); }
         else if (id === 'spells') spellsPane(S, e, mode, G.fight);
         else if (id === 'items') { rowsBy.items = [...inv.uses.filter((r) => !G.fight || offered(r)), ...(inv.light && (!G.fight || offered(inv.light)) ? [inv.light] : [])]; itemsPane(S, e, inv, G.fight); }
