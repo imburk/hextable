@@ -16,7 +16,7 @@ import { SIGHT_RULES, tileSent, unknown } from '../vision.js';
 import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
-import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, up } from './shared.js';
+import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, spot, up } from './shared.js';
 import { airspace, AREA_FILLS, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
@@ -105,6 +105,8 @@ export const handlers = {
   startEncounter(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can call for initiative.');
     !s.encounter || fail('A fight is already under way.');
+    spot(a.center, 'where the fight is centred');
+    (a.radius === undefined || a.radius === null || (Number.isInteger(a.radius) && a.radius >= 1 && a.radius <= 100)) || fail('The fight\'s radius is a whole number of hexes, 1 to 100.');
     startEncounter(s, a.center, ev, a.radius || ARENA_RADIUS);
   },
   endEncounter(s, a, ctx, ev) {
@@ -146,6 +148,7 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can place creatures.');
     if (a.node !== undefined) return placeIn(s, a, ctx, ev);
     const e = ent(s, a.actor);
+    spot(a.to, 'where to place it');
     // On the nearest floor, or exactly where asked if a height is given and there is room there (in the air, say).
     const to = (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z)) || fail("There's nothing there to stand on.");
     !living(s).some((o) => o.id !== e.id && overlapAt(o, o.pos, e, to, gridOf(s.map))) || fail(`That ${gridOf(s.map).word.one} is occupied.`);
