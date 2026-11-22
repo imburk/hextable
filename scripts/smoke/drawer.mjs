@@ -30,14 +30,13 @@ async function drawerPass(browser, url, label, opts) {
         await waitShown(page, '#btn-menu'); await waitShown(page, '#drawer', false);
         for (const id of ['btn-tracker', 'btn-log', 'btn-look', 'btn-dm']) if (await page.$('#' + id)) throw new Error(`#${id} is still on the page`);
       });
-      await run.do('the token is one 64 px die at the bottom centre, over the map, and the dock leaves its strip clear', async () => {
+      await run.do('the token is one 64 px die at the bottom centre, over the map, and the dock is gone', async () => {
         const r = await rectOf(page, '#btn-menu');
         if (Math.abs(r.w - 64) > 1 || Math.abs(r.h - 64) > 1) throw new Error(`the token is ${r.w} x ${r.h}`);
         if (Math.abs((r.l + r.r) / 2 - r.vw / 2) > 2) throw new Error(`the token is not at the centre: ${JSON.stringify(r)}`);
-        // M3 (round 6): the token is at the bottom edge and stays there; the dock (what is left of it: the action rows) stops above it.
+        // M3 (round 6): the token is at the bottom edge and stays there; M4: the dock is gone, the action rows are the groups of the Character screen.
         if (r.vh - r.b > 24 || r.vh - r.b < 8) throw new Error(`the token is not at the bottom edge: ${JSON.stringify(r)}`);
-        const under = await page.evaluate(() => { const t = document.getElementById('btn-menu').getBoundingClientRect(); return [...document.querySelectorAll('#dock > *')].filter((e) => !e.hidden && e.getClientRects().length).map((e) => e.getBoundingClientRect()).filter((q) => q.width && q.height && q.left < t.right && q.right > t.left && q.top < t.bottom && q.bottom > t.top).length; });
-        if (under) throw new Error('something in the dock is under the token');
+        if (await page.$('#dock, #ap-tabs')) throw new Error('the dock is still in the page (M4 took it away)');
         for (const gone of ['#top', '#order', '#status']) if (await page.$(gone)) throw new Error(`${gone} is still on the page (M3 took it away)`);
         const who = await page.evaluate(() => { const b = document.getElementById('btn-menu'), q = b.getBoundingClientRect(); return { hit: document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2)?.closest('#btn-menu') !== null, name: b.getAttribute('aria-label'), face: getComputedStyle(b.querySelector('.tk-face')).fill }; });
         if (!who.hit) throw new Error('something covers the token');
@@ -45,7 +44,7 @@ async function drawerPass(browser, url, label, opts) {
         if (!/^rgb\(201, 154, 62\)$/.test(who.face)) throw new Error(`the Classic die is not brass: ${who.face}`);
         if (await shown(page, '#menu-badge')) throw new Error('a badge shows with nothing waiting');
       });
-      await run.do('the token opens the first level as a dialog: Character, Party, Dice, Log and chat, Table', async () => {
+      await run.do('the token opens the first level as a dialog: a row for each character, then Party, Dice, Log and chat, Table', async () => {
         await page.click('#btn-menu'); await waitShown(page, '#drawer'); await waitShown(page, '#menu-root');
         await sleep(900);
         const r = await rectOf(page, '#drawer');
@@ -56,12 +55,13 @@ async function drawerPass(browser, url, label, opts) {
         if ((await page.getAttribute('#btn-menu', 'aria-expanded')) !== 'true') throw new Error('aria-expanded');
         if ((await page.getAttribute('#drawer', 'role')) !== 'dialog') throw new Error('the menu is not a dialog over the map');
         const names = await page.$$eval('#menu-root .menu-row:not([hidden]) .mr-name', (b) => b.map((x) => x.textContent.trim()));
-        if (names.join() !== 'Character,Party,Dice,Log and chat,Table') throw new Error(`the first level: ${names}`);
+        if (names.join() !== 'Party,Dice,Log and chat,Table') throw new Error(`the first level: ${names}`);      // the one Character row is replaced by a row for each character (M4, Decision 4b)
         if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== '') throw new Error('it did not open on the first level');
         if (await shown(page, '#tracker')) throw new Error('a screen shows on the first level');
         if (await page.$('#drawer-tabs')) throw new Error('the old tab strip is still there');
-        const sum = await page.$eval('#sum-sheet', (e) => e.textContent);
-        if (!/ · \d+ \/ \d+ HP$/.test(sum)) throw new Error(`the Character row says: ${sum}`);
+        const chars = await page.$$eval('#menu-root #party .pr', (b) => b.map((x) => ({ sel: x.classList.contains('sel'), name: x.querySelector('strong').textContent, state: x.querySelector('.pr-state').textContent, h: x.getBoundingClientRect().height })));
+        if (!chars.length || !chars[0].sel) throw new Error(`the character rows: ${JSON.stringify(chars)}`);
+        if (chars.some((c) => !/^\d+ \/ \d+ HP$|^Your turn$|^Down$|^Play as/.test(c.state) || c.h < 44)) throw new Error(`a character row says too little or is too small: ${JSON.stringify(chars)}`);
         if (phone) {
           const small = await page.evaluate(() => [...document.querySelectorAll('#menu-root .menu-row:not([hidden]), #drawer-handle')].filter((b) => b.getBoundingClientRect().height < 44).map((b) => b.id));
           if (small.length) throw new Error(`targets under 44 px: ${small}`);
@@ -86,7 +86,7 @@ async function drawerPass(browser, url, label, opts) {
         await page.click('#crumb-list [data-path=""]'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
         await waitShown(page, '#tracker', false);
       });
-      if (phone) await run.do('on a phone the sheet runs to the bottom edge, its levels end above the token, and the character chips are its first row', async () => {
+      if (phone) await run.do('on a phone the sheet runs to the bottom edge, its levels end above the token, and the character rows are its first rows', async () => {
         const d = await rectOf(page, '#drawer'), t = await rectOf(page, '#btn-menu');
         if (d.vh - d.b > 1) throw new Error(`the sheet stops ${d.vh - d.b} px short of the bottom`);
         const lv = await page.evaluate(() => document.getElementById('menu-levels').getBoundingClientRect().bottom);
@@ -152,10 +152,12 @@ async function drawerPass(browser, url, label, opts) {
       await run.do('arrow keys: Up and Down move between rows, Right or Enter opens, Left or Backspace goes back, Escape closes every level', async () => {
         await page.click('#btn-menu'); await waitShown(page, '#drawer'); await sleep(900);
         const at = () => page.evaluate(() => document.activeElement?.id);
-        await page.focus('#tab-sheet'); await page.keyboard.press('ArrowDown');
+        const first = await page.evaluate(() => { const b = [...document.querySelectorAll('#menu-root .menu-row, #menu-root .pr')].find((x) => !x.hidden && x.getClientRects().length); b.id ||= 'first-row'; return b.id; });          // the first row is a character's (M4)
+        const lastChar = await page.evaluate(() => { const l = [...document.querySelectorAll('#menu-root .pr')].at(-1); l.id ||= 'last-char'; return l.id; });
+        await page.evaluate((i) => document.getElementById(i).focus(), lastChar); await page.keyboard.press('ArrowDown');
         if ((await at()) !== 'tab-turns') throw new Error(`ArrowDown reached ${await at()}`);
         await page.keyboard.press('End'); if ((await at()) !== 'tab-table') throw new Error(`End reached ${await at()}`);
-        await page.keyboard.press('ArrowUp'); await page.keyboard.press('Home'); if ((await at()) !== 'tab-sheet') throw new Error(`Home reached ${await at()}`);
+        await page.keyboard.press('ArrowUp'); await page.keyboard.press('Home'); if ((await at()) !== first) throw new Error(`Home reached ${await at()}`);
         await page.keyboard.press('End'); await page.keyboard.press('ArrowRight');
         await wait(page, () => document.getElementById('drawer').dataset.path === 'table');
         await page.keyboard.press('ArrowLeft'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
@@ -168,9 +170,9 @@ async function drawerPass(browser, url, label, opts) {
         if ((await page.evaluate(() => window.__leaked.length)) !== 0) throw new Error('ArrowLeft or Backspace at the root reached the game');
         // The heading: Down or Home reaches the first row.
         await page.focus('#drawer-title'); await page.keyboard.press('ArrowDown');
-        if ((await at()) !== 'tab-sheet') throw new Error(`ArrowDown from the heading reached ${await at()}`);
+        if ((await at()) !== first) throw new Error(`ArrowDown from the heading reached ${await at()}`);
         await page.focus('#drawer-title'); await page.keyboard.press('Home');
-        if ((await at()) !== 'tab-sheet') throw new Error(`Home from the heading reached ${await at()}`);
+        if ((await at()) !== first) throw new Error(`Home from the heading reached ${await at()}`);
         await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown');
         await openMenu(page, 'table/about'); await page.focus('#drawer-title');
         await page.keyboard.press('Escape'); await waitShown(page, '#drawer', false);
@@ -404,7 +406,7 @@ async function drawerTable(browser, url) {
   });
 }
 
-// A phone on its side is 390 high and the dock fills it: the menu must still be reachable and tappable, and the dock must come back.
+// A phone on its side is 390 high: the menu must still be reachable and tappable, and the token stays on the screen.
 async function drawerLandscape(browser, url) {
   await scenario('drawer at 844x390 with touch', async (run) => {
     const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true });
@@ -413,35 +415,32 @@ async function drawerLandscape(browser, url) {
       run.watch(page);
       await open(page, url); await playSolo(page); await wait(page, () => window.hextable.state.entities.fighter);
       const boxOf = (sel) => page.evaluate((x) => { const r = document.querySelector(x).getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; }, sel);
-      await run.do('the token is on the screen and at least 44 px, with the dock showing', async () => {
+      await run.do('the token is on the screen and at least 44 px, with the dock gone', async () => {
         const t = await boxOf('#btn-menu');
         if (t.t < 0 || t.b > 390 || t.l < 0 || t.r > 844 || t.w < 44 || t.h < 44) throw new Error(`the token is at ${JSON.stringify(t)}`);
-        if (!(await shown(page, '#dock'))) throw new Error('no dock');
+        if (await page.$('#dock')) throw new Error('the dock is still in the page');
       });
-      await run.do('the menu opens, the dock steps aside, every first-level row is tappable and none is under the token', async () => {
+      await run.do('the menu opens, every first-level row is tappable and none is under the token', async () => {
         await page.tap('#btn-menu'); await waitShown(page, '#drawer');
         await sleep(1200);                      // the token slides beside the column: look when it has arrived
         // A row is under the token only where it is seen: the level scrolls inside the strip above the token, so what lies below that edge is clipped.
-        const rows = await page.$$eval('#menu-root [data-go]', (x) => { const clip = document.getElementById('menu-levels').getBoundingClientRect().bottom; return x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go, t: r.top, b: Math.min(r.bottom, clip), l: r.left, r: r.right, h: r.height }; }).filter((r) => r.h > 0); });
+        const rows = await page.$$eval('#menu-root [data-go], #menu-root .pr', (x) => { const clip = document.getElementById('menu-levels').getBoundingClientRect().bottom; return x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go || e.dataset.id, t: r.top, b: Math.min(r.bottom, clip), l: r.left, r: r.right, h: r.height }; }).filter((r) => r.h > 0); });
         if (rows.length < 5) throw new Error(`rows: ${JSON.stringify(rows)}`);
         const tok = await boxOf('#btn-menu'), dr0 = await boxOf('#drawer');
         for (const r of rows) {
           if (r.h < 44) throw new Error(`row ${r.k} is ${r.h} high`);
           if (r.l < tok.r && Math.min(r.r, dr0.r) > tok.l && r.b > tok.t && r.t < tok.b) throw new Error(`row ${r.k} is under the token: ${JSON.stringify([r, tok])}`);
         }
-        if (await shown(page, '#dock') && (await page.evaluate(() => getComputedStyle(document.getElementById('dock')).visibility)) !== 'hidden') throw new Error('the dock is still showing over the menu');
         const dr = await boxOf('#drawer');
         if (dr.h < 300) throw new Error(`the menu is only ${dr.h} high`);
       });
-      await run.do('Settings is reached by taps, one setting changes, and closing brings the dock back', async () => {
+      await run.do('Settings is reached by taps, one setting changes, and closing leaves the token where it was', async () => {
         await openMenu(page, 'table/settings');
         await page.selectOption('#set-motion', 'appear');
         if ((await page.evaluate(() => document.body.dataset.menuMotion)) !== 'appear') throw new Error('the motion setting did not take');
         await page.selectOption('#set-motion', 'slide');
         await closeMenu(page);
         await sleep(300);
-        const vis = await page.evaluate(() => getComputedStyle(document.getElementById('dock')).visibility);
-        if (vis !== 'visible' || !(await shown(page, '#dock'))) throw new Error(`the dock did not come back (${vis})`);
         const t = await boxOf('#btn-menu');
         if (t.t < 0 || t.b > 390) throw new Error(`the token is off the screen: ${JSON.stringify(t)}`);
       });

@@ -276,14 +276,14 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       return;
     }
     if (isOpen && !held && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && el.contains(ev.target)) {
-      const row = ev.target.closest?.('.menu-row');
+      const row = ev.target.closest?.('.menu-row, #party .pr');
       const mine = (row || ev.target === title || !pinned());     // a pinned menu leaves the arrow keys to the map unless a row has the focus
       if (mine && !row && ev.target === title && path.length === 0 && /^(ArrowDown|Home)$/.test(ev.key)) {      // the heading at the root: Down or Home reaches the first row
-        const first = [...rootList.querySelectorAll('.menu-row')].find((b) => !b.hidden && b.getClientRects().length);
+        const first = [...rootList.querySelectorAll('.menu-row, .pr')].find((b) => !b.hidden && b.getClientRects().length);
         if (first) { ev.preventDefault(); ev.stopImmediatePropagation(); first.focus({ preventScroll: true }); return; }
       }
       if (mine && row && /^(ArrowUp|ArrowDown|Home|End)$/.test(ev.key)) {
-        const rows = [...row.closest('ul').querySelectorAll('.menu-row')].filter((b) => !b.hidden);
+        const rows = [...(row.closest('#menu-root') ? rootList.querySelectorAll('.menu-row, .pr') : row.closest('ul').querySelectorAll('.menu-row'))].filter((b) => !b.hidden && b.getClientRects().length);
         const i = rows.indexOf(row), next = ev.key === 'Home' ? rows[0] : ev.key === 'End' ? rows.at(-1) : rows[Math.max(0, Math.min(rows.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))];
         ev.preventDefault(); ev.stopImmediatePropagation(); next?.focus({ preventScroll: true }); return;
       }
