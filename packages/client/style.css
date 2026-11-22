@@ -57,21 +57,15 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 #cam { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); display: grid; gap: 6px; }
 #cam button { width: 40px; padding: 0; background: var(--panel); font-size: 18px; }
 
-/* dock */
-#dock { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 6px; padding: 0 12px calc(max(16px, env(safe-area-inset-bottom)) + 64px + 12px); pointer-events: none; max-width: 760px; margin: 0 auto; }
-#dock > * { pointer-events: auto; }
-#party { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-#party button { background: var(--panel); display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 10px; min-height: 36px; }
-#party button i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-#party button.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-#party button.now::after { content: 'turn'; font-size: 11px; background: var(--accent); color: var(--accent-ink); border-radius: 3px; padding: 0 4px; }
-#card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; }
+/* the dock is gone (M4): `--dock-h` is the strip the token owns at the bottom of the screen; the turn line, the dice tray and the join bar sit above it */
+:root { --dock-h: calc(max(16px, env(safe-area-inset-bottom)) + 64px + 12px); }
 #card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 #c-name { font-size: 18px; margin-right: 8px; } #c-sub { color: var(--muted); font-size: 13px; }
 #card-head .row { margin: 0; flex-wrap: nowrap; } #btn-sheet, #btn-end { min-height: 34px; padding: 4px 12px; white-space: nowrap; }
 #btn-end { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #c-hp { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; } #c-hp .bar { flex: 1; height: 10px; }
 #c-res { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+#c-res > * { flex: none; white-space: nowrap; max-width: 100%; }
 #c-res span { border: 1px solid var(--line); border-radius: 20px; padding: 1px 8px; } #c-res span.spent { opacity: .4; text-decoration: line-through; }
 #c-res span.have { border-color: var(--accent); }
 
@@ -147,8 +141,8 @@ button.leave.sure { outline: 2px solid currentColor; }
 .facts .skill { font: inherit; text-transform: capitalize; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line, #3a4a44); background: transparent; color: inherit; cursor: pointer; min-height: 32px; }
 .facts .skill.prof { font-weight: 700; border-color: currentColor; }
 
-/* DM: the map editor. It takes the place of the dock while it is open. */
-body.editing #dock, body.editing #hint { display: none !important; }
+/* DM: the map editor. */
+body.editing #hint { display: none !important; }
 #editor { position: fixed; left: 0; right: 0; bottom: 0; max-width: 760px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); display: grid; gap: 6px; z-index: 4; max-height: 55vh; overflow-y: auto; }
 #editor .ed-head { display: flex; gap: 8px; align-items: center; } #editor .ed-head strong { font-family: var(--display); white-space: nowrap; }
 #editor .ed-head select { flex: 1; min-width: 0; }
@@ -235,7 +229,7 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 #sheet-reactions .rx select { min-height: 44px; flex: 0 1 13em; min-width: 8em; max-width: 55%; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2, #222); color: inherit; font: inherit; }
 
 /* The timeline (docs/specs/renderer.md, decision 3): while beats play in `wait`, a quiet "…" and the controls dimmed. A tap skips. */
-#pace-wait { position: absolute; right: 12px; top: -38px; min-width: 44px; min-height: 32px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
+#pace-wait { min-width: 44px; min-height: 44px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
 #pace-wait[hidden] { display: none; }
 body.playing #btn-end { opacity: 0.5; }
 
@@ -345,5 +339,8 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 #readonly-bar { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 61; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: calc(100% - 40px); box-sizing: border-box; padding: 6px 12px; background: var(--bad); color: #fff; border: 2px solid var(--ink); border-radius: var(--radius); font-weight: 700; font-size: 13px; text-align: center; } #readonly-bar[hidden] { display: none; }
 #readonly-bar button { min-height: 36px; background: var(--panel); color: var(--ink); border: 1px solid var(--ink); }
 /* Controls that change the game are out of a read-only window, not only refused when used. */
-body.readonly #tab-dm, body.readonly #dm, body.readonly #btn-undo, body.readonly #btn-redo, body.readonly #c-end, body.readonly #menu-new, body.readonly #dm-new, body.readonly #btn-end, body.readonly #ap-body, body.readonly #ap-how { display: none !important; }
+body.readonly #tab-dm, body.readonly #dm, body.readonly #btn-undo, body.readonly #btn-redo, body.readonly #c-end, body.readonly #menu-new, body.readonly #dm-new, body.readonly #btn-end, body.readonly #card, body.readonly #ap-how { display: none !important; }
 body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet select, body.readonly #sheet textarea { pointer-events: none; opacity: .5; }
+
+/* words for a screen reader only (the menu's live region, a slot count): they were used and never defined, so the turn announcement showed in a corner */
+.sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

@@ -123,6 +123,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       b.hidden = !(t.parent ? ok.table : ok.root).includes(id);
       b.setAttribute('aria-current', String(t.parent ? path[0] === t.parent && path[1] === id : path[0] === id));
     }
+    if ($('party').childElementCount) $('tab-sheet').hidden = true;      // the characters are rows of their own on the first level (Decision 4b); the one Character row is for a table with none
     $('tab-table').setAttribute('aria-current', path[0] === 'table' ? 'true' : 'false');
     summaries(S);
     // The badges: the token carries one, the sum of what waits (the DM's waiting players, a player's unseen handouts).

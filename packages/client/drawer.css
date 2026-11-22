@@ -21,7 +21,7 @@ body[data-token="right"] #btn-menu { left: auto; right: calc(16px + env(safe-are
 body.drawer-pretable #btn-menu, body:has(#dice-tray) #btn-menu { visibility: hidden; }       /* no table yet; or a throw is waiting where the token sits */
 #menu-badge { position: absolute; top: -2px; right: -2px; background: var(--bad); color: #fff; border-radius: 11px; min-width: 22px; height: 22px; padding: 0 5px; font: 700 13px/22px var(--body); text-align: center; }
 
-/* the turn line: one line above the token in a fight (it rides above the dock, which is not the token) */
+/* the turn line: one line above the token in a fight */
 #turnline { position: fixed; z-index: 3; left: calc(50% + (var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); transform: translateX(-50%); bottom: calc(var(--dock-h, 0px) + 6px); width: max-content; max-width: calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px));
   display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 2px 2px 4px; font-size: 14px; }
 #turnline[hidden] { display: none; }
@@ -46,7 +46,7 @@ canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--i
 #labels { inset: 0 var(--inset-r) 0 var(--inset-l); }
 #hint, #join { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
 #cam { right: calc(12px + var(--inset-r)); }
-#dock, #editor { left: var(--inset-l); right: var(--inset-r); }
+#editor { left: var(--inset-l); right: var(--inset-r); }
 
 /* the menu, both shapes */
 #drawer { position: fixed; z-index: 5; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border: 1px solid var(--line); backdrop-filter: blur(6px); overflow: hidden; }
@@ -92,7 +92,7 @@ body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-ind
 #drawer-body h2 { margin: 0 0 8px; }
 #dm h2 { display: none; }
 
-/* the sheet: below 900 px it rises from the bottom, stops 12 % below the top (the dimmed map there is the clear zone) and above the dock,
+/* the sheet: below 900 px it rises from the bottom, stops 12 % below the top (the dimmed map there is the clear zone) and above the token,
    and pushes one level at a time from the right. There is no x: the handle is the close control. */
 body[data-menu-shape="sheet"] #drawer { left: 0; right: 0; margin: 0 auto; width: min(100%, 560px); top: max(12vh, env(safe-area-inset-top)); bottom: 0;
   border-width: 1px 1px 0; border-radius: 16px 16px 0 0; transform: translateY(100%); transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
@@ -134,8 +134,6 @@ body[data-menu-shape="columns"] .menu-level[data-new="true"] { animation: col-in
 body[data-menu-shape="columns"][data-drawer="right"] .menu-level[data-new="true"] { animation-name: col-in-r; }
 /* a wide screen that cannot hold three columns folds the first level away while a screen is open under Table; the breadcrumb goes back */
 @media (max-width: 1099px) { body[data-menu-shape="columns"] #drawer[data-cols="3"] #menu-root { display: none; } }
-/* the menu covers the map, so the dock (what is left of it) steps aside while it is open: one overlay at a time */
-body.drawer-modal:not(.drawer-pretable) #dock { visibility: hidden; pointer-events: none; }
 .set-rules { margin: 0 0 8px; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
 .set-rules a, .set-rules button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; margin-left: 6px; }
 #set-theme, #set-floors, #set-side { max-width: 60%; }
@@ -157,23 +155,29 @@ body.drawer-modal:not(.drawer-pretable) #dock { visibility: hidden; pointer-even
 #splash-about { min-height: 44px; }
 #lobby-about { min-height: 44px; }
 
-/* a short screen (a phone on its side): the dock is the whole screen, so while the menu is open it steps aside and the menu takes the room down to the bottom edge */
+/* a short screen (a phone on its side): the menu takes the room down to the bottom edge */
 @media (max-height: 500px) {
-  body.drawer-open:not(.drawer-pretable) #dock { visibility: hidden; pointer-events: none; }
   body.drawer-open #drawer, body[data-menu-shape="columns"] #drawer { bottom: 0; }
   body.drawer-open #drawer-scrim { bottom: 0; }
   body[data-menu-shape="columns"] #menu-levels { margin-bottom: 72px; }
 }
-/* a short screen (a phone on its side) has no room for a strip under the dock: the token takes the bottom-left corner, in a margin the dock keeps clear, and stays there;
+/* a short screen (a phone on its side) has no room for a strip under the turn line: the token takes the bottom-left corner and stays there;
    the chips go to the top right corner */
 @media (max-height: 500px) {
   body[data-token] #btn-menu { width: 56px; height: 56px; top: auto; right: auto; left: calc(4px + env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); transform: none; }
   body[data-token] #chips { left: auto; right: calc(8px + env(safe-area-inset-right)); bottom: auto; top: max(8px, env(safe-area-inset-top)); flex-direction: row-reverse; }
   body[data-token] #turnline { left: calc(50% + 30px); }
-  #dock { padding-left: calc(64px + env(safe-area-inset-left)) !important; padding-bottom: max(8px, env(safe-area-inset-bottom)) !important; }
+  :root { --dock-h: max(8px, env(safe-area-inset-bottom)); }
 }
 
-/* the party chips (they left the dock for the top of the first level; docs/specs/one-token-menu.md, Decision 4b, M4 makes them rows) */
-#menu-root #party { padding: 12px 14px 0; flex-wrap: wrap; overflow: visible; }
+/* the characters (Decision 4b): a row each at the top of the first level, with the sigil's health ring, the name and class, and a state on the right */
+#menu-root #party { display: grid; gap: 6px; padding: 12px 14px 0; }
 #menu-root #party:empty { display: none; }
-#menu-root #party button { min-height: 44px; padding: 4px 14px; }
+#menu-root #party .pr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 56px; padding: 6px 12px; text-align: left; background: var(--panel); }
+#menu-root #party .pr.under { margin-left: 22px; }
+#menu-root #party .pr.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+#menu-root #party .pr.now .pr-state { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0 8px; }
+.pr-sig { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--good, #5a9a5a) calc(var(--hp, 100) * 1%), var(--line) 0); }
+.pr-sig b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--c, #888); color: #fff; text-shadow: 0 1px 2px #0008; font-size: 15px; }
+.pr-txt { display: grid; min-width: 0; } .pr-txt strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pr-txt small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-state { font-size: 12px; color: var(--muted); white-space: nowrap; }

@@ -49,27 +49,11 @@
 <!-- The turn line (Decision 1/7): one line above the token in a fight. A tap opens Turns. -->
 <div id="turnline" role="status" aria-live="polite" hidden><button type="button" id="turn-text"></button><button type="button" id="btn-end" hidden>End turn</button></div>
 <!-- Beside the token: the DM's undo and redo as symbols (shown for 8 s after an action), and the connection dot at a table. -->
-<div id="chips"><button type="button" id="btn-undo" hidden disabled aria-label="Undo"></button><button type="button" id="btn-redo" hidden disabled aria-label="Redo"></button></div>
+<div id="chips"><button type="button" id="pace-wait" hidden aria-label="Playing: tap to skip">…</button><button type="button" id="btn-undo" hidden disabled aria-label="Undo"></button><button type="button" id="btn-redo" hidden disabled aria-label="Redo"></button></div>
 
-<!-- What is left of the dock after M3: only the action rows (the old tabs, `#ap-tabs` and `#ap-body`) until M4 moves them into the Character
-     screen, and two small status items that are hidden unless needed. The name, Hit Points and resources are in the Character screen, the party chips on the first level. -->
-<footer id="dock">
-  <p id="todo-wait" role="status" hidden></p>
-  <button type="button" id="pace-wait" hidden aria-label="Playing: tap to skip">…</button>
-  <div id="card" hidden>
-    <div id="ap-body">
-      <div id="ap-explore" role="tabpanel" aria-labelledby="ap-tab-explore" hidden></div>
-      <div id="ap-attacks" role="tabpanel" aria-labelledby="ap-tab-attacks" hidden></div>
-      <div id="ap-bonus" role="tabpanel" aria-labelledby="ap-tab-bonus" hidden></div>
-      <div id="ap-move" role="tabpanel" aria-labelledby="ap-tab-move" hidden></div>
-      <div id="ap-features" role="tabpanel" aria-labelledby="ap-tab-features" hidden></div>
-      <div id="ap-reactions" role="tabpanel" aria-labelledby="ap-tab-reactions" hidden></div>
-      <div id="ap-down" role="tabpanel" aria-labelledby="ap-tab-down" hidden></div>
-      <div id="ap-all" role="tabpanel" aria-labelledby="ap-tab-all" hidden><div id="actions"></div></div>
-    </div>
-    <div id="ap-tabs" role="tablist" aria-label="Actions" hidden></div>
-  </div>
-</footer>
+<!-- The dock is gone (M4): the action rows are the groups of the Character screen. Two small status items stay on the map, hidden unless needed. -->
+<p id="todo-wait" role="status" hidden></p>
+
 
 <!-- The token (docs/specs/one-token-menu.md, Decision 1): one die at the bottom of the screen opens the menu. Its id is kept from the old burger. -->
 <button type="button" id="btn-menu" class="token" aria-label="Menu" aria-expanded="false" aria-controls="drawer">
@@ -132,6 +116,9 @@
         <div id="c-level"></div>
         <div id="c-res"></div>
         <div id="ap-how" role="status" hidden></div>
+      </div>
+      <div id="card" hidden>
+        <div id="ap-body" aria-label="Actions"></div>
       </div>
       <div id="sheet-body"></div></section>
     <section id="log" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
