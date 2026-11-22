@@ -41,6 +41,7 @@ export const PARTY_FIELDS = {
   pocket: 'scrubbed',          // a familiar in its master's pocket dimension: a creature record of its own, cut by this same table
   // Not sent.
   speedSet: 'withheld',        // the DM's bookkeeping of `setSpeed`: the speeds themselves are sent
+  hitChoices: 'withheld',      // standing instructions for choices after a hit: its controller's and the DM's, sent with the reactions (`viewReactions`)
   reactions: 'withheld',       // standing instructions are their controller's and the DM's (`viewReactions`)
   stealthNoted: 'withheld',    // the DM told once of armour that hinders Stealth: bookkeeping that no player reads
   usesAway: 'withheld',        // uses spent of a subclass whose pack is not loaded: bookkeeping until the pack is
