@@ -44,7 +44,7 @@ import { initScenes } from './scenes.js';
 import { initReactionPrompt } from './reactionprompt.js';
 import { initClasses, formOf, formName, skillBonus, isLent, lentList, nice as niceId } from './classes.js';
 import { createDice, MAX_DICE, titleOf, nextSource } from './dice.js';
-import { createTimeline, paceFor } from './timeline.js';
+import { createTimeline, paceFor, settle } from './timeline.js';
 import { initLogView, kindOf } from './logview.js';
 import { objectDef } from './shared/walls.js';
 import { refreshReport, refreshNote } from './refresh.js';
@@ -113,8 +113,11 @@ setInterval(() => {
   if (key !== linkKey) { linkKey = key; tracker.render(); }
 }, 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) TL.skip(); });      // a tab that was hidden shows everything at once on its return
-// A tap on a control or the map, while beats play in `wait`, skips them instead of acting.
-const skipping = () => TL.pace === 'wait' && TL.busy() && TL.skip();
+// An action of the player's, while beats play in `wait`, finishes them first and is then sent (timeline.js `settle`): it is never dropped
+// (issue #705). `skipping` keeps its old shape for its callers (the map, the dock): it skips and says false, so the caller goes on and acts.
+// Escape and the "…" button skip and do nothing else (`skipOnly`).
+const skipOnly = () => TL.pace === 'wait' && TL.busy() && TL.skip();
+const skipping = () => { settle(TL); return false; };
 const syncPlaying = () => { const on = TL.pace === 'wait' && TL.busy(); $('pace-wait').hidden = !on; document.body.classList.toggle('playing', on); };
 $('pace-wait').onclick = () => TL.skip();
 
@@ -196,7 +199,7 @@ let owedUi = null, owedWho = [];      // what the hint bar is saying about an Op
 let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh the party: the next update says what was remade (refresh.js)
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action, byAI = false) {
-  if (skipping()) return;
+  if (!byAI) settle(TL);       // the DM's auto-play never cuts a picture short (its timer only runs once the picture is still)
   acted++;
   action = CLS.decorate(action);
   if (!toThrow(action, byAI)) return T.send(action);
@@ -1239,7 +1242,7 @@ addEventListener('keydown', (ev) => {
   if (ev.target.tagName === 'INPUT') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); return ev.shiftKey ? redo() : undo(); }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); return redo(); }
-  if (ev.key === 'Escape' && skipping()) return;
+  if (ev.key === 'Escape' && skipOnly()) return;
   if (ev.key === 'Escape' && !armed) setMode(MOVE);
   if (!S || !$('lobby').hidden) return;
   if (ev.key === 'Shift') { KB.shift(true); return; }
