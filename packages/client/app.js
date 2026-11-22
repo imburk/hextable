@@ -113,11 +113,8 @@ setInterval(() => {
   if (key !== linkKey) { linkKey = key; tracker.render(); }
 }, 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) TL.skip(); });      // a tab that was hidden shows everything at once on its return
-// An action of the player's, while beats play in `wait`, finishes them first and is then sent (timeline.js `settle`): it is never dropped
-// (issue #705). `skipping` keeps its old shape for its callers (the map, the dock): it skips and says false, so the caller goes on and acts.
-// Escape and the "…" button skip and do nothing else (`skipOnly`).
-const skipOnly = () => TL.pace === 'wait' && TL.busy() && TL.skip();
-const skipping = () => { settle(TL); return false; };
+// A tap on a control or the map, while beats play in `wait`, skips them instead of acting.
+const skipping = () => TL.pace === 'wait' && TL.busy() && TL.skip();
 const syncPlaying = () => { const on = TL.pace === 'wait' && TL.busy(); $('pace-wait').hidden = !on; document.body.classList.toggle('playing', on); };
 $('pace-wait').onclick = () => TL.skip();
 
@@ -199,7 +196,7 @@ let owedUi = null, owedWho = [];      // what the hint bar is saying about an Op
 let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh the party: the next update says what was remade (refresh.js)
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action, byAI = false) {
-  if (!byAI) settle(TL);       // the DM's auto-play never cuts a picture short (its timer only runs once the picture is still)
+  if (skipping()) return;
   acted++;
   action = CLS.decorate(action);
   if (!toThrow(action, byAI)) return T.send(action);
@@ -1242,7 +1239,7 @@ addEventListener('keydown', (ev) => {
   if (ev.target.tagName === 'INPUT') return;
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); return ev.shiftKey ? redo() : undo(); }
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); return redo(); }
-  if (ev.key === 'Escape' && skipOnly()) return;
+  if (ev.key === 'Escape' && skipping()) return;
   if (ev.key === 'Escape' && !armed) setMode(MOVE);
   if (!S || !$('lobby').hidden) return;
   if (ev.key === 'Shift') { KB.shift(true); return; }
@@ -1336,7 +1333,7 @@ const formationFor = (e) => { if (!FM.open(e.id)) toast(whyNoFormation(S, e, { d
 new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
 
 // For the browser console, tests and future automation.
-window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get packs() { return PK.peek(); }, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; }, get keys() { return KB; } /* the keyboard walker, for the smoke pass */ };
+window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get packs() { return PK.peek(); }, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act: (action, byAI) => { settle(TL); return act(action, byAI); } /* programmatic: the beats finish first, then it is sent, never dropped (#705); the UI's own controls skip instead (renderer.md Decision 3) */, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; }, get keys() { return KB; } /* the keyboard walker, for the smoke pass */ };
 
 // ---------- the splash ----------
 // The page shows its name and a line at once (index.html, drawer.css); it goes when there is a table to look at or a lobby to

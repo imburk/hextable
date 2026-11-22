@@ -105,7 +105,7 @@ scrolling or opening anything.
 | Level up | `buildsheet.js` (`openBuild({ mode: 'levelup' })`), opened only from `quickentry.js` (`#qb-levelup`, DM tab, Characters); engine `levelUp` is DM only (`engine/characters.js`) | **Add** a way in from the card and the panel (Decision 8) |
 | Lead the party, Follow, Formation… | `actionpanel.js` (`rankExplore`), `formation.js` (the popup opens after Lead; "Formation…" is a row while leading) | **Add to**: the shape is shown under Lead while leading, with Change (Decision 6) |
 | Feedback icon | `feedback.js`, fixed at the left edge (#359) | **Fix**: on a phone it sits over the rewards card's heading ("The fight is won." loses its "T"); cards keep clear of it |
-| Pace "wait" | `timeline.js`, `app.js` `skipping()`: while beats play under the pace "wait", a tap on "…" or Escape skips and does nothing else; a tap on the map or a button skips the beats and then acts (#705) | **Keep**, and say so on the "…" button ("Playing: tap to skip") — it does already |
+| Pace "wait" | `timeline.js`, `app.js` `skipping()`: while beats play under the pace "wait", a tap on the map or a button skips the beat and does nothing else | **Keep**, and say so on the "…" button ("Playing: tap to skip") — it does already |
 | Camera buttons | `#cam` (rotate, zoom) | **Keep**; keyboard movement (#357) adds keys, not buttons |
 | Link dot | `linkdot.js` (shape and word per state) | **Add to**: a lost link greys the panel with a sentence (Decision 10) |
 
