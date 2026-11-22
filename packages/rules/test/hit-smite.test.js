@@ -370,16 +370,20 @@ test("a Paladin 13 and a Paladin 6 / Bard 8: slots, prompt and smite", () => {
   assert.deepEqual(p13.pending.ask.options[0].slots, Object.keys(p13.entities.hero.slots).map(Number).filter((l) => p13.entities.hero.slots[l] > 0));
   const r = answer(p13, "divine-smite", 4);
   assert.equal(radiant(r.events).reduce((n, e) => n + e.dice.length, 0), 5, "2d8 and three more for a level 4 slot");
-  const sheet = { ...paladin(6), class: undefined, level: undefined, classes: [{ class: "paladin", level: 6, subclass: undefined }, { class: "bard", level: 8, subclass: "lore", spells: ["vicious-mockery"] }],
+  // Zaarth's build. No guard: if derive refuses this sheet, the test fails rather than passing unseen.
+  const sheet = { ...paladin(6), class: undefined, level: undefined, subclass: undefined, classes: [{ class: "paladin", level: 6, subclass: "devotion" }, { class: "bard", level: 8, subclass: "lore", spells: ["vicious-mockery"] }],
     skills: ["athletics", "religion", "performance", "persuasion", "insight"], expertise: [] };
-  let built;
-  try { built = derive(sheet); } catch { built = null; }
-  if (!built || built.errors?.length) return;            // the sheet format of a multiclass is derive.js's: the Paladin 13 above is the one this must hold for
+  const built = derive(sheet);
+  assert.ok(!built.errors?.length, `derive accepts the multiclass sheet: ${JSON.stringify(built.errors)}`);
   const m = ready({ sheet });
-  const slots = m.entities.hero.slots;
-  assert.ok(Object.keys(slots).length >= 4, "the multiclass spell slot table");
+  // Caster level 3 (Paladin 6, halved) + 8 (Bard) = 11: the multiclass table's row 11.
+  assert.deepEqual(m.entities.hero.slots, { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 1 }, "the multiclass spell slot table");
   ok(hit(m));
-  assert.ok(m.pending.ask.options.some((o) => o.reaction === "divine-smite"));
+  const smite = m.pending.ask.options.find((o) => o.reaction === "divine-smite");
+  assert.ok(smite, "Divine Smite is offered on a hit");
+  assert.deepEqual(smite.slots, [1, 2, 3, 4, 5, 6], "any slot the multiclass table gives, up to 6th");
+  const r2 = answer(m, "divine-smite", 6);
+  assert.equal(radiant(r2.events).reduce((n, e) => n + e.dice.length, 0), 7, "a 6th-level slot: 2d8 and five more (SRD 5.2 has no cap)");
 });
 
 test("what each person is sent: the question to its player and the DM only, the instructions to their controller", () => {
