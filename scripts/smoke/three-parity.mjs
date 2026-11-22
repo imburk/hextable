@@ -107,12 +107,18 @@ export async function squareFightSetup(page) {
   await sleep(1200);
   return ogre;
 }
+// A touch is snapped to a button within a few pixels (Chromium's touch adjustment), which elementFromPoint does not know: PR #696 makes a caster's turn's dock 8 px taller, so the party chip
+// moved up to 7 px under a tap meant for the ogre's third square and the tap selected the chip. A point is on the canvas only if the canvas is also not within 10 px of a button.
+const clearOfUi = async (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl' && ![...document.querySelectorAll('button, a, input, select, summary, [role=button]')].some((b) => {
+  const r = b.getBoundingClientRect(), v = getComputedStyle(b);
+  return r.width > 0 && v.visibility !== 'hidden' && v.pointerEvents !== 'none' && x0 > r.left - 10 && x0 < r.right + 10 && y0 > r.top - 10 && y0 < r.bottom + 10;
+}), [x, y]);
 export async function squareTaps(page, touch, width, ogre) {
   const pts = await page.evaluate(() => { const R = window.hextable.R; return [[9, 9, -1, -1], [10, 9, 1, -1], [9, 10, -1, 1], [10, 10, 1, 1], [5, 5, 0, 0], [5, 5, 0.9, 0.9], [5, 5, 0.9, -0.9], [6, 5, -0.97, 0], [8, 8, 0, 0]].map(([q, r, a, b]) => [q, r, R.screenPoint(5 * q + a * 0.8 * 2.5, 5 * r + b * 0.8 * 2.5, 0)]); });
   await page.evaluate(() => { const R = window.hextable.R; window.__tap = R.onTap; window.__hit = null; R.onTap = (hit) => { window.__hit = hit; }; });
   const hits = [];
   for (const [q, r, p] of pts) {
-    if (!p || p.x < 4 || p.y < 4 || p.x > width - 60 || !(await onCanvasAt(page, p.x, p.y))) { hits.push('ui'); continue; }
+    if (!p || p.x < 4 || p.y < 4 || p.x > width - 60 || !(await clearOfUi(page, p.x, p.y))) { hits.push('ui'); continue; }
     await page.evaluate(() => { window.__hit = null; });
     await tapAt(page, touch, p.x, p.y);
     hits.push(await page.evaluate(() => window.__hit && { hex: window.__hit.hex, id: window.__hit.id }));
