@@ -11,7 +11,7 @@ import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { SIZES as SIZE_LIST } from '../content/schema.js';
-import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
+import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, spot, steering, turnBudget, unblocked, up } from './shared.js';
 import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { partRefusal } from './attacks.js';
@@ -550,6 +550,7 @@ function besideIt(s, e, o, known, lurkers, G) {
 // `move`, below. `own` is told what it spends when it is the movement an Opportunity Attack's rider gave (`own.bud`), so the caller can keep what is left.
 function moveOn(s, a, ctx, ev, own) {
     const actor = ent(s, a.actor); control(s, actor, ctx);
+    spot(a.to, 'where to move');
     // A rider moves by moving its mount (stage C6a): a controlled one as it directs, from the mount's movement on the
     // rider's turn (its own movement is left for dismounting); an independent one moves as it likes, on its own turn.
     const steed = mountOf(s, actor);

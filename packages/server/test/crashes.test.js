@@ -223,7 +223,7 @@ test("client errors: an allow-list, 5 a minute for a connection, 50 a day for a 
 });
 
 test("the real server: a socket report and a POST are counted in /api/health, the player is sent nothing, bundles are never served", async () => {
-  const s = await startServer({ stderr: "pipe", env: { RAILWAY_GIT_COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567" } });
+  const s = await startServer({ stderr: "pipe", env: { RAILWAY_GIT_COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567", HEXTABLE_TEST_CRASH: "1" } });
   const ws = new WebSocket(`ws://localhost:${s.port}/ws`);
   const msgs = [];
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = () => reject(new Error("socket")); });
@@ -250,10 +250,11 @@ test("the real server: a socket report and a POST are counted in /api/health, th
   assert.equal(health.clientErrors, 2);
   assert.deepEqual(health.clientErrorsByType, { error: 1, rejection: 1 });
   assert.ok(s.stderr().split("\n").filter((l) => l.includes('"client-error"')).length === 2);
-  // A real engine crash through the socket: a bundle on disk, named in the log, not served.
-  ws.send(JSON.stringify({ t: "act", action: { type: "startEncounter" } }));
+  // A real engine crash through the socket (the server's test hook makes the engine call throw; no malformed action does since #691): a bundle on disk, named in the log, not served.
+  ws.send(JSON.stringify({ t: "act", action: { type: "advanceTime", minutes: 4242 } }));
   await until(() => bundles(s.data).length === 1);
   const name = bundles(s.data)[0];
+  await until(() => s.stderr().includes(name));            // the file is written a moment before the log line reaches the pipe
   assert.ok(s.stderr().includes(name), "the log line names the bundle");
   assert.ok(s.stderr().includes("not filed on GitHub"), "and says once that no token is set");
   for (const path of [`/crashes/${name}`, `/data/crashes/${name}`, `/../crashes/${name}`, `/crash-issues.json`, "/crashes/"]) {
@@ -265,19 +266,22 @@ test("the real server: a socket report and a POST are counted in /api/health, th
 });
 
 test("replay --crash runs the bundle's action at its point and says whether it still throws", async () => {
+  // The crash is made by the server's test hook (#691), not by the engine, so the rules run on the same action by `replay --crash` do not throw.
+  // 4242 minutes is reserved for the test-only crash hook (HEXTABLE_TEST_CRASH in index.js); no other test uses it.
+  const crashTest = (a) => { if (a?.type === "advanceTime" && a.minutes === 4242) throw new TypeError("test crash"); };
   let throws = false;
-  try { apply(newGame(5), { type: "startEncounter" }, { role: "dm" }); } catch { throws = true; }
+  try { apply(newGame(5), { type: "advanceTime", minutes: 4242 }, { role: "dm" }); } catch { throws = true; }
   const dir = tmp();
   const journal = createJournal({ dir });
   const crashes = createCrashes({ dir, env: {}, log: () => {} });
-  const tables = createTables({ seed: () => 5, journal, crashes });
+  const tables = createTables({ seed: () => 5, journal, crashes, crashTest });
   const got = [];
   const session = tables.connect({ send: (m) => got.push(JSON.parse(JSON.stringify(m))) });
   session.receive({ t: "host", name: NAME });
   session.receive({ t: "act", action: { type: "advanceTime", minutes: 10 } });
   session.receive({ t: "act", action: { type: "advanceTime", minutes: 20 } });
   const real = console.error; console.error = () => {};
-  try { session.receive({ t: "act", action: { type: "startEncounter" } }); } finally { console.error = real; }
+  try { session.receive({ t: "act", action: { type: "advanceTime", minutes: 4242 } }); } finally { console.error = real; }
   await journal.idle();
   const name = bundles(dir)[0];
   const fileRead = (n) => { try { return readFileSync(join(dir, n), "utf8"); } catch { return null; } };
@@ -285,7 +289,7 @@ test("replay --crash runs the bundle's action at its point and says whether it s
   const r = replayCrash(bundle, fileRead);
   assert.equal(r.reached, true, r.why);
   assert.ok(!r.notes.some((n) => /hash/.test(n)), "the state reached is the bundle's state");
-  assert.equal(r.crashed, throws, "it throws when the engine still throws on a bare startEncounter, and not otherwise");
+  assert.equal(r.crashed, throws, "it throws when the engine still throws on the action, and not otherwise");
   // An action the engine takes is reported as no longer crashing; a missing journal is reported, not thrown.
   const fixed = replayCrash({ ...bundle, action: { type: "advanceTime", minutes: 5 } }, fileRead);
   assert.equal(fixed.crashed, false);

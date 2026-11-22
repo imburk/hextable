@@ -112,7 +112,7 @@ const NO_JOURNAL = { setCap() {}, before: () => null, accepted() {}, restored() 
 // writes a table's save and undo history now and returns false if it could not: eviction needs it, and without it nothing is evicted.
 // `archive(code)` and `restore(code)` move a table's files away and back (store.js) and return whether they did. `sweep()` does the
 // evicting and archiving; the server calls it once a minute.
-export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, evictMs = EVICT_MS, archiveMs = ARCHIVE_MS, index = null, loadOne = null, archived = () => [], archive = null, restore = null, flushNow = null, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {}, journal = NO_JOURNAL, crashes = null } = {}) {
+export function createTables({ load = () => [], save = () => {}, loadHistory = () => null, timelineCap = TIMELINE_CAP, seed, key, now = Date.now, idleMs = IDLE_MS, evictMs = EVICT_MS, archiveMs = ARCHIVE_MS, index = null, loadOne = null, archived = () => [], archive = null, restore = null, flushNow = null, exportAssets = () => ({ assets: [], skipped: [], limit: 0 }), allowPack = () => true, allowPackData = () => true, importAssets = null, dropAssets = () => {}, journal = NO_JOURNAL, crashes = null, crashTest = null } = {}) {
   journal.setCap(timelineCap);          // one source of truth: the journal writes the cap this table applies into every file's header
   // A server makes its own seeds and dice keys. Tests that give a seed get the dice that seed
   // rolls (an integer rng, as before version 16) unless they also give a key.
@@ -168,7 +168,9 @@ export function createTables({ load = () => [], save = () => {}, loadHistory = (
   };
   const scoped = (t, fn) => (t ? using(cacheOf(t).overlay, fn) : fn());
   const engine = {
-    apply: (t, state, action, ctx) => scoped(t, () => rawApply(state, action, ctx)),
+    // `crashTest` (tests only; index.js sets it from HEXTABLE_TEST_CRASH): called with each action before the rules run, so a test can make the engine
+    // throw to see the crash path (bundle, log line, issue) now that no malformed action does (#691). It is never set in a real server.
+    apply: (t, state, action, ctx) => scoped(t, () => { crashTest?.(action); return rawApply(state, action, ctx); }),
     recall: (t, state, opts) => scoped(t, () => rawRecall(state, opts)),
     migrate: (t) => scoped(t, () => rawMigrate(t.state)),
     describeStep: (t, action, events, before, state) => scoped(t, () => rawDescribeStep(action, events, before, state)),

@@ -185,7 +185,10 @@ const whole = (v, dflt) => (/^\d+$/.test(v ?? "") ? Number(v) : dflt);
 const evictMinutes = whole(process.env.IDLE_EVICT_MINUTES, 30), archiveDays = whole(process.env.ARCHIVE_DAYS, 90);
 // Crash bundles, GitHub crash issues and the browser's error reports (crashes.js, #689). Bundles are in DATA_DIR/crashes, which no route serves.
 const crashReports = createCrashes({ dir: DATA, env: process.env, build: () => build.commit });
-const tables = createTables({ journal, crashes: crashReports, save, loadHistory, index: () => store.list(), loadOne: (code) => store.read(code), archived: () => store.archived(), flushNow: flushOne,
+// Tests only (#691): with HEXTABLE_TEST_CRASH set, an advanceTime of 4242 minutes throws inside the engine call, so the crash path can be tested
+// with no malformed action to rely on. Without the variable nothing is hooked.
+const crashTest = process.env.HEXTABLE_TEST_CRASH ? (a) => { if (a?.type === "advanceTime" && a.minutes === 4242 /* reserved for this test-only crash hook */) throw new TypeError("test crash (HEXTABLE_TEST_CRASH)"); } : null;
+const tables = createTables({ journal, crashes: crashReports, crashTest, save, loadHistory, index: () => store.list(), loadOne: (code) => store.read(code), archived: () => store.archived(), flushNow: flushOne,
   evictMs: evictMinutes > 0 ? evictMinutes * 60_000 : Infinity, archiveMs: archiveDays > 0 ? archiveDays * 86_400_000 : Infinity,
   // A table's files and journals leave the counts before they move, and come back after they return.
   archive: (code) => { if (backupRunning()) return false; assets.release(code); const ok = store.archive(code); if (ok) journal.forget(code); else assets.adopt(code); return ok; },
