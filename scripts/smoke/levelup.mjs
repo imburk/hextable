@@ -88,9 +88,9 @@ async function solo(browser, url, label, opts, touch) {
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.side === 'foe' && e.hp > 0 && !e.hidden));
         await page.evaluate(() => { const h = window.hextable, foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden); h.act({ type: 'startEncounter', center: foe.pos, radius: 40 }); });
         await wait(page, () => !!window.hextable.state.encounter);
-        // A turn that comes to a hero selects that hero (app.js, the 'turn' event) and the foes' turns play by themselves, so a character picked while they
-        // are still playing is picked away again: wait until the order has stopped on a hero's turn (it waits there for the player), then pick the cleric.
-        await wait(page, () => { const S = window.hextable.state, c = S.encounter?.order[S.encounter.turn]?.id; return S.entities[c]?.side === 'party' && window.hextable.waiting === 0 && !window.hextable.timeline.busy(); }, null, 30000);
+        // The first turn's beat selects the hero whose turn it is (app.js, the 'turn' event) once it has played, and the order is rolled: so pick the cleric only after the
+        // initiative dice and the beats are done, or a hero who rolled first is picked back over it and the sheet is somebody else's.
+        await calm(page);
         await page.evaluate(() => window.hextable.select('cleric'));
         await calm(page);
         if (await shown(page, '#c-level .lu-go')) throw new Error('the chip is on the card in a fight');

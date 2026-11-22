@@ -100,7 +100,8 @@ async function models(browser, url, label, opts) {
         await calm(page);
         await page.evaluate(() => { const p = window.__R().actors.get('m1').pup, go = p.go.bind(p); window.__goes = []; p.go = (b, o) => { window.__goes.push(b); return go(b, o); }; });
         const r = await page.evaluate(() => { const h = window.hextable, R1 = window.__R(); h.act({ type: 'setHp', actor: 'm1', hp: 0 }); h.act({ type: 'harm', actor: 'm1', amount: 1 }); const p = R1.actors.get('m1').pup; return { base: p.base, cur: p.curKey, hp: h.state.entities.m1.hp, dead: h.state.entities.m1.dead }; });
-        if (r.base !== 'die' && !(await page.evaluate(() => window.__R().actors.get('m1').pup.base === 'die'))) throw new Error(`it did not fall: ${JSON.stringify(r)}`);
+        // The renderer shows the blow when the timeline plays it (the hit clip first), so the fall begins a moment after the state says dead: wait for it, do not look once.
+        await wait(page, () => window.__R().actors.get('m1').pup.base === 'die', null, 8000).catch(async () => { throw new Error(`it did not fall: ${JSON.stringify(r)} ${await page.evaluate(() => { const p = window.__R().actors.get('m1').pup; return JSON.stringify({ base: p.base, cur: p.curKey, goes: window.__goes }); })}`); });
         await sleep(900);
         const held = await page.evaluate(() => { const p = window.__R().actors.get('m1').pup; return { base: p.base, cur: p.curKey, goes: window.__goes }; });
         if (held.base !== 'die' || held.cur !== 'die' || !held.goes.includes('die')) throw new Error(`the fall did not play and hold: ${JSON.stringify(held)}`);
