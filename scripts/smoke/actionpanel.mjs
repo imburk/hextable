@@ -23,7 +23,7 @@ async function clear(page, touch, fight) {
   if (fight && g.orderHas && g.party < g.order + 40) throw new Error(`the panel leaves no room for the map under the initiative strip: ${JSON.stringify(g)}`);
   const y = (Math.max(g.order, 110) + g.party) / 2;
   if (g.party - y < 40) throw new Error(`no map left to tap: ${JSON.stringify(g)}`);
-  if (!(await onCanvas(page, g.w / 2, y))) throw new Error(`the middle of the free band is not the map: ${JSON.stringify(g)}`);
+  if (!(await onCanvas(page, g.w / 2 - 120, y))) throw new Error(`the free band is not the map (left of the menu token, which sits at the centre above the dock): ${JSON.stringify(g)}`);
   // chips and strip are not under anything
   const hit = await page.evaluate(() => { const bad = []; for (const s of ['#party button', '#order li']) for (const el of document.querySelectorAll(s)) { const r = el.getBoundingClientRect(); if (r.left < 0 || r.right > innerWidth) continue; const x = r.left + 6, e = document.elementFromPoint(x, r.top + r.height / 2); if (e && !el.contains(e) && e !== el) bad.push(`${s} under ${e.id || e.className || e.tagName}`); } return bad; });
   if (hit.length) throw new Error(hit.join('; '));

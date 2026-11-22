@@ -35,6 +35,7 @@ async function pass(browser, url, label, opts, touch) {
         await tap('#qb-levelup'); await waitShown(page, '#qb');
         const save = await page.$eval('#qb-save', (e) => e.textContent);
         if (save !== 'Roll hit points and level up to 2') throw new Error(`the button says "${save}"`);
+        if (!touch) await page.mouse.move(2, 2);      // a mouse left resting on a feature of the screen brings up its scroll card (3 s of hover) over the section
         await tap('#qb-acc-bar-hp'); await waitShown(page, '#qb-hp-roll');      // the Hit points section, in the screen's own pick-row layout
         const row = await page.$eval('#qb-hp-roll', (e) => e.textContent);
         if (!/Roll hit points/.test(row) || !/d10/.test(row)) throw new Error(`the row says "${row}"`);

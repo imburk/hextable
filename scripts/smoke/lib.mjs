@@ -61,7 +61,7 @@ export async function scenario(label, fn) {
   const run = new Run(label);
   try { await fn(run); }
   catch (err) {
-    const msg = `FAIL [${label}] step "${run.step}": ${process.env.SMOKE_VERBOSE ? String(err.message).split('\n').slice(0, 14).join(' | ') : String(err.message).split('\n')[0]}`;
+    const msg = `FAIL [${label}] step "${run.step}": ${process.env.SMOKE_VERBOSE ? String(err.message).split('\n').slice(0, 14).join(' | ') : String(err.message).split('\n')[0]}${process.env.SMOKE_VERBOSE ? ' @ ' + String(err.stack).split('\n').filter((l) => /scripts\/smoke/.test(l)).slice(0, 4).map((l) => l.trim().replace(/^.*scripts\/smoke\//, '')).join(' < ') : ''}`;
     console.log('  ' + msg);
     failures.push(msg);
   }
@@ -113,22 +113,57 @@ export async function settle(page, id) {
 }
 export const tapAt = (page, touch, x, y) => (touch ? page.touchscreen.tap(x, y) : page.mouse.click(x, y));
 export const onCanvas = (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl', [x, y]);
-// The drawer holds every panel (docs/specs/table-ui.md, Decision 2): open it on a tab, close it.
-export const TAB_BUTTON = { handouts: '#btn-handouts' };
-// The drawer can be closing by itself (a fight starting closes it) when we look: then its close button is already gone, and what we want is that it ends hidden.
-export const closeMenu = async (page) => {
-  for (let i = 0; i < 3 && (await shown(page, '#drawer')); i++) {
-    await page.click('#drawer-close', { timeout: 3000 }).catch(() => {});
-    await waitShown(page, '#drawer', false, 5000).catch(() => {});
+// The menu (docs/specs/one-token-menu.md, stage M1): the token opens it on its first level, a row goes down a level, the breadcrumb's
+// back arrow goes up, a tap on the dimmed map closes every level. A place is a path of row names: 'turns', 'table/settings',
+// ['table', 'dm'], or [] for the first level. The old tab names work too: 'settings', 'dm' and 'about' are under Table, and 'character'
+// is 'sheet'. It leaves the menu open on that place and waits until the screen is drawn.
+const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log', handouts: 'handouts', settings: 'settings', dm: 'dm', about: 'about' };
+const UNDER_TABLE = new Set(['settings', 'dm', 'about']);
+export const menuPath = (p = []) => {
+  const segs = (Array.isArray(p) ? p : String(p).split('/')).filter(Boolean).map((k) => ({ character: 'sheet', party: 'turns', root: '' })[k] ?? k).filter(Boolean);
+  return segs.length === 1 && UNDER_TABLE.has(segs[0]) ? ['table', segs[0]] : segs;
+};
+const menuAt = (page) => page.evaluate(() => document.getElementById('drawer').dataset.path || '');
+const waitMenuAt = (page, want) => page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want.join('/'), { timeout: 5000 });
+export const openMenu = async (page, path = []) => {
+  const want = menuPath(path);
+  try { await openMenuTo(page, want); } catch (err) {
+    const at = await page.evaluate(() => { const d = document.getElementById('drawer'), h = window.hextable.drawer; return { path: d.dataset.path, open: h.isOpen, hidden: d.hidden, cls: d.className, scrim: !document.getElementById('drawer-scrim').hidden }; }).catch(() => null);
+    throw new Error(`openMenu(${want.join('/')}) stopped at ${JSON.stringify(at)}: ${String(err.message).split('\n')[0]}`);
   }
-  await waitShown(page, '#drawer', false, 5000);
+};
+const openMenuTo = async (page, want) => {
+  if (!(await page.evaluate(() => window.hextable.drawer.isOpen))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
+  for (let i = 0; i < 4; i++) {           // up until what is open is on the way to the place wanted
+    const have = (await menuAt(page)).split('/').filter(Boolean);
+    if (have.every((k, j) => want[j] === k)) break;
+    await page.click('#drawer-back'); await page.waitForFunction((n) => (document.getElementById('drawer').dataset.path || '').split('/').filter(Boolean).length < n, have.length, { timeout: 5000 });
+  }
+  const have = (await menuAt(page)).split('/').filter(Boolean);
+  for (let j = have.length; j < want.length; j++) { await page.click(`#drawer [data-go="${want[j]}"]`); await waitMenuAt(page, want.slice(0, j + 1)); }
+  const leaf = want.at(-1);
+  if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);
+  await menuStill(page);
+};
+// The levels slide in (about .7 s): a check that measures the screen mid-slide sees a control hang out of the menu. Wait until the menu's own boxes stop moving.
+export const menuStill = (page) => page.evaluate(() => new Promise((ok) => {
+  const key = () => ['drawer', 'menu-levels', 'drawer-body'].map((i) => { const r = document.getElementById(i)?.getBoundingClientRect(); return r ? [r.left, r.top, r.width].map(Math.round).join() : ''; }).join('|');
+  let last = '', n = 0; const t0 = Date.now();
+  const t = setInterval(() => { const k = key(); n = k === last ? n + 1 : 0; last = k; if (n >= 3 || Date.now() - t0 > 3000) { clearInterval(t); ok(); } }, 60);
+}));
+// The drawer can be closing by itself (a fight starting closes it) when we look: then its close control is already gone, and what we want is that it ends hidden.
+// A sheet closes by its handle, a wide menu by its x.
+export const closeMenu = async (page) => {
+  if (!(await shown(page, '#drawer'))) return;
+  await page.waitForFunction(() => document.getElementById('dice')?.hidden !== false, null, { timeout: 8000 }).catch(() => {});      // dice in flight sit over everything and take the tap
+  const clicked = await page.click('#drawer-close:visible, #drawer-handle:visible', { timeout: 8000 }).then(() => 'clicked', (e) => `not clicked: ${String(e.message).split('\n')[0]}`);
+  await waitShown(page, '#drawer', false).catch(async (err) => {
+    const at = await page.evaluate(() => { const d = document.getElementById('drawer'); return { path: d.dataset.path, open: window.hextable.drawer.isOpen, hidden: d.hidden, cls: d.className, active: document.activeElement?.id, bodyCls: document.body.className }; }).catch(() => null);
+    throw new Error(`closeMenu: the menu stayed up (${clicked}) at ${JSON.stringify(at)}: ${String(err.message).split('\n')[0]}`);
+  });
 };
 export const closePanels = closeMenu;
-export const openTab = async (page, tab) => {
-  if (!(await shown(page, '#drawer'))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
-  await page.click(TAB_BUTTON[tab] ?? `#tab-${tab}`);
-  await waitShown(page, `#${{ turns: 'tracker' }[tab] ?? tab}`);
-};
+export const openTab = (page, tab) => openMenu(page, tab);
 
 // Select a character by its chip and move it one hex by tapping the map. Returns the new position.
 export async function selectAndMove(page, touch, id, name) {

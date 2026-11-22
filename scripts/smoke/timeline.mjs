@@ -142,8 +142,8 @@ async function pacing(browser, url, label, opts) {
         await page.evaluate(() => { const S = window.hextable.state; const c = S.encounter.order[S.encounter.turn].id; window.hextable.act({ type: 'endTurn', actor: c }); });
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('beats are playing at instant');
       });
-      await run.do('the pace control in Settings sets this device\'s pace', async () => {
-        await openTab(page, 'settings');
+      await run.do('the pace control (on the Dice screen) sets this device\'s pace', async () => {
+        await openTab(page, 'dice');
         await page.selectOption('#pace-pick', 'flow');
         if ((await page.evaluate(() => window.hextable.pace())) !== 'flow') throw new Error('flow was not chosen');
         await page.selectOption('#pace-pick', '');
