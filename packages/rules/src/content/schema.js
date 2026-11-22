@@ -3338,7 +3338,7 @@ const fits = (spec, v) => spec.split('|').some((t) => (t === 'id' ? isId(v) : t 
   : t === 's[]' ? Array.isArray(v) && v.every((x) => typeof x === 'string') : t === 'i[]' ? Array.isArray(v) && v.every((x) => typeof x === 'number') : t === '?'));
 const describe = (spec) => spec.split('|').map((t) => WORDS[t] ?? t).join(' or ');
 export const HOMEBREW_TYPES = Object.freeze({
-  spells: { id: 's', name: 's', source: 's', level: 'i', school: 's', classes: 'id[]', time: 's', range: 'i|s', components: 'id[]', duration: 's', concentration: 'b', ritual: 'b', target: 'o', effects: 'a', higher: 'o', tier: 's', checked: 'b', text: 's', kinds: 's[]', choice: 'o', costly: 'b', terrain: 'o', zone: 'o', reaction: 'o', roll: 's' },
+  spells: { id: 's', name: 's', source: 's', level: 'i', school: 's', classes: 'id[]', time: 's', range: 'i|s', components: 'id[]', duration: 's', concentration: 'b', ritual: 'b', target: 'o', effects: 'a', higher: 'o', tier: 's', checked: 'b', text: 's', kinds: 's[]', choice: 'o', costly: 'b', terrain: 'o', zone: 'o', reaction: 'o', roll: 's', hit: 'o' },
   monsters: { id: 's', name: 's', source: 's', size: 's', type: 's', cr: 'n', xp: 'i', pb: 'i', ac: 'i', hp: 'i', speed: 'o', senses: 'o', abilities: 'o', initiative: 'i', languages: 's[]', skills: 'o', resist: 's[]', vulnerable: 's[]', immune: 's[]', conditionImmune: 's[]', saves: 'o', hover: '?', mount: 's', traits: 'a', actions: 'a', tier: 's', checked: 'b', text: 's' },
   items: { id: 's', name: 's', category: 's', rarity: 's', attune: 'b|o', wear: 's', base: 'o', bonus: 'i', damageType: 's', properties: 's[]', trained: 'b', mithral: 'b', grants: 'o', variant: 's', charges: 'o', activate: 'a', tier: 's', source: 's', checked: 'b', text: 's' },
   feats: { id: 's', name: 's', category: 's', prerequisite: 'o', repeatable: 's|b', tier: 's', source: 's', checked: 'b', text: 's', increase: 'o', proficiencies: 'o', spellPick: 'o', grants: 'o' },
@@ -3364,6 +3364,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b' },
   terrain: { difficult: 'b', obscured: 's', lasts: 's' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
+  hitRider: { with: 's' },
   bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's' },
   count: { slot: 'i', base: 'i', above: 'i' },
   over: { speed: 'o' },
@@ -3401,7 +3402,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   states: { '*': 'o' }, 'trait[]': { '*': 'o' }, 'action[]': { '*': 'o' }, 'modifier[]': { '*': 'o' }, 'trigger[]': { '*': 'o' }, 'use[]': { '*': 'o' }, 'activate[]': { '*': 'o' }, 'attackEntry[]': { '*': 'o' }, 'feature[]': { '*': 'o' }, 'option[]': { '*': 'o' },
   'step.attack': { attack: 's', kind: 's', bonus: 'i', advantageIf: 's[]', onHit: 'a', onMiss: 'a' },
   'step.save': { save: 's', dc: 'i', half: 'b', advantageIf: 's[]', onFail: 'a', onSuccess: 'a' },
-  'step.damage': { damage: 'd', type: 's', times: 'i', onZero: 'a', onKill: 'a' },
+  'step.damage': { damage: 'd', type: 's', times: 'i', onZero: 'a', onKill: 'a', withHit: 'b' },
   'step.heal': { heal: 'd', addMod: 'b', atLeast: 'i' }, 'step.tempHp': { tempHp: 'd', addMod: 'b', atLeast: 'i' },
   'step.condition': { condition: 's', ends: 'o', escape: 'i', largest: 's', holds: 'i', escapeDis: 'b', whileHeld: 'b' }, 'step.modifier': { modifier: 'o', ends: 'o', to: 's' },
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
