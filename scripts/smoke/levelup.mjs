@@ -88,6 +88,9 @@ async function solo(browser, url, label, opts, touch) {
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.side === 'foe' && e.hp > 0 && !e.hidden));
         await page.evaluate(() => { const h = window.hextable, foe = Object.values(h.state.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden); h.act({ type: 'startEncounter', center: foe.pos, radius: 40 }); });
         await wait(page, () => !!window.hextable.state.encounter);
+        // A turn that comes to a hero selects that hero (app.js, the 'turn' event) and the foes' turns play by themselves, so a character picked while they
+        // are still playing is picked away again: wait until the order has stopped on a hero's turn (it waits there for the player), then pick the cleric.
+        await wait(page, () => { const S = window.hextable.state, c = S.encounter?.order[S.encounter.turn]?.id; return S.entities[c]?.side === 'party' && window.hextable.waiting === 0 && !window.hextable.timeline.busy(); }, null, 30000);
         await page.evaluate(() => window.hextable.select('cleric'));
         await calm(page);
         if (await shown(page, '#c-level .lu-go')) throw new Error('the chip is on the card in a fight');
