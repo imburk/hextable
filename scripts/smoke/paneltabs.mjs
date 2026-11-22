@@ -41,9 +41,9 @@ async function tabs(browser, url, label, opts) {
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 3 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 3);
         await panelTab(page, 'explore');
-        await waitShown(page, '#ap-explore [data-row="heal:secondWind"]');
-        await tap('#ap-explore [data-row="heal:secondWind"]');
-        await wait(page, () => document.querySelector('#ap-tab-features')?.getAttribute('aria-selected') === 'true' && document.activeElement?.dataset.row === 'feat:secondWind');
+        await waitShown(page, '#ap-explore [data-row="heal:second-wind"]');
+        await tap('#ap-explore [data-row="heal:second-wind"]');
+        await wait(page, () => document.querySelector('#ap-tab-features')?.getAttribute('aria-selected') === 'true' && document.activeElement?.dataset.row === 'feat:second-wind');
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 12 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 12);
       });
@@ -98,11 +98,11 @@ async function tabs(browser, url, label, opts) {
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 4 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 4);
         await visit(page, 'bonus');
-        await waitShown(page, '#ap-bonus [data-row="feat:secondWind"]');
-        if ((await page.getAttribute('#ap-bonus [data-row="feat:secondWind"]', 'aria-disabled')) !== 'false') throw new Error('Second Wind is greyed with hit points missing and a Bonus Action to spend');
-        const left = await state(page, (S) => S.entities.fighter.uses.secondWind);
-        await tap('#ap-bonus [data-row="feat:secondWind"]');
-        await wait(page, (n) => window.hextable.state.entities.fighter.uses.secondWind === n - 1 && window.hextable.state.entities.fighter.hp > 4, left); await idle(page);
+        await waitShown(page, '#ap-bonus [data-row="feat:second-wind"]');
+        if ((await page.getAttribute('#ap-bonus [data-row="feat:second-wind"]', 'aria-disabled')) !== 'false') throw new Error('Second Wind is greyed with hit points missing and a Bonus Action to spend');
+        const left = await state(page, (S) => S.entities.fighter.uses['second-wind']);
+        await tap('#ap-bonus [data-row="feat:second-wind"]');
+        await wait(page, (n) => window.hextable.state.entities.fighter.uses['second-wind'] === n - 1 && window.hextable.state.entities.fighter.hp > 4, left); await idle(page);
         await wait(page, () => /No Bonus Action/.test(document.querySelector('#ap-bonus')?.textContent ?? ''));
         const r = await reasons(page, '#ap-bonus');
         if (!r.length || r.some((x) => !x.seen || !/Bonus Action/.test(x.why))) throw new Error(`rows are not greyed with the reason: ${JSON.stringify(r)}`);
@@ -111,8 +111,8 @@ async function tabs(browser, url, label, opts) {
 
       await run.do('Features: Second Wind shows its pips and how it comes back', async () => {
         await visit(page, 'features');
-        const t = await text(page, '#ap-features [data-row="feat:secondWind"]');
-        if (!/1 \/ 2/.test(t) || !/Back on a Short Rest/.test(t) || !/Bonus/.test(t)) throw new Error(`pips or recharge text missing: ${t}`);
+        const t = await text(page, '#ap-features [data-row="feat:second-wind"]');
+        if (!/1 \/ 2/.test(t) || !/Back on a Long Rest \(1 back on a Short Rest\)/.test(t) || !/Bonus/.test(t)) throw new Error(`pips or recharge text missing: ${t}`);
       });
 
       await run.do('a rogue with nothing that costs a Bonus Action: the Bonus tab says so', async () => {

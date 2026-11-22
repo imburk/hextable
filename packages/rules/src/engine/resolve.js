@@ -2045,7 +2045,7 @@ export function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
 // Evasion (a built character's `evasion`): only while it is not Incapacitated.
-const evades = (t) => !t.object && !incapacitated(t) && (t.feats ?? []).some((f) => f.evasion);
+export const evades = (t) => !t.object && !incapacitated(t) && (t.feats ?? []).some((f) => f.evasion);
 
 // Why a spell's area was handed to the DM, where it is one the engine will not place: a cube of more than 1,000 feet (effects.js, aimable).
 function whyNobody(src) {

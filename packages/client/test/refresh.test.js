@@ -31,7 +31,7 @@ test('one character: the report names who was made again', () => {
 });
 
 test('a hand-typed character is refused in the engine\'s words, and those words are the note', () => {
-  const s = newGame(7), typed = Object.values(s.entities).find((e) => e.kind === 'pc' && !e.sheet);
+  const s = newGame(7), typed = s.entities.rogue; delete typed.sheet;      // the starters are built from sheets now: take the rogue's away to have one typed in by hand
   const r = apply(s, { type: 'refresh', actor: typed.id }, DM);
   assert.equal(r.ok, false);
   assert.match(r.error, /typed in by hand/);

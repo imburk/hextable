@@ -55,6 +55,7 @@ import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.j
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
+import { levelUpHtml } from './levelup.js';
 import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
 import { mountNewVersion } from './newversion.js';
@@ -492,6 +493,7 @@ function onUpdate(state, events, fresh) {
   if (refreshAsk && Date.now() - refreshAsk.at > 8000) refreshAsk = null;
   if (refreshAsk) { const say = refreshReport(events, (id) => known.get(id) ?? S.entities[id]?.name ?? 'Someone', refreshAsk); if (say) { refreshAsk = null; toast(say, !/Not refreshed/.test(say)); } }
   for (const e of Object.values(S.entities)) known.set(e.id, shownName(S, e));
+  for (const ev of events) if (ev.type === 'note' && ev.why === 'joinFight') toast(String(ev.text), true);      // a hero who could not get into the fight (`joinFight`)
   TL.setPace(pace());
   if (first) {
     LV.reset(); selId = null; mode = MOVE; chron = []; seeded = false; SC.fresh(); RP.fresh(); AP.fresh(); CP.fresh(); DF.fresh(); CC.fresh(); D.reset();
@@ -694,10 +696,17 @@ function sizeDock() {
   R.inset = $('dock').offsetHeight * 0.85;
   document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray and the drawer sit above the dock
 }
+let joinNo = null;               // the fight whose "Bring the others in?" was put off
+// The party members a running fight has left outside, who could be brought in: alive, able, on their own feet (a rider goes with its mount).
+const outsiders = (st) => Object.values(st.entities).filter((x) => x.side === 'party' && !x.dead && up(x) && !x.riding && !x.hidden && !st.encounter.order.some((o) => o.id === x.id));
 function refresh() {
   if (!S) return;
   const enc = S.encounter, cur = current(S), e = S.entities[selId];
   document.body.classList.toggle('fight', !!enc);
+  // A fight with party members outside it: the DM (in solo, the player) is asked once per fight whether to bring them in (`joinFight`, #671).
+  const out = enc && isDM() && !T.readOnly && joinNo !== enc.id ? outsiders(S) : [];
+  $('join').hidden = !out.length;
+  if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
   $('mode').textContent = enc ? `Round ${enc.round}` : 'Exploring';
   $('clock').textContent = clockText(S.clock);
   $('btn-leave').hidden = isDM() || !!T.solo;
@@ -847,6 +856,7 @@ function renderSheet() {
     <h2>${esc(e.name)}</h2>
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
     <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(classTitle(e))}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
+    ${levelUpHtml(S, e, { dm: isDM(), tag: 'sheet' })}
     ${isDM() && missingText(e) ? `<p class="note" id="sheet-subclass-missing">${esc(missingText(e))}</p>` : ''}
     ${CLS.sheetBanner(e)}
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span id="sheet-ac">AC ${acLine(e)}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
@@ -868,6 +878,7 @@ function renderSheet() {
     <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
+  for (const b of $('sheet-body').querySelectorAll('[data-levelup]')) b.onclick = () => { QE.levelUp(b.dataset.levelup); };
   if ($('sheet-refresh')) $('sheet-refresh').onclick = () => { refreshAsk = { party: false, at: Date.now() }; act({ type: 'refresh', actor: e.id }); };
   for (const b of $('sheet-body').querySelectorAll('[data-hb]')) b.onclick = () => PK.reading(b.dataset.hb);
   for (const b of $('sheet-body').querySelectorAll('[data-skill]')) b.onclick = () => act({ type: 'check', actor: e.id, skill: b.dataset.skill });
@@ -1060,6 +1071,8 @@ R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (
 
 // ---------- controls ----------
 $('btn-end').onclick = () => { if (CLS.askCure(S.entities[selId])) return; act({ type: 'endTurn', actor: selId }); };       // Self-Restoration with a choice asks first
+$('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
+$('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
 $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
 $('hint-go').onclick = () => {
   if (owedUi === 'offer') return setMode(OWED);
@@ -1292,7 +1305,7 @@ const TC = initTableControls({ act, getState: () => S, isDM, toast });
 const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
-const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs });
+const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs, levelUp: (id) => QE.levelUp(id) });
 function syncCards() {
   const calm = !TL.busy();
   DF.sync(S, { calm }); CC.sync(S, { calm });
@@ -1305,6 +1318,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') selfCast(e, id); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
+$('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[data-levelup]'); if (b && !b.disabled) QE.levelUp(b.dataset.levelup); });
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),

@@ -72,6 +72,8 @@ const REGISTRY = {
   undobar: ['undobar'],
   todo: ['todo'],
   spawnfind: ['spawnfind'],
+  levelup: ['levelup'],
+  followfight: ['followfight'],
 };
 
 const only = process.env.SMOKE_ONLY;

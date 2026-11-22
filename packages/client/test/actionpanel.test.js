@@ -162,7 +162,7 @@ const whys = (rows) => rows.filter((r) => r.why);
 test('Attacks: a character\'s attacks with bonus, damage and reach; greyed with the engine\'s words once the action is spent', () => {
   const s = newGame(7), e = inFightAs(s, 'fighter');
   let rows = attackRows(s, e);
-  assert.deepEqual(ids(rows), e.attacks.map((a) => `atk:${a.id}`));
+  assert.deepEqual(ids(rows).filter((i) => i.startsWith('atk:')), e.attacks.map((a) => `atk:${a.id}`));       // (a built hero also has the Unarmed Strike's grapple, push and prone rows)
   assert.match(rows[0].sub, /^\+\d+ to hit · .+ · reach 5 ft$/); assert.equal(rows[0].why, ''); assert.equal(rows[0].chip, 'Action');
   assert.deepEqual(rows[0].mode, { kind: 'attack', id: e.attacks[0].id });
   assert.equal(attackRows(s, e, { mode: rows[0].mode })[0].armed, true);
@@ -771,4 +771,21 @@ test('reactions: the familiarDamaged trigger has words in the sheet and the prom
   assert.equal(row().now, 'always'); assert.equal(row().dflt, 'always');
   s.entities.mor.owner = 'u1';
   assert.equal(row().now, 'ask'); assert.equal(row().dflt, 'ask');
+});
+
+test('Features: a built Fighter\'s Second Wind is greyed at full Hit Points, with the words, and live once she is hurt (#672)', () => {
+  const s = newGame(7), e = s.entities.fighter;
+  const row = () => panelFeatureRows(s, e).find((r) => r.id === 'feat:second-wind');
+  assert.match(row().why, /Brenna is at full Hit Points\./);
+  e.hp = 5;
+  assert.equal(row().why, '');
+});
+
+test('Explore: a hurt leader\'s healing stays among the first four rows, ahead of Formation... (#671)', () => {
+  const s = newGame(7, { follow: true }), e = s.entities.fighter;
+  e.hp = 3;
+  const rows = rankExplore(s, e);
+  assert.ok(rows.some((r) => r.id === 'formation'), 'the fighter leads');
+  const heal = rows.find((r) => r.id === 'heal:secondWind' || r.id.startsWith('heal:'));
+  assert.ok(heal && heal.grid, `healing is on the grid: ${ids(rows)}`);
 });

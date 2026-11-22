@@ -30,7 +30,7 @@ canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--i
 #top { left: var(--inset-l); right: var(--inset-r); }
 #order { left: calc(12px + var(--inset-l)); right: calc(12px + var(--inset-r)); }
 #order li { pointer-events: auto; cursor: pointer; }
-#hint { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
+#hint, #join { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
 #cam { right: calc(12px + var(--inset-r)); }
 #dock, #editor { left: var(--inset-l); right: var(--inset-r); }
 
