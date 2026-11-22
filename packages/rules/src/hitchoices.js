@@ -12,17 +12,15 @@
 // any other, so a DM's creature never stops: the DM names a choice ahead on its attack or sets an instruction.
 //
 // Pure: no I/O, no randomness.
-import { SPELLS } from './content/index.js';
+import { SPELLS, CONTENT } from './content/index.js';
 import { isUnarmed } from './weapons.js';
 import { isWeapon } from './imbue.js';
 import { ownerOf } from './engine/shared.js';
-import { CONTENT } from './content/index.js';
 
 export const HIT_OPTIONS = ['ask', 'crit', 'always', 'never'];
 export const HIT_WHEN = { ask: 'Ask', crit: 'Only on a Critical Hit', always: 'Always', never: 'Never' };
 
 // What an attack must be for a `hit.with` of a spell (Decision 2). The ones the spec lists for later stages (`monk`, `flurry`, `pact`, `this`) fit nothing yet.
-export const SPELL_HIT_WITH = ['melee', 'weapon'];
 // A Melee weapon is one by the weapon's kind, so a thrown handaxe counts (DEBT C11); an Unarmed Strike is a melee attack made with the body.
 export function fitsHit(withKind, atk) {
   if (!atk || atk.spell) return false;
