@@ -183,7 +183,8 @@ test("a choice named ahead is checked before anything is spent", () => {
   // A thrown handaxe is a Melee weapon (DEBT C11).
   const h = ready();
   const hax = h.entities.hero.attacks.find((a) => a.id === "handaxe-thrown");
-  if (hax) ok(hit(h, { attack: "handaxe-thrown", onHit: [{ spell: "divine-smite" }] }));
+  assert.ok(hax, "the thrown handaxe attack exists");
+  ok(hit(h, { attack: "handaxe-thrown", onHit: [{ spell: "divine-smite" }] }));
 });
 
 test("cast by hand is refused: it is a choice at a hit", () => {
