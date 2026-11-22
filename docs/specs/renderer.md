@@ -717,8 +717,8 @@ can run in parallel after R2. R10 decides the rest.
   - In `app.js` the log line, the floating text and the camera move to the beat of their event; the roll of dice is
     still thrown before the update's beats start (it waits for the queue to be still), which keeps the order dice,
     then picture. The character card, tracker, sheet and action bar are redrawn when the picture is still, not per
-    beat. In `wait` the dock shows a quiet "…" (a tap on it, on the map or on a control, or Escape, skips and does
-    not act), and the monster AI starts its next step 350 ms after the picture is still; in `flow` and `instant` it
+    beat. In `wait` the dock shows a quiet "…" (a tap on it or Escape skips and does not act; a tap on the map, a button or `window.hextable.act`
+    finishes the beats first and then acts, issue #705: never dropped), and the monster AI starts its next step 350 ms after the picture is still; in `flow` and `instant` it
     keeps its 800 ms. The server never waits.
   - `pace` is read in one place, `pace()` in `app.js`, from `paceFor({ table, mine, reduced })`: the table's setting
     (`state.settings.pace`, `wait` if absent), which a player may only make quicker through their own preference
