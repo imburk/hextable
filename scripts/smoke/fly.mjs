@@ -199,8 +199,10 @@ async function phone(browser, url) {
       // A place of the plane a finger can reach, nearest the middle of the free part of the screen.
       const tapPlace = async () => {
         const cells = await page.evaluate(() => window.hextable.R.hl.plane.cells.filter((c) => !c.floor && c.cost >= 15).map((c) => ({ key: c.key, h: c.h })));
-        const at = [];
-        for (const c of cells) { const p = await cellPx(page, c.h); if (p && p.y > 230 && p.y < 640 && p.x > 30 && p.x < 360 && (await onCanvas(page, p.x, p.y))) at.push({ ...c, p, d: Math.abs(p.x - 195) + Math.abs(p.y - 520) }); }
+        const at = [], colX = (await blockPx(page, 0)).x;
+        // A press on the column (a finger within a block's grown pick area of it, up its whole height) belongs to the column's drag and is never a tap (app.js FLY_DRAG.down): the place straight above the token is
+        // under the column, so it is not a place to tap. Whether the "20 ft" label over it let the point pass `onCanvas` is what made this step fail at random (#720).
+        for (const c of cells) { const p = await cellPx(page, c.h); if (p && p.y > 230 && p.y < 640 && p.x > 30 && p.x < 360 && Math.abs(p.x - colX) > 70 && (await onCanvas(page, p.x, p.y))) at.push({ ...c, p, d: Math.abs(p.x - 195) + Math.abs(p.y - 520) }); }
         at.sort((x, y) => x.d - y.d);
         if (!at.length) throw new Error(`no place of the plane is on the screen (${cells.length} cells)`);
         return at[0];
