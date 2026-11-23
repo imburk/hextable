@@ -242,7 +242,7 @@ test("to a player, a hidden creature does not exist", () => {
   apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, PAT);
   const before = structuredClone(s);
   for (const action of [
-    { type: "attack", actor: "fighter", target: lurker.id, attack: "javelin" },
+    { type: "attack", actor: "fighter", target: lurker.id, attack: "javelin-thrown" },
     { type: "move", actor: lurker.id, to: { q: 2, r: 0 } },
     { type: "claim", entity: lurker.id, user: "pat" },
     { type: "release", entity: lurker.id },
@@ -252,7 +252,7 @@ test("to a player, a hidden creature does not exist", () => {
     assert.deepEqual(res, { ok: false, error: "No such creature.", events: [] }, JSON.stringify(action));
   }
   // Exactly what a made-up id gets.
-  assert.equal(apply(s, { type: "attack", actor: "fighter", target: "m999", attack: "javelin" }, PAT).error, "No such creature.");
+  assert.equal(apply(s, { type: "attack", actor: "fighter", target: "m999", attack: "javelin-thrown" }, PAT).error, "No such creature.");
   assert.deepEqual(s, before);
 });
 

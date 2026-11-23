@@ -417,6 +417,7 @@ export function derive(sheet, opts = {}) {
       if (n > ac) { ac = n; acWhy = [`${x.f.name}: ${f.base}`, ...f.abilities.map((a) => `${nice(a)} ${signed(mod(abil[a]))}`)]; }
     }
   }
+  const acBase = ac;           // what the armour, or the best way to work it out unarmoured, gives: before a Shield and what features and items add (Mage Armor replaces this, never those)
   if (gone && !shieldItem) acWhy.push(`Shield "${sheet.shield.slice(0, 60)}": its entry is not loaded at this table, so it gives no Armor Class`);
   if (shieldOk) {
     const se = shieldEntry(sheet, shieldItem);
@@ -478,14 +479,15 @@ export function derive(sheet, opts = {}) {
     const m = mod(abil[ab]), trained = weaponTrained(w, [...weaponWords]);
     const base = m + (trained ? pb : 0) + plus, die = monkWeapon ? bigger(w.damage, maDie) : w.damage;
     const dmg = (d) => (/^\d+$/.test(d) ? signed(+d + m + plus) : dice(d, m + plus));
-    const common = { dtype: it?.dtype ?? w.type, abil: ab, weapon: w.id, ...(trained ? {} : { untrained: true }), ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
+    // `plus`, `magic` and `trained` (and each record's own `die`, below) are what imbue.js reads to change a weapon for a while (docs/specs/on-hit.md, Decision 8).
+    const common = { dtype: it?.dtype ?? w.type, abil: ab, weapon: w.id, plus, ...(it ? { magic: true } : {}), ...(trained ? { trained: true } : { untrained: true }), ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
     const reach = w.properties.includes('reach') ? 10 : 5;
     if (w.kind === 'melee') {
-      add({ id: key, name: label, type: 'melee', bonus: base, damage: dmg(die), reach, ...common });
+      add({ id: key, name: label, type: 'melee', bonus: base, damage: dmg(die), die, reach, ...common });
       // Versatile: the two-handed damage, while no Shield takes the other hand.
-      if (w.versatile && !shield) add({ id: `${key}-two-handed`, name: `${label} (two hands)`, type: 'melee', bonus: base, damage: dmg(monkWeapon ? bigger(w.versatile, maDie) : w.versatile), reach, ...common });
-      if (w.properties.includes('thrown')) add({ id: `${key}-thrown`, name: `${label} (thrown)`, type: 'ranged', bonus: base, damage: dmg(w.damage), range: [...w.range], ...common });
-    } else add({ id: key, name: label, type: 'ranged', bonus: base + ranged, damage: dmg(die), range: [...w.range], ...common });
+      if (w.versatile && !shield) { const d2 = monkWeapon ? bigger(w.versatile, maDie) : w.versatile; add({ id: `${key}-two-handed`, name: `${label} (two hands)`, type: 'melee', bonus: base, damage: dmg(d2), die: d2, reach, ...common }); }
+      if (w.properties.includes('thrown')) add({ id: `${key}-thrown`, name: `${label} (thrown)`, type: 'ranged', bonus: base, damage: dmg(w.damage), die: w.damage, range: [...w.range], ...common });
+    } else add({ id: key, name: label, type: 'ranged', bonus: base + ranged, damage: dmg(die), die, range: [...w.range], ...common });
   };
   for (const id of sheet.weapons ?? []) {
     if (id === 'unarmed-strike') continue;
@@ -691,7 +693,7 @@ export function derive(sheet, opts = {}) {
   const record = {
     name: String(sheet.name ?? '').trim(), cls, level, size: sheet.size ?? sp?.sizes[0] ?? 'medium',
     ...(sp && sp.type !== 'humanoid' ? { type: sp.type } : {}),
-    ac, hp, speed, ...(Object.keys(speeds).length ? { speeds } : {}), ...(Object.keys(senses).length ? { senses } : {}),
+    ac, acBase, hp, speed, ...(Object.keys(speeds).length ? { speeds } : {}), ...(Object.keys(senses).length ? { senses } : {}),
     prof: pb, abil, saveProf: ABILITIES.filter((a) => saveProf.has(a)), skills, expertise,
     tools: [...(thieves ? ['thieves-tools'] : []), ...(sheet.tools ?? []), ...featTools].filter((t, i, l) => l.indexOf(t) === i),
     attacks,

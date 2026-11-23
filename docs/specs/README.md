@@ -20,8 +20,10 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Renderer](renderer.md) | Rooms from the map, timeline, models, the renderer interface, Three.js | Draft; Three.js default and the old renderer removed (R14) |
 | [Table UI](table-ui.md) | Drawer, tracker, action panel, defeat, rewards, log by combat | Draft; largely built |
 | [One token, one menu](one-token-menu.md) | One token that opens one menu; supersedes the player's screen where they differ | Draft |
+| [The DM's to-do tray](dm-todo.md) | A card for each note the engine hands the DM, with tools and Done; "You run" cards; the caster's "waiting for the DM" | Built (#675) |
 | [Player's screen](player-screen.md) | The moments of a player at the table | Draft; superseded in part |
 | [Starting page](start-page.md) | Play and Tools, Carry on | Draft |
+| [Flying and swimming control](fly-swim-control.md) | A column of translucent cubes to pick a height, then a plane of reachable cells; swimming needs one engine step | Draft; nothing built |
 | [Keyboard](keyboard.md) | WASD and arrows, follow camera, key maps | Built (#357) |
 | [Feedback button](feedback.md) | A comment with what the player was just shown | Built (first version) |
 | [Portable characters](portable-characters.md) | A character file with a signed history and level meter | Draft; nothing built |
@@ -32,8 +34,9 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Spells on the sheet](spells-on-the-sheet.md) | One Cantrips list, changes by SRD rule, the Wizard's spellbook | Draft |
 | [Square grid](square-grid.md) | Squares beside hexes behind one geometry interface | Agreed; S0 to S14 built |
 | [Travel](travel.md) | Atlas of nested maps, places, parking, journeys, vessels | Draft; W1 to W3 built |
+| [Prompts](prompts.md) | The DM's call for a roll (a called save, DM-granted Advantage or Disadvantage); later, choices after a roll | Draft; the engine part of "Call for a roll" built (#676) |
 | [Shops and loot](shops.md) | Market pack, shops, purses, haggling | Draft; P1, P2, P3a built |
 | [Adventure modules](adventure-module.md) | A zip the DM prepares and adds to a game | Draft; A0b (the zip library) built |
 | [DM helper](dm-helper.md) | A goal for the encounter, an intention for each NPC, the queue of recommended moves, shifts, leaving a fight and truce, recurring villains; the other DM and player helpers, ranked | Draft; nothing built |
 
-Still to write: prompts (reactions and decisions made after a roll), persistent world and the AI DM interface.
+Still to write: the rest of prompts (reactions and decisions made after a roll), persistent world and the AI DM interface.

@@ -6,6 +6,7 @@
 // action against the rules, mutates state, and returns events. Renderers turn events
 // into numbers or animations; the server broadcasts them; the timeline records them;
 // an AI DM or AI character is just another caller of apply().
+import { noteManual, tidy } from './todo.js';
 import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
@@ -36,7 +37,7 @@ export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
 export { aimArea, aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, holdsOf, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
 export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './engine/characters.js';
-export { checkBonus, passive, rollMode } from './engine/rolls.js';
+export { acBaseOf, acNow, acOf, acShown, checkBonus, passive, rollMode } from './engine/rolls.js';
 export { makeEntity } from './engine/sheets.js';
 export { ENGAGE_RANGE } from './engine/movement.js';
 export { actionSpent, attacksLeft, fromPool, partRefusal } from './engine/attacks.js';
@@ -413,7 +414,9 @@ function record(s, ev) {
     // before the fight's start revealed them; casting.js): both are kept (fix round 1 of #373, L1).
     const all = [...new Set([...(Array.isArray(e.unseen) ? e.unseen : []), ...ids])];
     s.timeline.push(structuredClone({ t: s.clock, ...e, ...(all.length ? { unseen: all } : {}) }));
+    if (e.type === 'manual') noteManual(s, e);       // the DM's to-do tray (todo.js): a card, kept in the state
   }
+  tidy(s);
   return { ok: true, events: ev };
 }
 

@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, openMenu } from './lib.mjs';
 
 // ---------- the connection dot (issue #246) ----------
 // A DM on a desktop and a phone player at one table. The address says ?link=fast, which shortens the link thresholds (linkquality.js,
@@ -10,11 +10,11 @@ const rowDot = (page, id) => page.evaluate((i) => { const d = document.querySele
 const waitRow = (page, id, want, timeout = 15000) => wait(page, ([i, w]) => { const d = document.querySelector(`#tr-list li[data-id="${i}"] .tr-link .ld`); return !!d && d.classList.contains(`ld-${w}`); }, [id, want], timeout);
 // Screenshots for a person to look at: written where SMOKE_SHOTS says (the workflow uploads them on failure), else nowhere.
 const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
-// Does the dot keep clear of the round card, the initiative strip and the menu button?
+// Does the dot keep clear of the turn line, the menu token and the DM's undo and redo chips?
 const overlaps = (page) => page.evaluate(() => {
   const r = (s) => document.querySelector(s)?.getBoundingClientRect(), dot = r('#link-dot');
   const hit = (a, b) => a && b && a.width && b.width && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-  return ['#status', '#btn-menu', '#order', '#btn-undo'].filter((s) => hit(dot, r(s)));
+  return ['#turnline', '#btn-menu', '#btn-undo', '#btn-redo'].filter((s) => hit(dot, r(s)));
 });
 
 async function link(browser, url) {
@@ -54,10 +54,10 @@ async function link(browser, url) {
         await waitShown(phone, '#lobby', false);
         await closeMenu(host);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        const name = (await b.textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        const name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
       });
 

@@ -1,3 +1,4 @@
+// (Stage M4 of docs/specs/one-token-menu.md moved this panel into the Character screen of the menu and took the dock away: the tabs became the action groups, `groupsFor` below.)
 // The action panel (docs/specs/table-ui.md, Decision 6, task T3): the card at the foot of the screen. Its head (name, Sheet, End turn),
 // Hit Point bar and status line (with a small card on how each condition or lasting effect ends), and tabs chosen by what the
 // table is doing, `panelContext(S, e)`. Built here: Explore (outside a fight, ranked by `rankExplore`), Attacks, Spells, Bonus, Move,
@@ -8,8 +9,9 @@
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import { gridOf, col as cellCol } from './shared/grid.js';
-import { inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
-import { actionProfile } from './shared/effects.js';
+import { acShown, inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { actionProfile, rangeAt } from './shared/effects.js';
+import { armed } from './shared/imbue.js';
 import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
 import { LIGHTS } from './shared/content/lights.js';
 import { reactionsOf, canReact, WHEN } from './shared/reactions.js';
@@ -22,6 +24,7 @@ import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
 import { slotChoices } from './upcast.js';
 import { shownName } from './tracker.js';
+import { levelUpChip } from './levelup.js';
 import { classTitle } from './buildsheet.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
@@ -46,6 +49,29 @@ export function reactionState(S, e, { dm = false } = {}) {
 }
 
 // The panel is a function of the state and the selected creature. `mine`: the viewer controls `e` (the DM controls all).
+// Whether a turn opens on Spells although the creature has attacks (issue 678). The rule: a character (not a monster, and not a creature in a form such as
+// Wild Shape, which opens on Attacks) opens on Spells when it can cast something worth casting and has no weapon worth using; otherwise Attacks.
+// "A weapon worth using" is a weapon attack that hits for 5.5 or more on average (WEAPON_WORTH: a Mace with a +2 modifier, a Rapier, a Greatsword). Unarmed Strike (with its
+// Bonus Action twin, Grapple and Shove, which are rows of it), improvised weapons and the d4 and d6 weapons a wizard carries (a Dagger, a Quarterstaff, also two-handed) are not: a
+// wizard's cantrip beats them and grows with level. So a cleric with a mace and a paladin with a greatsword open on Attacks, a wizard with a dagger on Spells.
+// "Something worth casting" is a spell that can be cast on this creature's turn at all (`time: 'action'`) and either a cantrip whose roll is an attack or a
+// saving throw, or a levelled spell with a slot left. The action economy is left out on purpose (a spent Action does not flip the tab), and `initActionPanel` keeps
+// the tab a turn opened on, so it does not move under the player when the last slot goes. A tab the player picked wins over all of this.
+export const WEAPON_WORTH = 5.5;
+const damageAvg = (d) => {
+  const m = /^\s*(?:(\d+)d(\d+))?\s*([+-]\s*\d+)?\s*$/.exec(String(d ?? ''));
+  return m ? (m[1] ? (+m[1] * (+m[2] + 1)) / 2 : 0) + (m[3] ? +m[3].replace(/\s/g, '') : 0) : 0;
+};
+export function opensOnSpells(S, e) {
+  if (e.form || e.actions || !e.spells?.length) return false;
+  if ((e.attacks ?? []).some((a) => !/^unarmed-strike|-two-handed$/.test(a.id) && !/improvised/i.test(`${a.id} ${a.name}`) && damageAvg(a.damage) >= WEAPON_WORTH)) return false;
+  return e.spells.some((id) => {
+    const sp = SPELLS[id];
+    if (!sp || sp.time !== 'action') return false;
+    return sp.level > 0 ? slotChoices(e, sp).length > 0 : sp.roll === 'attack' || /^save:/.test(sp.roll ?? '');
+  });
+}
+
 // Returns { situation, tabs: [{ id, label, built, ... }], default } with every tab the spec names; the shell draws the built ones.
 export function panelContext(S, e, { mine = true, dm = false } = {}) {
   if (!e) return { situation: 'none', tabs: [], default: null };
@@ -56,7 +82,7 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
   if (!fight) return { situation: 'explore', tabs: ['explore', 'spells', 'features', 'items'].map((id) => tab(id)), default: 'explore' };
   if (current(S) === e.id) {
     const armed = attackRows(S, e).length > 0;
-    return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed ? 'attacks' : 'spells' };
+    return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed && !opensOnSpells(S, e) ? 'attacks' : 'spells' };
   }
   const r = reactionState(S, e, { dm });
   return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending, free: r.free } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
@@ -124,7 +150,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const holds = holdRows(S, e), hold = [...holds.escape, ...holds.letGo].map((r) => row(r));
   // 2. Following. "Lead the party" is for whoever controls `e` (a player for their own creature, the DM for anyone; this panel is only ever
   // drawn for a creature the viewer controls), and "Formation..." while someone follows `e` (formation.js).
-  const follows = [];
+  const follows = []; let formationRow = null;
   if (!inFight(S, e.id) && e.side === 'party') {
     const leader = e.follow && S.entities[e.follow];
     if (leader) follows.push(row({ id: 'stopFollow', kind: 'send', label: 'Stop following', sub: `Following ${leader.name}`, send: { type: 'follow', actor: e.id, leader: null } }));
@@ -135,7 +161,7 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
     }
     if (!enc) {
       const why = formationWhy(S, e, { dm: true, mine: true });
-      if (leads(S, e)) follows.push(row({ id: 'formation', kind: 'formation', label: 'Formation…', sub: `Now: ${shapeLabel(currentShape(e))}`, why }));
+      if (leads(S, e)) follows.push(formationRow = row({ id: 'formation', kind: 'formation', label: 'Formation…', sub: `Now: ${shapeLabel(currentShape(e))}`, why }));
       follows.push(row({ id: 'lead', kind: 'lead', label: 'Lead the party', sub: 'Everyone follows; then pick how', why, send: { type: 'partyFollow', leader: e.id } }));
     }
   }
@@ -178,7 +204,9 @@ export function rankExplore(S, e, { dm = false, mode = null, found = false } = {
   const check = row({ id: 'check', kind: 'check', label: 'Check…', sub: 'Skills, on the sheet' });
 
   const head = [...hold, ...objects], tail = [...dark, hide, ...rituals, check];
-  const base = [...follows, ...aid, ...(weary ? rests : [])];
+  // A hurt creature's healing comes before Formation...: the party follows its first hero from the start of a solo game, so Formation... is
+  // there from the first turn and would push the healing under More (#671).
+  const base = aid.length && formationRow ? [...follows.filter((r) => r !== formationRow), ...aid, formationRow, ...(weary ? rests : [])] : [...follows, ...aid, ...(weary ? rests : [])];
   let list;
   if (found) list = [...head, search, ...base, ...tail];                                  // something was just found or sprung: Search moves up
   else if ((S.settings?.passiveFind ?? 'off') === 'off') {
@@ -200,6 +228,8 @@ export function featureRows(S, e, { mode = null } = {}) {
     const f = (e.feats ?? []).find((x) => `feat:${x.id}` === r.id);
     if (!f) return r;
     const a = f.action, fr = free.find((x) => x.id === f.id);
+    // A feature that only heals its user (Second Wind of a built Fighter) is greyed at full Hit Points, as the hand-typed Second Wind was: the engine would spend the use for nothing.
+    if (!r.why && r.kind === 'send' && a?.target?.self && a.effects?.length && a.effects.every((x) => x.heal !== undefined) && e.hp >= e.maxHp) return { ...r, why: `${e.name} is at full Hit Points.` };
     // A feature that costs a spell slot (`cost.slot`): the row says so, with the lowest level and what a higher slot adds (the chooser of classes.js lets the player pick the level).
     if (r.kind === 'chooser' && slotAim(f)) return { ...r, sub: slotSub(e, f) };
     if (fr && r.kind === 'none') {
@@ -219,9 +249,9 @@ export function featureRows(S, e, { mode = null } = {}) {
 function strikeRow(S, e, a, base, mode) {
   const ch = strikeChoices(S, e, a);
   if (!ch) return null;
-  const what = ch.brutal && ch.cunning ? `${ch.brutal.name} or ${ch.cunning.name}` : (ch.brutal ?? ch.cunning).name;
-  const bits = [ch.brutal ? `${ch.brutal.dice} more damage and an effect, no Advantage` : '', ch.cunning ? `${ch.cunning.dice} dice of Sneak Attack${ch.cunning.dice ? ' for effects' : ''}` : ''].filter(Boolean);
-  const offered = [ch.brutal, ch.cunning].filter(Boolean), stuck = offered.every((o) => o.why);
+  const what = [ch.use, ch.brutal, ch.cunning].filter(Boolean).map((o) => o.name).join(' or ');
+  const bits = [ch.use ? `${ch.use.name} changes the weapon` : '', ch.brutal ? `${ch.brutal.dice} more damage and an effect, no Advantage` : '', ch.cunning ? `${ch.cunning.dice} dice of Sneak Attack${ch.cunning.dice ? ' for effects' : ''}` : ''].filter(Boolean);
+  const offered = [ch.use, ch.brutal, ch.cunning].filter(Boolean), stuck = offered.every((o) => o.why);
   return { id: `strike:${a.id}`, kind: 'strike', attack: a.id, label: `${a.name} with ${what}`, sub: bits.join(' · '), chip: base.chip, time: base.time, armed: armedBy(mode, 'attack', a.id) && !!mode.extra,
     why: base.why || (stuck ? offered[0].why : '') };
 }
@@ -233,6 +263,8 @@ function strikeRow(S, e, a, base, mode) {
 // row. `time` is what it costs ('action', 'bonus', 'reaction', 'free' or null) and `chip` its words. The Bonus tab is a filter on the others by `time`.
 const armedBy = (mode, kind, id) => !!mode && mode.kind === kind && mode.id === id;
 
+// The attack record as it stands under a spell or feature that changes the weapon (imbue.js): a new record, or the same one.
+export const imbuedAttack = (S, e, a) => armed(S, e, a);
 // Attacks: a character's `attacks`, or a monster's `actions` (Multiattack, recharge, uses a day).
 export function attackRows(S, e, { mode = null } = {}) {
   const b = S.encounter?.budget, mineTurn = !!b && current(S) === e.id, rows = [];
@@ -257,7 +289,8 @@ export function attackRows(S, e, { mode = null } = {}) {
     const bonusTime = !flurry && a.time === 'bonus', pooled = mineTurn && !flurry && !bonusTime && !!b.attacks && fromPool(b, a.id);
     const time = flurry || pooled ? null : bonusTime ? 'bonus' : 'action';
     const reach = a.type === 'melee' ? `reach ${a.reach ?? 5} ft` : a.range ? `range ${a.range[0]}/${a.range[1]} ft` : '';
-    const row = { id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(a.bonus)} to hit`, `${a.damage} ${a.dtype}`, reach].filter(Boolean).join(' · '), why: blocked(S, e, time),
+    const w = imbuedAttack(S, e, a);       // a weapon a spell or feature has changed shows its changed numbers (imbue.js)
+    const row = { id: `atk:${a.id}`, kind: 'arm', label: a.name, sub: [`${signed(w.bonus)} to hit`, `${w.damage} ${[w.dtype, ...(w.alt ?? [])].join(' or ')}`, reach, ...(w.imbued ?? [])].filter(Boolean).join(' · '), why: blocked(S, e, time),
       chip: flurry ? `Flurry: ${b.bonusAttacks.left} left` : pooled ? 'Extra Attack' : CHIP[time], time: flurry || pooled ? null : time, armed: armed && !mode.extra, arm: { kind: 'attack', id: a.id }, mode: { kind: 'attack', id: a.id } };
     rows.push(row);
     const strike = strikeRow(S, e, a, row, mode);
@@ -327,12 +360,13 @@ export function moveBudget(S, e) {
 const LONGER = { minute: '1 minute', hour: '1 hour' };
 export const castGroup = (sp) => (CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : 'Longer');
 const rangeWhy = (S, e, sp) => {
-  if (sp.aim !== 'creature' || !(sp.range > 0)) return '';
-  try { return targetsFor(S, e, { spell: sp.id }).length ? '' : `Nobody within ${sp.range} ft.`; } catch { return ''; }
+  const reach = rangeAt(sp.def, e.level);
+  if (sp.aim !== 'creature' || !(reach > 0)) return '';
+  try { return targetsFor(S, e, { spell: sp.id }).length ? '' : `Nobody within ${reach} ft.`; } catch { return ''; }
 };
 export function spellRow(S, e, id, { mode = null } = {}) {
   const sp = SPELLS[id], what = sp.heal ? `heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : sp.short;
-  const range = sp.aim === 'self' ? 'Self' : sp.range > 0 ? `${sp.range} ft` : '';
+  const reach = rangeAt(sp.def, e.level), range = sp.aim === 'self' ? 'Self' : reach > 0 ? `${reach} ft` : '';
   return { id: `spell:${id}`, kind: 'spell', spell: id, label: sp.name, sub: [sp.level ? `Level ${sp.level}` : 'Cantrip', range, sp.def.concentration ? 'Concentration' : '', sp.def.ritual ? 'Ritual' : '', what].filter(Boolean).join(' · '),
     why: spellWhy(S, e, sp) || rangeWhy(S, e, sp), chip: CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : (LONGER[sp.time] ?? sp.time), time: sp.time, armed: armedBy(mode, 'spell', id) && !mode.item,
     level: sp.level, roll: sp.roll ?? null, school: sp.def.school ?? '', cast: castGroup(sp), conc: !!sp.def.concentration, ritual: !!sp.def.ritual, kinds: sp.kinds ?? [] };
@@ -504,6 +538,92 @@ export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
 }
 
 
+// ---------- the action groups (docs/specs/one-token-menu.md, Decision 4 and R29; stage M4) ----------
+// The old tabs sorted rows by kind; the groups sort the same rows by what the player wants to do. A row may be in two groups (a healing spell is in Cast and in Heal): it is the same row.
+// In a fight only what can be used now is shown (R29): a row with a `why` is left out unless it is armed (a tap on it puts it down), and a group with nothing left is left out. Out of a fight the
+// rows stay and say why. `groupsFor` is pure: a test walks it.
+export const GROUP_LABEL = { explore: 'Explore', attacks: 'Attack', spells: 'Cast', heal: 'Heal', move: 'Move', defend: 'Defend and hide', use: 'Use', features: 'Features', companions: 'Companions', reactions: 'Reactions', rest: 'Rest', items: 'Inventory' };
+// The order never changes within a state (Decision 4), so a hand learns it. Inventory ends the list in both.
+export const GROUP_ORDER = { fight: ['attacks', 'spells', 'heal', 'move', 'defend', 'use', 'features', 'companions', 'reactions', 'items'], free: ['explore', 'spells', 'heal', 'use', 'rest', 'features', 'companions', 'items'] };
+// What a turn-bar segment opens (Decision 4: the segment is the question): a screen of everything that costs that, or the group it stands for.
+export const COSTS = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', move: 'Move' };
+const HEAL_ROW = /^feat:(second-?wind|lay-on-hands)$/i;
+const spellHeals = (id) => !!(SPELLS[id]?.heals || SPELLS[id]?.heal);
+export const healsRow = (r) => HEAL_ROW.test(r.id) || ((r.kind === 'spell' || r.kind === 'ritual') && spellHeals(r.spell)) || (r.kind === 'item' && ((!!r.spell && spellHeals(r.spell)) || /heal/i.test(r.label)));
+// Whether a row is offered in a fight: usable, or armed (so a tap can put it down again).
+export const offered = (r) => !r.why || !!r.armed;
+
+// The rows of one group for `e`, every one (greyed ones too: `groupsFor` takes them out of a fight). `o`: { mode, fly, dm, found, comp: { attacks, features, move } (companions.js), inv (an `itemRows`) }.
+export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found = false, comp = null, inv = null } = {}) {
+  const cr = comp ?? { attacks: [], features: [], move: [] };
+  const std = (...ids) => moveRows(S, e, { fly }).filter((r) => ids.includes(r.id));
+  const bonusStd = (...ids) => bonusRows(S, e, { mode, fly }).rows.filter((r) => ids.includes(r.id));
+  const items = () => inv ?? itemRows(S, e, { dm, mode });
+  switch (id) {
+    case 'attacks': return [...attackRows(S, e, { mode }), ...cr.attacks, ...spellRows(S, e, { mode }).filter((r) => r.roll === 'attack')];
+    case 'spells': return spellRows(S, e, { mode });
+    case 'heal': return [...spellRows(S, e, { mode }).filter(healsRow), ...featureRows(S, e, { mode }).filter(healsRow), ...items().uses.filter(healsRow)];
+    case 'move': { const h = holdRows(S, e); return [...h.escape, ...std('dash', 'disengage', 'fly-up', 'fly-down'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
+    case 'defend': return [...std('dodge', 'hide', 'search', 'shield'), ...bonusStd('hide-bonus')];
+    case 'use': return [...moveRows(S, e, { fly }).filter((r) => r.id.startsWith('use:')), ...items().uses.filter((r) => !healsRow(r))];
+    case 'features': return featureRows(S, e, { mode }).filter((r) => !healsRow(r));
+    case 'companions': return [...cr.features, ...cr.move];
+    case 'explore': return rankExplore(S, e, { dm, mode, found }).filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
+    case 'rest': return rankExplore(S, e, { dm, mode, found }).filter((r) => r.id === 'shortRest' || r.id === 'longRest');
+    case 'items': { const it = items(); return [...it.uses, ...(it.light ? [it.light] : [])]; }
+    default: return [];
+  }
+}
+
+// What a group says closed, in a few words: the rows to use now (or, with none, why).
+const names = (rows, n = 2) => { const l = rows.map((r) => r.label); return l.slice(0, n).join(', ') + (l.length > n ? ` +${l.length - n}` : ''); };
+
+// Everything the Character screen's action part needs: { situation, fight, groups, shown, empty }. A group is { id, label, rows (all), offered (what a fight shows), tip, why, shown }.
+// `ctx`: the `panelContext`; `o`: as `groupRows`, and `meta` (the Metamagic button of classes.js, or null), `react` (a `reactionState`).
+export function groupsFor(S, e, ctx, o = {}) {
+  const fight = !!S.encounter && inFight(S, e.id), mine = ctx.situation !== 'watch' && ctx.situation !== 'none' && ctx.situation !== 'down';
+  if (!mine) return { situation: ctx.situation, fight, groups: [], shown: [], empty: '' };
+  const dm = !!o.dm, inv = o.inv ?? itemRows(S, e, { dm, mode: o.mode });
+  const react = o.react ?? reactionState(S, e, { dm }), groups = [];
+  const filtered = fight ? (list) => list.filter(offered) : (list) => list;
+  for (const id of GROUP_ORDER[fight ? 'fight' : 'free']) {
+    const g = { id, label: GROUP_LABEL[id], rows: [], offered: [], tip: '', why: '', shown: false };
+    if (id === 'reactions') {
+      g.shown = fight && (react.ok || react.pending || react.free > 0);
+      g.tip = react.pending ? 'A question is waiting' : react.ok ? 'Ready' : react.free ? 'Standing instructions' : react.why; g.why = react.ok ? '' : react.why;
+    } else if (id === 'items') {
+      g.rows = groupRows(S, e, id, { ...o, inv });
+      const acts = [...inv.gear.flatMap((x) => x.acts), ...inv.names.flatMap((x) => x.acts), ...inv.ground.flatMap((p) => [...p.things, ...(p.all ? [p.all] : [])])];
+      g.offered = [...filtered(inv.uses), ...(inv.light && offered(inv.light) ? [inv.light] : []), ...acts.filter((a) => !a.why)];
+      g.shown = fight ? g.offered.length > 0 : inv.any;
+      g.tip = inv.any ? `${inv.gear.length + inv.names.length} carried${inv.uses.length ? ` · ${inv.uses.length} to use` : ''}` : 'Nothing carried';
+    } else {
+      g.rows = groupRows(S, e, id, { ...o, inv });
+      if (id === 'spells' && o.meta) g.rows = [{ id: 'metamagic', kind: 'meta', label: o.meta.label, why: o.meta.why, armed: /\barmed\b/.test(o.meta.cls ?? '') }, ...g.rows];
+      g.offered = filtered(g.rows);
+      // Out of a fight a group is left out when nothing is in it (a fighter has no Cast); Heal and Explore stay, greyed, with their reason (Decision 4).
+      g.shown = fight ? g.offered.length > 0 : g.rows.length > 0 || id === 'heal' || id === 'explore';
+      if (id === 'heal' && !g.rows.length) g.why = `${e.name} has no healing spell or item.`;
+      g.tip = g.offered.length ? names(g.offered) : g.why || g.rows.find((r) => r.why)?.why || '';
+    }
+    groups.push(g);
+  }
+  if (fight && current(S) !== e.id) { const i = groups.findIndex((g) => g.id === 'reactions'); if (i > 0) groups.unshift(...groups.splice(i, 1)); }      // not your turn: Reactions comes first
+  const shown = groups.filter((g) => g.shown);
+  // The whole page empty in a fight: one line, the engine's own reason.
+  const empty = fight && !shown.length ? (blocked(S, e, 'action') || groups.flatMap((g) => g.rows).find((r) => r.why)?.why || `${e.name} has nothing to do right now.`) : '';
+  return { situation: ctx.situation, fight, groups, shown, empty };
+}
+
+// Everything that costs `cost` ('action', 'bonus', 'reaction'), from every group, once each (Decision 4: the turn bar filters). `G` is `groupsFor`'s answer.
+export function costRows(S, e, cost, G, { mode = null, fly = null } = {}) {
+  if (cost === 'bonus') return bonusRows(S, e, { mode, fly }).rows;
+  const seen = new Set(), out = [];
+  for (const g of G.groups) for (const r of g.rows) if (r.time === cost && !seen.has(r.id)) { seen.add(r.id); out.push(r); }
+  return out;
+}
+
+
 // ---------- the status line ----------
 // What the pills say, and how each ends. Pure: it reads the creature and the state's lasting effects.
 const effectsOn = (S, e) => (S.effects ?? []).filter((fx) => fx.source === e.id || fx.parts.some((p) => p.target === e.id && !p.ended));
@@ -538,9 +658,10 @@ export function howItEnds(S, e, key, { mine = false } = {}) {
 }
 
 // The pills of a creature: { html } for the status line. `full`: we were sent its whole record; `myTurn`: the turn budget is shown.
-export function statusHtml(S, e, { mine = false, full = false, formLabel = '', budget = null } = {}) {
+export function statusHtml(S, e, { mine = false, full = false, formLabel = '', budget = null, open = '' } = {}) {
   const enc = S.encounter, b = budget;
-  const pip = (label, have) => `<span class="${have ? 'have' : 'spent'}">${label}</span>`;
+  // The turn bar's four segments are buttons (a tap opens everything that costs it: Decision 4); the rest are plain words.
+  const pip = (label, have, cost = '') => (cost && mine ? `<button type="button" class="pip ${have ? 'have' : 'spent'}" data-cost="${cost}" aria-pressed="${open === (cost === 'move' ? 'move' : cost === 'reaction' ? 'reactions' : `cost:${cost}`)}">${label}</button>` : `<span class="${have ? 'have' : 'spent'}">${label}</span>`);
   const pill = (key, label, cls = '') => `<button type="button" class="pill ${cls}" data-how="${esc(key)}" aria-expanded="false">${label}</button>`;
   const dying = !e.dead && e.hp <= 0 && full && (e.cond?.stable ? 'Stable' : `Dying ${e.death?.s ?? 0}✓ ${e.death?.f ?? 0}✗`);
   const conds = Object.keys(e.cond ?? {}).filter((c) => e.cond[c] && c !== 'stable');
@@ -549,8 +670,8 @@ export function statusHtml(S, e, { mine = false, full = false, formLabel = '', b
     const left = untilText(S, fx), label = `${esc(fx.name)}${fx.conc ? ' (C)' : ''}${left ? ` · ${esc(left.replace(' left', '').replace(/^until /, 'until '))}` : ''}`;
     return pill(`fx:${fx.id}`, label, 'fx');
   }).join('');
-  return (b ? pip('Action', b.action > 0) + (b.attacks ? pip(`Attacks left ${b.attacksLeft}`, true) : '') + pip('Bonus Action', b.bonus > 0) + pip(`Move ${feetShown(S, b.move)} ft`, b.move >= 5) : '') +
-    (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed) : '') +
+  return (b ? pip('Action', b.action > 0, 'action') + (b.attacks ? pip(`Attacks left ${b.attacksLeft}`, true) : '') + pip('Bonus Action', b.bonus > 0, 'bonus') + pip(`Move ${feetShown(S, b.move)} ft`, b.move >= 5, 'move') : '') +
+    (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed, 'reaction') : '') +
     Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
     plain + (formLabel ? `<b class="form">${esc(formLabel)} form</b>` : '') + (dying ? pill('dying', esc(dying)) : '') + (e.hidden ? '<span>Hidden from players</span>' : '') +
     conds.map((c) => pill(`cond:${c}`, esc(c === 'grappled' ? heldText(S, e) : conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : '')))).join('') + lasting;
@@ -563,59 +684,55 @@ const ARMS = (m) => !!m && m.kind !== 'move';
 // ctx: { prefs, state(), isDM(), mine(e), act, toast, skipping(), setMode(m), move (the idle mode), castSpell(e, id, armed), openSheet(),
 //        shortRest(), hpFraction(e), formLabel(e), budget(e), openFeature(e, id) (a chooser of classes.js), flyInfo(e) ({ aloft, alt }),
 //        fly(e, delta) (change the height of the next move), metamagic(e) (the Metamagic button of classes.js, or null), render(), selected() }.
+// The groups are drawn into `#ap-body` of the Character screen (`#sheet`): one bar for each group, one open at a time (Decision 4d), under the status block, which draws the turn bar.
 export function initActionPanel(ctx) {
   const { prefs } = ctx;
-  const card = $('card'), body = $('ap-body'), tabsEl = $('ap-tabs'), how = $('ap-how');
-  let sel = { key: '', tab: null }, rowsBy = {}, raised = false, moreOpen = false, howKey = null, ctxNow = null, tabsNow = [], found = [false, false];
+  const card = $('card'), body = $('ap-body'), how = $('ap-how');
+  let sel = { key: '', tab: null }, rowsBy = {}, moreOpen = false, howKey = null, ctxNow = null, found = [false, false], openNow = '', curE = null, groupsNow = [];
   const pref = () => (prefs.get('hextable.panelTab') === 'remember' ? 'remember' : 'auto');
   const last = () => prefs.get('hextable.panelLast') ?? {};
-  const narrow = () => { try { return matchMedia('(max-width: 600px)').matches; } catch { return false; } };
-  // index.html still carries the temporary pane of the old action bar (`#ap-all` and `#actions`); it is the Spells pane now.
-  const spellsEl = $('ap-all') ?? $('ap-spells');
-  spellsEl.id = 'ap-spells'; spellsEl.setAttribute('aria-labelledby', 'ap-tab-spells'); spellsEl.textContent = '';
-  // The Items pane is made here: index.html carries no element for it (it was not on the issue's list; tidy it next time that file is touched).
-  const itemsEl = $('ap-items') ?? (() => { const el = document.createElement('div'); el.id = 'ap-items'; el.setAttribute('role', 'tabpanel'); el.setAttribute('aria-labelledby', 'ap-tab-items'); el.hidden = true; $('ap-features').after(el); return el; })();
-  const panes = { items: itemsEl, explore: $('ap-explore'), attacks: $('ap-attacks'), spells: spellsEl, bonus: $('ap-bonus'), move: $('ap-move'), features: $('ap-features'), reactions: $('ap-reactions'), down: $('ap-down') };
-  const LISTS = ['explore', 'attacks', 'spells', 'bonus', 'move', 'features'];
-  let picking = null;                                    // the Items row whose potion is being given: { id, actor }
+  // One section for each group, then the screen of a turn-bar segment (`cost`) and the note of a creature that is down. Each is a bar (a button) and the pane it opens.
+  const secs = {}, panes = {}, bars = {};
+  const mk = (tag, props = {}, ...kids) => { const x = document.createElement(tag); for (const [k, v] of Object.entries(props)) x.setAttribute(k, v); x.append(...kids); return x; };
+  const noteEl = mk('p', { id: 'ap-empty', class: 'ap-why-line', role: 'status' }); noteEl.hidden = true;
+  panes.down = mk('div', { id: 'ap-down', class: 'ap-down', role: 'status' }); panes.down.hidden = true;
+  body.append(noteEl, panes.down);
+  for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free])]) {
+    const bar = mk('button', { type: 'button', class: 'ap-bar', id: `ap-bar-${id}`, 'data-sec': id, 'aria-expanded': 'false', 'aria-controls': `ap-${id}` },
+      mk('span', { class: 'ap-bt' }), mk('small', { class: 'ap-tip' }), mk('span', { class: 'ap-chev', 'aria-hidden': 'true' }, '›'));
+    const pane = mk('div', { id: `ap-${id}`, class: 'ap-pane', role: 'region', 'aria-labelledby': `ap-bar-${id}` }); pane.hidden = true;
+    const likely = mk('button', { type: 'button', class: 'ap-likely', 'data-likely': id }); likely.hidden = true;
+    const sec = mk('section', { class: 'ap-sec', 'data-sec': id }, mk('h3', { class: 'ap-h' }, bar), likely, pane); sec.hidden = true;
+    secs[id] = sec; panes[id] = pane; bars[id] = bar; body.append(sec);
+  }
+  const LISTS = ['explore', 'attacks', 'spells', 'heal', 'move', 'defend', 'use', 'features', 'companions', 'rest', 'cost', 'items'];
+  let picking = null;                                    // the Inventory, Heal or Use row whose potion is being given: { id, actor }
   let giving = null;                                     // the Give... button whose list of creatures is open: { id (of the act), actor }
-  // The Spells tab's sort (kept on this device) and filters (kept while the page is open, not between sessions).
+  // The Cast section's sort (kept on this device) and filters (kept while the page is open, not between sessions).
   const sortNow = () => (SPELL_SORTS[prefs.get('hextable.spellSort')] ? prefs.get('hextable.spellSort') : 'level');
   let filters = noFilters(), filtersOpen = false, refocus = null;
+  const rowOfId = (id) => Object.values(rowsBy).flat().find((x) => x?.id === id);
 
   const setHtml = (el, html) => { if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; } };
 
-  function choose(id, focus = false) {
-    if (!tabsNow.some((t) => t.id === id)) return;
+  // A bar opens its group; the open one closes by a second tap. `''` is "none open" (a choice: it stays), `null` is "not chosen yet" (the likeliest opens).
+  function choose(id) {
     sel.tab = id;
-    if (pref() === 'remember' && ctxNow) prefs.set('hextable.panelLast', { ...last(), [ctxNow.situation]: id });
+    if (pref() === 'remember' && ctxNow && id) prefs.set('hextable.panelLast', { ...last(), [ctxNow.situation]: id });
     ctx.render();
-    if (focus) tabsEl.querySelector(`[data-tab="${id}"]`)?.focus();
   }
-  tabsEl.addEventListener('click', (ev) => {
-    const b = ev.target.closest('button'); if (!b) return;
-    if (b.id === 'ap-grip') { raised = !raised; return ctx.render(); }
-    choose(b.dataset.tab);
+  body.addEventListener('click', (ev) => {
+    const bar = ev.target.closest('.ap-bar');
+    if (bar) { choose(openNow === bar.dataset.sec ? '' : bar.dataset.sec); bar.focus({ preventScroll: true }); return; }
+    const lk = ev.target.closest('[data-likely]');
+    if (lk) { const r = rowOfId(lk.dataset.rid); if (r) run(r); return; }
   });
-  tabsEl.addEventListener('keydown', (ev) => {
-    const i = tabsNow.findIndex((t) => t.id === sel.tab), step = { ArrowRight: 1, ArrowLeft: -1 }[ev.key];
-    if (step && i >= 0) { ev.preventDefault(); choose(tabsNow[(i + step + tabsNow.length) % tabsNow.length].id, true); }
-  });
-  // A drag on the head moves between compact and raised; a tap on a button in it does what it did.
-  let drag = null;
-  $('card-head').addEventListener('pointerdown', (ev) => { if (!ev.target.closest('button')) drag = { y: ev.clientY, id: ev.pointerId }; });
-  addEventListener('pointerup', (ev) => {
-    if (!drag || ev.pointerId !== drag.id) return;
-    const dy = ev.clientY - drag.y; drag = null;
-    if (Math.abs(dy) > 30) { raised = dy < 0; ctx.render(); }
-  });
-  addEventListener('pointercancel', () => { drag = null; });
-  // 1 to 6 switch to a tab when no field has focus.
-  addEventListener('keydown', (ev) => {
-    if (ev.ctrlKey || ev.metaKey || ev.altKey || ev.defaultPrevented || card.hidden || document.body.classList.contains('rp-open')) return;
-    if (ev.target.closest?.('input, select, textarea, [contenteditable]')) return;
-    const n = Number(ev.key);
-    if (Number.isInteger(n) && n >= 1 && n <= tabsNow.length && tabsNow.length > 1) choose(tabsNow[n - 1].id);
+  // A turn bar segment opens everything that costs it (Decision 4); a second tap closes it. Move and Reaction stand for their groups.
+  $('c-res').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-cost]'); if (!b) return;
+    const k = b.dataset.cost, id = k === 'move' ? 'move' : k === 'reaction' ? 'reactions' : `cost:${k}`;
+    if (!id.startsWith('cost:') && !groupsNow.some((g) => g.id === id)) return ctx.toast(k === 'move' ? 'Nothing you can do with your Move now.' : (reactionState(ctx.state(), ctx.state().entities[ctx.selected()], { dm: ctx.isDM() }).why || 'No Reaction to use now.'));
+    choose(openNow === id ? '' : id);
   });
 
   // A tap on a row does what the same button of the bar did.
@@ -644,29 +761,22 @@ export function initActionPanel(ctx) {
       case 'ritual': return ctx.castSpell(e, r.spell, r.armed);
       case 'shortRest': return ctx.shortRest();
       case 'check': return ctx.openSheet();
-      case 'jump': {
-        if (r.jumpTab === 'spells') filters = noFilters();                        // a filter must not hide the row we are going to
-        choose(r.jumpTab);
-        const b = panes[r.jumpTab].querySelector(`[data-row="${CSS.escape(r.jump)}"]`);
-        if (b) { b.scrollIntoView({ block: 'nearest', inline: 'center' }); b.focus({ preventScroll: true }); }
-        return;
-      }
       default: return;
     }
   }
-  for (const id of ['features', 'bonus', 'move']) ctx.comp?.bindPane(panes[id]);
   for (const id of LISTS) {
     panes[id].addEventListener('click', (ev) => {
       const b = ev.target.closest('[data-row]'); if (!b) return;
       const r = (rowsBy[id] ?? []).find((x) => x.id === b.dataset.row); if (r) run(r);
     });
   }
-  // The Items tab's own controls: a use row (through `run`), whom a potion is for, and the equip and attune buttons of a piece of gear.
-  panes.items.addEventListener('click', (ev) => {
+  for (const id of ['features', 'move', 'attacks', 'companions']) ctx.comp?.bindPane(panes[id]);
+  // The Inventory's own controls: whom a potion is for, and the equip and attune buttons of a piece of gear (a use row goes through `run`).
+  body.addEventListener('click', (ev) => {   // the pickers and the gear buttons can be in the Heal, Use and Inventory sections
     const S = ctx.state(), e = S.entities[ctx.selected()];
     const pick = ev.target.closest('[data-pick], [data-pick-cancel]');          // data-pick-cancel also closes the level chooser
     if (pick && e && !ctx.skipping()) {
-      const r = picking && (rowsBy.items ?? []).find((x) => x.id === picking.id);
+      const r = picking && rowOfId(picking.id);
       if (pick.dataset.pickCancel !== undefined || !r) { picking = null; return ctx.render(); }
       const who = pick.dataset.pick; picking = null;
       ctx.act(who === 'self' ? r.send : { ...r.send, target: who });
@@ -674,7 +784,7 @@ export function initActionPanel(ctx) {
     }
     const lv = ev.target.closest('[data-lvl]');
     if (lv && e && !ctx.skipping()) {
-      const r = picking && (rowsBy.items ?? []).find((x) => x.id === picking.id), level = Number(lv.dataset.lvl); picking = null;
+      const r = picking && rowOfId(picking.id), level = Number(lv.dataset.lvl); picking = null;
       if (!r) return ctx.render();
       if (r.aimed) return ctx.armItem(e, r, level, false);
       return ctx.act(level > r.level ? { ...r.send, level } : r.send);
@@ -700,8 +810,6 @@ export function initActionPanel(ctx) {
       }
       return;
     }
-    const b = ev.target.closest('[data-row]'); if (!b) return;
-    const r = (rowsBy.items ?? []).find((x) => x.id === b.dataset.row); if (r) run(r);
   });
   // The Spells tab's own controls: the sort, the filters, and Clear. A chip is `data-f="group:value"` (`conc`, `ritual` and `can` have no value).
   const keep = (sel) => { refocus = sel; ctx.render(); const b = refocus && panes.spells.querySelector(refocus); refocus = null; b?.focus({ preventScroll: true }); };
@@ -726,33 +834,17 @@ export function initActionPanel(ctx) {
     return `<${tag}${tag === 'button' ? ' type="button"' : ''} class="ap-row${r.armed ? ' armed' : ''}${r.why ? ' off' : ''}${tag === 'div' ? ' info' : ''}" data-row="${esc(r.id)}"${tag === 'button' ? ` aria-disabled="${r.why ? 'true' : 'false'}"` : ''}${r.why ? ` aria-describedby="${wid}"` : ''}>
     <span class="ap-top"><span class="ap-t">${esc(r.label)}</span>${r.chip ? `<span class="ap-chip">${esc(r.chip)}</span>` : ''}</span>${r.sub || rollLabel(r.roll) ? `<small class="ap-s">${rollTagHtml(r.roll)}${esc(r.sub ?? '')}</small>` : ''}${pipsHtml(r.pips)}${r.why ? `<small class="ap-why" id="${wid}">${esc(r.why)}</small>` : ''}</${tag}>`;
   };
-  const listHtml = (head, list) => `${head}<div class="ap-list">${list.map(rowHtml).join('')}</div>`;
+  const rowsHtml = (list) => list.map((r) => { const on = r.kind === 'item' && picking?.id === r.id; return rowHtml(on ? { ...r, armed: true } : r) + (on ? picker(r, curE) : ''); }).join('');
+  const listHtml = (head, list) => `${head}<div class="ap-list">${rowsHtml(list)}</div>`;
   // The Move tab's meter: the Speed left this turn.
   const moveHead = (S, e) => {
     const m = moveBudget(S, e); if (!m) return '';
     return `<div class="ap-speed"><span>Speed left <b>${m.left} ft</b>${m.max > m.left ? ` of ${m.max}` : ''}</span><span class="ap-meter" role="presentation"><i style="width:${m.max ? Math.round((m.left / m.max) * 100) : 0}%"></i></span></div>${m.prone ? '<p class="ap-why-line">Prone. You stand at the start of your turn, using half your Speed.</p>' : ''}`;
   };
-  // Only whole rows show in the compact pane: its height is cut back to the last row that fits, and a line under it says how many more are below.
-  const cue = document.createElement('button'); cue.type = 'button'; cue.id = 'ap-cue'; cue.hidden = true; body.append(cue);
-  cue.onclick = () => { raised = true; ctx.render(); };
-  const rowsOf = (el) => [...el.querySelectorAll('.ap-row, .ap-more > summary')];
-  function cueFor(el) {
-    const box = el.getBoundingClientRect(), hidden = el.hidden ? 0 : rowsOf(el).filter((it) => it.getBoundingClientRect().bottom > box.bottom + 1).length;
-    cue.hidden = !hidden; cue.textContent = hidden ? `▾ ${hidden} more: scroll or tap for more room` : '';
-  }
-  function fit(el) {
-    el.style.maxHeight = '';
-    const cap = parseFloat(getComputedStyle(el).maxHeight), items = rowsOf(el);
-    if (cap > 0 && items.length && el.scrollHeight > cap + 1) {
-      const top = el.getBoundingClientRect().top - el.scrollTop;
-      let h = 0;
-      for (const it of items) { const bottom = it.getBoundingClientRect().bottom - top; if (bottom <= cap + 1 || !h) h = Math.max(h, bottom); }
-      el.style.maxHeight = `${Math.ceil(h)}px`;
-    }
-    cueFor(el);
-  }
-  for (const id of [...LISTS, 'items', 'reactions', 'down']) panes[id].addEventListener('scroll', () => cueFor(panes[id]), { passive: true });
-
+  const levels = (r) => `<div class="ap-pick" role="group" aria-label="Cast at which level?"><span>Cast at level</span>${Array.from({ length: r.upTo - r.level + 1 }, (_, i) => r.level + i).map((l) =>
+      `<button type="button" data-lvl="${l}">${l}${l > r.level ? ` (${r.cost + l - r.level} charges)` : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
+  const picker = (r, e) => r.upTo > r.level && !r.targets.length ? levels(r) : `<div class="ap-pick" role="group" aria-label="Who is it for?"><span>Give it to</span><button type="button" data-pick="self">${esc(e.name)}</button>${
+      r.targets.map((t) => `<button type="button" data-pick="${esc(t.id)}">${esc(t.name)}${t.down ? ' (down)' : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
   const exploreHtml = (list) => `<div class="ap-grid">${list.filter((r) => r.grid).map(rowHtml).join('')}</div>${list.some((r) => !r.grid) ? `<details class="ap-more"${moreOpen ? ' open' : ''}><summary>More</summary><div class="ap-list">${list.filter((r) => !r.grid).map(rowHtml).join('')}</div></details>` : ''}`;
 
   // The Spells tab: the slot strip (always there, whatever the sort), the sort and filters, Metamagic, then the spells in groups.
@@ -772,8 +864,8 @@ export function initActionPanel(ctx) {
       <button type="button" data-filters aria-expanded="${filtersOpen}">Filters${n ? ` (${n})` : ''} ${filtersOpen ? '▴' : '▾'}</button>${n ? '<button type="button" data-clear>Clear</button>' : ''}</div>`;
     return { bar, panel };
   };
-  function spellsPane(S, e, mode) {
-    const all = spellRows(S, e, { mode }), shown = filterSpells(all, filters), groups = sortSpells(shown, sortNow()), meta = ctx.metamagic?.(e);
+  function spellsPane(S, e, mode, fight) {
+    const all = spellRows(S, e, { mode }), shown = filterSpells(all, filters).filter(fight ? offered : () => true), groups = sortSpells(shown, sortNow()), meta = ctx.metamagic?.(e);
     const metaRow = meta ? { id: 'metamagic', kind: 'meta', label: meta.label, sub: meta.sub, why: meta.why, armed: /\barmed\b/.test(meta.cls ?? ''), chip: 'Cast with' } : null;
     rowsBy.spells = [...(metaRow ? [metaRow] : []), ...shown];
     const kindOn = filters.kind.length > 0;
@@ -781,22 +873,24 @@ export function initActionPanel(ctx) {
     const tb = toolbarHtml();
     setHtml(panes.spells, `<div class="ap-spellhead">${slotsHtml(e)}${tb.bar}</div>${tb.panel}${metaRow ? `<div class="ap-list">${rowHtml(metaRow)}</div>` : ''}${
       groups.map((g) => `${g.head ? `<h4 class="ap-head">${esc(g.head)}</h4>` : ''}<div class="ap-list">${g.rows.map((r) => rowHtml(mark(r))).join('')}</div>`).join('')}${
-      all.length && !shown.length ? '<p class="ap-why-line">No spell matches these filters.</p>' : ''}`);
+      all.length && !shown.length ? `<p class="ap-why-line">${fight ? 'No spell can be cast now.' : 'No spell matches these filters.'}</p>` : ''}`);
   }
 
   // The Items tab: what can be used (greyed with the engine's reason), what is carried and how, the light.
-  function itemsPane(S, e, dm, mode) {
-    const it = itemRows(S, e, { dm, mode });
-    if (picking && (picking.actor !== e.id || !it.uses.some((r) => r.id === picking.id && !r.why && (r.targets.length || r.upTo > r.level)))) picking = null;
+  function itemsPane(S, e, it, fight) {
+    // In a fight only what can be done now is shown: a use that is greyed, a button that is greyed, a thing that is only carried (nothing to do with it now) are left out.
+    if (fight) {
+      it = { ...it, uses: it.uses.filter(offered), light: it.light && offered(it.light) ? it.light : null,
+        gear: it.gear.map((g) => ({ ...g, acts: g.acts.filter((a) => !a.why) })).filter((g) => g.acts.length),
+        names: it.names.map((n) => ({ ...n, acts: n.acts.filter((a) => !a.why) })).filter((n) => n.acts.length),
+        ground: it.ground.map((p) => ({ ...p, things: p.things.filter((x) => !x.why), all: p.all && !p.all.why ? p.all : null })).filter((p) => p.things.length) };
+      it.any = it.gear.length > 0 || it.names.length > 0 || it.ground.length > 0 || !!it.light;
+    }
     const lightList = it.light ? [it.light] : [];
     const groundActs = it.ground.flatMap((p) => [...p.things, ...(p.all ? [p.all] : [])]);
     const acts = [...it.gear.flatMap((g) => g.acts), ...it.names.flatMap((n) => n.acts), ...groundActs];
     rowsBy.items = [...it.uses, ...lightList]; rowsBy.itemsGear = acts; rowsBy.itemsTargets = it.targets;
     if (giving && (giving.actor !== e.id || !acts.some((a) => a.id === giving.id && a.give && !a.why))) giving = null;
-    const levels = (r) => `<div class="ap-pick" role="group" aria-label="Cast at which level?"><span>Cast at level</span>${Array.from({ length: r.upTo - r.level + 1 }, (_, i) => r.level + i).map((l) =>
-      `<button type="button" data-lvl="${l}">${l}${l > r.level ? ` (${r.cost + l - r.level} charges)` : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
-    const picker = (r) => r.upTo > r.level && !r.targets.length ? levels(r) : `<div class="ap-pick" role="group" aria-label="Who is it for?"><span>Give it to</span><button type="button" data-pick="self">${esc(e.name)}</button>${
-      r.targets.map((t) => `<button type="button" data-pick="${esc(t.id)}">${esc(t.name)}${t.down ? ' (down)' : ''}</button>`).join('')}<button type="button" data-pick-cancel>Cancel</button></div>`;
     const wid = (a) => `ap-w-${esc(a.id).replace(/[^\w-]/g, '_')}`;
     const btn = (a, did = wid(a)) => `<button type="button" data-gact="${esc(a.id)}" aria-disabled="${a.why ? 'true' : 'false'}"${a.why ? ` aria-describedby="${did}" class="off"` : ''}${a.give ? ` aria-expanded="${giving?.id === a.id}"` : ''}>${esc(a.label)}</button>`;
     const why = (list) => list.filter((a) => a.why).map((a) => `<small class="ap-why" id="${wid(a)}">${esc(a.why)}</small>`).join('');
@@ -805,14 +899,14 @@ export function initActionPanel(ctx) {
       `<button type="button" data-give-to="${esc(t.id)}" aria-disabled="${t.why ? 'true' : 'false'}"${t.why ? ' class="off"' : ''}>${esc(t.name)}${t.why ? `<small class="ap-why"> ${esc(t.why)}</small>` : ''}</button>`).join('')}<button type="button" data-give-cancel>Cancel</button></div>` : '';
     const carriedRow = (key, label, sub, list, note) => `<div class="ap-row ap-gear info" data-gear="${esc(key)}"><span class="ap-top"><span class="ap-t">${esc(label)}</span></span>${sub ? `<small class="ap-s">${esc(sub)}</small>` : ''}${
       list.length ? `<span class="ap-acts">${list.map(btn).join('')}</span>${timeLine}${why(list)}${list.map(givePick).join('')}` : ''}${note ? `<small class="ap-why">${esc(note)}</small>` : ''}</div>`;
-    const uses = it.uses.map((r) => { const on = picking?.id === r.id; return rowHtml(on ? { ...r, armed: true } : r) + (on ? picker(r) : ''); }).join('');
+    const uses = it.uses.map((r) => { const on = picking?.id === r.id; return rowHtml(on ? { ...r, armed: true } : r) + (on ? picker(r, e) : ''); }).join('');
     const gear = it.gear.map((g) => carriedRow(g.key, g.label, g.sub, g.acts, g.note)).join('');
     const names = it.names.map((n) => carriedRow(n.id, n.label, n.count > 1 ? `x${n.count}` : '', n.acts, '')).join('');
     const ground = it.ground.map((p) => `<div class="ap-row ap-gear info" data-pile="${esc(p.object)}"><span class="ap-top"><span class="ap-t">${esc(p.label)}</span>${p.unseen ? '<span class="ap-chip">Not seen by the players</span>' : ''}</span>${
       p.things.map((x) => `<span class="ap-line"><span>${esc(x.label)}</span>${btn({ ...x, label: 'Pick up' }, wid(p.things[0]))}</span>`).join('')}${p.all ? `<span class="ap-acts">${btn(p.all, wid(p.things[0]))}</span>` : ''}${timeLine}${why(p.things.slice(0, 1))}</div>`).join('');
     setHtml(panes.items, `${it.uses.length ? `<h4 class="ap-head">Use</h4><div class="ap-list">${uses}</div>` : ''}${gear || names ? `<h4 class="ap-head">Carried</h4><div class="ap-list">${gear}${names}</div>` : ''}${
       ground ? `<h4 class="ap-head">On the ground here</h4><div class="ap-list">${ground}</div>` : ''}${
-      lightList.length ? `<h4 class="ap-head">Light</h4><div class="ap-list">${lightList.map(rowHtml).join('')}</div>` : ''}${!it.any ? '<p class="ap-why-line">Nothing carried.</p>' : ''}`);
+      lightList.length ? `<h4 class="ap-head">Light</h4><div class="ap-list">${lightList.map(rowHtml).join('')}</div>` : ''}${!it.any ? `<p class="ap-why-line">${fight ? 'Nothing to do with what you carry now.' : 'Nothing carried.'}</p>` : ''}`);
   }
 
   function reactionsPane(S, e, r) {
@@ -841,95 +935,129 @@ export function initActionPanel(ctx) {
     ctx.render();
   });
 
-  // The Settings tab's choice of how the panel picks its tab.
+
+  // The Settings tab's choice of how the panel picks its section.
   const pick = $('set-paneltab');
   if (pick) { pick.value = pref(); pick.onchange = () => { prefs.set('hextable.panelTab', pick.value); sel = { key: '', tab: null }; ctx.render(); }; }
+
+  // The list of one group, as HTML: the move meter and the companions' picker above it where they belong.
+  function groupPane(S, e, id, list, mode) {
+    let head = '';
+    if (id === 'move') head = moveHead(S, e);
+    if (id === 'move' || id === 'attacks' || id === 'companions') head += ctx.comp?.picker(e) ?? '';
+    if (id === 'heal' && !list.length) head += `<p class="ap-why-line">${esc(`${e.name} has no healing spell or item.`)}</p>`;
+    rowsBy[id] = list;
+    setHtml(panes[id], listHtml(head, list));
+    ctx.comp?.after(panes[id]);
+  }
 
   return {
     // Events of an update: a `noticed` or `triggered` one moves Search up for the next two updates.
     updated(events) { found = [events.some((ev) => ev.type === 'noticed' || ev.type === 'triggered'), found[0]]; },
-    fresh() { found = [false, false]; sel = { key: '', tab: null }; howKey = null; raised = false; picking = null; },
-    // Draws the card for `e` (or hides it): the head, the status, the tabs and the open tab. `mode` is app.js's current mode.
+    fresh() { found = [false, false]; sel = { key: '', tab: null }; howKey = null; picking = null; giving = null; },
+    // Draws the status block and the groups for `e` (or hides them). `mode` is app.js's current mode. Returns the open group.
     render(e, mode, { my, full }) {
       const S = ctx.state(), enc = S.encounter, cur = current(S);
-      card.hidden = !e;
-      if (!e) { tabsEl.hidden = true; return; }
+      card.hidden = !e; $('status-block').hidden = !e;
+      if (!e) return null;
+      curE = e;
       $('c-name').textContent = shownName(S, e);
       $('c-sub').textContent = e.bond && ctx.comp?.subLine(e) ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)} · ${ctx.comp.subLine(e)}` : e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${classTitle(e)}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
       $('c-hp').querySelector('i').style.width = `${ctx.hpFraction(e) * 100}%`;
       const showNumbers = full && (my || e.side === 'party');
       const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
       $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
-      $('c-ac').textContent = showNumbers ? `AC ${e.ac}` : '';
-      $('btn-sheet').hidden = !showNumbers;
-      $('btn-end').hidden = !(my && enc && cur === e.id);
+      $('c-ac').textContent = showNumbers ? `AC ${acShown(S, e, ctx.isDM()).ac}` : '';
+      setHtml($('c-level'), showNumbers && e.kind === 'pc' ? levelUpChip(S, e, { dm: ctx.isDM() }) : '');      // XP reached the next level: Level up (the DM), or why not (#672)
+      $('c-end').hidden = !(my && enc && cur === e.id);      // the turn line's own End turn (`#btn-end`, app.js) follows the same rule
       // A companion's player may hand its turns to the engine's companion brain (companions.md, Decision 9): { type: 'companion', actor, auto }.
       let letIt = $('btn-let');
       if (!letIt) {
         letIt = document.createElement('label'); letIt.id = 'btn-let'; letIt.className = 'check'; letIt.style.cssText = 'margin:0;white-space:nowrap;font-size:.85em'; letIt.innerHTML = '<input type="checkbox"> Let it act';
         letIt.querySelector('input').onchange = (ev) => { const id = letIt.dataset.id; if (id) ctx.act({ type: 'companion', actor: id, auto: ev.target.checked }); };
-        $('btn-sheet').parentElement.prepend(letIt);
+        $('c-row').prepend(letIt);
       }
       letIt.hidden = !(my && e.bond); letIt.dataset.id = e.id; letIt.querySelector('input').checked = !!e.bond?.auto;
       { const why = my && e.bond ? ctx.dry?.({ type: 'companion', actor: e.id, auto: !e.bond.auto }) ?? '' : ''; letIt.querySelector('input').disabled = !!why; letIt.title = why; letIt.classList.toggle('off', !!why); }
       const myTurn = !!enc && cur === e.id && up(e);
-      $('c-res').innerHTML = statusHtml(S, e, { mine: my, full, formLabel: ctx.formLabel(e), budget: myTurn && full ? ctx.budget(e) : null });
+
+
+      const dm = ctx.isDM(), fight = !!enc && inFight(S, e.id);
+      ctxNow = panelContext(S, e, { mine: my, dm });
+      const fly = ctx.flyInfo(e), comp = my ? ctx.comp?.rows(e) ?? null : null, meta = my ? ctx.metamagic?.(e) ?? null : null;
+      const inv = itemRows(S, e, { dm, mode });
+      if (picking && (picking.actor !== e.id || !inv.uses.some((r) => r.id === picking.id && !r.why && (r.targets.length || r.upTo > r.level)))) picking = null;
+      const react = reactionState(S, e, { dm });
+      const G = groupsFor(S, e, ctxNow, { mode, fly, dm, found: found[0] || found[1], comp, inv, meta, react });
+      groupsNow = G.shown;
+      const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react.pending ? 'q' : ''}`;
+      if (sel.key !== key) sel = { key, tab: null };
+      const kinds = G.shown;
+      const costOk = (id) => /^cost:(action|bonus)$/.test(id) && G.fight && ctxNow.situation === 'turn';
+      const wanted = sel.tab !== null && (sel.tab === '' || costOk(sel.tab) || kinds.some((g) => g.id === sel.tab)) ? sel.tab : null;
+      const tab = wanted ?? (ctxNow.situation === 'wait' && kinds.some((g) => g.id === 'reactions') ? 'reactions' : defaultTab(ctxNow, kinds, { pref: pref(), last: last() })) ?? '';
+      openNow = tab;
+      if (ctxNow.situation === 'turn' && tab && sel.tab === null) sel.tab = tab;       // the group a turn opens on stays for the turn: spending the last slot does not move it (opensOnSpells, from main)
+      // the status block's turn bar says which segment is open
+      setHtml($('c-res'), statusHtml(S, e, { mine: my, full, formLabel: ctx.formLabel(e), budget: !!enc && cur === e.id && up(e) && full ? ctx.budget(e) : null, open: openNow }));
       renderHow(S, e);
 
-      const dm = ctx.isDM();
-      ctxNow = panelContext(S, e, { mine: my, dm });
-      const fly = ctx.flyInfo(e);
-      const has = { spells: !!(e.spells?.length || e.feats?.some((f) => f.metamagic)), attacks: tabRows(S, e, 'attacks').length > 0 || (ctx.comp?.rows(e).attacks.length ?? 0) > 0, features: featureRows(S, e).length > 0 || holdRows(S, e).letGo.length > 0 || (ctx.comp?.rows(e).features.length ?? 0) + (ctx.comp?.rows(e).move.length ?? 0) > 0, items: itemRows(S, e, { dm }).any };
-      tabsNow = visibleTabs(ctxNow, has);
-      const react = ctxNow.tabs.find((t) => t.id === 'reactions');
-      const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react?.pending ? 'q' : ''}`;
-      if (sel.key !== key) sel = { key, tab: null };
-      const tab = tabsNow.some((t) => t.id === sel.tab) ? sel.tab : defaultTab(ctxNow, tabsNow, { pref: pref(), last: last() });
-
-      // the tabs
-      tabsEl.hidden = tabsNow.length < 2;
-      setHtml(tabsEl, tabsNow.map((t, i) => {
-        const off = t.id === 'reactions' && !t.ok && !t.pending && !t.free;
-        return `<button type="button" role="tab" id="ap-tab-${t.id}" data-tab="${t.id}" aria-selected="${t.id === tab}" aria-controls="ap-${t.id}" tabindex="${t.id === tab ? 0 : -1}" class="${off ? 'off ' : ''}${t.pending ? 'pulse' : ''}"${off ? ' aria-disabled="true"' : ''}${i < 6 ? ` aria-keyshortcuts="${i + 1}"` : ''}>${esc(t.label)}${t.pending ? '<i class="sr-only"> (a question is waiting)</i>' : ''}</button>`;
-      }).join('') + (tab !== 'down' ? `<button type="button" id="ap-grip" aria-expanded="${raised}" aria-controls="ap-body" aria-label="${raised ? 'Less room' : 'More room'}" title="${raised ? 'Less room' : 'More room'}">${raised ? '▾' : '▴'}</button>` : ''));
-
-      // the panes: only the open one is shown
-      for (const [id, el] of Object.entries(panes)) el.hidden = id !== tab;
-      if (tab === 'explore') { rowsBy.explore = rankExplore(S, e, { dm, mode, found: found[0] || found[1] }); setHtml(panes.explore, exploreHtml(rowsBy.explore)); }
-      if (['attacks', 'features', 'move', 'bonus'].includes(tab)) {
-        let head = '', list;
-        if (tab === 'bonus') {
-          const b = bonusRows(S, e, { mode, fly }); list = b.rows;
-          head = (b.available ? '' : `<p class="ap-why-line">No Bonus Action: ${esc(b.why)}</p>`) + (list.length ? '' : '<p class="ap-why-line">Nothing this creature has costs a Bonus Action.</p>');
-        } else list = tabRows(S, e, tab, { mode, fly });
-        // Companions (companions.js): rows beside the others, and the picker one of them opened.
-        const cr = ctx.comp?.rows(e);
-        if (cr) {
-          if (tab === 'attacks') list = [...list, ...cr.attacks];
-          if (tab === 'features') list = [...list, ...cr.features, ...cr.move];       // riding is also a Move-tab row, but the Move tab is there only on a turn
-          if (tab === 'bonus') { const have = new Set(list.map((r) => r.id)); list = [...list, ...[...cr.features, ...cr.attacks].filter((r) => r.time === 'bonus' && !have.has(r.id))]; if (list.length && !/ap-why-line/.test(head)) head = head.replace('Nothing this creature has costs a Bonus Action.', ''); }
-          if (tab === 'move') list = [...list, ...cr.move];
-          head += ctx.comp.picker(e);
-        }
-        if (tab === 'move') head = moveHead(S, e) + (ctx.comp?.picker(e) ?? '');
-        rowsBy[tab] = list;
-        setHtml(panes[tab], listHtml(head, list));
-        ctx.comp?.after(panes[tab]);
+      // the bars: each group that is shown, in the state's order, with its tip; the open one shows its rows under it
+      let order = 0;
+      const sorted = [...kinds];
+      const cost = /^cost:/.test(tab) ? tab.slice(5) : '';
+      secs.cost.hidden = !cost; secs.cost.style.order = -1;
+      if (cost) {
+        bars.cost.querySelector('.ap-bt').textContent = `Costs your ${COSTS[cost]}`; bars.cost.querySelector('.ap-tip').textContent = '';
+        bars.cost.setAttribute('aria-expanded', 'true'); panes.cost.hidden = false;
+        let list = costRows(S, e, cost, G, { mode, fly });
+        list = list.filter(offered);
+        const b = bonusRows(S, e, { mode, fly });
+        rowsBy.cost = list;
+        setHtml(panes.cost, listHtml(list.length ? '' : `<p class="ap-why-line">${esc(cost === 'bonus' && !b.available ? `No Bonus Action: ${b.why}` : `Nothing you can do now costs your ${COSTS[cost]}.`)}</p>`, list));
+      } else { panes.cost.hidden = true; bars.cost.setAttribute('aria-expanded', 'false'); }
+      const first = ctxNow.situation === 'turn' ? sorted[0] : null;
+      for (const id of Object.keys(secs)) {
+        if (id === 'cost') continue;
+        const g = G.groups.find((x) => x.id === id), on = !!g?.shown;
+        secs[id].hidden = !on;
+        if (!on) { bars[id].setAttribute('aria-expanded', 'false'); panes[id].hidden = true; if (panes[id].dataset.sig) setHtml(panes[id], ''); continue; }      // a group that is gone leaves nothing behind
+        secs[id].style.order = sorted.indexOf(g);
+        const bt = bars[id].querySelector('.ap-bt'), tp = bars[id].querySelector('.ap-tip');
+        if (bt.textContent !== g.label) bt.textContent = g.label;
+        const tip = g.tip ?? '';
+        if (tp.textContent !== tip) tp.textContent = tip;
+        const isOpen = id === tab;
+        bars[id].setAttribute('aria-expanded', String(isOpen)); bars[id].classList.toggle('off', !G.fight && (g.rows.length ? g.rows.every((r) => r.why) : !!g.why));
+        panes[id].hidden = !isOpen;
+        rowsBy[id] = g.offered;
+        // The likeliest row, inline, on my turn: the first group's first usable row (it replaces the old choice of a tab)
+        const lk = secs[id].querySelector('.ap-likely'), top = g === first && !isOpen ? g.offered.find((r) => !r.why && r.kind !== 'none') : null;
+        lk.hidden = !top;
+        if (top) { lk.dataset.rid = top.id; const t = `${top.label}${top.sub ? ` · ${top.sub}` : ''}`; if (lk.textContent !== t) lk.textContent = t; lk.setAttribute('aria-label', `${g.label}: ${top.label}`); }
+        order++;
+        if (!isOpen) { if (panes[id].dataset.sig) setHtml(panes[id], ''); continue; }
+        if (id === 'explore') { rowsBy.explore = g.rows; setHtml(panes.explore, exploreHtml(g.rows)); }
+        else if (id === 'spells') spellsPane(S, e, mode, G.fight);
+        else if (id === 'items') { rowsBy.items = [...inv.uses.filter((r) => !G.fight || offered(r)), ...(inv.light && (!G.fight || offered(inv.light)) ? [inv.light] : [])]; itemsPane(S, e, inv, G.fight); }
+        else if (id === 'reactions') reactionsPane(S, e, react);
+        else groupPane(S, e, id, g.offered, mode);
       }
-      if (tab === 'spells') spellsPane(S, e, mode);
-      if (tab === 'items') itemsPane(S, e, dm, mode);
-      if (tab === 'reactions') reactionsPane(S, e, react ?? reactionState(S, e, { dm }));
-      if (tab === 'down') downPane(S, e);
-      body.hidden = !tabsNow.length;
+      // a creature that is down: the words, and no groups (R29, Decision 7)
+      panes.down.hidden = ctxNow.situation !== 'down';
+      if (ctxNow.situation === 'down') downPane(S, e);
+      // a fight with nothing to do: one line, the engine's reason
+      const empty = G.empty && ctxNow.situation !== 'down';
+      noteEl.hidden = !empty; if (empty && noteEl.textContent !== G.empty) noteEl.textContent = G.empty;
+      body.hidden = !(G.shown.length || empty || ctxNow.situation === 'down');
+      body.dataset.open = tab && !cost ? tab : cost ? 'cost' : '';
+      body.toggleAttribute('data-open-any', !!tab);
       card.dataset.tab = tab ?? '';
       card.dataset.situation = ctxNow.situation;
-      card.toggleAttribute('data-raised', raised);
-      card.toggleAttribute('data-collapsed', ARMS(mode) && narrow() && tab !== 'down');       // a thumb needs the map to tap a target
-      if (panes[tab] && !panes[tab].hidden) fit(panes[tab]); else cue.hidden = true;
-      if (tab === 'items' && (picking || giving)) panes.items.querySelector('.ap-pick')?.scrollIntoView({ block: 'nearest' });       // the chooser must be on screen, not below the fold
+      if (tab && !cost && picking) panes[tab]?.querySelector('.ap-pick')?.focus?.({ preventScroll: true });
       return tab;
     },
-    get tab() { return sel.tab ?? card.dataset.tab; },
+    get tab() { return openNow || card.dataset.tab; },
     choose,
   };
 }

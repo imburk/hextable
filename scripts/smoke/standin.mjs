@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, calm, spawnNear } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, calm, spawnNear, chipPick } from './lib.mjs';
 
 // ---------- the stand-in (docs/specs/ai-casting.md, stage AC2; issue #490; DEBT T20 (1)) ----------
 // A character set aside under the table rule `standIn` is played by the DM's screen with the AI: its turn starts, the log says "<name> is played by the
@@ -161,7 +161,7 @@ async function hosted(browser, url) {
         await host.evaluate(async (n) => { const { newGame } = await import('./shared/scenario.js'); window.hextable.act({ type: 'loadMap', map: newGame(n).map }); }, seed);
         await sleep(600); await calm(host); await calm(phone);
         await closeMenu(host).catch(() => {});
-        await phone.locator('#party button:has-text("Play as Tavin")').tap();
+        await chipPick(phone, 'Play as Tavin', 'tap');
         await wait(host, () => !!window.hextable.state.entities.wizard.owner);
       });
       await run.do('a fight with zombies in Tavin\'s sight; it is the phone player\'s turn to play Tavin', async () => {

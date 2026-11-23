@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, calm, tapAt, onCanvas, closePanels, panelTab } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, calm, tapAt, onCanvas, closePanels, panelTab, chip } from './lib.mjs';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
 import { arenaEdge } from './three.mjs';
 
@@ -80,15 +80,17 @@ async function squares(browser, url, label, opts) {
       };
       const choose = async (name) => {
         await closePanels(page);
-        await page.click(`#party button:has-text("${name}")`);
+        await chip(page, `${name}`);
         await wait(page, () => document.querySelector('#card') && !document.querySelector('#card').hidden);
       };
 
       await run.do('load square-room as the DM of a solo game: the renderer reads it as squares and floors it with one four-sided cell to a tile', async () => {
         await open(page, url); await playSolo(page);
         await wait(page, () => window.hextable.state.entities.fighter);
-        await page.evaluate((map) => { window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }); window.hextable.act({ type: 'loadMap', map }); }, MAP);
-        await wait(page, () => window.hextable.state.map.id === 'square-room' && window.hextable.R.G.kind === 'square' && window.hextable.R.floorData.length > 0);
+        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }));
+        await calm(page);      // an action sent while beats play is dropped (app.js act: skipping), so the second waits for the first
+        await page.evaluate((map) => window.hextable.act({ type: 'loadMap', map }), MAP);
+        await wait(page, () => window.hextable.state.map.id === 'square-room' && window.hextable.R.G?.kind === 'square' && window.hextable.R.floorData?.length > 0);
         await calm(page);
         const r = await page.evaluate(() => {
           const R = window.hextable.R, S = window.hextable.state, cells = R.floorData.flatMap((f) => f.patches.flatMap((p) => p.cells));
@@ -148,7 +150,7 @@ async function squares(browser, url, label, opts) {
         await listen(true);
         for (let k = 1; k <= 4; k++) {
           const q = 2 + k;
-          await page.click('#party button:has-text("Brenna")');             // still the one selected
+          await chip(page, 'Brenna');             // still the one selected
           const hit = await tapPoint(await mid(q, q, `${q},${q}`), `the middle of ${q},${q}`);
           if (!sameCell(hit, q, q)) throw new Error(`the tap on the middle of ${q},${q} picked ${JSON.stringify(hit?.hex)}`);
           await wait(page, (qq) => { const e = window.hextable.state.entities.fighter; return e.pos.q === qq && e.pos.r === qq; }, q, 6000)
@@ -193,7 +195,7 @@ async function squares(browser, url, label, opts) {
       });
 
       await run.do('a tap on the highlighted 7,7 moves her there along the diagonal, and what is left is under one square', async () => {
-        await page.click('#party button:has-text("Brenna")');
+        await chip(page, 'Brenna');
         await listen(true);
         const hit = await tapPoint(await mid(7, 7, '7,7'), 'the middle of 7,7');
         if (!sameCell(hit, 7, 7)) throw new Error(`the tap on the middle of 7,7 picked ${JSON.stringify(hit?.hex)}`);

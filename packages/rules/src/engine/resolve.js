@@ -1,6 +1,7 @@
 // The engine's machinery for what actions do (engine.js): the attack roll, damage, falls, pushes
 // and teleports, reactions that answer them, the kit lent to the effect runner (effects.js), and how
 // a fight starts, passes from turn to turn and ends.
+import { noteRuns } from '../todo.js';
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
@@ -17,11 +18,14 @@ import { barriers, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { conditionName, incapacitated, judge, modifiers, speedOf } from '../modifiers.js';
-import { ARENA_RADIUS, ask, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
+import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedOf, untrainedGear } from '../modifiers.js';
+import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
+import { ARENA_RADIUS, ask, blocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { shine, stabilise } from './rolls.js';       // `stabilize` and `light` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
+import { armed, weaponKey } from '../imbue.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 import { investIn } from '../summons.js';
 import { nextFight } from '../shopids.js';
@@ -338,6 +342,7 @@ function beginTurn(s, e, ev) {
   e.reactionUsed = false;
   delete e.cond.dodging;
   ev.push({ type: 'turn', id: e.id, round: enc.round });
+  noteRuns(s, e, 'turn');                                              // abilities the DM runs for this creature (todo.js)
   // E23 with CAST_TAKES_FIRST_ACTION (casting.js): the hostile cast that started the fight was this turn's action (or
   // Bonus Action) and its one spell slot.
   const owed = enc.owed?.[e.id];
@@ -857,7 +862,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
     if (soak) t.tempHp -= soak;
     lost += n - soak;
     if (!dying) t.hp = Math.max(0, t.hp - (n - soak));
-    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}), ...rolledOf(p, n) });
+    ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, ...(p.spell ? { from: p.from } : {}), hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}), ...rolledOf(p, n) });
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
   if (total > 0) damaged(s, ev, t, parts.find((p) => typeof p.by === 'string')?.by ?? null, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
@@ -1136,6 +1141,19 @@ export function unfind(s, found) {
   }
 }
 
+// `e` is casting `sp`. Anyone who would counter it (Counterspell) gets the chance, in the order
+// the table lists them, until one does. Returns the id of the creature that countered it, or null.
+// Only a spell with Verbal, Somatic or Material components can be seen being cast (SRD).
+// `comps` is the components this casting has: a spell's own, or fewer from an item (castSpell, below).
+export function counterWindow(s, e, sp, ev, comps = sp.def.components ?? []) {
+  if (!comps.some((c) => ['v', 's', 'm'].includes(c))) return null;
+  for (const o of living(s)) {
+    const src = reactAgainst(s, o, e, 'cast', ev, `${e.name} is casting a spell.`);
+    if (src?.countered) return o.id;
+  }
+  return null;
+}
+
 // Cast a spell as a Reaction: the Reaction and a slot are spent (the lowest it can use, unless
 // its player chose), and its steps run at once on `targets` (the caster, or the creature that set
 // it off), inside whatever action set it off (on the effect stack, above the frames already there,
@@ -1258,7 +1276,7 @@ export function reactAgainst(s, t, e, on, ev, why) {
 // player when it says `ask`. It attacks with its first melee attack, as an Opportunity Attack is made (weapons.js, steadiest: not a Heavy one it is weak with, if another will do).
 // Returns true if it was taken.
 function strikeBack(s, t, e, r, ev, why) {
-  const x = r.reaction, atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, t, a)));       // one it may make (weapons.js)
+  const x = r.reaction, atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !handsFull(s, t, a)), s);       // one it may make (weapons.js)
   if (!atk || t.actions || apart(s, t, e) * FT > x.within) return false;
   if (atk.reach !== undefined && apart(s, t, e) * FT > atk.reach) return false;
   const w = instruction(t, r);
@@ -1274,6 +1292,149 @@ function strikeBack(s, t, e, r, ev, why) {
   return true;
 }
 
+// ---------- choices after a hit (hitchoices.js; docs/specs/on-hit.md, Decisions 1 to 3 and 5) ----------
+
+// How `e` could cast hit spell `sp` now, after a hit with `atk`: { slots: [levels that may pay], free: [features that cast it with no slot] }, both empty
+// when it cannot. A smite is a Bonus Action on the caster's own turn (`blocked`), so it is never offered on an Opportunity Attack, and one slot is spent
+// on a spell a turn (`slotsFor` reads the turn's flag), while a feature's free cast spends none. `spare` Bonus Actions are already taken by the attack.
+function hitWays(s, e, sp, atk, spare = 0) {
+  const none = { slots: [], free: [] };
+  if (!s.encounter || e.object || e.bond?.noAttack || e.form || incapacitatedBy(e) || untrainedGear(e).length) return none;
+  if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return none;
+  if (!fitsHit(sp.def.hit.with, atk) || blocked(s, e, 'bonus') || s.encounter.budget.bonus - spare < 1) return none;
+  return {
+    slots: (e.spells ?? []).includes(sp.id) ? slotsFor(s, e, sp) : [],
+    free: freeHitCasts(e).filter((x) => x.spell.id === sp.id && (e.uses?.[x.feat.id] ?? 0) > 0).map((x) => x.feat),
+  };
+}
+
+// The choices an `attack` names ahead (`onHit`), checked before anything is spent: [{ spell, slot?, via?, on }]. A refusal refuses the attack.
+export function hitNamed(s, e, atk, list, spare = 0) {
+  if (list === undefined) return null;
+  (Array.isArray(list) && list.length <= 3) || fail('`onHit` is a list of what to do if the attack hits: [{ spell, slot?, via?, on? }].');
+  s.encounter || fail('A choice named for a hit goes with an attack on a turn in a fight.');
+  const out = [];
+  for (const c of list) {
+    (c && typeof c === 'object' && !Array.isArray(c) && Object.keys(c).every((k) => ['spell', 'slot', 'via', 'on'].includes(k))) || fail('A choice for a hit is { spell, slot?, via?, on? }.');
+    const sp = typeof c.spell === 'string' && Object.hasOwn(SPELLS, c.spell) && SPELLS[c.spell].def.hit ? SPELLS[c.spell] : fail('Name a spell that is cast right after a hit.');
+    (c.on === undefined || c.on === 'hit' || c.on === 'crit') || fail('`on` is "hit" (the default) or "crit".');
+    const ways = hitWays(s, e, sp, atk, spare);
+    if (!ways.slots.length && !ways.free.length) {
+      const why = blocked(s, e, 'bonus') || (!fitsHit(sp.def.hit.with, atk) ? `${sp.name} goes with ${sp.def.hit.with === 'melee' ? 'a Melee weapon or an Unarmed Strike' : 'a weapon'}.` : `${e.name} can't cast ${sp.name} after this hit now (it needs a Bonus Action and a spell slot not yet spent this turn).`);
+      fail(why);
+    }
+    if (c.via !== undefined) {
+      (typeof c.via === 'string' && ways.free.some((f) => f.id === c.via)) || fail(`${e.name} has no use of a feature that casts ${sp.name} that way left.`);
+      c.slot === undefined || fail('A cast through a feature uses no spell slot: leave out the slot.');
+    } else {
+      (Number.isInteger(c.slot ?? ways.slots[0]) && ways.slots.includes(c.slot ?? ways.slots[0])) || fail(ways.slots.length ? `${sp.name} can be cast with a level ${ways.slots.join(', ')} slot.` : `${e.name} has no spell slot to cast ${sp.name} with: name the feature that casts it (via).`);
+    }
+    out.push({ spell: sp.id, ...(c.slot !== undefined ? { slot: c.slot } : {}), ...(c.via !== undefined ? { via: c.via } : {}), on: c.on ?? 'hit' });
+  }
+  out.length <= 1 || fail('A creature has one Bonus Action a turn: name one spell to cast after a hit.');
+  return out;
+}
+
+// Pay for and cast hit spell `sp` on `t`, `e`'s attack having hit: the Bonus Action, and a slot of level `slot` or a use of the feature `via`. A foe who sees it
+// may Counterspell it: that wastes the Bonus Action, keeps the slot (as `castSpell` does) and leaves the attack's own damage. Otherwise returns what the cast
+// adds: its scaled `steps`, to be rolled with the damage (`withHit`) or run after it. A lasting spell starts its effect (Concentration replaces the old).
+function castOnHit(s, e, t, sp, way, ev) {
+  const slotFlag = s.encounter.flags.slot, slot = way.via ? 0 : way.slot;
+  s.encounter.budget.bonus--;
+  if (way.via) e.uses[way.via.id]--;
+  else { e.slots[slot]--; s.encounter.flags.slot = true; }
+  ev.push({ type: 'cast', actor: e.id, spell: sp.id, name: sp.name, hexes: null, targets: [t.id], hit: true, ...(slot > sp.level ? { slot } : {}), ...(way.via ? { via: way.via.name } : {}) });
+  if (sp.def.components?.includes('v')) unhide(s, e, ev, 'spell');
+  const by = counterWindow(s, e, sp, ev);
+  if (by) {
+    if (!way.via) { e.slots[slot]++; if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; }
+    ev.push({ type: 'countered', id: e.id, spell: sp.id, name: sp.name, by });
+    return null;
+  }
+  const { steps, unscaled } = scaleSteps(sp.def, e.level, slot || sp.level);
+  let fx = null;
+  if (sp.def.duration !== 'instant') {
+    if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
+    fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
+    ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [t.id] });
+  }
+  return { sp, slot: slot || sp.level, steps, unscaled, fx };
+}
+
+// The choices at the moment of the hit, before any damage is rolled: named ahead (`named`, from `hitNamed`), or by the creature's instructions, asking its
+// player where one says `ask`. Returns what was cast: [{ sp, steps, ... }]. A player's `ask` stops the action (shared.js, ask); for a creature no player
+// controls the DM is told and nothing waits; while a stand-in plays a character, `ask` is read as `never` (Decision 10).
+function hitStage(s, e, t, atk, crit, ev, named) {
+  const out = [];
+  if (!s.encounter || e.object || e.actions || current(s) !== e.id) return out;
+  const cast = (sp, c) => {
+    const free = c.via ? freeHitCasts(e).find((x) => x.feat.id === c.via && x.spell.id === sp.id)?.feat : null;
+    const k = castOnHit(s, e, t, sp, free ? { via: free } : { slot: c.slot }, ev);
+    if (k) out.push(k);
+  };
+  if (named) {
+    for (const c of named) if (c.on !== 'crit' || crit) cast(SPELLS[c.spell], c);
+    return out;
+  }
+  for (let guard = 0; guard < 3; guard++) {
+    const cands = [];
+    for (const c of hitChoicesOf(e)) {
+      const w = hitInstruction(s, e, c);
+      if (w === 'never') continue;
+      const sp = SPELLS[c.spell], ways = hitWays(s, e, sp, atk);
+      if (ways.slots.length || ways.free.length) cands.push({ sp, ways, w });
+    }
+    // Taken without asking: a feature's free cast first, as it costs no slot, then the lowest slot.
+    const sure = cands.find((x) => x.w === 'always' || (x.w === 'crit' && crit));
+    if (sure) { cast(sure.sp, sure.ways.free.length ? { via: sure.ways.free[0].id } : { slot: sure.ways.slots[0] }); continue; }
+    const asks = cands.filter((x) => x.w === 'ask');
+    if (!asks.length || awayHow(s, e) === 'standIn') break;
+    if (!ownerOf(s, e)) {
+      for (const x of asks) ev.push({ type: 'manual', actor: e.id, name: x.sp.name, partial: true, text: `${e.name} hit ${t.name}. Its instruction for ${x.sp.name} is to ask the DM: if it casts it now, the DM applies it and marks its Bonus Action and slot used.` });
+      break;
+    }
+    const concentrating = effectsOf(s).find((fx) => fx.source === e.id && fx.conc);
+    const options = [];
+    for (const x of asks) {
+      const ends = x.sp.def.concentration && concentrating ? { ends: concentrating.name } : {};
+      if (x.ways.slots.length) options.push({ reaction: x.sp.id, name: x.sp.name, kind: 'spell', slots: x.ways.slots, ...ends });
+      for (const f of x.ways.free) options.push({ reaction: `${x.sp.id}@${f.id}`, name: `${x.sp.name} (${f.name}, no slot)`, kind: 'spell', free: true, ...ends });
+    }
+    const a = ask(s, e, { trigger: 'ownHit', moment: 'hit', target: t.id, attack: atk.name, ...(crit ? { crit: true } : {}) }, options);
+    if (!a?.take) break;
+    const [id, via] = a.take.split('@'), x = asks.find((y) => y.sp.id === id);
+    cast(x.sp, via ? { via } : { slot: a.slot ?? x.ways.slots[0] });
+  }
+  return out;
+}
+
+// What a hit spell adds to the attack's damage: one part for each of its `withHit` damage steps (whose `when` holds), rolled now with `{ crit }`, so a Critical
+// Hit doubles its dice, and dealt in the same `damage()` call as the weapon's, where Resistance applies by type and Uncanny Dodge's half takes it too.
+function hitParts(s, e, t, casts, crit) {
+  const parts = [];
+  for (const k of casts) for (const st of k.steps) {
+    if (!('damage' in st) || !st.withHit) continue;
+    if (st.when && !st.when.every((tag) => judge(tag, { attacker: e, target: t }, s) === true)) continue;
+    const r = roll(s, st.damage, { crit });
+    parts.push({ amount: r.total, type: st.type, dice: r.dice, bonus: r.bonus, by: e.id, from: k.sp.name, spell: true });
+  }
+  return parts;
+}
+
+// The rest of what a hit spell does, after the damage: the steps that are not `withHit`, run on the creature hit, and the notes for what the engine did not do.
+function hitAfter(s, e, t, casts, ev) {
+  for (const k of casts) {
+    const rest = k.steps.filter((st) => !('damage' in st && st.withHit));
+    if (rest.length && !t.dead) {
+      const depth = s.stack?.length ?? 0, st = spellStats(e, s, k.sp.id);
+      begin(s, { steps: rest, actor: e.id, targets: [t.id], src: { name: k.sp.name, dc: st.dc, attack: st.attack, range: k.sp.range, healMod: mod(e.abil[castAbilOf(e, k.sp.id)] ?? 10), ...(k.fx ? { fx: k.fx.id } : {}), spell: k.sp.id, slot: k.slot } });
+      run(s, ev, KIT, depth);
+    }
+    if (k.sp.def.tier !== 'auto') ev.push({ type: 'manual', actor: e.id, name: k.sp.name, text: k.sp.def.text, partial: true });
+    if (k.unscaled) ev.push({ type: 'manual', actor: e.id, name: k.sp.name, partial: true, text: `Cast with a level ${k.slot} slot. The engine could not add ${k.unscaled}; the DM does.` });
+  }
+}
+
 // A weapon attack by a creature whose attacks are still flat records (monsters and
 // hand-entered characters). Spells resolve through effect steps instead.
 // `brutal`: a Brutal Strike option chosen for this attack ({ id, name, dice, effects, unique? },
@@ -1282,10 +1443,14 @@ function strikeBack(s, t, e, r, ev, why) {
 // Attack dice is taken off before the dice are rolled, and their steps run after the damage, only if
 // Sneak Attack is dealt. One that keeps its creature hidden (Stealth Attack) holds off the attack's
 // unhiding to the end of the turn (attacks.js, endTurn); if it is not paid for, the attack unhides it.
-export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cunning = null } = {}) {
+export function resolveAttack(s, e, t, atk0, ev, extra = {}, { brutal = null, cunning = null, onHit = null } = {}) {
+  // A weapon changed by a spell or a feature (imbue.js): every attack with it reads the record through `armed`; the type that hurts the target most is taken.
+  const atk0b = armed(s, e, atk0), atk = atk0b.alt ? { ...atk0b, dtype: bestType(s, t, [atk0b.dtype, ...atk0b.alt]) } : atk0b;
   const keepHidden = !!e.hiding && !!cunning?.some((o) => o.keepHidden);
   const { hit, crit, mode, cut } = rollToHit(s, e, t, atk, ev, extra, { forgo: !!brutal, keepHidden });
   if (!hit) { if (keepHidden) unhide(s, e, ev, 'attack'); return; }
+  // What its creature may do now that the hit is settled, before any damage is rolled: a smite (docs/specs/on-hit.md, Decision 3, step 3).
+  const casts = extra.opportunity || extra.reaction ? [] : hitStage(s, e, t, atk, crit, ev, onHit);
   const rs = [roll(s, atk.damage, { crit })];
   const notes = [];
   if (brutal) { rs.push(roll(s, brutal.dice, { crit })); notes.push(`Brutal Strike: ${brutal.name}`); }
@@ -1310,10 +1475,11 @@ export function resolveAttack(s, e, t, atk, ev, extra = {}, { brutal = null, cun
   // An Unarmed Strike is a melee attack made with the body, not "an attack with a weapon" (SRD, Unarmed Strike): `weapon` is false for it, and
   // `unarmed` says so, so a rider the SRD gives to "a weapon or an Unarmed Strike" can still tell it from a spell (`attack.weaponOrUnarmed`).
   const unarmed = isUnarmed(atk);
-  damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }], { hit: true, weapon: !atk.spell && !unarmed, unarmed, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit, ...(cut ? { cut } : {}) });
+  damage(s, t, dealt(s, e, t, [{ amount: r.total, type: atk.dtype, dice: r.dice, bonus: r.bonus, by: e.id }, ...hitParts(s, e, t, casts, crit)], { hit: true, weapon: !atk.spell && !unarmed, unarmed, ranged: atk.type === 'ranged', ...(atk.abil ? { str: atk.abil === 'str' } : {}) }, crit), null, ev, { crit, ...(cut ? { cut } : {}) });
   if (atk.onHit === 'prone') condition(s, t, 'prone', ev);
   if (brutal && !t.dead) strikeEffect(s, e, t, brutal, ev);
   for (const o of paid ?? []) if (o.effects && !t.dead) strikeEffect(s, e, t, o, ev);
+  hitAfter(s, e, t, casts, ev);
 }
 
 // The Shove option of an Unarmed Strike (SRD "Unarmed Strike", Shove; docs/specs/grapple-shove.md, Decision 1): no attack roll, so
@@ -1626,11 +1792,28 @@ function vanishUnseen(s, e, why, ev) {
   checkEnd(s, ev);
 }
 
+// A weapon changed for a while (imbue.js) that its creature no longer has a record for (put away, a remake without it, the creature gone) is not changed any more
+// ("The spell ends early if ... you let go of the weapon"; Sacred Weapon: "if you aren't carrying the weapon"). Run with the settle pass after every action.
+export function settleImbue(s, ev) {
+  for (const fx of [...effectsOf(s)]) {
+    let ended = false;
+    for (const p of fx.parts) {
+      if (!p.imbue || p.ended) continue;
+      const h = Object.hasOwn(s.entities, p.target) ? s.entities[p.target] : null;
+      if (h?.form && !h.dead) continue;                                  // in a form (Wild Shape) its gear is still its own, held or not
+      if (h && !h.dead && (h.attacks ?? []).some((a) => a.weapon && weaponKey(a) === p.imbue.weapon)) continue;
+      p.ended = true; ended = true;
+    }
+    if (ended && fx.parts.every((p) => p.ended)) endEffect(s, ev, fx, 'the weapon is no longer held');
+  }
+}
+
 // After every action (engine.js, apply): a companion at 0 Hit Points whose bond says it vanishes, one
 // kept by a lasting effect that no longer holds it (its `summon` part ended, or the effect did: durations.js,
 // holds), one whose bond ends when its master dies and whose master is dead, and one farther than its leash
 // from its master, leave the map (vanish). In the order the creatures are kept, so it replays exactly.
 export function settleBonds(s, ev) {
+  settleImbue(s, ev);                                                  // a weapon no longer held is no longer imbued (imbue.js)
   settleRiders(s, ev);
   const n = ev.length;
   for (const e of Object.values(s.entities).filter((x) => x.bond)) {
@@ -2022,12 +2205,12 @@ export function resolve(s, ev) { run(s, ev, KIT); flushZones(s, ev, KIT); }
 
 // The engine's machinery, lent to the effect runner (effects.js) so it need not know our internals.
 // Evasion (a built character's `evasion`): only while it is not Incapacitated.
-const evades = (t) => !t.object && !incapacitated(t) && (t.feats ?? []).some((f) => f.evasion);
+export const evades = (t) => !t.object && !incapacitated(t) && (t.feats ?? []).some((f) => f.evasion);
 
 // Why a spell's area was handed to the DM, where it is one the engine will not place: a cube of more than 1,000 feet (effects.js, aimable).
 function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { stabilise, shine, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

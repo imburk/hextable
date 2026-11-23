@@ -4,6 +4,7 @@
 // whose terrain is deeply frozen (a write to it in place would throw), and the terrain's hash is compared before and after each. Then: an
 // action that is on the list still restores the terrain, objects (a door opened, a trap fired) are restored with the copy, and the copy
 // does not grow with the map.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ACTION_TYPES, apply, current, TERRAIN_ACTIONS } from "../src/engine.js";
@@ -55,10 +56,10 @@ const SENSE = [
   { type: "marchingOrder", order: ["rogue", "fighter", "cleric", "wizard"] }, { type: "partyFollow", leader: "fighter", shape: "line" }, { type: "formation", leader: "fighter", shape: "line" },
   { type: "mount", actor: "fighter", mount: GOB }, { type: "dismount", actor: "fighter" },
   { type: "attack", actor: "fighter", target: GOB }, { type: "act", actor: GOB, action: "scimitar", target: "fighter" }, { type: "dodge", actor: "fighter" },
-  { type: "reactions", actor: "wizard", set: { shield: "always" } }, { type: "endTurn", actor: "fighter" },
+  { type: "reactions", actor: "wizard", set: { shield: "always" } }, { type: "hitChoices", actor: "fighter", set: { "divine-smite": "ask" } }, { type: "endTurn", actor: "fighter" },
   { type: "cast", actor: "wizard", spell: "fire-bolt", target: GOB }, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: 3, r: -1 } }, { type: "cast", actor: "wizard", spell: "web", hex: { q: 3, r: -1 } },
   { type: "secondWind", actor: "fighter" }, { type: "feature", actor: "fighter", feature: "second-wind" }, { type: "use", actor: "fighter", object: "lever", verb: "pull" }, { type: "use", actor: "fighter", object: "door", verb: "open" },
-  { type: "check", actor: "fighter", skill: "perception" }, { type: "search", actor: "rogue" }, { type: "hide", actor: "rogue" },
+  { type: "check", actor: "fighter", skill: "perception" }, { type: "save", who: ["fighter", "rogue"], ability: "dex", dc: 12, damage: { dice: "2d6", type: "fire", half: true } }, { type: "search", actor: "rogue" }, { type: "hide", actor: "rogue" },
   { type: "setSpeed", actor: "fighter", mode: "fly", feet: 30 }, { type: "setSize", actor: "fighter", size: "large" }, { type: "give", actor: "fighter", item: "Rope" }, { type: "drop", actor: "fighter", item: "Rope" },
   { type: "pass", actor: "fighter", item: "Rope", to: "rogue" }, { type: "levelUp", actor: "fighter" },
   { type: "rest" }, { type: "shortRest" }, { type: "advanceTime", minutes: 60 }, { type: "chronicle", title: "t" }, { type: "conclusion", edit: {} },
@@ -66,7 +67,7 @@ const SENSE = [
   { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, { type: "endEncounter" }, { type: "spawn", monster: "wolf", at: { q: 2, r: 2 } }, { type: "place", actor: "fighter", to: { q: 1, r: 0 } },
   { type: "place", actor: "fighter", to: { q: 2, r: 0 } }, { type: "revealRegion", region: "r1", revealed: true }, { type: "setObject", object: "door", state: "open" }, { type: "setObject", object: "pit", state: "open" },
   { type: "remove", actor: GOB }, { type: "setLight", actor: "fighter", item: "torch" }, { type: "reveal", actor: GOB, hidden: true }, { type: "condition", actor: "fighter", condition: "prone", on: true },
-  { type: "setHp", actor: "fighter", hp: 3 }, { type: "harm", actor: "fighter", amount: 4 }, { type: "mend", actor: "fighter", amount: 4 },
+  { type: "setHp", actor: "fighter", hp: 3 }, { type: "harm", actor: "fighter", amount: 4 }, { type: "mend", actor: "fighter", amount: 4 }, { type: "setAc", actor: "fighter", ac: 17 },
   { type: "handout", id: "h1", title: "T", text: "x" }, { type: "note", to: "pat", text: "x" }, { type: "scene", id: "s1", title: "S" }, { type: "endScene" }, { type: "say", text: "hi" },
   { type: "askCheck", actor: "fighter", skill: "perception", dc: 10 }, { type: "setting", key: "autoEngage", value: true }, { type: "setPacks", packs: [] }, { type: "worldIndex", index: WORLD_INDEX },
   { type: "bond", actor: GOB, to: "wizard", kind: "pet" }, { type: "companionOrder", actor: GOB, order: "follow" }, { type: "command", actor: "wizard", ids: [GOB], order: "attack" },
@@ -93,6 +94,8 @@ function places(s) {
   if (s.world.nodes.here) s.world.nodes.here.parent = "top";
 }
 const SENSE2 = [
+  // A ping on the fighter's own cell, so it is reached by a script and not only by a lucky fuzz payload.
+  { a: (s) => ({ type: "ping", at: { q: s.entities.fighter.pos.q, r: s.entities.fighter.pos.r } }) },
   // A hold (docs/specs/grapple-shove.md, stage G2): the fighter holds the goblin, or the goblin the fighter, with a range no base passes.
   { pre: (s) => { s.entities[GOB].cond.grappled = { source: "fighter", holds: [{ by: "fighter", with: "hand", escape: 10, range: 300 }] }; }, a: { type: "letGo", actor: "fighter", target: GOB } },
   { pre: (s) => { s.entities.fighter.cond.grappled = { source: GOB, holds: [{ by: GOB, with: "hand", escape: 10, range: 300 }] }; }, a: { type: "escape", actor: "fighter" } },
@@ -101,14 +104,17 @@ const SENSE2 = [
   { pre: (s) => { apply(s, { type: "setSize", actor: GOB, size: "large" }, DM); apply(s, { type: "mount", actor: "fighter", mount: GOB }, DM); }, a: { type: "dismount", actor: "fighter" } },
   { a: (s) => ({ type: "attack", actor: "fighter", attack: s.entities.fighter.actions?.[0]?.id ?? "x", target: GOB }) },
   { pre: (s) => turnOf(s, GOB), a: (s) => ({ type: "act", actor: GOB, action: s.entities[GOB].actions?.[0]?.id, target: "fighter" }) },
-  { pre: (s) => apply(s, { type: "setHp", actor: "fighter", hp: 3 }, DM), a: { type: "secondWind", actor: "fighter" } },
+  { pre: (s) => { typed(s, "fighter"); apply(s, { type: "setHp", actor: "fighter", hp: 3 }, DM); }, a: { type: "secondWind", actor: "fighter" } },        // the old action is for a hand-typed Fighter; a built one uses `feature`
   { pre: (s) => apply(s, { type: "place", actor: "fighter", to: { q: -2, r: 1 } }, DM), a: { type: "use", actor: "fighter", object: "lever", verb: "pull" } },
   { pre: (s) => apply(s, { type: "give", actor: "fighter", item: "Rope" }, DM), a: { type: "pass", actor: "fighter", item: "Rope", to: "rogue" } },
   { pre: (s) => apply(s, { type: "give", actor: "fighter", item: "Rope" }, DM), a: { type: "drop", actor: "fighter", item: "Rope" } },
   { pre: (s) => { apply(s, { type: "give", actor: "fighter", item: "Rope" }, DM); apply(s, { type: "drop", actor: "fighter", item: "Rope" }, DM); }, a: (s) => ({ type: "pickUp", actor: "fighter", object: lastObj(s) }) },
   { pre: (s) => apply(s, { type: "claim", entity: "fighter", user: "pat", userName: "Pat" }, { role: "player", userId: "pat" }), a: { type: "release", entity: "fighter" } },
   { pre: (s) => apply(s, { type: "stepAway", actor: "rogue" }, DM), a: { type: "stepBack", actor: "rogue" } },
+  { pre: (s) => { s.encounter.order = s.encounter.order.filter((o) => o.id !== "wizard"); }, a: { type: "joinFight" } },       // the wizard stands outside a fight that is running
   { pre: (s) => apply(s, { type: "mapEdit", ops: [{ op: "region", region: { id: "r1", name: "R", level: "ground", hexes: ["0,0", "1,0"] } }] }, DM), a: { type: "revealRegion", region: "r1", revealed: true } },
+  // The DM's to-do tray (#675): a card from a note the engine handed over (a setting that changes nothing on the map), then Done.
+  { pre: (s) => apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM), a: (s) => ({ type: "todoDone", n: s.todo?.cards?.[0]?.n }) },
   { a: { type: "handout", handout: { title: "H", text: "x" } } },
   { pre: (s) => apply(s, { type: "handout", handout: { title: "H", text: "x" } }, DM), a: (s) => ({ type: "showHandout", handout: s.handouts?.[0]?.id, to: "all" }) },
   { pre: (s) => apply(s, { type: "handout", handout: { title: "H", text: "x" } }, DM), a: (s) => ({ type: "hideHandout", handout: s.handouts?.[0]?.id }) },
@@ -198,7 +204,7 @@ test("no action type outside TERRAIN_ACTIONS changes the terrain: every type pla
   // The types the scripted payloads never got accepted (they need a built sheet, a waiting question, a reward, a scene, a spell's lasting effect or a
   // companion of a spell): only their refusals were played with the terrain frozen; the static scan below covers what they could do.
   const never = ACTION_TYPES.filter((x) => !accepted.has(x) && !TERRAIN_ACTIONS.has(x));
-  const KNOWN = ["rollHp", "rerollHp", "rerollAbilityScore", "attack", "reactions", "endEffect", "feature", "hide", "addCharacter", "editCharacter", "setSheet", "refresh", "levelUp", "equip", "shield", "attune", "conclusion", "scene", "sceneNpc", "sceneChronicle", "companionOrder", "command", "dismiss", "recall", "react"];
+  const KNOWN = ["rollHp", "rerollHp", "rerollAbilityScore", "attack", "reactions", "hitChoices", "endEffect", "feature", "hide", "addCharacter", "editCharacter", "setSheet", "refresh", "levelUp", "equip", "shield", "attune", "conclusion", "scene", "sceneNpc", "sceneChronicle", "companionOrder", "command", "dismiss", "recall", "react"];
   assert.deepEqual(never.filter((x) => !KNOWN.includes(x)), [], "an action type that used to be reached is no longer: extend the payloads");
   assert.ok(accepted.size >= 25, `the payloads were accepted for ${accepted.size} action types`);
 });

@@ -188,7 +188,7 @@ test("rewinding to the start of a fight keeps the fight counter going, so a figh
 });
 
 test("a table saved before version 29 gets the highest fight number its record holds and the shops shown, in order; again changes nothing", () => {
-  assert.equal(VERSION, 29);
+  assert.equal(VERSION, 30);
   const s = newGame(5);
   const a = open(table(), "x");                       // (only for the id's shape)
   assert.equal(a, "s1");
@@ -199,7 +199,7 @@ test("a table saved before version 29 gets the highest fight number its record h
     { id: "s3", kind: "store", name: "C", shown: [] }, { id: "s4", kind: "loot", name: "D", shown: "all" },
   ];
   migrate(s);
-  assert.equal(s.version, 29);
+  assert.equal(s.version, 30);
   assert.equal(s.fightSeq, 12);
   assert.deepEqual(s.shopAlias, ["s2", "s4"]);
   assert.deepEqual(s.shops.map((x) => x.id), ["s1", "s2", "s3", "s4"]);

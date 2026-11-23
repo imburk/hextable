@@ -720,6 +720,7 @@ can run in parallel after R2. R10 decides the rest.
     beat. In `wait` the dock shows a quiet "…" (a tap on it, on the map or on a control, or Escape, skips and does
     not act), and the monster AI starts its next step 350 ms after the picture is still; in `flow` and `instant` it
     keeps its 800 ms. The server never waits.
+  - Programmatic `act()` (`window.hextable.act`) settles the beats first and then sends, never dropped (#705); the UI's own controls skip and do not act.
   - `pace` is read in one place, `pace()` in `app.js`, from `paceFor({ table, mine, reduced })`: the table's setting
     (`state.settings.pace`, `wait` if absent), which a player may only make quicker through their own preference
     `hextable.pace` (the "Animation on this device" choice in the log panel); with no preference, the browser's

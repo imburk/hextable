@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside, chip } from './lib.mjs';
 
 // ---------- armed class features ----------
 // Stunning Strike, a row of the Features tab (packages/client/actionpanel.js, features.js): arm it, then tap a creature. A monk
@@ -61,7 +61,7 @@ async function armed(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, lo, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Lo")');
+        await chip(page, 'Lo');
         await page.evaluate(async (a) => {          // both creatures in view
           const H = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, S = window.hextable.state;
           const m = (p, q) => ({ q: (p.q + q.q) / 2, r: (p.r + q.r) / 2 });
@@ -73,6 +73,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm Stunning Strike, then cancel: armed, hint shown, nothing sent', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature' && window.hextable.mode.id === 'stunning-strike');
         if (!/Stunning Strike: tap a creature/.test((await snap()).hint ?? '')) throw new Error('no hint to tap a creature');
@@ -87,6 +88,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm and tap a creature out of reach: refused, nothing spent, disarmed', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapEntity(far);
@@ -100,6 +102,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm and tap the goblin: sent, a Focus Point spent, the save shown', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapEntity(foe);
@@ -155,7 +158,7 @@ async function aimLock(browser, url, label, opts) {
         }
         await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000).catch(async () => { throw new Error(`no turn for the wizard: ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify([S.encounter?.order.map((o) => o.id), S.encounter?.turn, S.timeline.slice(-3).map((e) => e.type), document.getElementById('toast')?.textContent]); })}`); });
         await closePanels(page);
-        await page.click('#party button:has-text("Tavin")');
+        await chip(page, 'Tavin');
         await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'burning-hands');
@@ -214,6 +217,7 @@ async function aimLock(browser, url, label, opts) {
         if (!(await view()).pinned) throw new Error('no lock on the tap');
         await (touch ? page.locator('#hint-cancel').tap() : page.click('#hint-cancel'));
         await wait(page, () => window.hextable.mode.kind !== 'spell');
+        await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell');
         const v = await view();
@@ -282,7 +286,7 @@ async function flurry(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, lo, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Lo")');
+        await chip(page, 'Lo');
         await panelTab(page, 'attacks');
       });
 
@@ -312,10 +316,11 @@ async function flurry(browser, url, label, opts) {
         const said = await page.evaluate((n) => { const ev = window.hextable.state.timeline.slice(n).find((e) => e.type === 'std'); return ev ? window.hextable.describe(ev) : null; }, a.tl);      // the log's words for the event
         if (!said || said !== `Flurry of Blows: 1 Focus Point spent (${b.focus} left).`) throw new Error(`the log says "${said}"`);
         // armed on a phone, the panel folds away so the map can be tapped: the row is read from the page, not clicked
-        await page.evaluate(() => document.getElementById('ap-tab-attacks').click());
-        await wait(page, () => document.getElementById('ap-tab-attacks').getAttribute('aria-selected') === 'true');
+        await page.evaluate(() => { const b = document.getElementById('ap-bar-attacks'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); });      // the Attack group's bar (M4: groups, not tabs)
+        await wait(page, () => document.getElementById('ap-bar-attacks').getAttribute('aria-expanded') === 'true');
         const row = await page.evaluate(() => document.querySelector('#ap-attacks [data-row="atk:unarmed-strike"]')?.textContent ?? '');
         if (!/Flurry: 2 left/.test(row)) throw new Error(`the Unarmed Strike row says "${row}"`);
+        await closePanels(page);                                                                  // reading the group opened the menu: clear the map again for the taps
       });
 
       await run.do('tap the foe twice: two Unarmed Strikes on the Bonus Action, re-armed between, no Spear', async () => {

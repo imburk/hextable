@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, tapAt, onCanvas, closePanels, panelTab } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, tapAt, onCanvas, closePanels, panelTab, chip } from './lib.mjs';
 
 // ---------- casting at a higher level: the slot menu (issue #604) ----------
 // A level 3 wizard (one level 1 slot, two level 2) with Magic Missile. Armed, the hint bar offers the level (the default is level 1; level 2 adds a dart);
@@ -53,7 +53,7 @@ async function upcast(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, ria, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Ria")');
+        await chip(page, 'Ria');
         foe = await page.evaluate(async (i) => {
           const E = await import('./shared/engine.js'), S = window.hextable.state;
           return E.targetsFor(S, S.entities[i], { spell: 'magic-missile' }).find((id) => E.hostile(S.entities[id], S.entities[i])) ?? null;
@@ -97,7 +97,7 @@ async function upcast(browser, url, label, opts) {
           await wait(page, () => window.hextable.waiting === 0, null, 20000);
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, ria, 20000);
-        await page.click('#party button:has-text("Ria")');
+        await chip(page, 'Ria');
         foe = await page.evaluate(async (i) => {
           const E = await import('./shared/engine.js'), S = window.hextable.state;
           return E.targetsFor(S, S.entities[i], { spell: 'magic-missile' }).find((id) => E.hostile(S.entities[id], S.entities[i])) ?? null;

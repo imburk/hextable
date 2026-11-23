@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { martial } from './paneltabs.mjs';
-import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec } from './lib.mjs';
+import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec, chip, openMenu } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
@@ -22,9 +22,10 @@ async function classes(browser, url, label, opts) {
           choices: { metamagic: ['careful', 'quickened'], 'metamagic-10': ['heightened', 'transmuted'], 'elemental-affinity': 'fire' }, spells: ['fire-bolt', 'fireball', 'hold-person', 'haste', 'burning-hands'] },
       };
       const uses = (n, f) => state(page, (S, a) => S.entities[a[0]].uses[a[1]], [ids[n], f]);
-      const pick = async (n) => { await closePanels(page); await tap(page, `#party button:has-text("${n}")`); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
+      const pick = async (n) => { await closePanels(page); await chip(page, n); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
       // The Features tab holds a row for each class feature; the spells and Metamagic are rows of the Spells tab.
-      const feat = async (name) => { await panelTab(page, 'features'); await tap(page, `#ap-features [data-row]:has-text("${name}")`); };
+      // Lay On Hands and Second Wind are rows of the Heal group, not Features (M4: what gives Hit Points back is found in one place).
+      const feat = async (name) => { const g = /^(Lay On Hands|Second Wind)$/.test(name) ? 'heal' : 'features'; await panelTab(page, g); await tap(page, `#ap-${g} [data-row]:has-text("${name}")`); };
       const spellsTab = async () => { await panelTab(page, 'spells'); };
       const tapCreature = (target) => tapGuarded(page, touch, target);
       const newest = (since) => state(page, (S, n) => S.timeline.slice(n).map((e) => e.type), since);
@@ -86,7 +87,7 @@ async function classes(browser, url, label, opts) {
         const form = await state(page, (S, i) => S.entities[i].form, ids.Dru);
         if ((form.block ?? form) !== 'wolf') throw new Error(`form: ${JSON.stringify(form)}`);
         if (!/Wolf form/.test(await page.$eval('#c-res', (x) => x.textContent))) throw new Error('the card does not say the druid is a wolf');
-        await closePanels(page); await tap(page, '#btn-sheet'); await waitShown(page, '#sheet-form');
+        await closePanels(page); await openMenu(page, 'sheet'); await waitShown(page, '#sheet-form');
         if (!/form of a Wolf/.test(await page.$eval('#sheet-form', (x) => x.textContent))) throw new Error('the sheet banner');
         await tap(page, '#sheet [data-leave-form]');
         await wait(page, (i) => !window.hextable.state.entities[i].form, ids.Dru);
@@ -222,7 +223,7 @@ async function classes(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapCreature(ids.Pala);
         await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['bardic-inspiration'] === b - 1, [ids.Bardo, before], 25000);
-        await pick('Bardo'); await tap(page, '#btn-sheet'); await waitShown(page, '#sheet-reactions');
+        await pick('Bardo'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet-reactions');
         const rx = await page.$$eval('#sheet-reactions [data-rx-set]', (e) => e.map((x) => x.dataset.rxSet));
         if (!rx.includes('countercharm')) throw new Error(`reactions on the bard's sheet: ${rx}`);
       });
@@ -277,7 +278,7 @@ export async function casters(browser, url, label, opts) {
         await page.screenshot({ path: `/tmp/caster-screens/${size}-failed.png` });
         throw new Error(`${sel} stayed covered`);
       };
-      const pick = async (n) => { await closePanels(page); await onTop(`#party button:has-text("${n}")`); await tap(page, `#party button:has-text("${n}")`); await waiting((i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n], 8000); };
+      const pick = async (n) => { await closePanels(page); await chip(page, n); await waiting((i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n], 8000); };
       const feat = async (name) => { await panelTab(page, 'features'); for (let k = 0; k < 4; k++) { await onTop(`#ap-features [data-row]:has-text("${name}")`); await tap(page, `#ap-features [data-row]:has-text("${name}")`); if (await waitShown(page, '#cp .cp-card', true, 2500).then(() => true, () => false)) return; }   // a tap while the list is still scrolling can miss
         await waitShown(page, '#cp .cp-card'); };
       const card = async (why) => {                                        // the card is open, whole on screen, and its buttons are large enough to touch

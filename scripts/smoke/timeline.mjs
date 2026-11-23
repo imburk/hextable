@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, openTab, calm, setPace, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, openTab, calm, setPace, placeBeside, openMenu } from './lib.mjs';
 
 // ---------- timeline and pace ----------
 // At pace `wait` (the default of a table with no setting): a goblin's attack, damage and fall play in order and the player's
@@ -142,8 +142,18 @@ async function pacing(browser, url, label, opts) {
         await page.evaluate(() => { const S = window.hextable.state; const c = S.encounter.order[S.encounter.turn].id; window.hextable.act({ type: 'endTurn', actor: c }); });
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('beats are playing at instant');
       });
-      await run.do('the pace control in Settings sets this device\'s pace', async () => {
-        await openTab(page, 'settings');
+      await run.do('an action sent while beats play finishes them and is sent: window.hextable.act is never dropped (#705)', async () => {
+        ids = await foeTurn(page, null);
+        await setPace(page, 'wait');
+        await page.evaluate(strike, [ids.pc, ids.foe]);
+        if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
+        await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+        await sleep(100);
+        const r = await page.evaluate(() => ({ busy: window.hextable.timeline.busy(), enc: !!window.hextable.state.encounter }));
+        if (r.enc) throw new Error('End encounter sent while the beats played was dropped');
+      });
+      await run.do('the pace control (on the Dice screen) sets this device\'s pace', async () => {
+        await openTab(page, 'dice');
         await page.selectOption('#pace-pick', 'flow');
         if ((await page.evaluate(() => window.hextable.pace())) !== 'flow') throw new Error('flow was not chosen');
         await page.selectOption('#pace-pick', '');
@@ -173,10 +183,10 @@ async function pacingTable(browser, url) {
         await host.click('#dm-table button:has-text("Let in")');
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        const name = (await b.textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        const name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
       });
       await run.do('a fight is started at instant pace on the DM and the phone', async () => {

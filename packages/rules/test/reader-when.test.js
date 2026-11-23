@@ -82,6 +82,7 @@ const wear = (e, m) => { e.feats = [...(e.feats ?? []), { name: 'Probe', modifie
 const MAKE = {
   'target.prone': (c) => { c.tgt.cond.prone = {}; },
   'target.unconscious': (c) => { c.tgt.cond.unconscious = {}; },
+  'target.fiendOrUndead': (c) => { c.tgt.type = 'fiend'; },
   'attacker.unseen': (c) => { c.tgt.cond.blinded = {}; },              // the target cannot see the attacker
   'target.unseen': (c) => { c.atk.cond.blinded = {}; },                // the attacker cannot see the target
   'attack.advantage': (c) => { c.tgt.cond.prone = {}; },
@@ -162,7 +163,7 @@ function play(hook, tag, withMod, how = {}) {
     return r.events.find((e) => e.type === 'concentration')?.bonus ?? 'no concentration save';
   }
   if (attackHook) {
-    if (path === 'sheet') { turnOf(s, 'fighter'); setUp(); const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: how.ranged ? 'javelin' : 'longsword' }, DM);
+    if (path === 'sheet') { turnOf(s, 'fighter'); setUp(); const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: how.ranged ? 'javelin-thrown' : 'longsword' }, DM);
       return hook === 'damage.dealt' ? (assert.ok(r.ok, r.error), r.events.find((e) => e.type === 'damage')?.amount) : bonusOf(r); }
     if (path === 'steps') {
       turnOf(s, M.id); setUp();
@@ -261,6 +262,7 @@ test('the other hooks: the Fly Speed, a roll that failed, the Hit Point maximum,
       if (withMod) wear(F, { on: 'attack.roll', op: 'add', value: '1d20', onFail: true, when: [tag] });
       fight(s); turnOf(s, 'fighter');
       if (tag === 'target.prone') F.cond.prone = {};
+      if (tag === 'target.fiendOrUndead') F.type = 'fiend';
       const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: 'longsword' }, DM);
       assert.ok(r.ok, r.error);
       const a = r.events.find((e) => e.type === 'attack');

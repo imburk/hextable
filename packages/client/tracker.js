@@ -3,7 +3,7 @@
 // is given and sends existing actions (harm, mend, setHp for the dead, endTurn, reveal); it never changes anything itself. It shows
 // only what that state holds, so a player's tracker shows exactly what the player's view sent: no hidden creature, no number the
 // view held back, and a turn taken by a creature the party cannot see is one row that says so and names no one.
-import { inFight, clockText, FT } from './shared/engine.js';
+import { inFight, clockText, FT, up } from './shared/engine.js';
 import { under } from './shared/space.js';
 import { conditionName } from './shared/modifiers.js';
 import { hpFraction } from './three-build.js';
@@ -51,6 +51,22 @@ export function turnLine(S) {
   const enc = S?.encounter; if (!enc) return '';
   const o = enc.order[enc.turn];
   return !o ? '' : o.someone ? 'Something moves unseen' : S.entities[o.id] ? `${shownName(S, S.entities[o.id])}'s turn` : '';
+}
+
+// The turn line of the clean screen (docs/specs/one-token-menu.md, Decision 1): one line, in a fight only. "Round 2 · Goblin's turn · you in 3", "Round 2 · Your turn",
+// "Round 2 · Something moves unseen" (just "Round 2" when the table says nothing of an unseen turn). `mine(e)` says whether the viewer plays e.
+// Returns { text, mine } or null outside a fight; `mine` is true on the viewer's own turn.
+export function screenTurnLine(S, mine = () => false) {
+  const enc = S?.encounter; if (!enc) return null;
+  const o = enc.order[enc.turn], round = `Round ${enc.round}`;
+  if (!o) return { text: round, mine: false };
+  if (o.someone) return { text: S.settings?.unseenTurns === 'quiet' ? round : `${round} · Something moves unseen`, mine: false };
+  const cur = S.entities[o.id];
+  if (!cur) return { text: round, mine: false };
+  if (mine(cur)) return { text: `${round} · Your turn`, mine: true };
+  let away = 0;
+  for (let k = 1; k <= enc.order.length; k++) { const x = enc.order[(enc.turn + k) % enc.order.length], e = x && !x.someone ? S.entities[x.id] : null; if (e && up(e) && mine(e)) { away = k; break; } }
+  return { text: `${round} · ${shownName(S, cur)}'s turn${away === 1 ? ' · you next' : away ? ` · you in ${away}` : ''}`, mine: false };
 }
 
 // One row. `opts`: { dm, mine(e), ticked: Set } . The same function draws every viewer's row; what differs is what the state holds.
@@ -103,7 +119,7 @@ export function createTracker(ctx) {
   const { root } = ctx;
   const ticked = new Set();
   let lastKey = '';
-  root.innerHTML = `<div class="tr-head"><div><strong id="tr-title"></strong><span id="tr-turn"></span></div><button type="button" id="tr-edit" aria-pressed="false" hidden>Edit</button></div>
+  root.innerHTML = `<div class="tr-head"><div><strong id="tr-title"></strong><span id="tr-turn"></span><span id="tr-clock"></span></div><button type="button" id="tr-edit" aria-pressed="false" hidden>Edit</button></div>
     <div class="tr-dm" id="tr-dm" hidden><input id="tr-amt" type="number" inputmode="numeric" min="0" placeholder="Amount" aria-label="Hit Points amount">
       <button type="button" data-all="dmg">Damage ticked</button><button type="button" data-all="heal">Heal ticked</button></div>
     <ol id="tr-list"></ol>`;
@@ -127,6 +143,7 @@ export function createTracker(ctx) {
     const dm = ctx.isDM(), enc = S.encounter, rs = trackerRows(S, { dm });
     q('tr-title').textContent = enc ? `Round ${enc.round}` : 'The party';
     q('tr-turn').textContent = turnLine(S);
+    q('tr-clock').textContent = clockText(S.clock);      // the clock left the top bar: it is the header of Turns now
     q('tr-dm').hidden = !dm; q('tr-edit').hidden = !dm;      // the button shows on a phone only (style.css)
     for (const id of [...ticked]) if (!S.entities[id]) ticked.delete(id);
     const keep = list.scrollTop, opts = { dm, mine: ctx.mine, ticked, link: ctx.link };

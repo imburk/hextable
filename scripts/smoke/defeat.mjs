@@ -84,7 +84,8 @@ async function defeat(browser, url, label, opts) {
       await run.do('with another theme and the menu open, closed or pinned the card and the menu do not fight', async () => {
         await openTab(page, 'settings');
         await page.selectOption('#set-theme', 'sunlit');
-        const front = () => page.evaluate(() => { const c = document.querySelector('.df-card').getBoundingClientRect(); return { inside: !!document.elementFromPoint(c.left + c.width / 2, c.top + 30)?.closest('#df'), r: c.right, l: c.left, w: innerWidth, dr: document.getElementById('drawer').getBoundingClientRect().left, dl: document.getElementById('drawer').getBoundingClientRect().right }; });
+        // dr/dl are the drawer's left and right edges; the pinned menu sits on either side, so the card must clear whichever it is on
+        const front = () => page.evaluate(() => { const c = document.querySelector('.df-card').getBoundingClientRect(); return { inside: !!document.elementFromPoint(c.left + c.width / 2, c.top + 30)?.closest('#df'), r: c.right, l: c.left, w: innerWidth, dr: document.getElementById("drawer").getBoundingClientRect().left, dl: document.getElementById('drawer').getBoundingClientRect().right }; });
         let f = await front();
         if (touch && f.inside) throw new Error('the card is in front of the open menu, which the person asked for');
         await closeMenu(page);
@@ -94,7 +95,7 @@ async function defeat(browser, url, label, opts) {
           await page.evaluate(() => window.hextable.drawer.setPin(true));
           await sleep(500);
           f = await front();
-          if (f.r > f.dr + 1) throw new Error(`the card runs under the pinned menu: ${JSON.stringify(f)}`);
+          if (f.l < f.dl - 1 && f.r > f.dr + 1) throw new Error(`the card runs under the pinned menu: ${JSON.stringify(f)}`);
           await shot('defeat-pinned');
           await page.evaluate(() => window.hextable.drawer.setPin(false));
           await closeMenu(page);

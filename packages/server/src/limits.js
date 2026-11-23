@@ -193,10 +193,12 @@ export function createLimits(config = {}, now = Date.now) {
   };
 }
 
-// The key a feedback budget is kept under: an IPv4 address as it is, an IPv6 address as its /64 (one subscriber holds 2^64 of them).
+// The key a feedback budget is kept under: an IPv4 address as it is, an IPv4-mapped IPv6 address (::ffff:a.b.c.d) as that IPv4 address, any other IPv6 address as its /64 (one subscriber holds 2^64 of them).
 export function rateKey(addr) {
   const a = String(addr ?? "");
   if (!a.includes(":")) return a;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(a);       // an IPv4 address a dual-stack socket reports as ::ffff:a.b.c.d is that IPv4 address
+  if (mapped) return mapped[1];
   const [head, tail = null] = a.split("::");
   const h = head ? head.split(":") : [], t = tail === null ? [] : tail ? tail.split(":") : [];
   const groups = tail === null ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];

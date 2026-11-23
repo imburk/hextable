@@ -277,11 +277,11 @@ export function createDice(canvas, prefs, camera = () => ({ yaw: 0, pitch: 0.95 
   }
   // The camera now, clamped to what the cameras allow.
   const cam = () => { const c = camera() ?? {}; return { yaw: Number.isFinite(c.yaw) ? c.yaw : 0, pitch: Math.max(MIN_PITCH, Math.min(1.5, Number.isFinite(c.pitch) ? c.pitch : 0.95)) }; };
-  // The room the dice may use: below the turn order and the title, above the dock.
+  // The room the dice may use: below the title, above the dock (and so above the token's strip).
   function band(h, titleH) {
     const bottom = (id) => { const el = document.getElementById(id), r = el && !el.hidden ? el.getBoundingClientRect() : null; return r && r.height > 0 ? r : null; };
-    const strip = bottom('order'), head = bottom('top'), dock = bottom('dock');
-    const topEdge = Math.max(head ? head.bottom : 0, strip ? strip.bottom : 0) + 8 + titleH;
+    const dock = bottom('dock');
+    const topEdge = 8 + titleH;
     const botEdge = dock && dock.top > h * 0.3 ? dock.top - 10 : h - 10;
     return { top: topEdge, bottom: Math.max(topEdge + 60, botEdge) };
   }

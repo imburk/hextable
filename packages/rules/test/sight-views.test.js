@@ -2,6 +2,7 @@
 // the party seeing as one, remembered tiles and things, region reveal by line of sight, targeting.
 // The property tests at the end play long random games with several players and check, after every
 // action, that nothing the party cannot see reaches a player in any form.
+import { plain } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
@@ -47,7 +48,7 @@ function crypt({ rule = "los", vaultLight = "dark", seed = 7 } = {}) {
   const add = (q, r, name) => s.entities[ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q, r }, name }, DM)).events[0].id];
   return { s, add };
 }
-const sent = (s, res, who = PAT) => JSON.stringify([view(s, who), viewEvents(res?.events ?? [], s, who)]);
+const sent = (s, res, who = PAT) => plain([view(s, who), viewEvents(res?.events ?? [], s, who)]);
 
 test("the default is rooms, which is today's behaviour; los and light are opt-in table rules", () => {
   const s = newGame(3);
@@ -70,7 +71,7 @@ test("los: a goblin that walks behind a pillar leaves the player's messages, and
   for (const who of [PAT, KIM, LEE]) assert.equal(sent(s, hide, who).includes("Zorg") || sent(s, hide, who).includes(`"${gob.id}"`), false);
   // A guessed id answers as one that does not exist, and changes nothing.
   const before = JSON.stringify(s);
-  assert.deepEqual(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin" }, PAT), apply(s, { type: "attack", actor: "fighter", target: "m999", attack: "javelin" }, PAT));
+  assert.deepEqual(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin-thrown" }, PAT), apply(s, { type: "attack", actor: "fighter", target: "m999", attack: "javelin-thrown" }, PAT));
   assert.equal(JSON.stringify(s), before);
   // Back in view: sent again, and its path only where the party could see it.
   const back = ok(apply(s, { type: "move", actor: gob.id, to: at(1, 0) }, DM));
@@ -87,7 +88,7 @@ test("the party sees as one: a goblin seen by one member is sent to every player
   assert.equal(inViewOf(s.map, s.entities.rogue, gob), true);
   for (const who of [PAT, KIM, LEE]) assert.ok(view(s, who).entities[gob.id]);
   assert.deepEqual(rollMode(s, s.entities.fighter, gob, { type: "ranged", range: [30, 120], bonus: 5 }).dis, ["target out of sight"]);
-  ok(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin" }, PAT));
+  ok(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin-thrown" }, PAT));
   // The same goblin, with the rogue moved away, is gone for everyone.
   ok(apply(s, { type: "place", actor: "rogue", to: at(-6, 1) }, DM));
   for (const who of [PAT, KIM, LEE]) assert.equal(view(s, who).entities[gob.id], undefined);
@@ -175,7 +176,7 @@ test("light: Darkvision, Blindness and Invisibility decide what the party sees",
   ok(apply(s, { type: "condition", actor: gob.id, condition: "invisible", on: false }, DM));
   ok(apply(s, { type: "condition", actor: "wizard", condition: "blinded" }, DM));
   assert.equal(view(s, PAT).entities[gob.id], undefined);
-  assert.equal(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin" }, PAT).error, "No such creature.");
+  assert.equal(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin-thrown" }, PAT).error, "No such creature.");
 });
 
 test("los: things are sent only once seen, and their events only while in view", () => {
@@ -345,7 +346,7 @@ function randomAction(s, pick, world = CRYPT_WORLD) {
   if (roll < 86 && monsters.length < 4) return [{ type: "spawn", monster: "goblin-warrior", at: any(hexes), name: uniqueName(s), hidden: pick(4) === 0 }, DM];
   if (roll < 89 && !s.encounter) return [{ type: "startEncounter", center: s.entities.fighter.pos, radius: 8 }, DM];
   if (roll < 91 && s.encounter) return [{ type: "endEncounter" }, DM];
-  if (roll < 94 && monsters.length) return [{ type: "attack", actor: "fighter", target: any(monsters).id, attack: "javelin" }, PAT];
+  if (roll < 94 && monsters.length) return [{ type: "attack", actor: "fighter", target: any(monsters).id, attack: "javelin-thrown" }, PAT];
   if (roll < 96) return [{ type: "revealRegion", region: any(world.regions) }, DM];
   if (roll < 97) return [{ type: "mapEdit", ops: [{ op: "forget" }] }, DM];
   return [{ type: "advanceTime", minutes: 1 }, DM];
@@ -413,7 +414,7 @@ function playChecked(seed, steps, { startRule = "los", map = "crypt" } = {}) {
     // A guessed id: the same answer as one that does not exist, and nothing changes.
     if (unseen.length && checked % 3 === 0) {
       const e = unseen[checked % unseen.length], before = JSON.stringify(s);
-      for (const [type, extra] of [["attack", { attack: "javelin" }], ["move", { to: at(0, 0) }]]) {
+      for (const [type, extra] of [["attack", { attack: "javelin-thrown" }], ["move", { to: at(0, 0) }]]) {
         const key = type === "attack" ? "target" : "actor";
         const real = apply(s, { type, actor: "fighter", ...extra, [key]: e.id }, PAT), fake = apply(s, { type, actor: "fighter", ...extra, [key]: "m9999" }, PAT);
         assert.deepEqual(real, fake, `seed ${seed}: guessing ${e.id} gave something away`);

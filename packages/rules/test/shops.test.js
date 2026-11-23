@@ -1,6 +1,7 @@
 // Purses and shops, the engine (docs/specs/shops.md, task P3, issue #596). Each test is one item of the row's "Done when" list, or one
 // of the review points (Security and hidden-information review points 1 to 11), on the valley of `newGame` with a shop area drawn
 // round the party's camp.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply as applyRaw, ACTION_TYPES } from "../src/engine.js";
@@ -50,6 +51,7 @@ const market = (over = {}) => ({
 // The valley with the party's players seated and a shop area ("quay") of the cells round Brenna; Pip stands outside it.
 function table() {
   const s = newGame(5);
+  typed(s, "fighter");                                       // Brenna is hand-typed here: these tests count gear by name (a built hero keeps items on its sheet)
   for (const [id, u] of [["fighter", "pat"], ["rogue", "kim"], ["cleric", "lee"]]) { s.entities[id].owner = u; s.entities[id].ownerName = u; }
   const f = s.entities.fighter.pos;
   s.map.areas = [
@@ -233,8 +235,8 @@ test("a table saved at version 27 migrates to 28: no markets, no shops, purses c
   s.entities.cleric.coins = "35 gp";
   s.entities.wizard.coins = {};
   migrate(s);
-  assert.equal(VERSION, 29);
-  assert.equal(s.version, 29);
+  assert.equal(VERSION, 30);
+  assert.equal(s.version, 30);
   assert.deepEqual([s.markets, s.shops], [[], []]);
   assert.deepEqual(s.entities.fighter.coins, { gp: 12 });
   for (const id of ["rogue", "cleric", "wizard"]) assert.equal(s.entities[id].coins, undefined, id);

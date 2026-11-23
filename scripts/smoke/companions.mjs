@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt, chipPick, openMenu } from './lib.mjs';
 
 // ---------- companions ----------
 // The client side of companions C1 (docs/specs/companions.md; issue #318). Solo at both sizes, the DM bonds a foe to Brenna as a familiar that
@@ -35,11 +35,13 @@ async function solo(browser, url, label, opts) {
         if (!rows.some((r) => /^Brenna's Goblin/.test(r))) throw new Error(`tracker: ${JSON.stringify(rows)}`);
         await closeMenu(page);
         await page.evaluate((f) => window.hextable.select(f), foe);
+        await openMenu(page, 'sheet');           // the card is the Character screen (M4)
         await waitShown(page, '#card');
         const nm = await page.textContent('#c-name');
         if (!/^Brenna's Goblin/.test(nm)) throw new Error(`card: ${nm}`);
         if (!(await shown(page, '#btn-let'))) throw new Error('no "Let it act" on the DM\'s card');
         await shot(page, `companions-card-${tag}`);
+        await closeMenu(page);
       });
       await run.do('on its turn a familiar has no Attacks tab', async () => {
         await page.evaluate((f) => { const h = window.hextable; const x = h.state.entities[f]; h.act({ type: 'startEncounter', center: x.pos, radius: 40 }); }, foe);
@@ -52,9 +54,11 @@ async function solo(browser, url, label, opts) {
         }
         if ((await state(page, (S) => S.encounter.order[S.encounter.turn].id)) !== foe) throw new Error('its turn did not come');
         await page.evaluate((f) => window.hextable.select(f), foe);
-        await waitShown(page, '#ap-tab-move', true, 8000);
-        if (await shown(page, '#ap-tab-attacks')) throw new Error('a creature that can not attack has an Attacks tab');
+        await openMenu(page, 'sheet');
+        await waitShown(page, '#ap-bar-move', true, 8000);
+        if (await shown(page, '#ap-bar-attacks')) throw new Error('a creature that can not attack has an Attack group');
         await shot(page, `companions-turn-${tag}`);
+        await closeMenu(page);
       });
       await run.do('the DM frees it with the Free button and bonds it again with Bond', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
@@ -113,10 +117,10 @@ async function table(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        name = (await b.textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
       });
       await run.do('the DM bonds a foe to that character: the phone gets a chip for it and the DM\'s record has no owner for it', async () => {
@@ -128,7 +132,7 @@ async function table(browser, url) {
         }, [id]);
         await wait(phone, (p) => window.hextable.state.entities[p]?.bond, pet);
         const want = await phone.evaluate((p) => `${window.hextable.state.entities[window.hextable.state.entities[p].bond.to].name}'s `, pet);
-        await phone.waitForSelector(`#party button:has-text("${want}")`, { timeout: 8000 });
+        await phone.waitForSelector(`#party button:has-text("${want}")`, { state: 'attached', timeout: 8000 });
         if (await host.evaluate((p) => !!window.hextable.state.entities[p].owner, pet)) throw new Error('the companion has an owner of its own');
         await shot(phone, 'companions-chips-phone');
       });
@@ -138,6 +142,7 @@ async function table(browser, url) {
         await wait(host, ([p, q]) => { const x = window.hextable.state.entities[p].pos; return x.q === q.q && x.r === q.r; }, [pet, pos]);
       });
       await run.do('"Let it act" on the phone reaches the table and the log', async () => {
+        await openMenu(phone, 'sheet');
         await waitShown(phone, '#btn-let');
         await phone.tap('#btn-let input');
         await wait(host, (p) => window.hextable.state.entities[p].bond.auto === true, pet);
@@ -152,7 +157,9 @@ async function table(browser, url) {
         await host.evaluate((p) => window.hextable.act({ type: 'bond', actor: p, to: null }), pet);
         await wait(phone, (p) => !window.hextable.state.entities[p]?.bond, pet);
         await sleep(300);
+        await openMenu(phone, []);
         if (await shown(phone, '#btn-let')) throw new Error('"Let it act" still shown for a creature that is free');
+        await closeMenu(phone);
       });
     } finally { await hostCtx.close(); await phoneCtx.close(); }
   });
@@ -294,8 +301,10 @@ export async function screens(browser, url, label, opts) {
         await page.evaluate((v) => window.hextable.act({ type: 'claim', entity: v, user: 'local', userName: 'You' }), ven);       // Ven has a player: the prompt for a commanded turn goes to that player
         await wait(page, (v) => window.hextable.state.entities[v].owner === 'local', ven);
         await page.evaluate((v) => { window.hextable.select(v); window.hextable.R.focus(v, true); }, ven);
+        await openMenu(page, 'sheet');
         await waitShown(page, '#card');
         await calm(page);
+        await closeMenu(page);
       });
       await run.do('Find Familiar: the chooser asks for the form and the type, then a tap, and the owl is made', async () => {
         await clickRow('spells', 'Find Familiar'); await chooser();
@@ -353,16 +362,16 @@ export async function screens(browser, url, label, opts) {
         await calm(page);
       });
       await run.do('Dismiss…: the owl goes to its pocket dimension, and Recall… brings it back where a tap says', async () => {
-        await panelTab(page, 'features');
-        await page.click(rowOf('features', 'Dismiss…'));
-        await page.click('#ap-features [data-cc-dismiss]:not([data-forever]):has-text("pocket")');
+        await panelTab(page, 'companions');
+        await page.click(rowOf('companions', 'Dismiss…'));
+        await page.click('#ap-companions [data-cc-dismiss]:not([data-forever]):has-text("pocket")');
         await wait(page, (v) => Object.keys(window.hextable.state.entities[v].pocket ?? {}).length === 1, ven);
         // the sheet says who is in the pocket (DEBT S7)
-        await page.click('#btn-sheet');
+        await openMenu(page, 'sheet');
         await wait(page, () => /Pocket dimension/.test(document.getElementById('sheet-body')?.textContent ?? ''));
-        await closeMenu(page);
-        await page.click(rowOf('features', 'Recall…'));
-        await page.click('#ap-features [data-cc-recall]');
+        await panelTab(page, 'companions');
+        await page.click(rowOf('companions', 'Recall…'));
+        await page.click('#ap-companions [data-cc-recall]');
         await page.waitForSelector('#hint:not([hidden])');
         spots = await free(3); await tapHex(spots[0]);
         await wait(page, (v) => !Object.keys(window.hextable.state.entities[v].pocket ?? {}).length, ven);
@@ -383,7 +392,7 @@ export async function screens(browser, url, label, opts) {
           await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await calm(page);
         }
         await page.evaluate((v) => window.hextable.select(v), ven); await calm(page);
-        await clickRow('features', 'Shocking Grasp through');
+        await clickRow('companions', 'Shocking Grasp through');
         const fpos = await state(page, (S, f) => S.entities[f].pos, foe);
         await tapHex(fpos, foe);
         await wait(page, () => /delivers/.test(document.getElementById('log-list')?.textContent ?? '') || window.hextable.state.timeline?.some?.((x) => x.type === 'delivered') || true);
@@ -405,31 +414,31 @@ export async function screens(browser, url, label, opts) {
         await wait(page, (hh) => window.hextable.state.entities[hh].bond, horse);
         await page.evaluate((v) => window.hextable.select(v), ven);
         await calm(page);
-        await panelTab(page, 'features');
-        await page.click(rowOf('features', 'Mount…'));
-        await page.click('#ap-features [data-cc-mount]:has-text("Warhorse")');
+        await panelTab(page, 'companions');
+        await page.click(rowOf('companions', 'Mount…'));
+        await page.click('#ap-companions [data-cc-mount]:has-text("Warhorse")');
         await wait(page, (v) => window.hextable.state.entities[v].riding, ven);
         await calm(page);
         await shot(page, `companions-mounted-${tag}`);
-        await page.click(rowOf('features', 'Dismount'));
+        await page.click(rowOf('companions', 'Dismount'));
         await wait(page, (v) => !window.hextable.state.entities[v].riding, ven);
         await calm(page);
         // the steed's side of Ven's turn: shown as `orderNext ?? order ?? 'after'`, and changed by a tap
-        await page.click(rowOf('features', 'acts after you'));
+        await page.click(rowOf('companions', 'acts after you'));
         await wait(page, (hh) => window.hextable.state.entities[hh].bond.order === 'before', horse);
         await calm(page);
-        if (!(await page.isVisible(rowOf('features', 'acts before you')))) throw new Error('the row did not say "before"');
+        if (!(await page.isVisible(rowOf('companions', 'acts before you')))) throw new Error('the row did not say "before"');
       });
       await run.do('Command…: the order is typed (the map keys stay quiet), a Skeleton-like zombie is commanded, and its turn is handed to its player', async () => {
-        await panelTab(page, 'features');
-        await page.click(rowOf('features', 'Command…'));
-        await page.fill('#ap-features [data-cc-order]', '');
+        await panelTab(page, 'companions');
+        await page.click(rowOf('companions', 'Command…'));
+        await page.fill('#ap-companions [data-cc-order]', '');
         const before = await state(page, (S, v) => JSON.stringify(S.entities[v].pos), ven);
-        await page.focus('#ap-features [data-cc-order]');
+        await page.focus('#ap-companions [data-cc-order]');
         await page.keyboard.type('guard <b>the</b> door wasd');
         if ((await state(page, (S, v) => JSON.stringify(S.entities[v].pos), ven)) !== before) throw new Error('the typed letters moved the creature');
         await shot(page, `companions-command-${tag}`);
-        await page.click('#ap-features [data-cc-send="command"]');
+        await page.click('#ap-companions [data-cc-send="command"]');
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.commanded));
         const order = await state(page, (S) => Object.values(S.entities).find((e) => e.bond?.commanded).bond.commanded.order);
         if (order !== 'guard <b>the</b> door wasd') throw new Error(`order: ${order}`);
@@ -449,10 +458,10 @@ export async function screens(browser, url, label, opts) {
           await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur); await calm(page);
         }
         await page.evaluate((v) => window.hextable.select(v), ven); await calm(page);
-        await panelTab(page, 'bonus');
-        await page.click(rowOf('bonus', 'Command…'));
-        await page.fill('#ap-bonus [data-cc-order]', 'hold the door');
-        await page.click('#ap-bonus [data-cc-send="command"]');
+        await panelTab(page, 'companions');
+        await page.click(rowOf('companions', 'Command…'), { timeout: 8000 }).catch(async (err) => { throw new Error(`no Command row: ${err.message.split('\n')[0]}; the page says: ${await page.evaluate(() => document.querySelector('#ap-body')?.innerText.replace(/\s+/g, ' ').slice(0, 400))}`); });
+        await page.fill('#ap-companions [data-cc-order]', 'hold the door');
+        await page.click('#ap-companions [data-cc-send="command"]');
         await wait(page, (z) => window.hextable.state.entities[z].bond.commanded?.order === 'hold the door', zed);
         for (let i = 0; i < 40; i++) {
           const cur = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
@@ -469,8 +478,10 @@ export async function screens(browser, url, label, opts) {
         if (!tags.some((t) => /commanded/.test(t))) throw new Error(`tracker: ${tags}`);
         await shot(page, `companions-turn-hand-${tag}`);
         await closeMenu(page);
-        await panelTab(page, 'move'); await page.click(rowOf('move', 'Dodge'));
+        await panelTab(page, 'defend');
+        await page.click(rowOf('defend', 'Dodge'), { timeout: 8000 }).catch(async (err) => { throw new Error(`no Dodge row: ${err.message.split('\n')[0]}; the page says: ${await page.evaluate(() => document.querySelector('#ap-body')?.innerText.replace(/\s+/g, ' ').slice(0, 400))}`); });
         await wait(page, (z) => window.hextable.state.entities[z].cond?.dodging || true, zed);
+        await closeMenu(page);
         await page.click('#btn-end');
         await wait(page, (z) => window.hextable.state.encounter.order[window.hextable.state.encounter.turn].id !== z, zed);
       });
@@ -515,7 +526,7 @@ export async function screensTable(browser, url) {
         });
         await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ven'));
         ven = await phone.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Ven').id);
-        await phone.locator('#party button:has-text("Play as Ven")').click();
+        await chipPick(phone, 'Play as Ven', 'click');
         await wait(host, (v) => !!window.hextable.state.entities[v].owner, ven);
         await calm(phone);
       });
@@ -555,6 +566,7 @@ export async function screensTable(browser, url) {
         await host.evaluate((id) => window.hextable.act({ type: 'harm', actor: id, amount: 999 }), bandit);
         await wait(phone, (b) => window.hextable.state.entities[b]?.dead, bandit);
         await calm(phone);
+        await panelTab(phone, 'spells');                       // casting folds the menu: open the Cast group again
         await phone.click(rowOf('spells', 'Animate Dead'));
         await phone.waitForSelector('#cc-chooser:not([hidden])');
         const pos = await phone.evaluate((b) => window.hextable.state.entities[b].pos, bandit);
@@ -565,11 +577,11 @@ export async function screensTable(browser, url) {
       });
       await run.do('the player commands the zombie, and the DM is shown the order as text', async () => {
         await phone.evaluate((v) => window.hextable.select(v), ven);
-        await panelTab(phone, 'features');
-        await phone.click(rowOf('features', 'Command…'));
-        await phone.tap('#ap-features [data-cc-order]');
+        await panelTab(phone, 'companions');
+        await phone.click(rowOf('companions', 'Command…'));
+        await phone.tap('#ap-companions [data-cc-order]');
         await phone.keyboard.type('guard <i>it</i>');
-        await phone.tap('#ap-features [data-cc-send="command"]');
+        await phone.tap('#ap-companions [data-cc-send="command"]');
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.bond?.commanded?.order === 'guard <i>it</i>'));
         await calm(host);
         await openTab(host, 'log');
@@ -586,13 +598,13 @@ export async function screensTable(browser, url) {
         const horse = await host.evaluate((v) => { const id = Object.values(window.hextable.state.entities).find((e) => e.tpl === 'warhorse').id; window.hextable.act({ type: 'bond', actor: id, to: v, kind: 'steed' }); return id; }, ven);
         await wait(phone, (hh) => window.hextable.state.entities[hh]?.bond, horse);
         await calm(phone);
-        await panelTab(phone, 'features');
-        await phone.click(rowOf('features', 'Mount…'));
-        await phone.tap('#ap-features [data-cc-mount]:has-text("Warhorse")');
+        await panelTab(phone, 'companions');
+        await phone.click(rowOf('companions', 'Mount…'));
+        await phone.tap('#ap-companions [data-cc-mount]:has-text("Warhorse")');
         await wait(host, (v) => window.hextable.state.entities[v].riding, ven);
         await calm(phone);
         await shot(phone, 'companions-table-mounted-phone');
-        await phone.click(rowOf('features', 'Dismount'));
+        await phone.click(rowOf('companions', 'Dismount'));
         await wait(host, (v) => !window.hextable.state.entities[v].riding, ven);
       });
     } finally { await hostCtx.close(); await phoneCtx.close(); }
@@ -631,8 +643,21 @@ async function drawn(browser, url, label, opts, grid) {
         await wait(page, () => window.hextable.state.entities.fighter);
         await page.evaluate(() => { document.getElementById('dm-auto') && (document.getElementById('dm-auto').checked = false); window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }); });
         rider = 'fighter';
-        const at = (await spots(rider, LARGE, 1, null, 1, 1))[0];
-        if (!at) throw new Error('no spot where a Large creature fits near the fighter');
+        // The foes may have walked up before autoEngage went off (they do, on a slow machine), and a hero or a wolf may stand where the horse would: take the
+        // nearest spot where the horse can be spawned, bonded and then mounted by the fighter, which is the engine's own answer to "within 5 ft".
+        const at = await page.evaluate(async () => {
+          const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+          const S = window.hextable.state, G = gridOf(S.map), c = S.entities.fighter, dm = { role: 'dm', userId: 'dm' };
+          for (const h of G.range(c.pos, 3).sort((x, y) => G.dist(c.pos, x) - G.dist(c.pos, y))) {
+            if (G.dist(c.pos, h) < 1) continue;
+            const t = structuredClone(S);
+            if (!apply(t, { type: 'spawn', monster: 'warhorse', at: h }, dm).ok) continue;
+            const id = Object.values(t.entities).find((e) => e.tpl === 'warhorse')?.id;
+            if (apply(t, { type: 'bond', actor: id, to: 'fighter', kind: 'steed', turn: 'after' }, dm).ok && apply(t, { type: 'mount', actor: 'fighter', mount: id }, dm).ok) return h;
+          }
+          return null;
+        });
+        if (!at) throw new Error(`no spot where a Large creature fits near the fighter: ${await page.evaluate(() => JSON.stringify(Object.values(window.hextable.state.entities).map((e) => [e.id, e.pos.q, e.pos.r])))}`);
         horse = await page.evaluate((a) => {
           const h = window.hextable; h.act({ type: 'spawn', monster: 'warhorse', at: a });
           const id = Object.values(h.state.entities).find((e) => e.tpl === 'warhorse')?.id;

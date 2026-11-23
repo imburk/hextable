@@ -47,6 +47,14 @@ const FIXTURES = [
     onSuccess: [{ modifier: { on: 'attack.roll', op: 'disadvantage' }, ends: { on: 'turnEnd', of: 'source' } }] }],
     higher: { slot: { targets: 1 } } }),
   base('quick-curse', 'Quick Curse', { target: { creature: {} }, effects: [{ condition: 'poisoned' }, { modifier: { on: 'ac', op: 'add', value: -2 } }, { condition: 'deafened', ends: { on: 'damaged' } }] }),
+  // Mage Armor's, Spare the Dying's and Light's words: a base Armor Class, an ending on donning armour, a range that grows, a stabilising and a light.
+  base('quiet-ward', 'Quiet Ward', { range: 'touch', duration: '8 hours', target: { creature: { count: 1 } }, tier: 'assist',
+    effects: [{ modifier: { on: 'ac', op: 'baseAc', value: { base: 13, ability: 'dex' } }, ends: { on: 'armour' } }] }),
+  base('mercy-touch', 'Mercy Touch', { level: 0, range: 15, target: { creature: { count: 1 } }, effects: [{ stabilize: true }], higher: { range: { 5: 30, 11: 60, 17: 120 } } }),
+  base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
+  // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
+  base('honed-edge', 'Honed Edge', { level: 2, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',
+    effects: [{ imbue: { weapons: ['club', 'quarterstaff'], melee: true, nonmagical: true, abil: 'spell', die: { byLevel: { 1: '1d8', 5: '1d10' } }, plus: { bySlot: { 2: 1, 3: 2 } }, attackAdd: { mod: 'cha', min: 1 }, types: ['force'] } }] }),
   base('dull-curse', 'Dull Curse', { target: { creature: {} }, effects: [{ modifier: { on: 'ac', op: 'add', value: -1 } }, { condition: 'deafened' }] }),
   base('stinging-mark', 'Stinging Mark', { target: { creature: {} },
     effects: [{ condition: 'grappled', ends: { on: 'turnEnd' } }, { condition: 'stunned' }, { modifier: { on: 'speed', op: 'set', value: 0 } }] }),
@@ -82,7 +90,7 @@ const FIXTURES = [
       { modifier: { on: 'carry', op: 'set', value: 2 } }, { modifier: { on: 'speed.fly', op: 'set', value: 30 } },
       { modifier: { on: 'd20', op: 'add', value: '1d6', onFail: true, cost: 'bardic-inspiration' } },
       { modifier: { on: 'opportunity', op: 'autoFail' } },
-      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend'] } },
+      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend', 'target.fiendOrUndead'] } },
     ] }),
   base('hunters-sting', 'Hunter\'s Sting', { level: 1, school: 'divination', duration: '1 hour', concentration: true, time: 'bonus', range: 90, target: { creature: {} },
     effects: [{ modifier: { on: 'damage.dealt', op: 'add', value: '1d6', types: ['chosen'], against: 'target' }, to: 'caster' }, { reveal: 'target' }],
@@ -247,7 +255,7 @@ function numbersIn(v, path, out) {
   else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) {
     if (NOT_NUMBERS.includes(k)) continue;
     const at = path ? `${path}.${k}` : k;
-    if (/^higher\.(level|targets)$/.test(path)) out.push(`${at}:key=${+k}`);
+    if (/^higher\.(level|targets|range)$/.test(path)) out.push(`${at}:key=${+k}`);
     numbersIn(x, at, out);
   }
   return out;

@@ -28,6 +28,7 @@ const REGISTRY = {
   armed: ['armed'],
   aimrange: ['aimrange'],
   upcast: ['upcast'],
+  imbue: ['imbue'],
   dice: ['dice'],
   reactions: ['reactions'],
   scenes: ['scenes'],
@@ -69,6 +70,10 @@ const REGISTRY = {
   newversion: ['newversion'],
   strikefirst: ['strikefirst'],
   undobar: ['undobar'],
+  todo: ['todo'],
+  spawnfind: ['spawnfind'],
+  levelup: ['levelup'],
+  followfight: ['followfight'],
 };
 
 const only = process.env.SMOKE_ONLY;

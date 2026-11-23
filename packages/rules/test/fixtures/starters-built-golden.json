@@ -1,0 +1,1202 @@
+[
+ {
+  "built": [
+   true,
+   true,
+   true,
+   true
+  ],
+  "vpat": "ed8b3eb81f54fcf3",
+  "vsam": "ed8b3eb81f54fcf3"
+ },
+ {
+  "type": "startEncounter",
+  "actor": null,
+  "ok": true,
+  "error": null,
+  "pat": "5534be3463e97ccf",
+  "sam": "5534be3463e97ccf",
+  "vpat": "8896d839ce98c1d7",
+  "vsam": "8896d839ce98c1d7"
+ },
+ {
+  "type": "move",
+  "actor": "m5",
+  "ok": true,
+  "error": null,
+  "pat": "972ecf1c193699f4",
+  "sam": "972ecf1c193699f4",
+  "vpat": "6187e928ed803611",
+  "vsam": "6187e928ed803611"
+ },
+ {
+  "type": "act",
+  "actor": "m5",
+  "ok": true,
+  "error": null,
+  "pat": "55bb8b7873b80590",
+  "sam": "55bb8b7873b80590",
+  "vpat": "9a4f5c307b607ebb",
+  "vsam": "9a4f5c307b607ebb"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m5",
+  "ok": true,
+  "error": null,
+  "pat": "f0131ea55b4561dc",
+  "sam": "f0131ea55b4561dc",
+  "vpat": "953d5d226e3fb273",
+  "vsam": "953d5d226e3fb273"
+ },
+ {
+  "type": "move",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "07f30c47d70cad63",
+  "sam": "07f30c47d70cad63",
+  "vpat": "040f389e0a8db93e",
+  "vsam": "040f389e0a8db93e"
+ },
+ {
+  "type": "attack",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "73671ea5eed7ea86",
+  "sam": "73671ea5eed7ea86",
+  "vpat": "86faa47188761882",
+  "vsam": "86faa47188761882"
+ },
+ {
+  "type": "endTurn",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "2b219e1122f3481a",
+  "sam": "2b219e1122f3481a",
+  "vpat": "d10154494a2b2dbf",
+  "vsam": "d10154494a2b2dbf"
+ },
+ {
+  "type": "move",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "b4cb5279eaeb7c4c",
+  "sam": "b4cb5279eaeb7c4c",
+  "vpat": "758e600d7b0123ce",
+  "vsam": "758e600d7b0123ce"
+ },
+ {
+  "type": "act",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "4c4df78cf087c537",
+  "sam": "4c4df78cf087c537",
+  "vpat": "a41b76aa51ed9d37",
+  "vsam": "a41b76aa51ed9d37"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "c123b56380f50c50",
+  "sam": "c123b56380f50c50",
+  "vpat": "7d989d4a17e8ffdf",
+  "vsam": "7d989d4a17e8ffdf"
+ },
+ {
+  "type": "cast",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "f32fb9448f806b47",
+  "sam": "f32fb9448f806b47",
+  "vpat": "82f90c65df688896",
+  "vsam": "82f90c65df688896"
+ },
+ {
+  "type": "endTurn",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "67450b17e74fff23",
+  "sam": "67450b17e74fff23",
+  "vpat": "372e3c8d22398f18",
+  "vsam": "372e3c8d22398f18"
+ },
+ {
+  "type": "move",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "8e1673d10a8fe9f8",
+  "sam": "8e1673d10a8fe9f8",
+  "vpat": "cee4b1df689dca20",
+  "vsam": "cee4b1df689dca20"
+ },
+ {
+  "type": "attack",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "99c2fbbb3ccda3e9",
+  "sam": "99c2fbbb3ccda3e9",
+  "vpat": "147f42e1e8f6149c",
+  "vsam": "147f42e1e8f6149c"
+ },
+ {
+  "type": "endTurn",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "4e619914506116d2",
+  "sam": "4e619914506116d2",
+  "vpat": "b4baf43d8f2bea73",
+  "vsam": "b4baf43d8f2bea73"
+ },
+ {
+  "type": "move",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "c94b5c1ed1cc6447",
+  "sam": "c94b5c1ed1cc6447",
+  "vpat": "110e69f98f567b08",
+  "vsam": "110e69f98f567b08"
+ },
+ {
+  "type": "act",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "a6aee81d542c3bb6",
+  "sam": "a6aee81d542c3bb6",
+  "vpat": "61df0b9866c84939",
+  "vsam": "61df0b9866c84939"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "d0116ded4e76895c",
+  "sam": "d0116ded4e76895c",
+  "vpat": "0d51f6897a35915a",
+  "vsam": "0d51f6897a35915a"
+ },
+ {
+  "type": "move",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "70115433f5e57102",
+  "sam": "70115433f5e57102",
+  "vpat": "bb9b7b2b18ee29da",
+  "vsam": "bb9b7b2b18ee29da"
+ },
+ {
+  "type": "act",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "dfc68df957da2e84",
+  "sam": "dfc68df957da2e84",
+  "vpat": "9115722fb16eff92",
+  "vsam": "9115722fb16eff92"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "6b9a047b7ca3c6ed",
+  "sam": "6b9a047b7ca3c6ed",
+  "vpat": "7851244a0cf97670",
+  "vsam": "7851244a0cf97670"
+ },
+ {
+  "type": "move",
+  "actor": "m6",
+  "ok": true,
+  "error": null,
+  "pat": "874d954828d7ad1d",
+  "sam": "874d954828d7ad1d",
+  "vpat": "595471630e5a46df",
+  "vsam": "595471630e5a46df"
+ },
+ {
+  "type": "act",
+  "actor": "m6",
+  "ok": true,
+  "error": null,
+  "pat": "f18fe7c53422c71a",
+  "sam": "f18fe7c53422c71a",
+  "vpat": "2ea6a337407ee95f",
+  "vsam": "2ea6a337407ee95f"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m6",
+  "ok": true,
+  "error": null,
+  "pat": "b6dcdaf543a60193",
+  "sam": "b6dcdaf543a60193",
+  "vpat": "6b2280a54c99edd0",
+  "vsam": "6b2280a54c99edd0"
+ },
+ {
+  "type": "cast",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "b1bbc00a16a20a35",
+  "sam": "b1bbc00a16a20a35",
+  "vpat": "f5743096ba365b39",
+  "vsam": "f5743096ba365b39"
+ },
+ {
+  "type": "endTurn",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "637a9a4f80cc6cce",
+  "sam": "637a9a4f80cc6cce",
+  "vpat": "61db951389339771",
+  "vsam": "61db951389339771"
+ },
+ {
+  "type": "move",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "d7805e87f5a44d26",
+  "sam": "d7805e87f5a44d26",
+  "vpat": "07459efeed5fdcf7",
+  "vsam": "07459efeed5fdcf7"
+ },
+ {
+  "type": "act",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "13707b28c7344d9f",
+  "sam": "13707b28c7344d9f",
+  "vpat": "ba6335ec74d17aa7",
+  "vsam": "ba6335ec74d17aa7"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "359ef8e76f54b7a9",
+  "sam": "359ef8e76f54b7a9",
+  "vpat": "52c9a8780dfc3843",
+  "vsam": "52c9a8780dfc3843"
+ },
+ {
+  "type": "move",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "6b7ea464f0af04a9",
+  "sam": "6b7ea464f0af04a9",
+  "vpat": "8087e7540eb62a90",
+  "vsam": "8087e7540eb62a90"
+ },
+ {
+  "type": "attack",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "56c16b94897e9cf6",
+  "sam": "56c16b94897e9cf6",
+  "vpat": "5defafb987f0d057",
+  "vsam": "5defafb987f0d057"
+ },
+ {
+  "type": "endTurn",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "a0df55291517140d",
+  "sam": "a0df55291517140d",
+  "vpat": "127ef7fdf1b36b7e",
+  "vsam": "127ef7fdf1b36b7e"
+ },
+ {
+  "type": "act",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "69993dfa421cca77",
+  "sam": "69993dfa421cca77",
+  "vpat": "c6e4cb23e6af965f",
+  "vsam": "c6e4cb23e6af965f"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "23c812051f755621",
+  "sam": "23c812051f755621",
+  "vpat": "3a7ad30826ee817d",
+  "vsam": "3a7ad30826ee817d"
+ },
+ {
+  "type": "cast",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "e9bdcd0d156e6960",
+  "sam": "e9bdcd0d156e6960",
+  "vpat": "076703aa5487ad7c",
+  "vsam": "076703aa5487ad7c"
+ },
+ {
+  "type": "endTurn",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "e4ef235ee1947738",
+  "sam": "e4ef235ee1947738",
+  "vpat": "27c963698de4dc0f",
+  "vsam": "27c963698de4dc0f"
+ },
+ {
+  "type": "move",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "d3c63bf74af33789",
+  "sam": "d3c63bf74af33789",
+  "vpat": "0811b2999d29f13e",
+  "vsam": "0811b2999d29f13e"
+ },
+ {
+  "type": "act",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "51d89ed5b4334733",
+  "sam": "51d89ed5b4334733",
+  "vpat": "7090685eef8a9c31",
+  "vsam": "7090685eef8a9c31"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "02e755decdd032ca",
+  "sam": "02e755decdd032ca",
+  "vpat": "f187adf52aacfb01",
+  "vsam": "f187adf52aacfb01"
+ },
+ {
+  "type": "move",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "2dd45ed1438c080c",
+  "sam": "2dd45ed1438c080c",
+  "vpat": "fff4d310430b0a0c",
+  "vsam": "fff4d310430b0a0c"
+ },
+ {
+  "type": "act",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "b9a10c79b2ecd5c9",
+  "sam": "b9a10c79b2ecd5c9",
+  "vpat": "7d6fbcfc52eb9072",
+  "vsam": "7d6fbcfc52eb9072"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "f3f42d5425dbd63c",
+  "sam": "f3f42d5425dbd63c",
+  "vpat": "d006c0ada698248d",
+  "vsam": "d006c0ada698248d"
+ },
+ {
+  "type": "cast",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "f72b59d903271146",
+  "sam": "f72b59d903271146",
+  "vpat": "107e8186d0276741",
+  "vsam": "107e8186d0276741"
+ },
+ {
+  "type": "endTurn",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "8c1ecad4103b364d",
+  "sam": "8c1ecad4103b364d",
+  "vpat": "c7a450cf42f98c5c",
+  "vsam": "c7a450cf42f98c5c"
+ },
+ {
+  "type": "move",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "ba3d896b7f7324f6",
+  "sam": "ba3d896b7f7324f6",
+  "vpat": "f24d3050d33bc848",
+  "vsam": "f24d3050d33bc848"
+ },
+ {
+  "type": "act",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "0ee0350fd0379a7f",
+  "sam": "0ee0350fd0379a7f",
+  "vpat": "ad3701d85589b8ea",
+  "vsam": "ad3701d85589b8ea"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "ba9b68d59cfae96b",
+  "sam": "ba9b68d59cfae96b",
+  "vpat": "3de3e76c63feaa6c",
+  "vsam": "3de3e76c63feaa6c"
+ },
+ {
+  "type": "attack",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "193889314985fb5b",
+  "sam": "193889314985fb5b",
+  "vpat": "419fc0b7d456252f",
+  "vsam": "419fc0b7d456252f"
+ },
+ {
+  "type": "endTurn",
+  "actor": "rogue",
+  "ok": true,
+  "error": null,
+  "pat": "c2ebb945e4f3a649",
+  "sam": "c2ebb945e4f3a649",
+  "vpat": "265462f0285b59de",
+  "vsam": "265462f0285b59de"
+ },
+ {
+  "type": "move",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "025476eb8169c85e",
+  "sam": "025476eb8169c85e",
+  "vpat": "075085cf05ea57e4",
+  "vsam": "075085cf05ea57e4"
+ },
+ {
+  "type": "act",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "05444a195a3d95a7",
+  "sam": "05444a195a3d95a7",
+  "vpat": "aad037e8cdbf8f47",
+  "vsam": "aad037e8cdbf8f47"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "e257af7843e3712f",
+  "sam": "e257af7843e3712f",
+  "vpat": "f85ff02d44c957e1",
+  "vsam": "f85ff02d44c957e1"
+ },
+ {
+  "type": "cast",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "d4f4afc86b2852d5",
+  "sam": "d4f4afc86b2852d5",
+  "vpat": "47e4e8351eeae0a9",
+  "vsam": "47e4e8351eeae0a9"
+ },
+ {
+  "type": "endTurn",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "6cddbd67f5944dd4",
+  "sam": "6cddbd67f5944dd4",
+  "vpat": "3eb492390b220894",
+  "vsam": "3eb492390b220894"
+ },
+ {
+  "type": "move",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "8533206f87fdeac1",
+  "sam": "8533206f87fdeac1",
+  "vpat": "0796115946c52fdd",
+  "vsam": "0796115946c52fdd"
+ },
+ {
+  "type": "attack",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "d92f809e82b10db5",
+  "sam": "d92f809e82b10db5",
+  "vpat": "d2cb4ec2f1cbc4d9",
+  "vsam": "d2cb4ec2f1cbc4d9"
+ },
+ {
+  "type": "endTurn",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "45fbcd7eee7980ea",
+  "sam": "45fbcd7eee7980ea",
+  "vpat": "9291dc79644e6eef",
+  "vsam": "9291dc79644e6eef"
+ },
+ {
+  "type": "act",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "a6aee81d542c3bb6",
+  "sam": "a6aee81d542c3bb6",
+  "vpat": "0b2997d4d106d046",
+  "vsam": "0b2997d4d106d046"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "39b4d961fc4acec7",
+  "sam": "39b4d961fc4acec7",
+  "vpat": "f9766f152f50345b",
+  "vsam": "f9766f152f50345b"
+ },
+ {
+  "type": "act",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "40381bbd1664f399",
+  "sam": "40381bbd1664f399",
+  "vpat": "8bec4cecefbff37b",
+  "vsam": "8bec4cecefbff37b"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "ff3c9c72dd9fd600",
+  "sam": "ff3c9c72dd9fd600",
+  "vpat": "6654d4e198a02e64",
+  "vsam": "6654d4e198a02e64"
+ },
+ {
+  "type": "move",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "6882b91df85f0511",
+  "sam": "6882b91df85f0511",
+  "vpat": "c5d7f2a9cdfbb8e8",
+  "vsam": "c5d7f2a9cdfbb8e8"
+ },
+ {
+  "type": "attack",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "8726c2f376abcbe5",
+  "sam": "8726c2f376abcbe5",
+  "vpat": "407d0ba7c351dee4",
+  "vsam": "407d0ba7c351dee4"
+ },
+ {
+  "type": "endTurn",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "a27ca586a58149b6",
+  "sam": "a27ca586a58149b6",
+  "vpat": "be8bead0874d5020",
+  "vsam": "be8bead0874d5020"
+ },
+ {
+  "type": "act",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "4fa1b7bd7038f8b1",
+  "sam": "4fa1b7bd7038f8b1",
+  "vpat": "8f59378e0f223b33",
+  "vsam": "8f59378e0f223b33"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m1",
+  "ok": true,
+  "error": null,
+  "pat": "7294a660bbf393dd",
+  "sam": "7294a660bbf393dd",
+  "vpat": "d1f0c5756f1430f6",
+  "vsam": "d1f0c5756f1430f6"
+ },
+ {
+  "type": "move",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "8eae1d0aba552989",
+  "sam": "8eae1d0aba552989",
+  "vpat": "e4155b327673bdeb",
+  "vsam": "e4155b327673bdeb"
+ },
+ {
+  "type": "act",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "f7db569f6faedf89",
+  "sam": "f7db569f6faedf89",
+  "vpat": "94ebe930fc994c5e",
+  "vsam": "94ebe930fc994c5e"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "ec7c1716efd14391",
+  "sam": "ec7c1716efd14391",
+  "vpat": "3c472adca84c0720",
+  "vsam": "3c472adca84c0720"
+ },
+ {
+  "type": "cast",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "15cec1e87e1b186c",
+  "sam": "15cec1e87e1b186c",
+  "vpat": "f15d4328ef1857b6",
+  "vsam": "f15d4328ef1857b6"
+ },
+ {
+  "type": "endTurn",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "85dbc731f90f6700",
+  "sam": "85dbc731f90f6700",
+  "vpat": "2b590761e6f50170",
+  "vsam": "2b590761e6f50170"
+ },
+ {
+  "type": "attack",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "e8e2d165f45fe70f",
+  "sam": "e8e2d165f45fe70f",
+  "vpat": "cf933514031a8ec6",
+  "vsam": "cf933514031a8ec6"
+ },
+ {
+  "type": "endTurn",
+  "actor": "fighter",
+  "ok": true,
+  "error": null,
+  "pat": "e3396d11378f2989",
+  "sam": "e3396d11378f2989",
+  "vpat": "8d04b13e837c9f61",
+  "vsam": "8d04b13e837c9f61"
+ },
+ {
+  "type": "act",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "51af788621743b44",
+  "sam": "51af788621743b44",
+  "vpat": "afb6f8110e33e312",
+  "vsam": "afb6f8110e33e312"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "7cc4bb0247849efc",
+  "sam": "7cc4bb0247849efc",
+  "vpat": "a1037788def119b0",
+  "vsam": "a1037788def119b0"
+ },
+ {
+  "type": "act",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "e1643dfbf7c4467d",
+  "sam": "e1643dfbf7c4467d",
+  "vpat": "87228ef66c64036d",
+  "vsam": "87228ef66c64036d"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "9cfd7875913df4cb",
+  "sam": "9cfd7875913df4cb",
+  "vpat": "fc66c697f804d677",
+  "vsam": "fc66c697f804d677"
+ },
+ {
+  "type": "attack",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "641b407c179e4b4d",
+  "sam": "641b407c179e4b4d",
+  "vpat": "b8838431ca2eb93a",
+  "vsam": "b8838431ca2eb93a"
+ },
+ {
+  "type": "endTurn",
+  "actor": "cleric",
+  "ok": true,
+  "error": null,
+  "pat": "51690c14431331b1",
+  "sam": "51690c14431331b1",
+  "vpat": "8f2dd0e82786eaef",
+  "vsam": "8f2dd0e82786eaef"
+ },
+ {
+  "type": "move",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "0f14fe431b021bae",
+  "sam": "0f14fe431b021bae",
+  "vpat": "4a6aabba08e377c7",
+  "vsam": "4a6aabba08e377c7"
+ },
+ {
+  "type": "act",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "8aec7232fcfeb565",
+  "sam": "8aec7232fcfeb565",
+  "vpat": "6ecfdeed2165212d",
+  "vsam": "6ecfdeed2165212d"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "94ff41f687d92105",
+  "sam": "94ff41f687d92105",
+  "vpat": "68c473478723b0fe",
+  "vsam": "68c473478723b0fe"
+ },
+ {
+  "type": "cast",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "2c24a4591bc2d1dc",
+  "sam": "2c24a4591bc2d1dc",
+  "vpat": "452f0eab4238d81f",
+  "vsam": "452f0eab4238d81f"
+ },
+ {
+  "type": "endTurn",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "4a74001bb7477acb",
+  "sam": "4a74001bb7477acb",
+  "vpat": "112f87ad72e4f372",
+  "vsam": "112f87ad72e4f372"
+ },
+ {
+  "type": "move",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "007cc53eeb3f9969",
+  "sam": "007cc53eeb3f9969",
+  "vpat": "e6e16d8d5b94dc43",
+  "vsam": "e6e16d8d5b94dc43"
+ },
+ {
+  "type": "act",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "213fb8d8e8fd27d6",
+  "sam": "213fb8d8e8fd27d6",
+  "vpat": "7747522f0d98895e",
+  "vsam": "7747522f0d98895e"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "35f6a8d847322269",
+  "sam": "35f6a8d847322269",
+  "vpat": "411c60e6faae791b",
+  "vsam": "411c60e6faae791b"
+ },
+ {
+  "type": "move",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "d4e5a25a2a4941dc",
+  "sam": "d4e5a25a2a4941dc",
+  "vpat": "58a2b17476ba9cc4",
+  "vsam": "58a2b17476ba9cc4"
+ },
+ {
+  "type": "act",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "007cecfd42f53ea3",
+  "sam": "007cecfd42f53ea3",
+  "vpat": "37c5bb2833bf0e53",
+  "vsam": "37c5bb2833bf0e53"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "e36e944d764d526c",
+  "sam": "e36e944d764d526c",
+  "vpat": "21ccef964dfb02c9",
+  "vsam": "21ccef964dfb02c9"
+ },
+ {
+  "type": "move",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "7cb06d607f600d36",
+  "sam": "7cb06d607f600d36",
+  "vpat": "f18e81e595d5d976",
+  "vsam": "f18e81e595d5d976"
+ },
+ {
+  "type": "act",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "50e07b6733abb81c",
+  "sam": "50e07b6733abb81c",
+  "vpat": "97944bde27d3b3ff",
+  "vsam": "97944bde27d3b3ff"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "6854ce9145026d85",
+  "sam": "6854ce9145026d85",
+  "vpat": "0364c14e37d1114c",
+  "vsam": "0364c14e37d1114c"
+ },
+ {
+  "type": "attack",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "a75132026013ccc4",
+  "sam": "a75132026013ccc4",
+  "vpat": "c18828b9ab84ca59",
+  "vsam": "c18828b9ab84ca59"
+ },
+ {
+  "type": "endTurn",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "09bc084e82557466",
+  "sam": "09bc084e82557466",
+  "vpat": "7e4263f88d13d202",
+  "vsam": "7e4263f88d13d202"
+ },
+ {
+  "type": "move",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "a33b3056aed576f4",
+  "sam": "a33b3056aed576f4",
+  "vpat": "05c356be7ed247e2",
+  "vsam": "05c356be7ed247e2"
+ },
+ {
+  "type": "act",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "fc8b11b339c395e1",
+  "sam": "fc8b11b339c395e1",
+  "vpat": "ba188add3f604d1c",
+  "vsam": "ba188add3f604d1c"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "8f7ef15a47d03ce6",
+  "sam": "8f7ef15a47d03ce6",
+  "vpat": "6debe22df688a027",
+  "vsam": "6debe22df688a027"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "37f8832a4095ae44",
+  "sam": "37f8832a4095ae44",
+  "vpat": "c8908dbfd3f7b245",
+  "vsam": "c8908dbfd3f7b245"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "2f382888d6c6c797",
+  "sam": "2f382888d6c6c797",
+  "vpat": "f3956ab0c52c022d",
+  "vsam": "f3956ab0c52c022d"
+ },
+ {
+  "type": "attack",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "ff2971fe793cb659",
+  "sam": "ff2971fe793cb659",
+  "vpat": "c08dd2bbf2b9f5d0",
+  "vsam": "c08dd2bbf2b9f5d0"
+ },
+ {
+  "type": "endTurn",
+  "actor": "wizard",
+  "ok": true,
+  "error": null,
+  "pat": "d11348d14cb2f47d",
+  "sam": "d11348d14cb2f47d",
+  "vpat": "a3c580eb83aa3c7e",
+  "vsam": "a3c580eb83aa3c7e"
+ },
+ {
+  "type": "act",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "c786a4446dd7a6c3",
+  "sam": "c786a4446dd7a6c3",
+  "vpat": "1ba2e21e1fa1fe7c",
+  "vsam": "1ba2e21e1fa1fe7c"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "1912caab3aa0b4b9",
+  "sam": "1912caab3aa0b4b9",
+  "vpat": "505b98c7a6aa6167",
+  "vsam": "505b98c7a6aa6167"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "acb77325c54a0bb3",
+  "sam": "acb77325c54a0bb3",
+  "vpat": "59b72edcf86a73b6",
+  "vsam": "59b72edcf86a73b6"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "7d1f1c69516a5b12",
+  "sam": "7d1f1c69516a5b12",
+  "vpat": "acbe5866fa726675",
+  "vsam": "acbe5866fa726675"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "12cbee3e9d3c14bd",
+  "sam": "12cbee3e9d3c14bd",
+  "vpat": "dbd022c4329da19f",
+  "vsam": "dbd022c4329da19f"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "8fbd261f97c98b88",
+  "sam": "8fbd261f97c98b88",
+  "vpat": "eaf5269fe275dc5a",
+  "vsam": "eaf5269fe275dc5a"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "2f450fd5130af423",
+  "sam": "2f450fd5130af423",
+  "vpat": "128fbc5efba6d0e6",
+  "vsam": "128fbc5efba6d0e6"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "2717d2a4b1173ee0",
+  "sam": "2717d2a4b1173ee0",
+  "vpat": "12a02da25581c8cc",
+  "vsam": "12a02da25581c8cc"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "fcb3b0fca2708ce6",
+  "sam": "fcb3b0fca2708ce6",
+  "vpat": "d203b8d36ab72164",
+  "vsam": "d203b8d36ab72164"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "cc17861b5dea53c6",
+  "sam": "cc17861b5dea53c6",
+  "vpat": "c57b86574a8388c0",
+  "vsam": "c57b86574a8388c0"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "8865c9c07291603e",
+  "sam": "8865c9c07291603e",
+  "vpat": "fb93c6ce74aab0b2",
+  "vsam": "fb93c6ce74aab0b2"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "f1abf8bad3931449",
+  "sam": "f1abf8bad3931449",
+  "vpat": "f29305d61199c45a",
+  "vsam": "f29305d61199c45a"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "04f7e7d0311fd08a",
+  "sam": "04f7e7d0311fd08a",
+  "vpat": "2400ec4d36d01212",
+  "vsam": "2400ec4d36d01212"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m2",
+  "ok": true,
+  "error": null,
+  "pat": "87d6588d192f65c2",
+  "sam": "87d6588d192f65c2",
+  "vpat": "8c917b56d23df0c2",
+  "vsam": "8c917b56d23df0c2"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m4",
+  "ok": true,
+  "error": null,
+  "pat": "27142f9b85ff3d9a",
+  "sam": "27142f9b85ff3d9a",
+  "vpat": "0be20af03c185a61",
+  "vsam": "0be20af03c185a61"
+ },
+ {
+  "type": "endTurn",
+  "actor": "m3",
+  "ok": true,
+  "error": null,
+  "pat": "6e2816b46923caa2",
+  "sam": "6e2816b46923caa2",
+  "vpat": "b7ca5630867d7e40",
+  "vsam": "b7ca5630867d7e40"
+ },
+ {
+  "ended": true,
+  "conclusion": false,
+  "xp": [
+   0,
+   0,
+   0,
+   0
+  ]
+ }
+]

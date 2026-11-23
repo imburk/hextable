@@ -13,7 +13,8 @@ import { CONTENT } from "../../rules/src/content/index.js";
 import { riverPack } from "../../rules/test/fixtures/world-pack.js";
 import { createAssets } from "../src/assets.js";
 import { worldAssets } from "../src/tables.js";
-import { current } from "../../rules/src/engine.js";
+import { current, makeEntity } from "../../rules/src/engine.js";
+import { derive } from "../../rules/src/derive.js";
 import { twin } from "./twin.js";
 
 const dirs = [];
@@ -288,4 +289,175 @@ test("homebrew monsters: one the DM hid outside the arena, through a fight, is i
   }, { hide: (w) => w.must({ type: "spawn", monster: WRAITH, at: { q: 8, r: -6 }, name: "Shape in the reeds", hidden: true }), plain: burn });
   assert.ok(JSON.stringify(hidden.raw.dm).includes("Shape in the reeds"), "the DM has the creature");
   assert.ok(![HB_NAME, HB_TEXT, HB_NOTE, HB_ATTACK, WRAITH, "Shape in the reeds"].some((x) => everything(hidden).includes(x)));
+});
+
+// ---- imbue: what a refused Magic Weapon on a foe says of the foe's weapons (O4, #666) ----
+test("imbue: a player's Magic Weapon refused on a foe is told the same whether the foe's club is magic or it has no weapon", () => {
+  const club = { id: "club", name: "Club", weapon: "club", bonus: 4, damage: "1d4+2", dtype: "bludgeoning", type: "melee", die: "1d4", plus: 1, magic: true };
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", spells: [...(s.entities.fighter.spells ?? []), "magic-weapon"], slots: { 2: 2 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Foe" });
+      byName(w, "Foe").attacks = [];
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "fighter", spell: "magic-weapon", target: byName(w, "Foe").id, weapon: "club" }) },
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "fighter", spell: "magic-weapon", target: byName(w, "Foe").id }) },
+    ],
+  }, (w) => { byName(w, "Foe").attacks = [club]; });
+});
+
+// ---- Armor Class: an effect of a DM-hidden creature, on that creature (#674) ----
+// The view sends `acNow` and `acWhy` for the party's creatures from the effects that sit on them. A hidden creature's Barkskin on itself changes
+// nothing a player is sent; one on a party creature would be sent as any effect of a hidden source is (its name, never its source).
+test("armor class: a hidden creature's Barkskin on itself changes nothing the players are sent, `acNow` and `acWhy` included", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      w.state.entities.fighter.owner = w.ids.Pat;
+      w.putIn();
+    },
+    steps: [
+      { by: "Pat", act: { type: "check", actor: "fighter", skill: "athletics" } },
+      { by: "Pat", act: { type: "check", actor: "fighter", skill: "perception" } },
+    ],
+  }, {
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 8, r: -6 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost");
+      w.state.effects.push({ id: `fx${++w.state.seq}`, name: "Barkskin", spell: "barkskin", source: g.id, conc: false, lasts: "1 hour", until: { clock: w.state.clock + 60 }, parts: [{ target: g.id, modifier: { on: "ac", op: "min", value: 17 } }] });
+    },
+    plain: (w) => { burn(w); w.state.seq++; },
+  });
+});
+
+// ---- called saves (#676, docs/specs/prompts.md): the DM calls a secret save for a seen creature and a hidden one ----
+test("called save: a secret save naming a hidden creature is sent the same as one naming only the seen creature", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat" });
+    },
+    // The hidden creature's save is the last roll: it takes dice from the one seed, as any creature's roll does.
+    steps: [
+      { by: "dm", act: { type: "save", who: "fighter", ability: "dex", dc: 15, damage: { dice: "1d4", type: "fire" }, condition: "poisoned" } },
+      { by: "dm", act: (w) => ({ type: "save", who: ["fighter", ...(byName(w, "Ghost") ? [byName(w, "Ghost").id] : [])], ability: "con", dc: 15, secret: true }) },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w) });
+});
+
+test("called save: an open call with damage and a condition naming a hidden creature is sent the same as one naming only the seen creature", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat" });
+    },
+    steps: [
+      { by: "dm", act: (w) => ({ type: "save", who: ["fighter", ...(byName(w, "Ghost") ? [byName(w, "Ghost").id] : [])], ability: "dex", dc: 15, damage: { dice: "2d6", type: "fire", half: true }, condition: "prone" }) },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w) });
+});
+
+// ---- on-hit O1: a smite asked at the hit (docs/specs/on-hit.md, Decisions 6 and 11): the question, its answer, the cast and its damage ----
+test("on-hit: a player's Divine Smite, asked at the hit and answered, sends the same with and without a hidden creature beside the fight", () => {
+  const { plain } = twin({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      const sheet = { name: "Ka", class: "paladin", level: 5, subclass: "devotion", abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 }, skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"] };
+      s.entities.fighter = makeEntity(derive(sheet).record, { id: "fighter", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
+      Object.assign(s.entities.fighter, { hp: 500, maxHp: 500 });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500, ac: 1 });
+      w.putIn();
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 4 });
+      turnOf(w, "fighter");
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "hitChoices", actor: "fighter", set: { "divine-smite": "ask" } }) },
+      { by: "Pat", act: (w) => ({ type: "attack", actor: "fighter", attack: "longsword", target: byName(w, "Seen").id }) },
+      { by: "Sam", act: (w) => ({ type: "endTurn", actor: "rogue" }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "react", prompt: w.state.pending.n, take: "divine-smite", slot: 2 }) },
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -5, r: 2 }, name: "Lurker", hidden: true }); }, plain: burn });
+  const text = JSON.stringify(plain.raw.Pat);
+  assert.ok(text.includes("ownHit"), "Pat was asked");
+  assert.ok(text.includes("Divine Smite"), "and the smite was cast");
+  assert.ok(!JSON.stringify(plain.raw.Sam).includes("ownHit"), "Sam was not told what the question was");
+  assert.ok(!JSON.stringify(plain.raw.Sam).includes("divine-smite\":\"ask"), "nor the instruction");
+});
+
+// The same fight with the hidden creature in it: the TARGET of the smite (a goblin the party has not found, with a distinctive Armor Class), and the ATTACKER (a
+// hidden paladin on the party's side, which the DM plays, smiting a hidden goblin). A player is never told of either, nor of the foe's Armor Class.
+const SHEET = { name: "Ka", class: "paladin", level: 5, subclass: "devotion", abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 }, skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"] };
+function smiteField(w, between) {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+  s.entities.fighter = makeEntity(derive(SHEET).record, { id: "fighter", kind: "pc", side: "party", pos: { q: 4, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
+  Object.assign(s.entities.fighter, { hp: 500, maxHp: 500 });
+  w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Seen" });
+  Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500, ac: 1 });
+  w.putIn();
+  between?.();
+  w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 4 });
+  turnOf(w, "fighter");
+}
+// The hidden goblin gets an Armor Class no one else has, so a leak of it is a string to look for.
+const lurker = (w, at, hide = true) => { w.must({ type: "spawn", monster: "goblin-warrior", at, name: "Lurker", ...(hide ? { hidden: true } : {}) }); Object.assign(byName(w, "Lurker"), { hp: 500, maxHp: 500, ac: 23 }); w.lurkId = byName(w, "Lurker").id; };
+const noFoeAc = (plain, hid) => { for (const who of ["Pat", "Sam"]) for (const world of [plain, hid]) assert.ok(!JSON.stringify(world.raw[who]).includes('"ac":23'), `${who} was sent the hidden foe's Armor Class`); };
+test("on-hit: a Divine Smite aimed at a hidden target sends the other player nothing of it, nor the foe's Armor Class", () => {
+  const { plain, hidden } = twin({
+    players: ["Pat", "Sam"],
+    setup: (w) => smiteField(w),
+    steps: [
+      { by: "Pat", act: { type: "hitChoices", actor: "fighter", set: { "divine-smite": "ask" } } },
+      { by: "Pat", act: (w) => ({ type: "attack", actor: "fighter", attack: "longsword", target: w.lurkId }) },
+      { by: "Sam", act: { type: "hitChoices", actor: "fighter", set: { "divine-smite": "always" } }, allowError: true },
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    ],
+  }, { hide: (w) => lurker(w, { q: 5, r: 0 }), plain: (w) => { lurker(w, { q: 5, r: 0 }); delete w.state.entities[w.lurkId]; } });
+  assert.ok(JSON.stringify(hidden.raw.Pat).includes("No such creature"), "the attempt was answered the same as for a creature that is not there");
+  noFoeAc(plain, hidden);
+});
+// The engine keeps a hidden creature out of a fight (it is revealed when one starts around it, or when it is spawned into one), and an attack that names a smite
+// needs a turn in a fight, so a creature the players do not know of cannot smite anyone. The DM's try is refused, and the fight the party plays goes on, sent the
+// same as in a world without the pair, with no foe Armor Class in it.
+test("on-hit: a hidden foe paladin cannot smite a hidden goblin, and the fight beside them sends both players the same as a world without them", () => {
+  let refusal;
+  const { plain, hidden } = twin({
+    players: ["Pat", "Sam"],
+    setup: (w) => smiteField(w),
+    steps: [
+      (w) => { if (w.state.entities.shade) refusal = w.act("dm", { type: "attack", actor: "shade", attack: "longsword", target: w.lurkId, onHit: [{ spell: "divine-smite" }] }); },
+      { by: "Pat", act: { type: "hitChoices", actor: "fighter", set: { "divine-smite": "ask" } } },
+      { by: "Pat", act: (w) => ({ type: "attack", actor: "fighter", attack: "longsword", target: byName(w, "Seen").id }) },
+      { by: "Pat", act: (w) => ({ type: "react", prompt: w.state.pending.n, take: "divine-smite", slot: 1 }) },
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    ],
+  }, { hide: (w) => { lurker(w, { q: -6, r: 6 }); w.state.entities.shade = makeEntity(derive(SHEET).record, { id: "shade", kind: "monster", side: "foe", pos: { q: -5, r: 6, z: 0 }, hidden: true }); },
+    plain: (w) => { lurker(w, { q: -6, r: 6 }); delete w.state.entities[w.lurkId]; } });
+  assert.match(refusal ?? "", /fight|battle|turn/i, "the DM's smite by a hidden creature was refused");
+  assert.equal(hidden.w.state.entities[hidden.w.lurkId].hp, 500, "and nothing was done to the goblin");
+  for (const who of ["Pat", "Sam"]) { const t = JSON.stringify(hidden.raw[who]); assert.ok(!t.includes('"ac":23') && !t.includes("shade") && !t.includes("Lurker"), `${who} was told of the hidden pair`); }
+  noFoeAc(plain, hidden);
 });

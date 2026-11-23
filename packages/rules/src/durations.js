@@ -6,7 +6,7 @@
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
 //          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
-//          or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
+//          { target, light: true } (a light it gave to carry), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
 //          raised creature under control). `born` names the turn it was made in (turnKey).
 // A `summon` part is the creature a spell made (docs/specs/companions.md, Decision 4): its bond names the
 // effect (`bond.fx`), and once the part has ended, or the effect has, the creature vanishes ('ended'). Ending
@@ -63,6 +63,8 @@ function endPart(s, ev, fx, p) {
   if (p.hpMax && t && !t.dead) { t.maxHp -= p.hpMax; t.hp = Math.min(t.hp, t.maxHp); ev.push({ type: 'maxHp', id: t.id, maxHp: t.maxHp, hp: t.hp }); }
   // A form it held ends: what the form replaced is put back (forms.js).
   if (p.form && t?.form?.fx === fx.id) { leaveForm(t); ev.push({ type: 'form', id: t.id, form: null }); }
+  // A light it gave goes out (a `light` step: Light).
+  if (p.light && t?.light?.fx === fx.id) { delete t.light; ev.push({ type: 'light', id: t.id, bright: 0, dim: 0 }); }
   // Temporary Hit Points that came from this effect vanish with it (those from elsewhere since stay).
   if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }

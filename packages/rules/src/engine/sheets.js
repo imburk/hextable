@@ -14,6 +14,9 @@ import { effectsOf, endEffect } from '../durations.js';
 // A creature now in Heavy armor (its sheet or record changed) ends what it can't keep up in it: a
 // feature's lasting effect whose action is `unless: 'heavy'` (Rage: "it ends early if you don Heavy armor").
 export function donned(s, e, ev) {
+  // A modifier that says `ends: { on: 'armour' }` (Mage Armor: "The spell ends early if the target dons armor") ends with the effect it is part of as soon as the
+  // creature is made again wearing any armour: it cannot have been put on over armour, so armour found on it is armour donned.
+  if (e.armour && e.armour !== 'none') for (const fx of [...effectsOf(s)]) if (fx.parts.some((p) => !p.ended && p.target === e.id && p.ends?.on === 'armour')) endEffect(s, ev, fx, `${e.name} donned armor`);
   if (e.armour !== 'heavy') return;
   for (const fx of [...effectsOf(s)]) if (fx.source === e.id && fx.feature && featOf(e, fx.feature)?.action?.unless === 'heavy') endEffect(s, ev, fx, `${e.name} donned Heavy armor`);
 }
@@ -165,7 +168,7 @@ export function carryPlay(e, fresh, record, sheet) {
   fresh.hp = e.hp > 0 && !e.dead ? Math.max(1, fresh.maxHp - lost) : 0;
   // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13). `coins`, the purse
   // (docs/specs/shops.md, Decision 5), is kept as `xp` is.
-  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished', 'coins']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
+  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'hitChoices', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished', 'coins']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
   for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);

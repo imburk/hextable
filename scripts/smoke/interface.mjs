@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, waitShown, open, playSolo, closeMenu, closePanels, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, waitShown, open, playSolo, closeMenu, closePanels, openTab, chip, openMenu } from './lib.mjs';
 
 // ---------- the renderer interface (docs/specs/renderer.md, decision 7; R5) ----------
 // The page loads with the renderer that draws nothing (`?renderer=none`, or the device preference `hextable.renderer`), the table is
@@ -43,7 +43,7 @@ async function interfacePass(browser, url, label, opts, how) {
       await run.do('the page works without a picture: tracker, sheet, undo, the editor, a fight', async () => {
         await closePanels(page);
         await openTab(page, 'turns'); await closeMenu(page);
-        await page.click('#party button:has-text("Brenna")'); await page.click('#btn-sheet'); await waitShown(page, '#sheet'); await closeMenu(page);
+        await chip(page, 'Brenna'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet'); await closeMenu(page);
         await wait(page, () => { const b = document.getElementById('btn-undo'); return !b.hidden && !b.disabled; });
         await page.click('#btn-undo');
         await page.evaluate(() => { const S = window.hextable.state, f = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0); window.hextable.act({ type: 'startEncounter', center: f.pos }); });

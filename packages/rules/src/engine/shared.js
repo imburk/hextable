@@ -31,6 +31,9 @@ export const spellStats = (e, s = null, spell = null) => {
   const a = modifiers(s, e, 'spell.attack', {}, ''), d = modifiers(s, e, 'spell.dc', {}, '');
   return { attack: bounded(a, m + a.add), dc: bounded(d, 8 + m + d.add) };
 };
+// A place on the map as an action names it: { q, r } whole numbers, and `z` (a height) only if it is a number. Anything else is
+// refused with a sentence before a handler reads it (#691): `null.q` and `undefined.q` are crashes, not refusals.
+export const spot = (h, what = 'a place on the map') => (h && typeof h === 'object' && !Array.isArray(h) && Number.isInteger(h.q) && Number.isInteger(h.r) && (h.z === undefined || Number.isFinite(h.z)) ? h : fail(`Name ${what}: a hex with whole-number q and r.`));
 export const ent = (s, id) => s.entities[id] || fail('No such creature.');
 // Who plays a creature: its own player, or for a companion (a creature with a `bond`; engine/companions.js,
 // docs/specs/companions.md, Decision 1) its master's player. A bonded creature has no `owner` of its own, so
