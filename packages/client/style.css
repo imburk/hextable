@@ -56,6 +56,12 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 
 #cam { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); display: grid; gap: 6px; }
 #cam button { width: 40px; padding: 0; background: var(--panel); font-size: 18px; }
+/* A flyer's way to the column of heights (docs/specs/fly-swim-control.md): shown only for a creature with a Fly Speed. */
+#cam-fly { position: fixed; right: calc(12px + var(--inset-r, 0px)); top: calc(50% - 152px); min-height: 44px; min-width: 44px; padding: 0 10px; background: var(--panel); border-color: var(--accent); font-weight: 700; }
+body.editing #cam-fly, body.in-scene #cam-fly { display: none; }
+@media (max-width: 480px) { #cam-fly { top: calc(38% - 152px); } } #cam-fly[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); } #cam-fly.off { opacity: .55; }
+.label.col-label { font-size: 11px; font-weight: 700; opacity: .85; padding: 1px 5px; border-radius: 8px; background: #0006; text-shadow: none; }
+.label.col-label.picked { opacity: 1; font-size: 13px; background: var(--accent); color: var(--accent-ink); }
 
 /* the dock is gone (M4): `--dock-h` is the strip the token owns at the bottom of the screen; the turn line, the dice tray and the join bar sit above it */
 :root { --dock-h: calc(max(16px, env(safe-area-inset-bottom)) + 64px + 12px); }

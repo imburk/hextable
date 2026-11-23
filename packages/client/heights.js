@@ -109,3 +109,53 @@ export function stepRow(H, row, dir) {
 export const cellAt = (row, hex) => (row && hex ? row.cells.find((c) => c.h.q === hex.q && c.h.r === hex.r && (!row.ground || hex.z === undefined || (c.h.z ?? 0) === (hex.z ?? 0))) ?? row.cells.find((c) => c.h.q === hex.q && c.h.r === hex.r) ?? null : null);
 // Whether a place of the engine's search belongs to a block: the bottom block takes every floor and the air level with its own, any other only its own height.
 export const inRow = (map, row, h) => !row || (row.ground ? !!ground(map, { q: h.q, r: h.r, z: h.z ?? 0 }) || (h.z ?? 0) === row.z : (h.z ?? 0) === row.z);
+
+// ---------- the column and the plane, as highlights (C2) ----------
+// What the renderer draws for the column: the blocks of `H` on the creature's own cell, with the picked one (`row`), the one it is at,
+// and `hover` (a block the pointer is over, or null). `color` is the creature's own colour ('#rrggbb'), for the block it is at.
+export function columnHl(e, H, row, { hover = null, color = null } = {}) {
+  return { at: { q: e.pos.q, r: e.pos.r }, z0: H.z0, color,
+    blocks: H.heights.map((r) => ({ z: r.z, ft: r.ft, ground: r.ground, here: r.here, stand: r.stand && !r.ground, picked: r === row, hover: r.z === hover, empty: !r.cells.length })),
+    gaps: H.gaps.map((g) => ({ z: g.z, ft: g.ft })) };
+}
+// What lies under a place in the air: the floor's height, or null where there is none; `bad` names what matters if the flight ends there.
+export function below(map, h) {
+  const sf = under(map, { q: h.q, r: h.r, z: (h.z ?? 0) });
+  if (!sf) return { z: null, drop: null, bad: 'nothing below' };
+  return { z: sf.z, drop: (h.z ?? 0) - sf.z, bad: sf.tile.t === 'water' ? 'water below' : '' };
+}
+// The third of the reach a cost falls in: 0 the nearest, 1 the middle, 2 the farthest (C3 shades by it). `most` is the feet the way has.
+export const band = (cost, most) => (!(most > 0) ? 0 : cost <= most / 3 + 1e-9 ? 0 : cost <= (2 * most) / 3 + 1e-9 ? 1 : 2);
+// The feet a place's cost is counted against: flying for the air, the larger of the ways for a floor.
+const mostOf = (H, c) => (c.floor ? Math.max(H.left.walk, H.left.climb, H.left.fly) : H.left.fly);
+// What the renderer draws for the plane: the places of `row`, each with its third of the reach; `faint` for a preview; `point` the key
+// of the place pointed at (a line runs down from it to the floor under it).
+export function planeHl(map, H, row, { faint = false, point = null } = {}) {
+  if (!row) return null;
+  const cells = row.cells.map((c) => ({ key: c.key, h: c.h, floor: c.floor, cost: c.cost, band: band(c.cost, mostOf(H, c)) }));
+  const p = point ? row.cells.find((c) => c.key === point) : null;
+  return { z: row.z, ground: row.ground, faint, cells, point: p && !p.floor ? { h: p.h, ...below(map, p.h) } : p ? { h: p.h, z: p.h.z ?? 0, drop: 0, bad: '' } : null };
+}
+
+// ---------- words ----------
+// What is left, in the menu's words. In a fight the ways are named, because the engine spends them together; out of one a tap goes as far as it goes.
+export function leftWords(H) {
+  const l = H.left;
+  return l.fighting ? `${feet(l.fly)} ft of flying left, ${feet(l.walk)} of walking.` : `Up to ${feet(l.fly)} ft a move.`;
+}
+// The one line under the column: where it is, what is picked and what that costs.
+export function stateLine(H, row) {
+  if (!row) return '';
+  const top = H.capped && row === H.heights.at(-1) ? ` ${row.ft} ft is as high as the table's search goes here.` : '';
+  if (row.here) return `${row.ground ? 'On the ground' : `Flying at ${row.ft} ft`}. ${leftWords(H)}${row.ground ? ' Pick a height.' : ''}${top}`;
+  const way = row.z > H.z0 + H.here ? 'up' : 'down';
+  const cost = row.up === null ? `No way straight ${way}.` : `Straight ${way} costs ${row.up} ft.`;
+  const after = row.up !== null && H.left.fighting ? ` ${feet(H.left.fly - row.up)} ft of flying left.` : '';
+  return `${row.ground ? 'Ground' : `${row.ft} ft up`}. ${cost}${after}${top}`;
+}
+// A place's number: what it costs and what is left after it ("35 ft, 25 left"); out of a fight only the cost.
+export function cellWords(H, c) {
+  if (!c) return '';
+  const most = c.floor ? Math.max(H.left.walk, H.left.climb, H.left.fly) : H.left.fly;
+  return H.left.fighting ? `${c.cost} ft, ${feet(most - c.cost)} left` : `${c.cost} ft`;
+}

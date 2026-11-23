@@ -74,6 +74,7 @@ const REGISTRY = {
   spawnfind: ['spawnfind'],
   levelup: ['levelup'],
   followfight: ['followfight'],
+  fly: ['fly'],
 };
 
 const only = process.env.SMOKE_ONLY;

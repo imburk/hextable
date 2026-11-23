@@ -13,7 +13,7 @@ import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 import { createGovernor, shadowLevels } from './governor.js';
 import { CONTENT } from './shared/content/index.js';
 import { Models, fit, makeBase, modelFor, modelsMode } from './models.js';
-import { Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, hpFraction, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
+import { BLOCK, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, hpFraction, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5, RETRY_MS = 8000, HOLD_MAX = 4, SLAB = 0.35;
@@ -178,6 +178,8 @@ export class ThreeRenderer {
     const o = (order, extra) => ({ flat: true, lit: 0, blend: true, order, ...extra });
     this.terrain = new Piece(this, { recv: true }); this.wallMesh = new Piece(this, { cast: true }); this.doorMesh = new Piece(this, { cast: true });
     this.grid = new Piece(this, o(10, { offset: true })); this.shadows = new Piece(this, o(11, { offset: true })); this.overlay = new Piece(this, o(13));
+    this.overlayX = new Piece(this, o(13)); this.overlayX.mat.depthTest = false;       // the faint outlines of a flyer's plane and column, drawn through walls and floors (three-build.js, `through`)
+    this.colEls = [];
     this.edge = new Piece(this, o(14)); this.edgeId = null; this.edgeBase = 0; this.edgeFx = { phase: 'on', t0: 0 }; this.sinkFx = null; this.anim = 0;
     this.flash = new Piece(this, { flat: true, lit: 0, blend: true, order: 15 }); this.flashAt = null;       // a refused move lights the border cells nearest it (the page event `hextable-arena-flash`, from app.js)
     this.onFlash = (ev) => this.#flashEdge(ev.detail); window.addEventListener('hextable-arena-flash', this.onFlash);
@@ -187,7 +189,7 @@ export class ThreeRenderer {
     this.blobGeom = new Piece(this, o(12)); this.blobGeom.show(false); this.#makeBlob();
     this.ceiling = Infinity;
     this.cam = { x: 0, y: 0.6, z: 0, yaw: 0.5, pitch: 0.95, dist: 22, goal: null, yawGoal: null }; this.turns = 0;      // turns: manual turns of the view so far (keyboard.md: a manual turn suspends following)
-    this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null };
+    this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null, column: null, plane: null };
     this.G = HEX;                             // the grid the map is drawn on (gridOf(map) once there is one)
     this.state = null; this.terrainKey = ''; this.floaters = []; this.inset = 0;
     this.onTap = () => {}; this.onHover = () => {}; this.onPoint = null; this.onDrag = null;
@@ -425,7 +427,7 @@ export class ThreeRenderer {
   #dropGhost(g) { if (g.label) { g.el.remove(); g.src.piece.free(); } g.piece.free(); }
 
   setCeiling(z) { if (z !== this.ceiling) { this.ceiling = z; this.terrainKey = ''; if (this.state) this.setState(this.state, []); } }
-  setHighlights(hl) { this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null, ...hl }; if (this.state) this.#buildOverlay(); }
+  setHighlights(hl) { this.hl = { move: [], area: [], range: [], areaBad: false, targets: [], allies: [], selected: null, turn: null, column: null, plane: null, ...hl }; if (this.state) this.#buildOverlay(); }
   focus(id, snap = false) {
     const a = this.actors.get(id); if (!a) return;
     const end = a.way.length ? a.way[a.way.length - 1] : a;
@@ -569,7 +571,47 @@ export class ThreeRenderer {
     this.doorInfo = doorInfo;
     this.wallMesh.set(b);
   }
-  #buildOverlay() { this.overlay.set(buildOverlay({ state: this.state, hl: this.hl, theme: this.theme, pins: this.pins, pinZ: this.pinZ, bars: this.bars, barZ: this.barZ })); }
+  #buildOverlay() {
+    const b = buildOverlay({ state: this.state, hl: this.hl, theme: this.theme, pins: this.pins, pinZ: this.pinZ, bars: this.bars, barZ: this.barZ });
+    this.overlay.set(b); this.overlayX.set(b.through);
+    this.#columnLabels();
+  }
+  // The height numbers on the side of a flyer's column: at every 10 ft, on the picked block and on the ground (fly-swim-control.md, "Cost on the column").
+  #columnLabels() {
+    const col = this.hl.column, want = col ? col.blocks.filter((k) => k.picked || k.ground || k.hover || Math.round(k.ft) % 10 === 0) : [];
+    while (this.colEls.length > want.length) this.colEls.pop().el.remove();
+    while (this.colEls.length < want.length) { const el = document.createElement('div'); el.className = 'label col-label'; this.labels.append(el); this.colEls.push({ el }); }
+    want.forEach((k, i) => {
+      const c = this.colEls[i], bx = blockBox(this.state.map, col.at, k.z);
+      Object.assign(c, { x: bx.x, y: (bx.y0 + bx.y1) / 2, z: bx.z });
+      c.el.textContent = k.ground ? 'Ground' : `${k.ft} ft`; c.el.classList.toggle('picked', !!k.picked); c.el.dataset.ft = String(k.ft);
+    });
+  }
+  // The block of the column, or the place of the plane, that the ray through a pixel meets first: { block: z } or { hex, plane: true }, with how far along the ray (t).
+  #pickFly(px, py) {
+    const C = this.C, col = this.hl.column, pl = this.hl.plane; if (!C || !this.state || (!col && !pl)) return null;
+    const d = this.#dir(C, px, py), e = C.eye;
+    let best = null;
+    if (col) {
+      const R = BLOCK.r * Math.hypot(...this.G.corners({ q: 0, r: 0 })[0]) * UNIT * 0.93;       // a cylinder just inside the prism
+      for (const k of col.blocks) {
+        const bx = blockBox(this.state.map, col.at, k.z), ox = e[0] - bx.x, oz = e[2] - bx.z;
+        const a = d[0] * d[0] + d[2] * d[2], b = 2 * (ox * d[0] + oz * d[2]), c = ox * ox + oz * oz - R * R, disc = b * b - 4 * a * c;
+        let t = null;
+        if (a > 1e-9 && disc >= 0) { const t1 = (-b - Math.sqrt(disc)) / (2 * a), y = e[1] + d[1] * t1; if (t1 > 0 && y >= bx.y0 && y <= bx.y1) t = t1; }
+        if (t === null && d[1] < 0) { const tc = (bx.y1 - e[1]) / d[1], x = e[0] + d[0] * tc - bx.x, z = e[2] + d[2] * tc - bx.z; if (tc > 0 && x * x + z * z <= R * R) t = tc; }
+        if (t !== null && (!best || t < best.t)) best = { t, block: k.z };
+      }
+    }
+    if (pl && !pl.ground && !pl.faint && d[1] < 0) {
+      const t = (planeY(pl.z) - e[1]) / d[1];
+      if (t > 0 && (!best || t < best.t)) {
+        const h = this.G.fromWorld(e[0] + d[0] * t, e[2] + d[2] * t), cell = pl.cells.find((x) => x.h.q === h.q && x.h.r === h.r);
+        if (cell) best = { t, hex: cell.h, plane: true, id: null };
+      }
+    }
+    return best;
+  }
 
   // ---------- shadows ----------
   // The governor's ladder for this device and setting: shadows are given up before any pixel ratio.
@@ -794,6 +836,7 @@ export class ThreeRenderer {
       a.el.style.display = p ? '' : 'none';
       if (p) a.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, ${a.carry ? '6px' : '-100%'})`;
     }
+    for (const c of this.colEls) { const p = this.#project(C, c.x, c.y, c.z); c.el.style.display = p ? '' : 'none'; if (p) c.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(34px, -50%)`; }
     this.floaters = this.floaters.filter((f) => {
       f.t += dt;
       if (f.t < 0) return true;
@@ -843,6 +886,8 @@ export class ThreeRenderer {
   // The hex-column march, as the old renderer had it (Decision 8); only the ray comes from Three.
   // A creature the ray meets as it is wins; only where it meets none, a finger's width is allowed (a widened cylinder in front must not steal a tap that is on another creature).
   #pick(px, py) {
+    const fly = this.#pickFly(px, py);
+    if (fly) return fly.block !== undefined ? { block: fly.block, hex: { ...this.hl.column.at, z: fly.block }, id: null } : fly;
     const exact = this.#march(px, py, false);
     if (exact?.id || !this.phone) return exact;
     const wide = this.#march(px, py, true);
@@ -890,7 +935,7 @@ export class ThreeRenderer {
     }, on);
     el.addEventListener('pointermove', (e) => {
       const p = xy(e), old = pts.get(e.pointerId);
-      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.canvas.title = [...new Set(this.zonesAt(hit?.hex))].join(', '); this.onHover(hit?.hex ?? null); } return; }
+      if (!old) { if (e.pointerType === 'mouse') { const hit = this.#pick(...p); this.canvas.title = [...new Set(this.zonesAt(hit?.hex))].join(', '); this.onHover(hit?.hex ?? null, hit); } return; }
       pts.set(e.pointerId, p);
       if (stroke && pts.size === 1) { this.onDrag.move(...p); return; }
       const dx = p[0] - old[0], dy = p[1] - old[1];
@@ -914,7 +959,7 @@ export class ThreeRenderer {
       if (stroke) { stroke = false; if (e.type === 'pointerup') this.onDrag.end(); else this.onDrag.cancel(); return; }
       if (p && e.type === 'pointerup' && !pts.size && moved < 8 && performance.now() - downAt < 600 && e.button !== 2) {
         if (this.onPoint) { this.onPoint(p[0], p[1]); return; }
-        const hit = this.#pick(...p); if (hit) this.onTap(hit);
+        const hit = this.#pick(...p); if (hit) this.onTap({ ...hit, pointer: e.pointerType });
       }
     };
     el.addEventListener('pointerup', up, on); el.addEventListener('pointercancel', up, on);

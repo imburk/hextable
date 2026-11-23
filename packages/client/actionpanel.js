@@ -301,8 +301,10 @@ export function attackRows(S, e, { mode = null } = {}) {
 }
 
 // The standard actions and the objects in reach, for the Move tab. `fly`: { aloft, alt, up, down } for a creature that can fly (the height its next move goes to, and the next one up and down).
-export function moveRows(S, e, { fly = null } = {}) {
+export function moveRows(S, e, { fly = null, mode = null } = {}) {
   const enc = S.encounter, nimble = !!e.features?.nimbleEscape, rows = [], row = (r) => ({ sub: '', why: '', armed: false, std: true, ...r });
+  // "Fly…" (docs/specs/fly-swim-control.md, "Getting in"): the main road to the column of heights, for a creature with a Fly Speed; greyed with the reason when it cannot fly now.
+  if (fly?.has) rows.push(row({ id: 'fly', kind: 'flyOpen', label: 'Fly\u2026', sub: fly.words ?? 'Pick a height, then a place', armed: mode?.kind === 'fly', time: null, std: false, why: fly.why ?? '' }));
   rows.push(row({ id: 'dash', kind: 'send', label: 'Dash', sub: 'Double your move', chip: CHIP.action, time: 'action', why: blocked(S, e, 'action'), send: { type: 'dash', actor: e.id } }));
   const dt = nimble ? 'bonus' : 'action';
   rows.push(row({ id: 'disengage', kind: 'send', label: 'Disengage', sub: 'No Opportunity Attacks', chip: CHIP[dt], time: dt, why: blocked(S, e, dt), send: { type: 'disengage', actor: e.id } }));
@@ -557,19 +559,20 @@ export const offered = (r) => !r.why || !!r.armed;
 // The rows of one group for `e`, every one (greyed ones too: `groupsFor` takes them out of a fight). `o`: { mode, fly, dm, found, comp: { attacks, features, move } (companions.js), inv (an `itemRows`) }.
 export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found = false, comp = null, inv = null } = {}) {
   const cr = comp ?? { attacks: [], features: [], move: [] };
-  const std = (...ids) => moveRows(S, e, { fly }).filter((r) => ids.includes(r.id));
+  const std = (...ids) => moveRows(S, e, { fly, mode }).filter((r) => ids.includes(r.id));
   const bonusStd = (...ids) => bonusRows(S, e, { mode, fly }).rows.filter((r) => ids.includes(r.id));
   const items = () => inv ?? itemRows(S, e, { dm, mode });
   switch (id) {
     case 'attacks': return [...attackRows(S, e, { mode }), ...cr.attacks, ...spellRows(S, e, { mode }).filter((r) => r.roll === 'attack')];
     case 'spells': return spellRows(S, e, { mode });
     case 'heal': return [...spellRows(S, e, { mode }).filter(healsRow), ...featureRows(S, e, { mode }).filter(healsRow), ...items().uses.filter(healsRow)];
-    case 'move': { const h = holdRows(S, e); return [...h.escape, ...std('dash', 'disengage', 'fly-up', 'fly-down'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
+    case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'fly-up', 'fly-down'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
     case 'defend': return [...std('dodge', 'hide', 'search', 'shield'), ...bonusStd('hide-bonus')];
     case 'use': return [...moveRows(S, e, { fly }).filter((r) => r.id.startsWith('use:')), ...items().uses.filter((r) => !healsRow(r))];
     case 'features': return featureRows(S, e, { mode }).filter((r) => !healsRow(r));
     case 'companions': return [...cr.features, ...cr.move];
-    case 'explore': return rankExplore(S, e, { dm, mode, found }).filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
+    // Out of a fight there is no Move group: a flyer finds Fly… here, among the first tiles (it is the word a player looks for); Higher and Lower are under More.
+    case 'explore': return [...std('fly').map((r) => ({ ...r, grid: true })), ...rankExplore(S, e, { dm, mode, found }), ...std('fly-up', 'fly-down')].filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
     case 'rest': return rankExplore(S, e, { dm, mode, found }).filter((r) => r.id === 'shortRest' || r.id === 'longRest');
     case 'items': { const it = items(); return [...it.uses, ...(it.light ? [it.light] : [])]; }
     default: return [];
@@ -683,8 +686,8 @@ const $ = (id) => document.getElementById(id);
 const ARMS = (m) => !!m && m.kind !== 'move';
 
 // ctx: { prefs, state(), isDM(), mine(e), act, toast, skipping(), setMode(m), move (the idle mode), castSpell(e, id, armed), openSheet(),
-//        shortRest(), hpFraction(e), formLabel(e), budget(e), openFeature(e, id) (a chooser of classes.js), flyInfo(e) ({ aloft, alt }),
-//        fly(e, delta) (change the height of the next move), metamagic(e) (the Metamagic button of classes.js, or null), render(), selected() }.
+//        shortRest(), hpFraction(e), formLabel(e), budget(e), openFeature(e, id) (a chooser of classes.js), flyInfo(e) ({ has, why, words, aloft, alt, up, down }),
+//        fly(e, delta) (change the height of the next move), flyOpen(e, armed) (open the column of heights, or close it), metamagic(e) (the Metamagic button of classes.js, or null), render(), selected() }.
 // The groups are drawn into `#ap-body` of the Character screen (`#sheet`): one bar for each group, one open at a time (Decision 4d), under the status block, which draws the turn bar.
 export function initActionPanel(ctx) {
   const { prefs } = ctx;
@@ -758,6 +761,7 @@ export function initActionPanel(ctx) {
       case 'chooser': return ctx.openFeature(e, r.feature);
       case 'comp': return ctx.comp?.run(e, r);
       case 'fly': return ctx.fly(e, r.delta);
+      case 'flyOpen': return ctx.flyOpen?.(e, r.armed);
       case 'follow': if (r.armed) { ctx.setMode(ctx.move); return ctx.act(r.send); } return ctx.setMode({ kind: 'follow' });
       case 'ritual': return ctx.castSpell(e, r.spell, r.armed);
       case 'shortRest': return ctx.shortRest();
