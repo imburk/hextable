@@ -300,7 +300,7 @@ export function attackRows(S, e, { mode = null } = {}) {
   return rows;
 }
 
-// The standard actions and the objects in reach, for the Move tab. `fly`: { aloft, alt } for a creature that can fly.
+// The standard actions and the objects in reach, for the Move tab. `fly`: { aloft, alt, up, down } for a creature that can fly (the height its next move goes to, and the next one up and down).
 export function moveRows(S, e, { fly = null } = {}) {
   const enc = S.encounter, nimble = !!e.features?.nimbleEscape, rows = [], row = (r) => ({ sub: '', why: '', armed: false, std: true, ...r });
   rows.push(row({ id: 'dash', kind: 'send', label: 'Dash', sub: 'Double your move', chip: CHIP.action, time: 'action', why: blocked(S, e, 'action'), send: { type: 'dash', actor: e.id } }));
@@ -315,9 +315,10 @@ export function moveRows(S, e, { fly = null } = {}) {
   for (const u of usesFor(S, e)) rows.push(row({ id: `use:${u.object}:${u.verb}`, kind: 'send', label: u.label, sub: u.name, chip: u.time === 'free' ? 'Free once a turn' : CHIP.action, time: u.time === 'free' ? 'free' : 'action', why: u.why,
     send: { type: 'use', actor: e.id, object: u.object, verb: u.verb }, std: false }));
   if (fly?.aloft) {
-    const alt = fly.alt;
-    rows.push(row({ id: 'fly-up', kind: 'fly', label: 'Higher', sub: `Fly at ${alt + FT} ft`, delta: FT, time: null, std: false }));
-    rows.push(row({ id: 'fly-down', kind: 'fly', label: alt ? 'Lower' : 'On the ground', sub: alt ? `Fly at ${alt - FT} ft${alt === FT ? ' (land)' : ''}` : 'Tap Higher to take off', delta: -FT, time: null, std: false, why: alt ? '' : 'Already as low as it goes.' }));
+    // One press, one block (docs/specs/fly-swim-control.md): the next height the engine has a place at, up or down. Without `up` and `down` (an older caller) it is 5 ft a press.
+    const alt = fly.alt, up = 'up' in fly ? fly.up : alt + FT, down = 'down' in fly ? fly.down : alt ? alt - FT : null;
+    rows.push(row({ id: 'fly-up', kind: 'fly', label: 'Higher', sub: up === null ? `At ${alt} ft` : `Fly at ${up} ft`, delta: FT, time: null, std: false, why: up === null ? 'Nowhere higher in reach.' : '' }));
+    rows.push(row({ id: 'fly-down', kind: 'fly', label: alt ? 'Lower' : 'On the ground', sub: down !== null ? `Fly at ${down} ft${down === 0 ? ' (land)' : ''}` : alt ? `At ${alt} ft` : 'Tap Higher to take off', delta: -FT, time: null, std: false, why: down !== null ? '' : alt ? 'Nowhere lower in reach.' : 'Already as low as it goes.' }));
   }
   return rows;
 }

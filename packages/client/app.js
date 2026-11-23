@@ -57,6 +57,7 @@ import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 import { levelUpHtml } from './levelup.js';
+import { heightsOf, livePick, makePick, rowOf, stepRow, cellAt, inRow } from './heights.js';
 import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
 import { mountNewVersion } from './newversion.js';
@@ -69,10 +70,13 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const MOVE = { kind: 'move' };
 const OWED = { kind: 'owed' };     // the Move button of an Opportunity Attack's movement was pressed (allowance.js): the next tap on a shaded place is the move
-// How high above the floor each flyer's next move will end, in feet. Chosen with the Higher and Lower buttons.
-const flyAlt = {};
-const heightOf = (pos) => { const sf = under(S.map, pos); return sf ? Math.floor((pos.z - sf.z) / FT) * FT : 0; };
-const altOf = (e) => flyAlt[e.id] ?? heightOf(e.pos);
+// The height picked for a flyer's next move (heights.js, docs/specs/fly-swim-control.md C1): one pick, kept only while nothing has changed under it. A move, a fall,
+// a landing, a turn change or the loss of the flight makes it stale, and the move then goes to the height the creature is at.
+let flyPick = null, flyMemo = null;
+// The heights `e` can end a move at now, from the engine's own search (looked up once a refresh).
+const flyH = (e) => { if (flyMemo?.id !== e.id || flyMemo.S !== S) flyMemo = { id: e.id, S, H: heightsOf(S, e, { reach: moveOptions(previewState(S, e), e) }) }; return flyMemo.H; };
+// The block its next move goes to: the live pick's, else the one it is at. null for a creature that cannot fly now.
+const flyRow = (e) => { if (!aloft(S, e)) return null; const H = flyH(e), live = livePick(flyPick, S, e, H); if (flyPick?.id === e.id && !live) flyPick = null; return rowOf(H, live); };
 
 const SCORE_EVENTS = ['scoresRolled', 'scoreRerolled'];
 let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null, aiSent = null;
@@ -710,6 +714,7 @@ let joinNo = null;               // the fight whose "Bring the others in?" was p
 const outsiders = (st) => Object.values(st.entities).filter((x) => x.side === 'party' && !x.dead && up(x) && !x.riding && !x.hidden && !st.encounter.order.some((o) => o.id === x.id));
 function refresh() {
   if (!S) return;
+  flyMemo = null;
   const enc = S.encounter, cur = current(S), e = S.entities[selId];
   document.body.classList.toggle('fight', !!enc);
   // A fight with party members outside it: the DM (in solo, the player) is asked once per fight whether to bring them in (`joinFight`, #671).
@@ -761,7 +766,7 @@ function refresh() {
     if (my && up(e)) {
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
-      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
+      if (mode.kind === 'move' && myTurn) { const row = flyRow(e); hl.move = row ? row.cells.map((c) => c.key) : [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop).map(([k]) => k); }
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
@@ -811,7 +816,7 @@ function refresh() {
   owedUi = null;
   if (offer) {
     owedUi = 'offer'; hint = offerWords(offer, { armed: mode.kind === 'owed', waiting: waits.some((w) => w.id === offer.id) });
-    hl.move = reachOf(S, e, (v) => !aloft(S, e) || heightOf(v.h) === altOf(e));
+    { const row = flyRow(e); hl.move = reachOf(S, e, (v) => inRow(S.map, row, v.h)); }
   } else if (!hint && mode === MOVE && waits.length) { owedUi = 'wait'; owedWho = waits.map((w) => w.id); hint = waitWords(waits); }
   if (hint && mode.kind === 'spell' && S.entities[selId]) hint += CLS.hint(S.entities[selId], mode.id);
   if (mode.kind === 'spawn') hint = gridWords(`Tap a hex to add a ${MONSTERS[mode.monster].name}`, gridOf(S.map));
@@ -1088,10 +1093,11 @@ R.onTap = ({ hex, id }) => {
     // Movement an Opportunity Attack gave is spent only once the Move button was pressed (allowance.js), so that a tap that meant something else does not spend it.
     if (offerOf(S, e) && mode.kind !== 'owed') return toast(`Press Move up to ${offerOf(S, e).feet} ft first, or Don't move.`);
     // A flyer goes to the tapped hex at its chosen height; if it cannot stop there, say so.
-    if (aloft(S, e) && altOf(e) > 0) {
-      const spot = [...moveOptions(previewState(S, e), e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
-      return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${altOf(e)} ft up.`);
-    }
+    { const row = flyRow(e);
+      if (row && !row.ground) {
+        const spot = cellAt(row, hex);
+        return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${row.ft} ft up.`);
+      } }
     lastMove = { hex, at: Date.now() };       // if the arena refuses it, the edge nearest this hex flashes (T.on.error)
     act({ type: 'move', actor: e.id, to: hex });
   }
@@ -1362,9 +1368,9 @@ $('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[d
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
-  openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => { const row = flyRow(e); if (!aloft(S, e)) return null; const H = flyH(e); return { aloft: true, alt: row?.ft ?? H.here, up: row ? stepRow(H, row, 1)?.ft ?? null : null, down: row ? stepRow(H, row, -1)?.ft ?? null : null }; },
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
-  fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
+  fly: (e, delta) => { const row = flyRow(e), next = row ? stepRow(flyH(e), row, Math.sign(delta)) : null; if (next) flyPick = makePick(S, e, next.z); refresh(); } });
 // The formation popup (formation.js): Lead sends `partyFollow`, and the popup opens once the table says someone follows (`pendingLead`).
 let pendingLead = null;
 const FM = initFormation({ state: () => S, act, isDM, mine, refresh: () => refresh() });
