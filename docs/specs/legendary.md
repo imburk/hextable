@@ -1,6 +1,6 @@
 # Spec: legendary actions and Legendary Resistance
 
-Status: Draft, by an agent, to be reviewed by the design owner. DEBT M5. Docs only: nothing here is
+Status: Draft, by an agent; the owner answered its ten questions on 23 November (see "The owner's answers" at the end). DEBT M5. Docs only: nothing here is
 built. Every rule is from `reference/srd52/srd52-flow.txt`; the numbers after a section name are its
 lines.
 
@@ -20,15 +20,17 @@ it shows in the places [`one-token-menu.md`](one-token-menu.md), the DM's to-do 
   [Noxious Miasma…] [Skip]". One tap plays the recommended one; the engine moves it, rolls the
   attack and applies the damage. One tap on Skip moves on.
 - You can let a creature take them **by itself** (the monster brain picks, as it plays turns now).
-- **Legendary Resistance**: when a legendary creature fails a saving throw and has uses left,
-  the engine stops and asks you: "Verdigris failed a Wisdom save against Hold Monster: it would be
-  Paralyzed. Use Legendary Resistance (3 of 3 left today)? **[Use it]** [Let it fail]". It never
-  spends one silently. If you would rather not be asked, one switch per creature: **"Only when it
-  matters"**, and the engine spends it by itself on a failure that would Paralyze, Banish, end its
-  Concentration or cost it a lot of Hit Points, and lets the rest fail.
+- **Legendary Resistance**: by default each legendary creature is set to **"Only when it
+  matters"**. When it fails a saving throw, has uses left, and failing would change something for
+  it (damage it does not resist or ignore, a condition it is not immune to, its Concentration, and
+  the like), the engine spends a use by itself. A failed save that would change nothing never
+  spends one. If the engine cannot tell, it stops and asks you: "Verdigris failed a Wisdom save
+  against Hold Monster: it would be Paralyzed. Use Legendary Resistance (3 of 3 left today)?
+  **[Use it]** [Let it fail]". One switch per creature changes this: **"Ask me every time"**,
+  **"Every failed save"** or **"Never"**.
 - Players see what their characters see: "Verdigris uses Pounce", the move and the hit; "Verdigris
-  fails, but shrugs it off (Legendary Resistance)". They are never told how many uses are left
-  unless you choose to show it.
+  shrugs it off". They are never told the words "Legendary Resistance", and never how many uses
+  are left unless you choose to show the legendary uses.
 - What the engine still cannot do (a legendary action that casts a spell, until monster
   spellcasting is built: DEBT M6) is offered all the same, spends the use, and is handed to you
   as a card with the tools beside it. The engine never plays it badly on the quiet.
@@ -40,7 +42,7 @@ The lead's brief, 21 November 2026: the owner's party is level 13 to 15 (Paladin
 Bard 8, Druid 14, Sorcerer 15, Cleric 14), so legendary monsters matter most. The game is there to
 let the DM facilitate the players' story without getting caught in minutiae. His adventure's
 monsters come in a homebrew pack. Follow SRD 5.2 for both rules; Legendary Resistance is a choice,
-and the DM is asked, not overruled. The DM-helper spec (question 11) recommends this work straight
+and the DM is not overruled (the owner's answers to leg-2 and leg-3 settle how). The DM-helper spec (question 11) recommends this work straight
 after its first slice, before sharper tactics.
 
 | Asked | Here |
@@ -49,7 +51,7 @@ after its first slice, before sharper tactics.
 | State for remaining uses; the window after each other creature's turn | Decisions 2 and 3 |
 | Reactions, the `react` re-run, death, Incapacitated, end of fight, undo | Decision 4 |
 | The DM picks; the AI recommends or takes one by the DM's setting | Decisions 5 and 8 |
-| Legendary Resistance as a choice, asked of the DM, an optional "when it matters" | Decision 6 |
+| Legendary Resistance as a choice: "only when it matters" by default, asked when the engine cannot tell | Decision 6 |
 | Never pretend | Decision 7 |
 | What players see | Decision 9 |
 | A compact, one-tap DM screen, on a phone too | Decision 10 |
@@ -249,9 +251,14 @@ action, with the same events. A fight with no legendary creature is byte for byt
   refused before it changes anything: "Between turns: the DM is deciding on legendary actions."
   (`BETWEEN_OK` beside `WHILE_WAITING` in `engine.js`.)
 - **One option per offered creature per window** (the reading the SRD's own words give and that
-  our data already says: "one action can be taken after another creature's turn"; question 1).
+  our data already says: "one action can be taken after another creature's turn"; owner, 23 Nov,
+  leg-1).
 - It closes when every offered creature has taken one or been skipped, when the DM closes it, or
   when the fight ends. The next turn then begins (`advanceTurn` goes on from where it stopped).
+- **None is ever late** (owner, 23 Nov, leg-10). The game offers a window after every other
+  creature's turn, so there is no moment when a legendary action was "forgotten" and no "late"
+  legendary action. Nothing in this design sends the table back across another player's turn
+  to fix one.
 
 **Several legendary creatures.** One window holds them all, listed in the order their own turns
 come after the turn that ended. The DM (or the AI, in that order) takes or skips each; the order of
@@ -298,7 +305,7 @@ Refusals are in words and change nothing: "Verdigris has no legendary action lef
 "Noxious Miasma can't be taken again until the start of Verdigris's next turn.", "Verdigris has
 already taken a legendary action after this turn.", "Rend can't reach Brenna from there."
 
-### Decision 6: Legendary Resistance is a choice, and the DM is asked
+### Decision 6: Legendary Resistance is a choice: only when it matters, and the DM is asked when the engine cannot tell
 
 **Where.** Every saving throw whose outcome is final: a spell's or an action's save step
 (`effects.js`), a save repeated at a turn's start or end and a Concentration save (`durations.js`),
@@ -309,7 +316,7 @@ last word on a save. A test lists every call of `savingThrow` and fails if one i
 it, as `imports.test.js` pins import cycles.
 
 **What can be resisted.** Any failed save, an automatic failure too (Paralyzed on a Dexterity save):
-the SRD says "if it fails a saving throw". Not an attack roll, not a check. It is not a Reaction,
+the SRD says "if it fails a saving throw" (owner, 23 Nov, leg-3: "Any failed save"). Not an attack roll, not a check. It is not a Reaction,
 has no limit a round and may be used on its own turn.
 
 **The instruction.** Legendary Resistance is listed by `reactionsOf` as a choice of the creature's
@@ -318,12 +325,12 @@ the creature, private to its controller and the DM:
 
 | Instruction | On the screen | What the engine does at a failed save with a use left |
 |---|---|---|
-| `ask` (the default) | Ask me | Stops and asks the creature's controller (Decision 10) |
-| `matters` | Only when it matters | Spends it by itself when the failure matters (below), lets the rest fail, and asks when it cannot tell |
+| `matters` (the default) | Only when it matters | Spends it by itself when the failure matters (below), lets a failure that changes nothing stand, and asks when it cannot tell |
+| `ask` | Ask me every time | Stops and asks the creature's controller (Decision 10) |
 | `always` | Every failed save | Spends it while uses last |
 | `never` | Never | Lets every save fail |
 
-`matters` is a new value in `WHEN` (`reactions.js`), "Only if the failure matters", beside `miss`.
+`matters` is a new value in `WHEN` (`reactions.js`), "Only if the failure matters", beside `miss`. It is the starting value for every legendary creature (owner, 23 Nov, leg-2). The DM can switch one creature to `ask`, `always` or `never` on its card or in its settings.
 
 **Asking the DM.** Today a question about the DM's own creature is not asked: the DM is told and
 nothing waits. Legendary Resistance is the one exception, because the brief asks for a choice and
@@ -337,14 +344,20 @@ so. The answer is `react` with `take: 'legendary-resistance'` or `null`.
 
 **When a failure matters** (one pure function, `failureMatters`, shared with the AI of Decision 8):
 
-1. it would apply a condition (any of the SRD's fifteen), or keep one that a repeated save would
-   have ended;
+Beej's reading of leg-2 and leg-3, for the owner to confirm: every failed save can be resisted
+(leg-3), and a failed save *matters* when failing it changes something for this monster. One that
+changes nothing never spends a use.
+
+1. it would apply a condition the creature is not immune to (any of the SRD's fifteen), or keep one
+   that a repeated save would have ended;
 2. it would end the creature's Concentration;
 3. it would run a `kill`, `teleport` (of the creature), `set` or `summon` step on it, or change its
    form;
-4. its damage, on average, is a quarter or more of the Hit Points the creature has now, counting
-   the difference between failing and succeeding (all of it where a success takes none);
-5. otherwise it does not. A failure the engine cannot read (a `manual` step under `onFail`) is
+4. it would do damage the creature does not resist and is not immune to, counting the difference
+   between failing and succeeding (all of it where a success takes none). There is no Hit Point
+   threshold: a fireball against a creature with natural fire resistance or immunity changes nothing
+   and does not spend a use;
+5. otherwise it does not: a failure that changes nothing never spends a use. A failure the engine cannot read (a `manual` step under `onFail`) is
    asked, never guessed.
 
 **What is recorded.** The `save` event keeps the roll and gets `success: true, resisted: true`; the
@@ -390,14 +403,15 @@ aim and one line of why, or `null` (skip). Same state, same pick; no die, no clo
 | `legendary { actor, option, name }` | as an `act` event is: who and the option's name, for a creature the party knows of. Then the move, the attack and the damage as any |
 | `legendaryWindow`, `legendarySkip`, `legendarySet` | nothing (new types not in `viewEvents`' list are dropped) |
 | A Legendary Resistance question | the DM (or the creature's player) gets the question; others get `{ waiting: true }` where they perceive what set it off, as for any question (`viewPrompt`) |
-| A resisted save | the save as any save of a foe is sent (`id`, `abil`, `success`, and the DC where it is theirs to know) with `resisted: true`. The log: "Verdigris fails, but shrugs it off (Legendary Resistance)". Never the count |
+| A resisted save | the save as any save of a foe is sent (`id`, `abil`, `success`, and the DC where it is theirs to know), as a success, with nothing that names Legendary Resistance (owner, 23 Nov, leg-4). The log: "Verdigris shrugs it off". Never the words "Legendary Resistance" and never the count |
 | The instruction (ask, matters ...) | nothing (`reactions` is private to the controller and the DM) |
 | The lair mark | nothing, but what follows from it: a fourth use taken is seen being taken |
 | A homebrew legendary monster | its events as `stampHomebrew` and `viewEvents` already settle for the rest of its block |
 
 **What players can still work out, and why that is fine.** The table waits after a turn only when a
 legendary creature could act, and does not wait once it has no use left; a player who counts can
-tell a fourth use (a lair) when it comes, or that a question was asked. At a real table a DM's
+tell a fourth use (a lair) when it comes, or that a question was asked. A player who counts the
+"shrugs it off" lines may guess the trait, as at a real table. At a real table a DM's
 pause tells as much. The `twin()` tests below hold the rest: worlds that differ only in uses left
 (both above 0), the lair mark, the instruction, or the options the DM did not take send every player
 the same bytes.
@@ -428,11 +442,14 @@ Phone, 390 x 844 (a bottom sheet, rows 56 px):
   then the target. Send sends one `legendary` action.
 - **Skip** passes this creature; with several creatures, **Done** under them passes all.
 - ⚙ opens the creature's two switches: Legendary actions (Suggest / By themselves) and Legendary
-  Resistance (Ask me / Only when it matters / Every failed save / Never), and "In its lair".
+  Resistance (Only when it matters, the starting choice / Ask me every time / Every failed save /
+  Never), and "In its lair".
 - Under **By themselves**, no bar opens: the browser plays the window after the usual pause, and a
   toast says what was done ("Verdigris: Pounce on Brenna. Undo").
 
-**The Legendary Resistance card.** A question, like a reaction question:
+**The Legendary Resistance card.** A question, like a reaction question. Under the starting choice
+it opens only when the engine cannot tell whether the failure matters; under "Ask me every time" it
+opens at every failed save that a use could turn:
 
 ```
  ┌ Verdigris failed a save ───────────────────────┐
@@ -440,12 +457,12 @@ Phone, 390 x 844 (a bottom sheet, rows 56 px):
  │ It would be Paralyzed.                          │
  │ Legendary Resistance: 3 of 3 left today         │
  │  [ Use it: it succeeds ]   [ Let it fail ]      │
- │  Ask me every time ▾                            │
+ │  Only when it matters ▾                         │
  └─────────────────────────────────────────────────┘
 ```
 
 The line "It would be ..." is written from the save's `onFail` (conditions, Concentration, damage
-on average, the spell's name). "Ask me every time ▾" sets the instruction for this creature on the
+on average, the spell's name). "Only when it matters ▾" sets the instruction for this creature on the
 spot.
 
 **Counters.** In Turns, under a legendary creature's row, the DM's line: "Legendary 2/3 ·
@@ -460,7 +477,7 @@ All optional: an entry or a state without them reads as "no legendary anything".
 | Where | Addition |
 |---|---|
 | `content/schema.js`, monster | key `legendary: { actions?: { uses, options }, resistance?: { day }, lair?: { uses?, resistance?, xp? } }`; the option keys `id`, `name`, `text`, `cost`, `move` (`speed`, `mode`, `provokes`, `after`), `use`, `target`, `effects`, `again`, `manual`; `LEGENDARY_AGAIN = ['nextTurn']`, `LEGENDARY_SPEEDS = ['half', 'full']`; the monster `SHAPES` list, `HOMEBREW_TYPES`, `HOMEBREW_LENGTHS['legendary.options'] = 8` |
-| `reactions.js` | `WHEN.matters`; Legendary Resistance in `reactionsOf` (`kind: 'free'`, `on: 'resist'`, options `ask`, `matters`, `always`, `never`; default `ask`) |
+| `reactions.js` | `WHEN.matters`; Legendary Resistance in `reactionsOf` (`kind: 'free'`, `on: 'resist'`, options `matters`, `ask`, `always`, `never`; default `matters`) |
 | a creature | `e.legendary` (the copied block), `e.legend` (Decision 2) |
 | `s.encounter` | `between: { after, round, offered, done }` while a window is open |
 | actions | `legendary`, `legendarySet` (Decision 5), in a new domain module `engine/legendary.js` |
@@ -485,7 +502,7 @@ model (they touch `advanceTurn`, every save site and the pause).
 
 **Order.** L1, then L2 (the owner's party will meet saves against dragons before anything else),
 then L3 and L4 side by side, L1b whenever a content hand is free. Then DEBT M6, which turns the
-`manual` cast options into the engine's (recommended next: question 9).
+`manual` cast options into the engine's (recommended next: leg-9, which the owner accepted).
 
 ## Tests that say it is safe
 
@@ -520,10 +537,13 @@ then L3 and L4 side by side, L1b whenever a content hand is free. Then DEBT M6, 
 9. **Asking the DM.** Under `ask`, a party caster's Hold Monster stops at the dragon's failed save;
    the DM's `react` with the use re-runs the cast, the dragon succeeds, `resisted` goes up by one; a
    decline applies Paralyzed. The same dice either way up to the save.
-10. **`matters`.** Paralyzed, Banished, Concentration lost, 60 damage of 200 Hit Points left: spent.
-    A Fireball's 8 extra of 200: not spent, not asked. A `manual` step under `onFail`: asked.
+10. **`matters`.** A new legendary creature starts on `matters`. Paralyzed, Banished, Concentration
+    lost, or damage it does not resist: spent. A failed save that changes nothing (a Fireball
+    against a creature immune to fire, a condition it is immune to): not spent, not asked. A
+    `manual` step under `onFail`: asked.
 11. **Long Rest.** Uses come back only when the DM's Long Rest names the creature.
-12. **Hidden information (twin).** Worlds differing only in Legendary Resistance left (2 or 3), the
+12. **Hidden information (twin).** Also: a resisted save is sent without the words "Legendary
+    Resistance" (leg-4). Worlds differing only in Legendary Resistance left (2 or 3), the
     lair mark, the instruction (`ask` answered by a decline, or `never`), `show` off, and the
     options not taken: every player is sent the same bytes. With `show` on, the count is sent.
 13. **The pick.** Same state, same pick (1,000 seeded states twice); every pick is accepted by
@@ -546,7 +566,9 @@ then L3 and L4 side by side, L1b whenever a content hand is free. Then DEBT M6, 
   is the DM too.
 - **The table slows down.** Five characters and their companions open five or more windows a round.
   Mitigated by opening only when something can be taken, by one tap on the pick, and by "By
-  themselves". If it still drags, question 1's answer and question 5 are the levers.
+  themselves". If it still drags, leg-5 (the table waits whenever something can be taken) is the lever; leg-1 is settled as one at a time.
+- **"Only when it matters" can still be wrong at the edges.** The engine reads the save's steps;
+  anything it cannot read is asked, and the DM can switch a creature to "Ask me every time".
 - **What a pause tells** (Decision 9): accepted and documented; the twin tests hold the rest.
 - **Data accuracy.** Fifty-odd options from the SRD, plus the owner's adventure in his pack. Each
   entry `checked` only after every number is compared; the reader's plain words are the reviewer's
@@ -559,35 +581,38 @@ then L3 and L4 side by side, L1b whenever a content hand is free. Then DEBT M6, 
 Lair actions and regional effects (not in the SRD 5.2.1); mythic actions; how identical monsters
 share initiative; monster spellcasting itself (DEBT M6, which this spec leaves a place for).
 
-## Questions for the owner
+## The owner's answers (23 Nov)
 
-1. **One legendary action after each turn, or several?** The SRD says "only one ... at a time and
-   only after another creature's turn ends"; read strictly, a dragon may spend all three after one
-   character's turn, one after another. *Default: one per creature per window, the reading our data
-   already gives and the one that keeps a turn order readable. A table rule for "several" can be
-   added later if you play it that way.*
-2. **Legendary Resistance: asked every time by default?** *Default: yes, "Ask me" for every legendary
-   creature, as you asked: a choice, never silent. One tap on the card switches a creature to "Only
-   when it matters".*
-3. **What "matters" means.** *Default: the failure would apply or keep a condition, end its
-   Concentration, kill, banish, teleport or change it, or cost a quarter or more of the Hit Points it
-   has now; anything the engine cannot read, it asks. Say if your rule of thumb is different (for
-   example: never on damage alone).*
-4. **Do players see the words "Legendary Resistance"?** *Default: yes, "fails, but shrugs it off
-   (Legendary Resistance)", never the count. It is what a DM says at the table, and the stat block is
-   public. The alternative is "shrugs it off" alone.*
-5. **Should the table wait when the only legal options are poor ones?** *Default: yes: if something
-   can be taken, the bar opens, with Skip one tap away. The engine does not judge "worth it" for you;
-   "By themselves" does.*
-6. **"In its lair": marked by you, per creature?** *Default: yes, a switch on the creature (and a
-   key on a prepared encounter), off unless you set it. It changes uses, Legendary Resistance and XP.*
-7. **Showing uses to players.** *Default: never, unless you switch it on for a creature. Some tables
-   like to see "Legendary 2/3"; it is your call per creature.*
-8. **AI default.** *Default: "Suggest" (the bar opens with the pick armed, one tap), because a boss
-   carries the scene. "By themselves" for a creature you want off your hands.*
-9. **Monster spellcasting (DEBT M6) next?** Most dragons, the vampire, the lich and the mummy lord
-   have legendary options that cast a spell; until M6 they are offered as yours to run. *Default:
-   yes, M6 straight after L2, ahead of L1b and before dm-helper's sharper tactics.*
-10. **A forgotten legendary action.** If you realise after the next creature has acted that the
-    dragon should have taken one, *default: Undo back to the window; there is no "late" legendary
-    action.*
+The ten questions this spec asked, as the owner answered them on the project board. Each is now
+a decision, and the sections named were changed to follow it.
+
+- **leg-1. One legendary action after each turn.** Owner, 23 Nov: one at a time (the default). One
+  per creature per window. See Decision 3.
+- **leg-2. Legendary Resistance by default.** Owner, 23 Nov: "I'm not sure what you mean by only
+  when it matters. If you mean maybe they have natural resistance to a fireball, then yes, only
+  when it matters." Beej's reading, for the owner to confirm: the default for each monster is "Only
+  when it matters" (not "Ask me"), and with leg-3 a failed save matters when failing it changes
+  something for the monster (damage it does not resist or ignore, a condition it is not immune to,
+  and the like); a failed save that changes nothing never spends a use. The DM can still switch a
+  monster to "Ask me every time". See "In plain words", Decision 6 (table, the `matters` list),
+  Decision 10 (card), the vocabulary table and test 10.
+- **leg-3. What can be resisted.** Owner, 23 Nov: "Any failed save". See Decision 6, "What can be
+  resisted" (it was already so) and "When a failure matters", whose Hit Point threshold is gone.
+- **leg-4. The words players see.** Owner, 23 Nov: "Just 'it shrugs it off'". Players are never
+  shown the words Legendary Resistance. See "In plain words", Decision 9 and test 12.
+- **leg-5. Wait when only poor options are legal.** Owner, 23 Nov: the default. The bar opens
+  whenever something can be taken, with Skip one tap away.
+- **leg-6. "In its lair".** Owner, 23 Nov: the default. A switch you set per creature, and a key on
+  a prepared encounter; off unless set. See Decisions 2 and 10.
+- **leg-7. Showing uses to players.** Owner, 23 Nov: the default. Never, unless you switch it on for
+  a creature. See Decision 9.
+- **leg-8. AI default.** Owner, 23 Nov: the default. "Suggest", with "By themselves" per creature.
+  See Decision 8.
+- **leg-9. Monster spellcasting (DEBT M6) next.** Owner, 23 Nov: the default. M6 straight after L2,
+  ahead of L1b and before dm-helper's sharper tactics. See the build plan's Order.
+- **leg-10. A forgotten legendary action.** Owner, 23 Nov: "This should be prompted at the end of
+  every player's turn so not sure how it becomes late. I wouldn't want to undo someone else's
+  turn." Beej's reading, for the owner to confirm: the game offers a legendary action after every
+  other creature's turn, so none is ever late; there is no late legendary action, and the fix is
+  never an undo across another player's turn. The old answer (undo back to the window) is dropped.
+  See Decision 3.
