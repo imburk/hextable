@@ -1,4 +1,4 @@
-import { scenario, wait, calm, state, shown, open, playSolo, closeMenu, openTab, waitShown, sleep, openMenu } from './lib.mjs';
+import { scenario, wait, calm, state, shown, open, playSolo, closeMenu, openTab, waitShown, sleep, openMenu, spawnNear } from './lib.mjs';
 
 // ---------- the DM's to-do tray (#675) ----------
 // A manual note becomes a card on the DM's screen with the nearest tools and Done; the menu button counts the open cards; the cards survive a
@@ -89,8 +89,7 @@ async function solo(browser, url, label, opts) {
       await run.do('a Mage added gets a "You run: Spellcasting" card', async () => {
         await closeMenu(page);
         await calm(page);      // act() is dropped while beats play (a tap skips them instead): the reload's own beats must be done
-        const at = await state(page, (S) => { const p = S.entities.fighter.pos; return { q: p.q + 6, r: p.r + 4 }; });
-        await page.evaluate((a) => window.hextable.act({ type: 'spawn', monster: 'mage', at: a }), at);
+        await spawnNear(page, 'mage', { near: 'fighter' });          // a hex the map takes a mage on (a fixed offset can be a wall on a random map)
         await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.kind === 'run'));
         await openTab(page, 'dm'); await waitShown(page, '#todo-mount');
         const t = await page.textContent('#todo-mount');

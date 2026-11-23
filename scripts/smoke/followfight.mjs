@@ -83,7 +83,7 @@ async function pass(browser, url, label, opts) {
       await run.do('"Not now" puts the question off for this fight', async () => {
         await apart(page);
         await walkIn(page, 'fighter');
-        await wait(page, () => window.hextable.timeline && window.hextable.waiting === 0);
+        await wait(page, () => window.hextable.timeline && window.hextable.waiting === 0, null, 20000);
         await waitShown(page, '#join', true, 20000);      // the fight's start plays out first (the Initiative dice); a slow machine took longer than the default 5 s
         // The question rides above the dock, and the dock changes height as the monsters' turns go by and the selected hero changes, so on a loaded machine the
         // button can still be moving when a click is tried: try again until it takes (a click that lands is the one `join-no` handler, so it cannot double).
