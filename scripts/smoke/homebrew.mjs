@@ -628,9 +628,18 @@ async function solo(browser, url, label0, opts, tag) {
         await openManager();
         if (!(await shown(page, '.pm-pack[data-pack="sample"]'))) throw new Error('the pack is not listed');
         await closeManager(); await closeMenu(page);
+        // Ven cast before the reload, so her Action is spent and in a fight M4 shows only what can be used now (R29): no Cast group. The DM ends the fight,
+        // and out of it every spell is listed and says why it cannot be cast: Ember Dart must be there and castable.
+        if (await page.evaluate(() => !!window.hextable.state.encounter)) {
+          await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+          await wait(page, () => !window.hextable.state.encounter, null, 10000).catch(() => { throw new Error('the fight did not end'); });
+          await calm(page);
+        }
         await page.evaluate((v) => window.hextable.select(v), ven);
         await panelTab(page, 'spells');
         await page.waitForSelector(rowOf('spells', 'Ember Dart'), { state: 'visible', timeout: 8000 });
+        const off = await page.getAttribute(rowOf('spells', 'Ember Dart'), 'aria-disabled');
+        if (off !== 'false') throw new Error(`Ember Dart is listed but greyed after the reload: ${(await page.textContent(rowOf('spells', 'Ember Dart')))?.slice(0, 200)}`);
         // the engine, with the overlay the page installed from storage, still takes the cast (asked on a copy, as `spawnNear` asks about a spawn)
         const { spots } = await spotsFor(page, 'goblin-warrior', { near: ven, min: 2, sightFrom: ven, range: 40 });
         if (!spots.length) throw new Error('no hex near Ven takes a foe');
