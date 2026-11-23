@@ -361,3 +361,20 @@ body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet se
 
 /* words for a screen reader only (the menu's live region, a slot count): they were used and never defined, so the turn announcement showed in a corner */
 .sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* The sheet's four sections (one-token-menu.md, M5): a bar a thumb can hit opens and shuts each in place; the open state is kept on the device. */
+.sh-sec { border-top: 1px solid var(--line); margin-top: 10px; }
+.sh-sec > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: 4px 2px; font-weight: 700; font-size: 16px; cursor: pointer; list-style: none; }
+.sh-sec > summary::-webkit-details-marker { display: none; }
+.sh-sec > summary::after { content: "\203A"; color: var(--muted); font-size: 20px; transition: transform .15s; }
+.sh-sec[open] > summary::after { transform: rotate(90deg); }
+.sh-sec > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.sh-in { padding-bottom: 8px; overflow-x: auto; }
+.sh-in > section { margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .sh-sec > summary::after { transition: none; } }
+/* Log and chat: the Say box sits above the private note, both at the foot of the log */
+#log-clock { margin: 0 0 6px; }
+#say-form { margin-top: 12px; padding: 8px 0 0; flex-wrap: nowrap; gap: 6px; }
+#say-form select { min-height: 44px; max-width: 9.5em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; }
+#say-form input { flex: 1; min-width: 0; min-height: 44px; }
+#say-form button { min-height: 44px; }

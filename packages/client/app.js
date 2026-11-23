@@ -836,7 +836,9 @@ function refresh() {
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
   showTurnLine();
-  $('btn-leave').hidden = isDM() || !!T.solo;
+  // Setup's last section: leaving this table on this device (anyone at a table), or a new game (solo).
+  $('btn-leave').hidden = !!T.solo; $('set-new').hidden = !T.solo; $('set-sec-leave').hidden = !!T.readOnly;
+  { const n = T.solo ? 'A new game replaces the one saved on this device.' : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
   $('menu-session').hidden = false; $('menu-new').hidden = !T.solo; $('menu-leave').hidden = !!T.solo;
   showUndo();
 
@@ -983,43 +985,68 @@ const LV = initLogView({
   line: (e, inFight) => `<li class="lg-line ${esc(e.cls)}" data-kind="${inFight && (e.kind === 'explore' || e.kind === 'combat') ? 'combat' : e.kind}">${esc(e.text)}${e.dice ? glyphs(e.dice) : ''}</li>`,
   ask: (fight) => T.history({ fight }),
 });
-function renderLog() { LV.render(); }
+function renderLog() { const c = $('log-clock'), t = S && Number.isFinite(S.clock) ? `It is ${clockText(S.clock)}.` : ''; c.hidden = !t; if (c.textContent !== t) c.textContent = t; LV.render(); }      // the clock heads Log and chat, as it heads Turns (M5)
 
 // What is lent to the creature for a time (a feature of a subclass: DEBT T96): the skills and tools, and what lent them. The sheet itself is not changed.
 const lentLine = (e) => { const l = lentList(S, e); return l.length ? `<p class="note" id="sheet-lent">Proficiency lent for a time: ${l.map((x) => `${esc(niceId(x.skill ?? x.tool))} (${esc(x.name)}${x.lasts ? `, ${esc(x.lasts)}` : ''})`).join('; ')}.</p>` : ''; };
 
 // The Armor Class that applies, and what changed it ("15 (Mage Armor)").
 function acLine(e) { const a = acShown(S, e, isDM()); return a.why.length ? `${a.ac} (${a.why.join(', ')})` : `${a.ac}`; }
+// Which of the sheet's sections this device keeps shut (the others are open), and what is known of a character's story: the choices its sheet records.
+const sheetShut = new Set(Array.isArray(prefs.get('hextable.sheetShut')) ? prefs.get('hextable.sheetShut') : []);
+$('sheet-body').addEventListener('toggle', (ev) => {
+  const d = ev.target; if (!d.matches?.('details.sh-sec')) return;
+  if (d.open === !sheetShut.has(d.dataset.sh)) return;
+  if (d.open) sheetShut.delete(d.dataset.sh); else sheetShut.add(d.dataset.sh);
+  prefs.set('hextable.sheetShut', [...sheetShut]);
+}, true);
+function storyHtml(e) {
+  const sh = e.sheet, facts = [];
+  const sp = sh?.species?.id ? CONTENT.species?.[sh.species.id] : null;
+  const lin = sp?.lineage?.options?.find?.((o) => o.id === sh.species.lineage)?.name;
+  if (sp) facts.push(`Species: ${sp.name}${lin ? ` (${lin})` : ''}`);
+  if (typeof sh?.background === 'string' && sh.background) facts.push(`Background: ${niceId(sh.background)}`);
+  if (e.kind === 'pc') facts.push(`Level ${e.level} ${classTitle(e)}`);
+  if (e.ownerName) facts.push(`Played by ${e.ownerName}`);
+  return facts.length ? `<div class="facts">${facts.map((f) => `<span>${esc(f)}</span>`).join('')}</div>` : '';
+}
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
   const st = e.castAbil ? spellStats(e, S) : null;
   const abil = Object.entries(e.abil).map(([k, v]) => `<div><small>${k}</small><b>${signed(mod(v))}</b><small>${v}</small></div>`).join('');
   const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(e.saveBonus?.[k] ?? mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
+  // The sheet in four sections (docs/specs/one-token-menu.md, Decision 4 and M5), each under a bar that opens and shuts it in place: what a notice says (a level to take,
+  // a form, a missing pack) stays above them. The name and the class are the status block's, above; the heading is kept for a screen reader.
+  const sec = (id, title, body) => (body.trim() ? `<details class="sh-sec" data-sh="${id}"${sheetShut.has(id) ? '' : ' open'}><summary>${title}</summary><div class="sh-in" role="region" aria-label="${title}">${body}</div></details>` : '');
+  const story = storyHtml(e);
   $('sheet-body').innerHTML = `
-    <h2>${esc(e.name)}</h2>
+    <h2 class="sr-only">${esc(e.name)}</h2>
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
-    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(classTitle(e))}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
     ${levelUpHtml(S, e, { dm: isDM(), tag: 'sheet' })}
     ${isDM() && missingText(e) ? `<p class="note" id="sheet-subclass-missing">${esc(missingText(e))}</p>` : ''}
     ${CLS.sheetBanner(e)}
+    ${sec('abilities', 'Abilities and skills', `
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span id="sheet-ac">AC ${acLine(e)}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
     ${isDM() && e.sheet && dmLine(e.sheet, tableRule(S.settings)) ? `<p class="note" id="sheet-scores-line">${esc(dmLine(e.sheet, tableRule(S.settings)))}</p>` : ''}
     <p class="note">Saving throws: ${saves}</p>
+    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
+    ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
       ${e.actions.map(actionProfile).map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bonus !== undefined ? signed(p.bonus) : p.dc ? `${p.save.toUpperCase()} DC ${p.dc}` : ''}</td><td>${esc(p.long)}${p.recharge ? ` · recharge ${p.recharge[0]}–6` : ''}${p.uses ? ` · ${p.uses.n}/day` : ''}</td><td>${p.far ? `${p.far} ft` : p.area ? `${p.area.size} ft ${p.area.shape}` : ''}</td></tr>`).join('')}</table></section>` : `<section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
-      ${e.attacks.map((a0) => { const a = imbued(S, e, a0); return `<tr><td>${esc(a.name)}${a.imbued?.length ? ` <small>(${esc(a.imbued.join(', '))})</small>` : ''}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${[a.dtype, ...(a.alt ?? [])].join(' or ')}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`; }).join('')}</table></section>`}
+      ${e.attacks.map((a0) => { const a = imbued(S, e, a0); return `<tr><td>${esc(a.name)}${a.imbued?.length ? ` <small>(${esc(a.imbued.join(', '))})</small>` : ''}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${[a.dtype, ...(a.alt ?? [])].join(' or ')}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`; }).join('')}</table></section>`}`)}
+    ${sec('features', 'Features and traits', `
+    ${featuresHtml(e, mine(e))}
+    ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
+    ${mine(e) ? pocketHtml(e) : ''}
+    ${mine(e) ? reactionsHtml(S, e) : ''}`)}
+    ${sec('spells', 'Spells known', `
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
-      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
-    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}
-    ${featuresHtml(e, mine(e))}
-    ${mine(e) ? pocketHtml(e) : ''}
-    ${mine(e) ? reactionsHtml(S, e) : ''}
-    ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
-    ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
-    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
-    ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
+      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}`)}
+    ${sec('story', 'Story', `${story}
+    ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}
+    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}`)}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
   for (const b of $('sheet-body').querySelectorAll('[data-levelup]')) b.onclick = () => { QE.levelUp(b.dataset.levelup); };
   if ($('sheet-refresh')) $('sheet-refresh').onclick = () => { refreshAsk = { party: false, at: Date.now() }; act({ type: 'refresh', actor: e.id }); };
@@ -1410,7 +1437,7 @@ function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
+  $('btn-leave').hidden = $('set-new').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }
@@ -1420,6 +1447,7 @@ $('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
 $('menu-new').onclick = newWorld;
+$('set-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.
 // A search box, a CR filter and a "recent" row sit above the buttons (spawnfind.js, #673); the recent list is kept per table on this device.
@@ -1521,7 +1549,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 $('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[data-levelup]'); if (b && !b.disabled) QE.levelUp(b.dataset.levelup); });
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
-  castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
+  castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm/creatures'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
   openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => { const st = flyState(S, e, shownName(S, e)); if (!st.has) return null; const row = flyRow(e); if (!aloft(S, e)) return { has: true, why: st.why, aloft: false }; const H = flyH(e); return { has: true, why: st.why || (H.can ? '' : 'No movement left.'), words: row ? stateLine(H, H.heights.find((r) => r.here) ?? row) : '', aloft: true, alt: row?.ft ?? H.here, up: row ? stepRow(H, row, 1)?.ft ?? null : null, down: row ? stepRow(H, row, -1)?.ft ?? null : null }; },
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },

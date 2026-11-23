@@ -187,6 +187,35 @@ opens that character's screen. Aiming folds the menu (one overlay at a time).
 open the existing pickers); no keyboard shortcuts 1 to 6; no pinned bars (M10) and no setting to open the character on my turn; Brutal Strike and Hide are hidden
 rather than greyed in a fight; the sheet is still shown under the status block (M5).
 
+### M5 build notes (sheet sections, Say, DM screens, Setup's groups)
+
+**Built.**
+- **Sheet.** `renderSheet` draws four sections at the foot of the Character screen: Abilities and skills (the facts, the six scores, saving throws, skills, defenses, attacks), Features and traits
+  (class features, pocket dimension, reactions), Spells known, Story (species, background, class, who plays it, gear; for the DM, Refresh from sheet). Each is a bar (48 px) that opens and shuts
+  its section in place; which are shut is kept on the device (`hextable.sheetShut`). The notices (a level to take, a form, a missing pack, an import) stay above the sections. The name and class
+  are the status block's; the sheet keeps the name as a heading for a screen reader only.
+- **Log and chat.** A Say box (`#say-form`, `handouts.js`) above the private note sends the engine's `say`: a player as a character of their own or "Out of character", the DM "As the DM" or as a
+  party member. The clock heads the log (`#log-clock`).
+- **DM tools.** The panel is a list of seven screens (Decision 4d's: Undo and the fight, Creatures, Map, sight and light, Table rules, Party and time, Scenes and handouts, Table file), each row
+  with a line saying what it holds. A row opens its screen as the menu's third level (`table/dm/creatures`): the heading names it, the back arrow and Left return to the list with the focus on
+  the row, and each screen keeps its own scroll. `drawer.js` reads the screens from the page (`.sec-index`, `.sec-screen[data-sec]`), so another panel can have them without new code. What waits
+  for the DM (players to let in, unsettled rewards, the fallen party's card) stays above the list. The old Fight section is split: starting, ending, auto-play and pace are on Undo and the
+  fight; the rules are on Table rules. Every id is kept.
+- **Setup.** Seven sections in Decision 4d's order: Display and controls (theme, floors, walls, caves, shadows, edge of a fight, camera buttons, keys), Dice, The menu (the token's place, slide or
+  appear, side, pin, which group a character's page opens on), Characters and packs, The table's rules, Help and about, Leave the table (Leave for anyone at a table, New game in a solo game).
+
+**Settled.**
+- **"Every DM section is reachable in three taps"** is counted from the menu's first level: Table, DM tools, the screen. With the token it is four. M8's few places (DM tools on the first level,
+  question 24) makes it three with the token; the first level is not changed here because M8 owns it.
+- **A last row, "All tools on one page"**, shows the seven screens one under the other. It is not in the spec. It is there for a DM on a wide screen who would rather scroll one page, and
+  it is what `openMenu(page, 'dm')` taps in the smoke passes, so the thirty-odd passes that click a DM control by its id did not have to learn which screen it is on. A pass about one screen
+  names it (`openMenu(page, 'dm/creatures')`).
+- **The sheet's sections start open** and are independent of each other; M10 makes them part of the one accordion. Started shut, a dozen smoke passes that read the sheet would each need a tap first.
+- **The dice and animation controls stay on the Dice screen** (`#dice-show`, `#pace-pick`, `#dice-auto-mine`): the `drawer` pass pins them there. Setup › Dice has a button that opens the Dice
+  screen and, for the DM, "Throw the monsters' dice for me". They move when D1/D5 give the Dice screen its own content.
+- **Characters and packs** in Setup is words and buttons that open the DM's screens (Creatures, Table file) or the player's character; the tools themselves are not moved.
+- A line the table refuses (too long, too fast) is not put back in the Say box, as the scene's box does; the refusal shows as a toast.
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the

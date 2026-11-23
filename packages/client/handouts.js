@@ -176,8 +176,33 @@ export function initHandouts({ act, toast, transport, state, isDM, openPanel }) 
     $('note-text').placeholder = isDM() ? 'A private note to one player' : 'A private note to the DM';
   }
 
+  // ---------- say (docs/specs/one-token-menu.md, M5: Log and chat) ----------
+  // A line to the whole table from the log's own box: the engine's `say`, which works with or without a scene. A player speaks as a character of
+  // their own or out of character; the DM as the DM or as a party member. The engine checks who may speak as whom.
+  $('say-form').onsubmit = (ev) => {
+    ev.preventDefault();
+    const text = $('say-text').value.trim(); if (!text) return;
+    act({ type: 'say', as: $('say-as').value || null, text, userName: T()?.you?.name });
+    $('say-text').value = '';
+  };
+  let lastSay = '';
+  function renderSay() {
+    const s = S(), me = T()?.you?.userId, dm = isDM();
+    const chars = Object.values(s.entities).filter((e) => e.side === 'party' && !e.dead && e.abil && (dm ? e.kind === 'pc' : e.owner === me));
+    const ooc = ['', dm ? 'As the DM' : 'Out of character'];
+    const opts = dm ? [ooc, ...chars.map((e) => [e.id, `Say as ${e.name}`])] : [...chars.map((e) => [e.id, `Say as ${e.name}`]), ooc];
+    $('say-form').hidden = !!T()?.readOnly;
+    const sig = JSON.stringify(opts);
+    if (sig === lastSay) return;
+    lastSay = sig;
+    const sel = $('say-as'), was = sel.value, had = sel.options.length > 0;
+    sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    if (had && opts.some(([v]) => v === was)) sel.value = was;
+  }
+
   function refresh() {
     const s = S(), t = T(); if (!s || !t) return;
+    renderSay();
     const dm = isDM(), mine = s.handouts ?? [];
     $('btn-handouts').hidden = dm;
     const unseen = mine.filter((h) => !seen.has(h.id)).length;

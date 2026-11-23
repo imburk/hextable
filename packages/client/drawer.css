@@ -91,6 +91,17 @@ body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-ind
 .tabpanel > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 #drawer-body h2 { margin: 0 0 8px; }
 #dm h2 { display: none; }
+/* a screen that holds screens (M5: DM tools): its list of rows, each with a tip under its name, then one screen at a time (or all, one under the other) */
+.tabpanel > .sec-index { padding: 0; margin: 12px 0 0; }
+.tabpanel > .sec-index:first-child { margin-top: 0; }
+.sec-index[hidden], .sec-screen[hidden] { display: none; }
+.sec-index .menu-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 0; min-height: 56px; }
+.sec-index .mr-name { grid-column: 1; white-space: normal; }
+.sec-index .mr-sum { grid-column: 1; text-align: left; font-size: 13px; }
+.sec-index .mr-chev { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.tabpanel > .sec-screen > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.tabpanel > .sec-screen > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.tabpanel > .sec-screen + .sec-screen:not([hidden]) { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
 
 /* the sheet: below 900 px it rises from the bottom, stops 12 % below the top (the dimmed map there is the clear zone) and above the token,
    and pushes one level at a time from the right. There is no x: the handle is the close control. */

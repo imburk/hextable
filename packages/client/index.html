@@ -126,7 +126,9 @@
       <div id="sheet-body"></div></section>
     <section id="log" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
       <button type="button" id="log-rewards" hidden>Show the last rewards</button>
+      <p id="log-clock" class="note" hidden></p>
       <ol id="log-list"></ol>
+      <form id="say-form" class="row" autocomplete="off" hidden><select id="say-as" aria-label="Say as"></select><input id="say-text" maxlength="500" placeholder="Say something to the table" aria-label="What to say"><button type="submit">Send</button></form>
       <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
     </section>
     <section id="handouts" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
@@ -137,13 +139,10 @@
         <label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label>
       </section>
     </section>
-    <section id="dm" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
+    <section id="dm" class="tabpanel" role="region" aria-labelledby="drawer-title" data-sec="" hidden>
+  <!-- DM tools (docs/specs/one-token-menu.md, M5): what waits is on top; then a list of seven screens, one tap each (the menu's third level, drawer.js). Every id is kept. -->
   <section id="todo-mount" aria-label="To do" hidden></section>
   <div id="dm-table"></div>
-  <section><h3>Take back</h3>
-    <div class="row"><button type="button" id="dm-undo" class="undo" disabled aria-label="Undo"><span class="sym-slot"></span><small></small></button><button type="button" id="dm-redo" class="undo" disabled aria-label="Redo"><span class="sym-slot"></span><small></small></button></div>
-    <p class="note">Puts the whole game back as it was, dice included: redo gives the same rolls.</p>
-  </section>
   <section id="dm-fallen" hidden><h3>The party has fallen</h3>
     <p class="note">Everyone in the party is dead or down and stable. The card with your choices can be brought back.</p>
     <div class="row"><button type="button" id="dm-fallen-open" hidden>Show the card</button></div>
@@ -152,18 +151,60 @@
     <p class="note">A fight is over and its rewards are not settled. The players see only that they are being worked out.</p>
     <div class="row"><button type="button" id="dm-rewards-open">Settle the rewards</button></div>
   </section>
+  <ul id="dm-index" class="menu-list sec-index" aria-label="DM tools">
+    <li><button type="button" class="menu-row" data-sec="fight"><span class="mr-name">Undo and the fight</span><span class="mr-sum">Take back a step, call for initiative, the pace</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    <li><button type="button" class="menu-row" data-sec="creatures"><span class="mr-name">Creatures</span><span class="mr-sum">Add, place, hide, conditions, rests, who plays whom</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    <li><button type="button" class="menu-row" data-sec="map"><span class="mr-name">Map, sight and light</span><span class="mr-sum">Edit the map, what players are sent, light, places</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    <li><button type="button" class="menu-row" data-sec="rules"><span class="mr-name">Table rules</span><span class="mr-sum">Dice, rewards, cover, distance, when a fight starts</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    <li><button type="button" class="menu-row" data-sec="time"><span class="mr-name">Party and time</span><span class="mr-sum">Marching order, the world clock, the chronicle</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    <li><button type="button" class="menu-row" data-sec="scenes"><span class="mr-name">Scenes and handouts</span><span class="mr-sum">Scenes with no map, what you show the players</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    <li><button type="button" class="menu-row" data-sec="file"><span class="mr-name">Table file</span><span class="mr-sum">Export, packs, leaving, a new world</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+    <li><button type="button" class="menu-row" data-sec="all"><span class="mr-name">All tools on one page</span><span class="mr-sum">Every screen above, one under the other</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+  </ul>
+  <div class="sec-screen" id="dm-sec-fight" data-sec="fight" data-title="Undo and the fight" hidden>
+  <section><h3>Take back</h3>
+    <div class="row"><button type="button" id="dm-undo" class="undo" disabled aria-label="Undo"><span class="sym-slot"></span><small></small></button><button type="button" id="dm-redo" class="undo" disabled aria-label="Redo"><span class="sym-slot"></span><small></small></button></div>
+    <p class="note">Puts the whole game back as it was, dice included: redo gives the same rolls.</p>
+  </section>
+  <section><h3>Fight</h3>
+    <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
+    <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
+    <label class="assign">How fast the table plays out what happens <select id="dm-pace"></select></label>
+    <p class="note">Players can make it quicker on their own device, never slower.</p>
+  </section>
+  </div>
+  <div class="sec-screen" id="dm-sec-creatures" data-sec="creatures" data-title="Creatures" hidden>
+  <section><h3>Creatures</h3>
+    <div class="row" id="dm-spawn"></div>
+    <label class="check"><input type="checkbox" id="dm-hidden"> Add them hidden from the players</label>
+    <div class="row cond-row"><select id="dm-cond" aria-label="Condition"></select><button type="button" id="dm-cond-set">Apply to selected</button><button type="button" id="dm-cond-clear">Remove</button></div>
+    <div class="row"><button type="button" id="dm-place">Place selected…</button><button type="button" id="dm-hide" disabled>Hide selected</button><button type="button" id="dm-fly" disabled>Give selected flight</button><select id="dm-size" disabled aria-label="Size of the selected creature"><option value="tiny">Tiny</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="huge">Huge</option><option value="gargantuan">Gargantuan</option></select><button type="button" id="dm-rest">Long rest</button><button type="button" id="dm-rest-all" title="Everyone on the map rests: monsters get back their uses per day">Long rest (everyone)</button></div>
+    <div class="row"><button type="button" id="dm-refresh-party" title="Make each party character again from its saved sheet, so it picks up what the content has gained since">Refresh the party</button></div>
+    <p class="note">Refresh the party makes every character that has a saved sheet again from it. A character typed in by hand has none and is skipped.</p>
+  </section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
+  <section id="dm-qe"></section>
+  </div>
+  <div class="sec-screen" id="dm-sec-map" data-sec="map" data-title="Map, sight and light" hidden>
   <section><h3>Map</h3><p class="note" id="dm-map-grid"></p><div class="row"><button type="button" id="dm-edit">Edit map</button></div>
     <label class="assign">Start on a stock map <select id="dm-stock"></select></label>
     <p class="note" id="dm-stock-text"></p>
     <div class="row"><button type="button" id="dm-stock-go">Start on this map</button></div>
     <p class="note" id="dm-stock-ask" role="status" hidden></p>
     <p class="note" id="dm-stock-fight" hidden>The map can't change in the middle of a fight.</p></section>
-  <section><h3>Fight</h3>
-    <div class="row"><button type="button" id="dm-start">Call for initiative…</button><button type="button" id="dm-end">End the fight</button></div>
-    <label class="check"><input type="checkbox" id="dm-auto" checked> Run monsters automatically</label>
-    <label class="assign">How fast the table plays out what happens <select id="dm-pace"></select></label>
-    <p class="note">Players can make it quicker on their own device, never slower.</p>
+  <section><h3>Sight and light</h3>
+    <label class="assign">What players are sent <select id="dm-sight"><option value="rooms">Rooms: everything in a revealed room</option><option value="los">Line of sight: only what the party can see</option><option value="light">Light: line of sight, light and senses</option></select></label>
+    <label class="assign">An unseen creature's turn <select id="dm-unseen-turns"><option value="say">Say so: &ldquo;something moves unseen&rdquo;</option><option value="quiet">Say nothing</option></select></label>
+    <label class="assign">Light on <span id="dm-ambient-level"></span> <select id="dm-ambient"><option value="bright">Bright (daylight, a lit hall)</option><option value="dim">Dim (dusk, moonlight)</option><option value="dark">Dark (a cave at night)</option></select></label>
+    <div class="row"><button type="button" id="dm-torch" disabled>Give selected a torch</button></div>
+  </section>
+  <section id="dm-places-box" hidden><h3>Places</h3>
+    <p class="note">Rooms the players have not seen are not sent to them. A room is revealed when the party reaches it or opens a door into it, or here.</p>
+    <div id="dm-places"></div>
+  </section>
+  </div>
+  <div class="sec-screen" id="dm-sec-rules" data-sec="rules" data-title="Table rules" hidden>
+  <section id="dm-rules"><h3>Table rules</h3>
     <label class="assign">Dice <select id="dm-dice-throw"><option value="auto">Rolled as soon as someone acts</option><option value="throw">Thrown by whoever acts: a tap or flick sends the action</option></select></label>
     <label class="assign">Rewards after a won fight <select id="dm-conclusion"><option value="dm">You settle them first, then show the players</option><option value="auto">Published at once, no review</option><option value="off">None (levelling by milestone)</option></select></label>
     <p class="note" id="dm-conclusion-note" hidden>Published at once means players are shown the XP of every foe, hidden ones too.</p>
@@ -180,28 +221,12 @@
     <p class="note">This map is on squares. The SRD gives no one way to count a diagonal, a range or the squares of an area, so these are the table's to choose. They change nothing on a hex map.</p>
     <div id="dm-square-rules"></div>
   </section>
-  <section><h3>Sight and light</h3>
-    <label class="assign">What players are sent <select id="dm-sight"><option value="rooms">Rooms: everything in a revealed room</option><option value="los">Line of sight: only what the party can see</option><option value="light">Light: line of sight, light and senses</option></select></label>
-    <label class="assign">An unseen creature's turn <select id="dm-unseen-turns"><option value="say">Say so: &ldquo;something moves unseen&rdquo;</option><option value="quiet">Say nothing</option></select></label>
-    <label class="assign">Light on <span id="dm-ambient-level"></span> <select id="dm-ambient"><option value="bright">Bright (daylight, a lit hall)</option><option value="dim">Dim (dusk, moonlight)</option><option value="dark">Dark (a cave at night)</option></select></label>
-    <div class="row"><button type="button" id="dm-torch" disabled>Give selected a torch</button></div>
-  </section>
+  </div>
+  <div class="sec-screen" id="dm-sec-time" data-sec="time" data-title="Party and time" hidden>
   <section><h3>Marching order</h3>
     <p class="note">Followers walk behind their leader in this order. Select a party member and tap Lead the party to have everyone follow them.</p>
     <ol id="dm-march"></ol>
   </section>
-  <section><h3>Creatures</h3>
-    <div class="row" id="dm-spawn"></div>
-    <label class="check"><input type="checkbox" id="dm-hidden"> Add them hidden from the players</label>
-    <div class="row cond-row"><select id="dm-cond" aria-label="Condition"></select><button type="button" id="dm-cond-set">Apply to selected</button><button type="button" id="dm-cond-clear">Remove</button></div>
-    <div class="row"><button type="button" id="dm-place">Place selected…</button><button type="button" id="dm-hide" disabled>Hide selected</button><button type="button" id="dm-fly" disabled>Give selected flight</button><select id="dm-size" disabled aria-label="Size of the selected creature"><option value="tiny">Tiny</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="huge">Huge</option><option value="gargantuan">Gargantuan</option></select><button type="button" id="dm-rest">Long rest</button><button type="button" id="dm-rest-all" title="Everyone on the map rests: monsters get back their uses per day">Long rest (everyone)</button></div>
-    <div class="row"><button type="button" id="dm-refresh-party" title="Make each party character again from its saved sheet, so it picks up what the content has gained since">Refresh the party</button></div>
-    <p class="note">Refresh the party makes every character that has a saved sheet again from it. A character typed in by hand has none and is skipped.</p>
-  </section>
-  <section id="dm-scene"></section>
-  <section id="dm-handouts"></section>
-  <section id="dm-packs"></section>
-  <section id="dm-qe"></section>
   <section><h3>World clock</h3>
     <div class="row"><button type="button" data-time="10">+10 min</button><button type="button" data-time="60">+1 hour</button><button type="button" data-time="480">+8 hours</button></div>
   </section>
@@ -210,46 +235,65 @@
     <form id="dm-chron" class="row"><input id="chron-title" placeholder="What happened?" maxlength="80" autocomplete="off"><button type="submit">Add</button></form>
     <ol id="chron-list"></ol>
   </section>
-  <section id="dm-places-box" hidden><h3>Places</h3>
-    <p class="note">Rooms the players have not seen are not sent to them. A room is revealed when the party reaches it or opens a door into it, or here.</p>
-    <div id="dm-places"></div>
-  </section>
-  <section id="dm-leave-box" hidden><h3>Table</h3>
-    <p class="note">Leaving forgets this table on this device. Your players stay, but nobody can let new players in.</p>
-    <div class="row"><button type="button" id="dm-leave" class="leave">Leave table</button></div>
-  </section>
+  </div>
+  <div class="sec-screen" id="dm-sec-scenes" data-sec="scenes" data-title="Scenes and handouts" hidden>
+  <section id="dm-scene"></section>
+  <section id="dm-handouts"></section>
+  </div>
+  <div class="sec-screen" id="dm-sec-file" data-sec="file" data-title="Table file" hidden>
   <section><h3>Table file</h3>
     <p class="note">Download the whole table as a file to keep your own copy.</p>
     <div class="row"><button type="button" id="dm-export">Export table</button></div>
   </section>
+  <section id="dm-packs"></section>
+  <section id="dm-leave-box" hidden><h3>Table</h3>
+    <p class="note">Leaving forgets this table on this device. Your players stay, but nobody can let new players in.</p>
+    <div class="row"><button type="button" id="dm-leave" class="leave">Leave table</button></div>
+  </section>
   <section id="dm-solo" hidden><h3>Solo game</h3><div class="row"><button type="button" id="dm-new">Start a new world</button></div></section>
+  </div>
 </section>
     <section id="settings" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
-      <section><h3>Look</h3>
+      <!-- Setup is one page of seven sections (docs/specs/one-token-menu.md, Decision 4d round 4; M5 groups them, M10 makes them one accordion). Every id is kept. -->
+      <section id="set-sec-display"><h3>Display and controls</h3>
         <label class="assign">Theme <select id="set-theme"></select></label>
         <label class="assign">Floors <select id="set-floors"><option value="rooms">Rooms, with a faint grid</option><option value="hex" id="set-floors-each">Each hex on its own</option></select></label>
         <label class="check"><input type="checkbox" id="set-cutaway"> Cut walls down where they hide a room</label>
         <label class="check"><input type="checkbox" id="set-caves"> Draw caves with a ragged edge</label>
         <p class="note" id="set-look-note" hidden></p>
-      </section>
-      <section><h3>Controls</h3>
-        <label class="assign">The menu token sits <select id="set-token"><option value="center">Bottom centre</option><option value="right">Bottom right</option><option value="left">Bottom left</option></select></label>
         <label class="check"><input type="checkbox" id="set-cam"> Camera buttons on the map</label>
+        <div id="set-keys-at"></div>
+      </section>
+      <section id="set-sec-dice"><h3>Dice</h3>
+        <p class="note">How dice are thrown and how fast the table plays, on this device, are on the Dice screen.</p>
+        <div class="row"><button type="button" id="set-go-dice" data-open="dice">Dice and animation</button></div>
+        <div id="set-dm-box" hidden>
+          <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me</label>
+        </div>
+      </section>
+      <section id="set-sec-menu"><h3>The menu</h3>
+        <label class="assign">The menu token sits <select id="set-token"><option value="center">Bottom centre</option><option value="right">Bottom right</option><option value="left">Bottom left</option></select></label>
         <label class="assign">Menus <select id="set-motion"><option value="slide">Slide in and out</option><option value="appear">Just appear</option></select></label>
         <label class="assign">On a wide screen the menu opens from the <select id="set-side"><option value="left">Left</option><option value="right">Right</option></select></label>
         <label class="check" id="set-pin-row"><input type="checkbox" id="set-pin"> Keep the menu open beside the map</label>
         <p class="note" id="set-pin-note">Wide screens only. The map makes room for it.</p>
+        <label class="assign">When a character's page opens, its actions open on <select id="set-paneltab"><option value="auto">The likely group</option><option value="remember">The group I used last</option></select></label>
       </section>
-      <section><h3>Actions, on this device</h3>
-        <label class="assign">Action tab <select id="set-paneltab"><option value="auto">Pick the likely one</option><option value="remember">Remember my last one</option></select></label>
+      <section id="set-sec-chars" hidden><h3>Characters and packs</h3>
+        <p class="note" id="set-chars-note"></p>
+        <div class="row" id="set-chars-dm" hidden><button type="button" data-open="dm/creatures">Who plays whom, adding and levelling</button><button type="button" data-open="dm/file">The table's packs</button></div>
+        <div class="row" id="set-chars-pl" hidden><button type="button" data-open="sheet">My character</button></div>
       </section>
-      <section id="set-dm-box" hidden><h3>For the DM, on this device</h3>
-        <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me</label>
-      </section>
-      <section id="set-table-box"><h3>Table</h3>
+      <section id="set-table-box"><h3>The table's rules</h3>
         <p class="note" id="pace-table"></p>
         <ul id="set-rules" class="set-rules"></ul>
-        <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave</button></div>
+      </section>
+      <section id="set-sec-help"><h3>Help and about</h3>
+        <div class="row"><button type="button" id="set-help">Help and feedback</button><button type="button" id="set-about" data-open="about">About, credits and licences</button></div>
+      </section>
+      <section id="set-sec-leave" hidden><h3>Leave the table</h3>
+        <p class="note" id="set-leave-note"></p>
+        <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave the table</button><button type="button" id="set-new" class="leave" hidden>New game</button></div>
       </section>
     </section>
     <section id="about" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden></section>
