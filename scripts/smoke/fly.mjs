@@ -17,6 +17,29 @@ const fly = (page) => page.evaluate(() => {
   return { mode: h.mode.kind, hint: document.getElementById('hint').hidden ? '' : document.getElementById('hint-text').textContent, picked: col?.blocks.find((b) => b.picked)?.ft ?? null, blocks: col?.blocks.map((b) => b.ft) ?? null,
     cells: pl?.cells.length ?? 0, planeZ: pl?.z ?? null, labels: [...document.querySelectorAll('.col-label')].map((e) => e.textContent), through: (R.inner ?? R).overlayX?.n ?? 0, dist: (R.inner ?? R).cam?.dist };
 });
+
+// Input the page saw, kept for a failure's dump (#720): every pointer event on the canvas and every tap the renderer handed to the app, with what it hit.
+const recordInput = (page) => page.evaluate(() => {
+  const h = window.hextable, R = h.R, log = (window.__flyLog = []), t0 = performance.now(), add = (o) => { log.push({ t: Math.round(performance.now() - t0), ...o }); if (log.length > 14) log.shift(); };
+  const cv = document.getElementById('gl');
+  for (const k of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) cv.addEventListener(k, (e) => { if (k !== 'pointermove' || log.at(-1)?.ev !== k) add({ ev: k, id: e.pointerId, type: e.pointerType, x: Math.round(e.clientX), y: Math.round(e.clientY) }); }, { capture: true });
+  const old = R.onTap; R.onTap = (hit) => { add({ ev: 'onTap', hit: JSON.stringify({ hex: hit.hex, id: hit.id, block: hit.block, plane: hit.plane, pointer: hit.pointer }), mode: h.mode.kind, marked: h.mode.marked, point: h.mode.point }); return old(hit); };
+});
+// What matters when a first tap did not mark its place: the mode, the tap's point and what the picker finds there now, the column and the plane, the token, the last input.
+const dumpTap = (page, c) => page.evaluate(async (c) => {
+  const h = window.hextable, R = h.R, col = R.hl?.column, pl = R.hl?.plane, e = Object.values(h.state.entities).find((x) => x.id === 'wizard');
+  const here = pl?.cells.find((x) => x.key === c.key), U = Math.sqrt(3) / 5, w = col ? R.G.toWorld(col.at) : null, cp = col ? R.screenPoint(w.x / U, w.z / U, col.z0) : null;
+  const cam = (R.inner ?? R).cam, top = document.elementFromPoint(c.p.x, c.p.y);
+  // Is the tap on the column? (the press the column's drag takes for its own: app.js FLY_DRAG.down, heights.js blockAtPoint)
+  let onBlock = 'unknown';
+  try {
+    const { blockAtPoint } = await import('./heights.js'), e2 = h.state.entities.wizard, g = R.G.toWorld(e2.pos);
+    onBlock = blockAtPoint(h.flyBlocksPx ? h.flyBlocksPx(e2) : col.blocks.map((b) => { const a = R.screenPoint(g.x / U, g.z / U, b.z ?? 0), t = R.screenPoint(g.x / U, g.z / U, (b.z ?? 0) + 4.8); return { z: b.z, x: a.x, top: t.y, bottom: a.y }; }), c.p.y, c.p.x);
+  } catch (err) { onBlock = `error ${err.message}`; }
+  return JSON.stringify({ onBlock, element: top ? `${top.tagName}#${top.id}.${top.className}` : null, mode: { kind: h.mode.kind, marked: h.mode.marked, point: h.mode.point, hover: h.mode.hover }, tap: { key: c.key, h: c.h, px: c.p, cellNow: here ? { h: here.h, cost: here.cost, floor: here.floor } : null, nowAt: here ? R.screenPoint(R.G.toWorld(here.h).x / U, R.G.toWorld(here.h).z / U, here.h.z ?? 0) : null },
+    column: col ? { at: col.at, blocks: col.blocks.map((b) => b.ft + (b.picked ? '*' : '')).join(','), foot: cp } : null, plane: pl ? { z: pl.z, ground: pl.ground, faint: pl.faint, cells: pl.cells.length } : null,
+    token: e?.pos, cam: cam ? { x: cam.x, z: cam.z, dist: cam.dist, pitch: cam.pitch, yaw: cam.yaw } : null, hintGoHidden: document.getElementById('hint-go').hidden, log: window.__flyLog ?? [] });
+}, c);
 const posOf = (page) => state(page, (S, i) => S.entities[i].pos, ID);
 // Where a place of the plane is on the screen (the plane's own height), and the middle of a block of the column.
 const cellPx = (page, h) => page.evaluate((c) => { const R = window.hextable.R, U = Math.sqrt(3) / 5, w = R.G.toWorld(c); return R.screenPoint(w.x / U, w.z / U, c.z ?? 0); }, h);
@@ -184,7 +207,7 @@ async function phone(browser, url) {
       };
 
       await run.do('the Fly button opens the column; a view that looks nearly straight down is tilted to 0.9 for it; the stepper and the list are in the aim bar', async () => {
-        await open(page, url); await playSolo(page);
+        await open(page, url); await playSolo(page); await recordInput(page);
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         await act(page, { type: 'setting', key: 'autoEngage', value: false });
         await act(page, { type: 'loadMap', map: MAP });
@@ -237,7 +260,8 @@ async function phone(browser, url) {
       await run.do('a place in the air takes two taps: the first marks it (a line down, the cost, Go), the second sends; the column closes and the view tilts back', async () => {
         const c = await tapPlace(), before = await posOf(page);
         await page.touchscreen.tap(c.p.x, c.p.y);
-        await wait(page, () => window.hextable.mode.marked && !!window.hextable.mode.point && !document.getElementById('hint-go').hidden);
+        try { await wait(page, () => window.hextable.mode.marked && !!window.hextable.mode.point && !document.getElementById('hint-go').hidden); }
+        catch (err) { throw new Error(`${err.message}\nfirst tap did not mark: ${await dumpTap(page, c)}`); }
         const mark = await page.evaluate(() => ({ key: window.hextable.mode.point, hint: document.getElementById('hint-text').textContent, go: document.getElementById('hint-go').textContent, line: !!window.hextable.R.hl.plane.point }));
         const now = await posOf(page);
         if (now.q !== before.q || now.r !== before.r || (now.z ?? 0) !== (before.z ?? 0)) throw new Error('one tap sent the flying move');
