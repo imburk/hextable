@@ -316,10 +316,11 @@ async function flurry(browser, url, label, opts) {
         const said = await page.evaluate((n) => { const ev = window.hextable.state.timeline.slice(n).find((e) => e.type === 'std'); return ev ? window.hextable.describe(ev) : null; }, a.tl);      // the log's words for the event
         if (!said || said !== `Flurry of Blows: 1 Focus Point spent (${b.focus} left).`) throw new Error(`the log says "${said}"`);
         // armed on a phone, the panel folds away so the map can be tapped: the row is read from the page, not clicked
-        await page.evaluate(() => document.getElementById('ap-tab-attacks').click());
-        await wait(page, () => document.getElementById('ap-tab-attacks').getAttribute('aria-selected') === 'true');
+        await page.evaluate(() => { const b = document.getElementById('ap-bar-attacks'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); });      // the Attack group's bar (M4: groups, not tabs)
+        await wait(page, () => document.getElementById('ap-bar-attacks').getAttribute('aria-expanded') === 'true');
         const row = await page.evaluate(() => document.querySelector('#ap-attacks [data-row="atk:unarmed-strike"]')?.textContent ?? '');
         if (!/Flurry: 2 left/.test(row)) throw new Error(`the Unarmed Strike row says "${row}"`);
+        await closePanels(page);                                                                  // reading the group opened the menu: clear the map again for the taps
       });
 
       await run.do('tap the foe twice: two Unarmed Strikes on the Bonus Action, re-armed between, no Spear', async () => {
