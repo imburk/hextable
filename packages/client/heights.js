@@ -1,4 +1,4 @@
-// Heights a flyer can end a move at, as data (docs/specs/fly-swim-control.md, stage C1). Pure: no DOM and no renderer, so Node tests it.
+// Heights a flyer can end a move at, as data (docs/specs/fly-swim-control.md, stage C1). Pure: no DOM and no Three.js, so Node tests it.
 // Everything here is read from the engine's own search (`moveOptions`): a height is offered only if the engine has a place to stop at
 // it now. The column and the plane (C2) are drawn from what `heightsOf` returns; the feet left are the engine's own formula, copied
 // (`waysLeft`), and a test pins that every stop the engine reports is within it.
@@ -6,6 +6,7 @@ import { aloft, current, EXPLORE_BUDGET, FLY_CEILING, FT, inFight, moveOptions, 
 import { incapacitatedBy, speedOf } from './shared/modifiers.js';
 import { ground, surfaces, under } from './shared/space.js';
 import { key as cellKey } from './shared/grid.js';
+import { THUMB, GROW, growFor } from './three-build.js';
 
 // The creature whose feet a move of `e` spends: its mount, if it rides one (the engine moves the mount).
 const moverOf = (S, e) => { const m = e?.riding ? S.entities[e.riding.on] : null; return m && m.rider === e.id && !m.riding ? m : e; };
@@ -158,4 +159,90 @@ export function cellWords(H, c) {
   if (!c) return '';
   const most = c.floor ? Math.max(H.left.walk, H.left.climb, H.left.fly) : H.left.fly;
   return H.left.fighting ? `${c.cost} ft, ${feet(most - c.cost)} left` : `${c.cost} ft`;
+}
+
+// ---------- touch, the camera and words (C4) ----------
+// A thumb needs 44 px. A block drawn smaller than that is picked over an area 1.5 times as tall as it is drawn: the rule is three-build.js's, where the renderer picks by it too.
+export { THUMB, GROW, growFor };
+// The block under a point of the screen. `blocks`: [{ z, x, top, bottom }] in pixels (top above bottom on the screen, so top < bottom).
+// Each block's pick area is its own height, grown about its middle when it is small; where grown areas overlap the nearer middle wins.
+// `x` is tested only when given: a point farther from the column than `half` pixels (half a thumb at least) is not on it.
+export function blockAtPoint(blocks, y, x = null) {
+  let best = null;
+  for (const b of blocks) {
+    const tall = Math.abs(b.bottom - b.top), mid = (b.top + b.bottom) / 2, reach = (tall * growFor(tall)) / 2;
+    if (Math.abs(y - mid) > reach) continue;
+    if (x !== null && Math.abs(x - b.x) > Math.max(THUMB / 2, tall * 0.75)) continue;
+    const d = Math.abs(y - mid);
+    if (!best || d < best.d) best = { z: b.z, d };
+  }
+  return best ? best.z : null;
+}
+// While a finger drags along the column the pick follows it one block at a time: the block whose middle is nearest, wherever the finger is.
+export function blockNearest(blocks, y) {
+  let best = null;
+  for (const b of blocks) { const d = Math.abs(y - (b.top + b.bottom) / 2); if (!best || d < best.d) best = { z: b.z, d }; }
+  return best ? best.z : null;
+}
+// The camera's tilt when the column opens: looking nearly straight down a block is a sliver, so a view steeper than 1.05 rad eases to
+// 0.9. Returns the tilt to go to, or null to leave the view alone.
+export const STEEP = 1.05, COLUMN_PITCH = 0.9;
+export const pitchFor = (pitch) => (pitch > STEEP ? COLUMN_PITCH : null);
+// How far down to slide the picture, in pixels, so the top of the column is on the screen: `top` is where the top block is now, `margin`
+// the first pixel row that is free (under the aim bar), `foot` where the creature's own cell is, and `floor` the last row it may be
+// pushed to (above the menu's strip). Never more than brings the foot to the floor, and never up.
+export function frameNudge({ top, margin, foot, floor }) {
+  const missing = Math.max(0, margin - top), room = Math.max(0, floor - foot);
+  return Math.min(missing, room);
+}
+
+// A flight that ends on its own (question 4): only when the Fly Speed is lent by something that lasts (a spell, Dragon Wings) and that
+// ends before the creature's next turn. A creature with a Fly Speed of its own never falls by the clock, and is never warned.
+// Returns { name, rounds } or null. Read from the lasting effects the state carries (durations.js: `until`, and a part's own `ends`).
+export function flightEnds(S, e) {
+  const who = moverOf(S, e);
+  if (!who || (who.speeds?.fly ?? 0) > 0) return null;
+  const enc = S.encounter;
+  let worst = null;
+  for (const fx of S.effects ?? []) {
+    for (const p of fx.parts ?? []) {
+      const m = p.modifier;
+      if (p.ended || p.target !== who.id || !m || (m.on !== 'speed.fly' && !(Array.isArray(m.on) && m.on.includes('speed.fly')))) continue;
+      let rounds = Infinity;
+      if (p.ends && p.ends.on !== 'save') rounds = 0;                                             // until the end (or start) of a turn: gone before it acts again
+      else if (fx.until && enc && fx.until.enc === enc.id) rounds = fx.until.round - enc.round;
+      else if (fx.until?.clock !== undefined) rounds = Math.round((fx.until.clock - S.clock) / 0.1);
+      if (!worst || rounds > worst.rounds) worst = { name: fx.name, rounds };                       // whatever holds it up longest decides
+    }
+  }
+  return worst && worst.rounds <= 1 ? { name: worst.name, rounds: Math.max(0, worst.rounds) } : null;
+}
+// The warning for a place `drop` feet above the floor, or ''. The fall's damage is the engine's to roll (1d6 for each 10 ft, by the SRD).
+export function fallWarning(S, e, drop) {
+  if (!(drop > 0)) return '';
+  const end = flightEnds(S, e);
+  if (!end) return '';
+  return `${end.name} ends ${end.rounds ? 'in 1 round' : 'this round'}: you would fall ${drop} ft${drop >= 10 ? ' (1d6 for each 10 ft)' : ''}.`;
+}
+
+// What is said aloud when the pick changes: "Picked 30 ft, 20 ft of flying left".
+export function pickedWords(H, row) {
+  if (!row) return '';
+  const what = row.ground ? 'the ground' : `${row.ft} ft`;
+  const cost = row.here ? 0 : row.up, after = H.left.fighting && cost !== null ? `, ${feet(H.left.fly - cost)} ft of flying left` : '';
+  return `Picked ${what}${after}`;
+}
+// The way from one cell to another in the words of a compass (north is up the map), from board coordinates (x east, z south).
+const WINDS = ['East', 'South-east', 'South', 'South-west', 'West', 'North-west', 'North', 'North-east'];
+export function windOf(dx, dz) { return !dx && !dz ? '' : WINDS[((Math.round(Math.atan2(dz, dx) / (Math.PI / 4)) % 8) + 8) % 8]; }
+// The places of a block as a list for those who do not use the picture: nearest first, each in words
+// ("North-east, 25 ft, at 20 ft up, costs 30 ft"). `G` is the map's grid. [{ key, text }].
+export function placeList(G, e, H, row) {
+  if (!row) return [];
+  const o = G.toWorld(e.pos);
+  return row.cells.map((c) => {
+    const w = G.toWorld(c.h), far = G.dist(e.pos, c.h) * FT, wind = windOf(w.x - o.x, w.z - o.z), up = (c.h.z ?? 0) - H.z0;
+    const where = far ? `${wind}, ${far} ft` : (c.h.z ?? 0) > (e.pos.z ?? 0) ? 'Straight up' : 'Straight down';
+    return { key: c.key, far, cost: c.cost, text: `${where}, ${up > 0 ? `at ${up} ft up` : 'on the ground'}${c.floor && up > 0 ? ' (a floor)' : ''}, costs ${cellWords(H, c)}` };
+  }).sort((a, b) => a.far - b.far || a.cost - b.cost || (a.key < b.key ? -1 : 1));
 }

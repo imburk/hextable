@@ -305,6 +305,8 @@ export function moveRows(S, e, { fly = null, mode = null } = {}) {
   const enc = S.encounter, nimble = !!e.features?.nimbleEscape, rows = [], row = (r) => ({ sub: '', why: '', armed: false, std: true, ...r });
   // "Fly…" (docs/specs/fly-swim-control.md, "Getting in"): the main road to the column of heights, for a creature with a Fly Speed; greyed with the reason when it cannot fly now.
   if (fly?.has) rows.push(row({ id: 'fly', kind: 'flyOpen', label: 'Fly\u2026', sub: fly.words ?? 'Pick a height, then a place', armed: mode?.kind === 'fly', time: null, std: false, why: fly.why ?? '' }));
+  // The same move without the picture: a list of the places in reach, nearest first, in words (Accessibility).
+  if (fly?.has && !fly.why) rows.push(row({ id: 'fly-to', kind: 'flyOpen', list: true, label: 'Fly to\u2026', sub: 'A list of the places in reach, nearest first', time: null, std: false }));
   rows.push(row({ id: 'dash', kind: 'send', label: 'Dash', sub: 'Double your move', chip: CHIP.action, time: 'action', why: blocked(S, e, 'action'), send: { type: 'dash', actor: e.id } }));
   const dt = nimble ? 'bonus' : 'action';
   rows.push(row({ id: 'disengage', kind: 'send', label: 'Disengage', sub: 'No Opportunity Attacks', chip: CHIP[dt], time: dt, why: blocked(S, e, dt), send: { type: 'disengage', actor: e.id } }));
@@ -566,13 +568,13 @@ export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found
     case 'attacks': return [...attackRows(S, e, { mode }), ...cr.attacks, ...spellRows(S, e, { mode }).filter((r) => r.roll === 'attack')];
     case 'spells': return spellRows(S, e, { mode });
     case 'heal': return [...spellRows(S, e, { mode }).filter(healsRow), ...featureRows(S, e, { mode }).filter(healsRow), ...items().uses.filter(healsRow)];
-    case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'fly-up', 'fly-down'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
+    case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'fly-up', 'fly-down', 'fly-to'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
     case 'defend': return [...std('dodge', 'hide', 'search', 'shield'), ...bonusStd('hide-bonus')];
     case 'use': return [...moveRows(S, e, { fly }).filter((r) => r.id.startsWith('use:')), ...items().uses.filter((r) => !healsRow(r))];
     case 'features': return featureRows(S, e, { mode }).filter((r) => !healsRow(r));
     case 'companions': return [...cr.features, ...cr.move];
     // Out of a fight there is no Move group: a flyer finds Fly… here, among the first tiles (it is the word a player looks for); Higher and Lower are under More.
-    case 'explore': return [...std('fly').map((r) => ({ ...r, grid: true })), ...rankExplore(S, e, { dm, mode, found }), ...std('fly-up', 'fly-down')].filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
+    case 'explore': return [...std('fly').map((r) => ({ ...r, grid: true })), ...rankExplore(S, e, { dm, mode, found }), ...std('fly-up', 'fly-down', 'fly-to')].filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
     case 'rest': return rankExplore(S, e, { dm, mode, found }).filter((r) => r.id === 'shortRest' || r.id === 'longRest');
     case 'items': { const it = items(); return [...it.uses, ...(it.light ? [it.light] : [])]; }
     default: return [];
@@ -761,7 +763,7 @@ export function initActionPanel(ctx) {
       case 'chooser': return ctx.openFeature(e, r.feature);
       case 'comp': return ctx.comp?.run(e, r);
       case 'fly': return ctx.fly(e, r.delta);
-      case 'flyOpen': return ctx.flyOpen?.(e, r.armed);
+      case 'flyOpen': return ctx.flyOpen?.(e, r.armed, !!r.list);
       case 'follow': if (r.armed) { ctx.setMode(ctx.move); return ctx.act(r.send); } return ctx.setMode({ kind: 'follow' });
       case 'ritual': return ctx.castSpell(e, r.spell, r.armed);
       case 'shortRest': return ctx.shortRest();

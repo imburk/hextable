@@ -421,6 +421,10 @@ const BAD_TINT = [0.85, 0.15, 0.15, 0.4];
 // ---- The column and the plane of a flyer (docs/specs/fly-swim-control.md, C2) ----
 // How much of a cell a block of the column fills, and how tall it is drawn (5 ft, less a seam so the blocks read as separate).
 export const BLOCK = { r: 0.6, tall: 5 * UNIT - 0.07 };
+// A thumb needs 44 px. A block drawn smaller than that is picked over an area 1.5 times as tall as it is drawn ("Picking a block"); the renderer's pick and the
+// app's drag (heights.js) grow by the same rule.
+export const THUMB = 44, GROW = 1.5;
+export const growFor = (px) => (px < THUMB ? GROW : 1);
 // Where a block is drawn: its centre on the board and its bottom and top, in drawing units. The renderer picks with the same numbers.
 export function blockBox(map, at, z) { const w = gridOf(map).toWorld(at), y0 = surfY(z) + 0.03; return { x: w.x, z: w.z, y0, y1: y0 + BLOCK.tall }; }
 // The height the plane hangs at, in drawing units.

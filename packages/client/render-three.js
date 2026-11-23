@@ -13,7 +13,7 @@ import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 import { createGovernor, shadowLevels } from './governor.js';
 import { CONTENT } from './shared/content/index.js';
 import { Models, fit, makeBase, modelFor, modelsMode } from './models.js';
-import { BLOCK, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, hpFraction, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
+import { BLOCK, THUMB, growFor, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, hpFraction, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5, RETRY_MS = 8000, HOLD_MAX = 4, SLAB = 0.35;
@@ -246,7 +246,9 @@ export class ThreeRenderer {
       const w = spot(state.map, e, e.pos), calm = snap || !!e.hidden;
       if (!a) {
         const el = document.createElement('div');
-        el.className = 'label'; el.innerHTML = '<span></span><div class="bar"><i></i></div><em class="marks"></em>';
+        el.className = 'label'; el.innerHTML = '<span></span><button type="button" class="alt" hidden></button><div class="bar"><i></i></div><em class="marks"></em>';
+        // The height tag of a creature off the ground (fly-swim-control.md): a tap on it asks the app for the column of heights. The renderer only says which tag (a page event, as the arena flash is).
+        el.querySelector('.alt').addEventListener('click', (ev) => { ev.stopPropagation(); window.dispatchEvent(new CustomEvent('hextable-height-tag', { detail: { id: e.id } })); });
         this.labels.append(el);
         a = { piece: new Piece(this, { order: 5, cast: true }), blob: new Piece(this, { flat: true, lit: 0, blend: true, order: 12, offset: true }).share(this.blobGeom), ...w, yaw: 0, way: [], el, key: '', fade: 1 };
         if (!calm) { a.fade = 0; a.hold = true; a.holdAt = now; }
@@ -273,7 +275,8 @@ export class ThreeRenderer {
       a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0); a.el.classList.toggle('unseen', !!e.hidden);
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
       const shown = e.form?.name ? `${e.name} (${e.form.name})` : e.name;             // a druid in Wild Shape: 'Wren (Brown Bear)'
-      a.el.firstChild.textContent = sf ? `${shown} ↑${e.pos.z - sf.z} ft` : shown;
+      a.el.firstChild.textContent = shown;
+      { const tag = a.el.querySelector('.alt'), up = sf && !e.dead ? e.pos.z - sf.z : 0; tag.hidden = !(up > 0); if (up > 0) { tag.textContent = `\u2191${up} ft`; tag.setAttribute('aria-label', `${shown}: ${up} ft up. Choose a height`); } }
       a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
       const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging', e.follow && !state.encounter && 'following'].filter(Boolean);
       const mk = marks.join();
@@ -596,11 +599,15 @@ export class ThreeRenderer {
       const R = BLOCK.r * Math.hypot(...this.G.corners({ q: 0, r: 0 })[0]) * UNIT * 0.93;       // a cylinder just inside the prism
       for (const k of col.blocks) {
         const bx = blockBox(this.state.map, col.at, k.z), ox = e[0] - bx.x, oz = e[2] - bx.z;
+        // A block drawn smaller than a thumb is picked over an area 1.5 times as tall (heights.js, growFor); where two grown areas overlap, the block whose middle is nearer the point wins.
+        const p0 = this.#project(C, bx.x, bx.y0, bx.z), p1 = this.#project(C, bx.x, bx.y1, bx.z), tall = p0 && p1 ? Math.abs(p0.y - p1.y) : THUMB, g = (growFor(tall) - 1) * (bx.y1 - bx.y0) / 2;
+        bx.y0 -= g; bx.y1 += g;
+        const off = p0 && p1 ? Math.abs(py - (p0.y + p1.y) / 2) : 0;
         const a = d[0] * d[0] + d[2] * d[2], b = 2 * (ox * d[0] + oz * d[2]), c = ox * ox + oz * oz - R * R, disc = b * b - 4 * a * c;
         let t = null;
         if (a > 1e-9 && disc >= 0) { const t1 = (-b - Math.sqrt(disc)) / (2 * a), y = e[1] + d[1] * t1; if (t1 > 0 && y >= bx.y0 && y <= bx.y1) t = t1; }
         if (t === null && d[1] < 0) { const tc = (bx.y1 - e[1]) / d[1], x = e[0] + d[0] * tc - bx.x, z = e[2] + d[2] * tc - bx.z; if (tc > 0 && x * x + z * z <= R * R) t = tc; }
-        if (t !== null && (!best || t < best.t)) best = { t, block: k.z };
+        if (t !== null && (!best || off < best.off)) best = { t, off, block: k.z };
       }
     }
     if (pl && !pl.ground && !pl.faint && d[1] < 0) {

@@ -1,6 +1,7 @@
 # Spec: flying and swimming control (a column of cubes, a plane of cells)
 
-Status: draft by an agent, for the owner to read. A design job; no code is changed by this document. Nothing here is built.
+Status: C1 to C4 are built (#716, flying); E1 and C5 (swimming) are not. The owner answered questions 1 to 8 with the defaults (board, 23 November 2026). What was
+settled while building is in "Build notes" at the end.
 
 Written 22 November 2026, after the owner's game night. It sits beside `maps-and-objects.md` (the rules for height, M6),
 `one-token-menu.md` (where the controls live) and `renderer.md` (how things are drawn). Where it touches them it says so.
@@ -390,3 +391,43 @@ sentence, and is worth shipping on its own with C1.
 - Burrowing (a Burrow Speed is read by nothing either; the same shape of column, downward, could serve it later).
 - Straight-up climbing with no ledge, and jumping.
 - A shared "ruler" in three axes; the maps spec's `vertical` table rule already counts distance.
+
+## Build notes (C1 to C4, #716)
+
+What was settled while building, where the text above left room or the code turned out otherwise.
+
+- **Where it lives.** `packages/client/heights.js` is the pure part (the heights, the feet left, the pick, the highlights, the words, the
+  pick-area growth, the framing arithmetic, the warning); `three-build.js` draws the column and the plane in `buildOverlay` from
+  `hl.column` and `hl.plane`; `render-three.js` picks them (`#pickFly`) and draws the height numbers and the height tag; `app.js` holds the
+  mode `{ kind: 'fly' }`. The app still reaches the renderer only through the interface of `renderer.js`: the column goes in through
+  `setHighlights`, a tap comes back through `onTap` (the hit carries `block`, or `plane`, and the `pointer` type), a hover through `onHover`, a drag
+  through `onDrag`, and the height tag's tap is a page event (`hextable-height-tag`), as the arena flash is.
+- **A height is a height on the map, not above each cell.** A block is 5 ft of the map's own height, counted from the creature's position, and the
+  plane is flat: every place of it has the same `z`. (The old rows counted "feet above the floor under each cell", which is the same on flat ground
+  and a bumpy carpet elsewhere.) The number on a block is feet above the floor under the creature.
+- **The ground block** is every floor the creature can stop on, at whatever height (the walking reach, ledges and roofs included), so one block lands
+  it anywhere. A floor at a block's own height (a roof at 10 ft) is also in that block's plane, drawn solid, and the block carries the ledge sign.
+- **The pick** is `{ id, z, stamp }`; the stamp is the creature's place and the fight's round and turn, so a move, a fall, a landing, a turn change
+  and the loss of flight all drop it with no bookkeeping (`livePick`). The column closes on the same stamp.
+- **Higher and Lower** now step to the next height the engine has a place at (one block), and are greyed with "Nowhere higher in reach" at the end of
+  the column, instead of counting 5 ft up for ever.
+- **Three ways in, as built:** the "Fly…" row (first in Move in a fight; among Explore's first tiles out of one, where there is no Move group), a
+  "Fly" button at the right edge of the map for a creature with a Fly Speed (the aim bar does not exist while nothing is armed, so the button cannot
+  sit on it), and Page Up (or R) and a tap on the creature's height tag. "Fly to…" opens the same column with the list of places focused.
+- **Keys.** `heightUp`, `heightDown`, `heightGround`, `heightTop` are actions of `keys.js` in every preset (Page Up and R, Page Down and F, Home,
+  End). They act only for a creature that has a Fly Speed; for anyone else the keys stay the browser's. Enter and Space send the marked place while the
+  column is open. Alt or Ctrl with the wheel steps the pick (a listener on the canvas ahead of the renderer's keeps it from zooming).
+- **Shading (C3).** `themes.js` makes three tints of each theme's own move colour (`costTints`: paler and thinner, the colour itself, deeper and more
+  solid); a theme may give its own as `hl.cost`. There are three themes, not four. The thirds are of the feet the way has left: flying for a place in
+  the air, the most of the ways for a floor. `three-parity`'s golden did not change (it records places and picks, not colours) and was not recorded again.
+- **A block on a phone, measured:** at 390 x 844, the default zoom (the camera is 30 away on a narrow screen, not 22) and a tilt of 0.9, a block is
+  39 px tall at the ground and 58 px at 20 ft (nearer the camera). So the lowest blocks are under a thumb's 44 px and get the grown pick area
+  (1.5 times as tall, the nearer middle winning where two overlap); the stepper is always there.
+- **Two taps** are for a place in the air on touch (and pen). A tap on the ground block's places, and any mouse click, sends at once.
+- **The falling warning** reads the lasting effects in the state (`effects[].until` and a part's `ends`, with a `speed.fly` modifier on the creature):
+  the fields exist. It names the feet of the fall and quotes the rule; it does not work out dice (DEBT T105 (1)).
+- **The camera.** A view steeper than 1.05 rad goes to 0.9 over 0.5 s (at once with reduced motion or at pace `instant`) and back when the column
+  closes, unless the view was turned or tilted meanwhile. The view also goes to the creature when the column opens. Framing slides the picture down
+  through `inset` (2 px of inset is 1 px of picture) until the top block is under the aim bar or the creature's cell would go under the menu's strip.
+- **Multiplayer.** No state was added and nothing is sent but the ordinary `move`, so there is no `twin()` test.
+- **Not built, with reasons:** DEBT T105.

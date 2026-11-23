@@ -1,4 +1,4 @@
-import { scenario, wait, state, open, playSolo, calm, closePanels, waitShown, onCanvas, panelTab, viewStill } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, calm, closePanels, waitShown, onCanvas, panelTab, viewStill } from './lib.mjs';
 import { newMap } from '../../packages/rules/src/map.js';
 import * as H from '../../packages/rules/src/hex.js';
 
@@ -158,6 +158,146 @@ async function desktop(browser, url) {
   });
 }
 
+// A phone (390x844, touch): the Fly button opens the column and a view that looked nearly straight down is tilted for it (and put back after);
+// the stepper moves the pick; a drag up the column moves it under the finger and does not pan the map; a place in the air takes two taps
+// (the first marks it and shows Go); the height tag on the token opens the column again and Go sends; the list of places sends the same move.
+async function phone(browser, url) {
+  await scenario('flying: touch, the camera and words (390x844 with touch)', async (run) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const cdp = await ctx.newCDPSession(page);
+      const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
+      const shot = (n) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/fly-${n}-phone.png` }).catch(() => {}) : null);
+      const picked = (want) => wait(page, (w) => window.hextable.R.hl.column?.blocks.find((b) => b.picked)?.ft === w, want);
+      const pitch = () => page.evaluate(() => window.hextable.R.cameraAngles().pitch);
+      const opened = async () => { await wait(page, () => window.hextable.mode.kind === 'fly' && window.hextable.R.hl?.column); await viewStill(page); await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))); };
+      // A place of the plane a finger can reach, nearest the middle of the free part of the screen.
+      const tapPlace = async () => {
+        const cells = await page.evaluate(() => window.hextable.R.hl.plane.cells.filter((c) => !c.floor && c.cost >= 15).map((c) => ({ key: c.key, h: c.h })));
+        const at = [];
+        for (const c of cells) { const p = await cellPx(page, c.h); if (p && p.y > 230 && p.y < 640 && p.x > 30 && p.x < 360 && (await onCanvas(page, p.x, p.y))) at.push({ ...c, p, d: Math.abs(p.x - 195) + Math.abs(p.y - 520) }); }
+        at.sort((x, y) => x.d - y.d);
+        if (!at.length) throw new Error(`no place of the plane is on the screen (${cells.length} cells)`);
+        return at[0];
+      };
+
+      await run.do('the Fly button opens the column; a view that looks nearly straight down is tilted to 0.9 for it; the stepper and the list are in the aim bar', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+        await act(page, { type: 'setting', key: 'autoEngage', value: false });
+        await act(page, { type: 'loadMap', map: MAP });
+        await act(page, { type: 'place', actor: ID, to: { q: -1, r: 1 } });
+        await act(page, { type: 'setSpeed', actor: ID, mode: 'fly', feet: 60 });
+        await page.evaluate((i) => window.hextable.select(i), ID);
+        await calm(page); await closePanels(page);
+        await page.evaluate(() => window.hextable.R.tilt(0.4));
+        const steep = await pitch();
+        if (!(steep > 1.3)) throw new Error(`the view was not made steep: ${steep}`);
+        const box = await page.$eval('#cam-fly', (b) => { const r = b.getBoundingClientRect(); return { w: r.width, h: r.height, hidden: b.hidden }; });
+        if (box.hidden || box.w < 44 || box.h < 44) throw new Error(`the Fly button: ${JSON.stringify(box)}`);
+        await page.tap('#cam-fly');
+        await opened();
+        if (Math.abs((await pitch()) - 0.9) > 0.01) throw new Error(`the view is at ${await pitch()}, not 0.9`);
+        const bar = await page.evaluate(() => { const r = (id) => { const e = document.getElementById(id), q = e.getBoundingClientRect(); return { w: Math.round(q.width), h: Math.round(q.height), on: !e.hidden && q.width > 0 }; }; return { up: r('hint-up'), down: r('hint-down'), list: r('hint-fly'), ft: document.getElementById('hint-ft').textContent, go: !document.getElementById('hint-go').hidden, wide: document.getElementById('hint').getBoundingClientRect().right <= innerWidth + 1 }; });
+        if (!bar.up.on || bar.up.w < 48 || bar.up.h < 48 || bar.down.w < 48 || bar.down.h < 48 || !bar.list.on || bar.list.h < 44 || bar.ft !== 'Ground' || bar.go || !bar.wide) throw new Error(`the aim bar: ${JSON.stringify(bar)}`);
+        // How tall a block is on a phone at the default zoom (the spec asks for the number: worked out as 45 to 50 px).
+        const px = await page.evaluate(() => { const R = window.hextable.R, U = Math.sqrt(3) / 5, col = R.hl.column, w = R.G.toWorld(col.at), y = (f) => R.screenPoint(w.x / U, w.z / U, col.z0 + f).y; return { ground: Math.round(y(0) - y(4.8)), at20: Math.round(y(20) - y(24.8)), top: Math.round(y(col.blocks.at(-1).ft + 4.8)), dist: (R.inner ?? R).cam.dist }; });
+        console.log(`       a block on a 390x844 phone at the default zoom (camera ${px.dist} away, tilt 0.9): ${px.ground} px at the ground, ${px.at20} px at 20 ft; the top of the column is at y ${px.top}`);
+        await shot('1-open');
+      });
+
+      await run.do('the stepper: up twice is 10 ft, down once is 5 ft, and the words are said for a screen reader', async () => {
+        await page.tap('#hint-up'); await picked(5);
+        await page.tap('#hint-up'); await picked(10);
+        await page.tap('#hint-down'); await picked(5);
+        const said = await page.$eval('#fly-live', (e) => e.textContent);
+        if (!/^Picked 5 ft/.test(said) || (await page.$eval('#hint-ft', (e) => e.textContent)) !== '5 ft') throw new Error(`said "${said}"`);
+      });
+
+      await run.do('a drag up the column moves the pick under the finger one block at a time, shows the height above the finger, and does not pan the map', async () => {
+        const from = await blockPx(page, 5), to = await blockPx(page, 20), cam0 = await page.evaluate(() => { const c = (window.hextable.R.inner ?? window.hextable.R).cam; return [c.x, c.z]; });
+        await touch('touchStart', [[from.x, from.y]]);
+        const seen = new Set();
+        for (let i = 1; i <= 12; i++) {
+          await touch('touchMove', [[from.x + 3, from.y + ((to.y - from.y) * i) / 12]]); await sleep(30);
+          seen.add(await page.evaluate(() => window.hextable.R.hl.column?.blocks.find((b) => b.picked)?.ft));
+          if (i === 6 && (await page.$eval('#fly-tip', (e) => e.hidden))) throw new Error('no height above the finger during the drag');
+        }
+        await touch('touchEnd', []);
+        await picked(20);
+        if (![10, 15, 20].every((f) => seen.has(f))) throw new Error(`the pick skipped blocks: ${[...seen]}`);
+        const cam1 = await page.evaluate(() => { const c = (window.hextable.R.inner ?? window.hextable.R).cam; return [c.x, c.z]; });
+        if (cam0[0] !== cam1[0] || cam0[1] !== cam1[1]) throw new Error('the drag on the column panned the map');
+        if (!(await page.$eval('#fly-tip', (e) => e.hidden)) || (await page.evaluate(() => window.hextable.mode.kind)) !== 'fly') throw new Error('after the drag: the tip stayed or the column closed');
+        await shot('2-dragged-20ft');
+      });
+
+      await run.do('a place in the air takes two taps: the first marks it (a line down, the cost, Go), the second sends; the column closes and the view tilts back', async () => {
+        const c = await tapPlace(), before = await posOf(page);
+        await page.touchscreen.tap(c.p.x, c.p.y);
+        await wait(page, () => window.hextable.mode.marked && !!window.hextable.mode.point && !document.getElementById('hint-go').hidden);
+        const mark = await page.evaluate(() => ({ key: window.hextable.mode.point, hint: document.getElementById('hint-text').textContent, go: document.getElementById('hint-go').textContent, line: !!window.hextable.R.hl.plane.point }));
+        const now = await posOf(page);
+        if (now.q !== before.q || now.r !== before.r || (now.z ?? 0) !== (before.z ?? 0)) throw new Error('one tap sent the flying move');
+        if (mark.go !== 'Go' || !mark.line || !/Tap again or Go/.test(mark.hint) || !/20 ft up/.test(mark.hint)) throw new Error(`the marked place: ${JSON.stringify(mark)}`);
+        await shot('3-marked');
+        await sleep(450);
+        await page.touchscreen.tap(c.p.x, c.p.y);
+        await wait(page, ([i, k]) => { const q = window.hextable.state.entities[i].pos; return `${q.q},${q.r},${q.z}` === k; }, [ID, mark.key]);
+        await calm(page);
+        await wait(page, () => window.hextable.mode.kind === 'move' && !window.hextable.R.hl.column);
+        await wait(page, () => window.hextable.R.cameraAngles().pitch > 1.3);
+        if (await page.$eval('#hint-step', (e) => !e.hidden)) throw new Error('the stepper stayed after the move');
+      });
+
+      await run.do('the height tag on the token opens the column at its height; a tap marks a place and Go sends it', async () => {
+        await waitShown(page, '#labels .label .alt:not([hidden])');
+        const tag = await page.$eval('#labels .label .alt:not([hidden])', (e) => e.textContent);
+        if (!/20 ft/.test(tag)) throw new Error(`the tag says "${tag}"`);
+        await page.tap('#labels .label .alt:not([hidden])');
+        await opened(); await picked(20);
+        await page.tap('#hint-down'); await picked(15);
+        const c = await tapPlace();
+        await page.touchscreen.tap(c.p.x, c.p.y);
+        await wait(page, () => window.hextable.mode.marked && !document.getElementById('hint-go').hidden);
+        const key = await page.evaluate(() => window.hextable.mode.point);
+        await page.tap('#hint-go');
+        await wait(page, ([i, k]) => { const q = window.hextable.state.entities[i].pos; return `${q.q},${q.r},${q.z}` === k; }, [ID, key]);
+        await calm(page);
+      });
+
+      await run.do('without the picture: Fly to… lists the places nearest first in words, choosing one marks it, Go sends the same move; one tap on the ground lands', async () => {
+        await page.tap('#cam-fly'); await opened();
+        await page.tap('#hint-up'); await picked(20);
+        const opts = await page.$$eval('#hint-fly option', (o) => o.map((x) => ({ v: x.value, t: x.textContent })));
+        if (!/^Fly to/.test(opts[0].t) || !/^Straight up, at 20 ft up, costs 5 ft/.test(opts[1].t) || !/, 5 ft, at 20 ft up, costs/.test(opts[2].t)) throw new Error(`the list: ${JSON.stringify(opts.slice(0, 3))}`);
+        await page.selectOption('#hint-fly', opts[2].v);
+        await wait(page, () => window.hextable.mode.marked && !document.getElementById('hint-go').hidden);
+        if (!/^Marked: /.test(await page.$eval('#fly-live', (e) => e.textContent))) throw new Error('the marked place was not said');
+        await page.tap('#hint-go');
+        await wait(page, ([i, k]) => { const q = window.hextable.state.entities[i].pos; return `${q.q},${q.r},${q.z}` === k; }, [ID, opts[2].v]);
+        await calm(page);
+        // Landing: the ground block, and the ordinary one tap.
+        await page.tap('#cam-fly'); await opened();
+        await page.keyboard.press('Home'); await picked(0);
+        const g = await page.evaluate(() => window.hextable.R.hl.plane.cells.filter((c) => c.floor && (c.h.z ?? 0) === 0).map((c) => c.h));
+        let spot = null;
+        const colX = (await blockPx(page, 0)).x;            // the column stands in front of the ground behind it: a place clear of it
+        for (const h of g) { const p = await page.evaluate((c) => window.hextable.R.screenOf(c), h); if (p && p.y > 300 && p.y < 640 && p.x > 40 && p.x < 350 && Math.abs(p.x - colX) > 70 && (await onCanvas(page, p.x, p.y))) { spot = { h, p }; break; } }
+        if (!spot) throw new Error('no ground place on the screen');
+        await page.touchscreen.tap(spot.p.x, spot.p.y);
+        await wait(page, (i) => (window.hextable.state.entities[i].pos.z ?? 0) === 0, ID);
+        await calm(page);
+        if (await page.$('#labels .label .alt:not([hidden])')) throw new Error('the height tag stayed on the ground');
+        await shot('4-landed');
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
 export default async function (browser, url) {
   await desktop(browser, url);
+  await phone(browser, url);
 }

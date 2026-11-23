@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmpdir(), 'heights-'));
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
-cpSync(join(here, '../heights.js'), join(tmp, 'heights.js'));
+for (const f of ['heights.js', 'three-build.js', 'floors.js']) cpSync(join(here, '..', f), join(tmp, f));       // heights.js takes the pick-area rule from three-build.js (pure too)
 writeFileSync(join(tmp, 'package.json'), '{"type":"module"}');
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const imp = (f) => import(pathToFileURL(join(tmp, f)).href);
@@ -190,4 +190,88 @@ test('the place a tap means: the cell of the picked block in the tapped column',
   assert.equal(HT.cellAt(row, { q: 40, r: 40 }), null);
   assert.deepEqual(HT.cellAt(h.heights[0], { q: 3, r: 0, z: 10 }).h, { q: 3, r: 0, z: 10 }, 'on the ground block a ledge is its own place');
   assert.equal(FT, 5);
+});
+
+// ---------- touch, the camera and words (C4): the pure parts ----------
+test('a block smaller than a thumb is picked over an area 1.5 times as tall; where grown areas overlap the nearer middle wins', () => {
+  assert.equal(HT.growFor(30), 1.5); assert.equal(HT.growFor(43.9), 1.5); assert.equal(HT.growFor(44), 1); assert.equal(HT.growFor(60), 1);
+  // Three blocks 30 px tall stacked up the screen (y grows downward): middles at 85, 55 and 25.
+  const small = [{ z: 0, x: 100, top: 70, bottom: 100 }, { z: 5, x: 100, top: 40, bottom: 70 }, { z: 10, x: 100, top: 10, bottom: 40 }];
+  assert.equal(HT.blockAtPoint(small, 85), 0);
+  assert.equal(HT.blockAtPoint(small, 68), 5, 'in the overlap of two grown areas the nearer middle wins');
+  assert.equal(HT.blockAtPoint(small, 72), 0);
+  assert.equal(HT.blockAtPoint(small, 4), 10, 'above the top block, inside its grown area (10 - 7.5)');
+  assert.equal(HT.blockAtPoint(small, 1), null);
+  assert.equal(HT.blockAtPoint(small, 107), 0); assert.equal(HT.blockAtPoint(small, 108), null);
+  // Blocks a thumb tall are picked only where they are drawn.
+  const big = [{ z: 0, x: 100, top: 150, bottom: 200 }, { z: 5, x: 100, top: 100, bottom: 150 }];
+  assert.equal(HT.blockAtPoint(big, 201), null); assert.equal(HT.blockAtPoint(big, 99), null); assert.equal(HT.blockAtPoint(big, 149), 5);
+  // Beside the column: half a thumb at least, more for a big block.
+  assert.equal(HT.blockAtPoint(small, 85, 121), 0); assert.equal(HT.blockAtPoint(small, 85, 123), null);
+  assert.equal(HT.blockAtPoint(big, 175, 137), 0); assert.equal(HT.blockAtPoint(big, 175, 138), null);
+  // A drag follows the finger to the nearest block, wherever the finger is.
+  assert.equal(HT.blockNearest(small, -500), 10); assert.equal(HT.blockNearest(small, 900), 0); assert.equal(HT.blockNearest(small, 56), 5);
+  assert.equal(HT.blockNearest([], 5), null);
+});
+
+test('the camera: a view steeper than 1.05 rad eases to 0.9, any other is left; the picture slides down only as far as there is room', () => {
+  assert.equal(HT.pitchFor(1.2), 0.9); assert.equal(HT.pitchFor(1.45), 0.9);
+  assert.equal(HT.pitchFor(1.05), null); assert.equal(HT.pitchFor(0.95), null); assert.equal(HT.pitchFor(0.45), null);
+  assert.equal(HT.frameNudge({ top: 120, margin: 70, foot: 500, floor: 760 }), 0, 'the top is on the screen: nothing moves');
+  assert.equal(HT.frameNudge({ top: -30, margin: 70, foot: 500, floor: 760 }), 100, 'the missing amount');
+  assert.equal(HT.frameNudge({ top: -300, margin: 70, foot: 500, floor: 760 }), 260, 'never past the menu: the creature stays on the screen');
+  assert.equal(HT.frameNudge({ top: -300, margin: 70, foot: 800, floor: 760 }), 0);
+});
+
+test('the falling warning: only for a lent flight that ends before the next turn, and only off the ground', () => {
+  const s = world({ fly: 0 }), e = s.entities.wizard;
+  fight(s); turnOf(s, 'wizard');
+  const lend = (until, ends) => { s.effects = [{ id: 'fx1', name: 'Dragon Wings', source: 'wizard', conc: false, until, parts: [{ target: 'wizard', modifier: { on: 'speed.fly', op: 'set', value: 60 }, ...(ends ? { ends } : {}) }] }]; };
+  const enc = s.encounter;
+  lend({ enc: enc.id, round: enc.round + 10 });
+  assert.ok(aloft(s, e), 'the lent Fly Speed holds it up');
+  assert.equal(HT.flightEnds(s, e), null); assert.equal(HT.fallWarning(s, e, 30), '');
+  lend({ enc: enc.id, round: enc.round + 1 });
+  assert.deepEqual(HT.flightEnds(s, e), { name: 'Dragon Wings', rounds: 1 });
+  assert.equal(HT.fallWarning(s, e, 30), 'Dragon Wings ends in 1 round: you would fall 30 ft (1d6 for each 10 ft).');
+  assert.equal(HT.fallWarning(s, e, 5), 'Dragon Wings ends in 1 round: you would fall 5 ft.');
+  assert.equal(HT.fallWarning(s, e, 0), '', 'on a floor there is nothing to fall');
+  lend({ enc: enc.id, round: enc.round });
+  assert.equal(HT.fallWarning(s, e, 20), 'Dragon Wings ends this round: you would fall 20 ft (1d6 for each 10 ft).');
+  lend(null);
+  assert.equal(HT.flightEnds(s, e), null, 'a flight with no end');
+  lend(null, { on: 'turnEnd', of: 'target' });
+  assert.equal(HT.flightEnds(s, e)?.rounds, 0, 'until the end of a turn');
+  // Two things hold it up: the one that lasts longest decides.
+  lend({ enc: enc.id, round: enc.round + 1 });
+  s.effects.push({ id: 'fx2', name: 'Fly', source: 'cleric', until: { enc: enc.id, round: enc.round + 50 }, parts: [{ target: 'wizard', modifier: { on: 'speed.fly', op: 'set', value: 60 } }] });
+  assert.equal(HT.flightEnds(s, e), null);
+  s.effects[1].parts[0].ended = true;
+  assert.ok(HT.flightEnds(s, e));
+  // A creature with a Fly Speed of its own is never warned (by the SRD it does not fall).
+  ok(apply(s, { type: 'setSpeed', actor: 'wizard', mode: 'fly', feet: 30 }, DM));
+  assert.equal(HT.flightEnds(s, e), null);
+  assert.equal(HT.fallWarning(s, s.entities.fighter, 30), '');
+});
+
+test('words for those who do not use the picture: what is picked, and the places as a list, nearest first', async () => {
+  const { gridOf } = await imp('shared/grid.js');
+  const s = world(), e = s.entities.wizard;
+  fight(s); turnOf(s, 'wizard');
+  const h = HT.heightsOf(s, e), row = h.heights.find((r) => r.ft === 20);
+  assert.equal(HT.pickedWords(h, row), 'Picked 20 ft, 40 ft of flying left');
+  assert.equal(HT.pickedWords(h, h.heights[0]), 'Picked the ground, 60 ft of flying left');
+  assert.equal(HT.pickedWords(h, null), '');
+  const list = HT.placeList(gridOf(s.map), e, h, row);
+  assert.equal(list.length, row.cells.length);
+  assert.equal(list[0].text, 'Straight up, at 20 ft up, costs 20 ft, 40 left');
+  for (let i = 1; i < list.length; i++) assert.ok(list[i - 1].far <= list[i].far, 'nearest first');
+  assert.match(list[1].text, /^(North|South|East|West)[a-z-]*, 5 ft, at 20 ft up, costs 20 ft, 40 left$/);
+  const east = list.find((p) => p.key === `${e.pos.q + 2},${e.pos.r},20`);
+  assert.equal(east.text, 'East, 10 ft, at 20 ft up, costs 20 ft, 40 left');
+  assert.deepEqual(['East', 'South', 'West', 'North'], [[1, 0], [0, 1], [-1, 0], [0, -1]].map(([x, z]) => HT.windOf(x, z)));
+  assert.equal(HT.windOf(1, -1), 'North-east'); assert.equal(HT.windOf(0, 0), '');
+  const roof = HT.placeList(gridOf(s.map), e, h, h.heights.find((r) => r.ft === 10)).find((p) => /a floor/.test(p.text));
+  assert.ok(roof, 'a floor at the height is named as one');
+  assert.match(HT.placeList(gridOf(s.map), e, h, h.heights[0])[0].text, /on the ground, costs 5 ft, 55 left$/);      // a flyer may fly there: what is left is of the way that has most
 });

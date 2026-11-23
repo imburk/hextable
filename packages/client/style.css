@@ -60,6 +60,17 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 #cam-fly { position: fixed; right: calc(12px + var(--inset-r, 0px)); top: calc(50% - 152px); min-height: 44px; min-width: 44px; padding: 0 10px; background: var(--panel); border-color: var(--accent); font-weight: 700; }
 body.editing #cam-fly, body.in-scene #cam-fly { display: none; }
 @media (max-width: 480px) { #cam-fly { top: calc(38% - 152px); } } #cam-fly[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); } #cam-fly.off { opacity: .55; }
+/* The stepper of a flyer's height in the aim bar (fly-swim-control.md, "Picking a block"): 48 px, the sure way on a phone; and the list of places for those who do not use the picture. */
+#hint-step { display: inline-flex; align-items: center; gap: 4px; } #hint-step[hidden] { display: none; }
+#hint #hint-step button { width: 48px; min-height: 48px; padding: 0; font-size: 18px; } #hint-step button:disabled { opacity: .4; }
+#hint-ft { min-width: 5ch; text-align: center; font-variant-numeric: tabular-nums; }
+#hint #hint-fly { max-width: min(40vw, 16em); min-height: 44px; }
+/* The height under a finger that drags along the column, lifted clear of the finger. */
+#fly-tip { position: fixed; z-index: 4; left: 0; top: 0; pointer-events: none; padding: 6px 12px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; box-shadow: 0 4px 14px #0007; transform: translate(-50%, -100%); }
+/* The height tag of a creature off the ground: small to read, a thumb to tap (the area round it is its own). */
+.label .alt { pointer-events: auto; position: relative; min-height: 0; padding: 1px 7px; border-radius: 9px; border: 1px solid #0007; background: #1d2622d9; color: #fff; font: 700 11px/1.3 var(--body); text-shadow: none; cursor: pointer; }
+.label .alt::after { content: ''; position: absolute; inset: -12px -10px; }
+.label .alt[hidden] { display: none; }
 .label.col-label { font-size: 11px; font-weight: 700; opacity: .85; padding: 1px 5px; border-radius: 8px; background: #0006; text-shadow: none; }
 .label.col-label.picked { opacity: 1; font-size: 13px; background: var(--accent); color: var(--accent-ink); }
 
