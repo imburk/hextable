@@ -434,7 +434,7 @@ function dashes(b, cx, cz, y, r0, r1, col) {
   for (let k = 0; k < n; k++) { const j = (k + 1) % n; for (const [t0, t1] of [[0.12, 0.42], [0.58, 0.88]]) b.quad(at(o[k], o[j], t1), at(o[k], o[j], t0), at(i[k], i[j], t0), at(i[k], i[j], t1), col); }
 }
 // The tint of a place by the third of the reach its cost falls in (C3): the theme's three, or its one move colour.
-export const moveTint = (th, band = 0) => th.hl.cost?.[band] ?? th.hl.move;
+export const moveTint = (th, band) => (band == null ? th.hl.move : th.hl.cost?.[band] ?? th.hl.move);
 function drawFly(b, x, s, G, hl, th) {
   const c = th.hl, col = hl.column, pl = hl.plane;
   if (pl) {
@@ -491,7 +491,8 @@ export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bar
       if (rim) b.flatHex(w.x, w.z, y, 0.8, 0.98, [...rgb, 0.12]);
     }
   }
-  for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
+  // The reach, shaded by the third of it each place's cost falls in when the app says so (`moveBand`, C3); with no word about a place it is the theme's one move colour.
+  for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, moveTint(th, hl.moveBand?.[k])); }
   // The edge of a spell's reach while it is aimed (issue #600) as a thin band; a theme without its own colour gets one made from its area colour.
   for (const k of hl.range ?? []) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.005, 0.5, 0.98, c.range ?? [c.area[0], c.area[1], c.area[2], 0.4]); }
   // An area aimed beyond the reach is drawn in the theme's "no" colour (red), so it reads as dimmed and refused whatever the theme's area colour is.

@@ -57,7 +57,7 @@ import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 import { levelUpHtml } from './levelup.js';
-import { heightsOf, livePick, makePick, rowOf, stepRow, cellAt, inRow, columnHl, planeHl, stateLine, cellWords, flyState, pickStamp, feet as feetLeft } from './heights.js';
+import { heightsOf, livePick, makePick, rowOf, stepRow, cellAt, inRow, columnHl, planeHl, stateLine, cellWords, flyState, pickStamp, waysLeft, band } from './heights.js';
 import { HEIGHT_ACTIONS, ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
 import { mountNewVersion } from './newversion.js';
@@ -806,7 +806,12 @@ function refresh() {
     if (my && up(e)) {
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
-      if (mode.kind === 'move' && myTurn) { const row = flyRow(e); hl.move = row ? row.cells.map((c) => c.key) : [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop).map(([k]) => k); }
+      if (mode.kind === 'move' && myTurn) {
+        // The reach is shaded by cost (C3): the nearest third of what the creature has left, the middle third, the farthest. A flyer's is the places of its height.
+        const row = flyRow(e), left = waysLeft(S, e), most = Math.max(left.walk, left.climb, left.fly);
+        const stops = row ? row.cells.map((c) => [c.key, c.cost, c.floor ? most : left.fly]) : [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop).map(([k, v]) => [k, v.cost, most]);
+        hl.move = stops.map(([k]) => k); hl.moveBand = Object.fromEntries(stops.map(([k, cost, of]) => [k, band(cost, of)]));
+      }
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
