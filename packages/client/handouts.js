@@ -230,5 +230,6 @@ export function initHandouts({ act, toast, transport, state, isDM, openPanel }) 
     }
   }
   $('btn-handouts').onclick = () => openPanel('handouts');
-  return { refresh, describe, open };
+  // `unseen()`: a player's handouts not opened yet, for the menu's "Waiting for you" (M6).
+  return { refresh, describe, open, unseen: () => (isDM() ? [] : (S()?.handouts ?? []).filter((h) => !seen.has(h.id))) };
 }

@@ -24,7 +24,7 @@ test('every DM control is on one of the screens; only what waits for the DM is a
   const index = dm.indexOf('<ul id="dm-index"'), first = dm.indexOf('<div class="sec-screen"');
   assert.ok(index > 0 && first > index);
   const top = [...dm.slice(0, index).matchAll(/ id="([\w-]+)"/g)].map((m) => m[1]);
-  for (const id of top) assert.ok(/^(dm|todo-mount|dm-table|dm-fallen|dm-fallen-open|dm-rewards|dm-rewards-open)$/.test(id), `${id} is above the list of screens`);
+  for (const id of top) assert.ok(/^(dm|dm-table|dm-fallen|dm-fallen-open|dm-rewards|dm-rewards-open)$/.test(id), `${id} is above the list of screens`);
   // After the last screen closes, nothing but the panel's own end.
   const tail = dm.slice(dm.lastIndexOf('</div>') + 6).trim();
   assert.equal(tail, '</section>', 'no section sits outside the screens, where it would always show');
@@ -57,4 +57,12 @@ test('Log and chat has a Say box above the private note, and the clock at its he
   assert.ok(at('id="log-clock"') < at('id="log-list"') && at('id="log-list"') < at('id="say-form"') && at('id="say-form"') < at('id="note-form"'));
   assert.match(log, /<select id="say-as" aria-label="Say as">/);
   assert.match(log, /<input id="say-text" maxlength="500"/, 'a line is at most what the engine takes (SCENE_LIMITS.say)');
+});
+
+test('Waiting for you heads the first level and holds the DM\'s to-do tray (M6)', () => {
+  const root = between('<nav id="menu-root"', '<nav id="menu-table"');
+  const at = (x) => { const i = root.indexOf(x); assert.ok(i >= 0, x); return i; };
+  assert.ok(at('id="menu-waiting"') < at('id="waiting-list"') && at('id="waiting-list"') < at('id="todo-mount"') && at('id="todo-mount"') < at('id="party"'));
+  assert.match(root, /<section id="menu-waiting" aria-labelledby="waiting-title" hidden>/, 'not shown until something waits');
+  assert.equal(html.split(' id="todo-mount"').length - 1, 1);
 });

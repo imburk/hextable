@@ -56,7 +56,7 @@ import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.j
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
-import { levelUpHtml } from './levelup.js';
+import { levelUpHtml, levelReady, levelNext } from './levelup.js';
 import { heightsOf, livePick, makePick, rowOf, stepRow, cellAt, inRow, columnHl, planeHl, stateLine, cellWords, flyState, pickStamp, waysLeft, band, blockAtPoint, blockNearest, pitchFor, frameNudge, fallWarning, pickedWords, placeList } from './heights.js';
 import { HEIGHT_ACTIONS, ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
@@ -305,6 +305,7 @@ let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh t
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action, byAI = false) {
   if (skipping()) return;
+  if (isOffline()) { if (!byAI) toast(OFFLINE_WHY); return; }      // M6: said, not sent; the table has the last word when the link is back
   acted++;
   action = CLS.decorate(action);
   if (!toThrow(action, byAI)) return T.send(action);
@@ -813,13 +814,84 @@ function hintWords(offer, waits) {
 }
 // The turn line (tracker.js `screenTurnLine`): one line above the token in a fight, with End turn on the viewer's own turn.
 function showTurnLine() {
-  const plays = (e) => mine(e) && (!isDM() || e.side === 'party'), tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
+  const tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
   box.hidden = !tl;
   if (!tl) return;
   if ($('turn-text').textContent !== tl.text) $('turn-text').textContent = tl.text;
-  box.classList.toggle('mine', tl.mine);
+  box.classList.toggle('mine', tl.mine); box.classList.toggle('down', !!tl.down);
   const now = S.entities[current(S)];
   $('btn-end').hidden = !(now && mine(now) && !T.readOnly);
+}
+// ---------- M6: the states of Decision 7 (docs/specs/one-token-menu.md) ----------
+// Offline: the link to the table is lost (linkquality.js). A bar across the top, the token greyed and crossed, the rows greyed with the sentence, and nothing is sent.
+const OFFLINE_WHY = 'Nothing you do is sent until the table is back.';
+const isOffline = () => !!T && !T.solo && !!T.link?.known && T.link.state === 'lost';
+let wasOffline = false;
+function showOffline() {
+  const off = isOffline();
+  document.body.classList.toggle('offline', off);
+  $('offline-bar').hidden = !off; $('offline-why').hidden = !off;
+  if (wasOffline && !off && S) toast('Back at the table.', true);
+  wasOffline = off;
+}
+// The creatures this person plays for the words "your turn": their own; for the DM (and in solo) the party, not the foes.
+const plays = (e) => mine(e) && (!isDM() || e.side === 'party');
+// The banner: "Your turn, Wren" for 1.6 s when a turn of mine starts, once a turn. It takes no tap. Joining a table in the middle of my turn shows nothing: it is not news.
+let bannerKey, bannerTimer = null;
+function turnStarts() {
+  const enc = S.encounter, now = enc ? S.entities[current(S)] : null, key = enc ? `${enc.id ?? ''}/${enc.round}/${enc.turn}/${now?.id ?? ''}` : null;
+  if (key === bannerKey) return;
+  const first = bannerKey === undefined;
+  bannerKey = key;
+  if (first || !now || !plays(now) || !up(now)) return;
+  const b = $('turn-banner');
+  b.textContent = `Your turn, ${shownName(S, now)}`; b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.hidden = true; }, 1600);
+  // A player looking at the first level, Turns or a character's page is moved to the character whose turn it is; any other screen is left alone, and a closed menu stays closed (question 3).
+  if (!isDM() && D.isOpen && ['', 'turns', 'sheet'].includes(D.path.join('/'))) { if (selId !== now.id) select(now.id); D.open('sheet', null, true); }
+}
+// What the token shows of the selected character (drawer.js draws it): the health arc, the lit ring on a turn of mine, the flat bar when down, grey when dead or offline; and its spoken name.
+let hpSeen = null, hpTimer = null;
+function tokenState() {
+  if (!S) return null;
+  const e = S.entities[selId], known = !!e?.abil && typeof e.maxHp === 'number' && (mine(e) || e.side === 'party');
+  const now = S.encounter ? S.entities[current(S)] : null, turn = !!now && plays(now) && up(now);
+  const frac = known ? Math.max(0, Math.min(1, e.hp / Math.max(1, e.maxHp))) : null;
+  const n = Number($('menu-waiting').dataset.count) || 0;
+  const words = ['Menu', turn ? 'Your turn' : '', known ? (e.dead ? `${shownName(S, e)} has died` : `${shownName(S, e)}, ${e.hp} of ${e.maxHp} Hit Points`) : '', n ? `${n} waiting for you` : '', isOffline() ? 'The link to the table is lost' : ''].filter(Boolean);
+  return { hp: frac, low: known && e.hp <= e.maxHp / 2, down: known && !e.dead && e.hp <= 0, dead: known && !!e.dead, turn, offline: isOffline(), label: words.length > 1 ? `${words.join('. ')}.` : 'Menu' };
+}
+// The health label: "Wren 3 / 8 HP" beside the token for 3 s whenever the selected character's Hit Points change.
+function hpNote() {
+  const e = S.entities[selId], known = !!e?.abil && typeof e.maxHp === 'number' && (mine(e) || e.side === 'party');
+  const was = hpSeen; hpSeen = known ? { id: e.id, hp: e.hp } : null;
+  if (!known || !was || was.id !== e.id || was.hp === e.hp) return;
+  const n = $('hp-note'); n.textContent = `${shownName(S, e)} ${e.hp} / ${e.maxHp} HP`; n.hidden = false; n.classList.toggle('bad', e.hp < was.hp);
+  clearTimeout(hpTimer); hpTimer = setTimeout(() => { n.hidden = true; }, 3000);
+}
+// Waiting for you: what the token's badge counts, in words, at the top of the first level, each with its way in. A player's: handouts not opened yet, a level their
+// character can take (the DM's to give). The DM's: players waiting to join, rewards not settled, and under them the cards of the to-do tray (todo.js draws those).
+function renderWaiting() {
+  const items = [];
+  if (isDM()) {
+    for (const p of (T.lobby?.pending ?? [])) items.push({ text: `${p.name} is waiting to join`, label: 'Let in', act: `in:${p.id}` });
+    if (S.conclusion && S.conclusion.published === false) items.push({ text: 'A fight is over and its rewards are not settled', label: 'Settle', act: 'rewards' });
+  } else {
+    for (const h of HO.unseen()) items.push({ text: `New handout: ${h.title || 'untitled'}`, label: 'Open', act: `ho:${h.id}` });
+    for (const e of Object.values(S.entities)) if (e.kind === 'pc' && e.owner === T.you.userId && levelReady(e)) items.push({ text: `${shownName(S, e)} can reach level ${levelNext(e)}. Your DM levels them up.`, label: 'Open', act: `sheet:${e.id}` });
+  }
+  const n = items.length + TD.count(), box = $('menu-waiting');
+  box.dataset.count = String(n); box.hidden = !n;
+  const html = items.map((i) => `<li><span>${esc(i.text)}</span><button type="button" data-wait="${esc(i.act)}">${esc(i.label)}</button></li>`).join('');
+  if ($('waiting-list').dataset.sig !== html) { $('waiting-list').dataset.sig = html; $('waiting-list').innerHTML = html; }
+  $('waiting-list').hidden = !items.length;
+}
+// Dead: the character's page says so, with the way to what happened.
+function deadLine(e) {
+  const d = $('dead-line'), on = !!e && e.kind === 'pc' && !!e.dead && mine(e);
+  d.hidden = !on;
+  const html = on ? `${esc(shownName(S, e))} has died. ${isDM() ? 'You decide what happens next.' : 'Your DM decides what happens next.'} <button type="button" class="link" data-menu-open="log">Open the log</button>` : '';
+  if (d.dataset.sig !== html) { d.dataset.sig = html; d.innerHTML = html; }
 }
 function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = (t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0) - 2 * flyNudge; }      // a flyer's column slides the picture down (an inset of 2 px moves it 1 px) so its top is on the screen      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
 let joinNo = null;               // the fight whose "Bring the others in?" was put off
@@ -835,7 +907,7 @@ function refresh() {
   const out = enc && isDM() && !T.readOnly && joinNo !== enc.id ? outsiders(S) : [];
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
-  showTurnLine();
+  showTurnLine(); turnStarts(); showOffline(); hpNote(); deadLine(e);
   // Setup's last section: leaving this table on this device (anyone at a table), or a new game (solo).
   $('btn-leave').hidden = !!T.solo; $('set-new').hidden = !T.solo; $('set-sec-leave').hidden = !!T.readOnly;
   { const n = T.solo ? 'A new game replaces the one saved on this device.' : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
@@ -969,6 +1041,7 @@ function refresh() {
   if (isDM()) renderDM();
   TD.sync(); TD.waiting();
   HO.refresh();
+  renderWaiting();
   SC.refresh();
   RP.refresh();
   CLS.sync(mode);
@@ -1322,7 +1395,7 @@ const NV = mountNewVersion({ fetchBuild: () => fetch('./build.json', { cache: 'n
 NV.check(); NV.solo(() => !T || T.solo);
 const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
 
-const D = initDrawer({ prefs, state: () => S, isDM, selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
+const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
 $('party').addEventListener('click', (ev) => {
@@ -1334,6 +1407,14 @@ $('party').addEventListener('click', (ev) => {
 });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
 $('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
+$('waiting-list').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-wait]'); if (!b || !S) return;
+  const [kind, id] = [b.dataset.wait.split(':')[0], b.dataset.wait.split(':').slice(1).join(':')];
+  if (kind === 'in') T.approve?.(id, true);
+  else if (kind === 'rewards') { foldMenu(); $('dm-rewards-open').click(); }
+  else if (kind === 'ho') { foldMenu(); HO.open(id); }
+  else if (kind === 'sheet') { select(id); D.open('sheet'); refresh(); }
+});
 $('turn-text').onclick = () => D.open('turns');       // the turn line opens Turns
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
@@ -1577,6 +1658,7 @@ const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled 
 let pendingMap = null;
 function start(transport, map = null) {
   pendingMap = map;
+  bannerKey = undefined; hpSeen = null; $('turn-banner').hidden = true; $('hp-note').hidden = true;      // a new table: its first turn seen is not news
   TL.skip();                    // what is still playing belongs to the old table
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
@@ -1602,7 +1684,7 @@ function start(transport, map = null) {
     } else toast(msg);
     pendingLead = null; lastMove = null; };
   T.on.lobby = () => S && refresh();
-  T.on.link = () => DOT.render();
+  T.on.link = () => { DOT.render(); if (S) { showOffline(); D.paint(); } };
   T.on.links = () => { if (S) { tracker.render(); DOT.render(); } };
   DOT.render();
   T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };

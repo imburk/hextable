@@ -216,6 +216,34 @@ rather than greyed in a fight; the sheet is still shown under the status block (
 - **Characters and packs** in Setup is words and buttons that open the DM's screens (Creatures, Table file) or the player's character; the tools themselves are not moved.
 - A line the table refuses (too long, too fast) is not put back in the Say box, as the scene's box does; the refusal shows as a toast.
 
+### M6 build notes (the states of Decision 7)
+
+**Built.**
+- **The turn line** (`tracker.js`, `screenTurnLine`): "you in N" counts the turns that will be taken before the viewer's (`turnsAway`): a dead creature's place is none. "Waiting for a reaction…"
+  while the table waits for someone else's answer (a player's view says only `prompt.waiting`). A player whose one character is down reads "You are down · Death saves ✓ ✓ ○ ✗ ○ ○" (or
+  "· Stable"); End turn stays on their own turn. Dead adds nothing to the line.
+- **The banner** (`#turn-banner`): "Your turn, Wren" for 1.6 s when a turn of the viewer's starts, once a turn; it takes no tap, and joining a table in the middle of a turn shows none.
+  A player looking at the first level, Turns or a character's page is moved to the character whose turn it is; a closed menu stays closed (question 3's default), and any other screen is left alone.
+- **The token** (`drawer.js` `paintToken`, from `tokenState()` in `app.js`): a health arc for the selected character (the good colour; the bad one at half or less), the ring lit with a
+  glow on a turn of the viewer's and one pulse when it starts, a flat bar across the die when the character is down, grey when it is dead or the link is lost (then crossed too). Its spoken
+  name says all of it: "Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting for you." The health label ("Wren 3 / 8 HP") shows beside the token for 3 s after a change.
+- **Waiting for you** (`#menu-waiting`, the top of the first level, only when the badge shows): a player's unopened handouts (Open) and a level their character can take (the DM gives it);
+  the DM's players waiting to join (Let in) and unsettled rewards (Settle), and under them the to-do tray, moved here from DM tools (`#todo-mount`, `todo.js` unchanged). The badge is the
+  count of those lines and cards.
+- **Dead** (`#dead-line` in the status block): "Wren has died. Your DM decides what happens next." and Open the log.
+- **Offline** (the link judged lost, `linkquality.js`): `#offline-bar` across the top with Decision 10's two sentences, the token greyed and crossed, the character's page says "Nothing
+  you do is sent until the table is back." with its bars and rows greyed, and an action tried is answered with that sentence and not sent. "Back at the table." when it returns.
+
+**Settled.**
+- **An unseen creature's turn is counted only while it is being taken.** A player's order holds the slot `{ someone: true }` only then (`view.js`), so "you in 3" cannot count an unseen turn
+  still to come without giving the creature away. The count is right for what the player is sent, and one short when a hidden creature acts in between; the line then reads "Something
+  moves unseen". The test pins both (it plays the order out and compares).
+- **"You are down" is for a player with one character.** The DM, and a solo player with the whole party, keep the round and whose turn it is; their downed character shows on the token
+  (the flat bar) and on its row.
+- **The connection dot stays beside the token while the link is good** (T104 item 4 stands): the `link` pass pins a good dot there. The offline bar and the token carry the lost state.
+- **The DM's badge has no level-ups in it** (Decision 7's DM row lists waiting players, rewards and the tray); a player's has their own character's.
+- With the tray open, a wide screen's first column is 340 px instead of 240 so a card's tools fit.
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the

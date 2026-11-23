@@ -46,7 +46,7 @@ async function solo(browser, url, label, opts) {
         await shot(page, `todo-${tag}-badge`);
       });
       await run.do('the DM tab starts with the card: the note, Ria, the tools, and Done', async () => {
-        await openTab(page, 'dm'); await waitShown(page, '#todo-mount');
+        await openMenu(page, []); await waitShown(page, '#todo-mount');      // M6: the tray is under "Waiting for you" on the first level
         const t = await page.textContent('#todo-mount');
         if (!/Mage Armor/.test(t) || !/Ria/.test(t) || !/Tavin/.test(t) || t.indexOf('Tavin') > t.lastIndexOf('Ria')) throw new Error(`card text: ${t}`);
         for (const w of ['Place', 'Damage', 'Heal', 'Condition', 'AC', 'Done']) if (!(await page.locator(`#todo-mount button:text-is("${w}")`).count())) throw new Error(`no ${w} button`);
@@ -80,7 +80,7 @@ async function solo(browser, url, label, opts) {
         await sleep(300);
         if (!(await cards(page)).some((c) => c[1] === 'Mage Armor')) throw new Error('the card did not survive the reload');
         await wait(page, () => !document.getElementById('menu-badge').hidden);
-        await openTab(page, 'dm'); await waitShown(page, '#todo-mount');
+        await openMenu(page, []); await waitShown(page, '#todo-mount');      // M6: the tray is under "Waiting for you" on the first level
         await tap(page, touch, '#todo-mount [data-done]');
         await wait(page, () => !(window.hextable.state.todo?.cards ?? []).some((c) => c.name === 'Mage Armor'));
         await wait(page, () => document.getElementById('menu-badge').hidden);
@@ -91,7 +91,7 @@ async function solo(browser, url, label, opts) {
         await calm(page);      // act() is dropped while beats play (a tap skips them instead): the reload's own beats must be done
         await spawnNear(page, 'mage', { near: 'fighter' });          // a hex the map takes a mage on (a fixed offset can be a wall on a random map)
         await wait(page, () => window.hextable.state.todo?.cards?.some((c) => c.kind === 'run'));
-        await openTab(page, 'dm'); await waitShown(page, '#todo-mount');
+        await openMenu(page, []); await waitShown(page, '#todo-mount');      // M6: the tray is under "Waiting for you" on the first level
         const t = await page.textContent('#todo-mount');
         if (!/You run: Spellcasting/.test(t)) throw new Error(`card text: ${t}`);
         await shot(page, `todo-${tag}-run`);
@@ -148,7 +148,7 @@ async function players(browser, url) {
       });
       await run.do('the DM sees a badge and the card; setting AC and Done clears the phone\'s line', async () => {
         await wait(host, () => !document.getElementById('menu-badge').hidden);
-        await openTab(host, 'dm'); await waitShown(host, '#todo-mount');
+        await openMenu(host, []); await waitShown(host, '#todo-mount');
         await shot(host, 'todo-host-card');
         await host.click(`#todo-mount [data-id="${id}"] [data-tool="ac"]`); await host.fill('#todo-mount [data-f="ac"]', '14'); await host.click('#todo-mount [data-go="acSet"]');
         await wait(phone, (i) => window.hextable.state.entities[i].ac === 14, id);

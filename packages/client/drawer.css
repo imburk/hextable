@@ -21,6 +21,54 @@ body[data-token="right"] #btn-menu { left: auto; right: calc(16px + env(safe-are
 body.drawer-pretable #btn-menu, body:has(#dice-tray) #btn-menu { visibility: hidden; }       /* no table yet; or a throw is waiting where the token sits */
 #menu-badge { position: absolute; top: -2px; right: -2px; background: var(--bad); color: #fff; border-radius: 11px; min-width: 22px; height: 22px; padding: 0 5px; font: 700 13px/22px var(--body); text-align: center; }
 
+/* M6, the token's states (Decision 7). The arc is the selected character's health, a stroke as long as --hp of 100; the ring lights on my turn and pulses once. */
+#btn-menu .tk-arc { fill: none; stroke: var(--good); stroke-width: 4; stroke-linecap: butt; stroke-dasharray: var(--hp, 0) 100; opacity: 0; transition: stroke-dasharray .4s ease, stroke .2s; }
+#btn-menu.has-hp .tk-arc { opacity: 1; }
+#btn-menu.low .tk-arc { stroke: var(--bad); }
+#btn-menu.turn .tk-disc { stroke: var(--accent); stroke-width: 3; }
+#btn-menu.turn svg { filter: drop-shadow(0 0 7px var(--accent)); }
+#btn-menu.pulse svg { animation: tk-pulse .7s ease-out 1; }
+@keyframes tk-pulse { 0% { transform: scale(1); } 35% { transform: scale(1.14); } 100% { transform: scale(1); } }
+#btn-menu .tk-bar { display: none; fill: var(--die-ink); stroke: var(--die); stroke-width: 1.5; }
+#btn-menu.down .tk-bar { display: block; } #btn-menu.down .tk-num { visibility: hidden; }
+#btn-menu .tk-x { display: none; fill: none; stroke: var(--bad); stroke-width: 5; stroke-linecap: round; }
+#btn-menu.offline .tk-x { display: block; }
+#btn-menu:is(.dead, .offline) :is(.tk-face, .tk-line, .tk-num, .tk-disc, .tk-arc) { filter: grayscale(1); opacity: .55; }
+#btn-menu.dead .tk-arc { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { #btn-menu.pulse svg { animation: none; } #btn-menu .tk-arc { transition: none; } }
+/* the banner at the start of my turn: over the map for 1.6 s, and it takes no tap */
+#turn-banner { position: fixed; z-index: 5; left: 50%; top: 22%; transform: translateX(-50%); pointer-events: none; max-width: calc(100% - 32px); padding: 10px 22px; border-radius: var(--radius);
+  background: var(--panel); border: 2px solid var(--accent); font: 700 22px/1.2 var(--head, var(--body)); text-align: center; box-shadow: 0 6px 18px #0008; }
+#turn-banner[hidden] { display: none; }
+#turn-banner.go { animation: banner 1.6s ease both; }
+@keyframes banner { 0% { opacity: 0; transform: translate(-50%, 8px); } 12%, 82% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, 0); } }
+body[data-menu-motion="appear"] #turn-banner.go { animation: none; }
+@media (prefers-reduced-motion: reduce) { #turn-banner.go { animation: none; } }
+/* the health label: beside the token for 3 s after the selected character's Hit Points change */
+#hp-note { position: fixed; z-index: 6; pointer-events: none; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 18px); right: calc(50% + 42px); background: var(--panel); border: 1px solid var(--good); border-radius: 14px; padding: 4px 10px; font: 700 13px/1.2 var(--body); white-space: nowrap; }
+#hp-note.bad { border-color: var(--bad); }
+#hp-note[hidden] { display: none; }
+body[data-token="left"] #hp-note { right: auto; left: calc(16px + env(safe-area-inset-left)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + 70px); }
+body[data-token="right"] #hp-note { right: calc(16px + env(safe-area-inset-right)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + 70px); }
+/* offline: a bar across the top; it takes no tap (the connection dot may be under it) */
+#offline-bar { position: fixed; z-index: 8; top: max(0px, env(safe-area-inset-top)); left: 0; right: 0; pointer-events: none; padding: 8px 14px; background: var(--bad); color: #fff; font-size: 14px; text-align: center; }
+#offline-bar[hidden] { display: none; }
+body.offline #ap-body :is(.ap-row, .ap-bar), body.offline #c-res button, body.offline #c-end, body.offline #btn-end { opacity: .45; }
+#offline-why[hidden], #dead-line[hidden] { display: none; }
+#offline-why, #dead-line { margin: 8px 0 0; }
+#dead-line { padding: 8px 10px; border: 1px solid var(--bad); border-radius: var(--radius); }
+#turnline.down { border-color: var(--bad); }
+/* Waiting for you: the top of the first level, only when the badge shows */
+#menu-waiting { margin: 12px 14px 0; padding: 8px 10px; border: 1px solid var(--accent); border-radius: var(--radius); }
+#menu-waiting[hidden] { display: none; }
+#menu-waiting > h3 { margin: 0 0 6px; font-size: 14px; }
+#waiting-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#waiting-list[hidden] { display: none; }
+#waiting-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+#waiting-list button { min-height: 44px; flex: none; }
+#menu-waiting #todo-mount { border: 0; padding: 0; margin: 6px 0 0; }
+body[data-menu-shape="columns"] #menu-root:has(#todo-mount:not([hidden])) { width: 340px; }
+
 /* the turn line: one line above the token in a fight */
 #turnline { position: fixed; z-index: 3; left: calc(50% + (var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); transform: translateX(-50%); bottom: calc(var(--dock-h, 0px) + 6px); width: max-content; max-width: calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px));
   display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 2px 2px 4px; font-size: 14px; }

@@ -40,7 +40,7 @@ const COLUMNS = `${WIDE}, (orientation: landscape) and (max-height: 500px)`;    
 const FLICK = 0.5, SWIPE = 60;                 // px per ms, px: how far or fast a drag on the handle must go to close
 const SLIDE_MS = 720;                          // the longest slide (Decision 6, round 2); a panel stays drawn this long after it leaves
 
-export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {} }) {
+export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {}, token: tokenOf = () => null }) {
   const el = $('drawer'), scrim = $('drawer-scrim'), token = $('btn-menu'), title = $('drawer-title'), live = $('drawer-live');
   const rootList = $('menu-root'), tableList = $('menu-table'), body = $('drawer-body');
   const mqWide = matchMedia(WIDE), mqCols = matchMedia(COLUMNS);
@@ -105,6 +105,20 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     word($('tab-turns'), !enc ? '' : now?.someone ? (S.settings?.unseenTurns === 'quiet' ? `Round ${enc.round}` : `Round ${enc.round} · Something moves unseen`) : `Round ${enc.round} · ${S.entities[now?.id]?.name ?? 'Someone'}'s turn`);
   }
 
+  // The token's states (Decision 7; M6): the arc is the selected character's Hit Points (the good colour, the bad one at half or less), the ring is lit on a turn of the
+  // viewer's and pulses once when it starts, a flat bar lies across the die when the character is down, and the token is grey when it is dead or the link is lost (then crossed too).
+  let wasTurn = false;
+  function paintToken(S) {
+    const t = S ? tokenOf() : null, c = token.classList;
+    c.toggle('has-hp', t?.hp != null); c.toggle('low', !!t?.low); c.toggle('down', !!t?.down); c.toggle('dead', !!t?.dead); c.toggle('offline', !!t?.offline); c.toggle('turn', !!t?.turn);
+    token.style.setProperty('--hp', String(Math.round((t?.hp ?? 0) * 100)));
+    if (t?.turn && !wasTurn && !still()) { c.remove('pulse'); void token.offsetWidth; c.add('pulse'); }
+    if (!t?.turn) c.remove('pulse');
+    wasTurn = !!t?.turn;
+    const label = t?.label ?? 'Menu';
+    if (token.getAttribute('aria-label') !== label) token.setAttribute('aria-label', label);
+  }
+
   function applyPanels() {
     const open = !el.hidden && !held;
     for (const [id, t] of Object.entries(TABS)) $(t.panel).hidden = !(open && id === shownLeaf);   // a hidden panel is not drawn: the app only renders what is shown
@@ -142,8 +156,11 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     $('tab-table').setAttribute('aria-current', path[0] === 'table' ? 'true' : 'false');
     summaries(S);
     // The badges: the token carries one, the sum of what waits (the DM's waiting players, a player's unseen handouts).
-    const n = ['dm-badge', 'ho-badge'].reduce((sum, id) => sum + ($(id).hidden ? 0 : Number($(id).textContent) || 0), 0);
+    // M6: the app counts what waits (the lines of "Waiting for you" and the cards of the DM's to-do tray) and says so on that box; before it has, the two old badges are the sum.
+    const counted = $('menu-waiting')?.dataset.count;
+    const n = !S ? 0 : counted !== undefined ? Number(counted) || 0 : ['dm-badge', 'ho-badge'].reduce((sum, id) => sum + ($(id).hidden ? 0 : Number($(id).textContent) || 0), 0);
     $('menu-badge').hidden = !n; $('menu-badge').textContent = n;
+    paintToken(S);
     $('table-badge').hidden = $('dm-badge').hidden; $('table-badge').textContent = $('dm-badge').textContent;
 
     // The levels. A level is `here` (the one in view), `under` (one the path went through) or `over` (not reached). A sheet shows `here`;
@@ -267,8 +284,8 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (row && el.contains(row)) { const k = row.dataset.go; go(row.closest('#menu-table') ? ['table', k] : [k]); return; }
     const sec = ev.target.closest('.sec-index .menu-row[data-sec]'), at = leafOf(path);
     if (sec && el.contains(sec) && at) { go([...path.slice(0, path.indexOf(at) + 1), sec.dataset.sec]); return; }
-    const jump = ev.target.closest('[data-open]');          // a button of a screen that opens another place (Setup's rows to the Dice screen, DM tools, About)
-    if (jump && el.contains(jump)) { go(valid(pathOf(jump.dataset.open), reach())); return; }
+    const jump = ev.target.closest('[data-menu-open]');     // a button of a screen that opens another place (Setup's rows to the Dice screen, DM tools, About; a line of Waiting for you)
+    if (jump && el.contains(jump)) { go(valid(pathOf(jump.dataset.menuOpen), reach())); return; }
     const crumb = ev.target.closest('#crumb-list [data-path]');
     if (crumb) go(crumb.dataset.path ? crumb.dataset.path.split('/') : []);
   });
