@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { placeBeside, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, ROOT } from './lib.mjs';
+import { placeBeside, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, ROOT, chip } from './lib.mjs';
 
 // ---------- features that cost a spell slot, priced Wild Shape forms, a slot for any caster (#522, DEBT T86 and T88) ----------
 // A homebrew pack invented for this pass ("Lantern Folk": an Oath of the Lantern for a paladin and a Circle of the Store for a druid) is kept in the browser the way the pack manager
@@ -53,7 +53,7 @@ async function slotforms(browser, url, label, opts, tag) {
       const hp = (i) => state(page, (S, x) => S.entities[x].hp, i);
       const tl = () => state(page, (S) => S.timeline.length);
       const since = (k) => state(page, (S, n) => S.timeline.slice(n), k);
-      const pick = async (n) => { await closePanels(page); await tap(page, `#party button:has-text("${n}")`); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, mine(n)); };
+      const pick = async (n) => { await closePanels(page); await chip(page, n); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, mine(n)); };
       const row = (name) => `#ap-features [data-row]:has-text("${name}")`;
       const feat = async (name) => { await panelTab(page, 'features'); await tap(page, row(name)); };
       const card = async () => { await waitShown(page, '#cp .cp-card'); };

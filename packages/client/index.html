@@ -36,14 +36,6 @@
   <div id="splash-card"><h1>Hextable</h1><p id="splash-text">Loading&hellip;</p><div class="splash-bar" aria-hidden="true"><i></i></div><button type="button" id="splash-about" class="quiet">About</button></div>
 </div>
 
-<header id="top">
-  <div id="status"><strong id="mode">Exploring</strong><span id="clock"></span></div>
-  <nav id="tools">
-    <button type="button" id="btn-undo" hidden disabled>Undo</button>
-    <button type="button" id="btn-redo" hidden disabled>Redo</button>
-  </nav>
-</header>
-<ol id="order" aria-label="Turn order"></ol>
 <div id="hint" role="status" hidden><span id="hint-text"></span><select id="hint-pick" aria-label="Choice" hidden></select><select id="hint-slot" aria-label="Spell slot" hidden></select><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button></div>
 <div id="join" role="status" hidden><span id="join-text">Bring the others in?</span><button type="button" id="join-yes">Bring them in</button><button type="button" id="join-no">Not now</button></div>
 
@@ -54,32 +46,14 @@
   <button type="button" id="cam-out" aria-label="Zoom out">−</button>
 </div>
 
-<footer id="dock">
-  <p id="todo-wait" role="status" hidden></p>
-  <button type="button" id="pace-wait" hidden aria-label="Playing: tap to skip">…</button>
-  <div id="party" aria-label="Characters"></div>
-  <div id="card" hidden>
-    <div id="card-head">
-      <div><strong id="c-name"></strong><span id="c-sub"></span></div>
-      <span class="row"><button type="button" id="btn-sheet">Sheet</button><button type="button" id="btn-end" hidden>End turn</button></span>
-    </div>
-    <div id="c-hp"><div class="bar"><i></i></div><span id="c-hp-text"></span><span id="c-ac"></span></div>
-    <div id="c-level"></div>
-    <div id="c-res"></div>
-    <div id="ap-how" role="status" hidden></div>
-    <div id="ap-body">
-      <div id="ap-explore" role="tabpanel" aria-labelledby="ap-tab-explore" hidden></div>
-      <div id="ap-attacks" role="tabpanel" aria-labelledby="ap-tab-attacks" hidden></div>
-      <div id="ap-bonus" role="tabpanel" aria-labelledby="ap-tab-bonus" hidden></div>
-      <div id="ap-move" role="tabpanel" aria-labelledby="ap-tab-move" hidden></div>
-      <div id="ap-features" role="tabpanel" aria-labelledby="ap-tab-features" hidden></div>
-      <div id="ap-reactions" role="tabpanel" aria-labelledby="ap-tab-reactions" hidden></div>
-      <div id="ap-down" role="tabpanel" aria-labelledby="ap-tab-down" hidden></div>
-      <div id="ap-all" role="tabpanel" aria-labelledby="ap-tab-all" hidden><div id="actions"></div></div>
-    </div>
-    <div id="ap-tabs" role="tablist" aria-label="Actions" hidden></div>
-  </div>
-</footer>
+<!-- The turn line (Decision 1/7): one line above the token in a fight. A tap opens Turns. -->
+<div id="turnline" role="status" aria-live="polite" hidden><button type="button" id="turn-text"></button><button type="button" id="btn-end" hidden>End turn</button></div>
+<!-- Beside the token: the DM's undo and redo as symbols (shown for 8 s after an action), and the connection dot at a table. -->
+<div id="chips"><button type="button" id="pace-wait" hidden aria-label="Playing: tap to skip">…</button><button type="button" id="btn-undo" hidden disabled aria-label="Undo"></button><button type="button" id="btn-redo" hidden disabled aria-label="Redo"></button></div>
+
+<!-- The dock is gone (M4): the action rows are the groups of the Character screen. Two small status items stay on the map, hidden unless needed. -->
+<p id="todo-wait" role="status" hidden></p>
+
 
 <!-- The token (docs/specs/one-token-menu.md, Decision 1): one die at the bottom of the screen opens the menu. Its id is kept from the old burger. -->
 <button type="button" id="btn-menu" class="token" aria-label="Menu" aria-expanded="false" aria-controls="drawer">
@@ -106,6 +80,7 @@
   </header>
   <div id="menu-levels">
   <nav id="menu-root" class="menu-level" aria-label="Menu">
+    <div id="party" aria-label="Characters"></div>
     <ul class="menu-list">
       <li><button type="button" class="menu-row" id="tab-sheet" data-go="sheet"><span class="mr-name">Character</span><span class="mr-sum" id="sum-sheet"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
       <li><button type="button" class="menu-row" id="tab-turns" data-go="turns"><span class="mr-name">Turns</span><span class="mr-sum" id="sum-turns"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
@@ -120,6 +95,7 @@
     <ul class="menu-list">
       <li><button type="button" class="menu-row" id="tab-settings" data-go="settings"><span class="mr-name">Setup</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
       <li><button type="button" class="menu-row" id="tab-dm" data-go="dm" hidden><span class="mr-name">DM tools</span><span class="mr-sum"><b id="dm-badge" hidden></b></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li><button type="button" class="menu-row" id="fb-btn" aria-label="Send feedback" aria-haspopup="dialog" aria-expanded="false"><span class="mr-name">Help and feedback</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
       <li><button type="button" class="menu-row" id="tab-about" data-go="about"><span class="mr-name">About</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
     </ul>
     <div id="menu-session" hidden>
@@ -130,7 +106,21 @@
   </nav>
 <div id="drawer-body" class="menu-level">
     <section id="tracker" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden></section>
-    <section id="sheet" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden><div id="sheet-body"></div></section>
+    <section id="sheet" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
+      <div id="status-block" hidden>
+        <div id="card-head">
+          <div><strong id="c-name"></strong><span id="c-sub"></span></div>
+          <span class="row" id="c-row"><button type="button" id="c-end" hidden>End turn</button></span>
+        </div>
+        <div id="c-hp"><div class="bar"><i></i></div><span id="c-hp-text"></span><span id="c-ac"></span></div>
+        <div id="c-level"></div>
+        <div id="c-res"></div>
+        <div id="ap-how" role="status" hidden></div>
+      </div>
+      <div id="card" hidden>
+        <div id="ap-body" aria-label="Actions"></div>
+      </div>
+      <div id="sheet-body"></div></section>
     <section id="log" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
       <button type="button" id="log-rewards" hidden>Show the last rewards</button>
       <ol id="log-list"></ol>
@@ -148,7 +138,7 @@
   <section id="todo-mount" aria-label="To do" hidden></section>
   <div id="dm-table"></div>
   <section><h3>Take back</h3>
-    <div class="row"><button type="button" id="dm-undo" class="undo" disabled><span>Undo</span><small></small></button><button type="button" id="dm-redo" class="undo" disabled><span>Redo</span><small></small></button></div>
+    <div class="row"><button type="button" id="dm-undo" class="undo" disabled aria-label="Undo"><span class="sym-slot"></span><small></small></button><button type="button" id="dm-redo" class="undo" disabled aria-label="Redo"><span class="sym-slot"></span><small></small></button></div>
     <p class="note">Puts the whole game back as it was, dice included: redo gives the same rolls.</p>
   </section>
   <section id="dm-fallen" hidden><h3>The party has fallen</h3>
@@ -241,6 +231,7 @@
       </section>
       <section><h3>Controls</h3>
         <label class="assign">The menu token sits <select id="set-token"><option value="center">Bottom centre</option><option value="right">Bottom right</option><option value="left">Bottom left</option></select></label>
+        <label class="check"><input type="checkbox" id="set-cam"> Camera buttons on the map</label>
         <label class="assign">Menus <select id="set-motion"><option value="slide">Slide in and out</option><option value="appear">Just appear</option></select></label>
         <label class="assign">On a wide screen the menu opens from the <select id="set-side"><option value="left">Left</option><option value="right">Right</option></select></label>
         <label class="check" id="set-pin-row"><input type="checkbox" id="set-pin"> Keep the menu open beside the map</label>

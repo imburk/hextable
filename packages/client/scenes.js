@@ -86,7 +86,7 @@ export function initScenes({ act, toast, transport, state, isDM, openPanel, star
   document.body.append(box);
   const back = document.createElement('button');
   back.type = 'button'; back.id = 'btn-scene'; back.hidden = true; back.textContent = 'Scene';
-  $('tools').prepend(back);
+  $('chips').prepend(back);       // beside the token, with the DM's chips (the top bar it was in is gone)
 
   // Pictures come through the table's file store, as handouts do.
   function pictures(root) {

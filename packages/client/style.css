@@ -50,42 +50,22 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 .floater.dmg { color: #ff8474; font-size: 26px; } .floater.heal { color: #9df0a6; font-size: 24px; } .floater.crit { color: #ffd23f; font-size: 28px; }
 .floater.miss { color: #d5d5d5; }
 
-/* top bar */
-#top { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: max(10px, env(safe-area-inset-top)) 12px 0; pointer-events: none; }
-#top > * { pointer-events: auto; }
-#status { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; display: flex; flex-direction: column; }
-#status strong { font-size: 17px; } #clock { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-body.fight #status { border-color: var(--accent); }
-#tools { display: flex; gap: 6px; } #tools button { background: var(--panel); position: relative; }
-
-#order { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 62px); left: 12px; right: 12px; margin: 0; padding: 0; list-style: none; display: flex; gap: 6px; overflow-x: auto; pointer-events: none; scrollbar-width: none; }
-#order li { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 9px; font-size: 13px; white-space: nowrap; border-left: 4px solid var(--good); }
-#order li[data-side="foe"] { border-left-color: var(--bad); } #order li.out { opacity: .4; text-decoration: line-through; }
-#order li[data-side="unseen"] { border-left-color: var(--muted, #888); font-style: italic; }
-#order li.now { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
-
-#hint, #join { position: fixed; left: 50%; transform: translateX(-50%); width: max-content; top: calc(max(10px, env(safe-area-inset-top)) + 104px); max-width: calc(100% - 24px); background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); padding: 6px 6px 6px 12px; display: flex; gap: 8px; align-items: center; font-weight: 600; }
+#hint, #join { position: fixed; left: 50%; transform: translateX(-50%); width: max-content; top: calc(max(10px, env(safe-area-inset-top)) + 10px); max-width: calc(100% - 24px); background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); padding: 6px 6px 6px 12px; display: flex; gap: 8px; align-items: center; font-weight: 600; }
 #hint button, #join button { min-height: 32px; padding: 4px 10px; background: #0003; border-color: #0004; color: inherit; }
 #hint select { min-height: 32px; max-width: 40vw; padding: 2px 6px; background: #0003; border: 1px solid #0004; border-radius: 6px; color: inherit; font: inherit; }
 
 #cam { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); display: grid; gap: 6px; }
 #cam button { width: 40px; padding: 0; background: var(--panel); font-size: 18px; }
 
-/* dock */
-#dock { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 6px; padding: 0 12px max(10px, env(safe-area-inset-bottom)); pointer-events: none; max-width: 760px; margin: 0 auto; }
-#dock > * { pointer-events: auto; }
-#party { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-#party button { background: var(--panel); display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 10px; min-height: 36px; }
-#party button i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-#party button.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-#party button.now::after { content: 'turn'; font-size: 11px; background: var(--accent); color: var(--accent-ink); border-radius: 3px; padding: 0 4px; }
-#card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; }
+/* the dock is gone (M4): `--dock-h` is the strip the token owns at the bottom of the screen; the turn line, the dice tray and the join bar sit above it */
+:root { --dock-h: calc(max(16px, env(safe-area-inset-bottom)) + 64px + 12px); }
 #card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 #c-name { font-size: 18px; margin-right: 8px; } #c-sub { color: var(--muted); font-size: 13px; }
 #card-head .row { margin: 0; flex-wrap: nowrap; } #btn-sheet, #btn-end { min-height: 34px; padding: 4px 12px; white-space: nowrap; }
 #btn-end { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #c-hp { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; } #c-hp .bar { flex: 1; height: 10px; }
 #c-res { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+#c-res > * { flex: none; white-space: nowrap; max-width: 100%; }
 #c-res span { border: 1px solid var(--line); border-radius: 20px; padding: 1px 8px; } #c-res span.spent { opacity: .4; text-decoration: line-through; }
 #c-res span.have { border-color: var(--accent); }
 
@@ -132,7 +112,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text
 #lobby-code { text-transform: uppercase; letter-spacing: .15em; } #lobby-msg:empty { display: none; } #lobby-msg { color: var(--ink); }
 button.quiet { background: transparent; }
 #toast { position: fixed; left: 50%; bottom: 46%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; max-width: calc(100% - 32px); text-align: center; z-index: 20; box-shadow: 0 4px 20px #0006; }
-@media (max-width: 480px) { #cam { top: 38%; } #order { top: calc(max(10px, env(safe-area-inset-top)) + 58px); } }
+@media (max-width: 480px) { #cam { top: 38%; } }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 #toast.info { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); bottom: auto; top: 30%; }
 
@@ -161,8 +141,8 @@ button.leave.sure { outline: 2px solid currentColor; }
 .facts .skill { font: inherit; text-transform: capitalize; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line, #3a4a44); background: transparent; color: inherit; cursor: pointer; min-height: 32px; }
 .facts .skill.prof { font-weight: 700; border-color: currentColor; }
 
-/* DM: the map editor. It takes the place of the dock while it is open. */
-body.editing #dock, body.editing #hint { display: none !important; }
+/* DM: the map editor. */
+body.editing #hint { display: none !important; }
 #editor { position: fixed; left: 0; right: 0; bottom: 0; max-width: 760px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); display: grid; gap: 6px; z-index: 4; max-height: 55vh; overflow-y: auto; }
 #editor .ed-head { display: flex; gap: 8px; align-items: center; } #editor .ed-head strong { font-family: var(--display); white-space: nowrap; }
 #editor .ed-head select { flex: 1; min-width: 0; }
@@ -203,13 +183,11 @@ body.editing #dock, body.editing #hint { display: none !important; }
 .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #0006; }
 .sw-grass { background: #6f8f55; } .sw-forest { background: #4f7446; } .sw-stone { background: #9a978c; } .sw-water { background: #3f6f8c; } .sw-rock { background: #77736a; }
 /* the combat tracker lives in the drawer: see drawer.css and the tracker block at the end of this file */
-@media (max-width: 480px) { #tools { gap: 4px; } #tools button { padding: 8px 8px; } }
 
-/* Undo: the DM's top-bar button and the pair in the DM panel */
+/* Undo and Redo: the DM's two chips beside the token (symbols, not words) and the pair in the DM panel */
 #btn-undo:disabled, #btn-redo:disabled, button.undo:disabled { opacity: .45; }
 button.undo { display: inline-flex; flex-direction: column; align-items: flex-start; flex: 1 1 10em; min-width: 0; }
 button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-@media (max-width: 480px) { #btn-undo, #btn-redo { font-size: 0; min-width: 44px; } #btn-undo::before { content: "\21B6"; font-size: 18px; line-height: 1; } #btn-redo::before { content: "\21B7"; font-size: 18px; line-height: 1; } }
 #btn-undo, #btn-redo { -webkit-touch-callout: none; user-select: none; }       /* a press-hold shows the line, not the browser's menu */
 
 /* the DM's marching order */
@@ -251,7 +229,7 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 #sheet-reactions .rx select { min-height: 44px; flex: 0 1 13em; min-width: 8em; max-width: 55%; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2, #222); color: inherit; font: inherit; }
 
 /* The timeline (docs/specs/renderer.md, decision 3): while beats play in `wait`, a quiet "…" and the controls dimmed. A tap skips. */
-#pace-wait { position: absolute; right: 12px; top: -38px; min-width: 44px; min-height: 32px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
+#pace-wait { min-width: 44px; min-height: 44px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
 #pace-wait[hidden] { display: none; }
 body.playing #btn-end { opacity: 0.5; }
 
@@ -346,8 +324,8 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 #hint, #join { flex-wrap: wrap; }
 #hint #hint-slot, #hint #hint-pick { max-width: 100%; }
 @media (pointer: coarse) { #hint #hint-slot, #hint #hint-pick { min-height: 44px; } }
-@media (max-width: 480px) { #hint #hint-pick { margin-left: 56px; max-width: calc(100% - 56px); } }   /* clear of the chat bubble at the left edge */
-#join { top: auto; bottom: calc(var(--dock-h, 0px) + 10px); z-index: 5; }
+@media (max-width: 480px) { #hint #hint-pick { max-width: 100%; } }
+#join { top: auto; bottom: calc(var(--dock-h, 0px) + 64px); z-index: 5; }      /* above the turn line, which is above the dock */
 #join[hidden] { display: none; }
 @media (pointer: coarse) { #join button { min-height: 44px; padding: 6px 14px; } }
 /* One writer to a solo save (#625): the offer to a second window, and the bar of a read-only one. */
@@ -361,5 +339,8 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 #readonly-bar { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 61; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: calc(100% - 40px); box-sizing: border-box; padding: 6px 12px; background: var(--bad); color: #fff; border: 2px solid var(--ink); border-radius: var(--radius); font-weight: 700; font-size: 13px; text-align: center; } #readonly-bar[hidden] { display: none; }
 #readonly-bar button { min-height: 36px; background: var(--panel); color: var(--ink); border: 1px solid var(--ink); }
 /* Controls that change the game are out of a read-only window, not only refused when used. */
-body.readonly #tab-dm, body.readonly #dm, body.readonly #btn-undo, body.readonly #btn-redo, body.readonly #menu-new, body.readonly #dm-new, body.readonly #btn-end, body.readonly #ap-body, body.readonly #ap-how { display: none !important; }
+body.readonly #tab-dm, body.readonly #dm, body.readonly #btn-undo, body.readonly #btn-redo, body.readonly #c-end, body.readonly #menu-new, body.readonly #dm-new, body.readonly #btn-end, body.readonly #card, body.readonly #ap-how { display: none !important; }
 body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet select, body.readonly #sheet textarea { pointer-events: none; opacity: .5; }
+
+/* words for a screen reader only (the menu's live region, a slot count): they were used and never defined, so the turn announcement showed in a corner */
+.sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }

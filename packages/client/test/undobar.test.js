@@ -13,6 +13,6 @@ test('with nothing to take back or put back there is no line to show', () => {
 test('the accessible name carries the same words, or says there is nothing', () => {
   assert.equal(nameOf('Undo', ['Brenna moves']), 'Undo: Brenna moves');
   assert.equal(nameOf('Redo', ['Brenna moves']), 'Redo: Brenna moves');
-  assert.equal(nameOf('Undo', []), 'Nothing to undo');
-  assert.equal(nameOf('Redo', []), 'Nothing to redo');
+  assert.equal(nameOf('Undo', []), 'Undo, nothing to undo');
+  assert.equal(nameOf('Redo', []), 'Redo, nothing to redo');
 });

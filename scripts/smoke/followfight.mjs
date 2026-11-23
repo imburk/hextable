@@ -59,8 +59,14 @@ async function pass(browser, url, label, opts) {
         const b = await page.locator('#join-yes').boundingBox(), vp = page.viewportSize();
         if (b.x < 0 || b.y < 0 || b.x + b.width > vp.width || b.y + b.height > vp.height) throw new Error(`the button is off screen: ${JSON.stringify(b)}`);
         if (opts.hasTouch && (b.height < 44 || b.width < 44)) throw new Error(`the touch target is ${b.width}x${b.height}`);
-        const d = await page.locator('#dock').boundingBox(), j = await page.locator('#join').boundingBox();
-        if (j.y + j.height > d.y + 1) throw new Error('the question sits over the dock');
+        // M4: no dock; the token strip owns the bottom of the screen and the question sits above it (and above the turn line when that is shown)
+        const j = await page.locator('#join').boundingBox();
+        for (const sel of ['#btn-menu', '#turnline']) {
+          const el = page.locator(sel);
+          if (!(await shown(page, sel))) continue;
+          const d = await el.boundingBox();
+          if (d && j.y + j.height > d.y + 1 && j.x < d.x + d.width && j.x + j.width > d.x) throw new Error(`the question sits over ${sel}`);
+        }
         await shot(page, 'ask');
       });
       await run.do('one tap brings the rogue in, rolls Initiative, and the question goes', async () => {
@@ -77,7 +83,7 @@ async function pass(browser, url, label, opts) {
       await run.do('"Not now" puts the question off for this fight', async () => {
         await apart(page);
         await walkIn(page, 'fighter');
-        await wait(page, () => window.hextable.timeline && window.hextable.waiting === 0);
+        await wait(page, () => window.hextable.timeline && window.hextable.waiting === 0, null, 20000);
         await waitShown(page, '#join', true, 20000);      // the fight's start plays out first (the Initiative dice); a slow machine took longer than the default 5 s
         // The question rides above the dock, and the dock changes height as the monsters' turns go by and the selected hero changes, so on a loaded machine the
         // button can still be moving when a click is tried: try again until it takes (a click that lands is the one `join-no` handler, so it cannot double).

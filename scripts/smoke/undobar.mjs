@@ -1,10 +1,10 @@
 import { scenario, wait, state, shown, open, playSolo, closePanels, selectAndMove, sleep, waitShown, closeMenu, openTab } from './lib.mjs';
 
-// ---------- the DM's Undo and Redo in the top bar (#654) ----------
-// Both are always there for the DM and disabled when there is nothing to do. What a press would do shows only on a long hover (mouse) or a
+// ---------- the DM's Undo and Redo (#654; M3 moved them from the top bar: chips beside the token for 8 s after an action, and the first row of DM tools; round 6: curved-arrow symbols, not words) ----------
+// Both are there for the DM and disabled when there is nothing to do. What a press would do shows only on a long hover (mouse) or a
 // press-hold (touch), and a hold does not also undo. Players never see the buttons.
 const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
-const btn = (page, id) => page.evaluate((i) => { const b = document.getElementById(i), r = b.getBoundingClientRect(); return { shown: !b.hidden && r.width > 0, disabled: b.disabled, w: r.width, h: r.height, label: b.getAttribute('aria-label'), text: getComputedStyle(b, '::before').content }; }, id);
+const btn = (page, id) => page.evaluate((i) => { const b = document.getElementById(i), r = b.getBoundingClientRect(); return { shown: !b.hidden && r.width > 0, disabled: b.disabled, w: r.width, h: r.height, label: b.getAttribute('aria-label'), svg: !!b.querySelector('svg'), words: b.textContent.trim() }; }, id);
 const tip = (page) => page.evaluate(() => { const t = document.getElementById('scrolltip'); return t ? t.textContent : null; });
 const where = (page) => state(page, (S) => JSON.stringify([S.entities.fighter.pos, S.timeline.length]));
 
@@ -29,23 +29,33 @@ async function solo(browser, url, label, opts) {
     const touch = !!opts.hasTouch, tag = touch ? 'phone' : 'wide', ctx = await browser.newContext(opts);
     try {
       const page = await ctx.newPage(); run.watch(page);
-      await run.do('the DM sees Undo and Redo in the top bar, both disabled with nothing to do, and no line showing', async () => {
+      await run.do('the clean screen has no Undo or Redo until an action; DM tools has both, as arrows named Undo and Redo, disabled with nothing to do', async () => {
         await open(page, url); await playSolo(page); await closePanels(page);
-        const [u, r] = [await btn(page, 'btn-undo'), await btn(page, 'btn-redo')];
+        const [u0, r0] = [await btn(page, 'btn-undo'), await btn(page, 'btn-redo')];
+        if (u0.shown || r0.shown) throw new Error(`the chips show on a clean screen: ${JSON.stringify({ u0, r0 })}`);
+        await openTab(page, 'dm'); await waitShown(page, '#dm');
+        const [u, r] = [await btn(page, 'dm-undo'), await btn(page, 'dm-redo')];
         if (!u.shown || !r.shown) throw new Error(`not both shown: ${JSON.stringify({ u, r })}`);
         if (!u.disabled || !r.disabled) throw new Error('enabled with nothing to take back');
-        if (touch && (u.w < 44 || u.h < 44 || r.w < 44 || r.h < 44)) throw new Error(`under 44px: ${JSON.stringify({ u, r })}`);
-        if (touch && (u.text === 'none' || r.text === 'none')) throw new Error('the phone shows no arrow');
+        if (!u.svg || !r.svg) throw new Error('DM tools shows no arrow symbol');
+        if (!/^Undo/.test(u.label) || !/^Redo/.test(r.label)) throw new Error(`the names are ${u.label} and ${r.label}`);
+        if (/Undo|Redo/.test(u.words.replace(/Nothing/, '')) ) throw new Error(`the row still says the word: ${u.words}`);
+        await closeMenu(page);
         if (await tip(page)) throw new Error('a line is showing at rest');
       });
       let start, moved;
-      await run.do('after a move Undo is enabled and Redo is not; the line still is not showing', async () => {
+      await run.do('after a move the two chips come up beside the token as arrows, at least 44 px; Undo is enabled and Redo is not; the line still is not showing', async () => {
         start = await where(page);
         await selectAndMove(page, touch, 'fighter', 'Brenna');
         moved = await where(page);
         await closePanels(page);
         await wait(page, () => !document.getElementById('btn-undo').disabled);
-        if (!(await btn(page, 'btn-redo')).disabled) throw new Error('Redo is enabled before any undo');
+        const [u, r] = [await btn(page, 'btn-undo'), await btn(page, 'btn-redo')];
+        if (!u.shown || !r.shown) throw new Error(`the chips did not come up: ${JSON.stringify({ u, r })}`);
+        if (u.w < 44 || u.h < 44 || r.w < 44 || r.h < 44) throw new Error(`under 44px: ${JSON.stringify({ u, r })}`);
+        if (!u.svg || !r.svg || u.words || r.words) throw new Error(`not symbols: ${JSON.stringify({ u, r })}`);
+        if (!/^Undo/.test(u.label) || !/^Redo/.test(r.label)) throw new Error(`the names are ${u.label} and ${r.label}`);
+        if (!r.disabled) throw new Error('Redo is enabled before any undo');
         if (await tip(page)) throw new Error('a line is showing without a hover or a hold');
       });
       await run.do(`${touch ? 'a press-hold' : 'a long hover'} on Undo says what it takes back, and does not undo`, async () => {
@@ -76,7 +86,10 @@ async function solo(browser, url, label, opts) {
         await wait(page, (s) => JSON.stringify([window.hextable.state.entities.fighter.pos, window.hextable.state.timeline.length]) === s, moved, 6000).catch(() => { throw new Error('the tap did not redo'); });
         await wait(page, () => document.getElementById('btn-redo').disabled);
       });
-      await run.do('the DM tab keeps its Take back box', async () => {
+      await run.do('the chips go again after about 8 s, and the DM tab keeps its Take back box', async () => {
+        await page.mouse.move(2, 300); await page.evaluate(() => document.activeElement?.blur?.());      // a mouse resting on a chip, or a key focus in one, keeps it up
+        await sleep(9500);
+        if ((await btn(page, 'btn-undo')).shown) throw new Error('the chips stayed on the clean screen');
         await openTab(page, 'dm'); await waitShown(page, '#dm');
         if (!(await shown(page, '#dm-undo')) || !(await shown(page, '#dm-redo'))) throw new Error('the Take back box is gone');
         await closeMenu(page);
@@ -104,11 +117,11 @@ async function players(browser, url) {
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
       });
-      await run.do('the host has both buttons; the player has neither', async () => {
-        for (const id of ['btn-undo', 'btn-redo']) {
-          if (!(await btn(host, id)).shown) throw new Error(`the DM has no ${id}`);
-          if ((await btn(phone, id)).shown) throw new Error(`the player sees ${id}`);
-        }
+      await run.do('the host has both in DM tools; the player has neither, chips or row', async () => {
+        await openTab(host, 'dm'); await waitShown(host, '#dm');
+        for (const id of ['dm-undo', 'dm-redo']) if (!(await btn(host, id)).shown) throw new Error(`the DM has no ${id}`);
+        await closeMenu(host);
+        for (const id of ['btn-undo', 'btn-redo', 'dm-undo', 'dm-redo']) if ((await btn(phone, id)).shown) throw new Error(`the player sees ${id}`);
         await shot(phone, 'undo-player');
       });
     } finally { await hostCtx.close(); await phoneCtx.close(); }

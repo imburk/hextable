@@ -1,4 +1,4 @@
-import { scenario, wait, state, shown, open, playSolo, closeMenu, closePanels, openTab, waitShown, calm, sleep } from './lib.mjs';
+import { scenario, wait, state, shown, open, playSolo, closeMenu, closePanels, openTab, waitShown, calm, sleep, openMenu } from './lib.mjs';
 
 // ---------- Level up where the player looks (#672) ----------
 // The four starters are built from sheets, so Level up works for them; the button is on the rewards card, on the character card at the bottom of the screen
@@ -55,6 +55,7 @@ async function solo(browser, url, label, opts, touch) {
       await run.do('the character card has a Level up chip for a ready hero, and tapping it opens the screen', async () => {
         await closePanels(page);
         await page.evaluate(() => window.hextable.select('rogue'));
+        await openMenu(page, 'sheet');                       // M3: the status block (level chip) is the top of the Character screen
         await waitShown(page, '#c-level .lu-go');
         const txt = await page.textContent('#c-level');
         if (!/Level 2 is ready/.test(txt)) throw new Error(`the chip says "${txt}"`);
@@ -128,9 +129,9 @@ async function player(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, (await b.textContent()).replace('Play as ', '').trim());
-        await b.click();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, (await b.locator('strong').textContent()).replace('Play as ', '').trim());
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
         await host.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         await host.evaluate(WIN);
@@ -155,6 +156,7 @@ async function player(browser, url) {
       });
       await run.do('the player\'s character card has the chip with the reason; the DM\'s own card has a live button', async () => {
         await phone.evaluate((i) => window.hextable.select(i), id);
+        await openMenu(phone, 'sheet');                      // M3: the level chip is in the Character screen
         await waitShown(phone, '#c-level .lu-why');
         if (!/Ask your DM/.test(await phone.textContent('#c-level .lu-why'))) throw new Error('no reason on the card');
         if (!(await phone.$eval('#c-level .lu-go', (b) => b.disabled))) throw new Error('the chip is live for a player');
@@ -162,6 +164,7 @@ async function player(browser, url) {
         if (m.r > m.vw || m.l < 0) throw new Error(`the chip is cut off: ${JSON.stringify(m)}`);
         await shot(phone, 'levelup-phone-7-player-card');
         await host.evaluate((i) => window.hextable.select(i), id);
+        await openMenu(host, 'sheet');
         await waitShown(host, '#c-level .lu-go');
         if (await host.$eval('#c-level .lu-go', (b) => b.disabled)) throw new Error('the DM\'s button is off');
       });

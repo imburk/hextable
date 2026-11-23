@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, closePanels, openTab, selectAndMove, diceDuel } from './lib.mjs';
+import { sleep, scenario, wait, state, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, closePanels, openTab, selectAndMove, diceDuel, chip, openMenu } from './lib.mjs';
 
 // ---------- solo ----------
 async function solo(browser, url, label, opts) {
@@ -45,8 +45,8 @@ async function solo(browser, url, label, opts) {
       // so rolling after it would depend on the dice. Here the party is whole, whatever the seed.
       await run.do('open the character sheet and roll a skill', async () => {
         await closePanels(page);
-        await page.click('#party button:has-text("Brenna")');
-        await page.click('#btn-sheet');
+        await chip(page, 'Brenna');
+        await openMenu(page, 'sheet');
         await waitShown(page, '#sheet');
         const n = await state(page, (S) => S.timeline.length);
         await page.click('#sheet-body [data-skill="athletics"]');
@@ -87,7 +87,7 @@ async function solo(browser, url, label, opts) {
           if (key !== last) { last = key; if (s.kind === 'npc') monsterTurns++; }
           if (s.kind === 'pc') {
             await closePanels(page);
-            await page.click(`#party button:has-text("${s.name}")`);
+            await chip(page, `${s.name}`);
             await waitShown(page, '#btn-end');
             await page.click('#btn-end');
           }

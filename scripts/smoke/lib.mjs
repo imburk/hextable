@@ -88,16 +88,29 @@ export async function open(page, url, { grid = 'hex' } = {}) {
   await page.goto(url);
   await waitShown(page, '#lobby');
 }
-// Open a tab of the action panel by tapping it, and wait until its rows are on screen. The ids: explore, attacks, bonus, move, features, reactions, and `all` (the spell buttons, until T4b).
+// The action groups (M4: the dock is gone; the rows are the groups of the Character screen, one section open at a time, docs/specs/one-token-menu.md Decision 4).
+// `panelTab(page, id)` opens the menu on the selected character's screen, opens the group that holds what the old tab `id` held, and waits until its rows are on screen.
+// The old tab names still work: explore, attacks, spells (and `all`), bonus (the turn bar's Bonus Action screen), move, features, items, reactions, down; the new groups are
+// heal, defend, use, companions and rest. The menu is left open: a row that arms an action folds it, any other leaves it, `closeMenu(page)` before a tap on the map.
+const GROUP_OF = { all: 'spells', bonus: 'cost:bonus', inventory: 'items' };
+export const groupId = (id) => GROUP_OF[id] ?? id;
+export const paneOf = (id) => `#ap-${groupId(id).startsWith('cost:') ? 'cost' : groupId(id)}`;
 export async function panelTab(page, id) {
-  const tab = `#ap-tab-${id}`, pane = id === 'all' ? '#ap-all' : `#ap-${id}`;
-  await waitShown(page, tab, true, 8000);
-  if ((await page.getAttribute(tab, 'aria-selected')) !== 'true') await page.click(tab);
-  await wait(page, (t) => document.querySelector(t)?.getAttribute('aria-selected') === 'true', tab);
-  await waitShown(page, pane, true, 8000);
+  const g = groupId(id);
+  await openMenu(page, 'sheet');
+  if (g === 'down') return waitShown(page, '#ap-down', true, 8000);
+  const bar = g.startsWith('cost:') ? `#c-res [data-cost="${g.slice(5)}"]` : `#ap-bar-${g}`;
+  await waitShown(page, bar, true, 8000);
+  const open = () => page.evaluate(([b, g0]) => g0.startsWith('cost:') ? document.querySelector(b)?.getAttribute('aria-pressed') === 'true' : document.querySelector(b)?.getAttribute('aria-expanded') === 'true', [bar, g]);
+  if (!(await open())) await page.click(bar);
+  await page.waitForFunction(([b, g0]) => g0.startsWith('cost:') ? document.querySelector(b)?.getAttribute('aria-pressed') === 'true' : document.querySelector(b)?.getAttribute('aria-expanded') === 'true', [bar, g], { timeout: 8000 });
+  await waitShown(page, paneOf(id), true, 8000);
+  await menuStill(page);
 }
-// A row of an open tab by its visible name: `#ap-<tab> [data-row]` with that text. Greyed rows are rows too.
-export const rowOf = (tab, text) => `#ap-${tab} [data-row]:has-text("${text}")`;
+// Which group is open now (null when none): the bar with aria-expanded, or the turn bar's open segment as `cost:<kind>`.
+export const openGroup = (page) => page.evaluate(() => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]:not(#ap-bar-cost)')?.dataset.sec ?? (document.querySelector('#c-res [aria-pressed="true"]')?.dataset.cost ? `cost:${document.querySelector('#c-res [aria-pressed="true"]').dataset.cost}` : null));
+// A row of an open group by its visible name: `#ap-<group> [data-row]` with that text. Greyed rows are rows too.
+export const rowOf = (tab, text) => `${paneOf(tab)} [data-row]:has-text("${text}")`;
 export async function playSolo(page) {
   await page.click('#lobby-solo');
   await wait(page, () => window.hextable?.state?.entities);
@@ -156,7 +169,13 @@ const openMenuTo = async (page, want) => {
     await page.click('#drawer-back'); await page.waitForFunction((n) => (document.getElementById('drawer').dataset.path || '').split('/').filter(Boolean).length < n, have.length, { timeout: 5000 });
   }
   const have = (await menuAt(page)).split('/').filter(Boolean);
-  for (let j = have.length; j < want.length; j++) { await page.click(`#drawer [data-go="${want[j]}"]`); await waitMenuAt(page, want.slice(0, j + 1)); }
+  for (let j = have.length; j < want.length; j++) {
+    // M4: the characters are rows of the first level (Decision 4b); the Character screen is opened by the selected one's row (it is first, and marked `sel`).
+    // A creature with no row (the DM has selected a monster on the map or in Turns) has its screen opened by the menu itself, as a tap on the map's pawn does.
+    if (want[j] === 'sheet' && !(await page.$('#menu-root #party button.sel'))) await page.evaluate(() => window.hextable.drawer.open('sheet'));
+    else await page.click(want[j] === 'sheet' ? '#menu-root #party button.sel' : `#drawer [data-go="${want[j]}"]`);
+    await waitMenuAt(page, want.slice(0, j + 1));
+  }
   const leaf = want.at(-1);
   if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);
   await menuStill(page);
@@ -180,11 +199,26 @@ export const closeMenu = async (page) => {
 };
 export const closePanels = closeMenu;
 export const openTab = (page, tab) => openMenu(page, tab);
+// The party chips are the top of the menu's first level (M3: they left the dock). `chip` opens the menu, taps the character's chip, and closes the menu,
+// so the map is free again and the character is the selected one.
+export const chip = async (page, name) => {
+  await openMenu(page, []);
+  await page.click(`#menu-root #party .pr:has-text("${name}")`);
+  await closeMenu(page);
+};
+
+// The same for a chip found by its words (a player claiming a character: "Play as ..."), tapped or clicked.
+export const chipPick = async (page, text, how = 'click') => {
+  await openMenu(page, []);
+  const b = page.locator(`#menu-root #party .pr:has-text("${text}")`).first();
+  await (how === 'tap' ? b.tap() : b.click());
+  await closeMenu(page);
+};
 
 // Select a character by its chip and move it one hex by tapping the map. Returns the new position.
 export async function selectAndMove(page, touch, id, name) {
   await closePanels(page);
-  await page.click(`#party button:has-text("${name}")`);
+  await chip(page, name);
   await wait(page, (i) => document.querySelector('#card') && !document.querySelector('#card').hidden, id);
   const from = await state(page, (S, i) => S.entities[i].pos, id);
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -195,7 +229,7 @@ export async function selectAndMove(page, touch, id, name) {
       if (Object.values(S.entities).some((o) => o.pos && o.pos.q === q && o.pos.r === r)) return null;
       return window.hextable.R.screenOf({ q, r, z: e.pos.z }); }, [id, dir]);
     if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;    // off screen or under a panel: try another side
-    await page.click(`#party button:has-text("${name}")`);                              // still the one selected
+    await chip(page, name);                                                             // still the one selected
     await tapAt(page, touch, pt.x, pt.y);
     try {
       await wait(page, ([i, f]) => { const p = window.hextable.state.entities[i].pos; return p.q !== f.q || p.r !== f.r; }, [id, from], 2500);

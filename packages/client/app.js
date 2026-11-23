@@ -22,7 +22,8 @@ import { initSpawnFind } from './spawnfind.js';
 import { CONTENT, SPELLS, MONSTERS } from './shared/content/index.js';
 import { hpFraction } from './three-build.js';
 import { createRenderer, rendererKind } from './renderer.js';
-import { createTracker, shownName } from './tracker.js';
+import { createTracker, shownName, screenTurnLine } from './tracker.js';
+import { symbol } from './symbols.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
 import { initActionPanel } from './actionpanel.js';
@@ -150,7 +151,8 @@ function toast(msg, info = false, ms = info ? 1600 : 3200) {
   el.textContent = msg; el.classList.toggle('info', info); el.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
-function setMode(m) { mode = m; refresh(); }
+let foldMenu = () => {};      // set once the menu exists: an armed action is aimed on the map, so the menu folds away (one overlay at a time)
+function setMode(m) { mode = m; if (m !== MOVE) foldMenu(); refresh(); }
 R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
 R.onPicture = () => { if (ED.on) refresh(); };
 const DICE = createDice($('dice'), prefs, () => R.cameraAngles());
@@ -601,7 +603,7 @@ const selfCast = (e, id) => {
 };
 function startSpell(e, id, armed) {
   const sp = SPELLS[id];
-  if (isSummon(id)) return armed ? setMode(MOVE) : CP.openChooser(e, id);       // a summon asks for its picks first (companions.js)
+  if (isSummon(id)) { if (armed) return setMode(MOVE); foldMenu(); return CP.openChooser(e, id); }       // a summon asks for its picks first (companions.js)
   if (sp.aim === 'self' || sp.aim === 'none') { if (armed) setMode(MOVE); else selfCast(e, id); }
   else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] });
 }
@@ -692,10 +694,17 @@ function hintWords(offer, waits) {
   if (owedUi === 'offer') go.hidden = mode.kind === 'owed';       // pressed: the next tap on a shaded place is the move
   else if (owedUi === 'wait') go.hidden = false;
 }
-function sizeDock() {
-  R.inset = $('dock').offsetHeight * 0.85;
-  document.documentElement.style.setProperty('--dock-h', `${$('dock').offsetHeight}px`);      // the dice tray and the drawer sit above the dock
+// The turn line (tracker.js `screenTurnLine`): one line above the token in a fight, with End turn on the viewer's own turn.
+function showTurnLine() {
+  const plays = (e) => mine(e) && (!isDM() || e.side === 'party'), tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
+  box.hidden = !tl;
+  if (!tl) return;
+  if ($('turn-text').textContent !== tl.text) $('turn-text').textContent = tl.text;
+  box.classList.toggle('mine', tl.mine);
+  const now = S.entities[current(S)];
+  $('btn-end').hidden = !(now && mine(now) && !T.readOnly);
 }
+function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0; }      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
 let joinNo = null;               // the fight whose "Bring the others in?" was put off
 // The party members a running fight has left outside, who could be brought in: alive, able, on their own feet (a rider goes with its mount).
 const outsiders = (st) => Object.values(st.entities).filter((x) => x.side === 'party' && !x.dead && up(x) && !x.riding && !x.hidden && !st.encounter.order.some((o) => o.id === x.id));
@@ -707,32 +716,37 @@ function refresh() {
   const out = enc && isDM() && !T.readOnly && joinNo !== enc.id ? outsiders(S) : [];
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
-  $('mode').textContent = enc ? `Round ${enc.round}` : 'Exploring';
-  $('clock').textContent = clockText(S.clock);
+  showTurnLine();
   $('btn-leave').hidden = isDM() || !!T.solo;
   $('menu-session').hidden = false; $('menu-new').hidden = !T.solo; $('menu-leave').hidden = !!T.solo;
   showUndo();
 
-  // turn order
-  $('order').innerHTML = enc ? enc.order.map((o, i) => {
-    if (o.someone) return `<li data-side="unseen" class="${i === enc.turn ? 'now' : ''}">Someone unseen</li>`;
-    const x = S.entities[o.id]; if (!x) return '';
-    return `<li data-side="${x.side}" class="${o.id === cur ? 'now' : ''} ${up(x) ? '' : 'out'}">${esc(shownName(S, x))}</li>`;
-  }).join('') : '';
-  $('order').querySelector('.now')?.scrollIntoView({ block: 'nearest', inline: 'center' });
-
-  // character chips
-  const party = $('party'); party.textContent = '';
-  const hasChar = Object.values(S.entities).some((x) => x.owner === T.you.userId);
-  // A player's chips are their character and its companions ("Brenna's wolf"); the DM picks a companion on the map or in the tracker.
-  for (const x of Object.values(S.entities).filter((x) => x.kind === 'pc' || (x.bond && !isDM() && !x.dead))) {
-    const claimable = x.kind === 'pc' && !isDM() && !hasChar && !x.owner;
-    if (!mine(x) && !claimable) continue;
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = `${x.id === selId ? 'sel' : ''} ${x.id === cur ? 'now' : ''}`;
-    b.innerHTML = `<i style="background:${esc(x.look?.color || '#888')}"></i>${claimable ? 'Play as ' : ''}${esc(shownName(S, x))}`;
-    b.onclick = () => { if (claimable) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name }); select(x.id); R.focus(x.id); refresh(); };
-    party.append(b);
+  // The characters (Decision 4b): one row for each creature this person controls, at the top of the first level. The selected one is first, then the others in turn order
+  // (in a fight) or in the party's order; a companion sits under its master. A tap opens that creature's Character screen and selects it. A player with one character sees one row.
+  {
+    const party = $('party');
+    const hasChar = Object.values(S.entities).some((x) => x.owner === T.you.userId);
+    // A player's rows are their character and its companions ("Brenna's wolf"); the DM picks a companion on the map or in the tracker.
+    const mineRows = Object.values(S.entities).filter((x) => (x.kind === 'pc' || (x.bond && !isDM() && !x.dead)) && (mine(x) || (x.kind === 'pc' && !isDM() && !hasChar && !x.owner)));
+    const rank = (x) => (enc ? S.encounter.order.findIndex((o) => o.id === x.id) : 0);
+    const masters = mineRows.filter((x) => !x.bond).sort((p, q) => (p.id === selId ? -1 : q.id === selId ? 1 : (enc ? (rank(p) < 0 ? 99 : rank(p)) - (rank(q) < 0 ? 99 : rank(q)) : 0)));
+    const list = [];
+    const push = (x, under) => {
+      list.push({ x, under });
+      for (const c of mineRows.filter((k) => k.bond?.to === x.id)) push(c, true);
+    };
+    for (const m of masters) push(m, false);
+    for (const c of mineRows.filter((k) => k.bond && !list.some((l) => l.x === k))) list.push({ x: c, under: true });
+    if (selId) { const k = list.findIndex((l) => l.x.id === selId); if (k > 0 && !list[k].under) { const run = [list[k]]; let n = k + 1; while (list[n]?.under) run.push(list[n++]); list.splice(k, run.length); list.unshift(...run); } }
+    const html = list.map(({ x, under }) => {
+      const claimable = x.kind === 'pc' && !isDM() && !hasChar && !x.owner;
+      const boss = x.bond ? S.entities[x.bond.to] : null;
+      const sub = x.bond ? `${MONSTERS[x.tpl]?.name ?? x.bond.kind} \u00b7 ${boss ? shownName(S, boss) : 'someone'}'s ${x.bond.kind}` : `Level ${x.level} ${classTitle(x)}`;
+      const state = claimable ? 'Play as\u2026' : x.dead ? 'Dead' : x.hp <= 0 ? 'Down' : enc && x.id === cur ? 'Your turn' : x.abil ? `${x.hp} / ${x.maxHp} HP` : '';
+      const frac = Math.round(Math.max(0, Math.min(1, hpFraction(x))) * 100);
+      return `<button type="button" class="pr${x.id === selId ? ' sel' : ''}${enc && x.id === cur ? ' now' : ''}${under ? ' under' : ''}" data-id="${esc(x.id)}"><span class="pr-sig" style="--c:${esc(x.look?.color || '#888')};--hp:${frac}%" aria-hidden="true"><b>${esc(shownName(S, x).slice(0, 1).toUpperCase())}</b></span><span class="pr-txt"><strong>${claimable ? 'Play as ' : ''}${esc(shownName(S, x))}</strong><small>${esc(sub)}</small></span><span class="pr-state">${esc(state)}</span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button>`;
+    }).join('');
+    if (party.dataset.sig !== html) { party.dataset.sig = html; party.innerHTML = html; }
   }
 
   // selected creature card
@@ -815,7 +829,7 @@ function refresh() {
   sizeDock();
   ED.sync();
   FM.sync();
-  if (pendingLead && S.entities[pendingLead] && followersOf(S, pendingLead).length) { const id = pendingLead; pendingLead = null; FM.open(id); }
+  if (pendingLead && S.entities[pendingLead] && followersOf(S, pendingLead).length) { const id = pendingLead; pendingLead = null; foldMenu(); FM.open(id); }
 
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet-body').innerHTML = '<p class="note">Select one of the characters to see its sheet.</p>'; }
@@ -975,18 +989,33 @@ function renderMarch() {
 }
 
 // ---------- undo: the DM's Undo and Redo buttons say what they will take back ----------
-const TOP_UNDO = new Set(['btn-undo', 'btn-redo']);
+const CHIP_IDS = new Set(['btn-undo', 'btn-redo']);
+let chipsUntil = 0, chipTimer = null, chipSig = null;
+// The DM's undo and redo chips beside the token show for 8 s after each action (and while a finger or the pointer rests on them), then go; the same two are
+// always the first row of DM tools (docs/specs/one-token-menu.md, "Every control today"). They are the standard curved arrows, not words.
+function chipsShow(on) { const dm = isDM(); $('btn-undo').hidden = $('btn-redo').hidden = !(dm && on); }
+function raiseChips() {
+  chipsShow(true); clearTimeout(chipTimer);
+  // They stay while a mouse rests on them or a keyboard has the focus in them (a tap leaves neither behind), then go.
+  const held = () => { const c = $('chips'), f = document.activeElement; return (matchMedia('(hover: hover)').matches && c.matches(':hover')) || (c.contains(f) && f.matches(':focus-visible')); };
+  chipTimer = setTimeout(function tick() { if (held()) { chipTimer = setTimeout(tick, 1500); return; } chipsShow(false); }, 8000);
+}
 function showUndo() {
   const { undo = [], redo = [] } = T?.undoInfo ?? {}, dm = isDM();
   for (const [id, list, verb] of [['btn-undo', undo, 'Undo'], ['btn-redo', redo, 'Redo'], ['ed-undo', undo, 'Undo'], ['dm-undo', undo, 'Undo'], ['dm-redo', redo, 'Redo']]) {
     const b = $(id);
     b.disabled = !dm || !list.length;
     b.setAttribute('aria-label', nameOf(verb, list));
-    if (!TOP_UNDO.has(id)) b.title = nameOf(verb, list);            // the top bar's two say it on a hold or a long hover (undobar.js), not in a browser tooltip
+    if (!CHIP_IDS.has(id)) b.title = nameOf(verb, list);            // the chips say it on a hold or a long hover (undobar.js), not in a browser tooltip
     const sub = b.querySelector('small'); if (sub) sub.textContent = list[0] ?? 'Nothing';
   }
-  $('btn-undo').hidden = $('btn-redo').hidden = !dm;
+  // A change in what there is to take back or put back is an action: the chips come up for 8 s. What was there on arrival is not news.
+  const sig = JSON.stringify([undo.length, redo.length, undo[0], redo[0]]);
+  if (chipSig !== null && sig !== chipSig && dm && (undo.length || redo.length)) raiseChips();
+  chipSig = sig;
+  if (!dm) chipsShow(false);
 }
+for (const [id, key] of [['btn-undo', 'undo'], ['btn-redo', 'redo'], ['dm-undo', 'undo'], ['dm-redo', 'redo']]) { const b = $(id), slot = b.querySelector('.sym-slot'); (slot ?? b).innerHTML = symbol(key); }
 wireUndo($('btn-undo'), 'Undo', () => T?.undoInfo?.undo); wireUndo($('btn-redo'), 'Redo', () => T?.undoInfo?.redo);
 const undo = () => isDM() && T.undo?.(), redo = () => isDM() && T.redo?.();
 $('btn-undo').onclick = undo; $('btn-redo').onclick = redo; $('ed-undo').onclick = undo; $('dm-undo').onclick = undo; $('dm-redo').onclick = redo;
@@ -1070,7 +1099,9 @@ R.onTap = ({ hex, id }) => {
 R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
-$('btn-end').onclick = () => { if (CLS.askCure(S.entities[selId])) return; act({ type: 'endTurn', actor: selId }); };       // Self-Restoration with a choice asks first
+const endTurn = (id) => { if (CLS.askCure(S.entities[id])) return; act({ type: 'endTurn', actor: id }); };       // Self-Restoration with a choice asks first
+$('btn-end').onclick = () => endTurn(current(S));          // the turn line's End turn is for whoever's turn it is, when it is the viewer's
+$('c-end').onclick = () => endTurn(selId);       // Self-Restoration with a choice asks first
 $('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
 $('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
 $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
@@ -1094,7 +1125,7 @@ function castAimed() {
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 // The connection dot (linkdot.js, issue #246): the top bar's own at a table, and the DM's view of each player's in the tracker.
-const DOT = mountDot({ transport: () => T, parent: $('tools'), before: $('btn-undo') });
+const DOT = mountDot({ transport: () => T, parent: $('chips'), before: $('btn-undo') });
 const linkOf = (e) => {
   const who = ownerOf(S, e);      // a companion shows its master's player
   if (!who || T.solo) return null;
@@ -1113,8 +1144,17 @@ const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, sel
 
 const D = initDrawer({ prefs, state: () => S, isDM, selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
-$('btn-sheet').onclick = () => D.open('sheet');
-$('order').onclick = () => D.open('turns');
+foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
+$('party').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-id]'), x = b && S?.entities[b.dataset.id]; if (!x) return;
+  if (x.kind === 'pc' && !isDM() && !x.owner && !Object.values(S.entities).some((y) => y.owner === T.you.userId)) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name });
+  if (x.id !== selId) select(x.id);
+  R.focus(x.id);      // a row opens that creature's Character screen and selects it (the one already selected keeps what it has armed)
+  D.open('sheet'); refresh();
+});
+// Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
+$('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
+$('turn-text').onclick = () => D.open('turns');       // the turn line opens Turns
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
 const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version, buildLine: FB.buildLine() }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
@@ -1217,7 +1257,7 @@ function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = true; $('menu-session').hidden = true;
+  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }
@@ -1315,22 +1355,21 @@ function syncCards() {
 const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
   arm: (m) => setMode({ kind: 'feature', ...m }),
   armAttack: (m) => setMode({ kind: 'attack', ...m }),
-  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) CP.openChooser(e, id); else if (sp.aim === 'self' || sp.aim === 'none') selfCast(e, id); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
+  castSpell: (e, id) => { const sp = SPELLS[id]; if (isSummon(id)) { foldMenu(); CP.openChooser(e, id); } else if (sp.aim === 'self' || sp.aim === 'none') selfCast(e, id); else setMode({ kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] }); } });
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 $('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[data-levelup]'); if (b && !b.disabled) QE.levelUp(b.dataset.levelup); });
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
-  openFeature: (e, id) => CLS.openFeature(e, id), openAttack: (e, id) => CLS.openAttack(e, id), metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
   fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
 // The formation popup (formation.js): Lead sends `partyFollow`, and the popup opens once the table says someone follows (`pendingLead`).
 let pendingLead = null;
 const FM = initFormation({ state: () => S, act, isDM, mine, refresh: () => refresh() });
 const lead = (e) => { pendingLead = e.id; act({ type: 'partyFollow', leader: e.id }); };
-const formationFor = (e) => { if (!FM.open(e.id)) toast(whyNoFormation(S, e, { dm: isDM(), mine: mine(e) }) || 'Nobody can be placed yet.'); };
-new ResizeObserver(() => { if (S && $('dock').offsetHeight) sizeDock(); }).observe($('dock'));
+const formationFor = (e) => { foldMenu(); if (!FM.open(e.id)) toast(whyNoFormation(S, e, { dm: isDM(), mine: mine(e) }) || 'Nobody can be placed yet.'); };
 
 // For the browser console, tests and future automation.
 window.hextable = { R /* the smoke script's test surface: it may read the default renderer's insides; the app may not */, describe: (ev) => describe(ev)?.[0] ?? null /* the log's words for an event, for the smoke passes */, get packs() { return PK.peek(); }, get link() { return T?.link; }, get links() { return T?.links; }, dropSocket: () => T?.dropSocket?.(), drawer: D, ED, act: (action, byAI) => { settle(TL); return act(action, byAI); } /* programmatic: the beats finish first, then it is sent, never dropped (#705); the UI's own controls skip instead (renderer.md Decision 3) */, timeline: TL, pace, played, dice: DICE, thrown, get armed() { return armed; }, get waiting() { return waiting; }, get assets() { return T?.assets; }, select: (id) => { select(id); refresh(); }, get state() { return S; }, get mode() { return mode; }, get keys() { return KB; } /* the keyboard walker, for the smoke pass */ };

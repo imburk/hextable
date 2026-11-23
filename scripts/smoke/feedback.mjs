@@ -1,31 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as lib from './lib.mjs';
-import { sleep, scenario, wait, shown, waitShown, open, playSolo, closeMenu, openTab } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, playSolo, closeMenu, openTab, openMenu } from './lib.mjs';
 
 // ---------- the feedback button (docs/specs/feedback.md) ----------
-// The icon is on every view and clear of the controls at both sizes; the panel opens, takes a comment, shows what will be sent
+// M3 took the floating icon off the clean screen: the button is the row "Help and feedback" of the menu's Table list (the menu folds away when it opens the panel); the panel opens, takes a comment, shows what will be sent
 // (no player name, no table code), sends with Ctrl+Enter, and the server stored one line; at a table the report carries only a hash.
 const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/feedback-${name}.png` }).catch(() => {}) : null);
 const stored = () => { const f = join(lib.dataDir, 'feedback.jsonl'); return existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []; };
 
-// Rectangles of what the icon must keep clear of, those that are on screen.
-const CLEAR = ['#top', '#order', '#hint', '#cam', '#dock', '#drawer.open', '#dice-tray', '#toast', '#rp', '#lobby-card button', '#lobby-card input', '#lobby-card summary', '#lobby-card select'];
-async function overlaps(page) {
-  return page.evaluate((sels) => {
-    const b = document.getElementById('fb-btn').getBoundingClientRect(), hit = [];
-    if (b.width === 0) return ['the button is not on screen'];
-    if (b.left < 0 || b.top < 0 || b.right > innerWidth || b.bottom > innerHeight) hit.push('outside the screen');
-    for (const s of sels) for (const e of document.querySelectorAll(s)) {
-      if (e.hidden || !e.getClientRects().length || (e.checkVisibility && !e.checkVisibility())) continue;
-      const r = e.getBoundingClientRect();
-      // #top and #dock span the width but are click-through except for their children, so test the children
-      const parts = s === '#top' || s === '#dock' || s === '#order' ? [...e.querySelectorAll('button, #status, li, #card, #party')].map((x) => x.getBoundingClientRect()) : [r];
-      for (const q of parts) if (q.width && q.height && b.left < q.right && b.right > q.left && b.top < q.bottom && b.bottom > q.top) hit.push(`${s} ${Math.round(q.left)},${Math.round(q.top)} ${Math.round(q.width)}x${Math.round(q.height)}`);
-    }
-    return hit;
-  }, CLEAR);
-}
+// Open Table in the menu, press Help and feedback (the menu folds away), and wait for the panel.
+const openFb = async (page) => { await openMenu(page, 'table'); await page.click('#fb-btn'); await waitShown(page, '#fb-panel'); await waitShown(page, '#drawer', false); };
 
 async function soloPass(browser, url, label, opts) {
   await scenario(label, async (run) => {
@@ -37,20 +22,21 @@ async function soloPass(browser, url, label, opts) {
       run.watch(page);
       const posted = [];
       page.on('request', (r) => { if (r.method() === 'POST' && /\/feedback$/.test(r.url())) posted.push(r.postData()); });
-      await run.do('the lobby has the icon, clear of the lobby card', async () => {
+      await run.do('the lobby has no floating icon; About opens the menu, and its Table list has Help and feedback', async () => {
         await open(page, url);
         await waitShown(page, '#splash', false, 3000);
-        await waitShown(page, '#fb-btn');
+        if (await shown(page, '#fb-btn')) throw new Error('an icon floats over the lobby');
+        await page.click('#lobby-about'); await waitShown(page, '#drawer');
+        await page.click('#drawer-back'); await waitShown(page, '#fb-btn');
         await shot(page, `lobby-${phone ? 'phone' : 'wide'}`);
-        const hit = await overlaps(page);
-        if (hit.length) throw new Error(`the icon is over: ${hit.join('; ')}`);
+        await closeMenu(page);
       });
-      await run.do('solo: the icon is clear of the action panel, drawer, tracker and dice', async () => {
+      await run.do('solo: nothing of feedback is on the clean screen; the row is in the menu, inside the drawer', async () => {
         await playSolo(page);
         await wait(page, () => window.hextable.timeline.busy() === false, null, 15000).catch(() => {});
         await waitShown(page, '#btn-menu');
-        const hit = await overlaps(page);
-        if (hit.length) throw new Error(`the icon is over: ${hit.join('; ')}`);
+        if (await shown(page, '#fb-btn')) throw new Error('the feedback button is on the clean screen');
+        if (!(await page.evaluate(() => !!document.getElementById('fb-btn').closest('#menu-table')))) throw new Error('the button is not a row of the Table list');
         await shot(page, `solo-${phone ? 'phone' : 'wide'}`);
       });
       await run.do('About shows a build line a person can read aloud, and the feedback report carries the same build', async () => {
@@ -62,24 +48,26 @@ async function soloPass(browser, url, label, opts) {
         const b = await page.evaluate(async () => (await fetch('./build.json')).json());
         if (!line.includes(b.commit)) throw new Error(`the line ${line} does not name commit ${b.commit}`);
         await closeMenu(page);
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await openFb(page);
         const r = JSON.parse(await page.textContent('#fb-preview'));
         if (!r.build.startsWith(b.commit)) throw new Error(`the report's build: ${r.build}`);
         await page.keyboard.press('Escape');
       });
       await run.do('it has a visible focus state and is reachable by keyboard', async () => {
+        await openMenu(page, 'table');
+        await page.keyboard.press('Shift');                 // a keyboard has been used: the focus ring is the keyboard's
         await page.focus('#fb-btn');
         const ring = await page.evaluate(() => { const s = getComputedStyle(document.getElementById('fb-btn')); return `${s.outlineStyle} ${s.outlineWidth}`; });
         if (/^none/.test(ring) || /^auto 0px|^solid 0px/.test(ring)) throw new Error(`no focus ring: ${ring}`);
         if ((await page.getAttribute('#fb-btn', 'aria-label')) !== 'Send feedback') throw new Error('no accessible name');
+        await closeMenu(page);
       });
       await run.do('it opens a panel with the comment, kinds, the tick and the disclosure; the preview holds the shown log and no name', async () => {
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await openFb(page);
         if ((await page.evaluate(() => document.activeElement?.id)) !== 'fb-text') throw new Error('focus did not go to the text box');
         if ((await page.$$('#fb-kinds input')).length !== 3) throw new Error('kinds');
         if (!(await page.isChecked('#fb-inc'))) throw new Error('"Include what just happened" is not on by default');
         await page.click('#fb-see summary');
-        const hit = await overlaps(page);                      // the panel may cover the map, but not hide the button's own place
         await shot(page, `panel-${phone ? 'phone' : 'wide'}`);
         const txt = await page.textContent('#fb-preview');
         const r = JSON.parse(txt);
@@ -99,8 +87,8 @@ async function soloPass(browser, url, label, opts) {
         if ((await page.inputValue('#fb-text')) !== 'first line\nsecond line') throw new Error('Enter did not make a new line');
         if ((await page.$$('#fb-done:not([hidden])')).length) throw new Error('Enter sent it');
         await page.keyboard.press('Escape'); await waitShown(page, '#fb-panel', false);
-        if ((await page.evaluate(() => document.activeElement?.id)) !== 'fb-btn') throw new Error('focus did not return');
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        if ((await page.evaluate(() => document.activeElement?.id)) !== 'btn-menu') throw new Error('focus did not return to the token (the menu row it came from had folded away)');
+        await openFb(page);
         if ((await page.inputValue('#fb-text')) !== 'first line\nsecond line') throw new Error('the draft was lost');
       });
       await run.do('typing does not trigger game shortcuts (m opens the drawer)', async () => {
@@ -132,18 +120,20 @@ async function soloPass(browser, url, label, opts) {
       await run.do('what was sent holds the actions this page sent and no page errors', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'endTurn', actor: 'nobody' }));      // an action the engine refuses
         await sleep(200);
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await openFb(page);
         const r = JSON.parse(await page.textContent('#fb-preview'));
         const a = r.context.actions.at(-1);
         if (!a || a.type !== 'endTurn' || !/^refused: /.test(a.answer)) throw new Error(`the action and its answer: ${JSON.stringify(r.context.actions)}`);
         if (r.context.errors.length) throw new Error(`page errors: ${JSON.stringify(r.context.errors)}`);
         await page.keyboard.press('Escape');
       });
-      await run.do('while a reaction question is up the icon is hidden', async () => {
+      await run.do('while a reaction question is up the panel is hidden, and it comes back after', async () => {
+        await openFb(page);
         await page.evaluate(() => { const m = document.getElementById('rp'); m.hidden = false; });
-        if (await shown(page, '#fb-btn')) throw new Error('the icon is over the reaction question');
+        if (await shown(page, '#fb-panel')) throw new Error('the panel is over the reaction question');
         await page.evaluate(() => { document.getElementById('rp').hidden = true; });
-        await waitShown(page, '#fb-btn');
+        await waitShown(page, '#fb-panel');
+        await page.keyboard.press('Escape');
       });
     } finally { await ctx.close(); }
   });
@@ -166,16 +156,14 @@ async function tablePass(browser, url) {
         await wait(page, () => document.querySelector('#dm-table code')?.textContent.length === 6);
         code = await page.evaluate(() => document.querySelector('#dm-table code').textContent);
         await closeMenu(page);
-        await waitShown(page, '#fb-btn');
-        const hit = await overlaps(page);
-        if (hit.length) throw new Error(`the icon is over: ${hit.join('; ')}`);
+        if (await shown(page, '#fb-btn')) throw new Error('the feedback button is on the clean screen at a table');
         await shot(page, 'table-phone');
       });
       await run.do('the DM claims a character: the "now plays" line does not carry the moniker into a report', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'claim', entity: 'fighter', user: 'u-other', userName: 'Other-Moniker' }));
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.ownerName === 'Other-Moniker'));
         await sleep(300);
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await openFb(page);
         await page.fill('#fb-text', 'Claimed');
         await page.click('#fb-see summary');
         await sleep(300);
@@ -184,7 +172,7 @@ async function tablePass(browser, url) {
         await page.keyboard.press('Escape');
       });
       await run.do('the preview has no table code, hash or name; Send stores a table report', async () => {
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await openFb(page);
         await page.fill('#fb-text', 'Table report');
         await page.click('#fb-see summary');
         const txt = await page.textContent('#fb-preview');
@@ -200,13 +188,12 @@ async function tablePass(browser, url) {
         if (line.includes(code) || /Smoke Hostname/i.test(line)) throw new Error('the stored line holds the code or the name');
         await page.click('#fb-done-close');
       });
-      await run.do('on the desktop the icon is clear at a table too', async () => {
+      await run.do('on the desktop the row is in the menu at a table too, and nothing floats', async () => {
         await open(host, url);
         await host.fill('#lobby-name', 'Other DM'); await host.click('#lobby-host');
         await wait(host, () => window.hextable?.state?.entities);
-        await waitShown(host, '#fb-btn');
-        const hit = await overlaps(host);
-        if (hit.length) throw new Error(`the icon is over: ${hit.join('; ')}`);
+        if (await shown(host, '#fb-btn')) throw new Error('the feedback button is on the clean screen');
+        await openMenu(host, 'table'); await waitShown(host, '#fb-btn'); await closeMenu(host);
         await shot(host, 'table-wide');
       });
     } finally { await ctx.close(); await wide.close(); }

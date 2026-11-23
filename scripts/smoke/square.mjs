@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, calm, tapAt, onCanvas, closePanels, panelTab } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, calm, tapAt, onCanvas, closePanels, panelTab, chip } from './lib.mjs';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
 import { arenaEdge } from './three.mjs';
 
@@ -80,7 +80,7 @@ async function squares(browser, url, label, opts) {
       };
       const choose = async (name) => {
         await closePanels(page);
-        await page.click(`#party button:has-text("${name}")`);
+        await chip(page, `${name}`);
         await wait(page, () => document.querySelector('#card') && !document.querySelector('#card').hidden);
       };
 
@@ -150,7 +150,7 @@ async function squares(browser, url, label, opts) {
         await listen(true);
         for (let k = 1; k <= 4; k++) {
           const q = 2 + k;
-          await page.click('#party button:has-text("Brenna")');             // still the one selected
+          await chip(page, 'Brenna');             // still the one selected
           const hit = await tapPoint(await mid(q, q, `${q},${q}`), `the middle of ${q},${q}`);
           if (!sameCell(hit, q, q)) throw new Error(`the tap on the middle of ${q},${q} picked ${JSON.stringify(hit?.hex)}`);
           await wait(page, (qq) => { const e = window.hextable.state.entities.fighter; return e.pos.q === qq && e.pos.r === qq; }, q, 6000)
@@ -195,7 +195,7 @@ async function squares(browser, url, label, opts) {
       });
 
       await run.do('a tap on the highlighted 7,7 moves her there along the diagonal, and what is left is under one square', async () => {
-        await page.click('#party button:has-text("Brenna")');
+        await chip(page, 'Brenna');
         await listen(true);
         const hit = await tapPoint(await mid(7, 7, '7,7'), 'the middle of 7,7');
         if (!sameCell(hit, 7, 7)) throw new Error(`the tap on the middle of 7,7 picked ${JSON.stringify(hit?.hex)}`);

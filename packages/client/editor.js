@@ -2,6 +2,7 @@
 // changes the map itself: every edit is sent as an action, and the engine checks the whole map
 // before taking it. Design: docs/specs/maps-and-objects.md, "Putting a place into the game".
 import * as Gr from './shared/grid.js';
+import { symbol } from './symbols.js';
 import { TILES } from './shared/content/terrain.js';
 import { CONTENT } from './shared/content/index.js';
 import { WALL_KINDS, barriers, objectHexes, objectSegment } from './shared/walls.js';
@@ -1035,7 +1036,7 @@ export class Editor {
     const bar = $('editor');
     const objs = Object.values(CONTENT.objects).map((o) => `<option value="${esc(o.id)}">${esc(o.name)}${o.kind === 'door' ? ' (on an edge)' : ''}</option>`).join('');
     bar.innerHTML = `
-      <div class="ed-head"><strong>Map editor</strong><select id="ed-level" aria-label="Level being edited"></select><button type="button" id="ed-undo" disabled>Undo</button><button type="button" id="ed-done">Done</button></div>
+      <div class="ed-head"><strong>Map editor</strong><select id="ed-level" aria-label="Level being edited"></select><button type="button" id="ed-undo" disabled aria-label="Undo">${symbol('undo')}</button><button type="button" id="ed-done">Done</button></div>
       <p class="ed-sub" id="ed-grid"></p>
       <div class="ed-row" id="ed-tools">${Object.entries(TOOLS).map(([k, t]) => `<button type="button" data-tool="${k}">${t}</button>`).join('')}</div>
       <div id="ed-opts">

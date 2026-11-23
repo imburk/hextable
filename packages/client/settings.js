@@ -78,6 +78,10 @@ export function initSettings(ctx) {
   $('set-motion').value = drawer.motion; $('set-motion').onchange = (ev) => drawer.setMotion(ev.target.value);
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
   $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);
+  // The camera buttons on the map (docs/specs/one-token-menu.md question 8): off by default; the map turns and zooms by touch, keys and wheel.
+  const camOn = prefs.get('hextable.camButtons') === true;
+  document.body.dataset.cam = camOn ? 'on' : 'off'; $('set-cam').checked = camOn;
+  $('set-cam').onchange = (ev) => { prefs.set('hextable.camButtons', ev.target.checked); document.body.dataset.cam = ev.target.checked ? 'on' : 'off'; };
 
   // The keys (docs/specs/keyboard.md): a preset for this device, and the list of what each key does. Nothing is sent to the table.
   const kd = document.createElement('div');

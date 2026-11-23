@@ -75,7 +75,9 @@ export function initSpawnFind({ list, store, key, pick }) {
   // first result sits where the menu's token is. So the box is brought to the top again whenever the window changes size while it has the focus.
   let bring = 0;
   const onSize = () => { clearTimeout(bring); bring = setTimeout(() => { if (document.activeElement === input) input.scrollIntoView({ block: 'start', behavior: 'auto' }); }, 120); };
-  input.onfocus = () => { typing(true); setTimeout(() => input.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250); window.addEventListener('resize', onSize); window.visualViewport?.addEventListener('resize', onSize); };
+  // A smooth scroll can be cut short when the menu changes size under it (the class above), and with no keyboard resize after it (a tablet with
+  // a keyboard, or one that came up first) nothing brings the box up again: so once it has settled, it is brought to the top once more, at once.
+  input.onfocus = () => { typing(true); setTimeout(() => input.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250); setTimeout(() => { if (document.activeElement === input) input.scrollIntoView({ block: 'start', behavior: 'auto' }); }, 800); window.addEventListener('resize', onSize); window.visualViewport?.addEventListener('resize', onSize); };
   input.onblur = () => { typing(false); clearTimeout(bring); window.removeEventListener('resize', onSize); window.visualViewport?.removeEventListener('resize', onSize); };
   input.onkeydown = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } };      // Enter shuts a phone's keyboard
   bands.onclick = (ev) => { const b = ev.target.closest('.sf-band'); if (!b) return; band = b.dataset.band; draw(); };

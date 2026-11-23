@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, openTab, calm, setPace, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, openTab, calm, setPace, placeBeside, openMenu } from './lib.mjs';
 
 // ---------- timeline and pace ----------
 // At pace `wait` (the default of a table with no setting): a goblin's attack, damage and fall play in order and the player's
@@ -183,10 +183,10 @@ async function pacingTable(browser, url) {
         await host.click('#dm-table button:has-text("Let in")');
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        const name = (await b.textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        const name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
       });
       await run.do('a fight is started at instant pace on the DM and the phone', async () => {

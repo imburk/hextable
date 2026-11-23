@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, calm, closePanels, waitShown, onCanvas, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, calm, closePanels, waitShown, onCanvas, openTab, openMenu } from './lib.mjs';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
 
 // ---------- keyboard movement, the follow camera and key maps (docs/specs/keyboard.md, #357) ----------
@@ -138,7 +138,7 @@ async function desktop(browser, url) {
       await run.do('the feedback panel: "wasd" typed in its textarea is text, nothing moves, and Space and Shift do nothing to the view', async () => {
         if (!(await page.$('#fb-btn'))) throw new Error('no feedback button');
         const from = await posOf(page, id), cam = await page.evaluate(() => JSON.stringify(window.hextable.R.cameraAngles()));
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await openMenu(page, 'table'); await page.click('#fb-btn'); await waitShown(page, '#fb-panel');      // Help and feedback is a row of the menu; the menu folds away
         await page.fill('#fb-text', ''); await page.focus('#fb-text');
         await page.keyboard.type('wasd '); await page.keyboard.down('Shift'); await page.keyboard.type('WASD'); await page.keyboard.up('Shift');
         await sleep(500);

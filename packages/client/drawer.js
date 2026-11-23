@@ -12,7 +12,7 @@
 // The old tab names still open their screens (`open('dm')` is ['table', 'dm']; `open('character')` is `open('sheet')`).
 //
 // Preferences it keeps (client only, through `prefs`): hextable.drawerSide ('left' | 'right': where a wide screen's columns come from),
-// hextable.drawerPin (bool), hextable.menuMotion ('slide' | 'appear'), hextable.menuToken ('center' | 'left' | 'right': where the token sits).
+// hextable.drawerPin (bool), hextable.menuMotion ('slide' | 'appear'), hextable.menuToken ('center' | 'left' | 'right': where the token sits; it sits there whatever is open).
 // Where the menu is open is in memory only, and a closed menu opens on its first level.
 import { current } from './shared/engine.js';
 
@@ -123,6 +123,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       b.hidden = !(t.parent ? ok.table : ok.root).includes(id);
       b.setAttribute('aria-current', String(t.parent ? path[0] === t.parent && path[1] === id : path[0] === id));
     }
+    if ($('party').childElementCount) $('tab-sheet').hidden = true;      // the characters are rows of their own on the first level (Decision 4b); the one Character row is for a table with none
     $('tab-table').setAttribute('aria-current', path[0] === 'table' ? 'true' : 'false');
     summaries(S);
     // The badges: the token carries one, the sum of what waits (the DM's waiting players, a player's unseen handouts).
@@ -172,10 +173,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     const w = open && pinned() ? el.offsetWidth || 360 : 0;
     document.body.style.setProperty('--inset-l', side === 'left' ? `${w}px` : '0px');
     document.body.style.setProperty('--inset-r', side === 'right' ? `${w}px` : '0px');
-    // Columns open over the bottom of the map where the token sits: it moves to the middle of the map that is left (a sheet has a footer for it).
-    const tw = open && cols ? el.offsetWidth : 0;
-    document.body.style.setProperty('--tok-l', side === 'left' ? `${tw}px` : '0px');
-    document.body.style.setProperty('--tok-r', side === 'right' ? `${tw}px` : '0px');
+    // The token does not move for the menu (round 6, R25): the sheet and the columns keep their bottom strip empty for it (drawer.css).
     token.setAttribute('aria-expanded', String(open));
     // A dialog while it covers the map; a complementary landmark when it sits beside it.
     if (modal()) { el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); } else { el.setAttribute('role', 'complementary'); el.removeAttribute('aria-modal'); }
@@ -278,14 +276,14 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       return;
     }
     if (isOpen && !held && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey && el.contains(ev.target)) {
-      const row = ev.target.closest?.('.menu-row');
+      const row = ev.target.closest?.('.menu-row, #party .pr');
       const mine = (row || ev.target === title || !pinned());     // a pinned menu leaves the arrow keys to the map unless a row has the focus
       if (mine && !row && ev.target === title && path.length === 0 && /^(ArrowDown|Home)$/.test(ev.key)) {      // the heading at the root: Down or Home reaches the first row
-        const first = [...rootList.querySelectorAll('.menu-row')].find((b) => !b.hidden && b.getClientRects().length);
+        const first = [...rootList.querySelectorAll('.menu-row, .pr')].find((b) => !b.hidden && b.getClientRects().length);
         if (first) { ev.preventDefault(); ev.stopImmediatePropagation(); first.focus({ preventScroll: true }); return; }
       }
       if (mine && row && /^(ArrowUp|ArrowDown|Home|End)$/.test(ev.key)) {
-        const rows = [...row.closest('ul').querySelectorAll('.menu-row')].filter((b) => !b.hidden);
+        const rows = [...(row.closest('#menu-root') ? rootList.querySelectorAll('.menu-row, .pr') : row.closest('ul').querySelectorAll('.menu-row'))].filter((b) => !b.hidden && b.getClientRects().length);
         const i = rows.indexOf(row), next = ev.key === 'Home' ? rows[0] : ev.key === 'End' ? rows.at(-1) : rows[Math.max(0, Math.min(rows.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))];
         ev.preventDefault(); ev.stopImmediatePropagation(); next?.focus({ preventScroll: true }); return;
       }

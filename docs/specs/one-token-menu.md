@@ -59,7 +59,7 @@ The owner tried the published mockup and said (his words quoted):
 | R13 | (round 3) "create some symbols like setup should be the standard gear symbol. DM tools should have a wrench. Characters could be meeples. Packs needs something ... A singular aesthetic that matches the game" | One set of line symbols drawn in the theme's colour: gear, wrench, meeples, a strapped tome for Packs, and the rest; shown together on one sheet in the mockup (Decision 4c) |
 | R14 | (round 3) "if I click and hold, can they have that 6 dot thing to allow them to be dragged into a different order?" | Arrange: hold a symbol, or Setup › Arrange; rows with six-dot handles to drag, ▲ ▼ for keys, an eye to hide; per device; Reset order; four places cannot be hidden (Decision 4c) |
 | R15 | (round 3) "if I just hold that for a second, can it immediately allow me to roll a die for idle fun. When I just quick click on it, can it present the menu as a set of icons ... if there's no selection for 3 seconds, popup text explanations? When in the menus, show those same icons across the top"; then "quick tap, I don't want a row, I want an arc around the die." | A quick tap fans the symbols out in an **arc round the die**; labels appear after 3 s; inside a screen the same symbols run across the top; holding the die for a second throws the last roll at once (Decisions 1 and 4c) |
-| R16 | (round 4) "OK, I can't get out of the menu now that it's up." | A rule and a test: every state closes by a tap on the die, a tap on the map, or Escape. The die now sits above the sheet and the arc (it was under the dimmed map, so a tap on it reached the map instead, and on a phone the sheet covered it); the phone sheet keeps a footer for it; the Waiting card and the health note never take the closing tap (Decision 3, "Closing, always") |
+| R16 | (round 4) "OK, I can't get out of the menu now that it's up." | A rule and a test: every state closes by a tap on the die, a tap on the map, or Escape. The die now sits above the sheet and the arc (it was under the dimmed map, so a tap on it reached the map instead, and on a phone the sheet covered it); the phone sheet keeps a footer for it; the Waiting card and the health note never take the closing tap (Decision 3, "Closing, always"). **Amended in round 6 (R25):** the die is not raised above the sheet; it stays where it is and the sheet leaves room for it |
 | R17 | (round 4) "A number of these are setup items that are more specific, can they be held under the same menu item and just shown as sections ... dice ... on the same page as Look and just have a title bar that you click on" | The arc and the strip hold a few places: your character(s), Turns, Roll dice, Log and chat, Setup, and DM tools for the DM. Setup is one page of sections: Display and controls, Dice, The menu, Characters and packs, The table's rules, Help and about, Leave the table (Decision 4d) |
 | R18 | (round 4) "When a section is too long to display with the other section headers, it scrolls while keeping the section headers above and below." | One section open at a time; its content scrolls between the bars before it, pinned at the top, and the bars after it, pinned at the bottom (Decision 4d) |
 | R19 | (round 4) "the symbols across the top are too many and there's no indicator that there are more ... add > & < symbols if required? I'd prefer to get down to just a few though. Not sure what leave means ... If the latter, it should be under settings." | Six symbols fit a phone's strip; when more do not fit (a solo party, say), ‹ and › appear at the ends where there is more. Leave means leaving the table (the game, on this device); it is now the last section of Setup, with a confirm (Decisions 4c and 4d) |
@@ -67,6 +67,19 @@ The owner tried the published mockup and said (his words quoted):
 | R21 | (round 5) "the display needs to be consistent. On the setup tab, you only have one item open at a time. On Wren's page, it can open multiple things at once. I think we go with the setup version where you have headers that hold top/bottom. When all of them are shown, they should have the tip info. When we're in one, they can hide the tip info in favor of showing more working space." | One accordion for every page with sections: the character's page, Roll dice, Log and chat, Setup and DM tools. One section open; the bars before it pinned at the top and after it at the bottom; with none open each bar shows its tip, with one open the others show their title only. In-place folds are gone (Decisions 4a and 4d) |
 | R22 | (round 6) "When I click and hold on the die menu, it should popup the dice I want to throw for fun, it's a fidget that only shows up on my screen. Unless changed, it should just be a d20." | Holding the die for a second pops up the **fidget die**, ready to throw (a flick or a tap, the usual throw); a single d20 unless changed in Setup › Dice › Fidget die. Only that screen ever sees it: nothing is sent, nothing is logged, the DM does not see it. Its numbers come from the device, never from the game's seed (Decision 1, "The fidget die") |
 | R23 | (round 6) "The combat menu is not clear on what's going on, I think it's Wren's turn in this shot but when I click on wren, nothing happens?" | Turns: the current row is filled with "▶ Now", the next row says "Next", and the heading names who acts ("Round 2 · Wren's turn — yours"). Every row does something when tapped: your own opens your character (on your turn, on "Attack and cast"); anyone else is shown on the map (a phone clears the menu: "Showing Goblin Warrior 3"); the unseen row says why there is nothing to show (Decision 4, Turns) |
+
+### Owner's feedback, round 6 (22 Nov)
+
+The owner looked at the running game (build of main with M1 merged) on the evening of 22 November and said (his words quoted):
+
+| # | He said | What answers it |
+|---|---|---|
+| R24 | "I'm confused by the menu space at the bottom. When we did mockups, that was gone. The functionality should be in the slide-out menu." | **M3** takes the top bar, the order strip, the party chips and the card's head (name, Hit Points, resources, Sheet) off the screen; the party chips become the top of the menu's first level and the card's head the top of the Character screen. What is left of the dock after M3 is only the action rows (`#ap-tabs`, `#ap-body`), and **M4** moves them into the menu, which removes the dock |
+| R25 | "The menu button (the d20 in the health circle) should be stationary, not move with menus." | **The token stays in one fixed place at every size, whatever menu, sheet or panel is open** (Decisions 1 and 5; M3 builds it). This **replaces** round 4's "the die rides above the sheet" and M8's "the die above the sheet": the token no longer rises with the dock, slides along with open columns, or moves for any screen; the sheet, the columns and the dock **leave room for it** instead |
+| R26 | "The undo/redo should be standard symbology, not text." | Undo and Redo are the standard curved arrows (inline SVG, the symbol set of Decision 4c, `currentColor`), with the accessible names "Undo" and "Redo" and the same keyboard shortcuts, wherever they show: the DM's chip beside the token and the first row of DM tools (**M3**) |
+| R27 | "The slide-out menus should always keep their section headers reachable while scrolling" | **M10**: the one accordion with the bars pinned above and below the open section (Decision 4d), as the mockup worked out |
+| R28 | A way to fly or swim: a column of translucent cubes to pick the height, then a translucent plane of squares at that height; open to other ideas | A **separate design job** (height picking for flying and swimming creatures); not in this spec's stages. It will have to fit the token's fixed place (R25) and the clean screen |
+| R29 | "During combat only what is available should be shown" | **M4**: in a fight the character's page shows only the groups and rows that can be used now; what is greyed today is folded away, with one line saying why when the whole page is empty |
 
 ## Rules that bind this design
 
@@ -125,6 +138,55 @@ once**, which is the "chaos" the owner means. The log, in that menu, shows "Roll
 initiative! Brenna 21, Odessa 20, Goblin Warrior 3 19, ..." as one line: which number is
 mine is a reading job.
 
+### M4 build notes (the character cascade)
+
+**Built.** The dock is gone (`#dock`, `#ap-tabs` and the strip under it are out of `index.html`, the CSS and `app.js`). The token strip sets the map's `inset`
+(`--dock-h` is now the strip the token owns at the bottom; the turn line, the dice tray, the join bar and the new-version banner sit above it). The Character
+screen holds the status block (`#card`: name, Hit Points, AC, conditions, `#c-res`), the turn bar and one accordion of action groups (`#ap-body`, one `.ap-sec`
+per group, one open at a time). `groupsFor(S, e, ctx, o)` and `groupRows(S, e, id, o)` in `actionpanel.js` sort the same rows the tabs showed (`tabRows`' pieces,
+`spellRows`, `rankExplore`, `holdRows`, the companion and feature rows) into groups; `packages/client/test/groups.test.js` walks sample characters and checks
+that every row a tab showed is in at least one group. The first level has one row per controlled character (Decision 4b): a row selects, recentres the map and
+opens that character's screen. Aiming folds the menu (one overlay at a time).
+
+**Settled.**
+- Fight order: Attack, Cast, Heal, Move, Defend and hide, Use, Features, Companions, Reactions, Inventory. Out of a fight: Explore, Cast, Heal, Use, Rest, Features, Companions, Inventory.
+  The order never changes within a state.
+- The four pips of the turn bar are buttons: Action and Bonus Action open a cost screen (`#ap-cost`, everything that costs that), Move opens Move, Reaction opens Reactions.
+- R29: in a fight only rows with no refusal reason (or armed, so a tap can put them down) are shown, a group with none is not shown, and an empty page says why in one line
+  from the engine. Out of a fight the spec's rule stands: greyed rows stay with their reasons.
+- Breaking free of a hold (Escape) and Let go are rows of Move (a held creature cannot walk); Grapple and Shove stay Unarmed Strike's options under Attack.
+- What gives Hit Points back (Second Wind, Lay On Hands, healing spells and items) is one group, Heal, and is not repeated in Features, Cast or Use.
+- A group the player opened stays open when the character is selected again; a turn opens on the likeliest group (a martial character on Attack, a caster with slots on Cast, #678/#696).
+- Casting or arming a row folds the menu; to use another row the player opens the screen again (smoke: `panelTab`).
+- Taps for the common turn: move 1, attack 1 (tap the enemy), End turn 1 (on the turn line, `#btn-end`). Picking a weapon or spell and then a target goes from about 2 taps to about 4.
+
+**Where each old dock control went.**
+
+| Old control | Now |
+|---|---|
+| Tab strip `#ap-tabs`, `#ap-all` | gone; the groups of `#ap-body` (rows below) |
+| Explore tab `#ap-explore` | Explore group (`#ap-explore`), out of a fight; Follow, Search, Lead the party, Formation, objects in reach |
+| Attacks tab `#ap-attacks` | Attack group; Grapple and Shove as Unarmed Strike options; spell attack rolls also listed here |
+| Spells tab `#ap-spells`, Metamagic button | Cast group (`#ap-spells`, the Metamagic row first) |
+| Bonus tab | the turn bar's Bonus Action pip, a cost screen (`#ap-cost`) |
+| Move tab `#ap-move` (Dash, Disengage, fly up and down) | Move group; Escape and Let go join it |
+| Dodge, Hide, Search, Shield | Defend and hide group (`#ap-defend`) |
+| Features tab `#ap-features` | Features group, without the healing features |
+| Second Wind, Lay On Hands, healing spells and items | Heal group (`#ap-heal`) |
+| Items tab (uses, light, give, drop) | Use group for what can be used now; Inventory group (`#ap-items`) for the rest |
+| Reactions tab, standing instructions | Reactions group, and the turn bar's Reaction pip; a waiting question is said on its bar while the question stays the modal `#rp` |
+| Short rest, Long rest | Rest group (`#ap-rest`), out of a fight |
+| Companion rows (Command, Dismiss, Recall, Mount) | Companions group (`#ap-companions`) |
+| Down tab (death saves) | `#ap-down`, the page of a downed creature |
+| Party chips `#party` (M3 first level) | one row per controlled character on the first level |
+| `#card` head, `#c-res`, End turn `#btn-end` | the status block, the turn bar and the turn line |
+| `#ap-how` | the status block (a tap on a condition shows its line) |
+| `#todo-wait`, `#pace-wait` | `#pace-wait` in `#chips` beside the token; `#todo-wait` a status line above the token strip |
+
+**Left (see DEBT T104).** No level-3 screens yet (formation, class-feature pickers and the short rest still open their popups over the menu, and `#ap-features` rows
+open the existing pickers); no keyboard shortcuts 1 to 6; no pinned bars (M10) and no setting to open the character on my turn; Brutal Strike and Hide are hidden
+rather than greyed in a fight; the sheet is still shown under the status block (M5).
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the
@@ -135,7 +197,7 @@ which smoke passes change).
 | Today | Where | Goes to |
 |---|---|---|
 | Status box: `#mode` (Exploring / Round N), `#clock` | `#top` | **The turn line** above the token in a fight; the clock in the header of **Turns** (Party) and of **Log and chat**. Out of a fight nothing is shown on the map |
-| Undo (DM) `#btn-undo` | `#top` | **The DM's undo chip**: a small "Undo" beside the token for 8 s after each action the DM sends, and always as the first row of **DM tools**; Ctrl+Z as now. (`table-ui.md`: undoing must be one tap; the chip is one tap) |
+| Undo (DM) `#btn-undo` | `#top` | **The DM's undo chip**: a small **undo arrow** (the standard curved arrow, with a redo arrow beside it; round 6, R26: symbols, not words; the accessible names stay "Undo" and "Redo") beside the token for 8 s after each action the DM sends, and always as the first row of **DM tools**; Ctrl+Z as now. (`table-ui.md`: undoing must be one tap; the chip is one tap) |
 | Menu button `#btn-menu`, `#menu-badge` | `#top` | **The token** (it keeps the id `#btn-menu`, so the drawer's handles and `aria-controls` still hold); the badge goes on the token |
 | Order strip `#order` | under `#top` | **The turn line** (whose turn, mine in N) and the **Turns** screen. A tap on the turn line opens Turns |
 | Hint and aim bar `#hint`, `#hint-text`, `#hint-pick`, `#hint-go`, `#hint-cancel` | over the map | **The aim bar**, at the bottom, where the token is (`player-screen.md` Decision 4). While something is armed the aim bar *is* the one overlay; the token hides behind it and Cancel brings it back |
@@ -237,6 +299,14 @@ tap outside clears it.** Reasons:
 - **Where.** Bottom centre by default, 16 px above the safe area. Setup › Controls › "The
   menu token sits": **bottom centre**, **bottom right**, **bottom left** (left-handed).
   On a wide screen the same three; bottom centre by default.
+- **The token stays put (round 6, R25).** The token is in one fixed place at every size and
+  whatever is open: a menu, a sheet, columns, the pinned menu, the dock, the aim bar's
+  neighbours. It never rides above a sheet, never rises with the dock, and never slides
+  along when columns open; **everything else leaves room for it**. A phone's sheet and the
+  columns keep a footer as tall as the token and its margin (84 px) empty at the bottom; the
+  dock keeps the same strip clear. On a phone on its side the token takes the bottom corner
+  it takes with the menu shut, and the columns stop short of it. The token's place changes
+  only when the person sets it (Setup › The menu), never because of what is on the screen.
 - **What it wears.**
   - the **health ring**: an arc round the die for the selected character's Hit Points
     (question 4), in the theme's good colour, the bad colour below half, empty at 0. It
@@ -334,8 +404,9 @@ inside them the same rule holds.
 - **Closing, always (round 4).** In every state, the arc, every screen, every section, Arrange,
   More, with or without the Waiting for you card or the health-ring note, **three things
   close it: a tap on the die, a tap on the map, Escape.** So the die is drawn above the
-  dimmed map, the arc and the sheet (only a prompt, the aim bar and the throw zone are above
-  it, and those hide it), and the phone sheet ends 92 px above the bottom so the die stays
+  dimmed map and the arc (only a prompt, the aim bar and the throw zone are above
+  it, and those hide it) and it **does not move**: the phone sheet and the columns end above
+  the token's strip (round 6, R25: they leave room for it, it does not ride above them), so it stays
   in view and in reach. The Waiting card and the health note are only as big as their text,
   so the map round them still closes. The build carries a test that walks each state at
   both sizes and closes it each of the three ways (the mockup's check did: 27 states x 2
@@ -814,6 +885,9 @@ in this order:
    240 px          420 px                  360 px
 ```
 
+- **The token is fixed (round 6, R25).** In every drawing above it sits at the same place:
+  the sheet, the columns and the dock stop short of its strip (its 64 px, its 16 px margin
+  and the safe area); the token is never lifted, shifted or hidden to make room for them.
 - **Phone, below 900 px wide:** the sheet rises from the bottom to `calc(100% - 12vh)`;
   one level shown; levels push from the right; a breadcrumb row on top (48 px, the "‹"
   is a 48 px target); the sheet's grab handle closes it on a tap or a drag down, and there
@@ -1288,11 +1362,11 @@ away. The address can set a picture, for screenshots: for example
 `#bare&theme=sunlit&state=mine&open=cast`, `#bare&frame=desktop&open=turns`,
 `#bare&prompt=initiative` (the names are listed at the top of the file).
 
-Round 6: hold the die for the private fidget die (and its Setup row); Turns with a filled "Now" row, "Next", a heading that names who acts, and rows that open your character or show others on the map. Round 6 screenshots: `/home/claude/shots/527-r6`.
+Round 6 (22 Nov): the mockup still draws the die over the sheet's footer, which is what the build now does (the token fixed, the sheet leaving room). Round 6, earlier: hold the die for the private fidget die (and its Setup row); Turns with a filled "Now" row, "Next", a heading that names who acts, and rows that open your character or show others on the map. Round 6 screenshots: `/home/claude/shots/527-r6`.
 
 Round 5: no skip when a place opens (the strip no longer scrolls the frame; switching places swaps the screen in place), and one accordion on every page with sections, with the compact status block on the character's page. Round 5 screenshots: `/home/claude/shots/527-r5`.
 
-Round 4 adds: few places in the arc and the strip, the die above everything that closes, Setup as one page of sections with pinned bars, Leave as Setup's last section with a confirm, ‹ › on an overflowing strip, a Player/DM switch in the mockup's controls. Round 4 screenshots: `/home/claude/shots/527-r4`.
+Round 4 adds: few places in the arc and the strip, the die above the dimmed map (round 6: and never moved, the sheet leaves room), Setup as one page of sections with pinned bars, Leave as Setup's last section with a confirm, ‹ › on an overflowing strip, a Player/DM switch in the mockup's controls. Round 4 screenshots: `/home/claude/shots/527-r4`.
 
 Round 3 adds: removable dice chips, Shift+click and press-and-hold to take a die away, dice that scatter and rest flat and apart, the arc round the die (the mockup control "Tap the die", and the die at left, centre or right), labels after 3 s, the strip of symbols across the top of every screen, Arrange with six-dot handles, the 1 s hold that throws a d20, a "Symbols" sheet in the three themes, and no × on the phone. Round 3 screenshots: `/home/claude/shots/527-r3`.
 
@@ -1321,7 +1395,7 @@ through one helper (`openMenu(page, path)`) added in M1.
 |---|---|---|---|---|
 | M1 | **The token and the menu shell.** `#btn-menu` becomes the token (bottom centre, theme-drawn, badge); the drawer becomes the menu: first level as a list (replacing `#drawer-tabs`), the sheet from the bottom below 900 px, columns from 900 px, breadcrumb, clear zone, Escape/M/arrows, `hextable.menuMotion` and reduced motion. Its screens are today's tabs, re-parented, ids kept | `drawer.js`, `index.html`, `style.css` (+ `menu.css`), `settings.js`, `keys.js` (words only), smoke helper | `drawer`, `settings`, `keys` | One tap on the map closes every level; Just appear shows no movement; focus returns to the token; the first level lists Character, Turns, Dice, Log and chat, Table |
 | M2 | **One overlay at a time.** The precedence of Decision 2: a prompt or card folds the menu; the aim bar and throw zone hide the token; the menu never reopens by itself | `drawer.js`, `reactionprompt.js`, `conclusion.js`, `defeat.js`, `app.js` (`refresh`) | `reactions`, `rewards`, `defeat`, `armed` | A reaction question with the menu open: the menu folds, the question shows, after the answer the screen is clean and one tap on the token returns to the same screen |
-| M3 | **The clean screen.** `#top` goes (status to the turn line, undo to the DM's chip); `#order` to the turn line; `#cam` behind its setting; the feedback icon to Help and feedback; `#party` and `#card` leave the dock (the action panel lives in the menu from now; until M4 its tabs are shown as they are inside the Character screen) | `index.html`, `app.js`, `feedback.js`, `style.css`, `actionpanel.css` | `actionpanel`, `paneltabs`, `controls`, `feedback`, `multiplayer` | At 390 x 844 exploring, nothing but the map and the token; in a fight, the turn line; the old order strip is gone and Turns opens from the turn line |
+| M3 | **The clean screen** (round 6: and the token stays put, undo and redo as symbols). `#top` goes (status to the turn line, undo and redo to the DM's chip, as curved-arrow symbols); the token is one fixed place and the dock leaves room for it; `#order` to the turn line; `#cam` behind its setting; the feedback icon to Help and feedback; `#party` and the card's head leave the dock for the first level and the Character screen (built: the dock keeps only the action rows, `#ap-tabs` and `#ap-body`, until M4 moves them into the Character screen and the dock goes) | `index.html`, `app.js`, `feedback.js`, `style.css`, `actionpanel.css` | `actionpanel`, `paneltabs`, `controls`, `feedback`, `multiplayer` | At 390 x 844 exploring, nothing but the map and the token; in a fight, the turn line; the old order strip is gone and Turns opens from the turn line |
 | M4 | **The character cascade.** The status block with the turn bar (absorbs `player-screen.md` P2); one row per controlled character on the first level (Decision 4b); the action groups of Decision 4 from the existing rows; the turn bar's filter screens; the likeliest row inline; level-3 screens for formation, class-feature pickers, the short rest | `actionpanel.js` (`groupsFor(S, e)` beside `tabRows`), `classes.js`, `formation.js`, `companions.js`, `grapple.js` (host element only), `actionpanel.css`, tests for the grouping | `actionpanel`, `paneltabs`, `formation`, `companions`, `grapple` | Every row that a tab showed is in at least one group (a test walks the four sample characters and compares); a greyed group says why; a healing spell is in Cast and Heal |
 | M5 | **Inventory and Sheet sections**; Log and chat with Say; DM tools as level-3 screens; Setup's new groups | `actionpanel.js` (items), `app.js` (`renderSheet` split), `logview.js`, `handouts.js` (Say box), `settings.js`, `index.html` (DM sections wrapped) | `log`, `items`, `dm`, `scenes` | A player can say a line out of character from Log and chat; every DM section is reachable in three taps |
 | M6 | **The states of Decision 7**: the banner, the token's ring and arc, "you in N", down and dead lines, badges (the DM's carries the to-do tray: `todo.js` is moved under "Waiting for you" and its count joins the badge sum, `dm-todo.md`), offline | `app.js`, `drawer.js`, `linkdot.js`, `style.css` | `reactions`, `link`, `multiplayer` | "you in 3" counts right with an unseen slot; the banner shows once a turn; offline greys the token and every row says why |
@@ -1331,7 +1405,7 @@ through one helper (`openMenu(page, path)`) added in M1.
 | D4 | **Calmer throw and dice looks** (round 2): the tumble of Decision 9's list (no scale bounce, no random numerals, two hops, a rock), translucent drawing, `hextable.diceLook` with the free starters, the primary-colour picker with its unreadable-pair rule, the preview die | `dice.js` (drawing and the look), `settings.js`, `themes.js` untouched (a look is not a theme), a unit test (every free look's number contrast above 3:1; an unreadable pair is refused) | `dice` | A translucent blue d20 shows the board through it; no frame of a throw draws a numeral that is not on a face turned up; Yellow on White is greyed with its reason |
 | D5 | **Roll dice** (client), after E-M2: the picker on the Dice screen, the token's press and hold, the throw zone with the chosen dice, the log line and title | `dice.js`, `app.js`, `drawer.js` (the Dice screen), `logview.js`, tests | `dice` | 2d6 + 1 to the table shows the same faces on every screen and in the log; "Only the DM" is seen by the roller and the DM only; refused while a reaction waits, with the reason |
 | E-M2 | **Engine: `freeRoll`**, a plain roll from the seed that changes nothing else (Decision 8b) | `engine/` (a handler in `rolls.js`'s domain or a small new module under `engine/`), `engine.js` (dispatch and the validation order: refused while a question waits), `view.js` (sent to all, or to the roller and the DM), `packages/server/README.md`, tests | — | Replay gives the same faces; undo takes it back; a player is never sent another player's `to: 'dm'` roll; 21 dice, a d7, a bonus of 21 are refused and change nothing |
-| M8 | **The arc, the strip, the symbols and the names** (rounds 3 and 4; round 4: a few places, the die above the sheet and the arc, ‹ › on the strip, Setup's sections): the symbol set as one module (`client/symbols.js`, inline SVG strings, `currentColor`), the arc on a quick tap with its rings per position and More, labels after 3 s and the setting, the strip across the top of every screen, every heading its own name, the handle as the phone's close control | `drawer.js`, `symbols.js` (new), `style.css`, `settings.js`, a test that every place has a symbol and an accessible name | `drawer`, `settings`, `keys` | At 390 x 844 the arc at bottom centre has 14 slots on the screen, none under 44 px; at bottom left 15; labels appear after 3 s and at once to a screen reader; no phone screen has a × |
+| M8 | **The arc, the strip, the symbols and the names** (rounds 3 and 4; round 4: a few places, the sheet leaves room for the die, which stays where it is (round 6), ‹ › on the strip, Setup's sections): the symbol set as one module (`client/symbols.js`, inline SVG strings, `currentColor`), the arc on a quick tap with its rings per position and More, labels after 3 s and the setting, the strip across the top of every screen, every heading its own name, the handle as the phone's close control | `drawer.js`, `symbols.js` (new), `style.css`, `settings.js`, a test that every place has a symbol and an accessible name | `drawer`, `settings`, `keys` | At 390 x 844 the arc at bottom centre has 14 slots on the screen, none under 44 px; at bottom left 15; labels appear after 3 s and at once to a screen reader; no phone screen has a × |
 | M10 | **One accordion for every page with sections** (rounds 4 and 5): Setup's seven sections, the character's six (with the compact status block), Roll dice, Log and chat, DM tools; one open at a time with the bars pinned above and below; tips shown only with none open; the no-overshoot test (R20); Leave with its confirm, the Dice row from Roll dice; and the closing test (every state, at both sizes, by the die, the map and Escape) | `settings.js`, `drawer.js`, `style.css`, a smoke pass `menuclose` | `settings`, `drawer` | All seven bars and 120 px of the open section fit at 390 x 844; no state fails to close |
 | M9 | **Arrange**: hold a symbol, Setup › Arrange, drag by six dots, ▲ ▼, hide, Reset order; the four that cannot be hidden | `drawer.js`, `settings.js`, a test for the order and the fixed four | `drawer` | A dragged order survives a reload; Setup, Help, Leave and the character cannot be hidden |
 | D6 | **Many dice**: separate paths, hops, friction, glancing, nudging apart, flat rest, the fade; the 1 s hold on the die for the fidget die (device random numbers, in the client only; never sent, never logged) | `dice.js`, `app.js`, a unit test (100 throws of 12 dice: no two resting dice overlap; every resting die's face is the sent one) | `dice` | 6d20 + 1d100 + 2d6 rests as 10 separate dice at both sizes |

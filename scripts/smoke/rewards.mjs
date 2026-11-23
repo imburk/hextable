@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, calm } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, calm, chip, openMenu } from './lib.mjs';
 
 // ---------- rewards ----------
 // The rewards after a won fight (packages/client/conclusion.js): a DM and a phone player. The phone is told only that rewards are pending
@@ -26,10 +26,10 @@ async function rewards(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        name = (await b.textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
         xp0 = await phone.evaluate((i) => window.hextable.state.entities[i].xp, id);
         if (typeof xp0 !== 'number') throw new Error('a character has no XP');
@@ -102,7 +102,7 @@ async function rewards(browser, url) {
         await closeMenu(phone);
         await waitShown(phone, '#cc');
         await phone.locator('#cc [data-cc="continue"]').tap();
-        await phone.click(`#party button:has-text("${name}")`);
+        await chip(phone, `${name}`);
         await openTab(phone, 'sheet');
         if (!/XP \d/.test(await phone.textContent('#sheet-body'))) throw new Error('no XP on the sheet');
         await closeMenu(phone);
