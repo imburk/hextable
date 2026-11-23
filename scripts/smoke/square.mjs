@@ -87,8 +87,10 @@ async function squares(browser, url, label, opts) {
       await run.do('load square-room as the DM of a solo game: the renderer reads it as squares and floors it with one four-sided cell to a tile', async () => {
         await open(page, url); await playSolo(page);
         await wait(page, () => window.hextable.state.entities.fighter);
-        await page.evaluate((map) => { window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }); window.hextable.act({ type: 'loadMap', map }); }, MAP);
-        await wait(page, () => window.hextable.state.map.id === 'square-room' && window.hextable.R.G.kind === 'square' && window.hextable.R.floorData.length > 0);
+        await page.evaluate(() => window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }));
+        await calm(page);      // an action sent while beats play is dropped (app.js act: skipping), so the second waits for the first
+        await page.evaluate((map) => window.hextable.act({ type: 'loadMap', map }), MAP);
+        await wait(page, () => window.hextable.state.map.id === 'square-room' && window.hextable.R.G?.kind === 'square' && window.hextable.R.floorData?.length > 0);
         await calm(page);
         const r = await page.evaluate(() => {
           const R = window.hextable.R, S = window.hextable.state, cells = R.floorData.flatMap((f) => f.patches.flatMap((p) => p.cells));

@@ -46,7 +46,7 @@ for (const sf of ["off", "casts"]) for (const sc of scenarios(kit(M), sf)) {
   test(`as on main (strikeFirst ${sf}): ${sc.name}`, () => {
     // Recorded at state version 23; the version has moved since (24, #390; 25, #557; 26, #579; 27, #585) and nothing else in the state: the version is read back as it was, and `packs: []` and `scoreRolls: {}` (also new) are left out (a new game holds none of the places of a world, #579).
     // #523 (addition F of homebrew-subclasses.md) adds `whit:<attacker>:<target>` to a fight's flags after a weapon hit: only those keys are taken out, so the pin still checks everything else is as on main.
-    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":29,/, '{"version":23,').replace(',"scoreRolls":{}', '').replace(',"packs":[]', '').replace(/"whit:[^"]*":true,?/g, '').replace(',"strikeFirst":"casts"', '').replace(/,"fightSeq":\d+/, '').replace(/,\}/g, '}')));
+    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":30,/, '{"version":23,').replace(',"scoreRolls":{}', '').replace(',"packs":[]', '').replace(/"whit:[^"]*":true,?/g, '').replace(',"strikeFirst":"casts"', '').replace(/,"fightSeq":\d+/, '').replace(/,\}/g, '}')));
     assert.equal(got.length, REC[sc.name].length, "as many results");
     got.forEach((h, i) => assert.equal(h, REC[sc.name][i], `result ${i} of ${got.length} (the last is the state)`));
   });

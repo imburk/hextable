@@ -49,6 +49,29 @@ export function reactionState(S, e, { dm = false } = {}) {
 }
 
 // The panel is a function of the state and the selected creature. `mine`: the viewer controls `e` (the DM controls all).
+// Whether a turn opens on Spells although the creature has attacks (issue 678). The rule: a character (not a monster, and not a creature in a form such as
+// Wild Shape, which opens on Attacks) opens on Spells when it can cast something worth casting and has no weapon worth using; otherwise Attacks.
+// "A weapon worth using" is a weapon attack that hits for 5.5 or more on average (WEAPON_WORTH: a Mace with a +2 modifier, a Rapier, a Greatsword). Unarmed Strike (with its
+// Bonus Action twin, Grapple and Shove, which are rows of it), improvised weapons and the d4 and d6 weapons a wizard carries (a Dagger, a Quarterstaff, also two-handed) are not: a
+// wizard's cantrip beats them and grows with level. So a cleric with a mace and a paladin with a greatsword open on Attacks, a wizard with a dagger on Spells.
+// "Something worth casting" is a spell that can be cast on this creature's turn at all (`time: 'action'`) and either a cantrip whose roll is an attack or a
+// saving throw, or a levelled spell with a slot left. The action economy is left out on purpose (a spent Action does not flip the tab), and `initActionPanel` keeps
+// the tab a turn opened on, so it does not move under the player when the last slot goes. A tab the player picked wins over all of this.
+export const WEAPON_WORTH = 5.5;
+const damageAvg = (d) => {
+  const m = /^\s*(?:(\d+)d(\d+))?\s*([+-]\s*\d+)?\s*$/.exec(String(d ?? ''));
+  return m ? (m[1] ? (+m[1] * (+m[2] + 1)) / 2 : 0) + (m[3] ? +m[3].replace(/\s/g, '') : 0) : 0;
+};
+export function opensOnSpells(S, e) {
+  if (e.form || e.actions || !e.spells?.length) return false;
+  if ((e.attacks ?? []).some((a) => !/^unarmed-strike|-two-handed$/.test(a.id) && !/improvised/i.test(`${a.id} ${a.name}`) && damageAvg(a.damage) >= WEAPON_WORTH)) return false;
+  return e.spells.some((id) => {
+    const sp = SPELLS[id];
+    if (!sp || sp.time !== 'action') return false;
+    return sp.level > 0 ? slotChoices(e, sp).length > 0 : sp.roll === 'attack' || /^save:/.test(sp.roll ?? '');
+  });
+}
+
 // Returns { situation, tabs: [{ id, label, built, ... }], default } with every tab the spec names; the shell draws the built ones.
 export function panelContext(S, e, { mine = true, dm = false } = {}) {
   if (!e) return { situation: 'none', tabs: [], default: null };
@@ -59,7 +82,7 @@ export function panelContext(S, e, { mine = true, dm = false } = {}) {
   if (!fight) return { situation: 'explore', tabs: ['explore', 'spells', 'features', 'items'].map((id) => tab(id)), default: 'explore' };
   if (current(S) === e.id) {
     const armed = attackRows(S, e).length > 0;
-    return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed ? 'attacks' : 'spells' };
+    return { situation: 'turn', tabs: ['attacks', 'spells', 'bonus', 'move', 'features', 'items'].map((id) => tab(id)), default: armed && !opensOnSpells(S, e) ? 'attacks' : 'spells' };
   }
   const r = reactionState(S, e, { dm });
   return { situation: 'wait', tabs: ['reactions', 'spells', 'features', 'items'].map((id) => tab(id, id === 'reactions' ? { ok: r.ok, why: r.why, pending: r.pending, free: r.free } : { why: 'It isn\'t your turn.' })), default: 'reactions' };
@@ -974,6 +997,7 @@ export function initActionPanel(ctx) {
       const wanted = sel.tab !== null && (sel.tab === '' || costOk(sel.tab) || kinds.some((g) => g.id === sel.tab)) ? sel.tab : null;
       const tab = wanted ?? (ctxNow.situation === 'wait' && kinds.some((g) => g.id === 'reactions') ? 'reactions' : defaultTab(ctxNow, kinds, { pref: pref(), last: last() })) ?? '';
       openNow = tab;
+      if (ctxNow.situation === 'turn' && tab && sel.tab === null) sel.tab = tab;       // the group a turn opens on stays for the turn: spending the last slot does not move it (opensOnSpells, from main)
       // the status block's turn bar says which segment is open
       setHtml($('c-res'), statusHtml(S, e, { mine: my, full, formLabel: ctx.formLabel(e), budget: !!enc && cur === e.id && up(e) && full ? ctx.budget(e) : null, open: openNow }));
       renderHow(S, e);

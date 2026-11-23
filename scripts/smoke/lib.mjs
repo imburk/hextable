@@ -115,6 +115,22 @@ export async function playSolo(page) {
   await page.click('#lobby-solo');
   await wait(page, () => window.hextable?.state?.entities);
 }
+// The view is still: the camera has no goal left to ease to (follow, turn), and for 8 frames in a row (waited for in the page, on the renderer's own frames, so a slow machine
+// counts frames, not milliseconds) the dock's height, the canvas and where the map's origin is on the screen have not changed. The dock's height moves the picture (the renderer's `inset`
+// follows it, app.js sizeDock) and a layout in progress or a camera still easing is what makes a tap land on another cell than the one that was looked up.
+export const viewStill = (page, ms = 20000) => page.evaluate((limit) => new Promise((resolve, reject) => {
+  const h = window.hextable, R = h.R, c = (R.inner ?? R).cam ?? {}, t0 = performance.now();
+  const sig = () => { const p = R.screenOf({ q: 0, r: 0, z: 0 }); return JSON.stringify([c.goal ? 1 : 0, c.yawGoal != null ? 1 : 0, document.getElementById('dock')?.offsetHeight, innerWidth, innerHeight, p && [Math.round(p.x * 10), Math.round(p.y * 10)]]); };
+  let last = '', same = 0;
+  const frame = () => {
+    const now = sig();
+    same = now === last && !c.goal && c.yawGoal == null ? same + 1 : 0; last = now;
+    if (same >= 8) return resolve(true);
+    if (performance.now() - t0 > limit) return reject(new Error(`viewStill: the view never stilled in ${limit} ms: ${now}`));
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}), ms);
 // Let the camera stop moving: the same screen point twice in a row.
 export async function settle(page, id) {
   let last = '';
@@ -257,6 +273,18 @@ export async function diceDuel(dm, watch, want = null) {
 
 // Still: no dice in the air and no beats left to play. `setPace` sets a page's pace at once.
 export const calm = (p, ms = 15000) => wait(p, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, ms);
+// `window.hextable.act` does nothing while this page's timeline is playing at the pace `wait`: it skips the beats instead (app.js, `skipping()`; a tap that skips an animation must not also send).
+// A script that sends an action right after another's events were queued therefore loses it without a word (#688: endEncounter lost, then 20 s for a fight that never ended). `window.__still(action)`
+// (installed by `stillInit`, add it to a context before its pages open) waits in the page until nothing is playing and sends in the same turn, so nothing can start in between; it says in words when the timeline never stilled.
+export const stillInit = `window.__still = async (a, ms = 20000) => {
+  const t0 = Date.now();
+  for (;;) {
+    const h = window.hextable;
+    if (h && h.waiting === 0 && !h.timeline.busy()) return h.act(a);
+    if (Date.now() - t0 > ms) { const S = h?.state, E = S?.encounter; throw new Error('__still: the timeline never stilled for ' + JSON.stringify(a) + ': waiting ' + h?.waiting + ', busy ' + h?.timeline.busy() + ', pace ' + h?.timeline.pace + ', turn ' + (E ? E.order[E.turn].id : null) + ', prompt ' + !!S?.prompt + ', pending ' + !!S?.pending + ', last ' + JSON.stringify((S?.timeline ?? []).slice(-6).map((x) => x.type))); }
+    await new Promise((r) => setTimeout(r, 40));
+  }
+};`;
 export const setPace = (p, v) => p.evaluate((x) => { localStorage.setItem('hextable.pace', JSON.stringify(x)); window.hextable.timeline.setPace(window.hextable.pace()); }, v);
 
 

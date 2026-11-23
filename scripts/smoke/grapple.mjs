@@ -88,11 +88,13 @@ async function part1(browser, url, label, opts) {
         await select(page, foe);
         const pill = await page.$$eval('#c-res .pill', (p) => p.map((x) => x.textContent.trim()));
         if (!pill.some((x) => /^Grappled by Gru \(escape DC \d+\)$/.test(x))) throw new Error(`the pill: ${pill}`);
+        await openMenu(page, 'sheet');                       // M3: the status block (conditions) is the top of the Character screen
         await page.click('#c-res .pill:has-text("Grappled")');
         await waitShown(page, '#ap-how');
         if (!/escape DC \d+/.test(await text(page, '#ap-how')) || /Until the DM removes it/.test(await text(page, '#ap-how'))) throw new Error(`the card: ${await text(page, '#ap-how')}`);
         await shot('held');
         await page.click('#ap-how [data-close]');
+        await closePanels(page);
       });
 
       await run.do('the line on the map: the overlay has a band between the two (a hold draws geometry the same overlay without it does not)', async () => {

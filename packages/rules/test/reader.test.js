@@ -90,7 +90,7 @@ const FIXTURES = [
       { modifier: { on: 'carry', op: 'set', value: 2 } }, { modifier: { on: 'speed.fly', op: 'set', value: 30 } },
       { modifier: { on: 'd20', op: 'add', value: '1d6', onFail: true, cost: 'bardic-inspiration' } },
       { modifier: { on: 'opportunity', op: 'autoFail' } },
-      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend'] } },
+      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend', 'target.fiendOrUndead'] } },
     ] }),
   base('hunters-sting', 'Hunter\'s Sting', { level: 1, school: 'divination', duration: '1 hour', concentration: true, time: 'bonus', range: 90, target: { creature: {} },
     effects: [{ modifier: { on: 'damage.dealt', op: 'add', value: '1d6', types: ['chosen'], against: 'target' }, to: 'caster' }, { reveal: 'target' }],

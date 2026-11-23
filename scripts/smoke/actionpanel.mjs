@@ -47,6 +47,14 @@ async function tokenKept(page) {
   if (over.levelsBottom > over.tokenTop + 1 && !(over.wide && over.drawerRight < over.tokenLeft)) throw new Error(`the menu runs under the token: ${JSON.stringify(over)}`);
 }
 
+// End turns until it is `id`'s turn.
+async function walkTo(page, id) {
+  for (let k = 0; k < 12 && (await state(page, (S) => S.encounter.order[S.encounter.turn].id)) !== id; k++) {
+    await page.evaluate(() => { const S = window.hextable.state; window.hextable.act({ type: 'endTurn', actor: S.encounter.order[S.encounter.turn].id }); });
+    await wait(page, () => window.hextable.waiting === 0, null, 15000);
+  }
+}
+
 async function solo(browser, url, label, opts) {
   await scenario(label, async (run) => {
     const touch = !!opts.hasTouch, phone = opts.viewport.width <= 600;
@@ -174,14 +182,8 @@ async function solo(browser, url, label, opts) {
       });
 
       await run.do('on its own turn the Character screen opens on Attack with End turn; Move and the Bonus Action are there', async () => {
-        const cur = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
-        const isPc = await state(page, (S, i) => S.entities[i].kind === 'pc', cur);
-        if (!isPc) { // walk the order to a character's turn
-          for (let k = 0; k < 12 && !(await state(page, (S) => S.entities[S.encounter.order[S.encounter.turn].id].kind === 'pc')); k++) {
-            await page.evaluate(() => { const S = window.hextable.state; window.hextable.act({ type: 'endTurn', actor: S.encounter.order[S.encounter.turn].id }); });
-            await wait(page, () => window.hextable.waiting === 0, null, 15000);
-          }
-        }
+        // walk the order to the fighter's turn (the wizard's opens on Cast, #678, checked below)
+        await walkTo(page, 'fighter');
         const me = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
         await page.evaluate((i) => window.hextable.select(i), me);
         await waitTab(page, 'attacks'); await waitShown(page, '#ap-attacks'); await waitShown(page, '#btn-end'); await waitShown(page, '#ap-spells', false);
@@ -191,6 +193,19 @@ async function solo(browser, url, label, opts) {
         const un = await page.$$eval('#ap-body .ap-sec:not([hidden]) [data-row].off, #ap-body .ap-sec:not([hidden]) [data-row][aria-disabled="true"]', (b) => b.map((x) => x.dataset.row));
         if (un.length) throw new Error(`in a fight the page shows rows that cannot be used: ${un}`);
         await clear(page, touch, true); await shot('turn');
+      });
+
+      await run.do('on the wizard\'s turn (a dagger, cantrips and slots) the Character screen opens on Spells, Attack is one tap away; a group opened stays', async () => {
+        await walkTo(page, 'wizard');
+        await page.evaluate(() => window.hextable.select('wizard'));
+        await waitTab(page, 'spells'); await waitShown(page, '#ap-spells');
+        const bars = await page.$$eval('#ap-body .ap-sec:not([hidden]) .ap-bar', (b) => b.map((x) => x.dataset.sec));
+        if (!bars.includes('attacks')) throw new Error(`no attacks group in ${bars}`);
+        await page.click('#ap-bar-attacks'); await waitTab(page, 'attacks'); await waitShown(page, '#ap-attacks');
+        await page.evaluate(() => window.hextable.select('wizard'));
+        await page.waitForTimeout(300);
+        if ((await page.$eval('#ap-body .ap-bar[aria-expanded="true"]', (b) => b.dataset.sec)) !== 'attacks') throw new Error('the group the player opened was taken back');
+        await shot('wizard');
       });
     } finally { await ctx.close(); }
   });

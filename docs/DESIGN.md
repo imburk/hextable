@@ -89,7 +89,7 @@ Fight ──(one side is down, or the DM ends it)──▶ Exploring
 `engine.js` holds `apply()`: the order in which an action is checked, the
 pause for reaction prompts, what runs after every action, and the timeline.
 Handlers are split by domain under `engine/`, above layered helpers that
-import only downwards, so there are no import cycles. CLAUDE.md says which
+import only downwards, so there are no import cycles. AGENTS.md says which
 module holds what, and a test keeps that list complete.
 
 What it enforces (the specs say how; `npm run content` says how much):
