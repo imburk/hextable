@@ -57,7 +57,8 @@ import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
 import { levelUpHtml } from './levelup.js';
-import { ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
+import { heightsOf, livePick, makePick, rowOf, stepRow, cellAt, inRow, columnHl, planeHl, stateLine, cellWords, flyState, pickStamp, waysLeft, band, blockAtPoint, blockNearest, pitchFor, frameNudge, fallWarning, pickedWords, placeList } from './heights.js';
+import { HEIGHT_ACTIONS, ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
 import { mountNewVersion } from './newversion.js';
 import { wire as wireUndo, nameOf } from './undobar.js';
@@ -69,10 +70,115 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const MOVE = { kind: 'move' };
 const OWED = { kind: 'owed' };     // the Move button of an Opportunity Attack's movement was pressed (allowance.js): the next tap on a shaded place is the move
-// How high above the floor each flyer's next move will end, in feet. Chosen with the Higher and Lower buttons.
-const flyAlt = {};
-const heightOf = (pos) => { const sf = under(S.map, pos); return sf ? Math.floor((pos.z - sf.z) / FT) * FT : 0; };
-const altOf = (e) => flyAlt[e.id] ?? heightOf(e.pos);
+// The height picked for a flyer's next move (heights.js, docs/specs/fly-swim-control.md C1): one pick, kept only while nothing has changed under it. A move, a fall,
+// a landing, a turn change or the loss of the flight makes it stale, and the move then goes to the height the creature is at.
+let flyPick = null, flyMemo = null;
+// The heights `e` can end a move at now, from the engine's own search (looked up once a refresh).
+const flyH = (e) => { if (flyMemo?.id !== e.id || flyMemo.S !== S) flyMemo = { id: e.id, S, H: heightsOf(S, e, { reach: moveOptions(previewState(S, e), e) }) }; return flyMemo.H; };
+// The block its next move goes to: the live pick's, else the one it is at. null for a creature that cannot fly now.
+// ---------- the column of heights and the plane of places (fly-swim-control.md, C2) ----------
+// The mode `{ kind: 'fly', id, stamp, hover, point }`: the column is open on the creature's own cell and the plane hangs at the picked height. `hover` is the block the
+// pointer is over (its plane previews), `point` the key of the place pointed at (a line runs down from it). Nothing of it is sent: only the ordinary `move` is.
+const flyCan = (e) => !!e && mine(e) && up(e) && flyState(S, e).can && flyH(e).can;
+function flyOpen(e, armed = false, list = false) {
+  if (armed || (mode.kind === 'fly' && !list)) return setMode(MOVE);
+  if (mode.kind === 'fly') return $('hint-fly').focus();
+  const st = flyState(S, e, shownName(S, e));
+  if (!st.has) return;
+  if (!st.can) return toast(st.why);
+  if (!flyH(e).can) return toast(`${shownName(S, e)} has no movement left.`);
+  R.focus(e.id, reducedMotion());                // the column stands on the creature's own cell: the view goes to it (its turn of the map is left alone)
+  setMode({ kind: 'fly', id: e.id, stamp: pickStamp(S, e), hover: null, point: null, marked: false });
+  if (list) $('hint-fly').focus();
+}
+// Pick a block: by its height (a tap on it), or one step up or down, or the ground or the top.
+function flyPickZ(e, z) { if (flyH(e).heights.some((r) => r.z === z && r.cells.length)) { flyPick = makePick(S, e, z); if (mode.kind === 'fly') { mode.point = null; mode.hover = null; mode.marked = false; } refresh(); } }
+function flyStep(e, how) {
+  const H = flyH(e), row = flyRow(e), live = H.heights.filter((r) => r.cells.length);
+  const next = how === 'ground' ? live[0] : how === 'top' ? live.at(-1) : row ? stepRow(H, row, how) : null;
+  if (next) flyPickZ(e, next.z);
+}
+function flyGo() { const e = S.entities[selId], c = e && mode.point ? flyRow(e)?.cells.find((x) => x.key === mode.point) : null; if (c && !skipping()) flySend(e, c); }
+function flySend(e, cell) { lastMove = { hex: cell.h, at: Date.now() }; act({ type: 'move', actor: e.id, to: cell.h }); }
+function flyTap(e, hit) {
+  const row = flyRow(e);
+  if (hit.block !== undefined) return flyPickZ(e, hit.block);
+  const cell = !row ? null : hit.plane ? row.cells.find((c) => c.key === cellKey(hit.hex)) ?? null : cellAt(row, hit.hex);
+  if (cell) {
+    // On touch a place in the air takes two taps (the plane hangs above the ground, so the first tap marks: the line down, the cost, Go); a mouse click, and a tap on the ground, send at once.
+    const touch = hit.pointer === 'touch' || hit.pointer === 'pen';
+    if (!touch || row.ground || (mode.marked && mode.point === cell.key)) return flySend(e, cell);
+    mode.point = cell.key; mode.marked = true; flySay(cellWords(flyH(e), cell));
+    return refresh();
+  }
+  if (hit.id && hit.id !== e.id) { select(hit.id); return refresh(); }
+  toast(row && !row.ground ? `${shownName(S, e)} can't reach that at ${row.ft} ft up.` : `${shownName(S, e)} can't get there.`);
+}
+// What a screen reader is told when the pick or the marked place changes (the aria-live line).
+function flySay(text) { const el = $('fly-live'); if (el.textContent !== text) el.textContent = text; }
+// Where the blocks of the column are on the screen now: [{ z, x, top, bottom }] in pixels (heights.js picks among them).
+const FOOT = Math.sqrt(3) / 5;            // drawing units a foot (three-build.js UNIT)
+function flyBlocksPx(e) {
+  const w = gridOf(S.map).toWorld(e.pos), x = w.x / FOOT, y = w.z / FOOT;
+  return flyH(e).heights.map((r) => { const a = R.screenPoint(x, y, r.z), b = R.screenPoint(x, y, r.z + 4.8); return a && b ? { z: r.z, x: a.x, top: b.y, bottom: a.y, live: r.cells.length > 0 } : null; }).filter(Boolean);
+}
+// A press on a block picks it, and a drag along the column moves the pick one block at a time under the finger, with the height lifted clear of the finger and a short
+// tick at each block where the device has one. A press anywhere else is not the column's: the map pans and taps as it always does.
+const FLY_DRAG = (() => {
+  let on = false, last = null;
+  const tip = (x, y, z) => { const el = $('fly-tip'), e = S?.entities[selId], row = e && flyH(e).heights.find((r) => r.z === z); el.hidden = !row; if (row) { el.textContent = row.ground ? 'Ground' : `${row.ft} ft`; el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y - 56)}px) translate(-50%, -100%)`; } };
+  const pick = (z, x, y) => { if (z === null || z === last) return; last = z; const e = S.entities[selId]; flyPickZ(e, z); tip(x, y, z); try { navigator.vibrate?.(8); } catch { /* no haptics */ } };
+  return {
+    down(x, y) { const e = S?.entities[selId]; if (mode.kind !== 'fly' || !e || skipping()) return false; const z = blockAtPoint(flyBlocksPx(e), y, x); if (z === null) return false; on = true; last = null; pick(z, x, y); tip(x, y, z); return true; },
+    move(x, y) { const e = S?.entities[selId]; if (!on || mode.kind !== 'fly' || !e) return; pick(blockNearest(flyBlocksPx(e).filter((b) => b.live), y), x, y); if (last !== null) tip(x, y, last); },
+    end() { on = false; $('fly-tip').hidden = true; }, cancel() { on = false; $('fly-tip').hidden = true; },
+  };
+})();
+// The camera when the column opens and closes (fly-swim-control.md, "Camera"): a view steeper than 1.05 rad eases to 0.9 over 0.5 s (at once with reduced motion) and goes
+// back when the column closes, unless the player turned or tilted the view meanwhile; and the picture is slid down so the top block is under the aim bar, not off the screen.
+let flyWas = false, flyTilt = null, flyNudge = 0;
+function easeTilt(d, done) {
+  if (!d) return done?.();
+  if (reducedMotion() || TL.pace === 'instant') { R.tilt(d); return done?.(); }
+  const t0 = performance.now(); let gone = 0;
+  const step = (t) => { const k = Math.min(1, (t - t0) / 500), want = d * k * k * (3 - 2 * k); R.tilt(want - gone); gone = want; if (k < 1) requestAnimationFrame(step); else done?.(); };
+  requestAnimationFrame(step);
+}
+function flyFrame() {
+  flyNudge = 0; sizeDock();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const e = S?.entities[selId]; if (mode.kind !== 'fly' || !e) return;
+    const px = flyBlocksPx(e); if (!px.length) return;
+    flyNudge = frameNudge({ top: px.at(-1).top, margin: $('hint').getBoundingClientRect().bottom + 10, foot: px[0].bottom, floor: ($('btn-menu').getBoundingClientRect().top || innerHeight) - 24 });
+    sizeDock();
+  }));
+}
+function flyCamera(open) {
+  if (!ED.on) R.onDrag = open ? FLY_DRAG : null;
+  if (!open) { $('fly-tip').hidden = true; flySay(''); flyNudge = 0; const t = flyTilt; flyTilt = null; if (t && t.turns !== null && R.cameraAngles().turns === t.turns) easeTilt(t.back - R.cameraAngles().pitch); return; }
+  const a = R.cameraAngles(), to = pitchFor(a.pitch);
+  if (to === null) return flyFrame();
+  const own = (flyTilt = { back: a.pitch, turns: null });
+  easeTilt(to - a.pitch, () => { own.turns = R.cameraAngles().turns; if (flyTilt === own) flyFrame(); });
+}
+// The aim bar while the column is open: the stepper (the sure way on a phone), the list of places in words, and Go once a place is marked.
+let flyListSig = '';
+function flyBar(e) {
+  const open = mode.kind === 'fly' && !!e, step = $('hint-step'), list = $('hint-fly');
+  step.hidden = list.hidden = !open;
+  if (!open) { flyListSig = ''; return; }
+  const H = flyH(e), row = flyRow(e);
+  $('hint-ft').textContent = row.ground ? 'Ground' : `${row.ft} ft`;
+  $('hint-up').disabled = !stepRow(H, row, 1); $('hint-down').disabled = !stepRow(H, row, -1);
+  const places = placeList(gridOf(S.map), e, H, row), sig = `${e.id}|${row.z}|${places.length}|${places[0]?.text ?? ''}|${places.at(-1)?.text ?? ''}`;
+  if (sig !== flyListSig) {
+    flyListSig = sig;
+    list.replaceChildren(Object.assign(document.createElement('option'), { value: '', textContent: `Fly to\u2026 (${places.length})` }), ...places.map((pl) => Object.assign(document.createElement('option'), { value: pl.key, textContent: pl.text })));
+  }
+  list.value = mode.marked && mode.point ? mode.point : '';
+  flySay(mode.marked && mode.point ? `Marked: ${places.find((pl) => pl.key === mode.point)?.text ?? ''}` : pickedWords(H, row));
+}
+const flyRow = (e) => { if (!aloft(S, e)) return null; const H = flyH(e), live = livePick(flyPick, S, e, H); if (flyPick?.id === e.id && !live) flyPick = null; return rowOf(H, live); };
 
 const SCORE_EVENTS = ['scoresRolled', 'scoreRerolled'];
 let T = null, S = null, selId = null, mode = MOVE, aiTimer = null, toastTimer = null, aiSent = null;
@@ -683,14 +789,25 @@ function actionAim(e, hl) {
   return { hint: aimed ? `${def.name} catches ${caught.length ? caught.map((x) => x.name).join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${def.name}: ${how}`, go: aimed && hl.area.length > 0 };
 }
 
+// The column and the plane as highlights, and the one line of words under them (the aim bar's text).
+function flyAim(e, hl) {
+  const H = flyH(e), row = flyRow(e), over = mode.hover != null ? H.heights.find((r) => r.z === mode.hover && r.cells.length) ?? null : null, shown = over && over !== row ? over : row;
+  if (mode.point && !row.cells.some((c) => c.key === mode.point)) mode.point = null;
+  hl.column = columnHl(e, H, row, { hover: mode.hover, color: e.look?.color ?? null });
+  hl.plane = planeHl(S.map, H, shown, { faint: shown !== row, point: shown === row ? mode.point : null });
+  hl.move = [];                                   // the ground reach is not drawn under a plane: two layers would fight
+  const cell = mode.point ? row.cells.find((c) => c.key === mode.point) : null, pt = hl.plane.point;
+  if (cell) return `${cellWords(H, cell)}${row.ground ? '' : ` \u00b7 ${row.ft} ft up`}${pt && pt.drop ? ` \u00b7 ${pt.drop} ft above the floor` : ''}${pt?.bad ? ` \u00b7 ${pt.bad}` : ''}${pt?.drop ? ((w) => (w ? `. ${w}` : ''))(fallWarning(S, e, pt.drop)) : ''}${mode.marked ? '. Tap again or Go' : ''}`;
+  return stateLine(H, shown);
+}
 // The hint bar's two buttons, put to the words of the movement an Opportunity Attack gave (and back to the aiming ones, 'Cast' and 'Cancel', when it is not that).
 // 44 px high, the size of a thumb: the bar's own are smaller.
 function hintWords(offer, waits) {
-  const go = $('hint-go'), cancel = $('hint-cancel'), big = owedUi ? '44px' : '';
+  const go = $('hint-go'), cancel = $('hint-cancel'), big = owedUi || mode.kind === 'fly' ? '44px' : '';      // a thumb's size too while a flyer's column is open: Go sends a move
   go.style.minHeight = cancel.style.minHeight = big;
   cancel.hidden = owedUi === 'wait';
   cancel.textContent = owedUi === 'offer' ? forgoLabel : 'Cancel';
-  go.textContent = owedUi === 'offer' ? moveLabel(offer) : owedUi === 'wait' ? giveUpLabel(waits) : 'Cast';
+  go.textContent = owedUi === 'offer' ? moveLabel(offer) : owedUi === 'wait' ? giveUpLabel(waits) : mode.kind === 'fly' ? 'Go' : 'Cast';
   if (owedUi === 'offer') go.hidden = mode.kind === 'owed';       // pressed: the next tap on a shaded place is the move
   else if (owedUi === 'wait') go.hidden = false;
 }
@@ -704,12 +821,14 @@ function showTurnLine() {
   const now = S.entities[current(S)];
   $('btn-end').hidden = !(now && mine(now) && !T.readOnly);
 }
-function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0; }      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
+function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = (t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0) - 2 * flyNudge; }      // a flyer's column slides the picture down (an inset of 2 px moves it 1 px) so its top is on the screen      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
 let joinNo = null;               // the fight whose "Bring the others in?" was put off
 // The party members a running fight has left outside, who could be brought in: alive, able, on their own feet (a rider goes with its mount).
 const outsiders = (st) => Object.values(st.entities).filter((x) => x.side === 'party' && !x.dead && up(x) && !x.riding && !x.hidden && !st.encounter.order.some((o) => o.id === x.id));
 function refresh() {
   if (!S) return;
+  flyMemo = null;
+  if (mode.kind === 'fly') { const fe = S.entities[selId]; if (!fe || fe.id !== mode.id || mode.stamp !== pickStamp(S, fe) || !flyCan(fe)) mode = MOVE; }      // the column closes after a move, a fall, a turn change, the loss of flight
   const enc = S.encounter, cur = current(S), e = S.entities[selId];
   document.body.classList.toggle('fight', !!enc);
   // A fight with party members outside it: the DM (in solo, the player) is asked once per fight whether to bring them in (`joinFight`, #671).
@@ -761,7 +880,12 @@ function refresh() {
     if (my && up(e)) {
       // highlights and hint for the armed action
       // A flyer's highlights are the places at the height it has chosen; everyone else's are on the ground.
-      if (mode.kind === 'move' && myTurn) hl.move = [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop && (!aloft(S, e) || heightOf(v.h) === altOf(e))).map(([k]) => k);
+      if (mode.kind === 'move' && myTurn) {
+        // The reach is shaded by cost (C3): the nearest third of what the creature has left, the middle third, the farthest. A flyer's is the places of its height.
+        const row = flyRow(e), left = waysLeft(S, e), most = Math.max(left.walk, left.climb, left.fly);
+        const stops = row ? row.cells.map((c) => [c.key, c.cost, c.floor ? most : left.fly]) : [...moveOptions(previewState(S, e), e)].filter(([, v]) => v.canStop).map(([k, v]) => [k, v.cost, most]);
+        hl.move = stops.map(([k]) => k); hl.moveBand = Object.fromEntries(stops.map(([k, cost, of]) => [k, band(cost, of)]));
+      }
       if (mode.kind === 'attack') {
         const a = e.attacks.find((x) => x.id === mode.id);
         hl.targets = targetsFor(S, e, { attack: mode.id }).filter((id) => hostile(S.entities[id], e));
@@ -773,6 +897,7 @@ function refresh() {
       }
       if (mode.kind === 'attack' && mode.flurry && hl.targets.length) hint = flurryHint(S, e, mode) || hint;
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
+      if (mode.kind === 'fly') hint = flyAim(e, hl);
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
@@ -811,7 +936,7 @@ function refresh() {
   owedUi = null;
   if (offer) {
     owedUi = 'offer'; hint = offerWords(offer, { armed: mode.kind === 'owed', waiting: waits.some((w) => w.id === offer.id) });
-    hl.move = reachOf(S, e, (v) => !aloft(S, e) || heightOf(v.h) === altOf(e));
+    { const row = flyRow(e); hl.move = reachOf(S, e, (v) => inRow(S.map, row, v.h)); }
   } else if (!hint && mode === MOVE && waits.length) { owedUi = 'wait'; owedWho = waits.map((w) => w.id); hint = waitWords(waits); }
   if (hint && mode.kind === 'spell' && S.entities[selId]) hint += CLS.hint(S.entities[selId], mode.id);
   if (mode.kind === 'spawn') hint = gridWords(`Tap a hex to add a ${MONSTERS[mode.monster].name}`, gridOf(S.map));
@@ -820,8 +945,12 @@ function refresh() {
   if (mode.kind === 'follow') hint = `Tap the party member ${name(selId)} should follow`;
   if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
+  if (mode.kind === 'fly') go = !!(mode.marked && mode.point);
   $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
+  flyBar(S.entities[selId]);
+  if ((mode.kind === 'fly') !== flyWas) { flyWas = mode.kind === 'fly'; flyCamera(flyWas); }
   hintWords(offer, waits);
+  { const fe = S.entities[selId], st = fe && mine(fe) && !ED.on ? flyState(S, fe) : null, b = $('cam-fly'); b.hidden = !st?.has; b.setAttribute('aria-pressed', String(mode.kind === 'fly')); b.classList.toggle('off', !!st && !st.can); }
   showPick(); showSlot();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
@@ -1032,7 +1161,8 @@ function aimTap(hex) {
   mode.aim = hex; mode.pinned = true;
   refresh();
 }
-R.onTap = ({ hex, id }) => {
+R.onTap = (hit) => {
+  const { hex, id } = hit;
   if (!S || !T || skipping()) return;
   const e = S.entities[selId], tapped = id ? S.entities[id] : null;
   const inZone = [...new Set(R.zonesAt(hex))];
@@ -1046,6 +1176,7 @@ R.onTap = ({ hex, id }) => {
     if (tapped && tapped.id !== selId && tapped.side === 'party') return act({ type: 'follow', actor: selId, leader: tapped.id });
     return tapped ? toast('Only another member of the party can be followed.') : undefined;
   }
+  if (mode.kind === 'fly' && e) return flyTap(e, hit);
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id, ...(mode.extra ?? {}) }) : setMode(MOVE);
   if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
   if (mode.kind === 'action') {
@@ -1088,15 +1219,23 @@ R.onTap = ({ hex, id }) => {
     // Movement an Opportunity Attack gave is spent only once the Move button was pressed (allowance.js), so that a tap that meant something else does not spend it.
     if (offerOf(S, e) && mode.kind !== 'owed') return toast(`Press Move up to ${offerOf(S, e).feet} ft first, or Don't move.`);
     // A flyer goes to the tapped hex at its chosen height; if it cannot stop there, say so.
-    if (aloft(S, e) && altOf(e) > 0) {
-      const spot = [...moveOptions(previewState(S, e), e).values()].find((v) => v.canStop && v.h.q === hex.q && v.h.r === hex.r && heightOf(v.h) === altOf(e));
-      return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${altOf(e)} ft up.`);
-    }
+    { const row = flyRow(e);
+      if (row && !row.ground) {
+        const spot = cellAt(row, hex);
+        return spot ? act({ type: 'move', actor: e.id, to: spot.h }) : toast(`${e.name} can't reach that at ${row.ft} ft up.`);
+      } }
     lastMove = { hex, at: Date.now() };       // if the arena refuses it, the edge nearest this hex flashes (T.on.error)
     act({ type: 'move', actor: e.id, to: hex });
   }
 };
-R.onHover = (hex) => { if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
+R.onHover = (hex, hit) => {
+  if (mode.kind === 'fly') {       // a mouse over the column lights a block and previews its plane; over the plane it points at a place
+    const e = S?.entities[selId], row = e ? flyRow(e) : null, over = hit?.block ?? null;
+    const cell = !row || over !== null || !hit ? null : hit.plane ? row.cells.find((c) => c.key === cellKey(hit.hex)) ?? null : cellAt(row, hit.hex), point = cell?.key ?? null;
+    if (over !== mode.hover || point !== mode.point) { mode.hover = over; mode.point = point; mode.marked = false; refresh(); }
+    return;
+  }
+  if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
 const endTurn = (id) => { if (CLS.askCure(S.entities[id])) return; act({ type: 'endTurn', actor: id }); };       // Self-Restoration with a choice asks first
@@ -1107,7 +1246,8 @@ $('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
 $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
 $('hint-go').onclick = () => {
   if (owedUi === 'offer') return setMode(OWED);
-  if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));      // the DM gives it up for them; the engine lets the DM
+  if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));
+  if (mode.kind === 'fly') return flyGo();      // the DM gives it up for them; the engine lets the DM
   castAimed();
 };
 function castAimed() {
@@ -1122,6 +1262,19 @@ function castAimed() {
   else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id], mode.picked?.[0] ?? null) }));
   mode = MOVE;
 }
+// Alt (or Ctrl, where Alt is taken) and the wheel step the pick by one block while the column is open; the wheel alone still zooms. This listener is on the canvas before
+// the renderer's own, so it can keep the step from zooming as well.
+$('gl').addEventListener('wheel', (ev) => {
+  if (mode.kind !== 'fly' || !(ev.altKey || ev.ctrlKey) || !S?.entities[selId]) return;
+  ev.preventDefault(); ev.stopImmediatePropagation();
+  flyStep(S.entities[selId], ev.deltaY < 0 ? 1 : -1);
+}, { passive: false });
+$('hint-up').onclick = () => { const e = S?.entities[selId]; if (e && mode.kind === 'fly') flyStep(e, 1); };
+$('hint-down').onclick = () => { const e = S?.entities[selId]; if (e && mode.kind === 'fly') flyStep(e, -1); };
+$('hint-fly').onchange = (ev) => { if (mode.kind !== 'fly') return; mode.point = ev.target.value || null; mode.marked = !!mode.point; refresh(); };
+// A tap on a creature's height tag (the renderer says which): its own opens the column, another's selects it as a tap on the token does.
+addEventListener('hextable-height-tag', (ev) => { const e = S?.entities[ev.detail?.id]; if (!e || skipping()) return; if (e.id !== selId) { select(e.id); refresh(); } if (mine(e) && mode.kind !== 'fly') flyOpen(e); });
+$('cam-fly').onclick = () => { const e = S?.entities[selId]; if (e && !skipping()) flyOpen(e); };
 $('cam-l').onclick = () => R.rotate(-Math.PI / 6); $('cam-r').onclick = () => R.rotate(Math.PI / 6);
 $('cam-in').onclick = () => R.zoom(0.8); $('cam-out').onclick = () => R.zoom(1.25);
 // The connection dot (linkdot.js, issue #246): the top bar's own at a table, and the DM's view of each player's in the tracker.
@@ -1283,8 +1436,11 @@ addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !armed) setMode(MOVE);
   if (!S || !$('lobby').hidden) return;
   if (ev.key === 'Shift') { KB.shift(true); return; }
+  // While the column is open Enter and Space go to the marked place.
+  if (mode.kind === 'fly' && (ev.key === 'Enter' || ev.code === 'Space') && !leaveAlone(ev, document)) { ev.preventDefault(); flyGo(); return; }
   const a = actionOf(ev, keyMap());
-  if (!a || leaveAlone(ev, document) || (a === 'recentre' && closeTray)) return;      // the dice tray keeps Space
+  if (!a || leaveAlone(ev, document) || (a === 'recentre' && closeTray)) return;
+  if (HEIGHT_ACTIONS.includes(a) && !flyKeys()) return;      // the dice tray keeps Space
   ev.preventDefault();
   KB.shift(ev.shiftKey);
   if (ACTIONS[a].kind === 'press') PRESS[a](); else KB.down(a, ev.repeat);
@@ -1319,10 +1475,15 @@ const KB = createWalker({
     if (b && current(S) === id) toast(`${name(id)}: Move ${Math.floor(b.move)} ft left`, true);
   },
 });
+function flyKey(how) { const e = S.entities[selId]; if (mode.kind !== 'fly') return flyOpen(e); flyStep(e, how); }
+// The height keys are a flyer's; for anyone else they stay the browser's (Page Up scrolls).
+const flyKeys = () => { const e = S?.entities[selId]; return !!e && mine(e) && (mode.kind === 'fly' || (mode.kind === 'move' && flyState(S, e).has)) && !S.prompt && !S.pending; };
 const PRESS = {
   rotateLeft: () => R.rotate(-Math.PI / 12), rotateRight: () => R.rotate(Math.PI / 12),
   zoomIn: () => R.zoom(0.9), zoomOut: () => R.zoom(1.1),
   sheet: () => D.open('sheet'),
+  // A flyer's height: the first press opens the column, each press after moves the pick one block; Home the ground, End the top.
+  heightUp: () => flyKey(1), heightDown: () => flyKey(-1), heightGround: () => flyKey('ground'), heightTop: () => flyKey('top'),
   recentre() { if (!S?.entities[selId]) return; const rm = reducedMotion(); R.focus(selId, rm); if (lastDir[selId] !== undefined) R.face(lastDir[selId], rm); KB.resume(); },
 };
 addEventListener('keyup', (ev) => { if (ev.key === 'Shift') KB.shift(false); const a = actionOf({ code: ev.code }, keyMap()); if (a) KB.up(a); });
@@ -1362,9 +1523,10 @@ $('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[d
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
-  openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => (aloft(S, e) ? { aloft: true, alt: altOf(e) } : null),
+  openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => { const st = flyState(S, e, shownName(S, e)); if (!st.has) return null; const row = flyRow(e); if (!aloft(S, e)) return { has: true, why: st.why, aloft: false }; const H = flyH(e); return { has: true, why: st.why || (H.can ? '' : 'No movement left.'), words: row ? stateLine(H, H.heights.find((r) => r.here) ?? row) : '', aloft: true, alt: row?.ft ?? H.here, up: row ? stepRow(H, row, 1)?.ft ?? null : null, down: row ? stepRow(H, row, -1)?.ft ?? null : null }; },
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
-  fly: (e, delta) => { flyAlt[e.id] = altOf(e) + delta; refresh(); } });
+  fly: (e, delta) => { const row = flyRow(e), next = row ? stepRow(flyH(e), row, Math.sign(delta)) : null; if (next) flyPick = makePick(S, e, next.z); refresh(); },
+  flyOpen: (e, armed, list) => flyOpen(e, armed, list) });
 // The formation popup (formation.js): Lead sends `partyFollow`, and the popup opens once the table says someone follows (`pendingLead`).
 let pendingLead = null;
 const FM = initFormation({ state: () => S, act, isDM, mine, refresh: () => refresh() });

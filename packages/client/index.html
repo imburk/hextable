@@ -36,9 +36,12 @@
   <div id="splash-card"><h1>Hextable</h1><p id="splash-text">Loading&hellip;</p><div class="splash-bar" aria-hidden="true"><i></i></div><button type="button" id="splash-about" class="quiet">About</button></div>
 </div>
 
-<div id="hint" role="status" hidden><span id="hint-text"></span><select id="hint-pick" aria-label="Choice" hidden></select><select id="hint-slot" aria-label="Spell slot" hidden></select><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button></div>
+<div id="hint" role="status" hidden><span id="hint-text"></span><select id="hint-pick" aria-label="Choice" hidden></select><select id="hint-slot" aria-label="Spell slot" hidden></select><span id="hint-step" role="group" aria-label="Height" hidden><button type="button" id="hint-up" aria-label="One block higher">▲</button><b id="hint-ft" aria-hidden="true"></b><button type="button" id="hint-down" aria-label="One block lower">▼</button></span><select id="hint-fly" aria-label="Fly to a place" hidden></select><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button></div>
+<div id="fly-live" class="sr-only" aria-live="polite"></div><div id="fly-tip" aria-hidden="true" hidden></div>
 <div id="join" role="status" hidden><span id="join-text">Bring the others in?</span><button type="button" id="join-yes">Bring them in</button><button type="button" id="join-no">Not now</button></div>
 
+<!-- A flyer's way to the column of heights (docs/specs/fly-swim-control.md, "Getting in"): shown only for a creature of yours with a Fly Speed. -->
+<button type="button" id="cam-fly" aria-label="Fly: choose a height" title="Fly: choose a height (Page Up)" aria-pressed="false" hidden><span aria-hidden="true">⇅</span> Fly</button>
 <div id="cam" aria-label="Camera">
   <button type="button" id="cam-l" aria-label="Rotate left">⟲</button>
   <button type="button" id="cam-r" aria-label="Rotate right">⟳</button>

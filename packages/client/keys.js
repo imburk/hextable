@@ -20,7 +20,14 @@ export const ACTIONS = {
   zoomOut: { words: 'Zoom out', kind: 'press' },
   recentre: { words: 'Return the view to the direction of travel', kind: 'press' },
   sheet: { words: 'Open the character sheet', kind: 'press' },
+  // A flyer's height (docs/specs/fly-swim-control.md): the first press opens the column, each one after moves the pick one block.
+  heightUp: { words: 'Fly: pick a height, one block higher', kind: 'press' },
+  heightDown: { words: 'Fly: one block lower', kind: 'press' },
+  heightGround: { words: 'Fly: pick the ground (land)', kind: 'press' },
+  heightTop: { words: 'Fly: pick the highest height in reach', kind: 'press' },
 };
+// The height keys act only for a creature that can fly; for everyone else the keys are the browser's (Page Up still scrolls).
+export const HEIGHT_ACTIONS = ['heightUp', 'heightDown', 'heightGround', 'heightTop'];
 // What a walk key does while Shift is held.
 export const WALK_LOOK = { forward: 'tiltUp', back: 'tiltDown', left: 'lookLeft', right: 'lookRight' };
 // Owned by other code and the same in every preset; listed so the keys list is whole and a test can check no preset takes them.
@@ -32,17 +39,20 @@ export const FIXED = [
   { words: 'Open or close the menu', keys: ['M'], codes: ['KeyM'] },
   { words: 'In the menu: move between rows, open one, go back a level', keys: ['Up, Down', 'Right, Enter', 'Left, Backspace'], codes: [] },      // the menu's own: with it open and a row focused, the arrow keys are its, not the walk keys
   { words: 'Move the focus', keys: ['Tab', 'Shift+Tab'], codes: ['Tab'] },
+  { words: 'Fly: go to the marked place', keys: ['Enter', 'Space'], codes: [] },      // while a flyer's column is open; Space otherwise does what the preset says
 ];
 
 const WASD = { forward: ['KeyW'], back: ['KeyS'], left: ['KeyA'], right: ['KeyD'] };
 const ARROWS = { forward: ['ArrowUp'], back: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'] };
-const BASE = { rotateLeft: ['KeyQ'], rotateRight: ['KeyE'], recentre: ['Space'] };
+// Page Up and Page Down, and R and F for a keyboard with neither (a laptop). Q and E turn the map and W A S D walk, so they are left alone.
+const HEIGHT = { heightUp: ['PageUp', 'KeyR'], heightDown: ['PageDown', 'KeyF'], heightGround: ['Home'], heightTop: ['End'] };
+const BASE = { rotateLeft: ['KeyQ'], rotateRight: ['KeyE'], recentre: ['Space'], ...HEIGHT };
 const ARROW_LOOK = { lookLeft: ['ArrowLeft'], lookRight: ['ArrowRight'], tiltUp: ['ArrowUp'], tiltDown: ['ArrowDown'] };
 // The presets, by their layout. The default is first. `like` is for the spec and the tests, never shown.
 export const PRESETS = {
   default: { name: 'WASD and arrows', like: 'the usual default', keys: { forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'], ...BASE } },
   arrows: { name: 'Arrows only', like: 'keyboard-only play', keys: { ...ARROWS, ...BASE } },
-  block: { name: 'Block-builder style', like: 'block-building survival games', keys: { ...WASD, ...ARROW_LOOK, rotateLeft: ['KeyQ'], recentre: ['Space'], sheet: ['KeyE'] } },
+  block: { name: 'Block-builder style', like: 'block-building survival games', keys: { ...WASD, ...ARROW_LOOK, rotateLeft: ['KeyQ'], recentre: ['Space'], sheet: ['KeyE'], ...HEIGHT } },
   world: { name: 'World-builder style', like: 'world-building platforms', keys: { forward: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA'], right: ['KeyD'], lookLeft: ['ArrowLeft'], lookRight: ['ArrowRight'], zoomIn: ['KeyI'], zoomOut: ['KeyO'], ...BASE } },
   fps: { name: 'First-person style', like: 'first-person shooters', keys: { ...WASD, ...ARROW_LOOK, ...BASE } },
 };
@@ -64,7 +74,7 @@ export function actionOf(ev, preset) {
 export function keyLabel(code) {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);
-  return { ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Space: 'Space' }[code] ?? code;
+  return { ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Space: 'Space', PageUp: 'Page Up', PageDown: 'Page Down' }[code] ?? code;
 }
 // The keys list for Settings: [{ words, keys: [label] }], the preset's own actions in ACTIONS order, then the fixed keys.
 export function keyList(preset) {

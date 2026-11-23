@@ -255,3 +255,33 @@ test('look keys turn while held, and nothing walks with nobody to walk', () => {
   io.sel = null; W.down('forward'); run(500);
   assert.equal(log.sent.length, 0);
 });
+
+// ---------- a flyer's height (docs/specs/fly-swim-control.md, C2) ----------
+import { HEIGHT_ACTIONS } from '../keys.js';
+
+test('every preset binds the height keys: Page Up and R go up, Page Down and F down, Home the ground, End the top', () => {
+  const ev = (code, extra = {}) => ({ code, ctrlKey: false, metaKey: false, altKey: false, ...extra });
+  for (const [id, p] of Object.entries(PRESETS)) {
+    assert.equal(actionOf(ev('PageUp'), p), 'heightUp', id);
+    assert.equal(actionOf(ev('KeyR'), p), 'heightUp', id);
+    assert.equal(actionOf(ev('PageDown'), p), 'heightDown', id);
+    assert.equal(actionOf(ev('KeyF'), p), 'heightDown', id);
+    assert.equal(actionOf(ev('Home'), p), 'heightGround', id);
+    assert.equal(actionOf(ev('End'), p), 'heightTop', id);
+    assert.equal(actionOf(ev('PageUp', { altKey: true }), p), null, `${id}: a modifier is the browser's`);
+    // Q and E still turn the map (or open the sheet) and W A S D still walk: the height keys took none of them.
+    assert.equal(actionOf(ev('KeyQ'), p), 'rotateLeft', id);
+    assert.equal(actionOf(ev('KeyW'), p) ?? actionOf(ev('ArrowUp'), p), 'forward', id);
+  }
+  assert.deepEqual(HEIGHT_ACTIONS, ['heightUp', 'heightDown', 'heightGround', 'heightTop']);
+  for (const a of HEIGHT_ACTIONS) assert.equal(ACTIONS[a].kind, 'press');
+});
+
+test('the keys list names the height keys in words, and Enter and Space as the keys that send', () => {
+  const list = keyList(presetOf('default'));
+  assert.deepEqual(list.find((l) => l.words === ACTIONS.heightUp.words).keys, ['Page Up', 'R']);
+  assert.deepEqual(list.find((l) => l.words === ACTIONS.heightDown.words).keys, ['Page Down', 'F']);
+  assert.deepEqual(list.find((l) => l.words === ACTIONS.heightGround.words).keys, ['Home']);
+  assert.ok(list.some((l) => /go to the marked place/.test(l.words) && l.keys.includes('Enter')));
+  assert.equal(keyLabel('PageUp'), 'Page Up');
+});
