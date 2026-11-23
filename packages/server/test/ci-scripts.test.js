@@ -36,3 +36,122 @@ test('live check: the issue text names both shas', () => {
   assert.ok(text.includes(SHA) && text.includes('deadbee'));
   assert.equal(TITLE, 'Live site is not the merged version');
 });
+
+// ---- the errors check of the live-check script (#689) ----
+import { checkErrors, CLIENT_THRESHOLD, ERRORS_LABEL, ERRORS_TITLE, errorsReport, healthRise } from '../../../scripts/ci/live-check.mjs';
+
+const NOW = new Date('2026-11-21T12:00:00Z');
+const later = (ms) => new Date(NOW.getTime() + ms);
+const health = (over = {}) => ({ ok: true, uptime: 3600, crashes: 0, crashesByType: {}, clientErrors: 0, clientErrorsByType: {}, build: 'c1d5069', ...over });
+const BOT = { login: 'github-actions[bot]', type: 'Bot' }, HUMAN = { login: 'mallory', type: 'User' };
+
+test('healthRise: crashes report, browser errors alone only past a threshold and once a day, and each process has its own baseline', () => {
+  assert.equal(healthRise({ health: health(), marker: null, now: NOW }).rose, false);
+  const first = healthRise({ health: health({ crashes: 2, crashesByType: { cast: 2 }, clientErrors: 1 }), marker: null, now: NOW });
+  assert.equal(first.rose, true);
+  assert.equal(first.why, 'crashes');
+  assert.deepEqual(first.delta, { crashes: 2, clientErrors: 1 });
+  const same = healthRise({ health: health({ uptime: 5400, crashes: 2, crashesByType: { cast: 2 }, clientErrors: 1 }), marker: first.marker, now: later(1_800_000) });
+  assert.equal(same.rose, false);
+  const grew = healthRise({ health: health({ uptime: 5400, crashes: 3, crashesByType: { cast: 2, move: 1 }, clientErrors: 1 }), marker: first.marker, now: later(1_800_000) });
+  assert.deepEqual(grew.byType.crashes, [['move', 1, 1]]);
+  // Browser errors alone: below the threshold nothing, at it a report, and then not again for a day.
+  const few = healthRise({ health: health({ uptime: 5400, crashes: 2, clientErrors: 1 + CLIENT_THRESHOLD - 1 }), marker: first.marker, now: later(1_800_000) });
+  assert.equal(few.rose, false);
+  const many = healthRise({ health: health({ uptime: 5400, crashes: 2, clientErrors: 1 + CLIENT_THRESHOLD }), marker: first.marker, now: later(1_800_000) });
+  assert.deepEqual([many.rose, many.why], [true, 'client']);
+  const again = healthRise({ health: health({ uptime: 5400 + 3600, crashes: 2, clientErrors: 1 + 3 * CLIENT_THRESHOLD }), marker: many.marker, now: later(1_800_000 + 3_600_000) });
+  assert.equal(again.rose, false, 'not twice in a day');
+  const nextDay = healthRise({ health: health({ uptime: 5400 + 86_400, crashes: 2, clientErrors: 1 + 3 * CLIENT_THRESHOLD }), marker: many.marker, now: later(1_800_000 + 86_400_000) });
+  assert.equal(nextDay.rose, true);
+  // Another process (a restart, or a second instance) starts from zero; the first one's baseline is kept, so it is not counted again when it answers.
+  const other = healthRise({ health: health({ uptime: 60, crashes: 1, crashesByType: { cast: 1 } }), marker: first.marker, now: later(1_800_000) });
+  assert.equal(other.restarted, true);
+  assert.deepEqual(other.delta, { crashes: 1, clientErrors: 0 });
+  const back = healthRise({ health: health({ uptime: 3600 + 3600, crashes: 2, crashesByType: { cast: 2 }, clientErrors: 1 }), marker: other.marker, now: later(3_600_000) });
+  assert.equal(back.rose, false, 'the first process answers again: its baseline is still there');
+});
+
+// A fake GitHub: issues (with their labels, authors and comments) as checkErrors reads and writes them.
+function fakeGitHub(issues = []) {
+  const posts = [];
+  const gh = async (path) => {
+    if (path.startsWith('/issues?')) return issues.filter((i) => !path.includes('labels=') || i.labels.includes(new URL(`http://x${path}`).searchParams.get('labels')));
+    const m = /^\/issues\/(\d+)\/comments/.exec(path);
+    return issues.find((i) => i.number === Number(m[1]))?.comments ?? [];
+  };
+  const send = async (method, path, body) => {
+    posts.push({ method, path, body });
+    if (path === '/issues') { const i = { number: 300 + posts.length, title: body.title, state: 'open', body: body.body, labels: body.labels ?? [], user: BOT, comments: [] }; issues.unshift(i); return i; }
+    issues.find((i) => i.number === Number(/\d+/.exec(path)[0])).comments.push({ body: body.body, user: BOT });
+    return {};
+  };
+  return { gh, send, posts, issues };
+}
+const run = (f, h, at, extra = {}) => checkErrors({ gh: f.gh, send: f.send, healthUrl: 'x', dry: false, now: at, fetchHealth: async () => h, ...extra });
+
+test('checkErrors opens a labelled "Live site errors" issue on a crash, comments on it, and stays quiet otherwise', async () => {
+  const f = fakeGitHub();
+  assert.match(await run(f, health({ crashes: 1, crashesByType: { cast: 1 } }), NOW), /opened #/);
+  assert.equal(f.posts[0].body.title, ERRORS_TITLE);
+  assert.deepEqual(f.posts[0].body.labels, [ERRORS_LABEL]);
+  assert.match(f.posts[0].body.body, /`cast`: \+1/);
+  assert.match(await run(f, health({ uptime: 5400, crashes: 1, crashesByType: { cast: 1 } }), later(1_800_000)), /nothing to report/);
+  assert.equal(f.posts.length, 1);
+  assert.match(await run(f, health({ uptime: 5400, crashes: 2, crashesByType: { cast: 2 }, clientErrors: 3 }), later(1_800_000)), /commented on #/);
+  assert.match(f.posts[1].body.body, /Browser errors: \+3/);
+  assert.match(await run(f, health({ uptime: 5400, crashes: 2, crashesByType: { cast: 2 }, clientErrors: 5 }), later(1_800_000)), /nothing to report/, 'a few browser errors do not open or comment');
+  f.issues[0].state = 'closed';
+  assert.match(await run(f, health({ uptime: 7200, crashes: 3, crashesByType: { cast: 3 }, clientErrors: 5 }), later(3_600_000)), /opened #/);
+  assert.match(f.posts[2].body.body, /Engine crashes: \+1 /);
+});
+
+test('checkErrors trusts only the Actions bot: a planted issue or marker is ignored, and the issue is found by its label', async () => {
+  const planted = { number: 9, title: ERRORS_TITLE, state: 'open', labels: [ERRORS_LABEL], user: HUMAN, body: '<!-- live-errors: {"procs":[{"start":"2026-11-21T11:00:00.000Z","crashes":999,"clientErrors":999}]} -->', comments: [] };
+  const f = fakeGitHub([planted]);
+  assert.match(await run(f, health({ crashes: 1 }), NOW), /opened #/, 'a human\'s issue is not ours: a new one is opened');
+  const mine = f.issues[0];
+  mine.comments.push({ user: HUMAN, body: '<!-- live-errors: {"procs":[{"start":"' + new Date(NOW - 3_600_000).toISOString() + '","crashes":999,"clientErrors":0}]} -->' });
+  assert.match(await run(f, health({ uptime: 5400, crashes: 2 }), later(1_800_000)), /commented on #/, 'a human\'s comment marker does not hide the rise');
+  const unlabelled = fakeGitHub([{ ...planted, user: BOT, labels: [], body: '' }]);
+  assert.match(await run(unlabelled, health({ crashes: 1 }), NOW), /opened #/, 'found by label, not by title');
+});
+
+test('checkErrors reads the newest end of a long issue: the marker past 1000 comments is the baseline', async () => {
+  const mk = (n, crashes) => ({ user: BOT, body: `<!-- live-errors: ${JSON.stringify({ procs: [{ start: new Date(NOW).toISOString(), crashes, clientErrors: 0, crashesByType: {}, clientErrorsByType: {} }] })} -->` + ' #' + n });
+  const comments = Array.from({ length: 1234 }, (_, i) => mk(i, i === 1233 ? 7 : 1));
+  const calls = [];
+  const issue = { number: 5, title: ERRORS_TITLE, state: 'open', labels: [ERRORS_LABEL], user: BOT, body: '', comments: comments.length };
+  const sent = [];
+  const send = async (m, path, body) => { sent.push(path); return {}; };
+  const gh = async (path) => {
+    if (path.startsWith('/issues?')) return [issue];
+    calls.push(path);
+    const page = Number(/&page=(\d+)/.exec(path)[1]);
+    return comments.slice((page - 1) * 100, page * 100);
+  };
+  const same = await checkErrors({ gh, send, healthUrl: 'x', dry: false, now: later(60_000), fetchHealth: async () => health({ uptime: 60, crashes: 7 }) });
+  assert.match(same, /nothing to report/, 'the newest marker (7 crashes) is the baseline, not the 1000th (1)');
+  assert.deepEqual(calls, ['/issues/5/comments?per_page=100&page=13'], 'one request: the last page');
+  const rose = await checkErrors({ gh, send, healthUrl: 'x', dry: false, now: later(60_000), fetchHealth: async () => health({ uptime: 60, crashes: 8 }) });
+  assert.match(rose, /commented on #5/);
+  assert.deepEqual(sent, ['/issues/5/comments']);
+});
+
+test('checkErrors steps back past a last page with no marker of ours', async () => {
+  const marked = { user: BOT, body: `<!-- live-errors: ${JSON.stringify({ procs: [{ start: new Date(NOW).toISOString(), crashes: 4, clientErrors: 0 }] })} -->` };
+  const comments = [marked, ...Array.from({ length: 150 }, () => ({ user: HUMAN, body: 'hi' }))];
+  const issue = { number: 5, title: ERRORS_TITLE, state: 'open', labels: [ERRORS_LABEL], user: BOT, body: '', comments: comments.length };
+  const gh = async (path) => (path.startsWith('/issues?') ? [issue] : comments.slice((Number(/&page=(\d+)/.exec(path)[1]) - 1) * 100, Number(/&page=(\d+)/.exec(path)[1]) * 100));
+  const out = await checkErrors({ gh, send: async () => ({}), healthUrl: 'x', dry: false, now: later(60_000), fetchHealth: async () => health({ uptime: 60, crashes: 4 }) });
+  assert.match(out, /nothing to report/);
+});
+
+test('checkErrors leaves an unreadable or old health alone, and a dry run touches nothing', async () => {
+  const f = fakeGitHub();
+  assert.match(await run(f, null, NOW, { fetchHealth: async () => { throw new Error('HTTP 502'); } }), /not checked/);
+  assert.match(await run(f, { ok: true, uptime: 5 }, NOW), /not checked/);
+  assert.match(await run(f, health({ crashes: 2 }), NOW, { dry: true }), /DRY_RUN/);
+  assert.equal(f.posts.length, 0);
+  assert.match(errorsReport({ rise: healthRise({ health: health({ crashes: 1 }), marker: null, now: NOW }), health: health(), checked: NOW }), /Engine crashes: \+1/);
+});

@@ -2,7 +2,7 @@
 import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
-import { sleep, scenario, wait, open, playSolo, closePanels, tapAt } from './lib.mjs';
+import { sleep, scenario, viewStill, wait, open, playSolo, closePanels, tapAt } from './lib.mjs';
 
 // ---------- vendored Three.js (R10) ----------
 // A normal page load fetches nothing under vendor/. Then, in the page, the vendored module is imported (gzipped by the
@@ -193,27 +193,41 @@ export async function arenaEdge(browser, url, label, { grid, ...opts }) {
         await sleep(1200);
         await page.evaluate(() => { const S = window.hextable.state; window.hextable.select(S.encounter.order[S.encounter.turn].id); });      // selecting may move the view: do it before looking
         await sleep(800);
+        // The cell must be clear of the table's own controls by more than a finger's reach: on a phone the browser sends a tap that lands a few pixels from a button to the button (touch adjustment), and a cell
+        // just under the dock's top edge (the party's chips) was tapped as the chip of the next creature, which moved the camera and gave no refusal at all (#688's sibling, run 44970650451).
         const findCell = () => page.evaluate(() => {
+          const clear = (x, y) => [[0, 0], [30, 0], [-30, 0], [0, 30], [0, -30], [21, 21], [-21, 21], [21, -21], [-21, -21]].every(([dx, dy]) => { const e = document.elementFromPoint(x + dx, y + dy); return !e || e.id === 'gl'; });
           const H = window.hextable, S = H.state, ent = S.entities[S.encounter.order[S.encounter.turn].id], lv = S.map.levels[0]; let best = null;
           for (let dq = -9; dq <= 9; dq++) for (let dr = -9; dr <= 9; dr++) {
             const q = ent.pos.q + dq, r = ent.pos.r + dr, k = `${q},${r}`; if (!lv.tiles[k] || S.encounter.arena[k]) continue;
-            const p = H.R.screenOf({ q, r, z: ent.pos.z ?? 0 }); if (!p || p.x < 20 || p.y < 70 || p.x > innerWidth - 80 || p.y > innerHeight - 20 || document.elementFromPoint(p.x, p.y)?.id !== 'gl') continue;
-            const d = Math.hypot(dq, dr); if (!best || d < best.d) best = { d, p, id: ent.id };
+            const p = H.R.screenOf({ q, r, z: ent.pos.z ?? 0 }); if (!p || p.x < 20 || p.y < 170 || p.x > innerWidth - 80 || p.y > innerHeight - 20 || !clear(p.x, p.y)) continue;
+            const d = Math.hypot(dq, dr); if (!best || d < best.d) best = { d, p, id: ent.id, q, r, ent: ent.pos };
           }
-          return best && { x: best.p.x, y: best.p.y };
+          return best && { x: best.p.x, y: best.p.y, q: best.q, r: best.r, ent: best.ent };
         });
         // A cell outside the arena must be on screen to be tapped, and on a phone the arena can fill the view: when none shows, the view is widened
         // through the renderer's own zoom (the camera settles) and the cells are looked for again.
+        await viewStill(page);
         let t = await findCell();
-        for (let k = 0; !t && k < 6; k++) { await page.evaluate(() => (window.hextable.R.inner ?? window.hextable.R).zoom(1.3)); await sleep(1200); t = await findCell(); }
+        for (let k = 0; !t && k < 6; k++) { await page.evaluate(() => (window.hextable.R.inner ?? window.hextable.R).zoom(1.3)); await sleep(500); await viewStill(page); t = await findCell(); }
         if (!t) throw new Error('no hex outside the arena is on screen to tap');
-        await sleep(500); t = (await findCell()) ?? t;                 // the view has stopped: take the cell's place now
         // The flash lasts 1.1 s of the renderer's clock, and a loaded machine can take longer than that to get from the tap to the check below: hold it
         // (as the screenshot below does) from before the tap, so what is checked is that a refused move lit the cells, not that the check was quick.
         await page.evaluate(() => { const R = window.hextable.R.inner ?? window.hextable.R; window.__pin = setInterval(() => { if (R.flashAt !== null) R.flashAt = R.now - 0.12; }, 16); });
-        await sleep(300); await tapAt(page, touch, t.x, t.y);
-        await wait(page, () => /arena is locked/i.test(document.getElementById('toast').textContent) && !document.getElementById('toast').hidden, null, 5000);
-        const txt = await page.evaluate(() => document.getElementById('toast').textContent);
+        await page.evaluate(() => { window.__ev = []; for (const n of ['pointerdown', 'pointerup', 'pointercancel']) document.addEventListener(n, (e) => window.__ev.push(`${n}@${Math.round(e.timeStamp)}/${Math.round(performance.now())}`), true); });      // for the failure's words: when the pointer events were made and handled
+        // A toast can be replaced by the next one before a poll reads it, so what the check reads is what the toast element held at any time since before the tap (a MutationObserver keeps it).
+        await page.evaluate(() => { const el = document.getElementById('toast'); window.__toasts = []; new MutationObserver(() => { if (!el.hidden) window.__toasts.push(el.textContent); }).observe(el, { childList: true, characterData: true, subtree: true, attributes: true }); });
+        const locked = () => page.evaluate(() => window.__toasts.find((x) => /arena is locked/i.test(x)) ?? null);
+        // The tap is made on a view that has stopped (viewStill) and from where the cell is now. A tap is a pointerdown and a pointerup less than 600 ms apart, with less than 8 px between (render-three.js); if one is lost the pass says so
+        // in words (a note below, and the pointer events with their times), asks the view again and taps once more, since a refused move changes nothing and so a second tap is the same question.
+        let tries = 0, got = null;
+        for (; tries < 3 && !got; tries++) {
+          if (tries) { console.log(`       note: the tap ${tries} at ${Math.round(t.x)},${Math.round(t.y)} drew no refusal (toasts ${JSON.stringify(await page.evaluate(() => window.__toasts))}, pointer events ${JSON.stringify(await page.evaluate(() => window.__ev))}, tapped cell ${t.q},${t.r}, the pick there ${JSON.stringify(await page.evaluate((c) => { const R = window.hextable.R, p = R.screenOf({ q: c.q, r: c.r, z: 0 }); return { now: p, pick: p && R.planeHex(p.x, p.y, 0), mode: window.hextable.mode, ent: window.hextable.state.encounter?.order[window.hextable.state.encounter.turn]?.id }; }, t))}); tapping again`); await viewStill(page); t = (await findCell()) ?? t; }
+          await page.evaluate(() => { window.__ev = []; if (!window.__evOn) { window.__evOn = true; for (const n of ['pointerdown', 'pointerup', 'pointercancel']) document.addEventListener(n, (e) => window.__ev.push(`${n}@${Math.round(e.timeStamp)}/${Math.round(performance.now())}`), true); } });      // when each pointer event was made and when it was handled
+          await sleep(300); await tapAt(page, touch, t.x, t.y);
+          got = await wait(page, () => window.__toasts.some((x) => /arena is locked/i.test(x)), null, tries < 2 ? 2500 : 5000).then(() => true, async (e) => { if (tries < 2) return null; throw new Error(`${e.message}; ${await page.evaluate(([[x, y], c]) => { const S = window.hextable.state, hit = document.elementFromPoint(x, y); return JSON.stringify({ tap: [x, y], hit: hit && (hit.id || hit.tagName + '.' + hit.className), toasts: window.__toasts, ev: window.__ev, mode: window.hextable.mode, turn: S.encounter?.order[S.encounter.turn]?.id, busy: window.hextable.timeline.busy(), waiting: window.hextable.waiting, cell: c, now: window.hextable.R.screenOf({ q: c.q, r: c.r, z: 0 }), start: c.ent, at: S.entities[S.encounter?.order[S.encounter.turn]?.id]?.pos, vw: [innerWidth, innerHeight] }); }, [[t.x, t.y], t])}`); });
+        }
+        const txt = await locked();
         if (!/until the fight ends/.test(txt) || !/lit area/.test(txt)) throw new Error(`the toast says: ${txt}`);
         const f = await R((r) => ({ n: r.flash.n, at: r.flashAt }));
         if (!(f.n > 0) || f.at === null) throw new Error(`no flash: ${JSON.stringify(f)}`);

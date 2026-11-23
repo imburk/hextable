@@ -61,7 +61,7 @@ export async function scenario(label, fn) {
   const run = new Run(label);
   try { await fn(run); }
   catch (err) {
-    const msg = `FAIL [${label}] step "${run.step}": ${process.env.SMOKE_VERBOSE ? String(err.message).split('\n').slice(0, 14).join(' | ') : String(err.message).split('\n')[0]}`;
+    const msg = `FAIL [${label}] step "${run.step}": ${process.env.SMOKE_VERBOSE ? String(err.message).split('\n').slice(0, 14).join(' | ') : String(err.message).split('\n')[0]}${process.env.SMOKE_VERBOSE ? ' @ ' + String(err.stack).split('\n').filter((l) => /scripts\/smoke/.test(l)).slice(0, 4).map((l) => l.trim().replace(/^.*scripts\/smoke\//, '')).join(' < ') : ''}`;
     console.log('  ' + msg);
     failures.push(msg);
   }
@@ -88,20 +88,49 @@ export async function open(page, url, { grid = 'hex' } = {}) {
   await page.goto(url);
   await waitShown(page, '#lobby');
 }
-// Open a tab of the action panel by tapping it, and wait until its rows are on screen. The ids: explore, attacks, bonus, move, features, reactions, and `all` (the spell buttons, until T4b).
+// The action groups (M4: the dock is gone; the rows are the groups of the Character screen, one section open at a time, docs/specs/one-token-menu.md Decision 4).
+// `panelTab(page, id)` opens the menu on the selected character's screen, opens the group that holds what the old tab `id` held, and waits until its rows are on screen.
+// The old tab names still work: explore, attacks, spells (and `all`), bonus (the turn bar's Bonus Action screen), move, features, items, reactions, down; the new groups are
+// heal, defend, use, companions and rest. The menu is left open: a row that arms an action folds it, any other leaves it, `closeMenu(page)` before a tap on the map.
+const GROUP_OF = { all: 'spells', bonus: 'cost:bonus', inventory: 'items' };
+export const groupId = (id) => GROUP_OF[id] ?? id;
+export const paneOf = (id) => `#ap-${groupId(id).startsWith('cost:') ? 'cost' : groupId(id)}`;
 export async function panelTab(page, id) {
-  const tab = `#ap-tab-${id}`, pane = id === 'all' ? '#ap-all' : `#ap-${id}`;
-  await waitShown(page, tab, true, 8000);
-  if ((await page.getAttribute(tab, 'aria-selected')) !== 'true') await page.click(tab);
-  await wait(page, (t) => document.querySelector(t)?.getAttribute('aria-selected') === 'true', tab);
-  await waitShown(page, pane, true, 8000);
+  const g = groupId(id);
+  await openMenu(page, 'sheet');
+  if (g === 'down') return waitShown(page, '#ap-down', true, 8000);
+  const bar = g.startsWith('cost:') ? `#c-res [data-cost="${g.slice(5)}"]` : `#ap-bar-${g}`;
+  await waitShown(page, bar, true, 8000);
+  const open = () => page.evaluate(([b, g0]) => g0.startsWith('cost:') ? document.querySelector(b)?.getAttribute('aria-pressed') === 'true' : document.querySelector(b)?.getAttribute('aria-expanded') === 'true', [bar, g]);
+  if (!(await open())) await page.click(bar);
+  await page.waitForFunction(([b, g0]) => g0.startsWith('cost:') ? document.querySelector(b)?.getAttribute('aria-pressed') === 'true' : document.querySelector(b)?.getAttribute('aria-expanded') === 'true', [bar, g], { timeout: 8000 });
+  await waitShown(page, paneOf(id), true, 8000);
+  await menuStill(page);
 }
-// A row of an open tab by its visible name: `#ap-<tab> [data-row]` with that text. Greyed rows are rows too.
-export const rowOf = (tab, text) => `#ap-${tab} [data-row]:has-text("${text}")`;
+// Which group is open now (null when none): the bar with aria-expanded, or the turn bar's open segment as `cost:<kind>`.
+export const openGroup = (page) => page.evaluate(() => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]:not(#ap-bar-cost)')?.dataset.sec ?? (document.querySelector('#c-res [aria-pressed="true"]')?.dataset.cost ? `cost:${document.querySelector('#c-res [aria-pressed="true"]').dataset.cost}` : null));
+// A row of an open group by its visible name: `#ap-<group> [data-row]` with that text. Greyed rows are rows too.
+export const rowOf = (tab, text) => `${paneOf(tab)} [data-row]:has-text("${text}")`;
 export async function playSolo(page) {
   await page.click('#lobby-solo');
   await wait(page, () => window.hextable?.state?.entities);
 }
+// The view is still: the camera has no goal left to ease to (follow, turn), and for 8 frames in a row (waited for in the page, on the renderer's own frames, so a slow machine
+// counts frames, not milliseconds) the dock's height, the canvas and where the map's origin is on the screen have not changed. The dock's height moves the picture (the renderer's `inset`
+// follows it, app.js sizeDock) and a layout in progress or a camera still easing is what makes a tap land on another cell than the one that was looked up.
+export const viewStill = (page, ms = 20000) => page.evaluate((limit) => new Promise((resolve, reject) => {
+  const h = window.hextable, R = h.R, c = (R.inner ?? R).cam ?? {}, t0 = performance.now();
+  const sig = () => { const p = R.screenOf({ q: 0, r: 0, z: 0 }); return JSON.stringify([c.goal ? 1 : 0, c.yawGoal != null ? 1 : 0, document.getElementById('dock')?.offsetHeight, innerWidth, innerHeight, p && [Math.round(p.x * 10), Math.round(p.y * 10)]]); };
+  let last = '', same = 0;
+  const frame = () => {
+    const now = sig();
+    same = now === last && !c.goal && c.yawGoal == null ? same + 1 : 0; last = now;
+    if (same >= 8) return resolve(true);
+    if (performance.now() - t0 > limit) return reject(new Error(`viewStill: the view never stilled in ${limit} ms: ${now}`));
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}), ms);
 // Let the camera stop moving: the same screen point twice in a row.
 export async function settle(page, id) {
   let last = '';
@@ -113,27 +142,83 @@ export async function settle(page, id) {
 }
 export const tapAt = (page, touch, x, y) => (touch ? page.touchscreen.tap(x, y) : page.mouse.click(x, y));
 export const onCanvas = (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl', [x, y]);
-// The drawer holds every panel (docs/specs/table-ui.md, Decision 2): open it on a tab, close it.
-export const TAB_BUTTON = { handouts: '#btn-handouts' };
-// The drawer can be closing by itself (a fight starting closes it) when we look: then its close button is already gone, and what we want is that it ends hidden.
-export const closeMenu = async (page) => {
-  for (let i = 0; i < 3 && (await shown(page, '#drawer')); i++) {
-    await page.click('#drawer-close', { timeout: 3000 }).catch(() => {});
-    await waitShown(page, '#drawer', false, 5000).catch(() => {});
+// The menu (docs/specs/one-token-menu.md, stage M1): the token opens it on its first level, a row goes down a level, the breadcrumb's
+// back arrow goes up, a tap on the dimmed map closes every level. A place is a path of row names: 'turns', 'table/settings',
+// ['table', 'dm'], or [] for the first level. The old tab names work too: 'settings', 'dm' and 'about' are under Table, and 'character'
+// is 'sheet'. It leaves the menu open on that place and waits until the screen is drawn.
+const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log', handouts: 'handouts', settings: 'settings', dm: 'dm', about: 'about' };
+const UNDER_TABLE = new Set(['settings', 'dm', 'about']);
+export const menuPath = (p = []) => {
+  const segs = (Array.isArray(p) ? p : String(p).split('/')).filter(Boolean).map((k) => ({ character: 'sheet', party: 'turns', root: '' })[k] ?? k).filter(Boolean);
+  return segs.length === 1 && UNDER_TABLE.has(segs[0]) ? ['table', segs[0]] : segs;
+};
+const menuAt = (page) => page.evaluate(() => document.getElementById('drawer').dataset.path || '');
+const waitMenuAt = (page, want) => page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want.join('/'), { timeout: 5000 });
+export const openMenu = async (page, path = []) => {
+  const want = menuPath(path);
+  try { await openMenuTo(page, want); } catch (err) {
+    const at = await page.evaluate(() => { const d = document.getElementById('drawer'), h = window.hextable.drawer; return { path: d.dataset.path, open: h.isOpen, hidden: d.hidden, cls: d.className, scrim: !document.getElementById('drawer-scrim').hidden }; }).catch(() => null);
+    throw new Error(`openMenu(${want.join('/')}) stopped at ${JSON.stringify(at)}: ${String(err.message).split('\n')[0]}`);
   }
-  await waitShown(page, '#drawer', false, 5000);
+};
+const openMenuTo = async (page, want) => {
+  if (!(await page.evaluate(() => window.hextable.drawer.isOpen))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
+  for (let i = 0; i < 4; i++) {           // up until what is open is on the way to the place wanted
+    const have = (await menuAt(page)).split('/').filter(Boolean);
+    if (have.every((k, j) => want[j] === k)) break;
+    await page.click('#drawer-back'); await page.waitForFunction((n) => (document.getElementById('drawer').dataset.path || '').split('/').filter(Boolean).length < n, have.length, { timeout: 5000 });
+  }
+  const have = (await menuAt(page)).split('/').filter(Boolean);
+  for (let j = have.length; j < want.length; j++) {
+    // M4: the characters are rows of the first level (Decision 4b); the Character screen is opened by the selected one's row (it is first, and marked `sel`).
+    // A creature with no row (the DM has selected a monster on the map or in Turns) has its screen opened by the menu itself, as a tap on the map's pawn does.
+    if (want[j] === 'sheet' && !(await page.$('#menu-root #party button.sel'))) await page.evaluate(() => window.hextable.drawer.open('sheet'));
+    else await page.click(want[j] === 'sheet' ? '#menu-root #party button.sel' : `#drawer [data-go="${want[j]}"]`);
+    await waitMenuAt(page, want.slice(0, j + 1));
+  }
+  const leaf = want.at(-1);
+  if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);
+  await menuStill(page);
+};
+// The levels slide in (about .7 s): a check that measures the screen mid-slide sees a control hang out of the menu. Wait until the menu's own boxes stop moving.
+export const menuStill = (page) => page.evaluate(() => new Promise((ok) => {
+  const key = () => ['drawer', 'menu-levels', 'drawer-body'].map((i) => { const r = document.getElementById(i)?.getBoundingClientRect(); return r ? [r.left, r.top, r.width].map(Math.round).join() : ''; }).join('|');
+  let last = '', n = 0; const t0 = Date.now();
+  const t = setInterval(() => { const k = key(); n = k === last ? n + 1 : 0; last = k; if (n >= 3 || Date.now() - t0 > 3000) { clearInterval(t); ok(); } }, 60);
+}));
+// The drawer can be closing by itself (a fight starting closes it) when we look: then its close control is already gone, and what we want is that it ends hidden.
+// A sheet closes by its handle, a wide menu by its x.
+export const closeMenu = async (page) => {
+  if (!(await shown(page, '#drawer'))) return;
+  await page.waitForFunction(() => document.getElementById('dice')?.hidden !== false, null, { timeout: 8000 }).catch(() => {});      // dice in flight sit over everything and take the tap
+  const clicked = await page.click('#drawer-close:visible, #drawer-handle:visible', { timeout: 8000 }).then(() => 'clicked', (e) => `not clicked: ${String(e.message).split('\n')[0]}`);
+  await waitShown(page, '#drawer', false).catch(async (err) => {
+    const at = await page.evaluate(() => { const d = document.getElementById('drawer'); return { path: d.dataset.path, open: window.hextable.drawer.isOpen, hidden: d.hidden, cls: d.className, active: document.activeElement?.id, bodyCls: document.body.className }; }).catch(() => null);
+    throw new Error(`closeMenu: the menu stayed up (${clicked}) at ${JSON.stringify(at)}: ${String(err.message).split('\n')[0]}`);
+  });
 };
 export const closePanels = closeMenu;
-export const openTab = async (page, tab) => {
-  if (!(await shown(page, '#drawer'))) { await page.click('#btn-menu'); await waitShown(page, '#drawer'); }
-  await page.click(TAB_BUTTON[tab] ?? `#tab-${tab}`);
-  await waitShown(page, `#${{ turns: 'tracker' }[tab] ?? tab}`);
+export const openTab = (page, tab) => openMenu(page, tab);
+// The party chips are the top of the menu's first level (M3: they left the dock). `chip` opens the menu, taps the character's chip, and closes the menu,
+// so the map is free again and the character is the selected one.
+export const chip = async (page, name) => {
+  await openMenu(page, []);
+  await page.click(`#menu-root #party .pr:has-text("${name}")`);
+  await closeMenu(page);
+};
+
+// The same for a chip found by its words (a player claiming a character: "Play as ..."), tapped or clicked.
+export const chipPick = async (page, text, how = 'click') => {
+  await openMenu(page, []);
+  const b = page.locator(`#menu-root #party .pr:has-text("${text}")`).first();
+  await (how === 'tap' ? b.tap() : b.click());
+  await closeMenu(page);
 };
 
 // Select a character by its chip and move it one hex by tapping the map. Returns the new position.
 export async function selectAndMove(page, touch, id, name) {
   await closePanels(page);
-  await page.click(`#party button:has-text("${name}")`);
+  await chip(page, name);
   await wait(page, (i) => document.querySelector('#card') && !document.querySelector('#card').hidden, id);
   const from = await state(page, (S, i) => S.entities[i].pos, id);
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -144,7 +229,7 @@ export async function selectAndMove(page, touch, id, name) {
       if (Object.values(S.entities).some((o) => o.pos && o.pos.q === q && o.pos.r === r)) return null;
       return window.hextable.R.screenOf({ q, r, z: e.pos.z }); }, [id, dir]);
     if (!pt || pt.x < 5 || pt.y < 5 || !(await onCanvas(page, pt.x, pt.y))) continue;    // off screen or under a panel: try another side
-    await page.click(`#party button:has-text("${name}")`);                              // still the one selected
+    await chip(page, name);                                                             // still the one selected
     await tapAt(page, touch, pt.x, pt.y);
     try {
       await wait(page, ([i, f]) => { const p = window.hextable.state.entities[i].pos; return p.q !== f.q || p.r !== f.r; }, [id, from], 2500);
@@ -188,6 +273,18 @@ export async function diceDuel(dm, watch, want = null) {
 
 // Still: no dice in the air and no beats left to play. `setPace` sets a page's pace at once.
 export const calm = (p, ms = 15000) => wait(p, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, ms);
+// `window.hextable.act` does nothing while this page's timeline is playing at the pace `wait`: it skips the beats instead (app.js, `skipping()`; a tap that skips an animation must not also send).
+// A script that sends an action right after another's events were queued therefore loses it without a word (#688: endEncounter lost, then 20 s for a fight that never ended). `window.__still(action)`
+// (installed by `stillInit`, add it to a context before its pages open) waits in the page until nothing is playing and sends in the same turn, so nothing can start in between; it says in words when the timeline never stilled.
+export const stillInit = `window.__still = async (a, ms = 20000) => {
+  const t0 = Date.now();
+  for (;;) {
+    const h = window.hextable;
+    if (h && h.waiting === 0 && !h.timeline.busy()) return h.act(a);
+    if (Date.now() - t0 > ms) { const S = h?.state, E = S?.encounter; throw new Error('__still: the timeline never stilled for ' + JSON.stringify(a) + ': waiting ' + h?.waiting + ', busy ' + h?.timeline.busy() + ', pace ' + h?.timeline.pace + ', turn ' + (E ? E.order[E.turn].id : null) + ', prompt ' + !!S?.prompt + ', pending ' + !!S?.pending + ', last ' + JSON.stringify((S?.timeline ?? []).slice(-6).map((x) => x.type))); }
+    await new Promise((r) => setTimeout(r, 40));
+  }
+};`;
 export const setPace = (p, v) => p.evaluate((x) => { localStorage.setItem('hextable.pace', JSON.stringify(x)); window.hextable.timeline.setPace(window.hextable.pace()); }, v);
 
 

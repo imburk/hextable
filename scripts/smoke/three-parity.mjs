@@ -37,8 +37,9 @@ export async function probeView(page, touch) {
     // and the axes are the way the plane moves under a finger: right along the screen's x, up along its y
     const c = [Math.round(W / 2), Math.round(Hh / 2)], p0 = R.planePoint(c[0], c[1], 0), dir = (p) => { const d = [p[0] - p0[0], p[1] - p0[1]], l = Math.hypot(...d) || 1; return [d[0] / l, d[1] / l]; };
     const ax = R.screenAxes(), mx = dir(R.planePoint(c[0] + 20, c[1], 0)), my = dir(R.planePoint(c[0], c[1] - 20, 0));
+    // a point in the token's strip is the menu's (it was the dock's), not the map's: it counts as the interface
     return {
-      hexes, pts, canvas: pts.map(([x, y]) => document.elementFromPoint(x, y)?.id === 'gl'), trip: trip.length ? Math.max(...trip) : 1e9,
+      hexes, pts, canvas: pts.map(([x, y]) => { const t = document.getElementById('btn-menu').getBoundingClientRect(); return document.elementFromPoint(x, y)?.id === 'gl' && !(x > t.left - 20 && x < t.right + 20 && y > t.top - 20 && y < t.bottom + 20); }), trip: trip.length ? Math.max(...trip) : 1e9,
       axisErr: Math.max(Math.hypot(mx[0] - ax.right[0], mx[1] - ax.right[1]), Math.hypot(my[0] - ax.up[0], my[1] - ax.up[1])),
       screen: hexes.map((hx) => xy(R.screenOf(hx))), plane: pts.map(([x, y]) => [R.planeHex(x, y, 0), pair(R.planePoint(x, y, 0)), pair(R.planePoint(x, y, 10))]),
       point: [[0, 0, 0], [10, 10, 0], [30, -20, 10]].map((a) => xy(R.screenPoint(...a))), axes: { right: ax.right.map(rd), up: ax.up.map(rd) },
@@ -85,26 +86,42 @@ export async function showMap(pg, map) {
   else if (map !== 'valley') { await pg.evaluate((m) => window.hextable.ED.stock(m), map); await wait(pg, (m) => window.hextable.state.map.id === m, map); }
   else await fixedValley(pg);
   await closePanels(pg);
-  await pg.evaluate(() => { const h = window.hextable, pc = Object.values(h.state.entities).find((e) => e.kind === 'pc'); h.R.focus(pc.id, true); h.R.rotate(0.3); h.R.zoom(0.8); h.R.inset = 90; });
+  await pg.evaluate(() => { const h = window.hextable, pc = Object.values(h.state.entities).find((e) => e.kind === 'pc'); h.R.focus(pc.id, true); h.R.rotate(0.3); h.R.zoom(0.8);
+    // `inset` follows the UI's height, which differs between machines (fonts): pin it, as the square fight does, so the golden holds anywhere.
+    const c = h.R.inner ?? h.R; Object.defineProperty(c, 'inset', { configurable: true, get: () => 90, set() {} }); });
   await sleep(900);
 }
 export const MAPS = ['valley', 'dungeon', 'cave', 'square'];
 // The square fight: an ogre (a Large creature) on four squares, a fight in a room, highlights, and the camera on the ogre. Then nine taps, on the
 // ogre's four squares and elsewhere, recorded as the hex each picked and whether it was the ogre. Both are exported for the recording script.
+const FIGHT_INSET = 90;       // the same as showMap's, for the maps' views
 export async function squareFightSetup(page) {
-  await page.evaluate(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); h.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }); });
+  await page.evaluate(async () => { const h = window.hextable; document.getElementById('dm-auto').checked = false; h.act({ type: 'spawn', monster: 'ogre', at: { q: 9, r: 9 } }); });
+  await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000);      // an action sent while beats play is dropped (app.js act: skipping)
+  await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 7, r: 7 }, radius: 6 }));
   await wait(page, () => !!window.hextable.state.encounter && window.hextable.waiting === 0, null, 20000);
   const ogre = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.size === 'large').id);
-  await page.evaluate(() => { const R = window.hextable.R; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5; });
+  await page.evaluate((INSET) => { const R = window.hextable.R; R.settle(); R.setHighlights({ move: ['6,5', '7,5', '7,6', '8,8'], area: ['4,4', '5,4', '4,5'], targets: [], allies: [], selected: 'fighter', turn: 'fighter' }); const c = R.inner ?? R, w = c.G.toWorld({ q: 9, r: 9 }), v = c.G.toWorld({ q: 10, r: 10 }); c.cam.x = (w.x + v.x) / 2; c.cam.z = (w.z + v.z) / 2; c.cam.goal = null; c.cam.dist = innerWidth < 600 ? 26 : 16; c.cam.yaw = 0.5;
+    // Where a square is on the screen depends on `inset`, which the app writes from the token strip each time the layout changes (there is no dock since M4; before it, a caster's turn made the dock
+    // 8 px taller, PR #696: every screenOf y off by exactly that, x identical). That is the layout, not the camera or the picking, so the check pins `inset` (the renderer's own, which the app's
+    // later writes would reach) at 90, as showMap does, and compares in a frame that does not depend on the layout.
+    Object.defineProperty(c, 'inset', { configurable: true, get: () => INSET, set() {} });
+  }, FIGHT_INSET);
   await sleep(1200);
   return ogre;
 }
+// A touch is snapped to a button within a few pixels (Chromium's touch adjustment), which elementFromPoint does not know: PR #696 makes a caster's turn's dock 8 px taller, so the party chip
+// moved up to 7 px under a tap meant for the ogre's third square and the tap selected the chip. A point is on the canvas only if the canvas is also not within 10 px of a button.
+const clearOfUi = async (page, x, y) => page.evaluate(([x0, y0]) => document.elementFromPoint(x0, y0)?.id === 'gl' && ![...document.querySelectorAll('button, a, input, select, summary, [role=button]')].some((b) => {
+  const r = b.getBoundingClientRect(), v = getComputedStyle(b);
+  return r.width > 0 && v.visibility !== 'hidden' && v.pointerEvents !== 'none' && x0 > r.left - 10 && x0 < r.right + 10 && y0 > r.top - 10 && y0 < r.bottom + 10;
+}), [x, y]);
 export async function squareTaps(page, touch, width, ogre) {
   const pts = await page.evaluate(() => { const R = window.hextable.R; return [[9, 9, -1, -1], [10, 9, 1, -1], [9, 10, -1, 1], [10, 10, 1, 1], [5, 5, 0, 0], [5, 5, 0.9, 0.9], [5, 5, 0.9, -0.9], [6, 5, -0.97, 0], [8, 8, 0, 0]].map(([q, r, a, b]) => [q, r, R.screenPoint(5 * q + a * 0.8 * 2.5, 5 * r + b * 0.8 * 2.5, 0)]); });
   await page.evaluate(() => { const R = window.hextable.R; window.__tap = R.onTap; window.__hit = null; R.onTap = (hit) => { window.__hit = hit; }; });
   const hits = [];
   for (const [q, r, p] of pts) {
-    if (!p || p.x < 4 || p.y < 4 || p.x > width - 60 || !(await onCanvasAt(page, p.x, p.y))) { hits.push('ui'); continue; }
+    if (!p || p.x < 4 || p.y < 4 || p.x > width - 60 || !(await clearOfUi(page, p.x, p.y))) { hits.push('ui'); continue; }
     await page.evaluate(() => { window.__hit = null; });
     await tapAt(page, touch, p.x, p.y);
     hits.push(await page.evaluate(() => window.__hit && { hex: window.__hit.hex, id: window.__hit.id }));

@@ -2,6 +2,7 @@
 // side within 5 ft, `drop` onto a `pile` on the map, `pickUp` from one. One `gear` event per side with `why` and
 // `with` (or `object`); Attunement ends with an item that leaves; in a fight each is an object interaction; both
 // grids; a pile is seen only where it is in view; undo; a refused action changes nothing.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, makeEntity, passTargets, pickUpsFor } from "../src/engine.js";
@@ -34,6 +35,7 @@ const built = (s, id, sheet, pos, owner) => {
 function field(heroItems, mageItems) {
   const s = newGame(7);
   for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
+  typed(s, "rogue");                                         // the rogue stays a hand-typed character (no sheet), for the tests of what that cannot do
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
   built(s, "hero", fighter(heroItems), { q: 0, r: 0 }, "pat");

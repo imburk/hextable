@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { scenario, settle, tapAt, onCanvas, wait, state, waitShown, open, playSolo, closePanels, panelTab } from './lib.mjs';
+import { openMenu, scenario, settle, tapAt, onCanvas, wait, state, waitShown, open, playSolo, closePanels, panelTab } from './lib.mjs';
 
 // ---------- the action panel's Items tab (docs/specs/table-ui.md, T4b and E18) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. A built fighter carries two Potions of Healing, a Wand of Magic Missiles and a Staff of Striking (a hand-typed
@@ -32,7 +32,7 @@ async function items(browser, url, label, opts, tag) {
         for (let k = 0; k < 30 && (await cur(page)) !== id; k++) { await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), await cur(page)); await idle(page); }
         if ((await cur(page)) !== id) throw new Error(`it never became ${id}'s turn`);
       };
-      const raise = async () => { if ((await page.getAttribute('#ap-grip', 'aria-expanded')) !== 'true') await tap('#ap-grip'); };
+      const raise = async () => {};      // the grip is gone (M4): the Inventory is a section of the menu, already open
 
       await run.do('a built fighter with items joins the party beside the rogue and is selected; the Items tab is drawn', async () => {
         await open(page, url); await playSolo(page);
@@ -123,6 +123,7 @@ async function items(browser, url, label, opts, tag) {
         const staff = () => state(page, (S) => (Object.values(S.entities).find((e) => e.name === 'Orla').sheet.items.find((x) => x.item === 'staff-of-striking') ?? {}).id ?? null);
         const k0 = await staff();
         if (!k0) throw new Error('no staff');
+        await panelTab(page, 'items');      // the log step closed the menu
         await tap(`#ap-items [data-gact="drop:${k0}"]`);
         await wait(page, () => window.hextable.state.map.objects.some((o) => o.def === 'pile'));
         await waitShown(page, '#ap-items [data-pile]');
@@ -159,16 +160,18 @@ async function items(browser, url, label, opts, tag) {
         await idle(page);
         await page.evaluate((i) => window.hextable.select(i), id);                      // the card follows the turn
         await wait(page, () => document.querySelector('#c-name').textContent === 'Orla' && document.querySelector('#card').dataset.situation === 'wait');
-        await panelTab(page, 'items');
-        await wait(page, () => document.querySelector('#ap-items [data-gact="equip:i3"]')?.getAttribute('aria-disabled') === 'true');
-        const gv = await page.$$eval('#ap-items [data-gact^="give:"], #ap-items [data-gact^="drop:"]', (b) => b.map((x) => [x.getAttribute('aria-disabled'), x.getAttribute('aria-describedby')]));
-        if (!gv.length || gv.some(([off, d]) => off !== 'true' || !d)) throw new Error(`Give and Drop are not greyed out of turn: ${JSON.stringify(gv)}`);
-        if (!/in the middle of a fight/.test(await text(page, '#ap-items')) || !/It isn't Orla's turn/.test(await text(page, '#ap-items [data-row="item:i2:0"]'))) throw new Error(`no reasons on screen: ${await text(page, '#ap-items')}`);
+        await openMenu(page, 'sheet');
+        // M4 / R29: in a fight, what cannot be used now is not shown. Out of turn nothing of the Inventory can be (no use, no equip, no give, no drop), so its section is not there,
+        // no button of it is on the page to be tapped, and the Character screen says it is not her turn.
+        await wait(page, () => document.querySelector('#c-name')?.textContent === 'Orla');
+        // (The table's DM may always set the light, so in this solo game the section can be there with that one row: it is the only row that may be.)
+        const shownNow = await page.$$eval('#ap-items [data-row], #ap-items [data-gact]', (r) => r.filter((x) => x.getBoundingClientRect().height > 0 && !x.closest('[hidden]')).map((x) => x.dataset.row || x.dataset.gact));
+        if (shownNow.some((k) => k !== 'light')) throw new Error(`out of turn the Inventory still shows ${shownNow.join(', ')}`);
+        if (!/turn/i.test(await text(page, '#status-block'))) throw new Error('the status block does not say whose turn it is');
         const before = JSON.stringify((await sheetOf()).items);
-        await tap('#ap-items [data-gact="equip:i3"]', true);
-        await waitShown(page, '#toast');
-        if (!/in the middle of a fight/.test(await text(page, '#toast'))) throw new Error(`toast: ${await text(page, '#toast')}`);
-        if (JSON.stringify((await sheetOf()).items) !== before) throw new Error('a greyed button changed the sheet');
+        await page.evaluate(() => window.hextable.act({ type: 'equip', actor: Object.values(window.hextable.state.entities).find((e) => e.name === 'Orla').id, item: 'i3', on: true }));
+        await idle(page); await closePanels(page);
+        if (JSON.stringify((await sheetOf()).items) !== before) throw new Error('an equip out of turn changed the sheet (the engine must still refuse it)');
         await raise(); await shot('4-fight');
       });
 
@@ -212,7 +215,10 @@ async function items(browser, url, label, opts, tag) {
         const cast = await state(page, (S) => S.timeline.some((e) => e.type === 'cast' && e.item === 'Wand of Magic Missiles'));
         if (!cast) throw new Error('no cast from the wand in the timeline');
         await page.evaluate((i) => window.hextable.select(i), id);
-        await wait(page, () => /5 \/ 7/.test(document.querySelector('#ap-items [data-row="item:i3:0"]')?.textContent ?? ''));
+        // The Action is spent, so in a fight the wand's row is no longer offered (R29): the charges are the sheet's.
+        await openMenu(page, 'sheet');
+        await wait(page, () => !document.querySelector('#ap-items [data-row="item:i3:0"]') || document.querySelector('#ap-items').hidden || !document.querySelector('#ap-items').getClientRects().length);
+        await closePanels(page);
       });
 
       await run.do('in the fight, on her turn: the first handling is free (the tab says so); Give... hands the staff to the rogue; the held wand has no Give or Drop and says to take it off first', async () => {
@@ -222,12 +228,13 @@ async function items(browser, url, label, opts, tag) {
         await panelTab(page, 'items');
         await waitShown(page, `#ap-items [data-gact="give:${key}"]`);
         if (!/Free/.test(await text(page, '#ap-items'))) throw new Error(`no time on screen: ${await text(page, '#ap-items')}`);
-        if (!/Take it off first/.test(await text(page, '#ap-items [data-gear="i3"]')) || (await page.$('#ap-items [data-gear="i3"] [data-gact^="give:"]'))) throw new Error('the held wand offers Give or Drop');
+        // R29: a row with nothing to offer is not shown in a fight, so the held wand is not listed with "Take it off first"; it must offer no Give or Drop either.
+        if (await page.$('#ap-items [data-gact="give:i3"], #ap-items [data-gact="drop:i3"], #ap-items [data-gear="i3"] [data-gact^="give:"], #ap-items [data-gear="i3"] [data-gact^="drop:"]')) throw new Error('the held wand offers Give or Drop');
         await tap(`#ap-items [data-gact="give:${key}"]`);
         await waitShown(page, '#ap-items [data-give-to="rogue"]');
         await raise(); await shotG('3-fight-give');
         await tap('#ap-items [data-give-to="rogue"]');
-        await wait(page, () => window.hextable.state.entities.rogue.gear.includes('Staff of Striking'));
+        await wait(page, () => { const r = window.hextable.state.entities.rogue; return r.gear.includes('Staff of Striking') || !!r.sheet?.items?.some((x) => x.item === 'staff-of-striking'); })       // the rogue is built from a sheet now (#672): the staff lands on it;
         await idle(page);
         const left = await sheetOf();
         if (left.items.some((x) => x.item === 'staff-of-striking')) throw new Error('the staff is still on her sheet');

@@ -3,6 +3,8 @@ name: Live check
 # Is the live site the version that was merged? (review R1, #617)
 # Every 30 minutes, compare /build.json on Railway and on GitHub Pages with the head of main. When main's head is
 # older than 20 minutes and a site reports another commit, open (or add to) the issue "Live site is not the merged version".
+# It also reads /api/health (#689): when the engine crash count or the browser error count has risen since the last run, it opens or
+# comments on the issue "Live site errors" (the last counts are kept in that issue). The job stays green for that.
 
 on:
   schedule:

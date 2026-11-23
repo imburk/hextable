@@ -187,7 +187,7 @@ function withAttacks(s, e, foes, lim = {}) {
   // The Unarmed Strike every built character has (derive.js) is only a last resort (weapons.js, spareStrike).
   const spare = (a) => spareStrike(e, a);
   // Among its allowed attacks of a kind, not a Heavy weapon it swings with Disadvantage if another will do (weapons.js, steadiest).
-  let melee = steadiest(e, e.attacks.filter((a) => a.type === 'melee' && !spare(a) && allowed(a))), ranged = steadiest(e, e.attacks.filter((a) => a.type === 'ranged' && allowed(a)));
+  let melee = steadiest(e, e.attacks.filter((a) => a.type === 'melee' && !spare(a) && allowed(a)), s), ranged = steadiest(e, e.attacks.filter((a) => a.type === 'ranged' && allowed(a)), s);
   const d = apart(s, e, target);
   // With none, it punches a foe beside it (and does not walk in to punch: that is the Dodge it took before).
   if (!melee && !ranged && d <= 1 && open(target)) melee = e.attacks.find((a) => spare(a) && allowed(a));
@@ -246,7 +246,7 @@ function castShape(sp) {
   if (SHAPE.has(sp)) return SHAPE.get(sp);
   let out = null;
   const d = sp.def;
-  if (d && sp.turn && sp.time !== 'reaction' && (sp.aim === 'creature' || sp.aim === 'area') && !d.choice && !d.zone && !d.terrain && !sp.summon && !sp.teleport && !d.concentration) {
+  if (d && !d.hit && sp.turn && sp.time !== 'reaction' && (sp.aim === 'creature' || sp.aim === 'area') && !d.choice && !d.zone && !d.terrain && !sp.summon && !sp.teleport && !d.concentration) {
     let plain = true, dmg = false, heal = false, attack = false;
     walk(d.effects, (st) => {
       const kind = stepKind(st);
@@ -450,8 +450,8 @@ export function casterStep(s, e, foes, lim = {}) {
   function weaponScore() {
     if (b.action < 1 || lim.noAttack) return 0;
     const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id)), atks = e.attacks ?? [], times = 1 + (e.features?.extraAttack ?? 0);
-    const melee = steadiest(e, atks.filter((a) => a.type === 'melee' && !spareStrike(e, a) && allowed(a)));
-    const ranged = steadiest(e, atks.filter((a) => a.type === 'ranged' && allowed(a)));
+    const melee = steadiest(e, atks.filter((a) => a.type === 'melee' && !spareStrike(e, a) && allowed(a)), s);
+    const ranged = steadiest(e, atks.filter((a) => a.type === 'ranged' && allowed(a)), s);
     let w = 0;
     const value = (a, p) => { const v = p * avgOf(a.damage) * times; return Number.isFinite(v) ? v : 0; };
     if (melee && (order.some((t) => apart(s, e, t) <= 1 && unblocked(s, e, t)) || closeIn())) w = value(melee, HIT);
@@ -641,7 +641,7 @@ function protect(s, e, m, foes) {
     for (const t of close) {
       const x = moves.find((x) => x.p.roll === 'melee' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t)) ?? moves.find((x) => apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t));
       if (x) return { type: 'act', actor: id, action: x.def.id, target: t.id };
-      const w = !e.actions && steadiest(e, (e.attacks ?? []).filter((a) => !attackRefusal(s, e, a, fromPool(b, a.id)) && (a.type === 'melee' ? apart(s, e, t) <= 1 : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t)));
+      const w = !e.actions && steadiest(e, (e.attacks ?? []).filter((a) => !attackRefusal(s, e, a, fromPool(b, a.id)) && (a.type === 'melee' ? apart(s, e, t) <= 1 : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t)), s);
       if (w) return { type: 'attack', actor: id, target: t.id, attack: w.id };
     }
   }

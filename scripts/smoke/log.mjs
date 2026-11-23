@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, chipPick } from './lib.mjs';
 
 // ---------- log ----------
 // The log by combat (packages/client/logview.js, docs/specs/table-ui.md T7c). Solo at both sizes: a fight is one collapsed entry with its
@@ -98,7 +98,7 @@ async function table(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        await phone.locator('#party button:has-text("Play as")').first().click();
+        await chipPick(phone, 'Play as', 'click');
       });
       await run.do('the DM wins and publishes; the phone log has one fight with its summary', async () => {
         await host.evaluate(win);

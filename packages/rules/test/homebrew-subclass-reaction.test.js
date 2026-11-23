@@ -54,6 +54,7 @@ function field(sheet = paladin(), { seed = 7 } = {}) {
   s.entities.hero.sheet = structuredClone(sheet);
   Object.assign(s.entities.hero, { hp: 300, maxHp: 300 });
   ok(apply(s, { type: "claim", entity: "hero", user: "pat", userName: "Pat" }, PAT));
+  s.entities.hero.hitChoices = { "divine-smite": "never" };       // a paladin its player runs is asked at every hit by default (docs/specs/on-hit.md, Q2): these tests are not about the smite
   for (const [key, at, name] of [["gob", { q: 1, r: 0 }, "Gob"], ["bo", { q: 2, r: 0 }, "Bo"], ["cy", { q: 4, r: 0 }, "Cy"]]) {
     s[key] = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at, name }, DM)).events[0].id;
     Object.assign(s.entities[s[key]], { hp: 300, maxHp: 300, ac: 1 });

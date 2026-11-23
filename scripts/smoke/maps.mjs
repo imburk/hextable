@@ -1,6 +1,6 @@
 
 import { fileURLToPath } from 'node:url';
-import { sleep, scenario, wait, state, waitShown, open, playSolo, closePanels, openTab, selectAndMove, calm } from './lib.mjs';
+import { sleep, scenario, wait, state, waitShown, open, playSolo, closePanels, openTab, selectAndMove, calm, chip } from './lib.mjs';
 
 // ---------- stock maps ----------
 // The DM starts on a stock map from the editor's Map file tool (two taps: the second confirms), and a
@@ -238,7 +238,7 @@ async function squareEditor(browser, url, label, opts) {
         if (p.q !== out.q || p.r !== out.r) throw new Error('the character got through a shut door');
         await ev((id) => window.hextable.act({ type: 'setObject', object: id, state: 'open' }), door);
         await wait(page, () => window.hextable.state.map.objects[0].state === 'open');
-        await page.click('#party button:has-text("Brenna")');
+        await chip(page, 'Brenna');
         await frame(...middle(6, 6), 22);
         const s = await ev((c) => window.hextable.R.screenOf({ q: c.q, r: c.r, z: 0 }), inside);
         await tap(s.x, s.y);

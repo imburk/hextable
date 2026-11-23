@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { aiStep } from "../src/ai.js";
 import * as E from "../src/engine.js";
-import { newGame } from "../src/scenario.js";
+import { typedGame as newGame } from "./fixtures/typed.js";        // recorded when the starters were hand-typed: the game is made that way here (#672)
 const { current } = E;
 // #630: a fight is numbered by `fightSeq` and no longer by the creature counter `seq`, which it took a number from when this was recorded. So that the recording still
 // checks everything else byte for byte, the fight counter is made to read as that counter did (set to `seq` before an action) and `seq` is moved on by the one it used to take.

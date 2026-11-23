@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, chip } from './lib.mjs';
 
 // ---------- aiming an area: the reach on the map, the preview, the same-spot tap (issue #600) ----------
 // A level 5 wizard with Web (a cube aimed at a spot within 60 ft) and Fireball. Armed, the edge of the reach is drawn (the renderer's highlights hold it);
@@ -52,7 +52,7 @@ async function aim(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, ria, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Ria")');
+        await chip(page, 'Ria');
         pos = await state(page, (S, i) => S.entities[i].pos, ria);
       });
 

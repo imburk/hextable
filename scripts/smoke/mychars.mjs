@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, openTab, playSolo, openSec, fighterBasics } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, openTab, playSolo, openSec, fighterBasics, openMenu } from './lib.mjs';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { validate } from '../../packages/rules/src/derive.js';
 import { rollScores } from '../../packages/rules/src/scores.js';
@@ -130,7 +130,7 @@ async function pass(browser, url, label, opts, grid) {
       await run.do('the menu\'s New game in a running game also starts with the chosen party', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'chronicle', title: 'Second mark' }));
         await wait(page, () => JSON.stringify(window.hextable.state).includes('Second mark'));
-        await page.click('#btn-menu'); await waitShown(page, '#menu-new');
+        await openMenu(page, 'table'); await waitShown(page, '#menu-new');
         await tap('#menu-new'); await tap('#menu-new');
         await wait(page, () => !JSON.stringify(window.hextable.state).includes('Second mark'));
         if (!(await pcs(page)).some((x) => x.name === 'Tessa Vale') || (await pcs(page)).length !== 5) throw new Error('the party was lost');
@@ -477,7 +477,7 @@ async function scoresPass(browser, url, label, opts, grid) {
         await page.selectOption('#lobby-slot-0', `mine:${cid}`);
         await tap('#lobby-solo'); await wait(page, () => window.hextable?.state?.entities);
         await page.evaluate(() => { const S = window.hextable.state, e = Object.values(S.entities).find((x) => x.name === 'Rolla Kerr'); window.hextable.select(e.id); });
-        await tap('#btn-sheet'); await waitShown(page, '#sheet-body');
+        await openMenu(page, 'sheet'); await waitShown(page, '#sheet-body');
         const line = await page.evaluate(() => document.getElementById('sheet-scores-line')?.textContent ?? '');
         const who = await page.$eval('#sheet-body h2', (h) => h.textContent);
         if (who !== 'Rolla Kerr') throw new Error(`the sheet is ${who}'s`);

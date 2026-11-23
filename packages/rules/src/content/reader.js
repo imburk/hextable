@@ -19,7 +19,7 @@
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
-import { ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
+import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
@@ -115,7 +115,7 @@ export const TAG_WORDS = {
   'target.seesSource': 'the target can see the caster', 'attack.hit': 'the damage comes from an attack roll that hit', 'attack.weapon': 'the attack is made with a weapon (an Unarmed Strike is not)', 'attack.weaponOrUnarmed': 'the attack is made with a weapon or is an Unarmed Strike',
   'attack.str': 'the attack uses Strength', 'attack.spell': 'it is a spell\'s attack roll', 'self.notIncapacitated': 'it is not Incapacitated',
   'spell.cantrip': 'the damage is a cantrip\'s', 'target.fought': 'the caster\'s side is fighting the target', 'check.proficient': 'the check uses one of its proficiencies',
-  'attack.opportunity': 'it is an Opportunity Attack', 'target.notFiend': 'the target is not a Fiend',
+  'attack.opportunity': 'it is an Opportunity Attack', 'target.notFiend': 'the target is not a Fiend', 'target.fiendOrUndead': 'the target is a Fiend or an Undead',
   'target.notGrappler': 'the target is not a creature that grapples the attacker', 'target.grappledBySelf': 'the target is Grappled by the attacker',
   'check.escape': 'the check is made to escape a grapple',
 };
@@ -127,7 +127,7 @@ export const TAG_WORDS = {
 //    `onHit` or `onMiss`, how the roll went (Advantage or Disadvantage). A step that cannot be judged is NOT run: the DM is told.
 //  - a MODIFIER's `when` (modifiers.js `modifiers`) is asked with whatever its hook's caller knows. A modifier whose tag cannot be
 //    judged is skipped, without a word to anybody: it never takes effect.
-const WHERE = ['within5', 'beyond5', 'target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.notGrappler', 'target.grappledBySelf'];
+const WHERE = ['within5', 'beyond5', 'target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf'];
 export const JUDGED_STEP = WHERE;
 export const JUDGED_STEP_AFTER_ATTACK = [...WHERE, 'attack.advantage', 'attack.disadvantage'];
 export const JUDGED_ADVANTAGE_IF = WHERE;
@@ -137,7 +137,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 //   damage hook:  the attacker, the target, and whether it came from a hit, a weapon, a cantrip.
 //   holder hooks: only the creature itself (as the "target"), which the modifier is on.
 //   bare hooks:   nothing but the creature the modifier is on.
-const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
+const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
 export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken'];
@@ -147,7 +147,7 @@ export const UNREAD_HOOKS = ['hp.max', 'carry'];
 export const JUDGED_ON = {
   ...Object.fromEntries(ATTACK_HOOKS.map((h) => [h, [...SEES, 'ranged', 'melee', 'attack.spell', 'attack.opportunity', 'attack.str']])),
   ...Object.fromEntries(DAMAGE_HOOKS.map((h) => [h, [...SEES, 'attack.hit', 'attack.weapon', 'attack.weaponOrUnarmed', 'spell.cantrip']])),
-  ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient', 'check.escape'] : [])]])),
+  ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'target.fiendOrUndead', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient', 'check.escape'] : [])]])),
   ...Object.fromEntries(BARE_HOOKS.map((h) => [h, ['self.notIncapacitated']])),
   ...Object.fromEntries(UNREAD_HOOKS.map((h) => [h, []])),
 };
@@ -160,9 +160,9 @@ export const JUDGED_SOMETIMES = { 'attack.roll': ['attack.str'], 'attack.receive
 export const NEVER_TRUE = { 'save.death': ['self.notIncapacitated'] };
 // A modifier that adds dice only to a roll that failed (`onFail`: Bardic Inspiration) is asked again when the roll has failed (rolls.js `rescue`), with
 // the creature alone as the "target": of the tags above, only these can hold then.
-export const ON_FAIL_JUDGED = ['target.prone', 'target.unconscious', 'target.notFiend', 'self.notIncapacitated'];
+export const ON_FAIL_JUDGED = ['target.prone', 'target.unconscious', 'target.notFiend', 'target.fiendOrUndead', 'self.notIncapacitated'];
 // Tags that, at a hook where the creature itself is the "target", are about that creature.
-export const SELF_TAG_WORDS = { 'target.prone': 'it is Prone', 'target.unconscious': 'it is Unconscious', 'target.notFiend': 'it is not a Fiend' };
+export const SELF_TAG_WORDS = { 'target.prone': 'it is Prone', 'target.unconscious': 'it is Unconscious', 'target.notFiend': 'it is not a Fiend', 'target.fiendOrUndead': 'it is a Fiend or an Undead' };
 // Kept for the older name: the tags no place can judge at all.
 export const UNJUDGED_TAGS = TAGS.filter((t) => !JUDGED_STEP_AFTER_ATTACK.includes(t) && !Object.values(JUDGED_ON).some((l) => l.includes(t)));
 
@@ -265,11 +265,11 @@ export function sha256(text) {
 // ---------- the reading ----------
 // Keys the engine reads, per object; any other key is said to be unused (strict lint, task B1, refuses them).
 const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'costly', 'duration', 'concentration', 'ritual', 'target', 'effects',
-  'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'terrain', 'zone', 'reaction'];
+  'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'terrain', 'zone', 'reaction', 'hit'];
 const STEP_KEYS = {
-  attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
+  attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], stabilize: [], light: ['replaces'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
@@ -486,6 +486,10 @@ class Reading {
 
   casting() {
     const d = this.def;
+    if (d.hit !== undefined) {
+      if (isObj(d.hit) && SPELL_HIT_WITH.includes(d.hit.with)) this.line(`It is cast right after its caster hits with ${d.hit.with === 'melee' ? 'a Melee weapon or an Unarmed Strike' : 'a weapon'}, as a Bonus Action (the engine asks at the hit, or the attack names it ahead; it is never cast by hand), and its steps work on the creature that was hit.`);
+      else this.bad('The spell\'s `hit` is not one the engine knows.');
+    }
     if (d.time === 'action' || d.time === 'bonus') return;
     if (d.time === 'reaction') {
       const r = d.reaction;
@@ -961,7 +965,7 @@ export const STEP_SENTENCES = {
     if (st.type !== 'chosen' && !DAMAGE_TYPES.includes(st.type)) this.bad(`Step ${at}: the damage type is not one the engine knows.`);
     let times = '';
     if (st.times !== undefined) { if (isInt(st.times) && st.times > 0) { this.num(`${at}.times`, st.times, 'rolls'); if (st.times > 1) times = `, rolled ${st.times} times and added up`; } else this.bad(`Step ${at}: \`times\` is not a positive whole number.`); }
-    say(`${Who} takes ${dmg ?? '(unreadable dice)'}${this.plusMod(st)} ${type}${times}.${o.afterDamage ? ' It lands together with the damage before it, as one instance of damage.' : ''}`);
+    say(`${Who} takes ${dmg ?? '(unreadable dice)'}${this.plusMod(st)} ${type}${times}.${o.afterDamage ? ' It lands together with the damage before it, as one instance of damage.' : ''}${st.withHit === true ? ' It is rolled with the damage of the attack that was hit, as one more part of it, and its dice are doubled on a Critical Hit.' : ''}`);
     if (st.onZero !== undefined) { this.line('If this damage drops it to 0 Hit Points:', depth); this.steps(st.onZero, `${at}.onZero`, depth + 1, this.it()); }
     if (st.onKill !== undefined) { this.line('If this damage kills it:', depth); this.steps(st.onKill, `${at}.onKill`, depth + 1, this.it()); }
   },
@@ -1083,6 +1087,22 @@ export const STEP_SENTENCES = {
     if (/\.onKill\.\d+$/.test(at) || o.afterKill) return say(`What is left of its body is ${left}.`);
     say(`If it is dead, what is left of its body is ${left}. If it is not dead (a character at 0 Hit Points is not), the engine leaves it as it is and tells the DM, who applies the rest.`);
     this.dm(`Step ${at}: what is left of a body that is not dead.`);
+  },
+  // `imbue` (docs/specs/on-hit.md, Decision 8): one of the creature's weapons changes while the effect lasts.
+  imbue({ st, at, Who, say }) {
+    const i = st.imbue;
+    if (!isObj(i)) return this.bad(`Step ${at}: \`imbue\` is not a set of changes to a weapon.`);
+    const bits = [];
+    if (i.weapons !== undefined) bits.push(`only a ${[].concat(i.weapons).map(shown).join(' or ')}`);
+    if (i.melee === true) bits.push('a Melee weapon');
+    if (i.nonmagical === true) bits.push('a weapon that is not magic (the cast is refused on a magic one)');
+    const does = [];
+    if (i.abil === 'spell') does.push("it uses the caster's spellcasting ability for the attack and damage rolls when that is better");
+    if (i.die !== undefined) { does.push(typeof i.die === 'string' ? `its damage die is ${i.die}` : `its damage die grows with the caster's level (${Object.entries(i.die.byLevel ?? {}).map(([l, d]) => `${d} from level ${l}`).join(', ')})`); if (isObj(i.die)) deepNums(this, i.die, `${at}.imbue.die`, 'level'); }
+    if (i.plus !== undefined) { does.push(typeof i.plus === 'number' ? `it gets +${i.plus} to attack and damage rolls and counts as magic` : `it gets a bonus to attack and damage rolls that grows with the spell slot (${Object.entries(i.plus.bySlot ?? {}).map(([l, n]) => `+${n} from a level ${l} slot`).join(', ')}), and counts as magic`); if (isObj(i.plus)) deepNums(this, i.plus, `${at}.imbue.plus`, 'amount'); }
+    if (i.attackAdd !== undefined) { does.push(isObj(i.attackAdd) ? `its attack rolls add the holder's ${shown(i.attackAdd.mod)} modifier${isInt(i.attackAdd.min) ? ` (at least ${i.attackAdd.min})` : ''}` : `its attack rolls add ${i.attackAdd}`); if (isObj(i.attackAdd)) deepNums(this, i.attackAdd, `${at}.imbue.attackAdd`, 'amount'); }
+    if (Array.isArray(i.types)) does.push(`its damage may be ${i.types.map(shown).join(' or ')} instead of its own type (the engine takes the one that hurts the target most)`);
+    say(`${Who} changes ${bits.length ? bits.join(', ') : 'a weapon it holds'}, named when it is cast or used, for as long as the effect lasts: ${does.join('; ') || 'nothing the engine reads'}. The change ends if it is cast or used again, or the weapon is no longer held.`);
   },
   endConcentration({ Who, say }) { say(`${Who} loses Concentration on whatever it is concentrating on.`); },
   // engine/rolls.js `stabilise`.
@@ -2243,7 +2263,7 @@ class GrantReading extends Reading {
   // `action`: a use the feature gives (engine/features.js, `feature`).
   actionLines(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not an action.`);
-    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice'], 'The action');
+    this.odd(v, ['time', 'target', 'effects', 'duration', 'cost', 'renew', 'noSpells', 'gain', 'pool', 'firstAttack', 'unless', 'endsWhenIncapacitated', 'cure', 'modes', 'form', 'orCost', 'acts', 'after', 'orSlot', 'zone', 'inForm', 'choice', 'withAttack'], 'The action');
     if (!ACTION_TIMES.includes(v.time)) this.bad(`${at}.time is not one the engine knows.`);
     this.line(`Gives the holder an action to use with the feature action. It takes ${ACTION_TIME_WORDS[v.time] ?? 'an unreadable time'}${v.time === 'reaction' ? '; the engine does not take Reactions from features, so using it is refused and the DM applies it' : ''}.`, 1);
     if (isObj(v.cost)) {
@@ -2251,6 +2271,7 @@ class GrantReading extends Reading {
       if (v.cost.resource !== undefined || v.cost.slot === undefined) this.line(`It spends ${isInt(v.cost.n) ? v.cost.n : 1} use${v.cost.n > 1 ? 's' : ''} of the holder's feature ${shown(v.cost.resource)}. ${featureNote(v.cost.resource)}`, 2);
       if (v.cost.slot !== undefined) this.slotCost(v, at);
     }
+    if (v.withAttack === true) this.line('It is used when the holder takes the Attack action: it is named on the attack, which it changes the weapon of.', 2);
     if (v.orSlot === true) this.line('With its uses spent, the holder may spend a spell slot instead (a Pact Magic slot for a Warlock), and the use comes back.', 2);
     if (v.duration !== undefined) { if (isDuration(v.duration)) { this.line(`What it does lasts ${v.duration === 'instant' ? 'no time' : `up to ${v.duration}`}.`, 2); if (/^\d/.test(v.duration)) this.num(`${at}.duration`, v.duration, 'duration'); } else this.bad(`${at}.duration is not a duration.`); }
     for (const k of ['form', 'gain', 'pool', 'modes', 'orCost', 'acts', 'after', 'orSlot', 'cure', 'unless', 'renew', 'noSpells', 'firstAttack', 'endsWhenIncapacitated']) if (v[k] !== undefined) deepNums(this, v[k], `${at}.${k}`, 'amount');

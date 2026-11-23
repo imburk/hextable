@@ -169,6 +169,18 @@ When it is cast, the DM is shown the author's description (unless a step has alr
 Not checked against any rulebook.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-honed-edge
+"Honed Edge" (level 2 evocation, touch, action, 1 hour).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+One creature the caster touches changes only a "club" or "quarterstaff", a Melee weapon, a weapon that is not magic (the cast is refused on a magic one), named when it is cast or used, for as long as the effect lasts: it uses the caster's spellcasting ability for the attack and damage rolls when that is better; its damage die grows with the caster's level (1d8 from level 1, 1d10 from level 5); it gets a bonus to attack and damage rolls that grows with the spell slot (+1 from a level 2 slot, +2 from a level 3 slot), and counts as magic; its attack rolls add the holder's "cha" modifier (at least 1); its damage may be "force" instead of its own type (the engine takes the one that hurts the target most). The change ends if it is cast or used again, or the weapon is no longer held.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-dull-curse
 "Dull Curse" (level 1 evocation, 60 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
@@ -309,7 +321,7 @@ The caster gets +1d6 to a D20 Test it fails.
 The caster gets no Opportunity Attacks (it cannot make them).
   It lasts as long as the spell.
 The caster gets Advantage on attack rolls made against it.
-  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack and the target is not a Fiend. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
+  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack, the target is not a Fiend and the target is a Fiend or an Undead. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 It is aimed at the caster alone.
 It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.

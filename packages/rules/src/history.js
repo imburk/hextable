@@ -219,9 +219,9 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
 // A step is named in plain words from the action and what it did. Players are told only about
 // steps they could see: every creature the action names must be one they know of, and at least
 // one event must have reached them. Otherwise `shown` is null and they are told nothing.
-const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage action', dodge: 'took the Dodge action', secondWind: 'used Second Wind', reactions: 'set standing instructions for reactions',
+const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage action', dodge: 'took the Dodge action', secondWind: 'used Second Wind', reactions: 'set standing instructions for reactions', hitChoices: 'set standing instructions for what to do after a hit',
   endTurn: 'ended their turn', use: 'used something', check: 'made a check', search: 'searched', setSpeed: 'had their speed changed',
-  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed',
+  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed', setAc: 'had their Armor Class set',
   condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide',
   feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', rollHp: 'rolled Hit Points', rerollHp: 'rolled a Hit Point die again', rollAbilityScores: 'rolled ability scores', rerollAbilityScore: 'rolled an ability score again', levelUp: 'levelled up', equip: 'put on or took off an item', shield: 'put a Shield away or took it up', attune: 'chose an item to attune to',
   forgoMove: 'gave up their movement', drop: 'dropped something', pickUp: 'picked something up', escape: 'tried to escape a grapple' };
@@ -310,7 +310,10 @@ export function describeStep(action, events, before, after) {
     case 'setPacks': label = { label: "The table's homebrew packs were set", shown: null }; break;
     case 'worldIndex': label = { label: 'A world was loaded', shown: null }; break;     // the server's, recording the DM's world pack (travel W3); players are told nothing, and no world id or name is in the label     // the DM's; players are told nothing, and no pack id is in the label
     case 'conclusion': label = a.publish ? 'The rewards were given out' : a.skip ? 'The rewards were skipped' : 'The rewards were changed'; break;
+    // A called save (docs/specs/prompts.md): the DM's, and players are told nothing of the step (the save events say what they may know).
+    case 'save': label = { label: `A ${a.ability ?? ''} saving throw was called`.replace('  ', ' '), shown: null }; break;
     case 'act': label = `${who} used ${after.entities[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? prior?.entities?.[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? 'an action'}`; break;
+    case 'joinFight': { const ids = events.filter((e) => e.type === 'joined').map((e) => e.id); label = ids.length ? `${who} brought ${names(ids, name)} into the fight` : `${who} tried to bring the others into the fight`; break; }
     case 'follow': label = a.leader === null || a.leader === undefined ? `${who} stopped following` : `${who} started following ${name(a.leader)}`; break;
     case 'partyFollow': label = `The party fell in behind ${name(a.leader)}${SHAPE_WORDS[a.shape] ? ` ${SHAPE_WORDS[a.shape]}` : ''}`; break;
     case 'formation': label = a.slots ? `The places behind ${name(a.leader)} were changed` : `The party walks behind ${name(a.leader)} ${SHAPE_WORDS[a.shape] ?? 'in a formation'}`; break;
@@ -321,6 +324,7 @@ export function describeStep(action, events, before, after) {
     case 'showHandout': label = 'A handout was shown'; break;
     case 'hideHandout': label = 'A handout was taken back'; break;
     case 'removeHandout': label = 'A handout was removed'; break;
+    case 'todoDone': label = { label: a.all === true ? 'Every to-do card was done' : 'A to-do card was done', shown: null }; break;     // the DM's alone (todo.js)
     // Shops (docs/specs/shops.md, Decision 9). The DM's steps are the DM's: players are told nothing of them, and no label shown to a
     // player names a shop, a line or a price (a player the shop is not shown to hears the step too; the gear and coins events say what
     // changed hands to those who may know).

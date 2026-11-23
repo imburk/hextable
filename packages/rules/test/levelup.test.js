@@ -1,4 +1,5 @@
 // Characters keep their sheet in the game and are made again from it: setSheet and levelUp.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply } from "../src/engine.js";
@@ -48,7 +49,7 @@ test("levelUp keeps who plays it, where it is, damage taken and what it has spen
 });
 
 test("levelUp is refused in a fight and for a character typed in by hand; setSheet re-makes either", () => {
-  const s = newGame(3);
+  const s = newGame(3); typed(s, "fighter");
   no(apply(s, { type: "levelUp", actor: "fighter", sheet: fighter(2) }, DM), /typed in by hand/);
   // A hand-typed pregen can be given a sheet: it becomes a built character.
   ok(apply(s, { type: "setSheet", actor: "fighter", sheet: fighter(1) }, DM));
@@ -58,3 +59,25 @@ test("levelUp is refused in a fight and for a character typed in by hand; setShe
   no(apply(s, { type: "levelUp", actor: "fighter", sheet: fighter(2) }, DM), /middle of a fight/);
 });
 
+
+test("the four starters are built from their sheets, so each one levels up (#672)", () => {
+  const s = newGame(3);
+  for (const id of ["fighter", "rogue", "cleric", "wizard"]) {
+    const e = s.entities[id];
+    assert.deepEqual(e.sheet, SHEETS[id], `${id} keeps its sheet`);
+    assert.equal(e.level, 1);
+    const hp = e.maxHp, sheet = { ...structuredClone(e.sheet), level: 2 };
+    const r = ok(apply(s, { type: "levelUp", actor: id, sheet }, DM));
+    assert.equal(s.entities[id].level, 2, id);
+    assert.ok(s.entities[id].maxHp > hp, `${id} gains Hit Points`);
+    assert.ok(r.events.some((x) => x.type === "std" && /level 2/.test(x.action)));
+  }
+});
+
+test("a starter keeps its id, name, class, gear and colour when it is built from its sheet", () => {
+  const s = newGame(3);
+  assert.deepEqual(Object.keys(s.entities).filter((id) => s.entities[id].kind === "pc"), ["fighter", "rogue", "cleric", "wizard"]);
+  assert.deepEqual(["fighter", "rogue", "cleric", "wizard"].map((id) => [s.entities[id].name, s.entities[id].cls, s.entities[id].look.color]),
+    [["Brenna", "Fighter", "#c8553d"], ["Pip", "Rogue", "#4a7c59"], ["Odessa", "Cleric", "#d9a441"], ["Tavin", "Wizard", "#5b6fb5"]]);
+  assert.deepEqual(s.entities.fighter.gear, ["Chain Mail", "Shield", "Longsword", "4 Javelins", "Explorer's Pack"]);
+});

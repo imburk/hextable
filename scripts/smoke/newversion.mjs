@@ -16,12 +16,12 @@ const rect = (page, sel) => page.evaluate((s) => { const e = document.querySelec
 const overlap = (a, b) => a && b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 const bannerShown = (page, on = true) => wait(page, (want) => { const e = document.getElementById('new-version'); return !!e && !e.hidden === want; }, on, 8000);
 
-// The banner is inside the screen, clear of the top bar, the read-only bar and frame, and the dock (the action panel), and its buttons are touch-sized.
+// The banner is inside the screen, clear of the turn line, the chips, the read-only bar and frame, and the dock (the action panel), and its buttons are touch-sized.
 async function geometry(page, vw, vh) {
   const b = await rect(page, '#new-version');
   if (!b) throw new Error('no banner');
   if (b.l < 8 || b.t < 0 || b.r > vw - 8 || b.b > vh) throw new Error(`banner leaves the screen or the frame: ${JSON.stringify(b)}`);
-  for (const sel of ['#top', '#readonly-bar', '#dock', '#ap-body', '#order']) if (overlap(b, await rect(page, sel))) throw new Error(`banner covers ${sel}`);
+  for (const sel of ['#turnline', '#chips', '#readonly-bar', '#dock', '#ap-body']) if (overlap(b, await rect(page, sel))) throw new Error(`banner covers ${sel}`);
   for (const sel of ['#new-version-reload', '#new-version-later']) { const r = await rect(page, sel); if (r.r - r.l < 44 || r.b - r.t < 44) throw new Error(`${sel} is under 44px`); }
 }
 

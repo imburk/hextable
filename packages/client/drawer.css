@@ -1,59 +1,139 @@
-/* The drawer (drawer.js, docs/specs/table-ui.md Decision 2), the burger, the splash, and the room a pinned drawer takes.
-   Colour, type and radius come from the theme tokens only. */
-.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* The menu (drawer.js, docs/specs/one-token-menu.md): the token, the sheet (below 900 px) or columns (from 900 px), the levels, the rows.
+   Colour, type and radius come from the theme tokens only. Motion is in the custom properties of `body`: Just appear (or reduced motion)
+   sets them all to nothing, and nothing moves. */
+body { --menu-in: .72s; --menu-out: .66s; --menu-level: .68s; --menu-col: .7s; }
+body[data-menu-motion="appear"] { --menu-in: 0s; --menu-out: 0s; --menu-level: 0s; --menu-col: 0s; }
+body[data-menu-motion="appear"] :is(#drawer, #drawer .menu-level, #drawer-scrim, #btn-menu, #btn-menu *) { transition: none !important; animation: none !important; }
 
-/* the burger */
-#btn-menu { position: relative; width: 44px; min-height: 44px; padding: 0; display: inline-grid; place-items: center; background: var(--panel); }
-#btn-menu .burger { display: grid; gap: 4px; width: 20px; } #btn-menu .burger i { display: block; height: 2px; border-radius: 1px; background: currentColor; }
-#menu-badge { position: absolute; top: -6px; right: -6px; background: var(--bad); color: #fff; border-radius: 10px; min-width: 20px; height: 20px; font-size: 12px; line-height: 20px; text-align: center; }
-#tools { align-items: flex-start; } #tools button { min-height: 44px; }
-body[data-drawer="left"] #top { flex-direction: row-reverse; }
+/* the token: one die at the bottom of the screen, drawn by the theme (its colours are the theme's --die tokens) */
+#btn-menu { position: fixed; z-index: 6; width: 64px; height: 64px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: none; display: block; touch-action: manipulation;
+  bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); }      /* the token never moves (round 6, R25): not with the dock, not with the menu; everything else leaves room for it */
+body[data-token="left"] #btn-menu { left: calc(16px + env(safe-area-inset-left)); transform: none; }
+body[data-token="right"] #btn-menu { left: auto; right: calc(16px + env(safe-area-inset-right)); transform: none; }
+#btn-menu svg { width: 100%; height: 100%; display: block; overflow: visible; filter: var(--tk-shadow, drop-shadow(0 3px 6px #0007)); }
+#btn-menu .tk-disc { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; }
+#btn-menu .tk-face { fill: var(--die); stroke: var(--die-edge); stroke-width: 2.5; stroke-linejoin: var(--tk-join, round); }
+#btn-menu .tk-line { fill: none; stroke: var(--die-edge); stroke-width: 1.4; opacity: .7; stroke-linejoin: var(--tk-join, round); }
+#btn-menu .tk-num { font: 800 12px var(--body); fill: var(--die-ink); text-anchor: middle; dominant-baseline: central; }
+#btn-menu:hover { border-color: transparent; }
+#btn-menu:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+#btn-menu[aria-expanded="true"] .tk-disc { stroke: var(--accent); stroke-width: 2.5; }
+body.drawer-pretable #btn-menu, body:has(#dice-tray) #btn-menu { visibility: hidden; }       /* no table yet; or a throw is waiting where the token sits */
+#menu-badge { position: absolute; top: -2px; right: -2px; background: var(--bad); color: #fff; border-radius: 11px; min-width: 22px; height: 22px; padding: 0 5px; font: 700 13px/22px var(--body); text-align: center; }
 
-/* where a pinned drawer is, the rest of the table keeps clear of it */
+/* the turn line: one line above the token in a fight */
+#turnline { position: fixed; z-index: 3; left: calc(50% + (var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); transform: translateX(-50%); bottom: calc(var(--dock-h, 0px) + 6px); width: max-content; max-width: calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px));
+  display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 2px 2px 4px; font-size: 14px; }
+#turnline[hidden] { display: none; }
+#turnline.mine { border-color: var(--accent); }
+#turn-text { min-height: 44px; padding: 0 10px; background: none; border: 0; font: inherit; font-size: 13px; line-height: 1.2; font-weight: 600; text-align: left; min-width: 0; }
+#btn-end { min-height: 44px; padding: 4px 14px; white-space: nowrap; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+#btn-end[hidden] { display: none; }
+/* beside the token: the DM's undo and redo (curved arrows) and the connection dot. Each at least 44 px. */
+#chips { position: fixed; z-index: 6; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 10px); left: calc(50% + 42px); display: flex; align-items: center; gap: 6px; }
+body[data-token="left"] #chips { left: calc(16px + 64px + 8px + env(safe-area-inset-left)); }
+body[data-token="right"] #chips { left: auto; right: calc(16px + 64px + 8px + env(safe-area-inset-right)); flex-direction: row-reverse; }
+#chips button { min-width: 44px; min-height: 44px; padding: 0 8px; background: var(--panel); position: relative; display: inline-flex; align-items: center; justify-content: center; }
+#chips button[hidden] { display: none; }
+#chips .sym, button.undo .sym { width: 24px; height: 24px; display: block; }
+button.undo { flex-direction: row; align-items: center; gap: 10px; } button.undo small { flex: 1; min-width: 0; text-align: left; }
+body.drawer-pretable #chips { visibility: hidden; }
+body:not([data-cam="on"]) #cam { display: none; }
+
+/* where a pinned menu is, the rest of the table keeps clear of it */
 body { --inset-l: 0px; --inset-r: 0px; }
 canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--inset-l) - var(--inset-r)); height: 100%; }
 #labels { inset: 0 var(--inset-r) 0 var(--inset-l); }
-#top { left: var(--inset-l); right: var(--inset-r); }
-#order { left: calc(12px + var(--inset-l)); right: calc(12px + var(--inset-r)); }
-#order li { pointer-events: auto; cursor: pointer; }
-#hint { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
+#hint, #join { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
 #cam { right: calc(12px + var(--inset-r)); }
-#dock, #editor { left: var(--inset-l); right: var(--inset-r); }
+#editor { left: var(--inset-l); right: var(--inset-r); }
 
-/* the drawer */
-#drawer { position: fixed; top: 0; bottom: var(--dock-h, 0px); right: 0; z-index: 5; width: min(92vw, 420px); display: flex; flex-direction: column;
-  background: var(--panel); color: var(--ink); border-left: 1px solid var(--line); backdrop-filter: blur(6px);
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0; transform: translateX(100%); transition: transform .2s ease; }
-#drawer.open { transform: none; }
-body[data-drawer="left"] #drawer { right: auto; left: 0; border-left: 0; border-right: 1px solid var(--line); padding: env(safe-area-inset-top) 0 0 env(safe-area-inset-left); transform: translateX(-100%); }
-body[data-drawer="left"] #drawer.open { transform: none; }
+/* the menu, both shapes */
+#drawer { position: fixed; z-index: 5; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border: 1px solid var(--line); backdrop-filter: blur(6px); overflow: hidden; }
 #drawer.held { display: none; }
-body.drawer-pretable #drawer, body.drawer-pinned #drawer { bottom: 0; }
 body.drawer-over #drawer { z-index: 12; } body.drawer-over #drawer-scrim { z-index: 11; }
-#drawer-scrim { position: fixed; inset: 0 0 var(--dock-h, 0px) 0; z-index: 4; background: #0006; }
-body.drawer-pretable #drawer-scrim { bottom: 0; }
-@media (min-width: 900px) { #drawer { width: 360px; } }
-@media (min-width: 1480px) { #drawer { bottom: 0; } }      /* the dock (max 760 wide, centred) is clear of it from here */
+#drawer-scrim { position: fixed; inset: 0; z-index: 4; background: var(--scrim, #0006); }
+#drawer-scrim:not([hidden]) { animation: scrim-in var(--menu-in) ease; } @keyframes scrim-in { from { opacity: 0; } }
 @media (max-width: 899px) { #drawer-pin, #set-pin-row, #set-pin-note { display: none; } }
-@media (prefers-reduced-motion: reduce) { #drawer { transition: none; } }
 
-#drawer-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px 14px; touch-action: pan-y; cursor: grab; user-select: none; }
-#drawer-title { flex: 1; margin: 0; font-size: 20px; outline: none; } #drawer-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#drawer-head button { min-width: 44px; min-height: 44px; padding: 0 10px; } #drawer-head #drawer-close { font-size: 26px; line-height: 1; }
+#drawer-handle { display: none; }
+#drawer-head { display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 2px; border-bottom: 1px solid var(--line); min-height: 52px; user-select: none; }
+#drawer-crumb { flex: 1; min-width: 0; display: flex; align-items: center; }
+#drawer-back { flex: none; width: 48px; min-height: 48px; padding: 0; font-size: 30px; line-height: 1; background: none; border: 0; color: var(--accent); }
+#crumb-list { display: flex; align-items: center; margin: 0; padding: 0 0 0 12px; list-style: none; min-width: 0; white-space: nowrap; }
+#drawer-back:not([hidden]) + #crumb-list { padding-left: 0; }
+#crumb-list li { display: flex; align-items: center; min-width: 0; }
+#crumb-list li + li::before { content: '\203a'; color: var(--muted); padding: 0 2px; }
+#crumb-list button { min-height: 44px; min-width: 44px; padding: 0 6px; background: none; border: 0; color: var(--muted); font-weight: 600; }
+#crumb-here { min-width: 0; }
+#drawer-title { margin: 0; font-size: 20px; outline: none; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; } #drawer-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#drawer-head > button { min-width: 44px; min-height: 44px; padding: 0 10px; } #drawer-head #drawer-close { font-size: 26px; line-height: 1; }
 #drawer-pin.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
-#drawer-tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); padding: 0 6px; flex: none; overscroll-behavior-x: contain; }
-#drawer-tabs button { flex: 1 0 auto; position: relative; min-width: 64px; min-height: 44px; padding: 6px 12px; background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; color: var(--muted); font-weight: 600; white-space: nowrap; }
-#drawer-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
-#drawer-tabs button b { position: absolute; top: 2px; right: 0; background: var(--bad); color: #fff; border-radius: 10px; min-width: 18px; height: 18px; font-size: 11px; line-height: 18px; text-align: center; }
-#dm-badge, #ho-badge { position: absolute; top: 2px; right: 0; }
-
-#drawer-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px 24px; }
+#menu-levels { flex: 1; min-height: 0; position: relative; display: flex; }
+.menu-level { min-width: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--panel-solid, var(--panel)); }
+.menu-level.more { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent); }   /* more below: the last rows fade out, which says to scroll */
+.menu-list { list-style: none; margin: 0; padding: 12px 14px; display: grid; gap: 8px; }
+.menu-gap { margin-top: 10px; }
+.menu-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 6px 14px; text-align: left; background: var(--panel-2); }
+.menu-row[aria-current="true"] { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.mr-name { font-weight: 700; font-size: 16px; white-space: nowrap; }
+.mr-sum { flex: 1; min-width: 0; text-align: right; color: var(--muted); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-sum b, #table-badge { display: inline-block; background: var(--bad); color: #fff; border-radius: 10px; min-width: 20px; height: 20px; padding: 0 5px; font: 700 12px/20px var(--body); text-align: center; }
+.mr-chev { color: var(--muted); font-size: 24px; line-height: 1; }
+#menu-session { padding: 8px 14px 14px; margin-top: 10px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+#menu-session[hidden] { display: none; }
+#menu-session button { min-height: 52px; width: 100%; }
+#menu-session .note { margin: 0; }
+#drawer-body { padding: 12px 14px 24px; }
 #drawer-body > .tabpanel:not([hidden]) { display: block; }
 .tabpanel > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
 .tabpanel > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 #drawer-body h2 { margin: 0 0 8px; }
 #dm h2 { display: none; }
+
+/* the sheet: below 900 px it rises from the bottom, stops 12 % below the top (the dimmed map there is the clear zone) and above the token,
+   and pushes one level at a time from the right. There is no x: the handle is the close control. */
+body[data-menu-shape="sheet"] #drawer { left: 0; right: 0; margin: 0 auto; width: min(100%, 560px); top: max(12vh, env(safe-area-inset-top)); bottom: 0;
+  border-width: 1px 1px 0; border-radius: 16px 16px 0 0; transform: translateY(100%); transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+body[data-menu-shape="sheet"] #drawer.open { transform: none; transition: transform var(--menu-in) cubic-bezier(.16, .84, .3, 1); }
+body[data-menu-shape="sheet"] #drawer-handle { display: grid; place-items: center; flex: none; width: 100%; height: 44px; min-height: 44px; padding: 0; background: none; border: 0; border-radius: 16px 16px 0 0; touch-action: none; }
+body[data-menu-shape="sheet"] #drawer-handle[hidden] { display: none; }
+#drawer-handle i { display: block; width: 56px; height: 6px; border-radius: 3px; background: var(--muted); opacity: .6; }
+body[data-menu-shape="sheet"] #drawer-head { touch-action: none; padding-top: 0; }
+body[data-menu-shape="sheet"] #drawer-close { display: none; }
+body[data-menu-shape="sheet"] .menu-level { position: absolute; inset: 0; width: auto; visibility: hidden; opacity: .35; transform: translateX(100%);
+  transition: transform var(--menu-level) cubic-bezier(.2, .8, .2, 1), opacity var(--menu-level) ease, visibility 0s linear var(--menu-level); }
+/* the footer: the token stays where it is, over the bottom of the sheet, so the sheet leaves room for it and no screen scrolls under it */
+body[data-menu-shape="sheet"] #menu-levels { margin-bottom: 84px; }
+body[data-menu-shape="sheet"].drawer-pretable #menu-levels { margin-bottom: 0; }
+body[data-menu-shape="sheet"] .menu-level[data-pos="here"] { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
+body[data-menu-shape="sheet"] .menu-level[data-pos="under"] { transform: translateX(-30%); }
+body[data-menu-shape="sheet"] .menu-level > .menu-list { padding-bottom: 12px; }
+#drawer-body { overflow-y: auto; }
+
+/* columns: from 900 px (or a phone on its side) the menu comes from the side and the levels are beside each other; the map is the clear zone */
+body[data-menu-shape="columns"] #drawer { top: 0; bottom: 0; width: max-content; max-width: 100vw; transition: transform var(--menu-out) cubic-bezier(.4, 0, 1, 1); }
+body[data-menu-shape="columns"] #drawer.open { transition: transform var(--menu-col) cubic-bezier(.16, .84, .3, 1); }
+body[data-menu-shape="columns"][data-drawer="left"] #drawer { left: 0; right: auto; border-left: 0; transform: translateX(-100%); padding: env(safe-area-inset-top) 0 0 env(safe-area-inset-left); }
+body[data-menu-shape="columns"][data-drawer="right"] #drawer { right: 0; left: auto; border-right: 0; transform: translateX(100%); padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 0; }
+body[data-menu-shape="columns"] #drawer.open { transform: none; }
+body[data-menu-shape="columns"] #drawer-head { cursor: grab; touch-action: pan-y; }
+body[data-menu-shape="columns"] #menu-levels { overflow: hidden; }
+body[data-menu-shape="columns"][data-drawer="right"] #menu-levels { flex-direction: row-reverse; }
+/* the columns end above the token's strip (it does not move for them: round 6, R25) */
+body[data-menu-shape="columns"] #menu-levels { margin-bottom: 84px; }
+body[data-menu-shape="columns"].drawer-pretable #menu-levels { margin-bottom: 0; }
+body[data-menu-shape="columns"] .menu-level { flex: none; width: 240px; border-right: 1px solid var(--line); padding-bottom: 12px; }
+body[data-menu-shape="columns"][data-drawer="right"] .menu-level { border-right: 0; border-left: 1px solid var(--line); }
+body[data-menu-shape="columns"] .menu-level[data-active="false"] { display: none; }
+body[data-menu-shape="columns"] #drawer[data-depth="1"] #drawer-body { width: min(420px, 45vw); }
+body[data-menu-shape="columns"] #drawer[data-depth="2"] #drawer-body { width: min(360px, 40vw); }
+@keyframes col-in-l { from { transform: translateX(-100%); } } @keyframes col-in-r { from { transform: translateX(100%); } }
+body[data-menu-shape="columns"] .menu-level[data-new="true"] { animation: col-in-l var(--menu-col) cubic-bezier(.16, .84, .3, 1); }
+body[data-menu-shape="columns"][data-drawer="right"] .menu-level[data-new="true"] { animation-name: col-in-r; }
+/* a wide screen that cannot hold three columns folds the first level away while a screen is open under Table; the breadcrumb goes back */
+@media (max-width: 1099px) { body[data-menu-shape="columns"] #drawer[data-cols="3"] #menu-root { display: none; } }
 .set-rules { margin: 0 0 8px; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
 .set-rules a, .set-rules button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font-size: 13px; margin-left: 6px; }
 #set-theme, #set-floors, #set-side { max-width: 60%; }
@@ -74,12 +154,30 @@ body.drawer-pretable #drawer-scrim { bottom: 0; }
 @media (prefers-reduced-motion: reduce) { .splash-bar i { animation: none; width: 100%; } #splash { transition: none; } }
 #splash-about { min-height: 44px; }
 #lobby-about { min-height: 44px; }
-@media (min-width: 900px) { #drawer-tabs button { min-width: 0; padding: 6px 8px; } }
-/* Wide and unpinned, the top bar stays clear above the drawer: the burger closes it again, and Undo stays one tap away. */
-@media (min-width: 900px) { body:not(.drawer-pinned) #drawer { top: calc(max(10px, env(safe-area-inset-top)) + 54px); padding-top: 0; } }
 
-/* New game or Leave table, always at the top of the menu (docs/DEBT.md T16). */
-#menu-session { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 0 14px 8px; }
-#menu-session[hidden] { display: none; }
-#menu-session button { min-height: 44px; flex: 1; }
-#menu-session .note { flex-basis: 100%; margin: 0; }
+/* a short screen (a phone on its side): the menu takes the room down to the bottom edge */
+@media (max-height: 500px) {
+  body.drawer-open #drawer, body[data-menu-shape="columns"] #drawer { bottom: 0; }
+  body.drawer-open #drawer-scrim { bottom: 0; }
+  body[data-menu-shape="columns"] #menu-levels { margin-bottom: 72px; }
+}
+/* a short screen (a phone on its side) has no room for a strip under the turn line: the token takes the bottom-left corner and stays there;
+   the chips go to the top right corner */
+@media (max-height: 500px) {
+  body[data-token] #btn-menu { width: 56px; height: 56px; top: auto; right: auto; left: calc(4px + env(safe-area-inset-left)); bottom: max(8px, env(safe-area-inset-bottom)); transform: none; }
+  body[data-token] #chips { left: auto; right: calc(8px + env(safe-area-inset-right)); bottom: auto; top: max(8px, env(safe-area-inset-top)); flex-direction: row-reverse; }
+  body[data-token] #turnline { left: calc(50% + 30px); }
+  :root { --dock-h: max(8px, env(safe-area-inset-bottom)); }
+}
+
+/* the characters (Decision 4b): a row each at the top of the first level, with the sigil's health ring, the name and class, and a state on the right */
+#menu-root #party { display: grid; gap: 6px; padding: 12px 14px 0; }
+#menu-root #party:empty { display: none; }
+#menu-root #party .pr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 56px; padding: 6px 12px; text-align: left; background: var(--panel); }
+#menu-root #party .pr.under { margin-left: 22px; }
+#menu-root #party .pr.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+#menu-root #party .pr.now .pr-state { background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0 8px; }
+.pr-sig { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--good, #5a9a5a) calc(var(--hp, 100) * 1%), var(--line) 0); }
+.pr-sig b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--c, #888); color: #fff; text-shadow: 0 1px 2px #0008; font-size: 15px; }
+.pr-txt { display: grid; min-width: 0; } .pr-txt strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pr-txt small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-state { font-size: 12px; color: var(--muted); white-space: nowrap; }

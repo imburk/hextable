@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, selectAndMove, diceDuel } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, closeMenu, openTab, selectAndMove, diceDuel, openMenu } from './lib.mjs';
 
 // ---------- multiplayer ----------
 async function multiplayer(browser, url) {
@@ -41,10 +41,10 @@ async function multiplayer(browser, url) {
 
       let id, name;
       await run.do('the phone claims a character', async () => {
-        const b = phone.locator('#party button:has-text("Play as")').first();
-        name = (await b.textContent()).replace('Play as ', '').trim();
-        id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
-        await b.click();
+        await openMenu(phone, []); const b = phone.locator('#menu-root #party .pr:has-text("Play as")').first();
+        id = await b.getAttribute('data-id');
+        name = await phone.evaluate((i) => window.hextable.state.entities[i].name, id);
+        await b.click(); await closeMenu(phone);
         await wait(phone, (i) => !!window.hextable.state.entities[i].owner, id);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
       });

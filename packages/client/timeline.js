@@ -42,6 +42,12 @@ export function paceFor({ table, mine, reduced } = {}) {
   return RANK[m] < RANK[t] ? m : t;
 }
 
+// A player's own action meets beats still playing (the table's state is already the true one; only the picture lags). In `wait` the
+// beats are finished at once, so the screen is in line with the table, and the action is then sent: it is never dropped and never
+// reordered (a tap on a map, End turn, the dock, an answer to a reaction prompt, `window.hextable.act`; issue #705). Returns whether
+// it skipped anything. Other paces never hold an action back. The "…" button and Escape skip alone, with `tl.skip()`.
+export function settle(tl) { return tl.pace === 'wait' && tl.busy() ? tl.skip() : false; }
+
 // ---------- events to beats ----------
 const DUR = {
   turn: 0.4, encounterStart: 1.2, encounterEnd: 0.6, joined: 0.3, placed: 0.3, damage: 0.4, heal: 0.5, down: 0.6, died: 0.6,

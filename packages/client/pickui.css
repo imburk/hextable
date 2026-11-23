@@ -63,3 +63,17 @@
 .pk .chip.good { border-color: var(--good); }
 .pk .chip.cost { background: color-mix(in srgb, var(--accent) 40%, var(--panel)); border: 2px solid var(--accent); font-weight: 700; }
 .pk .chip.tag { border: 2px solid var(--accent); font-weight: 700; }
+
+/* The DM's monster finder (spawnfind.js, #673). */
+.spawn-find { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.spawn-find .sf-q { width: 100%; min-height: 44px; font-size: 16px; }      /* 16px: a phone does not zoom the page when the box is focused */
+.spawn-find .sf-bands, .spawn-find .sf-recent { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.spawn-find .sf-band, .spawn-find .sf-recent-btn { min-height: 44px; min-width: 44px; padding: 4px 12px; touch-action: manipulation; }
+.spawn-find .sf-band[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 35%, var(--panel-2)); font-weight: 700; }
+.spawn-find .sf-label { font-size: 13px; color: var(--muted); }
+.spawn-find .sf-count { margin: 0; }
+.spawn-list { max-height: min(46vh, 380px); overflow-y: auto; overscroll-behavior: contain; align-content: flex-start; }
+.spawn-list button { min-height: 44px; touch-action: manipulation; }
+body.sf-typing #drawer { bottom: 0; }      /* while the finder's box has the focus the menu covers the dock, so the results are above the keyboard */
+body.sf-typing #btn-menu { visibility: hidden; }      /* the token sits over the bottom of the window, where a short screen's first result is */
+body.sf-typing[data-menu-shape="sheet"] #menu-levels { margin-bottom: 0; }

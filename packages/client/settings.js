@@ -72,9 +72,16 @@ export function initSettings(ctx) {
   $('set-arena-edge').value = LOOK.arenaEdge;
   $('set-arena-edge').onchange = (ev) => { prefs.set('hextable.arenaEdge', ev.target.value); ctx.look('arenaEdge', ev.target.value); };
 
-  // The drawer: which side, and (wide screens) pinned.
+  // The menu: where the token sits, whether menus slide or just appear (reduced motion always means appear), which side a wide
+  // screen's columns come from, and (wide screens) pinned.
+  $('set-token').value = drawer.token; $('set-token').onchange = (ev) => drawer.setToken(ev.target.value);
+  $('set-motion').value = drawer.motion; $('set-motion').onchange = (ev) => drawer.setMotion(ev.target.value);
   $('set-side').value = drawer.side; $('set-side').onchange = (ev) => drawer.setSide(ev.target.value);
   $('set-pin').checked = drawer.pinned; $('set-pin').onchange = (ev) => drawer.setPin(ev.target.checked);
+  // The camera buttons on the map (docs/specs/one-token-menu.md question 8): off by default; the map turns and zooms by touch, keys and wheel.
+  const camOn = prefs.get('hextable.camButtons') === true;
+  document.body.dataset.cam = camOn ? 'on' : 'off'; $('set-cam').checked = camOn;
+  $('set-cam').onchange = (ev) => { prefs.set('hextable.camButtons', ev.target.checked); document.body.dataset.cam = ev.target.checked ? 'on' : 'off'; };
 
   // The keys (docs/specs/keyboard.md): a preset for this device, and the list of what each key does. Nothing is sent to the table.
   const kd = document.createElement('div');
@@ -105,7 +112,7 @@ export function initSettings(ctx) {
       const dm = ctx.isDM();
       $('set-dm-box').hidden = !dm;
       $('set-table-box').hidden = !S;
-      $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
+      $('set-token').value = drawer.token; $('set-motion').value = drawer.motion; $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
       if (!S) return;
       const lines = rulesLines(S.settings), sig = JSON.stringify([lines, dm]);
       if (sig === last) return;

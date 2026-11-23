@@ -14,7 +14,7 @@ import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } f
 import { able, actTime, castAbilOf, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
 import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
-import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
+import { boundEffect, checkBonus, GRANTS, grantOf, heal, passive, settle, tempHp } from './rolls.js';
 import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
@@ -120,12 +120,13 @@ function initiativeFeatures(s, ev) {
 // (Search uses it for what it can see only dimly); it is not part of what is shown.
 // `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
 const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}), ...(what.tool ? { tool: what.tool } : {}) });
-function abilityCheck(s, e, what, dimToo = false, dis = []) {
+function abilityCheck(s, e, what, dimToo = false, dis = [], adv = []) {
   const ability = what.ability ?? SKILLS[what.skill];
   // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
   const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
   const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what, m.lent) + m.add;
   if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
+  if (adv.length) m.advantage = [...m.advantage, ...adv];
   if (m.autoFail) return { roll: 0, total: 0, bonus };
   // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
   const lends = (k, v) => m.lent.some((x) => x[k] === v);      // a proficiency lent for a time counts as one (addition C of docs/specs/homebrew-subclasses.md)
@@ -187,7 +188,8 @@ export const handlers = {
   // (`pool`, `amount` from it). A feature with uses and no action of its own is spent, and its text
   // goes to the DM, who applies it. Costs: the action or Bonus Action, and a use of its own or of
   // another feature (`cost`).
-  feature(s, a, ctx, ev) {
+  // `via` is not from the action: the `attack` handler (attacks.js) passes `{ weapon }` when a feature with `withAttack` is used with the Attack action.
+  feature(s, a, ctx, ev, via = null) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
@@ -201,6 +203,9 @@ export const handlers = {
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
+    // `withAttack` (docs/specs/on-hit.md, Decision 8): used when its creature takes the Attack action, by naming it on the attack (`use`), never by itself.
+    !act.withAttack || via?.withAttack || fail(`${f.name} is used when ${e.name} takes the Attack action: name it on the attack (use: "${f.id}").`);
+    !via || act.withAttack || fail(`${f.name} is not used with the Attack action.`);
     act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not take that reaction yet; the DM applies it.`);
     if (act.form && (a.form !== undefined || e.form)) return shapeShift(s, e, f, act, a, ev);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
@@ -458,7 +463,7 @@ export const handlers = {
     // save that ends what it did; a feature whose save has none uses the spell save DC.
     let own;
     walkSteps(steps, (x) => { if (own === undefined && 'save' in x && typeof x.dc === 'number') own = x.dc; });
-    const src = { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10) };
+    const src = { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(via?.weapon ? { weapon: via.weapon } : {}) };
     // The zone is made as a spell's is (zones.js startZone); unless it says `atCast`, nobody is affected as it appears.
     const hit = zoneDef && fx ? startZone(s, fx, { def: zoneDef, area: act.target.area, holder: e, hexes: aimed.hexes, origin: aimed.origin, spare: a.spare ?? [], steps, src }, targets) : targets;
     // A second creature near the first (`near`) takes the leading damage steps, rolled once for the two of them: the roll is made here and both read it (`shared`), so the
@@ -521,7 +526,7 @@ export const handlers = {
       ctx.role === 'dm' || fail('Only the DM sets a DC.');
       (Number.isInteger(a.dc) && a.dc > 0 && a.dc <= 40) || fail('A DC is a whole number from 1 to 40.');
     }
-    const r = abilityCheck(s, e, { ability, skill });
+    const grant = grantOf(a, ctx), r = abilityCheck(s, e, { ability, skill }, false, grant === 'disadvantage' ? [GRANTS.disadvantage] : [], grant === 'advantage' ? [GRANTS.advantage] : []);
     ev.push({ type: 'check', id: e.id, ability, ...(skill ? { skill } : {}), ...r, ...(a.dc !== undefined ? { dc: a.dc, success: r.total >= a.dc, secret: true } : {}) });
     if (skill === 'stealth') stealthGearNote(e, ev);
   },
