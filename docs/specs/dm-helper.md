@@ -1,6 +1,6 @@
 # Spec: the DM helper: a goal for the encounter, an intention for each NPC, and a queue of recommended moves
 
-Status: draft by an agent, to be reviewed by the design owner. Issue #680. A design job: this
+Status: draft by an agent; the owner answered its fourteen questions on 23 November (see "The owner's answers" at the end). Issue #680. A design job: this
 spec first, then a clickable picture (`mockups/dm-helper.html`) once the owner has read it. No
 code is written by this spec and nothing in it is built.
 
@@ -12,20 +12,25 @@ the DM's to-do tray (#675) and is better with calling for rolls (#676).
 
 ## In plain words
 
+- **What it is for** (owner, 23 Nov). To help the DM run the table: to facilitate the DM's
+  facilitation of the adventure, not to turn the game into a video game. Goals and intentions
+  shape the suggestions; nothing is automated; the game stays social and interactive. The DM
+  decides, and the helper has the next move ready.
 - Today every monster does one thing: it walks to the nearest character and attacks until it is
   dead. Nothing in the game knows why it is fighting.
 - This design gives each group of NPCs a **goal** (Kill, Drive them off, Hold this place, Buy
   time, Talk, Get away) and each NPC an **intention** for now (Fight, Hold its post, Hit and
   move, Talk, Leave, Give up).
-- The game proposes both when a fight starts, from what you placed. One tap accepts, one tap
-  changes, at any moment.
-- Ordinary monsters then play themselves, toward the goal. For a boss the table waits for you
-  and you get up to three recommended moves, each with one line of why; one tap plays the one
-  you pick. What every NPC means to do next is listed in the turn order, on your screen only:
-  that list is **the queue**.
+- The game proposes both when a fight starts, from what you placed. Nothing applies until you
+  tap OK. One tap accepts, one tap changes, at any moment.
+- Every NPC's turn waits for you, whatever it is. The move the game recommends for it, toward the
+  goal, is already on the bar with one line of why: one tap plays it, and up to two other moves
+  are under it. What every NPC means to do next is listed in the turn order, on your screen
+  only: that list is **the queue**.
 - When the story turns (a leader falls, a creature is Bloodied, someone strikes during a
-  parley, a roll goes badly) you get a card: "Fight on / Leave / Give up". One tap. For rank
-  and file you can let the rule act by itself.
+  parley, a roll goes badly) you get a card: "Fight on / Leave / Give up". The game always
+  asks, with the recommended choice shown and ready for one tap. Nothing changes by itself.
+- An ally you play (a party-side NPC with no player) is treated the same way.
 - A creature can **leave a fight** and be kept "for later" with its wounds, its grudge and your
   notes. A creature can **stop fighting** (to talk, or to give up) without a fight starting
   again the moment someone walks past it.
@@ -48,10 +53,11 @@ Green Dragon you name Verdigris, hidden, further off. Under the Add list one lin
 the map: 11,100 XP. Below Low for your party (Low 14,600 · Moderate 24,300 · High 31,800). With
 Verdigris: 24,100, Moderate."
 
-**The fight starts.** The die shows a 1 and a card waits. It stops nothing:
+**The fight starts.** The die shows a 1 and a card waits. Nothing applies until you tap OK:
 
 > **The ambushers** (Assassin, 4 Gladiators). Goal: **Kill**. They are **steady**: you are
-> asked when the Assassin falls or when half are down. They play themselves. **[OK] [Change]**
+> asked when the Assassin falls or when half are down. Each waits for your tap on its own turn,
+> with its move ready. **[OK] [Change]**
 
 You tap OK. In Turns each of them now has a second line that only you are sent: "Gladiator 2 ·
 Fight: Multiattack on the paladin (nearest)".
@@ -77,8 +83,8 @@ row (and, once calling for rolls is built, on the roll's own result card): **[It
 Kill, and roll initiative] [It laughs: keep talking] [It leaves]**. You tap the first. "Not
 fighting" drops off every screen and the fight starts the way any fight does.
 
-**The dragon's turn.** It is a boss, so the table waits for you and its turn card opens by
-itself:
+**The dragon's turn.** Like every NPC it waits for you, and its bar appears by itself with the
+recommended move ready for one tap:
 
 > **Verdigris's turn · Fight** **[I'll play it]**
 > ▸ **Poison Breath on the sorcerer, the paladin and the cleric** (3 caught), from the air.
@@ -86,6 +92,9 @@ itself:
 > · Rend three times at the sorcerer from 10 ft, outside a sword's reach. **[Do this]**
 > · Back out of reach and talk again. **[Do this]**
 > You run: Mind Spike in place of one Rend · Legendary actions 3 of 3 · Legendary Resistance 3 of 3
+
+The first move is ready to tap; the other two are one tap away in the same bar. A Gladiator's
+turn looks the same, with one line instead of three.
 
 You tap Do it. The dragon flies, breathes and ends its turn at the table's pace. After the
 paladin's turn a small card: "Verdigris may take a legendary action (3 left): Pounce, Noxious
@@ -95,7 +104,7 @@ Miasma, Mind Invasion. **[Used one] [Skip]**", with Damage, Place and Call for a
 "Verdigris is Bloodied. **[Fight on] [Leave, for later] [Talk]**". You tap Leave, for later. On
 its turn it flies to the edge and is gone: "Verdigris flies off." The fight is over.
 
-**Afterwards.** The rewards form lists Verdigris as "left: not counted", with a tick box. DM
+**Afterwards.** The rewards form lists Verdigris as "left: counted", with a tick box. DM
 tools › Creatures has a list, **Offstage**: "Verdigris · left the forest road, day 43 · 98 of
 207 HP · breath spent · Legendary Resistance 2 of 3 · your note: furious at the sorcerer
 **[Bring back…] [Card]**". A private line was written in your chronicle. Next month Bring back
@@ -121,11 +130,13 @@ The owner, 21 November 2026 (his words; the book's full title in brackets is the
 And: "Are there any additional things that belong here to help the DM or smooth the experience
 for the players." His priority, the same day: his own party (levels 13 to 15) comes before
 complete coverage of levels 1 to 6. The game's purpose, as he puts it, is to facilitate the
-players' story: a DM should run the table without getting caught in minutiae.
+players' story: a DM should run the table without getting caught in minutiae. On 23 November he
+added the aim of this helper: to facilitate the DM's facilitation of the adventure, not to turn
+it into a video game; keep it social and interactive.
 
 | He said | Here |
 |---|---|
-| "queues up recommended actions for NPCs" | The queue in Turns and the turn card (Decisions 4 and 12) |
+| "queues up recommended actions for NPCs" | The queue in Turns and the turn bar, with the recommended move ready for one tap (Decisions 4 and 12) |
 | "an overall goal when an encounter starts" | The goal, proposed at the start of a fight (Decisions 2 and 6) |
 | "drive individual intentions of npcs" | The intention, worked out from the goal and changed in one tap (Decision 3) |
 | "the monsters know" as "a factor" | The profile: what a stat block says about how a creature fights, in our own words (Decision 5) |
@@ -238,6 +249,13 @@ A group also has a **resolve**, three words: **to the death**, **steady** (until
 badly), **wary** (not looking for a hard fight). Resolve is shorthand for the rules of Decision
 7, which the DM can read and change.
 
+**Allies you play** (owner, 23 Nov, dmh-10: in the first build). A party-side NPC that has no
+player is put in a group of its own, with a goal and intentions, on the same screens. Its turn
+waits for the DM like every NPC's, with a recommended move against the foes. In the first build an
+ally's goals are Kill, Drive them off, Hold this place, Buy time and Get away. Talk and Give up
+are not offered to an ally yet: they rest on the truce of Decision 8, which is for creatures not of
+the party (flagged for the owner). Prepared encounters carry allies later (H12).
+
 *Why a short closed list.* The DM picks under time pressure, and prepared encounters carry the
 goal as data, which a linter must be able to check. "Teasing", "testing" and "toying with" are
 Talk with a rule for what ends the talking. A hunting animal is Kill with a wary resolve.
@@ -270,27 +288,27 @@ Each NPC has a **hand**:
 
 | Hand | What happens on its turn | Default for |
 |---|---|---|
-| **Plays itself** (`auto`) | The brain plays the intention, as monsters play today | every ordinary monster |
-| **Suggests** (`suggest`) | The table waits for the DM. The turn card opens with up to three moves, each with a line of why. One tap writes the choice and the brain plays that turn | a creature with abilities the engine does not run (Legendary Actions, Spellcasting, text-only actions), and any creature whose intention is Talk |
+| **Suggests** (`suggest`) | The table waits for the DM. The turn bar shows the recommended move, ready for one tap, with a line of why, and up to two other moves one tap further. One tap writes the choice and the brain plays that turn | every NPC (owner, 23 Nov, dmh-2), foe or ally |
 | **I'll play it** (`mine`) | The DM plays it from its own menu. The queue line is still there to read | whatever the DM takes over |
+| **Plays itself** (`auto`) | The brain plays the intention, as monsters play today | nothing: only what the DM switches to it. Beej's reading, for the owner to confirm: it stays as the DM's own choice, never the default |
 
-The device switch "Run monsters automatically" stays the master. Off, every NPC turn waits and
-shows its suggestions: a DM who wants to press every button still gets the queue.
+The device switch "Run monsters automatically" now decides only whether the browser plays the turn
+of an NPC whose hand the DM set to Plays itself; it never overrides a turn that is waiting. With
+every NPC on Suggests, the queue and the recommended move are always there.
 
-**What is automatic, what is suggested, what is the DM's.** The line is the story:
+**What is recommended, what is decided, what is the DM's.** The line is the story:
 
 | What | Who decides | Why |
 |---|---|---|
-| Which gladiator stabs whom, where it stands, when a breath is used | the brain | Mechanical. The SRD says how a monster uses its block. Nobody's story changes |
-| A boss's turn; anything the engine cannot run for it | the DM, from up to three suggestions | One creature carries the scene, and the engine must not pretend to have played a turn it can only half play |
-| A change of goal; leaving; giving up; pressing on when the party is breaking | the DM by a card, or a standing rule the DM accepted for rank and file | It changes the story |
+| Which gladiator stabs whom, where it stands, when a breath is used | the DM, by one tap on the recommended move | The brain works out the move (the SRD says how a monster uses its block); the DM keeps the table (owner, 23 Nov, dmh-2, dmh-4) |
+| A boss's turn; anything the engine cannot run for it | the DM, from the recommended move and up to two others | One creature carries the scene, and the engine must not pretend to have played a turn it can only half play |
+| A change of goal; leaving; giving up; pressing on when the party is breaking | the DM, by a card that always asks and shows the recommended choice (dmh-3) | It changes the story |
 | What a creature says, and whether it keeps its word | the DM, always | Not rules |
 
-Never automatic, under any setting: striking a character at 0 Hit Points; ending a truce by
-attacking, unless the DM wrote that rule (a ruse); a creature with the Suggests hand leaving for
-later.
+Nothing is automatic unless the DM switches a hand to Plays itself. Even then, two things are
+never done: striking a character at 0 Hit Points, and ending a truce by attacking.
 
-**Accepting a suggestion** sends `shift { actor, go: true }`, with `stance`, `focus` or
+**Accepting a suggestion** (one tap on the recommended move on the bar; no card is opened first, dmh-4) sends `shift { actor, go: true }`, with `stance`, `focus` or
 `prefer` and `turn: true` if the DM picked something other than the standing intention. The
 choice is then in the state for that one turn, `autoPlays` answers yes for it, and the usual
 loop plays the turn step by step through `apply()`. The DM can stop it at any step (**Stop**
@@ -298,7 +316,8 @@ makes the hand "I'll play it" for the rest of the turn).
 
 **The advice** for a turn is at most three options, from one pure function `advise(s, id)`:
 
-1. what the brain would do under the standing intention (marked ▸, the default);
+1. what the brain would do under the standing intention (marked ▸, the recommended move, shown
+   ready on the bar; every NPC has at least this one, however plain its block);
 2. the next-best use of its own block that differs in kind (its Multiattack where the first is
    an area, or the other way round);
 3. the intention its nearest rule would bring (Leave, when it is Bloodied; Talk again, when it
@@ -323,7 +342,7 @@ word came from; the words below are ours.
 | **Movement** | `speed.fly`, `hover`, `burrow`, `climb`, `swim`; the traits Flyby, Nimble Escape, Cunning Action | "Flies 80 ft"; "Leaves reach freely (Flyby)" | Hit and move; the way out |
 | **Company** | The trait Pack Tactics | "Fights beside an ally" | Prefers a target an ally stands next to (H13) |
 | **Talks** | `languages` not empty; `skills` Deception, Persuasion or Intimidation | "Speaks Common, Draconic · Deception +9 · Influence DC 18" (15 or its Intelligence score, whichever is higher: the SRD's Influence action) | Talk is offered in the proposal; the NPC card |
-| **You run** | What the block has and the engine does not play: a trait with text and no modifiers, an action with a `manual` step or with text and no effects (the test behind DEBT.md's tally of held-back monsters): Legendary Actions, Legendary Resistance, Spellcasting, others | "You run: Legendary actions, Spellcasting" | The Suggests hand; the cards of stage H10 |
+| **You run** | What the block has and the engine does not play: a trait with text and no modifiers, an action with a `manual` step or with text and no effects (the test behind DEBT.md's tally of held-back monsters): Legendary Actions, Legendary Resistance, Spellcasting, others | "You run: Legendary actions, Spellcasting" | The cards of stage H10 |
 | **Weak spots** | `vulnerable`, Sunlight Sensitivity and the like | on the card only | the DM's eye |
 
 **Who it picks on**, by wits, each one adding to the one before (the first build keeps today's
@@ -362,8 +381,7 @@ start of the fight, so it is the same on every replay:
   group of equals has none;
 - the **resolve**: the least bold nerve among them (fearless: to the death; wary: wary;
   otherwise steady);
-- the **hands**: Suggests for a creature with something under "You run" and for one whose goal
-  is Talk, Plays itself for the rest;
+- the **hands**: Suggests for every NPC (dmh-2);
 - a **difficulty line** (stage H11): the group's XP against the party's budget.
 
 **What becomes of the proposal** is the table's choice, `plans.mode`, kept in the plan itself
@@ -372,8 +390,8 @@ start of the fight, so it is the same on every replay:
 | Mode | What happens |
 |---|---|
 | `off` | No proposal. Monsters play exactly as today. A table saved before this is built has `off` |
-| `ask` (a new table) | A card in the tray. It stops nothing. Until the DM taps OK or Change, the foes play as today. It goes when the fight ends |
-| `auto` | The proposal applies itself; every "ask" rule takes its default answer; the DM is told in one line. Solo play uses this (question 8) |
+| `ask` (a new table) | A card in the tray (dmh-1: a proposed goal waits for your OK). No goal applies until you tap OK or Change; meanwhile each NPC's turn still waits for you, with the move the brain would make today (no goal) recommended. The card goes when the fight ends |
+| `auto` | The proposal applies itself; every "ask" rule takes its default answer; the DM is told in one line. Solo play uses this (dmh-8, the default stands). Flagged for the owner: this sits against dmh-1 to dmh-3, which say the DM taps OK, is always asked and picks every move. Left as answered; for the owner to settle |
 
 **One tap, anywhere the DM is looking:**
 
@@ -407,15 +425,16 @@ moment is needed.
 | `partyHalf` | half or more of the party's characters are at 0 Hit Points |
 | `rolled` | a roll the DM called "about" one of them has its result (stage H14, after #676) |
 
-A rule is `{ when, who?, to, how }`: at this moment, shift to this, and **ask** the DM or do it
-**auto**.
+A rule is `{ when, who?, to }`: at this moment, **ask** the DM whether to shift to this. `to` is
+the recommended choice, shown ready for one tap. A rule never acts by itself (owner, 23 Nov,
+dmh-3: "always ask, but provide recommendation").
 
 - `who` says whose moment counts, where a moment belongs to one creature (`bloodied`,
   `struck`): `self` (each creature's own), `leader`, or `any`.
 - `to` is a goal or an intention; the two lists share no word, so a linter can tell which. A
   goal changes the group's goal, and every member's intention follows. An intention is given to
   that one creature under `self`, and to every member that is up otherwise.
-- Every rule has a `to`, so an "ask" has a default answer.
+- Every rule has a `to`, so a card always has a recommended choice.
 
 On a group's card the choices read **Fight on** (no change), **Break and run** (the goal Get
 away) and **Give up** (the intention, for all of them). A group's resolve stands for a set of
@@ -425,10 +444,10 @@ rules, which the screen shows in words and the DM may edit:
 |---|---|
 | **To the death** | none. (With a goal other than Kill: `partyHalf`, ask, default "fight on") |
 | **Steady** | `leaderDown`: ask, default Get away. `halfDown`: ask, default Get away. `lastOne`: ask, default Get away. `partyHalf`: ask, default "fight on" |
-| **Wary** | `bloodied` (`self`): that creature Leaves, auto. `halfDown`: Get away, auto. `lastOne`: Get away, auto |
-| *always, for a creature whose hand is Suggests* | `bloodied` (`self`): ask, default by its nerve (fearless: fight on; otherwise Leave) |
+| **Wary** | `bloodied` (`self`): ask, recommended Leave. `halfDown`: ask, recommended Get away. `lastOne`: ask, recommended Get away |
+| *always, for every NPC* | `bloodied` (`self`): ask, recommended by its nerve (fearless: fight on; otherwise Leave) |
 | *always, for Talk* | `struck`: ask, default Kill |
-| *always, for Buy time* | `rounds` N: Get away, auto |
+| *always, for Buy time* | `rounds` N: ask, recommended Get away |
 
 **3. Wrap up.** The last rounds of a fight that is already decided are the slowest part of an
 evening. The group bar always has **Wrap up**: **[They run] [They give up] [Play it out]**.
@@ -436,13 +455,13 @@ evening. The group bar always has **Wrap up**: **[They run] [They give up] [Play
 `force`), without playing their flight turn by turn. The `lastOne` card offers the same.
 
 **A moment is noticed by the engine,** in the step that already runs after every action, from
-the state alone: no die, no clock. An **auto** rule is applied there, inside the action that
-caused the moment, so one undo takes back both. An **ask** rule adds a card to `plans.cards`.
+the state alone: no die, no clock. Every rule adds a card to `plans.cards`; none is applied
+there. A shift happens only when the DM taps.
 
 **A card never stops the table.** The fight goes on. The creatures it is about keep their
 standing intention. Only when the turn of one of *those* creatures comes with its card still
 unanswered does that turn wait, with the card in front. So the DM is only ever waited for on a
-monster's own turn, where a DM is expected to be busy. "You decide" on a card takes its default.
+monster's own turn, where a DM is expected to be busy. "You decide" on a card takes the recommended choice.
 A group asks once per moment, never once per creature.
 
 **Why moments are only things the table has seen.** A hidden threshold (a quarter of its Hit
@@ -453,7 +472,7 @@ altogether (`one-token-menu.md`, Decision 7a), a creature that turns and runs wh
 shows it is hurt, which is what a DM would say out loud.
 
 **Why no morale roll.** SRD 5.2 has none. A hidden roll at a moment everyone saw, whose only
-result is a decision the DM can make in one tap or make in advance, is minutiae. It would also
+result is a decision the DM can make in one tap, with the recommended choice ready, is minutiae. It would also
 spend seeded dice on something no rule calls for.
 
 ### Decision 8: leaving a fight, and not fighting
@@ -461,7 +480,7 @@ spend seeded dice on something no rule calls for.
 Two engine changes. Without them a goal is only a wish.
 
 **Leaving.** `{ type: 'exitFight', actor, keep?, why?, force? }`, DM only (the DM's screen
-sends it for a creature that plays itself).
+sends it when the DM taps Leave on a turn bar or a card).
 
 - Allowed when the creature stands on an edge cell of the arena, at any height, and is not
   Grappled, Restrained or Incapacitated and its Speed is not 0. `force: true` skips the edge
@@ -476,8 +495,10 @@ sends it for a creature that plays itself).
 - `why` is `routed` (it was driven off) or `withdrew` (it chose to go). `keep: true` puts its
   whole record offstage (Decision 9).
 - **Experience.** The SRD awards XP "for defeating the monster in combat or otherwise
-  neutralizing it". The fight's conclusion lists a creature that left with a tick box: ticked
-  for `routed`, unticked for `withdrew`. The DM changes either. Players are sent what they are
+  neutralizing it". The fight's conclusion lists a creature that left with a tick box: always
+  counted (owner, 23 Nov, dmh-5): ticked whether it was driven off, gave up or chose to go. The
+  tick box stays, so the DM can still untick one. `why` no longer decides XP; it stays in the DM's
+  record. Players are sent what they are
   sent of any conclusion, and never `why`.
 - Then `checkEnd` runs, as after any action.
 
@@ -558,15 +579,17 @@ tidy-up, named in the risks.
 
 1. **The party's AI never reads the plan.** `knownTo` (the copy a stand-in and a party
    companion read) leaves out `plans` and `offstage`. Of all this, the party's AI knows only
-   `truce`, which is public.
+   `truce`, which is public. A party-side NPC the DM runs (dmh-10) is neither a stand-in nor a
+   player's companion: its turn waits for the DM like every NPC's, and its recommended move is
+   worked out on the DM's side, from the DM's state. Stand-ins and companions stay blind.
 2. **A foe never stands by something the party does not know of.** The anchor of Hold its post
    is a place, or a creature the party knows of. Naming an unknown creature is refused to the
    DM ("The party does not know of it yet: name a place"). This follows the rule companions
    already obey for a hidden master.
 3. **A moment is a public fact** (Decision 7).
 
-**Timing.** No card stops the table. A wait happens only on a monster's own turn, where a DM
-who plays monsters by hand is waited for too. A DM-only action sends players no bytes, so the
+**Timing.** No card stops the table. A wait happens only on an NPC's own turn, which waits for the
+DM for every NPC (dmh-2), as a DM who plays monsters by hand is waited for too. A DM-only action sends players no bytes, so the
 taps themselves leave nothing to count. The pause before an auto-played move is the same fixed
 timer with or without a plan. A builder must not add work to it that grows with the plan.
 
@@ -584,7 +607,7 @@ creatures do is the game.
     { monster: 'gladiator', count: 4 },
   ],
   plan: { goal: 'kill', resolve: 'steady',
-          rules: [{ when: 'leaderDown', to: 'flee', how: 'ask' }],
+          rules: [{ when: 'leaderDown', to: 'flee' }],
           notes: 'Hired in the city. They know the paladin by sight.' },
   budget: { difficulty: 'low', level: 14, size: 5 }, tactics: '…', stage: 'dm' }
 
@@ -592,8 +615,8 @@ creatures do is the game.
   creatures: [{ monster: 'adult-green-dragon', name: 'Verdigris', hand: 'suggest',
                 card: { want: 'To learn who hired them; to be flattered.', voice: 'Slow, amused.',
                         secret: '…', attitude: 'indifferent' } }],
-  plan: { goal: 'parley', rules: [{ when: 'struck', to: 'kill', how: 'ask' },
-                                  { when: 'bloodied', who: 'self', to: 'withdraw', how: 'ask' }] },
+  plan: { goal: 'parley', rules: [{ when: 'struck', to: 'kill' },
+                                  { when: 'bloodied', who: 'self', to: 'withdraw' }] },
   stage: 'dm' }
 ```
 
@@ -631,7 +654,7 @@ Everything is in a place the one-token menu already has. Nothing new sits on the
 |---|---|
 | **Turns** | The queue. A bar per group (goal, resolve, Change, Wrap up). Under each NPC's name a second line, the DM's only: its intention and what it will do ("Fight: Multiattack on the paladin (nearest)"), a mark for its hand, and "You run" where there is any. A tap on an NPC row opens its card. A row grows from 44 to 60 px; nothing else moves |
 | **Waiting for you** (the tray of #675, and the token's badge) | Cards, newest moment first: the proposal at the start of a fight; a shift card; "X joined"; the "You run" cards of stage H10; after a fight, a creature kept offstage. Each has its buttons and a Done |
-| **The turn card** | For a Suggests turn. It is a question that must be answered for the table to move, so it opens by itself, as a reaction question does, and by the menu's one-overlay rule it folds the menu. On a phone it is a sheet from the bottom with the three options as rows of 56 px; on a wide screen it is the first thing in the pinned column |
+| **The turn bar** | For every NPC's turn (dmh-2, dmh-4). The turn is a question the table waits on, so the bar opens by itself, as a reaction question does, with the recommended move already shown and one tap to play it: no card is opened first. The other options are one tap further, in the same bar ("Other moves"). On a phone it is a bottom bar of one 56 px row (the move and Do it) that grows into three rows if you tap Other moves; on a wide screen it is the first line of the pinned column. By the menu's one-overlay rule it folds the menu |
 | **DM tools › Undo and the fight** | "Monsters' plans: Off / Ask me / By themselves"; the group list out of a fight |
 | **DM tools › Creatures** | "Give them a goal"; Presets (drop, save, load a file); **Offstage** with Bring back |
 | **The DM's quick bar for the selected creature** | the Intention chip |
@@ -651,7 +674,7 @@ s.plans = {
     id: 'b1', name: 'The ambushers', goal: 'kill', resolve: 'steady', leader: 'm7',
     anchor: null,                                // { cell } | { creature }: repel, defend, stall
     focus: null, rounds: null,                   // a creature the party knows of; the round Buy time ends
-    rules: null,                                 // null: the rules of `resolve`; else [{ when, who?, to, how }], `to` a goal or a stance
+    rules: null,                                 // null: the rules of `resolve`; else [{ when, who?, to }], `to` a goal or a stance (always asked)
     notes: '', from: null,                       // from: a preset or module encounter id
     began: { fight: 12, size: 5 }, seen: ['halfDown'],
   } },
@@ -679,7 +702,6 @@ e.truce = true;                                  // on a creature not of the par
 | `RESOLVE` | `death`, `steady`, `wary` |
 | `HANDS` | `auto`, `suggest`, `mine` |
 | `MOMENTS` | `bloodied`, `leaderDown`, `halfDown`, `lastOne`, `rounds`, `struck`, `partyHalf`; later `rolled` |
-| a rule's `how` | `ask`, `auto` |
 | the profile's `wits` | `instinct`, `simple`, `sensible`, `cunning` |
 | the profile's `nerve` | `fearless`, `steady`, `wary` |
 | `ATTITUDES` (the card; the SRD's words) | `friendly`, `indifferent`, `hostile` |
@@ -728,7 +750,7 @@ the lead sizes jobs.
 | 4 | **Wrap up** (Decision 7) | One tap ends a fight that is already decided: they run, or they give up | in H9 |
 | 5 | **Ready your turn** | A player may choose and aim on someone else's turn; when their turn starts the confirm bar is already up ("Cast Fireball here? Cast / Change"). Nothing is ever sent without their tap. Five characters with long sheets are where an evening's time goes | M client |
 | 6 | **The difficulty line** (stage H11) | The SRD's XP budget per character, as checked pack data, added up for the party as it is: "11,100 XP: below Low". For a party of unequal levels each character's own row is added (a design choice; it equals the SRD's sum when levels are equal). Advice, never enforced, never sent to players | S |
-| 7 | **NPC cards** (Decision 9) | Wants, Voice, Secret, Attitude, and the Influence DC worked out from the block | in H2 and H8 |
+| 7 | **NPC cards** (Decision 9) | Wants, Voice, Secret, Attitude, and the Influence DC worked out from the block | in H2 and H8b |
 | 8 | **"Last time…"** | The DM marks "Session starts" and "Session ends" (chronicle entries with a tag: no engine change). A pure function lists what the record holds between two marks: fights and how they ended, who fell, who left for later, XP, loot, places entered, the DM's own entries. The DM reads it out, or shows the public part as a handout. Facts set in order, not prose | S rules, S client |
 | 9 | **One Initiative roll for identical monsters** | A rules gap found on the way: the SRD says "For a group of identical creatures, the GM makes a single roll" (1757). The engine rolls each. Fixing it makes the turn order shorter and the queue readable ("Gladiators ×4"). It changes the dice a fight uses, so it is a table rule: on for new tables, off for saved ones | S to M engine |
 | 10 | **Knock out** (stage H15) | The SRD's rule, for players and monsters: a melee blow that would drop a creature leaves it at 1 Hit Point and Unconscious. Prisoners are story | S to M |
@@ -752,10 +774,10 @@ the lead sizes jobs.
 
 | Work | Why this needs it | What happens without it |
 |---|---|---|
-| **#675, the to-do tray** | Every card lives there | H8 would have to build a tray of its own. Do #675 first |
+| **#675, the to-do tray** | Every card lives there | H8a would have to build a tray of its own. Do #675 first |
 | **#676, a called save** and the prompts spec | The moment `rolled`; "You run" cards that can call a save; the Influence aid | The shift buttons sit on the NPC's row, and H14 waits |
-| **Menu M1, then M5 and M6** | Turns, DM tools and the badge are where this shows | H8 can be built into today's tracker tab and DM tab, ids kept, and moved by M5. Better after M1 (#665) so it is built once |
-| **DEBT M5 (legendary actions) and M6 (monster spellcasting)**, ROADMAP milestone 3 | For 29 of the 53 monsters a level 13 to 15 party meets, the best move each round is one the engine cannot run | The helper says "You run" and counts for the DM (H10). Honest, but it is the DM doing the work. **Recommended: M5 straight after the first slice below, before any sharper tactics** (question 11) |
+| **Menu M1, then M5 and M6** | Turns, DM tools and the badge are where this shows | H8a and H8b can be built into today's tracker tab and DM tab, ids kept, and moved by M5. Better after M1 (#665) so it is built once |
+| **DEBT M5 (legendary actions) and M6 (monster spellcasting)**, ROADMAP milestone 3 | For 29 of the 53 monsters a level 13 to 15 party meets, the best move each round is one the engine cannot run | The helper says "You run" and counts for the DM (H10). Honest, but it is the DM doing the work. **Recommended: M5 straight after the first slice below, before any sharper tactics** (dmh-11, accepted by the owner) |
 | **AI casting AC3** (buffs and control) | Same file as H3 and H13 (`ai.js`) | No dependency. One job in `ai.js` at a time |
 | **Module stage `stage`** (adventure-module, A2 on) | Dropping a preset is the same act as staging an encounter | H12 builds the creature half of `stage` and the module stages reuse it |
 
@@ -770,14 +792,15 @@ adds it to CLAUDE.md's layout (the guides test fails otherwise).
 |---|---|---|---|---|---|
 | H0 | **The mockup**: the dragon fight above as a clickable picture, phone and wide, DM and one player | design, M | `docs/specs/mockups/dm-helper.html` | the owner's read of this spec | The owner has clicked through the evening above and answered the questions |
 | H1 | **The profile** | rules, M | `packages/rules/src/tactics.js` (new), `content/srd52/tactics.js` (new, empty table and its lint), `test/tactics.test.js` | none | `profileOf` answers for all 329 monsters without a throw; a test prints every monster's wits, nerve and readings and pins the list, so a reviewer checks it once; each reading names its field |
-| H2 | **The plan in the state**: `plans`, the actions `plan` and `shift`, the proposal at the start of a fight, limits, DM-only events, undo labels | engine, L, strongest | `packages/rules/src/plan.js` (new), `engine/plans.js` (new), `engine.js` (the handlers, the after-action step), `history.js`, `migrate.js`, `ai.js` (`knownTo` leaves the plan out), `packages/server/README.md`, tests | H1 | Tests 1 to 4 below pass; with mode `off` or no plan every existing test passes unchanged |
-| H3 | **The brain reads the intention**: Hold its post, Talk, Leave (to the edge), Give up; `focus` and `prefer`; `autoPlays` reads the hand and `go` | rules, M | `ai.js`, `test/ai-plans.test.js`, `test/ai-plans-replay.test.js` | H2 | Recorded fights from main replay byte for byte with no plan (test 5); a talking creature never returns a harmful action in 1,000 seeded states; a creature told to leave reaches an edge or says it is boxed in |
+| H2 | **The plan in the state**: `plans`, the actions `plan` and `shift`, the proposal at the start of a fight (it waits for OK), groups of party-side NPCs (dmh-10), the hand `suggest` for every NPC, limits, DM-only events, undo labels | engine, L (wider than before: allies), strongest | `packages/rules/src/plan.js` (new), `engine/plans.js` (new), `engine.js` (the handlers, the after-action step), `history.js`, `migrate.js`, `ai.js` (`knownTo` leaves the plan out), `packages/server/README.md`, tests | H1 | Tests 1 to 4 below pass; with mode `off` or no plan every existing test passes unchanged |
+| H3 | **The brain reads the intention**: Hold its post, Talk, Leave (to the edge), Give up; `focus` and `prefer`; `autoPlays` reads the hand and `go`, so every NPC's turn waits (dmh-2); an ally's brain aims at foes | rules, L (was M: every NPC now waits, and allies) | `ai.js`, `test/ai-plans.test.js`, `test/ai-plans-replay.test.js` | H2 | Recorded fights from main replay byte for byte with no plan (test 5); a talking creature never returns a harmful action in 1,000 seeded states; a creature told to leave reaches an edge or says it is boxed in; an NPC with no `go` never plays; an ally never aims at a character |
 | H4 | **Leaving, offstage, bringing back**: `exitFight`, `bringBack`, `s.offstage`, the conclusion's "left" | engine, L, strongest | `engine/resolve.js`, `engine/plans.js`, `rewards.js`, `view.js` (`left`), `history.js`, tests, a `twin()` scenario | H2 | A creature at the edge leaves and the fight ends if it was the last; its lasting effects end; a kept one returns with a new id; tests 6 and 7 pass |
 | H5 | **Truce**: the flag, `truce`, `breach`, the end of a fight, auto-engage, reactions, the party's AI | engine, L, strongest | `engine/shared.js`, `engine/resolve.js` (`checkEnd`), `engine/movement.js`, `engine/attacks.js`, `engine/casting.js`, `reactions.js`, `ai.js`, `view.js`, `view-fields.js`, tests, a `twin()` scenario | none (H2 for `shift` setting it) | A fight with only creatures under truce left ends; walking past one starts nothing; an attack without `breach` is refused and changes nothing; with it, the truce ends and all are told; test 8 passes |
-| H6 | **Moments, rules and cards**: the engine notices moments, applies auto rules, queues ask cards; `shift` answers one | engine, M, strongest | `plan.js`, `engine.js` (the after-action step), `engine/plans.js`, tests | H2 (H4 and H5 to carry out Leave and Give up) | Each moment happens once; an auto rule is undone with the action that caused it; a card never sets `pending`; test 9 passes |
-| H7 | **The queue and the advice**: `queue(s)`, `advise(s, id)`, the lines of why | rules, M | `packages/rules/src/advise.js` (new), tests | H1, H3 | Same state, same advice (1,000 seeded states twice); every option's first action is accepted by `apply()` on a copy; the first option equals what `aiStep` returns; test 10 passes |
-| H8 | **The DM's screen, part 1**: the group bar and the queue lines in Turns, the proposal card, the NPC's card (intention, hand, focus, the four fields), the turn card, the Intention chip | client, L | `packages/client/helper.js` (new), `helper.css`, `tracker.js`, `app.js` (`idled` still asks only `autoPlays`), `todo.js` (#675), a smoke pass `helper` | H2, H3, H7, #675; best after menu M1 | A DM accepts a proposal in one tap and changes a goal in two; a Suggests turn opens its card by itself and one tap plays the turn; a player's screen in the same smoke pass shows none of it |
-| H9 | **The DM's screen, part 2**: shift cards, Wrap up, "Leave, for later", Offstage and Bring back, "left" on the rewards form; the players' "Not fighting" and "Attack anyway?" | client, M | `helper.js`, `conclusion.js`, `actionpanel.js` (the question), `tracker.js`, `logview.js`, smoke | H4, H5, H6, H8 | The dragon evening above can be played end to end in the smoke pass |
+| H6 | **Moments, rules and cards**: the engine notices moments and queues a card for each; `shift` answers one. No rule applies itself (dmh-3) | engine, S to M (was M: the auto rules are gone), strongest | `plan.js`, `engine.js` (the after-action step), `engine/plans.js`, tests | H2 (H4 and H5 to carry out Leave and Give up) | Each moment happens once; no moment changes the state except by adding a card; a card never sets `pending`; test 9 passes |
+| H7 | **The queue and the advice**: `queue(s)`, `advise(s, id)`, the lines of why; at least one recommended move for every NPC, plain or not | rules, M | `packages/rules/src/advise.js` (new), tests | H1, H3 | Same state, same advice (1,000 seeded states twice); every option's first action is accepted by `apply()` on a copy; the first option equals what `aiStep` returns; every NPC in a fight, foe or ally, has a first option; test 10 passes |
+| H8a | **The DM's screen, part 1**: the turn bar with the recommended move on every NPC's turn, ready for one tap (dmh-2, dmh-4), the proposal card (it waits for OK), the group bar and the queue lines in Turns | client, L | `packages/client/helper.js` (new), `helper.css`, `tracker.js`, `app.js` (`idled` plays only a turn the DM released or whose hand is Plays itself), `todo.js` (#675), a smoke pass `helper` | H2, H3, H7, #675; best after menu M1 | A DM accepts a proposal in one tap and changes a goal in two; every NPC's turn opens its bar by itself with the recommended move first and one tap plays the turn, with no card to open; a player's screen in the same smoke pass shows none of it |
+| H8b | **The DM's screen, part 2**: the NPC's card (intention, hand, focus, the four fields), the Intention chip, groups of allies | client, M | `helper.js`, `helper.css`, `tracker.js`, smoke | H8a | An NPC's intention is changed in two taps; an ally has a group, a goal and a bar like a foe's; a player's screen shows none of it |
+| H9 | **The DM's screen, part 3**: shift cards, Wrap up, "Leave, for later", Offstage and Bring back, "left" on the rewards form; the players' "Not fighting" and "Attack anyway?" | client, M | `helper.js`, `conclusion.js`, `actionpanel.js` (the question), `tracker.js`, `logview.js`, smoke | H4, H5, H6, H8a | The dragon evening above can be played end to end in the smoke pass |
 | H10 | **Boss marks and "You run" cards** (takes in PB-9's card) | client M, engine S | `plan.js` (`marks`), `helper.js`, `todo.js` | #675, H2 | A creature with Legendary Actions shows its counter; after each other creature's turn a card offers Used one or Skip; nothing is rolled or applied by the card itself |
 | H11 | **The difficulty line** | content S, rules S | `content/srd52/advancement.js` (the budget table, `checked`), `plan.js` (`difficulty`), `helper.js` | none | The SRD's three worked examples give 200, 1,125 and 46,800 XP; the line never reaches a player |
 | H12 | **Presets and the encounter shape**: the new keys in the linter, the presets file, drop and save, the monster `tactics` key | rules M, client S, strongest for `schema.js` | `adventure.js` (keys and lint, `lintEncounter` shared), `content/schema.js` (`tactics` on a monster), `engine/plans.js`, `scripts/hb.mjs` (lint a presets file), `helper.js` | H2; shares `stage` with the module stages | A presets file with a bad goal is refused in words; a dropped preset places all or none and its group carries the plan; no player message holds a preset's canary |
@@ -786,7 +809,10 @@ adds it to CLAUDE.md's layout (the guides test fails otherwise).
 | H15 | **Knock out**, then the goal Take them alive | engine S to M, client S | `engine/resolve.js`, `engine/attacks.js`, `ai.js`, `actionpanel.js` | none | A melee blow with `spare` leaves 1 Hit Point and Unconscious as the SRD words it; the goal is no longer greyed |
 
 **Order.** H0 while H1 is built. Then the first slice, which already gives the owner his ask:
-**H2, H3, H7, H8** (a goal, intentions, the queue, suggestions). Then **H4, H6, H9** (shifts,
+**H2, H3, H7, H8a, H8b** (a goal, intentions, the queue, a recommended move on every turn). The
+first slice was four pull requests (L, M, M, L) and is now five (L, L, M, L, M): every NPC's turn
+waiting for the DM (dmh-2) makes the brain and the screen's work larger, and allies (dmh-10) widen
+the state. H6 is a little smaller, since no rule acts by itself. Then **H4, H6, H9** (shifts,
 leaving, for later), **H5** beside them (it is independent in the engine), and **H10** as soon
 as #675 is in. Then, for this party, DEBT M5 before H13. H11 and H15 are small and can go
 whenever a hand is free. H12 goes with the module stages. H14 follows #676.
@@ -816,23 +842,29 @@ In `packages/rules/test/` and `packages/server/test/`; the numbers are used in t
 7. **The return.** A creature brought back has an id no player message held before.
 8. **Truce.** It is the same in both worlds of a twin (it is public); the refusal without
    `breach` changes nothing and is the same sentence whatever is behind the truce.
-9. **Moments.** A moment's DM-only events and cards reach no player; an auto rule inside a
-   player's action leaves that player's messages byte-identical to the world without the rule.
+9. **Moments.** A moment's DM-only events and cards reach no player; a moment changes nothing in
+   the state but the card, and a player's messages are byte-identical to the world without the
+   moment's card.
 10. **Determinism.** `queue`, `advise` and `aiStep` call no die: run on a state whose `rng`
     throws, they still answer.
 
 ## Risks
 
-- **The cards become the new minutiae.** The defaults are the defence: rank and file act by
-  their rule, a group asks once per moment, no card stops the table, and "Monsters' plans: Off"
-  is always there. The mockup must be judged on how often the owner is interrupted, not on how
-  much it can do.
+- **The cards become the new minutiae.** With every NPC's turn waiting (dmh-2), a fight with eight
+  NPCs is eight taps a round. That is what the owner asked for ("to facilitate this that's why
+  we're creating recommended actions"), so the defence is how little each tap costs: the
+  recommended move is already on the bar, one tap plays it, and no card is opened first (dmh-4). A
+  group asks once per moment, no card stops the table, Wrap up ends a decided fight, the DM may
+  switch a hand to Plays itself (the DM's choice, never the default), and "Monsters' plans: Off"
+  is always there. The mockup must be judged on how quick the tap is, and on how often the owner
+  is interrupted, not on how much it can do.
 - **A boss's best move is one the engine cannot play.** Until DEBT M5 and M6, the top of a
-  dragon's turn card is honest but thin, and "You run" is the DM working. This is the largest
+  dragon's turn bar is honest but thin, and "You run" is the DM working. This is the largest
   risk for the owner's own table, and why M5 is asked for early.
 - **A plan surprises the DM.** A monster that runs when the DM forgot the rule looks like a
-  bug. Every auto shift writes a DM log line with its reason, and is undone with the action
-  that caused it.
+  bug. Nothing shifts by itself, except under the mode "By themselves" that solo play uses (see
+  the flag in Decision 6); there every shift writes a DM log line with its reason, and is undone
+  with the action that caused it.
 - **Leaks through a careless field.** A flag in `s.encounter`, an event type added to the
   public list, a `why` left on `left`. The canary and twin tests are the guard, and H2, H4, H5
   and H6 go to the strongest model.
@@ -848,48 +880,55 @@ In `packages/rules/test/` and `packages/server/test/`; the numbers are used in t
   later job should give them one home.
 - **The brain's limits show more.** It treats height only as distance (DEBT M9), so "stays 60
   ft up" is H13's work; until then a talking flyer stays where the DM put it.
-- **The phone.** A DM on a phone gets taller rows in Turns and a turn card over the map. The
+- **The phone.** A DM on a phone gets taller rows in Turns and a turn bar over the map. The
   mockup checks both at 390 x 844 before any build.
 - **Copyright.** The profile must stay a reading of SRD numbers in our words. The reviewer of
   H1 and H13 checks that every line of text traces to a field or an SRD line.
 
-## Questions for the owner
+## The owner's answers (23 Nov)
 
-Each has a default. The build follows the default unless the owner says otherwise.
+The fourteen questions this design asked, as the owner answered them on the project board. Each is
+now a decision; the sections named were changed to follow it. Where the lead gave a reading of a
+note, it is marked "Beej's reading, for the owner to confirm".
 
-1. **Does a proposed goal apply before you have said OK?** *Default: no. The card waits, the
-   monsters play as today until you tap OK or Change. "By themselves" is a switch for a DM who
-   wants it.*
-2. **Whose turns wait for you?** *Default: a creature with abilities the engine cannot run (a
-   legendary creature, a spellcaster) and any creature that is talking. Everything else plays
-   itself. A group's leader does not wait just for being the leader.*
-3. **When a rule fires, ask or act?** *Default: rank and file that are wary act by themselves
-   (an animal that is Bloodied leaves) and you are told in a line; a steady group asks you
-   once; anything with the Suggests hand always asks.*
-4. **Should a suggested turn open its card by itself?** *Default: yes. It is a question the
-   table is waiting on, like a reaction.*
-5. **XP for a creature that left.** *Default: counted when it was driven off or gave up (the
-   SRD: "defeating … or otherwise neutralizing"); not counted when it left by its own choice
-   for later. A tick box on the rewards form either way.*
-6. **Do players see "not fighting"?** *Default: yes, and attacking such a creature asks "Attack
-   anyway?". It is what their characters see, and it stops a slip of the thumb from ending a
-   parley.*
-7. **When only creatures that are not fighting remain, does the fight end by itself?** *Default:
-   yes. Talk goes better without turns. "Call for initiative" is one tap if it sours.*
-8. **Solo play.** *Default: plans apply by themselves with their default answers, and bosses
-   play themselves, so a solo player gets monsters that break and run without reading their
-   minds first. The cards are under DM tools for a solo player who wants them.*
-9. **A villain's return.** *Default: "rested" is proposed when eight hours or more of the world
-   clock have passed, "as it left" otherwise; you choose in the dialog.*
-10. **Allies you play** (a party-side NPC with no player). *Default: not in the first build;
-    goals are for the foes' side. Later, with the same screens.*
-11. **For your party, legendary actions before sharper tactics?** *Default: yes. After the first
-    slice (H2, H3, H7, H8) the next engine job is DEBT M5, legendary actions run by the engine,
-    ahead of H13. It changes the roadmap's order, so it is yours to say.*
-12. **Words for monsters' tactics.** *Default: derived from the numbers only. A hand-written
-    note is added only where a derived reading is plainly wrong, in our own words, in a small
-    table.*
-13. **One Initiative roll for identical monsters** (the SRD's rule, not built). *Default: build
-    it as a table rule, on for new tables.*
-14. **The two additions to calling for rolls** (several creatures at once; damage on a failed
-    save). *Default: yes to both, as part of #676's work.*
+- **dmh-1. Does a proposed goal apply before you have said OK?** Owner, 23 Nov: "Yes it applies.
+  This should inform the suggestion, correct? It's not automated. Again, the goal is to facilitate
+  the DM's facilitation of the adventure, not turn this into a video game. ... keep it social and
+  interactive." Beej's reading, for the owner to confirm: a proposed goal waits for the DM's OK
+  (the first option, which was the default); goals shape the suggestions, nothing is automated; the
+  owner's aim (help the DM run the table; keep it social, not a video game) is now in the design's
+  purpose. See "In plain words", "What the owner asked", Decision 6 (the mode table).
+- **dmh-2. Whose turns wait for you?** Owner, 23 Nov: "Every NPC. To facilitate this that's why
+  we're creating recommended actions." Beej's reading: every NPC's turn waits for the DM's pick,
+  with a recommended move ready. See Decision 4 (the hands table: Suggests for every NPC),
+  Decision 6, Decision 12 (the turn bar), the build plan (H3 larger, H8 split) and the Risks.
+- **dmh-3. When a rule fires, ask or act?** Owner, 23 Nov: "always ask, but provide
+  recommendation." Beej's reading: always ask, with the recommended choice shown. No rule acts by
+  itself: the `how` key is gone. See Decision 7 (the rule, the resolve table, "A moment is
+  noticed"), Decision 11 (the examples), the vocabulary, H6 and test 9.
+- **dmh-4. Should a suggested turn open its card by itself?** Owner, 23 Nov: "If it's a
+  recommendation, make the recommendation so I can one click to move it along." Beej's reading:
+  the suggested move is shown ready to accept with one tap, with no separate card to open. See
+  Decision 4 ("Accepting a suggestion"), Decision 12 (the turn bar) and H8a.
+- **dmh-5. XP for a creature that left.** Owner, 23 Nov: always counted. See Decision 8
+  (Experience) and the dragon evening. The tick box stays so the DM can untick one.
+- **dmh-6. Do players see "not fighting"?** Owner, 23 Nov: the default. Yes, with "Attack
+  anyway?". See Decision 8.
+- **dmh-7. Does the fight end by itself when only creatures not fighting remain?** Owner, 23 Nov:
+  the default. Yes. See Decision 8.
+- **dmh-8. Solo play.** Owner, 23 Nov: the default. Plans apply by themselves with their default
+  answers. Flagged: this sits against dmh-1 to dmh-3 (see Decision 6); left as answered, for the
+  owner to settle.
+- **dmh-9. A villain's return.** Owner, 23 Nov: the default. "Rested" is proposed after eight hours
+  or more of the world clock. See Decision 9.
+- **dmh-10. Allies you play.** Owner, 23 Nov: yes, include party-side allies in the first build.
+  See Decision 2 ("Allies you play"), Decision 10 (the party's AI), H2, H3, H8b. Talk and Give up
+  for an ally are not in the first build (they rest on the truce); flagged.
+- **dmh-11. Legendary actions before sharper tactics.** Owner, 23 Nov: the default. DEBT M5 after
+  the first slice, ahead of H13. See "What this needs from other work".
+- **dmh-12. Words for monsters' tactics.** Owner, 23 Nov: the default. Derived from the numbers
+  only; a hand-written note only where plainly wrong. See Decision 5.
+- **dmh-13. One Initiative roll for identical monsters.** Owner, 23 Nov: the default. Built as a
+  table rule, on for new tables. See "The other helpers", row 9.
+- **dmh-14. The two additions to calling for rolls.** Owner, 23 Nov: yes to both, as part of #676's
+  work. See "The other helpers", row 2.
