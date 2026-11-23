@@ -262,12 +262,12 @@ async function part3(browser, url, label, opts) {
         if (!(await lines(page)).some((x) => /Pact of the Chain: Mor gives up an attack/.test(x))) throw new Error(`the log: ${(await lines(page)).slice(-5)}`);
       });
 
-      await run.do('Quick Attack is a row of the turn bar Bonus Action screen: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
-        await panelTab(page, 'bonus');
-        await waitShown(page, rowFor('cost', 'investment-of-the-chain-master'));
-        const t = await text(page, rowFor('cost', 'investment-of-the-chain-master'));
+      await run.do('Quick Attack is an Attack row marked Bonus: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
+        await panelTab(page, 'attacks');
+        await waitShown(page, rowFor('attacks', 'investment-of-the-chain-master'));
+        const t = await text(page, rowFor('attacks', 'investment-of-the-chain-master'));
         if (!/Quick Attack|Investment/.test(t) || !/Bonus/.test(t)) throw new Error(`the row says: ${t}`);
-        await tap(rowFor('cost', 'investment-of-the-chain-master'));
+        await tap(rowFor('attacks', 'investment-of-the-chain-master'));
         await wait(page, () => window.hextable.mode.kind === 'famAttack');
         const n = await state(page, (S) => S.timeline.length);
         await tapHex(await state(page, (S, g) => S.entities[g].pos, gob), gob);

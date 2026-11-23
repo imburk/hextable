@@ -138,6 +138,55 @@ once**, which is the "chaos" the owner means. The log, in that menu, shows "Roll
 initiative! Brenna 21, Odessa 20, Goblin Warrior 3 19, ..." as one line: which number is
 mine is a reading job.
 
+### M4 build notes (the character cascade)
+
+**Built.** The dock is gone (`#dock`, `#ap-tabs` and the strip under it are out of `index.html`, the CSS and `app.js`). The token strip sets the map's `inset`
+(`--dock-h` is now the strip the token owns at the bottom; the turn line, the dice tray, the join bar and the new-version banner sit above it). The Character
+screen holds the status block (`#card`: name, Hit Points, AC, conditions, `#c-res`), the turn bar and one accordion of action groups (`#ap-body`, one `.ap-sec`
+per group, one open at a time). `groupsFor(S, e, ctx, o)` and `groupRows(S, e, id, o)` in `actionpanel.js` sort the same rows the tabs showed (`tabRows`' pieces,
+`spellRows`, `rankExplore`, `holdRows`, the companion and feature rows) into groups; `packages/client/test/groups.test.js` walks sample characters and checks
+that every row a tab showed is in at least one group. The first level has one row per controlled character (Decision 4b): a row selects, recentres the map and
+opens that character's screen. Aiming folds the menu (one overlay at a time).
+
+**Settled.**
+- Fight order: Attack, Cast, Heal, Move, Defend and hide, Use, Features, Companions, Reactions, Inventory. Out of a fight: Explore, Cast, Heal, Use, Rest, Features, Companions, Inventory.
+  The order never changes within a state.
+- The four pips of the turn bar are buttons: Action and Bonus Action open a cost screen (`#ap-cost`, everything that costs that), Move opens Move, Reaction opens Reactions.
+- R29: in a fight only rows with no refusal reason (or armed, so a tap can put them down) are shown, a group with none is not shown, and an empty page says why in one line
+  from the engine. Out of a fight the spec's rule stands: greyed rows stay with their reasons.
+- Breaking free of a hold (Escape) and Let go are rows of Move (a held creature cannot walk); Grapple and Shove stay Unarmed Strike's options under Attack.
+- What gives Hit Points back (Second Wind, Lay On Hands, healing spells and items) is one group, Heal, and is not repeated in Features, Cast or Use.
+- A group the player opened stays open when the character is selected again; a turn opens on the likeliest group (a martial character on Attack, a caster with slots on Cast, #678/#696).
+- Casting or arming a row folds the menu; to use another row the player opens the screen again (smoke: `panelTab`).
+- Taps for the common turn: move 1, attack 1 (tap the enemy), End turn 1 (on the turn line, `#btn-end`). Picking a weapon or spell and then a target goes from about 2 taps to about 4.
+
+**Where each old dock control went.**
+
+| Old control | Now |
+|---|---|
+| Tab strip `#ap-tabs`, `#ap-all` | gone; the groups of `#ap-body` (rows below) |
+| Explore tab `#ap-explore` | Explore group (`#ap-explore`), out of a fight; Follow, Search, Lead the party, Formation, objects in reach |
+| Attacks tab `#ap-attacks` | Attack group; Grapple and Shove as Unarmed Strike options; spell attack rolls also listed here |
+| Spells tab `#ap-spells`, Metamagic button | Cast group (`#ap-spells`, the Metamagic row first) |
+| Bonus tab | the turn bar's Bonus Action pip, a cost screen (`#ap-cost`) |
+| Move tab `#ap-move` (Dash, Disengage, fly up and down) | Move group; Escape and Let go join it |
+| Dodge, Hide, Search, Shield | Defend and hide group (`#ap-defend`) |
+| Features tab `#ap-features` | Features group, without the healing features |
+| Second Wind, Lay On Hands, healing spells and items | Heal group (`#ap-heal`) |
+| Items tab (uses, light, give, drop) | Use group for what can be used now; Inventory group (`#ap-items`) for the rest |
+| Reactions tab, standing instructions | Reactions group, and the turn bar's Reaction pip; a waiting question is said on its bar while the question stays the modal `#rp` |
+| Short rest, Long rest | Rest group (`#ap-rest`), out of a fight |
+| Companion rows (Command, Dismiss, Recall, Mount) | Companions group (`#ap-companions`) |
+| Down tab (death saves) | `#ap-down`, the page of a downed creature |
+| Party chips `#party` (M3 first level) | one row per controlled character on the first level |
+| `#card` head, `#c-res`, End turn `#btn-end` | the status block, the turn bar and the turn line |
+| `#ap-how` | the status block (a tap on a condition shows its line) |
+| `#todo-wait`, `#pace-wait` | `#pace-wait` in `#chips` beside the token; `#todo-wait` a status line above the token strip |
+
+**Left (see DEBT T104).** No level-3 screens yet (formation, class-feature pickers and the short rest still open their popups over the menu, and `#ap-features` rows
+open the existing pickers); no keyboard shortcuts 1 to 6; no pinned bars (M10) and no setting to open the character on my turn; Brutal Strike and Hide are hidden
+rather than greyed in a fight; the sheet is still shown under the status block (M5).
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the
