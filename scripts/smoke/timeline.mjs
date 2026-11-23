@@ -142,6 +142,16 @@ async function pacing(browser, url, label, opts) {
         await page.evaluate(() => { const S = window.hextable.state; const c = S.encounter.order[S.encounter.turn].id; window.hextable.act({ type: 'endTurn', actor: c }); });
         if (await page.evaluate(() => window.hextable.timeline.busy())) throw new Error('beats are playing at instant');
       });
+      await run.do('an action sent while beats play finishes them and is sent: window.hextable.act is never dropped (#705)', async () => {
+        ids = await foeTurn(page, null);
+        await setPace(page, 'wait');
+        await page.evaluate(strike, [ids.pc, ids.foe]);
+        if (!(await page.evaluate(() => window.hextable.timeline.busy()))) throw new Error('nothing is playing');
+        await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
+        await sleep(100);
+        const r = await page.evaluate(() => ({ busy: window.hextable.timeline.busy(), enc: !!window.hextable.state.encounter }));
+        if (r.enc) throw new Error('End encounter sent while the beats played was dropped');
+      });
       await run.do('the pace control (on the Dice screen) sets this device\'s pace', async () => {
         await openTab(page, 'dice');
         await page.selectOption('#pace-pick', 'flow');

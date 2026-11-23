@@ -323,13 +323,22 @@ export const paladin = {
       "id": "paladins-smite",
       "name": "Paladin's Smite",
       "level": 2,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Divine Smite is always prepared (applied); casting it once without a slot per Long Rest is the DM's.",
+      "text": "Divine Smite is always prepared, and you can cast it once without a spell slot at its own level (a hit choice taken with via paladins-smite); the use comes back on a Long Rest.",
+      "uses": {
+        "max": 1,
+        "recharge": "long"
+      },
       "grants": {
         "spells": [
           "divine-smite"
-        ]
+        ],
+        "freeCast": {
+          "spells": [
+            "divine-smite"
+          ]
+        }
       }
     },
     {

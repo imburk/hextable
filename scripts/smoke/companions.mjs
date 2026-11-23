@@ -631,8 +631,21 @@ async function drawn(browser, url, label, opts, grid) {
         await wait(page, () => window.hextable.state.entities.fighter);
         await page.evaluate(() => { document.getElementById('dm-auto') && (document.getElementById('dm-auto').checked = false); window.hextable.act({ type: 'setting', key: 'autoEngage', value: false }); });
         rider = 'fighter';
-        const at = (await spots(rider, LARGE, 1, null, 1, 1))[0];
-        if (!at) throw new Error('no spot where a Large creature fits near the fighter');
+        // The foes may have walked up before autoEngage went off (they do, on a slow machine), and a hero or a wolf may stand where the horse would: take the
+        // nearest spot where the horse can be spawned, bonded and then mounted by the fighter, which is the engine's own answer to "within 5 ft".
+        const at = await page.evaluate(async () => {
+          const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+          const S = window.hextable.state, G = gridOf(S.map), c = S.entities.fighter, dm = { role: 'dm', userId: 'dm' };
+          for (const h of G.range(c.pos, 3).sort((x, y) => G.dist(c.pos, x) - G.dist(c.pos, y))) {
+            if (G.dist(c.pos, h) < 1) continue;
+            const t = structuredClone(S);
+            if (!apply(t, { type: 'spawn', monster: 'warhorse', at: h }, dm).ok) continue;
+            const id = Object.values(t.entities).find((e) => e.tpl === 'warhorse')?.id;
+            if (apply(t, { type: 'bond', actor: id, to: 'fighter', kind: 'steed', turn: 'after' }, dm).ok && apply(t, { type: 'mount', actor: 'fighter', mount: id }, dm).ok) return h;
+          }
+          return null;
+        });
+        if (!at) throw new Error(`no spot where a Large creature fits near the fighter: ${await page.evaluate(() => JSON.stringify(Object.values(window.hextable.state.entities).map((e) => [e.id, e.pos.q, e.pos.r])))}`);
         horse = await page.evaluate((a) => {
           const h = window.hextable; h.act({ type: 'spawn', monster: 'warhorse', at: a });
           const id = Object.values(h.state.entities).find((e) => e.tpl === 'warhorse')?.id;

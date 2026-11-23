@@ -29,6 +29,14 @@ async function clear(page, touch, fight) {
   if (hit.length) throw new Error(hit.join('; '));
 }
 
+// End turns until it is `id`'s turn.
+async function walkTo(page, id) {
+  for (let k = 0; k < 12 && (await state(page, (S) => S.encounter.order[S.encounter.turn].id)) !== id; k++) {
+    await page.evaluate(() => { const S = window.hextable.state; window.hextable.act({ type: 'endTurn', actor: S.encounter.order[S.encounter.turn].id }); });
+    await wait(page, () => window.hextable.waiting === 0, null, 15000);
+  }
+}
+
 async function solo(browser, url, label, opts) {
   await scenario(label, async (run) => {
     const touch = !!opts.hasTouch, phone = opts.viewport.width <= 600;
@@ -136,20 +144,27 @@ async function solo(browser, url, label, opts) {
       });
 
       await run.do('on its own turn the card opens on Attacks with End turn, and the tab strip names Bonus and Move', async () => {
-        const cur = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
-        const isPc = await state(page, (S, i) => S.entities[i].kind === 'pc', cur);
-        if (!isPc) { // walk the order to a character's turn
-          for (let k = 0; k < 12 && !(await state(page, (S) => S.entities[S.encounter.order[S.encounter.turn].id].kind === 'pc')); k++) {
-            await page.evaluate(() => { const S = window.hextable.state; window.hextable.act({ type: 'endTurn', actor: S.encounter.order[S.encounter.turn].id }); });
-            await wait(page, () => window.hextable.waiting === 0, null, 15000);
-          }
-        }
+        // walk the order to the fighter's turn (the wizard's opens on Spells, #678, checked below)
+        await walkTo(page, 'fighter');
         const me = await state(page, (S) => S.encounter.order[S.encounter.turn].id);
         await page.evaluate((i) => window.hextable.select(i), me);
         await waitTab(page, 'attacks'); await waitShown(page, '#ap-attacks'); await waitShown(page, '#btn-end'); await waitShown(page, '#ap-spells', false);
         const tabs = await page.$$eval('#ap-tabs [data-tab]', (b) => b.map((x) => x.dataset.tab));
         for (const want of ['attacks', 'bonus', 'move']) if (!tabs.includes(want)) throw new Error(`no ${want} tab in ${tabs}`);
         await clear(page, touch, true); await shot('turn');
+      });
+
+      await run.do('on the wizard\'s turn (a dagger, cantrips and slots) the card opens on Spells, Attacks one tap away; a tab picked stays', async () => {
+        await walkTo(page, 'wizard');
+        await page.evaluate(() => window.hextable.select('wizard'));
+        await waitTab(page, 'spells'); await waitShown(page, '#ap-spells');
+        const tabs = await page.$$eval('#ap-tabs [data-tab]', (b) => b.map((x) => x.dataset.tab));
+        if (!tabs.includes('attacks')) throw new Error(`no attacks tab in ${tabs}`);
+        await page.click('#ap-tab-attacks'); await waitTab(page, 'attacks');
+        await page.evaluate(() => window.hextable.select('wizard'));
+        await page.waitForTimeout(300);
+        if ((await page.$eval('#ap-tabs [aria-selected="true"]', (b) => b.dataset.tab)) !== 'attacks') throw new Error('the tab the player picked was taken back');
+        await shot('wizard');
       });
     } finally { await ctx.close(); }
   });

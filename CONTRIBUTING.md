@@ -12,7 +12,7 @@ is agreed on the issue, then built.
 
 Work is handed out by issue, in small pull requests, one module at a time.
 `AGENTS.md` is the working agreement for everyone who writes code here, people
-and coding agents alike. Read it, and `CLAUDE.md`, before you start.
+and coding agents alike. Read it before you start.
 
 ## Content
 
