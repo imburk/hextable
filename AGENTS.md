@@ -166,6 +166,6 @@ npm test     # rules and server tests, Node 22+ (Node's built-in runner)
 npm start    # build, then serve at http://localhost:8080 with multiplayer
 ```
 
-Every new mechanic lands with a test.
-
 Open two browser windows on that address to try a DM and a player together.
+
+Every new mechanic lands with a test.
