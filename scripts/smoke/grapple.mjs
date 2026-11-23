@@ -262,7 +262,7 @@ async function part3(browser, url, label, opts) {
         if (!(await lines(page)).some((x) => /Pact of the Chain: Mor gives up an attack/.test(x))) throw new Error(`the log: ${(await lines(page)).slice(-5)}`);
       });
 
-      await run.do('Quick Attack is a row of the turn bar's Bonus Action screen: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
+      await run.do('Quick Attack is a row of the turn bar Bonus Action screen: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
         await panelTab(page, 'bonus');
         await waitShown(page, rowFor('cost', 'investment-of-the-chain-master'));
         const t = await text(page, rowFor('cost', 'investment-of-the-chain-master'));
