@@ -86,7 +86,9 @@ export async function showMap(pg, map) {
   else if (map !== 'valley') { await pg.evaluate((m) => window.hextable.ED.stock(m), map); await wait(pg, (m) => window.hextable.state.map.id === m, map); }
   else await fixedValley(pg);
   await closePanels(pg);
-  await pg.evaluate(() => { const h = window.hextable, pc = Object.values(h.state.entities).find((e) => e.kind === 'pc'); h.R.focus(pc.id, true); h.R.rotate(0.3); h.R.zoom(0.8); h.R.inset = 90; });
+  await pg.evaluate(() => { const h = window.hextable, pc = Object.values(h.state.entities).find((e) => e.kind === 'pc'); h.R.focus(pc.id, true); h.R.rotate(0.3); h.R.zoom(0.8);
+    // `inset` follows the UI's height, which differs between machines (fonts): pin it, as the square fight does, so the golden holds anywhere.
+    const c = h.R.inner ?? h.R; Object.defineProperty(c, 'inset', { configurable: true, get: () => 90, set() {} }); });
   await sleep(900);
 }
 export const MAPS = ['valley', 'dungeon', 'cave', 'square'];
