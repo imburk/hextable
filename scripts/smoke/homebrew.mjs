@@ -781,7 +781,8 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
       player.on('websocket', (ws) => ws.on('framereceived', (f) => got.push(String(f.payload))));
       const idOf = (page) => page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Orsolya')?.id ?? null);
       const sub = (page) => page.textContent('#c-sub');
-      const chip = async (page) => { await closeMenu(page); await chip(page, 'Orsolya'); await wait(page, () => !document.querySelector('#card').hidden && /Orsolya/.test(document.querySelector('#c-name').textContent)); };
+      // not `chip`: that is lib.mjs's, which this calls (a local `chip` called itself and never returned)
+      const pickOrsolya = async (page) => { await closeMenu(page); await chip(page, 'Orsolya'); await wait(page, () => !document.querySelector('#card').hidden && /Orsolya/.test(document.querySelector('#c-name').textContent)); };
       const noSideways = async (page, sel) => { await sleep(500); return page.$eval(sel, (e) => ({ sx: e.scrollWidth, cx: e.clientWidth, r: e.getBoundingClientRect().right, iw: innerWidth })).then((m) => { if (m.sx > m.cx + 1 || m.r > m.iw + 1) throw new Error(`${sel} overflows sideways: ${JSON.stringify(m)}`); }); };
       const openManager = async () => { if (!(await shown(host, '#pm'))) { await openTab(host, 'dm'); await host.click('#pm-open'); await waitShown(host, '#pm'); } };
       const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }) : null);
@@ -804,7 +805,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
         await host.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet }), TAVIN);
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Orsolya'), null, 10000).catch(async () => { throw new Error(`no Orsolya: ${await host.evaluate(() => document.getElementById('toast')?.textContent)}`); });
         await wait(player, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Orsolya'), null, 10000);
-        await chip(host); await chip(player);
+        await pickOrsolya(host); await pickOrsolya(player);
         for (const [who, page] of [['DM', host], ['player', player]]) if (!/Level 5 Paladin \(subclass not loaded\)/.test(await sub(page))) throw new Error(`${who}'s header: ${await sub(page)}`);
         await openMenu(host, 'sheet'); await waitShown(host, '#sheet-body');
         const t = await host.textContent('#sheet-subclass-missing');
@@ -841,7 +842,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
         await host.click('#pm .pm-close'); await waitShown(host, '#pm', false); await closeMenu(host);
       });
       await run.do('Refresh from sheet brings the oath in: the DM\'s note is gone and both headers name it', async () => {
-        await chip(host); await openMenu(host, 'sheet'); await waitShown(host, '#sheet-body');
+        await pickOrsolya(host); await openMenu(host, 'sheet'); await waitShown(host, '#sheet-body');
         const back = await host.textContent('#sheet-subclass-missing');
         if (!/the table has it again/.test(back) || !/Refresh from sheet/.test(back)) throw new Error(`with the pack back and the record not remade: ${back}`);
         await host.click('#sheet-refresh');
@@ -853,7 +854,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
         await closeMenu(host);
       });
       await run.do('the build sheet\'s Subclass list: the SRD subclass and the table\'s of this class (not the bard\'s), names as text, the chosen one explained', async () => {
-        await chip(host); await openTab(host, 'dm'); await host.click('#qe-edit'); await waitShown(host, '#qb');
+        await pickOrsolya(host); await openTab(host, 'dm'); await host.click('#qe-edit'); await waitShown(host, '#qb');
         const opts = await host.$$eval('#qb-subclass option', (l) => l.map((o) => [o.value, o.textContent]));
         const want = [['', 'Choose a subclass'], ['devotion', 'Oath of Devotion'], [OATH, 'Oath of the Ember (homebrew)']];
         if (JSON.stringify(opts) !== JSON.stringify(want)) throw new Error(`the list: ${JSON.stringify(opts)}`);
@@ -893,7 +894,7 @@ export async function subclassTable(browser, url, label, hostOpts, playerOpts, t
         if (!inject) throw new Error('the player\'s socket is not routed');
         const lastPacks = [...got].reverse().find((f) => /"t":"packs"/.test(f));
         if (!lastPacks) throw new Error('the player was sent no packs message');
-        await chip(player);
+        await pickOrsolya(player);
         inject(JSON.stringify({ t: 'packs', packs: [] }));
         await wait(player, () => /Paladin \(subclass not loaded\)/.test(document.querySelector('#c-sub').textContent), null, 10000).catch(async () => { throw new Error(`header: ${await sub(player)}`); });
         await shot(player, `subclass-lost-player-${tag}`);
