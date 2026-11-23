@@ -107,8 +107,8 @@ async function part1(browser, url, label, opts) {
 
       await run.do('Gru\'s panel has "Let go of" the goblin; a tap frees it with no action spent', async () => {
         await select(page, hero);
-        await panelTab(page, 'attacks');
-        const row = `#ap-attacks [data-row="letgo:${foe}"]`;
+        await panelTab(page, 'move');                      // breaking free and letting go are rows of the Move group (M4: a held creature cannot walk)
+        const row = `#ap-move [data-row="letgo:${foe}"]`;
         await waitShown(page, row);
         const before = await state(page, (S) => S.encounter.budget.action);
         await tap(row);
@@ -164,12 +164,12 @@ async function part1(browser, url, label, opts) {
         await send(page, { type: 'condition', actor: foe, condition: 'paralyzed', on: false });
         await wait(page, (f) => !window.hextable.state.entities[f].cond.paralyzed && !!window.hextable.state.entities[f].cond.grappled?.holds, foe);
         await turnOf(page, foe); await select(page, foe);
-        await panelTab(page, 'attacks');
-        for (const skill of ['athletics', 'acrobatics']) await waitShown(page, `#ap-attacks [data-row="escape:${hero}:${skill}"]`);
-        const t = await text(page, `#ap-attacks [data-row="escape:${hero}:athletics"]`);
+        await panelTab(page, 'move');
+        for (const skill of ['athletics', 'acrobatics']) await waitShown(page, `#ap-move [data-row="escape:${hero}:${skill}"]`);
+        const t = await text(page, `#ap-move [data-row="escape:${hero}:athletics"]`);
         if (!/Escape \(Athletics\)/.test(t) || !/Strength check [+-]\d+ vs DC \d+/.test(t) || !/Action/.test(t)) throw new Error(`the Escape row: ${t}`);
         await shot('escape');
-        await tap(`#ap-attacks [data-row="escape:${hero}:athletics"]`);
+        await tap(`#ap-move [data-row="escape:${hero}:athletics"]`);
         await wait(page, (h) => window.hextable.state.timeline.some((e) => e.type === 'check' && e.escape === h), hero);
         await idle(page);
         if (!(await lines(page)).some((x) => /tries to break free of Gru/.test(x))) throw new Error(`the log: ${(await lines(page)).slice(-4)}`);
@@ -210,7 +210,7 @@ async function part3(browser, url, label, opts) {
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Mor'));
         mor = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Mor').id);
         await closePanels(page); await page.evaluate((m) => { window.hextable.select(m); window.hextable.R.focus(m, true); }, mor);
-        await waitShown(page, '#card'); await idle(page);
+        await openMenu(page, 'sheet'); await waitShown(page, '#card'); await idle(page);
         // Find Familiar is cast through the invocation (a Magic action with no spell slot: a Pact slot is level 3, which the Spells tab's own level 1 check does not count).
         await panelTab(page, 'features');
         await tap('#ap-features [data-row="feat:eldritch-invocations-pact-of-the-chain"]');
@@ -262,12 +262,12 @@ async function part3(browser, url, label, opts) {
         if (!(await lines(page)).some((x) => /Pact of the Chain: Mor gives up an attack/.test(x))) throw new Error(`the log: ${(await lines(page)).slice(-5)}`);
       });
 
-      await run.do('Quick Attack is a Bonus tab row: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
+      await run.do('Quick Attack is a row of the turn bar's Bonus Action screen: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
         await panelTab(page, 'bonus');
-        await waitShown(page, rowFor('bonus', 'investment-of-the-chain-master'));
-        const t = await text(page, rowFor('bonus', 'investment-of-the-chain-master'));
+        await waitShown(page, rowFor('cost', 'investment-of-the-chain-master'));
+        const t = await text(page, rowFor('cost', 'investment-of-the-chain-master'));
         if (!/Quick Attack|Investment/.test(t) || !/Bonus/.test(t)) throw new Error(`the row says: ${t}`);
-        await tap(rowFor('bonus', 'investment-of-the-chain-master'));
+        await tap(rowFor('cost', 'investment-of-the-chain-master'));
         await wait(page, () => window.hextable.mode.kind === 'famAttack');
         const n = await state(page, (S) => S.timeline.length);
         await tapHex(await state(page, (S, g) => S.entities[g].pos, gob), gob);
@@ -291,7 +291,7 @@ async function part4(browser, url, label, opts) {
       const shot = (n) => (process.env.SMOKE_SHOTS ? (mkdirSync(process.env.SMOKE_SHOTS, { recursive: true }), page.screenshot({ path: `${process.env.SMOKE_SHOTS}/grapple-${n}-${phone ? 'phone' : 'wide'}.png` }).catch(() => {})) : null);
       const toastNow = () => page.evaluate(() => { const t = document.getElementById('toast'); return t.hidden ? '' : t.textContent.replace(/\s+/g, ' ').trim(); });
       const toastHas = (re) => wait(page, (src) => { const t = document.getElementById('toast'); return !t.hidden && new RegExp(src).test(t.textContent); }, re.source, 8000);
-      const sheetOf = async (id) => { await closePanels(page); await page.evaluate((i) => window.hextable.select(i), id); await waitShown(page, '#card'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet-refresh'); };
+      const sheetOf = async (id) => { await closePanels(page); await page.evaluate((i) => window.hextable.select(i), id); await openMenu(page, 'sheet'); await waitShown(page, '#card'); await waitShown(page, '#sheet-refresh'); };
       let gru = null;
 
       await run.do('the DM panel\'s Refresh the party with nobody built from a sheet: the engine\'s refusal is shown, nothing changes', async () => {

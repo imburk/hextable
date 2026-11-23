@@ -566,6 +566,7 @@ export async function screensTable(browser, url) {
         await host.evaluate((id) => window.hextable.act({ type: 'harm', actor: id, amount: 999 }), bandit);
         await wait(phone, (b) => window.hextable.state.entities[b]?.dead, bandit);
         await calm(phone);
+        await panelTab(phone, 'spells');                       // casting folds the menu: open the Cast group again
         await phone.click(rowOf('spells', 'Animate Dead'));
         await phone.waitForSelector('#cc-chooser:not([hidden])');
         const pos = await phone.evaluate((b) => window.hextable.state.entities[b].pos, bandit);

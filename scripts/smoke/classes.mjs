@@ -24,7 +24,8 @@ async function classes(browser, url, label, opts) {
       const uses = (n, f) => state(page, (S, a) => S.entities[a[0]].uses[a[1]], [ids[n], f]);
       const pick = async (n) => { await closePanels(page); await chip(page, n); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
       // The Features tab holds a row for each class feature; the spells and Metamagic are rows of the Spells tab.
-      const feat = async (name) => { await panelTab(page, 'features'); await tap(page, `#ap-features [data-row]:has-text("${name}")`); };
+      // Lay On Hands and Second Wind are rows of the Heal group, not Features (M4: what gives Hit Points back is found in one place).
+      const feat = async (name) => { const g = /^(Lay On Hands|Second Wind)$/.test(name) ? 'heal' : 'features'; await panelTab(page, g); await tap(page, `#ap-${g} [data-row]:has-text("${name}")`); };
       const spellsTab = async () => { await panelTab(page, 'spells'); };
       const tapCreature = (target) => tapGuarded(page, touch, target);
       const newest = (since) => state(page, (S, n) => S.timeline.slice(n).map((e) => e.type), since);

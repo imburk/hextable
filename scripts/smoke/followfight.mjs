@@ -59,8 +59,14 @@ async function pass(browser, url, label, opts) {
         const b = await page.locator('#join-yes').boundingBox(), vp = page.viewportSize();
         if (b.x < 0 || b.y < 0 || b.x + b.width > vp.width || b.y + b.height > vp.height) throw new Error(`the button is off screen: ${JSON.stringify(b)}`);
         if (opts.hasTouch && (b.height < 44 || b.width < 44)) throw new Error(`the touch target is ${b.width}x${b.height}`);
-        const d = await page.locator('#dock').boundingBox(), j = await page.locator('#join').boundingBox();
-        if (j.y + j.height > d.y + 1) throw new Error('the question sits over the dock');
+        // M4: no dock; the token strip owns the bottom of the screen and the question sits above it (and above the turn line when that is shown)
+        const j = await page.locator('#join').boundingBox();
+        for (const sel of ['#btn-menu', '#turnline']) {
+          const el = page.locator(sel);
+          if (!(await shown(page, sel))) continue;
+          const d = await el.boundingBox();
+          if (d && j.y + j.height > d.y + 1 && j.x < d.x + d.width && j.x + j.width > d.x) throw new Error(`the question sits over ${sel}`);
+        }
         await shot(page, 'ask');
       });
       await run.do('one tap brings the rogue in, rolls Initiative, and the question goes', async () => {

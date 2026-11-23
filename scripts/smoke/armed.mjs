@@ -73,6 +73,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm Stunning Strike, then cancel: armed, hint shown, nothing sent', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature' && window.hextable.mode.id === 'stunning-strike');
         if (!/Stunning Strike: tap a creature/.test((await snap()).hint ?? '')) throw new Error('no hint to tap a creature');
@@ -87,6 +88,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm and tap a creature out of reach: refused, nothing spent, disarmed', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapEntity(far);
@@ -100,6 +102,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm and tap the goblin: sent, a Focus Point spent, the save shown', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapEntity(foe);
@@ -214,6 +217,7 @@ async function aimLock(browser, url, label, opts) {
         if (!(await view()).pinned) throw new Error('no lock on the tap');
         await (touch ? page.locator('#hint-cancel').tap() : page.click('#hint-cancel'));
         await wait(page, () => window.hextable.mode.kind !== 'spell');
+        await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell');
         const v = await view();
