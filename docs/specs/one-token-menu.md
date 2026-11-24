@@ -244,6 +244,34 @@ rather than greyed in a fight; the sheet is still shown under the status block (
 - **The DM's badge has no level-ups in it** (Decision 7's DM row lists waiting players, rewards and the tray); a player's has their own character's.
 - With the tray open, a wide screen's first column is 340 px instead of 240 so a card's tools fit.
 
+### #717 build notes (a fight action in two taps again)
+
+**The problem.** After M4 a weapon or spell at a target is: the token, the character's row, the row (its group is open on a turn), the target: about four taps, where the old dock took two.
+Only a plain attack with the default weapon is one (tap the enemy).
+
+**Ways considered.**
+
+| Way | Taps | Why not, or why |
+|---|---|---|
+| The token opens straight on the character's page on my turn | 3 | Saves one tap but breaks "a closed menu opens on its first level", and the menu still covers the map between the choice and the target |
+| The menu stays open after a row arms, the target tapped beside it | 3 | Works only on a wide screen; on a phone the sheet covers the map (and "one overlay at a time") |
+| A radial of rows round the token | 2 | A second menu, and M8's arc already takes the quick tap on the die |
+| **Quick actions on the turn line** | **2** | Picked: the turn line is already on the clean screen on my turn, beside End turn; nothing new floats over the map |
+
+**The approach (built).** On a turn of the viewer's, when the creature whose turn it is is the selected one, the turn line carries up to three **quick actions** on a row of its own above
+"Round 2 · Your turn · End turn": the row used last by this creature in this fight (if it can be used again), then the first usable row of Attack, then of Cast, then the next of each, no row
+twice. They are the same rows the Character screen offers (`groupsFor`, so only what can be used now, R29), with the same names; a tap does exactly what the row does (`run`): an attack or an
+aimed spell arms and the map takes the target, a spell with nothing to aim shows its slot and Cast on the aim bar. The armed one is marked, and a second tap puts it down. So: **the quick
+action, the target: two taps**, and a third only where the row itself asks something first (a weapon with options, a slot).
+
+**What it keeps.** The clean screen: nothing is added outside a turn of the viewer's, nothing while exploring, nothing on anyone else's turn; the token does not move; the menu is not
+opened, so nothing covers the map. Each quick action is 44 px high and at most a third of the line wide (a long name is cut with an ellipsis; its full name is its accessible name). Setup ›
+The menu › "Quick actions on the turn line on my turn" turns them off (on by default; kept on the device as `hextable.quickRows`).
+
+**What it does not do.** It offers no healing, movement or feature rows (the turn bar's segments and the groups hold those; three is what fits a phone), and it follows the selected
+creature: a DM who has selected another creature than the one whose turn it is sees none. The menu's own path is still four taps; question 29 (open the character's page on my turn) is
+M10's.
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the
