@@ -366,7 +366,7 @@ body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet se
 .sh-sec { border-top: 1px solid var(--line); margin-top: 10px; }
 .sh-sec > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: 4px 2px; font-weight: 700; font-size: 16px; cursor: pointer; list-style: none; }
 .sh-sec > summary::-webkit-details-marker { display: none; }
-.sh-sec > summary::after { content: "\203A"; color: var(--muted); font-size: 20px; transition: transform .15s; }
+.sh-sec > summary::after { content: "\203A"; color: var(--muted); font-size: 20px; transition: transform .15s; flex: none; width: 24px; height: 24px; line-height: 24px; text-align: center; }      /* a square, so turning it does not reach past the bar and make the sheet scroll sideways */
 .sh-sec[open] > summary::after { transform: rotate(90deg); }
 .sh-sec > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 .sh-in { padding-bottom: 8px; overflow-x: auto; }
