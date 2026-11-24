@@ -75,7 +75,9 @@ button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--a
 
 /* The groups of the Character screen: a bar for each (a button: the title, a tip, a chevron); one open at a time (Decision 4d). Nothing scrolls by itself: the screen keeps its scroll. */
 #card { margin-top: 10px; }
-#ap-body { display: flex; flex-direction: column; gap: 6px; }
+#ap-body { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; align-content: start; }
+#ap-body > * { grid-column: 1 / -1; }
+#ap-body[hidden], .ap-sec[hidden] { display: none; }
 #ap-empty { margin: 0; padding: 8px 2px; color: var(--muted); }
 .ap-down { padding: 6px 2px; }
 .ap-sec { display: block; }
@@ -98,3 +100,28 @@ button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--a
 #c-res button.pip { min-height: 44px; padding: 2px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 12px; }
 #c-res button.pip.spent { opacity: .4; text-decoration: line-through; }
 #c-res button.pip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); opacity: 1; text-decoration: none; }
+
+/* M10, one accordion (Decision 4d, R27): while a section is open the page is pinned. The status block goes compact (the name, Hit Points and Armor Class on one
+   line, then the turn bar); the open section's pane is what scrolls; every other bar stays on the screen, above or below it, as a title, up to three side by side
+   (accordion.js works out the rows). If a screen is too short for the bars and 164 px of the open section, the bars scroll with it rather than squeeze it. */
+#sheet.pin > #card { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: 6px; }
+#sheet.pin #ap-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-content: stretch; }
+#sheet.pin .ap-sec.open { display: flex; flex-direction: column; min-height: 0; }
+#sheet.pin .ap-sec.open > .ap-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+#sheet.pin .ap-sec.open > .ap-h { flex: none; }
+#sheet.pin .ap-likely { display: none; }
+#sheet.pin .ap-bar { min-height: 44px; }
+#sheet.pin .ap-bar[aria-expanded="false"] { grid-template-columns: minmax(0, 1fr); padding: 4px 6px; text-align: center; font-size: 13px; }
+#sheet.pin .ap-bar[aria-expanded="false"] .ap-bt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sheet.pin .ap-bar[aria-expanded="false"] :is(.ap-tip, .ap-chev) { display: none; }
+#sheet.pin #status-block { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; }
+#sheet.pin #status-block > * { grid-column: 1 / -1; margin-top: 0; }
+#sheet.pin #card-head { grid-column: 1; min-height: 44px; min-width: 0; }
+#sheet.pin #card-head > div:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sheet.pin #c-sub { display: none; }
+#sheet.pin #c-hp { grid-column: 2; grid-row: 1; gap: 8px; white-space: nowrap; }
+#sheet.pin #c-hp .bar { display: none; }
+#sheet.pin #c-res { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+#sheet.pin #c-res::-webkit-scrollbar { display: none; }
+#sheet.pin #c-level:not(:empty) { font-size: 13px; }
+#ap-sheet > #sheet-body { padding-top: 2px; }

@@ -130,7 +130,7 @@ async function pass(browser, url, label, opts, grid) {
       await run.do('the menu\'s New game in a running game also starts with the chosen party', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'chronicle', title: 'Second mark' }));
         await wait(page, () => JSON.stringify(window.hextable.state).includes('Second mark'));
-        await openMenu(page, 'settings'); await page.locator('#set-new').scrollIntoViewIfNeeded(); await waitShown(page, '#set-new');
+        await openMenu(page, 'settings/leave'); await page.locator('#set-new').scrollIntoViewIfNeeded(); await waitShown(page, '#set-new');
         await tap('#set-new'); await tap('#set-new');
         await wait(page, () => !JSON.stringify(window.hextable.state).includes('Second mark'));
         if (!(await pcs(page)).some((x) => x.name === 'Tessa Vale') || (await pcs(page)).length !== 5) throw new Error('the party was lost');

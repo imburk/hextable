@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab, open, chip, chipPick, openMenu, panelTab, openGroup, menuStill } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, onCanvas, closeMenu, openTab, open, chip, chipPick, openMenu, openChar, panelTab, openGroup, menuStill } from './lib.mjs';
 
 // ---------- the action panel (docs/specs/table-ui.md, Decision 6, task T3; moved into the Character screen by M4 of docs/specs/one-token-menu.md) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch: the groups of the Character screen (Explore first with the ranking and the DM's rests in Rest), the Features group
@@ -11,7 +11,7 @@ const rows = (page) => page.$$eval('#ap-explore [data-row]', (b) => b.map((x) =>
 const pick = async (page, name) => { await chip(page, `${name}`); await wait(page, () => !document.querySelector('#card').hidden); };
 // The menu on the selected character's screen, and the group `id` open there.
 const waitTab = async (page, id) => {
-  await openMenu(page, 'sheet');
+  await openChar(page);
   await wait(page, (t) => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec === t, id).catch(async (err) => {
     const at = await page.evaluate(() => ({ sel: document.getElementById('c-name')?.textContent, bars: [...document.querySelectorAll('#ap-body .ap-sec:not([hidden]) .ap-bar')].map((b) => `${b.dataset.sec}:${b.getAttribute('aria-expanded')}`), empty: document.getElementById('ap-empty')?.textContent, mode: window.hextable.mode.kind }));
     throw new Error(`${err.message.split('\n')[0]} (the page: ${JSON.stringify(at)})`);
@@ -40,7 +40,7 @@ async function clear(page, touch, fight) {
 async function tokenKept(page) {
   const at = () => page.evaluate(() => { const r = document.getElementById('btn-menu').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)].join(','); });
   await closeMenu(page); const before = await at();
-  await openMenu(page, 'sheet'); const during = await at();
+  await openChar(page); const during = await at();
   if (before !== during) throw new Error(`the token moved for the menu: ${before} then ${during}`);
   const over = await page.evaluate(() => { const t = document.getElementById('btn-menu'), r = t.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); const d = document.getElementById('drawer').getBoundingClientRect(); const lv = document.querySelector('#menu-levels').getBoundingClientRect(); return { onTop: !!e && (t === e || t.contains(e)), levelsBottom: lv.bottom, tokenTop: r.top, wide: innerWidth >= 900, drawerRight: d.right, tokenLeft: r.left, tokenRight: r.right }; });
   if (!over.onTop) throw new Error('something is over the token with the menu open');
@@ -104,7 +104,7 @@ async function solo(browser, url, label, opts) {
 
       await run.do('a condition is a pill; tapping it says how it ends, tapping again closes it', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'condition', actor: 'fighter', condition: 'poisoned', on: true }));
-        await openMenu(page, 'sheet');                       // the status block (conditions) is the top of the Character screen now
+        await openChar(page);                       // the status block (conditions) is the top of the Character screen now
         await waitShown(page, '#c-res [data-how="cond:poisoned"]');
         await page.click('#c-res [data-how="cond:poisoned"]');
         await waitShown(page, '#ap-how');
@@ -157,7 +157,7 @@ async function solo(browser, url, label, opts) {
         const other = await state(page, (S) => S.encounter.order.map((o) => o.id).find((i) => S.entities[i].kind === 'pc' && i !== S.encounter.order[S.encounter.turn].id));
         await page.evaluate((i) => window.hextable.select(i), other);
         // Reactions is shown only when there is a Reaction to use (R29): this creature's group, or one line of reasons
-        await openMenu(page, 'sheet');
+        await openChar(page);
         await wait(page, () => !document.getElementById('ap-empty').hidden || document.querySelector('#ap-bar-reactions')?.offsetParent);
         const has = await shown(page, '#ap-bar-reactions');
         const bars = await page.$$eval('#ap-body .ap-sec:not([hidden]) .ap-bar', (b) => b.map((x) => x.dataset.sec));
