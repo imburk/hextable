@@ -85,7 +85,7 @@ export const HOOK_WORDS = {
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
-  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks',
+  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points',
 };
 // What a modifier does to that thing. `v` is the value in words, `h` the hook's noun.
 export const OP_WORDS = {
@@ -140,7 +140,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
-export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken'];
+export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero'];
 export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spell.attack', 'opportunity'];
 // Hooks nothing calls `modifiers()` for: a trait's modifier there changes nothing (`hp.max` is applied by the step that puts it on, whatever its `when` says).
 export const UNREAD_HOOKS = ['hp.max', 'carry'];
@@ -1144,6 +1144,10 @@ function modPhrase(m, at) {
   if (!op) this.bad(`${at}: the modifier's op is not one the engine knows.`);
   if (!hook || !op) return 'a change the reader cannot read';
   if (hook === 'opportunity' && op === 'autoFail') return 'no Opportunity Attacks (it cannot make them)';
+  // Death Ward (engine/resolve.js `warded0`, engine/rolls.js `kill`).
+  if (hook === 'hp.zero' && !(op === 'min' && m.value === 1)) { this.bad(`${at}: a modifier on hp.zero is { on: "hp.zero", op: "min", value: 1, uses: 1 }.`); return 'a change at 0 Hit Points the reader cannot read'; }
+  if (hook === 'hp.zero') this.num(`${at}.value`, 1, 'Hit Point');
+  if (hook === 'hp.zero') return 'to keep 1 Hit Point the first time damage would take it to 0 Hit Points, however large the damage (and a `kill` step does nothing to it instead)';
   if (op === 'crit') return `${OP_WORDS.crit('', HOOK_WORDS[hook])}`;
   // Mage Armor: a base Armor Class of so much plus an ability modifier (engine/rolls.js `acOf`, `modifier`).
   if (op === 'baseAc') {
@@ -1195,7 +1199,7 @@ function modPhrase(m, at) {
 function modExtras(m, at, toCaster) {
   const bits = [];
   if (m.against === 'target') bits.push(toCaster ? 'it holds only against the spell\'s target' : 'it holds only against the spell\'s target');
-  if (m.uses === 1) { this.num(`${at}.uses`, 1, 'use'); bits.push(this.inTrait ? 'a trait has no use to spend, so it applies every time' : 'the first roll it applies to uses it up'); }
+  if (m.uses === 1) { this.num(`${at}.uses`, 1, 'use'); bits.push(this.inTrait ? 'a trait has no use to spend, so it applies every time' : m.on === 'hp.zero' ? 'that one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it' : 'the first roll it applies to uses it up'); }
   if (m.once === 'turn') bits.push('it applies at most once a turn');
   if (m.op === 'proficient') bits.push('while the effect lasts, a check with that skill or tool adds the Proficiency Bonus, once, if the creature is not proficient in it already (Expertise included, which is not doubled again), and counts as a check that uses a proficiency; the creature\'s sheet is not changed');
   if (m.onFail === true) bits.push('the dice are added only to a roll that failed, where they could turn it');

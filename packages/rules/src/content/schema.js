@@ -53,7 +53,10 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
   'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20',
   // `opportunity`: whether the creature can make Opportunity Attacks (`autoFail`: it can't; Staggering Blow).
-  'opportunity'];
+  'opportunity',
+  // `hp.zero`: the creature would drop to 0 Hit Points, or be killed outright by a `kill` step. `{ op: 'min', value: 1, uses: 1 }`, as a modifier step:
+  // it drops to 1 Hit Point instead (a kill does nothing to it), and that use ends the part (Death Ward). docs/specs/rules-expansion.md, "Build notes: Death Ward".
+  'hp.zero'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
@@ -129,6 +132,8 @@ export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageT
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
+  // `hp.zero` (Death Ward): only `{ on, op: 'min', value: 1, uses: 1 }`, and only as a modifier step, so that the use that saves the creature ends it.
+  if (m.on === 'hp.zero' && !(stepOk && m.op === 'min' && m.value === 1 && m.uses === 1 && Object.keys(m).length === 4)) say('a modifier on hp.zero is a modifier step `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`: the creature drops to 1 Hit Point instead of 0, once');
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
   // dice ("1d4", "-1d4") rolled each time the modifier applies.
   // `{ rolled: true }` (addition F of docs/specs/homebrew-subclasses.md): the number the damage step just before this one rolled; only a modifier step

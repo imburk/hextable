@@ -848,6 +848,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
     for (let i = 0; i < base.length && less > 0; i++) { const n = Math.min(base[i], less); base[i] -= n; less -= n; if (n) noted[i].push({ name: cut.name, roll: -n }); }
   }
   let total = 0, lost = 0;
+  const firstEvent = ev.length;
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
@@ -866,6 +867,9 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
   if (total > 0) damaged(s, ev, t, parts.find((p) => typeof p.by === 'string')?.by ?? null, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
+  // Death Ward (a modifier on `hp.zero`): the creature would drop to 0 Hit Points and drops to 1 instead, however much the damage was, and the
+  // use ends the ward. Not when the DM sets its Hit Points (`raw`). It comes before Relentless Rage: the creature never reaches 0.
+  if (!dying && !raw && before > 0 && t.hp <= 0 && warded0(s, t, ev)) for (let i = firstEvent; i < ev.length; i++) if (ev[i].type === 'damage' && ev[i].target === t.id && ev[i].hp === 0) ev[i].hp = t.hp;
   // Relentless Rage: dropping to 0 Hit Points without dying outright while raging, a Constitution save keeps it up.
   if (!dying && t.hp <= 0 && lost - before < t.maxHp) relentless(s, t, ev);
   if (dying) {                                            // already dying
@@ -964,6 +968,18 @@ function afterHit(s, e, t, ev) {
     fx.parts.push({ target: e.id, modifier: structuredClone(f.afterHit.modifier), against: t.id, ends: { on: 'turnEnd', who: now } });
     ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: t.id, conc: false, lasts: 'until the end of the current turn', targets: [e.id] });
   }
+}
+
+// A creature that would drop to 0 Hit Points and has a modifier on `hp.zero` (Death Ward: `{ op: 'min', value: 1, uses: 1 }`) drops to that many
+// instead, and the use ends the ward (SRD 5.2.1, Death Ward: "the target instead drops to 1 Hit Point, and the spell ends"). True if one held.
+function warded0(s, t, ev) {
+  const z = modifiers(s, t, 'hp.zero', { target: t });
+  if (z.min === null) return false;
+  const name = effectsOf(s).find((fx) => z.used.some((p) => fx.parts.includes(p)))?.name ?? 'A ward';
+  t.hp = Math.max(1, Math.min(t.maxHp, z.min));
+  ev.push({ type: 'note', id: t.id, text: `${name}: ${t.hp} Hit Point${t.hp === 1 ? '' : 's'} left instead of 0` });
+  useUp(s, ev, z.used);
+  return true;
 }
 
 // A creature with `relentless` (Relentless Rage) has dropped to 0 Hit Points while the feature it

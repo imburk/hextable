@@ -289,6 +289,17 @@
             },
             {
               "modifier": {
+                "on": "hp.zero",
+                "op": "min",
+                "value": 1,
+                "uses": 1
+              },
+              "ends": {
+                "on": "turnStart"
+              }
+            },
+            {
+              "modifier": {
                 "on": "attack.received",
                 "op": "disadvantage",
                 "when": [

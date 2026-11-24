@@ -989,6 +989,30 @@ Tests in `packages/rules/test/jack-of-all-trades.test.js`.
 - **Amount `{ prof: 0.5 }`.** Half the Proficiency Bonus, rounded down (`amount`, `derive.js`). No other fraction is taken.
 - **Jack of All Trades** is that modifier on `check`, and is `auto`. A passive score counts it.
 
+#### Build notes: Death Ward (amendment, #726 job 3)
+
+Tests in `packages/rules/test/death-ward.test.js`. SRD 5.2.1, Death Ward: "The first time the target would drop to 0 Hit Points before
+the spell ends, the target instead drops to 1 Hit Point, and the spell ends. If the spell is still in effect when the target is
+subjected to an effect that would kill it instantly without dealing damage, that effect is negated against the target, and the spell
+ends."
+
+- **Hook `hp.zero`.** Asked when damage would take a creature from above 0 Hit Points to 0 (`damage`, `engine/resolve.js`), and by a
+  `kill` step (`kill`, `engine/rolls.js`). It takes one shape, `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`, and only as a
+  modifier step (a spell's, an action's): the linter refuses any other op or value, a `when`, a missing `uses`, and the hook in a
+  trait or a feat's grant, where nothing would use it up.
+- **On damage.** The creature is left at 1 Hit Point, however large the damage (no death from massive damage: it never reaches 0).
+  The `damage` events of that hit carry `hp: 1`, a `note` on the creature says "Death Ward: 1 Hit Point left instead of 0", and the
+  part is used up (`useUp`), which ends the spell (`effectEnd`, "it was used"). Then the hit goes on as for any creature still up:
+  the Concentration save, a reaction to the damage.
+- **On a `kill` step.** Nothing happens to the creature, a `note` says "Death Ward: not killed", and the part is used up.
+- **Not asked:** when the DM sets Hit Points (`setHp`: the DM's word); for a creature already at 0 Hit Points (it is not dropping to
+  0: the damage counts against its Death Saving Throws and the ward stays); when its Hit Point maximum is lowered.
+- **Before Relentless Rage.** A warded, raging barbarian is left at 1 by the ward; no Constitution save is made and no use counted.
+- **Several wards on one creature** (two casters) all answer the same drop and all end.
+- **Death Ward** is `assist`: the engine does all of the above, and a death the DM applies by hand from a `manual` entry (Power Word
+  Kill, a monster's text) is the DM's to undo, ending the spell with `endEffect`.
+- **The reader** has the hook's words; the golden spell "Many Blessings" and the golden monster "Cinderjaw Hound" (its Smoke Step) carry one.
+
 ### A class
 
 ```js

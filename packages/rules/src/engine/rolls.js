@@ -17,6 +17,13 @@ import { baked, weaponKey } from '../imbue.js';
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
 export function kill(s, t, ev) {
   if (t.dead) return;
+  // Death Ward (a modifier on `hp.zero`): "an effect that would kill it instantly without dealing damage ... is negated against the target, and the spell ends".
+  const z = modifiers(s, t, 'hp.zero', { target: t });
+  if (z.min !== null) {
+    const name = effectsOf(s).find((fx) => z.used.some((p) => fx.parts.includes(p)))?.name ?? 'A ward';
+    ev.push({ type: 'note', id: t.id, text: `${name}: not killed` });
+    return useUp(s, ev, z.used);
+  }
   t.dead = true; t.hp = 0;
   ev.push({ type: 'died', id: t.id });
   concentrationLost(s, ev, t, `${t.name} died`);

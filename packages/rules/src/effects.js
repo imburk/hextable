@@ -131,6 +131,7 @@ function summarise(def) {
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
+    if (m.on === 'hp.zero') return { short: '1 HP instead of 0, once', long: `The first time it would drop to 0 Hit Points it drops to 1 instead, within ${def.duration}` };
     const text = m.op === 'baseAc' ? `base AC ${m.value.base} + ${m.value.ability.toUpperCase()}`
       : m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
       : m.op === 'add' && typeof m.value === 'string' ? `${m.value.startsWith('-') ? '' : '+'}${m.value} ${what}` : `${m.op} on ${what}`;
