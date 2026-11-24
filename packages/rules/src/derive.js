@@ -268,7 +268,7 @@ function itemFeature(y, level) {
 // A number that grows with the class (schema.js, lintAmount).
 export function amount(x, c, level, abil, pb = proficiencyFor(level)) {
   if (typeof x === 'number') return x;
-  if (x?.prof !== undefined) return x.prof * pb;                                   // so many times the Proficiency Bonus (Alert)
+  if (x?.prof !== undefined) return Math.floor(x.prof * pb);                       // so many times the Proficiency Bonus (Alert); 0.5 is half, rounded down (Jack of All Trades)
   if (x?.column !== undefined) return c.table[x.column][level - 1];
   // { mod, min, die }: so many of that die as the modifier (Sear Undead: Wisdom modifier d8s, at least one).
   if (x?.mod !== undefined && x.die !== undefined) return `${Math.max(x.min ?? 0, mod(abil[x.mod]))}d${x.die}`;

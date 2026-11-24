@@ -12,7 +12,7 @@ import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { SIZES as SIZE_LIST } from '../content/schema.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, spot, steering, turnBudget, unblocked, up } from './shared.js';
-import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { airspace, aloft, along, beyond, footingOf, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
 import { partRefusal } from './attacks.js';
 import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
@@ -335,10 +335,13 @@ function march(s, leader, walked, ev) {
     // The places it could stop, and where it stands now (staying put costs nothing).
     const crowded = living(s).some((o) => o.id !== f.id && overlapAt(o, o.pos, f, f.pos, gridOf(s.map)));   // it stands where the one in front now does: it must move off
     const spots = [...(crowded ? [] : [{ k: key(f.pos), h: f.pos, cost: 0 }]), ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
+    // Kept up: close to the one in front and on its footing (#728; `footingOf`, world.js). The foot of a ledge the one in front has climbed,
+    // or of its ladder, is close on the map and is not with it: from there the follower goes on up, as far along the trail as it gets.
+    const withFront = footingOf(s, front);
     let best = null, bestKey = null;
     for (const sp of spots) {
       const near = apartAt(s, front, front.pos, f, sp.h), at = along(trail, sp.h, G);
-      const rank = [near <= KEEP_UP ? 0 : 1, at.i > frontI ? 0 : 1, at.d, at.i, near, sp.cost];
+      const rank = [near <= KEEP_UP && withFront(sp.h) ? 0 : 1, at.i > frontI ? 0 : 1, at.d, at.i, near, sp.cost];
       if (!best || less(rank, bestKey)) { best = sp; bestKey = rank; }
     }
     // It can get through if some way it could walk comes up beside the one in front (others in the party do not bar the way).
@@ -395,11 +398,12 @@ function formation(s, leader, walked, pending, ev) {
     }
     return out;
   };
-  // How far the leader would walk to each column.
-  const theirs = new Map([[col(leader.pos), 0]]);
-  const lr = moveOptions(s, leader);
-  for (const v of [...lr.values(), ...besideLurk(lr)]) { const c = col(v.h), was = theirs.get(c); if (was === undefined || v.cost < was) theirs.set(c, v.cost); }
-  const joined = (h) => (theirs.get(col(h)) ?? Infinity) <= 2 * FT * (G.dist(leader.pos, h) + KEEP_UP);
+  // Its places share the leader's footing (#728; `footingOf`, world.js). A place at the foot of the ledge the leader stands on, or under its
+  // balcony, is beside it on the map and not with it: the followers would stop below, the party split and nothing said. With no such
+  // place for one of them the column takes them all, up the leader's own trail. Beside a creature the party does not know of counts as
+  // reached, one step further (besideLurk), so the shape gives nothing away.
+  const footing = footingOf(s, leader), lurkCost = new Map(besideLurk(footing.reach).map((v) => [key(v.h), v.cost]));
+  const joined = (h) => footing(h, lurkCost.get(key(h)));
   const ahead = (h) => { const w = G.toWorld(h); return ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu; };
   const water = (h) => ground(s.map, h)?.tile.t === 'water';
   // One who is down, cannot move or cannot get up beside the leader is left to the column after the

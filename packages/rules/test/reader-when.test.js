@@ -127,6 +127,7 @@ function play(hook, tag, withMod, how = {}) {
   } };
   void R;
   if (tag === 'check.proficient') F.skills = ['perception'];
+  if (tag === 'check.unskilled') { F.skills = (F.skills ?? []).filter((k) => k !== 'perception'); if (F.skillBonus) delete F.skillBonus.perception; }   // #732: the check below is Perception
   if (how.abil) F.attacks[0].abil = how.abil;
   const put = () => { if (withMod) wear(holder, { on: hook, op: hook === 'damage.taken' ? 'immune' : hook === 'opportunity' ? 'autoFail' : 'add', ...(hook === 'damage.taken' || hook === 'opportunity' ? {} : { value: how.onFail ? '1d20' : BONUS }), ...(how.onFail ? { onFail: true } : {}), when: [tag] }); };
   const setUp = () => { MAKE[tag]?.(ctx); put(); };
