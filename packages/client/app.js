@@ -858,8 +858,8 @@ function tokenState() {
   const now = S.encounter ? S.entities[current(S)] : null, turn = !!now && plays(now) && up(now);
   const frac = known ? Math.max(0, Math.min(1, e.hp / Math.max(1, e.maxHp))) : null;
   const n = Number($('menu-waiting').dataset.count) || 0;
-  const words = ['Menu', turn ? 'Your turn' : '', known ? (e.dead ? `${shownName(S, e)} has died` : `${shownName(S, e)}, ${e.hp} of ${e.maxHp} Hit Points`) : '', n ? `${n} waiting for you` : '', isOffline() ? 'The link to the table is lost' : ''].filter(Boolean);
-  return { hp: frac, low: known && e.hp <= e.maxHp / 2, down: known && !e.dead && e.hp <= 0, dead: known && !!e.dead, turn, offline: isOffline(), label: words.length > 1 ? `${words.join('. ')}.` : 'Menu' };
+  const words = [turn ? 'Your turn' : '', known ? (e.dead ? `${shownName(S, e)} has died` : `${shownName(S, e)}, ${e.hp} of ${e.maxHp} Hit Points`) : '', n ? `${n} waiting for you` : '', isOffline() ? 'The link to the table is lost' : ''].filter(Boolean);
+  return { hp: frac, low: known && e.hp <= e.maxHp / 2, down: known && !e.dead && e.hp <= 0, dead: known && !!e.dead, turn, offline: isOffline(), says: words.length ? `${words.join('. ')}.` : '' };
 }
 // The health label: "Wren 3 / 8 HP" beside the token for 3 s whenever the selected character's Hit Points change.
 function hpNote() {

@@ -107,8 +107,8 @@ async function link(browser, url) {
       await run.do('offline: the bar is across the top, the token is greyed and crossed and says so, and an action is said, not sent', async () => {
         await waitShown(phone, '#offline-bar');
         if (!/Connection lost\. Trying again/.test(await phone.textContent('#offline-bar')) || !/Nothing you do is sent until the table is back\./.test(await phone.textContent('#offline-bar'))) throw new Error(`the bar says "${await phone.textContent('#offline-bar')}"`);
-        const tk = await phone.evaluate(() => { const b = document.getElementById('btn-menu'); return { cls: b.className, label: b.getAttribute('aria-label'), x: getComputedStyle(b.querySelector('.tk-x')).display, hit: document.elementFromPoint(b.getBoundingClientRect().left + 32, b.getBoundingClientRect().top + 32)?.closest('#btn-menu') !== null }; });
-        if (!/\boffline\b/.test(tk.cls) || tk.x === 'none' || !/The link to the table is lost/.test(tk.label) || !tk.hit) throw new Error(`the token: ${JSON.stringify(tk)}`);
+        const tk = await phone.evaluate(() => { const b = document.getElementById('btn-menu'); return { cls: b.className, label: `${b.getAttribute('aria-label')}. ${document.getElementById(b.getAttribute('aria-describedby'))?.textContent}`, x: getComputedStyle(b.querySelector('.tk-x')).display, hit: document.elementFromPoint(b.getBoundingClientRect().left + 32, b.getBoundingClientRect().top + 32)?.closest('#btn-menu') !== null }; });
+        if (!/\boffline\b/.test(tk.cls) || tk.x === 'none' || !/^Menu\. .*The link to the table is lost/.test(tk.label) || !tk.hit) throw new Error(`the token: ${JSON.stringify(tk)}`);
         await openMenu(phone, 'sheet'); await waitShown(phone, '#offline-why');
         if ((await phone.textContent('#offline-why')) !== 'Nothing you do is sent until the table is back.') throw new Error('the character\'s page does not say why');
         const dim = await phone.evaluate(() => [...document.querySelectorAll('#ap-body .ap-bar')].map((b) => Number(getComputedStyle(b).opacity)));

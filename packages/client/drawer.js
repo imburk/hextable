@@ -115,8 +115,9 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (t?.turn && !wasTurn && !still()) { c.remove('pulse'); void token.offsetWidth; c.add('pulse'); }
     if (!t?.turn) c.remove('pulse');
     wasTurn = !!t?.turn;
-    const label = t?.label ?? 'Menu';
-    if (token.getAttribute('aria-label') !== label) token.setAttribute('aria-label', label);
+    // Its name stays "Menu"; what it shows is its description, read after the name ("Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting for you.").
+    const says = t?.says ?? '';
+    if ($('token-says').textContent !== says) $('token-says').textContent = says;
   }
 
   function applyPanels() {

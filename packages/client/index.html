@@ -52,6 +52,7 @@
 <!-- The turn line (Decision 1/7): one line above the token in a fight. A tap opens Turns. -->
 <div id="turnline" role="status" aria-live="polite" hidden><div id="turn-quick" role="group" aria-label="Quick actions" hidden></div><button type="button" id="turn-text"></button><button type="button" id="btn-end" hidden>End turn</button></div>
 <!-- M6 (Decision 7): the banner at the start of my turn (it lets taps through), the health label for 3 s after it changes, the offline bar. -->
+<span id="token-says" class="sr-only"></span>
 <div id="turn-banner" aria-hidden="true" hidden></div>
 <div id="hp-note" aria-hidden="true" hidden></div>
 <div id="offline-bar" role="status" hidden><b>Connection lost. Trying again&hellip;</b> <span>Nothing you do is sent until the table is back.</span></div>
@@ -63,7 +64,7 @@
 
 
 <!-- The token (docs/specs/one-token-menu.md, Decision 1): one die at the bottom of the screen opens the menu. Its id is kept from the old burger. -->
-<button type="button" id="btn-menu" class="token" aria-label="Menu" aria-expanded="false" aria-controls="drawer">
+<button type="button" id="btn-menu" class="token" aria-label="Menu" aria-describedby="token-says" aria-expanded="false" aria-controls="drawer">
   <svg viewBox="0 0 68 68" aria-hidden="true" focusable="false">
     <circle class="tk-disc" cx="34" cy="34" r="31"/>
     <!-- M6: the health arc of the selected character (its length is --hp, set by drawer.js), drawn from the top, clockwise -->
