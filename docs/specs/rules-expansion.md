@@ -970,6 +970,8 @@ A spell aimed at creatures may say which creature types it works on. Tests throu
   creature types (Protection from Evil and Good).
 - **Homebrew** (fix round 1). The field is in the strict-mode guard tables of `schema.js`, as an area's `types` is: its type is a list of
   text (`HOMEBREW_TYPES.creature`) and its length ceiling is the number of creature types, 14 (`HOMEBREW_LENGTHS['creature.types']`).
+  That shape is also a creature's action's, where the linter refuses the field; the reader says so of such an action as a problem
+  (`creatureAim`, `reader.js`), and the reader's golden monster "Flawed Reaver" has one.
 
 ### A class
 

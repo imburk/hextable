@@ -376,7 +376,7 @@ Tier: auto. The engine runs every trait and action of this creature as listed ab
 Not checked against any rulebook.
 
 == monster hb-rk-flawed
-REFUSED: this entry breaks the rules a table checks (5 problems, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.
+REFUSED: this entry breaks the rules a table checks (7 problems, listed apart from this reading), so a table would not load it and it cannot be approved. What follows is how the engine would read it if it were loaded.
 "Flawed Reaver" (Medium, fiend, challenge rating 3, 700 XP when defeated).
 The engine uses the challenge rating only to match a summoning spell that names an exact rating; it does not set any number from it.
 Armor Class 14: one fixed number. Modifiers from its traits and from effects on it change it for an attack.
@@ -416,8 +416,16 @@ Action "Blind Grip": an action. In a fight it spends the creature's action.
       The engine applies part of what Grappled does; the DM applies the rest.
   Worked out from the dice, not a promise: the damage averages 18.5 when the save fails.
   The monster AI never picks this action by itself: the DM sends it.
+Action "Man Catcher": an action. In a fight it spends the creature's action.
+  It is aimed at one creature within 5 feet. The target cannot be the creature itself, and a wall between them keeps it from being picked.
+  The target makes a Strength saving throw against DC 13.
+  On a failure:
+    It has the Grappled condition. (The engine does nothing for a creature that already has it, is at 0 Hit Points, or is immune to it.)
+      Nothing in the engine ends it: the DM removes it.
+      The engine applies part of what Grappled does; the DM applies the rest.
+  The monster AI uses this action on its own turns, but only when it has no weapon attack that reaches a foe: then it aims it at the nearest foe it can reach.
 Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
-Why: 5 things the DM does by hand, listed below.
+Why: 6 things the DM does by hand, listed below.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
 Not checked against any rulebook.
 DM: The attack of step actions.0.effects.0: it is a spell attack, which has no bonus in a creature's action: rolling it and saying whether it hits.
@@ -425,11 +433,13 @@ DM: The healing of step actions.1.effects.0: it adds a modifier the engine does 
 DM: The healing of step actions.1.effects.1: it adds a modifier the engine does not have: applying the amount.
 DM: The action at actions.2: it has neither a reach nor a range.
 DM: Removing the Grappled condition that step actions.2.effects.0.onFail.1 puts on.
+DM: Removing the Grappled condition that step actions.3.effects.0.onFail.0 puts on.
 DM: Whatever the description says beyond the lines above.
 PROBLEM: Step actions.0.effects.0: a creature's action has no spell attack bonus for the engine to use.
 PROBLEM: Step actions.1.effects.0: a creature's action has no spellcasting modifier, so `addMod` gives an amount that is not a number.
 PROBLEM: Step actions.1.effects.1: a creature's action has no spellcasting modifier, so `addMod` gives an amount that is not a number.
 PROBLEM: actions.2: a creature target has neither `reach` nor `range`, which the engine needs to aim it.
+PROBLEM: actions.3: `types` on a creature target is for a spell; the engine does not apply it to a creature's action, which works on a creature of any type.
 
 == monster warhorse
 "Warhorse" (Large, beast, challenge rating 1/2, 100 XP when defeated).
