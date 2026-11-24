@@ -473,11 +473,12 @@ async function drawerPass(browser, url, label, opts) {
         if ((await strip()).filter((k) => k !== 'c').join() !== 'turns,dice,log,settings,dm') throw new Error(`the strip after Reset order: ${await strip()}`);
         await closeMenu(page);
       });
-      if (!phone) await run.do('pinned, the menu stays open and the map makes room for it', async () => {
+      if (!phone) await run.do('pinned, the menu stays open and slides over the map, which does not move', async () => {
+        const c0 = await rectOf(page, '#gl');
         await openMenu(page, 'turns');
         await page.click('#drawer-pin'); await sleep(300);
-        const c = await rectOf(page, '#gl'), d = await rectOf(page, '#drawer');
-        if (Math.abs(c.w - (c.vw - d.w)) > 2) throw new Error(`the canvas (${c.w}) did not give way to the menu (${d.w})`);
+        const c = await rectOf(page, '#gl');
+        if (JSON.stringify(c) !== JSON.stringify(c0)) throw new Error(`the canvas moved for the pinned menu: ${JSON.stringify(c0)} -> ${JSON.stringify(c)}`);
         if ((await page.getAttribute('#drawer', 'role')) !== 'complementary') throw new Error('a pinned menu is a landmark, not a dialog');
         if (await shown(page, '#drawer-scrim')) throw new Error('a pinned menu dims the map');
         // A press and drag on the map (not a tap: the party stands near enemies, and a tap there starts a fight) must not close a pinned menu.
@@ -486,7 +487,7 @@ async function drawerPass(browser, url, label, opts) {
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-pinned.png` : '/dev/null' }).catch(() => {});
         await page.click('#drawer-pin'); await sleep(300);
         const c2 = await rectOf(page, '#gl');
-        if (c2.w !== c2.vw) throw new Error('the canvas did not come back');
+        if (c2.w !== c2.vw) throw new Error('the canvas is not full width');
         await closeMenu(page);
       });
       await run.do('a reaction question hides the menu for as long as it is asked, and gives it back after', async () => {
