@@ -1350,6 +1350,8 @@ R.onHover = (hex, hit) => {
 const endTurn = (id) => { if (CLS.askCure(S.entities[id])) return; act({ type: 'endTurn', actor: id }); };       // Self-Restoration with a choice asks first
 $('btn-end').onclick = () => endTurn(current(S));          // the turn line's End turn is for whoever's turn it is, when it is the viewer's
 $('c-end').onclick = () => endTurn(selId);       // Self-Restoration with a choice asks first
+// The join question sits above the turn line, whatever its height (one row, or two with the quick actions on a phone): the line's measured height is `--turn-h`.
+new ResizeObserver(() => document.documentElement.style.setProperty('--turn-h', `${$('turnline').offsetHeight}px`)).observe($('turnline'));
 $('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
 $('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
 $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
