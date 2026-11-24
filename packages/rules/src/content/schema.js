@@ -3102,7 +3102,7 @@ const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
 // The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
 // SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
 export const HOMEBREW_LENGTHS = Object.freeze({
-  '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'creature.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
   'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
@@ -3357,7 +3357,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   spellMap: { '*': 's[]' },
   target: { self: 'b', creature: 'o', area: 'o', near: 'i' },
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i' },
-  creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]' },
+  creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's' },

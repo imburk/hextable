@@ -968,6 +968,8 @@ A spell aimed at creatures may say which creature types it works on. Tests throu
   Animal Friendship's charm also ends on damage from its caster's side (`ends: { on: 'damaged', by: 'source' }`, already in the
   vocabulary). Not built: a limit that changes the roll and not the target (Blight's Plant, Shatter's constructs), and wards against
   creature types (Protection from Evil and Good).
+- **Homebrew** (fix round 1). The field is in the strict-mode guard tables of `schema.js`, as an area's `types` is: its type is a list of
+  text (`HOMEBREW_TYPES.creature`) and its length ceiling is the number of creature types, 14 (`HOMEBREW_LENGTHS['creature.types']`).
 
 ### A class
 
