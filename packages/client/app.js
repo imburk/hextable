@@ -847,8 +847,9 @@ function turnStarts() {
   const b = $('turn-banner');
   b.textContent = `Your turn, ${shownName(S, now)}`; b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
   clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.hidden = true; }, 1600);
-  // A player looking at the first level, Turns or a character's page is moved to the character whose turn it is; any other screen is left alone, and a closed menu stays closed (question 3).
-  if (!isDM() && D.isOpen && ['', 'turns', 'sheet'].includes(D.path.join('/'))) { if (selId !== now.id) select(now.id); D.open('sheet', null, true); }
+  // A player looking at the first level or a character's page is moved to the character whose turn it is; Turns and every other screen are left alone (someone watching the
+  // order keeps it), and a closed menu stays closed (question 3).
+  if (!isDM() && D.isOpen && ['', 'sheet'].includes(D.path.join('/'))) { if (selId !== now.id) select(now.id); D.open('sheet', null, true); }
 }
 // What the token shows of the selected character (drawer.js draws it): the health arc, the lit ring on a turn of mine, the flat bar when down, grey when dead or offline; and its spoken name.
 let hpSeen = null, hpTimer = null;

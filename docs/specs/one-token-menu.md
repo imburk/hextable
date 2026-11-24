@@ -223,7 +223,8 @@ rather than greyed in a fight; the sheet is still shown under the status block (
   while the table waits for someone else's answer (a player's view says only `prompt.waiting`). A player whose one character is down reads "You are down · Death saves ✓ ✓ ○ ✗ ○ ○" (or
   "· Stable"); End turn stays on their own turn. Dead adds nothing to the line.
 - **The banner** (`#turn-banner`): "Your turn, Wren" for 1.6 s when a turn of the viewer's starts, once a turn; it takes no tap, and joining a table in the middle of a turn shows none.
-  A player looking at the first level, Turns or a character's page is moved to the character whose turn it is; a closed menu stays closed (question 3's default), and any other screen is left alone.
+  A player looking at the first level or a character's page is moved to the character whose turn it is; a closed menu stays closed (question 3's default), and Turns and every other
+  screen are left alone (a player watching the order keeps it: the `drawer` pass has a phone on Turns while turns pass).
 - **The token** (`drawer.js` `paintToken`, from `tokenState()` in `app.js`): a health arc for the selected character (the good colour; the bad one at half or less), the ring lit with a
   glow on a turn of the viewer's and one pulse when it starts, a flat bar across the die when the character is down, grey when it is dead or the link is lost (then crossed too). Its name
   stays "Menu" (the `drawer` pass pins it) and its description (`aria-describedby`, `#token-says`) says the rest, so it is read "Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting for you." The health label ("Wren 3 / 8 HP") shows beside the token for 3 s after a change.
