@@ -6,8 +6,8 @@
 // the spell did nothing to the target." The vocabulary is in docs/specs/rules-expansion.md, "Build notes: a creature-type limit on a target".
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SPELLS } from "../src/content/index.js";
-import { lintEntry } from "../src/content/schema.js";
+import { CONTENT, SPELLS } from "../src/content/index.js";
+import { CREATURE_TYPES, HOMEBREW_LENGTHS, HOMEBREW_TYPES, lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { derive } from "../src/derive.js";
 import { apply, makeEntity } from "../src/engine.js";
@@ -181,4 +181,18 @@ test("undo, redo and a replay give the same state", () => {
   const again = JSON.parse(start);
   for (const a of acts) ok(apply(again, a, DM));
   assert.equal(json(again), end, "replay");
+});
+
+// Fix round 1: the field is in the homebrew guard tables (its type, and a ceiling on its length), as an area's `types` is (#430).
+test("homebrew: a creature target's types are a list of text with a ceiling (every type once, and not one more)", () => {
+  const strict = (types) => lintEntry("spells", {
+    ...structuredClone(CONTENT.spells["hold-person"]), id: "hb-x-hold-thing", name: "Hold Thing", source: "homebrew:x", checked: false,
+    target: { creature: { count: 1, types } },
+  }, { pack: "x", srd: CONTENT });
+  assert.deepEqual(strict(["undead"]), [], "one type is accepted");
+  assert.deepEqual(strict([...CREATURE_TYPES]), [], "all of the creature types are accepted");
+  assert.equal(HOMEBREW_TYPES.creature.types, "s[]");
+  assert.equal(HOMEBREW_LENGTHS["creature.types"], CREATURE_TYPES.length, "the ceiling is the number of creature types");
+  assert.match(strict([...CREATURE_TYPES, "undead"]).join("\n"), /a list of 15; the most is 14/);
+  for (const bad of ["humanoid", 7, {}, [7], [], ["dragonborn"], ["undead", "undead"]]) assert.ok(strict(bad).length, `${JSON.stringify(bad)} is refused`);
 });
