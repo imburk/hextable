@@ -15,6 +15,7 @@ import { createAssets } from "../src/assets.js";
 import { worldAssets } from "../src/tables.js";
 import { current, makeEntity } from "../../rules/src/engine.js";
 import { derive } from "../../rules/src/derive.js";
+import { startEffect } from "../../rules/src/durations.js";
 import { twin } from "./twin.js";
 
 const dirs = [];
@@ -50,6 +51,45 @@ test("creatures: a player's area action with `choose` is told and sent the same 
       { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
     ],
   }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); Object.assign(byName(w, "Ghost"), { hp: 500, maxHp: 500, saveBonus: { dex: -100 } }); }, plain: burn });
+});
+
+// ---- Death Ward (#726 job 3): a hidden creature under the ward, caught by a player's area action ----
+test("death ward: damage the DM does to a hidden warded creature, enough to drop it to 0 Hit Points, is sent the same as with no creature there", () => {
+  const WARD = { target: null, modifier: { on: "hp.zero", op: "min", value: 1, uses: 1 } };
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500, actions: [{ ...BLAST, target: { area: { shape: "emanation", size: 30, exceptCaster: true } } }] });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 2, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500, saveBonus: { dex: -100 } });
+      w.putIn();                                                  // the hidden creature exists before the fight, which leaves it outside the arena
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+      turnOf(w, "fighter");
+    },
+    steps: [
+      (w) => {                                                    // a player's own hostile area would reveal it (by design), so the DM does the harm
+        const g = byName(w, "Ghost");
+        if (!g) return;
+        w.must({ type: "harm", actor: g.id, amount: 50, dtype: "fire" });
+        assert.equal([g.hp, g.dead, w.state.effects.some((fx) => fx.parts.some((p) => !p.ended))].join(), "1,false,false", "the ward held and ended");
+      },
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    ],
+  }, {
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost");
+      Object.assign(g, { hp: 1, maxHp: 7, saveBonus: { dex: -100 } });
+      const fx = startEffect(w.state, { name: "Death Ward", spell: "death-ward", source: g.id, duration: "8 hours" });
+      fx.parts.push({ ...WARD, target: g.id });
+    },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); w.state.seq++; },
+  });
 });
 
 // ---- grapple: a hidden creature beside a player's grapple and drag (was the hidden-grappler and drag cases of grapple*.test.js) ----
