@@ -187,6 +187,92 @@ opens that character's screen. Aiming folds the menu (one overlay at a time).
 open the existing pickers); no keyboard shortcuts 1 to 6; no pinned bars (M10) and no setting to open the character on my turn; Brutal Strike and Hide are hidden
 rather than greyed in a fight; the sheet is still shown under the status block (M5).
 
+### M5 build notes (sheet sections, Say, DM screens, Setup's groups)
+
+**Built.**
+- **Sheet.** `renderSheet` draws four sections at the foot of the Character screen: Abilities and skills (the facts, the six scores, saving throws, skills, defenses, attacks), Features and traits
+  (class features, pocket dimension, reactions), Spells known, Story (species, background, class, who plays it, gear; for the DM, Refresh from sheet). Each is a bar (48 px) that opens and shuts
+  its section in place; which are shut is kept on the device (`hextable.sheetShut`). The notices (a level to take, a form, a missing pack, an import) stay above the sections. The name and class
+  are the status block's; the sheet keeps the name as a heading for a screen reader only.
+- **Log and chat.** A Say box (`#say-form`, `handouts.js`) above the private note sends the engine's `say`: a player as a character of their own or "Out of character", the DM "As the DM" or as a
+  party member. The clock heads the log (`#log-clock`).
+- **DM tools.** The panel is a list of seven screens (Decision 4d's: Undo and the fight, Creatures, Map, sight and light, Table rules, Party and time, Scenes and handouts, Table file), each row
+  with a line saying what it holds. A row opens its screen as the menu's third level (`table/dm/creatures`): the heading names it, the back arrow and Left return to the list with the focus on
+  the row, and each screen keeps its own scroll. `drawer.js` reads the screens from the page (`.sec-index`, `.sec-screen[data-sec]`), so another panel can have them without new code. What waits
+  for the DM (players to let in, unsettled rewards, the fallen party's card) stays above the list. The old Fight section is split: starting, ending, auto-play and pace are on Undo and the
+  fight; the rules are on Table rules. Every id is kept.
+- **Setup.** Seven sections in Decision 4d's order: Display and controls (theme, floors, walls, caves, shadows, edge of a fight, camera buttons, keys), Dice, The menu (the token's place, slide or
+  appear, side, pin, which group a character's page opens on), Characters and packs, The table's rules, Help and about, Leave the table (Leave for anyone at a table, New game in a solo game).
+
+**Settled.**
+- **"Every DM section is reachable in three taps"** is counted from the menu's first level: Table, DM tools, the screen. With the token it is four. M8's few places (DM tools on the first level,
+  question 24) makes it three with the token; the first level is not changed here because M8 owns it.
+- **A last row, "All tools on one page"**, shows the seven screens one under the other. It is not in the spec. It is there for a DM on a wide screen who would rather scroll one page, and
+  it is what `openMenu(page, 'dm')` taps in the smoke passes, so the thirty-odd passes that click a DM control by its id did not have to learn which screen it is on. A pass about one screen
+  names it (`openMenu(page, 'dm/creatures')`).
+- **The sheet's sections start open** and are independent of each other; M10 makes them part of the one accordion. Started shut, a dozen smoke passes that read the sheet would each need a tap first.
+- **The dice and animation controls stay on the Dice screen** (`#dice-show`, `#pace-pick`, `#dice-auto-mine`): the `drawer` pass pins them there. Setup › Dice has a button that opens the Dice
+  screen and, for the DM, "Throw the monsters' dice for me". They move when D1/D5 give the Dice screen its own content.
+- **Characters and packs** in Setup is words and buttons that open the DM's screens (Creatures, Table file) or the player's character; the tools themselves are not moved.
+- A line the table refuses (too long, too fast) is not put back in the Say box, as the scene's box does; the refusal shows as a toast.
+
+### M6 build notes (the states of Decision 7)
+
+**Built.**
+- **The turn line** (`tracker.js`, `screenTurnLine`): "you in N" counts the turns that will be taken before the viewer's (`turnsAway`): a dead creature's place is none. "Waiting for a reaction…"
+  while the table waits for someone else's answer (a player's view says only `prompt.waiting`). A player whose one character is down reads "You are down · Death saves ✓ ✓ ○ ✗ ○ ○" (or
+  "· Stable"); End turn stays on their own turn. Dead adds nothing to the line.
+- **The banner** (`#turn-banner`): "Your turn, Wren" for 1.6 s when a turn of the viewer's starts, once a turn; it takes no tap, and joining a table in the middle of a turn shows none.
+  A player looking at the first level or a character's page is moved to the character whose turn it is; a closed menu stays closed (question 3's default), and Turns and every other
+  screen are left alone (a player watching the order keeps it: the `drawer` pass has a phone on Turns while turns pass).
+- **The token** (`drawer.js` `paintToken`, from `tokenState()` in `app.js`): a health arc for the selected character (the good colour; the bad one at half or less), the ring lit with a
+  glow on a turn of the viewer's and one pulse when it starts, a flat bar across the die when the character is down, grey when it is dead or the link is lost (then crossed too). Its name
+  stays "Menu" (the `drawer` pass pins it) and its description (`aria-describedby`, `#token-says`) says the rest, so it is read "Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting for you." The health label ("Wren 3 / 8 HP") shows beside the token for 3 s after a change.
+- **Waiting for you** (`#menu-waiting`, the top of the first level, only when the badge shows): a player's unopened handouts (Open) and a level their character can take (the DM gives it);
+  the DM's players waiting to join (Let in) and unsettled rewards (Settle), and under them the to-do tray, moved here from DM tools (`#todo-mount`, `todo.js` unchanged). The badge is the
+  count of those lines and cards.
+- **Dead** (`#dead-line` in the status block): "Wren has died. Your DM decides what happens next." and Open the log.
+- **Offline** (the link judged lost, `linkquality.js`): `#offline-bar` across the top with Decision 10's two sentences, the token greyed and crossed, the character's page says "Nothing
+  you do is sent until the table is back." with its bars and rows greyed, and an action tried is answered with that sentence and not sent. "Back at the table." when it returns.
+
+**Settled.**
+- **An unseen creature's turn is counted only while it is being taken.** A player's order holds the slot `{ someone: true }` only then (`view.js`), so "you in 3" cannot count an unseen turn
+  still to come without giving the creature away. The count is right for what the player is sent, and one short when a hidden creature acts in between; the line then reads "Something
+  moves unseen". The test pins both (it plays the order out and compares).
+- **"You are down" is for a player with one character.** The DM, and a solo player with the whole party, keep the round and whose turn it is; their downed character shows on the token
+  (the flat bar) and on its row.
+- **The connection dot stays beside the token while the link is good** (T104 item 4 stands): the `link` pass pins a good dot there. The offline bar and the token carry the lost state.
+- **The DM's badge has no level-ups in it** (Decision 7's DM row lists waiting players, rewards and the tray); a player's has their own character's.
+- With the tray open, a wide screen's first column is 340 px instead of 240 so a card's tools fit.
+
+### #717 build notes (a fight action in two taps again)
+
+**The problem.** After M4 a weapon or spell at a target is: the token, the character's row, the row (its group is open on a turn), the target: about four taps, where the old dock took two.
+Only a plain attack with the default weapon is one (tap the enemy).
+
+**Ways considered.**
+
+| Way | Taps | Why not, or why |
+|---|---|---|
+| The token opens straight on the character's page on my turn | 3 | Saves one tap but breaks "a closed menu opens on its first level", and the menu still covers the map between the choice and the target |
+| The menu stays open after a row arms, the target tapped beside it | 3 | Works only on a wide screen; on a phone the sheet covers the map (and "one overlay at a time") |
+| A radial of rows round the token | 2 | A second menu, and M8's arc already takes the quick tap on the die |
+| **Quick actions on the turn line** | **2** | Picked: the turn line is already on the clean screen on my turn, beside End turn; nothing new floats over the map |
+
+**The approach (built).** On a turn of the viewer's, when the creature whose turn it is is the selected one, the turn line carries up to three **quick actions** on a row of its own above
+"Round 2 · Your turn · End turn": the row used last by this creature in this fight (if it can be used again), then the first usable row of Attack, then of Cast, then the next of each, no row
+twice. They are the same rows the Character screen offers (`groupsFor`, so only what can be used now, R29), with the same names; a tap does exactly what the row does (`run`): an attack or an
+aimed spell arms and the map takes the target, a spell with nothing to aim shows its slot and Cast on the aim bar. The armed one is marked, and a second tap puts it down. So: **the quick
+action, the target: two taps**, and a third only where the row itself asks something first (a weapon with options, a slot).
+
+**What it keeps.** The clean screen: nothing is added outside a turn of the viewer's, nothing while exploring, nothing on anyone else's turn; the token does not move; the menu is not
+opened, so nothing covers the map. Each quick action is 44 px high and at most a third of the line wide (a long name is cut with an ellipsis; its full name is its accessible name). Setup ›
+The menu › "Quick actions on the turn line on my turn" turns them off (on by default; kept on the device as `hextable.quickRows`).
+
+**What it does not do.** It offers no healing, movement or feature rows (the turn bar's segments and the groups hold those; three is what fits a phone), and it follows the selected
+creature: a DM who has selected another creature than the one whose turn it is sees none. The menu's own path is still four taps; question 29 (open the character's page on my turn) is
+M10's.
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the

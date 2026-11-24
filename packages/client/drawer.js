@@ -9,6 +9,8 @@
 //   D.open('sheet'); D.open(['table', 'settings']); D.open(); D.close(); D.toggle(); D.back();   D.sync(S);   (S is null before a table is joined)
 //
 // A place is a path: [] is the first level, ['turns'] a screen of it, ['table'] the Table list, ['table', 'settings'] a screen under it.
+// A screen may hold screens of its own (M5: DM tools): its panel has a list `.sec-index` of rows `[data-sec]` and one `.sec-screen[data-sec]`
+// (with `data-title`) for each; ['table', 'dm', 'creatures'] is one of them, the third level. `all` shows every one, one under the other.
 // The old tab names still open their screens (`open('dm')` is ['table', 'dm']; `open('character')` is `open('sheet')`).
 //
 // Preferences it keeps (client only, through `prefs`): hextable.drawerSide ('left' | 'right': where a wide screen's columns come from),
@@ -38,7 +40,7 @@ const COLUMNS = `${WIDE}, (orientation: landscape) and (max-height: 500px)`;    
 const FLICK = 0.5, SWIPE = 60;                 // px per ms, px: how far or fast a drag on the handle must go to close
 const SLIDE_MS = 720;                          // the longest slide (Decision 6, round 2); a panel stays drawn this long after it leaves
 
-export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {} }) {
+export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {}, token: tokenOf = () => null }) {
   const el = $('drawer'), scrim = $('drawer-scrim'), token = $('btn-menu'), title = $('drawer-title'), live = $('drawer-live');
   const rootList = $('menu-root'), tableList = $('menu-table'), body = $('drawer-body');
   const mqWide = matchMedia(WIDE), mqCols = matchMedia(COLUMNS);
@@ -51,6 +53,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   let path = [], isOpen = false, held = false, opener = null, hideTimer = null, lingerTimer = null;
   let settling = false;               // the menu is still sliding open: its columns come with it
   let shownLeaf = null;               // the screen whose panel is drawn: it stays drawn while the sheet slides it away
+  let shownKey = '';                  // that screen and the screen inside it, 'dm/creatures': what a kept scroll belongs to
   const scrolls = new Map();          // a screen's scroll, kept while another is shown (Decision 4a)
   let announced;                      // the turn last spoken, so a turn is spoken once; undefined until the first look at a table
   const reduced = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
@@ -65,10 +68,14 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   // A name, a path array or 'a/b' as a path. An unknown name is the first level.
   function pathOf(which) {
     const segs = (Array.isArray(which) ? which : String(which ?? '').split('/')).map(keyOf).filter(Boolean);
-    if (segs.length === 1 && segs[0] in TABS && TABS[segs[0]].parent) return [TABS[segs[0]].parent, segs[0]];
+    if (segs[0] in TABS && TABS[segs[0]].parent) return [TABS[segs[0]].parent, ...segs];       // 'dm' is ['table', 'dm']; 'dm/creatures' is ['table', 'dm', 'creatures']
     return segs;
   }
-  const leafOf = (p) => (p.length && p.at(-1) in TABS ? p.at(-1) : null);
+  const leafOf = (p) => p.find((k) => k in TABS) ?? null;
+  const subOf = (p) => { const l = leafOf(p); return l && p.at(-1) !== l ? p.at(-1) : null; };
+  // The screens a screen holds, from its panel: { id: title }.
+  const secsOf = (leaf) => { const out = {}, panel = leaf && $(TABS[leaf].panel); if (!panel) return out; for (const x of panel.querySelectorAll(':scope > .sec-screen[data-sec]')) out[x.dataset.sec] = x.dataset.title || x.dataset.sec; if (panel.querySelector(':scope > .sec-index [data-sec="all"]')) out.all = TABS[leaf].title; return out; };
+  const withSub = (base, p) => { const leaf = leafOf(base), k = leaf ? p[base.length] : null; return k && Object.hasOwn(secsOf(leaf), k) ? [...base, k] : base; };
   // What can be reached now. Before a table is joined only the Table list has anything to show.
   function reach() {
     const S = state();
@@ -82,10 +89,10 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   function valid(p, ok) {
     if (!p.length) return [];
     if (!ok.root.includes(p[0])) return [];
-    if (p[0] === 'table') { if (p.length === 1) return ['table']; return ok.table.includes(p[1]) ? ['table', p[1]] : ['table']; }
-    return p[0] in TABS && !TABS[p[0]].parent ? [p[0]] : [];
+    if (p[0] === 'table') { if (p.length === 1) return ['table']; return ok.table.includes(p[1]) ? withSub(['table', p[1]], p) : ['table']; }
+    return p[0] in TABS && !TABS[p[0]].parent ? withSub([p[0]], p) : [];
   }
-  const nameOfPlace = (seg) => (seg in TABS ? (seg === 'turns' && !state()?.encounter ? 'Party' : TABS[seg].title) : LISTS[seg]?.title ?? ROOT_TITLE);
+  const nameOfPlace = (seg) => (seg in TABS ? (seg === 'turns' && !state()?.encounter ? 'Party' : TABS[seg].title) : LISTS[seg]?.title ?? secsOf(leafOf(path))[seg] ?? ROOT_TITLE);
 
   // ---- painting ----
   const word = (b, text) => { const s = b.querySelector('.mr-sum'); if (s && s.dataset.text !== text) { s.dataset.text = text; s.firstChild?.nodeType === 3 ? (s.firstChild.textContent = text) : s.prepend(document.createTextNode(text)); } };
@@ -98,6 +105,21 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     word($('tab-turns'), !enc ? '' : now?.someone ? (S.settings?.unseenTurns === 'quiet' ? `Round ${enc.round}` : `Round ${enc.round} · Something moves unseen`) : `Round ${enc.round} · ${S.entities[now?.id]?.name ?? 'Someone'}'s turn`);
   }
 
+  // The token's states (Decision 7; M6): the arc is the selected character's Hit Points (the good colour, the bad one at half or less), the ring is lit on a turn of the
+  // viewer's and pulses once when it starts, a flat bar lies across the die when the character is down, and the token is grey when it is dead or the link is lost (then crossed too).
+  let wasTurn = false;
+  function paintToken(S) {
+    const t = S ? tokenOf() : null, c = token.classList;
+    c.toggle('has-hp', t?.hp != null); c.toggle('low', !!t?.low); c.toggle('down', !!t?.down); c.toggle('dead', !!t?.dead); c.toggle('offline', !!t?.offline); c.toggle('turn', !!t?.turn);
+    token.style.setProperty('--hp', String(Math.round((t?.hp ?? 0) * 100)));
+    if (t?.turn && !wasTurn && !still()) { c.remove('pulse'); void token.offsetWidth; c.add('pulse'); }
+    if (!t?.turn) c.remove('pulse');
+    wasTurn = !!t?.turn;
+    // Its name stays "Menu"; what it shows is its description, read after the name ("Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting for you.").
+    const says = t?.says ?? '';
+    if ($('token-says').textContent !== says) $('token-says').textContent = says;
+  }
+
   function applyPanels() {
     const open = !el.hidden && !held;
     for (const [id, t] of Object.entries(TABS)) $(t.panel).hidden = !(open && id === shownLeaf);   // a hidden panel is not drawn: the app only renders what is shown
@@ -106,7 +128,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   function paint() {
     const S = state(), open = isOpen && !held, ok = reach(), cols = columns();
     path = valid(path, ok);
-    const leaf = leafOf(path), cur = path.length;
+    const leaf = leafOf(path), cur = path.length, sub = subOf(path);
     document.body.dataset.drawer = side;
     document.body.dataset.menuShape = cols ? 'columns' : 'sheet';
     document.body.dataset.menuMotion = still() ? 'appear' : 'slide';
@@ -115,20 +137,31 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     document.body.classList.toggle('drawer-pinned', open && pinned());
     document.body.classList.toggle('drawer-modal', open && modal());
     document.body.classList.toggle('drawer-pretable', !S);
-    el.dataset.path = path.join('/'); el.dataset.depth = String(cur);
+    el.dataset.path = path.join('/'); el.dataset.depth = String(leaf ? path.indexOf(leaf) + 1 : cur);      // a screen inside a screen is drawn in its screen's column: the depth is the screen's
 
     // The rows: which can be reached, and the one the path goes through.
     for (const [id, t] of Object.entries(TABS)) {
       const b = $(t.button);
       b.hidden = !(t.parent ? ok.table : ok.root).includes(id);
       b.setAttribute('aria-current', String(t.parent ? path[0] === t.parent && path[1] === id : path[0] === id));
+      // A screen that holds screens: its list while none is chosen, then the one chosen (or all of them).
+      const panel = $(t.panel), index = panel.querySelector(':scope > .sec-index');
+      if (index) {
+        const at = id === leaf ? sub : null;
+        panel.dataset.sec = at ?? '';
+        index.hidden = !!at;
+        for (const x of panel.querySelectorAll(':scope > .sec-screen')) x.hidden = !(at === 'all' || at === x.dataset.sec);
+      }
     }
     if ($('party').childElementCount) $('tab-sheet').hidden = true;      // the characters are rows of their own on the first level (Decision 4b); the one Character row is for a table with none
     $('tab-table').setAttribute('aria-current', path[0] === 'table' ? 'true' : 'false');
     summaries(S);
     // The badges: the token carries one, the sum of what waits (the DM's waiting players, a player's unseen handouts).
-    const n = ['dm-badge', 'ho-badge'].reduce((sum, id) => sum + ($(id).hidden ? 0 : Number($(id).textContent) || 0), 0);
+    // M6: the app counts what waits (the lines of "Waiting for you" and the cards of the DM's to-do tray) and says so on that box; before it has, the two old badges are the sum.
+    const counted = $('menu-waiting')?.dataset.count;
+    const n = !S ? 0 : counted !== undefined ? Number(counted) || 0 : ['dm-badge', 'ho-badge'].reduce((sum, id) => sum + ($(id).hidden ? 0 : Number($(id).textContent) || 0), 0);
     $('menu-badge').hidden = !n; $('menu-badge').textContent = n;
+    paintToken(S);
     $('table-badge').hidden = $('dm-badge').hidden; $('table-badge').textContent = $('dm-badge').textContent;
 
     // The levels. A level is `here` (the one in view), `under` (one the path went through) or `over` (not reached). A sheet shows `here`;
@@ -160,13 +193,14 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     let want = open ? leaf : el.hidden ? null : shownLeaf;
     if (open && !leaf && shownLeaf && !cols && !still()) {
       want = shownLeaf;
-      lingerTimer = setTimeout(() => { if (!leafOf(path)) { shownLeaf = null; applyPanels(); } }, SLIDE_MS);
+      lingerTimer = setTimeout(() => { if (!leafOf(path)) { shownLeaf = null; shownKey = ''; applyPanels(); } }, SLIDE_MS);
     }
-    if (want !== shownLeaf) {
-      if (shownLeaf) scrolls.set(shownLeaf, body.scrollTop);
-      shownLeaf = want;
+    const key = want ? `${want}/${want === leaf ? sub ?? '' : shownKey.split('/')[1] ?? ''}` : '';      // a screen inside a screen keeps a scroll of its own
+    if (key !== shownKey) {
+      if (shownKey) scrolls.set(shownKey, body.scrollTop);
+      shownLeaf = want; shownKey = key;
       applyPanels();
-      if (want) body.scrollTop = scrolls.get(want) ?? 0;
+      if (want) body.scrollTop = scrolls.get(key) ?? 0;
     } else applyPanels();
 
     // The map makes room for a pinned menu: the insets are what every fixed piece of the table reads.
@@ -231,7 +265,8 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   // One level back, to where the row that was chosen is, so a keyboard keeps its place.
   function back() {
     if (!path.length) return false;
-    const left = path.at(-1), row = $(left in TABS ? TABS[left].button : LISTS[left]?.button);
+    const left = path.at(-1), inner = subOf(path);
+    const row = inner ? $(TABS[leafOf(path)].panel).querySelector(`:scope > .sec-index [data-sec="${inner}"]`) : $(left in TABS ? TABS[left].button : LISTS[left]?.button);
     go(path.slice(0, -1), { focus: null });
     (row && !row.hidden && row.getClientRects().length && getComputedStyle(row).visibility !== 'hidden' ? row : title).focus({ preventScroll: true });
     return true;
@@ -248,6 +283,10 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   el.addEventListener('click', (ev) => {
     const row = ev.target.closest('.menu-row[data-go]');
     if (row && el.contains(row)) { const k = row.dataset.go; go(row.closest('#menu-table') ? ['table', k] : [k]); return; }
+    const sec = ev.target.closest('.sec-index .menu-row[data-sec]'), at = leafOf(path);
+    if (sec && el.contains(sec) && at) { go([...path.slice(0, path.indexOf(at) + 1), sec.dataset.sec]); return; }
+    const jump = ev.target.closest('[data-menu-open]');     // a button of a screen that opens another place (Setup's rows to the Dice screen, DM tools, About; a line of Waiting for you)
+    if (jump && el.contains(jump)) { go(valid(pathOf(jump.dataset.menuOpen), reach())); return; }
     const crumb = ev.target.closest('#crumb-list [data-path]');
     if (crumb) go(crumb.dataset.path ? crumb.dataset.path.split('/') : []);
   });
@@ -362,6 +401,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     open, close, toggle, back, sync, reset, paint,
     get isOpen() { return isOpen && !held; },
     get tab() { return leafOf(path) ?? 'turns'; },
+    get section() { return subOf(path); },
     get path() { return [...path]; },
     get side() { return side; }, setSide,
     get pinned() { return pin; }, setPin,

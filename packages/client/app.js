@@ -56,7 +56,7 @@ import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.j
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
-import { levelUpHtml } from './levelup.js';
+import { levelUpHtml, levelReady, levelNext } from './levelup.js';
 import { heightsOf, livePick, makePick, rowOf, stepRow, cellAt, inRow, columnHl, planeHl, stateLine, cellWords, flyState, pickStamp, waysLeft, band, blockAtPoint, blockNearest, pitchFor, frameNudge, fallWarning, pickedWords, placeList } from './heights.js';
 import { HEIGHT_ACTIONS, ACTIONS, actionOf, presetOf, leaveAlone, createWalker, yawFacing } from './keys.js';
 import { initFeedback } from './feedback.js';
@@ -305,6 +305,7 @@ let refreshAsk = null;   // set when the DM taps Refresh from sheet or Refresh t
 let acted = 0;           // actions sent or armed, so a key's step can tell whether its tap sent one
 function act(action, byAI = false) {
   if (skipping()) return;
+  if (isOffline()) { if (!byAI) toast(OFFLINE_WHY); return; }      // M6: said, not sent; the table has the last word when the link is back
   acted++;
   action = CLS.decorate(action);
   if (!toThrow(action, byAI)) return T.send(action);
@@ -813,13 +814,94 @@ function hintWords(offer, waits) {
 }
 // The turn line (tracker.js `screenTurnLine`): one line above the token in a fight, with End turn on the viewer's own turn.
 function showTurnLine() {
-  const plays = (e) => mine(e) && (!isDM() || e.side === 'party'), tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
+  const tl = screenTurnLine(S, plays), box = $('turnline');      // the DM's foes are not "yours" in the words, though the DM may end their turns
   box.hidden = !tl;
   if (!tl) return;
   if ($('turn-text').textContent !== tl.text) $('turn-text').textContent = tl.text;
-  box.classList.toggle('mine', tl.mine);
+  box.classList.toggle('mine', tl.mine); box.classList.toggle('down', !!tl.down);
   const now = S.entities[current(S)];
   $('btn-end').hidden = !(now && mine(now) && !T.readOnly);
+}
+// ---------- M6: the states of Decision 7 (docs/specs/one-token-menu.md) ----------
+// Offline: the link to the table is lost (linkquality.js). A bar across the top, the token greyed and crossed, the rows greyed with the sentence, and nothing is sent.
+const OFFLINE_WHY = 'Nothing you do is sent until the table is back.';
+const isOffline = () => !!T && !T.solo && !!T.link?.known && T.link.state === 'lost';
+let wasOffline = false;
+function showOffline() {
+  const off = isOffline();
+  document.body.classList.toggle('offline', off);
+  $('offline-bar').hidden = !off; $('offline-why').hidden = !off;
+  if (wasOffline && !off && S) toast('Back at the table.', true);
+  wasOffline = off;
+}
+// The creatures this person plays for the words "your turn": their own; for the DM (and in solo) the party, not the foes.
+const plays = (e) => mine(e) && (!isDM() || e.side === 'party');
+// The banner: "Your turn, Wren" for 1.6 s when a turn of mine starts, once a turn. It takes no tap. Joining a table in the middle of my turn shows nothing: it is not news.
+let bannerKey, bannerTimer = null;
+function turnStarts() {
+  const enc = S.encounter, now = enc ? S.entities[current(S)] : null, key = enc ? `${enc.id ?? ''}/${enc.round}/${enc.turn}/${now?.id ?? ''}` : null;
+  if (key === bannerKey) return;
+  const first = bannerKey === undefined;
+  bannerKey = key;
+  if (first || !now || !plays(now) || !up(now)) return;
+  const b = $('turn-banner');
+  b.textContent = `Your turn, ${shownName(S, now)}`; b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.hidden = true; }, 1600);
+  // A player looking at the first level or a character's page is moved to the character whose turn it is; Turns and every other screen are left alone (someone watching the
+  // order keeps it), and a closed menu stays closed (question 3).
+  if (!isDM() && D.isOpen && ['', 'sheet'].includes(D.path.join('/'))) { if (selId !== now.id) select(now.id); D.open('sheet', null, true); }
+}
+// What the token shows of the selected character (drawer.js draws it): the health arc, the lit ring on a turn of mine, the flat bar when down, grey when dead or offline; and its spoken name.
+let hpSeen = null, hpTimer = null;
+function tokenState() {
+  if (!S) return null;
+  const e = S.entities[selId], known = !!e?.abil && typeof e.maxHp === 'number' && (mine(e) || e.side === 'party');
+  const now = S.encounter ? S.entities[current(S)] : null, turn = !!now && plays(now) && up(now);
+  const frac = known ? Math.max(0, Math.min(1, e.hp / Math.max(1, e.maxHp))) : null;
+  const n = Number($('menu-waiting').dataset.count) || 0;
+  const words = [turn ? 'Your turn' : '', known ? (e.dead ? `${shownName(S, e)} has died` : `${shownName(S, e)}, ${e.hp} of ${e.maxHp} Hit Points`) : '', n ? `${n} waiting for you` : '', isOffline() ? 'The link to the table is lost' : ''].filter(Boolean);
+  return { hp: frac, low: known && e.hp <= e.maxHp / 2, down: known && !e.dead && e.hp <= 0, dead: known && !!e.dead, turn, offline: isOffline(), says: words.length ? `${words.join('. ')}.` : '' };
+}
+// The health label: "Wren 3 / 8 HP" beside the token for 3 s whenever the selected character's Hit Points change.
+function hpNote() {
+  const e = S.entities[selId], known = !!e?.abil && typeof e.maxHp === 'number' && (mine(e) || e.side === 'party');
+  const was = hpSeen; hpSeen = known ? { id: e.id, hp: e.hp } : null;
+  if (!known || !was || was.id !== e.id || was.hp === e.hp) return;
+  const n = $('hp-note'); n.textContent = `${shownName(S, e)} ${e.hp} / ${e.maxHp} HP`; n.hidden = false; n.classList.toggle('bad', e.hp < was.hp);
+  clearTimeout(hpTimer); hpTimer = setTimeout(() => { n.hidden = true; }, 3000);
+}
+// Waiting for you: what the token's badge counts, in words, at the top of the first level, each with its way in. A player's: handouts not opened yet, a level their
+// character can take (the DM's to give). The DM's: players waiting to join, rewards not settled, and under them the cards of the to-do tray (todo.js draws those).
+function renderWaiting() {
+  const items = [];
+  if (isDM()) {
+    for (const p of (T.lobby?.pending ?? [])) items.push({ text: `${p.name} is waiting to join`, label: 'Let in', act: `in:${p.id}` });
+    if (S.conclusion && S.conclusion.published === false) items.push({ text: 'A fight is over and its rewards are not settled', label: 'Settle', act: 'rewards' });
+  } else {
+    for (const h of HO.unseen()) items.push({ text: `New handout: ${h.title || 'untitled'}`, label: 'Open', act: `ho:${h.id}` });
+    for (const e of Object.values(S.entities)) if (e.kind === 'pc' && e.owner === T.you.userId && levelReady(e)) items.push({ text: `${shownName(S, e)} can reach level ${levelNext(e)}. Your DM levels them up.`, label: 'Open', act: `sheet:${e.id}` });
+  }
+  const n = items.length + TD.count(), box = $('menu-waiting');
+  box.dataset.count = String(n); box.hidden = !n;
+  const html = items.map((i) => `<li><span>${esc(i.text)}</span><button type="button" data-wait="${esc(i.act)}">${esc(i.label)}</button></li>`).join('');
+  if ($('waiting-list').dataset.sig !== html) { $('waiting-list').dataset.sig = html; $('waiting-list').innerHTML = html; }
+  $('waiting-list').hidden = !items.length;
+}
+// Dead: the character's page says so, with the way to what happened.
+function deadLine(e) {
+  const d = $('dead-line'), on = !!e && e.kind === 'pc' && !!e.dead && mine(e);
+  d.hidden = !on;
+  const html = on ? `${esc(shownName(S, e))} has died. ${isDM() ? 'You decide what happens next.' : 'Your DM decides what happens next.'} <button type="button" class="link" data-menu-open="log">Open the log</button>` : '';
+  if (d.dataset.sig !== html) { d.dataset.sig = html; d.innerHTML = html; }
+}
+// #717: the quick actions of the turn line. On a turn of mine, for the selected creature when the turn is its own: up to three rows that need the map next, so a fight
+// action is the quick action and then the target. They are the action panel's own rows (AP.quick), and a tap is a tap on the row.
+function showQuick() {
+  const box = $('turn-quick'), now = S.encounter ? S.entities[current(S)] : null;
+  const rows = now && now.id === selId && plays(now) && up(now) && !T.readOnly && prefs.get('hextable.quickRows') !== false && !$('turnline').hidden ? AP.quick() : [];
+  box.hidden = !rows.length;
+  const html = rows.map((r) => `<button type="button" class="tq${r.armed ? ' armed' : ''}" data-quick="${esc(r.id)}" aria-pressed="${r.armed}" aria-label="${esc(r.label)}${r.sub ? `, ${esc(r.sub)}` : ''}"><span>${esc(r.label)}</span></button>`).join('');
+  if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
 }
 function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = (t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0) - 2 * flyNudge; }      // a flyer's column slides the picture down (an inset of 2 px moves it 1 px) so its top is on the screen      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
 let joinNo = null;               // the fight whose "Bring the others in?" was put off
@@ -835,8 +917,10 @@ function refresh() {
   const out = enc && isDM() && !T.readOnly && joinNo !== enc.id ? outsiders(S) : [];
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
-  showTurnLine();
-  $('btn-leave').hidden = isDM() || !!T.solo;
+  showTurnLine(); turnStarts(); showOffline(); hpNote(); deadLine(e);
+  // Setup's last section: leaving this table on this device (anyone at a table), or a new game (solo).
+  $('btn-leave').hidden = !!T.solo; $('set-new').hidden = !T.solo; $('set-sec-leave').hidden = !!T.readOnly;
+  { const n = T.solo ? 'A new game replaces the one saved on this device.' : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
   $('menu-session').hidden = false; $('menu-new').hidden = !T.solo; $('menu-leave').hidden = !!T.solo;
   showUndo();
 
@@ -872,6 +956,7 @@ function refresh() {
   const hl = { selected: selId, turn: enc ? cur : null };
   let hint = '', go = false;
   AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
+  showQuick();
   if (e) {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
     const my = mine(e), full = !!e.abil;
@@ -967,6 +1052,7 @@ function refresh() {
   if (isDM()) renderDM();
   TD.sync(); TD.waiting();
   HO.refresh();
+  renderWaiting();
   SC.refresh();
   RP.refresh();
   CLS.sync(mode);
@@ -983,43 +1069,68 @@ const LV = initLogView({
   line: (e, inFight) => `<li class="lg-line ${esc(e.cls)}" data-kind="${inFight && (e.kind === 'explore' || e.kind === 'combat') ? 'combat' : e.kind}">${esc(e.text)}${e.dice ? glyphs(e.dice) : ''}</li>`,
   ask: (fight) => T.history({ fight }),
 });
-function renderLog() { LV.render(); }
+function renderLog() { const c = $('log-clock'), t = S && Number.isFinite(S.clock) ? `It is ${clockText(S.clock)}.` : ''; c.hidden = !t; if (c.textContent !== t) c.textContent = t; LV.render(); }      // the clock heads Log and chat, as it heads Turns (M5)
 
 // What is lent to the creature for a time (a feature of a subclass: DEBT T96): the skills and tools, and what lent them. The sheet itself is not changed.
 const lentLine = (e) => { const l = lentList(S, e); return l.length ? `<p class="note" id="sheet-lent">Proficiency lent for a time: ${l.map((x) => `${esc(niceId(x.skill ?? x.tool))} (${esc(x.name)}${x.lasts ? `, ${esc(x.lasts)}` : ''})`).join('; ')}.</p>` : ''; };
 
 // The Armor Class that applies, and what changed it ("15 (Mage Armor)").
 function acLine(e) { const a = acShown(S, e, isDM()); return a.why.length ? `${a.ac} (${a.why.join(', ')})` : `${a.ac}`; }
+// Which of the sheet's sections this device keeps shut (the others are open), and what is known of a character's story: the choices its sheet records.
+const sheetShut = new Set(Array.isArray(prefs.get('hextable.sheetShut')) ? prefs.get('hextable.sheetShut') : []);
+$('sheet-body').addEventListener('toggle', (ev) => {
+  const d = ev.target; if (!d.matches?.('details.sh-sec')) return;
+  if (d.open === !sheetShut.has(d.dataset.sh)) return;
+  if (d.open) sheetShut.delete(d.dataset.sh); else sheetShut.add(d.dataset.sh);
+  prefs.set('hextable.sheetShut', [...sheetShut]);
+}, true);
+function storyHtml(e) {
+  const sh = e.sheet, facts = [];
+  const sp = sh?.species?.id ? CONTENT.species?.[sh.species.id] : null;
+  const lin = sp?.lineage?.options?.find?.((o) => o.id === sh.species.lineage)?.name;
+  if (sp) facts.push(`Species: ${sp.name}${lin ? ` (${lin})` : ''}`);
+  if (typeof sh?.background === 'string' && sh.background) facts.push(`Background: ${niceId(sh.background)}`);
+  if (e.kind === 'pc') facts.push(`Level ${e.level} ${classTitle(e)}`);
+  if (e.ownerName) facts.push(`Played by ${e.ownerName}`);
+  return facts.length ? `<div class="facts">${facts.map((f) => `<span>${esc(f)}</span>`).join('')}</div>` : '';
+}
 function renderSheet() {
   const e = S.entities[selId]; if (!e) return;
   const st = e.castAbil ? spellStats(e, S) : null;
   const abil = Object.entries(e.abil).map(([k, v]) => `<div><small>${k}</small><b>${signed(mod(v))}</b><small>${v}</small></div>`).join('');
   const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(e.saveBonus?.[k] ?? mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
+  // The sheet in four sections (docs/specs/one-token-menu.md, Decision 4 and M5), each under a bar that opens and shuts it in place: what a notice says (a level to take,
+  // a form, a missing pack) stays above them. The name and the class are the status block's, above; the heading is kept for a screen reader.
+  const sec = (id, title, body) => (body.trim() ? `<details class="sh-sec" data-sh="${id}"${sheetShut.has(id) ? '' : ' open'}><summary>${title}</summary><div class="sh-in" role="region" aria-label="${title}">${body}</div></details>` : '');
+  const story = storyHtml(e);
   $('sheet-body').innerHTML = `
-    <h2>${esc(e.name)}</h2>
+    <h2 class="sr-only">${esc(e.name)}</h2>
     ${isDM() ? importLine(T.solo ? recall(S, { types: ['chronicle'] }) : chron, e) : ''}
-    <p class="note">${e.kind === 'pc' ? `Level ${e.level} ${esc(classTitle(e))}` : esc(MONSTERS[e.tpl]?.name ?? (typeof CONTENT.summons[e.tpl]?.name === 'string' ? CONTENT.summons[e.tpl].name : e.name ?? 'Creature'))}${formOf(e) ? ` · in the form of a ${esc(formName(e))}` : ''}</p>
     ${levelUpHtml(S, e, { dm: isDM(), tag: 'sheet' })}
     ${isDM() && missingText(e) ? `<p class="note" id="sheet-subclass-missing">${esc(missingText(e))}</p>` : ''}
     ${CLS.sheetBanner(e)}
+    ${sec('abilities', 'Abilities and skills', `
     <div class="facts"><span>HP ${e.hp} / ${e.maxHp}${e.tempHp > 0 ? ` (+${e.tempHp} temporary)` : ''}</span><span id="sheet-ac">AC ${acLine(e)}</span><span>Speed ${e.speed} ft</span><span>Initiative ${signed(e.initBonus ?? mod(e.abil.dex))}</span><span>Proficiency ${signed(e.prof)}</span>${xpFact(e)}</div>
     <div class="stats">${abil}</div>
     ${isDM() && e.sheet && dmLine(e.sheet, tableRule(S.settings)) ? `<p class="note" id="sheet-scores-line">${esc(dmLine(e.sheet, tableRule(S.settings)))}</p>` : ''}
     <p class="note">Saving throws: ${saves}</p>
+    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
+    ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
     ${e.actions ? `<section><h3>Actions</h3><table><tr><th>Name</th><th>Roll</th><th>Effect</th><th>Reach</th></tr>
       ${e.actions.map(actionProfile).map((p) => `<tr><td>${esc(p.name)}</td><td>${p.bonus !== undefined ? signed(p.bonus) : p.dc ? `${p.save.toUpperCase()} DC ${p.dc}` : ''}</td><td>${esc(p.long)}${p.recharge ? ` · recharge ${p.recharge[0]}–6` : ''}${p.uses ? ` · ${p.uses.n}/day` : ''}</td><td>${p.far ? `${p.far} ft` : p.area ? `${p.area.size} ft ${p.area.shape}` : ''}</td></tr>`).join('')}</table></section>` : `<section><h3>Attacks</h3><table><tr><th>Name</th><th>To hit</th><th>Damage</th><th>Range</th></tr>
-      ${e.attacks.map((a0) => { const a = imbued(S, e, a0); return `<tr><td>${esc(a.name)}${a.imbued?.length ? ` <small>(${esc(a.imbued.join(', '))})</small>` : ''}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${[a.dtype, ...(a.alt ?? [])].join(' or ')}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`; }).join('')}</table></section>`}
+      ${e.attacks.map((a0) => { const a = imbued(S, e, a0); return `<tr><td>${esc(a.name)}${a.imbued?.length ? ` <small>(${esc(a.imbued.join(', '))})</small>` : ''}</td><td>${signed(a.bonus)}</td><td>${a.damage} ${[a.dtype, ...(a.alt ?? [])].join(' or ')}</td><td>${a.type === 'melee' ? `${a.reach} ft` : `${a.range[0]}/${a.range[1]} ft`}</td></tr>`; }).join('')}</table></section>`}`)}
+    ${sec('features', 'Features and traits', `
+    ${featuresHtml(e, mine(e))}
+    ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
+    ${mine(e) ? pocketHtml(e) : ''}
+    ${mine(e) ? reactionsHtml(S, e) : ''}`)}
+    ${sec('spells', 'Spells known', `
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
-      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}
-    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}
-    ${featuresHtml(e, mine(e))}
-    ${mine(e) ? pocketHtml(e) : ''}
-    ${mine(e) ? reactionsHtml(S, e) : ''}
-    ${Object.keys(e.features).length && !e.feats?.length ? `<section><h3>Features</h3><div class="facts">${[e.features.sneak && `Sneak Attack ${e.features.sneak}`, e.features.secondWind && `Second Wind (${e.uses.secondWind} left)`, e.features.extraAttack && `Extra Attack (${1 + e.features.extraAttack} attacks)`, e.features.packTactics && 'Pack Tactics', e.features.nimbleEscape && 'Nimble Escape'].filter(Boolean).map((f) => `<span>${f}</span>`).join('')}</div></section>` : ''}
-    ${e.vuln.length || e.immune.length || e.resist.length ? `<section><h3>Defenses</h3><div class="facts">${e.vuln.map((v) => `<span>Vulnerable: ${v}</span>`).join('')}${e.resist.map((v) => `<span>Resistant: ${v}</span>`).join('')}${e.immune.map((v) => `<span>Immune: ${v}</span>`).join('')}</div></section>` : ''}
-    <section><h3>Skills · passive Perception ${passive(S, e, 'perception')}</h3><div class="facts">${Object.keys(SKILLS).map((k) => `<button type="button" class="skill${e.skills?.includes(k) ? ' prof' : ''}${isLent(S, e, k) ? ' prof lent' : ''}" data-skill="${k}"${isLent(S, e, k) ? ' data-lent="1"' : ''}>${k.replace(/-/g, ' ')} ${signed(skillBonus(S, e, k))}${isLent(S, e, k) ? ' · lent' : ''}</button>`).join('')}</div>${lentLine(e)}<p class="note">Tap a skill to roll it. The DM says what comes of it.</p></section>
-    ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}`;
+      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}`)}
+    ${sec('story', 'Story', `${story}
+    ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}
+    ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}`)}`;
   bindReactions($('sheet-body'), e, act); CLS.bindSheet($('sheet-body'), e);
   for (const b of $('sheet-body').querySelectorAll('[data-levelup]')) b.onclick = () => { QE.levelUp(b.dataset.levelup); };
   if ($('sheet-refresh')) $('sheet-refresh').onclick = () => { refreshAsk = { party: false, at: Date.now() }; act({ type: 'refresh', actor: e.id }); };
@@ -1295,7 +1406,7 @@ const NV = mountNewVersion({ fetchBuild: () => fetch('./build.json', { cache: 'n
 NV.check(); NV.solo(() => !T || T.solo);
 const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
 
-const D = initDrawer({ prefs, state: () => S, isDM, selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
+const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
 $('party').addEventListener('click', (ev) => {
@@ -1307,6 +1418,17 @@ $('party').addEventListener('click', (ev) => {
 });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
 $('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
+$('waiting-list').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-wait]'); if (!b || !S) return;
+  const [kind, id] = [b.dataset.wait.split(':')[0], b.dataset.wait.split(':').slice(1).join(':')];
+  if (kind === 'in') T.approve?.(id, true);
+  else if (kind === 'rewards') { foldMenu(); $('dm-rewards-open').click(); }
+  else if (kind === 'ho') { foldMenu(); HO.open(id); }
+  else if (kind === 'sheet') { select(id); D.open('sheet'); refresh(); }
+});
+$('turn-quick').addEventListener('click', (ev) => { const b = ev.target.closest('[data-quick]'); if (b) AP.runQuick(b.dataset.quick); });
+$('set-quick').checked = prefs.get('hextable.quickRows') !== false;
+$('set-quick').onchange = (ev) => { prefs.set('hextable.quickRows', ev.target.checked); refresh(); };
 $('turn-text').onclick = () => D.open('turns');       // the turn line opens Turns
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
@@ -1410,7 +1532,7 @@ function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
+  $('btn-leave').hidden = $('set-new').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }
@@ -1420,6 +1542,7 @@ $('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
 $('menu-new').onclick = newWorld;
+$('set-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.
 // A search box, a CR filter and a "recent" row sit above the buttons (spawnfind.js, #673); the recent list is kept per table on this device.
@@ -1521,7 +1644,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 $('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[data-levelup]'); if (b && !b.disabled) QE.levelUp(b.dataset.levelup); });
 const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
-  castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
+  castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm/creatures'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
   openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => { const st = flyState(S, e, shownName(S, e)); if (!st.has) return null; const row = flyRow(e); if (!aloft(S, e)) return { has: true, why: st.why, aloft: false }; const H = flyH(e); return { has: true, why: st.why || (H.can ? '' : 'No movement left.'), words: row ? stateLine(H, H.heights.find((r) => r.here) ?? row) : '', aloft: true, alt: row?.ft ?? H.here, up: row ? stepRow(H, row, 1)?.ft ?? null : null, down: row ? stepRow(H, row, -1)?.ft ?? null : null }; },
   armItem: (e, r, level, armed) => { const sp = SPELLS[r.spell]; setMode(armed ? MOVE : { kind: 'spell', id: r.spell, item: { key: r.send.item, which: r.send.which, base: r.level, ...(level ? { level } : {}) }, aim: null, keep: !!sp.area, picked: [] }); },
@@ -1549,6 +1672,7 @@ const lobbyBusy = (on) => { $('lobby-host').disabled = $('lobby-join').disabled 
 let pendingMap = null;
 function start(transport, map = null) {
   pendingMap = map;
+  bannerKey = undefined; hpSeen = null; $('turn-banner').hidden = true; $('hp-note').hidden = true;      // a new table: its first turn seen is not news
   TL.skip();                    // what is still playing belongs to the old table
   T?.close?.();                 // only ever one connection to a table
   ED.stop();
@@ -1574,7 +1698,7 @@ function start(transport, map = null) {
     } else toast(msg);
     pendingLead = null; lastMove = null; };
   T.on.lobby = () => S && refresh();
-  T.on.link = () => DOT.render();
+  T.on.link = () => { DOT.render(); if (S) { showOffline(); D.paint(); } };
   T.on.links = () => { if (S) { tracker.render(); DOT.render(); } };
   DOT.render();
   T.on.undoable = () => { if (S) { showUndo(); syncCards(); } };

@@ -1,4 +1,6 @@
-// The Settings tab (docs/specs/table-ui.md, Decisions 2 and 7). Two kinds of thing live here and they are kept apart:
+// Setup (docs/specs/table-ui.md, Decisions 2 and 7; docs/specs/one-token-menu.md, Decision 4d round 4: one page of seven sections, in
+// index.html: Display and controls, Dice, The menu, Characters and packs, The table's rules, Help and about, Leave the table).
+// Two kinds of thing live here and they are kept apart:
 //   client preferences, which change this device's screen and are kept in localStorage (`hextable.*`, through `prefs`);
 //   the table's rules, which the DM alone changes with the `setting` action, shown here in plain words and read only.
 // Nothing here sends an action.
@@ -88,7 +90,7 @@ export function initSettings(ctx) {
   kd.innerHTML = `<label class="assign">Keys <select id="set-keys">${Object.entries(PRESETS).map(([id, p]) => `<option value="${esc(id)}">${esc(p.name)}</option>`).join('')}</select></label>`
     + '<p class="note">W A S D or the arrows walk the selected character; hold Shift to look around; Space returns the view. Keys need a keyboard; the choice stays on this device.</p>'
     + '<div class="row"><button type="button" id="set-keys-show" aria-expanded="false" aria-controls="set-keys-list">Show keys</button></div><dl id="set-keys-list" class="keys-list" hidden></dl>';
-  $('set-pin-note').after(...kd.children);
+  $('set-keys-at').append(...kd.children);
   const ksel = $('set-keys'), klist = $('set-keys-list'), kshow = $('set-keys-show');
   const paintKeys = () => { klist.innerHTML = keyList(presetOf(ksel.value)).map((k) => `<dt>${esc(k.words)}</dt><dd>${k.keys.map((x) => `<kbd>${esc(x)}</kbd>`).join(' ')}</dd>`).join(''); };
   ksel.value = presetId(prefs.get('hextable.keys'));
@@ -105,13 +107,18 @@ export function initSettings(ctx) {
   $('dm-dice-monsters').onchange = (ev) => prefs.set('hextable.diceMonsters', ev.target.checked);
 
   // The table's rules: the DM gets a link to where each is changed.
-  $('set-rules').addEventListener('click', (ev) => { if (ev.target.closest('[data-dm]')) drawer.open('dm'); });
+  $('set-rules').addEventListener('click', (ev) => { if (ev.target.closest('[data-dm]')) drawer.open('dm/rules'); });
+  // Help and feedback is its own panel, opened by its row under Table (feedback.js owns that button); this one is the same tap.
+  $('set-help').onclick = () => $('fb-btn').click();
   let last = '';
   return {
     sync(S) {
       const dm = ctx.isDM();
       $('set-dm-box').hidden = !dm;
       $('set-table-box').hidden = !S;
+      // Characters and packs: the DM's tools for them are screens of DM tools; a player has their own character and asks the DM for the rest.
+      $('set-sec-chars').hidden = !S; $('set-chars-dm').hidden = !dm; $('set-chars-pl').hidden = dm;
+      $('set-chars-note').textContent = dm ? 'Who plays whom, adding a character, levelling up and the packs this table uses are DM tools.' : 'Your character\'s page has its sheet. Adding a character, levelling up and the table\'s packs are the DM\'s: ask the DM.';
       $('set-token').value = drawer.token; $('set-motion').value = drawer.motion; $('set-side').value = drawer.side; $('set-pin').checked = drawer.pinned; $('set-theme').value = ctx.themeId();
       if (!S) return;
       const lines = rulesLines(S.settings), sig = JSON.stringify([lines, dm]);
