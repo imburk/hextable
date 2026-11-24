@@ -124,7 +124,7 @@ async function players(browser, url) {
         await wait(host, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ria'));
         await closeMenu(host);
         await wait(phone, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ria'));
-        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as Ria")');
+        await openMenu(phone, []); const b = phone.locator('#arc .arc-b:has-text("Play as Ria")');
         await b.click(); await closeMenu(phone);
         const id = await riaId(host);
         await wait(phone, (i) => !!window.hextable.state.entities[i].owner, id);
