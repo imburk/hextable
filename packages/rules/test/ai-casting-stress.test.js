@@ -1,7 +1,7 @@
 // Built spellcasters played by the AI (docs/specs/ai-casting.md, stage AC1; #487): a stress loop on hexes and on the square room. The whole
 // party is set aside under `standIn` and every turn is played by aiStep, as the DM's auto-play will play it (stage AC2), against goblins and a
 // pack Mage that are played by it too. Between fights the party is mended and its slots come back; during them the DM, now and then, drops
-// someone to 0 Hit Points or to a quarter of them, so that the healing steps come up. 200 rounds a grid (2,400 with HEXTABLE_STRESS=full).
+// someone to 0 Hit Points or to a quarter of them, so that the healing steps come up. 200 rounds a grid (2,400 with HEXTABLE_STRESS=full). HEXTABLE_STRESS_PART=i/n runs part i of n of those rounds from its own seed (CI).
 // After every action every creature's slots are 0 or more. Every turn the AI plays: it has a step (no stall), the turn ends within 25 steps
 // (no endless loop), and nothing it sends is refused (the engine refuses nothing the AI sends: a refusal would waste the turn). No spell it casts
 // needs Concentration, and none of its casts ends a Concentration spell its caster keeps up (the cleric's Shield of Faith).
@@ -19,6 +19,10 @@ const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const json = (x) => JSON.stringify(x);
 const FULL = process.env.HEXTABLE_STRESS === "full";
 const ROUNDS = Number(process.env.AC_ROUNDS ?? (FULL ? 2400 : 200));
+// HEXTABLE_STRESS_PART=i/n runs part i of n (1-based): its share of the rounds, from its own seed. Part 1 keeps the base seed; unset runs the whole.
+const PART = (() => { const m = /^(\d+)\/(\d+)$/.exec(process.env.HEXTABLE_STRESS_PART ?? ""); if (!m) return { i: 1, n: 1 }; const i = +m[1], n = +m[2]; if (i < 1 || i > n) throw new Error(`HEXTABLE_STRESS_PART ${process.env.HEXTABLE_STRESS_PART}: want i/n with 1 <= i <= n`); return { i, n }; })();
+const share = (total) => Math.floor(total / PART.n) + (PART.i <= total % PART.n ? 1 : 0);
+const seedOf = (base) => base + (PART.i - 1) * 100003;
 const STEPS_MOST = 25, ACTIONS_MOST = 400;
 const SPOTS = {
   hex: { fighter: { q: -6, r: 2 }, rogue: { q: -7, r: 3 }, cleric: { q: -7, r: 2 }, wizard: { q: -8, r: 3 }, foes: { q: 2, r: 2 } },
@@ -38,7 +42,7 @@ function stress(grid, rounds) {
   // Two casters with more to cast than the pregenerated spell lists: a level 5 wizard and cleric with level 3 slots.
   Object.assign(s.entities.wizard, { level: 5, slots: { ...SLOTS } }); s.entities.wizard.spells.push("scorching-ray", "shatter", "fireball", "thunderwave");
   Object.assign(s.entities.cleric, { level: 5, slots: { ...SLOTS } }); s.entities.cleric.spells.push("guiding-bolt", "inflict-wounds", "mass-healing-word", "spiritual-weapon");
-  let x = 7919;
+  let x = seedOf(7919);
   const rnd = (n) => { x = (x * 1103515245 + 12345) % 2147483648; return Math.floor(x / 65536) % n; };
   const stats = { actions: 0, turns: 0, steps: 0, casts: 0, refused: 0, stalls: 0, loops: 0, fights: 0, downMidTurn: 0, spells: {}, monsterRefused: 0, whileHolding: 0 };
   const bad = [];
@@ -127,8 +131,8 @@ function stress(grid, rounds) {
 }
 
 for (const grid of ["hex", "square"]) {
-  test(`${grid}: AC1 stress, ${ROUNDS} rounds of the party set aside under standIn and played by the AI: nothing refused, no stall, no endless turn, no slot below zero, no Concentration ended by a cast`, () => {
-    const { stats, bad } = stress(grid, ROUNDS);
+  test(`${grid}: AC1 stress, ${share(ROUNDS)} rounds of the party set aside under standIn and played by the AI: nothing refused, no stall, no endless turn, no slot below zero, no Concentration ended by a cast`, () => {
+    const { stats, bad } = stress(grid, share(ROUNDS));
     if (process.env.AC_DEBUG) console.log(grid, json(stats));
     assert.deepEqual(bad, []);
     assert.equal(stats.refused, 0);
