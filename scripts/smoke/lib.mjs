@@ -276,7 +276,10 @@ export const calm = (p, ms = 15000) => wait(p, () => window.hextable.waiting ===
 // `window.hextable.act` does nothing while this page's timeline is playing at the pace `wait`: it skips the beats instead (app.js, `skipping()`; a tap that skips an animation must not also send).
 // A script that sends an action right after another's events were queued therefore loses it without a word (#688: endEncounter lost, then 20 s for a fight that never ended). `window.__still(action)`
 // (installed by `stillInit`, add it to a context before its pages open) waits in the page until nothing is playing and sends in the same turn, so nothing can start in between; it says in words when the timeline never stilled.
-export const stillInit = `window.__still = async (a, ms = 20000) => {
+export const stillInit = `{ const W = window.WebSocket, log = (window.__wire = []);
+  const note = (dir, d) => { if (typeof d !== 'string' || /"t":"(ping|pong)"/.test(d)) return; log.push(Math.round(performance.now()) + ' ' + dir + ' ' + d.replace(/"(entities|map|settings)":.*$/, '...').slice(0, 220)); if (log.length > 40) log.shift(); };
+  window.WebSocket = class extends W { constructor(...a) { super(...a); this.addEventListener('message', (m) => note('<', m.data)); } send(d) { note('>', d); return super.send(d); } }; }
+window.__still = async (a, ms = 20000) => {
   const t0 = Date.now();
   for (;;) {
     const h = window.hextable;
