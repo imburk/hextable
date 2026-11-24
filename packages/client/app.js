@@ -920,7 +920,7 @@ function refresh() {
   showTurnLine(); turnStarts(); showOffline(); hpNote(); deadLine(e);
   // Setup's last section: leaving this game for the starting screen (a solo game stays saved on this device; a new one starts from the lobby).
   $('btn-leave').hidden = false; $('set-sec-leave').hidden = !!T.readOnly;
-  { const n = T.solo ? SOLO_LEAVE_NOTE : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
+  { const n = leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
   showUndo();
 
   // The characters (Decision 4b): one place for each creature this person controls, the first symbols of the strip and the arc (drawer.js draws both from these buttons), in turn order
@@ -1521,7 +1521,7 @@ function disarm(btn) {
 }
 const SOLO_LEAVE_NOTE = 'Your game stays saved on this device. Start a new one from the starting screen.';
 const LEAVE_NOTE = 'Leaving forgets this table on this device.';
-const leaveNote = () => (isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
+const leaveNote = () => (T?.solo ? SOLO_LEAVE_NOTE : isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
 function leaveTable(btn) { twoTap(btn, 'Tap again to leave', leaveNote(), reallyLeave); }
 function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
