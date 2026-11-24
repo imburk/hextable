@@ -27,7 +27,7 @@ async function soloPass(browser, url, label, opts) {
         await waitShown(page, '#splash', false, 3000);
         if (await shown(page, '#fb-btn')) throw new Error('an icon floats over the lobby');
         await page.click('#lobby-about'); await waitShown(page, '#drawer');
-        await page.click('#tab-settings'); await waitShown(page, '#settings'); await page.locator('#fb-btn').scrollIntoViewIfNeeded(); await waitShown(page, '#fb-btn');
+        await page.click('#tab-settings'); await waitShown(page, '#settings'); await page.click('#acc-bar-settings-help'); await page.locator('#fb-btn').scrollIntoViewIfNeeded(); await waitShown(page, '#fb-btn');
         await shot(page, `lobby-${phone ? 'phone' : 'wide'}`);
         await closeMenu(page);
       });
