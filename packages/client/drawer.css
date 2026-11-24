@@ -95,10 +95,8 @@ button.undo { flex-direction: row; align-items: center; gap: 10px; } button.undo
 body.drawer-pretable #chips { visibility: hidden; }
 body:not([data-cam="on"]) #cam { display: none; }
 
-/* where a pinned menu is, the rest of the table keeps clear of it */
+/* the menu slides over the map and the map stays put (#749): the insets stay 0; the pieces below still read them (and a later piece that wants room can set them) */
 body { --inset-l: 0px; --inset-r: 0px; }
-canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--inset-l) - var(--inset-r)); height: 100%; }
-#labels { inset: 0 var(--inset-r) 0 var(--inset-l); }
 #hint, #join { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
 #cam { right: calc(12px + var(--inset-r)); }
 #editor { left: var(--inset-l); right: var(--inset-r); }

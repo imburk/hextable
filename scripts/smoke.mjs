@@ -76,6 +76,7 @@ const REGISTRY = {
   followfight: ['followfight'],
   fly: ['fly'],
   menuclose: ['menuclose'],
+  menushift: ['menushift'],
 };
 
 const only = process.env.SMOKE_ONLY;
