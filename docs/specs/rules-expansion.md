@@ -968,6 +968,10 @@ A spell aimed at creatures may say which creature types it works on. Tests throu
   Animal Friendship's charm also ends on damage from its caster's side (`ends: { on: 'damaged', by: 'source' }`, already in the
   vocabulary). Not built: a limit that changes the roll and not the target (Blight's Plant, Shatter's constructs), and wards against
   creature types (Protection from Evil and Good).
+- **Not checked, not built** (#736). Animal Friendship cast with a higher slot on several Beasts: the SRD's "the spell ends" ends it on
+  all of them when the caster's side damages one; the engine ends the charm on the damaged Beast alone (`ends` belongs to a part, and
+  no part can end its whole effect), the entry is `assist` and says so, and the DM ends the rest (DEBT W39). Dominate Beast and Dominate
+  Person are cast at a creature of the wrong type and of the right one in `target-types.test.js`.
 - **Homebrew** (fix round 1). The field is in the strict-mode guard tables of `schema.js`, as an area's `types` is: its type is a list of
   text (`HOMEBREW_TYPES.creature`) and its length ceiling is the number of creature types, 14 (`HOMEBREW_LENGTHS['creature.types']`).
   That shape is also a creature's action's, where the linter refuses the field; the reader says so of such an action as a problem

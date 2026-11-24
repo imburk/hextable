@@ -319,6 +319,15 @@ function march(s, leader, walked, ev) {
     const text = `${x.name} is holding ${draggedBy(s, x).map((d) => d.t.name).join(' and ')}, so it stays where it is while the party walks on.`;
     ev.push(x.side === 'party' ? { type: 'note', id: x.id, text } : { type: 'manual', actor: x.id, name: 'Grapple', partial: true, text });
   }
+  // The footing of the one in front, worked out once for each front and each set of creatures the follower does not know of (nearly
+  // always none, so once a front: #736 item 2), on the game as the follower knows it (`without`): a creature it does not know of
+  // bars no way, so where the follower stops never tells of one (#736 item 1; formation's places are judged the same way).
+  const footings = new Map();
+  const footingFor = (front, lurkers) => {
+    const k = `${front.id}|${lurkers.map((o) => o.id).join(',')}`;
+    if (!footings.has(k)) footings.set(k, footingOf(lurkers.length ? without(s, front, lurkers) : s, front));
+    return footings.get(k);
+  };
   const fell = formation(s, leader, walked, pending, ev);
   if (fell === 'fight') return;                          // it walked into a fight: the rest were brought up when it started
   for (const f of fell) { pending.splice(pending.indexOf(f), 1); moved.add(f.id); front = f; }
@@ -337,7 +346,7 @@ function march(s, leader, walked, ev) {
     const spots = [...(crowded ? [] : [{ k: key(f.pos), h: f.pos, cost: 0 }]), ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
     // Kept up: close to the one in front and on its footing (#728; `footingOf`, world.js). The foot of a ledge the one in front has climbed,
     // or of its ladder, is close on the map and is not with it: from there the follower goes on up, as far along the trail as it gets.
-    const withFront = footingOf(s, front);
+    const withFront = footingFor(front, lurkers);
     let best = null, bestKey = null;
     for (const sp of spots) {
       const near = apartAt(s, front, front.pos, f, sp.h), at = along(trail, sp.h, G);
@@ -401,8 +410,9 @@ function formation(s, leader, walked, pending, ev) {
   // Its places share the leader's footing (#728; `footingOf`, world.js). A place at the foot of the ledge the leader stands on, or under its
   // balcony, is beside it on the map and not with it: the followers would stop below, the party split and nothing said. With no such
   // place for one of them the column takes them all, up the leader's own trail. Beside a creature the party does not know of counts as
-  // reached, one step further (besideLurk), so the shape gives nothing away.
-  const footing = footingOf(s, leader), lurkCost = new Map(besideLurk(footing.reach).map((v) => [key(v.h), v.cost]));
+  // reached, one step further (besideLurk), so the shape gives nothing away; and the footing itself is worked out on the game as the
+  // party knows it (`without`), so a creature it does not know of on the only way between the leader and a place bars nothing (#736).
+  const footing = footingOf(lurkers.length ? without(s, leader, lurkers) : s, leader), lurkCost = new Map(besideLurk(footing.reach).map((v) => [key(v.h), v.cost]));
   const joined = (h) => footing(h, lurkCost.get(key(h)));
   const ahead = (h) => { const w = G.toWorld(h); return ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu; };
   const water = (h) => ground(s.map, h)?.tile.t === 'water';

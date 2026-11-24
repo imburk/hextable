@@ -170,6 +170,34 @@ test("Animal Friendship: nothing to a Humanoid; a Beast that fails is charmed un
   assert.ok(charmed, "some wolf failed");
 });
 
+// #736 item 4: the two Dominate spells cast at a creature of the wrong type, and at one of the right type.
+test("Dominate Beast does nothing to a Humanoid and Dominate Person nothing to a Beast; the slot and Concentration are spent as aimed", () => {
+  for (const [spell, level, wrong, right] of [["dominate-beast", 4, "bandit", "wolf"], ["dominate-person", 5, "wolf", "bandit"]]) {
+    const { s, ids: [m] } = table([spell], [wrong]);
+    const slots = s.entities.wyn.slots[level];
+    const r = ok(cast(s, spell, { target: m }));
+    const saves = r.events.filter((e) => e.type === "save");
+    assert.deepEqual(saves.map((e) => [e.id, e.success, e.invalid]), [[m, true, true]], `${spell}: the ${wrong} appears to make its save`);
+    assert.equal(saves[0].roll, undefined, "no die was rolled for it");
+    assert.deepEqual(s.entities[m].cond, {}, `${spell}: the ${wrong} is not charmed`);
+    assert.ok(!s.effects.some((fx) => fx.parts.some((p) => p.target === m)), "no part of the effect is on it");
+    assert.equal(s.entities.wyn.slots[level], slots - 1, `${spell}: the slot is spent`);
+    // The right type saves for real, and one that fails is charmed until it makes the save repeated on damage.
+    let charmed = 0;
+    for (let seed = 1; seed <= 20 && !charmed; seed++) {
+      const { s: s2, ids: [v] } = table([spell], [right], seed);
+      const r2 = ok(cast(s2, spell, { target: v }));
+      const sv = r2.events.find((e) => e.type === "save" && e.id === v);
+      assert.equal(sv.invalid, undefined, `${spell}: a ${right} rolls its save`);
+      if (sv.success) continue;
+      charmed++;
+      assert.ok(s2.entities[v].cond.charmed, `${spell}: the ${right} is charmed`);
+      assert.deepEqual(s2.effects.find((x) => x.spell === spell).parts.find((p) => p.target === v).ends, { on: "save", save: "wis", at: "damaged" });
+    }
+    assert.ok(charmed, `${spell}: some ${right} failed its save`);
+  }
+});
+
 test("undo, redo and a replay give the same state", () => {
   const { s, ids: [w, b] } = table(["hold-person"], ["wolf", "bandit"]);
   const acts = [{ type: "cast", actor: "wyn", spell: "hold-person", targets: [w, b], slot: 3 }];
