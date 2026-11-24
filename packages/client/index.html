@@ -292,6 +292,7 @@
         </div>
       </section>
       <section id="set-sec-menu" data-sec="menu" data-tip="Arrange the symbols, labels, where the die sits"><h3>The menu</h3>
+        <div class="row"><button type="button" id="set-arrange" data-menu-open="settings/arrange">Arrange the symbols</button></div>
         <label class="assign">The menu token sits <select id="set-token"><option value="center">Bottom centre</option><option value="right">Bottom right</option><option value="left">Bottom left</option></select></label>
         <label class="assign">Labels under the symbols <select id="set-labels"><option value="3s">After 3 seconds</option><option value="always">Always</option></select></label>
         <label class="assign">Menus <select id="set-motion"><option value="slide">Slide in and out</option><option value="appear">Just appear</option></select></label>
@@ -317,6 +318,8 @@
         <p class="note" id="set-leave-note"></p>
         <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave the table</button><button type="button" id="set-new" class="leave" hidden>New game</button></div>
       </section>
+      <!-- Arrange (Decision 4c; M9): a screen under Setup. drawer.js draws the rows: a six-dot handle, the symbol, the name, up and down, and an eye. -->
+      <div id="arrange" class="sub-screen" data-sec="arrange" data-title="Arrange the symbols" role="group" aria-label="Arrange the symbols" hidden></div>
     </section>
     <section id="about" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden></section>
   </div>

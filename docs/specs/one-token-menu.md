@@ -347,6 +347,32 @@ M10's.
 **Left.** The Dice screen has one section until D5 gives it Roll dice and Last rolls, so it is not an accordion and has no row to Setup › Dice; no shortcut 1 to 9 for a
 character's sections; the open pane of a character's page does not keep its scroll when the menu is closed and opened again (Setup's, Log's and DM tools' sections do).
 
+### M9 build notes (Arrange)
+
+**Built.**
+- **Arrange the symbols** (`client/menuorder.js` for the sums, `drawer.js` for the screen): a screen under Setup (the heading is its own name, the way back says "‹ Setup" and
+  returns to The menu with the focus on the way in). Ways in: Setup › The menu › Arrange the symbols, and **holding a symbol of the arc for half a second** (the symbol lifts
+  when the hold is made, and Arrange opens when it is let go; a quick tap still opens the place).
+- **A row for each place**: a six-dot handle (44 px) to drag it up or down within its group, ▲ and ▼ (disabled at an end of the group), and an eye that hides it from the arc and
+  the strip. A hidden place keeps its row, dimmed, with the eye crossed: that is where it comes back. What a step or a drag did is said once for a screen reader, and the
+  focus stays on the control used. **Reset order** puts the order back and shows everything.
+- **The two groups** carry question 19's names, set A: **Play** (your characters, Turns, Dice, Log and chat) and **This game** (Setup, DM tools).
+- **Kept on the device**: `hextable.menuOrder` (the places in order) and `hextable.menuHidden`. A stored order is made whole when read (unknown names dropped, a place it does
+  not know put where the default has it, the groups kept apart), so an old or broken one cannot lose a place.
+- The order is applied to the arc, the strip (by CSS `order`: the buttons are not moved, so their ids and the keys along the strip follow it) and More.
+
+**Settled, and where this differs from the text above.**
+- **Two kinds of place cannot be hidden, not four**: your character(s) and Setup (round 4). The build plan's "Setup, Help, Leave and the character" is older: Help and
+  leaving are sections of Setup now. Their rows have no eye and say why.
+- **The characters are one row.** They move as one and keep the order they have among themselves (the party's order, or the turn order in a fight, as M8 settled).
+- **DM tools, hidden, leaves the arc and stays on the strip** (question 23's default).
+- **A hidden place can still be opened** by what leads to it (the turn line opens Turns, the Waiting card opens a handout); it only has no symbol.
+- **The arc does not show the groups by ring** (Play inside, This game outside): its rings are filled in order, as M8 built them. The group names show in Arrange only.
+- The hold opens Arrange **on release**, not at half a second with the finger still down: opening under a finger that is still pressing would give the lift's tap to
+  whatever came up under it.
+
+**Left.** No drag between rows by the keyboard beyond ▲ ▼ (they are the keyboard's way); a drag has no animation of the rows making room; Help does not explain the symbols yet.
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the

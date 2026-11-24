@@ -225,6 +225,26 @@ body[data-menu-motion="appear"] .acc-chev, body[data-menu-motion="appear"] .ap-c
 #drawer-body > .tabpanel.pin > * { flex: none; }
 #drawer-body > .tabpanel.acc.pin > .acc-sec.open { flex: 1 0 164px; min-height: 0; display: flex; flex-direction: column; }
 #drawer-body > .tabpanel.acc.pin > .acc-sec.open > .acc-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* a screen under a page (Arrange, under Setup): the page's bars give way to it */
+.tabpanel.acc[data-sub] > :is(.acc-sec, .acc-all) { display: none; }
+.sub-screen[hidden] { display: none; }
+/* Arrange (Decision 4c; M9): a row for each place: the six dots to drag it by, its symbol and name, up and down, the eye. Every control is 44 px. */
+.arr-cap { margin: 12px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-family: var(--body); }
+.arr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.arr-row { display: grid; grid-template-columns: 44px 36px minmax(0, 1fr) 44px 44px 44px; align-items: center; gap: 4px; min-height: 52px; padding: 2px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+.arr-row.dragging { border-color: var(--accent); box-shadow: 0 4px 12px #0008; position: relative; z-index: 1; }
+.arr-row.off :is(.arr-sym, .arr-name) { opacity: .5; }
+.arr-row button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; display: grid; place-items: center; background: none; border: 0; color: var(--accent); }
+.arr-row button:disabled { opacity: .3; }
+.arr-row button .sym { width: 24px; height: 24px; display: block; }
+.arr-grip { cursor: grab; touch-action: none; color: var(--muted); }
+.arr-sym { width: 36px; height: 36px; display: grid; place-items: center; color: var(--accent); } .arr-sym .sym { width: 26px; height: 26px; } .arr-sym .pr-sig { width: 36px; height: 36px; } .arr-sym .pr-sig b { width: 27px; height: 27px; font-size: 13px; }
+.arr-name { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+.arr-why { display: block; font-weight: 400; font-size: 12px; color: var(--muted); white-space: normal; }
+.arr-row:has(.arr-why):not(:has(.arr-eye)) .arr-name { grid-column: 3 / span 1; }
+#arrange > .row { margin-top: 12px; } #arr-reset { min-height: 44px; }
+#menu-root .pr { order: var(--o-chars, 0); }
+.arc-b.held { transform: scale(1.12) !important; box-shadow: 0 0 0 3px var(--accent), 0 3px 8px #0008; }
 /* the row under the bars of DM tools: every section on one page (M5) */
 .tabpanel.acc > .sec-index.acc-all { margin-top: 6px; }
 .tabpanel.acc[data-sec="all"] > .acc-sec { margin-top: 12px; }

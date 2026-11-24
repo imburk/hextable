@@ -16,10 +16,12 @@ const turnOf = async (page, id) => {
   if ((await cur(page)) !== id) throw new Error(`it never became ${id}'s turn`);
 };
 const select = async (page, id) => { await page.evaluate((i) => window.hextable.select(i), id); await wait(page, (i) => !document.querySelector('#card').hidden && document.querySelector('#c-name').textContent === window.hextable.state.entities[i].name, id, 20000); };
-// No row of the open pane is cut through the middle by the pane's bottom edge (or its top, scrolled to the start: nothing there).
+// No row of the open pane is cut through the middle by the pane's bottom edge with no way to bring it into view. M10: the open section's pane scrolls between the
+// pinned bars, so a row at its fold may be cut; then the pane must be one that scrolls far enough to show that row whole.
 const whole = async (page, pane) => {
-  const cut = await page.$eval(pane, (el) => { const b = el.getBoundingClientRect(); return [...el.querySelectorAll('.ap-row')].filter((r) => { const q = r.getBoundingClientRect(); return q.height && q.top < b.bottom - 1 && q.bottom > b.bottom + 1; }).map((r) => r.dataset.row); });
-  if (cut.length) throw new Error(`rows cut through the middle at the bottom of ${pane}: ${cut}`);
+  const cut = await page.$eval(pane, (el) => { const b = el.getBoundingClientRect(), scrolls = /auto|scroll/.test(getComputedStyle(el).overflowY), room = el.scrollHeight - el.clientHeight - el.scrollTop;
+    return [...el.querySelectorAll('.ap-row')].filter((r) => { const q = r.getBoundingClientRect(); return q.height && q.top < b.bottom - 1 && q.bottom > b.bottom + 1 && !(scrolls && room >= q.bottom - b.bottom - 1); }).map((r) => r.dataset.row); });
+  if (cut.length) throw new Error(`rows cut through the middle at the bottom of ${pane}, out of reach: ${cut}`);
 };
 // Every greyed row of the pane writes its reason on screen, where it can be read (not only in a title).
 const reasons = (page, pane) => page.$$eval(`${pane} [aria-disabled="true"]`, (rows) => rows.map((r) => { const w = r.querySelector('.ap-why'); const q = w?.getBoundingClientRect(); return { row: r.dataset.row, why: w?.textContent.trim() ?? '', seen: !!q && q.width > 0 && q.height > 0 }; }));

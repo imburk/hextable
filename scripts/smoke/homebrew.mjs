@@ -283,7 +283,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await calm(player);
       });
       await run.do('on the sheet the spell shows with its pack, and its reading opens', async () => {
-        await player.evaluate(() => window.hextable.drawer.open('sheet'));
+        await openTab(player, 'sheet');       // the sheet is the last section of the character's page (M10): the helper opens it
         await waitShown(player, '#sheet-body');
         const row = await player.textContent('#sheet-body tr:has(.hb-read)');
         if (!/Ember Dart/.test(row) || !/homebrew: Sample Pack/.test(row)) throw new Error(row);
@@ -303,7 +303,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         if (!inject) throw new Error('the player\'s socket is not routed');
         const lastPacks = [...got].reverse().find((f) => /"t":"packs"/.test(f));
         if (!lastPacks) throw new Error('the player was sent no packs message');
-        await player.evaluate(() => window.hextable.drawer.open('sheet'));
+        await openTab(player, 'sheet');       // the sheet is the last section of the character's page (M10): the helper opens it
         await waitShown(player, '#sheet-body');
         inject(JSON.stringify({ t: 'packs', packs: [] }));
         await wait(player, () => !!document.querySelector('#sheet-body .hb-missing'));

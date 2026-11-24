@@ -420,6 +420,58 @@ async function drawerPass(browser, url, label, opts) {
         await page.selectOption('#set-floors', 'rooms'); await page.selectOption('#set-theme', 'classic');
         await closeMenu(page);
       });
+      await run.do('M9, Arrange: a screen under Setup; a place moves by its arrows and by a drag on its six dots, within its group; the eye hides it from the arc and the strip; the characters and Setup cannot be hidden; holding a symbol of the arc opens it', async () => {
+        const strip = () => page.$$eval('#menu-root .pr, #menu-root .menu-row', (x) => x.filter((b) => !b.hidden && b.getClientRects().length).sort((p, q) => p.getBoundingClientRect().left - q.getBoundingClientRect().left).map((b) => b.dataset.go ?? 'c'));
+        const rows = () => page.$$eval('#arrange .arr-row', (x) => x.map((r) => r.dataset.key));
+        const stored = (k) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? 'null'), k);
+        await openMenu(page, 'settings/menu'); await page.click('#set-arrange'); await wait(page, () => document.getElementById('drawer').dataset.path === 'settings/arrange');
+        if ((await page.textContent('#drawer-title')) !== 'Arrange the symbols' || !/Setup/.test(await page.textContent('#drawer-back'))) throw new Error(`Arrange is headed "${await page.textContent('#drawer-title')}", back "${await page.textContent('#drawer-back')}"`);
+        if ((await rows()).join() !== 'chars,turns,dice,log,settings,dm') throw new Error(`the rows: ${await rows()}`);
+        const caps = await page.$$eval('#arrange .arr-cap', (x) => x.map((c) => c.textContent));
+        if (caps.join() !== 'Play,This game') throw new Error(`the groups: ${caps}`);
+        const small = await page.$$eval('#arrange button', (bs) => bs.filter((b) => b.getBoundingClientRect().width < 44 || b.getBoundingClientRect().height < 44).map((b) => b.getAttribute('aria-label') ?? b.id));
+        if (small.length) throw new Error(`under 44 px in Arrange: ${small}`);
+        // the two that cannot be hidden have no eye and say why
+        for (const k of ['chars', 'settings']) {
+          const r = await page.$eval(`#arrange .arr-row[data-key="${k}"]`, (li) => ({ eye: !!li.querySelector('[data-eye]'), why: li.querySelector('.arr-why')?.textContent ?? '' }));
+          if (r.eye || !/^Always shown: /.test(r.why)) throw new Error(`${k} can be hidden, or does not say why not: ${JSON.stringify(r)}`);
+        }
+        // one step down: Turns goes under Dice, on the strip too, and it is stored; the focus stays on the arrow
+        await page.click('#arrange .arr-row[data-key="turns"] [data-move="1"]');
+        if ((await rows()).join() !== 'chars,dice,turns,log,settings,dm') throw new Error(`after a step down: ${await rows()}`);
+        if ((await strip()).filter((k) => k !== 'c').join() !== 'dice,turns,log,settings,dm') throw new Error(`the strip after a step: ${await strip()}`);
+        if ((await stored('hextable.menuOrder')).join() !== 'chars,dice,turns,log,settings,dm') throw new Error('the order was not stored');
+        if (!(await page.evaluate(() => document.activeElement?.matches('.arr-row[data-key="turns"] [data-move="1"]')))) throw new Error('the focus left the arrow');
+        // the ends of a group: the last of Play cannot go down into This game, nor Setup up into Play
+        if (!(await page.$eval('#arrange .arr-row[data-key="log"] [data-move="1"]', (b) => b.disabled)) || !(await page.$eval('#arrange .arr-row[data-key="settings"] [data-move="-1"]', (b) => b.disabled))) throw new Error('a place can leave its group');
+        // a drag by the six dots: Log and chat to the top of its group
+        const g = await rectOf(page, '#arrange .arr-row[data-key="log"] .arr-grip'), top = await rectOf(page, '#arrange .arr-row[data-key="chars"]');
+        await page.evaluate(async ([x, y0, y1]) => { const h = document.querySelector('#arrange .arr-row[data-key="log"] .arr-grip');
+          const fire = (t, y) => h.dispatchEvent(new PointerEvent(t, { pointerId: 5, clientX: x, clientY: y, bubbles: true, isPrimary: true }));
+          fire('pointerdown', y0); for (let i = 1; i <= 6; i++) { fire('pointermove', y0 + (y1 - y0) * i / 6); await new Promise((ok) => setTimeout(ok, 20)); } fire('pointerup', y1); }, [g.l + g.w / 2, g.t + g.h / 2, top.t + 4]);
+        if ((await rows()).join() !== 'log,chars,dice,turns,settings,dm') throw new Error(`after the drag: ${await rows()}`);
+        if ((await strip())[0] !== 'log' || (await stored('hextable.menuOrder'))[0] !== 'log') throw new Error(`the drag did not reach the strip or the store: ${await strip()}`);
+        // the eye: Dice leaves the strip and the arc and has a row still; DM tools leaves the arc only
+        await page.click('#arrange .arr-row[data-key="dice"] [data-eye]'); await page.click('#arrange .arr-row[data-key="dm"] [data-eye]');
+        if ((await stored('hextable.menuHidden')).join() !== 'dice,dm') throw new Error('what is hidden was not stored');
+        if ((await strip()).includes('dice') || !(await strip()).includes('dm')) throw new Error(`the strip with Dice and DM tools hidden: ${await strip()}`);
+        if ((await page.getAttribute('#arrange .arr-row[data-key="dice"] [data-eye]', 'aria-pressed')) !== 'true') throw new Error('the eye does not say Dice is hidden');
+        await closeMenu(page); await openArc(page);
+        const arc = await page.$$eval('#arc .arc-b', (x) => x.map((b) => b.dataset.place));
+        if (arc.includes('dice') || arc.includes('dm') || arc[0] !== 'log' || !arc.includes('settings') || !arc.some((k) => k.startsWith('c:'))) throw new Error(`the arc: ${arc}`);
+        // holding a symbol of the arc for half a second opens Arrange when it is let go; a quick tap still opens the place
+        const b = await rectOf(page, '#arc .arc-b[data-place="turns"]');
+        await page.mouse.move(b.l + b.w / 2, b.t + b.h / 2); await page.mouse.down(); await waitShown(page, '#arc .arc-b.held'); await page.mouse.up();
+        await wait(page, () => document.getElementById('drawer').dataset.path === 'settings/arrange');
+        // back goes to Setup as it was, the focus on the way in
+        await page.click('#drawer-back'); await wait(page, () => document.getElementById('drawer').dataset.path === 'settings/menu');
+        if ((await page.evaluate(() => document.activeElement?.id)) !== 'set-arrange') throw new Error('back did not leave the focus on Arrange the symbols');
+        // Reset order puts everything back and shows everything
+        await page.click('#set-arrange'); await page.click('#arr-reset');
+        if ((await rows()).join() !== 'chars,turns,dice,log,settings,dm' || (await stored('hextable.menuHidden')).length) throw new Error(`after Reset order: ${await rows()}`);
+        if ((await strip()).filter((k) => k !== 'c').join() !== 'turns,dice,log,settings,dm') throw new Error(`the strip after Reset order: ${await strip()}`);
+        await closeMenu(page);
+      });
       if (!phone) await run.do('pinned, the menu stays open and the map makes room for it', async () => {
         await openMenu(page, 'turns');
         await page.click('#drawer-pin'); await sleep(300);
@@ -475,6 +527,18 @@ async function drawerPass(browser, url, label, opts) {
         if (await shown(page, '#df .df-card')) { await page.click('#df [data-df="aside"]'); await waitShown(page, '#df .df-card', false); }
         await page.click('#turn-text'); await waitShown(page, '#drawer'); await waitShown(page, '#tracker');
         await closeMenu(page);
+      });
+      await run.do('an order made in Arrange survives a reload', async () => {
+        await page.evaluate(() => window.hextable.drawer.open('settings/arrange'));
+        await page.click('#arrange .arr-row[data-key="settings"] [data-move="1"]'); await page.click('#arrange .arr-row[data-key="chars"] [data-move="1"]');
+        await page.reload(); await waitShown(page, '#lobby'); await playSolo(page); await sleep(400);
+        const order = await page.evaluate(() => window.hextable.drawer.order.join());
+        if (order !== 'turns,chars,dice,log,dm,settings') throw new Error(`after a reload the order is ${order}`);
+        await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
+        const arc = await page.$$eval('#arc .arc-b', (x) => x.map((b) => (b.dataset.place.startsWith('c:') ? 'c' : b.dataset.place)));
+        if (arc[0] !== 'turns' || arc[1] !== 'c' || arc.at(-1) !== 'settings') throw new Error(`the arc after a reload: ${arc}`);
+        await page.keyboard.press('Escape');
+        await page.evaluate(() => { localStorage.removeItem('hextable.menuOrder'); localStorage.removeItem('hextable.menuHidden'); });
       });
     } finally { await ctx.close(); }
   });
