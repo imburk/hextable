@@ -162,6 +162,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     $('strip-next').hidden = !(more && rootList.scrollLeft + rootList.clientWidth < rootList.scrollWidth - 4);
   }
   function paintStrip(list) {
+    for (const b of rootList.querySelectorAll('.menu-row[aria-current="page"], .pr[aria-current="page"]')) if (!list.some((p) => p.current && p.el === b)) b.setAttribute('aria-current', 'false');      // a place that is hidden now too (About, before a table)
     for (const p of list) p.el.setAttribute('aria-current', p.current ? 'page' : 'false');
     const cur = list.find((p) => p.current), key = `${cur?.key ?? ''}`;
     if (cur && drawerUp && key !== stripAt && rootList.getClientRects().length) {
@@ -419,7 +420,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
         if (!onArc && next) { const a = next.getBoundingClientRect(), r = rootList.getBoundingClientRect(); if (a.left < r.left + 40) rootList.scrollLeft -= r.left + 40 - a.left; else if (a.right > r.right - 40) rootList.scrollLeft += a.right - (r.right - 40); }
         return;
       }
-      if (onArc) { if (/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace)$/.test(ev.key)) eat(); return; }      // behind the arc the arrow keys walk the party: not while it is up
+      if (onArc && ev.key.toLowerCase() !== 'm') { if (/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace)$/.test(ev.key)) eat(); return; }      // behind the arc the arrow keys walk the party: not while it is up
       const row = ev.target.closest?.('#drawer-body .menu-row, #more-list .menu-row');
       const mine = (row || symb || ev.target === title || !pinned());     // a pinned menu leaves the arrow keys to the map unless a row has the focus
       if (mine && ev.target === title && ev.key === 'ArrowUp') {      // from the heading, Up reaches the strip

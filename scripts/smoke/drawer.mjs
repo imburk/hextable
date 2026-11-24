@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, closeMenu, openMenu } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, tapAt, closeMenu, openMenu, openArc, menuStill } from './lib.mjs';
 
 // ---------- the drawer (docs/specs/table-ui.md, Decisions 2 and 3) ----------
 // The drawer opens and closes every way the spec lists, at both sizes; the side is a preference; About holds the SRD attribution
@@ -21,7 +21,7 @@ async function drawerPass(browser, url, label, opts) {
         if (!(await page.evaluate(() => { const r = document.getElementById('drawer').getBoundingClientRect(); return document.elementFromPoint(r.left + 40, r.top + 120)?.closest('#drawer') !== null; }))) throw new Error('the menu is under the lobby');
         const text = await page.$eval('#ab-srd-text', (e) => e.textContent);
         if (text !== SRD_TEXT) throw new Error(`About does not carry the SRD statement as given: ${text}`);
-        if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== 'table/about') throw new Error('About is not under Table');
+        if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== 'about') throw new Error('About did not open as its own screen');
         await closeMenu(page);
         if ((await page.evaluate(() => document.activeElement?.id)) !== 'lobby-about') throw new Error('focus did not return to the About link');
       });
@@ -44,82 +44,149 @@ async function drawerPass(browser, url, label, opts) {
         if (!/^rgb\(201, 154, 62\)$/.test(who.face)) throw new Error(`the Classic die is not brass: ${who.face}`);
         if (await shown(page, '#menu-badge')) throw new Error('a badge shows with nothing waiting');
       });
-      await run.do('the token opens the first level as a dialog: a row for each character, then Party, Dice, Log and chat, Table', async () => {
-        await page.click('#btn-menu'); await waitShown(page, '#drawer'); await waitShown(page, '#menu-root');
+      await run.do('a tap on the token fans the places out in an arc round it: a symbol for each character, then Party, Dice, Log and chat, Setup, DM tools', async () => {
+        await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
+        await wait(page, () => document.getElementById('menu-arc').classList.contains('out'));
+        await sleep(800);
+        if (await shown(page, '#drawer')) throw new Error('a screen is up with only the arc asked for');
+        if ((await page.getAttribute('#btn-menu', 'aria-expanded')) !== 'true') throw new Error('aria-expanded');
+        if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== '') throw new Error('it did not open on the arc');
+        const syms = await page.$$eval('#arc .arc-b', (b) => b.map((x) => { const r = x.getBoundingClientRect(); return { name: x.querySelector('.ab-label').textContent, char: x.classList.contains('char'), spoken: x.textContent.replace(/\s+/g, ' ').trim(), w: r.width, h: r.height, l: r.left, t: r.top, r: r.right, b: r.bottom, svg: !!x.querySelector('svg, .pr-sig') }; }));
+        const names = syms.filter((x) => !x.char).map((x) => x.name);
+        if (names.join() !== 'Party,Dice,Log and chat,Setup,DM tools') throw new Error(`the places: ${names}`);      // solo, the player is the DM too
+        const chars = syms.filter((x) => x.char);
+        if (chars.length !== 4 || syms.findIndex((x) => !x.char) !== 4) throw new Error(`the characters are not the first four symbols: ${JSON.stringify(syms.map((x) => x.name))}`);
+        if (chars.some((c) => !/\d+ \/ \d+ HP|Your turn|Down|Play as/.test(c.spoken))) throw new Error(`a character's symbol does not say its state: ${JSON.stringify(chars.map((c) => c.spoken))}`);
+        const vp = page.viewportSize(), tok = await rectOf(page, '#btn-menu');
+        for (const x of syms) {
+          if (x.w < 44 || x.h < 44) throw new Error(`${x.name} is ${x.w} x ${x.h}`);
+          if (!x.svg || !x.name) throw new Error(`${x.name || 'a symbol'} has no drawing or no words`);
+          if (x.l < 0 || x.t < 0 || x.r > vp.width || x.b > vp.height) throw new Error(`${x.name} is off the screen: ${JSON.stringify(x)}`);
+          if (x.l < tok.r && x.r > tok.l && x.t < tok.b && x.b > tok.t) throw new Error(`${x.name} is on the die`);
+        }
+        for (let i = 0; i < syms.length; i++) for (let j = 0; j < i; j++) if (Math.hypot((syms[i].l + syms[i].r - syms[j].l - syms[j].r) / 2, (syms[i].t + syms[i].b - syms[j].t - syms[j].b) / 2) < 50) throw new Error(`${syms[i].name} and ${syms[j].name} touch`);
+        if (await page.$('#drawer-tabs')) throw new Error('the old tab strip is still there');
+        // The note about the health ring, once on a device: one line and Got it.
+        if (!(await shown(page, '#ring-note')) || !/health/.test(await page.textContent('#ring-note-text'))) throw new Error('no note about the health ring the first time');
+        await page.click('#ring-ok'); await waitShown(page, '#ring-note', false);
+        if ((await page.evaluate(() => localStorage.getItem('hextable.seen.ring'))) !== 'true') throw new Error('the note was not put away for good');
+        if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-arc-${phone ? 'phone' : 'wide'}.png` }).catch(() => {});
+      });
+      await run.do('the words come up under the symbols after 3 seconds, and at once when Setup says Always (then the strip shows them too)', async () => {
+        await closeMenu(page); await openArc(page);
+        const up = () => page.evaluate(() => getComputedStyle(document.querySelector('#arc .ab-label')).opacity === '1');
+        await sleep(600);
+        if (await up()) throw new Error('the words are up before 3 seconds');
+        await wait(page, () => document.getElementById('menu-arc').classList.contains('labels') && getComputedStyle(document.querySelector('#arc .ab-label')).opacity === '1', null, 6000).catch(() => { throw new Error('the words did not come up after 3 seconds'); });
+        if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-arc-labels-${phone ? 'phone' : 'wide'}.png` }).catch(() => {});
+        await openMenu(page, 'settings'); await page.selectOption('#set-labels', 'always');
+        if ((await page.evaluate(() => localStorage.getItem('hextable.menuLabels'))) !== '"always"') throw new Error('Always was not stored');
+        if (!(await page.evaluate(() => { const n = document.querySelector('#tab-settings .mr-name').getBoundingClientRect(); return n.width > 20 && n.height > 8; }))) throw new Error('under Always the strip shows no words');
+        await closeMenu(page); await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
+        await wait(page, () => getComputedStyle(document.querySelector('#arc .ab-label')).opacity === '1', null, 1500).catch(() => { throw new Error('under Always the words are not there from the start'); });
+        await openMenu(page, 'settings'); await page.selectOption('#set-labels', '3s'); await closeMenu(page);
+      });
+      await run.do('a symbol opens its screen as a dialog: a sheet from the bottom on a phone with a handle and no x, a column from the side on a wide screen', async () => {
+        await openArc(page);
+        await page.click('#arc [data-place="turns"]'); await waitShown(page, '#drawer'); await waitShown(page, '#tracker');
+        await waitShown(page, '#menu-arc', false);
         await sleep(900);
         const r = await rectOf(page, '#drawer');
         if (phone) {
           if (Math.abs(r.w - r.vw) > 2 && r.w > 561) throw new Error(`the sheet is ${r.w} wide`);
           if (Math.abs(r.t - 0.12 * r.vh) > 4) throw new Error(`the sheet does not stop 12% below the top: ${r.t}`);
-        } else if (r.l > 2 || r.w < 200 || r.w > 260) throw new Error(`a wide menu comes from the left, one 240 px column: ${JSON.stringify(r)}`);
-        if ((await page.getAttribute('#btn-menu', 'aria-expanded')) !== 'true') throw new Error('aria-expanded');
+        } else if (r.l > 2 || r.w < 340 || r.w > 580) throw new Error(`a wide menu comes from the left, one column: ${JSON.stringify(r)}`);
         if ((await page.getAttribute('#drawer', 'role')) !== 'dialog') throw new Error('the menu is not a dialog over the map');
-        const names = await page.$$eval('#menu-root .menu-row:not([hidden]) .mr-name', (b) => b.map((x) => x.textContent.trim()));
-        if (names.join() !== 'Party,Dice,Log and chat,Table') throw new Error(`the first level: ${names}`);      // the one Character row is replaced by a row for each character (M4, Decision 4b)
-        if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== '') throw new Error('it did not open on the first level');
-        if (await shown(page, '#tracker')) throw new Error('a screen shows on the first level');
-        if (await page.$('#drawer-tabs')) throw new Error('the old tab strip is still there');
-        const chars = await page.$$eval('#menu-root #party .pr', (b) => b.map((x) => ({ sel: x.classList.contains('sel'), name: x.querySelector('strong').textContent, state: x.querySelector('.pr-state').textContent, h: x.getBoundingClientRect().height })));
-        if (!chars.length || !chars[0].sel) throw new Error(`the character rows: ${JSON.stringify(chars)}`);
-        if (chars.some((c) => !/^\d+ \/ \d+ HP$|^Your turn$|^Down$|^Play as/.test(c.state) || c.h < 44)) throw new Error(`a character row says too little or is too small: ${JSON.stringify(chars)}`);
         if (phone) {
-          const small = await page.evaluate(() => [...document.querySelectorAll('#menu-root .menu-row:not([hidden]), #drawer-handle')].filter((b) => b.getBoundingClientRect().height < 44).map((b) => b.id));
+          const small = await page.evaluate(() => [...document.querySelectorAll('#menu-root .menu-row:not([hidden]), #menu-root .pr, #drawer-handle')].filter((b) => b.getBoundingClientRect().height < 44 || b.getBoundingClientRect().width < 44).map((b) => b.id || b.dataset.id));
           if (small.length) throw new Error(`targets under 44 px: ${small}`);
           if (await shown(page, '#drawer-close')) throw new Error('a phone sheet has an x');
           if (!(await shown(page, '#drawer-handle'))) throw new Error('a phone sheet has no handle');
         } else if (!(await shown(page, '#drawer-close'))) throw new Error('a wide menu has no x');
-        if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-root-${phone ? 'phone' : 'wide'}.png` }).catch(() => {});
+        if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-screen-${phone ? 'phone' : 'wide'}.png` }).catch(() => {});
       });
-      await run.do('a row goes down a level with a breadcrumb; back goes up; a screen is the old panel with its ids', async () => {
-        await page.click('#tab-turns'); await waitShown(page, '#tracker');
-        await sleep(900);
+      await run.do('every screen is headed by its own name; the strip across its top marks the place and goes to the others; a screen inside a screen has a way back that names it', async () => {
         const rows = await page.evaluate(() => document.querySelectorAll('#tr-list li[data-id]').length);
         if (rows < 4) throw new Error(`${rows} rows`);
-        const crumb = await page.$eval('#crumb-list', (e) => e.textContent.replace(/\s+/g, ' ').trim());
-        if (crumb !== 'MenuParty') throw new Error(`the breadcrumb says: ${crumb}`);
-        if ((await page.$eval('#drawer-title', (e) => e.tagName + e.textContent)) !== 'H2Party') throw new Error('the heading');
-        if ((await page.evaluate(() => document.activeElement?.id)) !== 'drawer-title') throw new Error('focus did not move to the heading of the new level');
-        if (phone && (await page.evaluate(() => { const b = document.getElementById('drawer-back').getBoundingClientRect(); return b.width < 44 || b.height < 44; }))) throw new Error('the back arrow is under 44 px');
-        await page.click('#drawer-back'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
-        if ((await page.evaluate(() => document.activeElement?.id)) !== 'tab-turns') throw new Error('back did not leave focus on the row that was chosen');
-        await page.click('#tab-turns'); await waitShown(page, '#tracker');
-        await page.click('#crumb-list [data-path=""]'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
+        if ((await page.$eval('#drawer-title', (e) => e.tagName + e.textContent)) !== 'H2Party') throw new Error(`the heading: ${await page.textContent('#drawer-title')}`);
+        if ((await page.evaluate(() => document.activeElement?.id)) !== 'drawer-title') throw new Error('focus did not move to the heading of the screen');
+        if (/Menu/.test(await page.$eval('#drawer-head', (e) => e.textContent))) throw new Error('a screen is headed "Menu"');
+        const cur = () => page.$$eval('#menu-root [aria-current="page"]', (x) => x.map((b) => b.id || b.dataset.id));
+        if ((await cur()).join() !== 'tab-turns') throw new Error(`the strip marks ${await cur()}`);
+        const strip = await page.$$eval('#menu-root .pr, #menu-root .menu-row:not([hidden])', (x) => x.map((b) => b.querySelector('strong, .mr-name').textContent.trim()));
+        if (strip.slice(4).join() !== 'Party,Dice,Log and chat,Setup,DM tools' || strip.length !== 9) throw new Error(`the strip: ${strip}`);
+        // Another place, from the strip: the screen swaps where it is, and the heading is that screen's name.
+        await openMenu(page, 'settings');
+        if ((await page.textContent('#drawer-title')) !== 'Setup' || (await cur()).join() !== 'tab-settings') throw new Error(`Setup: heading ${await page.textContent('#drawer-title')}, strip ${await cur()}`);
         await waitShown(page, '#tracker', false);
+        await openMenu(page, 'sheet');
+        const who = await state(page, (S) => S.entities[document.querySelector('#party .pr.sel').dataset.id].name);
+        if ((await page.textContent('#drawer-title')) !== who) throw new Error(`a character's page is headed ${await page.textContent('#drawer-title')}, not ${who}`);
+        // The strip scrolls sideways when the places do not fit, with an arrow only at an end that has more.
+        if (phone) {
+          const ends = () => page.evaluate(() => ({ prev: !document.getElementById('strip-prev').hidden, next: !document.getElementById('strip-next').hidden, left: document.getElementById('menu-root').scrollLeft }));
+          await page.evaluate(() => { document.getElementById('menu-root').scrollLeft = 0; }); await sleep(200);
+          let e = await ends();
+          if (e.prev || !e.next) throw new Error(`at its start the strip shows ${JSON.stringify(e)}`);
+          const box = await rectOf(page, '#strip-next');
+          if (box.w < 32 || box.h < 44) throw new Error(`the strip's arrow is ${box.w} x ${box.h}`);
+          await page.click('#strip-next'); await sleep(700);
+          e = await ends();
+          if (!e.prev || e.left < 100) throw new Error(`a tap on the arrow moved the strip to ${JSON.stringify(e)}`);
+          const top = await page.evaluate(() => document.getElementById('drawer-body').scrollTop);
+          if (top !== 0) throw new Error('moving the strip scrolled the screen');
+        }
+        // A screen inside a screen: its heading is its own name, and the way back names the screen it is in.
+        await openMenu(page, 'dm/creatures');
+        if ((await page.textContent('#drawer-title')) !== 'Creatures') throw new Error(`the heading: ${await page.textContent('#drawer-title')}`);
+        if (!/DM tools/.test(await page.textContent('#drawer-back')) || (await page.getAttribute('#drawer-back', 'aria-label')) !== 'Back to DM tools') throw new Error(`the way back says: ${await page.textContent('#drawer-back')}`);
+        if (phone && (await page.evaluate(() => { const b = document.getElementById('drawer-back').getBoundingClientRect(); return b.width < 44 || b.height < 44; }))) throw new Error('the way back is under 44 px');
+        await page.click('#drawer-back'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
+        if ((await page.evaluate(() => document.activeElement?.dataset.sec)) !== 'creatures') throw new Error('back did not leave focus on the row that was chosen');
+        if ((await page.textContent('#drawer-title')) !== 'DM tools') throw new Error('the heading after going back');
       });
-      if (phone) await run.do('on a phone the sheet runs to the bottom edge, its levels end above the token, and the character rows are its first rows', async () => {
+      if (phone) await run.do('on a phone the sheet runs to the bottom edge, its screen ends above the token, and the strip is its first row', async () => {
         const d = await rectOf(page, '#drawer'), t = await rectOf(page, '#btn-menu');
         if (d.vh - d.b > 1) throw new Error(`the sheet stops ${d.vh - d.b} px short of the bottom`);
         const lv = await page.evaluate(() => document.getElementById('menu-levels').getBoundingClientRect().bottom);
-        if (lv > t.t + 1) throw new Error(`the levels (${lv}) run under the token (${t.t})`);
-        await openMenu(page, []);
-        const hit = await page.evaluate(() => { const r = document.querySelector('#menu-root #party button').getBoundingClientRect(); return document.elementFromPoint(r.left + 8, r.top + 8)?.closest('#party') !== null; });
-        if (!hit) throw new Error('the character chips are not reachable');
+        if (lv > t.t + 1) throw new Error(`the screen (${lv}) runs under the token (${t.t})`);
+        const hit = await page.evaluate(() => { const s = document.getElementById('menu-root'); s.scrollLeft = 0; const r = s.querySelector('#party button').getBoundingClientRect(); return document.elementFromPoint(r.left + 24, r.top + 24)?.closest('#party') !== null && r.top < document.getElementById('drawer-head').getBoundingClientRect().top; });
+        if (!hit) throw new Error('the characters\' symbols are not reachable at the top of the sheet');
       });
-      await run.do('the token stays exactly where it is while the menu opens, goes down a level, shows a screen, and closes', async () => {
+      await run.do('the token stays exactly where it is while the arc fans out, a screen opens, the place changes, and it closes', async () => {
         const at = () => page.evaluate(() => { const r = document.getElementById('btn-menu').getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * 10) / 10).join(); });
         await closeMenu(page); await sleep(200);
         const home = await at(); const seen = [];
-        await page.click('#btn-menu'); await waitShown(page, '#drawer');
+        await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
         for (let i = 0; i < 6; i++) { seen.push(await at()); await sleep(150); }       // mid-slide too
         for (const where of ['sheet', 'turns', 'table/settings', 'dice']) { await openMenu(page, where); seen.push(await at()); }
         await closeMenu(page);
         for (let i = 0; i < 6; i++) { seen.push(await at()); await sleep(150); }
         const moved = seen.filter((x) => x !== home);
         if (moved.length) throw new Error(`the token moved: home ${home}, then ${[...new Set(moved)].join(' | ')}`);
-        await openMenu(page, []);                  // the next step starts with the menu open on its first level
       });
-      await run.do('the token, Escape, the handle or x, and the dimmed map each close it, and focus returns to the token', async () => {
+      await run.do('the token and Escape fold the arc; the token, Escape and the handle or x close a screen; focus returns to the token', async () => {
+        const focus = () => page.evaluate(() => document.activeElement?.id);
+        await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
+        await page.click('#btn-menu'); await waitShown(page, '#menu-arc', false);
+        if ((await focus()) !== 'btn-menu') throw new Error('focus did not return to the token (token, arc)');
+        if ((await page.getAttribute('#btn-menu', 'aria-expanded')) !== 'false') throw new Error('aria-expanded after closing');
+        await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
+        await page.keyboard.press('Escape'); await waitShown(page, '#menu-arc', false);
+        if ((await focus()) !== 'btn-menu') throw new Error('focus did not return to the token (Escape, arc)');
+        await openMenu(page, 'turns');
         await page.click('#btn-menu'); await waitShown(page, '#drawer', false);
-        if ((await page.evaluate(() => document.activeElement?.id)) !== 'btn-menu') throw new Error('focus did not return to the token (token)');
-        await page.click('#btn-menu'); await waitShown(page, '#drawer');
+        if ((await focus()) !== 'btn-menu') throw new Error('focus did not return to the token (token, screen)');
+        if (await shown(page, '#menu-arc')) throw new Error('closing a screen by the die left the arc up');
+        await openMenu(page, 'turns');
         await page.keyboard.press('Escape'); await waitShown(page, '#drawer', false);
-        if ((await page.evaluate(() => document.activeElement?.id)) !== 'btn-menu') throw new Error('focus did not return to the token (Escape)');
-        await page.click('#btn-menu'); await waitShown(page, '#drawer'); await sleep(300);
+        if ((await focus()) !== 'btn-menu') throw new Error('focus did not return to the token (Escape, screen)');
+        await openMenu(page, 'turns');
         await page.click(phone ? '#drawer-handle' : '#drawer-close'); await waitShown(page, '#drawer', false);
-        if ((await page.evaluate(() => document.activeElement?.id)) !== 'btn-menu') throw new Error('focus did not return to the token (handle or x)');
+        if ((await focus()) !== 'btn-menu') throw new Error('focus did not return to the token (handle or x)');
         if (!phone) {
-          await page.keyboard.press('m'); await waitShown(page, '#drawer');
-          await page.keyboard.press('m'); await waitShown(page, '#drawer', false);
+          await page.keyboard.press('m'); await waitShown(page, '#menu-arc');
+          await page.keyboard.press('m'); await waitShown(page, '#menu-arc', false);
         }
       });
       await run.do('one tap on the map closes every level, and that tap does nothing else', async () => {
@@ -132,49 +199,65 @@ async function drawerPass(browser, url, label, opts) {
         await waitShown(page, '#drawer', false);
         if ((await state(page, (S) => JSON.stringify(Object.values(S.entities).map((e) => e.pos)))) !== pos) throw new Error('the tap moved somebody');
         if ((await page.evaluate(() => document.activeElement?.id)) !== 'btn-menu') throw new Error('focus did not return to the token (the map)');
-        await page.click('#btn-menu'); await waitShown(page, '#drawer'); await sleep(300);
-        if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== '') throw new Error('a closed menu did not open on the first level');
-        await closeMenu(page);
+        // A closed menu opens on its arc, and one tap on the map folds that too and does nothing else.
+        await page.click('#btn-menu'); await waitShown(page, '#menu-arc'); await sleep(700);
+        if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== '') throw new Error('a closed menu did not open on the arc');
+        if ((await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id, clear)) !== 'drawer-scrim') throw new Error('with the arc out the map is not the clear zone');
+        await tapAt(page, touch, clear[0], clear[1]);
+        await waitShown(page, '#menu-arc', false);
+        if ((await state(page, (S) => JSON.stringify(Object.values(S.entities).map((e) => e.pos)))) !== pos) throw new Error('the tap that folded the arc moved somebody');
+        if (await page.evaluate(() => window.hextable.drawer.isOpen)) throw new Error('the menu is still open');
       });
       await run.do('a drag down on the handle (a sheet) or away from the side on the header (columns) closes it', async () => {
-        await page.click('#btn-menu'); await waitShown(page, '#drawer'); await sleep(900);
+        await openMenu(page, 'turns'); await sleep(900);
         await page.evaluate((isPhone) => { const h = document.getElementById(isPhone ? 'drawer-handle' : 'drawer-head'), r = h.getBoundingClientRect(), y = r.top + 20, x = r.left + 160;
           const fire = (t, d) => h.dispatchEvent(new PointerEvent(t, { pointerId: 7, clientX: isPhone ? x : x - d, clientY: isPhone ? y + d : y, bubbles: true, isPrimary: true }));
           fire('pointerdown', 0); fire('pointermove', 30); fire('pointermove', 90); fire('pointerup', 90); }, phone);
         await waitShown(page, '#drawer', false);
       });
-      await run.do('Tab stays inside an open menu', async () => {
-        await page.click('#btn-menu'); await waitShown(page, '#drawer'); await sleep(300);
+      await run.do('Tab stays inside the arc, and inside an open screen', async () => {
+        await openArc(page);
+        for (let i = 0; i < 30; i++) await page.keyboard.press('Tab');
+        if (!(await page.evaluate(() => !!document.activeElement?.closest('#menu-arc')))) throw new Error(`focus left the arc: ${await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName)}`);
+        await page.keyboard.press('Escape'); await waitShown(page, '#menu-arc', false);
+        await openMenu(page, 'turns');
         for (let i = 0; i < 30; i++) await page.keyboard.press('Tab');
         if (!(await page.evaluate(() => !!document.activeElement?.closest('#drawer')))) throw new Error('focus left the menu');
         await page.keyboard.press('Escape'); await waitShown(page, '#drawer', false);
       });
-      await run.do('arrow keys: Up and Down move between rows, Right or Enter opens, Left or Backspace goes back, Escape closes every level', async () => {
-        await page.click('#btn-menu'); await waitShown(page, '#drawer'); await sleep(900);
-        const at = () => page.evaluate(() => document.activeElement?.id);
-        const first = await page.evaluate(() => { const b = [...document.querySelectorAll('#menu-root .menu-row, #menu-root .pr')].find((x) => !x.hidden && x.getClientRects().length); b.id ||= 'first-row'; return b.id; });          // the first row is a character's (M4)
-        const lastChar = await page.evaluate(() => { const l = [...document.querySelectorAll('#menu-root .pr')].at(-1); l.id ||= 'last-char'; return l.id; });
-        await page.evaluate((i) => document.getElementById(i).focus(), lastChar); await page.keyboard.press('ArrowDown');
-        if ((await at()) !== 'tab-turns') throw new Error(`ArrowDown reached ${await at()}`);
-        await page.keyboard.press('End'); if ((await at()) !== 'tab-table') throw new Error(`End reached ${await at()}`);
-        await page.keyboard.press('ArrowUp'); await page.keyboard.press('Home'); if ((await at()) !== first) throw new Error(`Home reached ${await at()}`);
-        await page.keyboard.press('End'); await page.keyboard.press('ArrowRight');
-        await wait(page, () => document.getElementById('drawer').dataset.path === 'table');
-        await page.keyboard.press('ArrowLeft'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
-        if ((await at()) !== 'tab-table') throw new Error(`Left left the focus on ${await at()}`);
-        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path === 'table');
-        await page.keyboard.press('Backspace'); await wait(page, () => document.getElementById('drawer').dataset.path === '');
-        // At the root there is no back, and the key must not reach the game (it would walk the party or turn the camera).
+      await run.do('keys: M opens the arc with the focus on its first symbol, arrows move round it in order, Enter opens; on a screen arrows move along the strip, and Left or Backspace goes back', async () => {
+        await page.evaluate(() => document.getElementById('gl').focus?.());
+        await page.keyboard.press('m'); await waitShown(page, '#menu-arc'); await sleep(700);
+        const at = () => page.evaluate(() => { const a = document.activeElement; return a?.dataset.place ?? a?.dataset.go ?? a?.id ?? ''; });
+        const order = await page.$$eval('#arc .arc-b', (x) => x.map((b) => b.dataset.place));
+        if ((await at()) !== order[0]) throw new Error(`the focus starts on ${await at()}, not the first symbol`);
         await page.evaluate(() => { window.__leaked = []; addEventListener('keydown', (e) => window.__leaked.push(e.key)); });
-        await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Backspace');
-        if ((await page.evaluate(() => window.__leaked.length)) !== 0) throw new Error('ArrowLeft or Backspace at the root reached the game');
-        // The heading: Down or Home reaches the first row.
-        await page.focus('#drawer-title'); await page.keyboard.press('ArrowDown');
-        if ((await at()) !== first) throw new Error(`ArrowDown from the heading reached ${await at()}`);
-        await page.focus('#drawer-title'); await page.keyboard.press('Home');
-        if ((await at()) !== first) throw new Error(`Home from the heading reached ${await at()}`);
-        await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown');
-        await openMenu(page, 'table/about'); await page.focus('#drawer-title');
+        await page.keyboard.press('ArrowRight'); if ((await at()) !== order[1]) throw new Error(`ArrowRight reached ${await at()}`);
+        await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowLeft'); if ((await at()) !== order[0]) throw new Error(`ArrowLeft reached ${await at()}`);
+        await page.keyboard.press('End'); if ((await at()) !== order.at(-1)) throw new Error(`End reached ${await at()}`);
+        await page.keyboard.press('Home'); if ((await at()) !== order[0]) throw new Error(`Home reached ${await at()}`);
+        await page.keyboard.press('Backspace');
+        if ((await page.evaluate(() => window.__leaked.length)) !== 0) throw new Error(`a key on the arc reached the game: ${await page.evaluate(() => window.__leaked.join())}`);      // an arrow would walk the party or turn the camera
+        for (let i = 0; i < order.indexOf('settings'); i++) await page.keyboard.press('ArrowRight');
+        if ((await at()) !== 'settings') throw new Error(`walking round reached ${await at()}`);
+        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path === 'settings');
+        if ((await at()) !== 'drawer-title') throw new Error('focus did not move to the heading');
+        // From the heading, Up reaches the place on the strip; Left and Right move along it; Enter opens; Down comes back to the heading.
+        await page.keyboard.press('ArrowUp'); if ((await at()) !== 'settings') throw new Error(`ArrowUp from the heading reached ${await at()}`);
+        await page.keyboard.press('ArrowRight'); if ((await at()) !== 'dm') throw new Error(`ArrowRight on the strip reached ${await at()}`);
+        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
+        // In a list Up and Down move between rows, Right or Enter opens one, Left or Backspace goes back to it.
+        await page.focus('#dm > .sec-index [data-sec="fight"]');
+        await page.keyboard.press('ArrowDown'); if ((await page.evaluate(() => document.activeElement?.dataset.sec)) !== 'creatures') throw new Error('ArrowDown in the list');
+        await page.keyboard.press('ArrowRight'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm/creatures');
+        await page.keyboard.press('ArrowLeft'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
+        if ((await page.evaluate(() => document.activeElement?.dataset.sec)) !== 'creatures') throw new Error('Left did not leave the focus on the row');
+        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm/creatures');
+        await page.keyboard.press('Backspace'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
+        // With no level to go back to, the key must still not reach the game.
+        await page.evaluate(() => { window.__leaked.length = 0; });
+        await page.focus('#drawer-title'); await page.keyboard.press('ArrowLeft'); await page.keyboard.press('Backspace');
+        if ((await page.evaluate(() => window.__leaked.length)) !== 0) throw new Error('ArrowLeft or Backspace on a screen reached the game');
         await page.keyboard.press('Escape'); await waitShown(page, '#drawer', false);
       });
       await run.do('About holds the SRD statement word for word, the licences and a place for model packs', async () => {
@@ -204,54 +287,64 @@ async function drawerPass(browser, url, label, opts) {
         const b = await rectOf(page, '#btn-menu');
         if (Math.abs((b.l + b.r) / 2 - b.vw / 2) > 2) throw new Error('the token did not come back to the centre');
       });
-      await run.do('the menu slides by default, and under "Just appear" or reduced motion nothing moves at all', async () => {
-        // The rectangles of the menu and its screen on every frame for a while after the token is tapped.
+      await run.do('the sheet slides and the arc grows by default; under "Just appear" or reduced motion nothing moves at all; changing place never slides', async () => {
+        // The rectangles of the menu and its screen (or of the arc's symbols) on every frame for a while after a tap.
         const frames = (what) => page.evaluate(async (w) => {
           const d = document.getElementById('drawer'), seen = [];
-          const snap = () => { const q = (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); }; seen.push(d.hidden ? 'hidden' : `${q(d)}|${q(document.getElementById('drawer-body'))}|${q(document.getElementById('menu-root'))}`); };
-          if (w === 'open') document.getElementById('btn-menu').click(); else document.getElementById('tab-turns').click();
+          const q = (e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); };
+          const snap = () => seen.push(w === 'arc' ? [...document.querySelectorAll('#arc .arc-b')].map(q).join('|') || 'hidden' : d.hidden ? 'hidden' : `${q(d)}|${q(document.getElementById('drawer-body'))}|${q(document.getElementById('menu-root'))}`);
+          if (w === 'arc') document.getElementById('btn-menu').click(); else if (w === 'open') document.querySelector('#arc [data-place="turns"]').click(); else document.getElementById('tab-dice').click();
           for (let i = 0; i < 14; i++) { snap(); await new Promise((r) => requestAnimationFrame(r)); }
           return seen;
         }, what);
         const moves = (seen) => new Set(seen.filter((s) => s !== 'hidden')).size;
+        let arc = await frames('arc'); await sleep(900);
+        if (moves(arc) < 3) throw new Error(`the arc did not grow out of the die: ${arc.slice(0, 3)}`);
         let seen = await frames('open'); await sleep(900);
-        if (moves(seen) < 3) throw new Error(`the menu did not slide: ${seen.slice(0, 4)}`);
-        let level = await frames('level'); await sleep(900);
-        if (moves(level) < 2) throw new Error('a level did not push in');
+        if (moves(seen) < 3) throw new Error(`the sheet did not slide: ${seen.slice(0, 4)}`);
+        let level = await frames('level'); await sleep(300);
+        if (moves(level) !== 1) throw new Error(`changing place moved the menu (R20): ${[...new Set(level)]}`);
         await closeMenu(page);
         await openMenu(page, 'settings');
         await page.selectOption('#set-motion', 'appear');
         if ((await page.evaluate(() => localStorage.getItem('hextable.menuMotion'))) !== '"appear"') throw new Error('Just appear was not stored');
         await closeMenu(page);
+        arc = await frames('arc'); await sleep(200);
+        if (moves(arc) !== 1 || arc[0] === 'hidden') throw new Error(`under Just appear the arc moved or came late: ${[...new Set(arc)].slice(0, 3)}`);
         seen = await frames('open'); await sleep(200);
-        if (moves(seen) !== 1 || seen[0] === 'hidden') throw new Error(`under Just appear the menu moved or came late: ${new Set(seen)}`);
+        if (moves(seen) !== 1 || seen[0] === 'hidden') throw new Error(`under Just appear the menu moved or came late: ${[...new Set(seen)]}`);
         level = await frames('level');
-        if (moves(level) !== 1) throw new Error(`under Just appear a level moved: ${new Set(level)}`);
+        if (moves(level) !== 1) throw new Error(`under Just appear a place moved: ${[...new Set(level)]}`);
         await closeMenu(page);
         if (await shown(page, '#drawer')) throw new Error('under Just appear the menu did not go at once');
         await openMenu(page, 'settings'); await page.selectOption('#set-motion', 'slide'); await closeMenu(page);
         await page.emulateMedia({ reducedMotion: 'reduce' });
+        arc = await frames('arc'); await sleep(200);
+        if (moves(arc) !== 1) throw new Error('under reduced motion the arc moved');
         seen = await frames('open'); await sleep(200);
-        if (moves(seen) !== 1) throw new Error(`under reduced motion the menu moved: ${new Set(seen)}`);
+        if (moves(seen) !== 1) throw new Error(`under reduced motion the menu moved: ${[...new Set(seen)]}`);
         await closeMenu(page);
         await page.emulateMedia({ reducedMotion: 'no-preference' });
       });
-      if (!phone) await run.do('a wide menu keeps its columns side by side, and takes its side from Setup', async () => {
-        await openMenu(page, 'table/settings'); await sleep(900);
-        const cols = await page.evaluate(() => ['menu-root', 'menu-table', 'drawer-body'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), r.width > 0]; }));
-        if (!cols.every((c, i) => c[2] && (!i || c[0] >= cols[i - 1][1] - 1))) throw new Error(`the three levels are not side by side: ${JSON.stringify(cols)}`);
-        const tb = await rectOf(page, '#btn-menu'), dr = await rectOf(page, '#drawer');
-        // The token does not move for the columns (round 6): the columns leave its strip empty, so no level runs under it.
-        const lvB = await page.evaluate(() => document.getElementById('menu-levels').getBoundingClientRect().bottom);
-        if (lvB > tb.t + 1) throw new Error(`a column runs under the token: levels end at ${lvB}, token starts at ${tb.t}`);
+      if (!phone) await run.do('a wide menu is one column with the strip across its top, clear of the token wherever it sits, and takes its side from Setup', async () => {
+        await openMenu(page, 'settings'); await sleep(900);
+        const parts = await page.evaluate(() => ['menu-strip', 'drawer-head', 'drawer-body'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom), r.width > 0]; }));
+        if (!parts.every((c, i) => c[2] && (!i || c[0] >= parts[i - 1][1] - 1))) throw new Error(`the strip, the heading and the screen are not one under the other: ${JSON.stringify(parts)}`);
+        // The token does not move for the column (round 6): the column leaves its strip empty, so no screen runs under it.
+        const under = () => page.evaluate(() => { const t = document.getElementById('btn-menu').getBoundingClientRect(), l = document.getElementById('menu-levels').getBoundingClientRect(); return l.left < t.right && l.right > t.left && l.bottom > t.top + 1; });
+        const tb = await rectOf(page, '#btn-menu');
+        if (await under()) throw new Error('the column runs under the token');
         if (Math.abs(tb.l + tb.w / 2 - tb.vw / 2) > 2) throw new Error(`the token moved off the centre: ${JSON.stringify(tb)}`);
+        await page.selectOption('#set-token', 'left'); await sleep(300);
+        if (await under()) throw new Error('with the token at the left the column runs under it');
+        await page.selectOption('#set-token', 'center'); await sleep(300);
         await page.selectOption('#set-side', 'right'); await sleep(900);
         const r = await rectOf(page, '#drawer');
         if (Math.abs(r.r - r.vw) > 2) throw new Error(`not on the right: ${JSON.stringify(r)}`);
         if ((await page.evaluate(() => localStorage.getItem('hextable.drawerSide'))) !== '"right"') throw new Error('the side was not stored');
         const b = await rectOf(page, '#btn-menu');
-        if (Math.abs(b.l + b.w / 2 - b.vw / 2) > 2) throw new Error(`the token moved when the columns changed side: ${JSON.stringify(b)}`);
-        if ((await page.evaluate(() => document.getElementById('menu-levels').getBoundingClientRect().bottom)) > b.t + 1) throw new Error('a column runs under the token');
+        if (Math.abs(b.l + b.w / 2 - b.vw / 2) > 2) throw new Error(`the token moved when the column changed side: ${JSON.stringify(b)}`);
+        if (await under()) throw new Error('on the right the column runs under the token');
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-right-wide.png` : '/dev/null' }).catch(() => {});
         await page.selectOption('#set-side', 'left'); await sleep(900); await closeMenu(page);
       });
@@ -309,8 +402,9 @@ async function drawerPass(browser, url, label, opts) {
         const wantInit = await state(page, (S) => S.encounter.order.map((o) => String(o.init)));
         if (JSON.stringify(inits) !== JSON.stringify(wantInit)) throw new Error(`initiative ${inits} is not ${wantInit}`);
         if ((await page.$eval('#tr-title', (e) => e.textContent)) !== 'Round 1') throw new Error('the round');
-        if ((await page.$eval('#tab-turns .mr-name', (e) => e.textContent.trim())) !== 'Turns') throw new Error('the row is not called Turns in a fight');
-        if (!/^Round 1 · .+'s turn$/.test(await page.$eval('#sum-turns', (e) => e.textContent.trim()))) throw new Error('the row does not say whose turn it is');
+        if ((await page.$eval('#tab-turns .mr-name', (e) => e.textContent.trim())) !== 'Turns' || (await page.textContent('#drawer-title')) !== 'Turns') throw new Error('the place is not called Turns in a fight');
+        if ((await page.$eval('#tab-turns .mr-sym', (e) => e.dataset.sym)) !== 'turns') throw new Error('in a fight Turns does not wear the crossed swords');
+        if (!/^Round 1 · .+'s turn$/.test(await page.$eval('#sum-turns', (e) => e.textContent.trim()))) throw new Error('the place does not say whose turn it is');
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-turns-${phone ? 'phone' : 'wide'}.png` : '/dev/null' }).catch(() => {});
       });
       await run.do('a tap on a row selects that creature, and on a phone closes the drawer; the turn line opens it again', async () => {
@@ -420,19 +514,25 @@ async function drawerLandscape(browser, url) {
         if (t.t < 0 || t.b > 390 || t.l < 0 || t.r > 844 || t.w < 44 || t.h < 44) throw new Error(`the token is at ${JSON.stringify(t)}`);
         if (await page.$('#dock')) throw new Error('the dock is still in the page');
       });
-      await run.do('the menu opens, every first-level row is tappable and none is under the token', async () => {
-        await page.tap('#btn-menu'); await waitShown(page, '#drawer');
-        await sleep(1200);                      // the token slides beside the column: look when it has arrived
-        // A row is under the token only where it is seen: the level scrolls inside the strip above the token, so what lies below that edge is clipped.
-        const rows = await page.$$eval('#menu-root [data-go], #menu-root .pr', (x) => { const clip = document.getElementById('menu-levels').getBoundingClientRect().bottom; return x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go || e.dataset.id, t: r.top, b: Math.min(r.bottom, clip), l: r.left, r: r.right, h: r.height }; }).filter((r) => r.h > 0); });
-        if (rows.length < 5) throw new Error(`rows: ${JSON.stringify(rows)}`);
-        const tok = await boxOf('#btn-menu'), dr0 = await boxOf('#drawer');
-        for (const r of rows) {
-          if (r.h < 44) throw new Error(`row ${r.k} is ${r.h} high`);
-          if (r.l < tok.r && Math.min(r.r, dr0.r) > tok.l && r.b > tok.t && r.t < tok.b) throw new Error(`row ${r.k} is under the token: ${JSON.stringify([r, tok])}`);
+      await run.do('the arc opens in the corner: every symbol is on the screen, at least 44 px, and none is under the token; a symbol opens its screen', async () => {
+        await page.tap('#btn-menu'); await waitShown(page, '#menu-arc');
+        await sleep(1200);
+        const syms = await page.$$eval('#arc .arc-b', (x) => x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.place, t: r.top, b: r.bottom, l: r.left, r: r.right, h: r.height, w: r.width }; }));
+        if (syms.length < 5) throw new Error(`symbols: ${JSON.stringify(syms)}`);
+        const tok = await boxOf('#btn-menu');
+        for (const r of syms) {
+          if (r.h < 44 || r.w < 44) throw new Error(`symbol ${r.k} is ${r.w} x ${r.h}`);
+          if (r.l < 0 || r.t < 0 || r.r > 844 || r.b > 390) throw new Error(`symbol ${r.k} is off the screen: ${JSON.stringify(r)}`);
+          if (r.l < tok.r && r.r > tok.l && r.b > tok.t && r.t < tok.b) throw new Error(`symbol ${r.k} is under the token: ${JSON.stringify([r, tok])}`);
         }
+        if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-arc-landscape.png` }).catch(() => {});
+        await page.tap('#arc [data-place="turns"]'); await waitShown(page, '#drawer'); await sleep(1200);
         const dr = await boxOf('#drawer');
         if (dr.h < 300) throw new Error(`the menu is only ${dr.h} high`);
+        const rows = await page.$$eval('#menu-root .menu-row:not([hidden]), #menu-root .pr', (x) => x.map((e) => { const r = e.getBoundingClientRect(); return { k: e.dataset.go || e.dataset.id, h: r.height, w: r.width }; }));
+        for (const r of rows) if (r.h < 44 || r.w < 44) throw new Error(`the strip's ${r.k} is ${r.w} x ${r.h}`);
+        const lv = await boxOf('#menu-levels');
+        if (lv.l < tok.r && lv.r > tok.l && lv.b > tok.t + 1) throw new Error(`the screen runs under the token: ${JSON.stringify([lv, tok])}`);
       });
       await run.do('Settings is reached by taps, one setting changes, and closing leaves the token where it was', async () => {
         await openMenu(page, 'table/settings');
@@ -444,8 +544,7 @@ async function drawerLandscape(browser, url) {
         const t = await boxOf('#btn-menu');
         if (t.t < 0 || t.b > 390) throw new Error(`the token is off the screen: ${JSON.stringify(t)}`);
       });
-      if (process.env.SMOKE_SHOTS) { await openMenu(page, ''); await sleep(1200); await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-root-landscape.png` }).catch(() => {}); await closeMenu(page); }
-      await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-landscape.png` : '/dev/null' }).catch(() => {});
+            await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-landscape.png` : '/dev/null' }).catch(() => {});
     } finally { await ctx.close(); }
   });
 }
