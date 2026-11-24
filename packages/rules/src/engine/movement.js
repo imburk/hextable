@@ -342,7 +342,7 @@ function march(s, leader, walked, ev) {
     const reach = lurkers.length ? knownWays(s, f, lurkers) : moveOptions(s, f);
     const frontI = along(trail, front.pos, G).i;
     // The places it could stop, and where it stands now (staying put costs nothing).
-    const crowded = living(s).some((o) => o.id !== f.id && overlapAt(o, o.pos, f, f.pos, gridOf(s.map)));   // it stands where the one in front now does: it must move off
+    const crowded = living(s).some((o) => o.id !== f.id && !lurkers.includes(o) && overlapAt(o, o.pos, f, f.pos, gridOf(s.map)));   // it stands where the one in front now does: it must move off
     const spots = [...(crowded ? [] : [{ k: key(f.pos), h: f.pos, cost: 0 }]), ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
     // Kept up: close to the one in front and on its footing (#728; `footingOf`, world.js). The foot of a ledge the one in front has climbed,
     // or of its ladder, is close on the map and is not with it: from there the follower goes on up, as far along the trail as it gets.
@@ -418,7 +418,11 @@ function formation(s, leader, walked, pending, ev) {
   const water = (h) => ground(s.map, h)?.tile.t === 'water';
   // One who is down, cannot move or cannot get up beside the leader is left to the column after the
   // others (whose rules drop it as not keeping up); the rest keep their places.
-  const reaches = new Map(members.map((x) => [x.id, moveOptions(s, x)]));
+  // Each one's ways are laid out on the game as it knows it (`waysOf`): a creature it does not know of bars none, so who is in a slot, and so
+  // whether the party is laid out at all, never tells of one (#741; the column does the same, in march).
+  const lurkersOf = (x) => living(s).filter((o) => o.id !== x.id && unseenBy(s, o, x) && hostile(o, x));
+  const waysOf = (x) => { const lk = lurkersOf(x); return lk.length ? knownWays(s, x, lk) : moveOptions(s, x); };
+  const reaches = new Map(members.map((x) => [x.id, waysOf(x)]));
   const walks = (x) => up(x) && [...reaches.get(x.id).values()].some((v) => apartAt(s, leader, leader.pos, x, v.h) <= 1);
   const inSlot = members.filter((x) => slots[x.id] && walks(x));
   const movers = new Set(pending.map((x) => x.id));
@@ -458,7 +462,7 @@ function formation(s, leader, walked, pending, ev) {
     movers.delete(f.id);
     // Places the others still to walk are going to are left for them.
     const theirsToGo = (h) => plan.some((p) => overlapAt(p.f, p.h, f, h, G));
-    const reach = moveOptions(s, f), now = (sp) => sp.here || (sp.canStop && !theirsToGo(sp.h));
+    const lk = lurkersOf(f), reach = lk.length ? knownWays(s, f, lk) : moveOptions(s, f), now = (sp) => sp.here || (sp.canStop && !theirsToGo(sp.h));
     let to = i < 0 ? placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos : h;
     const lurker = holders(f, to).find((o) => unseenBy(s, o, f) && hostile(o, f));
     if (lurker) {
@@ -468,8 +472,7 @@ function formation(s, leader, walked, pending, ev) {
     if (key(to) !== key(f.pos)) {
       const had = !!s.encounter;
       // Its way there laid out on what the party knows, as the column's and the leader's are (#372; walkKnown).
-      const lk = living(s).filter((o) => o.id !== f.id && unseenBy(s, o, f) && hostile(o, f)), kr = lk.length ? knownWays(s, f, lk) : null;
-      if (kr?.get(key(to))?.canStop) walkKnown(s, f, key(to), ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), kr, lk, true);
+      if (lk.length && reach.get(key(to))?.canStop) walkKnown(s, f, key(to), ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), reach, lk, true);
       else walk(s, f, reach, key(to), ev, false);
       if (!had && s.encounter) return 'fight';
     }
