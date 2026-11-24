@@ -273,6 +273,42 @@ The menu › "Quick actions on the turn line on my turn" turns them off (on by d
 creature: a DM who has selected another creature than the one whose turn it is sees none. The menu's own path is still four taps; question 29 (open the character's page on my turn) is
 M10's.
 
+### M8 build notes (the arc, the strip, the symbols, the names)
+
+**Built.**
+- **The symbols** (`client/symbols.js`): the whole set of Decision 4c as inline SVG strings on the 24-unit grid, drawn in `currentColor` with no fill (a dot is a short stroke with a round end,
+  so it takes the stroke's colour too), each with a spoken name (`SYMBOL_NAMES`). `PLACE_SYMBOLS` and `placeSymbol` say which a place wears; Turns wears the campfire while nobody fights.
+  A character wears its own sigil (a letter on its colour inside its health ring).
+- **The arc** (`client/menuarc.js` for the sums, `drawer.js` for the page): a tap on the die fans the places out round it, 52 px round buttons on the rings of Decision 4c's table (a phone
+  at bottom centre 7 + 8, a corner 4 + 6, a wide screen 8 + 11 or 4 + 6); with more places than slots the last slot is More, a list of every place with its name and a line about it. The
+  symbols grow out of the die in 0.5 s with a 25 ms stagger; none under Just appear or reduced motion. The words are in each button from the start; on the screen they come up after 3 s
+  (the same timer as the scroll card's) and stay until the arc folds. The die, the dimmed map and Escape fold it; M folds it too. Arrow keys move round it in order, Home and End go to its
+  ends, Enter opens, and the focus starts on the first symbol. Waiting for you (with the DM's to-do tray) and, once on a device, the note about the health ring sit above the arc.
+- **The strip** (`#menu-strip`): the same places in the same order across the top of every screen, 48 px buttons with 44 px symbols; the current one has a rim and an underline and
+  `aria-current="page"`. It scrolls sideways by itself (never `scrollIntoView`, R20) and shows ‹ or › (32 x 48 px) only at an end with more that way; a tap moves it by about three symbols.
+  The strip's buttons are the old first level's rows with their ids (`#tab-turns`, `#tab-settings`, `#party .pr`), so nothing that held one had to change.
+- **The places** are round 4's few: one for each character this person plays (in the party's order, or the turn order in a fight; a symbol keeps its place when another character is
+  selected), Turns (Party while nobody fights), Dice, Log and chat, Setup, and DM tools for the DM. The list "Table" is gone: Setup and DM tools are places, Help and feedback, About and
+  leaving are in Setup (Help and about; Leave the table), where M5 had already put them.
+- **Names.** A screen's heading is its own name (a character's page is the character's name; Turns is Party while nobody fights; no screen is headed "Menu"). A screen inside a screen
+  has a way back that names where it goes ("‹ DM tools" over "Creatures"); the breadcrumb is gone, since there is no first-level list to go back to.
+- **Closing.** A phone's sheet has no ×: the handle closes it (a tap or a drag down), as do the die, the map and Escape. A wide screen's column keeps its × beside Pin.
+- **Setup › The menu › Labels under the symbols**: After 3 seconds / Always (`hextable.menuLabels`). Under Always the strip shows the words too.
+- **Motion** (R20): only the sheet (or the column) and the arc move. Changing place from the strip swaps the screen where it is.
+
+**Settled, and where this differs from the text above.**
+- **Dice is a place; Roll dice is not yet.** Round 4's places name Roll dice, which needs `freeRoll` (E-M2, D5: not in this job). The Dice screen (the last rolls, the dice and animation
+  controls) keeps its place and wears the d20; the two-dice symbol is drawn and waits for D5.
+- **Handouts is still a place for a player when there are any** (with its badge). Round 4 makes it a section of Log and chat; that is M10's accordion.
+- **About is a place only before a table** (the lobby's About link opens it, with Setup beside it on the strip). At a table it is a button of Setup › Help and about.
+- **The slots.** The build plan's "14 slots at bottom centre, 15 at bottom left" is older than Decision 4c's table; the table is what is built and tested: 15 at bottom centre (14 places
+  and More when there are more), 10 in a corner. A second ring's symbols take its middle slots first, so they clear the first ring's.
+- **A phone narrower than 390 px** pulls a centred fan's rings in so no symbol leaves the screen (not in the spec; 320 px is tested).
+- **A phone on its side** has the die in the bottom left corner (M3), so its arc is the corner's quarter circles.
+- **Group names** (question 19) show nowhere yet: the arc has no words for them, and Arrange (M9) and Help are where they would be. Set A is the default when they are.
+- **The banner's move to the character whose turn it is** (M6) now applies to a player looking at a character's page; the arc is left alone.
+- **Leaving says what it does before the first tap**: the note that came up on the first tap of the Table list's "Leave table" row is the standing line of Setup › Leave the table.
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the
