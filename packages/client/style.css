@@ -342,7 +342,7 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 #hint #hint-slot, #hint #hint-pick { max-width: 100%; }
 @media (pointer: coarse) { #hint #hint-slot, #hint #hint-pick { min-height: 44px; } }
 @media (max-width: 480px) { #hint #hint-pick { max-width: 100%; } }
-#join { top: auto; bottom: calc(var(--dock-h, 0px) + 64px); z-index: 5; }      /* above the turn line, which is above the dock */
+#join { top: auto; bottom: calc(var(--dock-h, 0px) + 6px + var(--turn-h, 52px) + 6px); z-index: 5; }      /* above the turn line, which is above the dock; `--turn-h` is the turn line's measured height (app.js): with quick actions it wraps to two rows on a phone */
 #join[hidden] { display: none; }
 @media (pointer: coarse) { #join button { min-height: 44px; padding: 6px 14px; } }
 /* One writer to a solo save (#625): the offer to a second window, and the bar of a read-only one. */
