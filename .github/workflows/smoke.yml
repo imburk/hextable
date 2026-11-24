@@ -12,8 +12,18 @@ on:
       - 'packages/client/**'
       - 'packages/rules/src/**'
       - 'packages/server/src/**'
-      - 'scripts/**'
-      - '.github/workflows/**'
+      - 'scripts/smoke.mjs'
+      - 'scripts/smoke/**'
+      - 'scripts/build.mjs'
+      - 'packages/rules/test/fixtures/**'
+      - 'assets/**'
+      - 'package.json'
+      - '.github/workflows/smoke.yml'
+
+# A newer push to a pull request cancels that pull request's older smoke run (52 jobs on a free plan's 20 runners). A run on main is never cancelled.
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -23,7 +33,8 @@ jobs:
     name: smoke (${{ matrix.pass }})
     runs-on: ubuntu-latest
     # homebrew reloads the page many times and takes about 11 minutes on main; the models (R12) add to what each load and frame costs in SwiftShader.
-    timeout-minutes: ${{ matrix.pass == 'homebrew' && 30 || 15 }}
+    # companions takes about 12 minutes on a free runner and went past 15 on a busy one (24 Nov, #735).
+    timeout-minutes: ${{ (matrix.pass == 'homebrew' || matrix.pass == 'companions') && 30 || 15 }}
     strategy:
       fail-fast: false
       matrix:
