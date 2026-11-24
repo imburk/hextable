@@ -82,17 +82,13 @@
 
 <aside id="drawer" aria-labelledby="drawer-title" hidden>
   <button type="button" id="drawer-handle" aria-label="Close menu" title="Close menu (or drag down)"><i></i></button>
-  <header id="drawer-head">
-    <nav id="drawer-crumb" aria-label="Where you are">
-      <button type="button" id="drawer-back" aria-label="Back" hidden>&lsaquo;</button>
-      <ol id="crumb-list"><li id="crumb-here"><h2 id="drawer-title" tabindex="-1">Menu</h2></li></ol>
-    </nav>
-    <button type="button" id="drawer-pin" aria-pressed="false" aria-label="Keep the menu open beside the map" title="Keep open">Pin</button>
-    <button type="button" id="drawer-close" aria-label="Close the menu">&times;</button>
-  </header>
-  <div id="menu-levels">
-  <nav id="menu-root" class="menu-level" aria-label="Menu">
-    <!-- Waiting for you (Decision 4): shown only when the token's badge shows; what waits, in words, each with its way in. The DM's to-do tray (todo.js) is under it. -->
+  <!-- The strip (Decision 4c, M8): the places as symbols across the top of every screen. The first level is no list any more: these buttons are its rows, with their ids,
+       and the arc round the die (#menu-arc, below) shows the same places. An end's arrow shows only when there is more that way. -->
+  <div id="menu-strip">
+    <button type="button" id="strip-prev" class="strip-more" aria-label="Earlier places" hidden>&lsaquo;</button>
+  <nav id="menu-root" aria-label="Places">
+    <!-- Waiting for you (Decision 4): shown only when the token's badge shows; what waits, in words, each with its way in. The DM's to-do tray (todo.js) is under it.
+         drawer.js moves it above the arc when the page starts (the arc is where a tap on the die goes). -->
     <section id="menu-waiting" aria-labelledby="waiting-title" hidden>
       <h3 id="waiting-title">Waiting for you</h3>
       <ul id="waiting-list"></ul>
@@ -100,27 +96,31 @@
     </section>
     <div id="party" aria-label="Characters"></div>
     <ul class="menu-list">
-      <li><button type="button" class="menu-row" id="tab-sheet" data-go="sheet"><span class="mr-name">Character</span><span class="mr-sum" id="sum-sheet"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <li><button type="button" class="menu-row" id="tab-turns" data-go="turns"><span class="mr-name">Turns</span><span class="mr-sum" id="sum-turns"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <li><button type="button" class="menu-row" id="tab-dice" data-go="dice"><span class="mr-name">Dice</span><span class="mr-sum" id="sum-dice"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <li><button type="button" class="menu-row" id="tab-log" data-go="log"><span class="mr-name">Log and chat</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <!-- the Handouts row keeps the id handouts.js looks for: the button and its badge -->
-      <li><button type="button" class="menu-row" id="btn-handouts" data-go="handouts" hidden><span class="mr-name">Handouts</span><span class="mr-sum"><b id="ho-badge" hidden></b></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <li class="menu-gap"><button type="button" class="menu-row" id="tab-table" data-go="table"><span class="mr-name">Table</span><span class="mr-sum"><b id="table-badge" hidden></b></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+      <li><button type="button" class="menu-row" id="tab-sheet" data-go="sheet"><span class="mr-name">Character</span><span class="mr-sum" id="sum-sheet"></span></button></li>
+      <li><button type="button" class="menu-row" id="tab-turns" data-go="turns"><span class="mr-name">Turns</span><span class="mr-sum" id="sum-turns"></span></button></li>
+      <li><button type="button" class="menu-row" id="tab-dice" data-go="dice"><span class="mr-name">Dice</span><span class="mr-sum" id="sum-dice"></span></button></li>
+      <li><button type="button" class="menu-row" id="tab-log" data-go="log"><span class="mr-name">Log and chat</span><span class="mr-sum"></span></button></li>
+      <!-- the Handouts place keeps the id handouts.js looks for: the button and its badge -->
+      <li><button type="button" class="menu-row" id="btn-handouts" data-go="handouts" hidden><span class="mr-name">Handouts</span><span class="mr-sum"><b id="ho-badge" hidden></b></span></button></li>
+      <li><button type="button" class="menu-row" id="tab-settings" data-go="settings"><span class="mr-name">Setup</span><span class="mr-sum"></span></button></li>
+      <li><button type="button" class="menu-row" id="tab-dm" data-go="dm" hidden><span class="mr-name">DM tools</span><span class="mr-sum"><b id="dm-badge" hidden></b></span></button></li>
+      <li><button type="button" class="menu-row" id="tab-about" data-go="about" hidden><span class="mr-name">About</span><span class="mr-sum"></span></button></li>
     </ul>
   </nav>
-  <nav id="menu-table" class="menu-level" aria-label="Table">
-    <ul class="menu-list">
-      <li><button type="button" class="menu-row" id="tab-settings" data-go="settings"><span class="mr-name">Setup</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <li><button type="button" class="menu-row" id="tab-dm" data-go="dm" hidden><span class="mr-name">DM tools</span><span class="mr-sum"><b id="dm-badge" hidden></b></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <li><button type="button" class="menu-row" id="fb-btn" aria-label="Send feedback" aria-haspopup="dialog" aria-expanded="false"><span class="mr-name">Help and feedback</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-      <li><button type="button" class="menu-row" id="tab-about" data-go="about"><span class="mr-name">About</span><span class="mr-sum"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
-    </ul>
-    <div id="menu-session" hidden>
-      <button type="button" id="menu-new" class="leave" hidden>New game</button>
-      <button type="button" id="menu-leave" class="leave" hidden>Leave table</button>
-      <p id="menu-note" class="note" role="status" hidden></p>
-    </div>
+    <button type="button" id="strip-next" class="strip-more" aria-label="More places" hidden>&rsaquo;</button>
+  </div>
+  <header id="drawer-head">
+    <nav id="drawer-crumb" aria-label="Where you are">
+      <button type="button" id="drawer-back" aria-label="Back" hidden>&lsaquo;</button>
+      <ol id="crumb-list"><li id="crumb-here"><h2 id="drawer-title" tabindex="-1">Places</h2></li></ol>
+    </nav>
+    <button type="button" id="drawer-pin" aria-pressed="false" aria-label="Keep the menu open beside the map" title="Keep open">Pin</button>
+    <button type="button" id="drawer-close" aria-label="Close the menu">&times;</button>
+  </header>
+  <div id="menu-levels">
+  <!-- More (Decision 4c): every place as a labelled row, for a table with more places than the arc has slots. drawer.js fills it. -->
+  <nav id="menu-table" class="menu-level" aria-label="Every place">
+    <ul id="more-list" class="menu-list"></ul>
   </nav>
 <div id="drawer-body" class="menu-level">
     <section id="tracker" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden></section>
@@ -289,6 +289,7 @@
       </section>
       <section id="set-sec-menu"><h3>The menu</h3>
         <label class="assign">The menu token sits <select id="set-token"><option value="center">Bottom centre</option><option value="right">Bottom right</option><option value="left">Bottom left</option></select></label>
+        <label class="assign">Labels under the symbols <select id="set-labels"><option value="3s">After 3 seconds</option><option value="always">Always</option></select></label>
         <label class="assign">Menus <select id="set-motion"><option value="slide">Slide in and out</option><option value="appear">Just appear</option></select></label>
         <label class="assign">On a wide screen the menu opens from the <select id="set-side"><option value="left">Left</option><option value="right">Right</option></select></label>
         <label class="check" id="set-pin-row"><input type="checkbox" id="set-pin"> Keep the menu open beside the map</label>
@@ -306,7 +307,7 @@
         <ul id="set-rules" class="set-rules"></ul>
       </section>
       <section id="set-sec-help"><h3>Help and about</h3>
-        <div class="row"><button type="button" id="set-help">Help and feedback</button><button type="button" id="set-about" data-menu-open="about">About, credits and licences</button></div>
+        <div class="row"><button type="button" id="fb-btn" aria-label="Send feedback" aria-haspopup="dialog" aria-expanded="false">Help and feedback</button><button type="button" id="set-about" data-menu-open="about">About, credits and licences</button></div>
       </section>
       <section id="set-sec-leave" hidden><h3>Leave the table</h3>
         <p class="note" id="set-leave-note"></p>
@@ -319,6 +320,13 @@
   <div id="drawer-live" class="sr-only" role="status" aria-live="polite"></div>
 </aside>
 <div id="drawer-scrim" hidden></div>
+<!-- The arc (Decision 4c, M8): a tap on the die fans the places out round it, and nothing else opens. drawer.js draws the symbols and puts "Waiting for you" above them. -->
+<div id="menu-arc" hidden>
+  <div id="arc-above">
+    <p id="ring-note" hidden><span id="ring-note-text"></span> <button type="button" id="ring-ok">Got it</button></p>
+  </div>
+  <nav id="arc" aria-label="Places"></nav>
+</div>
 
 <div id="lobby" hidden>
   <form id="lobby-card" autocomplete="off">

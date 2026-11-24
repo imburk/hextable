@@ -183,8 +183,8 @@ async function pacingTable(browser, url) {
         await host.click('#dm-table button:has-text("Let in")');
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
-        const name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
+        await openMenu(phone, []); const b = phone.locator('#arc .arc-b:has-text("Play as")').first();
+        const name = (await b.locator('.ab-label').textContent()).replace('Play as ', '').trim();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
         await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);
