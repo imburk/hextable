@@ -342,7 +342,7 @@ function march(s, leader, walked, ev) {
     const reach = lurkers.length ? knownWays(s, f, lurkers) : moveOptions(s, f);
     const frontI = along(trail, front.pos, G).i;
     // The places it could stop, and where it stands now (staying put costs nothing).
-    const crowded = living(s).some((o) => o.id !== f.id && !lurkers.includes(o) && overlapAt(o, o.pos, f, f.pos, gridOf(s.map)));   // it stands where the one in front now does: it must move off
+    const crowded = living(s).some((o) => o.id !== f.id && !unseenBy(s, o, f) && overlapAt(o, o.pos, f, f.pos, gridOf(s.map)));   // it stands where the one in front now does: it must move off
     const spots = [...(crowded ? [] : [{ k: key(f.pos), h: f.pos, cost: 0 }]), ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
     // Kept up: close to the one in front and on its footing (#728; `footingOf`, world.js). The foot of a ledge the one in front has climbed,
     // or of its ladder, is close on the map and is not with it: from there the follower goes on up, as far along the trail as it gets.
