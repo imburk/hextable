@@ -619,8 +619,7 @@ const DISPEL_FIGHTER = [{ by: "Pat", act: { type: "cast", actor: "wyn", spell: "
 
 // TODO(effectEnd key order): nothing the player may not know is sent, but the two worlds do not send the same bytes. With a hidden creature on the spell,
 // view.js builds the event again and puts `why` after `targets`; without one it keeps the order the engine made (`why` before `targets`).
-const todoOrder = "effectEnd key order differs (`why`/`targets`) when the spell is also on a creature the player does not know of; the content is the same";
-test("dispel: one spell on a visible and a hidden creature ends whole when dispelled from the visible one, and the players are sent the same", { todo: todoOrder }, () => {
+test("dispel: one spell on a visible and a hidden creature ends whole when dispelled from the visible one, and the players are sent the same", () => {
   const { plain, hidden } = twin({ ...dispelWorld(), steps: DISPEL_FIGHTER }, sharedHidden(1));
   assert.equal(hidden.w.state.effects.length, 0, "the spell ended whole, the hidden creature's part with it");
   assert.equal(plain.w.state.effects.length, 0);
