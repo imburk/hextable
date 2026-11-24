@@ -104,7 +104,7 @@ async function controlsTable(browser, url) {
       await run.do('the DM sets the pace and the phone sees it but cannot change it', async () => {
         await host.selectOption('#dm-pace', 'flow');
         await wait(phone, () => window.hextable.state.settings.pace === 'flow');
-        await openTab(phone, 'settings');
+        await openTab(phone, 'settings/rules');
         await wait(phone, () => /flow/.test(document.querySelector('#pace-table').textContent));
         if (!/Only the DM/.test(await phone.$eval('#pace-table', (e) => e.textContent))) throw new Error('the phone is not told it cannot change it');
         if (await phone.$('#dm-pace:not([hidden])') && (await shown(phone, '#dm-pace'))) throw new Error('the phone can see the DM control');

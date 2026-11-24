@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, paneOf, openMenu, settle, tapAt, onCanvas, chip } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, paneOf, openMenu, openChar, settle, tapAt, onCanvas, chip } from './lib.mjs';
 
 // ---------- the action groups: Attack, Heal, Move, Defend, Features and the turn bar's Bonus Action (docs/specs/table-ui.md, Decision 6, task T4a; M4 of docs/specs/one-token-menu.md) ----------
 // In a fight only what can be used now is shown (R29): a greyed row is not drawn, so where this pass used to read a greyed row's reason it now checks the row is gone (and, out of a fight,
@@ -16,10 +16,12 @@ const turnOf = async (page, id) => {
   if ((await cur(page)) !== id) throw new Error(`it never became ${id}'s turn`);
 };
 const select = async (page, id) => { await page.evaluate((i) => window.hextable.select(i), id); await wait(page, (i) => !document.querySelector('#card').hidden && document.querySelector('#c-name').textContent === window.hextable.state.entities[i].name, id, 20000); };
-// No row of the open pane is cut through the middle by the pane's bottom edge (or its top, scrolled to the start: nothing there).
+// No row of the open pane is cut through the middle by the pane's bottom edge with no way to bring it into view. M10: the open section's pane scrolls between the
+// pinned bars, so a row at its fold may be cut; then the pane must be one that scrolls far enough to show that row whole.
 const whole = async (page, pane) => {
-  const cut = await page.$eval(pane, (el) => { const b = el.getBoundingClientRect(); return [...el.querySelectorAll('.ap-row')].filter((r) => { const q = r.getBoundingClientRect(); return q.height && q.top < b.bottom - 1 && q.bottom > b.bottom + 1; }).map((r) => r.dataset.row); });
-  if (cut.length) throw new Error(`rows cut through the middle at the bottom of ${pane}: ${cut}`);
+  const cut = await page.$eval(pane, (el) => { const b = el.getBoundingClientRect(), scrolls = /auto|scroll/.test(getComputedStyle(el).overflowY), room = el.scrollHeight - el.clientHeight - el.scrollTop;
+    return [...el.querySelectorAll('.ap-row')].filter((r) => { const q = r.getBoundingClientRect(); return q.height && q.top < b.bottom - 1 && q.bottom > b.bottom + 1 && !(scrolls && room >= q.bottom - b.bottom - 1); }).map((r) => r.dataset.row); });
+  if (cut.length) throw new Error(`rows cut through the middle at the bottom of ${pane}, out of reach: ${cut}`);
 };
 // Every greyed row of the pane writes its reason on screen, where it can be read (not only in a title).
 const reasons = (page, pane) => page.$$eval(`${pane} [aria-disabled="true"]`, (rows) => rows.map((r) => { const w = r.querySelector('.ap-why'); const q = w?.getBoundingClientRect(); return { row: r.dataset.row, why: w?.textContent.trim() ?? '', seen: !!q && q.width > 0 && q.height > 0 }; }));
@@ -63,7 +65,7 @@ async function tabs(browser, url, label, opts) {
         await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }));
         await wait(page, () => !!window.hextable.state.encounter, null, 20000); await idle(page);
         await turnOf(page, 'fighter'); await select(page, 'fighter');
-        await openMenu(page, 'sheet'); await sec(page, 'attacks');
+        await openChar(page); await sec(page, 'attacks');
         await waitShown(page, '#ap-attacks', true, 15000);
         const t = await text(page, '#ap-attacks [data-row="atk:longsword"]');
         if (!/Longsword/.test(t) || !/to hit/.test(t) || !/reach 5 ft/.test(t) || !/Action/.test(t)) throw new Error(`the attack row says too little: ${t}`);
@@ -79,13 +81,13 @@ async function tabs(browser, url, label, opts) {
         await waitShown(page, '#drawer', false);
         await waitShown(page, '#hint');
         if (!/Longsword: /.test(await text(page, '#hint-text'))) throw new Error('no hint');
-        await openMenu(page, 'sheet');
+        await openChar(page);
         if (!(await page.$eval('#ap-attacks [data-row="atk:longsword"]', (b) => b.classList.contains('armed')))) throw new Error('the row does not show as armed');
         await closePanels(page);
         await page.click('#hint-cancel');
         await wait(page, () => window.hextable.mode.kind === 'move');
         if (await shown(page, '#drawer')) throw new Error('the menu reopened by itself');
-        await openMenu(page, 'sheet');
+        await openChar(page);
         if (await page.$eval('#ap-attacks [data-row="atk:longsword"]', (b) => b.classList.contains('armed'))) throw new Error('the row still shows as armed');
       });
 
@@ -106,10 +108,10 @@ async function tabs(browser, url, label, opts) {
         if (armed.rows[0].id !== 'atk:longsword' || armed.rows[0].on !== 'true' || armed.rows.map((r) => r.id).join() !== q.rows.map((r) => r.id).join()) throw new Error(`armed, the row moved or is not marked: ${JSON.stringify(armed.rows)}`);
         await tap('#turn-quick [data-quick="atk:longsword"]');
         await wait(page, () => window.hextable.mode.kind === 'move');
-        await openMenu(page, 'settings'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.uncheck('#set-quick'); await closePanels(page);
+        await openMenu(page, 'settings/menu'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.uncheck('#set-quick'); await closePanels(page);
         if (await shown(page, '#turn-quick')) throw new Error('turned off in Setup, the quick actions still show');
         if (!(await shown(page, '#btn-end'))) throw new Error('End turn went with them');
-        await openMenu(page, 'settings'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.check('#set-quick'); await closePanels(page);
+        await openMenu(page, 'settings/menu'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.check('#set-quick'); await closePanels(page);
         await waitShown(page, '#turn-quick');
       });
 
@@ -137,7 +139,7 @@ async function tabs(browser, url, label, opts) {
       await run.do('Bonus Action (the turn bar): Second Wind is there with its pips, tapping it heals; then no Bonus Action is left and the screen says why', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 4 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 4);
-        await openMenu(page, 'sheet');
+        await openChar(page);
         if (await shown(page, '#ap-bar-features')) throw new Error('Second Wind is in Features as well as Heal');
         await visit(page, 'heal');
         const t = await text(page, '#ap-heal [data-row="feat:second-wind"]');
@@ -229,7 +231,7 @@ async function tabs(browser, url, label, opts) {
 
       await run.do('on another\'s turn nothing that needs your turn is shown: no Features, Attack or Move, and Reactions comes first', async () => {
         await select(page, 'fighter');
-        await openMenu(page, 'sheet');
+        await openChar(page);
         await wait(page, () => !document.querySelector('#ap-body .ap-sec:not([hidden]) #ap-bar-attacks') && !document.querySelector('#ap-body .ap-sec:not([hidden]) #ap-bar-features'));
         for (const g of ['attacks', 'move', 'defend', 'features', 'heal', 'spells']) if (await shown(page, `#ap-bar-${g}`)) throw new Error(`${g} is shown on another's turn`);
         const first = await page.$$eval('#ap-body .ap-sec:not([hidden])', (l) => l.sort((a, b) => a.style.order - b.style.order).map((x) => x.dataset.sec));
@@ -240,7 +242,7 @@ async function tabs(browser, url, label, opts) {
       await run.do('the DM selects a monster on its turn: its actions are under Attacks, and a tap arms or sends', async () => {
         const foe = await state(page, (S) => S.encounter.order.map((o) => o.id).find((i) => S.entities[i].side === 'foe' && S.entities[i].actions?.length && S.entities[i].tpl !== 'animated-flying-sword'));
         await turnOf(page, foe); await select(page, foe);
-        await openMenu(page, 'sheet'); await sec(page, 'attacks');
+        await openChar(page); await sec(page, 'attacks');
         await waitShown(page, '#ap-attacks');
         const names = await state(page, (S, i) => S.entities[i].actions.map((a) => a.id), foe);
         const have = await page.$$eval('#ap-attacks [data-row]', (b) => b.map((x) => x.dataset.row));

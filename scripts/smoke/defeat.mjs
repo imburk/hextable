@@ -82,7 +82,7 @@ async function defeat(browser, url, label, opts) {
         if (!/No rest to go back to/.test(await page.textContent('#df .df-choice.off p'))) throw new Error('the greyed choice does not say why');
       });
       await run.do('with another theme and the menu open, closed or pinned the card and the menu do not fight', async () => {
-        await openTab(page, 'settings');
+        await openTab(page, 'settings/display');
         await page.selectOption('#set-theme', 'sunlit');
         // dr/dl are the drawer's left and right edges; the pinned menu sits on either side, so the card must clear whichever it is on
         const front = () => page.evaluate(() => { const c = document.querySelector('.df-card').getBoundingClientRect(); return { inside: !!document.elementFromPoint(c.left + c.width / 2, c.top + 30)?.closest('#df'), r: c.right, l: c.left, w: innerWidth, dr: document.getElementById("drawer").getBoundingClientRect().left, dl: document.getElementById('drawer').getBoundingClientRect().right }; });
