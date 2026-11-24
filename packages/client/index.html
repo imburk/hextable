@@ -99,9 +99,8 @@
       <li><button type="button" class="menu-row" id="tab-sheet" data-go="sheet"><span class="mr-name">Character</span><span class="mr-sum" id="sum-sheet"></span></button></li>
       <li><button type="button" class="menu-row" id="tab-turns" data-go="turns"><span class="mr-name">Turns</span><span class="mr-sum" id="sum-turns"></span></button></li>
       <li><button type="button" class="menu-row" id="tab-dice" data-go="dice"><span class="mr-name">Dice</span><span class="mr-sum" id="sum-dice"></span></button></li>
-      <li><button type="button" class="menu-row" id="tab-log" data-go="log"><span class="mr-name">Log and chat</span><span class="mr-sum"></span></button></li>
-      <!-- the Handouts place keeps the id handouts.js looks for: the button and its badge -->
-      <li><button type="button" class="menu-row" id="btn-handouts" data-go="handouts" hidden><span class="mr-name">Handouts</span><span class="mr-sum"><b id="ho-badge" hidden></b></span></button></li>
+      <!-- Handouts are a section of Log and chat (round 4; M10): its symbol carries their badge -->
+      <li><button type="button" class="menu-row" id="tab-log" data-go="log"><span class="mr-name">Log and chat</span><span class="mr-sum"><b id="ho-badge" hidden></b></span></button></li>
       <li><button type="button" class="menu-row" id="tab-settings" data-go="settings"><span class="mr-name">Setup</span><span class="mr-sum"></span></button></li>
       <li><button type="button" class="menu-row" id="tab-dm" data-go="dm" hidden><span class="mr-name">DM tools</span><span class="mr-sum"><b id="dm-badge" hidden></b></span></button></li>
       <li><button type="button" class="menu-row" id="tab-about" data-go="about" hidden><span class="mr-name">About</span><span class="mr-sum"></span></button></li>
@@ -141,14 +140,19 @@
         <div id="ap-body" aria-label="Actions"></div>
       </div>
       <div id="sheet-body"></div></section>
-    <section id="log" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
+    <!-- Log and chat is one accordion (Decision 4d; M10): Handouts (a player's, when there are any), the log, and Talk. drawer.js makes the bars from the headings. -->
+    <section id="log" class="tabpanel" role="region" aria-labelledby="drawer-title" data-acc data-acc-first="log" hidden>
+      <section id="handouts" data-sec="handouts" data-tip="What the DM has shown you" hidden><h3>Handouts</h3><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
+      <section id="log-sec-log" data-sec="log" data-tip="What happened, by fight"><h3>Log</h3>
       <button type="button" id="log-rewards" hidden>Show the last rewards</button>
       <p id="log-clock" class="note" hidden></p>
       <ol id="log-list"></ol>
+      </section>
+      <section id="log-sec-talk" data-sec="talk" data-tip="Say something, or send a private note"><h3>Talk</h3>
       <form id="say-form" class="row" autocomplete="off" hidden><select id="say-as" aria-label="Say as"></select><input id="say-text" maxlength="500" placeholder="Say something to the table" aria-label="What to say"><button type="submit">Send</button></form>
       <form id="note-form" class="row" autocomplete="off" hidden><select id="note-to" aria-label="Send the note to"></select><input id="note-text" maxlength="1000" placeholder="A private note"><button type="submit">Send</button></form>
+      </section>
     </section>
-    <section id="handouts" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden><p class="note">What the DM has shown you. Tap one to open it.</p><ol id="handouts-list" class="ho-list"></ol></section>
     <section id="dicepanel" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
       <section><h3>Dice and animation, on this device</h3>
         <label class="assign">Dice <select id="dice-show"><option value="full">Full throw</option><option value="quick">Quick</option><option value="off">Off</option></select></label>
@@ -156,7 +160,7 @@
         <label class="check"><input type="checkbox" id="dice-auto-mine"> Always throw my dice at once</label>
       </section>
     </section>
-    <section id="dm" class="tabpanel" role="region" aria-labelledby="drawer-title" data-sec="" hidden>
+    <section id="dm" class="tabpanel" role="region" aria-labelledby="drawer-title" data-sec="" data-acc hidden>
   <!-- DM tools (docs/specs/one-token-menu.md, M5): what waits is on top (the to-do tray is under "Waiting for you" on the first level since M6); then a list of seven screens, one tap each (the menu's third level, drawer.js). Every id is kept. -->
   <div id="dm-table"></div>
   <section id="dm-fallen" hidden><h3>The party has fallen</h3>
@@ -269,9 +273,9 @@
   <section id="dm-solo" hidden><h3>Solo game</h3><div class="row"><button type="button" id="dm-new">Start a new world</button></div></section>
   </div>
 </section>
-    <section id="settings" class="tabpanel" role="region" aria-labelledby="drawer-title" hidden>
-      <!-- Setup is one page of seven sections (docs/specs/one-token-menu.md, Decision 4d round 4; M5 groups them, M10 makes them one accordion). Every id is kept. -->
-      <section id="set-sec-display"><h3>Display and controls</h3>
+    <section id="settings" class="tabpanel" role="region" aria-labelledby="drawer-title" data-acc hidden>
+      <!-- Setup is one page of seven sections (docs/specs/one-token-menu.md, Decision 4d round 4; M5 groups them; M10: drawer.js makes them one accordion, the heading of each its bar and `data-tip` the line under it). Every id is kept. -->
+      <section id="set-sec-display" data-sec="display" data-tip="Theme, floors, walls, camera buttons, keys"><h3>Display and controls</h3>
         <label class="assign">Theme <select id="set-theme"></select></label>
         <label class="assign">Floors <select id="set-floors"><option value="rooms">Rooms, with a faint grid</option><option value="hex" id="set-floors-each">Each hex on its own</option></select></label>
         <label class="check"><input type="checkbox" id="set-cutaway"> Cut walls down where they hide a room</label>
@@ -280,14 +284,14 @@
         <label class="check"><input type="checkbox" id="set-cam"> Camera buttons on the map</label>
         <div id="set-keys-at"></div>
       </section>
-      <section id="set-sec-dice"><h3>Dice</h3>
+      <section id="set-sec-dice" data-sec="dice" data-tip="How dice are thrown, how fast the table plays"><h3>Dice</h3>
         <p class="note">How dice are thrown and how fast the table plays, on this device, are on the Dice screen.</p>
         <div class="row"><button type="button" id="set-go-dice" data-menu-open="dice">Dice and animation</button></div>
         <div id="set-dm-box" hidden>
           <label class="check"><input type="checkbox" id="dm-dice-monsters" checked> Throw the monsters' dice for me</label>
         </div>
       </section>
-      <section id="set-sec-menu"><h3>The menu</h3>
+      <section id="set-sec-menu" data-sec="menu" data-tip="Arrange the symbols, labels, where the die sits"><h3>The menu</h3>
         <label class="assign">The menu token sits <select id="set-token"><option value="center">Bottom centre</option><option value="right">Bottom right</option><option value="left">Bottom left</option></select></label>
         <label class="assign">Labels under the symbols <select id="set-labels"><option value="3s">After 3 seconds</option><option value="always">Always</option></select></label>
         <label class="assign">Menus <select id="set-motion"><option value="slide">Slide in and out</option><option value="appear">Just appear</option></select></label>
@@ -297,19 +301,19 @@
         <label class="check"><input type="checkbox" id="set-quick" checked> Quick actions on the turn line on my turn</label>
         <label class="assign">When a character's page opens, its actions open on <select id="set-paneltab"><option value="auto">The likely group</option><option value="remember">The group I used last</option></select></label>
       </section>
-      <section id="set-sec-chars" hidden><h3>Characters and packs</h3>
+      <section id="set-sec-chars" data-sec="chars" data-tip="Who plays whom, the table's packs" hidden><h3>Characters and packs</h3>
         <p class="note" id="set-chars-note"></p>
         <div class="row" id="set-chars-dm" hidden><button type="button" data-menu-open="dm/creatures">Who plays whom, adding and levelling</button><button type="button" data-menu-open="dm/file">The table's packs</button></div>
         <div class="row" id="set-chars-pl" hidden><button type="button" data-menu-open="sheet">My character</button></div>
       </section>
-      <section id="set-table-box"><h3>The table's rules</h3>
+      <section id="set-table-box" data-sec="rules" data-tip="What the DM has set for this table"><h3>The table's rules</h3>
         <p class="note" id="pace-table"></p>
         <ul id="set-rules" class="set-rules"></ul>
       </section>
-      <section id="set-sec-help"><h3>Help and about</h3>
+      <section id="set-sec-help" data-sec="help" data-tip="Feedback, credits, licences"><h3>Help and about</h3>
         <div class="row"><button type="button" id="fb-btn" aria-label="Send feedback" aria-haspopup="dialog" aria-expanded="false">Help and feedback</button><button type="button" id="set-about" data-menu-open="about">About, credits and licences</button></div>
       </section>
-      <section id="set-sec-leave" hidden><h3>Leave the table</h3>
+      <section id="set-sec-leave" data-sec="leave" data-tip="Leave this game on this device" hidden><h3>Leave the table</h3>
         <p class="note" id="set-leave-note"></p>
         <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave the table</button><button type="button" id="set-new" class="leave" hidden>New game</button></div>
       </section>

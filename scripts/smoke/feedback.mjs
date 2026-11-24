@@ -10,7 +10,7 @@ const shot = (page, name) => (process.env.SMOKE_SHOTS ? page.screenshot({ path: 
 const stored = () => { const f = join(lib.dataDir, 'feedback.jsonl'); return existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []; };
 
 // Open Table in the menu, press Help and feedback (the menu folds away), and wait for the panel.
-const openFb = async (page) => { await openMenu(page, 'table'); await page.click('#fb-btn'); await waitShown(page, '#fb-panel'); await waitShown(page, '#drawer', false); };
+const openFb = async (page) => { await openMenu(page, 'settings/help'); await page.click('#fb-btn'); await waitShown(page, '#fb-panel'); await waitShown(page, '#drawer', false); };
 
 async function soloPass(browser, url, label, opts) {
   await scenario(label, async (run) => {
@@ -54,7 +54,7 @@ async function soloPass(browser, url, label, opts) {
         await page.keyboard.press('Escape');
       });
       await run.do('it has a visible focus state and is reachable by keyboard', async () => {
-        await openMenu(page, 'table');
+        await openMenu(page, 'settings/help');
         await page.keyboard.press('Shift');                 // a keyboard has been used: the focus ring is the keyboard's
         await page.focus('#fb-btn');
         const ring = await page.evaluate(() => { const s = getComputedStyle(document.getElementById('fb-btn')); return `${s.outlineStyle} ${s.outlineWidth}`; });
@@ -193,7 +193,7 @@ async function tablePass(browser, url) {
         await host.fill('#lobby-name', 'Other DM'); await host.click('#lobby-host');
         await wait(host, () => window.hextable?.state?.entities);
         if (await shown(host, '#fb-btn')) throw new Error('the feedback button is on the clean screen');
-        await openMenu(host, 'table'); await waitShown(host, '#fb-btn'); await closeMenu(host);
+        await openMenu(host, 'settings/help'); await waitShown(host, '#fb-btn'); await closeMenu(host);
         await shot(host, 'table-wide');
       });
     } finally { await ctx.close(); await wide.close(); }

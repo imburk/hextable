@@ -20,6 +20,7 @@ import { SPELLS, MONSTERS, CONTENT, rollLabel } from './shared/content/index.js'
 import { lightAt } from './shared/sight.js';
 import { under } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
+import { gridPlan } from './accordion.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
 import { slotChoices } from './upcast.js';
@@ -705,6 +706,8 @@ const ARMS = (m) => !!m && m.kind !== 'move';
 //        shortRest(), hpFraction(e), formLabel(e), budget(e), openFeature(e, id) (a chooser of classes.js), flyInfo(e) ({ has, why, words, aloft, alt, up, down }),
 //        fly(e, delta) (change the height of the next move), flyOpen(e, armed) (open the column of heights, or close it), metamagic(e) (the Metamagic button of classes.js, or null), render(), selected() }.
 // The groups are drawn into `#ap-body` of the Character screen (`#sheet`): one bar for each group, one open at a time (Decision 4d), under the status block, which draws the turn bar.
+// M10: the page is one accordion. The sheet is its last section (`#sheet-body` is moved into it), and while a section is open the page is pinned (`#sheet.pin`): the status block goes
+// compact, the open section's pane scrolls, and the other bars stay on the screen above and below it as titles side by side (accordion.js `gridPlan`), so every one is one tap away.
 export function initActionPanel(ctx) {
   const { prefs } = ctx;
   const card = $('card'), body = $('ap-body'), how = $('ap-how');
@@ -717,7 +720,7 @@ export function initActionPanel(ctx) {
   const noteEl = mk('p', { id: 'ap-empty', class: 'ap-why-line', role: 'status' }); noteEl.hidden = true;
   panes.down = mk('div', { id: 'ap-down', class: 'ap-down', role: 'status' }); panes.down.hidden = true;
   body.append(noteEl, panes.down);
-  for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free])]) {
+  for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free]), 'sheet']) {
     const bar = mk('button', { type: 'button', class: 'ap-bar', id: `ap-bar-${id}`, 'data-sec': id, 'aria-expanded': 'false', 'aria-controls': `ap-${id}` },
       mk('span', { class: 'ap-bt' }), mk('small', { class: 'ap-tip' }), mk('span', { class: 'ap-chev', 'aria-hidden': 'true' }, '›'));
     const pane = mk('div', { id: `ap-${id}`, class: 'ap-pane', role: 'region', 'aria-labelledby': `ap-bar-${id}` }); pane.hidden = true;
@@ -984,7 +987,10 @@ export function initActionPanel(ctx) {
     render(e, mode, { my, full }) {
       const S = ctx.state(), enc = S.encounter, cur = current(S);
       card.hidden = !e; $('status-block').hidden = !e; quickNow = [];
-      if (!e) return null;
+      // The sheet is the page's last section while a creature is selected; with none, its words ("Select one of the characters") stand alone on the page.
+      const page = $('sheet'), sheetBody = $('sheet-body');
+      if (!e) { if (sheetBody.parentElement !== page) page.append(sheetBody); page.classList.remove('pin'); return null; }
+      if (sheetBody.parentElement !== panes.sheet) panes.sheet.append(sheetBody);
       curE = e;
       $('c-name').textContent = shownName(S, e);
       $('c-sub').textContent = e.bond && ctx.comp?.subLine(e) ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)} · ${ctx.comp.subLine(e)}` : e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${classTitle(e)}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
@@ -1022,8 +1028,9 @@ export function initActionPanel(ctx) {
       if (sel.key !== key) sel = { key, tab: null };
       const kinds = G.shown;
       const costOk = (id) => /^cost:(action|bonus)$/.test(id) && G.fight && ctxNow.situation === 'turn';
-      const wanted = sel.tab !== null && (sel.tab === '' || costOk(sel.tab) || kinds.some((g) => g.id === sel.tab)) ? sel.tab : null;
-      const tab = wanted ?? (ctxNow.situation === 'wait' && kinds.some((g) => g.id === 'reactions') ? 'reactions' : defaultTab(ctxNow, kinds, { pref: pref(), last: last() })) ?? '';
+      const wanted = sel.tab !== null && (sel.tab === '' || sel.tab === 'sheet' || costOk(sel.tab) || kinds.some((g) => g.id === sel.tab)) ? sel.tab : null;
+      // A creature with nothing to do here (someone else's, a foe looked at) opens on its sheet: it is the only section it has.
+      const tab = wanted ?? (!kinds.length && !G.empty && ctxNow.situation !== 'down' ? 'sheet' : ctxNow.situation === 'wait' && kinds.some((g) => g.id === 'reactions') ? 'reactions' : defaultTab(ctxNow, kinds, { pref: pref(), last: last() })) ?? '';
       openNow = tab;
       if (ctxNow.situation === 'turn' && tab && sel.tab === null) sel.tab = tab;       // the group a turn opens on stays for the turn: spending the last slot does not move it (opensOnSpells, from main)
       // the status block's turn bar says which segment is open
@@ -1047,6 +1054,13 @@ export function initActionPanel(ctx) {
       const first = ctxNow.situation === 'turn' ? sorted[0] : null;
       for (const id of Object.keys(secs)) {
         if (id === 'cost') continue;
+        if (id === 'sheet') {
+          secs.sheet.hidden = false; secs.sheet.style.order = 99;
+          const bt = bars.sheet.querySelector('.ap-bt'), tp = bars.sheet.querySelector('.ap-tip');
+          if (bt.textContent !== 'Sheet') { bt.textContent = 'Sheet'; tp.textContent = 'Abilities, features, spells, story'; }
+          bars.sheet.setAttribute('aria-expanded', String(tab === 'sheet')); panes.sheet.hidden = tab !== 'sheet';
+          continue;
+        }
         const g = G.groups.find((x) => x.id === id), on = !!g?.shown;
         secs[id].hidden = !on;
         if (!on) { bars[id].setAttribute('aria-expanded', 'false'); panes[id].hidden = true; if (panes[id].dataset.sig) setHtml(panes[id], ''); continue; }      // a group that is gone leaves nothing behind
@@ -1077,7 +1091,15 @@ export function initActionPanel(ctx) {
       // a fight with nothing to do: one line, the engine's reason
       const empty = G.empty && ctxNow.situation !== 'down';
       noteEl.hidden = !empty; if (empty && noteEl.textContent !== G.empty) noteEl.textContent = G.empty;
-      body.hidden = !(G.shown.length || empty || ctxNow.situation === 'down');
+      body.hidden = false;
+      // Where each bar goes (accordion.js): with a section open, the bars before it fill the rows above it and those after it the rows below, side by side.
+      const openId = cost ? 'cost' : tab, ids = [...(cost ? ['cost'] : []), ...sorted.map((g) => g.id), 'sheet'];
+      const plan = gridPlan(ids, openId);
+      for (const id of Object.keys(secs)) { const sp = `span ${plan.span[id] ?? 6}`; if (secs[id].style.gridColumn !== sp) secs[id].style.gridColumn = sp; secs[id].classList.toggle('open', plan.pinned && id === openId); }
+      const lead = (noteEl.hidden ? 0 : 1) + (panes.down.hidden ? 0 : 1);
+      const rowsCss = plan.pinned ? [...Array(lead).fill('auto'), ...plan.rows.map((r) => (r === 'open' ? 'minmax(164px, 1fr)' : 'auto'))].join(' ') : '';
+      if (body.style.gridTemplateRows !== rowsCss) body.style.gridTemplateRows = rowsCss;
+      page.classList.toggle('pin', plan.pinned);
       body.dataset.open = tab && !cost ? tab : cost ? 'cost' : '';
       body.toggleAttribute('data-open-any', !!tab);
       card.dataset.tab = tab ?? '';

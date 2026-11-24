@@ -204,12 +204,13 @@ export function initHandouts({ act, toast, transport, state, isDM, openPanel }) 
     const s = S(), t = T(); if (!s || !t) return;
     renderSay();
     const dm = isDM(), mine = s.handouts ?? [];
-    $('btn-handouts').hidden = dm;
+    $('handouts').hidden = dm || !mine.length;          // a section of Log and chat, there when a player has any (M10)
     const unseen = mine.filter((h) => !seen.has(h.id)).length;
     $('ho-badge').hidden = dm || !unseen; $('ho-badge').textContent = unseen;
     if (dm) renderDM(); else lastDM = '';
-    if (!$('handouts').hidden) renderMine();
+    if (!$('handouts').hidden && !$('log').hidden) renderMine();
     renderNote();
+    $('log-sec-talk').hidden = $('say-form').hidden && $('note-form').hidden;
     if (viewing && !mine.some((h) => h.id === viewing)) close();          // taken back by the DM
   }
 
@@ -229,7 +230,6 @@ export function initHandouts({ act, toast, transport, state, isDM, openPanel }) 
       default: return null;
     }
   }
-  $('btn-handouts').onclick = () => openPanel('handouts');
   // `unseen()`: a player's handouts not opened yet, for the menu's "Waiting for you" (M6).
   return { refresh, describe, open, unseen: () => (isDM() ? [] : (S()?.handouts ?? []).filter((h) => !seen.has(h.id))) };
 }

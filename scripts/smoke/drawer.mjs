@@ -79,12 +79,12 @@ async function drawerPass(browser, url, label, opts) {
         if (await up()) throw new Error('the words are up before 3 seconds');
         await wait(page, () => document.getElementById('menu-arc').classList.contains('labels') && getComputedStyle(document.querySelector('#arc .ab-label')).opacity === '1', null, 6000).catch(() => { throw new Error('the words did not come up after 3 seconds'); });
         if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-arc-labels-${phone ? 'phone' : 'wide'}.png` }).catch(() => {});
-        await openMenu(page, 'settings'); await page.selectOption('#set-labels', 'always');
+        await openMenu(page, 'settings/menu'); await page.selectOption('#set-labels', 'always');
         if ((await page.evaluate(() => localStorage.getItem('hextable.menuLabels'))) !== '"always"') throw new Error('Always was not stored');
         if (!(await page.evaluate(() => { const n = document.querySelector('#tab-settings .mr-name').getBoundingClientRect(); return n.width > 20 && n.height > 8; }))) throw new Error('under Always the strip shows no words');
         await closeMenu(page); await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
         await wait(page, () => getComputedStyle(document.querySelector('#arc .ab-label')).opacity === '1', null, 1500).catch(() => { throw new Error('under Always the words are not there from the start'); });
-        await openMenu(page, 'settings'); await page.selectOption('#set-labels', '3s'); await closeMenu(page);
+        await openMenu(page, 'settings/menu'); await page.selectOption('#set-labels', '3s'); await closeMenu(page);
       });
       await run.do('a symbol opens its screen as a dialog: a sheet from the bottom on a phone with a handle and no x, a column from the side on a wide screen', async () => {
         await openArc(page);
@@ -105,7 +105,7 @@ async function drawerPass(browser, url, label, opts) {
         } else if (!(await shown(page, '#drawer-close'))) throw new Error('a wide menu has no x');
         if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/menu-screen-${phone ? 'phone' : 'wide'}.png` }).catch(() => {});
       });
-      await run.do('every screen is headed by its own name; the strip across its top marks the place and goes to the others; a screen inside a screen has a way back that names it', async () => {
+      await run.do('every screen is headed by its own name; the strip across its top marks the place and goes to the others; a section keeps the page\'s name, and a screen inside a screen has a way back that names it', async () => {
         const rows = await page.evaluate(() => document.querySelectorAll('#tr-list li[data-id]').length);
         if (rows < 4) throw new Error(`${rows} rows`);
         if ((await page.$eval('#drawer-title', (e) => e.tagName + e.textContent)) !== 'H2Party') throw new Error(`the heading: ${await page.textContent('#drawer-title')}`);
@@ -136,13 +136,19 @@ async function drawerPass(browser, url, label, opts) {
           const top = await page.evaluate(() => document.getElementById('drawer-body').scrollTop);
           if (top !== 0) throw new Error('moving the strip scrolled the screen');
         }
-        // A screen inside a screen: its heading is its own name, and the way back names the screen it is in.
+        // M10: a page with sections keeps its own name while a section is open; the section's bar says it is open, and Left shuts it with the focus on its bar.
         await openMenu(page, 'dm/creatures');
-        if ((await page.textContent('#drawer-title')) !== 'Creatures') throw new Error(`the heading: ${await page.textContent('#drawer-title')}`);
+        if ((await page.textContent('#drawer-title')) !== 'DM tools') throw new Error(`the heading with a section open: ${await page.textContent('#drawer-title')}`);
+        if (await shown(page, '#drawer-back')) throw new Error('a section of a page is not a screen under it: there is no way back to show');
+        if ((await page.getAttribute('#acc-bar-dm-creatures', 'aria-expanded')) !== 'true' || !(await shown(page, '#dm-spawn'))) throw new Error('Creatures is not open');
+        await page.focus('#acc-bar-dm-creatures'); await page.keyboard.press('ArrowLeft'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
+        if ((await page.evaluate(() => document.activeElement?.id)) !== 'acc-bar-dm-creatures') throw new Error('shutting a section did not leave the focus on its bar');
+        // "All tools on one page" is a screen under DM tools: the way back names where it goes.
+        await openMenu(page, 'dm/all');
         if (!/DM tools/.test(await page.textContent('#drawer-back')) || (await page.getAttribute('#drawer-back', 'aria-label')) !== 'Back to DM tools') throw new Error(`the way back says: ${await page.textContent('#drawer-back')}`);
         if (phone && (await page.evaluate(() => { const b = document.getElementById('drawer-back').getBoundingClientRect(); return b.width < 44 || b.height < 44; }))) throw new Error('the way back is under 44 px');
         await page.click('#drawer-back'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
-        if ((await page.evaluate(() => document.activeElement?.dataset.sec)) !== 'creatures') throw new Error('back did not leave focus on the row that was chosen');
+        if ((await page.evaluate(() => document.activeElement?.dataset.sec)) !== 'all') throw new Error('back did not leave focus on the row that was chosen');
         if ((await page.textContent('#drawer-title')) !== 'DM tools') throw new Error('the heading after going back');
       });
       if (phone) await run.do('on a phone the sheet runs to the bottom edge, its screen ends above the token, and the strip is its first row', async () => {
@@ -240,14 +246,15 @@ async function drawerPass(browser, url, label, opts) {
         if ((await page.evaluate(() => window.__leaked.length)) !== 0) throw new Error(`a key on the arc reached the game: ${await page.evaluate(() => window.__leaked.join())}`);      // an arrow would walk the party or turn the camera
         for (let i = 0; i < order.indexOf('settings'); i++) await page.keyboard.press('ArrowRight');
         if ((await at()) !== 'settings') throw new Error(`walking round reached ${await at()}`);
-        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path === 'settings');
+        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path.split('/')[0] === 'settings');      // a page of sections remembers the one it had open
         if ((await at()) !== 'drawer-title') throw new Error('focus did not move to the heading');
         // From the heading, Up reaches the place on the strip; Left and Right move along it; Enter opens; Down comes back to the heading.
         await page.keyboard.press('ArrowUp'); if ((await at()) !== 'settings') throw new Error(`ArrowUp from the heading reached ${await at()}`);
         await page.keyboard.press('ArrowRight'); if ((await at()) !== 'dm') throw new Error(`ArrowRight on the strip reached ${await at()}`);
-        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
-        // In a list Up and Down move between rows, Right or Enter opens one, Left or Backspace goes back to it.
-        await page.focus('#dm > .sec-index [data-sec="fight"]');
+        await page.keyboard.press('Enter'); await wait(page, () => document.getElementById('drawer').dataset.path.split('/')[0] === 'dm');
+        await openMenu(page, 'dm/fight'); await page.click('#acc-bar-dm-fight'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');      // every section shut: the bars are a list
+        // In the list of bars Up and Down move between them, Right or Enter opens one, Left or Backspace shuts it with the focus on its bar.
+        await page.focus('#acc-bar-dm-fight');
         await page.keyboard.press('ArrowDown'); if ((await page.evaluate(() => document.activeElement?.dataset.sec)) !== 'creatures') throw new Error('ArrowDown in the list');
         await page.keyboard.press('ArrowRight'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm/creatures');
         await page.keyboard.press('ArrowLeft'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm');
@@ -269,19 +276,70 @@ async function drawerPass(browser, url, label, opts) {
         await page.screenshot({ path: process.env.SMOKE_SHOTS ? `${process.env.SMOKE_SHOTS}/drawer-about-${phone ? 'phone' : 'wide'}.png` : '/dev/null' }).catch(() => {});
       });
       await run.do('Setup holds the preferences; the dice and animation are the Dice screen\'s', async () => {
-        await openMenu(page, 'settings');
-        for (const id of ['set-theme', 'set-token', 'set-motion', 'set-side', 'set-floors', 'dm-dice-monsters']) if (!(await shown(page, '#' + id))) throw new Error(`#${id} is not in Setup`);
+        for (const [sec, ids] of [['display', ['set-theme', 'set-floors']], ['menu', ['set-token', 'set-motion', 'set-side']], ['dice', ['dm-dice-monsters']]]) {
+          await openMenu(page, `settings/${sec}`);
+          for (const id of ids) if (!(await shown(page, '#' + id))) throw new Error(`#${id} is not in Setup's ${sec}`);
+        }
         await openMenu(page, 'dice');
         for (const id of ['dice-show', 'pace-pick', 'dice-auto-mine']) if (!(await shown(page, '#' + id))) throw new Error(`#${id} is not on the Dice screen`);
       });
+      await run.do('M10, one accordion: with none open every bar shows its tip; one section is open at a time, the bars before it stay at the top and those after it at the bottom, and it scrolls by itself', async () => {
+        for (const leaf of ['settings', 'dm', 'log']) {
+          const panel = { settings: 'settings', dm: 'dm', log: 'log' }[leaf];
+          const first = await page.evaluate((p) => [...document.querySelectorAll(`#${p} > .acc-sec:not([hidden])`)].map((x) => x.dataset.sec), panel);
+          await openMenu(page, `${leaf}/${first[0]}`); await page.click(`#acc-bar-${leaf}-${first[0]}`); await wait(page, (l) => document.getElementById('drawer').dataset.path === l, leaf);
+          const shut = await page.evaluate((p) => [...document.querySelectorAll(`#${p} > .acc-sec:not([hidden]) .acc-bar`)].map((b) => ({ sec: b.dataset.sec, h: b.getBoundingClientRect().height, tip: b.querySelector('.acc-tip').textContent.trim(), tipShown: getComputedStyle(b.querySelector('.acc-tip')).display !== 'none', open: b.getAttribute('aria-expanded') })), panel);
+          if (shut.length < 2 || shut.some((b) => b.open !== 'false' || b.h < 52 || !b.tip || !b.tipShown)) throw new Error(`${leaf}, none open: ${JSON.stringify(shut)}`);
+          for (const sec of first) {
+            await page.click(`#acc-bar-${leaf}-${sec}`); await wait(page, (w) => document.getElementById('drawer').dataset.path === w, `${leaf}/${sec}`);
+            const at = await page.evaluate(([p, want]) => {
+              const body = document.getElementById('drawer-body').getBoundingClientRect(), tok = document.getElementById('btn-menu').getBoundingClientRect();
+              const bars = [...document.querySelectorAll(`#${p} > .acc-sec:not([hidden]) .acc-bar`)].map((b) => { const r = b.getBoundingClientRect(); return { sec: b.dataset.sec, top: r.top, bottom: r.bottom, h: r.height, open: b.getAttribute('aria-expanded') === 'true', tip: getComputedStyle(b.querySelector('.acc-tip')).display !== 'none' }; });
+              const box = document.querySelector(`#${p} > .acc-sec.open > .acc-body`), r = box?.getBoundingClientRect();
+              return { bars, body: [body.top, body.bottom], tok: tok.top, box: r ? [r.top, r.bottom, r.height] : null, scrolls: box ? getComputedStyle(box).overflowY : '', bodyScroll: document.getElementById('drawer-body').scrollTop, open: bars.filter((b) => b.open).map((b) => b.sec).join(), i: bars.findIndex((b) => b.sec === want) };
+            }, [panel, sec]);
+            if (at.open !== sec) throw new Error(`${leaf}: ${at.open} open after a tap on ${sec}`);
+            if (at.bars.some((b) => b.h < 44 || b.tip)) throw new Error(`${leaf}/${sec}: a bar is under 44 px or still shows its tip: ${JSON.stringify(at.bars)}`);
+            if (at.bars.some((b) => b.top < at.body[0] - 1 || b.bottom > at.body[1] + 1 || b.bottom > at.tok + 1)) throw new Error(`${leaf}/${sec}: a bar is off the screen or under the token: ${JSON.stringify(at)}`);
+            if (!at.box || at.box[2] < 120 || at.scrolls !== 'auto') throw new Error(`${leaf}/${sec}: the open section shows ${at.box?.[2]} px (scroll: ${at.scrolls})`);
+            if (at.bars.slice(0, at.i + 1).some((b) => b.bottom > at.box[0] + 1) || at.bars.slice(at.i + 1).some((b) => b.top < at.box[1] - 1)) throw new Error(`${leaf}/${sec}: the bars are not above and below the open section: ${JSON.stringify(at)}`);
+            if (at.bodyScroll !== 0) throw new Error(`${leaf}/${sec}: the screen scrolled`);
+          }
+          // the tapped bar keeps the focus; a second tap shuts the section
+          const last = first.at(-1);
+          if ((await page.evaluate(() => document.activeElement?.id)) !== `acc-bar-${leaf}-${last}`) throw new Error(`${leaf}: the focus left the bar`);
+          await page.click(`#acc-bar-${leaf}-${last}`); await wait(page, (l) => document.getElementById('drawer').dataset.path === l, leaf);
+        }
+        // A section keeps its own scroll while another place is looked at, and a page remembers which section was open.
+        await openMenu(page, 'dm/rules');
+        await page.evaluate(() => { document.querySelector('#dm > .acc-sec.open > .acc-body').scrollTop = 90; });
+        await openMenu(page, 'turns'); await page.click('#tab-dm'); await wait(page, () => document.getElementById('drawer').dataset.path === 'dm/rules');
+        const kept = await page.evaluate(() => document.querySelector('#dm > .acc-sec.open > .acc-body').scrollTop);
+        if (Math.abs(kept - 90) > 2) throw new Error(`the open section's scroll was ${kept}, not 90, after coming back`);
+        // The character's page: the sheet is its last section; with a section open the status block is compact and every other bar is still on the screen.
+        await openMenu(page, 'sheet');
+        const ch = await page.evaluate(() => {
+          const pg = document.getElementById('sheet'), tok = document.getElementById('btn-menu').getBoundingClientRect(), body = document.getElementById('drawer-body').getBoundingClientRect();
+          const bars = [...pg.querySelectorAll('.ap-sec:not([hidden]) .ap-bar')].map((b) => { const r = b.getBoundingClientRect(); return { sec: b.dataset.sec, top: r.top, bottom: r.bottom, h: r.height, w: r.width, open: b.getAttribute('aria-expanded') === 'true' }; });
+          const pane = pg.querySelector('.ap-sec.open > .ap-pane'), r = pane?.getBoundingClientRect();
+          return { pin: pg.classList.contains('pin'), bars, pane: r ? [r.top, r.bottom, r.height] : null, id: pane?.id, tok: tok.top, body: [body.top, body.bottom], sub: getComputedStyle(document.getElementById('c-sub')).display, name: document.getElementById('c-name').getBoundingClientRect().bottom > body.top, sheetIn: !!document.querySelector('#ap-sheet > #sheet-body') };
+        });
+        if (!ch.pin || ch.id !== 'ap-sheet' || !ch.sheetIn || ch.bars.filter((b) => b.open).map((b) => b.sec).join() !== 'sheet') throw new Error(`the Sheet section is not the open one: ${JSON.stringify(ch)}`);
+        if (ch.pane[2] < 120) throw new Error(`the open section of the character's page shows ${ch.pane[2]} px`);
+        if (ch.bars.some((b) => b.h < 44 || b.w < 44 || b.top < ch.body[0] - 1 || b.bottom > ch.tok + 1)) throw new Error(`a bar of the character's page is small, off the screen or under the token: ${JSON.stringify(ch.bars)}`);
+        if (ch.sub !== 'none' || !ch.name) throw new Error('the status block is not compact with the name still shown');
+        await page.click('#ap-bar-sheet'); await wait(page, () => !document.getElementById('sheet').classList.contains('pin'));
+        if ((await page.evaluate(() => getComputedStyle(document.getElementById('c-sub')).display)) === 'none') throw new Error('with none open the status block is not the full one');
+        await closeMenu(page);
+      });
       await run.do('the token sits at the bottom centre, right or left as chosen, and keeps its place', async () => {
-        await openMenu(page, 'settings');
+        await openMenu(page, 'settings/menu');
         for (const at of ['left', 'right']) {
           await page.selectOption('#set-token', at); await closeMenu(page); await sleep(100);
           const b = await rectOf(page, '#btn-menu');
           if (at === 'left' ? b.l > 40 : b.vw - b.r > 40) throw new Error(`the token is not at the ${at}: ${JSON.stringify(b)}`);
           if ((await page.evaluate(() => localStorage.getItem('hextable.menuToken'))) !== JSON.stringify(at)) throw new Error('the place was not stored');
-          await openMenu(page, 'settings');
+          await openMenu(page, 'settings/menu');
         }
         await page.selectOption('#set-token', 'center'); await closeMenu(page); await sleep(100);
         const b = await rectOf(page, '#btn-menu');
@@ -305,7 +363,7 @@ async function drawerPass(browser, url, label, opts) {
         let level = await frames('level'); await sleep(300);
         if (moves(level) !== 1) throw new Error(`changing place moved the menu (R20): ${[...new Set(level)]}`);
         await closeMenu(page);
-        await openMenu(page, 'settings');
+        await openMenu(page, 'settings/menu');
         await page.selectOption('#set-motion', 'appear');
         if ((await page.evaluate(() => localStorage.getItem('hextable.menuMotion'))) !== '"appear"') throw new Error('Just appear was not stored');
         await closeMenu(page);
@@ -317,7 +375,7 @@ async function drawerPass(browser, url, label, opts) {
         if (moves(level) !== 1) throw new Error(`under Just appear a place moved: ${[...new Set(level)]}`);
         await closeMenu(page);
         if (await shown(page, '#drawer')) throw new Error('under Just appear the menu did not go at once');
-        await openMenu(page, 'settings'); await page.selectOption('#set-motion', 'slide'); await closeMenu(page);
+        await openMenu(page, 'settings/menu'); await page.selectOption('#set-motion', 'slide'); await closeMenu(page);
         await page.emulateMedia({ reducedMotion: 'reduce' });
         arc = await frames('arc'); await sleep(200);
         if (moves(arc) !== 1) throw new Error('under reduced motion the arc moved');
@@ -327,7 +385,7 @@ async function drawerPass(browser, url, label, opts) {
         await page.emulateMedia({ reducedMotion: 'no-preference' });
       });
       if (!phone) await run.do('a wide menu is one column with the strip across its top, clear of the token wherever it sits, and takes its side from Setup', async () => {
-        await openMenu(page, 'settings'); await sleep(900);
+        await openMenu(page, 'settings/menu'); await sleep(900);
         const parts = await page.evaluate(() => ['menu-strip', 'drawer-head', 'drawer-body'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom), r.width > 0]; }));
         if (!parts.every((c, i) => c[2] && (!i || c[0] >= parts[i - 1][1] - 1))) throw new Error(`the strip, the heading and the screen are not one under the other: ${JSON.stringify(parts)}`);
         // The token does not move for the column (round 6): the column leaves its strip empty, so no screen runs under it.
@@ -349,7 +407,7 @@ async function drawerPass(browser, url, label, opts) {
         await page.selectOption('#set-side', 'left'); await sleep(900); await closeMenu(page);
       });
       await run.do('a theme chosen in Setup applies and is stored, and the token takes its colours; the look of floors is stored too', async () => {
-        await openMenu(page, 'settings');
+        await openMenu(page, 'settings/display');
         const before = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
         await page.selectOption('#set-theme', 'sunlit');
         const after = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
@@ -535,7 +593,7 @@ async function drawerLandscape(browser, url) {
         if (lv.l < tok.r && lv.r > tok.l && lv.b > tok.t + 1) throw new Error(`the screen runs under the token: ${JSON.stringify([lv, tok])}`);
       });
       await run.do('Settings is reached by taps, one setting changes, and closing leaves the token where it was', async () => {
-        await openMenu(page, 'table/settings');
+        await openMenu(page, 'settings/menu');
         await page.selectOption('#set-motion', 'appear');
         if ((await page.evaluate(() => document.body.dataset.menuMotion)) !== 'appear') throw new Error('the motion setting did not take');
         await page.selectOption('#set-motion', 'slide');

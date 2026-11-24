@@ -97,7 +97,7 @@ export const groupId = (id) => GROUP_OF[id] ?? id;
 export const paneOf = (id) => `#ap-${groupId(id).startsWith('cost:') ? 'cost' : groupId(id)}`;
 export async function panelTab(page, id) {
   const g = groupId(id);
-  await openMenu(page, 'sheet');
+  await openChar(page);
   if (g === 'down') return waitShown(page, '#ap-down', true, 8000);
   const bar = g.startsWith('cost:') ? `#c-res [data-cost="${g.slice(5)}"]` : `#ap-bar-${g}`;
   await waitShown(page, bar, true, 8000);
@@ -146,16 +146,24 @@ export const onCanvas = (page, x, y) => page.evaluate(([x0, y0]) => document.ele
 // same symbols run across the top of every screen (the strip). A tap on the token, on the dimmed map or Escape closes everything. A place is a path:
 // 'turns', 'settings', 'dm/creatures', or [] for the arc. The old names work too: 'character' is 'sheet', and 'table' (the list that held Setup, DM
 // tools, Help and leaving) is Setup, where those are now. It leaves the menu open on that place and waits until the screen is drawn.
-const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log', handouts: 'handouts', settings: 'settings', dm: 'dm', about: 'about' };
+const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log', settings: 'settings', dm: 'dm', about: 'about' };
+// M10: Setup, Log and chat and DM tools are pages of sections, one accordion each, one section open at a time: 'settings/menu' is Setup with The menu open,
+// 'log/talk' the Say box and the private note, 'log/handouts' a player's handouts ('handouts' alone still means that). A pass that touches a control of
+// Setup names its section (display, dice, menu, chars, rules, help, leave). 'log' alone opens the log itself; 'settings' alone leaves Setup as it is.
+// 'sheet' opens the character's page with its Sheet section open (the sheet is the last section of that page); `panelTab` opens a group of it instead,
+// and `openChar` opens the page and touches no section.
+const ACC = ['settings', 'log', 'dm'];
 export const menuPath = (p = []) => {
   const segs = (Array.isArray(p) ? p : String(p).split('/')).filter(Boolean).map((k) => ({ character: 'sheet', party: 'turns', root: '' })[k] ?? k).filter(Boolean);
   if (segs[0] === 'table') return segs.length > 1 ? segs.slice(1) : ['settings'];
+  if (segs[0] === 'handouts') return ['log', 'handouts'];
   return segs;
 };
 // M5: DM tools is a list of seven screens ('dm/creatures', 'dm/rules', ...) and a last row, "All tools on one page". A pass that asks for 'dm' alone
 // wants a DM control by its id wherever it is, so `openMenu(page, 'dm')` taps that last row; a pass about one screen names it.
 const menuAt = (page) => page.evaluate(() => document.getElementById('drawer').dataset.path || '');
-const waitMenuAt = (page, want) => page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want.join('/'), { timeout: 5000 });
+// The menu is at this place: a page of sections may have one open (it remembers which), so a place named alone is matched by its first part.
+const waitMenuAt = (page, want) => page.waitForFunction((p) => { const at = document.getElementById('drawer').dataset.path; return p.includes('/') || p === 'more' ? at === p : at.split('/')[0] === p; }, want.join('/'), { timeout: 5000 });
 const menuIs = (page) => page.evaluate(() => { const d = window.hextable.drawer; return { open: d.isOpen, arc: d.arc }; });
 export const openMenu = async (page, path = []) => {
   const want = menuPath(path);
@@ -179,7 +187,7 @@ const tapPlace = async (page, key) => {
   // A creature with no symbol (the DM has selected a monster on the map or in Turns) has its screen opened by the menu itself, as a tap on the map's pawn does;
   // About is a button of Setup at a table.
   if (key === 'sheet' && !sel) { await page.evaluate(() => window.hextable.drawer.open('sheet')); return; }
-  if (key === 'about' && !(await page.evaluate(() => { const b = document.getElementById('tab-about'); return !b.hidden; }))) { await tapPlace(page, 'settings'); await waitMenuAt(page, ['settings']); await page.click('#set-about'); return; }
+  if (key === 'about' && !(await page.evaluate(() => { const b = document.getElementById('tab-about'); return !b.hidden; }))) { await openMenuTo(page, ['settings', 'help']); await page.click('#set-about'); return; }
   const place = key === 'sheet' ? `c:${sel}` : key;
   if (is.arc) {
     // by selector, not by handle: the arc is drawn again when a place's line changes (a turn passes), and a handle would be of a button that is gone
@@ -191,17 +199,35 @@ const tapPlace = async (page, key) => {
   await b.evaluate((x) => { const r = x.getBoundingClientRect(), s = document.getElementById('menu-root'), q = s.getBoundingClientRect(); s.scrollLeft += (r.left + r.width / 2) - (q.left + q.width / 2); });      // the strip scrolls sideways; its end arrows cover its edges
   await b.click();
 };
-const openMenuTo = async (page, want) => {
+const openMenuTo = async (page, want, { sheet = true } = {}) => {
   if (!want.length) { await openArc(page); return; }
   if (!(await menuIs(page)).open) await openArc(page);
   let have = (await menuAt(page)).split('/').filter(Boolean);
-  if (have[0] !== want[0]) { await tapPlace(page, want[0]); await waitMenuAt(page, [want[0]]); have = [want[0]]; }
+  if (have[0] !== want[0]) { await tapPlace(page, want[0]); await waitMenuAt(page, [want[0]]); have = (await menuAt(page)).split('/').filter(Boolean); }
   await waitShown(page, '#drawer');
-  const sub = want[1] ?? (want[0] === 'dm' ? 'all' : null);
-  if (have[1] && have[1] !== sub) { await page.click('#drawer-back'); await waitMenuAt(page, [want[0]]); have = [want[0]]; }
-  if (sub && have[1] !== sub) { await page.click(`#${PANEL[want[0]]} > .sec-index [data-sec="${sub}"]`); await waitMenuAt(page, [want[0], sub]); }
+  if (ACC.includes(want[0])) {
+    const sub = want[1] ?? (want[0] === 'dm' ? 'all' : want[0] === 'log' ? 'log' : null), panel = PANEL[want[0]];
+    if (sub && have[1] !== sub) {
+      if (have[1] === 'all') { await page.click('#drawer-back'); await waitMenuAt(page, [want[0]]); }
+      if (sub === 'all') {
+        if (have[1] && have[1] !== 'all') { await page.click(`#acc-bar-${want[0]}-${have[1]}`); await page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want[0], { timeout: 5000 }); }
+        await page.click(`#${panel} > .acc-all [data-sec="all"]`);
+      } else await page.click(`#acc-bar-${want[0]}-${sub}`);
+      await waitMenuAt(page, [want[0], sub]);
+    }
+  }
   if (want[0] in PANEL) await waitShown(page, `#${PANEL[want[0]]}`);
+  // the sheet is the last section of a character's page: 'sheet' means the page with it open
+  if (want[0] === 'sheet' && sheet && (await page.$('#ap-bar-sheet'))) {
+    await waitShown(page, '#ap-bar-sheet', true, 8000);
+    if ((await page.getAttribute('#ap-bar-sheet', 'aria-expanded')) !== 'true') await page.click('#ap-bar-sheet');
+    await page.waitForFunction(() => document.getElementById('ap-bar-sheet')?.getAttribute('aria-expanded') === 'true', null, { timeout: 8000 });
+  }
   await menuStill(page);
+};
+// The character's page as it opens by itself: no section is touched (which group a page opens on is what some passes check).
+export const openChar = async (page) => {
+  try { await openMenuTo(page, ['sheet'], { sheet: false }); } catch (err) { throw new Error(`openChar stopped: ${String(err.message).split('\n')[0]}`); }
 };
 // The levels slide in (about .7 s): a check that measures the screen mid-slide sees a control hang out of the menu. Wait until the menu's own boxes stop moving.
 export const menuStill = (page) => page.evaluate(() => new Promise((ok) => {

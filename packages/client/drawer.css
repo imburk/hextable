@@ -196,7 +196,39 @@ body[data-menu-labels="always"] #menu-root .pr-txt small { display: none; }
 body.menu-arc :is(#chips, #hp-note) { visibility: hidden; }      /* the symbols take the room beside the die while the arc is out */
 body[data-menu-motion="appear"] :is(.arc-b, .ab-label) { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .arc-b, .ab-label { transition: none; } }
-/* a screen that holds screens (M5: DM tools): its list of rows, each with a tip under its name, then one screen at a time (or all, one under the other) */
+/* M10, one accordion for every page with sections (Decision 4d, R21, R27; accordion.js): Setup, Log and chat, DM tools. A bar is a button: the title, a line about
+   the section, a chevron. With none open the bars are a list, each with its line. With one open the page is pinned: it fills the screen, the bars before the
+   open section stay at its top and those after it at its bottom (44 px each, the title only), and only the open section scrolls. A character's page is pinned
+   the same way (actionpanel.css). */
+.acc-sec[hidden], .acc-body[hidden], .acc-all[hidden] { display: none; }
+.tabpanel.acc > .acc-sec { border-top: 0; padding-top: 0; margin-top: 6px; }
+.tabpanel.acc > .acc-sec:first-child { margin-top: 0; }
+.acc-h { margin: 0; font-size: inherit; font-family: inherit; letter-spacing: 0; }
+.acc-bar { width: 100%; min-height: 52px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; align-content: center; gap: 0 12px; text-align: left; padding: 6px 12px; }
+.acc-bar .acc-t { grid-column: 1; font-weight: 700; font-size: 16px; }
+.acc-bar .acc-tip { grid-column: 1; color: var(--muted); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-bar .acc-tip:empty { display: none; }
+.acc-bar .acc-chev { grid-column: 2; grid-row: 1 / span 2; color: var(--muted); font-size: 20px; line-height: 1; transition: transform .15s; }
+.acc-bar[aria-expanded="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.acc-bar[aria-expanded="true"] .acc-chev { color: inherit; transform: rotate(90deg); }
+.tabpanel.acc:not([data-sec=""]) .acc-bar { min-height: 44px; padding: 4px 12px; }
+.tabpanel.acc:not([data-sec=""]) .acc-bar .acc-tip { display: none; }
+.acc-body { padding: 10px 2px 6px; }
+.acc-body > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.acc-body > section:first-child, .acc-body > .sec-screen > section:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.acc-body > :first-child { margin-top: 0; }
+body[data-menu-motion="appear"] .acc-chev, body[data-menu-motion="appear"] .ap-chev { transition: none; }
+@media (prefers-reduced-motion: reduce) { .acc-chev { transition: none; } }
+/* pinned: the screen does not scroll, the page fills it, and the open section takes what the bars leave (never under 164 px: a shorter screen scrolls the page instead) */
+#drawer-body:has(> .tabpanel.pin:not([hidden])) { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 8px; }
+#drawer-body > .tabpanel.pin:not([hidden]) { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+#drawer-body > .tabpanel.pin > * { flex: none; }
+#drawer-body > .tabpanel.acc.pin > .acc-sec.open { flex: 1 0 164px; min-height: 0; display: flex; flex-direction: column; }
+#drawer-body > .tabpanel.acc.pin > .acc-sec.open > .acc-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* the row under the bars of DM tools: every section on one page (M5) */
+.tabpanel.acc > .sec-index.acc-all { margin-top: 6px; }
+.tabpanel.acc[data-sec="all"] > .acc-sec { margin-top: 12px; }
+.sec-screen > section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
 .tabpanel > .sec-index { padding: 0; margin: 12px 0 0; }
 .tabpanel > .sec-index:first-child { margin-top: 0; }
 .sec-index[hidden], .sec-screen[hidden] { display: none; }

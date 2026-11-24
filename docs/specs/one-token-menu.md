@@ -309,6 +309,44 @@ M10's.
 - **The banner's move to the character whose turn it is** (M6) now applies to a player looking at a character's page; the arc is left alone.
 - **Leaving says what it does before the first tap**: the note that came up on the first tap of the Table list's "Leave table" row is the standing line of Setup › Leave the table.
 
+### M10 build notes (one accordion, and the ways the menu closes)
+
+**Built.**
+- **One accordion** (`client/accordion.js`; `drawer.js` for Setup, Log and chat and DM tools; `actionpanel.js` for a character's page). A page with sections is marked `data-acc` in
+  `index.html`; the bars are made from the page as written (a section's heading, or a row of DM tools' list), every id kept. One section is open at a time. With none open the bars are
+  a list, each with a line about it (52 px). With one open the page is **pinned**: it fills the screen, the bars before the open section stay at the top and those after it at the
+  bottom (44 px, the title only), and only the open section scrolls (never under 120 px: on a screen too short for that the page scrolls instead of squeezing it). A section is part
+  of the place's path (`settings/menu`, `dm/rules`, `log/talk`), a page remembers which was open while the table is open, and each section keeps its own scroll. The page keeps its
+  own name as the heading. Up and Down move between the bars, Right or Enter opens one, Left or Backspace shuts it with the focus on its bar; each bar is a button with
+  `aria-expanded` and `aria-controls`, and the open content is a region labelled by it.
+- **Setup**: the seven sections of Decision 4d. **DM tools**: the seven screens of M5 are the seven sections; the last row, "All tools on one page", is still there under the bars
+  while none is open (M5 settled it; it is the one screen under a page, with a way back). **Log and chat**: Handouts (a player's, when there are any), Log, Talk (the Say box and the
+  private note); it opens on Log. **Handouts is no place any more** (round 4, question 27): its badge is on the Log symbol, `open('handouts')` opens that section, and the Waiting
+  card still opens a new handout itself.
+- **A character's page**: the status block, then one accordion of the action groups and, last, **Sheet** (`#sheet-body` is moved into it; its four parts have small headings and no
+  longer fold by themselves, R21). With a section open the status block is **compact** (the name, Hit Points and Armor Class on one line, then the turn bar on one line that scrolls
+  sideways), and the other bars stay on the screen above and below the open one. A creature with nothing to do here (someone else's, a foe looked at) opens on its sheet.
+- **Closing** (`scripts/smoke/menuclose.mjs`, in the smoke matrix): sixteen states (the arc, More, every screen, pages with a section open, with none, all on one page) at 390 x 844
+  with touch and at 1280 x 800, each closed by a real tap on the die, a tap on the dimmed map, Escape and M; a phone's sheet also by a tap on the handle and a drag down (a short
+  drag springs back), a column by the × beside Pin; a closing tap changes nothing on the map; with the slide on the die never moves; the arc fans out, folds, and no symbol
+  moves away from where it ends up (R20).
+
+**Settled, and where this differs from the text above.**
+- **The character's page keeps M4's groups as its bars; they are not merged into six sections.** M4 settled ten groups in a fixed order and two smoke passes pin them. Ten bars and
+  the sheet do not fit a phone one under the other, so while a section is open **the closed bars are titles side by side, up to three in a row** (`gridPlan`: as few rows as hold
+  them, as even as they go; each at least 44 px high). On a 390 x 844 phone the open section then keeps about 290 px exploring and never less than 120 px in a fight with every
+  group shown. Decision 4d's six (Attack and cast, Move and defend, ...) would be a change to `groupsFor` and to those passes; the owner may still want it (question 28).
+- **Which section a page opens on.** Log and chat on Log; Setup and DM tools on none the first time, then on the one that was open (kept in memory, not on the device). A
+  character's page as M4 had it: the likely group on a turn, the group opened last otherwise.
+- **"The tapped bar stays where it was under the finger" holds only as far as pinning allows**: a bar that opens moves up under the bars before it, which is where the spec's own
+  layout puts it. The focus stays on it.
+- **Leaving** keeps M5's confirm (a second tap on the same button, with the words of what it does standing above it), not the two buttons Stay / Leave the table.
+- **`openMenu(page, 'sheet')` in the smoke passes means the page with its Sheet section open**; `panelTab` opens a group, `openChar` touches no section. A pass that uses a control
+  of Setup names its section (`settings/menu`).
+
+**Left.** The Dice screen has one section until D5 gives it Roll dice and Last rolls, so it is not an accordion and has no row to Setup › Dice; no shortcut 1 to 9 for a
+character's sections; the open pane of a character's page does not keep its scroll when the menu is closed and opened again (Setup's, Log's and DM tools' sections do).
+
 ### Every control today, and where it goes
 
 "Today" is `packages/client/index.html` and the modules that fill it. "Goes to" uses the

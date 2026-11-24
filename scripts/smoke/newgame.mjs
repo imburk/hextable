@@ -26,7 +26,7 @@ async function solo(browser, url, label, opts) {
         await wait(page, (m) => JSON.stringify(window.hextable.state).includes(m), MARK);
       });
       await run.do('New game is in Setup, in its last section (Leave the table), and Leave table is not', async () => {
-        await openMenu(page, 'settings'); await page.locator('#set-new').scrollIntoViewIfNeeded();
+        await openMenu(page, 'settings/leave'); await page.locator('#set-new').scrollIntoViewIfNeeded();
         if (!(await shown(page, '#set-new'))) throw new Error('no New game in Setup');
         if (!(await settled(page, '#set-new'))) throw new Error('New game cannot be brought into view in Setup');
         if (await shown(page, '#btn-leave')) throw new Error('Leave table shown in a solo game');
@@ -83,7 +83,7 @@ async function table(browser, url) {
         await host.click('#lobby-host');
         await wait(host, () => document.querySelector('#dm-table code')?.textContent.length === 6);
         code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
-        await openMenu(host, 'settings'); await host.locator('#btn-leave').scrollIntoViewIfNeeded();
+        await openMenu(host, 'settings/leave'); await host.locator('#btn-leave').scrollIntoViewIfNeeded();
         if (!(await shown(host, '#btn-leave')) || !(await settled(host, '#btn-leave'))) throw new Error('no Leave the table in the DM\'s Setup');
         if (await shown(host, '#set-new')) throw new Error('New game shown at a table');
       });
@@ -93,11 +93,11 @@ async function table(browser, url) {
         await wait(phone, () => /waiting for the DM/i.test(document.querySelector('#lobby-msg').textContent));
         await openTab(host, 'dm'); await host.click('#dm-table button:has-text("Let in")');
         await wait(phone, () => window.hextable.state?.entities?.fighter);
-        await openMenu(phone, 'settings'); await phone.locator('#btn-leave').scrollIntoViewIfNeeded();
+        await openMenu(phone, 'settings/leave'); await phone.locator('#btn-leave').scrollIntoViewIfNeeded();
         if (!(await shown(phone, '#btn-leave')) || !(await settled(phone, '#btn-leave'))) throw new Error('no Leave the table in the player\'s Setup');
       });
       await run.do('the DM sees what leaving does on the first tap, and the table is kept', async () => {
-        await openMenu(host, 'settings'); await host.locator('#btn-leave').scrollIntoViewIfNeeded();
+        await openMenu(host, 'settings/leave'); await host.locator('#btn-leave').scrollIntoViewIfNeeded();
         // M8: leaving is Setup's last section; what it does is written above the button from the start (it was a note that came up on the first tap of the Table list's row).
         if (!(await shown(host, '#set-leave-note')) || !/new players/i.test(await text(host, '#set-leave-note'))) throw new Error(`note: ${await text(host, '#set-leave-note')}`);
         await host.click('#btn-leave');
