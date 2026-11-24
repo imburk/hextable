@@ -621,6 +621,20 @@ export function groupsFor(S, e, ctx, o = {}) {
   return { situation: ctx.situation, fight, groups, shown, empty };
 }
 
+// The quick actions of the turn line (#717, docs/specs/one-token-menu.md "#717 build notes"): on the creature's own turn, up to `max` rows that need the map next (an attack to
+// aim, a spell), so a fight action is the quick action and then the target. The row used last (`last`, a row id) comes first if it can be used again, then the first usable
+// row of Attack, of Cast, the next of each; no row twice. `G` is `groupsFor`'s answer, so only what the Character screen offers now is here. Pure.
+export const QUICK_KINDS = new Set(['arm', 'strike', 'spell']);
+export function quickRows(G, { last = null, max = 3 } = {}) {
+  if (!G || !G.fight || G.situation !== 'turn') return [];
+  const of = (id) => (G.groups.find((g) => g.id === id && g.shown)?.offered ?? []).filter((r) => QUICK_KINDS.has(r.kind) && (!r.why || r.armed));
+  const a = of('attacks'), c = of('spells'), out = [];
+  const add = (r) => { if (r && out.length < max && !out.some((x) => x.id === r.id)) out.push(r); };
+  add([...a, ...c].find((r) => r.id === last));
+  for (let i = 0; i < Math.max(a.length, c.length) && out.length < max; i++) { add(a[i]); add(c[i]); }
+  return out;
+}
+
 // Everything that costs `cost` ('action', 'bonus', 'reaction'), from every group, once each (Decision 4: the turn bar filters). `G` is `groupsFor`'s answer.
 export function costRows(S, e, cost, G, { mode = null, fly = null } = {}) {
   if (cost === 'bonus') return bonusRows(S, e, { mode, fly }).rows;
@@ -694,7 +708,7 @@ const ARMS = (m) => !!m && m.kind !== 'move';
 export function initActionPanel(ctx) {
   const { prefs } = ctx;
   const card = $('card'), body = $('ap-body'), how = $('ap-how');
-  let sel = { key: '', tab: null }, rowsBy = {}, moreOpen = false, howKey = null, ctxNow = null, found = [false, false], openNow = '', curE = null, groupsNow = [];
+  let sel = { key: '', tab: null }, rowsBy = {}, moreOpen = false, howKey = null, ctxNow = null, found = [false, false], openNow = '', curE = null, groupsNow = [], lastRun = { enc: null, ids: {} }, quickNow = [], quickLast = null;
   const pref = () => (prefs.get('hextable.panelTab') === 'remember' ? 'remember' : 'auto');
   const last = () => prefs.get('hextable.panelLast') ?? {};
   // One section for each group, then the screen of a turn-bar segment (`cost`) and the note of a creature that is down. Each is a bar (a button) and the pane it opens.
@@ -746,6 +760,7 @@ export function initActionPanel(ctx) {
     const S = ctx.state(), e = S.entities[ctx.selected()];
     if (!e || ctx.skipping()) return;
     if (r.why) return ctx.toast(r.why);
+    if (QUICK_KINDS.has(r.kind) && !r.armed && S.encounter) lastRun = { enc: S.encounter.id ?? null, ids: { ...(lastRun.enc === (S.encounter.id ?? null) ? lastRun.ids : {}), [e.id]: r.id } };      // what this creature used last in this fight (#717)
     switch (r.kind) {
       case 'send': case 'use': return ctx.act(r.send);
       case 'lead': return ctx.lead ? ctx.lead(e) : ctx.act(r.send);
@@ -961,11 +976,14 @@ export function initActionPanel(ctx) {
   return {
     // Events of an update: a `noticed` or `triggered` one moves Search up for the next two updates.
     updated(events) { found = [events.some((ev) => ev.type === 'noticed' || ev.type === 'triggered'), found[0]]; },
-    fresh() { found = [false, false]; sel = { key: '', tab: null }; howKey = null; picking = null; giving = null; },
+    // The quick actions of the turn line (#717): the rows for the selected creature as last drawn, and a tap on one.
+    quick: () => quickNow.map((r) => ({ id: r.id, label: r.label, sub: r.sub ?? '', armed: !!r.armed })),
+    runQuick(id) { const r = quickNow.find((x) => x.id === id); if (r) run(r); },
+    fresh() { lastRun = { enc: null, ids: {} }; quickNow = []; found = [false, false]; sel = { key: '', tab: null }; howKey = null; picking = null; giving = null; },
     // Draws the status block and the groups for `e` (or hides them). `mode` is app.js's current mode. Returns the open group.
     render(e, mode, { my, full }) {
       const S = ctx.state(), enc = S.encounter, cur = current(S);
-      card.hidden = !e; $('status-block').hidden = !e;
+      card.hidden = !e; $('status-block').hidden = !e; quickNow = [];
       if (!e) return null;
       curE = e;
       $('c-name').textContent = shownName(S, e);
@@ -998,6 +1016,9 @@ export function initActionPanel(ctx) {
       const G = groupsFor(S, e, ctxNow, { mode, fly, dm, found: found[0] || found[1], comp, inv, meta, react });
       groupsNow = G.shown;
       const key = `${e.id}|${ctxNow.situation}|${enc ? `${enc.round}:${enc.turn}` : ''}|${react.pending ? 'q' : ''}`;
+      // The quick actions (#717). Their order is settled when the turn starts (what was used last comes first) and holds for the turn: a row does not move from under the finger when it arms.
+      if (sel.key !== key) quickLast = enc && lastRun.enc === (enc.id ?? null) ? lastRun.ids[e.id] ?? null : null;
+      quickNow = my && enc && cur === e.id ? quickRows(G, { last: quickLast }) : [];
       if (sel.key !== key) sel = { key, tab: null };
       const kinds = G.shown;
       const costOk = (id) => /^cost:(action|bonus)$/.test(id) && G.fight && ctxNow.situation === 'turn';

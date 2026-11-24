@@ -89,6 +89,30 @@ async function tabs(browser, url, label, opts) {
         if (await page.$eval('#ap-attacks [data-row="atk:longsword"]', (b) => b.classList.contains('armed'))) throw new Error('the row still shows as armed');
       });
 
+      // #717 (docs/specs/one-token-menu.md, "#717 build notes"): a fight action in two taps. On my turn the turn line carries up to three quick actions, the panel's own rows.
+      await run.do('quick actions: on her turn the turn line offers the longsword first; one tap arms it with the menu left closed, a second puts it down; Setup turns them off', async () => {
+        await closePanels(page);
+        await waitShown(page, '#turn-quick');
+        const look = () => page.evaluate(() => { const tk = document.getElementById('btn-menu').getBoundingClientRect(), tl = document.getElementById('turnline').getBoundingClientRect();
+          return { rows: [...document.querySelectorAll('#turn-quick .tq')].map((b) => { const r = b.getBoundingClientRect(); return { id: b.dataset.quick, name: b.getAttribute('aria-label'), on: b.getAttribute('aria-pressed'), h: r.height, l: r.left, r: r.right }; }), vw: innerWidth, overToken: tl.bottom > tk.top + 1, end: !document.getElementById('btn-end').hidden }; });
+        const q = await look();
+        if (q.rows.length < 1 || q.rows.length > 3 || q.rows[0].id !== 'atk:longsword' || !/^Longsword, /.test(q.rows[0].name)) throw new Error(`the quick actions: ${JSON.stringify(q.rows)}`);
+        if (q.rows.some((r) => r.h < 44 || r.l < 0 || r.r > q.vw) || q.overToken || !q.end) throw new Error(`they do not fit, cover the token, or End turn is gone: ${JSON.stringify(q)}`);
+        await tap('#turn-quick [data-quick="atk:longsword"]');
+        await wait(page, () => window.hextable.mode.kind === 'attack' && window.hextable.mode.id === 'longsword');
+        if (await shown(page, '#drawer')) throw new Error('the menu opened');
+        if (!/Longsword: /.test(await text(page, '#hint-text'))) throw new Error('no hint for the armed attack');
+        const armed = await look();
+        if (armed.rows[0].id !== 'atk:longsword' || armed.rows[0].on !== 'true' || armed.rows.map((r) => r.id).join() !== q.rows.map((r) => r.id).join()) throw new Error(`armed, the row moved or is not marked: ${JSON.stringify(armed.rows)}`);
+        await tap('#turn-quick [data-quick="atk:longsword"]');
+        await wait(page, () => window.hextable.mode.kind === 'move');
+        await openMenu(page, 'settings'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.uncheck('#set-quick'); await closePanels(page);
+        if (await shown(page, '#turn-quick')) throw new Error('turned off in Setup, the quick actions still show');
+        if (!(await shown(page, '#btn-end'))) throw new Error('End turn went with them');
+        await openMenu(page, 'settings'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.check('#set-quick'); await closePanels(page);
+        await waitShown(page, '#turn-quick');
+      });
+
       await run.do('Move and Defend: the speed left is on the turn bar, Dash spends the action, and then what needs the action is not shown at all', async () => {
         await visit(page, 'move');
         for (const id of ['dash', 'disengage']) if (!(await page.$(`#ap-move [data-row="${id}"]`))) throw new Error(`no ${id} row in Move`);

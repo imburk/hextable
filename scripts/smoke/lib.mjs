@@ -150,8 +150,10 @@ const PANEL = { sheet: 'sheet', turns: 'tracker', dice: 'dicepanel', log: 'log',
 const UNDER_TABLE = new Set(['settings', 'dm', 'about']);
 export const menuPath = (p = []) => {
   const segs = (Array.isArray(p) ? p : String(p).split('/')).filter(Boolean).map((k) => ({ character: 'sheet', party: 'turns', root: '' })[k] ?? k).filter(Boolean);
-  return segs.length === 1 && UNDER_TABLE.has(segs[0]) ? ['table', segs[0]] : segs;
+  return UNDER_TABLE.has(segs[0]) ? ['table', ...segs] : segs;
 };
+// M5: DM tools is a list of seven screens (its third level: 'dm/creatures', 'dm/rules', ...) and a last row, "All tools on one page". A pass that asks for 'dm' alone
+// wants a DM control by its id wherever it is, so `openMenu(page, 'dm')` taps that last row; a pass about one screen names it.
 const menuAt = (page) => page.evaluate(() => document.getElementById('drawer').dataset.path || '');
 const waitMenuAt = (page, want) => page.waitForFunction((p) => document.getElementById('drawer').dataset.path === p, want.join('/'), { timeout: 5000 });
 export const openMenu = async (page, path = []) => {
@@ -173,11 +175,13 @@ const openMenuTo = async (page, want) => {
     // M4: the characters are rows of the first level (Decision 4b); the Character screen is opened by the selected one's row (it is first, and marked `sel`).
     // A creature with no row (the DM has selected a monster on the map or in Turns) has its screen opened by the menu itself, as a tap on the map's pawn does.
     if (want[j] === 'sheet' && !(await page.$('#menu-root #party button.sel'))) await page.evaluate(() => window.hextable.drawer.open('sheet'));
+    else if (j > 0 && want[j - 1] in PANEL) await page.click(`#${PANEL[want[j - 1]]} > .sec-index [data-sec="${want[j]}"]`);      // a screen inside a screen: its row in the list
     else await page.click(want[j] === 'sheet' ? '#menu-root #party button.sel' : `#drawer [data-go="${want[j]}"]`);
     await waitMenuAt(page, want.slice(0, j + 1));
   }
   const leaf = want.at(-1);
   if (leaf in PANEL) await waitShown(page, `#${PANEL[leaf]}`);
+  if (leaf === 'dm') { await page.click('#dm > .sec-index [data-sec="all"]'); await waitMenuAt(page, [...want, 'all']); }
   await menuStill(page);
 };
 // The levels slide in (about .7 s): a check that measures the screen mid-slide sees a control hang out of the menu. Wait until the menu's own boxes stop moving.

@@ -56,17 +56,36 @@ export function turnLine(S) {
 // The turn line of the clean screen (docs/specs/one-token-menu.md, Decision 1): one line, in a fight only. "Round 2 · Goblin's turn · you in 3", "Round 2 · Your turn",
 // "Round 2 · Something moves unseen" (just "Round 2" when the table says nothing of an unseen turn). `mine(e)` says whether the viewer plays e.
 // Returns { text, mine } or null outside a fight; `mine` is true on the viewer's own turn.
+// M6 (Decision 7): `waiting` (the table waits for someone else's reaction: a player's view says only that, `prompt.waiting`) puts "Waiting for a reaction…" in the
+// line's place; a player whose one character is down and dying reads "You are down · Death saves ✓ ✓ ○ ✗ ○ ○" there (the round and whose turn it is are in Turns).
+// The count to the viewer's turn steps over the turns that will be taken: an unseen creature's slot is one, a dead creature's is none.
+// `mine` stays true on the viewer's own turn whatever the words, so End turn stays.
+export const deathMarks = (e) => { const d = e?.death ?? {}, row = (n, mark) => Array.from({ length: 3 }, (_, i) => (i < (n ?? 0) ? mark : '\u25cb')).join(' '); return `${row(d.s, '\u2713')} ${row(d.f, '\u2717')}`; };
+export const turnsAway = (S, mine = () => false) => {
+  const enc = S?.encounter; if (!enc) return 0;
+  let n = 0;
+  for (let k = 1; k <= enc.order.length; k++) {
+    const x = enc.order[(enc.turn + k) % enc.order.length], e = x && !x.someone ? S.entities[x.id] : null;
+    if (x?.someone) { n++; continue; }
+    if (!e || e.dead) continue;
+    n++;
+    if (up(e) && mine(e)) return n;
+  }
+  return 0;
+};
 export function screenTurnLine(S, mine = () => false) {
   const enc = S?.encounter; if (!enc) return null;
   const o = enc.order[enc.turn], round = `Round ${enc.round}`;
+  const cur = o && !o.someone ? S.entities[o.id] : null, myTurn = !!cur && mine(cur);
+  if (S.prompt?.waiting === true) return { text: 'Waiting for a reaction\u2026', mine: myTurn, waiting: true };
+  const played = Object.values(S.entities).filter((e) => e.kind === 'pc' && mine(e));
+  if (played.length === 1 && !played[0].dead && played[0].hp <= 0 && played[0].death) return { text: played[0].cond?.stable ? 'You are down \u00b7 Stable' : `You are down \u00b7 Death saves ${deathMarks(played[0])}`, mine: myTurn, down: true };
   if (!o) return { text: round, mine: false };
-  if (o.someone) return { text: S.settings?.unseenTurns === 'quiet' ? round : `${round} · Something moves unseen`, mine: false };
-  const cur = S.entities[o.id];
+  if (o.someone) return { text: S.settings?.unseenTurns === 'quiet' ? round : `${round} \u00b7 Something moves unseen`, mine: false };
   if (!cur) return { text: round, mine: false };
-  if (mine(cur)) return { text: `${round} · Your turn`, mine: true };
-  let away = 0;
-  for (let k = 1; k <= enc.order.length; k++) { const x = enc.order[(enc.turn + k) % enc.order.length], e = x && !x.someone ? S.entities[x.id] : null; if (e && up(e) && mine(e)) { away = k; break; } }
-  return { text: `${round} · ${shownName(S, cur)}'s turn${away === 1 ? ' · you next' : away ? ` · you in ${away}` : ''}`, mine: false };
+  if (myTurn) return { text: `${round} \u00b7 Your turn`, mine: true };
+  const away = turnsAway(S, mine);
+  return { text: `${round} \u00b7 ${shownName(S, cur)}'s turn${away === 1 ? ' \u00b7 you next' : away ? ` \u00b7 you in ${away}` : ''}`, mine: false };
 }
 
 // One row. `opts`: { dm, mine(e), ticked: Set } . The same function draws every viewer's row; what differs is what the state holds.
