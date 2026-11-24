@@ -10,18 +10,23 @@
 //   D.open('sheet'); D.open('settings'); D.open(); D.close(); D.toggle(); D.back();   D.sync(S);   (S is null before a table is joined)
 //
 // A place is a path: [] is the arc, ['turns'] a screen, ['more'] the list of every place (for a table with more places than the arc has slots).
-// A screen may hold screens of its own (M5: DM tools): its panel has a list `.sec-index` of rows `[data-sec]` and one `.sec-screen[data-sec]`
-// (with `data-title`) for each; ['dm', 'creatures'] is one of them. `all` shows every one, one under the other.
-// Old names still open their screens (`open('character')` is `open('sheet')`; a leading 'table', the list that held Setup and DM tools, is dropped).
+// A page with sections (M10: Setup, Log and chat, DM tools; a panel marked `data-acc`) is one accordion (accordion.js): ['dm', 'creatures'] is
+// DM tools with Creatures open, ['dm'] with none open, and ['dm', 'all'] every section of DM tools one under the other (M5's last row). One
+// section is open at a time, the bars before it stay at the top and those after it at the bottom, and a page remembers which was open.
+// Old names still open their screens (`open('character')` is `open('sheet')`; a leading 'table', the list that held Setup and DM tools, is
+// dropped; 'handouts', a place until M10, is that section of Log and chat).
 //
 // Preferences it keeps (client only, through `prefs`): hextable.drawerSide ('left' | 'right': where a wide screen's column comes from),
 // hextable.drawerPin (bool), hextable.menuMotion ('slide' | 'appear'), hextable.menuToken ('center' | 'left' | 'right': where the token sits; it sits there
-// whatever is open), hextable.menuLabels ('3s' | 'always': the words under the symbols), hextable.seen.ring (the note about the health ring was read).
+// whatever is open), hextable.menuLabels ('3s' | 'always': the words under the symbols), hextable.seen.ring (the note about the health ring was read),
+// hextable.menuOrder and hextable.menuHidden (M9, Arrange: the order of the places and which are hidden; menuorder.js).
 // Where the menu is open is in memory only, and a closed menu opens on its arc.
 import { current } from './shared/engine.js';
 import { symbol, placeSymbol } from './symbols.js';
 import { arcLayout, arcShape } from './menuarc.js';
 import { dwellTimer } from './scrolltip.js';
+import { mountAccordion } from './accordion.js';
+import { GROUPS, FIXED, normalOrder, normalHidden, moveTo, moveBy, canMove, setHidden, rank, shows, slotOf } from './menuorder.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -31,7 +36,6 @@ export const TABS = {
   turns: { panel: 'tracker', button: 'tab-turns', title: 'Turns' },
   dice: { panel: 'dicepanel', button: 'tab-dice', title: 'Dice' },
   log: { panel: 'log', button: 'tab-log', title: 'Log and chat' },
-  handouts: { panel: 'handouts', button: 'btn-handouts', title: 'Handouts' },
   settings: { panel: 'settings', button: 'tab-settings', title: 'Setup' },
   dm: { panel: 'dm', button: 'tab-dm', title: 'DM tools' },
   about: { panel: 'about', button: 'tab-about', title: 'About' },
@@ -42,6 +46,7 @@ const SIDES = ['left', 'right'], MOTIONS = ['slide', 'appear'], TOKENS = ['cente
 const WIDE = '(min-width: 900px)';             // the pinned menu, and closeDM() in app.js, use this width
 const COLUMNS = `${WIDE}, (orientation: landscape) and (max-height: 500px)`;      // the shape with a column: a wide screen, or a phone on its side
 const FLICK = 0.5, SWIPE = 60;                 // px per ms, px: how far or fast a drag on the handle must go to close
+const HOLD_MS = 500;                           // a symbol of the arc held this long opens Arrange (Decision 4c)
 const SLIDE_MS = 720;                          // the longest slide (Decision 6, round 2); a panel stays drawn this long after it leaves
 
 export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {}, token: tokenOf = () => null, charName = () => null, pickChar = () => {} }) {
@@ -55,6 +60,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   let motion = MOTIONS.includes(savedMotion) ? savedMotion : 'slide';
   let tokenAt = TOKENS.includes(savedToken) ? savedToken : 'center';
   let labels = LABELS.includes(savedLabels) ? savedLabels : '3s';
+  let order = normalOrder(prefs.get('hextable.menuOrder')), hiddenPl = normalHidden(prefs.get('hextable.menuHidden'));      // Arrange (M9)
   let path = [], isOpen = false, held = false, opener = null, hideTimer = null;
   let drawerUp = false;               // the sheet (or the column) is up: a screen is open, not only the arc
   let arcUp = false, labelsUp = false; // the arc is fanned out; its words have come up (3 s with no choice)
@@ -84,25 +90,39 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   // ---- the tree ----
   const keyOf = (w) => { const k = String(w ?? '').toLowerCase(); return k in ALIAS ? ALIAS[k] : k; };
   // A name, a path array or 'a/b' as a path. An unknown name is the arc.
-  const pathOf = (which) => (Array.isArray(which) ? which : String(which ?? '').split('/')).map(keyOf).filter(Boolean);
+  // (An old name is read only until a place is named: what follows a place is one of its sections, and Setup has one called `menu`.)
+  const pathOf = (which) => { const out = []; for (const w of (Array.isArray(which) ? which : String(which ?? '').split('/'))) { const k = out.length ? String(w ?? '').toLowerCase() : keyOf(w); if (k) out.push(...(!out.length && k === 'handouts' ? ['log', 'handouts'] : [k])); } return out; };
   const leafOf = (p) => (p[0] in TABS ? p[0] : null);
   const subOf = (p) => (leafOf(p) && p.length > 1 ? p[1] : null);
-  // The screens a screen holds, from its panel: { id: title }.
-  const secsOf = (leaf) => { const out = {}, panel = leaf && $(TABS[leaf].panel); if (!panel) return out; for (const x of panel.querySelectorAll(':scope > .sec-screen[data-sec]')) out[x.dataset.sec] = x.dataset.title || x.dataset.sec; if (panel.querySelector(':scope > .sec-index [data-sec="all"]')) out.all = TABS[leaf].title; return out; };
+  // The pages with sections, each one accordion: { leaf: [section ids] }, made from the page as it is written. `mem` is the section a page had open
+  // last ('' for none; not set until the page was looked at, when the panel's `data-acc-first` opens).
+  const ACC = {}, mem = {};
+  for (const [id, t] of Object.entries(TABS)) if ($(t.panel).hasAttribute('data-acc')) ACC[id] = mountAccordion($(t.panel), id);
+  const panelOf = (leaf) => $(TABS[leaf].panel);
+  const secEl = (leaf, sec) => panelOf(leaf).querySelector(`:scope > .acc-sec[data-sec="${CSS.escape(sec)}"]`);
+  const allRow = (leaf) => panelOf(leaf).querySelector(':scope > .acc-all [data-sec="all"]');
+  // A screen under a page (a real next step, Decision 4a): a `.sub-screen[data-sec]` of its panel with its own heading (Arrange, under Setup), or "all on one page".
+  const subEl = (leaf, sec) => (leaf && sec ? panelOf(leaf).querySelector(`:scope > .sub-screen[data-sec="${CSS.escape(sec)}"]`) : null);
+  const under = (leaf, sec) => !!sec && (sec === 'all' || !!subEl(leaf, sec));
+  const secOk = (leaf, sec) => !!ACC[leaf] && (sec === 'all' ? !!allRow(leaf) : !!subEl(leaf, sec) || (ACC[leaf].includes(sec) && !secEl(leaf, sec).hidden));
+  // A page reached by its name alone opens on the section it had open last.
+  const land = (p) => { if (p.length !== 1 || !ACC[p[0]]) return p; const sec = mem[p[0]] ?? panelOf(p[0]).dataset.accFirst ?? ''; return sec && secOk(p[0], sec) ? [p[0], sec] : p; };
+  // What scrolls: the open section of a pinned page, otherwise the screen.
+  const scroller = () => (shownLeaf && ACC[shownLeaf] ? panelOf(shownLeaf).querySelector(':scope > .acc-sec.open > .acc-body') : null) ?? body;
   // What can be reached now. Before a table is joined there is only Setup and About (and no token, so no arc).
   function reach() {
     const S = state();
     if (!S) return ['settings', 'about'];
-    return ['sheet', 'turns', 'dice', 'log', ...(!isDM() && S.handouts?.length ? ['handouts'] : []), 'settings', ...(isDM() ? ['dm'] : []), 'about', MORE];
+    return ['sheet', 'turns', 'dice', 'log', 'settings', ...(isDM() ? ['dm'] : []), 'about', MORE];
   }
   // The longest part of a path that can be reached.
   function valid(p, ok) {
     if (!p.length || !ok.includes(p[0])) return [];
     if (p[0] === MORE) return [MORE];
-    return p.length > 1 && Object.hasOwn(secsOf(p[0]), p[1]) ? [p[0], p[1]] : [p[0]];
+    return p.length > 1 && secOk(p[0], p[1]) ? [p[0], p[1]] : [p[0]];
   }
   // Every screen says what it is (Decision 4c): a character's page is the character's name, Turns is Party while nobody fights.
-  const nameOfPlace = (seg) => (seg === 'sheet' ? charName() || TABS.sheet.title : seg === 'turns' && !state()?.encounter ? 'Party' : seg in TABS ? TABS[seg].title : seg === MORE ? MORE_TITLE : secsOf(leafOf(path))[seg] ?? '');
+  const nameOfPlace = (seg) => (seg === 'sheet' ? charName() || TABS.sheet.title : seg === 'turns' && !state()?.encounter ? 'Party' : seg in TABS ? TABS[seg].title : seg === MORE ? MORE_TITLE : '');
 
   // ---- painting ----
   const word = (b, text) => { const x = b.querySelector('.mr-sum'); if (x && x.dataset.text !== text) { x.dataset.text = text; x.firstChild?.nodeType === 3 ? (x.firstChild.textContent = text) : x.prepend(document.createTextNode(text)); } };
@@ -150,8 +170,11 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       const k = b.dataset.go, n = b.querySelector('.mr-sum b:not([hidden])');
       out.push({ key: k, el: b, char: false, name: b.querySelector('.mr-name').textContent, sum: b.querySelector('.mr-sum')?.dataset.text ?? '', badge: Number(n?.textContent) || 0, current: leaf === k, mark: b.querySelector('.mr-sym').innerHTML });
     }
-    return out;
+    // Arrange (M9): the person's own order. The characters move as one and keep the order they have among themselves (the sort is stable).
+    return out.map((p, i) => ({ p, i, r: rank(order, p.key) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.p);
   }
+  // The strip's buttons as they stand on the screen, left to right (they are set in order by CSS `order`, not by moving them).
+  const stripButtons = () => [...rootList.querySelectorAll('.menu-row, .pr')].map((b, i) => ({ b, i, r: rank(order, b.dataset.id ? `c:${b.dataset.id}` : b.dataset.go) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.b);
   const tile = (p, cls, extra = '') => `<button type="button" class="${cls}" data-place="${esc(p.key)}"${p.current ? ' aria-current="page"' : ''}${extra}>`;
 
   // The strip: the current place is marked and brought into view by the strip's own scroll (never `scrollIntoView`: it would scroll the sheet too, R20);
@@ -164,6 +187,8 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   function paintStrip(list) {
     for (const b of rootList.querySelectorAll('.menu-row[aria-current="page"], .pr[aria-current="page"]')) if (!list.some((p) => p.current && p.el === b)) b.setAttribute('aria-current', 'false');      // a place that is hidden now too (About, before a table)
     for (const p of list) p.el.setAttribute('aria-current', p.current ? 'page' : 'false');
+    for (const b of rootList.querySelectorAll('.menu-row[data-go]')) { const o = String(rank(order, b.dataset.go)); if (b.style.order !== o) b.style.order = o; }
+    rootList.style.setProperty('--o-chars', String(rank(order, 'sheet')));
     const cur = list.find((p) => p.current), key = `${cur?.key ?? ''}`;
     if (cur && drawerUp && key !== stripAt && rootList.getClientRects().length) {
       const a = cur.el.getBoundingClientRect(), r = rootList.getBoundingClientRect(), edge = 40;      // room for an arrow at each end
@@ -210,8 +235,93 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (moreList.dataset.sig !== html) { moreList.dataset.sig = html; moreList.innerHTML = html; }
   }
 
+  // Arrange (Decision 4c; M9): each place a row with a six-dot handle to drag it within its group, ▲ and ▼ for keys and switches, and an eye to hide it from
+  // the arc and the strip. The characters (one row: they move as one) and Setup cannot be hidden, and their rows say why. Reset order puts everything back.
+  const arrange = $('arrange');
+  function paintArrange(list, on) {
+    if (!arrange || !on) return;
+    const chars = list.filter((p) => p.char), have = new Set(list.map((p) => slotOf(p.key)));
+    for (const b of rootList.querySelectorAll('.menu-row[data-go]')) if (reach().includes(b.dataset.go) && b.dataset.go !== 'about' && b.dataset.go !== 'sheet') have.add(b.dataset.go);      // a hidden place has a row too: it is where it comes back
+    const info = (k) => {
+      if (k === 'chars') return { name: chars.length > 1 ? 'Your characters' : chars[0]?.name || 'Your character', mark: chars[0]?.mark ?? symbol('character') };
+      const b = rootList.querySelector(`.menu-row[data-go="${k}"]`);
+      return { name: b.querySelector('.mr-name').textContent, mark: b.querySelector('.mr-sym').innerHTML };
+    };
+    const row = (k) => {
+      const { name, mark } = info(k), n = esc(name), off = hiddenPl.includes(k);
+      const eye = k in FIXED ? '' : `<button type="button" class="arr-eye" data-eye aria-pressed="${off}" aria-label="${off ? `Show ${n} on the arc and the strip` : `Hide ${n} from the arc and the strip`}">${symbol(off ? 'eyeOff' : 'eye')}</button>`;
+      return `<li class="arr-row${off ? ' off' : ''}" data-key="${k}"><button type="button" class="arr-grip" aria-label="Drag ${n} to another place in its group">${symbol('arrange')}</button><span class="arr-sym" aria-hidden="true">${mark}</span>` +
+        `<span class="arr-name">${n}${k in FIXED ? `<small class="arr-why">${esc(FIXED[k])}</small>` : off ? '<small class="arr-why">Hidden</small>' : ''}</span>` +
+        `<button type="button" class="arr-step" data-move="-1" aria-label="Move ${n} up"${canMoveIn(k, -1, have) ? '' : ' disabled'}>${symbol('up')}</button><button type="button" class="arr-step" data-move="1" aria-label="Move ${n} down"${canMoveIn(k, 1, have) ? '' : ' disabled'}>${symbol('down')}</button>${eye}</li>`;
+    };
+    const html = '<p class="note">Drag a row by its six dots, or use \u25b2 \u25bc. The eye hides a symbol from the arc and the strip. Kept on this device.</p>' +
+      GROUPS.map((g) => { const keys = order.filter((k) => g.keys.includes(k) && have.has(k)); return keys.length ? `<h3 class="arr-cap" id="arr-cap-${g.id}">${g.name}</h3><ul class="arr-list" data-group="${g.id}" aria-labelledby="arr-cap-${g.id}">${keys.map(row).join('')}</ul>` : ''; }).join('') +
+      '<div class="row"><button type="button" id="arr-reset">Reset order</button></div>';
+    if (arrange.dataset.sig !== html) { arrange.dataset.sig = html; arrange.innerHTML = html; }
+  }
+  // A step is possible when a place this person has stands that way in the group (DM tools is not a player's, so Setup is alone in its group for them).
+  const shownKeys = (key, have) => order.filter((k) => GROUPS.find((g) => g.keys.includes(key))?.keys.includes(k) && have.has(k));
+  const canMoveIn = (key, d, have) => { const l = shownKeys(key, have), i = l.indexOf(key) + d; return i >= 0 && i < l.length && canMove(order, key, d); };
+  const saveArrange = (say) => {
+    prefs.set('hextable.menuOrder', order); prefs.set('hextable.menuHidden', hiddenPl);
+    stripAt = ''; paint(); change('arrange');
+    if (say) { live.textContent = ''; setTimeout(() => { live.textContent = say; }, 30); }
+  };
+  if (arrange) {
+    const nameOf = (li) => li.querySelector('.arr-name').firstChild?.textContent ?? '';
+    arrange.addEventListener('click', (ev) => {
+      const li = ev.target.closest('.arr-row'), key = li?.dataset.key;
+      if (ev.target.closest('#arr-reset')) { order = normalOrder(null); hiddenPl = []; saveArrange('The order is as it was at first, and every symbol shows.'); $('arr-reset')?.focus({ preventScroll: true }); return; }
+      const step = ev.target.closest('[data-move]'), eye = ev.target.closest('[data-eye]');
+      if (step && key) {
+        const d = Number(step.dataset.move), list = [...li.parentElement.children], to = list.indexOf(li) + d, other = list[to]?.dataset.key;
+        if (!other) return;
+        order = moveTo(order, key, order.filter((k) => GROUPS.find((g) => g.keys.includes(key)).keys.includes(k)).indexOf(other));      // past the neighbour that is shown (a place this person has not got may lie between)
+        saveArrange(`${nameOf(li)} moved ${d < 0 ? 'up' : 'down'}.`);
+        const again = arrange.querySelector(`[data-key="${key}"] [data-move="${d}"]`), alt = arrange.querySelector(`[data-key="${key}"] [data-move="${-d}"]`);
+        (again && !again.disabled ? again : alt)?.focus({ preventScroll: true });
+      } else if (eye && key) {
+        const on = !hiddenPl.includes(key);
+        hiddenPl = setHidden(hiddenPl, key, on);
+        saveArrange(`${nameOf(li)} is ${on ? 'hidden' : 'shown'}.`);
+        arrange.querySelector(`[data-key="${key}"] [data-eye]`)?.focus({ preventScroll: true });
+      }
+    });
+    // A drag by the six dots: the row follows the pointer among the rows of its own group, and is left where it is let go.
+    let grab = null;
+    const rowsOf = (ul) => [...ul.querySelectorAll(':scope > .arr-row')];
+    arrange.addEventListener('pointerdown', (ev) => {
+      const g = ev.target.closest('.arr-grip'), li = g?.closest('.arr-row'); if (!li) return;
+      grab = { id: ev.pointerId, li, ul: li.parentElement, moved: false };
+      try { g.setPointerCapture?.(ev.pointerId); } catch { /* a pointer that is already gone */ }
+      li.classList.add('dragging'); ev.preventDefault();
+    });
+    arrange.addEventListener('pointermove', (ev) => {
+      if (!grab || ev.pointerId !== grab.id) return;
+      const others = rowsOf(grab.ul).filter((x) => x !== grab.li);
+      const next = others.find((x) => { const r = x.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; }) ?? null;
+      if (next !== grab.li.nextElementSibling) { grab.ul.insertBefore(grab.li, next); grab.moved = true; }
+    });
+    const drop = (ev, keep) => {
+      if (!grab || ev.pointerId !== grab.id) return;
+      const { li, ul, moved } = grab, key = li.dataset.key; grab = null;
+      li.classList.remove('dragging');
+      arrange.dataset.sig = '';                                      // the rows were moved by hand: draw them again from the order
+      if (keep && moved) {
+        const before = rowsOf(ul).map((x) => x.dataset.key), at = before.indexOf(key), prev = before[at - 1], g = GROUPS.find((x) => x.keys.includes(key));
+        const mine = order.filter((k) => g.keys.includes(k) && k !== key);
+        order = moveTo(order, key, prev ? mine.indexOf(prev) + 1 : 0);
+        saveArrange(`${nameOf(li)} is now ${at + 1} of ${before.length}.`);
+      } else paint();
+      arrange.querySelector(`[data-key="${key}"] .arr-grip`)?.focus({ preventScroll: true });
+    };
+    arrange.addEventListener('pointerup', (ev) => drop(ev, true));
+    arrange.addEventListener('pointercancel', (ev) => drop(ev, false));
+  }
+
   function paint() {
     const S = state(), ok = reach(), cols = columns();
+    const was = shownKey ? scroller().scrollTop : 0;                 // read before anything is redrawn: a section that shuts forgets its scroll
     path = valid(path, ok);
     if (isOpen && !path.length && !S) path = ['settings'];           // no token before a table, so no arc: the menu is Setup and About
     const open = isOpen && !held, leaf = leafOf(path), sub = subOf(path), arcOn = open && !path.length, up = isOpen && path.length > 0;
@@ -229,16 +339,22 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     // The sheet (or the column) is up while a screen is open; the arc alone leaves it down.
     if (up && !drawerUp) { drawerUp = true; show(); } else if (!up && drawerUp) { drawerUp = false; hide(); }
 
-    // The strip's buttons: which can be reached. A screen that holds screens shows its list while none is chosen, then the one chosen (or all of them).
+    // The strip's buttons: which can be reached. A page with sections has one open (its bars pinned above and below it), none (every bar with its tip), or all.
     for (const [id, t] of Object.entries(TABS)) {
-      $(t.button).hidden = !ok.includes(id);
-      const panel = $(t.panel), index = panel.querySelector(':scope > .sec-index');
-      if (index) {
-        const at = id === leaf ? sub : null;
-        panel.dataset.sec = at ?? '';
-        index.hidden = !!at;
-        for (const x of panel.querySelectorAll(':scope > .sec-screen')) x.hidden = !(at === 'all' || at === x.dataset.sec);
+      $(t.button).hidden = !ok.includes(id) || !shows(hiddenPl, id, 'strip');      // a place hidden in Arrange is off the strip (DM tools never is)
+      if (id !== leaf || !ACC[id]) continue;
+      const panel = $(t.panel), at = sub ?? '', all = at === 'all', scr = under(id, at);
+      if (!scr) mem[id] = at;
+      panel.dataset.sec = at; panel.classList.toggle('pin', !!at && !scr);
+      panel.toggleAttribute('data-sub', scr && !all);
+      for (const x of panel.querySelectorAll(':scope > .sub-screen')) x.hidden = x.dataset.sec !== at;
+      for (const x of panel.querySelectorAll(':scope > .acc-sec')) {
+        const on = at === x.dataset.sec, b = x.querySelector(':scope > .acc-h > .acc-bar'), box = x.querySelector(':scope > .acc-body');
+        x.classList.toggle('open', on);
+        if (b.getAttribute('aria-expanded') !== String(on)) b.setAttribute('aria-expanded', String(on));
+        if (box.hidden !== !(on || all)) box.hidden = !(on || all);
       }
+      const rest = panel.querySelector(':scope > .acc-all'); if (rest) rest.hidden = !!at;
     }
     if ($('party').childElementCount) $('tab-sheet').hidden = true;      // the characters are places of their own (Decision 4b); the one Character place is for a table with none
     if (S) $('tab-about').hidden = true;                                 // at a table About is a button of Setup's Help and about (round 4)
@@ -254,13 +370,15 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     moreLevel.dataset.pos = path[0] === MORE ? 'here' : 'over'; body.dataset.pos = leaf ? 'here' : 'over';
     $('drawer-handle').hidden = cols;
     const list = places();
-    paintStrip(list); paintArc(list, arcOn); paintMore(list, open && path[0] === MORE);
+    paintStrip(list); paintArc(list.filter((p) => shows(hiddenPl, p.key, 'arc')), arcOn); paintMore(list, open && path[0] === MORE);
+    paintArrange(list, open && leaf === 'settings' && sub === 'arrange');
 
     // The heading is the screen's own name; a screen under another has a way back that names it ("‹ DM tools" over "Creatures").
-    const here = path.length ? nameOfPlace(path.at(-1)) : '';
+    // A page with sections keeps its own name while one is open; only "all on one page" is a screen under it, with a way back.
+    const here = path.length ? subEl(leaf, sub)?.dataset.title ?? nameOfPlace(path[0]) : '';
     if (title.textContent !== here && here) title.textContent = here;
-    const back = $('drawer-back'), up1 = sub ? nameOfPlace(leaf) : '';
-    back.hidden = !sub;
+    const back = $('drawer-back'), up1 = under(leaf, sub) ? nameOfPlace(leaf) : '';
+    back.hidden = !under(leaf, sub);
     if (back.dataset.to !== up1) { back.dataset.to = up1; back.textContent = up1 ? `\u2039 ${up1}` : '\u2039'; back.setAttribute('aria-label', up1 ? `Back to ${up1}` : 'Back'); }
 
     // The screen: its panel is drawn while it is in view, and a moment longer while the sheet slides it out. A screen that was left keeps
@@ -268,10 +386,10 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     const want = open && path.length ? leaf : el.hidden ? null : shownLeaf;
     const key = want ? `${want}/${want === leaf ? sub ?? '' : shownKey.split('/')[1] ?? ''}` : '';      // a screen inside a screen keeps a scroll of its own
     if (key !== shownKey) {
-      if (shownKey) scrolls.set(shownKey, body.scrollTop);
+      if (shownKey) scrolls.set(shownKey, was);
       shownLeaf = want; shownKey = key;
       applyPanels();
-      if (want) { wantScroll = scrolls.get(key) ?? 0; body.scrollTop = wantScroll; }
+      if (want) { wantScroll = scrolls.get(key) ?? 0; scroller().scrollTop = wantScroll; }
     } else applyPanels();
 
     // The map makes room for a pinned menu: the insets are what every fixed piece of the table reads.
@@ -297,11 +415,11 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   function hide() {
     el.classList.remove('open');
     clearTimeout(hideTimer);
-    const done = () => { if (!drawerUp) { if (shownKey) scrolls.set(shownKey, body.scrollTop); el.hidden = true; shownLeaf = null; shownKey = ''; applyPanels(); } };      // a hidden box forgets its scroll: it is kept here
+    const done = () => { if (!drawerUp) { if (shownKey) scrolls.set(shownKey, scroller().scrollTop); el.hidden = true; shownLeaf = null; shownKey = ''; applyPanels(); } };      // a hidden box forgets its scroll: it is kept here
     if (still()) done(); else hideTimer = setTimeout(done, SLIDE_MS);
   }
 
-  const rescroll = () => { if (wantScroll != null) { if (wantScroll && !body.scrollTop) body.scrollTop = wantScroll; wantScroll = null; } };
+  const rescroll = () => { if (wantScroll != null) { if (wantScroll && !scroller().scrollTop) scroller().scrollTop = wantScroll; wantScroll = null; } };
   // Where the focus goes when a place opens: a screen's heading; on the arc, its first symbol.
   const focusHere = () => (path.length ? title : arc.querySelector('.arc-b') ?? token).focus({ preventScroll: true });
   // Go to a place. `focus`: where the focus goes (the heading by default; null leaves it).
@@ -315,11 +433,11 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   function choose(key) {
     if (key === MORE) go([MORE]);
     else if (key.startsWith('c:')) pickChar(key.slice(2));
-    else go(valid([key], reach()));
+    else go(land(valid([key], reach())));
   }
   function open(which = null, from = null, quiet = false) {
     const wasOpen = isOpen;
-    const want = which == null ? (wasOpen ? path : []) : pathOf(which);
+    const want = which == null ? (wasOpen ? path : []) : land(pathOf(which));
     const changed = want.join('/') !== path.join('/');
     path = want;
     if (!wasOpen) {
@@ -341,13 +459,14 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     change('close');
   }
   const toggle = () => (isOpen ? close() : open(null, token));
-  // One level back: from a screen inside a screen to its list, with the focus on the row that was chosen, so a keyboard keeps its place; from More to the arc.
+  // One level back: an open section shuts (the focus stays on its bar, so a keyboard keeps its place); "all on one page" goes back to the bars; More to the arc.
   function back() {
     const inner = subOf(path);
     if (path[0] === MORE) { go([]); return true; }
     if (!inner) return false;
-    const row = $(TABS[leafOf(path)].panel).querySelector(`:scope > .sec-index [data-sec="${inner}"]`);
-    go(path.slice(0, -1), { focus: null });
+    const leaf = leafOf(path), scr = under(leaf, inner);
+    go(scr ? land([leaf]) : [leaf], { focus: null });       // from a screen under a page, back to the page as it was (the section that held the way in)
+    const row = inner === 'all' ? allRow(leaf) : scr ? panelOf(leaf).querySelector(`[data-menu-open="${leaf}/${inner}"]`) : secEl(leaf, inner)?.querySelector('.acc-bar');
     (row && !row.hidden && row.getClientRects().length && getComputedStyle(row).visibility !== 'hidden' ? row : title).focus({ preventScroll: true });
     return true;
   }
@@ -362,19 +481,35 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   // ---- places, rows and the way back ----
   el.addEventListener('click', (ev) => {
     const row = ev.target.closest('.menu-row[data-go]');
-    if (row && el.contains(row)) { go(valid([row.dataset.go], reach())); return; }
+    if (row && el.contains(row)) { go(land(valid([row.dataset.go], reach()))); return; }
+    const bar = ev.target.closest('.acc-bar');                // a section's bar opens it; the open one shuts by a second tap
+    if (bar && body.contains(bar) && leafOf(path) && ACC[leafOf(path)]) { const at0 = leafOf(path); go(subOf(path) === bar.dataset.sec ? [at0] : [at0, bar.dataset.sec], { focus: null }); bar.focus({ preventScroll: true }); return; }
     const place = ev.target.closest('[data-place]');
     if (place && el.contains(place)) { choose(place.dataset.place); return; }
     const sec = ev.target.closest('.sec-index .menu-row[data-sec]'), at = leafOf(path);
     if (sec && el.contains(sec) && at) { go([at, sec.dataset.sec]); return; }
     const jump = ev.target.closest('[data-menu-open]');     // a button of a screen that opens another place (Setup's rows to the Dice screen, DM tools, About)
-    if (jump && el.contains(jump)) go(valid(pathOf(jump.dataset.menuOpen), reach()));
+    if (jump && el.contains(jump)) go(land(valid(pathOf(jump.dataset.menuOpen), reach())));
   });
+  // Holding a symbol of the arc for half a second opens Arrange when it is let go (Decision 4c; the hold on the die itself is longer and is the fidget die's).
+  let holdT = null, holdAt = null, heldSym = false;
+  const holdEnd = () => { clearTimeout(holdT); holdT = null; holdAt = null; };
+  const toArrange = () => { heldSym = false; arc.querySelector('.arc-b.held')?.classList.remove('held'); if (subEl('settings', 'arrange')) go(['settings', 'arrange']); };
+  arc.addEventListener('pointerdown', (ev) => {
+    const b = ev.target.closest('.arc-b'); if (!b || !arrange) return;
+    holdEnd(); heldSym = false; holdAt = [ev.clientX, ev.clientY];
+    holdT = setTimeout(() => { holdT = null; heldSym = true; b.classList.add('held'); }, HOLD_MS);
+  });
+  arc.addEventListener('pointermove', (ev) => { if (holdAt && Math.hypot(ev.clientX - holdAt[0], ev.clientY - holdAt[1]) > 10) { holdEnd(); heldSym = false; } });
+  arc.addEventListener('pointerup', () => holdEnd());
+  arc.addEventListener('pointercancel', () => { holdEnd(); if (heldSym) toArrange(); });      // a long press that the browser took for its own (a touch menu): the hold was made
+  arc.addEventListener('contextmenu', (ev) => { if (ev.target.closest('.arc-b')) ev.preventDefault(); });
   arcEl.addEventListener('click', (ev) => {
     const place = ev.target.closest('[data-place]');
+    if (place && heldSym) { toArrange(); return; }
     if (place) { choose(place.dataset.place); return; }
     const jump = ev.target.closest('[data-menu-open]');     // a line of Waiting for you
-    if (jump) go(valid(pathOf(jump.dataset.menuOpen), reach()));
+    if (jump) go(land(valid(pathOf(jump.dataset.menuOpen), reach())));
   });
   $('ring-ok').addEventListener('click', () => { prefs.set('hextable.seen.ring', true); paint(); focusHere(); });
   $('drawer-back').addEventListener('click', () => back());
@@ -413,7 +548,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       const eat = () => { ev.preventDefault(); ev.stopImmediatePropagation(); };
       const symb = ev.target.closest?.('#arc .arc-b, #menu-root .menu-row, #menu-root .pr');
       if (symb && /^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End)$/.test(ev.key) && (onArc || /^(ArrowLeft|ArrowRight|Home|End)$/.test(ev.key))) {      // round the arc, or along the strip
-        const all = [...(onArc ? arc.querySelectorAll('.arc-b') : rootList.querySelectorAll('.menu-row, .pr'))].filter(seen);
+        const all = [...(onArc ? arc.querySelectorAll('.arc-b') : stripButtons())].filter(seen);
         const i = all.indexOf(symb), d = /^(ArrowRight|ArrowDown)$/.test(ev.key) ? 1 : -1;
         const next = ev.key === 'Home' ? all[0] : ev.key === 'End' ? all.at(-1) : all[Math.max(0, Math.min(all.length - 1, i + d))];
         eat(); next?.focus({ preventScroll: true });
@@ -421,19 +556,20 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
         return;
       }
       if (onArc && ev.key.toLowerCase() !== 'm') { if (/^(ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Backspace)$/.test(ev.key)) eat(); return; }      // behind the arc the arrow keys walk the party: not while it is up
-      const row = ev.target.closest?.('#drawer-body .menu-row, #more-list .menu-row');
+      const row = ev.target.closest?.('#drawer-body .menu-row, #more-list .menu-row, #drawer-body .acc-bar');
       const mine = (row || symb || ev.target === title || !pinned());     // a pinned menu leaves the arrow keys to the map unless a row has the focus
       if (mine && ev.target === title && ev.key === 'ArrowUp') {      // from the heading, Up reaches the strip
-        const cur = rootList.querySelector('[aria-current="page"]') ?? [...rootList.querySelectorAll('.menu-row, .pr')].find(seen);
+        const cur = rootList.querySelector('[aria-current="page"]') ?? stripButtons().find(seen);
         if (cur && seen(cur)) { eat(); cur.focus({ preventScroll: true }); return; }
       }
       if (mine && symb && ev.key === 'ArrowDown') { eat(); title.focus({ preventScroll: true }); return; }
       if (mine && row && /^(ArrowUp|ArrowDown|Home|End)$/.test(ev.key)) {
-        const rows = [...row.closest('ul').querySelectorAll('.menu-row')].filter(seen);
+        const acc = row.closest('.tabpanel.acc');             // a page's bars, and the row under them, are one list for the arrow keys
+        const rows = [...(acc ? acc.querySelectorAll(':scope > .acc-sec > .acc-h > .acc-bar, :scope > .acc-all .menu-row') : row.closest('ul').querySelectorAll('.menu-row'))].filter(seen);
         const i = rows.indexOf(row), next = ev.key === 'Home' ? rows[0] : ev.key === 'End' ? rows.at(-1) : rows[Math.max(0, Math.min(rows.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)))];
         eat(); next?.focus({ preventScroll: true }); return;
       }
-      if (mine && row && ev.key === 'ArrowRight') { eat(); row.click(); return; }
+      if (mine && row && ev.key === 'ArrowRight') { eat(); if (row.getAttribute('aria-expanded') !== 'true') row.click(); return; }
       if (mine && (ev.key === 'ArrowLeft' || ev.key === 'Backspace') && back()) { eat(); return; }
       // With no level to go back to, the key must still not reach the game (ArrowLeft walks the party or turns the camera behind the menu).
       if (!pinned() && (ev.key === 'ArrowLeft' || ev.key === 'Backspace')) { eat(); return; }
@@ -505,7 +641,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (who) { live.textContent = ''; setTimeout(() => { live.textContent = `Round ${enc.round}. ${who}.`; }, 30); }
   }
   // A table was left or replaced: what was said belongs to the old one.
-  const reset = () => { announced = undefined; live.textContent = ''; if (!isOpen) path = []; };
+  const reset = () => { announced = undefined; live.textContent = ''; for (const k of Object.keys(mem)) delete mem[k]; if (!isOpen) path = []; };
   paint();
 
   return {
@@ -519,6 +655,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     get motion() { return motion; }, setMotion,
     get token() { return tokenAt; }, setToken,
     get labels() { return labels; }, setLabels,
+    get order() { return [...order]; }, get hiddenPlaces() { return [...hiddenPl]; },
     get arc() { return isOpen && !held && !path.length; },
     get wide() { return wide(); },
     get columns() { return columns(); },

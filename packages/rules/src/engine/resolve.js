@@ -869,6 +869,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   if (total > 0) damaged(s, ev, t, parts.find((p) => typeof p.by === 'string')?.by ?? null, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
   // Death Ward (a modifier on `hp.zero`): the creature would drop to 0 Hit Points and drops to 1 instead, however much the damage was, and the
   // use ends the ward. Not when the DM sets its Hit Points (`raw`). It comes before Relentless Rage: the creature never reaches 0.
+  // Every damage event of this hit says `hp: 0` (several damage parts in one hit each put the target at 0), so each is patched to the 1 it was left at.
   if (!dying && !raw && before > 0 && t.hp <= 0 && warded0(s, t, ev)) for (let i = firstEvent; i < ev.length; i++) if (ev[i].type === 'damage' && ev[i].target === t.id && ev[i].hp === 0) ev[i].hp = t.hp;
   // Relentless Rage: dropping to 0 Hit Points without dying outright while raging, a Constitution save keeps it up.
   if (!dying && t.hp <= 0 && lost - before < t.maxHp) relentless(s, t, ev);
