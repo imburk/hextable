@@ -70,6 +70,8 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
   'target.fought',
   // An ability check that uses one of the creature's skill or tool proficiencies (Reliable Talent).
   'check.proficient',
+  // An ability check that names a skill and uses none of the creature's proficiencies, its own or one lent for a time (Jack of All Trades).
+  'check.unskilled',
   // The attack is an Opportunity Attack (Escape the Horde).
   'attack.opportunity',
   // The target is not a Fiend (Hurl Through Hell's damage).
@@ -1073,11 +1075,11 @@ const LEVELS = 20;
 // modifier with a least value, or so many times the class level.
 // `{ mod, min, die }` is so many of that die as the modifier (Sear Undead), for dice only;
 // `{ byLevel: { level: value } }` is the value for the highest class level reached (Divine Strike).
-// `{ prof: n }` is n times the character's Proficiency Bonus (Alert's Initiative).
+// `{ prof: n }` is n times the character's Proficiency Bonus (Alert's Initiative); 0.5 is half of it, rounded down (Jack of All Trades).
 function lintAmount(x, cls, say, what, diceOk = false) {
   if (isInt(x)) return;
   if (x && typeof x === 'object' && Object.keys(x).length && Object.keys(x).every((k) => ['column', 'mod', 'min', 'perLevel', 'die', 'byLevel', 'prof'].includes(k))) {
-    if (x.prof !== undefined && !(isInt(x.prof) && x.prof >= 1 && x.prof <= 2)) say(`${what}: prof is how many times the Proficiency Bonus, 1 or 2`);
+    if (x.prof !== undefined && !((isInt(x.prof) && x.prof >= 1 && x.prof <= 2) || x.prof === 0.5)) say(`${what}: prof is how many times the Proficiency Bonus: 1, 2, or 0.5 for half of it, rounded down`);
     if (x.column !== undefined && !Object.hasOwn(cls.table ?? {}, x.column)) say(`${what}: no column "${x.column}" in the class table`);
     if (x.mod !== undefined && !ABILITIES.includes(x.mod)) say(`${what}: mod is an ability`);
     if (x.perLevel !== undefined && !isInt(x.perLevel)) say(`${what}: perLevel is a whole number`);

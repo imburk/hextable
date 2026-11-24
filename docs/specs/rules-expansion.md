@@ -969,6 +969,18 @@ A spell aimed at creatures may say which creature types it works on. Tests throu
   vocabulary). Not built: a limit that changes the roll and not the target (Blight's Plant, Shatter's constructs), and wards against
   creature types (Protection from Evil and Good).
 
+#### Build notes: Jack of All Trades (amendment, #732)
+
+Tests in `packages/rules/test/jack-of-all-trades.test.js`.
+
+- **Tag `check.unskilled`.** A check that names a skill and uses none of the creature's proficiencies: not its own in that skill, not a
+  monster's listed bonus, not a tool it is proficient with, not one a `proficient` modifier lends for a time. A check that names no
+  skill (a plain ability check, Initiative) is not one: the SRD's sentence asks for "a skill proficiency you lack". The maker of the
+  roll says whether a proficiency was used (`sit.proficient`: `abilityCheck` in `engine/features.js`, `passive` in `engine/rolls.js`);
+  where it does not, the tag is not known to hold and the modifier is not applied.
+- **Amount `{ prof: 0.5 }`.** Half the Proficiency Bonus, rounded down (`amount`, `derive.js`). No other fraction is taken.
+- **Jack of All Trades** is that modifier on `check`, and is `auto`. A passive score counts it.
+
 ### A class
 
 ```js

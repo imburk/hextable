@@ -114,7 +114,7 @@ export const TAG_WORDS = {
   'long.range': 'the attack is at long range', 'target.halfCover': 'the target has Half Cover', 'target.threeQuartersCover': 'the target has Three-Quarters Cover',
   'target.seesSource': 'the target can see the caster', 'attack.hit': 'the damage comes from an attack roll that hit', 'attack.weapon': 'the attack is made with a weapon (an Unarmed Strike is not)', 'attack.weaponOrUnarmed': 'the attack is made with a weapon or is an Unarmed Strike',
   'attack.str': 'the attack uses Strength', 'attack.spell': 'it is a spell\'s attack roll', 'self.notIncapacitated': 'it is not Incapacitated',
-  'spell.cantrip': 'the damage is a cantrip\'s', 'target.fought': 'the caster\'s side is fighting the target', 'check.proficient': 'the check uses one of its proficiencies',
+  'spell.cantrip': 'the damage is a cantrip\'s', 'target.fought': 'the caster\'s side is fighting the target', 'check.proficient': 'the check uses one of its proficiencies', 'check.unskilled': 'the check uses a skill and none of its proficiencies',
   'attack.opportunity': 'it is an Opportunity Attack', 'target.notFiend': 'the target is not a Fiend', 'target.fiendOrUndead': 'the target is a Fiend or an Undead',
   'target.notGrappler': 'the target is not a creature that grapples the attacker', 'target.grappledBySelf': 'the target is Grappled by the attacker',
   'check.escape': 'the check is made to escape a grapple',
@@ -147,7 +147,7 @@ export const UNREAD_HOOKS = ['hp.max', 'carry'];
 export const JUDGED_ON = {
   ...Object.fromEntries(ATTACK_HOOKS.map((h) => [h, [...SEES, 'ranged', 'melee', 'attack.spell', 'attack.opportunity', 'attack.str']])),
   ...Object.fromEntries(DAMAGE_HOOKS.map((h) => [h, [...SEES, 'attack.hit', 'attack.weapon', 'attack.weaponOrUnarmed', 'spell.cantrip']])),
-  ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'target.fiendOrUndead', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient', 'check.escape'] : [])]])),
+  ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'target.fiendOrUndead', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient', 'check.unskilled', 'check.escape'] : [])]])),
   ...Object.fromEntries(BARE_HOOKS.map((h) => [h, ['self.notIncapacitated']])),
   ...Object.fromEntries(UNREAD_HOOKS.map((h) => [h, []])),
 };
@@ -1179,6 +1179,7 @@ function modPhrase(m, at) {
     else if (isObj(val) && typeof val.perLevel === 'number') { this.num(`${at}.value.perLevel`, val.perLevel, 'per level'); v = `${signed(val.perLevel)} for each level of it`; }
     else if (op === 'add' && typeof val === 'string' && MOD_DICE.test(val)) { this.num(`${at}.value`, val, 'dice'); v = signed(val); }
     // A feature's value may be an amount that grows with the class or the character (derive.js `amount`, put in when the feature is made).
+    else if (isObj(val) && val.prof === 0.5) v = 'half the Proficiency Bonus, rounded down';
     else if (isObj(val) && isInt(val.prof)) { this.num(`${at}.value.prof`, val.prof, 'times the Proficiency Bonus'); v = val.prof === 1 ? 'the Proficiency Bonus' : `${val.prof} times the Proficiency Bonus`; }
     else if (isObj(val) && typeof val.mod === 'string' && ABILITIES.includes(val.mod)) { if (isInt(val.min)) this.num(`${at}.value.min`, val.min, 'least'); v = `the ${ABILITY_WORDS[val.mod]} modifier${isInt(val.min) ? ` (at least ${val.min})` : ''}`; }
     else if (isObj(val) && isObj(val.byLevel)) { for (const [l, x] of Object.entries(val.byLevel)) if (typeof x === 'number' || isDice(x)) this.num(`${at}.value.byLevel.${l}`, x, 'by class level'); v = `an amount that grows with the class level (${list(Object.entries(val.byLevel).slice(0, 20).map(([l, x]) => `${x} from level ${l}`))})`; }
@@ -1867,12 +1868,12 @@ const abilList = (xs, and = 'or') => list((Array.isArray(xs) ? xs : []).slice(0,
 const conds = (xs) => list((Array.isArray(xs) ? xs : []).slice(0, 15).map((c) => (CONDITIONS.includes(c) ? `the ${cond(c)} condition` : 'a condition the reader cannot read')));
 const featureNote = (id) => `Only a holder who has the feature ${shown(id)} gets anything from this.`;
 const feetWord = (v) => (isInt(v) ? `${v} feet` : 'an unreadable number of feet');
-const amountWord = (v) => (typeof v === 'number' ? String(v) : isObj(v) && isInt(v.perLevel) ? `${v.perLevel} for each level of the class` : isObj(v) && v.prof !== undefined ? `${v.prof} times the Proficiency Bonus` : isObj(v) && isObj(v.byLevel) ? 'a number that grows with the class level' : isObj(v) && typeof v.column === 'string' ? 'a number from the class table' : isObj(v) && typeof v.mod === 'string' ? `the ${ABILITY_WORDS[v.mod] ?? 'unreadable'} modifier${isInt(v.min) ? ` (at least ${v.min})` : ''}` : 'an unreadable amount');
+const amountWord = (v) => (typeof v === 'number' ? String(v) : isObj(v) && isInt(v.perLevel) ? `${v.perLevel} for each level of the class` : isObj(v) && v.prof === 0.5 ? 'half the Proficiency Bonus, rounded down' : isObj(v) && v.prof !== undefined ? `${v.prof} times the Proficiency Bonus` : isObj(v) && isObj(v.byLevel) ? 'a number that grows with the class level' : isObj(v) && typeof v.column === 'string' ? 'a number from the class table' : isObj(v) && typeof v.mod === 'string' ? `the ${ABILITY_WORDS[v.mod] ?? 'unreadable'} modifier${isInt(v.min) ? ` (at least ${v.min})` : ''}` : 'an unreadable amount');
 // Every number in an amount ({ perLevel }, { prof }, { byLevel }, { min }, a plain number), found where the entry holds it.
 function amountNums(R, v, at, unit) {
   if (typeof v === 'number') return R.num(at, v, unit);
   if (!isObj(v)) return;
-  for (const k of ['perLevel', 'prof', 'min']) if (typeof v[k] === 'number') R.num(`${at}.${k}`, v[k], unit);
+  for (const k of ['perLevel', 'prof', 'min']) if (typeof v[k] === 'number' && !(k === 'prof' && v[k] === 0.5)) R.num(`${at}.${k}`, v[k], unit);
   if (isObj(v.byLevel)) for (const [l, x] of Object.entries(v.byLevel)) { if (typeof x === 'number' || isDice(x)) R.num(`${at}.byLevel.${l}`, x, unit); }
 }
 // Every number and dice string under a value, as the test finds them (not ids, names or text).
