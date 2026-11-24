@@ -460,6 +460,7 @@ async function drawerPass(browser, url, label, opts) {
         const arc = await page.$$eval('#arc .arc-b', (x) => x.map((b) => b.dataset.place));
         if (arc.includes('dice') || arc.includes('dm') || arc[0] !== 'log' || !arc.includes('settings') || !arc.some((k) => k.startsWith('c:'))) throw new Error(`the arc: ${arc}`);
         // holding a symbol of the arc for half a second opens Arrange when it is let go; a quick tap still opens the place
+        await sleep(800);                                   // the symbols grow out of the die for half a second: press one where it has come to rest
         const b = await rectOf(page, '#arc .arc-b[data-place="turns"]');
         await page.mouse.move(b.l + b.w / 2, b.t + b.h / 2); await page.mouse.down(); await waitShown(page, '#arc .arc-b.held'); await page.mouse.up();
         await wait(page, () => document.getElementById('drawer').dataset.path === 'settings/arrange');
