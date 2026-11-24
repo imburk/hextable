@@ -219,7 +219,9 @@ export function spellProfile(def) {
     id: def.id, name: def.name, level: def.level, time: def.time, range: feet(def.range),
     aim,                                           // 'creature' | 'area' | 'self' | 'none' (nothing the engine can aim)
     ...(aim === 'area' ? { area: { ...t.area } } : {}),
-    ...(aim === 'creature' ? { count: t.creature.count ?? 1, ...(t.creature.repeat ? { repeat: true } : {}), ...(t.creature.within ? { within: t.creature.within } : {}) } : {}),
+    ...(aim === 'creature' ? { count: t.creature.count ?? 1, ...(t.creature.repeat ? { repeat: true } : {}), ...(t.creature.within ? { within: t.creature.within } : {}),
+      // The creature types it works on (Hold Person: Humanoid); one of another type is an invalid target, and the cast does nothing to it.
+      ...(t.creature.types ? { types: [...t.creature.types] } : {}) } : {}),
     harmful, heals: heals && !harmful,
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight

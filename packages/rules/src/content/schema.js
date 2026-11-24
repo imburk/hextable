@@ -70,6 +70,8 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
   'target.fought',
   // An ability check that uses one of the creature's skill or tool proficiencies (Reliable Talent).
   'check.proficient',
+  // An ability check that names a skill and uses none of the creature's proficiencies, its own or one lent for a time (Jack of All Trades).
+  'check.unskilled',
   // The attack is an Opportunity Attack (Escape the Horde).
   'attack.opportunity',
   // The target is not a Fiend (Hurl Through Hell's damage).
@@ -602,7 +604,7 @@ function lintNoSummonAmounts(e, say) {
   });
 }
 
-function lintTarget(target, say, nearOk = false) {
+function lintTarget(target, say, nearOk = false, typesOk = false) {
   if (!target || typeof target !== 'object') return say('needs a target');
   const kinds = ['self', 'creature', 'area'].filter((k) => k in target);
   if (kinds.length !== 1) return say('target needs exactly one of self, creature, area');
@@ -632,6 +634,10 @@ function lintTarget(target, say, nearOk = false) {
     if (c.within !== undefined && !(isInt(c.within) && c.within > 0 && c.within % 5 === 0)) say('`within` is feet, a multiple of 5');
     if (c.reach !== undefined && !(c.reach > 0)) say('reach must be a number of feet');
     if (c.range !== undefined && !(Array.isArray(c.range) && c.range.length === 2 && c.range.every((n) => n > 0) && c.range[0] <= c.range[1])) say('range must be [normal, long] in feet');
+    // `types`: the spell works only on creatures of these types (Hold Person's Humanoid). One of another type is an invalid target
+    // (SRD "Invalid Targets"): the cast is spent and nothing happens to it (engine/casting.js).
+    if (c.types !== undefined && !typesOk) say('`types` on a creature target is for a spell (an area\'s `types` is for any action)');
+    else if (c.types !== undefined && !(Array.isArray(c.types) && c.types.length && allOf(CREATURE_TYPES)(c.types) && new Set(c.types).size === c.types.length)) say('`types` lists creature types');
   }
 }
 function lintCommon(e, say) {
@@ -686,7 +692,7 @@ function lintSpell(e, say) {
   if (!isDuration(e.duration)) say('duration must be \"instant\", a number of rounds, minutes, hours or days (\"10 minutes\"), \"until dispelled\" or \"special\"');
   if (typeof e.concentration !== 'boolean' || typeof e.ritual !== 'boolean') say('concentration and ritual must be true or false');
   if (!Array.isArray(e.classes)) say('classes must be a list');
-  lintTarget(e.target, say);
+  lintTarget(e.target, say, false, true);
   lintHigher(e, say);
   lintChoice(e, say);
   lintZone(e, say);
@@ -1069,11 +1075,11 @@ const LEVELS = 20;
 // modifier with a least value, or so many times the class level.
 // `{ mod, min, die }` is so many of that die as the modifier (Sear Undead), for dice only;
 // `{ byLevel: { level: value } }` is the value for the highest class level reached (Divine Strike).
-// `{ prof: n }` is n times the character's Proficiency Bonus (Alert's Initiative).
+// `{ prof: n }` is n times the character's Proficiency Bonus (Alert's Initiative); 0.5 is half of it, rounded down (Jack of All Trades).
 function lintAmount(x, cls, say, what, diceOk = false) {
   if (isInt(x)) return;
   if (x && typeof x === 'object' && Object.keys(x).length && Object.keys(x).every((k) => ['column', 'mod', 'min', 'perLevel', 'die', 'byLevel', 'prof'].includes(k))) {
-    if (x.prof !== undefined && !(isInt(x.prof) && x.prof >= 1 && x.prof <= 2)) say(`${what}: prof is how many times the Proficiency Bonus, 1 or 2`);
+    if (x.prof !== undefined && !((isInt(x.prof) && x.prof >= 1 && x.prof <= 2) || x.prof === 0.5)) say(`${what}: prof is how many times the Proficiency Bonus: 1, 2, or 0.5 for half of it, rounded down`);
     if (x.column !== undefined && !Object.hasOwn(cls.table ?? {}, x.column)) say(`${what}: no column "${x.column}" in the class table`);
     if (x.mod !== undefined && !ABILITIES.includes(x.mod)) say(`${what}: mod is an ability`);
     if (x.perLevel !== undefined && !isInt(x.perLevel)) say(`${what}: perLevel is a whole number`);
@@ -2885,7 +2891,7 @@ const SHAPES = {
   hitRider: { what: 'a hit rider', keys: ['with'] },
   target: { what: 'a target', keys: ['self', 'creature', 'area', 'near'] },
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'] },
-  creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range'] },
+  creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
@@ -3098,7 +3104,7 @@ const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
 // The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
 // SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
 export const HOMEBREW_LENGTHS = Object.freeze({
-  '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'creature.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
   'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
@@ -3353,7 +3359,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   spellMap: { '*': 's[]' },
   target: { self: 'b', creature: 'o', area: 'o', near: 'i' },
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i' },
-  creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]' },
+  creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's' },

@@ -46,6 +46,9 @@ export function teleportSpot(s, e0, step, hex, name, player = false) {
   return to;
 }
 
+// "a Humanoid", "a Beast or an Undead": the creature types a spell is limited to, in a sentence.
+const typeWords = (types) => types.map((t) => `${/^[aeiou]/.test(t) ? 'an' : 'a'} ${t[0].toUpperCase()}${t.slice(1)}`).join(' or ');
+
 // Targets of a spell that a reaction keeps from taking its damage (Shield against Magic Missile):
 // one that has the blocking spell going already, or casts it now by its instruction (or its
 // player's answer). Returns their ids.
@@ -544,6 +547,11 @@ function castSpell(s, a, ctx, ev, item) {
     } else if (sp.aim === 'creature') {
       targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
     } else if (sp.aim === 'self') targets = [e];
+    // `target.creature.types` (Hold Person's Humanoid): a creature of another type is an invalid target. SRD 5.2.1, "Invalid Targets": "nothing
+    // happens to that target, but if you used a spell slot to cast the spell, the slot is still expended." So the cast is made and paid for as
+    // aimed, and those creatures are left out of what it does (`invalid`, below). One whose type the engine cannot tell is the DM's to judge.
+    const invalid = sp.aim === 'creature' && sp.types ? targets.filter((t) => { const ty = creatureType(t); return ty !== null && !sp.types.includes(ty); }) : [];
+    const untyped = sp.aim === 'creature' && sp.types ? targets.filter((t) => creatureType(t) === null) : [];
     if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
     if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
     // A teleport goes where `a.hex` names (Misty Step), checked now, before anything is spent.
@@ -637,11 +645,23 @@ function castSpell(s, a, ctx, ev, item) {
       fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration });
       // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
       if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
-      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
     } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
     // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
-    let hit = targets;
+    let hit = invalid.length ? targets.filter((t) => !invalid.includes(t)) : targets;
+    // What the table is shown of an invalid target (SRD, "Invalid Targets"): "If the spell normally has no effect on a target that succeeds on
+    // a saving throw, the invalid target appears to have succeeded on its saving throw, even though it didn't attempt one ... Otherwise, you
+    // perceive that the spell did nothing to the target." No die is rolled. The `invalid` mark is for the DM and the creature's own player
+    // (view.js sends a save of any other creature as its outcome alone).
+    if (invalid.length) {
+      const first = steps[0], asSave = first && 'save' in first && !first.half && !(first.onSuccess ?? []).length;
+      for (const t of new Set(invalid)) {
+        if (asSave) ev.push({ type: 'save', id: t.id, abil: first.save, dc: first.dc ?? st.dc, success: true, invalid: true });
+        else ev.push({ type: 'note', id: t.id, text: `${sp.name} does nothing to ${t.name}.` });
+      }
+    }
+    for (const t of new Set(untyped)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name} works only on ${typeWords(sp.types)}, and the engine cannot tell what kind of creature ${t.name} is. It was treated as one; if it is not, the DM undoes what the spell did to it.` });
     if (zoneDef && fx && hexes) {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),

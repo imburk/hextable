@@ -242,6 +242,9 @@ The caster gets proficiency with the tool thieves tools.
 The caster gets Advantage on ability checks.
   It holds only when the check is made to escape a grapple.
   It lasts as long as the spell.
+The caster gets +1 to ability checks.
+  It holds only when the check uses a skill and none of its proficiencies.
+  It lasts as long as the spell.
 The caster gets Disadvantage on its attack rolls.
   It holds only when the target is not a creature that grapples the attacker.
   It lasts as long as the spell.

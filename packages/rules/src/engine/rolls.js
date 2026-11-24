@@ -534,7 +534,8 @@ export function checkBonus(e, { ability, skill, tool }, lent = []) {
 // Dice from modifiers (Guidance) are not rolled for a passive score: it is not a roll.
 // `dis` adds reasons for Disadvantage that are not modifiers, such as Dim Light.
 export function passive(s, e, skill, dis = []) {
-  const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill] }, '');
+  const proficient = !!(e.skills?.includes(skill) || e.skillBonus?.[skill] !== undefined);      // as `abilityCheck` judges it (engine/features.js)
+  const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill], proficient }, '');
   m.disadvantage = [...m.disadvantage, ...dis];
   return 10 + checkBonus(e, { skill }, m.lent) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
 }

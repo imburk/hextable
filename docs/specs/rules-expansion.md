@@ -947,6 +947,44 @@ Three spells the engine used to hand to the DM, built to SRD 5.2.1 with the smal
   A null or a failure is never kept; a kept answer is checked against `ac` and armour on every use, since `sheet.items` is emptied in
   place for a creature that vanishes or goes to a pocket dimension (`engine/resolve.js`).
 
+#### Build notes: a creature-type limit on a target (amendment, #727)
+
+A spell aimed at creatures may say which creature types it works on. Tests through `apply()` in
+`packages/rules/test/target-types.test.js`.
+
+- **`target.creature.types`.** A list of creature types, for a spell only (an area's `types`, above, stays for any action). A creature's
+  type is its own `type`, else its stat block's, else Humanoid for a character (`creatureType`, `engine/world.js`); a creature in a form
+  keeps its own type, as the SRD's Wild Shape says.
+- **An invalid target** (SRD 5.2.1, Spells, "Invalid Targets"). The cast is not refused: the action, the slot and the components are
+  spent as aimed, a hostile cast starts the fight as any does, and the steps do not run on a creature of another type. Where the
+  spell's first step is a save with no half damage and nothing on a success, a `save` event is written for that creature with
+  `success: true` and `invalid: true` and no die is rolled; otherwise a `note` says the spell did nothing to it. `effectStart` names
+  the targets as aimed. A player who does not run the creature is sent the outcome alone, as for any save (`view.js`), so an invalid
+  target and a made save read the same; the DM and the creature's own player see the mark.
+- **A type the engine cannot tell** (a hand-typed creature with no `type` and no stat block): treated as valid, and a `manual`
+  event tells the DM.
+- **The monster AI** does not pick a spell with this limit (`castShape`, `ai.js`); the DM casts it for the monster.
+- **Entered with it:** Hold Person (now `auto`), Charm Person, Dominate Person (Humanoid), Animal Friendship, Dominate Beast (Beast).
+  Animal Friendship's charm also ends on damage from its caster's side (`ends: { on: 'damaged', by: 'source' }`, already in the
+  vocabulary). Not built: a limit that changes the roll and not the target (Blight's Plant, Shatter's constructs), and wards against
+  creature types (Protection from Evil and Good).
+- **Homebrew** (fix round 1). The field is in the strict-mode guard tables of `schema.js`, as an area's `types` is: its type is a list of
+  text (`HOMEBREW_TYPES.creature`) and its length ceiling is the number of creature types, 14 (`HOMEBREW_LENGTHS['creature.types']`).
+  That shape is also a creature's action's, where the linter refuses the field; the reader says so of such an action as a problem
+  (`creatureAim`, `reader.js`), and the reader's golden monster "Flawed Reaver" has one.
+
+#### Build notes: Jack of All Trades (amendment, #732)
+
+Tests in `packages/rules/test/jack-of-all-trades.test.js`.
+
+- **Tag `check.unskilled`.** A check that names a skill and uses none of the creature's proficiencies: not its own in that skill, not a
+  monster's listed bonus, not a tool it is proficient with, not one a `proficient` modifier lends for a time. A check that names no
+  skill (a plain ability check, Initiative) is not one: the SRD's sentence asks for "a skill proficiency you lack". The maker of the
+  roll says whether a proficiency was used (`sit.proficient`: `abilityCheck` in `engine/features.js`, `passive` in `engine/rolls.js`);
+  where it does not, the tag is not known to hold and the modifier is not applied.
+- **Amount `{ prof: 0.5 }`.** Half the Proficiency Bonus, rounded down (`amount`, `derive.js`). No other fraction is taken.
+- **Jack of All Trades** is that modifier on `check`, and is `auto`. A passive score counts it.
+
 ### A class
 
 ```js

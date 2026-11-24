@@ -73,6 +73,8 @@ export function judge(tag, sit, s) {
     case 'target.fiendOrUndead': return t ? ['fiend', 'undead'].includes(t.type ?? CONTENT.monsters[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null)) : null;   // Divine Smite's extra die
     case 'attack.opportunity': return sit.opportunity === undefined ? null : sit.opportunity;   // an Opportunity Attack (Escape the Horde)
     case 'check.proficient': return sit.proficient === undefined ? null : sit.proficient;   // a check with one of its skill or tool proficiencies (Reliable Talent)
+    // A check with a skill that uses none of its proficiencies (Jack of All Trades). A tool it is proficient with, or a proficiency lent for a time, uses the bonus already.
+    case 'check.unskilled': return sit.proficient === undefined ? null : sit.skill !== undefined && sit.proficient === false;
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
     // Grapples (docs/specs/grapple-shove.md): who holds whom is on the held creature's `cond.grappled.holds`. A Grappled condition

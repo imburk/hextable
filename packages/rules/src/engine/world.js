@@ -346,7 +346,8 @@ export function moveOptions(s, e, opts = {}) {
   // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
   // climbed as anyone climbs (the maps have heights, not wall faces).
   const acrobat = !!e.feats?.some((f) => f.surfaces) && (e.armour ?? 'none') === 'none' && !e.shield, wet = new Set();
-  const climbSpeed = speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
+  // `opts.footing`: only where it gets on foot with no climb: no face climbed up or down, no ladder or rope (what shares its footing: a formation's places, #728).
+  const climbSpeed = speedOf(s, e, 'climb'), climbs = !opts.footing && s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
   // What each way of moving has left this turn. A creature that changes from one to another has
   // already used, of the new one, whatever it has moved so far.
   const left = (speed) => (fighting ? bud.move + (speed - walk) * (1 + (bud.dashes | 0)) : EXPLORE_BUDGET);
@@ -400,7 +401,7 @@ export function moveOptions(s, e, opts = {}) {
       }
       // A ladder, a rope, a climbable tree: something that joins this place to another.
       for (const o of map.objects) {
-        if (grounded || !o.to || !objectDef(o).connects) continue;
+        if (grounded || opts.footing || !o.to || !objectDef(o).connects) continue;
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
         const h = key(a) === key(from) ? b : b && key(b) === key(from) ? a : null;
         if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
@@ -1172,6 +1173,24 @@ export function areaTargets(s, e, def, hex) {
 export const KEEP_UP = 2;                   // cells: a follower stays this close to the one in front where the ground allows
 export const CATCH_UP = 60;          // feet: the furthest from its leader a follower is brought up to when a fight starts
 export const byMarch = (a, b) => (a.march ?? Infinity) - (b.march ?? Infinity);
+
+// Is a place on `e`'s footing (#728)? For those who walk with it (a formation's places, keeping up in the column). It is when `e` could get
+// there on foot with no climb (no face climbed up or down, no ladder or rope), not much further than it is, and it lies no steeper
+// from `e` than stairs run (2.5 feet a cell). The foot of a ledge `e` has climbed, the ground under the balcony it stands on and the
+// far side of a thin wall are close on the map and are not with it. Returns the test, for places given with their height.
+export function footingOf(s, e) {
+  const G = gridOf(s.map), flying = !ground(s.map, e.pos), reach = moveOptions(s, e, flying ? {} : { footing: true });
+  // One in the air has no footing: as before #728, wherever it could get to counts, by column (those walking under it keep their places).
+  const cost = new Map([[flying ? col(e.pos) : key(e.pos), 0]]), name = flying ? (h) => col(h) : key;
+  for (const v of reach.values()) { const k = name(v.h), was = cost.get(k); if (was === undefined || v.cost < was) cost.set(k, v.cost); }
+  const test = (h, more = null) => {
+    // A place in the air (a follower that flies) is judged by the ground under it.
+    const sf = flying || ground(s.map, h) ? null : under(s.map, h), at = sf ? { q: h.q, r: h.r, z: sf.z } : h;
+    const d = G.dist(e.pos, at), c = Math.min(cost.get(name(at)) ?? Infinity, more ?? Infinity);
+    return c <= 2 * FT * (d + KEEP_UP) && (flying || Math.abs(at.z - e.pos.z) <= STEP_FREE * Math.max(1, d));
+  };
+  return Object.assign(test, { reach });
+}
 
 export function unfollow(s, e, ev, why = null) {
   const leader = e.follow;

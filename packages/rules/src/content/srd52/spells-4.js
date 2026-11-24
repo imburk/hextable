@@ -175,11 +175,11 @@ export const spells4 = [
     level: 4, school: "enchantment", classes: ["druid","ranger","sorcerer"],
     time: "action", range: 60, components: ["v","s"],
     duration: "1 minute", concentration: true, ritual: false,
-    target: {"creature":{"count":1}},
+    target: {"creature":{"count":1,"types":["beast"]}},
     effects: [{"save":"wis","advantageIf":["target.fought"],"onFail":[{"condition":"charmed","ends":{"on":"save","save":"wis","at":"damaged"}}]}],
     roll: "save:wis",
     tier: "assist", checked: true,
-    text: "One visible Beast makes a Wisdom save, with Advantage if the caster or an ally is fighting it, or is charmed while the caster concentrates. It repeats the save whenever it takes damage, ending the spell on itself on a success. The engine applies the save, the Advantage, the charm and the repeat saves; the DM handles the Beast restriction, the telepathic commands, and the longer duration from higher slots (10 minutes at 5, 1 hour at 6, 8 hours at 7 or more).",
+    text: "One visible Beast makes a Wisdom save, with Advantage if the caster or an ally is fighting it, or is charmed while the caster concentrates. It repeats the save whenever it takes damage, ending the spell on itself on a success. The engine applies the Beast limit (the spell does nothing to any other creature), the save, the Advantage, the charm and the repeat saves; the DM handles the telepathic commands, and the longer duration from higher slots (10 minutes at 5, 1 hour at 6, 8 hours at 7 or more).",
   },
   {
     id: "fabricate", name: "Fabricate", source: "SRD 5.2.1",
