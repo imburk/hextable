@@ -1320,7 +1320,7 @@ export const MONSTER_FIELDS = {
 };
 export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree' };
 export const ACTION_FIELDS = { id: 'skip', name: 'skip', text: 'skip', time: 'head', target: 'aim', effects: 'steps', uses: 'limits', recharge: 'limits', multiattack: 'multi' };
-export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range'];
+export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range', 'types'];
 export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'];
 export const MONSTER_TIER_WORDS = {
   auto: 'Tier: auto. The engine runs every trait and action of this creature as listed above.',
@@ -1690,6 +1690,8 @@ class MonsterReading extends Reading {
     const band = Array.isArray(c.range) && c.range.length === 2 && c.range.every((x) => typeof x === 'number' && x > 0) ? c.range : null;
     if (c.reach !== undefined) { if (reach) this.num(`${at}.target.creature.reach`, reach, 'feet'); else this.bad(`${at}: \`reach\` is not feet.`); }
     if (c.range !== undefined) { if (band) { this.num(`${at}.target.creature.range.0`, band[0], 'feet'); this.num(`${at}.target.creature.range.1`, band[1], 'feet'); } else this.bad(`${at}: \`range\` is not [normal, long] in feet.`); }
+    // A creature-type limit is a spell's (`target.creature.types`, #727): `actionProfile` does not carry it, so a creature's action works on any creature.
+    if (c.types !== undefined) this.bad(`${at}: \`types\` on a creature target is for a spell; the engine does not apply it to a creature's action, which works on a creature of any type.`);
     const first = Array.isArray(steps) && isObj(steps[0]) ? steps[0] : null;
     const bits = [`It is aimed at ${n > 1 ? `up to ${n} creatures` : 'one creature'}`];
     if (reach) bits.push(`within ${reach} feet`);
