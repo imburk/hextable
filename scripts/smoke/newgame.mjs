@@ -1,7 +1,7 @@
 import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, openMenu } from './lib.mjs';
 
 // ---------- new game and leave are easy to find (docs/DEBT.md T16, issue #223) ----------
-// Solo: the lobby offers Continue and New game once a game is saved, and the menu head has New game on every tab. Both take two taps.
+// Solo: the lobby offers Continue and New game once a game is saved, and Setup has Leave the table, which returns to the lobby. Both take two taps.
 // Table: Leave table is under Table in the menu for the DM and for a player, and a remembered table shows in the lobby with Rejoin and Forget.
 const MARK = 'Smoke mark';
 const marked = (page) => page.evaluate((m) => JSON.stringify(window.hextable.state).includes(m), MARK);
@@ -25,19 +25,22 @@ async function solo(browser, url, label, opts) {
         await page.evaluate((m) => window.hextable.act({ type: 'chronicle', title: m }), MARK);
         await wait(page, (m) => JSON.stringify(window.hextable.state).includes(m), MARK);
       });
-      await run.do('New game is in Setup, in its last section (Leave the table), and Leave table is not', async () => {
-        await openMenu(page, 'settings/leave'); await page.locator('#set-new').scrollIntoViewIfNeeded();
-        if (!(await shown(page, '#set-new'))) throw new Error('no New game in Setup');
-        if (!(await settled(page, '#set-new'))) throw new Error('New game cannot be brought into view in Setup');
-        if (await shown(page, '#btn-leave')) throw new Error('Leave table shown in a solo game');
+      await run.do('Setup has Leave the table in its last section and no New game', async () => {
+        await openMenu(page, 'settings/leave'); await page.locator('#btn-leave').scrollIntoViewIfNeeded();
+        if (!(await shown(page, '#btn-leave'))) throw new Error('no Leave the table in a solo Setup');
+        if (!(await settled(page, '#btn-leave'))) throw new Error('Leave cannot be brought into view in Setup');
+        if (await page.$('#set-new')) throw new Error('Setup still has a New game button');
       });
-      await run.do('one tap on New game asks, the second starts a fresh game', async () => {
-        await page.click('#set-new');
+      await run.do('one tap on Leave asks, the second returns to the lobby; the game stays saved and the lobby starts a new one', async () => {
+        await page.click('#btn-leave');
         if (!(await marked(page))) throw new Error('one tap threw the game away');
-        if (!/again/i.test(await text(page, '#set-new'))) throw new Error('the button did not ask for a second tap');
-        await page.click('#set-new');
-        await waitShown(page, '#drawer', false).catch(async (e) => { throw new Error(`the menu stayed up: ${await page.evaluate(() => JSON.stringify({ open: window.hextable.drawer.isOpen, path: document.getElementById('drawer').dataset.path, cls: document.body.className }))}`); });                 // confirming closes the menu: the map is what was asked for
-        await wait(page, (m) => !JSON.stringify(window.hextable.state).includes(m), MARK);
+        if (!/again/i.test(await text(page, '#btn-leave'))) throw new Error('the button did not ask for a second tap');
+        await page.click('#btn-leave');
+        await waitShown(page, '#lobby');
+        await waitShown(page, '#lobby-new');
+        await page.click('#lobby-new'); await page.click('#lobby-new');
+        await wait(page, () => window.hextable?.state?.entities);
+        if (await marked(page)) throw new Error('the old game is still there');
       });
       await run.do('an unconfirmed tap runs out and the game stays', async () => {
         await page.evaluate((m) => window.hextable.act({ type: 'chronicle', title: m }), MARK);
@@ -85,7 +88,7 @@ async function table(browser, url) {
         code = await host.evaluate(() => document.querySelector('#dm-table code').textContent);
         await openMenu(host, 'settings/leave'); await host.locator('#btn-leave').scrollIntoViewIfNeeded();
         if (!(await shown(host, '#btn-leave')) || !(await settled(host, '#btn-leave'))) throw new Error('no Leave the table in the DM\'s Setup');
-        if (await shown(host, '#set-new')) throw new Error('New game shown at a table');
+        if (await host.$('#set-new')) throw new Error('New game shown at a table');
       });
       await run.do('a player joins and has Leave the table in Setup on a phone', async () => {
         await open(phone, url);

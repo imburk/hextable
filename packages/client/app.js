@@ -918,9 +918,9 @@ function refresh() {
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
   showTurnLine(); turnStarts(); showOffline(); hpNote(); deadLine(e);
-  // Setup's last section: leaving this table on this device (anyone at a table), or a new game (solo).
-  $('btn-leave').hidden = !!T.solo; $('set-new').hidden = !T.solo; $('set-sec-leave').hidden = !!T.readOnly;
-  { const n = T.solo ? 'A new game replaces the one saved on this device.' : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
+  // Setup's last section: leaving this game for the starting screen (a solo game stays saved on this device; a new one starts from the lobby).
+  $('btn-leave').hidden = false; $('set-sec-leave').hidden = !!T.readOnly;
+  { const n = T.solo ? SOLO_LEAVE_NOTE : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
   showUndo();
 
   // The characters (Decision 4b): one place for each creature this person controls, the first symbols of the strip and the arc (drawer.js draws both from these buttons), in turn order
@@ -1519,6 +1519,7 @@ function disarm(btn) {
   if (!btn.classList.contains('sure')) return;
   btn.classList.remove('sure'); btn.textContent = btn.dataset.label;
 }
+const SOLO_LEAVE_NOTE = 'Your game stays saved on this device. Start a new one from the starting screen.';
 const LEAVE_NOTE = 'Leaving forgets this table on this device.';
 const leaveNote = () => (isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
 function leaveTable(btn) { twoTap(btn, 'Tap again to leave', leaveNote(), reallyLeave); }
@@ -1526,7 +1527,7 @@ function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('set-new').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true;
+  $('btn-leave').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }
@@ -1534,7 +1535,6 @@ $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
-$('set-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.
 // A search box, a CR filter and a "recent" row sit above the buttons (spawnfind.js, #673); the recent list is kept per table on this device.
