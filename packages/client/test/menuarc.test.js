@@ -13,7 +13,7 @@ const TOKEN = 64, EDGE = 16;      // the die is 64 px, 16 px above the bottom ed
 test('every place on the strip has a symbol, a name in words, and a screen', () => {
   const strip = html.slice(html.indexOf('<nav id="menu-root"'), html.indexOf('</nav>', html.indexOf('<nav id="menu-root"')));
   const rows = [...strip.matchAll(/<button type="button" class="menu-row" id="([\w-]+)" data-go="(\w+)"[^>]*><span class="mr-name">([^<]+)<\/span>/g)].map((m) => ({ id: m[1], go: m[2], name: m[3] }));
-  assert.deepEqual(rows.map((r) => r.go), ['sheet', 'turns', 'dice', 'log', 'handouts', 'settings', 'dm', 'about']);
+  assert.deepEqual(rows.map((r) => r.go), ['sheet', 'turns', 'dice', 'log', 'settings', 'dm', 'about'], 'Handouts is a section of Log and chat since M10 (round 4), not a place');
   for (const r of rows) {
     const k = placeSymbol(r.go);
     assert.ok(k && SYMBOLS[k], `${r.go} has a symbol`);

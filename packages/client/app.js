@@ -1074,14 +1074,7 @@ const lentLine = (e) => { const l = lentList(S, e); return l.length ? `<p class=
 
 // The Armor Class that applies, and what changed it ("15 (Mage Armor)").
 function acLine(e) { const a = acShown(S, e, isDM()); return a.why.length ? `${a.ac} (${a.why.join(', ')})` : `${a.ac}`; }
-// Which of the sheet's sections this device keeps shut (the others are open), and what is known of a character's story: the choices its sheet records.
-const sheetShut = new Set(Array.isArray(prefs.get('hextable.sheetShut')) ? prefs.get('hextable.sheetShut') : []);
-$('sheet-body').addEventListener('toggle', (ev) => {
-  const d = ev.target; if (!d.matches?.('details.sh-sec')) return;
-  if (d.open === !sheetShut.has(d.dataset.sh)) return;
-  if (d.open) sheetShut.delete(d.dataset.sh); else sheetShut.add(d.dataset.sh);
-  prefs.set('hextable.sheetShut', [...sheetShut]);
-}, true);
+// What is known of a character's story: the choices its sheet records.
 function storyHtml(e) {
   const sh = e.sheet, facts = [];
   const sp = sh?.species?.id ? CONTENT.species?.[sh.species.id] : null;
@@ -1097,9 +1090,10 @@ function renderSheet() {
   const st = e.castAbil ? spellStats(e, S) : null;
   const abil = Object.entries(e.abil).map(([k, v]) => `<div><small>${k}</small><b>${signed(mod(v))}</b><small>${v}</small></div>`).join('');
   const saves = Object.keys(e.abil).map((k) => `${k.toUpperCase()} ${signed(e.saveBonus?.[k] ?? mod(e.abil[k]) + (e.saveProf.includes(k) ? e.prof : 0))}`).join(' · ');
-  // The sheet in four sections (docs/specs/one-token-menu.md, Decision 4 and M5), each under a bar that opens and shuts it in place: what a notice says (a level to take,
-  // a form, a missing pack) stays above them. The name and the class are the status block's, above; the heading is kept for a screen reader.
-  const sec = (id, title, body) => (body.trim() ? `<details class="sh-sec" data-sh="${id}"${sheetShut.has(id) ? '' : ' open'}><summary>${title}</summary><div class="sh-in" role="region" aria-label="${title}">${body}</div></details>` : '');
+  // The sheet in four parts (docs/specs/one-token-menu.md, Decision 4 and M5), each under a small heading. M10: the sheet is one section of the character's page
+  // (actionpanel.js puts `#sheet-body` in it), so its parts no longer open and shut by themselves (R21: one accordion, no folds in place). What a notice says (a level
+  // to take, a form, a missing pack) is above them. The name and the class are the status block's; the heading is kept for a screen reader.
+  const sec = (id, title, body) => (body.trim() ? `<section class="sh-sec" data-sh="${id}" aria-label="${title}"><h3 class="sh-h">${title}</h3><div class="sh-in">${body}</div></section>` : '');
   const story = storyHtml(e);
   $('sheet-body').innerHTML = `
     <h2 class="sr-only">${esc(e.name)}</h2>
