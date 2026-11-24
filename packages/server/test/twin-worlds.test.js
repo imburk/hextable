@@ -461,3 +461,55 @@ test("on-hit: a hidden foe paladin cannot smite a hidden goblin, and the fight b
   for (const who of ["Pat", "Sam"]) { const t = JSON.stringify(hidden.raw[who]); assert.ok(!t.includes('"ac":23') && !t.includes("shade") && !t.includes("Lurker"), `${who} was told of the hidden pair`); }
   noFoeAc(plain, hidden);
 });
+
+// ---- following: a hidden creature on the only level way between the one in front and a follower's place (#736) ----
+// A platform 7.5 feet up (q <= 0), a pit at its foot (1,0), and a low terrace east of the pit (q >= 2, 2.5 feet up) that runs south and
+// up a ramp, (1,3), onto the platform. The place two squares east of the leader, (2,0), shares its footing only by that ramp
+// (`footingOf`), and the hidden goblin stands on the ramp, three squares from everything anyone walks (so nobody spots it: ENGAGE_RANGE).
+// The engine once worked the footing out on the game as it is, so the goblin barred it and the follower stopped somewhere else.
+const terrace = () => {
+  const tiles = {};
+  for (let q = -6; q <= 0; q++) for (let r = -6; r <= 3; r++) tiles[`${q},${r}`] = { t: "stone", h: 7.5 };
+  tiles["1,0"] = { t: "stone" };
+  for (let q = 2; q <= 62; q++) for (let r = -1; r <= 0; r++) tiles[`${q},${r}`] = { t: "stone", h: 2.5 };
+  for (let r = 1; r <= 3; r++) tiles[`2,${r}`] = { t: "stone", h: 2.5 };
+  tiles["1,3"] = { t: "stone", h: 5 };
+  return newMap({ id: "terrace", name: "A terrace", grid: "square", starts: [{ q: 5, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }] });
+};
+const RAMP = { q: 1, r: 3 };
+function terraceField(w, leaderAt, followers) {
+  const s = w.state;
+  w.must({ type: "loadMap", map: terrace() });
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const id of Object.keys(s.entities)) if (id !== "fighter" && !followers.some(([f]) => f === id)) delete s.entities[id];
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", pos: leaderAt });
+  for (const [id, pos] of followers) { s.entities[id].pos = pos; w.must({ type: "follow", actor: id, leader: "fighter" }); }
+}
+const hiddenOnRamp = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: RAMP, name: "Ghost", hidden: true }), plain: (w) => burn(w, RAMP) };
+const stillHidden = (hidden) => assert.equal(byName(hidden.w, "Ghost").hidden, true, "nobody found the hidden goblin, so the two worlds must look the same");
+
+for (const climbing of ["on", "off"]) test(`following (column, climbing ${climbing}): a follower stops in the same place with and without a hidden creature on the ramp between it and its leader`, () => {
+  const { plain, hidden } = twin({
+    players: ["Pat"], grid: "square",
+    setup(w) {
+      terraceField(w, { q: -4, r: 0, z: 7.5 }, [["rogue", { q: 60, r: 0, z: 2.5 }]]);
+      if (climbing === "off") w.must({ type: "setting", key: "climbing", value: "off" });
+    },
+    steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: 0, r: 0, z: 7.5 } } }],
+  }, hiddenOnRamp);
+  for (const world of [plain, hidden]) assert.deepEqual(world.w.state.entities.rogue.pos, { q: 2, r: 0, z: 2.5 }, "the follower came up to the place on its leader's footing");
+  stillHidden(hidden);
+});
+
+test("following (formation): the party takes the same places with and without a hidden creature on the ramp between the leader and a slot", () => {
+  const { plain, hidden } = twin({
+    players: ["Pat"], grid: "square",
+    setup(w) {
+      terraceField(w, { q: 0, r: -4, z: 7.5 }, [["rogue", { q: 8, r: 0, z: 2.5 }], ["cleric", { q: -1, r: -5, z: 7.5 }]]);
+      w.must({ type: "formation", leader: "fighter", slots: { rogue: { back: 0, side: -2 }, cleric: { back: 1, side: 1 } } });
+    },
+    steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: 0, r: 0, z: 7.5 } } }],
+  }, hiddenOnRamp);
+  for (const world of [plain, hidden]) assert.deepEqual(world.w.state.entities.rogue.pos, { q: 2, r: 0, z: 2.5 }, "the rogue took its slot on the terrace");
+  stillHidden(hidden);
+});
