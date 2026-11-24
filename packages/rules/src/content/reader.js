@@ -269,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
@@ -1111,6 +1111,14 @@ export const STEP_SENTENCES = {
   },
   endConcentration({ Who, say }) { say(`${Who} loses Concentration on whatever it is concentrating on.`); },
   // engine/rolls.js `stabilise`.
+  // engine/rolls.js `dispel`.
+  dispel({ st, at, depth, who, say }) {
+    if (isInt(st.dispel)) this.num(`${at}.dispel`, st.dispel, 'spell level'); else this.bad(`Step ${at}: the dispel step has no whole spell level.`);
+    if (isInt(st.dc)) this.num(`${at}.dc`, st.dc, 'DC'); else this.bad(`Step ${at}: the dispel step has no whole DC.`);
+    say(`Every ongoing spell on ${who} ends if it was cast at level ${st.dispel} or lower, or no higher than the slot this was cast with. For each higher one the caster makes an ability check with its spellcasting ability against DC ${st.dc} plus the level of that spell, and on a success that spell ends.`);
+    this.line('Each spell ends whole, on every creature it is on. It is on the creature if it put a condition, a changed number, a light, Temporary Hit Points or a form on it, or made it, or if it was aimed at the creature and is one the DM applies. What is no spell (a feature, a creature\'s own action) is left, and so are spells on no creature (a zone, changed ground): the DM ends those. Where the engine does not know the spellcasting ability of the one dispelling, it hands that check to the DM.', depth + 1);
+    return this.dm(`Step ${at}: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.`);
+  },
   stabilize({ Who, say }) { say(`${Who} becomes Stable if it has 0 Hit Points and is not dead (its Death Saving Throw counts start again). Any other creature is left as it is, and the table is told.`); },
   // engine/rolls.js `shine`: the light is carried by the creature the step works on, for as long as the lasting effect runs.
   light({ st, at, depth, Who, say }) {

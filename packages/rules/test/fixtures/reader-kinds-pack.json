@@ -299,6 +299,10 @@
               }
             },
             {
+              "dispel": 3,
+              "dc": 10
+            },
+            {
               "modifier": {
                 "on": "attack.received",
                 "op": "disadvantage",

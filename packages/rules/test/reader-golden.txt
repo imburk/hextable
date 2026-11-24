@@ -154,6 +154,22 @@ It is instant: nothing it does is kept as a lasting effect.
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
+== hb-test-unravel
+"Unravel" (level 3 abjuration, 120 feet, action, instant).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+Every ongoing spell on one creature within 120 feet ends if it was cast at level 3 or lower, or no higher than the slot this was cast with. For each higher one the caster makes an ability check with its spellcasting ability against DC 10 plus the level of that spell, and on a success that spell ends.
+  Each spell ends whole, on every creature it is on. It is on the creature if it put a condition, a changed number, a light, Temporary Hit Points or a form on it, or made it, or if it was aimed at the creature and is one the DM applies. What is no spell (a feature, a creature's own action) is left, and so are spells on no creature (a zone, changed ground): the DM ends those. Where the engine does not know the spellcasting ability of the one dispelling, it hands that check to the DM.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It is instant: nothing it does is kept as a lasting effect.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-glow-pebble
 "Glow Pebble" (evocation cantrip, touch, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

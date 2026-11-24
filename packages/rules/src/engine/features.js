@@ -14,7 +14,7 @@ import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } f
 import { able, actTime, castAbilOf, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
 import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
-import { boundEffect, checkBonus, GRANTS, grantOf, heal, passive, settle, tempHp } from './rolls.js';
+import { abilityCheck, boundEffect, checkBonus, checkSit, GRANTS, grantOf, heal, passive, settle, tempHp } from './rolls.js';
 import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
@@ -116,34 +116,6 @@ function initiativeFeatures(s, ev) {
   }
 }
 
-// `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
-// (Search uses it for what it can see only dimly); it is not part of what is shown.
-// `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
-const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}), ...(what.tool ? { tool: what.tool } : {}) });
-function abilityCheck(s, e, what, dimToo = false, dis = [], adv = []) {
-  const ability = what.ability ?? SKILLS[what.skill];
-  // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
-  const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
-  const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what, m.lent) + m.add;
-  if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
-  if (adv.length) m.advantage = [...m.advantage, ...adv];
-  if (m.autoFail) return { roll: 0, total: 0, bonus };
-  // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
-  const lends = (k, v) => m.lent.some((x) => x[k] === v);      // a proficiency lent for a time counts as one (addition C of docs/specs/homebrew-subclasses.md)
-  if (what.tool && what.skill && (e.tools?.includes(what.tool) || lends('tool', what.tool)) && (e.skills?.includes(what.skill) || lends('skill', what.skill))) m.advantage = [...m.advantage, 'tool and skill'];
-  const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
-  const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
-  // Reliable Talent: each d20 under its `floor` counts as it.
-  const lift = (d) => (d !== null && m.floor !== null ? Math.max(d, m.floor) : d), raw1 = die(s, 20), raw2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
-  const r1 = lift(raw1), r2 = lift(raw2), floored = m.floor !== null && (raw1 < m.floor || (raw2 !== null && raw2 < m.floor));
-  const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
-  const more = rollDice(s, m.dice);
-  if (m.used.length) useUp(s, [], m.used);
-  // The dice are the faces rolled; `roll` is the d20 as it counts, and `floor.was` what it showed.
-  const shown = pickOf(mode) === r1 ? raw1 : raw2;
-  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
-    ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
-}
 // Of Athletics and Acrobatics, the one `e` has the better chance with to escape `hold` (docs/specs/grapple-shove.md, Decision 5),
 // judged as abilityCheck judges a check, without rolling: no automatic failure first, then Advantage over neither over
 // Disadvantage, then the higher bonus, then Athletics.

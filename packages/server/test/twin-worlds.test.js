@@ -513,3 +513,43 @@ test("following (formation): the party takes the same places with and without a 
   for (const world of [plain, hidden]) assert.deepEqual(world.w.state.entities.rogue.pos, { q: 2, r: 0, z: 2.5 }, "the rogue took its slot on the terrace");
   stillHidden(hidden);
 });
+
+// ---- Dispel Magic (#726 job 5): a lasting spell keeps its level and whom it was aimed at, which no player is sent ----
+const WYN = { name: "Wyn", class: "wizard", level: 9, subclass: "evoker", abilities: { str: 10, dex: 14, con: 12, int: 18, wis: 12, cha: 10 }, skills: ["arcana", "history"], spells: ["dispel-magic", "mage-armor", "light"] };
+test("dispel: casting and dispelling spells sends the same with and without a hidden creature that has a spell on it, and no level or aim is sent", () => {
+  const { plain, hidden } = twin({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 1, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      s.entities.wyn = makeEntity(derive(WYN).record, { id: "wyn", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
+      s.entities.wyn.sheet = structuredClone(WYN);
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "mage-armor", target: "wyn" } },
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "light", target: "wyn" } },
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "dispel-magic", target: "fighter" } },      // nothing on the fighter
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "wyn", spell: "dispel-magic", target: w.lurkId ?? "nobody" }), allowError: true },   // a creature they do not know of: refused the same
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "dispel-magic", target: "wyn", slot: 4 } },
+    ],
+  }, {
+    hide(w) {
+      w.must({ type: "spawn", monster: "bandit", at: { q: 3, r: 0 }, name: "Ghost", hidden: true });
+      w.lurkId = byName(w, "Ghost").id;
+      w.state.effects.push({ id: "fxghost", name: "Mage Armor", spell: "mage-armor", source: w.lurkId, conc: false, lasts: "8 hours", level: 1, aimed: [w.lurkId], parts: [{ target: w.lurkId, modifier: { on: "ac", op: "add", value: 1 } }], until: null });
+    },
+    plain: (w) => { burn(w, { q: 3, r: 0 }); },
+  });
+  assert.deepEqual(hidden.w.state.effects.map((fx) => fx.id), ["fxghost"], "Wyn's spells ended and the hidden creature's stayed");
+  for (const world of [plain, hidden]) for (const who of ["Pat", "Sam"]) {
+    const sent = JSON.stringify(world.raw[who]);
+    assert.ok(!sent.includes('"aimed"'), `${who} was sent whom a spell was aimed at`);
+    assert.ok(!/"effects":\[[^\]]*"level":/.test(sent), `${who} was sent a spell's level`);
+    assert.ok(sent.includes("spells end") || who !== "Pat", "the script did dispel something");
+  }
+  assert.ok(JSON.stringify(hidden.raw.Pat).includes("No such creature"), "the cast at the hidden creature was answered as for one that is not there");
+  assert.ok(JSON.stringify(plain.raw.dm).includes('"aimed"'), "the DM's own view has them, so the check above is not empty");
+});

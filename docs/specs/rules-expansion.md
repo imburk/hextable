@@ -1013,6 +1013,41 @@ ends."
   Kill, a monster's text) is the DM's to undo, ending the spell with `endEffect`.
 - **The reader** has the hook's words; the golden spell "Many Blessings" and the golden monster "Cinderjaw Hound" (its Smoke Step) carry one.
 
+#### Build notes: Dispel Magic (amendment, #726 job 5)
+
+Tests in `packages/rules/test/dispel-magic.test.js`. SRD 5.2.1, Dispel Magic: "Choose one creature, object, or magical effect within
+range. Any ongoing spell of level 3 or lower on the target ends. For each ongoing spell of level 4 or higher on the target, make an
+ability check using your spellcasting ability (DC 10 plus that spell's level). On a successful check, the spell ends. Using a
+Higher-Level Spell Slot. You automatically end a spell on the target if the spell's level is equal to or less than the level of the
+spell slot you use."
+
+- **Step `dispel: level` with `dc`** (`{ "dispel": 3, "dc": 10 }`; `dispel`, `engine/rolls.js`). Run on a creature. Every ongoing
+  spell on it ends if its level is `dispel` or lower, or no higher than the slot the dispelling spell was cast with. For each higher
+  one the caster makes an ability check with its spellcasting ability (`castAbilOf`), with no Proficiency Bonus, against `dc` plus
+  that spell's level, through the same `abilityCheck` as any check (moved from `engine/features.js` to `engine/rolls.js` so the kit
+  can use it), so what changes a check with that ability applies. A `check` event is written (`what` is the dispelling spell's
+  name; a player is sent the roll and never the DC, as for every check), and on a success the spell ends. A `note` on the creature
+  says how many spells ended ("Dispel Magic: 2 spells end", "no spell ends"); each ending is an `effectEnd` with
+  `why: "it was dispelled"`.
+- **A lasting effect keeps the level it was cast at** (`level` on the record in `state.effects`; state version 31): the slot's level,
+  the spell's own where no higher slot was used, 0 for a cantrip, the level a magic item casts it at. The SRD's "Casting without
+  Slots" and "Using a Higher-Level Spell Slot" make the slot's level the spell's. An effect with no `level` (a bound effect of an
+  instant spell, corpses' control, one from before version 31 of a spell the pack does not have) counts at the spell's own level.
+  The migration gives every older spell effect its spell's own level: the slot it was cast with is not known.
+- **What "on the target" is.** A spell is on a creature if a live part of its effect is (a condition, a modifier, a light, Temporary
+  Hit Points, a form, the bond of a creature a spell made, a changed weapon). A spell whose steps the DM applies has no part on
+  anyone, so the effect also keeps whom it was aimed at (`aimed`, for a spell aimed at creatures or at its caster, less the targets
+  a creature-type limit made invalid): where no part is on any of those, the spell is taken to be on each of them. Where it took
+  hold on some and not on others (a made save), it is on those it holds only.
+- **The spell ends whole.** The SRD's words are "the spell ends", so Bless on three creatures ends on all three when one of them is
+  dispelled. (The other reading, ending it on the target alone, is one line: end the target's parts and let `spent` end the rest.)
+- **Not built** (the entry is `assist` and says so): an object or a magical effect as the target (a zone, changed ground, a spell
+  with nothing on a creature: the DM ends those with `endEffect`); magic that is not a spell cast through the engine (a feature's
+  effect, a creature's own action, a spell the DM applied by hand). A caster whose spellcasting ability the engine does not know (a
+  creature's action with the step) has each check handed to the DM in a `manual` event.
+- **Views.** `level` and `aimed` are not sent to players: `viewEffects` sends named fields only.
+- **The reader** has the step's sentence; the golden spell "Unravel" and the golden monster "Cinderjaw Hound" carry one.
+
 ### A class
 
 ```js
