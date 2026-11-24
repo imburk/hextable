@@ -473,7 +473,7 @@ function formation(s, leader, walked, pending, ev) {
       const had = !!s.encounter;
       // Its way there laid out on what the party knows, as the column's and the leader's are (#372; walkKnown).
       if (lk.length && reach.get(key(to))?.canStop) walkKnown(s, f, key(to), ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), reach, lk, true);
-      else walk(s, f, reach, key(to), ev, false);
+      else walk(s, f, lk.length ? moveOptions(s, f) : reach, key(to), ev, false);   // a place the known ways do not reach is walked on the true ways, as before (#741)
       if (!had && s.encounter) return 'fight';
     }
     if (lurker && !lurker.dead && apart(s, f, lurker) <= 1 && unseenBy(s, lurker, f)) bumped(s, lurker, f, ev);
