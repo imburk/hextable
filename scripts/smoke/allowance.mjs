@@ -41,7 +41,10 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await page.evaluate(() => window.__still({ type: 'endEncounter' }));
         await wait(page, () => !window.hextable.state.encounter, null, 20000).catch(async (e) => { throw new Error(`${e.message}; the DM's page: ${await dump(dm)}; the player's: ${await dump(pl)}`); });
       };
-      const botsOff = () => dm.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+      // Unchecking the box as the DM does: the `change` event is what clears the auto-play's timer (app.js, `dm-auto`.onchange). Setting `checked` alone left a foe's move
+      // armed for the turn that had just come (#688: the move landed 25 ms after the script's endEncounter, the foe walked up to the party, and the engine began a new fight, so
+      // `!state.encounter` never held). An action already sent still lands, so wait for the round trip and for the pictures to be still.
+      const botsOff = async () => { await dm.evaluate(() => { const c = document.getElementById('dm-auto'); c.checked = false; c.dispatchEvent(new Event('change')); }); await sleep(600); await idle(dm); await idle(pl); };
       const botsOn = () => dm.evaluate(() => { const c = document.getElementById('dm-auto'); c.checked = true; c.dispatchEvent(new Event('change')); });
       const box = (page, sel) => page.evaluate((s) => { const b = document.querySelector(s)?.getBoundingClientRect(); return b && { x: b.x, y: b.y, w: b.width, h: b.height, iw: innerWidth, ih: innerHeight }; }, sel);
 
