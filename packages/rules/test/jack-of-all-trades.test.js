@@ -10,6 +10,7 @@ import { derive } from "../src/derive.js";
 import { apply, makeEntity } from "../src/engine.js";
 import { passive } from "../src/engine/rolls.js";
 import { modifiers } from "../src/modifiers.js";
+import { newMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -81,4 +82,55 @@ test("the linter takes half a Proficiency Bonus and no other fraction", () => {
   f.grants.modifiers[0].value = { prof: 0.5 };
   f.grants.modifiers[0].when = ["check.unskilful"];
   assert.ok(lintEntry("classes", c, { strict: false }).some((p) => /unknown situation tag/.test(p)));
+});
+
+// #736 item 5. An escape left to the engine takes the skill with the better chance (`escapeSkill`, engine/features.js), and the half
+// Proficiency Bonus counts in that: Strength 16 and no Athletics is +3 and 2 more, 5; Dexterity 10 with Acrobatics is +4.
+test("escaping a grapple: the engine's choice of skill counts the half Proficiency Bonus", () => {
+  const abilities = { ...A, str: 16, dex: 10 }, skills = ["acrobatics", "persuasion", "insight"];
+  const held = (sheet) => {
+    const s = table(sheet);
+    s.entities.hero.cond.grappled = { source: "holder", holds: [{ by: "holder", with: "hand", escape: 12, range: 5 }] };
+    return ok(apply(s, { type: "escape", actor: "hero" }, DM)).events.find((e) => e.type === "check");
+  };
+  const b = held(bard(9, { abilities, skills }));
+  assert.equal(b.skill, "athletics", "Athletics at 3 + 2 beats Acrobatics at 0 + 4");
+  assert.equal(b.bonus, 5);
+  // The same scores and skills without the feature: Acrobatics at +4 beats Athletics at +3.
+  const f = held({ name: "Wyn", class: "wizard", level: 9, subclass: "evoker", abilities, skills: ["acrobatics", "arcana"], spells: ["fire-bolt"] });
+  assert.equal(f.skill, "acrobatics");
+  assert.equal(f.bonus, 4);
+  // A tie goes to Athletics, as before: Strength 14 is 2 + 2 against Acrobatics 0 + 4.
+  const tie = held(bard(9, { abilities: { ...abilities, str: 14 }, skills }));
+  assert.equal(tie.skill, "athletics");
+  assert.equal(tie.bonus, 4);
+});
+
+// #736 item 6. A lock is picked with Dexterity (Sleight of Hand) and Thieves' Tools (the object's `use`, through `apply`). SRD 5.2.1, Tool
+// Proficiency: with the tool the Proficiency Bonus is added; with the skill as well, Advantage too. Jack of All Trades adds its half only
+// where neither proficiency is used.
+test("picking a lock through apply: the tool, the skill, both, and neither", () => {
+  const pick = (more) => {
+    const s = table(bard(9, { gear: ["Thieves' Tools"], ...more }));
+    const tiles = {};
+    for (let q = -2; q <= 2; q++) for (let r = -2; r <= 2; r++) tiles[`${q},${r}`] = { t: "stone" };
+    ok(apply(s, { type: "loadMap", map: newMap({ id: "room", name: "A room", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }],
+      objects: [{ id: "box", def: "chest", level: "ground", at: { q: 1, r: 0 }, state: "locked" }] }) }, DM));
+    s.entities.hero.pos = { q: 0, r: 0, z: 0 };
+    return ok(apply(s, { type: "use", actor: "hero", object: "box", verb: "pick" }, DM)).events.find((e) => e.type === "check");
+  };
+  const neither = pick({});
+  assert.equal(neither.bonus, 2 + 2, "Dexterity 14, and half of +4: no proficiency is used");
+  assert.equal(neither.mode, undefined);
+  const tool = pick({ tools: ["thieves-tools"] });
+  assert.equal(tool.bonus, 2 + 4, "the tool's Proficiency Bonus, and no half on top");
+  assert.equal(tool.mode, undefined, "no Advantage without the skill");
+  const skill = pick({ skills: ["performance", "persuasion", "sleight-of-hand"] });
+  assert.equal(skill.bonus, 2 + 4);
+  assert.equal(skill.mode, undefined, "no Advantage without the tool proficiency");
+  const both = pick({ tools: ["thieves-tools"], skills: ["performance", "persuasion", "sleight-of-hand"] });
+  assert.equal(both.bonus, 2 + 4, "the Proficiency Bonus once");
+  assert.equal(both.mode, "adv");
+  assert.deepEqual(both.why, ["tool and skill"]);
+  assert.deepEqual([both.tool, both.skill], ["thieves-tools", "sleight-of-hand"]);
 });
