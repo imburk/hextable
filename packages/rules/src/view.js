@@ -831,7 +831,10 @@ function viewEventsOf(events, state, viewer) {
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
           const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source']), ...(unknownIds.length ? [] : ['why'])]), targets };
           if (unknownIds.length && ev.why !== undefined) e.why = unknownIds.some((id) => !namesOf(id).length || namesOf(id).some((n) => n && String(ev.why).includes(n))) ? 'it ended' : ev.why;
-          out.push(e);
+          // Keys in the event's own order whatever was withheld, so the bytes are not a tell (#748).
+          const ordered = {};
+          for (const k of [...Object.keys(ev), ...Object.keys(e)]) if (k in e && !(k in ordered)) ordered[k] = e[k];
+          out.push(ordered);
         }
         break;
       }

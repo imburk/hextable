@@ -1720,3 +1720,79 @@ Added in round 6:
     Setup › Dice › Fidget die always win.*
 31. **Tapping someone else on Turns on a wide screen: keep the menu open?** *Default: yes on
     a wide screen (the map is visible beside it); on a phone the menu clears.*
+
+## Amendment: the d20 confirms (#750)
+
+Owner's answers in #750 (24 November 2026, final). This section amends the parts named in
+point 4. Where it and the rest of the spec differ, this section wins. The build is a
+separate pull request and follows this section.
+
+1. **The d20 is the confirm button.**
+   - While an action waits for confirmation, the die's ring pulses slowly.
+   - With reduced motion the ring is steady instead.
+   - A tap on the die confirms. On a computer, Enter confirms.
+   - The aim bar's Go button goes away, because the die does its job.
+   - Desktop and phone work the same way.
+   - The waiting ring must look different from the turn ring and the health arc (Decision 1).
+     It also has a word: the spoken name says what waits, for example "Confirm Fire Bolt".
+   - Nothing is sent before the confirm. A confirm sends the action through `apply()`, as the
+     same action is sent today.
+
+2. **Targeting.**
+   - Pick a spell that needs a target. Tap each target on the map.
+   - Double-tap a chosen target to de-select it. Then tap the die.
+   - A note at the top of the screen counts the choice: "2 of 4 targets". It is not at the
+     bottom.
+   - With fewer targets chosen than the most the spell or attack allows, the die confirms with
+     what is chosen.
+   - With none chosen, the die does nothing. The note says so: "No target yet: tap one, then
+     the die."
+   - The choices are a draft on the device until the die is tapped. A refused confirm changes
+     nothing, and the choices stay on the screen with the reason.
+
+3. **The small prompt and confirm popup by the die goes away.** Its choices appear on the
+   character's sheet. An option that can be used now is highlighted. An option that cannot be
+   used is greyed out, and its reason is said in words (Decision 7's "greyed things say why").
+
+4. **What this replaces.**
+   - Decision 1, "What a quick tap does": while an action waits for confirmation, a tap on
+     the die confirms. It does not fan out the arc. At other times the arc works as written.
+   - Decision 2, row 3 (the aim bar): the die is no longer hidden behind the aim bar while an
+     action waits. The aim bar keeps its text and Cancel only.
+   - Decision 3, "Closing, always": in the waiting state a tap on the die confirms and does not
+     close the menu. A tap on the map and Escape still close it. The closing test (M10) must
+     allow for this state.
+   - Decision 7, the "Aiming" row: the words "Cancel, Cast" become the note and the die. There
+     is no Cast button.
+   - Decision 11, keys: Enter on the die confirms when an action waits, as it throws a die
+     in the throw zone today.
+   - "Every control today", the "Hint and aim bar" row: `#hint-go` goes. The other controls in
+     that row stay.
+   - Decision 3, "Choosing a row that arms an action closes the menu": unchanged, unless point 5(b)
+     settles otherwise.
+
+5. **Open points for the build to settle.**
+   - (a) Where the choices sit on the sheet on a phone. The sheet is one accordion (Decision
+     4d). The choices could be a section at the top of the page, or the section that holds the
+     armed row could open. Check it at 390 x 844 with the status block compact.
+   - (b) Whether arming still folds the menu. If the choices are on the sheet, the sheet has
+     to be open for the player to use them, and Decision 3 would have to change.
+   - (c) Double-tap against the map's own gestures. A double-tap is two taps close together in
+     the same place, so the build sets the time window and the distance. A drag, or a pinch
+     with two fingers, is never a tap. A drag that starts on a target still pans the map.
+   - (d) A double-tap on a target that is not chosen. The build says what it does; the simplest
+     rule is that it chooses the target once.
+   - (e) Order at the top of the screen. The offline bar (Decision 1) and the "Your turn"
+     banner (Decision 5) also sit at the top, next to the note.
+   - (f) Turn ring and waiting ring together. On my turn both can be lit. They differ by a
+     shape or a word, not by colour alone.
+   - (g) The engine. The build checks whether the engine accepts fewer targets than the most a
+     spell allows. This section does not assume it does. If it does not, the change is an engine
+     amendment and goes back to the owner.
+   - (h) Computers. A double-click on a target de-selects it. The build checks that this does
+     not clash with Shift+click for dice (Decision 8b).
+   - (i) Keyboard. How targets are picked with the keys is not settled here.
+   - (j) Throws. Whether an attack waiting to be thrown under the `throw` rule (Decision 9) also
+     uses the die as its confirm. This section leaves the throw zone as it is.
+   - (k) A hold on the die during a confirm. Whether it still pops up the fidget die
+     (Decision 1) is not settled here.

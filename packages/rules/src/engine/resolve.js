@@ -23,7 +23,7 @@ import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoic
 import { ARENA_RADIUS, ask, blocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
-import { shine, stabilise } from './rolls.js';       // `stabilize` and `light` steps (KIT)
+import { dispel, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
 import { armed, weaponKey } from '../imbue.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
@@ -848,6 +848,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
     for (let i = 0; i < base.length && less > 0; i++) { const n = Math.min(base[i], less); base[i] -= n; less -= n; if (n) noted[i].push({ name: cut.name, roll: -n }); }
   }
   let total = 0, lost = 0;
+  const firstEvent = ev.length;
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
@@ -866,6 +867,10 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
   if (total > 0) damaged(s, ev, t, parts.find((p) => typeof p.by === 'string')?.by ?? null, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
+  // Death Ward (a modifier on `hp.zero`): the creature would drop to 0 Hit Points and drops to 1 instead, however much the damage was, and the
+  // use ends the ward. Not when the DM sets its Hit Points (`raw`). It comes before Relentless Rage: the creature never reaches 0.
+  // Every damage event of this hit says `hp: 0` (several damage parts in one hit each put the target at 0), so each is patched to the 1 it was left at.
+  if (!dying && !raw && before > 0 && t.hp <= 0 && warded0(s, t, ev)) for (let i = firstEvent; i < ev.length; i++) if (ev[i].type === 'damage' && ev[i].target === t.id && ev[i].hp === 0) ev[i].hp = t.hp;
   // Relentless Rage: dropping to 0 Hit Points without dying outright while raging, a Constitution save keeps it up.
   if (!dying && t.hp <= 0 && lost - before < t.maxHp) relentless(s, t, ev);
   if (dying) {                                            // already dying
@@ -964,6 +969,18 @@ function afterHit(s, e, t, ev) {
     fx.parts.push({ target: e.id, modifier: structuredClone(f.afterHit.modifier), against: t.id, ends: { on: 'turnEnd', who: now } });
     ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: t.id, conc: false, lasts: 'until the end of the current turn', targets: [e.id] });
   }
+}
+
+// A creature that would drop to 0 Hit Points and has a modifier on `hp.zero` (Death Ward: `{ op: 'min', value: 1, uses: 1 }`) drops to that many
+// instead, and the use ends the ward (SRD 5.2.1, Death Ward: "the target instead drops to 1 Hit Point, and the spell ends"). True if one held.
+function warded0(s, t, ev) {
+  const z = modifiers(s, t, 'hp.zero', { target: t });
+  if (z.min === null) return false;
+  const name = effectsOf(s).find((fx) => z.used.some((p) => fx.parts.includes(p)))?.name ?? 'A ward';
+  t.hp = Math.max(1, Math.min(t.maxHp, z.min));
+  ev.push({ type: 'note', id: t.id, text: `${name}: ${t.hp} Hit Point${t.hp === 1 ? '' : 's'} left instead of 0` });
+  useUp(s, ev, z.used);
+  return true;
 }
 
 // A creature with `relentless` (Relentless Rage) has dropped to 0 Hit Points while the feature it
@@ -1171,7 +1188,7 @@ export function castReaction(s, e, sp, slot, trigger, against, ev, targets = [e.
   const { steps, unscaled } = scaleSteps(sp.def, e.level, slot || sp.level);
   let fx = null;
   if (sp.def.duration !== 'instant') {
-    fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
+    fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration, level: Math.max(slot || 0, sp.level) });
     ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...targets] });
   }
   const st = spellStats(e, s, sp.id), depth = s.stack?.length ?? 0;
@@ -1355,7 +1372,7 @@ function castOnHit(s, e, t, sp, way, ev) {
   let fx = null;
   if (sp.def.duration !== 'instant') {
     if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
-    fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration });
+    fx = startEffect(s, { name: sp.name, spell: sp.id, source: e.id, conc: sp.def.concentration, duration: sp.def.duration, level: Math.max(slot || 0, sp.level) });
     ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [t.id] });
   }
   return { sp, slot: slot || sp.level, steps, unscaled, fx };
@@ -2212,5 +2229,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { stabilise, shine, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { stabilise, shine, dispel, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

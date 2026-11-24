@@ -456,12 +456,12 @@ const savedBefore = (sheet = paladin(5)) => {
 };
 
 test("migration to version 30: a saved paladin gets Paladin's Smite's free use, as a new one has it", () => {
-  assert.equal(VERSION, 30);
+  assert.equal(VERSION, 31);
   const fresh = derive(paladin(5)).record.feats.find((x) => x.id === "paladins-smite");
   const old = savedBefore();
   const m = migrate(structuredClone(old));
   const f = m.entities.hero.feats.find((x) => x.id === "paladins-smite");
-  assert.deepEqual([f.freeCast, f.uses, m.entities.hero.uses["paladins-smite"], m.version], [fresh.freeCast, fresh.uses, 1, 30]);
+  assert.deepEqual([f.freeCast, f.uses, m.entities.hero.uses["paladins-smite"], m.version], [fresh.freeCast, fresh.uses, 1, 31]);
   assert.deepEqual(migrate(structuredClone(m)), m, "loading it again changes nothing");
   // It plays: the free cast is offered at a hit and costs no slot.
   const s = m; fight(s); turnOf(s, "hero");
@@ -481,9 +481,9 @@ test("migration to version 30: a multiclass paladin too; a paladin of level 1, a
   assert.equal(mm.entities.hero.uses["paladins-smite"], 1);
   // Level 1 has no such feature; a typed paladin (no sheet) has the DM's own record; the rogue is not a paladin.
   const l1 = savedBefore(paladin(1));
-  assert.deepEqual(migrate(structuredClone(l1)), { ...l1, version: 30 });
+  assert.deepEqual(migrate(structuredClone(l1)), { ...l1, version: 31 });
   const typed = savedBefore(); delete typed.entities.hero.sheet;
-  assert.deepEqual(migrate(structuredClone(typed)), { ...typed, version: 30 });
+  assert.deepEqual(migrate(structuredClone(typed)), { ...typed, version: 31 });
   const sans = savedBefore(); delete sans.entities.hero;
   assert.deepEqual(migrate(structuredClone(sans)).entities, sans.entities, "the rogue and the goblin are not touched");
 });

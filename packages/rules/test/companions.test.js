@@ -334,8 +334,8 @@ test("an old table loads unchanged but for its version", () => {
   s.version = 22;
   const was = structuredClone(s);
   migrate(s);
-  assert.equal(VERSION, 30);
-  assert.equal(s.version, 30);
+  assert.equal(VERSION, 31);
+  assert.equal(s.version, 31);
   const { world, place, parked, journey, markets, shops, ...rest } = s;                    // version 26 (#579) adds the places of a world, empty
   assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });
   assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 28 (#596) adds the markets and shops, empty

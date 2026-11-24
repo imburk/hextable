@@ -8,7 +8,7 @@
 //             Chosen by `?renderer=none` in the address or the device preference `hextable.renderer`.
 
 // Methods, then properties, of the interface. Properties are read or set from outside; callbacks are set by the app.
-export const METHODS = ['setState', 'settle', 'setTheme', 'setCeiling', 'setHighlights', 'focus', 'rotate', 'face', 'tilt', 'zoom', 'floater', 'planeHex', 'planePoint', 'screenOf', 'screenPoint', 'screenAxes', 'cameraAngles', 'zonesAt', 'hasPicture', 'setPins', 'setBars', 'stats', 'dispose'];
+export const METHODS = ['setState', 'settle', 'setTheme', 'setCeiling', 'setHighlights', 'focus', 'rotate', 'face', 'tilt', 'zoom', 'floater', 'planeHex', 'tileHex', 'planePoint', 'screenOf', 'screenPoint', 'screenAxes', 'cameraAngles', 'zonesAt', 'hasPicture', 'setPins', 'setBars', 'stats', 'dispose'];
 export const PROPS = ['inset', 'onTap', 'onHover', 'onPoint', 'onDrag', 'onPicture', 'assetUrl'];
 export const MEMBERS = [...METHODS, ...PROPS];
 export const KINDS = ['none', 'three'];
@@ -42,6 +42,7 @@ export class EmptyRenderer {
   zoom() {}
   floater() {}
   planeHex() { return null; }
+  tileHex() { return null; }
   planePoint() { return null; }
   screenOf() { return null; }
   screenPoint() { return null; }
@@ -110,6 +111,7 @@ export class LazyThree {
   zoom(...a) { if (this.inner) this.inner.zoom(...a); else this.moves.push(['zoom', a]); }
   floater(...a) { this.inner?.floater(...a); }
   planeHex(...a) { return this.inner ? this.inner.planeHex(...a) : null; }
+  tileHex(...a) { return this.inner ? this.inner.tileHex(...a) : null; }
   planePoint(...a) { return this.inner ? this.inner.planePoint(...a) : null; }
   screenOf(...a) { return this.inner ? this.inner.screenOf(...a) : null; }
   screenPoint(...a) { return this.inner ? this.inner.screenPoint(...a) : null; }
