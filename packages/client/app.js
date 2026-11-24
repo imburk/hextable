@@ -847,9 +847,9 @@ function turnStarts() {
   const b = $('turn-banner');
   b.textContent = `Your turn, ${shownName(S, now)}`; b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
   clearTimeout(bannerTimer); bannerTimer = setTimeout(() => { b.hidden = true; }, 1600);
-  // A player looking at the first level or a character's page is moved to the character whose turn it is; Turns and every other screen are left alone (someone watching the
+  // A player looking at a character's page is moved to the character whose turn it is; the arc, Turns and every other screen are left alone (someone watching the
   // order keeps it), and a closed menu stays closed (question 3).
-  if (!isDM() && D.isOpen && ['', 'sheet'].includes(D.path.join('/'))) { if (selId !== now.id) select(now.id); D.open('sheet', null, true); }
+  if (!isDM() && D.isOpen && D.path.join('/') === 'sheet') { if (selId !== now.id) select(now.id); D.open('sheet', null, true); }
 }
 // What the token shows of the selected character (drawer.js draws it): the health arc, the lit ring on a turn of mine, the flat bar when down, grey when dead or offline; and its spoken name.
 let hpSeen = null, hpTimer = null;
@@ -921,18 +921,17 @@ function refresh() {
   // Setup's last section: leaving this table on this device (anyone at a table), or a new game (solo).
   $('btn-leave').hidden = !!T.solo; $('set-new').hidden = !T.solo; $('set-sec-leave').hidden = !!T.readOnly;
   { const n = T.solo ? 'A new game replaces the one saved on this device.' : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
-  $('menu-session').hidden = false; $('menu-new').hidden = !T.solo; $('menu-leave').hidden = !!T.solo;
   showUndo();
 
-  // The characters (Decision 4b): one row for each creature this person controls, at the top of the first level. The selected one is first, then the others in turn order
-  // (in a fight) or in the party's order; a companion sits under its master. A tap opens that creature's Character screen and selects it. A player with one character sees one row.
+  // The characters (Decision 4b): one place for each creature this person controls, the first symbols of the strip and the arc (drawer.js draws both from these buttons), in turn order
+  // (in a fight) or in the party's order; a companion comes after its master. A tap opens that creature's Character screen and selects it. A player with one character sees one.
   {
     const party = $('party');
     const hasChar = Object.values(S.entities).some((x) => x.owner === T.you.userId);
     // A player's rows are their character and its companions ("Brenna's wolf"); the DM picks a companion on the map or in the tracker.
     const mineRows = Object.values(S.entities).filter((x) => (x.kind === 'pc' || (x.bond && !isDM() && !x.dead)) && (mine(x) || (x.kind === 'pc' && !isDM() && !hasChar && !x.owner)));
     const rank = (x) => (enc ? S.encounter.order.findIndex((o) => o.id === x.id) : 0);
-    const masters = mineRows.filter((x) => !x.bond).sort((p, q) => (p.id === selId ? -1 : q.id === selId ? 1 : (enc ? (rank(p) < 0 ? 99 : rank(p)) - (rank(q) < 0 ? 99 : rank(q)) : 0)));
+    const masters = mineRows.filter((x) => !x.bond).sort((p, q) => (enc ? (rank(p) < 0 ? 99 : rank(p)) - (rank(q) < 0 ? 99 : rank(q)) : 0));      // M8: a symbol keeps its place on the strip and the arc when another character is selected
     const list = [];
     const push = (x, under) => {
       list.push({ x, under });
@@ -940,7 +939,6 @@ function refresh() {
     };
     for (const m of masters) push(m, false);
     for (const c of mineRows.filter((k) => k.bond && !list.some((l) => l.x === k))) list.push({ x: c, under: true });
-    if (selId) { const k = list.findIndex((l) => l.x.id === selId); if (k > 0 && !list[k].under) { const run = [list[k]]; let n = k + 1; while (list[n]?.under) run.push(list[n++]); list.splice(k, run.length); list.unshift(...run); } }
     const html = list.map(({ x, under }) => {
       const claimable = x.kind === 'pc' && !isDM() && !hasChar && !x.owner;
       const boss = x.bond ? S.entities[x.bond.to] : null;
@@ -1406,16 +1404,19 @@ const NV = mountNewVersion({ fetchBuild: () => fetch('./build.json', { cache: 'n
 NV.check(); NV.solo(() => !T || T.solo);
 const FB = initFeedback({ onBuild: () => renderAbout(), look: () => ({ S, T, selId, themeId, mine, renderer: rendererKind(location.search, prefs.get('hextable.renderer')) }) });
 
-const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), selected: () => (S && selId ? S.entities[selId] ?? null : null), change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
-const openPanel = (id) => D.open(id);
-foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
-$('party').addEventListener('click', (ev) => {
-  const b = ev.target.closest('button[data-id]'), x = b && S?.entities[b.dataset.id]; if (!x) return;
+// A character's symbol, on the arc or on the strip, opens that creature's Character screen and selects it (the one already selected keeps what it has armed).
+function pickChar(id) {
+  const x = S?.entities[id]; if (!x) return;
   if (x.kind === 'pc' && !isDM() && !x.owner && !Object.values(S.entities).some((y) => y.owner === T.you.userId)) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name });
   if (x.id !== selId) select(x.id);
-  R.focus(x.id);      // a row opens that creature's Character screen and selects it (the one already selected keeps what it has armed)
+  R.focus(x.id);
   D.open('sheet'); refresh();
-});
+}
+const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), selected: () => (S && selId ? S.entities[selId] ?? null : null), charName: () => (S && selId && S.entities[selId] ? shownName(S, S.entities[selId]) : null), pickChar,
+  change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
+const openPanel = (id) => D.open(id);
+foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
+$('party').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) pickChar(b.dataset.id); });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
 $('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
 $('waiting-list').addEventListener('click', (ev) => {
@@ -1513,8 +1514,6 @@ function twoTap(btn, armed, note, go) {
   if (!btn.classList.contains('sure')) {
     btn.dataset.label = btn.textContent;
     btn.classList.add('sure'); btn.textContent = armed;
-    const n = btn.id.startsWith('menu-') ? $('menu-note') : null;
-    if (n) { n.textContent = note; n.hidden = false; }
     clearTimeout(armTimers.get(btn)); armTimers.set(btn, setTimeout(() => disarm(btn), 3000));
     return;
   }
@@ -1523,7 +1522,6 @@ function twoTap(btn, armed, note, go) {
 function disarm(btn) {
   if (!btn.classList.contains('sure')) return;
   btn.classList.remove('sure'); btn.textContent = btn.dataset.label;
-  if (btn.id.startsWith('menu-')) $('menu-note').hidden = true;
 }
 const LEAVE_NOTE = 'Leaving forgets this table on this device.';
 const leaveNote = () => (isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
@@ -1532,16 +1530,14 @@ function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('set-new').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true; $('menu-session').hidden = true;
+  $('btn-leave').hidden = $('set-new').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }
 $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
-$('menu-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
-$('menu-new').onclick = newWorld;
 $('set-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.

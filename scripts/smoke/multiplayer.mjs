@@ -41,7 +41,7 @@ async function multiplayer(browser, url) {
 
       let id, name;
       await run.do('the phone claims a character', async () => {
-        await openMenu(phone, []); const b = phone.locator('#menu-root #party .pr:has-text("Play as")').first();
+        await openMenu(phone, []); const b = phone.locator('#arc .arc-b:has-text("Play as")').first();
         id = await b.getAttribute('data-id');
         name = await phone.evaluate((i) => window.hextable.state.entities[i].name, id);
         await b.click(); await closeMenu(phone);

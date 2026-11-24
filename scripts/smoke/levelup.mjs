@@ -129,7 +129,7 @@ async function player(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        await openMenu(phone, []); const b = phone.locator('#menu-root #party button:has-text("Play as")').first();
+        await openMenu(phone, []); const b = phone.locator('#arc .arc-b:has-text("Play as")').first();
         id = await phone.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, (await b.locator('strong').textContent()).replace('Play as ', '').trim());
         await b.click(); await closeMenu(phone);
         await wait(host, (i) => !!window.hextable.state.entities[i].owner, id);

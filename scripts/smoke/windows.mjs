@@ -51,7 +51,7 @@ async function table(browser, url) {
       });
 
       await run.do('both act: the player takes a character and moves it, the DM changes another and the player sees it', async () => {
-        await openMenu(pl, []); const b = pl.locator('#menu-root #party button:has-text("Play as")').first();
+        await openMenu(pl, []); const b = pl.locator('#arc .arc-b:has-text("Play as")').first();
         name = (await b.locator('strong').textContent()).replace('Play as ', '').trim();
         id = await pl.evaluate((n) => Object.values(window.hextable.state.entities).find((e) => e.name === n).id, name);
         await b.click(); await closeMenu(pl);
