@@ -102,6 +102,8 @@ canvas#gl { inset: 0 var(--inset-r) 0 var(--inset-l); width: calc(100% - var(--i
 #hint, #join { left: calc(50% + (var(--inset-l) - var(--inset-r)) / 2); }
 #cam { right: calc(12px + var(--inset-r)); }
 #editor { left: var(--inset-l); right: var(--inset-r); }
+/* #738: the token and its undo and redo arrows own the strip `--dock-h` at the bottom; while the editor is open its bar stands on top of that strip, not behind the token */
+body.editing #editor { bottom: var(--dock-h); max-height: calc(55vh - var(--dock-h)); border-bottom: 1px solid var(--line); border-radius: var(--radius); }
 
 /* the menu, both shapes */
 #drawer { position: fixed; z-index: 5; display: flex; flex-direction: column; background: var(--panel); color: var(--ink); border: 1px solid var(--line); backdrop-filter: blur(6px); overflow: hidden; }
@@ -322,6 +324,7 @@ body[data-menu-shape="columns"] .menu-level { padding-bottom: 12px; }
   body[data-token] #chips { left: auto; right: calc(8px + env(safe-area-inset-right)); bottom: auto; top: max(8px, env(safe-area-inset-top)); flex-direction: row-reverse; }
   body[data-token] #turnline { left: calc(50% + 30px); }
   :root { --dock-h: max(8px, env(safe-area-inset-bottom)); }
+  body.editing[data-token] #editor { left: calc(var(--inset-l) + 68px + env(safe-area-inset-left)); }       /* the token keeps the bottom-left corner: the bar starts beside it */
 }
 
 /* a character's sigil (Decision 4b): a letter on its colour inside its health ring; the same ring as the die's, on the strip, the arc and More */
