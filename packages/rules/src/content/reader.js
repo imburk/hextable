@@ -572,7 +572,12 @@ class Reading {
       const c = t.creature;
       if (c.count !== undefined) { if (isInt(c.count)) this.num('target.creature.count', c.count, 'creatures'); else this.bad('`target.creature.count` is not a whole number.'); }
       if (c.within !== undefined) { if (isInt(c.within)) this.num('target.creature.within', c.within, 'feet'); else this.bad('`target.creature.within` is not feet.'); }
-      this.odd(c, ['count', 'repeat', 'within'], 'The creature target');
+      if (c.types !== undefined) {
+        const ts = Array.isArray(c.types) ? c.types.filter((x) => CREATURE_TYPES.includes(x)) : [];
+        if (!ts.length || ts.length !== c.types.length) this.bad('`target.creature.types` is not a list of creature types.');
+        else this.line(`The entry limits it to ${list(ts.map(cap1), 'or')}: aimed at a creature of another type, the cast and its slot are spent and nothing happens to that creature (it looks like a made save where a made save would mean no effect).`);
+      }
+      this.odd(c, ['count', 'repeat', 'within', 'types'], 'The creature target');
       const harmful = this.harmful();
       const bits = [];
       bits.push(c.repeat === true ? 'The caster picks a creature for each one, and may pick one creature more than once' : 'The caster picks the creatures, each one only once');

@@ -272,6 +272,7 @@ test("Countercharm is not spent on a foe's failed save against the bard's own ch
   let failed = 0;
   for (let seed = 1; seed <= 20 && !failed; seed++) {
     const s = field(bard);
+    s.entities.m1.type = "humanoid";              // Charm Person works on Humanoids only (#727); the valley's first foe is none
     fight(s); turnOf(s, "hero");
     s.rng = seed * 7919;
     const r = ok(apply(s, { type: "cast", actor: "hero", spell: "charm-person", target: "m1" }, DM));

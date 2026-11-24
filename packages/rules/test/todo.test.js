@@ -215,20 +215,21 @@ function caster(spells) {
   return s;
 }
 
-test("an assist spell with work left for the DM and no manual step (Haste, Hold Person) makes a card, and its caster does not wait; Mage Armor and Light make none", () => {
+test("an assist spell with work left for the DM and no manual step (Haste, Charm Person) makes a card, and its caster does not wait; Mage Armor and Light make none", () => {
   const h = caster(["haste", "mage-armor", "light"]);
   ok(apply(h, { type: "cast", actor: "wyn", spell: "haste", targets: ["wyn"] }, DM));
   const hc = cards(h).filter((c) => c.name === "Haste");
   assert.equal(hc.length, 1, "Haste leaves the lethargy to the DM");
   assert.ok(!hc[0].waits);
   assert.equal(view(h, PAT).waiting, undefined);
-  const p = caster(["hold-person"]);
-  ok(apply(p, { type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 3 } }, DM));
+  // Charm Person: Hold Person was the example until #727 made it `auto` (its Humanoid limit is applied), so it leaves the DM nothing.
+  const p = caster(["charm-person"]);
+  ok(apply(p, { type: "spawn", monster: "bandit", at: { q: 6, r: 3 } }, DM));
   const g = Object.values(p.entities).find((e) => e.side === "foe").id;
   ok(apply(p, { type: "startEncounter", center: { q: 4, r: 3 }, radius: 8 }, DM));
   for (let i = 0; i < 12 && p.encounter.order[p.encounter.turn].id !== "wyn"; i++) ok(apply(p, { type: "endTurn", actor: p.encounter.order[p.encounter.turn].id }, DM));
-  ok(apply(p, { type: "cast", actor: "wyn", spell: "hold-person", target: g }, DM));
-  assert.ok(cards(p).some((c) => c.name === "Hold Person"), "Hold Person");
+  ok(apply(p, { type: "cast", actor: "wyn", spell: "charm-person", target: g }, DM));
+  assert.ok(cards(p).some((c) => c.name === "Charm Person"), "Charm Person");
   const m = caster(["mage-armor", "light"]);
   ok(apply(m, { type: "cast", actor: "wyn", spell: "mage-armor", targets: ["wyn"] }, DM));
   ok(apply(m, { type: "cast", actor: "wyn", spell: "light", target: "wyn" }, DM));

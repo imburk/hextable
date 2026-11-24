@@ -602,7 +602,7 @@ function lintNoSummonAmounts(e, say) {
   });
 }
 
-function lintTarget(target, say, nearOk = false) {
+function lintTarget(target, say, nearOk = false, typesOk = false) {
   if (!target || typeof target !== 'object') return say('needs a target');
   const kinds = ['self', 'creature', 'area'].filter((k) => k in target);
   if (kinds.length !== 1) return say('target needs exactly one of self, creature, area');
@@ -632,6 +632,10 @@ function lintTarget(target, say, nearOk = false) {
     if (c.within !== undefined && !(isInt(c.within) && c.within > 0 && c.within % 5 === 0)) say('`within` is feet, a multiple of 5');
     if (c.reach !== undefined && !(c.reach > 0)) say('reach must be a number of feet');
     if (c.range !== undefined && !(Array.isArray(c.range) && c.range.length === 2 && c.range.every((n) => n > 0) && c.range[0] <= c.range[1])) say('range must be [normal, long] in feet');
+    // `types`: the spell works only on creatures of these types (Hold Person's Humanoid). One of another type is an invalid target
+    // (SRD "Invalid Targets"): the cast is spent and nothing happens to it (engine/casting.js).
+    if (c.types !== undefined && !typesOk) say('`types` on a creature target is for a spell (an area\'s `types` is for any action)');
+    else if (c.types !== undefined && !(Array.isArray(c.types) && c.types.length && allOf(CREATURE_TYPES)(c.types) && new Set(c.types).size === c.types.length)) say('`types` lists creature types');
   }
 }
 function lintCommon(e, say) {
@@ -686,7 +690,7 @@ function lintSpell(e, say) {
   if (!isDuration(e.duration)) say('duration must be \"instant\", a number of rounds, minutes, hours or days (\"10 minutes\"), \"until dispelled\" or \"special\"');
   if (typeof e.concentration !== 'boolean' || typeof e.ritual !== 'boolean') say('concentration and ritual must be true or false');
   if (!Array.isArray(e.classes)) say('classes must be a list');
-  lintTarget(e.target, say);
+  lintTarget(e.target, say, false, true);
   lintHigher(e, say);
   lintChoice(e, say);
   lintZone(e, say);
@@ -2885,7 +2889,7 @@ const SHAPES = {
   hitRider: { what: 'a hit rider', keys: ['with'] },
   target: { what: 'a target', keys: ['self', 'creature', 'area', 'near'] },
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'] },
-  creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range'] },
+  creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },

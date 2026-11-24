@@ -246,7 +246,7 @@ function castShape(sp) {
   if (SHAPE.has(sp)) return SHAPE.get(sp);
   let out = null;
   const d = sp.def;
-  if (d && !d.hit && sp.turn && sp.time !== 'reaction' && (sp.aim === 'creature' || sp.aim === 'area') && !d.choice && !d.zone && !d.terrain && !sp.summon && !sp.teleport && !d.concentration) {
+  if (d && !d.hit && !sp.types && sp.turn && sp.time !== 'reaction' && (sp.aim === 'creature' || sp.aim === 'area') && !d.choice && !d.zone && !d.terrain && !sp.summon && !sp.teleport && !d.concentration) {
     let plain = true, dmg = false, heal = false, attack = false;
     walk(d.effects, (st) => {
       const kind = stepKind(st);

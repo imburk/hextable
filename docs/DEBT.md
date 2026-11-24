@@ -115,7 +115,7 @@ it would unlock:
 | # | What | Who |
 |---|---|---|
 | S1 | ~~Dice-valued modifiers (Bless, Bane, Guidance)~~ (#80) | engine |
-| S2 | ~~More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing~~ (#78). Left: targets of different kinds ("a creature or an object"), and a restriction on the target's creature type (Hold Person's Humanoid), which the DM checks | engine |
+| S2 | ~~More than one target (`count`): Scorching Ray, Mass Healing Word, Prayer of Healing~~ (#78). Left: targets of different kinds ("a creature or an object"), ~~and a restriction on the target's creature type (Hold Person's Humanoid), which the DM checks~~ (#727: `target.creature.types` and the SRD's Invalid Targets rule; left: the cast chooser does not say the limit, and the monster AI does not cast a spell that has one) | engine |
 | S3 | ~~Line and cube areas~~ (#74). Left: a Line placed at a distance or of free shape (Wind Wall) and several cubes arranged by the caster (Fire Storm); creatures of the caster's choice in an area were done with S2 | engine |
 | S4 | ~~Zones that last (Web, Spirit Guardians, Wall of Fire) and effects that go off at the start or end of a turn inside them~~ (#91: Moonbeam, Spirit Guardians, Web). Left: moving a zone after casting (Moonbeam), what a zone changes while a creature is inside (halved Speed, Difficult Terrain, obscurement), walls of free shape (Wall of Fire, Wind Wall), "until the end of the current turn" (Stinking Cloud), and drawing zones on the map for anyone | engine |
 | S5 | ~~Temporary Hit Points~~ (#82), ~~a damage type chosen at casting~~ (#80, for modifiers; a chosen type in a `damage` step came with #91; Chromatic Orb, Sorcerous Burst and Dragon's Breath still need their leaping, exploding dice and breath from another creature), ~~"until the end of your next turn"~~ (#89) | engine |
@@ -146,7 +146,7 @@ at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. 
 | A caster's weapon attacks changed, or a later action the spell grants | shillelagh, true strike, produce flame | |
 | Movement: Dash, jumping | | expeditious retreat, jump |
 | A reaction with a trigger | | feather fall (assist: hellish rebuke; ~~shield~~ auto by standing instruction, #127) |
-| What may attack or be attacked: a creature-type tag, redirecting an attack | | sanctuary, protection from evil and good (assist: animal friendship, which also needs a type restriction) |
+| What may attack or be attacked: a creature-type tag, redirecting an attack | | sanctuary, protection from evil and good (assist: animal friendship; ~~which also needs a type restriction~~ built in #727) |
 | Light or obscurement on a creature or an area, and a negative tag ("if the attacker can see it") | starry wisp (assist) | faerie fire, fog cloud |
 | Forced behaviour | | command |
 | A turn-start trigger outside a zone, or a base AC from Dexterity | | heroism (Temporary Hit Points each turn), mage armor |
