@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pass: [base, timeline, drawer, three, pinch, ping, newgame, actionpanel, dice, paneltabs, link, square, three-parity, maps, import, feedback, keys, companions, homebrew, reactions, prompt, armed, aimrange, upcast, imbue, beats, scenes, controls, classes, interface, defeat, rewards, log, items, formation, mychars, grapple, standin, slotforms, models, allowance, windows, newversion, rolledhp, strikefirst, undobar, todo, spawnfind, levelup, followfight, fly, menuclose, menushift]
+        pass: [base, timeline, drawer, three, pinch, ping, newgame, actionpanel, dice, paneltabs, link, square, three-parity, maps, import, feedback, keys, companions, homebrew, reactions, prompt, armed, aimrange, upcast, imbue, beats, scenes, controls, classes, interface, defeat, rewards, log, items, formation, mychars, grapple, standin, slotforms, models, allowance, windows, newversion, rolledhp, strikefirst, undobar, todo, spawnfind, levelup, followfight, fly, menuclose, menushift, editorbar]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
