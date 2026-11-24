@@ -22,12 +22,12 @@ async function soloPass(browser, url, label, opts) {
       run.watch(page);
       const posted = [];
       page.on('request', (r) => { if (r.method() === 'POST' && /\/feedback$/.test(r.url())) posted.push(r.postData()); });
-      await run.do('the lobby has no floating icon; About opens the menu, and its Table list has Help and feedback', async () => {
+      await run.do('the lobby has no floating icon; About opens the menu, and Setup beside it has Help and feedback', async () => {
         await open(page, url);
         await waitShown(page, '#splash', false, 3000);
         if (await shown(page, '#fb-btn')) throw new Error('an icon floats over the lobby');
         await page.click('#lobby-about'); await waitShown(page, '#drawer');
-        await page.click('#drawer-back'); await waitShown(page, '#fb-btn');
+        await page.click('#tab-settings'); await waitShown(page, '#settings'); await page.locator('#fb-btn').scrollIntoViewIfNeeded(); await waitShown(page, '#fb-btn');
         await shot(page, `lobby-${phone ? 'phone' : 'wide'}`);
         await closeMenu(page);
       });
@@ -36,7 +36,7 @@ async function soloPass(browser, url, label, opts) {
         await wait(page, () => window.hextable.timeline.busy() === false, null, 15000).catch(() => {});
         await waitShown(page, '#btn-menu');
         if (await shown(page, '#fb-btn')) throw new Error('the feedback button is on the clean screen');
-        if (!(await page.evaluate(() => !!document.getElementById('fb-btn').closest('#menu-table')))) throw new Error('the button is not a row of the Table list');
+        if (!(await page.evaluate(() => !!document.getElementById('fb-btn').closest('#settings #set-sec-help')))) throw new Error('the button is not in Setup, under Help and about');
         await shot(page, `solo-${phone ? 'phone' : 'wide'}`);
       });
       await run.do('About shows a build line a person can read aloud, and the feedback report carries the same build', async () => {

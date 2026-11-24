@@ -42,10 +42,11 @@ async function interfacePass(browser, url, label, opts, how) {
       });
       await run.do('the page works without a picture: tracker, sheet, undo, the editor, a fight', async () => {
         await closePanels(page);
-        await openTab(page, 'turns'); await closeMenu(page);
-        await chip(page, 'Brenna'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet'); await closeMenu(page);
+        // The undo chip shows for 8 s after an action (the move of the step before): it is tapped first, since opening two screens by taps takes longer than that here.
         await wait(page, () => { const b = document.getElementById('btn-undo'); return !b.hidden && !b.disabled; });
         await page.click('#btn-undo');
+        await openTab(page, 'turns'); await closeMenu(page);
+        await chip(page, 'Brenna'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet'); await closeMenu(page);
         await page.evaluate(() => { const S = window.hextable.state, f = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0); window.hextable.act({ type: 'startEncounter', center: f.pos }); });
         await wait(page, () => !!window.hextable.state.encounter);
         await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
