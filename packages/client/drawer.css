@@ -73,6 +73,14 @@ body[data-menu-shape="columns"] #menu-root:has(#todo-mount:not([hidden])) { widt
 #turnline { position: fixed; z-index: 3; left: calc(50% + (var(--inset-l, 0px) - var(--inset-r, 0px)) / 2); transform: translateX(-50%); bottom: calc(var(--dock-h, 0px) + 6px); width: max-content; max-width: calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px));
   display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 2px 2px 4px; font-size: 14px; }
 #turnline[hidden] { display: none; }
+/* #717: the quick actions, a row of their own above the words on my turn; each a thumb high and at most a third of the line */
+#turnline:has(#turn-quick:not([hidden])) { flex-wrap: wrap; justify-content: space-between; max-width: min(calc(100% - 24px - var(--inset-l, 0px) - var(--inset-r, 0px)), 420px); }
+#turn-quick { flex: 1 0 100%; display: flex; gap: 4px; padding: 2px 2px 4px 0; min-width: 0; }
+#turn-quick[hidden] { display: none; }
+#turn-quick .tq { flex: 1 1 0; min-width: 0; max-width: 12em; min-height: 44px; padding: 4px 10px; background: var(--panel-2); font-weight: 700; font-size: 14px; }
+#turn-quick .tq span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#turn-quick .tq.armed { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+body.offline #turn-quick .tq { opacity: .45; }
 #turnline.mine { border-color: var(--accent); }
 #turn-text { min-height: 44px; padding: 0 10px; background: none; border: 0; font: inherit; font-size: 13px; line-height: 1.2; font-weight: 600; text-align: left; min-width: 0; }
 #btn-end { min-height: 44px; padding: 4px 14px; white-space: nowrap; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }

@@ -134,3 +134,36 @@ test('a creature that is down or not yours has no groups', () => {
   e.hp = 0;
   assert.deepEqual(groupsFor(s, e, panelContext(s, e, { dm: true })).shown, []);
 });
+
+// #717 (docs/specs/one-token-menu.md, "#717 build notes"): the quick actions of the turn line.
+test('quick actions: on its own turn a creature gets up to three rows that need the map next, the last one used first, and none at any other time', () => {
+  const { quickRows, QUICK_KINDS } = AP;
+  for (const id of ['fighter', 'rogue', 'cleric', 'wizard']) {
+    // Out of a fight, and on another's turn: none.
+    const free = G(newGame(7), id);
+    assert.deepEqual(quickRows(free.G), [], `${id}: no quick action while exploring`);
+    const f = turnOf(id), mine = G(f, id).G, q = quickRows(mine);
+    assert.ok(q.length >= 1 && q.length <= 3, `${id} on its turn: ${q.map((r) => r.label)}`);
+    assert.equal(new Set(q.map((r) => r.id)).size, q.length, 'no row twice');
+    const offeredNow = mine.groups.filter((g) => g.id === 'attacks' || g.id === 'spells').flatMap((g) => g.offered);
+    for (const r of q) {
+      assert.ok(QUICK_KINDS.has(r.kind), `${r.label} is an attack or a spell`);
+      assert.ok(!r.why, `${r.label} can be used now`);
+      assert.ok(offeredNow.includes(r), `${r.label} is a row the Character screen offers now`);
+    }
+    assert.equal(q[0], mine.groups.find((g) => g.id === 'attacks').offered.find((r) => QUICK_KINDS.has(r.kind)), `${id}: the first is Attack's first row`);
+    // The one used last comes first, when it is still offered; an id that is not offered changes nothing.
+    const other = offeredNow.filter((r) => QUICK_KINDS.has(r.kind) && !r.why).at(-1);
+    assert.equal(quickRows(mine, { last: other.id })[0], other);
+    assert.deepEqual(quickRows(mine, { last: 'no-such-row' }), q);
+    assert.equal(quickRows(mine, { max: 1 }).length, 1);
+    // Someone else's turn in the same fight.
+    const someoneElse = ['fighter', 'rogue', 'cleric', 'wizard'].find((x) => x !== id);
+    assert.deepEqual(quickRows(G(f, someoneElse).G), [], `${someoneElse} has none on ${id}'s turn`);
+  }
+  // A caster's are from both groups: a weapon and a spell.
+  const w = quickRows(G(turnOf('wizard'), 'wizard').G);
+  assert.ok(w.some((r) => r.kind === 'spell') && w.some((r) => r.kind !== 'spell'), `the wizard's: ${w.map((r) => `${r.kind} ${r.label}`)}`);
+  // Spent: with the Action used, what is left to offer is what the engine still allows.
+  assert.deepEqual(quickRows(null), []);
+});

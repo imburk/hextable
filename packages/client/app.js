@@ -893,6 +893,15 @@ function deadLine(e) {
   const html = on ? `${esc(shownName(S, e))} has died. ${isDM() ? 'You decide what happens next.' : 'Your DM decides what happens next.'} <button type="button" class="link" data-menu-open="log">Open the log</button>` : '';
   if (d.dataset.sig !== html) { d.dataset.sig = html; d.innerHTML = html; }
 }
+// #717: the quick actions of the turn line. On a turn of mine, for the selected creature when the turn is its own: up to three rows that need the map next, so a fight
+// action is the quick action and then the target. They are the action panel's own rows (AP.quick), and a tap is a tap on the row.
+function showQuick() {
+  const box = $('turn-quick'), now = S.encounter ? S.entities[current(S)] : null;
+  const rows = now && now.id === selId && plays(now) && up(now) && !T.readOnly && prefs.get('hextable.quickRows') !== false && !$('turnline').hidden ? AP.quick() : [];
+  box.hidden = !rows.length;
+  const html = rows.map((r) => `<button type="button" class="tq${r.armed ? ' armed' : ''}" data-quick="${esc(r.id)}" aria-pressed="${r.armed}" aria-label="${esc(r.label)}${r.sub ? `, ${esc(r.sub)}` : ''}"><span>${esc(r.label)}</span></button>`).join('');
+  if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
+}
 function sizeDock() { const t = $('btn-menu').getBoundingClientRect(); R.inset = (t.height ? Math.max(0, innerHeight - t.top + 12) * 0.85 : 0) - 2 * flyNudge; }      // a flyer's column slides the picture down (an inset of 2 px moves it 1 px) so its top is on the screen      // the dock is gone (M4): the map keeps clear of the token's strip, as it did of the empty dock
 let joinNo = null;               // the fight whose "Bring the others in?" was put off
 // The party members a running fight has left outside, who could be brought in: alive, able, on their own feet (a rider goes with its mount).
@@ -946,6 +955,7 @@ function refresh() {
   const hl = { selected: selId, turn: enc ? cur : null };
   let hint = '', go = false;
   AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
+  showQuick();
   if (e) {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
     const my = mine(e), full = !!e.abil;
@@ -1415,6 +1425,9 @@ $('waiting-list').addEventListener('click', (ev) => {
   else if (kind === 'ho') { foldMenu(); HO.open(id); }
   else if (kind === 'sheet') { select(id); D.open('sheet'); refresh(); }
 });
+$('turn-quick').addEventListener('click', (ev) => { const b = ev.target.closest('[data-quick]'); if (b) AP.runQuick(b.dataset.quick); });
+$('set-quick').checked = prefs.get('hextable.quickRows') !== false;
+$('set-quick').onchange = (ev) => { prefs.set('hextable.quickRows', ev.target.checked); refresh(); };
 $('turn-text').onclick = () => D.open('turns');       // the turn line opens Turns
 $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);

@@ -50,7 +50,7 @@
 </div>
 
 <!-- The turn line (Decision 1/7): one line above the token in a fight. A tap opens Turns. -->
-<div id="turnline" role="status" aria-live="polite" hidden><button type="button" id="turn-text"></button><button type="button" id="btn-end" hidden>End turn</button></div>
+<div id="turnline" role="status" aria-live="polite" hidden><div id="turn-quick" role="group" aria-label="Quick actions" hidden></div><button type="button" id="turn-text"></button><button type="button" id="btn-end" hidden>End turn</button></div>
 <!-- M6 (Decision 7): the banner at the start of my turn (it lets taps through), the health label for 3 s after it changes, the offline bar. -->
 <div id="turn-banner" aria-hidden="true" hidden></div>
 <div id="hp-note" aria-hidden="true" hidden></div>
@@ -292,6 +292,7 @@
         <label class="assign">On a wide screen the menu opens from the <select id="set-side"><option value="left">Left</option><option value="right">Right</option></select></label>
         <label class="check" id="set-pin-row"><input type="checkbox" id="set-pin"> Keep the menu open beside the map</label>
         <p class="note" id="set-pin-note">Wide screens only. The map makes room for it.</p>
+        <label class="check"><input type="checkbox" id="set-quick" checked> Quick actions on the turn line on my turn</label>
         <label class="assign">When a character's page opens, its actions open on <select id="set-paneltab"><option value="auto">The likely group</option><option value="remember">The group I used last</option></select></label>
       </section>
       <section id="set-sec-chars" hidden><h3>Characters and packs</h3>
