@@ -182,8 +182,8 @@ const tapPlace = async (page, key) => {
   if (key === 'about' && !(await page.evaluate(() => { const b = document.getElementById('tab-about'); return !b.hidden; }))) { await tapPlace(page, 'settings'); await waitMenuAt(page, ['settings']); await page.click('#set-about'); return; }
   const place = key === 'sheet' ? `c:${sel}` : key;
   if (is.arc) {
-    const on = await page.$(`#arc [data-place="${place}"]`);
-    if (on) { await on.click(); return; }
+    // by selector, not by handle: the arc is drawn again when a place's line changes (a turn passes), and a handle would be of a button that is gone
+    if (await page.$(`#arc [data-place="${place}"]`)) { await page.click(`#arc [data-place="${place}"]`); return; }
     await page.click('#arc [data-place="more"]'); await waitMenuAt(page, ['more']);
     await page.click(`#more-list [data-place="${place}"]`); return;
   }
