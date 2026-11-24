@@ -1,7 +1,8 @@
 name: CI
 
 # The test suite is split across parallel jobs on standard runners; nothing is skipped and stress stays `full`.
-#   stress  one entry for each of the six 2,400-round stress tests (each is one test, so each gets its own runner).
+#   stress  one entry for each of the six 2,400-round stress tests, run in parts on separate runners: hex AC1 in 3, square AC1 in 2,
+#           square C7 in 2, the others whole (HEXTABLE_STRESS_PART=i/n: part i of n of the rounds, from its own seed). Each job still runs one test.
 #   rest    every other test: Node's `--test-shard=i/n` over the whole glob, with those six tests skipped by name.
 #   build   `npm run build` and `node --check` of what it wrote.
 #   check   the one job branch protection requires: it needs all of the above and fails unless every one succeeded.
@@ -35,12 +36,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: 'square C7',  file: packages/rules/test/companions-brain-stress-square.test.js, pattern: '^square: C7 stress, ' }
-          - { name: 'hex C7',     file: packages/rules/test/companions-brain-stress.test.js,        pattern: '^hex: C7 stress, ' }
-          - { name: 'hex AC1',    file: packages/rules/test/ai-casting-stress.test.js,              pattern: '^hex: AC1 stress, ' }
-          - { name: 'square AC1', file: packages/rules/test/ai-casting-stress.test.js,              pattern: '^square: AC1 stress, ' }
-          - { name: 'hex C6b',    file: packages/rules/test/riding-c6b-stress.test.js,              pattern: '^hex: C6b stress, ' }
-          - { name: 'square C6b', file: packages/rules/test/riding-c6b-stress.test.js,              pattern: '^square: C6b stress, ' }
+          - { name: 'square C7 1/2', file: packages/rules/test/companions-brain-stress-square.test.js, pattern: '^square: C7 stress, ', part: '1/2' }
+          - { name: 'square C7 2/2', file: packages/rules/test/companions-brain-stress-square.test.js, pattern: '^square: C7 stress, ', part: '2/2' }
+          - { name: 'hex C7', file: packages/rules/test/companions-brain-stress.test.js, pattern: '^hex: C7 stress, ' }
+          - { name: 'hex AC1 1/3', file: packages/rules/test/ai-casting-stress.test.js, pattern: '^hex: AC1 stress, ', part: '1/3' }
+          - { name: 'hex AC1 2/3', file: packages/rules/test/ai-casting-stress.test.js, pattern: '^hex: AC1 stress, ', part: '2/3' }
+          - { name: 'hex AC1 3/3', file: packages/rules/test/ai-casting-stress.test.js, pattern: '^hex: AC1 stress, ', part: '3/3' }
+          - { name: 'square AC1 1/2', file: packages/rules/test/ai-casting-stress.test.js, pattern: '^square: AC1 stress, ', part: '1/2' }
+          - { name: 'square AC1 2/2', file: packages/rules/test/ai-casting-stress.test.js, pattern: '^square: AC1 stress, ', part: '2/2' }
+          - { name: 'hex C6b', file: packages/rules/test/riding-c6b-stress.test.js, pattern: '^hex: C6b stress, ' }
+          - { name: 'square C6b', file: packages/rules/test/riding-c6b-stress.test.js, pattern: '^square: C6b stress, ' }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,6 +57,7 @@ jobs:
         env:
           FILE: ${{ matrix.file }}
           PATTERN: ${{ matrix.pattern }}
+          HEXTABLE_STRESS_PART: ${{ matrix.part }}
         run: |
           node --test --test-name-pattern="$PATTERN" "$FILE" | tee "$RUNNER_TEMP/out.txt"
           grep -qx '# pass 1' "$RUNNER_TEMP/out.txt"
