@@ -1,20 +1,108 @@
 name: CI
 
+# The test suite is split across parallel jobs on standard runners; nothing is skipped and stress stays `full`.
+#   stress  one entry for each of the six 2,400-round stress tests (each is one test, so each gets its own runner).
+#   rest    every other test: Node's `--test-shard=i/n` over the whole glob, with those six tests skipped by name.
+#   build   `npm run build` and `node --check` of what it wrote.
+#   check   the one job branch protection requires: it needs all of the above and fails unless every one succeeded.
+#           Keep its id and name `check`.
+
 on:
   push:
     branches: [main]
   pull_request:
 
+# A newer push to a pull request cancels that pull request's older run. A run on main is never cancelled.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # The rules stress tests run their short seeded loop by default; CI runs the long one (2,400 rounds a grid) on every push and pull request.
+  HEXTABLE_STRESS: full
+  # Matches exactly the six stress tests named in the `stress` matrix below, and nothing else. `rest` skips them; `stress` runs them.
+  STRESS_NAMES: '(AC1|C7|C6b) stress, '
+
 jobs:
-  check:
+  stress:
+    name: stress (${{ matrix.name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: 'square C7',  file: packages/rules/test/companions-brain-stress-square.test.js, pattern: '^square: C7 stress, ' }
+          - { name: 'hex C7',     file: packages/rules/test/companions-brain-stress.test.js,        pattern: '^hex: C7 stress, ' }
+          - { name: 'hex AC1',    file: packages/rules/test/ai-casting-stress.test.js,              pattern: '^hex: AC1 stress, ' }
+          - { name: 'square AC1', file: packages/rules/test/ai-casting-stress.test.js,              pattern: '^square: AC1 stress, ' }
+          - { name: 'hex C6b',    file: packages/rules/test/riding-c6b-stress.test.js,              pattern: '^hex: C6b stress, ' }
+          - { name: 'square C6b', file: packages/rules/test/riding-c6b-stress.test.js,              pattern: '^square: C6b stress, ' }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # The rules stress tests run their short seeded loop by default; CI runs the long one (2,400 rounds a grid) on every push and pull request.
-      - run: npm test
+      # Exactly one test must run: a pattern that matched nothing would otherwise leave a green job that ran no test.
+      - name: Run the stress test
+        shell: bash
         env:
-          HEXTABLE_STRESS: full
+          FILE: ${{ matrix.file }}
+          PATTERN: ${{ matrix.pattern }}
+        run: |
+          node --test --test-name-pattern="$PATTERN" "$FILE" | tee "$RUNNER_TEMP/out.txt"
+          grep -qx '# pass 1' "$RUNNER_TEMP/out.txt"
+          grep -qx '# fail 0' "$RUNNER_TEMP/out.txt"
+
+  rest:
+    name: rest (${{ matrix.shard }}/5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The same glob as `npm test`. Node sorts the files itself, so every runner cuts the same list; shard i of 5 takes every fifth file.
+      - name: Run the shard
+        shell: bash
+        run: |
+          node --test --test-skip-pattern="$STRESS_NAMES" --test-shard=${{ matrix.shard }}/5 "packages/*/test/*.test.js"
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - run: npm run build
+      - name: node --check on what the build wrote
+        shell: bash
+        run: |
+          for f in dist/*.js dist/shared/*.js dist/shared/content/*.js; do node --check "$f" || { echo "BAD $f"; exit 1; }; done
+
+  # Branch protection requires a check with this exact name. Do not rename it.
+  check:
+    name: check
+    if: always()
+    needs: [stress, rest, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job must have succeeded
+        shell: bash
+        run: |
+          echo "stress: ${{ needs.stress.result }}"
+          echo "rest:   ${{ needs.rest.result }}"
+          echo "build:  ${{ needs.build.result }}"
+          test "${{ needs.stress.result }}" = success
+          test "${{ needs.rest.result }}" = success
+          test "${{ needs.build.result }}" = success
