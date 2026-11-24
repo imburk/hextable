@@ -75,6 +75,7 @@ const REGISTRY = {
   levelup: ['levelup'],
   followfight: ['followfight'],
   fly: ['fly'],
+  menuclose: ['menuclose'],
 };
 
 const only = process.env.SMOKE_ONLY;

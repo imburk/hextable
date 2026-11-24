@@ -52,7 +52,7 @@ test('Setup is the seven sections of Decision 4d, in their order, with the contr
 });
 
 test('Log and chat has a Say box above the private note, and the clock at its head', () => {
-  const log = between('<section id="log" class="tabpanel"', '<section id="handouts" class="tabpanel"');
+  const log = between('<section id="log" class="tabpanel"', '<section id="dicepanel" class="tabpanel"');      // M10: Handouts is a section inside Log and chat, so the panel ends at the next one
   const at = (s) => { const i = log.indexOf(s); assert.ok(i >= 0, s); return i; };
   assert.ok(at('id="log-clock"') < at('id="log-list"') && at('id="log-list"') < at('id="say-form"') && at('id="say-form"') < at('id="note-form"'));
   assert.match(log, /<select id="say-as" aria-label="Say as">/);
