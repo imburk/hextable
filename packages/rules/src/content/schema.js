@@ -41,7 +41,11 @@ export const CONDITIONS = ['blinded', 'charmed', 'deafened', 'exhaustion', 'frig
 export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition', 'modifier', 'move', 'fall', 'set', 'reveal', 'resource', 'counter', 'teleport', 'cure', 'kill', 'remains', 'endConcentration', 'summon', 'imbue', 'manual',
   // `stabilize: true`: a creature at 0 Hit Points that is not dead becomes Stable (Spare the Dying). `light: { bright, dim }`: the creature it works on carries a light for as long
   // as the lasting effect it is part of runs (Light); `replaces: true`: casting it again ends the caster's earlier one. docs/specs/rules-expansion.md, "Build notes: Mage Armor, Spare the Dying and Light".
-  'stabilize', 'light'];
+  'stabilize', 'light',
+  // `dispel: level, dc` (Dispel Magic): every ongoing spell on the creature it works on ends if its level is `dispel` or lower, or no higher than the slot the
+  // dispelling spell was cast with; for each higher one its caster makes an ability check with its spellcasting ability against `dc` plus that spell's level, and
+  // on a success the spell ends. docs/specs/rules-expansion.md, "Build notes: Dispel Magic".
+  'dispel'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -53,7 +57,10 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration',
   'spell.dc', 'spell.attack', 'hp.max', 'carry', 'speed.fly', 'd20',
   // `opportunity`: whether the creature can make Opportunity Attacks (`autoFail`: it can't; Staggering Blow).
-  'opportunity'];
+  'opportunity',
+  // `hp.zero`: the creature would drop to 0 Hit Points, or be killed outright by a `kill` step. `{ op: 'min', value: 1, uses: 1 }`, as a modifier step:
+  // it drops to 1 Hit Point instead (a kill does nothing to it), and that use ends the part (Death Ward). docs/specs/rules-expansion.md, "Build notes: Death Ward".
+  'hp.zero'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
@@ -129,6 +136,8 @@ export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageT
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
+  // `hp.zero` (Death Ward): only `{ on, op: 'min', value: 1, uses: 1 }`, and only as a modifier step, so that the use that saves the creature ends it.
+  if (m.on === 'hp.zero' && !(stepOk && m.op === 'min' && m.value === 1 && m.uses === 1 && Object.keys(m).length === 4)) say('a modifier on hp.zero is a modifier step `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`: the creature drops to 1 Hit Point instead of 0, once');
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
   // dice ("1d4", "-1d4") rolled each time the modifier applies.
   // `{ rolled: true }` (addition F of docs/specs/homebrew-subclasses.md): the number the damage step just before this one rolled; only a modifier step
@@ -407,6 +416,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       }
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
+    // `dispel: level` with `dc`: a spell level from 0 to 9, and the DC to which a higher spell's level is added.
+    if (kind === 'dispel' && !(isInt(step.dispel) && step.dispel >= 0 && step.dispel <= 9 && isInt(step.dc) && step.dc >= 1 && step.dc <= 30)) say('a dispel step is `dispel` (the spell level up to which a spell ends outright, 0 to 9) with `dc` (what a higher spell\'s level is added to for the check, 1 to 30)');
     // `light: { bright, dim }`: feet of Bright Light and then of Dim Light, multiples of 5 (as the DM's `setLight` takes them).
     if (kind === 'light') {
       const l = step.light, feet = (n) => isInt(n) && n >= 0 && n <= 600 && n % 5 === 0;
@@ -2862,7 +2873,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3067,7 +3078,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
-  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
+  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
   'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50],
   // items, feats, objects, weapons, armour
@@ -3414,7 +3425,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.manual': { manual: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });

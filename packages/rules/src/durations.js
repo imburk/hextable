@@ -1,7 +1,11 @@
 // Things that last: a spell's lasting effect, how long it runs, what ends it, and Concentration.
 //
 // A lasting effect is a record in state.effects:
-//   { id, name, spell, source, conc, lasts, until, parts }
+//   { id, name, spell, source, conc, lasts, until, parts, level?, aimed? }
+//   aimed: for a spell cast at creatures or at its caster, the ids it was aimed at and could affect (state version 31): where no part is on any of
+//          them (the DM applies the spell), Dispel Magic takes the spell to be on each.
+//   level: for a spell, the level it was cast at (the slot's, or the spell's own; 0 for a cantrip): what Dispel Magic reads (state version 31).
+//          A spell's effect without one (a bound effect, one from before version 31 the migration could not read) counts at the spell's own level.
 //   until: null (only the DM ends it) | { clock } (world time, in minutes)
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
@@ -38,10 +42,10 @@ export function durationMinutes(text) {
 export const effectsOf = (s) => (s.effects ??= []);
 const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 
-export function startEffect(s, { name, spell, source, conc, duration }) {
+export function startEffect(s, { name, spell, source, conc, duration, level }) {
   const minutes = durationMinutes(duration);
   const fx = {
-    id: `fx${++s.seq}`, name, spell, source, conc: !!conc, lasts: duration, parts: [],
+    id: `fx${++s.seq}`, name, spell, source, conc: !!conc, lasts: duration, parts: [], ...(Number.isInteger(level) ? { level } : {}),
     until: minutes === null ? null
       : inFight(s, source) ? { enc: s.encounter.id, round: s.encounter.round + Math.round(minutes / ROUND) }
       : { clock: s.clock + minutes },

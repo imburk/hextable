@@ -127,10 +127,12 @@ function summarise(def) {
   if (kind === 'summon' && step.on === 'corpse') return { short: 'summon', long: `Raises ${step.count && step.count !== 1 ? 'corpses' : 'a corpse'} as undead under the caster's control for 24 hours` };
   if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
+  if (kind === 'dispel') return { short: 'end spells', long: `Ends spells of level ${step.dispel} or lower on it; a check against DC ${step.dc} plus the level for each higher one` };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
+    if (m.on === 'hp.zero') return { short: '1 HP instead of 0, once', long: `The first time it would drop to 0 Hit Points it drops to 1 instead, within ${def.duration}` };
     const text = m.op === 'baseAc' ? `base AC ${m.value.base} + ${m.value.ability.toUpperCase()}`
       : m.op === 'add' && typeof m.value === 'number' ? `${m.value > 0 ? '+' : ''}${m.value} ${what}`
       : m.op === 'add' && typeof m.value === 'string' ? `${m.value.startsWith('-') ? '' : '+'}${m.value} ${what}` : `${m.op} on ${what}`;
@@ -191,7 +193,7 @@ export function derivedKinds(def) {
     else if (kind === 'heal' || kind === 'tempHp' || kind === 'cure') k.add('healing');
     else if (kind === 'condition') k.add(BENEFICIAL_CONDITIONS.includes(st.condition) ? 'utility' : 'control');
     else if (kind === 'move' || kind === 'counter') k.add('control');
-    else if (kind === 'teleport' || kind === 'reveal') k.add('utility');
+    else if (kind === 'teleport' || kind === 'reveal' || kind === 'dispel') k.add('utility');
     else if (kind === 'modifier') {
       const m = st.modifier;
       k.add(m.on.startsWith('damage.dealt') ? 'damage' : hinders(m) ? 'control' : 'utility');
@@ -524,6 +526,7 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
+  if (kind === 'dispel') return kit.dispel(s, t, step, ev, f);
   if (kind === 'light') return kit.shine(s, t, step, ev, f) || handOver(`${f.src.name} makes a light, but there is no lasting effect for the engine to hang it on. The DM hands it out with setLight and puts it out.`);
   if (kind === 'kill') return kit.kill(s, t, ev);
   if (kind === 'endConcentration') return kit.breakConcentration(s, ev, t.id, `${t.name} lost Concentration to ${f.src.name}`);

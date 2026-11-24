@@ -476,11 +476,15 @@
       "effects": [
         {
           "reveal": "target"
+        },
+        {
+          "dispel": 1,
+          "dc": 10
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster points out a creature that is hidden, and it is seen by all."
+      "text": "The caster points out a creature that is hidden, and it is seen by all. Any spell of level 1 on it ends."
     },
     {
       "id": "hb-sample-shifting-step",

@@ -243,7 +243,7 @@ test("undo of an arrival restores both places exactly; redo gives the same again
 });
 
 test("a valley table is unchanged by the migration but for the four new fields and its version (Done when 6)", () => {
-  assert.equal(VERSION, 30);
+  assert.equal(VERSION, 31);
   const old = newGame(5); old.version = 25;
   const was = structuredClone(old);
   migrate(old);
