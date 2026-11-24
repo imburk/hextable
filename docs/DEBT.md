@@ -193,7 +193,7 @@ Aura of Life (effects while inside an aura). Still missing:
 | Summons, objects and sensors that act, and actions the spell grants for later turns | arcane eye, faithful hound, guardian of faith, giant insect | animate objects, conjure elemental, summon dragon, arcane hand, telekinesis |
 | Forms | polymorph | |
 | Teleporting and tree travel | dimension door | teleportation circle, tree stride |
-| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, magical Restrained) | death ward, freedom of movement | |
+| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, magical Restrained) | ~~death ward~~ (assist, #726 job 3: the hook `hp.zero`), freedom of movement | |
 | Barriers and walls of free shape, or around a creature | wall of fire, resilient sphere, private sanctum | wall of force, wall of stone |
 | Barriers and wards by creature type | | antilife shell, dispel evil and good, hallow, planar binding |
 | Raising or restoring | | greater restoration, raise dead, reincarnate |
