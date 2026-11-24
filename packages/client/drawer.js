@@ -392,10 +392,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
       if (want) { wantScroll = scrolls.get(key) ?? 0; scroller().scrollTop = wantScroll; }
     } else applyPanels();
 
-    // The map makes room for a pinned menu: the insets are what every fixed piece of the table reads.
-    const w = open && up && pinned() ? el.offsetWidth || 360 : 0;
-    document.body.style.setProperty('--inset-l', side === 'left' ? `${w}px` : '0px');
-    document.body.style.setProperty('--inset-r', side === 'right' ? `${w}px` : '0px');
+    // The menu slides over the map and the map does not move (#749): no inset is set, so --inset-l and --inset-r stay 0 (drawer.css) and the canvas, the camera and the renderer inset are the same open or shut.
     // The token does not move for the menu (round 6, R25): the sheet and the column keep their bottom strip empty for it (drawer.css).
     token.setAttribute('aria-expanded', String(open));
     // A dialog while it covers the map; a complementary landmark when it sits beside it.
