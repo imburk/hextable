@@ -15,6 +15,7 @@ import { createAssets } from "../src/assets.js";
 import { worldAssets } from "../src/tables.js";
 import { current, makeEntity } from "../../rules/src/engine.js";
 import { derive } from "../../rules/src/derive.js";
+import { startEffect } from "../../rules/src/durations.js";
 import { twin } from "./twin.js";
 
 const dirs = [];
@@ -50,6 +51,45 @@ test("creatures: a player's area action with `choose` is told and sent the same 
       { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
     ],
   }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); Object.assign(byName(w, "Ghost"), { hp: 500, maxHp: 500, saveBonus: { dex: -100 } }); }, plain: burn });
+});
+
+// ---- Death Ward (#726 job 3): a hidden creature under the ward, caught by a player's area action ----
+test("death ward: damage the DM does to a hidden warded creature, enough to drop it to 0 Hit Points, is sent the same as with no creature there", () => {
+  const WARD = { target: null, modifier: { on: "hp.zero", op: "min", value: 1, uses: 1 } };
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500, actions: [{ ...BLAST, target: { area: { shape: "emanation", size: 30, exceptCaster: true } } }] });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 2, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500, saveBonus: { dex: -100 } });
+      w.putIn();                                                  // the hidden creature exists before the fight, which leaves it outside the arena
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+      turnOf(w, "fighter");
+    },
+    steps: [
+      (w) => {                                                    // a player's own hostile area would reveal it (by design), so the DM does the harm
+        const g = byName(w, "Ghost");
+        if (!g) return;
+        w.must({ type: "harm", actor: g.id, amount: 50, dtype: "fire" });
+        assert.equal([g.hp, g.dead, w.state.effects.some((fx) => fx.parts.some((p) => !p.ended))].join(), "1,false,false", "the ward held and ended");
+      },
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    ],
+  }, {
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost");
+      Object.assign(g, { hp: 1, maxHp: 7, saveBonus: { dex: -100 } });
+      const fx = startEffect(w.state, { name: "Death Ward", spell: "death-ward", source: g.id, duration: "8 hours" });
+      fx.parts.push({ ...WARD, target: g.id });
+    },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); w.state.seq++; },
+  });
 });
 
 // ---- grapple: a hidden creature beside a player's grapple and drag (was the hidden-grappler and drag cases of grapple*.test.js) ----
@@ -512,4 +552,85 @@ test("following (formation): the party takes the same places with and without a 
   }, hiddenOnRamp);
   for (const world of [plain, hidden]) assert.deepEqual(world.w.state.entities.rogue.pos, { q: 2, r: 0, z: 2.5 }, "the rogue took its slot on the terrace");
   stillHidden(hidden);
+});
+
+// ---- Dispel Magic (#726 job 5): a lasting spell keeps its level and whom it was aimed at, which no player is sent ----
+const WYN = { name: "Wyn", class: "wizard", level: 9, subclass: "evoker", abilities: { str: 10, dex: 14, con: 12, int: 18, wis: 12, cha: 10 }, skills: ["arcana", "history"], spells: ["dispel-magic", "mage-armor", "light"] };
+test("dispel: casting and dispelling spells sends the same with and without a hidden creature that has a spell on it, and no level or aim is sent", () => {
+  const { plain, hidden } = twin({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 1, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      s.entities.wyn = makeEntity(derive(WYN).record, { id: "wyn", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
+      s.entities.wyn.sheet = structuredClone(WYN);
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "mage-armor", target: "wyn" } },
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "light", target: "wyn" } },
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "dispel-magic", target: "fighter" } },      // nothing on the fighter
+      { by: "Pat", act: (w) => ({ type: "cast", actor: "wyn", spell: "dispel-magic", target: w.lurkId ?? "nobody" }), allowError: true },   // a creature they do not know of: refused the same
+      { by: "Pat", act: { type: "cast", actor: "wyn", spell: "dispel-magic", target: "wyn", slot: 4 } },
+    ],
+  }, {
+    hide(w) {
+      w.must({ type: "spawn", monster: "bandit", at: { q: 3, r: 0 }, name: "Ghost", hidden: true });
+      w.lurkId = byName(w, "Ghost").id;
+      w.state.effects.push({ id: "fxghost", name: "Mage Armor", spell: "mage-armor", source: w.lurkId, conc: false, lasts: "8 hours", level: 1, aimed: [w.lurkId], parts: [{ target: w.lurkId, modifier: { on: "ac", op: "add", value: 1 } }], until: null });
+    },
+    plain: (w) => { burn(w, { q: 3, r: 0 }); },
+  });
+  assert.deepEqual(hidden.w.state.effects.map((fx) => fx.id), ["fxghost"], "Wyn's spells ended and the hidden creature's stayed");
+  for (const world of [plain, hidden]) for (const who of ["Pat", "Sam"]) {
+    const sent = JSON.stringify(world.raw[who]);
+    assert.ok(!sent.includes('"aimed"'), `${who} was sent whom a spell was aimed at`);
+    assert.ok(!/"effects":\[[^\]]*"level":/.test(sent), `${who} was sent a spell's level`);
+    assert.ok(sent.includes("spells end") || who !== "Pat", "the script did dispel something");
+  }
+  assert.ok(JSON.stringify(hidden.raw.Pat).includes("No such creature"), "the cast at the hidden creature was answered as for one that is not there");
+  assert.ok(JSON.stringify(plain.raw.dm).includes('"aimed"'), "the DM's own view has them, so the check above is not empty");
+});
+
+// One lasting spell on a visible and a hidden creature: a Dispel Magic aimed at the visible one ends it whole, on the hidden one too.
+// effectEnd names every creature the spell was on (`targets`); view.js sends each player only those they know of.
+const dispelWorld = (extra = () => {}) => ({
+  players: ["Pat", "Sam"],
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", 1, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+    s.entities.wyn = makeEntity(derive(WYN).record, { id: "wyn", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: w.ids.Pat, ownerName: "Pat" });
+    s.entities.wyn.sheet = structuredClone(WYN);
+    extra(w);
+  },
+});
+const armor = (level, ids) => ({ id: "fxtwo", name: "Mage Armor", spell: "mage-armor", source: "wyn", conc: false, lasts: "8 hours", level, aimed: ids,
+  parts: ids.map((target) => ({ target, modifier: { on: "ac", op: "add", value: 1 } })), until: null });
+const sharedHidden = (level) => ({
+  hide(w) { w.must({ type: "spawn", monster: "bandit", at: { q: 3, r: 0 }, name: "Ghost", hidden: true }); w.state.effects.push(armor(level, ["fighter", byName(w, "Ghost").id])); },
+  plain(w) { burn(w, { q: 3, r: 0 }); w.state.effects.push(armor(level, ["fighter"])); },
+});
+const DISPEL_FIGHTER = [{ by: "Pat", act: { type: "cast", actor: "wyn", spell: "dispel-magic", target: "fighter" } }];
+
+// TODO(effectEnd key order): nothing the player may not know is sent, but the two worlds do not send the same bytes. With a hidden creature on the spell,
+// view.js builds the event again and puts `why` after `targets`; without one it keeps the order the engine made (`why` before `targets`).
+test("dispel: one spell on a visible and a hidden creature ends whole when dispelled from the visible one, and the players are sent the same", () => {
+  const { plain, hidden } = twin({ ...dispelWorld(), steps: DISPEL_FIGHTER }, sharedHidden(1));
+  assert.equal(hidden.w.state.effects.length, 0, "the spell ended whole, the hidden creature's part with it");
+  assert.equal(plain.w.state.effects.length, 0);
+  for (const world of [plain, hidden]) for (const who of ["Pat", "Sam"]) assert.ok(JSON.stringify(world.raw[who]).includes('"effectEnd"'), `${who} was told the spell ended`);
+  assert.ok(JSON.stringify(hidden.raw.dm).includes(byName(hidden.w, "Ghost").id), "the DM's own stream names the hidden creature, so the check is not empty");
+});
+
+test("dispel: a level 5 spell on a visible and a hidden creature, the caster's ability unknown: the `manual` event the DM gets and what players are sent are the same", () => {
+  const { plain, hidden } = twin({ ...dispelWorld((w) => { delete w.state.entities.wyn.castAbil; }), steps: DISPEL_FIGHTER }, sharedHidden(5));
+  for (const world of [plain, hidden]) {
+    assert.equal(world.w.state.effects.length, 1, "left for the DM");
+    assert.ok(JSON.stringify(world.raw.dm).includes("the DM rolls it"), "the DM was handed the check, so the twin is not empty");
+  }
 });

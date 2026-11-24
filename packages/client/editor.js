@@ -149,7 +149,7 @@ export class Editor {
     if (!this.S) return;
     if (this.scaling && this.tool === 'level') return this.#scaleTap(px, py);
     if (this.tool === 'trace') return this.#traceTap(px, py);
-    const l = this.level(), h = this.R.planeHex(px, py, l.z);
+    const l = this.level(), h = this.R.tileHex(px, py, l);
     if (!h) return;
     const k = Gr.col(h), tile = l.tiles[k], map = this.S.map, area = this.areaOver ?? this.G.range(h, this.brush);
     switch (this.tool) {
@@ -254,7 +254,7 @@ export class Editor {
   }
   #drag() {
     const add = (x, y) => {
-      const h = this.R.planeHex(x, y, this.level().z);
+      const h = this.R.tileHex(x, y, this.level());
       if (!h || this.stroke.hexes.has(Gr.col(h))) return false;
       this.stroke.hexes.set(Gr.col(h), h); return true;
     };

@@ -10,6 +10,7 @@ import * as THREE from './vendor/three/three.module.js';
 import { HEX, gridOf } from './shared/grid.js';
 import { footprint, ground, surfaces, under } from './shared/space.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
+import { tileAlongRay } from './tilepick.js';
 import { createGovernor, shadowLevels } from './governor.js';
 import { CONTENT } from './shared/content/index.js';
 import { Models, fit, makeBase, modelFor, modelsMode } from './models.js';
@@ -437,6 +438,12 @@ export class ThreeRenderer {
     if (snap) { this.cam.x = end.x; this.cam.z = end.z; this.cam.goal = null; } else this.cam.goal = { x: end.x, z: end.z };
   }
   planeHex(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && this.G.fromWorld(p[0], p[1]); }
+  // The cell of a level's tile that the ray through a pixel meets first, at the tile's drawn top (the map editor's tap, #738); the base plane's cell where it meets none.
+  tileHex(px, py, level) {
+    const C = this.C; if (!C || !level) return null;
+    const hit = tileAlongRay({ eye: C.eye, dir: this.#dir(C, px, py), level, G: this.G, topOf: (t) => surfY(level.z + (t.h ?? 0), t), planeAt: planeY(level.z) });
+    return hit?.hex ?? null;
+  }
   planePoint(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && [p[0] / UNIT, p[1] / UNIT]; }
   #plane(px, py, feet) {
     const C = this.C; if (!C) return null;

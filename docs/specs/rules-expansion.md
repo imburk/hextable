@@ -989,6 +989,65 @@ Tests in `packages/rules/test/jack-of-all-trades.test.js`.
 - **Amount `{ prof: 0.5 }`.** Half the Proficiency Bonus, rounded down (`amount`, `derive.js`). No other fraction is taken.
 - **Jack of All Trades** is that modifier on `check`, and is `auto`. A passive score counts it.
 
+#### Build notes: Death Ward (amendment, #726 job 3)
+
+Tests in `packages/rules/test/death-ward.test.js`. SRD 5.2.1, Death Ward: "The first time the target would drop to 0 Hit Points before
+the spell ends, the target instead drops to 1 Hit Point, and the spell ends. If the spell is still in effect when the target is
+subjected to an effect that would kill it instantly without dealing damage, that effect is negated against the target, and the spell
+ends."
+
+- **Hook `hp.zero`.** Asked when damage would take a creature from above 0 Hit Points to 0 (`damage`, `engine/resolve.js`), and by a
+  `kill` step (`kill`, `engine/rolls.js`). It takes one shape, `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`, and only as a
+  modifier step (a spell's, an action's): the linter refuses any other op or value, a `when`, a missing `uses`, and the hook in a
+  trait or a feat's grant, where nothing would use it up.
+- **On damage.** The creature is left at 1 Hit Point, however large the damage (no death from massive damage: it never reaches 0).
+  The `damage` events of that hit carry `hp: 1`, a `note` on the creature says "Death Ward: 1 Hit Point left instead of 0", and the
+  part is used up (`useUp`), which ends the spell (`effectEnd`, "it was used"). Then the hit goes on as for any creature still up:
+  the Concentration save, a reaction to the damage.
+- **On a `kill` step.** Nothing happens to the creature, a `note` says "Death Ward: not killed", and the part is used up.
+- **Not asked:** when the DM sets Hit Points (`setHp`: the DM's word); for a creature already at 0 Hit Points (it is not dropping to
+  0: the damage counts against its Death Saving Throws and the ward stays); when its Hit Point maximum is lowered.
+- **Before Relentless Rage.** A warded, raging barbarian is left at 1 by the ward; no Constitution save is made and no use counted.
+- **Several wards on one creature** (two casters) all answer the same drop and all end.
+- **Death Ward** is `assist`: the engine does all of the above, and a death the DM applies by hand from a `manual` entry (Power Word
+  Kill, a monster's text) is the DM's to undo, ending the spell with `endEffect`.
+- **The reader** has the hook's words; the golden spell "Many Blessings" and the golden monster "Cinderjaw Hound" (its Smoke Step) carry one.
+
+#### Build notes: Dispel Magic (amendment, #726 job 5)
+
+Tests in `packages/rules/test/dispel-magic.test.js`. SRD 5.2.1, Dispel Magic: "Choose one creature, object, or magical effect within
+range. Any ongoing spell of level 3 or lower on the target ends. For each ongoing spell of level 4 or higher on the target, make an
+ability check using your spellcasting ability (DC 10 plus that spell's level). On a successful check, the spell ends. Using a
+Higher-Level Spell Slot. You automatically end a spell on the target if the spell's level is equal to or less than the level of the
+spell slot you use."
+
+- **Step `dispel: level` with `dc`** (`{ "dispel": 3, "dc": 10 }`; `dispel`, `engine/rolls.js`). Run on a creature. Every ongoing
+  spell on it ends if its level is `dispel` or lower, or no higher than the slot the dispelling spell was cast with. For each higher
+  one the caster makes an ability check with its spellcasting ability (`castAbilOf`), with no Proficiency Bonus, against `dc` plus
+  that spell's level, through the same `abilityCheck` as any check (moved from `engine/features.js` to `engine/rolls.js` so the kit
+  can use it), so what changes a check with that ability applies. A `check` event is written (`what` is the dispelling spell's
+  name; a player is sent the roll and never the DC, as for every check), and on a success the spell ends. A `note` on the creature
+  says how many spells ended ("Dispel Magic: 2 spells end", "no spell ends"); each ending is an `effectEnd` with
+  `why: "it was dispelled"`.
+- **A lasting effect keeps the level it was cast at** (`level` on the record in `state.effects`; state version 31): the slot's level,
+  the spell's own where no higher slot was used, 0 for a cantrip, the level a magic item casts it at. The SRD's "Casting without
+  Slots" and "Using a Higher-Level Spell Slot" make the slot's level the spell's. An effect with no `level` (a bound effect of an
+  instant spell, corpses' control, one from before version 31 of a spell the pack does not have) counts at the spell's own level.
+  The migration gives every older spell effect its spell's own level: the slot it was cast with is not known.
+- **What "on the target" is.** A spell is on a creature if a live part of its effect is (a condition, a modifier, a light, Temporary
+  Hit Points, a form, the bond of a creature a spell made, a changed weapon). A spell whose steps the DM applies has no part on
+  anyone, so the effect also keeps whom it was aimed at (`aimed`, for a spell aimed at creatures or at its caster, less the targets
+  a creature-type limit made invalid): where no part is on any of those, the spell is taken to be on each of them. Where it took
+  hold on some and not on others (a made save), it is on those it holds only.
+- **The spell ends whole.** The SRD's words are "the spell ends", so Bless on three creatures ends on all three when one of them is
+  dispelled. (The other reading, ending it on the target alone, is one line: end the target's parts and let `spent` end the rest.)
+- **Not built** (the entry is `assist` and says so): an object or a magical effect as the target (a zone, changed ground, a spell
+  with nothing on a creature: the DM ends those with `endEffect`); magic that is not a spell cast through the engine (a feature's
+  effect, a creature's own action, a spell the DM applied by hand). A caster whose spellcasting ability the engine does not know (a
+  creature's action with the step) has each check handed to the DM in a `manual` event.
+- **Views.** `level` and `aimed` are not sent to players: `viewEffects` sends named fields only.
+- **The reader** has the step's sentence; the golden spell "Unravel" and the golden monster "Cinderjaw Hound" carry one.
+
 ### A class
 
 ```js

@@ -642,7 +642,10 @@ function castSpell(s, a, ctx, ev, item) {
     let fx = null;
     if (sp.def.duration !== 'instant') {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
-      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration });
+      fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration, level: Math.max(slot, sp.level) });
+      // Whom a spell aimed at creatures (or at its caster) was aimed at, less those it can do nothing to: where the engine puts no part on any of them
+      // (a spell the DM applies), this is how Dispel Magic knows the spell is on them (engine/rolls.js, dispel).
+      if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t)).map((t) => t.id))];
       // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
       if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
@@ -676,7 +679,7 @@ function castSpell(s, a, ctx, ev, item) {
     const ter = sp.def.terrain;
     if (ter && hexes) {
       if (!fx) {
-        fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: false, duration: '1 round' });
+        fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: false, duration: '1 round', level: Math.max(slot, sp.level) });
         fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
         ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
       }
