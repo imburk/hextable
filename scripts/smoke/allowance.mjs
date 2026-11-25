@@ -24,9 +24,14 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
   await scenario(label, async (run) => {
     const hostCtx = await browser.newContext(hostOpts), playerCtx = await browser.newContext(playerOpts);
     await hostCtx.addInitScript(stillInit); await playerCtx.addInitScript(stillInit);
+    const sigInit = () => { window.__sig = () => { const S = window.hextable.state, T = S?.timeline ?? []; return JSON.stringify([S?.rng, S?.seq, S?.encounter?.turn, S?.encounter?.round, T.length, T.slice(-2)]); }; };
+    await hostCtx.addInitScript(sigInit); await playerCtx.addInitScript(sigInit);
+    // SMOKE_LAG=<ms> delays every action a page sends and SMOKE_THROTTLE=<n> slows the page's CPU n times: a slow runner on demand (how the 24 Nov flakes were reproduced).
+    if (process.env.SMOKE_LAG) for (const c of [hostCtx, playerCtx]) await c.addInitScript(`{ const W = window.WebSocket, ms = ${+process.env.SMOKE_LAG}; window.WebSocket = class extends W { send(d) { setTimeout(() => super.send(d), typeof d === 'string' && /"t":"(ping|pong)"/.test(d) ? 0 : ms); } }; }`);
     try {
       const dm = await hostCtx.newPage(), pl = await playerCtx.newPage();
       run.watch(dm, ' (DM)'); run.watch(pl, ' (player)');
+      if (process.env.SMOKE_THROTTLE) for (const pg of [dm, pl]) await (await pg.context().newCDPSession(pg)).send('Emulation.setCPUThrottlingRate', { rate: +process.env.SMOKE_THROTTLE });
       const touch = !!playerOpts.hasTouch;
       let bell = null, home = null;
       const text = (page, sel) => page.evaluate((s) => document.querySelector(s)?.textContent ?? '', sel);
@@ -35,6 +40,15 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       const flag = (page) => page.evaluate(() => window.hextable.state.encounter?.flags?.['rmove:' + Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id] ?? 0);
       const asked = (page) => page.evaluate(() => !!(window.hextable.state.prompt || window.hextable.state.pending));
       const idle = (page) => calm(page, 20000);
+      // An action sent is not an action applied (a flake, three times on 24 Nov): `calm` only says no dice are in the air and no beats are left, so on a slow runner it returned before the
+      // table had answered, and a loop that read the state next read the state from before its own action (60 "dice used up" that were never thrown, 40 endTurns that were never applied).
+      // `send` sends one action and waits until this page's state has changed, which is the table's answer (a refusal changes nothing, and is said as a timeout with the game's state).
+      const send = async (page, action, ms = 25000) => {
+        const before = await page.evaluate(() => window.__sig());
+        await page.evaluate((a) => window.__still(a), action);
+        await wait(page, (b) => window.__sig() !== b, before, ms).catch((e) => { throw new Error(`${action.type} was not applied: ${e.message}`); });
+        await idle(page);
+      };
       // What a stuck fight looks like from the page (#688): whose turn, what it waits for, what is asked, the last events and refusals, whether the auto-play is on.
       const dump = (page) => page.evaluate(() => { const h = window.hextable, S = h.state, E = S?.encounter, t = document.getElementById('toast'); return JSON.stringify({ encounter: E && { turn: E.order[E.turn]?.id, round: E.round, order: E.order.map((o) => o.id), budget: E.budget, flags: E.flags, waiting: E.waiting }, prompt: S?.prompt ?? null, pending: S?.pending ?? null, auto: document.getElementById('dm-auto')?.checked, busy: h.timeline.busy(), waits: h.waiting, pace: h.timeline.pace, hint: document.getElementById('hint')?.hidden ? '' : document.getElementById('hint')?.textContent, toast: t?.hidden ? '' : t?.textContent, now: Math.round(performance.now()), wire: window.__wire, played: h.played.slice(-15).map((x) => `${x.type}@${Math.round(performance.now() - x.t)}ms`), seq: S?.seq, log: (S?.timeline ?? []).slice(-20).map((x) => x.type + (x.id ? ':' + x.id : '') + (x.actor ? ':' + x.actor : '')), hp: Object.values(S?.entities ?? {}).map((e) => `${e.name}/${e.side}:${e.hp}${e.dead ? 'x' : ''}`) }); });
       const endFight = async (page) => {
@@ -143,25 +157,32 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await dm.evaluate(([c]) => window.__still({ type: 'startEncounter', center: c, radius: 6 }), [await dm.evaluate((b) => window.hextable.state.entities[b].pos, bell)]);
         await wait(dm, () => !!window.hextable.state.encounter, null, 15000);
         await idle(dm);
-        for (let i = 0; i < 40 && (await turnOf(dm)) !== gob; i++) { await dm.evaluate((c) => window.__still({ type: 'endTurn', actor: c }), await turnOf(dm)); await idle(dm); }
-        if ((await turnOf(dm)) !== gob) throw new Error('the goblin\'s turn did not come');
+        for (let i = 0; i < 40 && (await turnOf(dm)) !== gob; i++) await send(dm, { type: 'endTurn', actor: await turnOf(dm) });
+        if ((await turnOf(dm)) !== gob) throw new Error('the goblin\'s turn did not come ' + await dump(dm) + ' PL ' + await dump(pl));
         // the goblin is a fresh foe each try: it is not the DM's page that sees the allowance when it hits, the table does; read the flag on the DM's page
         // The hit is scripted, not hoped for (#661): the dice are a keyed stream in the game state, so the DM's page asks its own engine, on a copy, whether this walk draws
         // an Opportunity Attack that hits. If it does not, one harmless ability check of Sir Bell's uses up dice (nothing else changes) and the copy is asked again.
-        let rolls = 0;
-        for (; rolls < 60; rolls++) {
-          const hits = await dm.evaluate(async ([g, to, b]) => {
-            const { apply } = await import('./shared/engine.js');
-            const c = structuredClone({ ...window.hextable.state, timeline: [] });
-            const r = apply(c, { type: 'move', actor: g, to }, { role: 'dm', userId: 'dm' });
-            return r.ok && (c.encounter?.flags?.['rmove:' + b] ?? 0) > 0;
-          }, [gob, found.to, bell]);
-          if (hits) break;
-          await dm.evaluate((b) => window.__still({ type: 'check', actor: b, skill: 'athletics' }), bell);
-          await idle(dm); await idle(pl);
-        }
-        if (rolls >= 60) throw new Error('no roll of the dice makes the goblin\'s walk draw an Opportunity Attack that hits (60 dice used up)');
-        await dm.evaluate(([g, to]) => window.__still({ type: 'move', actor: g, to }), [gob, found.to]);
+        // How many checks use up the dice before the walk draws a hit is worked out on a copy, once; then exactly that many are sent, each waited for. (Not "send one, ask again": a page that asks again
+        // before the table has answered asks about the same dice, and the search ran out without a die thrown.)
+        const walkHits = async ([g, to, b]) => {
+          const { apply } = await import('./shared/engine.js'), DM = { role: 'dm', userId: 'dm' };
+          const c = structuredClone({ ...window.hextable.state, timeline: [] });
+          for (let i = 0; i <= 400; i++) {
+            const k = structuredClone(c), r = apply(k, { type: 'move', actor: g, to }, DM);
+            if (r.ok && (k.encounter?.flags?.['rmove:' + b] ?? 0) > 0) return { checks: i };
+            const q = apply(c, { type: 'check', actor: b, skill: 'athletics' }, DM);
+            if (!q.ok) return { error: 'check: ' + q.error, checks: i };
+          }
+          return { error: 'none in 400 checks', checks: 400 };
+        };
+        const worked = await dm.evaluate(walkHits, [gob, found.to, bell]);
+        if (worked.error) throw new Error(`no roll of the dice makes the goblin's walk draw an Opportunity Attack that hits: ${worked.error} after ${worked.checks}; ${await dump(dm)}`);
+        for (let i = 0; i < worked.checks; i++) await send(dm, { type: 'check', actor: bell, skill: 'athletics' });
+        await idle(dm); await idle(pl);
+        const again = await dm.evaluate(walkHits, [gob, found.to, bell]);
+        if (again.checks !== 0) throw new Error(`the copy said ${worked.checks} checks, and after them still ${again.checks} more (the page's dice and the copy's differ): ${await dump(dm)}`);
+        await send(dm, { type: 'move', actor: gob, to: found.to });
+        await wait(dm, (b) => (window.hextable.state.encounter?.flags?.['rmove:' + b] ?? 0) > 0, bell, 15000).catch(async (e) => { throw new Error(`Sir Bell's Opportunity Attack did not hit although the copy of the game said it would: ${e.message}; ${await dump(dm)}`); });
         await idle(dm); await idle(pl);
         return (await flag(dm)) > 0 ? gob : null;
       };
