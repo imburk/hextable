@@ -65,9 +65,11 @@ test("W1: the dead stay dead, and a creature at 0 Hit Points can't take a Long R
   assert.equal(fighter.dead, true);
   assert.equal(fighter.hp, 0);
   assert.equal(rogue.hp, 1);                                    // Stable: 1 Hit Point after 1d4 hours, nothing more
-  assert.equal(cleric.hp, 0);                                   // dying: left to the DM
+  // Dying at the start: it rolls its Death Saving Throws as the hours pass (#767, W10) and gets nothing from the rest, whatever they come to.
+  assert.ok(r.events.some((e) => e.type === "note" && e.id === "cleric" && /Death Saving Throw/.test(e.text)));
+  assert.ok(cleric.dead || cleric.cond?.stable || cleric.hp === 1, "the saves settle it: dead, Stable, or up on a 20");
+  assert.ok(cleric.hp <= 1);
   assert.equal(cleric.slots[1], 0);
-  assert.ok(r.events.some((e) => e.type === "manual" && e.actor === "cleric"));
 });
 
 // ---------- W2: death ----------
