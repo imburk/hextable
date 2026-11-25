@@ -1133,7 +1133,7 @@ text each): "doesn't provoke an Opportunity Attack when it flies out of an enemy
   `flyby(e)` in `modifiers.js` from the creature's own pack monster (`tpl`: a monster, a familiar, a summon) and from the stat block of the form it has taken
   (`form.block`: a druid's Wild Shape lays the beast's traits over it, as Pack Tactics is). A rider on a mount that has it is carried out of reach by it and
   provokes nothing either (it is moved by the mount's movement). A foe's instruction (`ask`, `never`) is not reached at all, so no prompt and no `manual`.
-- **Walking or flying**: the SRD says "flies out". The engine keeps no record of how a creature moved, and every creature with the tag flies, so the tag is read for
+- **Walking or flying**: the SRD says "flies out". The engine keeps no movement mode, so a flyer walking on the ground still counts as flying; the tag counts only while the creature has a Speed to fly in its present shape (`speedOf` fly above 0). It is read for
   every step. Left for later (DEBT W42).
 - **The brain** (`ai.js`, `guard`): a creature with the tag counts no foe as one that could make an Opportunity Attack on it, so a familiar owl steps away from harm
   as a creature with no such foe beside it does.

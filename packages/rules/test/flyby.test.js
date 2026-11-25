@@ -64,11 +64,11 @@ test("a flyby monster leaving a foe's reach draws no Opportunity Attack; a creat
 test("the tag is read from the stat block, not the name: the same walk with it taken away provokes", () => {
   const { s, id } = field("owl");
   fight(s); turnOf(s, id);
-  assert.ok(flyby(s.entities[id]));
+  assert.ok(flyby(s, s.entities[id]));
   const owl = CONTENT.monsters.owl, was = owl.traits[0].flyby;
   try {
     delete owl.traits[0].flyby;
-    assert.ok(!flyby(s.entities[id]));
+    assert.ok(!flyby(s, s.entities[id]));
     assert.ok(struck(ok(apply(s, { type: "move", actor: id, to: { q: 3, r: 0 } }, DM)), "wizard"));
   } finally { owl.traits[0].flyby = was; }
 });
@@ -110,7 +110,7 @@ test("a druid in the form of an owl leaves a goblin's reach unpunished; in a wol
   for (const [form, flies] of [["owl", true], ["wolf", false], [null, false]]) {
     const { s, gob } = druidField();
     if (form) { ok(apply(s, { type: "feature", actor: "hero", feature: "wild-shape", form }, DM)); assert.equal(s.entities.hero.form.block, form); }
-    assert.equal(flyby(s.entities.hero), flies, String(form));
+    assert.equal(flyby(s, s.entities.hero), flies, String(form));
     const r = ok(away(s, gob));
     assert.equal(struck(r, gob), !flies, `${form}: ${r.events.map((e) => e.type)}`);
     assert.equal(s.entities[gob].reactionUsed, !flies);
@@ -165,4 +165,12 @@ test("the linter and the reader know the tag; a homebrew monster may carry it", 
   assert.match(lintEntry("monsters", bad, { strict: false }).join(), /flyby is true or left out/);
   const text = readEntry("monsters", base);
   assert.match(JSON.stringify(text), /provokes no Opportunity Attack/);
+});
+
+test("a flyby creature with no Speed to fly in its present shape provokes as usual", () => {
+  const { s, id } = field("owl");
+  s.entities[id].speeds = { ...s.entities[id].speeds, fly: 0 };
+  assert.ok(!flyby(s, s.entities[id]));
+  fight(s); turnOf(s, id);
+  assert.ok(struck(ok(apply(s, { type: "move", actor: id, to: { q: 2, r: 0 } }, DM)), "wizard"));
 });

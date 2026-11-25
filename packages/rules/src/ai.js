@@ -613,7 +613,7 @@ function guard(s, e, foes, leash) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   if (b.action > 0 && !e.cond?.dodging && !incapacitatedBy(e)) return { type: 'dodge', actor: id };
   if (!foes.some((f) => apart(s, e, f) <= 1)) return end;
-  const threats = flyby(e) ? [] : foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
+  const threats = flyby(s, e) ? [] : foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
   const safe = (pos) => !threats.some((f) => apartAt(s, e, pos, f, f.pos) <= 1);
   if (!safe(e.pos)) return end;                                     // any step away from it would provoke
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));

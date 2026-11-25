@@ -158,8 +158,9 @@ function* sources(s, e) {
 }
 
 // Whether `e` has Flyby (a trait with `flyby: true`; SRD: "doesn't provoke an Opportunity Attack when it flies out of an enemy's reach"):
+// and only while it has a Speed to fly in its present shape (a flyer with no Fly Speed provokes); a flyer walking on the ground still counts, the engine keeping no movement mode (DEBT W42);
 // from its pack monster or summon block, or from the stat block of the form it has taken (Wild Shape lays a beast's traits over the druid).
-export const flyby = (e) => !!e && [e.tpl, e.form?.block].some((id) => id !== undefined && [CONTENT.monsters[id], CONTENT.summons?.[id]].some((d) => d?.traits?.some((t) => t.flyby === true)));
+export const flyby = (s, e) => !!e && speedOf(s, e, 'fly') > 0 && [e.tpl, e.form?.block].some((id) => id !== undefined && [CONTENT.monsters[id], CONTENT.summons?.[id]].some((d) => d?.traits?.some((t) => t.flyby === true)));
 
 // Dice in a modifier's value: "1d4" (Bless) or "-1d4" (Bane). Rolled each time it applies, by the
 // caller that makes the roll; never here, so that asking what applies changes nothing.

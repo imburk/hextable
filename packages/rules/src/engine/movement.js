@@ -183,7 +183,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
     if (stuck) { stopsDragging(s, e, stuck, ev); break; }
     // A creature it holds that this step pulls along stays within its reach: the grappler leaves no reach it does not take with it.
     const comes = new Set(draggedBy(s, e).filter(({ g, t, hold }) => (!!g && !t.dead && apartAt(s, g, step, t, t.pos) * FT > hold.range)).map((x) => x.t.id));
-    if (fighting && s.encounter && !e.cond.disengaged && !bud?.free && !flyby(e)) {         // `bud.free`: movement an Opportunity Attack's rider gave (below): it provokes nothing; Flyby: nor does a creature with that trait
+    if (fighting && s.encounter && !e.cond.disengaged && !bud?.free && !flyby(s, e)) {         // `bud.free`: movement an Opportunity Attack's rider gave (below): it provokes nothing; Flyby: nor does a creature with that trait
       for (const o of threatsAt(s, e, prev, true)) {
         if (apartAt(s, o, o.pos, e, step) <= 1 || comes.has(o.id)) continue;
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
