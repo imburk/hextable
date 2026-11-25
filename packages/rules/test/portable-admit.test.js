@@ -141,7 +141,7 @@ test("decline: the DM answers an offer; the note is cut to 80 letters; players c
   const r = ok(s, DM, { type: "decline", user: "pat", note: `  ${"x".repeat(200)}  ` });
   assert.deepEqual(s.offers, []);
   assert.equal(r.events[0].type, "declined"); assert.equal(r.events[0].note.length, 80);
-  assert.deepEqual(viewEvents(r.events, s, { userId: "pat" }), []);
+  assert.deepEqual(viewEvents(r.events, s, { userId: "sam" }), []);            // another player is told nothing (the offering player is: the test below)
   ok(s, PAT, { type: "offer", sheet: sheet() });                 // and the player may offer again
 });
 
@@ -184,4 +184,26 @@ test("an old save with no offers list loads, takes an offer and admits it", () =
   const old = fresh(); old.offers = "junk";
   ok(old, PAT, { type: "offer", sheet: sheet() });
   assert.equal(old.offers.length, 1);
+});
+
+test("decline: the player whose offer was declined is sent the event with the note; no other player is sent anything", () => {
+  const s = fresh();
+  ok(s, PAT, { type: "offer", sheet: sheet("Kerrin") });
+  ok(s, SAM, { type: "offer", sheet: sheet("Bram") });
+  const r = ok(s, DM, { type: "decline", user: "pat", note: "Too high a level" });
+  assert.deepEqual(viewEvents(r.events, s, PAT).filter((e) => e.type === "declined"), [{ type: "declined", user: "pat", note: "Too high a level" }]);
+  assert.deepEqual(viewEvents(r.events, s, SAM), [], "another player is told nothing");
+  assert.equal(viewEvents(r.events, s, DM).filter((e) => e.type === "declined").length, 1);
+  const r2 = ok(s, DM, { type: "decline", user: "sam" });
+  assert.deepEqual(viewEvents(r2.events, s, SAM), [{ type: "declined", user: "sam" }]);
+  assert.deepEqual(viewEvents(r2.events, s, PAT), []);
+});
+
+test("decline, three players: a third player who never offered is sent no declined event", () => {
+  const LEE = { role: "player", userId: "lee" };
+  const s = fresh();
+  ok(s, SAM, { type: "offer", sheet: sheet("Bram") });
+  const r = ok(s, DM, { type: "decline", user: "sam", note: "Not this one" });
+  assert.equal(viewEvents(r.events, s, SAM).filter((e) => e.type === "declined").length, 1);
+  for (const who of [PAT, LEE]) assert.deepEqual(viewEvents(r.events, s, who), []);
 });

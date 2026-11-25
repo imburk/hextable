@@ -99,6 +99,8 @@
       <h3 id="pick-title">Pick who you play</h3>
       <ul id="pick-list"></ul>
       <p class="note">Or ask the DM to give you one</p>
+      <!-- Bring a character (#757): at a table that takes them; app.js fills it. Its words are not .note: the line above is the first one. -->
+      <div id="pick-bring" class="bring" hidden></div>
     </section>
     <div id="party" aria-label="Characters"></div>
     <ul class="menu-list">
@@ -209,6 +211,11 @@
     <p class="note">Refresh the party makes every character that has a saved sheet again from it. A character typed in by hand has none and is skipped.</p>
   </section>
   <section id="dm-chars-box" hidden><h3>Who plays whom</h3><div id="dm-chars"></div></section>
+  <section id="dm-bring-box" hidden><h3>Characters people bring</h3>
+    <label class="assign">Players may <select id="dm-characters"></select></label>
+    <p class="note" id="dm-characters-text"></p>
+    <div id="dm-level-set"></div>
+  </section>
   <section id="dm-qe"></section>
   </div>
   <div class="sec-screen" id="dm-sec-map" data-sec="map" data-title="Map, sight and light" hidden>

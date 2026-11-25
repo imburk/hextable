@@ -16,7 +16,7 @@ import { worldAssets } from "../src/tables.js";
 import { current, makeEntity } from "../../rules/src/engine.js";
 import { derive } from "../../rules/src/derive.js";
 import { startEffect } from "../../rules/src/durations.js";
-import { twin } from "./twin.js";
+import { describe, diffStreams, twin, twinRun } from "./twin.js";
 
 const dirs = [];
 after(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
@@ -717,4 +717,25 @@ test("offers: a character a player has offered and the DM has not admitted is se
   assert.equal(hidden.w.state.offers.length, 1, "the offer is waiting in the world that has one");
   assert.ok(JSON.stringify(hidden.raw.dm).includes("Secretly Kerrin"), "the DM is sent it, so the check is not empty");
   for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(hidden.raw[who]).includes("Secretly Kerrin"), `${who} was sent the offered name`);
+});
+
+test("characters: Sam's offer, declined with a note, is in nothing Pat is sent (the plain world has no offer at all)", () => {
+  const OFFER = { name: "Kerrin", class: "fighter", level: 1, abilities: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 }, skills: ["athletics", "perception"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword"] };
+  // Sam is told his own offer was declined, so Sam is the one player who may tell the worlds apart; Pat may not.
+  const { plain, hidden } = twinRun({
+    players: ["Pat", "Sam"],
+    steps: [(w) => w.say("Pat", { t: "sync" })],
+  }, {
+    hide(w) {
+      const was = w.act("Sam", { type: "offer", sheet: OFFER });
+      assert.equal(was, undefined, `Sam's offer was refused: ${was}`);
+      w.must({ type: "decline", user: w.ids.Sam, note: "Please bring a level 1" });
+    },
+    plain() {},
+  });
+  const diffs = diffStreams(plain, hidden, ["Pat"]);
+  if (diffs.length) assert.fail(`twin: ${describe(diffs)}`);
+  assert.ok(plain.streams.Pat.length > 3, "Pat was sent something to compare");
+  assert.ok(JSON.stringify(hidden.raw.Sam).includes("Please bring a level 1"), "Sam is sent the DM's note");
+  assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Please bring a level 1"), "Pat is not");
 });
