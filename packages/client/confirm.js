@@ -14,7 +14,7 @@ export function isPair(last, tap) {
 export function targetNote(most, n, refusal = '') {
   if (!most) return '';
   const why = refusal ? ` ${refusal}` : '';
-  return n ? `${n} of ${most} targets${refusal ? '.' : ''}${why}` : `No target yet: tap one, then the die.${why}`;
+  return n ? `${n} of ${most} target${most === 1 ? '' : 's'}${refusal ? '.' : ''}${why}` : `No target yet: tap one, then the die.${why}`;
 }
 
 // The die's spoken name while an action waits.

@@ -1817,10 +1817,17 @@ choices on the sheet) is a separate pull request.
 - **A refused confirm.** The aim stays up until the table answers: an update ends it, an error
   leaves the choices and says the reason in the note after the count (and in the toast). A confirm
   waits at most 8 s for its answer. Choosing none: the die only redraws; the note already says so.
-- **Several targets** (spells whose `targetCount` is above 1, also from an item): a tap chooses, nothing is sent
-  until the die, reaching the most no longer casts. Fewer than the most goes through: the engine already
-  accepted that from the Cast button (point g needs no engine change). A spell or attack with one
-  target still acts on the tap: the tap is the whole choice and there is no count to show.
+- **Spells aimed at creatures** (decided by the coordinator from Isaac's words "tap the target, then tap the die"):
+  every such spell waits for the die, one-target spells included. A tap chooses the target, which is shown as
+  chosen with the note "1 of 1 target"; tapping another target swaps the choice; the die casts. With several
+  targets (`targetCount` above 1, also from an item) each tap adds one, a double-tap takes one off, and
+  reaching the most no longer casts. Fewer than the most goes through: the engine already accepted that from the
+  Cast button (point g needs no engine change). A one-target cast sends `target`, as the tap did.
+- **Weapon attacks and other non-spell actions** (attack, feature, act) still act on the tap, as today.
+  **Open for Isaac:** whether they too should wait for the die.
+- **Darts** (`repeat` spells: Magic Missile, Scorching Ray, Eldritch Blast) stay a dart per tap, so a dart cannot
+  be taken back except by Cancel. **Open for Isaac:** whether darts should work like the other several-target
+  spells (a double-tap takes one off) at the cost of a pause between two darts at one creature.
 - **Open point 5(c), settled.** A double-tap is two taps on the same creature at most **350 ms** apart and at
   most **24 px** apart on the map (`confirm.js` `isPair`). The renderer's own rule is untouched: a
   tap needs under 8 px of movement and a single finger, so a drag (even one that starts on a target, which
@@ -1830,8 +1837,7 @@ choices on the sheet) is a separate pull request.
   chooses it, the second does nothing more.
 - **Darts are the exception to the double-tap.** A spell whose targets repeat (`repeat`: Magic Missile,
   Scorching Ray, Eldritch Blast) is tapped fast at one creature, a dart a tap, so a quick second tap there is
-  another dart and never a pair. Its count is still "2 of 3 targets"; the die confirms it. Taking one dart
-  back is Cancel and start again (DEBT T106).
+  another dart and never a pair (see Darts above). Its count is still "2 of 3 targets"; the die confirms it (DEBT T106).
 - **Open point 5(e).** The note is the last line of the aim bar (which is at the top of the screen
   today), so it sits with the aim bar, under the offline bar's place and the banner's.
 - **Open point 5(h).** On a computer the double-click is the same two taps. Shift is only read by the

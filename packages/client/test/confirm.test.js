@@ -17,6 +17,7 @@ test('a double-tap is two taps on the same creature, close in time and place', (
 test('the note counts the choice, or says what to do when none is chosen', () => {
   assert.equal(targetNote(4, 2), '2 of 4 targets');
   assert.equal(targetNote(3, 1), '1 of 3 targets');
+  assert.equal(targetNote(1, 1), '1 of 1 target');
   assert.equal(targetNote(3, 0), 'No target yet: tap one, then the die.');
   assert.equal(targetNote(0, 0), '', 'no targets to choose: no note');
   assert.equal(targetNote(undefined, undefined), '');

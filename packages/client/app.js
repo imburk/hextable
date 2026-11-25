@@ -1058,11 +1058,10 @@ function refresh() {
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
           // Several targets (Magic Missile's darts, Bless): each tap adds one until there are enough, or Cast.
           const most = spellMost(e, sp), picked = mode.picked ?? [];
-          if (most > 1 && (picked.length || (hl.allies || hl.targets).length)) multi = { most, n: picked.length };
-          if (most > 1 && picked.length) {
-            hint = `${sp.name}: ${picked.map(name).join(', ')}. ${sp.repeat ? 'Tap a target again for another dart' : 'Tap another, double-tap one to take it off'}, then tap the die`;
-          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then tap the die (or tap ${name(mode.holder)} again to cast with ${weaponName(mode.choice ?? choicesOf(sp)?.[0])})`; go = true; }
-          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}, then the die` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
+          if (picked.length || (hl.allies || hl.targets).length) multi = { most, n: picked.length };
+          if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then tap the die`; go = true; }
+          else if (picked.length) hint = `${sp.name}: ${picked.map(name).join(', ')}. ${sp.repeat ? 'Tap a target again for another dart' : most > 1 ? 'Tap another, double-tap one to take it off' : 'Tap another to swap it'}, then tap the die`;
+          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}, then the die` : 'a target, then the die'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }
     }
@@ -1426,7 +1425,7 @@ R.onTap = (hit) => {
     const most = spellMost(e, sp);
     // A spell that changes a weapon, aimed at a creature with more than one it could change: the menu lists that creature's weapons, and Cast follows the choice.
     if (imbueOf(sp) && most <= 1 && mode.holder !== id && weaponsOf(S.entities[id], sp).length > 1) { mode.holder = id; mode.choice = null; mode.picked = [id]; return refresh(); }
-    if (most <= 1) return act(castAct({ target: id, ...chosen(sp, id) }));
+    if (most <= 1) { aimRefusal = null; lastTap = null; mode.picked = [id]; return refresh(); }       // one target: the tap chooses it (another tap swaps it) and the die casts
     // Several targets (#750): each tap on the map chooses one and nothing is sent until the die is tapped. A double-tap (two taps within DOUBLE_MS and DOUBLE_PX on the same
     // creature) takes a target that was chosen before the pair off (not for darts: each tap on one is another dart, so a quick second tap is not a pair); on one that was not chosen it chooses it once (the pair's second tap does nothing more).
     const picked = mode.picked ?? (mode.picked = []), now = Date.now(), at = hit.at ?? null;
@@ -1504,7 +1503,7 @@ function castAimed() {
     const spare = sp.def.zone?.spare ? Object.values(S.entities).filter((x) => !x.dead && x.id !== selId && !hostile(x, me)).map((x) => x.id) : null;
     act(castAct({ hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
   }
-  else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id], mode.picked?.[0] ?? null) }));
+  else { const sp = SPELLS[mode.id], one = spellMost(S.entities[selId], sp) <= 1 && !imbueOf(sp); act(castAct({ ...(one ? { target: mode.picked?.[0] } : { targets: mode.picked ?? [] }), ...chosen(sp, mode.picked?.[0] ?? null) })); }
 }
 // The die (or Enter, or the second tap on an aimed spot) confirms what waits (#750). Nothing is sent before this. The action is the one the Cast button sent. The aim stays up until
 // the table has answered: a refusal leaves the choices where they were, with the reason in the note (T.on.error); an update ends it. Returns whether the tap was the confirm's.
