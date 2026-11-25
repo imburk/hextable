@@ -481,7 +481,7 @@ export const handlers = {
     const sheet = trimmed(a.sheet), problems = validate(sheet);
     problems.length === 0 || fail(`That character can't be offered. ${problems[0]}`);
     const list = offersOf(s), had = list.some((o) => o.user === ctx.userId);
-    had || list.length < OFFERS_MOST || fail('The DM has too many offers waiting. Try again later.');
+    had || list.length < OFFERS_MOST || fail("The DM can't take an offer right now.");
     s.offers = [...list.filter((o) => o.user !== ctx.userId), { user: ctx.userId, sheet: structuredClone(sheet) }];
     const range = levelRange(s.settings.level);
     ev.push({ type: 'offered', user: ctx.userId, name: sheet.name, level: levelOf(sheet), replaced: had, ...(range ? {} : { held: 'Set a level range before admitting characters.' }) });
@@ -494,7 +494,7 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can admit a character.');
     const rule = charactersRule(s);
     rule !== 'new' || fail('This table is set to new characters only. Change the setting `characters` first.');
-    typeof a.user === 'string' && a.user || fail('Admit it for a player.');
+    typeof a.user === 'string' && a.user && a.user.length <= 64 || fail('Admit it for a player.');
     const offer = offersOf(s).find((o) => o.user === a.user);
     if (offer && a.sheet !== undefined && JSON.stringify(a.sheet) !== JSON.stringify(offer.sheet)) fail('That is not the character that was offered.');
     const given = trimmed(offer ? offer.sheet : a.sheet);

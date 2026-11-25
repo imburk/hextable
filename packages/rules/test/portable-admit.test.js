@@ -65,7 +65,8 @@ test("offer: refused for the DM, a stranger, a table of new characters, a player
   refused(s, PAT, { type: "offer", sheet: sheet() }, /does not take characters/);
   ok(s, DM, { type: "setting", key: "characters", value: "own" });
   for (let i = 0; i < 12; i++) ok(s, { role: "player", userId: `p${i}` }, { type: "offer", sheet: sheet(`N${i}`) });
-  refused(s, PAT, { type: "offer", sheet: sheet() }, /too many offers/);
+  refused(s, PAT, { type: "offer", sheet: sheet() }, /can't take an offer right now/);
+  assert.doesNotMatch(run(s, PAT, { type: "offer", sheet: sheet() }).error, /many|waiting|other/i, "the refusal says nothing of other players' offers");
   ok(s, { role: "player", userId: "p3" }, { type: "offer", sheet: sheet("Again") });
   assert.equal(s.offers.length, 12);
 });
@@ -105,6 +106,7 @@ test("admit refuses, and changes nothing: nothing offered, a second character, a
   refused(s, DM, { type: "admit", user: "pat", ack: true }, /Nothing has been offered/);
   refused(s, DM, { type: "admit", ack: true }, /Admit it for a player/);
   refused(s, DM, { type: "admit", user: "__proto__", ack: true }, /Nothing has been offered/);
+  refused(s, DM, { type: "admit", user: "u".repeat(65), ack: true }, /Admit it for a player/);
   ok(s, PAT, { type: "offer", sheet: sheet("Tall", 4) });
   refused(s, DM, { type: "admit", user: "pat", ack: true }, /level 4, above .*2 to 3/);
   refused(s, DM, { type: "admit", user: "pat", ack: true, sheet: sheet("Other", 2) }, /not the character that was offered/);
@@ -170,4 +172,16 @@ test("history: offers and refusals are not undone and tell players nothing; an a
   h.undo(s);
   assert.equal(bytes(s), was, "undone to the offer, byte for byte");
   assert.deepEqual(go(DM, { type: "decline", user: "pat" }), { label: "An offered character was declined", shown: null });
+});
+
+test("an old save with no offers list loads, takes an offer and admits it", () => {
+  const s = fresh(); delete s.offers;
+  assert.equal(Object.hasOwn(s, "offers"), false);
+  open(s);
+  ok(s, PAT, { type: "offer", sheet: sheet() });
+  ok(s, DM, { type: "admit", user: "pat", ack: true });
+  assert.equal(mine(s, "pat").length, 1);
+  const old = fresh(); old.offers = "junk";
+  ok(old, PAT, { type: "offer", sheet: sheet() });
+  assert.equal(old.offers.length, 1);
 });
