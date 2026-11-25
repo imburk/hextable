@@ -86,6 +86,8 @@ async function defeat(browser, url, label, opts) {
         await closeMenu(page);
         await tap(page, '#df-chip');
         await waitShown(page, '#df');
+        // The card slides in again (df-in): measure it once that has finished, or a button reads a fraction under its 44 px.
+        await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'), null, { timeout: 5000 });
       });
       await run.do('the card fits the screen, its buttons are big enough, and the map around it is still the map', async () => {
         const m = await page.evaluate(() => {
