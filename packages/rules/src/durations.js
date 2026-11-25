@@ -87,7 +87,8 @@ export function endEffect(s, ev, fx, why) {
   ev.push({ type: 'effectEnd', fx: fx.id, name: fx.name, source: fx.source, targets: targetsOf(fx), why });
 }
 // An effect whose every part has ended has nothing left to do.
-const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended);
+// `ends.keeps` (Heat Metal): a part that ended with it leaves the spell standing, though nothing is left on any creature.
+const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended && !p.ends?.keeps);
 
 // The turn now being taken, as a part records it: a part made in a creature's turn does not end
 // at the end of that same turn ("until the end of its next turn"). Named by the fight, the round and

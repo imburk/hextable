@@ -54,8 +54,8 @@ test("the entries: Heroism is auto, Regenerate is assist, and the linter takes t
   assert.ok(r.effects.some((x) => "manual" in x), "the limbs are the DM's");
   for (const d of [h, r]) assert.deepEqual(lintEntry("spells", d, { strict: false }), []);
   const lint = (def, effects, extra = {}) => lintEntry("spells", { ...structuredClone(def), effects, ...extra }, { strict: false });
-  // eachTurn: heal, tempHp or manual, one to four, in a spell that lasts, not in one another.
-  assert.ok(lint(h, [{ eachTurn: [{ damage: "1d4", type: "fire" }] }]).some((p) => /eachTurn/.test(p)));
+  // eachTurn: heal, tempHp, damage, save, endSpell or manual, one to four, in a spell that lasts, not in one another.
+  assert.ok(lint(h, [{ eachTurn: [{ condition: "prone" }] }]).some((p) => /eachTurn/.test(p)));       // damage and a save joined the list with #786 (wave1-spells.test.js)
   assert.ok(lint(h, [{ eachTurn: [] }]).some((p) => /eachTurn/.test(p)));
   assert.ok(lint(h, [{ eachTurn: [{ eachTurn: [{ heal: "+1" }] }] }]).some((p) => /eachTurn/.test(p)));
   assert.ok(lint(h, [{ eachTurn: [{ heal: "+1" }] }], { duration: "instant", concentration: false }).some((p) => /lasts/.test(p)));

@@ -449,13 +449,21 @@
           "eachTurn": [
             {
               "tempHp": "1d4"
+            },
+            {
+              "save": "con",
+              "onSuccess": [
+                {
+                  "endSpell": true
+                }
+              ]
             }
           ]
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster's skin hardens, raising Armor Class by 2 until the spell ends, and 1d4 temporary hit points come at the start of each of its turns."
+      "text": "The caster's skin hardens, raising Armor Class by 2 until the spell ends, and 1d4 temporary hit points come at the start of each of its turns. At the start of each of its turns it also makes a Constitution save, and a success ends the spell."
     },
     {
       "id": "hb-sample-spotters-eye",

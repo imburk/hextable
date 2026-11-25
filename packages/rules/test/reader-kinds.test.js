@@ -116,7 +116,7 @@ test('the golden monsters use every field, shape, step, hook and op the strict l
   assert.deepEqual([...creatureKeys].sort(), keysOf(HOMEBREW_TYPES.creature));
   assert.deepEqual([...areaKeys].sort(), keysOf(HOMEBREW_TYPES.area));
   assert.deepEqual([...shapes].sort(), ['cone', 'cube', 'cylinder', 'emanation', 'line', 'sphere']);
-  assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter' && s !== 'imbue' && s !== 'revive' && s !== 'eachTurn').sort(), 'a creature\'s action cannot hold a summon, a counter, an imbue, a revive or an eachTurn step');
+  assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter' && s !== 'imbue' && s !== 'revive' && s !== 'eachTurn' && s !== 'endSpell').sort(), 'a creature\'s action cannot hold a summon, a counter, an imbue, a revive, an eachTurn or an endSpell step');
   assert.deepEqual([...branches].sort(), BRANCHES.filter((b) => b !== 'eachTurn').sort());
   assert.deepEqual([...hooks].sort(), [...HOOKS].sort());
   // `proficient` (addition C of docs/specs/homebrew-subclasses.md) is for a modifier step of a subclass feature's action: the linter refuses it in a monster's trait or action, so no golden monster uses it.

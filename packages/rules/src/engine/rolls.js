@@ -373,9 +373,16 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
 export function eachTurn(s, t, step, f, ev) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx || fx.bound || t.dead) return false;
-  fx.parts.push({ target: t.id, turn: { steps: structuredClone(step.eachTurn), src: { name: f.src.name, ...(f.src.healMod !== undefined ? { healMod: f.src.healMod } : {}), ...(f.src.spell ? { spell: f.src.spell } : {}) } } });
+  fx.parts.push({ target: t.id, turn: { steps: structuredClone(step.eachTurn), src: { name: f.src.name, ...(f.src.healMod !== undefined ? { healMod: f.src.healMod } : {}), ...(f.src.spell ? { spell: f.src.spell } : {}), ...(f.src.dc !== undefined ? { dc: f.src.dc } : {}) } } });
   void ev;
   return true;
+}
+
+// The `endSpell` step (Searing Smite: "On a successful save, the spell ends"), run inside an `eachTurn`: the lasting effect those steps belong to ends, taking off everything it
+// put on anyone (`src.fxEnd`, which `turnSteps` names). Nothing happens when there is none (the effect has already ended).
+export function endSpell(s, f, ev) {
+  const fx = f?.src.fxEnd ? effectsOf(s).find((x) => x.id === f.src.fxEnd) : null;
+  if (fx) endEffect(s, ev, fx, `${s.entities[f.target]?.name ?? 'its creature'} made the save`);
 }
 
 // The `imbue` step (imbue.js; docs/specs/on-hit.md, Decision 8): a part on the lasting effect, naming the weapon the cast or the use named (`src.weapon`, the key

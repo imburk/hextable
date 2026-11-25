@@ -3,7 +3,7 @@
 import { gridOf, col } from './grid.js';
 import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
 import { barriers, objectBlocks, objectDef, objectSegment } from './walls.js';
-import { has } from './modifiers.js';
+import { has, immuneTo } from './modifiers.js';
 import { obscuredAt, terrainsOf } from './terrain.js';
 import { SIZES } from './content/sizes.js';
 
@@ -343,7 +343,8 @@ export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) 
   if (has(viewer, 'blinded')) return { see: 'no', why: 'blinded' };
   if (!inViewOf(s.map, viewer, target)) return { see: 'no', why: 'out of sight' };
   const truesight = (senses.truesight ?? 0) >= d;
-  if (!truesight && has(target, 'invisible')) return { see: 'no', why: 'invisible' };
+  // A creature that cannot benefit from Invisible (Faerie Fire's light: modifiers.js, immuneTo) is seen as if it were not.
+  if (!truesight && has(target, 'invisible') && !immuneTo(s, target, 'invisible')) return { see: 'no', why: 'invisible' };
   if (!truesight && !ignoreHiding && hiddenFrom(target, viewer)) return { see: 'no', why: 'hidden' };
   // SRD: a creature trying to see something in a Heavily Obscured space has the Blinded condition;
   // in a Lightly Obscured one it sees as in Dim Light. The least obscured part of a big creature

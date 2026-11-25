@@ -87,6 +87,7 @@ export function judge(tag, sit, s) {
     // Who can see whom (sight.js). A thing on the map that attacks (a trap) has no eyes: it never
     // sees its target, and whether its target sees it changes nothing.
     case 'target.unseen': return a && t ? (a.object ? true : canSee(s, a, t) === 'no') : null;
+    case 'target.seen': return a && t ? (a.object ? false : canSee(s, a, t) !== 'no') : null;       // the attacker can see the target (Faerie Fire: "if the attacker can see it")
     case 'attacker.unseen': return a && t ? (a.object ? false : canSee(s, t, a) === 'no') : null;
     // Engine-only tags, for the statuses above: not in the content vocabulary.
     case 'attacker.seen': return a && t ? (a.object ? true : canSee(s, t, a) !== 'no') : null;

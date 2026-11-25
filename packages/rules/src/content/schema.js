@@ -51,7 +51,10 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   'revive',
   // `eachTurn: [steps]` (Heroism, Regenerate): the creature it works on gets a part that runs those steps on it at the start of each of its turns, for as long as the lasting
   // effect it is part of holds. Only `heal`, `tempHp` and `manual` steps inside, and only in a spell with a duration. docs/specs/rules-expansion.md, "Build notes: Heroism and Regenerate".
-  'eachTurn'];
+  'eachTurn',
+  // `endSpell: true` (Searing Smite), only inside an `eachTurn`: the lasting effect those steps belong to ends, with everything it put on any creature. Put in a save's `onSuccess`: "a success ends the spell".
+  // docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
+  'endSpell'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -81,7 +84,7 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
   'proficient'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
-  'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
+  'attacker.unseen', 'target.unseen', 'target.seen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
   'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.weaponOrUnarmed', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
   // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
   'target.fought',
@@ -366,6 +369,8 @@ function lintImbue(i, say) {
   if (i.types !== undefined && !(Array.isArray(i.types) && i.types.length && i.types.every((x) => DAMAGE_TYPES.includes(x)))) say('imbue.types lists damage types');
   if (!['die', 'plus', 'attackAdd', 'abil', 'types'].some((k) => i[k] !== undefined)) say('an imbue changes something: die, plus, attackAdd, abil or types');
 }
+// What an `eachTurn` may hold: what a spell does to the creature at the start of its turn (heal, Temporary Hit Points, damage, a save that may end the spell) and what it hands to the DM.
+const EACH_TURN_KINDS = ['heal', 'tempHp', 'damage', 'save', 'endSpell', 'manual'];
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   { const p = rolledIn(steps); if (p) say(p); }
@@ -427,6 +432,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
         // `orDamaged: true`: it also ends when its creature takes any damage (Knock Out: a repeated save, or damage).
         if (ends?.orDamaged !== undefined && !(ends.orDamaged === true && ends.on === 'save')) say('`ends.orDamaged` is true, on an ending on a save');
+        // `keeps: true` (Heat Metal): when this part ends, the spell it is part of goes on, though nothing is left on any creature. Only on a turn boundary.
+        if (ends?.keeps !== undefined && !(ends.keeps === true && ['turnStart', 'turnEnd'].includes(ends.on))) say('`ends.keeps` is true, on an ending at a turn boundary (turnStart or turnEnd)');
       }
     }
     // `eachTurn: [steps]` (Heroism, Regenerate): heal, tempHp and manual steps only, a few of them, in a spell that lasts (checked with the spell); not inside one another.
@@ -434,10 +441,13 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       seen.eachTurn = true;
       const inner = Array.isArray(step.eachTurn) ? step.eachTurn : [];
       if (!seen.eachOk) say('an `eachTurn` step is for a spell that lasts: it needs a lasting effect to hang on');
-      if (!(inner.length >= 1 && inner.length <= 4 && inner.every((x) => x && typeof x === 'object' && ['heal', 'tempHp', 'manual'].includes(STEPS.find((k) => k in x))))) say('`eachTurn` lists one to four steps, each a heal, a tempHp or a manual step');
+      if (!(inner.length >= 1 && inner.length <= 4 && inner.every((x) => x && typeof x === 'object' && EACH_TURN_KINDS.includes(STEPS.find((k) => k in x))))) say(`\`eachTurn\` lists one to four steps, each one of: ${EACH_TURN_KINDS.join(', ')}`);
+      // A save in the list decides one thing: whether the spell ends (or a note for the DM). Its branches hold `endSpell` and `manual` steps only.
+      for (const x of inner) if (x && typeof x === 'object' && 'save' in x) for (const b of ['onFail', 'onSuccess']) if (x[b] !== undefined && !(Array.isArray(x[b]) && x[b].length >= 1 && x[b].length <= 2 && x[b].every((y) => y && typeof y === 'object' && ['endSpell', 'manual'].includes(STEPS.find((k) => k in y))))) say(`a save inside \`eachTurn\` has \`${b}\` steps that are endSpell or manual only`);
       if (step.when !== undefined) say('an `eachTurn` step has no `when`: say it on the steps inside');
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
+    if (kind === 'endSpell') { if (step.endSpell !== true) say('`endSpell` is true'); if (!seen.inTurn) say('an `endSpell` step goes inside an `eachTurn`: it ends the lasting effect those steps belong to'); }
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
     if (kind === 'revive') { if (!seen.reviveOk) say('a revive step is for a spell aimed at a dead creature'); seen.revive = true; if (!(isInt(step.revive) && step.revive >= 1 && step.revive <= 100 && isInt(step.within) && step.within >= 1 && step.within <= 1440)) say('a revive step is `revive` (the Hit Points it returns with, 1 to 100) with `within` (the minutes after its death it may be done, 1 to 1440)'); }
     // `dispel: level` with `dc`: a spell level from 0 to 9, and the DC to which a higher spell's level is added.
@@ -497,7 +507,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'remains' && !REMAINS.includes(step.remains)) say(`\`remains\` is one of ${REMAINS.join(', ')}`);
     const was = seen.inAttack;
     if (kind === 'attack') seen.inAttack = true;
-    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill', inMonster);
+    const wasTurn = seen.inTurn;
+    for (const branch of BRANCHES) if (step[branch]) { if (branch === 'eachTurn') seen.inTurn = true; lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill', inMonster); seen.inTurn = wasTurn; }
     seen.inAttack = was;
   }
   return seen;
@@ -696,7 +707,9 @@ const SELF_SAVE_EXCEPTIONS = {
 };
 function lintSelfSave(e, say) {
   let hasSave = false;
-  walkSteps(e.effects, (st) => { if ('save' in st) hasSave = true; });
+  // A save inside an `eachTurn` is made by the creature whose turn it is (Searing Smite's target), not by the caster the spell is aimed at.
+  const look = (steps) => { for (const st of Array.isArray(steps) ? steps : []) { if ('save' in st) hasSave = true; for (const b of BRANCHES) if (b !== 'eachTurn' && st[b]) look(st[b]); } };
+  look(e.effects);
   const selfSave = Boolean(e.target?.self) && hasSave;
   const exempt = Object.hasOwn(SELF_SAVE_EXCEPTIONS, e.id);
   if (selfSave && !exempt) say('a spell aimed at its caster has a saving throw step; the save belongs to the creatures it affects, so aim it at them (or list it in SELF_SAVE_EXCEPTIONS with a reason)');
@@ -2931,7 +2944,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], endSpell: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -2964,7 +2977,7 @@ const SHAPES = {
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
-  ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged'] },
+  ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
@@ -3432,7 +3445,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's' },
-  ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b' },
+  ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
@@ -3483,7 +3496,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.manual': { manual: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });
