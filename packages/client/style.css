@@ -112,6 +112,17 @@ body.editing #cam-fly, body.in-scene #cam-fly { display: none; }
 .facts { display: flex; gap: 6px; flex-wrap: wrap; } .facts span { border: 1px solid var(--line); border-radius: 20px; padding: 2px 10px; font-size: 13px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); } th { color: var(--muted); font-weight: 400; font-size: 12px; }
 #dm-table .req { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; }
+/* An offered character (#757): a column, the phone as well as the wide screen. */
+#dm-table .req.offer { flex-direction: column; align-items: stretch; border-top: 1px solid var(--line, #3a3a3a); }
+#dm-table .offer .row, .levelset { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#dm-table .offer button, .levelset button, .levelset select { min-height: 44px; }
+#dm-table .offer-sheet summary { min-height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid var(--line); border-radius: var(--radius); margin: 4px 0; }
+#dm-table .offer-sheet[open] summary::after { content: ' (open)'; color: var(--muted); }
+#dm-table .offer-sheet dl { margin: 0 0 6px; font-size: 13px; }
+#dm-table .offer-sheet dt { font-weight: 600; margin-top: 4px; }
+#dm-table .offer-sheet dd { margin: 0; overflow-wrap: anywhere; }
+#dm-table .offer input[type="text"] { min-height: 44px; width: 100%; }
+#dm-table .offer .check { min-height: 44px; display: flex; align-items: center; gap: 8px; }
 #dm-table code { font-size: 22px; letter-spacing: .15em; color: var(--accent); }
 
 #lobby { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; z-index: 10; padding: 16px; }

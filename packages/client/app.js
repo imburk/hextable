@@ -52,7 +52,9 @@ import { refreshReport, refreshNote } from './refresh.js';
 import { classTitle, missingText } from './buildsheet.js';
 import { dmLine, tableRule } from './shared/scores.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
-import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY } from './mycharacters.js';
+import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY, readSheet, classNames } from './mycharacters.js';
+import { levelOf } from './shared/derive.js';
+import { SETTINGS, SETTING_TEXT } from './shared/engine.js';
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
 import { initConclusion, logLine, xpFact } from './conclusion.js';
@@ -895,7 +897,10 @@ function renderPick() {
   const box = $('menu-pick'), me = T?.you?.userId;
   const hasChar = !!S && Object.values(S.entities).some((x) => x.owner === me);
   const free = !S || T.solo || isDM() || hasChar ? [] : Object.values(S.entities).filter((x) => x.kind === 'pc' && !x.owner && !x.dead);
-  box.hidden = !free.length;
+  const bring = !!S && !T.solo && !isDM() && !hasChar && (S.settings.characters ?? 'own-trusted') !== 'new';      // #757: a table that takes characters people bring
+  if (hasChar || !S) offerForget();
+  box.hidden = !free.length && !bring;
+  bringHtml(bring);
   const html = free.map((x) => `<li><span><b>${esc(shownName(S, x))}</b><small>Level ${esc(x.level)} ${esc(classTitle(x))}</small></span><button type="button" data-pick="${esc(x.id)}">Play as ${esc(shownName(S, x))}</button></li>`).join('');
   if ($('pick-list').dataset.sig !== html) { $('pick-list').dataset.sig = html; $('pick-list').innerHTML = html; }
   if (!free.length) { if (hasChar || !S) pickSeen.clear(); return; }
@@ -903,6 +908,32 @@ function renderPick() {
   const fresh = free.filter((x) => !pickSeen.has(x.id));
   pickSeen.clear(); for (const x of free) pickSeen.add(x.id);
   if (fresh.length && !D.isOpen) D.open();
+}
+// Bring a character (#757): "Bring a character" opens My characters (or the build sheet) to choose or make a sheet, which is sent as `offer`. The player is not told
+// when the DM declines (the engine tells only the DM: DEBT D-bring), so what they see is "Waiting for the DM" until the DM admits it (they then have a character, and
+// this goes) or they offer another. A refusal of the offer itself (a level, a table that takes none) is the toast, and the waiting goes.
+let offerSent = null;
+const offerKey = () => `hextable.offered.${T?.you?.code ?? ''}.${T?.you?.userId}`;
+function offerWaiting() {
+  if (!T?.you) return null;
+  if (offerSent?.key === offerKey()) return offerSent;
+  try { const w = JSON.parse(sessionStorage.getItem(offerKey())); return w && typeof w.name === 'string' ? w : null; } catch { return null; }
+}
+function offerForget() { const k = T?.you ? offerKey() : null; offerSent = null; if (k) try { sessionStorage.removeItem(k); } catch { /* storage unavailable */ } }
+function bringOffer(sheet) {
+  offerSent = { key: offerKey(), name: String(sheet.name ?? ''), level: levelOf(sheet), cls: classNames(sheet), at: Date.now() };
+  try { sessionStorage.setItem(offerKey(), JSON.stringify(offerSent)); } catch { /* storage unavailable */ }
+  act({ type: 'offer', sheet });
+  renderPick(); D.open();
+}
+function bringHtml(on) {
+  const box = $('pick-bring'), w = on ? offerWaiting() : null, r = on ? S.settings.level : null;
+  box.hidden = !on;
+  const range = r && Number.isInteger(r.min) && Number.isInteger(r.max) ? (r.min === r.max ? `level ${r.min}` : `levels ${r.min} to ${r.max}`) : '';
+  const html = !on ? '' : w
+    ? `<p class="bring-text" id="bring-wait" role="status"><b>Waiting for the DM</b> to read ${esc(w.name)}, level ${esc(w.level)} ${esc(w.cls)}.</p><button type="button" id="bring-again" data-bring>Offer a different character</button>`
+    : `<button type="button" id="bring-open" data-bring>Bring a character</button><p class="bring-text">From My characters on this device, or built now. The DM reads it and lets it in or not.${range ? ` This adventure is for ${esc(range)}.` : ''}</p>`;
+  if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
 }
 // Dead: the character's page says so, with the way to what happened.
 function deadLine(e) {
@@ -1188,6 +1219,7 @@ function renderDM() {
       give.onclick = () => D.open('dm/creatures');
       row.lastChild.append(give); table.append(row);
     }
+    offerRows(table, lb);
   }
   // Places: the map's regions, and whether the players have been shown each.
   const places = $('dm-places'); places.textContent = '';
@@ -1202,6 +1234,7 @@ function renderDM() {
   // Who plays whom: the DM can hand any character to any player, or take it back.
   const players = lb.members.filter((m) => m.role === 'player');
   $('dm-chars-box').hidden = T.solo; $('dm-leave-box').hidden = T.solo;
+  bringSetup();
   const chars = $('dm-chars'); chars.textContent = '';
   if (!T.solo) for (const x of Object.values(S.entities).filter((x) => x.kind === 'pc')) {
     const row = document.createElement('label'); row.className = 'assign';
@@ -1216,6 +1249,68 @@ function renderDM() {
     row.append(document.createTextNode(x.name), sel); chars.append(row);
   }
   $('chron-list').innerHTML = (T.solo ? recall(S, { types: ['chronicle'] }) : chron).slice().reverse().map((c) => `<li><time>${clockText(c.t)}</time>${esc(c.title)}</li>`).join('');
+}
+
+// Characters people bring (#757). The offers wait in `S.offers` (the DM's alone). Each is a row under the player's "has no character" line: who offered what, a way to
+// read the sheet, the tick for a history nobody vouches for (under `own-trusted`, the default), a note, and Admit or Decline. What the DM has typed or ticked is kept in
+// `offerUi` so the next update of the table does not take it away.
+const offerUi = new Map();
+const LEVEL_RANGE = (S0) => { const r = S0?.settings?.level; return r && Number.isInteger(r.min) && Number.isInteger(r.max) ? r : null; };
+const NAMES_RULE = { 'own-trusted': 'bring a character; I tick that I looked at its history', own: 'bring a character; no tick', new: 'not bring one: I make them or give them out' };
+// The level range: two levels and Set. Used under an offer when none is set, and in Setup.
+function levelControl(id) {
+  const ui = offerUi.get(id) ?? {}, r = LEVEL_RANGE(S), mn = ui.min ?? r?.min ?? 1, mx = ui.max ?? r?.max ?? 20;
+  const wrap = document.createElement('div'); wrap.className = 'row levelset';
+  const opts = Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+  wrap.innerHTML = `<label>From level <select data-end="min" aria-label="Lowest level">${opts}</select></label><label>to <select data-end="max" aria-label="Highest level">${opts}</select></label><button type="button" data-set-level>Set the levels</button>`;
+  const [a, b] = wrap.querySelectorAll('select'); a.value = String(mn); b.value = String(mx);
+  const keep = () => offerUi.set(id, { ...(offerUi.get(id) ?? {}), min: +a.value, max: +b.value });
+  a.onchange = b.onchange = keep;
+  wrap.querySelector('button').onclick = () => { keep(); act({ type: 'setting', key: 'level', value: { min: +a.value, max: +b.value } }); };
+  return wrap;
+}
+function offerRows(table, lb) {
+  const rule = S.settings.characters ?? 'own-trusted', range = LEVEL_RANGE(S), offers = Array.isArray(S.offers) ? S.offers : [];
+  for (const k of [...offerUi.keys()]) if (k !== 'setup' && !offers.some((o) => o.user === k)) offerUi.delete(k);
+  for (const o of offers) {
+    const who = lb.members.find((m) => m.id === o.user), name = who?.name ?? 'Someone who left', ui = offerUi.get(o.user) ?? {};
+    const level = levelOf(o.sheet), row = document.createElement('div'); row.className = 'req offer'; row.dataset.user = o.user;
+    const need = rule === 'own-trusted';
+    row.innerHTML = `<span class="offer-head"><b>${esc(name)}</b> offered <b>${esc(o.sheet.name)}</b>, level ${esc(level)} ${esc(classNames(o.sheet))}</span>
+      <details class="offer-sheet"${ui.open ? ' open' : ''}><summary>Read the sheet</summary><dl>${readSheet(o.sheet).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl></details>
+      ${range ? `<p class="note">This adventure is for ${range.min === range.max ? `level ${range.min}` : `levels ${range.min} to ${range.max}`}.${level < range.min ? ' This one is below it.' : ''}${level > range.max ? ' This one is above it and will not be let in.' : ''}</p>` : `<p class="note offer-held">Set a level range before admitting characters.</p>`}
+      ${need ? `<label class="check"><input type="checkbox" data-tick${ui.tick ? ' checked' : ''}> I've looked at its history</label>` : ''}
+      <label class="assign">Note <input type="text" maxlength="80" data-note placeholder="Optional, a few words" value="${esc(ui.note ?? '')}"></label>
+      <span class="row"><button type="button" data-admit>Admit</button><button type="button" data-decline>Decline</button></span>`;
+    const admit = row.querySelector('[data-admit]'), tick = row.querySelector('[data-tick]');
+    const gate = () => { const why = !range ? 'Set a level range first.' : need && !tick.checked ? 'Tick that you have looked at its history first.' : ''; admit.disabled = !!why; admit.title = why; };
+    row.querySelector('details').ontoggle = (ev) => offerUi.set(o.user, { ...(offerUi.get(o.user) ?? {}), open: ev.target.open });
+    if (tick) tick.onchange = () => { offerUi.set(o.user, { ...(offerUi.get(o.user) ?? {}), tick: tick.checked }); gate(); };
+    row.querySelector('[data-note]').oninput = (ev) => offerUi.set(o.user, { ...(offerUi.get(o.user) ?? {}), note: ev.target.value });
+    gate();
+    admit.onclick = () => act({ type: 'admit', user: o.user, ...(who ? { userName: who.name } : {}), ...(need ? { ack: tick.checked } : {}) });
+    row.querySelector('[data-decline]').onclick = () => { const note = row.querySelector('[data-note]').value.trim(); act({ type: 'decline', user: o.user, ...(note ? { note } : {}) }); };
+    if (!range) row.insertBefore(levelControl(o.user), row.querySelector('.assign'));
+    table.append(row);
+  }
+}
+// Setup: whether players may bring characters, and the adventure's levels.
+const ruleSel = $('dm-characters');
+ruleSel.innerHTML = SETTINGS.characters.map((v) => `<option value="${esc(v)}">${esc(NAMES_RULE[v] ?? v)}</option>`).join('');
+ruleSel.onchange = (ev) => act({ type: 'setting', key: 'characters', value: ev.target.value });
+function bringSetup() {
+  $('dm-bring-box').hidden = T.solo;
+  if (T.solo) return;
+  const v = S.settings.characters ?? SETTINGS.characters[0];
+  if (document.activeElement !== ruleSel) ruleSel.value = v;
+  $('dm-characters-text').textContent = SETTING_TEXT.characters[v] ?? '';
+  const r = LEVEL_RANGE(S), sig = r ? `${r.min}-${r.max}` : '-', box = $('dm-level-set');
+  if (box.dataset.sig !== sig || !box.firstChild) {
+    if (!box.contains(document.activeElement)) {
+      box.dataset.sig = sig; offerUi.delete('setup');
+      box.replaceChildren(Object.assign(document.createElement('p'), { className: 'note', id: 'dm-level-text', textContent: r ? `The adventure's levels: ${r.min === r.max ? r.min : `${r.min} to ${r.max}`}. A character above it is not let in; one below it is, and you are told.` : 'No level range is set. A character cannot be admitted until it is.' }), levelControl('setup'));
+    }
+  }
 }
 
 // The marching order as a list, first to last, with buttons to move someone up or down.
@@ -1444,6 +1539,11 @@ $('pick-list').addEventListener('click', (ev) => {
   const b = ev.target.closest('button[data-pick]'); if (!b || !S) return;
   const x = S.entities[b.dataset.pick]; if (!x) return;
   twoTap(b, `Tap again to play ${shownName(S, x)}`, '', () => { if (!x.owner) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name }); });
+});
+$('pick-bring').addEventListener('click', (ev) => {
+  if (!ev.target.closest('[data-bring]') || !S) return;
+  if (D.isOpen) D.close(false);
+  MC.bring(bringOffer);
 });
 $('waiting-list').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-wait]'); if (!b || !S) return;
@@ -1712,6 +1812,7 @@ function start(transport, map = null) {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null; refreshAsk = null;
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
+    if (offerSent && Date.now() - offerSent.at < 5000) { offerForget(); if (S) renderPick(); }      // the offer itself was refused: nothing is waiting
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { if (rejoinedLast) forgetLastSession(); rejoinedLast = false; TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
     else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (three-build.js, arenaFlashCells)
