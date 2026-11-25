@@ -154,7 +154,7 @@ at level 1; after: 14 auto, 13 assist, 30 manual at level 1, level 0 unchanged. 
 | What may attack or be attacked: a creature-type tag, redirecting an attack | | sanctuary, protection from evil and good (assist: animal friendship; ~~which also needs a type restriction~~ built in #727) |
 | Light or obscurement on a creature or an area, and a negative tag ("if the attacker can see it") | starry wisp (assist) | faerie fire, fog cloud |
 | Forced behaviour | | command |
-| A turn-start trigger outside a zone, or a base AC from Dexterity | | ~~heroism (Temporary Hit Points each turn)~~ (built, #726 job 2, with regenerate; see W43), mage armor |
+| A turn-start trigger outside a zone, or a base AC from Dexterity | | ~~heroism (Temporary Hit Points each turn)~~ (built, #726 job 2, PR #772, with regenerate; see W43), mage armor |
 | A rider the format has no hook for (healing stopped, no Opportunity Attacks, exploding dice, a burst around the target, a leap) | chill touch, shocking grasp, sorcerous burst | ice knife (assist), chromatic orb's leap |
 
 **Levels 2 and 3** (#107): 1 moved from manual to assist: Zone of Truth (a zone with a Charisma save on
