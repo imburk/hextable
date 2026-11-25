@@ -629,7 +629,7 @@ function sorted(v) {
   if (v === null || typeof v !== 'object') return v;
   if (Array.isArray(v)) return v.map(sorted);
   const o = {};
-  for (const k of Object.keys(v).sort()) o[k] = sorted(v[k]);
+  for (const k of Object.keys(v).sort()) Object.defineProperty(o, k, { value: sorted(v[k]), enumerable: true, writable: true, configurable: true });      // a key named __proto__ stays a key
   return o;
 }
 const inOrder = (evs) => evs.map(sorted);
