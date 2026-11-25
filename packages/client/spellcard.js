@@ -24,7 +24,7 @@ const CAST = { action: '1 action', bonus: '1 bonus action', reaction: '1 reactio
 export const castWords = (t) => CAST[t] ?? String(t ?? '');
 export function rangeWords(r) {
   if (r === 'self' || r === 0) return 'Self';
-  if (r === 'touch' || r === 5) return 'Touch';
+  if (r === 'touch') return 'Touch';                  // a 5-foot range is 5 feet, not Touch
   if (typeof r !== 'number') return String(r ?? '');
   if (r >= 5280 && r % 5280 === 0) return `${(r / 5280).toLocaleString('en-US')} mile${r === 5280 ? '' : 's'}`;
   return `${r} feet`;

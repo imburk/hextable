@@ -47,7 +47,7 @@ test('a spell this page does not have gets a name and nothing else', () => {
   assert.equal(m.known, false); assert.equal(m.text, ''); assert.deepEqual(m.facts, []);
 });
 test('words for range, components, duration', () => {
-  assert.equal(rangeWords('self'), 'Self'); assert.equal(rangeWords('touch'), 'Touch'); assert.equal(rangeWords(5280), '1 mile'); assert.equal(rangeWords(2640000), '500 miles');
+  assert.equal(rangeWords('self'), 'Self'); assert.equal(rangeWords('touch'), 'Touch'); assert.equal(rangeWords(5), '5 feet'); assert.equal(rangeWords(5280), '1 mile'); assert.equal(rangeWords(2640000), '500 miles');
   assert.equal(componentWords(['v', 's']), 'V, S'); assert.equal(durationWords('until dispelled', false), 'Until dispelled');
 });
 test('the card stays inside the screen and clear of the die', () => {
