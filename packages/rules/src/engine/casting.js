@@ -621,7 +621,9 @@ function castSpell(s, a, ctx, ev, item) {
     item?.done?.(e);                                    // a scroll crumbles once its spell is cast
     // Caught in the area: no longer unseen. A summon is aimed at its caster only in form (its targets are the spaces
     // it names), so it does not show a caster the DM hid: the creature appears, its caster stays unknown.
-    for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
+    // A zone that affects nobody as it appears (no `atCast`: Guardian of Faith) catches nobody, so it gives away nobody standing in its area.
+    const zoneDef0 = sp.def.zone;
+    if (!zoneDef0 || zoneDef0.atCast) for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
 
     // What it does: run its effect steps.
     const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
@@ -669,7 +671,7 @@ function castSpell(s, a, ctx, ev, item) {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
+        spare, ...(zoneDef.budget ? { budget: zoneDef.budget, spent: 0 } : {}), steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts

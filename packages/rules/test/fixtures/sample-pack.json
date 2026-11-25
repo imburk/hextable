@@ -449,13 +449,27 @@
           "eachTurn": [
             {
               "tempHp": "1d4"
+            },
+            {
+              "save": "con",
+              "onSuccess": [
+                {
+                  "endSpell": true
+                }
+              ]
             }
           ]
+        },
+        {
+          "arm": {
+            "damage": "1d6",
+            "type": "bludgeoning"
+          }
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster's skin hardens, raising Armor Class by 2 until the spell ends, and 1d4 temporary hit points come at the start of each of its turns."
+      "text": "The caster's skin hardens, raising Armor Class by 2, giving 1d4 temporary hit points at the start of each of its turns and a stone fist for a melee spell attack of 1d6 bludgeoning. A Constitution save at the start of each of its turns may end the spell."
     },
     {
       "id": "hb-sample-spotters-eye",

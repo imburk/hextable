@@ -43,7 +43,7 @@ test("a spell's roll is not 'none' while its steps make one, and a spell with no
 
 test("the counts by kind of roll", () => {
   const n = {}; for (const s of spells) n[s.roll] = (n[s.roll] ?? 0) + 1;
-  assert.deepEqual(n, { attack: 21, "save:dex": 37, none: 197, "save:wis": 39, "save:cha": 10, "save:con": 25, "save:str": 7, "save:int": 3 });
+  assert.deepEqual(n, { attack: 21, "save:dex": 37, none: 196, "save:wis": 39, "save:cha": 10, "save:con": 26, "save:str": 7, "save:int": 3 });
 });
 
 test("well-known spells", () => {
