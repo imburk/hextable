@@ -23,7 +23,7 @@ export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
 
 // Lobby changes are who sits where, not the game: they are never undone.
-const LOBBY = new Set(['claim', 'release', 'ping']);      // a ping changes nothing to take back
+const LOBBY = new Set(['claim', 'release', 'ping', 'offer', 'decline']);      // a ping changes nothing to take back
 export const undoable = (action) => !LOBBY.has(action?.type);
 
 // What a state looked like, cheaply enough to take before every action. The timeline only ever
@@ -359,6 +359,10 @@ export function describeStep(action, events, before, after) {
     case 'askCheck': label = 'A check was asked for'; break;
     case 'sceneChronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
     case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
+    // An offered character is the DM's business until it is let in: players are told nothing of an offer or a refusal, and of an admission only what `claim` says.
+    case 'offer': label = { label: `${ev('offered')?.name ?? 'A character'} was offered`, shown: null }; break;
+    case 'decline': label = { label: 'An offered character was declined', shown: null }; break;
+    case 'admit': label = `${real(ev('admitted')?.id)} was admitted to the table`; break;
     case 'release': label = `${name(a.entity)} was given up by their player`; break;
     case 'note': label = 'A note was sent'; break;
     // Stepping away (E20). Players are told of a party creature's; of another's only that the order changed.
