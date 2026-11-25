@@ -83,12 +83,16 @@ export async function readImport(file) {
   return out;
 }
 
-export function initImport({ act, toast, getState, getSelected }) {
-  const file = Object.assign(document.createElement('input'), { type: 'file', id: 'fgi-file', accept: '.xml,text/xml,application/xml', hidden: true });
-  const panel = Object.assign(document.createElement('aside'), { id: 'fgi', className: 'panel qe fgi', hidden: true });
+// `id` names this copy's page elements (a page may hold two: the DM's table tools, and the Bring a character screen). A button made with
+// `button(text, { use })` is the bring route (#783): the same reading and review, then the sheet goes to `use(sheet)` (which keeps it and offers it
+// to the DM, and returns '' or a sentence saying why not) and not to the table as a `setSheet`; there is no table to ask, so `act` is never called.
+export function initImport({ act, toast, getState, getSelected, id = 'fgi' }) {
+  const file = Object.assign(document.createElement('input'), { type: 'file', id: `${id}-file`, accept: '.xml,text/xml,application/xml', hidden: true });
+  const panel = Object.assign(document.createElement('aside'), { className: 'panel qe fgi', hidden: true });
+  panel.id = id;
   panel.setAttribute('aria-label', 'Import a Fantasy Grounds character');
   document.body.append(file, panel);
-  let cur = null, pending = null, busy = false;
+  let cur = null, pending = null, busy = false, mode = null;      // `mode`: { use } for the bring route
 
   function pick() { file.value = ''; file.click(); }
   file.onchange = async () => {
@@ -110,7 +114,7 @@ export function initImport({ act, toast, getState, getSelected }) {
       return bind();
     }
     const rep = cur.report, sh = cur.character, im = rep.imported ?? {};
-    const sel = getState()?.entities[getSelected()], canReplace = sel?.kind === 'pc' && sel.abil;
+    const sel = mode ? null : getState()?.entities[getSelected()], canReplace = sel?.kind === 'pc' && sel.abil;
     cur.target = canReplace ? sel.id : null;      // the one the button names, even if the selection moves while this is open
     const adj = rep.adjustments ?? [];
     const lists = LISTS.filter(([k]) => rep[k]?.length);
@@ -121,7 +125,7 @@ export function initImport({ act, toast, getState, getSelected }) {
     const st = rep.state ?? {};
     const body = [
       `<p class="note">${esc(cur.name)} · ${Math.max(1, Math.round(cur.size / 1024))} KB. Nothing has been changed yet: read this, then choose.</p>
-      <p class="note" id="fgi-dm-only">Only the DM can import a character: the table refuses a sheet from anyone else.</p>`,
+      ${mode ? '<p class="note" id="fgi-bring-note">This keeps the character in My characters on this device and offers it to the DM, who reads the sheet and lets it in or not. The file stays on this device.</p>' : '<p class="note" id="fgi-dm-only">Only the DM can import a character: the table refuses a sheet from anyone else.</p>'}`,
       `<section class="fgi-sum" id="fgi-summary"><h3>What will be set up</h3>
         <p><b>${esc(sh.name)}</b>, level ${esc(sh.level)} ${esc(cap(String(sh.class)))}${sh.subclass ? ` (${esc(subclassShown(rep, sh.subclass))})` : ''}</p>
         ${hbLines.length ? `<ul class="fgi-list" id="fgi-homebrew-subclass">${hbLines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
@@ -131,11 +135,11 @@ export function initImport({ act, toast, getState, getSelected }) {
       `<section><h3>Not on the sheet</h3>${lists.length ? '' : '<p class="note">Nothing was left out.</p>'}${lists.map(([k, h, sub]) => section(k, h, sub, rep[k].length, `<ul class="fgi-list">${rep[k].map(li).join('')}</ul>`, rep[k].length <= 12)).join('')}
         ${rep.numbers?.length ? section('numbers', 'Numbers that differ from the file', 'What the file says against what the engine works out from the sheet.', rep.numbers.length, `<ul class="fgi-list">${rep.numbers.map((n) => `<li><b>${esc(n.what)}</b> file ${esc(n.sheet)}, engine ${esc(n.engine)}${n.why ? `<br><small>${esc(n.why)}</small>` : ''}</li>`).join('')}</ul>`, false) : ''}
         ${Object.keys(st).length ? `<details class="fgi-sec" id="fgi-state"><summary>Not applied: damage, spent slots, languages</summary><p class="note">A sheet has no field for these. Hit Points in the file: ${esc(st.hpCurrent ?? '?')} of ${esc(st.hp ?? '?')}${st.tempHp ? ` (+${esc(st.tempHp)} temporary)` : ''}.${Object.keys(st.slotsUsed ?? {}).length ? ` Spent slots: ${esc(Object.entries(st.slotsUsed).map(([l, n]) => `level ${l}: ${n}`).join(', '))}.` : ''}${rep.languages?.length ? ` Languages: ${esc(rep.languages.join(', '))}.` : ''} A new character starts rested; a replaced one keeps what it had.</p></details>` : ''}</section>`,
-      `<section class="fgi-keep"><h3>Keeping this report</h3><p class="note" id="fgi-keep-note">The character sheet has no place for notes, so when you add or replace the character this report is written to your chronicle (DM panel) under &ldquo;${esc(sh.name)}&rdquo;. Only you can see it; players are never sent it. The sheet will tell you where it is.</p>
+      `<section class="fgi-keep"><h3>Keeping this report</h3>${mode ? '<p class="note" id="fgi-keep-note">The character sheet has no place for notes, and the DM is not sent this report. Save it as a text file if you want to keep what was left out.</p>' : `<p class="note" id="fgi-keep-note">The character sheet has no place for notes, so when you add or replace the character this report is written to your chronicle (DM panel) under &ldquo;${esc(sh.name)}&rdquo;. Only you can see it; players are never sent it. The sheet will tell you where it is.</p>`}
         <div class="row"><button type="button" id="fgi-save">Save the report as a text file</button></div></section>`,
     ].join('');
     const foot = `<div class="qe-foot"><p class="fgi-error" id="fgi-refused" role="alert" hidden></p><div class="row">
-      <button type="button" id="fgi-add" class="qe-save"${rep.loadable && !busy ? '' : ' disabled'}>Add ${esc(sh.name)} to the table</button>
+      <button type="button" id="fgi-add" class="qe-save"${rep.loadable && !busy ? '' : ' disabled'}>${mode ? `Save ${esc(sh.name)} and offer to the DM` : `Add ${esc(sh.name)} to the table`}</button>
       ${canReplace ? `<button type="button" id="fgi-replace"${rep.loadable && !busy ? '' : ' disabled'}>Replace ${esc(sel.name)}</button>` : ''}
       <button type="button" id="fgi-cancel">Cancel</button></div></div>`;
     panel.innerHTML = head + body + foot;
@@ -156,6 +160,11 @@ export function initImport({ act, toast, getState, getSelected }) {
     };
     const go = (actor) => {
       if (busy) return;
+      if (mode) {
+        const why = mode.use(structuredClone(cur.character));
+        if (!why) { close(); return; }
+        q('fgi-refused').textContent = why; q('fgi-refused').hidden = false; return;
+      }
       busy = true; pending = actor ? 'edited' : 'spawned';
       q('fgi-refused').hidden = true; q('fgi-add').disabled = true; if (q('fgi-replace')) q('fgi-replace').disabled = true;
       act({ type: 'setSheet', ...(actor ? { actor } : {}), sheet: structuredClone(cur.character) });
@@ -163,13 +172,13 @@ export function initImport({ act, toast, getState, getSelected }) {
     q('fgi-add').onclick = () => go(null);
     if (q('fgi-replace')) q('fgi-replace').onclick = () => go(cur.target);
   }
-  function close() { panel.hidden = true; pending = null; busy = false; cur = null; }
+  function close() { panel.hidden = true; pending = null; busy = false; cur = null; mode = null; }
 
   return {
     // A button that opens the file picker. Each place that offers the import makes its own.
-    button(text = 'Import from Fantasy Grounds (.xml)') {
+    button(text = 'Import from Fantasy Grounds (.xml)', opts = {}) {
       const b = Object.assign(document.createElement('button'), { type: 'button', className: 'fgi-open', textContent: text });
-      b.onclick = pick;
+      b.onclick = () => { mode = typeof opts.use === 'function' ? { use: opts.use } : null; pick(); };
       return b;
     },
     // The table refused the sheet: say so in the panel, in the engine's words, and let the DM choose again.

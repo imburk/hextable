@@ -9,6 +9,7 @@ import { PREGENS } from './shared/content/index.js';
 import { pack } from './shared/content/srd52/pack.js';
 import { openBuild } from './buildsheet.js';
 import { startBar } from './startflow.js';
+import { initImport } from './importfg.js';
 
 // Where My characters is reached from in the lobby (the party step of a new solo game): the first name of every trail on these pages.
 export const ROOT = 'New solo game';
@@ -262,6 +263,19 @@ export function initMyCharacters({ twoTap, toast }) {
   document.body.append(panel);
   const fileInput = el('input', { type: 'file', id: 'mc-file', accept: `${FILE_EXT},.json,application/json`, hidden: true });
   let notes = [], renaming = null;
+  // Bring a character, route three (#783): read a Fantasy Grounds file on this device with the importer and its review; on confirm the sheet is kept here and offered.
+  const FG = initImport({ act: () => {}, toast, getState: () => null, getSelected: () => null, id: 'fgi-bring' });
+  function keepAndOffer(sheet) {
+    const bad = sheetProblems(sheet)[0];
+    if (bad) return `This sheet cannot be played here: ${bad}`;
+    if (list.length < LIMITS.saved) {
+      const r = addFile(list, makeFile(sheet, { how: 'imported-fgxml' }));
+      if (!commit(r)) return msg;
+      drawParty();
+    }
+    offer(sheet);
+    return '';
+  }
   const say = (m, ...more) => { msg = m; notes = more; drawManager(); };
   function download(f) {
     const url = URL.createObjectURL(new Blob([fileText(f)], { type: 'application/json' }));
@@ -309,11 +323,13 @@ export function initMyCharacters({ twoTap, toast }) {
       if (chooser) offer(sheet); else drawManager();
       return ''; } }) });
     const imp = el('button', { type: 'button', id: 'mc-import', text: 'Import a file', disabled: list.length >= LIMITS.saved, onclick: () => fileInput.click() });
+    const fg = chooser ? FG.button('Import a Fantasy Grounds file', { use: keepAndOffer }) : null;
+    if (fg) fg.id = 'mc-fg';
     panel.replaceChildren(...[head,
       el('p', { class: 'note', text: `These characters are kept in this browser on this device (${list.length} of ${LIMITS.saved}). Clearing the browser's site data deletes them, so use Export to keep a file of each one you care about.` }),
       chooser ? el('p', { class: 'note', id: 'mc-bring-note', text: 'Choose a character to offer to the DM, or make a new one. The DM reads it and lets it in or not. You keep your own copy either way.' }) : null,
       error ? el('p', { class: 'note mc-bad', id: 'mc-store', text: error }) : null,
-      el('div', { class: 'row' }, add, imp, fileInput),
+      el('div', { class: 'row' }, add, imp, fg, fileInput),
       el('div', { id: 'mc-msg', role: 'status', 'aria-live': 'polite' }, msg ? el('p', { text: msg }) : null, notes.length ? el('ul', {}, ...notes.map((n) => el('li', { text: n }))) : null),
       list.length ? el('ul', { class: 'mc-list', id: 'mc-list' }, ...list.map(row)) : el('p', { class: 'note', id: 'mc-empty', text: 'Nothing here yet. Make a character with New character, or import a character file.' })].filter(Boolean));
   }
