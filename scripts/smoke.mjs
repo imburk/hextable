@@ -76,6 +76,7 @@ const REGISTRY = {
   followfight: ['followfight'],
   fly: ['fly'],
   menuclose: ['menuclose'],
+  editorbar: ['editorbar'],
   menushift: ['menushift'],
   seating: ['seating'],
 };

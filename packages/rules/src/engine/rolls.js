@@ -17,6 +17,13 @@ import { baked, weaponKey } from '../imbue.js';
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
 export function kill(s, t, ev) {
   if (t.dead) return;
+  // Death Ward (a modifier on `hp.zero`): "an effect that would kill it instantly without dealing damage ... is negated against the target, and the spell ends".
+  const z = modifiers(s, t, 'hp.zero', { target: t });
+  if (z.min !== null) {
+    const name = effectsOf(s).find((fx) => z.used.some((p) => fx.parts.includes(p)))?.name ?? 'A ward';
+    ev.push({ type: 'note', id: t.id, text: `${name}: not killed` });
+    return useUp(s, ev, z.used);
+  }
   t.dead = true; t.hp = 0;
   ev.push({ type: 'died', id: t.id });
   concentrationLost(s, ev, t, `${t.name} died`);
@@ -370,6 +377,36 @@ export function stabilise(s, t, ev, f = null) {
   ev.push({ type: 'cond', id: t.id, cond: 'stable' });
 }
 
+// A `dispel` step (Dispel Magic; SRD 5.2.1: "Any ongoing spell of level 3 or lower on the target ends. For each ongoing spell of level 4 or higher on the
+// target, make an ability check using your spellcasting ability (DC 10 plus that spell's level). On a successful check, the spell ends. ... You
+// automatically end a spell on the target if the spell's level is equal to or less than the level of the spell slot you use."). A spell is on `t` if a
+// part of its lasting effect is (a condition, a modifier, a light, Temporary Hit Points, a form, the bond of a creature a spell made), or if it was aimed at
+// `t` and the engine put no part on anyone it was aimed at (`fx.aimed`: a spell the DM applies, such as a `manual` one); its level is the
+// one it was cast at (`fx.level`), else the spell's own. The spell ends whole, on every creature it is on, as the SRD's words say. What is not a spell's
+// (a feature's effect, a creature's action) is left, and so is a spell with nothing on a creature (a zone, changed ground): those are the DM's.
+export function dispel(s, t, step, ev, f) {
+  const caster = s.entities[f.actor] ?? null, name = f.src.name;
+  const outright = Math.max(step.dispel, f.src.slot ?? 0);
+  const live = (fx, id) => fx.parts.some((p) => !p.ended && p.target === id);
+  // On it: a part of the spell is, or the spell was aimed at it and the engine put no part on anyone it was aimed at (the DM applies that spell).
+  const on = effectsOf(s).filter((fx) => typeof fx.spell === 'string' && (live(fx, t.id) || (Array.isArray(fx.aimed) && fx.aimed.includes(t.id) && !fx.aimed.some((id) => live(fx, id)))));
+  let ended = 0;
+  for (const fx of on) {
+    if (!effectsOf(s).includes(fx)) continue;                                 // ended with another (its caster lost Concentration)
+    const level = Number.isInteger(fx.level) ? fx.level : SPELLS[fx.spell]?.level ?? 0;
+    if (level > outright) {
+      const ability = caster ? castAbilOf(caster, f.src.spell) : null;
+      if (!ability) { ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text: `${name}: ${fx.name} on ${t.name} is a level ${level} spell, which takes an ability check with the caster's spellcasting ability against DC ${step.dc + level}. The engine does not know that ability here: the DM rolls it and ends the spell on a success.` }); continue; }
+      const dc = step.dc + level, r = abilityCheck(s, caster, { ability });
+      ev.push({ type: 'check', id: caster.id, ability, ...r, dc, success: r.total >= dc, what: name });
+      if (r.total < dc) continue;
+    }
+    endEffect(s, ev, fx, 'it was dispelled');
+    ended++;
+  }
+  ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${ended === 0 ? 'no spell ends' : ended === 1 ? '1 spell ends' : `${ended} spells end`}` });
+}
+
 // A `light` step (Light): `t` carries a light for as long as the lasting effect that ran the step does, and it goes out with it (durations.js, endPart).
 // `replaces`: the caster casting it again ends the earlier one ("The spell ends if you cast it again"). A creature carries one light in the engine (`setLight`): one it
 // already carries, from elsewhere, is not put out or taken for this one, and the DM is told. Returns false where there is no lasting effect to hang it on.
@@ -529,6 +566,34 @@ export function checkBonus(e, { ability, skill, tool }, lent = []) {
   if (own || (skill && lent.some((x) => x.skill === skill))) b += e.prof * (own && e.expertise?.includes(skill) ? 2 : 1);
   else if (tool && (e.tools?.includes(tool) || lent.some((x) => x.tool === tool))) b += e.prof;
   return b;
+}
+// `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
+// (Search uses it for what it can see only dimly); it is not part of what is shown.
+// `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
+export const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}), ...(what.tool ? { tool: what.tool } : {}) });
+export function abilityCheck(s, e, what, dimToo = false, dis = [], adv = []) {
+  const ability = what.ability ?? SKILLS[what.skill];
+  // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
+  const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
+  const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what, m.lent) + m.add;
+  if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
+  if (adv.length) m.advantage = [...m.advantage, ...adv];
+  if (m.autoFail) return { roll: 0, total: 0, bonus };
+  // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
+  const lends = (k, v) => m.lent.some((x) => x[k] === v);      // a proficiency lent for a time counts as one (addition C of docs/specs/homebrew-subclasses.md)
+  if (what.tool && what.skill && (e.tools?.includes(what.tool) || lends('tool', what.tool)) && (e.skills?.includes(what.skill) || lends('skill', what.skill))) m.advantage = [...m.advantage, 'tool and skill'];
+  const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
+  const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
+  // Reliable Talent: each d20 under its `floor` counts as it.
+  const lift = (d) => (d !== null && m.floor !== null ? Math.max(d, m.floor) : d), raw1 = die(s, 20), raw2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
+  const r1 = lift(raw1), r2 = lift(raw2), floored = m.floor !== null && (raw1 < m.floor || (raw2 !== null && raw2 < m.floor));
+  const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
+  const more = rollDice(s, m.dice);
+  if (m.used.length) useUp(s, [], m.used);
+  // The dice are the faces rolled; `roll` is the d20 as it counts, and `floor.was` what it showed.
+  const shown = pickOf(mode) === r1 ? raw1 : raw2;
+  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
+    ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
 }
 // A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
 // Dice from modifiers (Guidance) are not rolled for a passive score: it is not a roll.

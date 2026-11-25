@@ -169,7 +169,7 @@ no longer in the table.) Stinking Cloud stays: a Poisoned that also bars actions
 | Light, obscurement and senses | continual flame, darkness, darkvision, see invisibility | daylight |
 | An effect that holds only while inside an area, or a trigger per 5 feet moved | silence, spike growth | |
 | An object or a weapon as the target | heat metal, magic weapon | |
-| Removing a condition, ending an effect, raising the dead | lesser restoration | dispel magic, remove curse, revivify |
+| Removing a condition, ending an effect, raising the dead | lesser restoration | ~~dispel magic~~ (assist, #726 job 5: the `dispel` step), remove curse, revivify |
 | A trigger on a hit (smites, duplicates that take hits), or a reaction | shining smite (assist since #159), mirror image | ~~counterspell~~ (auto, #144) |
 | A choice among effects, or creatures of the caster's choice with no count | calm emotions, enthrall | bestow curse (four effects, duration by slot) |
 | Barriers by creature type, glyphs | | glyph of warding, magic circle, tiny hut |
@@ -193,7 +193,7 @@ Aura of Life (effects while inside an aura). Still missing:
 | Summons, objects and sensors that act, and actions the spell grants for later turns | arcane eye, faithful hound, guardian of faith, giant insect | animate objects, conjure elemental, summon dragon, arcane hand, telekinesis |
 | Forms | polymorph | |
 | Teleporting and tree travel | dimension door | teleportation circle, tree stride |
-| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, magical Restrained) | death ward, freedom of movement | |
+| Guarding a creature in a way no hook can say (first drop to 0 Hit Points, magical Restrained) | ~~death ward~~ (assist, #726 job 3: the hook `hp.zero`), freedom of movement | |
 | Barriers and walls of free shape, or around a creature | wall of fire, resilient sphere, private sanctum | wall of force, wall of stone |
 | Barriers and wards by creature type | | antilife shell, dispel evil and good, hallow, planar binding |
 | Raising or restoring | | greater restoration, raise dead, reincarnate |
@@ -238,7 +238,7 @@ Every entry already on main in the set matched the SRD numbers, so no data was c
 | Banishment (4) | 2 | assist | assist | A step that takes a creature off the map until the spell ends (a `removed` state with a return), and a `target.type` tag for the Aberration, Celestial, Elemental, Fey or Fiend that does not return |
 | Lesser Restoration (2) | 2 | manual | ~~manual~~ **auto** (#165) | ~~**`cure`** step: ends one chosen condition~~ (#165: `cure: ["chosen"]` with a `condition` choice). Nothing left |
 | Ice Storm (4) | 2 | assist | ~~assist~~ **auto** (#165) | ~~**`terrain`** on an area: Difficult Terrain until the end of the caster's next turn~~ (#165: `terrain: { difficult, lasts: "nextTurnEnd" }`). Nothing left |
-| Dispel Magic (3) | 2 | manual | manual | **`dispel`** step: ends a spell on a target by level, an ability check against 10 + level above the slot |
+| Dispel Magic (3) | 2 | manual | ~~manual~~ **assist** (#726 job 5) | ~~**`dispel`** step: ends a spell on a target by level, an ability check against 10 + level above the slot~~ (built for a creature as the target; an object or a magical effect on no creature is the DM's) |
 | Detect Magic (1) | 2 | manual | manual | A sense or `reveal` of magic within 30 feet; nothing to roll. The DM remains |
 | Revivify (3) | 1 | manual | manual | **`revive`** step, a way to aim a spell at a dead creature (`cast` refuses one: "is dead"), and a note of when it died (within a minute) |
 | Protection from Poison (2) | 1 | assist | ~~assist~~ **auto** (#165) | ~~**`cure`** step (ends Poisoned) and a `save` modifier scoped to a condition~~ (#165: `cure` and `scope: { condition }`). Nothing left |
@@ -283,7 +283,7 @@ Which single addition unlocks the most of these (the engine lane's list):
 | ~~`terrain` and `obscures` on an area or zone~~ (#165) | ~~ice storm~~ | sleet storm (#165 added `endConcentration`; dousing flames is left) |
 | ~~`ends: { on: "damaged" }` and a "fighting it" tag~~ (#165) | | charm monster (attitude), dominate monster (`higher.slot.duration`, commands) |
 | ~~`teleport` step~~ (#165) | ~~misty step~~ | teleport, teleportation circle (also a destination off the map) |
-| `dispel` step | dispel magic | |
+| ~~`dispel` step~~ (#726 job 5) | ~~dispel magic~~ (assist) | |
 | `revive` step and aiming at the dead | revivify | |
 | An "attacker can see the target" tag | | faerie fire (also light and the Invisible rule) |
 
