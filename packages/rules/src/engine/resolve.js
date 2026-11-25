@@ -12,7 +12,7 @@ import { breakConcentration, concentrationCheck, concentrationLost, damaged, eff
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
-import { entered, flushZones, snapshot, turnInZones } from '../zones.js';
+import { entered, flushZones, snapshot, stepped, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf, inViewOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
@@ -100,6 +100,7 @@ function push(s, t, feet, dir, from, ev) {
     t.pos = best.h; path.push(best.h);
     if (rider) carry(s, t);
     entered(s, ev, KIT, zonesBefore);                                    // pushed into a zone: it goes off once this effect is done
+    stepped(s, ev, KIT, t);                                              // and each 5 feet it is moved through ground that hurts (Spike Growth)
   }
   if (!path.length) return why;
   ev.push({ type: 'moved', id: t.id, path, forced: true });

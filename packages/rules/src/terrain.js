@@ -19,6 +19,7 @@ function inside(s, t, pos) {
   if (shape === 'cylinder') return z > o.z - FT / 2 && z <= o.z + tall;
   if (shape === 'cube') return z >= o.z && z < o.z + t.area.size;
   if (shape === 'sphere') return gap(s, o, pos) <= t.area.size / FT;
+  if (shape === 'line' && t.area.placed) return z >= o.z && z < o.z + (t.area.height ?? FT);
   return true;
 }
 // Is this place Difficult Terrain because of a spell? (It is or it is not: it does not stack.)

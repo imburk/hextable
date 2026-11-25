@@ -150,6 +150,56 @@ test("guardian of faith: a player's cast of it with a hidden creature in the are
   });
 });
 
+// ---- Flaming Sphere (#786 wave 2): a zone that rolls, and a placed wall's hexes, are never sent ----
+test("flaming sphere: a player's cast with a hidden creature in the area, and the sphere rolled away, are sent the same as with no creature there", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -8, 0], ["rogue", -8, 1], ["wizard", 0, 0], ["cleric", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", spells: [...s.entities.wizard.spells, "flaming-sphere", "wall-of-fire"], slots: { ...s.entities.wizard.slots, 2: 2, 4: 1 }, slotsMax: { ...s.entities.wizard.slotsMax, 2: 2, 4: 1 } });
+      w.putIn();
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+      turnOf(w, "wizard");
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "wizard", spell: "flaming-sphere", slot: 2, hex: { q: 4, r: 0 } } },
+      { by: "Pat", act: { type: "moveZone", actor: "wizard", to: { q: 4, r: 3 } } },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); },
+  });
+});
+
+test("flaming sphere: a player's cast on the very hex of a hidden creature is accepted and sent the same as the cast on an empty hex (the refusal must not tell it is there)", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -8, 0], ["rogue", -8, 1], ["wizard", 0, 0], ["cleric", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", spells: [...s.entities.wizard.spells, "flaming-sphere"], slots: { ...s.entities.wizard.slots, 2: 2 }, slotsMax: { ...s.entities.wizard.slotsMax, 2: 2 } });
+      w.putIn();
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+      turnOf(w, "wizard");
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "wizard", spell: "flaming-sphere", slot: 2, hex: { q: 5, r: 0 } } },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); },
+  });
+});
+
 // ---- Revivify (#726 job 6): a hidden body, and a player's cast of a spell aimed at the dead ----
 test("revivify: a hidden dead creature beside a player's Revivify of a seen body, and an aim at the hidden body, is sent the same as with no creature there", () => {
   twin({

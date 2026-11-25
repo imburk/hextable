@@ -660,6 +660,27 @@ Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 PROBLEM: Step effects.0: success steps beside half are never run.
 
+== hb-test-thorn-fence
+"Thorn Fence" (level 4 evocation, 90 feet, action, 1 minute, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: damage and control.
+Its roll: the target makes a Dexterity saving throw (read from its steps, since the entry does not say).
+A line 40 feet long and 5 feet wide stays for as long as the spell lasts. It stays where it was laid out.
+As it appears, the steps listed after the zone's own run on each creature in it.
+From then on, the zone's own steps, listed next, run on a creature each time it enters the area (or the area reaches it), moves 5 feet on the ground within the area, or into it or ends its turn there, entering at most once a turn for each creature (the end of a turn is its own). Each creature rolls its own damage.
+That creature takes 3d6 piercing damage.
+That creature makes a Dexterity saving throw.
+On a failure it takes 3d6 slashing damage; on a success, half.
+A creature with Evasion (and not Incapacitated) takes none on a success and half on a failure.
+The line is put down within 90 feet; it is a wall centred on the space the caster picks, running toward a second space the caster may name (otherwise across the line from the caster to the first), 5 feet thick and 10 feet high; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
+Saving throws are against the caster's spell save DC.
+The area is Difficult Terrain for as long as the spell lasts.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-hardy-shield
 "Hardy Shield" (level 1 evocation, self, Reaction, 1 round).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
