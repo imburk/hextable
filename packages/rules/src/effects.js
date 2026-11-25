@@ -420,7 +420,7 @@ function exec(s, ev, kit, f, step, at) {
   // The source is a creature, or a thing on the map (a trap), for which the engine lends a stand-in.
   const e = f.actor === null ? kit.objectActor(s, f.src.object) : s.entities[f.actor];
   if (!e || (f.target !== null && !t)) return;
-  if (f.src.turn && t?.dead) return;                                  // a turn's steps (eachTurn) stop when an earlier one killed the creature                       // someone left the table mid-effect
+  if (f.src.turn && t?.dead) return;  // a turn's steps (eachTurn) stop when an earlier one killed the creature
   if (t === null) return handOver(`The engine has nobody to apply this part of ${f.src.name} to. ${kit.whyNobody?.(f.src) ?? ''}The DM applies it.`);
   for (const tag of step.when ?? []) {
     const ok = kit.judge(tag, { attacker: e, target: t, mode: f.mode }, s);

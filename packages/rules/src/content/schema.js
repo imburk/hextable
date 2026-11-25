@@ -243,7 +243,7 @@ function lintZone(e, say, action = false) {
   if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
   for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
   // `budget: n` (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): the zone's lasting effect ends once the damage its steps have dealt adds up to `n`. A spell's zone only.
-  if (z.budget !== undefined && !(isInt(z.budget) && z.budget >= 1 && z.budget <= 1000 && !action)) say('`zone.budget` is a whole number of damage, 1 to 1000, on a spell\'s zone');
+  if (z.budget !== undefined && !(isInt(z.budget) && z.budget >= 1 && z.budget <= 120 && !action)) say('`zone.budget` is a whole number of damage, 1 to 120, on a spell\'s zone');
   if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd');
   if (z.once !== undefined && z.once !== 'turn') say('`zone.once` is "turn" or left out');
   for (const k of ['atCast', 'spare']) if (z[k] !== undefined && z[k] !== true) say(`\`zone.${k}\` is true or left out`);
@@ -3172,7 +3172,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
   'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
-  'ends.dc': [1, 50],
+  'ends.dc': [1, 50], 'zone.budget': [1, 120],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
   'increase.max': [20, 30], 'increase.points': [1, 2], 'prerequisite.level': [1, 20], 'proficiencies.n': [1, 5], 'spellPick.cantrips': [0, 4], 'spellPick.level1': [0, 2],
