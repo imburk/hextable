@@ -157,6 +157,10 @@ function* sources(s, e) {
   for (const f of e.feats ?? []) if (f.modifiers) yield { name: f.name, modifiers: f.modifiers, level: 1 };
 }
 
+// Whether `e` has Flyby (a trait with `flyby: true`; SRD: "doesn't provoke an Opportunity Attack when it flies out of an enemy's reach"):
+// from its pack monster or summon block, or from the stat block of the form it has taken (Wild Shape lays a beast's traits over the druid).
+export const flyby = (e) => !!e && [e.tpl, e.form?.block].some((id) => id !== undefined && [CONTENT.monsters[id], CONTENT.summons?.[id]].some((d) => d?.traits?.some((t) => t.flyby === true)));
+
 // Dice in a modifier's value: "1d4" (Bless) or "-1d4" (Bane). Rolled each time it applies, by the
 // caller that makes the roll; never here, so that asking what applies changes nothing.
 export const DICE_VALUE = /^[+-]?\d+d\d+([+-]\d+)?$/;

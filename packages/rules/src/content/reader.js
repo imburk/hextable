@@ -1342,7 +1342,7 @@ export const MONSTER_FIELDS = {
   abilities: 'fAbilities', initiative: 'fInitiative', saves: 'fSaves', skills: 'fSkills', senses: 'fSenses', resist: 'fResist', vulnerable: 'fVulnerable', immune: 'fImmune',
   conditionImmune: 'fConditionImmune', languages: 'fLanguages', mount: 'fMount', traits: 'fTraits', actions: 'fActions', tier: 'fTier', checked: 'fChecked', text: 'skip',
 };
-export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree' };
+export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree', flyby: 'flyby' };
 export const ACTION_FIELDS = { id: 'skip', name: 'skip', text: 'skip', time: 'head', target: 'aim', effects: 'steps', uses: 'limits', recharge: 'limits', multiattack: 'multi' };
 export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'];
 export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'];
@@ -1574,16 +1574,18 @@ class MonsterReading extends Reading {
     if (!isObj(t)) { this.bad(`${at} is not a trait.`); return this.line('(A trait the reader cannot read.)'); }
     this.odd(t, Object.keys(TRAIT_FIELDS), `Trait ${i + 1}`);
     if (t.dragFree !== undefined && t.dragFree !== true) this.bad(`${at}: dragFree is true or left out.`);
+    if (t.flyby !== undefined && t.flyby !== true) this.bad(`${at}: flyby is true or left out.`);
     const name = typeof t.name === 'string' && t.name.trim() ? qt(t.name, 60) : '(no name)';
     const mods = Array.isArray(t.modifiers) ? t.modifiers : null;
     if (!mods) this.bad(`${at} has no list of modifiers (it may be empty).`);
-    const runs = (mods?.length ?? 0) > 0 || t.reaction !== undefined || t.dragFree === true || Object.hasOwn(TRAIT_ID_WORDS, t.id);
+    const runs = (mods?.length ?? 0) > 0 || t.reaction !== undefined || t.dragFree === true || t.flyby === true || Object.hasOwn(TRAIT_ID_WORDS, t.id);
     this.line(`Trait ${name}: ${runs ? 'the engine runs this.' : 'text only. The engine does nothing with it; the DM runs it.'}`);
     if (!runs) { this.textOnly++; this.dm(`The trait ${name}: text only.`); }
     (mods ?? []).forEach((m, j) => this.traitMod(m, `${at}.modifiers.${j}`));
     if (t.reaction !== undefined) this.traitReaction(t.reaction, `${at}.reaction`);
     if (Object.hasOwn(TRAIT_ID_WORDS, t.id)) this.line(TRAIT_ID_WORDS[t.id], 1);
     if (t.dragFree === true) this.line('Moving a creature it is grappling costs it no extra movement: the engine adds no extra feet when it drags what it holds.', 1);
+    if (t.flyby === true) this.line('It provokes no Opportunity Attack when it moves out of an enemy\'s reach: the engine offers none, whether it walks or flies.', 1);
     if (LEGENDARY.test(`${t.id} ${t.name}`)) {
       this.line('The engine has no legendary, lair or mythic actions. Whatever this trait describes, the DM runs.', 1);
       this.dm(`Legendary, lair or mythic actions of the trait ${name}.`);

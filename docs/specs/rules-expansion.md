@@ -1121,6 +1121,27 @@ finish a Long Rest." The Short Rest half of Font of Inspiration was already buil
 - **Homebrew swaps are refused for now**: `grants.swap` in a homebrew pack is refused by the strict shape check ("cannot swap a spell slot..."), as `invest` and `forgoAttack` are, because its limits are not in the homebrew tables. Tested through `loadPack`.
 - **Not built:** the client has no control for it (DEBT W41).
 
+#### Build notes: Flyby (amendment, #726 job 9)
+
+Tests in `packages/rules/test/flyby.test.js`. SRD 5.2.1, the trait Flyby (the Owl, Giant Owl, Hippogriff, Gargoyle, Flying Snake, Giant Wasp and Pteranodon, one
+text each): "doesn't provoke an Opportunity Attack when it flies out of an enemy's reach." DEBT W25.
+
+- **A new trait key**, `flyby: true` (a trait of a monster, beside `dragFree`; `schema.js` lints it and lists it in the trait keys and types the homebrew
+  tables read, `reader.js` says it in a sentence and counts the trait as run by the engine). It is a tag and nothing else, so a table's homebrew monster may carry it.
+  The seven SRD traits named Flyby have it and the test holds that no other trait does.
+- **The walk** (`engine/movement.js`, `walk`): a creature with the tag has no Opportunity Attack offered for any step it takes in a fight. The tag is read by
+  `flyby(e)` in `modifiers.js` from the creature's own pack monster (`tpl`: a monster, a familiar, a summon) and from the stat block of the form it has taken
+  (`form.block`: a druid's Wild Shape lays the beast's traits over it, as Pack Tactics is). A rider on a mount that has it is carried out of reach by it and
+  provokes nothing either (it is moved by the mount's movement). A foe's instruction (`ask`, `never`) is not reached at all, so no prompt and no `manual`.
+- **Walking or flying**: the SRD says "flies out". The engine keeps no record of how a creature moved, and every creature with the tag flies, so the tag is read for
+  every step. Left for later (DEBT W42).
+- **The brain** (`ai.js`, `guard`): a creature with the tag counts no foe as one that could make an Opportunity Attack on it, so a familiar owl steps away from harm
+  as a creature with no such foe beside it does.
+- **What a hidden creature tells.** A hidden mover that a party creature senses is found by the walk before the Opportunity Attack is made; with the tag there is no
+  Opportunity Attack, so nothing finds it there. What a player is sent for a hidden flyer is a subset of what it is sent for a hidden creature without the tag (the
+  `moved` event alone), and no scenario shows more with the tag than without, so no `twin()` test was added; the test holds that nothing but the move is sent.
+- **Not built:** see DEBT W42.
+
 ### A class
 
 ```js

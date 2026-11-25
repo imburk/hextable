@@ -9203,6 +9203,7 @@ export const monsters = [
         id: "flyby",
         name: "Flyby",
         modifiers: [],
+        flyby: true,
         text: "Does not provoke Opportunity Attacks when it flies out of an enemy's reach."
       }
     ],

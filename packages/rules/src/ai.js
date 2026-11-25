@@ -9,7 +9,7 @@ import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fro
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { SPELLS } from './content/index.js';
 import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effects.js';
-import { incapacitatedBy, untrainedGear } from './modifiers.js';
+import { flyby, incapacitatedBy, untrainedGear } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
 import { unknown } from './vision.js';
@@ -613,7 +613,7 @@ function guard(s, e, foes, leash) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   if (b.action > 0 && !e.cond?.dodging && !incapacitatedBy(e)) return { type: 'dodge', actor: id };
   if (!foes.some((f) => apart(s, e, f) <= 1)) return end;
-  const threats = foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
+  const threats = flyby(e) ? [] : foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
   const safe = (pos) => !threats.some((f) => apartAt(s, e, pos, f, f.pos) <= 1);
   if (!safe(e.pos)) return end;                                     // any step away from it would provoke
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));

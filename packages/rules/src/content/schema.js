@@ -856,6 +856,8 @@ function lintMonster(e, say, baked = false) {
     }
     // `dragFree: true` (docs/specs/grapple-shove.md, Decision 7): it needn't spend extra movement to move a creature it is grappling (Abduct).
     if (t.dragFree !== undefined && t.dragFree !== true) sub('dragFree is true or left out');
+    // `flyby: true` (docs/specs/rules-expansion.md, "Build notes: Flyby", #726 job 9): it provokes no Opportunity Attack when it moves out of an enemy's reach (SRD Flyby).
+    if (t.flyby !== undefined && t.flyby !== true) sub('flyby is true or left out');
     // `masterHeal: { within }` (#464, C9c; the Otherworldly Steed's Life Bond): when its master regains Hit Points from a spell
     // of level 1 or higher while within `within` feet of it, it regains the same number (engine/rolls.js, heal).
     if (t.masterHeal !== undefined && !(t.masterHeal && Object.keys(t.masterHeal).length === 1 && isInt(t.masterHeal.within) && t.masterHeal.within > 0 && t.masterHeal.within <= 120 && t.masterHeal.within % 5 === 0)) sub('masterHeal is { within: feet }');
@@ -2954,7 +2956,7 @@ const SHAPES = {
   count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
   over: { what: 'what a summon replaces', keys: ['speed'] },
   forms: { what: 'summon forms', keys: ['type', 'cr'] },
-  trait: { what: 'a trait', keys: ['id', 'name', 'text', 'modifiers', 'reaction', 'dragFree'] },
+  trait: { what: 'a trait', keys: ['id', 'name', 'text', 'modifiers', 'reaction', 'dragFree', 'flyby'] },
   action: { what: 'an action', keys: ['id', 'name', 'text', 'time', 'target', 'effects', 'uses', 'recharge', 'multiattack'] },
   uses: { what: 'uses', keys: ['per', 'n'] },
   attackEntry: { what: 'a multiattack entry', keys: ['action', 'times'] },
@@ -3423,7 +3425,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   count: { slot: 'i', base: 'i', above: 'i' },
   over: { speed: 'o' },
   forms: { type: 's', cr: 'n' },
-  trait: { id: 'id', name: 's', text: 's', modifiers: 'a', reaction: 'o', dragFree: 'b' },
+  trait: { id: 'id', name: 's', text: 's', modifiers: 'a', reaction: 'o', dragFree: 'b', flyby: 'b' },
   action: { id: 'id', name: 's', text: 's', time: 's', target: 'o', effects: 'a', uses: 'o', recharge: 'i[]', multiattack: 'a|o' },
   uses: { per: 's', n: 'i' },
   attackEntry: { action: 's|s[]', times: 'i' },
