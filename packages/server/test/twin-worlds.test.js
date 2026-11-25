@@ -739,3 +739,30 @@ test("characters: Sam's offer, declined with a note, is in nothing Pat is sent (
   assert.ok(JSON.stringify(hidden.raw.Sam).includes("Please bring a level 1"), "Sam is sent the DM's note");
   assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Please bring a level 1"), "Pat is not");
 });
+
+// ---- Flyby (#726 job 9): a hidden flyer leaves a player's creature's reach ----
+test("flyby: a hidden owl (outside the arena: a hidden creature in it is revealed when the fight starts, so it cannot be in reach of a player's creature) that moves is sent the same as with no creature there", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 2, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500 });
+      w.putIn();                                                  // the hidden creature exists before the fight
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 4 });
+      turnOf(w, "fighter");
+    },
+    steps: [
+      (w) => { const o = byName(w, "Ghost"); if (!o) return; w.must({ type: "move", actor: o.id, to: { q: 6, r: 0 } }); },
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "owl", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); w.state.seq++; },
+  });
+});

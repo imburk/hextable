@@ -120,7 +120,8 @@
           "name": "Strong Grip",
           "text": "Drags what it holds without slowing.",
           "modifiers": [],
-          "dragFree": true
+          "dragFree": true,
+          "flyby": true
         }
       ],
       "actions": [
