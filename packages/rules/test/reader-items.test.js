@@ -112,6 +112,7 @@ export const SAMPLES = {
   restExhaustion: 'short', spellRange: { spell: 'eldritch-blast', perLevel: 5 }, repel: { spell: 'eldritch-blast', feet: 10 },
   formOf: { of: 'wild-shape', maxCr: 2, types: ['elemental'], tempHp: 2, cost: { resource: 'wild-shape', n: 2 } },
   triggers: { attackAction: { modifiers: [{ on: 'speed', op: 'add', value: 10 }] }, opportunityHit: { move: 'half' } },
+  swap: [{ id: 'slot-for-inspiration', give: { slot: true }, get: { resource: 'bardic-inspiration' } }],
   forgoAttack: { spell: 'find-familiar' }, invest: { spell: 'find-familiar', speed: { feet: 40, of: ['fly', 'swim'] }, damage: { from: ['piercing'], to: ['radiant'] }, saveDc: true, bonusAttack: true, ward: true },
 };
 const featWith = (k, v) => ({ ...base('t', 'T', 'assist', 'x'), category: 'general', grants: { [k]: structuredClone(v) } });
