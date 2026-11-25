@@ -179,7 +179,11 @@ export const openArc = async (page) => {
   const is = await menuIs(page);
   if (is.arc) return;
   if (is.open) { await page.click('#btn-menu'); await page.waitForFunction(() => !window.hextable.drawer.isOpen, null, { timeout: 5000 }); }
-  await page.click('#btn-menu'); await waitShown(page, '#menu-arc');
+  // M2: a prompt or a card folded the menu, and the next tap on the die puts it back where it was, not on the arc. A pass that wants the arc forgets that place first
+  // (the passes that look at the way back say so themselves: `reactions`, `rewards`, `defeat`).
+  if (await page.evaluate(() => !!window.hextable.drawer.folded)) await page.evaluate(() => window.hextable.drawer.open([]));
+  else await page.click('#btn-menu');
+  await waitShown(page, '#menu-arc');
   await page.waitForFunction(() => document.getElementById('menu-arc').classList.contains('out'), null, { timeout: 5000 });
 };
 // A place's symbol: on the arc when that is what is up, otherwise on the strip. A character's is the selected one's. A place the arc has no slot for is in More.

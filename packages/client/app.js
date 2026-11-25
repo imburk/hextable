@@ -1799,6 +1799,14 @@ const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
 const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs, levelUp: (id) => QE.levelUp(id) });
+// Decision 2 (one overlay at a time): a card (rewards, defeat) folds the menu as a prompt does, once, as it comes, and the menu does not come back by itself.
+// The cards show and hide themselves (a chip, a button of the DM's tools, a sync), so what is watched is the page: the class each puts on the body.
+{ let up = false;
+  new MutationObserver(() => {
+    const now = document.body.classList.contains('df-open') || document.body.classList.contains('cc-open');
+    if (now && !up) D.fold();
+    up = now;
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] }); }
 function syncCards() {
   const calm = !TL.busy();
   DF.sync(S, { calm }); CC.sync(S, { calm });

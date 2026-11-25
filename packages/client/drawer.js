@@ -63,6 +63,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   let labels = LABELS.includes(savedLabels) ? savedLabels : '3s';
   let order = normalOrder(prefs.get('hextable.menuOrder')), hiddenPl = normalHidden(prefs.get('hextable.menuHidden'));      // Arrange (M9)
   let path = [], isOpen = false, held = false, opener = null, hideTimer = null;
+  let folded = null;                // the place the menu was at when a prompt or a card folded it away (Decision 2): one tap on the token puts it back there; nothing else does
   let drawerUp = false;               // the sheet (or the column) is up: a screen is open, not only the arc
   let arcUp = false, labelsUp = false; // the arc is fanned out; its words have come up (3 s with no choice)
   let shownLeaf = null;               // the screen whose panel is drawn: it stays drawn while the sheet slides it away
@@ -437,6 +438,8 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     else go(land(valid([key], reach())));
   }
   function open(which = null, from = null, quiet = false) {
+    if (held) return;               // a question waits for this person: it is above the menu (Decision 2), and the menu does not wait under it to come back
+    folded = null;
     const wasOpen = isOpen;
     const want = which == null ? (wasOpen ? path : []) : land(pathOf(which));
     const changed = want.join('/') !== path.join('/');
@@ -459,7 +462,13 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (returnFocus) (to.offsetParent !== null || getComputedStyle(to).position === 'fixed' ? to : token).focus({ preventScroll: true });
     change('close');
   }
-  const toggle = () => (isOpen ? close() : open(null, token));
+  const toggle = () => { if (isOpen) return close(); const at = folded; open(at, token); };
+  // A prompt or a card arrived (Decision 2): the menu folds away, and it stays away. It remembers its place (and each section its scroll) for the next tap on the token.
+  function fold() {
+    if (!isOpen) return false;
+    folded = [...path]; close(false);
+    return true;
+  }
   // One level back: an open section shuts (the focus stays on its bar, so a keyboard keeps its place); "all on one page" goes back to the bars; More to the arc.
   function back() {
     const inner = subOf(path);
@@ -629,7 +638,9 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
 
   // ---- the table's state: hide under a question, announce a turn, keep the place ----
   function sync(S) {
+    const was = held;
     held = !!(S && (S.prompt || S.pending));       // a reaction question is above the menu and is answered first
+    if (held && !was) fold();                      // it folds, and does not come back by itself once the question is answered
     paint();
     const enc = S?.encounter;
     if (!enc) { if (S) announced = null; return; }
@@ -642,11 +653,12 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
     if (who) { live.textContent = ''; setTimeout(() => { live.textContent = `Round ${enc.round}. ${who}.`; }, 30); }
   }
   // A table was left or replaced: what was said belongs to the old one.
-  const reset = () => { announced = undefined; live.textContent = ''; for (const k of Object.keys(mem)) delete mem[k]; if (!isOpen) path = []; };
+  const reset = () => { folded = null; announced = undefined; live.textContent = ''; for (const k of Object.keys(mem)) delete mem[k]; if (!isOpen) path = []; };
   paint();
 
   return {
-    open, close, toggle, back, sync, reset, paint,
+    open, close, toggle, back, sync, reset, paint, fold,
+    get folded() { return folded ? [...folded] : null; },
     get isOpen() { return isOpen && !held; },
     get tab() { return leafOf(path) ?? 'turns'; },
     get section() { return subOf(path); },
