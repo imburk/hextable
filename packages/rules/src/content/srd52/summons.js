@@ -288,4 +288,53 @@ export const summons = [
     checked: true,
     text: "The construct that Animate Objects makes of an object, its size and numbers set by the object, the slot level and its caster.",
   },
+  {
+    // Spiritual Weapon (SRD 5.2.1, flow lines 31049-31066): "a floating, spectral force that resembles a weapon of your choice". It is a force, not a
+    // creature, so the block gives it nothing to be hurt by (immune to every damage type and condition, 1 Hit Point that nothing takes) and a Speed of 20
+    // feet, which is its move on a turn: "As a Bonus Action on your later turns, you can move the force up to 20 feet and repeat the attack". The attack is the
+    // caster's melee spell attack, so its bonus is the caster's spell attack bonus. The SRD gives no stat block; the numbers below are the engine's stand-in.
+    id: "spiritual-weapon", name: "Spiritual Weapon", source: "SRD 5.2.1",
+    level: 2,
+    size: "medium",
+    type: "construct",
+    pb: { caster: "pb" },
+    ac: 10,
+    hp: 1,
+    speed: { walk: 20, fly: 20 },
+    abilities: { str: 10, dex: 10, con: 10, int: 1, wis: 1, cha: 1 },
+    languages: [],
+    resist: [],
+    vulnerable: [],
+    immune: ["acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic", "piercing", "poison", "psychic", "radiant", "slashing", "thunder"],
+    conditionImmune: ["blinded", "charmed", "deafened", "exhaustion", "frightened", "grappled", "incapacitated", "paralyzed", "petrified", "poisoned", "prone", "restrained", "stunned", "unconscious"],
+    traits: [],
+    actions: [
+      {
+        id: "force-strike",
+        name: "Force Strike",
+        target: { creature: { reach: 5 } },
+        effects: [
+          {
+            attack: "melee",
+            kind: "weapon",
+            bonus: { caster: "attack" },
+            onHit: [
+              { damage: "1d8", plus: { caster: "mod" }, type: "force" },
+              { damage: "1d8", only: { slot: 3 }, type: "force" },
+              { damage: "1d8", only: { slot: 4 }, type: "force" },
+              { damage: "1d8", only: { slot: 5 }, type: "force" },
+              { damage: "1d8", only: { slot: 6 }, type: "force" },
+              { damage: "1d8", only: { slot: 7 }, type: "force" },
+              { damage: "1d8", only: { slot: 8 }, type: "force" },
+              { damage: "1d8", only: { slot: 9 }, type: "force" },
+            ],
+          },
+        ],
+        text: "The caster's melee spell attack against a creature within 5 feet of the force: Force damage of 1d8 plus the caster's spellcasting modifier, 1d8 more for each slot level above 2.",
+      },
+    ],
+    tier: "auto",
+    checked: true,
+    text: "The spectral weapon that Spiritual Weapon makes: it moves 20 feet and strikes with the caster's spell attack, and nothing can hurt it.",
+  },
 ];

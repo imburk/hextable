@@ -75,7 +75,8 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
   if (up > 0 && bySlot) {
     for (const key of ['damage', 'heal', 'tempHp']) {
       if (!bySlot[key]) continue;
-      const st = first(key), sum = st && addDice(st[key], bySlot[key], up);
+      // An attack the spell gives its caster (`arm`: Flame Blade) grows like a damage step of its own.
+      const st = first(key) ?? (key === 'damage' ? first('arm')?.arm : null), sum = st && addDice(st[key], bySlot[key], up);
       if (sum) st[key] = sum; else unscaled = `the extra ${bySlot[key]} per slot level above ${def.level}`;
     }
     // A spell that does damage at the start of the creature's turns (Searing Smite: "All the damage increases by 1d6") grows that damage by the same dice.
@@ -141,6 +142,7 @@ function summarise(def) {
   if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} back to life with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'}` };
   if (kind === 'dispel') return { short: 'end spells', long: `Ends spells of level ${step.dispel} or lower on it; a check against DC ${step.dc} plus the level for each higher one` };
   if (kind === 'eachTurn') return { short: 'each turn', long: `At the start of each of its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}: ${step.eachTurn.map((x) => ('heal' in x ? `heal ${x.heal}${x.addMod ? ' + the spellcasting modifier' : ''}` : 'tempHp' in x ? `${x.tempHp}${x.addMod ? ' + the spellcasting modifier' : ''} Temporary Hit Points` : 'damage' in x ? `${x.damage} ${x.type} damage` : 'save' in x ? `a ${x.save.toUpperCase()} save` : 'the DM applies a part')).join(', ')}` };
+  if (kind === 'arm') return { short: `${step.arm.damage} ${step.arm.type}`, long: `Gives the caster a melee spell attack for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage for as long as it lasts` };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
   if (kind === 'modifier') {
@@ -428,7 +430,7 @@ function exec(s, ev, kit, f, step, at) {
 
   if (kind === 'attack') {
     const atk = step.kind === 'spell'
-      ? { name: f.src.name, type: step.attack, spell: true, bonus: f.src.attack, ...(step.attack === 'melee' ? { reach: 5 } : { range: [f.src.range, f.src.range] }) }
+      ? { name: f.src.name, type: step.attack, spell: true, bonus: f.src.attack ?? step.bonus, ...(step.attack === 'melee' ? { reach: 5 } : { range: [f.src.range, f.src.range] }) }
       : { name: f.src.name, type: step.attack, bonus: step.bonus, ...(step.attack === 'melee' ? { reach: f.src.reach ?? 5 } : { range: f.src.rangeBand ?? [f.src.range, f.src.range] }) };
     // The damage types under the hit, for a reaction that cares (Deflect Attacks).
     atk.dtypes = (step.onHit ?? []).filter((x) => 'damage' in x).map((x) => x.type);
@@ -560,6 +562,7 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'dispel') return kit.dispel(s, t, step, ev, f);
   if (kind === 'revive') return kit.revive(s, t, step, ev, f);
   if (kind === 'endSpell') return kit.endSpell(s, f, ev);
+  if (kind === 'arm') return kit.arm(s, t, step, f, ev) || handOver(`${f.src.name} gives ${t.name} an attack for as long as it lasts, which the engine has no lasting effect to hang on (or no spell attack bonus to give it). The DM resolves the attack: a melee spell attack for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage.`);
   if (kind === 'eachTurn') return kit.eachTurn(s, t, step, f, ev) || handOver(`${f.src.name} does something at the start of each of the creature's turns, but it has no lasting effect for the engine to hang that on. The DM applies it on each turn.`);
   if (kind === 'light') return kit.shine(s, t, step, ev, f) || handOver(`${f.src.name} makes a light, but there is no lasting effect for the engine to hang it on. The DM hands it out with setLight and puts it out.`);
   if (kind === 'kill') return kit.kill(s, t, ev);

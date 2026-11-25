@@ -56,6 +56,8 @@ const FIXTURES = [
     effects: [{ modifier: { on: 'condition', op: 'immune', scope: { condition: 'frightened' } } }, { eachTurn: [{ tempHp: '+0', addMod: true }, { heal: '1d4+1' }, { manual: 'Its wounds close a little more.' }] }] }),
   base('slow-burn', 'Slow Burn', { level: 1, range: 30, duration: '1 minute', target: { creature: { count: 1 } }, tier: 'auto',
     effects: [{ eachTurn: [{ damage: '1d4', type: 'fire' }, { save: 'con', onSuccess: [{ endSpell: true }] }] }] }),
+  base('fire-fist', 'Fire Fist', { level: 2, range: 'self', duration: '1 minute', concentration: true, target: { self: true }, tier: 'auto',
+    effects: [{ arm: { damage: '2d6', type: 'fire', addMod: true } }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
@@ -98,7 +100,7 @@ const FIXTURES = [
       { modifier: { on: 'd20', op: 'add', value: '1d6', onFail: true, cost: 'bardic-inspiration' } },
       { modifier: { on: 'opportunity', op: 'autoFail' } },
       { modifier: { on: 'hp.zero', op: 'min', value: 1, uses: 1 } },
-      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'target.seen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend', 'target.fiendOrUndead'] } },
+      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend', 'target.fiendOrUndead'] } },
     ] }),
   base('hunters-sting', 'Hunter\'s Sting', { level: 1, school: 'divination', duration: '1 hour', concentration: true, time: 'bonus', range: 90, target: { creature: {} },
     effects: [{ modifier: { on: 'damage.dealt', op: 'add', value: '1d6', types: ['chosen'], against: 'target' }, to: 'caster' }, { reveal: 'target' }],

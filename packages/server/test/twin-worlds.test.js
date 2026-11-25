@@ -123,6 +123,33 @@ test("regenerate: a hidden creature holding an eachTurn part, outside the arena 
   });
 });
 
+// ---- Guardian of Faith (#786 wave 1): a zone with a damage budget it keeps on its effect ----
+test("guardian of faith: a player's cast of it with a hidden creature in the area, outside the arena, and the party's turns after, are sent the same as with no creature there", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", -8, 0], ["rogue", -8, 1], ["cleric", 0, 0], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.cleric, { owner: w.ids.Pat, ownerName: "Pat", spells: [...s.entities.cleric.spells, "guardian-of-faith"], slots: { ...s.entities.cleric.slots, 4: 1 }, slotsMax: { ...s.entities.cleric.slotsMax, 4: 1 } });
+      w.putIn();
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+      turnOf(w, "cleric");
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "cleric", spell: "guardian-of-faith", slot: 4, hex: { q: 4, r: 0 } } },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); },
+  });
+});
+
 // ---- Revivify (#726 job 6): a hidden body, and a player's cast of a spell aimed at the dead ----
 test("revivify: a hidden dead creature beside a player's Revivify of a seen body, and an aim at the hidden body, is sent the same as with no creature there", () => {
   twin({

@@ -385,6 +385,23 @@ export function endSpell(s, f, ev) {
   if (fx) endEffect(s, ev, fx, `${s.entities[f.target]?.name ?? 'its creature'} made the save`);
 }
 
+// The `arm` step (Flame Blade; effects.js `scaleSteps` grew its dice): the creature gets one more action for as long as the lasting effect holds: a melee spell attack with the
+// caster's spell attack bonus, as the cast had it (`src.attack`), in the form of a creature's action (`e.actions`), so the Attack command takes it with `attack: <the spell's id>`.
+// The action is marked `armed: <effect id>` and the part `arm`, and durations.js `endPart` takes it away again. Casting it again replaces the earlier one. False when there is
+// no lasting effect to hang it on, and the step is handed to the DM.
+export function arm(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead || !Number.isFinite(f.src.attack)) return false;
+  const a = step.arm, add = a.addMod ? f.src.healMod ?? 0 : 0, id = f.src.spell ?? fx.spell;
+  t.actions = (t.actions ?? []).filter((x) => x.id !== id);
+  t.actions.push({ id, name: f.src.name, time: a.time ?? 'action', armed: fx.id, target: { creature: { reach: 5 } },
+    effects: [{ attack: 'melee', kind: 'spell', bonus: f.src.attack, onHit: [{ damage: add ? `${a.damage}${add > 0 ? '+' : ''}${add}` : a.damage, type: a.type }] }],
+    text: `${f.src.name}: a melee spell attack, ${a.damage}${add ? (add > 0 ? `+${add}` : `${add}`) : ''} ${a.type} damage.` });
+  fx.parts.push({ target: t.id, arm: id });
+  ev.push({ type: 'note', id: t.id, text: `${f.src.name}: ${t.name} can make a melee spell attack with it` });
+  return true;
+}
+
 // The `imbue` step (imbue.js; docs/specs/on-hit.md, Decision 8): a part on the lasting effect, naming the weapon the cast or the use named (`src.weapon`, the key
 // of one of the holder's weapon records). An earlier imbue of the same spell or feature by the same creature ends ("ends if cast again", "or until you use this
 // feature again"). Returns false when there is nothing to hang it on or no weapon, and the step is handed to the DM.

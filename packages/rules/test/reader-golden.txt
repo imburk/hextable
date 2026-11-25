@@ -210,6 +210,19 @@ It lasts up to 1 minute. The engine times it, and when it ends, so does everythi
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
+== hb-test-fire-fist
+"Fire Fist" (level 2 evocation, self, action, 1 minute, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+The caster gets one more action to take for as long as the spell lasts: a melee spell attack (reach 5 feet) with the caster's spell attack bonus, dealing 2d6 plus the spellcasting ability modifier fire damage on a hit. It takes the Action, and goes when the spell ends.
+It is aimed at the caster alone.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
@@ -400,7 +413,7 @@ The caster gets to keep 1 Hit Point the first time damage would take it to 0 Hit
   That one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it.
   It lasts as long as the spell.
 The caster gets Advantage on attack rolls made against it.
-  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, the attacker can see the target, an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack, the target is not a Fiend and the target is a Fiend or an Undead. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
+  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, the attacker can see the target, the target is on another side than the caster, an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack, the target is not a Fiend and the target is a Fiend or an Undead. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 It is aimed at the caster alone.
 It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.

@@ -15,7 +15,7 @@
 // from inside itself. Design: docs/specs/rules-expansion.md, build notes.
 import { gridOf, col, boxOf, squareAround } from './grid.js';
 import { begin, run } from './effects.js';
-import { effectsOf, thisTurn, turnKey } from './durations.js';
+import { effectsOf, endEffect, thisTurn, turnKey } from './durations.js';
 import { FT, footprint, gap, rise, sizeOf } from './space.js';
 
 export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
@@ -115,8 +115,14 @@ function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
 }
 function fire(s, ev, kit, fx, t, why) {
   ev.push({ type: 'zone', fx: fx.id, name: fx.name, id: t.id, why });
+  const from = ev.length;
   begin(s, { steps: structuredClone(fx.zone.steps), actor: fx.source, targets: [t.id], src: { ...structuredClone(fx.zone.src), fx: fx.id } });
   run(s, ev, kit);
+  // A zone with a `budget` (Guardian of Faith) is used up by the damage its steps deal: what its source dealt to this creature now is added, and at the budget the effect ends.
+  if (fx.zone.budget && effectsOf(s).includes(fx)) {
+    fx.zone.spent = (fx.zone.spent ?? 0) + ev.slice(from).filter((e) => e.type === 'damage' && e.by === fx.source).reduce((n, e) => n + (e.amount ?? 0), 0);
+    if (fx.zone.spent >= fx.zone.budget) endEffect(s, ev, fx, `it dealt ${fx.zone.budget} damage`);
+  }
 }
 
 // Run what waited for the effect stack to empty.

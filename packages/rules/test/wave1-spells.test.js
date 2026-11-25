@@ -7,11 +7,14 @@ import { lintEntry } from "../src/content/schema.js";
 import { derive } from "../src/derive.js";
 import { apply, current, makeEntity } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
+import { view } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const json = (x) => JSON.stringify(x);
 const SHEETS = {
+  cleric: { name: "Cy", class: "cleric", level: 9, subclass: "life", abilities: { str: 10, dex: 12, con: 14, int: 10, wis: 18, cha: 12 }, skills: ["medicine", "religion"], spells: ["guardian-of-faith", "spiritual-weapon"] },
+  druid: { name: "Dru", class: "druid", level: 5, subclass: "land", abilities: { str: 10, dex: 12, con: 14, int: 10, wis: 18, cha: 8 }, skills: ["nature", "perception"], spells: ["flame-blade"] },
   bard: { name: "Bo", class: "bard", level: 5, subclass: "lore", abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 18 }, skills: ["persuasion", "performance", "insight"], spells: ["faerie-fire", "heat-metal"] },
 };
 
@@ -247,4 +250,234 @@ test("Searing Smite: a target the burning kills makes no save and the effect goe
   const ev = until(s, "m1");
   assert.ok(s.entities.m1.dead || s.entities.m1.hp <= 0);
   assert.ok(!ev.some((e) => e.type === "save" && e.id === "m1"), "a dead creature makes no save");
+});
+
+// ---------- Guardian of Faith ----------
+test("Guardian of Faith: a zone of 20 radiant damage (Dexterity save halves) on an enemy that enters or starts its turn near it, until it has dealt 60", () => {
+  const def = SPELLS["guardian-of-faith"].def;
+  assert.equal(def.tier, "assist");
+  assert.equal(def.concentration, false);
+  assert.deepEqual(def.zone, { on: ["enter", "turnStart"], once: "turn", budget: 60 });
+  assert.deepEqual(lint(def), []);
+  assert.ok(lint({ ...structuredClone(def), zone: { ...def.zone, budget: 0 } }).some((p) => /budget/.test(p)));
+  const { s, g } = table(SHEETS.cleric, "cy");
+  Object.assign(s.entities[g], { hp: 500, maxHp: 500 });
+  s.entities[g].abil.dex = 1;                                    // -5: the DC 15 save fails on anything under a natural 20
+  s.entities.fighter.pos = { q: -2, r: 0, z: 0 };
+  fight(s);
+  until(s, "cy");
+  // Cast at the goblin's own hex: the area is laid out round that space and affects nobody as it appears.
+  const hp0 = s.entities[g].hp;
+  const r = ok(apply(s, { type: "cast", actor: "cy", spell: "guardian-of-faith", slot: 4, hex: { q: 3, r: 0 } }, DM));
+  assert.ok(!r.events.some((e) => e.type === "damage"), "nobody is hurt as it appears");
+  const fx = live(s, "guardian-of-faith");
+  assert.equal(fx.conc, false);
+  assert.equal(fx.lasts, "8 hours");
+  assert.equal(fx.zone.budget, 60);
+  assert.equal(fx.zone.spent, 0);
+  assert.equal(s.entities[g].hp, hp0);
+  // Its turn starts inside the area: a failed save, 20 radiant.
+  const ev = until(s, g);
+  const hurt = ev.filter((e) => e.type === "damage" && e.target === g);
+  assert.equal(hurt.length, 1, json(hurt));
+  assert.equal(hurt[0].amount, 20);
+  assert.equal(hurt[0].dtype, "radiant");
+  assert.equal(live(s, "guardian-of-faith").zone.spent, 20);
+  // The caster takes nothing, and how much of the 60 is left is on the DM's books only: a player's view of the effect has no zone, budget or count.
+  assert.equal(s.entities.cy.hp, s.entities.cy.maxHp);
+  const seen = view(s, { role: "player", userId: "pat" }).effects.find((x) => x.spell === "guardian-of-faith");
+  assert.ok(seen && !("zone" in seen) && !json(seen).includes("budget") && !json(seen).includes("spent"), json(seen));
+});
+
+test("Guardian of Faith: a success halves it; the guardian vanishes once 60 damage has been dealt, counting what was dealt", () => {
+  const { s, g } = table(SHEETS.cleric, "cy");
+  Object.assign(s.entities[g], { hp: 500, maxHp: 500 });
+  s.entities.fighter.pos = { q: -2, r: 0, z: 0 };
+  s.entities[g].abil.dex = 1;
+  fight(s);
+  until(s, "cy");
+  ok(apply(s, { type: "cast", actor: "cy", spell: "guardian-of-faith", slot: 4, hex: { q: 3, r: 0 } }, DM));
+  const fx = live(s, "guardian-of-faith");
+  const total = () => fx.zone.spent;
+  const dealt = [];
+  let ended = false;
+  for (let round = 0; round < 6 && !ended; round++) {
+    const ev = until(s, g);
+    for (const e of ev) { if (e.type === "damage" && e.target === g) dealt.push(e.amount); if (e.type === "effectEnd" && e.name === "Guardian of Faith") { ended = true; assert.equal(e.why, "it dealt 60 damage"); } }
+    if (!ended) ok(apply(s, { type: "endTurn", actor: g }, DM));
+  }
+  assert.ok(ended, `it ended: ${dealt}`);
+  assert.equal(dealt.reduce((a, b) => a + b, 0), 60, `20 + 20 + 20: ${dealt}`);
+  assert.equal(live(s, "guardian-of-faith"), undefined);
+  assert.ok(total() >= 60);
+  // A creature that makes the save counts for half of 20, and 60 is reached in more turns.
+  const t2 = table(SHEETS.cleric, "cy");
+  Object.assign(t2.s.entities[t2.g], { hp: 500, maxHp: 500 });
+  t2.s.entities.fighter.pos = { q: -2, r: 0, z: 0 };
+  t2.s.entities[t2.g].abil.dex = 40;                             // +15: it makes every save
+  fight(t2.s);
+  until(t2.s, "cy");
+  ok(apply(t2.s, { type: "cast", actor: "cy", spell: "guardian-of-faith", slot: 4, hex: { q: 3, r: 0 } }, DM));
+  const half = until(t2.s, t2.g).filter((e) => e.type === "damage" && e.target === t2.g);
+  assert.deepEqual(half.map((e) => e.amount), [10]);
+  assert.equal(live(t2.s, "guardian-of-faith").zone.spent, 10);
+});
+
+test("Guardian of Faith: only an enemy is hurt: a creature on the caster's side takes no save and no damage", () => {
+  const { s } = table(SHEETS.cleric, "cy");
+  s.entities.fighter.pos = { q: 3, r: 1, z: 0 };                  // inside the area, on the caster's side
+  fight(s);
+  until(s, "cy");
+  const r = ok(apply(s, { type: "cast", actor: "cy", spell: "guardian-of-faith", slot: 4, hex: { q: 3, r: 0 } }, DM));
+  assert.ok(!r.events.some((e) => e.type === "save" || e.type === "damage"));
+  const ev = until(s, "fighter");
+  assert.ok(!ev.some((e) => (e.type === "save" || e.type === "damage") && (e.id === "fighter" || e.target === "fighter")), json(ev));
+  assert.equal(live(s, "guardian-of-faith").zone.spent, 0);
+});
+
+// ---------- Spiritual Weapon ----------
+const PAT = { role: "player", userId: "pat" };
+test("Spiritual Weapon: a force in a space the caster names, commanded for its first turn: it moves 20 feet and makes the caster's spell attack for 1d8 plus the modifier", () => {
+  const def = SPELLS["spiritual-weapon"].def;
+  assert.equal(def.tier, "assist");
+  assert.deepEqual(lint(def), []);
+  assert.ok(lint({ ...structuredClone(def), effects: [{ summon: "spiritual-weapon", bond: { ...def.effects[0].bond, orders: "free", first: "commanded" } }] }).some((p) => /first/.test(p)));
+  const { s, g } = table(SHEETS.cleric, "cy");
+  Object.assign(s.entities[g], { hp: 500, maxHp: 500, ac: 1 });
+  s.entities.fighter.pos = { q: -2, r: 0, z: 0 };
+  s.entities.cy.owner = "pat";
+  fight(s);
+  until(s, "cy");
+  const r = ok(apply(s, { type: "cast", actor: "cy", spell: "spiritual-weapon", slot: 2, summon: { at: [{ q: 2, r: 0 }] } }, PAT));
+  const id = r.events.find((e) => e.type === "summoned").id, w = s.entities[id];
+  assert.equal(s.encounter.budget.bonus, 0, "the cast took the Bonus Action");
+  assert.equal(live(s, "spiritual-weapon").conc, true);
+  assert.deepEqual([w.bond.to, w.bond.orders, w.bond.turn, w.type], ["cy", "command", "after", "construct"]);
+  assert.ok(w.bond.commanded && w.bond.commanded.order === null, "its first turn is commanded");
+  assert.ok(r.events.some((e) => e.type === "manual" && e.name === "Spiritual Weapon"), "the DM is told what the engine does not do");
+  // It acts straight after the caster, and the caster's player plays it: move 20 feet, then attack.
+  const ev = ok(apply(s, { type: "endTurn", actor: "cy" }, PAT)).events;
+  assert.equal(current(s), id, json(ev.filter((e) => e.type === "turn")));
+  assert.ok(ev.some((e) => e.type === "commandedTurn" && e.id === id && e.to === "pat"), json(ev));
+  ok(apply(s, { type: "move", actor: id, to: { q: 3, r: 0 } }, PAT));
+  const a = ok(apply(s, { type: "act", actor: id, action: "force-strike", target: g }, PAT));
+  const at = a.events.find((e) => e.type === "attack");
+  assert.equal(at.bonus, 4 + 4, "the caster's spell attack bonus: Proficiency Bonus 4 and Wisdom 18");
+  assert.ok(at.hit, json(at));
+  const d = a.events.find((e) => e.type === "damage" && e.target === g);
+  assert.equal(d.dtype, "force");
+  assert.equal(d.dice.length, 1);
+  assert.equal(d.dice[0].sides, 8);
+  assert.equal(d.bonus, 4, "plus the cleric's Wisdom modifier (18)");
+  // Nothing hurts it: immune to every damage type, and to every condition.
+  assert.equal(w.immune.length, 13);
+  assert.ok(w.conditionImmune.includes("prone") && w.conditionImmune.includes("stunned"));
+});
+
+test("Spiritual Weapon: 1d8 more for each slot level above 2; a later turn needs a Bonus Action to command it; it goes with Concentration", () => {
+  const { s, g } = table(SHEETS.cleric, "cy");
+  Object.assign(s.entities[g], { hp: 500, maxHp: 500, ac: 1 });
+  s.entities.fighter.pos = { q: -2, r: 0, z: 0 };
+  s.entities.cy.owner = "pat";
+  fight(s);
+  until(s, "cy");
+  const r = ok(apply(s, { type: "cast", actor: "cy", spell: "spiritual-weapon", slot: 4, summon: { at: [{ q: 3, r: 1 }] } }, PAT));
+  const id = r.events.find((e) => e.type === "summoned").id;
+  ok(apply(s, { type: "endTurn", actor: "cy" }, PAT));
+  ok(apply(s, { type: "move", actor: id, to: { q: 3, r: 0 } }, PAT));
+  const a = ok(apply(s, { type: "act", actor: id, action: "force-strike", target: g }, PAT));
+  const parts = a.events.filter((e) => e.type === "damage" && e.target === g);
+  assert.deepEqual(parts.map((e) => [e.dice.length, e.dice[0].sides, e.bonus]), [[1, 8, 4], [1, 8, 0], [1, 8, 0]], "1d8 plus the modifier, and two more d8 from a level 4 slot");
+  ok(apply(s, { type: "endTurn", actor: id }, PAT));
+  // The next round: not commanded, it is not the player's; a Bonus Action from the caster commands it.
+  until(s, "cy");
+  assert.equal(s.entities.cy.owner, "pat");
+  ok(apply(s, { type: "command", actor: "cy", ids: [id], order: "strike the goblin" }, PAT));
+  assert.equal(s.encounter.budget.bonus, 0, "commanding it takes the Bonus Action");
+  ok(apply(s, { type: "endTurn", actor: "cy" }, PAT));
+  assert.equal(current(s), id);
+  const b = ok(apply(s, { type: "act", actor: id, action: "force-strike", target: g }, PAT));
+  assert.ok(b.events.some((e) => e.type === "attack" && e.actor === id));
+  ok(apply(s, { type: "endTurn", actor: id }, PAT));
+  // Not commanded on the round after: the player may not play it.
+  until(s, "cy");
+  ok(apply(s, { type: "endTurn", actor: "cy" }, PAT));
+  assert.equal(current(s), id);
+  const c = apply(s, { type: "act", actor: id, action: "force-strike", target: g }, PAT);
+  assert.equal(c.ok, false, "an order was not given for this turn");
+  ok(apply(s, { type: "endTurn", actor: id }, DM));
+  // Losing Concentration takes it away.
+  until(s, "cy");
+  const e = ok(apply(s, { type: "endEffect", actor: "cy", effect: live(s, "spiritual-weapon").id }, DM));
+  assert.ok(!s.entities[id], json(e.events.map((x) => x.type)));
+});
+
+// ---------- Flame Blade ----------
+test("Flame Blade: the caster gets a melee spell attack for 3d6 fire plus the modifier, a light, and both go with the spell", () => {
+  const def = SPELLS["flame-blade"].def;
+  assert.equal(def.tier, "assist");
+  assert.deepEqual(lint(def), []);
+  assert.deepEqual(def.effects[0], { arm: { damage: "3d6", type: "fire", addMod: true } });
+  const bad = (arm, extra = {}) => lint({ ...structuredClone(def), ...extra, effects: [{ arm }] });
+  assert.ok(bad({ damage: "x", type: "fire" }).some((p) => /arm.damage/.test(p)));
+  assert.ok(bad({ damage: "1d6", type: "mauve" }).some((p) => /arm.type/.test(p)));
+  assert.ok(bad({ damage: "1d6", type: "fire", time: "reaction" }).some((p) => /arm.time/.test(p)));
+  assert.ok(bad({ damage: "1d6", type: "fire" }, { duration: "instant", concentration: false }).some((p) => /arm/.test(p)));
+  const { s, g } = table(SHEETS.druid, "dru");
+  Object.assign(s.entities[g], { hp: 500, maxHp: 500, ac: 1 });
+  s.entities.fighter.pos = { q: -2, r: 0, z: 0 };
+  s.entities.dru.owner = "pat";
+  s.entities.dru.pos = { q: 3, r: 0, z: 0 };
+  fight(s);
+  until(s, "dru");
+  const r = ok(apply(s, { type: "cast", actor: "dru", spell: "flame-blade", slot: 2 }, PAT));
+  assert.ok(!r.events.some((e) => e.type === "manual" && !e.partial && /engine cannot/.test(e.text)));
+  const fx = live(s, "flame-blade");
+  assert.equal(fx.conc, true);
+  assert.ok(fx.parts.some((p) => p.arm === "flame-blade" && p.target === "dru"));
+  assert.deepEqual([s.entities.dru.light.bright, s.entities.dru.light.dim], [10, 10]);
+  const act = s.entities.dru.actions.find((x) => x.id === "flame-blade");
+  assert.equal(act.armed, fx.id);
+  assert.equal(act.time, "action");
+  // The Bonus Action went on the cast; the attack is a Magic action: an `attack` with the spell's id.
+  assert.equal(s.encounter.budget.bonus, 0);
+  assert.equal(s.encounter.budget.action, 1);
+  const a = ok(apply(s, { type: "attack", actor: "dru", target: g, attack: "flame-blade" }, PAT));
+  const at = a.events.find((e) => e.type === "attack");
+  assert.equal(at.bonus, 3 + 4, "the spell attack bonus of a level 5 druid with Wisdom 18: Proficiency 3 and +4");
+  assert.ok(at.hit, json(at));
+  const parts = a.events.filter((e) => e.type === "damage" && e.target === g);
+  assert.equal(parts.length, 1);
+  assert.deepEqual([parts[0].dice.length, parts[0].dice[0].sides, parts[0].bonus, parts[0].dtype], [3, 6, 4, "fire"]);
+  assert.equal(s.encounter.budget.action, 0, "it took the action");
+  // Next round, and again: the blade lasts while the spell does. The spell ending takes it away.
+  until(s, "dru");
+  assert.ok(s.entities.dru.actions.some((x) => x.id === "flame-blade"));
+  ok(apply(s, { type: "endEffect", actor: "dru", effect: fx.id }, DM));
+  assert.ok(!s.entities.dru.actions.some((x) => x.id === "flame-blade"));
+  assert.equal(s.entities.dru.light, undefined);
+  const gone = apply(s, { type: "attack", actor: "dru", target: g, attack: "flame-blade" }, PAT);
+  assert.equal(gone.ok, false);
+});
+
+test("Flame Blade: a higher slot adds 1d6; casting it again replaces the first", () => {
+  const { s, g } = table(SHEETS.druid, "dru");
+  Object.assign(s.entities[g], { hp: 500, maxHp: 500, ac: 1 });
+  s.entities.fighter.pos = { q: -2, r: 0, z: 0 };
+  s.entities.dru.owner = "pat";
+  s.entities.dru.pos = { q: 3, r: 0, z: 0 };
+  fight(s);
+  until(s, "dru");
+  ok(apply(s, { type: "cast", actor: "dru", spell: "flame-blade", slot: 3 }, PAT));
+  assert.equal(s.entities.dru.actions.find((x) => x.id === "flame-blade").effects[0].onHit[0].damage, "4d6+4");
+  const a = ok(apply(s, { type: "attack", actor: "dru", target: g, attack: "flame-blade" }, PAT));
+  const hit = a.events.find((e) => e.type === "damage" && e.target === g);
+  assert.equal(hit.dice.length, a.events.find((e) => e.type === "attack").crit ? 8 : 4, "4d6, doubled on a Critical Hit");
+  // A second casting (next turn, a level 2 slot) replaces the first: one blade, one effect.
+  ok(apply(s, { type: "endTurn", actor: "dru" }, PAT));
+  until(s, "dru");
+  ok(apply(s, { type: "cast", actor: "dru", spell: "flame-blade", slot: 2 }, PAT));
+  assert.equal(s.entities.dru.actions.filter((x) => x.id === "flame-blade").length, 1);
+  assert.equal(s.entities.dru.actions.find((x) => x.id === "flame-blade").effects[0].onHit[0].damage, "3d6+4");
+  assert.equal(s.effects.filter((fx) => fx.spell === "flame-blade").length, 1, "Concentration: the first cast ended");
 });
