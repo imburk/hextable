@@ -25,6 +25,15 @@ const walkIn = (page, id) => page.evaluate((who) => {
 // The question's button rect, once it is on screen: a turn passing re-lays the screen out and the question may be between two frames of that (`boundingBox` is null then).
 const box = async (page, sel) => { for (let t0 = Date.now(); Date.now() - t0 < PLAYED; ) { const b = await page.locator(sel).boundingBox().catch(() => null); if (b) return b; await waitShown(page, '#join', true, PLAYED); } throw new Error(`${sel} has no box`); };
 
+// A tap on a button of the question. The Initiative or attack dice are laid over the screen while the monsters roll, and a tap that lands on them is not a tap on the button (it was
+// tried every 4 s for a minute under a 4x CPU throttle): tap only when the button is the topmost thing at its centre, and look again after a short wait when it is not.
+const tap = async (page, sel) => {
+  for (let t0 = Date.now(); Date.now() - t0 < PLAYED && (await shown(page, '#join')); ) {
+    const on = await page.evaluate((q) => { const b = document.querySelector(q), r = b.getBoundingClientRect(), t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return !!t && (t === b || b.contains(t)); }, sel).catch(() => false);
+    if (on) await page.click(sel, { timeout: 4000, force: true }).catch(() => {}); else await new Promise((r) => setTimeout(r, 100));
+  }
+};
+
 // The rogue stops following: it stays where it started, nine hexes from where the fight will be, just outside its arena and in reach of it.
 const apart = (page) => page.evaluate(() => window.hextable.act({ type: 'follow', actor: 'rogue', leader: null }));
 
@@ -35,9 +44,11 @@ async function pass(browser, url, label, opts) {
     // Each run is a new browser context: the browser keeps the last solo game, and Continue would take it up.
     const ctxs = [];
     const fresh = async () => {
+      for (const c of ctxs.splice(0)) await c.close();      // the last game's page keeps playing its fight (dice, monsters' turns) and takes CPU a slow machine has not got
       const ctx = await browser.newContext(opts); ctxs.push(ctx);
       const page = await ctx.newPage(); run.watch(page);
       await open(page, url);
+      if (process.env.SMOKE_CPU) await (await ctx.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.SMOKE_CPU) });      // SMOKE_CPU=4: a slow machine, as CI is
       await page.click('#lobby-solo'); await wait(page, () => window.hextable?.state?.entities?.fighter);
       return page;
     };
@@ -59,10 +70,16 @@ async function pass(browser, url, label, opts) {
         await shot(page, 'all-in');
       });
 
-      page = await fresh();
+      // A fight needs the first hero in it. When a random valley walls the walk off, the fight is "called" where the goblins are, 9 or more hexes from the heroes, and
+      // its order holds the goblins alone: it ends at once as a defeat and nothing is left to ask (seen on CI at 390x844, #767; about 1 game in 25 under load, and
+      // the walk is walled off in about 1 in 70 on a quiet one). So a step about the question takes a new valley, as the first step does.
+      const apartFight = async () => {
+        let how;
+        for (let tries = 0; tries < 8; tries++) { page = await fresh(); await apart(page); how = await walkIn(page, 'fighter'); if (how === 'walked') return; }
+        throw new Error(`no fight started by a walk (${how})`);
+      };
       await run.do('with the rogue standing apart, the fight starts and asks "Bring the others in?"', async () => {
-        await apart(page);
-        if (!(await walkIn(page, 'fighter'))) throw new Error('no fight started');
+        await apartFight();
         await wait(page, () => window.hextable.timeline && window.hextable.waiting === 0, null, PLAYED);
         if (await inFight(page, 'rogue')) throw new Error(`the rogue is in already: ${await state(page, (S) => JSON.stringify([S.entities.rogue.pos, S.entities.rogue.follow, S.entities.fighter.pos, S.encounter.center, S.encounter.order.map((o) => o.id)]))}`);
         await waitShown(page, '#join', true, PLAYED);
@@ -92,7 +109,7 @@ async function pass(browser, url, label, opts) {
       });
       await run.do('one tap brings the rogue in, rolls Initiative, and the question goes', async () => {
         // The dock and the turn line change height as turns pass, so the button can still be moving when a click is tried: try again until one takes (`force`: Playwright's own "stable" check never passed on a throttled CPU although the rects held still; a click that lands is the one handler, and none is tried once the question is gone).
-        for (let t0 = Date.now(); Date.now() - t0 < PLAYED && (await shown(page, '#join')); ) await page.click('#join-yes', { timeout: 4000, force: true }).catch(() => {});
+        await tap(page, '#join-yes');
         await wait(page, () => window.hextable.state.encounter.order.some((o) => o.id === 'rogue'), null, PLAYED).catch(async () => {
           throw new Error(`the rogue did not join: ${await page.evaluate(() => JSON.stringify({ pos: window.hextable.state.entities.rogue.pos, fp: window.hextable.state.entities.fighter.pos, c: window.hextable.state.encounter.center, join: !document.querySelector('#join').hidden, log: [...document.querySelectorAll('#log-list li')].slice(-4).map((l) => l.textContent) }))}`);
         });
@@ -101,15 +118,13 @@ async function pass(browser, url, label, opts) {
         await shot(page, 'joined');
       });
 
-      page = await fresh();
       await run.do('"Not now" puts the question off for this fight', async () => {
-        await apart(page);
-        await walkIn(page, 'fighter');
+        await apartFight();
         await wait(page, () => window.hextable.timeline && window.hextable.waiting === 0, null, PLAYED);
         await waitShown(page, '#join', true, PLAYED);      // the fight's start plays out first (the Initiative dice); a slow machine took longer than the default 5 s
         // The question rides above the dock, and the dock changes height as the monsters' turns go by and the selected hero changes, so on a loaded machine the
         // button can still be moving when a click is tried: try again until it takes (a click that lands is the one `join-no` handler, so it cannot double; `force` as above).
-        for (let t0 = Date.now(); Date.now() - t0 < PLAYED && (await shown(page, '#join')); ) await page.click('#join-no', { timeout: 4000, force: true }).catch(() => {});
+        await tap(page, '#join-no');
         await waitShown(page, '#join', false, PLAYED);
         if (await inFight(page, 'rogue')) throw new Error('the rogue joined anyway');
       });

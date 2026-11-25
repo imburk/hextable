@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, closePanels, panelTab, tapGuarded, placeBeside, chip } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, closePanels, panelTab, tapGuarded, placeBeside, chip, tapDie } from './lib.mjs';
 
 // ---------- a weapon a spell changes (docs/specs/on-hit.md, stage O4; #666) ----------
 // A level 1 druid with Shillelagh, a Quarterstaff and a Club (two weapons fit). Armed, the hint bar asks which weapon (a thumb-sized control on touch); cast on the
@@ -55,7 +55,7 @@ async function imbue(browser, url, label, opts) {
 
       await run.do('cast on the Quarterstaff: Wisdom, a d8, Force or Bludgeoning in the Attacks tab; the Club is unchanged', async () => {
         await page.selectOption('#hint-pick', 'quarterstaff');
-        await page.click('#hint-go');
+        await tapDie(page, false);
         await wait(page, () => (window.hextable.state.effects ?? []).some((fx) => fx.name === 'Shillelagh'), null, 10000);
         await sleep(300);
         await panelTab(page, 'attacks');
@@ -116,11 +116,11 @@ async function ally(browser, url, label, opts) {
         if (!v.shown || !v.options.some((o) => o.startsWith('longsword')) || !v.options.includes('mace')) throw new Error(`the ally's weapon menu: ${JSON.stringify(v)}`);
         await page.selectOption('#hint-pick', pick);
         // Cast and Cancel, wrapped or not, stay on screen and nothing (the chat bubble) sits over them.
-        const hit = await page.evaluate(() => ['hint-pick', 'hint-go', 'hint-cancel'].map((id) => { const el = document.getElementById(id), r = el.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        const hit = await page.evaluate(() => ['hint-pick', 'btn-menu', 'hint-cancel'].map((id) => { const el = document.getElementById(id), r = el.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
           return { id, ok: r.width > 0 && r.x >= 0 && r.right <= window.innerWidth && (top === el || el.contains(top)), r: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)], top: top?.id || top?.tagName }; }));
         if (hit.some((x) => !x.ok)) throw new Error(`the hint controls are clipped or covered: ${JSON.stringify(hit)}`);
         await shot(`menu-${pick}`);
-        await page.click('#hint-go');
+        await tapDie(page, false);
         await wait(page, (w) => (window.hextable.state.effects ?? []).some((fx) => fx.name === 'Magic Weapon' && fx.parts.some((p) => p.imbue && !p.ended && p.imbue.weapon === w)), pick, 10000);
       };
       await run.do('tapping the ally lists the ally\'s two weapons; choosing the Mace and Cast puts Magic Weapon on the Mace only', async () => {

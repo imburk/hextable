@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT, chip, chipPick, openMenu } from './lib.mjs';
+import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, panelTab, rowOf, spawnNear, spotsFor, seeded, playSolo, ROOT, chip, chipPick, openMenu, tapDie } from './lib.mjs';
 
 // ---------- homebrew packs, the client side (issue #404, docs/specs/homebrew.md, row B7) ----------
 // A DM hosts and a player joins on a second screen. The DM reads the sample pack in the pack manager and adds it, a bad file is refused locally and
@@ -345,6 +345,7 @@ async function table(browser, url, label0, hostOpts, playerOpts, tag) {
         await player.click(rowOf('spells', 'Ember Dart'));
         await wait(player, () => window.hextable.mode.kind === 'spell').catch(async () => { throw new Error(`no spell mode: ${await where()}`); });
         await tapHex(target.pos, foe);
+        await tapDie(player, false);
         await calm(player);
         await openTab(player, 'log');
         await wait(player, () => /Ember Dart/.test(document.querySelector('#log-list')?.textContent ?? ''), null, 10000).catch(async () => {
@@ -609,6 +610,7 @@ async function solo(browser, url, label0, opts, tag) {
         await page.click(rowOf('spells', 'Ember Dart'));
         await wait(page, () => window.hextable.mode.kind === 'spell').catch(async () => { throw new Error(`no spell mode: ${JSON.stringify(await page.evaluate(() => window.hextable.mode))}`); });
         await page.evaluate(([h, i]) => window.hextable.R.onTap({ hex: h, id: i }), [pos, foe]);
+        await tapDie(page, false);
         await calm(page);
         await openTab(page, 'log');
         await wait(page, () => /Ember Dart/.test(document.querySelector('#log-list')?.textContent ?? ''), null, 10000).catch(async () => {

@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside, chip } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside, chip, tapDie } from './lib.mjs';
 
 // ---------- armed class features ----------
 // Stunning Strike, a row of the Features tab (packages/client/actionpanel.js, features.js): arm it, then tap a creature. A monk
@@ -139,7 +139,7 @@ async function aimLock(browser, url, label, opts) {
       };
       // A pointer moving about: a mouse over the map and then the Cast button; on touch nothing hovers, so the hover is sent as the renderer would.
       const wander = async (hexes) => {
-        if (!touch) { await page.mouse.move(300, 300); await page.mouse.move(640, 420, { steps: 5 }); const b = await page.locator('#hint-go').boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 }); }
+        if (!touch) { await page.mouse.move(300, 300); await page.mouse.move(640, 420, { steps: 5 }); const b = await page.locator('#btn-menu').boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 }); }
         await page.evaluate((hs) => { for (const h of hs) window.hextable.R.onHover(h); }, hexes);
         await sleep(200);
       };
@@ -176,7 +176,7 @@ async function aimLock(browser, url, label, opts) {
         await tapHex(a);
         const v = await view();
         if (!v.pinned || v.aim?.q !== a.q || v.aim?.r !== a.r) throw new Error(`the tap did not lock at ${JSON.stringify(a)}: ${JSON.stringify(v)}`);
-        if (!/Aimed: tap another \w+ to move it, or Cast/.test(v.hint)) throw new Error(`after the tap the hint says "${v.hint}"`);
+        if (!/Aimed: tap another \w+ to move it, or tap the die/.test(v.hint)) throw new Error(`after the tap the hint says "${v.hint}"`);
         await shot('1-locked');
         await wander([b, c, wiz]);
         const w = await view();
@@ -191,7 +191,7 @@ async function aimLock(browser, url, label, opts) {
         await wander([a]);
         if ((await view()).aim?.r !== b.r) throw new Error('hover moved the second lock');
         const n = await state(page, (S) => S.timeline.length);
-        await (touch ? page.locator('#hint-go').tap() : page.click('#hint-go'));
+        await tapDie(page, touch);
         await wait(page, (k) => window.hextable.state.timeline.length > k, n, 15000);
         const ev = await page.evaluate((k) => window.hextable.state.timeline.slice(k).find((e) => e.type === 'cast'), n);
         const at = ev?.hex ?? ev?.at ?? ev?.target;

@@ -34,8 +34,8 @@ test('hex words become square words on a square map and are left alone on a hex 
 });
 
 test('the locked-aim hint says it is aimed, how to move it, and Cast, in the grid\'s words', () => {
-  assert.equal(aimedWords(HEX), 'Aimed: tap another hex to move it, or Cast');
-  assert.equal(aimedWords(SQUARE), 'Aimed: tap another square to move it, or Cast');
+  assert.equal(aimedWords(HEX), 'Aimed: tap another hex to move it, or tap the die');
+  assert.equal(aimedWords(SQUARE), 'Aimed: tap another square to move it, or tap the die');
 });
 
 test('the Strike first choice (#585): off unless the state says otherwise, a name and the engine\'s words for each value', () => {
