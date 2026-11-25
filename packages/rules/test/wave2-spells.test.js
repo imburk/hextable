@@ -206,7 +206,7 @@ test("Wall of Thorns: Piercing save as it appears; Slashing save on entering or 
   assert.equal(fx.zone.steps[0].onFail[0].type, "slashing");
   assert.ok(!fx.terrain.difficult && obscuredAt(s, { q: 3, r: 0, z: 0 }) === "heavy", "it blocks sight; the 4-for-1 movement is the DM's, not the engine's doubled cost");
   const told = cast.events.filter((e) => e.type === "manual" && e.spell === "wall-of-thorns").map((e) => e.text).join(" ");
-  assert.match(told, /4 feet of a creature's movement for every 1 foot/);
+  assert.match(told, /4 feet of movement for every 1 foot/);
   // B walks in: a save and Slashing damage. Out and in again the same turn: nothing more. The turn ends inside: nothing either, it already saved this turn.
   const hexes = new Set(fx.zone.hexes), inW = nb(b.pos).find((h) => hexes.has(`${h.q},${h.r}`) && !(h.q === 3 && h.r === 0));
   turnOf(s, b.id);

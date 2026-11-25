@@ -349,7 +349,7 @@ export const spells6 = [
     kinds: ["damage", "control"],
     roll: "save:dex",
     tier: "assist", checked: true,
-    text: "A wall of thorns, up to 60 feet long, 10 feet high and 5 feet thick, for up to 10 minutes of Concentration; it blocks sight. A creature in it as it appears makes a Dexterity save, taking 7d8 piercing damage on a failure or half on a success. The first time it enters the wall on a turn, or ends its turn there, a creature saves again for 7d8 slashing damage (once a turn). Both grow by 1d8 per slot level above 6. The engine runs the saves and the sight block (Heavily Obscured); it does not charge the extra movement, so the DM spends 4 feet of a creature's movement for every 1 foot it moves through the wall, and places the circular form.",
+    text: "A wall of thorns up to 60 feet long, 10 high and 5 thick, for up to 10 minutes of Concentration; it blocks sight. A creature in it as it appears makes a Dexterity save against 7d8 piercing damage (half on a success). When one first enters it on a turn, or ends its turn there, it saves against 7d8 slashing (once a turn). Both grow 1d8 per slot above 6. The engine runs the saves and the sight block, not the movement cost: the DM spends 4 feet of movement for every 1 foot moved through the wall, and places the circular form.",
   },
   {
     id: "wind-walk", name: "Wind Walk", source: "SRD 5.2.1",

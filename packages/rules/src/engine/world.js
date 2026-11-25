@@ -1,7 +1,6 @@
 // Where things are (engine.js): flying and fitting, where a creature can move, regions shown and
 // objects set, hidden creatures revealed, joining a fight, finding hidden things, aiming areas and
 // choosing creatures, and the party walking in marching order.
-import { fromWorld, toWorld } from '../hex.js';
 import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong, squareAround, squareBlock, squareCone, squareDisc, squareStrip } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
@@ -924,8 +923,8 @@ function mapReachBox(map, box, n) {
 function across(G, from, aim) {
   const dq = aim.q - from.q, dr = aim.r - from.r;
   if (G.kind === 'square') return dq || dr ? { q: aim.q - dr, r: aim.r + dq } : { q: aim.q + 1, r: aim.r };
-  const a = toWorld(from), b = toWorld(aim), dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
-  return len ? fromWorld(b.x - dz / len * 12, b.z + dx / len * 12) : { q: aim.q + 1, r: aim.r };
+  const a = G.toWorld(from), b = G.toWorld(aim), dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+  return len ? G.fromWorld(b.x - dz / len * 12, b.z + dx / len * 12) : { q: aim.q + 1, r: aim.r };
 }
 function layout(s, e, area, range, aim, toward) {
   const n = area.size / FT, shape = area.shape, G = gridOf(s.map);
