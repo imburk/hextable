@@ -303,6 +303,7 @@ export function describeStep(action, events, before, after) {
     case 'startEncounter': label = 'The fight began'; break;
     case 'endEncounter': label = 'The fight was ended'; break;
     case 'endEffect': label = 'A lasting effect was ended'; break;
+    case 'moveZone': label = `${who} rolled a lasting area to ${a.to && Number.isInteger(a.to.q) ? `${a.to.q},${a.to.r}` : 'a new place'}`; break;
     case 'rest': label = 'The long rest'; break;
     case 'advanceTime': label = `${a.minutes} minutes passed`; break;
     case 'chronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;

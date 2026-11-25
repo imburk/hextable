@@ -138,6 +138,15 @@ function fire(s, ev, kit, fx, t, why) {
   }
 }
 
+// The zone is rolled to a new place (Flaming Sphere: "you can move the sphere up to 30 feet ... If you move the sphere into a creature's space, that creature makes the save against
+// the sphere"): it keeps its steps and what each creature has had of it, and has new hexes and a new origin. `met` is the creature whose space it rolled into, if any: it goes off on
+// that creature at once (outside the once-a-turn count: it is the moving that does it, not the creature's own turn).
+export function shiftZone(s, ev, kit, fx, { hexes, origin }, met = null) {
+  fx.zone.hexes = hexes.map(col);
+  fx.zone.origin = { ...origin };
+  if (met && !met.dead) fire(s, ev, kit, fx, met, 'rolled');
+}
+
 // Run what waited for the effect stack to empty.
 export function flushZones(s, ev, kit) {
   while (s.zoneQueue?.length) {

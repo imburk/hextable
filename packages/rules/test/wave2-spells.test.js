@@ -7,6 +7,7 @@ import { lintEntry } from "../src/content/schema.js";
 import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 import { view } from "../src/view.js";
+import { squareRoom } from "./fixtures/square-room.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -237,4 +238,93 @@ test("Blade Barrier: the save is on entering or ending a turn there, not on star
   ok(apply(s, { type: "move", actor: b.id, to: { q: 2, r: 1 } }, DM));
   assert.equal(saves(ok(apply(s, { type: "move", actor: b.id, to: inW }, DM)).events, b.id).length, 0);
   assert.equal(saves(ok(apply(s, { type: "endTurn", actor: b.id }, DM)).events, b.id).length, 0, "once per turn");
+});
+
+test("Flaming Sphere: a zone on the ground that saves a creature ending its turn within 5 feet; rolled 30 feet as a Bonus Action, stopping in a creature's space", () => {
+  const def = SPELLS["flaming-sphere"].def;
+  // SRD 5.2.1 header: "Level 2 Conjuration (Druid, Sorcerer, Wizard)". The 2024 school the community rulings pass reports (evocation) is not what the SRD text we hold says.
+  assert.equal(def.school, "conjuration");
+  assert.equal(def.tier, "assist");
+  assert.deepEqual(lint(def), []);
+  assert.deepEqual(def.zone, { on: ["turnEnd"], move: 30 });
+  const s = field(), a = spawn(s, "goblin-warrior", 3, 1), b = spawn(s, "goblin-warrior", 8, 2), c = spawn(s, "goblin-warrior", 7, 0);
+  for (const g of [a, b, c]) g.abil.dex = 1;
+  fight(s); turnOf(s, "wizard");
+  assert.match(apply(s, { type: "cast", actor: "wizard", spell: "flaming-sphere", slot: 2, hex: { q: 3, r: 1 } }, DM).error, /unoccupied space/, "not in a creature's space");
+  const cast = ok(apply(s, { type: "cast", actor: "wizard", spell: "flaming-sphere", slot: 3, hex: { q: 3, r: 0 } }, DM));
+  assert.equal(cast.events.filter((e) => e.type === "save").length, 0, "nobody saves as it appears");
+  const fx = fxOf(s, "Flaming Sphere");
+  assert.equal(fx.zone.steps[0].onFail[0].damage, "3d6", "1d6 more for the slot above 2");
+  assert.deepEqual(fx.zone.hexes.sort(), ["2,0", "2,1", "3,-1", "3,0", "3,1", "4,-1", "4,0"].sort(), "its hex and the six round it");
+  // A goblin beside it ends its turn there: a save and 3d6 fire. One two hexes off does not.
+  const toA = [];
+  for (let i = 0; i < 20 && current(s) !== a.id; i++) toA.push(...ok(apply(s, { type: "endTurn", actor: current(s) }, DM)).events);
+  const end = ok(apply(s, { type: "endTurn", actor: a.id }, DM));
+  assert.equal(saves(end.events, a.id).length, 1);
+  assert.equal(hurt(end.events, a.id, "fire").length, 1);
+  assert.equal(hurt([...toA, ...end.events], b.id).length, 0);
+  // The caster rolls it on a later turn: 30 feet is six hexes. Seven is too far; the nearer one runs into C at (7,0), who saves, and it stops there.
+  turnOf(s, "wizard");
+  const slots = s.entities.wizard.slots[2], bonus = s.encounter.budget.bonus;
+  assert.match(apply(s, { type: "moveZone", actor: "fighter", to: { q: 5, r: 0 } }, DM).error, /nothing to roll/);
+  assert.match(apply(s, { type: "moveZone", actor: "wizard", to: { q: 10, r: 0 } }, DM).error, /rolls 30 ft/);
+  assert.equal(s.encounter.budget.bonus, bonus, "a refusal spends nothing");
+  const roll = ok(apply(s, { type: "moveZone", actor: "wizard", to: { q: 9, r: 0 } }, DM));
+  assert.equal(s.encounter.budget.bonus, bonus - 1, "a Bonus Action");
+  const stopped = fxOf(s, "Flaming Sphere");
+  assert.deepEqual([stopped.zone.origin.q, stopped.zone.origin.r], [7, 0], "it stopped in the creature's space");
+  assert.equal(saves(roll.events, c.id).length, 1, "the creature it rolled into saves");
+  assert.equal(hurt(roll.events, c.id, "fire").length, 1);
+  assert.equal(roll.events.find((e) => e.type === "zoneMoved").met, c.id);
+  assert.match(apply(s, { type: "moveZone", actor: "wizard", to: { q: 8, r: 0 } }, DM).error, /Bonus Action/, "one Bonus Action a turn");
+  assert.equal(s.entities.wizard.slots[2], slots);
+  // The goblins beside its new place save when their turns end; the one it left behind does not.
+  assert.ok(stopped.zone.hexes.includes("8,0") && !stopped.zone.hexes.includes("4,0"));
+});
+
+test("Flaming Sphere: ending Concentration takes it away; players are not sent its place", () => {
+  const s = field(), a = spawn(s, "goblin-warrior", 4, 0);
+  a.abil.dex = 1;
+  fight(s); turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "flaming-sphere", slot: 2, hex: { q: 3, r: 0 } }, DM));
+  s.entities.wizard.owner = "pat";
+  const seen = view(s, { role: "player", userId: "pat" }).effects.find((x) => x.name === "Flaming Sphere");
+  assert.equal("zone" in seen, false, "the zone (and so its place) is not sent");
+  ok(apply(s, { type: "endEffect", effect: fxOf(s, "Flaming Sphere").id }, DM));
+  assert.equal(fxOf(s, "Flaming Sphere"), undefined);
+  assert.match(apply(s, { type: "moveZone", actor: "wizard", to: { q: 5, r: 0 } }, DM).error, /nothing to roll/);
+});
+
+test("Wall of Stone stays manual: a wall that is an object with panels is not a zone, so the cast hands everything to the DM and changes nothing", () => {
+  const def = SPELLS["wall-of-stone"].def;
+  assert.equal(def.tier, "manual");
+  assert.ok(def.effects.some((x) => "manual" in x));
+  const s = field(), g = spawn(s, "goblin-warrior", 3, 0);
+  fight(s); turnOf(s, "wizard");
+  const hp = g.hp, walls = s.map.walls.length, objects = s.map.objects.length;
+  const cast = ok(apply(s, { type: "cast", actor: "wizard", spell: "wall-of-stone", slot: 5 }, DM));
+  assert.ok(cast.events.some((e) => e.type === "manual" && /Wall of Stone/.test(e.text)), "the DM is told");
+  assert.equal(g.hp, hp);
+  assert.deepEqual([s.map.walls.length, s.map.objects.length], [walls, objects], "no wall appears on the map");
+  assert.equal(s.effects.filter((x) => x.zone || x.terrain).length, 0);
+});
+
+test("a placed wall on a square map: centred on the square chosen, across the caster's line by default, 5 feet wide, and a creature in it saves as it appears", () => {
+  const s = newGame(14);
+  ok(apply(s, { type: "loadMap", map: squareRoom() }, DM));
+  ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+  for (const [id, q, r] of [["fighter", 0, 14], ["rogue", 1, 14], ["cleric", 2, 14], ["wizard", 3, 7]]) s.entities[id].pos = { q, r, z: 0 };
+  Object.assign(s.entities.wizard, { slots: { 4: 2 }, slotsMax: { 4: 2 } });
+  s.entities.wizard.spells.push("wall-of-fire");
+  for (const e of Object.values(s.entities)) e.hp = e.maxHp = 500;
+  const east = areaHexes(s, s.entities.wizard, SPELLS["wall-of-fire"], { q: 8, r: 7 }).map((h) => `${h.q},${h.r}`);
+  assert.equal(east.length, 12, east.join(" "));
+  assert.ok(east.every((k) => k.startsWith("8,")), "a column: across the line east from the caster");
+  const along = areaHexes(s, s.entities.wizard, SPELLS["wall-of-fire"], { q: 8, r: 7 }, { q: 9, r: 7 }).map((h) => `${h.q},${h.r}`);
+  assert.ok(along.every((k) => k.endsWith(",7")) && along.includes("8,7"), along.join(" "));
+  const g = spawn(s, "goblin-warrior", 8, 7); g.hp = g.maxHp = 500; g.abil.dex = 1;
+  fight(s); turnOf(s, "wizard");
+  const cast = ok(apply(s, { type: "cast", actor: "wizard", spell: "wall-of-fire", slot: 4, hex: { q: 8, r: 7 } }, DM));
+  assert.equal(saves(cast.events, g.id).length, 1);
+  assert.equal(hurt(cast.events, g.id, "fire").length, 1);
 });

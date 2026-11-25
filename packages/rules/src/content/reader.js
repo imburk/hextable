@@ -669,7 +669,8 @@ class Reading {
   zone(aim) {
     const z = this.def.zone;
     if (!isObj(z) || !Array.isArray(z.on)) return this.bad('The zone is not an object with a list `on`.');
-    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects'], 'The zone');
+    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'], 'The zone');
+    if (z.move !== undefined && !isInt(z.move)) this.bad('The zone\'s `move` is not a whole number of feet.');
     if (z.budget !== undefined && !isInt(z.budget)) this.bad('The zone\'s `budget` is not a whole number.');
     const a = this.def.target?.area;
     if (aim !== 'area' || !isObj(a)) {
@@ -684,6 +685,7 @@ class Reading {
     this.line(`From then on, ${own ? 'the zone\'s own steps, listed next,' : 'the steps below'} run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : z.once === 'enter' ? ', entering at most once a turn for each creature (the end of a turn is its own)' : ''}.${this.damageOutside() ? ' Each creature rolls its own damage.' : ''}`);
     if (own) this.steps(z.effects, 'zone.effects', 0, 'that creature', { top: true });
     if (z.spare === true) this.line('When casting it, the caster may name creatures the area leaves alone.');
+    if (isInt(z.move)) { this.num('zone.move', z.move, 'feet'); this.line(`As a Bonus Action the caster may roll the area up to ${z.move} feet along the ground. It stops in the first space a creature stands in, and the steps run on that creature at once.`); }
     if (isInt(z.budget)) { this.num('zone.budget', z.budget, 'damage'); this.line(`The area goes when the damage it has dealt (what the creatures lose, after a save halves it or a Resistance cuts it) adds up to ${z.budget}. The spell ends then, whatever time it has left.`); }
   }
 

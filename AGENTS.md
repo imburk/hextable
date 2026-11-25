@@ -60,7 +60,7 @@ by the engine. Must work on PC, phone and tablet.
   `handlers` object that `engine.js` spreads into its table:
   `movement.js` (move, dash, stand, disengage, follow, marching order;
   walking itself), `attacks.js` (attack, act, dodge, reaction instructions,
-  endTurn; Multiattack pools), `casting.js` (cast, Metamagic, Counterspell,
+  endTurn; Multiattack pools), `casting.js` (cast, Metamagic, Counterspell, `moveZone` to roll a lasting area,
   teleport targets, endEffect), `features.js` (secondWind, feature with Font
   of Magic and Wild Shape, use, check, search, hide), `characters.js`
   (adding, editing, levelling, gear, attunement), `rests.js` (rests, time,

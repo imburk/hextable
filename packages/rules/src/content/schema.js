@@ -241,12 +241,14 @@ function lintZone(e, say, action = false) {
   const z = e.zone;
   if (z === undefined) return;
   if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
-  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
   // `budget: n` (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): the zone's lasting effect ends once the damage its steps have dealt adds up to `n`. A spell's zone only.
   if (z.budget !== undefined && !(isInt(z.budget) && z.budget >= 1 && z.budget <= 120 && !action)) say('`zone.budget` is a whole number of damage, 1 to 120, on a spell\'s zone');
   if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'step', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd, or step (each 5 feet walked within the area)');
   if (z.once !== undefined && !['turn', 'enter'].includes(z.once)) say('`zone.once` is "turn" or left out (or "enter": only entering is held to once a turn)');
   if (z.once === 'enter' && !z.on?.includes?.('enter')) say('`zone.once: "enter"` limits the entering, so the zone goes off on `enter`');
+  // `move: n` (Flaming Sphere: "As a Bonus Action, you can move the sphere up to 30 feet"): the caster may roll the zone up to `n` feet as a Bonus Action (the action `moveZone`). A spell's zone, laid out as a sphere.
+  if (z.move !== undefined && !(isInt(z.move) && z.move >= 5 && z.move <= 60 && z.move % 5 === 0 && !action && e.target?.area?.shape === 'sphere')) say('`zone.move` is feet (a multiple of 5, up to 60), on the zone of a spell whose area is a sphere');
   // `effects`: the steps the zone runs on a creature later, when they are not the steps the cast runs as it appears (Wall of Fire: a Dexterity save as it appears, flat damage after;
   // Wall of Thorns: Piercing as it appears, Slashing after). The spell's own `effects` are the cast's. A spell's zone only; a higher slot grows both alike.
   if (z.effects !== undefined) {
@@ -3011,7 +3013,7 @@ const SHAPES = {
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
-  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects'] },
+  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'] },
   terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
@@ -3183,7 +3185,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
   'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
-  'ends.dc': [1, 50], 'zone.budget': [1, 120],
+  'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
   'increase.max': [20, 30], 'increase.points': [1, 2], 'prerequisite.level': [1, 20], 'proficiencies.n': [1, 5], 'spellPick.cantrips': [0, 4], 'spellPick.level1': [0, 2],
@@ -3482,7 +3484,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
-  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a' },
+  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i' },
   terrain: { difficult: 'b', obscured: 's', lasts: 's' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },

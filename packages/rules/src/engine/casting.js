@@ -5,15 +5,16 @@ import { CONTENT, SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
+import { shiftZone, zonesOf } from '../zones.js';
 import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
-import { aimArea, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { aimArea, areaHexes, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, counterWindow, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, KIT, counterWindow, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
 import { incapacitatedBy, untrainedGear } from '../modifiers.js';
@@ -429,6 +430,36 @@ export const handlers = {
 
   // { type: 'cast', actor, spell, target? | hex?, slot? }
   cast(s, a, ctx, ev) { castSpell(s, a, ctx, ev, null); },
+  // { type: 'moveZone', actor, to: hex, effect? }: a Bonus Action to roll a zone of the actor's that can move (`zone.move`, Flaming Sphere) up to that many feet, one 5-foot step at a time toward `to`.
+  // It stops in the first space a creature stands in, and that creature takes what the zone does to a creature it rolls into (the save); the engine does not look at the barriers or pits in the way
+  // ("over barriers up to 5 feet tall and pits up to 10 feet wide": the DM judges). Nothing is spent if it is refused.
+  moveZone(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    up(e) || fail(`${e.name} is down.`);
+    const fx = zonesOf(s).find((x) => x.source === e.id && x.zone.move && (a.effect === undefined || x.id === a.effect)) || fail(`${e.name} has nothing to roll.`);
+    const z = fx.zone, G = gridOf(s.map), to = a.to;
+    (to && Number.isInteger(to.q) && Number.isInteger(to.r)) || fail(`Pick where ${fx.name} rolls to.`);
+    const feet = G.dist(z.origin, to) * FT;
+    feet > 0 || fail(`${fx.name} is there already.`);
+    feet <= z.move || fail(`That is ${feet} ft. ${fx.name} rolls ${z.move} ft.`);
+    const ground = landing(s.map, to, z.origin.z) || fail("There's nothing there to roll on.");
+    need(s, e, 'bonus');
+    if (s.encounter) s.encounter.budget.bonus--;
+    // One step at a time, toward the space named (the neighbour nearest it, the first found on a tie): it stops at a creature.
+    const at = { q: z.origin.q, r: z.origin.r }, from = { ...z.origin };
+    let met = null;
+    while (G.dist(at, to) > 0 && !met) {
+      const step = G.range(at, 1).filter((h) => G.dist(h, at) === 1).sort((p, q) => G.dist(p, to) - G.dist(q, to))[0];
+      at.q = step.q; at.r = step.r;
+      met = living(s).find((t) => footprint(t, t.pos, G).some((f) => col(f) === col(at))) ?? null;
+    }
+    const origin = { q: at.q, r: at.r, z: landing(s.map, at, z.origin.z)?.z ?? ground.z };
+    const hexes = areaHexes(s, e, { area: z.area, range: 1 }, origin);
+    ev.push({ type: 'zoneMoved', fx: fx.id, name: fx.name, by: e.id, from: { q: from.q, r: from.r }, to: { q: at.q, r: at.r }, ...(met ? { met: met.id } : {}) });
+    if (met) reveal(s, met, ev);
+    shiftZone(s, ev, KIT, fx, { hexes, origin }, met);
+    checkEnd(s, ev);
+  },
   // End a lasting effect early: its caster dropping Concentration, or the DM. { type: 'endEffect', effect }
   endEffect(s, a, ctx, ev) {
     const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
@@ -545,6 +576,8 @@ function castSpell(s, a, ctx, ev, item) {
       // A wall (a placed Line) may say which way it runs: `toward`, a space on its line (absent, it runs across the line from the caster to `hex`).
       a.toward === undefined || (sp.area.placed && a.toward && Number.isInteger(a.toward.q) && Number.isInteger(a.toward.r)) || fail(sp.area.placed ? `Name a space ${sp.name} runs toward.` : `${sp.name} is not a wall: it has no direction to choose.`);
       ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex, a.toward));
+      // A zone that rolls (Flaming Sphere) is a thing on the ground: "an unoccupied space", so not one a creature stands in.
+      if (zoneDef?.move && living(s).some((t) => footprint(t, t.pos, gridOf(s.map)).some((f) => col(f) === col(a.hex)))) fail(`${sp.name} appears in an unoccupied space: a creature stands there.`);
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
       targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);
@@ -673,7 +706,7 @@ function castSpell(s, a, ctx, ev, item) {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, ...(zoneDef.budget ? { budget: zoneDef.budget, spent: 0 } : {}),
+        spare, ...(zoneDef.budget ? { budget: zoneDef.budget, spent: 0 } : {}), ...(zoneDef.move ? { move: zoneDef.move } : {}),
         // The steps it runs later: the zone's own `effects` if it has them (grown by the slot as the spell's are), else the cast's.
         steps: structuredClone(zoneDef.effects ? scaleSteps({ ...sp.def, effects: zoneDef.effects }, casterLevel, slot).steps : steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
