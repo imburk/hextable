@@ -1051,7 +1051,7 @@ function lintArmour(e, say) {
 export const RESTS = ['short', 'long'];
 export const ACTION_TIMES = ['action', 'bonus', 'reaction', 'free'];
 export const BONUS_ACTS = ['dash', 'disengage', 'hide'];
-export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
+export const GRANTS = ['modifiers', 'aura', 'cure', 'freeCast', 'conditionImmune', 'metamagic', 'metamagicMax', 'exchange', 'swap', 'restore', 'action', 'reaction', 'ac', 'armouredAc', 'speed', 'speeds', 'senses', 'saves', 'extraAttack', 'sneak', 'rangedAttack', 'spells',
   'martialArts', 'hp', 'bonusActs', 'expertise', 'skills', 'abilityBonus', 'cantrips', 'proficiency', 'recover', 'resist', 'critOn', 'spellLists',
   // Since the magic items (#189): a score that becomes a number unless already as high (Amulet of Health), a bonus to
   // Armor Class while wearing no armour and holding no Shield (Bracers of Defense), a sense gained or its range increased
@@ -1265,7 +1265,7 @@ function lintActionChoice(a, cls, say) {
   if (c.of === 'skill' ? chosenTool : chosenSkill) say(`a step uses the chosen ${c.of === 'skill' ? 'tool' : 'skill'}, but the action's choice is of a ${c.of}`);
   if (a.form !== undefined || a.gain !== undefined || a.pool !== undefined || a.time === 'reaction' || (!Array.isArray(a.effects) && !Array.isArray(a.modes))) say('an action with a `choice` needs plain `effects` or `modes`: it cannot also take a form, gain an action or be a pool or a Reaction');
 }
-function lintGrants(g, cls, say) {
+function lintGrants(g, cls, say, owner = null) {
   if (!g || typeof g !== 'object' || Array.isArray(g)) return say('grants must be an object');
   for (const k of Object.keys(g)) if (!GRANTS.includes(k)) say(`"${k}" is not something a feature can grant`);
   if (g.modifiers !== undefined) { if (!Array.isArray(g.modifiers) || !g.modifiers.length) say('modifiers is a list'); else for (const m of bakeValues(g.modifiers, cls, say)) lintModifier(m, say); }
@@ -1423,6 +1423,9 @@ function lintGrants(g, cls, say) {
   // `exchange`: the feature's points buy spell slots by level (`costs`, from class level `minLevel`) and are bought by them.
   if (g.exchange !== undefined && !(g.exchange && Object.keys(g.exchange).length === 2 && ['costs', 'minLevel'].every((k) => g.exchange[k] && typeof g.exchange[k] === 'object'
     && Object.entries(g.exchange[k]).every(([l, v]) => isInt(+l) && +l >= 1 && +l <= 9 && isInt(v) && v > 0)))) say('exchange is { costs, minLevel } by slot level');
+  // `swap`: with no action, give a spell slot or a use of a pool for a use of a pool or a level 1 slot (Font of Inspiration, Wild Resurgence;
+  // engine/features.js, swap): a list of { id, give, get, onlyEmpty?, per? }.
+  if (g.swap !== undefined) for (const m of swapProblems(g.swap, owner ? !!owner.uses : true)) say(m);
   // `restore`: on a Short Rest, points back to another feature's pool, at most `max`, for one use.
   if (g.restore !== undefined) { if (!(g.restore && ID.test(g.restore.of ?? '') && g.restore.max !== undefined && Object.keys(g.restore).length === 2)) say('restore is { of, max }'); else lintAmount(g.restore.max, cls, say, 'restore.max'); }
   // `cure`: more conditions another feature's pool may remove, at that pool's cost (Restoring Touch).
@@ -1728,7 +1731,7 @@ function lintFeature(f, cls, say, ids) {
       if (u.short !== undefined && !(isInt(u.short) && u.short > 0)) sub('uses.short is how many come back on a Short Rest');
     }
   }
-  if (f.grants !== undefined) lintGrants(f.grants, cls, sub);
+  if (f.grants !== undefined) lintGrants(f.grants, cls, sub, f);
   // Skills from a list are picked on the sheet's `choices` for the feature, which a feature with options already uses for its option: so a feature has one or the other, and an option has no list (#544).
   if (Array.isArray(f.grants?.skills?.from) && f.options !== undefined) sub('skills from a list are picked on the same sheet entry as an option: a feature with options cannot also give them');
   if (f.grants?.action?.cost && !f.grants.action.cost.resource && f.grants.action.cost.slot === undefined) sub('a cost names a resource');
@@ -1875,6 +1878,7 @@ function featureRefs(g) {
   add('cost', a?.cost?.resource); add('cost', a?.orCost?.resource); add('ref', a?.orCost?.with);
   for (const m of Array.isArray(a?.modes) ? a.modes : []) add('cost', m?.cost?.resource);
   for (const list of [a?.effects, ...(Array.isArray(a?.modes) ? a.modes.map((m) => m?.effects) : [])]) walkSteps(list, (st) => { if (st && typeof st === 'object') add('ref', st.with); });
+  for (const w of Array.isArray(g.swap) ? g.swap : []) { add('cost', w?.give?.resource); add('cost', w?.get?.resource); }
   add('ref', g.moveWith?.of); add('ref', g.restore?.of); add('ref', g.persist?.of); add('ref', g.fleet?.of);
   add('ref', g.metamagicMax?.while); add('ref', g.relentless?.while);
   add('cost', g.freeCast?.cost?.uses); add('cost', g.reroll?.cost); add('cost', g.metamagic?.pool);
@@ -2276,7 +2280,7 @@ function lintItem(e, say, ctx = {}) {
   if (e.charges !== undefined && !(e.charges && isInt(e.charges.max) && e.charges.max > 0 && e.charges.max <= 50 && Object.keys(e.charges).every((k) => ['max', 'regain'].includes(k)) && (e.charges.regain === undefined || isDice(e.charges.regain)))) say('charges is { max, regain? }');
   if (e.grants !== undefined) {
     lintGrants(e.grants, FEAT_CLASS, say);
-    for (const k of Object.keys(e.grants ?? {})) if (['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips', 'spellLists', 'spells', 'proficiency', 'hp', 'formOf', 'triggers'].includes(k)) say(`an item does not grant "${k}" (a class feature's)`);
+    for (const k of Object.keys(e.grants ?? {})) if (['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'swap', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips', 'spellLists', 'spells', 'proficiency', 'hp', 'formOf', 'triggers'].includes(k)) say(`an item does not grant "${k}" (a class feature's)`);
     const chosen = JSON.stringify(e.grants).includes('"chosen"');
     if (chosen !== (e.variant === 'damageType' && !!e.grants)) say('a modifier\'s "chosen" damage type goes with variant "damageType"');
   }
@@ -2508,9 +2512,31 @@ const RECORD_FIELDS = ['name', 'cls', 'level', 'size', 'ac', 'acBase', 'hp', 'sp
 // attack, the Monk's Unarmed Strike) come from derive().
 const ATTACK_FIELDS = ['id', 'name', 'type', 'bonus', 'damage', 'dtype', 'reach', 'range', 'finesse', 'abil', 'weapon', 'time', 'dc', 'untrained', 'die', 'plus', 'magic', 'trained'];
 // A feature in a record: what derive() made of a class feature, its numbers put in.
-const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore',
+const FEAT_FIELDS = ['id', 'name', 'tier', 'text', 'uses', 'modifiers', 'action', 'recover', 'reaction', 'aura', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'swap', 'restore',
   'moveWith', 'brutal', 'relentless', 'initiative', 'reroll', 'missed', 'evasion', 'surfaces', 'selfCure', 'fleet', 'cunning',
   'empowered', 'overchannel', 'afterHit', 'markSpread', 'steadfast', 'restExhaustion', 'spellRange', 'repel', 'forgoAttack', 'invest', 'triggers'];
+// A feature's swaps: { id, give, get, onlyEmpty?, per? }. `give` is { slot: true } or { resource, n? }; `get` is { slot: level } or { resource, n? }.
+// `per: 'turn'` is once on each of the creature's turns; `per: 'use'` spends one use of the feature itself (it must have uses).
+export function swapProblems(list, uses = true) {
+  if (!Array.isArray(list) || !list.length || list.length > 4) return ['swap is a list of 1 to 4 { id, give, get, onlyEmpty?, per? }'];
+  const out = [], ids = new Set();
+  const side = (v, give) => {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+    if (v.slot !== undefined) return Object.keys(v).length === 1 && (give ? v.slot === true : isInt(v.slot) && v.slot >= 1 && v.slot <= 9);
+    return ID.test(v.resource ?? '') && Object.keys(v).every((k) => ['resource', 'n'].includes(k)) && (v.n === undefined || (isInt(v.n) && v.n >= 1 && v.n <= 5));
+  };
+  for (const w of list) {
+    if (!w || typeof w !== 'object' || !ID.test(w.id ?? '') || ids.has(w.id) || !Object.keys(w).every((k) => ['id', 'give', 'get', 'onlyEmpty', 'per'].includes(k))) { out.push('each swap is { id, give, get, onlyEmpty?, per? }, with its own id'); continue; }
+    ids.add(w.id);
+    if (!side(w.give, true)) out.push(`swap ${w.id}: give is { slot: true } or { resource, n? }`);
+    if (!side(w.get, false)) out.push(`swap ${w.id}: get is { slot: level } or { resource, n? }`);
+    if (w.give?.slot && w.get?.slot) out.push(`swap ${w.id}: a slot is not given for a slot`);
+    if (w.onlyEmpty !== undefined && !(w.onlyEmpty === true && w.get?.resource !== undefined)) out.push(`swap ${w.id}: onlyEmpty is true, for a pool it gets`);
+    if (w.per !== undefined && !['turn', 'use'].includes(w.per)) out.push(`swap ${w.id}: per is turn or use`);
+    if (w.per === 'use' && !uses) out.push(`swap ${w.id}: per use needs the feature to have uses`);
+  }
+  return out;
+}
 function lintFeat(f, say) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return say('A feature is a record.');
   for (const k of Object.keys(f)) if (!FEAT_FIELDS.includes(k)) say(`"${k}" is not something a feature has.`);
@@ -2547,6 +2573,7 @@ function lintFeat(f, say) {
   if (f.metamagic !== undefined && !(f.metamagic && typeof f.metamagic.id === 'string' && isInt(f.metamagic.cost) && f.metamagic.cost > 0 && f.metamagic.cost <= 10 && ID.test(f.metamagic.pool ?? ''))) sub('its metamagic is { id, cost, pool }.');
   if (f.metamagicMax !== undefined && !(f.metamagicMax && isInt(f.metamagicMax.n) && f.metamagicMax.n >= 2 && f.metamagicMax.n <= 3 && ID.test(f.metamagicMax.while ?? ''))) sub('its metamagicMax is { n, while }.');
   if (f.exchange !== undefined && !(f.uses && f.exchange && ['costs', 'minLevel'].every((k) => f.exchange[k] && Object.values(f.exchange[k]).every((v) => isInt(v) && v > 0)))) sub('its exchange is { costs, minLevel }, with uses.');
+  if (f.swap !== undefined) for (const m of swapProblems(f.swap, !!f.uses)) sub(`its ${m}.`);
   if (f.restore !== undefined && !(f.uses && f.restore && ID.test(f.restore.of ?? '') && isInt(f.restore.max) && f.restore.max >= 0 && f.restore.max <= 20)) sub('its restore is { of, max }, with uses.');
   if (f.action?.orCost !== undefined && !(ID.test(f.action.orCost.resource ?? '') && isInt(f.action.orCost.n) && f.action.orCost.n > 0)) sub('its orCost is { resource, n }.');
   if (f.aura !== undefined) {
