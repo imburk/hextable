@@ -1311,7 +1311,7 @@ Blade Barrier and Wall of Stone, all `manual` before. Every number was compared 
 | Spike Growth | manual | assist | judges a jump, and the Search action and check that spot the hazard |
 | Flaming Sphere | manual | assist | the barriers and pits it crosses, the objects it sets alight, its light |
 | Wall of Fire | manual | assist | the hot side's 10 feet (creatures that end a turn beside the wall) and the ringed form |
-| Wall of Thorns | manual | assist | the 4-feet-per-foot cost (the engine charges 2) and the circular form |
+| Wall of Thorns | manual | assist | the 4-feet-per-foot cost (the engine charges none: Difficult Terrain is a flat 2, so the cast hands it to the DM) and the circular form |
 | Blade Barrier | manual | assist | Three-Quarters Cover for attacks across it, from both sides, and the ringed form |
 | Wall of Stone | manual | **manual** | all of it: see "A wall that is an object" below |
 
