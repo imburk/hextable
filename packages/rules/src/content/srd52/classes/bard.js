@@ -391,9 +391,22 @@ export const bard = {
       "id": "font-of-inspiration",
       "name": "Font of Inspiration",
       "level": 5,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Bardic Inspiration comes back on a Short Rest as well (applied), and you can spend a spell slot to regain one use (the DM applies it)."
+      "text": "Bardic Inspiration comes back on a Short Rest as well, and you can expend a spell slot (no action) to regain one expended use.",
+      "grants": {
+        "swap": [
+          {
+            "id": "slot-for-inspiration",
+            "give": {
+              "slot": true
+            },
+            "get": {
+              "resource": "bardic-inspiration"
+            }
+          }
+        ]
+      }
     },
     {
       "id": "countercharm",

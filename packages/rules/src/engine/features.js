@@ -169,6 +169,8 @@ export const handlers = {
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
     // spend) still spends what it costs and hands the rest to the DM, as before these were built.
     if (f.exchange && (a.make !== undefined || a.spend !== undefined)) return exchange(s, e, f, a, ev);
+    // A feature that swaps one thing for another (Font of Inspiration, Wild Resurgence) is used by naming the swap.
+    if (f.swap) return swap(s, e, f, a, ev);
     // A feature that casts a spell (Divine Intervention) is used by casting: `cast` with `via`.
     (!f.freeCast || f.action) || fail(`${f.name} casts a spell: cast the spell through it (cast with via "${f.id}").`);
     // A feature used on rolling Initiative (Persistent Rage) is spent then, never by hand.
@@ -631,6 +633,47 @@ function exchange(s, e, f, a, ev) {
     return ev.push({ type: 'std', id: e.id, action: `${f.name}: ${a.spend} point${a.spend === 1 ? '' : 's'} from a spell slot` });
   }
   fail(`Say whether ${f.name} makes a spell slot (make) or spends one (spend).`);
+}
+
+// A feature that gives one thing for another, with no action (Font of Inspiration, Wild Resurgence): `swap` is a list of
+// { id, give, get, onlyEmpty?, per? } (docs/specs/rules-expansion.md, "Font of Inspiration and Wild Resurgence"). `give` and
+// `get` are a spell slot ({ slot: true } to give, one of the creature's choosing by `slot: level`; { slot: level } to get) or
+// a pool ({ resource: feature id, n? }). `onlyEmpty`: only when the pool it gets has none left. `per: 'turn'`: once on each
+// of the creature's own turns; `per: 'use'`: for one use of the feature itself, which comes back as its `uses` say.
+// { type: 'feature', actor, feature, swap: id, slot?: level of the slot given }. Everything is checked before anything is paid.
+function swap(s, e, f, a, ev) {
+  up(e) || fail(`${e.name} is down.`);
+  able(e);
+  const list = f.swap, x = list.find((w) => w.id === a.swap) || fail(`Say which swap ${f.name} makes: ${list.map((w) => w.id).join(', ')}.`);
+  const pool = (r) => featOf(e, r.resource) || fail(`${e.name} has no ${r.resource} to swap.`);
+  const key = turnKey(s);
+  if (x.per === 'turn' && s.encounter && inFight(s, e.id)) current(s) === e.id || fail(`${f.name} is used on ${e.name}'s own turn.`);
+  if (x.per === 'turn' && key && e.swapped?.[f.id] === key) fail(`${e.name} has already used ${f.name} this turn.`);
+  if (x.per === 'use') (e.uses[f.id] ?? 0) > 0 || fail(`${e.name} has no uses of ${f.name} left; they come back on a Long Rest.`);
+  let level = null, n = 1;
+  if (x.give.slot) {
+    level = a.slot;
+    (Number.isInteger(level) && level >= 1 && (e.slots?.[level] ?? 0) > 0) || fail(`Name a spell slot ${e.name} has to give up (slot: its level).`);
+  } else {
+    const p = pool(x.give); n = x.give.n ?? 1;
+    (e.uses[p.id] ?? 0) >= n || fail(`${e.name} has no use of ${p.name} to give up.`);
+  }
+  if (x.get.resource !== undefined) {
+    const p = pool(x.get), got = x.get.n ?? 1;
+    if (x.onlyEmpty && (e.uses[p.id] ?? 0) > 0) fail(`${f.name}: ${e.name} still has uses of ${p.name}.`);
+    (e.uses[p.id] ?? 0) + got <= p.uses.max || fail(`${e.name} has all its uses of ${p.name}.`);
+  }
+  // Paid for: from here it happens.
+  if (x.per === 'use') e.uses[f.id]--;
+  if (x.per === 'turn' && key) (e.swapped ??= {})[f.id] = key;
+  if (level !== null) e.slots[level]--; else e.uses[featOf(e, x.give.resource).id] -= n;
+  if (x.get.resource !== undefined) e.uses[featOf(e, x.get.resource).id] += x.get.n ?? 1;
+  else e.slots[x.get.slot] = (e.slots[x.get.slot] ?? 0) + 1;
+  // Outside a fight there are no turns to count: the limit is the DM's to judge.
+  if (x.per === 'turn' && !key) ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `${f.name} may be used once on each of ${e.name}'s turns. There is no turn outside a fight, so the engine cannot count them: the DM judges that limit here.` });
+  const gave = level !== null ? `a level ${level} spell slot` : `${n} use of ${featOf(e, x.give.resource).name}`;
+  const got = x.get.resource !== undefined ? `${x.get.n ?? 1} use of ${featOf(e, x.get.resource).name}` : `a level ${x.get.slot} spell slot`;
+  ev.push({ type: 'std', id: e.id, action: `${f.name}: ${gave} for ${got}` });
 }
 
 // A feature that lays a form over its creature (Wild Shape; forms.js): { type: 'feature', actor,

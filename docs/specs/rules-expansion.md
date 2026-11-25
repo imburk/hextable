@@ -1140,6 +1140,34 @@ which requires a successful DC 10 Wisdom (Medicine) check ... A Stable creature 
   (Advantage to an ally's check or attack: `stabilize` is its Medicine use only); the client's button for `stabilize` (the client lane); travel
   between places moves no clock, so it rolls nothing.
 
+#### Build notes: Font of Inspiration and Wild Resurgence (amendment, #726 job 7)
+
+Tests in `packages/rules/test/font-resurgence.test.js`. SRD 5.2.1, Bard level 5, Font of Inspiration: Bardic Inspiration comes back on a Short or
+Long Rest, and "you can expend a spell slot (no action required) to regain one expended use of Bardic Inspiration." Druid level 5, Wild Resurgence:
+"Once on each of your turns, if you have no uses of Wild Shape left, you can give yourself one use by expending a spell slot (no action required).
+In addition, you can expend one use of Wild Shape (no action required) to give yourself a level 1 spell slot, but you can't do so again until you
+finish a Long Rest." The Short Rest half of Font of Inspiration was already built (`uses.recharge` by level).
+
+- **A new grant, `swap`** (a list of 1 to 4): `{ id, give, get, onlyEmpty?, per? }`. `give` is `{ slot: true }` (a spell slot the creature chooses) or
+  `{ resource: feature id, n? }` (uses of a pool); `get` is `{ slot: level }` or `{ resource, n? }`. A slot is never given for a slot. `onlyEmpty:
+  true` (only for a pool it gets): only when that pool has none left. `per: 'turn'`: once on each of the creature's own turns; `per: 'use'`: for one
+  use of the feature itself (the feature then has `uses`, and they come back as `uses.recharge` says: Wild Resurgence's one use is "once until a Long
+  Rest", restored by the rest as every feature with uses is, so `engine/rests.js` did not change). The linter holds the shapes and that a `resource`
+  is a feature with uses of the class (`cost` references).
+  Reading: `reader.js` has the sentence; `derive.js` copies it to the feature record (`FEAT_FIELDS` has it); an item may not grant it.
+- **The action**: `{ type: 'feature', actor, feature, swap: id, slot?: level }`, by the creature's controller or the DM. No action, bonus action or
+  reaction is taken, in a fight or out of it. Everything is checked before anything is paid: the creature is up and able; the swap exists; a slot of
+  that level is there to give (`slot`); a pool given has the uses; a pool got is not already full (`uses.max`), and for `onlyEmpty` is at 0; `per:
+  'use'` has a use left; `per: 'turn'` has not been made on this turn, and in a fight is made on the creature's own turn. Outside a fight there are no
+  turns to count, so only the other limits hold and the DM is sent a `manual` note (partial) that the once-per-turn limit is theirs to judge (a swap needs a slot spent and a pool at 0, so it cannot run away). The turn is kept on the creature
+  as `swapped` (`{ feature id: turn key }`), `withheld` in `view-fields.js`. A feature with `swap` used with no `swap` named is refused ("Say which
+  swap"), so it can never spend its use by hand. A slot got is one more than the creature's maximum; it goes at the next Long Rest, which sets slots
+  to their maximum, as a Font of Magic slot does.
+- **Multiclass.** Features go by their own class's level: bard 5 / druid 5 has both; bard 4 / druid 5 only Wild Resurgence (tested).
+- **The two features are `auto`.** Nothing is left for the DM. Pact Magic slots count as spell slots (they are in `slots`).
+- **Homebrew swaps are refused for now**: `grants.swap` in a homebrew pack is refused by the strict shape check ("cannot swap a spell slot..."), as `invest` and `forgoAttack` are, because its limits are not in the homebrew tables. Tested through `loadPack`.
+- **Not built:** the client has no control for it (DEBT W41).
+
 ### A class
 
 ```js
