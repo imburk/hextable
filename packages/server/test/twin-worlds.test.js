@@ -642,8 +642,7 @@ const offeredSheet = (name) => ({ name, class: "fighter", level: 1, abilities: {
   skills: ["perception", "survival"], extraSkills: ["athletics", "intimidation"], choices: { "fighting-style": "archery" },
   armour: "chain-mail", shield: true, weapons: ["longsword", "javelin"], gear: ["Chain Mail", "Shield", "Longsword", "4 Javelins", "Explorer's Pack"] });
 test("offers: a character a player has offered and the DM has not admitted is sent to no player, whatever happens at the table meanwhile", () => {
-  // Sam is told his own offer was declined, so Sam is the one player who may tell the worlds apart; Pat may not.
-  const { plain, hidden } = twinRun({
+  const { hidden } = twin({
     players: ["Pat", "Sam"],
     steps: [
       { by: "dm", act: { type: "setting", key: "level", value: { min: 1, max: 3 } } },

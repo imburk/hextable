@@ -198,3 +198,12 @@ test("decline: the player whose offer was declined is sent the event with the no
   assert.deepEqual(viewEvents(r2.events, s, SAM), [{ type: "declined", user: "sam" }]);
   assert.deepEqual(viewEvents(r2.events, s, PAT), []);
 });
+
+test("decline, three players: a third player who never offered is sent no declined event", () => {
+  const LEE = { role: "player", userId: "lee" };
+  const s = fresh();
+  ok(s, SAM, { type: "offer", sheet: sheet("Bram") });
+  const r = ok(s, DM, { type: "decline", user: "sam", note: "Not this one" });
+  assert.equal(viewEvents(r.events, s, SAM).filter((e) => e.type === "declined").length, 1);
+  for (const who of [PAT, LEE]) assert.deepEqual(viewEvents(r.events, s, who), []);
+});
