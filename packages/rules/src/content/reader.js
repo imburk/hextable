@@ -109,7 +109,7 @@ export const OP_WORDS = {
 export const TAG_WORDS = {
   within5: 'the two are within 5 feet of each other', beyond5: 'the two are more than 5 feet apart', ranged: 'it is a ranged attack', melee: 'it is a melee attack',
   'attack.advantage': 'the attack roll has Advantage', 'attack.disadvantage': 'the attack roll has Disadvantage', 'target.prone': 'the target is Prone',
-  'target.unconscious': 'the target is Unconscious', 'attacker.unseen': 'the target cannot see the attacker', 'target.unseen': 'the attacker cannot see the target',
+  'target.unconscious': 'the target is Unconscious', 'attacker.unseen': 'the target cannot see the attacker', 'target.unseen': 'the attacker cannot see the target', 'target.seen': 'the attacker can see the target', 'target.enemy': 'the target is on another side than the caster',
   'ally.adjacentToTarget': 'an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target', 'enemy.adjacent': 'an enemy is within 5 feet of the attacker',
   'long.range': 'the attack is at long range', 'target.halfCover': 'the target has Half Cover', 'target.threeQuartersCover': 'the target has Three-Quarters Cover',
   'target.seesSource': 'the target can see the caster', 'attack.hit': 'the damage comes from an attack roll that hit', 'attack.weapon': 'the attack is made with a weapon (an Unarmed Strike is not)', 'attack.weaponOrUnarmed': 'the attack is made with a weapon or is an Unarmed Strike',
@@ -127,7 +127,7 @@ export const TAG_WORDS = {
 //    `onHit` or `onMiss`, how the roll went (Advantage or Disadvantage). A step that cannot be judged is NOT run: the DM is told.
 //  - a MODIFIER's `when` (modifiers.js `modifiers`) is asked with whatever its hook's caller knows. A modifier whose tag cannot be
 //    judged is skipped, without a word to anybody: it never takes effect.
-const WHERE = ['within5', 'beyond5', 'target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf'];
+const WHERE = ['within5', 'beyond5', 'target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf'];
 export const JUDGED_STEP = WHERE;
 export const JUDGED_STEP_AFTER_ATTACK = [...WHERE, 'attack.advantage', 'attack.disadvantage'];
 export const JUDGED_ADVANTAGE_IF = WHERE;
@@ -137,7 +137,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 //   damage hook:  the attacker, the target, and whether it came from a hit, a weapon, a cantrip.
 //   holder hooks: only the creature itself (as the "target"), which the modifier is on.
 //   bare hooks:   nothing but the creature the modifier is on.
-const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
+const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
 export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition'];
@@ -269,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
@@ -667,7 +667,8 @@ class Reading {
   zone(aim) {
     const z = this.def.zone;
     if (!isObj(z) || !Array.isArray(z.on)) return this.bad('The zone is not an object with a list `on`.');
-    this.odd(z, ['on', 'once', 'atCast', 'spare'], 'The zone');
+    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget'], 'The zone');
+    if (z.budget !== undefined && !isInt(z.budget)) this.bad('The zone\'s `budget` is not a whole number.');
     const a = this.def.target?.area;
     if (aim !== 'area' || !isObj(a)) {
       this.line('The entry asks for an area that stays, but the engine cannot lay this area out, so no zone is made: the DM runs it.');
@@ -679,6 +680,7 @@ class Reading {
     this.line(z.atCast === true ? 'As it appears, the steps below run on each creature in it.' : 'As it appears it affects nobody.');
     this.line(`From then on, the steps below run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : ''}.${this.damageOutside() ? ' Each creature rolls its own damage.' : ''}`);
     if (z.spare === true) this.line('When casting it, the caster may name creatures the area leaves alone.');
+    if (isInt(z.budget)) { this.num('zone.budget', z.budget, 'damage'); this.line(`The area goes when the damage it has dealt (what the creatures lose, after a save halves it or a Resistance cuts it) adds up to ${z.budget}. The spell ends then, whatever time it has left.`); }
   }
 
   terrain(aim) {
@@ -842,7 +844,7 @@ class Reading {
     const e = st.ends;
     if (e !== undefined && !isObj(e)) this.bad(`Step ${at}: \`ends\` is not an object.`);
     const ends = isObj(e) && ENDS_ON.includes(e.on) ? e : null;
-    if (isObj(e)) this.odd(e, ['on', 'of', 'save', 'at', 'by', 'orDamaged', ...(this.mon || this.itm ? ['dc'] : [])], `Step ${at}: \`ends\``);
+    if (isObj(e)) this.odd(e, ['on', 'of', 'save', 'at', 'by', 'orDamaged', 'keeps', ...(this.mon || this.itm ? ['dc'] : [])], `Step ${at}: \`ends\``);
     if (isObj(e) && (this.mon || this.itm) && e.dc !== undefined) { if (isInt(e.dc)) this.num(`${at}.ends.dc`, e.dc, 'DC'); else this.bad(`Step ${at}: the ending's DC is not a whole number.`); }
     if (!this.fx) {
       if (what === 'modifier') return null;
@@ -859,7 +861,7 @@ class Reading {
       return 'Nothing in the engine ends it: the DM removes it.';
     }
     if (!ends) text = this.fx === 'spell' ? 'It lasts as long as the spell.' : 'Nothing ends it on its own: the DM ends it.';
-    else if (ends.on === 'turnStart' || ends.on === 'turnEnd') text = `It ends at the ${ends.on === 'turnStart' ? 'start' : 'end'} of ${whose} next turn, or when the fight ends${this.fx === 'spell' ? ', even if the spell\'s time runs out first; ending the spell early ends it too' : ''}.`;
+    else if (ends.on === 'turnStart' || ends.on === 'turnEnd') text = `It ends at the ${ends.on === 'turnStart' ? 'start' : 'end'} of ${whose} next turn, or when the fight ends${this.fx === 'spell' ? ', even if the spell\'s time runs out first; ending the spell early ends it too' : ''}.${ends.keeps === true && this.fx === 'spell' ? ' The spell itself goes on after it ends.' : ''}`;
     else if (ends.on === 'save') {
       const ab = ABILITY_WORDS[ends.save] ?? 'unreadable';
       const atw = ends.at === 'turnStart' ? 'at the start of each of its turns' : ends.at === 'turnEnd' ? 'at the end of each of its turns' : ends.at === 'damaged' ? 'each time it takes damage' : 'at an unreadable time';
@@ -1130,7 +1132,7 @@ export const STEP_SENTENCES = {
   },
   // engine/rolls.js `eachTurn`, effects.js `turnSteps`.
   eachTurn({ st, at, depth, who, say }) {
-    if (!Array.isArray(st.eachTurn) || !st.eachTurn.length || st.eachTurn.some((x) => !isObj(x) || !['heal', 'tempHp', 'manual'].includes(STEPS.find((k) => k in x)))) this.bad(`Step ${at}: an eachTurn step lists heal, tempHp or manual steps.`);
+    if (!Array.isArray(st.eachTurn) || !st.eachTurn.length || st.eachTurn.some((x) => !isObj(x) || !['heal', 'tempHp', 'damage', 'save', 'endSpell', 'manual'].includes(STEPS.find((k) => k in x)))) this.bad(`Step ${at}: an eachTurn step lists heal, tempHp, damage, save, endSpell or manual steps.`);
     say(`At the start of each of its turns in a fight, for as long as the spell lasts, the engine runs these steps on ${who}, with the numbers of this casting:`);
     const was = this.inTurn;
     this.inTurn = true;
@@ -1140,6 +1142,21 @@ export const STEP_SENTENCES = {
       return this.dm(`Step ${at}: what it does at the start of each turn, since the spell does not last.`);
     }
     this.line('A creature that is down or dying gets them before its Death Saving Throw. Temporary Hit Points they give belong to the creature, and stay after the spell ends. Outside a fight there are no turns, so the engine runs nothing then.', depth + 1);
+  },
+  // engine/rolls.js `endSpell`, inside an `eachTurn`.
+  endSpell({ st, at, say }) {
+    if (st.endSpell !== true) this.bad(`Step ${at}: \`endSpell\` is true.`);
+    if (!this.inTurn) this.bad(`Step ${at}: an endSpell step goes inside an eachTurn.`);
+    say('The spell ends, and with it everything it put on any creature.');
+  },
+  // engine/rolls.js `arm`: an attack the spell gives its caster while it lasts (Flame Blade).
+  arm({ st, at, Who, say }) {
+    const a = st.arm;
+    if (!isObj(a)) return this.bad(`Step ${at}: \`arm\` is not an attack.`);
+    const dice = isDice(a.damage) ? a.damage : null;
+    if (dice) this.num(`${at}.arm.damage`, dice, 'dice'); else this.bad(`Step ${at}: the arm step has no readable damage dice.`);
+    say(`${Who} gets one more action to take for as long as the spell lasts: a melee spell attack (reach 5 feet) with the caster's spell attack bonus, dealing ${dice ?? '(unreadable dice)'}${a.addMod === true ? ' plus the spellcasting ability modifier' : ''} ${a.type ?? '(unreadable type)'} damage on a hit. It takes ${a.time === 'bonus' ? 'a Bonus Action' : 'the Action'}, and goes when the spell ends.`);
+    if (!this.fx || this.fx === 'bound' || this.obj || this.itm || this.mon) { this.line('The spell does not last, so the engine has nothing to hang the attack on: the DM resolves it.', 1); return this.dm(`Step ${at}: the attack the spell gives.`); }
   },
   // engine/rolls.js `revive`.
   revive({ st, at, depth, Who, say }) {
@@ -1318,7 +1335,7 @@ function summonLines(st, at, depth, say) {
   }
   const b = st.bond;
   if (!isObj(b)) { this.bad(`Step ${at}: a summon step without a bond.`); return; }
-  this.odd(b, ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack', 'mount'], `Step ${at}: the bond`);
+  this.odd(b, ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack', 'mount', 'first'], `Step ${at}: the bond`);
   const bits = [];
   bits.push(`It is the caster's ${SUMMON_KIND_WORDS[b.kind] ?? 'companion of an unreadable kind'}.`);
   if (SUMMON_TURNS.includes(b.turn)) bits.push(SUMMON_TURN_WORDS[b.turn]); else this.bad(`Step ${at}: the bond's turn is not one the engine runs.`);
@@ -1330,6 +1347,7 @@ function summonLines(st, at, depth, say) {
   if (Array.isArray(b.ends)) { const ws = b.ends.filter((x) => SUMMON_ENDS.includes(x)).map((x) => SUMMON_END_WORDS[x]); if (ws.length) bits.push(`The bond ends ${list(ws, 'or')}.`); }
   if (isInt(b.leash)) { this.num(`${at}.bond.leash`, b.leash, 'feet'); bits.push(`It vanishes if it ends up more than ${b.leash} feet from the caster.`); }
   if (b.noAttack === true) bits.push('It cannot attack.');
+  if (b.first === 'commanded') bits.push('Made in a fight, its first turn is already commanded: the caster\'s player plays it straight after the cast, with no Bonus Action to command it.');
   if (b.mount === 'controlled') bits.push('The caster can ride it as a controlled mount.');
   if (this.fx === 'spell') bits.push('It lasts as long as the spell.');
   this.line(bits.join(' '), depth + 1);

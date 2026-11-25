@@ -17,3 +17,4 @@
 .mc button.sure { outline: 2px solid currentColor; outline-offset: 2px; }
 .panel.qb.over-lobby { z-index: 12; }
 #lobby-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
+#fgi-bring { z-index: 12; }      /* the Bring a character review opens over My characters (z-index 11) */

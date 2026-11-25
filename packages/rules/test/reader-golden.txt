@@ -192,6 +192,37 @@ Not checked against any rulebook.
 DM: "Its wounds close a little more."
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-slow-burn
+"Slow Burn" (level 1 evocation, 30 feet, action, 1 minute).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: damage.
+Its roll: the target makes a Constitution saving throw (read from its steps, since the entry does not say).
+At the start of each of its turns in a fight, for as long as the spell lasts, the engine runs these steps on one creature within 30 feet, with the numbers of this casting:
+  It takes 1d4 fire damage.
+  It makes a Constitution saving throw.
+  On a success:
+    The spell ends, and with it everything it put on any creature.
+  A creature that is down or dying gets them before its Death Saving Throw. Temporary Hit Points they give belong to the creature, and stay after the spell ends. Outside a fight there are no turns, so the engine runs nothing then.
+The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
+Saving throws are against the caster's spell save DC.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
+== hb-test-fire-fist
+"Fire Fist" (level 2 evocation, self, action, 1 minute, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+The caster gets one more action to take for as long as the spell lasts: a melee spell attack (reach 5 feet) with the caster's spell attack bonus, dealing 2d6 plus the spellcasting ability modifier fire damage on a hit. It takes the Action, and goes when the spell ends.
+It is aimed at the caster alone.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
@@ -382,7 +413,7 @@ The caster gets to keep 1 Hit Point the first time damage would take it to 0 Hit
   That one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it.
   It lasts as long as the spell.
 The caster gets Advantage on attack rolls made against it.
-  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack, the target is not a Fiend and the target is a Fiend or an Undead. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
+  It does not hold for rolls the caster makes. It holds only when the attack roll has Advantage, the attack roll has Disadvantage, the target cannot see the attacker, the attacker cannot see the target, the attacker can see the target, the target is on another side than the caster, an ally of the attacker who can act (is not Incapacitated) is within 5 feet of the target, an enemy is within 5 feet of the attacker, the target can see the caster, it is an Opportunity Attack, the target is not a Fiend and the target is a Fiend or an Undead. The engine never applies this: at attack rolls made against it it cannot tell whether the attack roll has Advantage, the attack roll has Disadvantage and the target can see the caster, and it skips a modifier it cannot be sure of, without telling anyone.
   It lasts as long as the spell.
 It is aimed at the caster alone.
 It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
