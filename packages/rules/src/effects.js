@@ -127,6 +127,7 @@ function summarise(def) {
   if (kind === 'summon' && step.on === 'corpse') return { short: 'summon', long: `Raises ${step.count && step.count !== 1 ? 'corpses' : 'a corpse'} as undead under the caster's control for 24 hours` };
   if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
+  if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} back to life with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'}` };
   if (kind === 'dispel') return { short: 'end spells', long: `Ends spells of level ${step.dispel} or lower on it; a check against DC ${step.dc} plus the level for each higher one` };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
@@ -190,7 +191,7 @@ export function derivedKinds(def) {
     const kind = stepKind(st);
     if (!['manual', 'save', 'attack'].includes(kind)) steps = true;     // a roll whose result the DM applies says nothing of what the spell is for
     if (kind === 'damage' || kind === 'fall' || kind === 'kill') k.add('damage');
-    else if (kind === 'heal' || kind === 'tempHp' || kind === 'cure') k.add('healing');
+    else if (kind === 'heal' || kind === 'tempHp' || kind === 'cure' || kind === 'revive') k.add('healing');
     else if (kind === 'condition') k.add(BENEFICIAL_CONDITIONS.includes(st.condition) ? 'utility' : 'control');
     else if (kind === 'move' || kind === 'counter') k.add('control');
     else if (kind === 'teleport' || kind === 'reveal' || kind === 'dispel') k.add('utility');
@@ -223,7 +224,9 @@ export function spellProfile(def) {
     ...(aim === 'area' ? { area: { ...t.area } } : {}),
     ...(aim === 'creature' ? { count: t.creature.count ?? 1, ...(t.creature.repeat ? { repeat: true } : {}), ...(t.creature.within ? { within: t.creature.within } : {}),
       // The creature types it works on (Hold Person: Humanoid); one of another type is an invalid target, and the cast does nothing to it.
-      ...(t.creature.types ? { types: [...t.creature.types] } : {}) } : {}),
+      ...(t.creature.types ? { types: [...t.creature.types] } : {}),
+      // Aimed at a dead creature, and at no other (Revivify).
+      ...(t.creature.dead ? { dead: true } : {}) } : {}),
     harmful, heals: heals && !harmful,
     heal: healStep ? { dice: healStep.heal, addMod: !!healStep.addMod } : null,
     turn: def.time === 'action' || def.time === 'bonus',   // can be cast on a turn in a fight
@@ -527,6 +530,7 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
   if (kind === 'dispel') return kit.dispel(s, t, step, ev, f);
+  if (kind === 'revive') return kit.revive(s, t, step, ev, f);
   if (kind === 'light') return kit.shine(s, t, step, ev, f) || handOver(`${f.src.name} makes a light, but there is no lasting effect for the engine to hang it on. The DM hands it out with setLight and puts it out.`);
   if (kind === 'kill') return kit.kill(s, t, ev);
   if (kind === 'endConcentration') return kit.breakConcentration(s, ev, t.id, `${t.name} lost Concentration to ${f.src.name}`);

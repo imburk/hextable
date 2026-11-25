@@ -545,7 +545,7 @@ function castSpell(s, a, ctx, ev, item) {
       ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex));
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
-      targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true }, a);
+      targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);
     } else if (sp.aim === 'self') targets = [e];
     // `target.creature.types` (Hold Person's Humanoid): a creature of another type is an invalid target. SRD 5.2.1, "Invalid Targets": "nothing
     // happens to that target, but if you used a spell slot to cast the spell, the slot is still expended." So the cast is made and paid for as

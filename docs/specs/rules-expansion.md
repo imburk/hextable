@@ -1048,6 +1048,49 @@ spell slot you use."
 - **Views.** `level` and `aimed` are not sent to players: `viewEffects` sends named fields only.
 - **The reader** has the step's sentence; the golden spell "Unravel" and the golden monster "Cinderjaw Hound" carry one.
 
+#### Build notes: Revivify (amendment, #726 job 6)
+
+Tests in `packages/rules/test/revivify.test.js`, and a `twin()` test in `packages/server/test/twin-worlds.test.js`. SRD 5.2.1, Revivify: "You
+touch a creature that has died within the last minute. That creature revives with 1 Hit Point. This spell can't revive a creature that has
+died of old age, nor does it restore any missing body parts." Components: V, S, M (a diamond worth 300+ GP, which the spell consumes).
+
+- **The time of death is on the body** (`diedAt`, a number: the game clock, `s.clock`, in minutes). `died(s, t)` (`engine/rolls.js`) sets it at
+  each of the places a creature dies (damage to a creature at 0 Hit Points or past its maximum, a third failed Death Saving Throw, a `kill`
+  step, an Instant Death from damage), beside the `died` event. A creature that vanished (`vanish`: gone, not killed) has none.
+  **One clock, in minutes, serves in and out of a fight**: in a fight the clock moves a round (0.1 minute) when the round turns, so ten rounds
+  are a minute and no second count of rounds is kept. The cost is that the minute is judged to the round, not to the turn (a death early in
+  round 3 and a cast late in round 13 count as a minute apart). Outside a fight it is the time the DM lets pass (`advanceTime`, rests).
+- **The shape.** `diedAt` is optional and is read only on a dead creature, so the state version stays 31 and there is no migration: a body
+  from a game saved before it was kept has no time of death, and none could be made up. Such a body is not revived: the cast is made and paid
+  for, and the DM is told (`manual`: "the engine does not know when it died") and brings it back by hand (`setHp`). A body the DM's `setHp`
+  raised keeps a stale `diedAt`, never read for a creature that is up and overwritten by its next death.
+- **Aimed at the dead: `target.creature.dead: true`**, for a spell only (the linter refuses it in a creature's action, in the reader too).
+  A spell without it refuses a dead target exactly as before ("... is dead."). With it the spell takes a body: the cast refuses, before
+  anything is spent and changing nothing, a creature that is up ("... has not" died), a body that vanished, one nothing is left of
+  (`remains`: dust or a statue, as Animate Dead says), a body under another creature that now stands there (the dead fill no space; as the
+  DM's `setHp` refuses), one out of reach (touch is 5 feet) or behind a wall, and a creature a player has not been told of ("No such
+  creature.", before the spell is looked at). `targetsFor` lists bodies for such a spell and the living for any other.
+- **Step `revive: hitPoints` with `within`** (`{ "revive": 1, "within": 1 }`; `revive`, `engine/rolls.js`). Only in a spell whose creature
+  target says `dead: true`, and that target needs the step: the linter holds each to the other, and holds the numbers (`revive` 1 to 100,
+  `within` 1 to 1440 minutes; a homebrew table's ceilings are 2 and 2, twice the SRD's). It works on a body:
+  - died `within` minutes ago or less (`s.clock - diedAt`, with the small allowance the clock's 0.1 steps need): the creature is no longer
+    dead, `diedAt` is dropped, it is at 0 Hit Points and then healed `revive` (at most its maximum) by the engine's own `heal`, so its Death
+    Saving Throw counts start again and Unconscious, Stable (and Prone outside a fight) end as for any healing, and a `heal` event and a `note`
+    ("Revivify: Brenna returns to life") are written. In a fight it is in the order still and takes its turn.
+  - died longer ago: an **invalid target** by the SRD's rule (a slot spent, nothing happens): a `note` says it died more than a minute ago.
+    The cast is not refused, because that would tell a player when a creature died, which no player is sent (`diedAt` is withheld).
+- **What goes to the DM.** On every revival one `manual` event (`partial`) says that the engine cannot tell whether the creature died of old
+  age (which the spell cannot undo) or lacks body parts (which it does not restore), and that it does not take the diamond worth 300 GP or more
+  the spell consumes (the engine charges no component for any spell); the DM undoes the cast if the revival should not have worked, and takes the
+  diamond. The engine does not guess either. A body with no `diedAt` is handed over whole, as above. The entry is `assist`.
+- **Views.** `diedAt` is `withheld` in `view-fields.js`; the foe's record is built field by field and does not carry it. A hidden dead creature is
+  not sent, aimed at or told of ("No such creature." is the same with and without it): the twin test plays a player's Revivify of a seen body, an
+  aim at the id of a hidden body, and a second cast at the creature now up, in a world with a hidden dead creature and one without.
+- **The reader** has the step's sentence and the target's, and the golden spell "Wake the Fallen" and golden monster "Grave Robber" (a creature's
+  action aimed at the dead, refused) carry them.
+- **Not built:** Raise Dead, Resurrection, Reincarnate, Clone and True Resurrection (a longer `within`, a Hit Point maximum penalty, Constitution
+  checks, a body that is whole: none are in the vocabulary) and the client's picking a body to aim at.
+
 ### A class
 
 ```js

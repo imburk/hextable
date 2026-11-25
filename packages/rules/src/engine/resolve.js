@@ -23,7 +23,7 @@ import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoic
 import { ARENA_RADIUS, ask, blocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
-import { dispel, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
+import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
 import { armed, weaponKey } from '../imbue.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
@@ -874,7 +874,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   // Relentless Rage: dropping to 0 Hit Points without dying outright while raging, a Constitution save keeps it up.
   if (!dying && t.hp <= 0 && lost - before < t.maxHp) relentless(s, t, ev);
   if (dying) {                                            // already dying
-    if (total > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || total >= t.maxHp) t.dead = true; }   // as much as the maximum kills outright
+    if (total > 0) { t.death.f += crit ? 2 : 1; delete t.cond.stable; if (t.death.f >= 3 || total >= t.maxHp) { t.dead = true; died(s, t); } }   // as much as the maximum kills outright
     if (t.dead) ev.push({ type: 'died', id: t.id });
     return;
   }
@@ -889,7 +889,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   if (t.kind === 'pc' && lost - before < t.maxHp) {       // otherwise: instant death from massive damage
     t.cond.unconscious = {}; t.cond.prone = {}; t.death = { s: 0, f: 0 };
     ev.push({ type: 'down', id: t.id });
-  } else { t.dead = true; ev.push({ type: 'died', id: t.id }); }
+  } else { t.dead = true; died(s, t); ev.push({ type: 'died', id: t.id }); }
   concentrationLost(s, ev, t, `${t.name} went down`);
 }
 
@@ -2229,5 +2229,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { stabilise, shine, dispel, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

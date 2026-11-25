@@ -14,6 +14,9 @@ import { derive } from '../derive.js';
 import { castAbilOf, current, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
 import { baked, weaponKey } from '../imbue.js';
 
+// A creature has died: the game clock when it did is kept on the body (`diedAt`, minutes; a round in a fight is 0.1 of one), for Revivify's "died within
+// the last minute" (`revive`). Not kept where the clock is not a number. Not for a creature that vanished (it was not killed).
+export function died(s, t) { if (Number.isFinite(s.clock)) t.diedAt = s.clock; else delete t.diedAt; }
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
 export function kill(s, t, ev) {
   if (t.dead) return;
@@ -24,7 +27,7 @@ export function kill(s, t, ev) {
     ev.push({ type: 'note', id: t.id, text: `${name}: not killed` });
     return useUp(s, ev, z.used);
   }
-  t.dead = true; t.hp = 0;
+  t.dead = true; t.hp = 0; died(s, t);
   ev.push({ type: 'died', id: t.id });
   concentrationLost(s, ev, t, `${t.name} died`);
 }
@@ -56,7 +59,7 @@ export function deathSave(s, e, ev) {
   else if (d === 1) e.death.f += 2;
   else if (total >= 10) e.death.s++;
   else e.death.f++;
-  if (e.death.f >= 3) e.dead = true;
+  if (e.death.f >= 3) { e.dead = true; died(s, e); }
   else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
   ev.push({ type: 'deathSave', id: e.id, roll: d, ...(total !== d ? { total } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode }), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, d), ...more.dice], bonus: m.add + all.add, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
@@ -405,6 +408,23 @@ export function dispel(s, t, step, ev, f) {
     ended++;
   }
   ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${ended === 0 ? 'no spell ends' : ended === 1 ? '1 spell ends' : `${ended} spells end`}` });
+}
+
+// A `revive` step (Revivify; SRD 5.2.1: "You touch a creature that has died within the last minute. That creature revives with 1 Hit Point. This spell can't
+// revive a creature that has died of old age, nor does it restore any missing body parts."). `t` is dead (the cast refused a creature that is not, and a body
+// that is gone). The time of death is the game clock when it died (`diedAt`): a body that died longer ago than `within` minutes is an invalid target, so the slot
+// is spent and nothing happens (SRD, "Invalid Targets"); a body with no time kept (it died before the engine kept one) is the DM's to judge. What the engine
+// cannot know (death of old age, missing body parts, the 300 GP diamond the spell consumes) is handed to the DM in a `manual` event, never guessed.
+export function revive(s, t, step, ev, f) {
+  const name = f.src.name, actor = f.actor ?? t.id;
+  if (!t.dead) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} is not dead, so ${name} does nothing.` });
+  if (!Number.isFinite(t.diedAt)) return ev.push({ type: 'manual', actor, name, text: `${name} was cast on ${t.name}, but the engine does not know when ${t.name} died (it died before the engine kept the time), so it did not revive it. If it died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} and not of old age, the DM brings it back with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'} (setHp).` });
+  const ago = s.clock - t.diedAt;
+  if (!(ago <= step.within + 1e-6)) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} died more than ${step.within === 1 ? 'a minute' : `${step.within} minutes`} ago, so ${name} does nothing to it.` });
+  t.dead = false; delete t.diedAt; t.hp = 0;
+  ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${t.name} returns to life` });
+  heal(s, t, Math.min(step.revive, t.maxHp), ev, null, f);
+  ev.push({ type: 'manual', actor, name, partial: true, text: `${name} brought ${t.name} back. The engine cannot tell whether ${t.name} died of old age (which the spell cannot undo) or lacks body parts (which it does not restore), and it does not take the diamond worth 300 GP or more that the spell consumes. The DM checks those: if the revival should not have worked, undo this cast; and the DM takes the diamond from the party's gear.` });
 }
 
 // A `light` step (Light): `t` carries a light for as long as the lasting effect that ran the step does, and it goes out with it (durations.js, endPart).
