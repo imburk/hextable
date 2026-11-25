@@ -141,11 +141,13 @@ test("stabilize: a DC 10 Wisdom (Medicine) check by a creature within 5 feet; a 
   assert.deepEqual(s.entities.pip.death, { s: 0, f: 0 });
   assert.equal(s.entities.pip.hp, 0);
   const lost = seedWhere(medics, stab, (s, rr) => !s.entities.pip.cond.stable && rr.events.some((e) => e.type === "check" && !e.success));
-  const t = medics(lost), before = json(t.entities.pip);
+  const t = medics(lost), clock = t.clock;
   const q = ok(apply(t, stab, DM));
   assert.equal(q.events.find((e) => e.type === "check").success, false);
-  assert.equal(json(t.entities.pip), before, "a failure leaves the dying creature as it was");
-  ok(apply(t, stab, DM));                                              // and it may be tried again
+  assert.equal(t.clock, clock + 0.1, "an attempt out of a fight takes 6 seconds");
+  assert.equal(saves(q, "pip").length, 1, "and the dying creature rolls its save for them");
+  assert.ok(q.events.findIndex((e) => e.type === "check") < q.events.findIndex((e) => e.type === "deathSave") && q.events.some((e) => e.type === "time" && e.minutes === 0.1));
+  if (!t.entities.pip.dead && t.entities.pip.hp === 0 && !t.entities.pip.cond.stable) ok(apply(t, stab, DM));   // and it may be tried again
 });
 
 test("stabilize: any creature may try, trained in Medicine or not", () => {
@@ -205,4 +207,25 @@ test("Spare the Dying and healing work on a dying creature outside a fight", () 
   const h = ok(apply(s, { type: "cast", actor: "orsk", spell: "cure-wounds", target: "pip", slot: 1 }, DM));
   assert.ok(s.entities.pip.hp > 0 && !s.entities.pip.cond.stable);
   assert.ok(h.ok);
+});
+
+test("a Long Rest: one dying at its start that rolls a 20 has 1 Hit Point and none of the rest's benefits", () => {
+  const make = (seed) => { const s = table({ pip: wizard("Pip"), ned: wizard("Ned") }, seed); down(s.entities.pip); s.entities.pip.slots = { 1: 0 }; s.entities.pip.hd = 0; return s; };
+  const seed = seedWhere(make, { type: "rest" }, (s, r) => saves(r, "pip").some((x) => x.roll === 20));
+  const s = make(seed), r = ok(apply(s, { type: "rest" }, DM)), pip = s.entities.pip;
+  assert.ok(saves(r, "pip").some((x) => x.roll === 20));
+  assert.equal(pip.hp, 1);
+  assert.deepEqual(pip.slots, { 1: 0 }, "no slots back");
+  assert.equal(pip.hd, 0, "no Hit Point Dice back");
+});
+
+test("stabilize reaches only a creature the helper's side can see; a player is told 'No such creature' of one it cannot", () => {
+  const s = medics(1);
+  s.entities.orsk.owner = "x";
+  const g = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 0, r: 1 } }, DM)).events[0].id;
+  Object.assign(s.entities[g], { hp: 0, hiding: { dc: 30 } });
+  const before = json(s), r = apply(s, { ...stab, target: g }, { role: "player", userId: "x" });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /No such creature/);
+  assert.equal(json(s), before);
 });

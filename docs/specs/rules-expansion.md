@@ -1120,6 +1120,10 @@ which requires a successful DC 10 Wisdom (Medicine) check ... A Stable creature 
   only across a Long Rest (W10's remainder: a Stable creature's 1d4 hours is not tracked on the clock). One that rolled a 20 is up with 1 Hit Point and rests as any
   creature does (not in the Short Rest it was dying through: its Hit Point Dice were not available when the rest began). A creature still dying
   after fewer than five rounds (a pass of under half a minute) keeps its counts, and a Long Rest or Short Rest still says it cannot rest.
+- **Review fixes.** A Long Rest benefits only those who were up (1 Hit Point or more) when it began; one dying at its start gets the saves only (a 20 leaves it
+  at 1 Hit Point, a Stable one regains 1 as before). Out of a fight each `stabilize` attempt takes 6 seconds: after the check the clock moves 0.1 minute
+  through the same path (`deathSavesOver`, a `time` event, dawn, `tick`), so a failure costs the target a save and the other dying theirs. A player
+  may only stabilise a creature it can see ("No such creature." otherwise, as for an absent id).
 - **Foes and companions.** A foe at 0 Hit Points and a creature with no death record are not touched: the engine's own rule for them has not changed.
 - **Stabilizing by Medicine: the `stabilize` action** (`engine/features.js`), `{ type: 'stabilize', actor, target }`. The SRD has no Help action in
   the engine, so this is the Help action's use: a DC 10 Wisdom (Medicine) check by a creature that is up and able, within 5 feet of the target and

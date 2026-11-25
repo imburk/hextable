@@ -62,11 +62,13 @@ export const handlers = {
       (Array.isArray(a.ids) && a.ids.length > 0 && a.ids.length <= 500) || fail('Name who rests.');
       who = [...new Set(a.ids)].map((id) => ent(s, id)).filter((x) => !x.dead);
     }
+    const wasUp = new Set(who.filter((x) => x.hp > 0).map((x) => x.id));  // a Long Rest needs 1 Hit Point at its start: only these get its benefits
     deathSavesOver(s, 480, ev);                                          // the dying roll their saves through the eight hours (a 20 wakes one; the dead are out)
     who = who.filter((x) => !x.dead);
     const rested = new Set();                                            // who finished the Long Rest
     for (const e of who) {
-      if (e.hp <= 0) {
+      if (!wasUp.has(e.id)) {                                              // it began the rest at 0 Hit Points: the saves are all it got
+        if (e.hp > 0) continue;                                            // woke on a 20 (1 Hit Point) during them: not rested
         if (e.cond.stable) heal(s, e, 1, ev);                               // a Stable creature regains 1 HP after 1d4 hours
         else ev.push({ type: 'manual', actor: e.id, name: 'Long Rest', text: `${e.name} is dying at 0 Hit Points and can't take a Long Rest. The DM settles its Death Saving Throws.` });
         continue;

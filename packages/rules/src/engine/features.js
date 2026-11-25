@@ -6,7 +6,7 @@ import { CONTENT, MONSTER_ACTIONS, MONSTERS, SPELLS } from '../content/index.js'
 import { ABILITIES, nearProblem, nearRun, rolledProblem, SKILLS } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
-import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
+import { breakConcentration, effectsOf, endEffect, startEffect, tick, turnKey, useUp } from '../durations.js';
 import { apart, FT, ground, overlapAt } from '../space.js';
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
@@ -14,8 +14,9 @@ import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } f
 import { able, actTime, castAbilOf, control, current, dying, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
 import { unknown } from '../vision.js';
+import { dawn } from './rests.js';
 import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
-import { abilityCheck, boundEffect, checkBonus, checkSit, GRANTS, grantOf, heal, passive, settle, stabilise, tempHp } from './rolls.js';
+import { abilityCheck, boundEffect, checkBonus, checkSit, GRANTS, grantOf, deathSavesOver, heal, passive, settle, stabilise, tempHp } from './rolls.js';
 import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
@@ -510,7 +511,7 @@ export const handlers = {
   stabilize(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const t = typeof a.target === 'string' && Object.hasOwn(s.entities, a.target) ? s.entities[a.target] : fail('No such creature.');
-    ctx.role === 'dm' || !unknown(s, t) || fail('No such creature.');
+    ctx.role === 'dm' || (!unknown(s, t) && canSee(s, e, t) !== 'no') || fail('No such creature.');
     up(e) || fail(`${e.name} is down.`);
     able(e);
     t.id !== e.id || fail(`${e.name} can't stabilize itself.`);
@@ -523,6 +524,15 @@ export const handlers = {
     const r = abilityCheck(s, e, { skill: 'medicine' }), success = r.total >= 10;
     ev.push({ type: 'check', id: e.id, ability: 'wis', skill: 'medicine', ...r, dc: 10, success, stabilize: t.id });
     if (success) stabilise(s, t, ev, { actor: e.id, src: { name: 'Stabilize' } });
+    // Out of a fight an attempt takes a round (6 seconds) of game time, so a failure is not free: the other dying creatures (and the target, if it failed) roll a save.
+    if (!(s.encounter && inFight(s, e.id))) {
+      deathSavesOver(s, 0.1, ev);
+      const from = s.clock;
+      s.clock += 0.1;
+      ev.push({ type: 'time', minutes: 0.1 });
+      dawn(s, from, ev);
+      tick(s, ev);
+    }
   },
   // Escaping a grapple (SRD "Grappling", Ending a Grapple; docs/specs/grapple-shove.md, Decision 5):
   // { type: 'escape', actor, from?: grapplerId, skill?: 'athletics' | 'acrobatics' }. A Strength (Athletics) or Dexterity
