@@ -35,6 +35,7 @@ Trait "Keen Nose": the engine runs this.
 Trait "Ember Memory": text only. The engine does nothing with it; the DM runs it.
 Trait "Strong Grip": the engine runs this.
   Moving a creature it is grappling costs it no extra movement: the engine adds no extra feet when it drags what it holds.
+  It provokes no Opportunity Attack when it moves out of an enemy's reach: the engine offers none, whether it walks or flies.
 Action "Multiattack": an action. In a fight it spends the creature's action.
   It is made only in a fight. It gives the attacks below, made one at a time, each at a target chosen when it is made; attacks not made by the end of the turn are lost. Each is a use of the action it names and costs no further action.
   1 attack with "Bite".
