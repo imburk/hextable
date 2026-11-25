@@ -55,6 +55,14 @@ export const SETTING_FIELDS = {
   sight: 'sent', diagonals: 'sent', squareRange: 'sent', areaFill: 'sent', squareCover: 'sent', autoEngage: 'sent', passiveFind: 'sent', vertical: 'sent', climbing: 'sent',
   cover: 'sent', creatureCover: 'sent', engageRange: 'sent', unseenTurns: 'sent', diceThrow: 'sent', pace: 'sent', conclusion: 'sent', xpShare: 'sent', watching: 'sent',
   strikeFirst: 'sent', away: 'sent', breaks: 'sent', scoreReroll: 'sent', scoreRerollBelow: 'sent', scoreRerollResult: 'sent', hpMethod: 'sent', hpRollLow: 'sent',
+  characters: 'sent', level: 'sent',     // that a table takes characters people bring, and the adventure's levels, are no secret (portable-characters.md, Decision 5)
+};
+
+// ---------- what the state holds beside the creatures and the settings ----------
+// A field of the state that only the DM is sent. `playerView` (view.js) is built from named parts, so a field not named there is not sent anyway; this
+// says so in one place, and `test/portable-admit.test.js` fails if it is sent.
+export const STATE_FIELDS = {
+  offers: 'withheld',          // characters players have offered and the DM has not answered (engine/characters.js, offer): a sheet is the player's and the DM's until it is admitted
 };
 
 // The fields of `rec` that `table` sends, in the record's own order, each copied. A field the table does not list, or lists as 'withheld',

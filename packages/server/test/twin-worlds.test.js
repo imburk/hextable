@@ -695,3 +695,26 @@ test("dispel: a level 5 spell on a visible and a hidden creature, the caster's a
     assert.ok(JSON.stringify(world.raw.dm).includes("the DM rolls it"), "the DM was handed the check, so the twin is not empty");
   }
 });
+
+// ---- offered characters (#757 part 1; docs/specs/portable-characters.md, A4, A5): an offer the DM has not answered ----
+// One world has a player's offered sheet waiting, the other none. The offering player is sent nothing either (the client part will tell them, in a
+// field or event only they get), so every player's bytes are the same in both, to the end: a player's action, the DM's settings, and a seat taken.
+const offeredSheet = (name) => ({ name, class: "fighter", level: 1, abilities: { str: 17, dex: 13, con: 15, int: 8, wis: 12, cha: 10 },
+  skills: ["perception", "survival"], extraSkills: ["athletics", "intimidation"], choices: { "fighting-style": "archery" },
+  armour: "chain-mail", shield: true, weapons: ["longsword", "javelin"], gear: ["Chain Mail", "Shield", "Longsword", "4 Javelins", "Explorer's Pack"] });
+test("offers: a character a player has offered and the DM has not admitted is sent to no player, whatever happens at the table meanwhile", () => {
+  const { hidden } = twin({
+    players: ["Pat", "Sam"],
+    steps: [
+      { by: "dm", act: { type: "setting", key: "level", value: { min: 1, max: 3 } } },
+      { by: "dm", act: { type: "setting", key: "characters", value: "own" } },
+      { by: "Pat", act: { type: "claim", entity: "fighter" } },
+      { by: "Pat", act: { type: "say", text: "Hello" } },
+      { by: "Sam", act: { type: "release", entity: "fighter" }, allowError: true },
+      { by: "dm", act: { type: "setting", key: "characters", value: "own-trusted" } },
+    ],
+  }, (w) => { assert.equal(w.act("Sam", { type: "offer", sheet: offeredSheet("Secretly Kerrin") }), undefined); });
+  assert.equal(hidden.w.state.offers.length, 1, "the offer is waiting in the world that has one");
+  assert.ok(JSON.stringify(hidden.raw.dm).includes("Secretly Kerrin"), "the DM is sent it, so the check is not empty");
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(hidden.raw[who]).includes("Secretly Kerrin"), `${who} was sent the offered name`);
+});

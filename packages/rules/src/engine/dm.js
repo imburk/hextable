@@ -22,6 +22,7 @@ import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
 import { roll } from '../rng.js';
 import { makeEntity } from './sheets.js';
+import { levelRange } from './characters.js';
 import { noteRuns, settle } from '../todo.js';
 import { advanceTurn, AWAY, evades, awayTurn, checkEnd, damage, endEncounter, finishTurn, heldBack, moveToEnd, presentAfter, startEncounter } from './resolve.js';
 
@@ -444,6 +445,8 @@ export const handlers = {
   },
   setting(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change table settings.');
+    // The adventure's level range (docs/specs/portable-characters.md, Decision 5): a level, or { min, max }, kept as { min, max }.
+    if (a.key === 'level') { s.settings.level = levelRange(a.value) || fail('The level range is a level from 1 to 20, or { min, max } with min no more than max.'); return; }
     Object.hasOwn(SETTINGS, a.key) || fail('Unknown setting.');
     SETTINGS[a.key].includes(a.value) || fail(`That setting can be: ${SETTINGS[a.key].join(', ')}.`);
     const was = a.key === 'hpMethod' ? (s.settings.hpMethod ?? 'fixed') : null;
@@ -485,9 +488,18 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // Rolled ability scores (docs/specs/ability-scores.md, scores.js): whether a score may be rolled again (once), which, and which result stands. Absent means the first.
   scoreReroll: ['none', 'below', 'each'], scoreRerollBelow: [10, 8, 9, 11, 12, 13, 14], scoreRerollResult: ['new', 'higher'],
   // Hit Points (hitpoints.js, #638): fixed (the first, the SRD's default) or rolled at each level after the first; what a low roll does at a rolled table.
-  hpMethod: ['fixed', 'rolled'], hpRollLow: ['keep', 'reroll1', 'fixedMin'] };
+  hpMethod: ['fixed', 'rolled'], hpRollLow: ['keep', 'reroll1', 'fixedMin'],
+  // Characters people bring (docs/specs/portable-characters.md, Decision 5; engine/characters.js, offer and admit): 'own-trusted' (the default, so first), where the
+  // DM ticks each offered character whose history is not vouched for; 'own', any offer admitted on the DM's say; 'new', no offers. The adventure's level range
+  // is the setting `level`, which the `setting` action takes as a level or { min, max } (above). Words in SETTING_TEXT.
+  characters: ['own-trusted', 'own', 'new'] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
+  characters: {
+    'own-trusted': 'Players may offer a character from their own device. You review each one, and tick that you have looked at its history before it is let in (the default).',
+    own: 'Players may offer a character from their own device. You review each one; no tick is asked for.',
+    new: 'Players do not offer characters: you make them or give them out. An offer is refused.',
+  },
   hpMethod: {
     fixed: 'Each level after the first adds the class\'s fixed Hit Point value: half the Hit Die, plus 1, plus Constitution (the default).',
     rolled: 'Each level after the first adds a roll of the class\'s Hit Die, plus Constitution, at least 1. Level 1 stays the highest number of the die. The game rolls it, in the log for everyone, when a character levels up or is added above level 1. Existing characters change the next time they are rebuilt; rolls already made are kept and count again if you switch back.',
