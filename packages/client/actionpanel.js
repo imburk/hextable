@@ -9,7 +9,7 @@
 // decides a rule: what can be done, and why not, is `usesFor`, `blocked`, `hideProblem` and `reactionsOf`; a tap sends the same
 // action the bar sends.
 import { gridOf, col as cellCol } from './shared/grid.js';
-import { acShown, inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
+import { acShown, unblocked, inFight, current, up, blocked, targetsFor, usesFor, itemUsesFor, hideProblem, passTargets, pickUpsFor, interactionOf, clockText, mod, aloft, FT, fromPool, attacksLeft, actionSpent } from './shared/engine.js';
 import { actionProfile, rangeAt } from './shared/effects.js';
 import { armed } from './shared/imbue.js';
 import { heldItems, itemName, attuneMax, attuneProblem } from './shared/derive.js';
@@ -18,7 +18,7 @@ import { reactionsOf, canReact, WHEN } from './shared/reactions.js';
 import { conditionName, conditionDef } from './shared/modifiers.js';
 import { SPELLS, MONSTERS, CONTENT, rollLabel } from './shared/content/index.js';
 import { lightAt } from './shared/sight.js';
-import { under } from './shared/space.js';
+import { under, apart } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { gridPlan } from './accordion.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
@@ -568,7 +568,7 @@ export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found
   switch (id) {
     case 'attacks': return [...attackRows(S, e, { mode }), ...cr.attacks, ...spellRows(S, e, { mode }).filter((r) => r.roll === 'attack')];
     case 'spells': return spellRows(S, e, { mode });
-    case 'heal': return [...spellRows(S, e, { mode }).filter(healsRow), ...featureRows(S, e, { mode }).filter(healsRow), ...items().uses.filter(healsRow)];
+    case 'heal': return [...stabilizeRows(S, e), ...spellRows(S, e, { mode }).filter(healsRow), ...featureRows(S, e, { mode }).filter(healsRow), ...items().uses.filter(healsRow)];
     case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'fly-up', 'fly-down', 'fly-to'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
     case 'defend': return [...std('dodge', 'hide', 'search', 'shield'), ...bonusStd('hide-bonus')];
     case 'use': return [...moveRows(S, e, { fly }).filter((r) => r.id.startsWith('use:')), ...items().uses.filter((r) => !healsRow(r))];
@@ -580,6 +580,25 @@ export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found
     case 'items': { const it = items(); return [...it.uses, ...(it.light ? [it.light] : [])]; }
     default: return [];
   }
+}
+
+
+// ---------- A friend is down (docs/specs/one-token-menu.md, Heal; #781) ----------
+// One row for each ally at 0 Hit Points and not Stable, first in the Heal group: a DC 10 Wisdom (Medicine) check within 5 feet, which anyone may try (engine/features.js
+// `stabilize`). In a fight it takes the action; outside one it costs nothing. The engine decides the check and refuses what it must; this row only says why it is greyed.
+export function stabilizeRows(S, e) {
+  if (!e.pos || e.dead) return [];
+  const fighting = !!S.encounter && inFight(S, e.id);
+  return Object.values(S.entities).filter((t) => t.id !== e.id && t.side === e.side && t.pos && !t.dead && t.hp <= 0 && !t.cond?.stable && !t.hidden)
+    .sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
+      let why = '';
+      if (e.hp <= 0) why = `${e.name} is down.`;
+      else if (fighting && blocked(S, e, 'action')) why = blocked(S, e, 'action');
+      else if (!unblocked(S, e, t)) why = `There is a wall between ${e.name} and ${t.name}.`;
+      else if (apart(S, e, t) * FT > 5) why = `${t.name} is out of reach: stabilizing is done within 5 feet.`;
+      return { id: `stabilize:${t.id}`, kind: 'send', label: `Stabilize ${t.name}`, sub: `A friend is down · Medicine, DC 10${fighting ? '' : ' · a round of time'}`, why, chip: fighting ? CHIP.action ?? 'Action' : '', time: fighting ? 'action' : null,
+        send: { type: 'stabilize', actor: e.id, target: t.id } };
+    });
 }
 
 // What a group says closed, in a few words: the rows to use now (or, with none, why).

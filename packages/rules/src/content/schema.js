@@ -51,7 +51,14 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   'revive',
   // `eachTurn: [steps]` (Heroism, Regenerate): the creature it works on gets a part that runs those steps on it at the start of each of its turns, for as long as the lasting
   // effect it is part of holds. Only `heal`, `tempHp` and `manual` steps inside, and only in a spell with a duration. docs/specs/rules-expansion.md, "Build notes: Heroism and Regenerate".
-  'eachTurn'];
+  'eachTurn',
+  // `endSpell: true` (Searing Smite), only inside an `eachTurn`: the lasting effect those steps belong to ends, with everything it put on any creature. Put in a save's `onSuccess`: "a success ends the spell".
+  // docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
+  'endSpell',
+  // `arm: { damage, type, addMod?, time? }` (Flame Blade): for as long as the lasting effect holds, the creature it works on has one more action to take with the Attack command: a melee spell
+  // attack (reach 5 feet) with the caster's spell attack bonus, dealing `damage` (plus the spellcasting modifier with `addMod`) of `type`. It takes the Action, or the Bonus Action with `time: 'bonus'`.
+  // It goes when the effect ends. docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
+  'arm'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -81,7 +88,7 @@ export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'au
   'proficient'];
 // Situations the engine knows how to test. All tags in a `when` list must hold.
 export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage', 'attack.disadvantage', 'target.prone', 'target.unconscious',
-  'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
+  'attacker.unseen', 'target.unseen', 'target.seen', 'ally.adjacentToTarget', 'enemy.adjacent', 'long.range', 'target.halfCover', 'target.threeQuartersCover',
   'target.seesSource', 'attack.hit', 'attack.weapon', 'attack.weaponOrUnarmed', 'attack.str', 'attack.spell', 'self.notIncapacitated', 'spell.cantrip',
   // The source or its allies are fighting the target: a fight is on, the target is in it, and it is hostile to the source (Charm Monster).
   'target.fought',
@@ -93,6 +100,8 @@ export const TAGS = ['within5', 'beyond5', 'ranged', 'melee', 'attack.advantage'
   'attack.opportunity',
   // The target is not a Fiend (Hurl Through Hell's damage).
   'target.notFiend',
+  // The target is hostile to the source: on another side (Guardian of Faith's "any enemy"), fight or no fight.
+  'target.enemy',
   // The target is a Fiend or an Undead (Divine Smite's extra die).
   'target.fiendOrUndead',
   // Grapples (docs/specs/grapple-shove.md, Decisions 2, 5 and 7): the target is not one of the creatures that hold the attacker
@@ -232,7 +241,9 @@ function lintZone(e, say, action = false) {
   const z = e.zone;
   if (z === undefined) return;
   if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
-  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  // `budget: n` (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): the zone's lasting effect ends once the damage its steps have dealt adds up to `n`. A spell's zone only.
+  if (z.budget !== undefined && !(isInt(z.budget) && z.budget >= 1 && z.budget <= 120 && !action)) say('`zone.budget` is a whole number of damage, 1 to 120, on a spell\'s zone');
   if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd');
   if (z.once !== undefined && z.once !== 'turn') say('`zone.once` is "turn" or left out');
   for (const k of ['atCast', 'spare']) if (z[k] !== undefined && z[k] !== true) say(`\`zone.${k}\` is true or left out`);
@@ -366,6 +377,17 @@ function lintImbue(i, say) {
   if (i.types !== undefined && !(Array.isArray(i.types) && i.types.length && i.types.every((x) => DAMAGE_TYPES.includes(x)))) say('imbue.types lists damage types');
   if (!['die', 'plus', 'attackAdd', 'abil', 'types'].some((k) => i[k] !== undefined)) say('an imbue changes something: die, plus, attackAdd, abil or types');
 }
+// What an `eachTurn` may hold: what a spell does to the creature at the start of its turn (heal, Temporary Hit Points, damage, a save that may end the spell) and what it hands to the DM.
+const EACH_TURN_KINDS = ['heal', 'tempHp', 'damage', 'save', 'endSpell', 'manual'];
+// `arm`: a melee spell attack the spell gives its caster for as long as it lasts (Flame Blade).
+function lintArm(a, say) {
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return say('`arm` is { damage, type, addMod?, time? }');
+  for (const k of Object.keys(a)) if (!['damage', 'type', 'addMod', 'time'].includes(k)) say(`arm: "${k}" is not something an arm has`);
+  if (!(isDice(a.damage) && /^\d+d\d+$/.test(a.damage) && +a.damage.split('d')[0] <= 20)) say('arm.damage is dice like 3d6 (up to 20 of them)');
+  if (!DAMAGE_TYPES.includes(a.type)) say(`arm.type is one of ${DAMAGE_TYPES.join(', ')}`);
+  if (a.addMod !== undefined && a.addMod !== true) say('arm.addMod is true or left out');
+  if (a.time !== undefined && !['action', 'bonus'].includes(a.time)) say('arm.time is "action" or "bonus"');
+}
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
   { const p = rolledIn(steps); if (p) say(p); }
@@ -427,6 +449,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
         if (ends?.of !== undefined && !['target', 'source'].includes(ends.of)) say('`ends.of` must be target or source');
         // `orDamaged: true`: it also ends when its creature takes any damage (Knock Out: a repeated save, or damage).
         if (ends?.orDamaged !== undefined && !(ends.orDamaged === true && ends.on === 'save')) say('`ends.orDamaged` is true, on an ending on a save');
+        // `keeps: true` (Heat Metal): when this part ends, the spell it is part of goes on, though nothing is left on any creature. Only on a turn boundary.
+        if (ends?.keeps !== undefined && !(ends.keeps === true && ['turnStart', 'turnEnd'].includes(ends.on))) say('`ends.keeps` is true, on an ending at a turn boundary (turnStart or turnEnd)');
       }
     }
     // `eachTurn: [steps]` (Heroism, Regenerate): heal, tempHp and manual steps only, a few of them, in a spell that lasts (checked with the spell); not inside one another.
@@ -434,10 +458,14 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       seen.eachTurn = true;
       const inner = Array.isArray(step.eachTurn) ? step.eachTurn : [];
       if (!seen.eachOk) say('an `eachTurn` step is for a spell that lasts: it needs a lasting effect to hang on');
-      if (!(inner.length >= 1 && inner.length <= 4 && inner.every((x) => x && typeof x === 'object' && ['heal', 'tempHp', 'manual'].includes(STEPS.find((k) => k in x))))) say('`eachTurn` lists one to four steps, each a heal, a tempHp or a manual step');
+      if (!(inner.length >= 1 && inner.length <= 4 && inner.every((x) => x && typeof x === 'object' && EACH_TURN_KINDS.includes(STEPS.find((k) => k in x))))) say(`\`eachTurn\` lists one to four steps, each one of: ${EACH_TURN_KINDS.join(', ')}`);
+      // A save in the list decides one thing: whether the spell ends (or a note for the DM). Its branches hold `endSpell` and `manual` steps only.
+      for (const x of inner) if (x && typeof x === 'object' && 'save' in x) for (const b of ['onFail', 'onSuccess']) if (x[b] !== undefined && !(Array.isArray(x[b]) && x[b].length >= 1 && x[b].length <= 2 && x[b].every((y) => y && typeof y === 'object' && ['endSpell', 'manual'].includes(STEPS.find((k) => k in y))))) say(`a save inside \`eachTurn\` has \`${b}\` steps that are endSpell or manual only`);
       if (step.when !== undefined) say('an `eachTurn` step has no `when`: say it on the steps inside');
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
+    if (kind === 'arm') { lintArm(step.arm, say); if (!seen.eachOk) say('an `arm` step is for a spell that lasts: the action it gives goes when the spell ends'); }
+    if (kind === 'endSpell') { if (step.endSpell !== true) say('`endSpell` is true'); if (!seen.inTurn) say('an `endSpell` step goes inside an `eachTurn`: it ends the lasting effect those steps belong to'); }
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
     if (kind === 'revive') { if (!seen.reviveOk) say('a revive step is for a spell aimed at a dead creature'); seen.revive = true; if (!(isInt(step.revive) && step.revive >= 1 && step.revive <= 100 && isInt(step.within) && step.within >= 1 && step.within <= 1440)) say('a revive step is `revive` (the Hit Points it returns with, 1 to 100) with `within` (the minutes after its death it may be done, 1 to 1440)'); }
     // `dispel: level` with `dc`: a spell level from 0 to 9, and the DC to which a higher spell's level is added.
@@ -497,7 +525,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'remains' && !REMAINS.includes(step.remains)) say(`\`remains\` is one of ${REMAINS.join(', ')}`);
     const was = seen.inAttack;
     if (kind === 'attack') seen.inAttack = true;
-    for (const branch of BRANCHES) if (step[branch]) lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill', inMonster);
+    const wasTurn = seen.inTurn;
+    for (const branch of BRANCHES) if (step[branch]) { if (branch === 'eachTurn') seen.inTurn = true; lintSteps(step[branch], say, seen, under || branch === 'onZero' || branch === 'onKill', inMonster); seen.inTurn = wasTurn; }
     seen.inAttack = was;
   }
   return seen;
@@ -516,7 +545,7 @@ export const SUMMON_ENDS = ['masterDies', 'longRest'];
 const SUMMON_STEP_KEYS = ['summon', 'forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'];
 // One per master (C5c): a new casting while the master has one of this spell's creatures of the step's kind.
 export const SUMMON_ONE = ['reform', 'replace'];
-const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack', 'mount'];
+const SUMMON_BOND_KEYS = ['kind', 'turn', 'orders', 'range', 'at0', 'ends', 'leash', 'noAttack', 'mount', 'first'];
 const SUMMON_LATER = { mount: 'a controlled mount is said in its `bond` (`mount: "controlled"`)' };
 // A summon amount of creatures: a whole number from 1 to SUMMON_MOST, or { slot, base?, above? } (checked at every level in lintSpell).
 const okCount = (c) => (isInt(c) && c >= 1 && c <= SUMMON_MOST)
@@ -575,6 +604,8 @@ function lintSummonStep(st, say) {
   if (b.ends !== undefined && !(allOf(SUMMON_ENDS)(b.ends) && b.ends.length && new Set(b.ends).size === b.ends.length)) say(`a summon bond's \`ends\` lists ${SUMMON_ENDS.join(', ')}`);
   if (b.leash !== undefined && !(isInt(b.leash) && b.leash > 0 && b.leash % 5 === 0 && b.leash <= 5280)) say('a summon bond\'s `leash` is feet, a multiple of 5');
   if (b.noAttack !== undefined && b.noAttack !== true) say('`noAttack` is true or left out');
+  // `first: 'commanded'` (Spiritual Weapon: "you can immediately make one melee spell attack"): cast in a fight, the creature's first turn is already commanded, so its master's player plays it straight after the cast, without a Bonus Action more.
+  if (b.first !== undefined && !(b.first === 'commanded' && b.orders === 'command')) say('a summon bond\'s `first` is "commanded", for one that takes commands (`orders: "command"`)');
   // `mount: 'controlled'`: the creature serves its master as a controlled mount (Find Steed: "it functions as a controlled
   // mount while you ride it"; docs/specs/companions.md, Decision 8, stage C6b). Free orders only: one that takes commands
   // is never a controlled mount (C6a, fix round 1, M3).
@@ -696,7 +727,9 @@ const SELF_SAVE_EXCEPTIONS = {
 };
 function lintSelfSave(e, say) {
   let hasSave = false;
-  walkSteps(e.effects, (st) => { if ('save' in st) hasSave = true; });
+  // A save inside an `eachTurn` is made by the creature whose turn it is (Searing Smite's target), not by the caster the spell is aimed at.
+  const look = (steps) => { for (const st of Array.isArray(steps) ? steps : []) { if ('save' in st) hasSave = true; for (const b of BRANCHES) if (b !== 'eachTurn' && st[b]) look(st[b]); } };
+  look(e.effects);
   const selfSave = Boolean(e.target?.self) && hasSave;
   const exempt = Object.hasOwn(SELF_SAVE_EXCEPTIONS, e.id);
   if (selfSave && !exempt) say('a spell aimed at its caster has a saving throw step; the save belongs to the creatures it affects, so aim it at them (or list it in SELF_SAVE_EXCEPTIONS with a reason)');
@@ -2931,7 +2964,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -2964,11 +2997,11 @@ const SHAPES = {
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
-  ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged'] },
+  ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
-  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare'] },
+  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget'] },
   terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
@@ -2990,6 +3023,7 @@ const SHAPES = {
   check: { what: 'a check', keys: ['ability', 'skill', 'tool', 'dc'] },
   activate: { what: 'an item use', keys: ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'upTo', 'self', 'dc', 'effects'] },
   attune: { what: 'attunement', keys: ['by', 'spellcaster'] },
+  arm: { what: 'an arm step', keys: ['damage', 'type', 'addMod', 'time'] },
   imbue: { what: 'an imbue step', keys: ['weapons', 'melee', 'nonmagical', 'abil', 'die', 'plus', 'attackAdd', 'types'] },
   base: { what: 'a base item', keys: ['weapon', 'armour'] },
   charges: { what: 'charges', keys: ['max', 'regain'] },
@@ -3065,7 +3099,7 @@ export function lintKeys(kind, entry, say, visit) {
           if (!allowed.includes(k)) { say(`${p}: "${k}" is not something a ${kinds[0]} step has`); continue; }
           visit?.(`step.${kinds[0]}`, k, st[k], `${p}.${k}`, st);
           const child = BRANCHES.includes(k) ? 'steps' : kinds[0] === 'summon' ? { bond: 'bond', count: 'count', reassert: 'count', over: 'over', forms: Array.isArray(st.forms) ? 'open' : 'forms' }[k] ?? 'open'
-            : k === 'modifier' ? 'modifier' : k === 'imbue' ? 'imbue' : k === 'ends' ? 'ends' : 'open';
+            : k === 'modifier' ? 'modifier' : k === 'imbue' ? 'imbue' : k === 'arm' ? 'arm' : k === 'ends' ? 'ends' : 'open';
           stack.push([st[k], child, `${p}.${k}`]);
         }
       });
@@ -3138,7 +3172,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
   'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
-  'ends.dc': [1, 50],
+  'ends.dc': [1, 50], 'zone.budget': [1, 120],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
   'increase.max': [20, 30], 'increase.points': [1, 2], 'prerequisite.level': [1, 20], 'proficiencies.n': [1, 5], 'spellPick.cantrips': [0, 4], 'spellPick.level1': [0, 2],
@@ -3324,6 +3358,7 @@ function listDice(list, atk = false) {
     if (!st || typeof st !== 'object') continue;
     if ('damage' in st) { const d = diceCount(st.damage) * Math.max(1, isN(st.times) ? Math.ceil(st.times) : 1); if (atk) each += 2 * d; else own += d; }
     for (const k of ['heal', 'tempHp']) if (k in st) each += diceCount(st[k]);
+    if (st.arm && typeof st.arm === 'object') each += 2 * diceCount(st.arm.damage);      // an attack the spell gives: its dice, doubled for a critical hit
     const inner = atk || 'attack' in st;
     for (const b of BRANCHES) { const r = listDice(st[b], inner); own += r.own; each += r.each; }
   }
@@ -3432,15 +3467,15 @@ export const HOMEBREW_TYPES = Object.freeze({
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's' },
-  ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b' },
+  ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
-  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b' },
+  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i' },
   terrain: { difficult: 'b', obscured: 's', lasts: 's' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },
-  bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's' },
+  bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's', first: 's' },
   count: { slot: 'i', base: 'i', above: 'i' },
   over: { speed: 'o' },
   forms: { type: 's', cr: 'n' },
@@ -3483,7 +3518,8 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.manual': { manual: 's' },
+  arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });

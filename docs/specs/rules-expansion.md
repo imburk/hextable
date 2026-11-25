@@ -1230,6 +1230,76 @@ outside a zone".
 - **Not built:** steps at the *end* of a turn, other kinds of steps inside (damage at a turn's start is a zone's: Spirit Guardians), a number that grows with the turn, a
   creature's own action or a feature with an `eachTurn` (the step is for a spell), and a turn outside a fight (DEBT W43).
 
+#### Build notes: wave 1 fight spells (amendment, #786)
+
+Tests in `packages/rules/test/wave1-spells.test.js` and one `twin()` scenario in `packages/server/test/twin-worlds.test.js`. The owner's list of the spells his
+table's party and the first module's NPCs use, in four waves; this is the first: Searing Smite, Spiritual Weapon, Guardian of Faith, Flame Blade, Heat Metal and
+Faerie Fire, all `manual` before. Every number was compared with `reference/srd52/srd52-flow.txt` (Searing Smite 30476, Spiritual Weapon 31049, Guardian of Faith
+27622, Flame Blade 27032, Heat Metal 27924, Faerie Fire 26686) and the entries keep `checked: true`. The wording of each entry's `text` is our own.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Searing Smite | manual | **auto** | nothing |
+| Faerie Fire | manual | assist | the objects in the cube (outlined, Dim Light, Advantage against them) |
+| Heat Metal | manual | assist | the object itself (the target is the creature holding or wearing it), other creatures in contact, the Bonus Action repeat, whether a creature that failed the save could drop it |
+| Guardian of Faith | manual | assist | keeps the guardian's space clear (it is invulnerable and occupies it) |
+| Spiritual Weapon | manual | assist | keeps the attack to a creature within 5 feet of the weapon; the choice of weapon |
+| Flame Blade | manual | assist | the free hand: letting go of the blade ends it, a new Bonus Action evokes it again |
+
+**What the vocabulary already said** (no change): Faerie Fire is an area save whose failure puts a modifier on `attack.received`, a modifier on the hook `condition`
+(`immune`, Invisible) and a `light` on the creature. Heat Metal is a damage step, a save, and two modifiers (`attack.roll`, `check` Disadvantage) that end at the start of the
+caster's next turn. Searing Smite is a hit spell (`hit: { with: "melee" }`, Divine Smite's path: the engine asks at the hit, or the attack names it in `onHit`).
+
+**What was added**, each as small as it could be:
+
+- **Tag `target.seen`** (`TAGS`, `modifiers.js` `judge`): the attacker can see the target. The opposite of `target.unseen`; Faerie Fire's Advantage is "if the attacker can see it". And
+  `sees` (`sight.js`) no longer says a creature is unseen for being Invisible while it is immune to the condition (`immuneTo`): "can't benefit from the Invisible condition" is the
+  hook `condition`, and until now it stopped the condition being put on and its modifiers, but not the sight rule, which read the condition itself.
+- **Tag `target.enemy`**: the target is on another side than the source (`hostile`). Guardian of Faith's "any enemy", in a fight or not (`target.fought` needs a fight).
+- **Inside `eachTurn`: `damage`, `save` and a new step `endSpell: true`** (STEPS; Searing Smite: "the target takes 1d6 Fire damage and then makes a Constitution saving throw. On a failed
+  save, the spell continues. On a successful save, the spell ends"). A `save` in the list has `onFail`/`onSuccess` steps that are `endSpell` or `manual` only; `endSpell` is refused anywhere but inside
+  an `eachTurn`. The turn's steps now run with the spell's save DC (`dc` on the part's `src`), the effect to end (`fxEnd`, put there by `turnSteps`, not stored) and `turn: true`: a step after one that killed
+  the creature does not run (no save for a dead creature). `endSpell` ends the whole lasting effect (`endSpell`, `engine/rolls.js`) with `why` "<name> made the save". A save inside an `eachTurn` is the creature's
+  own, so the linter's "a self-aimed spell has a save step" check (`lintSelfSave`) does not count it.
+- **A higher slot grows the damage inside an `eachTurn` as it grows the spell's first damage step** (`scaleSteps`): Searing Smite's "all the damage increases by 1d6 for each slot level above 1".
+  `higher.slot.damage` is one number for both; the first damage step is the one with the hit, and the turn's step gets the same dice. (No second key: nothing else needs them to differ.)
+- **`ends.keeps: true`** on a modifier or condition that ends at a turn boundary (Heat Metal: the Disadvantage "until the start of your next turn" ends, the spell goes on for the Bonus Action repeats):
+  durations.js `spent` no longer ends an effect all of whose parts have ended when one of them carried it. Without it the engine ended the spell, and the caster's Concentration, with the Disadvantage.
+- **`zone.budget: n`** (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): a spell's zone counts the damage its source dealt to the creatures it went off on (`fx.zone.spent`, after a save halves
+  it and a Resistance cuts it) and ends the effect when it reaches `n` (`zones.js` `fire`; the effect ends with `why` "it dealt 60 damage"). Never sent to players (`viewEffects` sends no zone). The zone is a sphere
+  15 feet from the chosen space, for a Large guardian that reaches 5 feet from its centre and "within 10 feet of the guardian"; it goes off on `["enter", "turnStart"]`, once a turn, and on no one as it appears.
+- **A zone that goes off on nobody as it appears (no `atCast`) no longer reveals a hidden creature standing in its area** (`casting.js`): the cast's `targets` are the creatures in the area, and each was revealed, though nothing
+  was done to it. The twin scenario found it: Pat was sent a `revealed` event only in the world with a hidden creature in the area. It applies to every such spell (Spirit Guardians and the other zones without `atCast`).
+- **`bond.first: "commanded"`** (a summon bond that takes commands): made in a fight, the creature's first turn is already commanded (`bond.commanded`, as the `command` action sets it), so its master's player plays it straight
+  after the cast, with no Bonus Action more. Spiritual Weapon: "you can immediately make one melee spell attack"; a weapon that acts straight after its caster (`turn: "after"`) is that attack, a turn later in the order
+  but with nobody between. Later turns: the `command` action, a Bonus Action, as the SRD says ("As a Bonus Action on your later turns, you can move the force up to 20 feet and repeat the attack").
+- **A summon block `spiritual-weapon`** (`content/srd52/summons.js`): Speed 20 (walk and fly), the caster's spell attack bonus, one action Force Strike for 1d8 plus the spellcasting modifier of Force damage, one more d8 for each slot level
+  above 2 (as the Animated Object's extra dice are written). The SRD has no stat block: it is "a floating, spectral force", so the block is immune to every damage type and every condition and holds 1 Hit Point nothing can take.
+- **Step `arm: { damage, type, addMod?, time? }`** (Flame Blade: "As a Magic action, you can make a melee spell attack with the fiery blade. On a hit, the target takes Fire damage equal to 3d6 plus your spellcasting ability modifier"):
+  the creature it works on gets one more action in `e.actions` for as long as the lasting effect holds, a melee spell attack (reach 5) with the caster's spell attack bonus as the cast had it, taken with
+  `{ type: "attack", attack: <the spell's id>, target }`. The part is `{ target, arm: id }` and `endPart` (durations.js) takes the action away with the effect (casting it again replaces it). It costs the Action (a Magic action:
+  Extra Attack does not apply to it), or the Bonus Action with `time: "bonus"`. A spell attack, so Improved Critical does not widen it. A character that is made again from its sheet (a level up) loses it: the DM casts again.
+  Needs a spell with a duration and a spell attack bonus; otherwise the step is handed to the DM. Flame Blade's `light` (10 and 10) and the new step are two steps of the same cast; the free hand is a `manual` step.
+- **Fixed on the way:** an `onHit: [{ spell: "searing-smite" }]` named on an attack without a `slot` spent no slot (`e.slots[undefined]--`: NaN): it takes the lowest slot that may pay, as a standing instruction does.
+
+**Per spell**
+
+- *Searing Smite* has no Concentration (the SRD gives none). The extra 1d6 is rolled with the hit's damage and doubled on a Critical Hit; the turn damage is not doubled. A creature that dies of the burning makes no save.
+  Like Divine Smite it is not offered on an Opportunity Attack. The burning runs only in a fight (no turns outside one: DEBT W43).
+- *Heat Metal* is aimed at the creature holding or wearing the object: damage 2d8 (+1d8 per slot level), then its Constitution save. A success puts the Disadvantage on it (the engine reads "if it doesn't drop the object"
+  as a success); a failure hands the drop to the DM, since a creature wearing armour cannot drop it and so has Disadvantage after all. The repeat on later turns is the DM's, in a `manual` step.
+- *Guardian of Faith* is the zone above with `save: dex, half, when: target.enemy` and a flat +20 radiant damage on a failure. The guardian does not appear on the map.
+- *Spiritual Weapon* lasts by Concentration; its `summon` makes a bonded creature `kind: "summon"`, `turn: "after"`, `orders: "command"` (range 500 feet), `at0: "vanish"`. The weapon appears in a space named in `summon: { at: [space] }`
+  within the spell's range. Ending the spell, or losing Concentration, takes it off the map. A creature may still attack it (it takes no damage).
+- *Flame Blade* gives the caster the action and the light; its Concentration ends both.
+- *Faerie Fire* puts the modifiers on each creature that fails the save; one that makes it is not outlined. The Invisible modifier is the hook `condition`: a creature already Invisible keeps the condition (it counts again when the spell ends).
+
+**Views.** `fx.zone.spent` and `fx.zone.budget` are in the zone, which no player is sent; `turn` and the new `arm` part carry the caster's numbers: a part's `arm` is the action's id, which a player who sees the creature is sent with the part.
+The new `twin()` scenario holds the zone: a player's cast of Guardian of Faith with a hidden creature in the area outside the arena is sent the same as with none.
+
+**Not built.** Heat Metal and Guardian of Faith do not track the object or the guardian as things on the map (DEBT W44); Spiritual Weapon's first attack is the weapon's turn straight after the cast, not inside it; Flame Blade does not look at
+the free hand; Faerie Fire outlines no object; the "willing" and "can drop it" questions are the DM's.
+
 ### A class
 
 ```js

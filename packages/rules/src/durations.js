@@ -70,6 +70,8 @@ function endPart(s, ev, fx, p) {
   if (p.form && t?.form?.fx === fx.id) { leaveForm(t); ev.push({ type: 'form', id: t.id, form: null }); }
   // A light it gave goes out (a `light` step: Light).
   if (p.light && t?.light?.fx === fx.id) { delete t.light; ev.push({ type: 'light', id: t.id, bright: 0, dim: 0 }); }
+  // An action a spell gave it goes (an `arm` step: Flame Blade).
+  if (p.arm && t?.actions) { t.actions = t.actions.filter((x) => !(x.id === p.arm && x.armed === fx.id)); if (ev) ev.push({ type: 'note', id: t.id, text: `${fx.name}: ${t.name} no longer has it` }); }
   // Temporary Hit Points that came from this effect vanish with it (those from elsewhere since stay).
   if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }
@@ -87,7 +89,8 @@ export function endEffect(s, ev, fx, why) {
   ev.push({ type: 'effectEnd', fx: fx.id, name: fx.name, source: fx.source, targets: targetsOf(fx), why });
 }
 // An effect whose every part has ended has nothing left to do.
-const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended);
+// `ends.keeps` (Heat Metal): a part that ended with it leaves the spell standing, though nothing is left on any creature.
+const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended && !p.ends?.keeps);
 
 // The turn now being taken, as a part records it: a part made in a creature's turn does not end
 // at the end of that same turn ("until the end of its next turn"). Named by the fight, the round and

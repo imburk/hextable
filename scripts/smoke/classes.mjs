@@ -222,7 +222,7 @@ async function classes(browser, url, label, opts) {
       await run.do('Bardic Inspiration: arm it and tap an ally', async () => {
         await pick('Bardo');
         const before = await uses('Bardo', 'bardic-inspiration');
-        await feat('Bardic Inspiration');
+        await panelTab(page, 'features'); await tap(page, '#ap-features [data-row="feat:bardic-inspiration"]');
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapCreature(ids.Pala);
         await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['bardic-inspiration'] === b - 1, [ids.Bardo, before], 25000);
