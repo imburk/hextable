@@ -620,8 +620,19 @@ export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
   // A player whose characters are in another place, with the table rule `watching: 'off'`, is told the table's out-of-character talk and what is shown
   // to them, and nothing of the place in play.
-  return viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer);
+  return inOrder(viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer));
 }
+// Every event a player is sent has its fields in one fixed order (#779): keys sorted, recursively, in plain string order;
+// arrays keep their order. What was withheld, scrubbed or rebuilt on the way then cannot show in the order of the fields
+// (#748). One copy per object, none for a primitive. (An integer-like key is always written first, ascending, by JavaScript itself.)
+function sorted(v) {
+  if (v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map(sorted);
+  const o = {};
+  for (const k of Object.keys(v).sort()) o[k] = sorted(v[k]);
+  return o;
+}
+const inOrder = (evs) => evs.map(sorted);
 function viewEventsOf(events, state, viewer) {
   // The faces of a damage, healing or Temporary Hit Points roll (docs/specs/dice.md) go with the
   // event only where the player has the number they add up to: always if one of theirs rolled
