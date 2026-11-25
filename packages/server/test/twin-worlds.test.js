@@ -92,6 +92,37 @@ test("death ward: damage the DM does to a hidden warded creature, enough to drop
   });
 });
 
+// ---- Heroism and Regenerate (#726 job 2): a hidden creature's own turn starts, and its eachTurn part runs ----
+test("regenerate: a hidden creature holding an eachTurn part, outside the arena (a hidden creature that joins a fight is revealed, by design), changes nothing a player is sent as the fight's turns start, sent the same as with no creature there", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat" });
+      w.putIn();
+      w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+    },
+    steps: [
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+    ],
+  }, {
+    hide: (w) => {
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Ghost", hidden: true });
+      const g = byName(w, "Ghost");
+      Object.assign(g, { hp: 3, maxHp: 7 });
+      const fx = startEffect(w.state, { name: "Regenerate", spell: "regenerate", source: g.id, duration: "1 hour" });
+      fx.parts.push({ target: g.id, turn: { steps: [{ heal: "+1" }], src: { name: "Regenerate", spell: "regenerate" } } });
+    },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); w.state.seq++; },
+  });
+});
+
 // ---- Revivify (#726 job 6): a hidden body, and a player's cast of a spell aimed at the dead ----
 test("revivify: a hidden dead creature beside a player's Revivify of a seen body, and an aim at the hidden body, is sent the same as with no creature there", () => {
   twin({
