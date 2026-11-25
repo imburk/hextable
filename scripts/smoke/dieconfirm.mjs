@@ -18,16 +18,17 @@ async function run1(browser, url, label, opts) {
         label: document.getElementById('btn-menu').getAttribute('aria-label'), waiting: document.getElementById('btn-menu').classList.contains('waiting'),
         picked: [...(window.hextable.mode.picked ?? [])], kind: window.hextable.mode.kind }));
       const casts = () => state(page, (S) => S.timeline.filter((e) => e.type === 'cast').length);
+      // Looked at from above, no pawn stands between the camera and another: the tap lands on the one looked up.
       const pointOf = async (id) => {
-        await page.evaluate((i) => window.hextable.R.focus(i, true), id);
+        await page.evaluate((i) => { const R = window.hextable.R; R.focus(i, true); const c = (R.inner ?? R).cam; c.pitch = 1.45; c.dist = 14; }, id);
         await settle(page, id);
         const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), id);
         if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`${id} is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
         return pt;
       };
-      let cleric, fen, rae, pf, pr;
-      const tapOn = (pt) => (touch ? page.touchscreen.tap(pt.x, pt.y) : page.mouse.click(pt.x, pt.y));
+      let cleric, fen, rae;
       const dbl = async (pt) => { await tapOn(pt); await sleep(60); await tapOn(pt); };
+      const tapOn = (pt) => (touch ? page.touchscreen.tap(pt.x, pt.y) : page.mouse.click(pt.x, pt.y));
 
       await run.do('a cleric with Bless and two friends beside her', async () => {
         await open(page, url); await playSolo(page);
@@ -68,13 +69,13 @@ async function run1(browser, url, label, opts) {
       });
 
       await run.do('two taps choose two ("2 of 3 targets") and send nothing; a double-tap takes one off ("1 of 3 targets")', async () => {
-        pf = await pointOf(fen); await tapOn(pf); await wait(page, () => window.hextable.mode.picked?.length === 1);
-        pr = await pointOf(rae); await tapOn(pr); await wait(page, () => window.hextable.mode.picked?.length === 2);
+        await tapOn(await pointOf(fen)); await wait(page, () => window.hextable.mode.picked?.length === 1);
+        await tapOn(await pointOf(rae)); await wait(page, () => window.hextable.mode.picked?.length === 2);
         const n = await casts(), v = await view();
         if (v.note !== '2 of 3 targets' || v.picked.join() !== `${fen},${rae}`) throw new Error(`two chosen: ${JSON.stringify(v)}`);
         await shot('2-two-chosen');
         await sleep(500);                                          // a pause: the next taps are a pair of their own
-        pf = await pointOf(fen); await dbl(pf);
+        await dbl(await pointOf(fen));
         await wait(page, () => window.hextable.mode.picked?.length === 1);
         const w = await view();
         if (w.note !== '1 of 3 targets' || w.picked.join() !== rae || w.label !== 'Confirm Bless' || (await casts()) !== n) throw new Error(`one taken off: ${JSON.stringify(w)}`);
