@@ -28,6 +28,7 @@ const REGISTRY = {
   armed: ['armed'],
   aimrange: ['aimrange'],
   dieconfirm: ['dieconfirm'],
+  spellcard: ['spellcard'],
   upcast: ['upcast'],
   imbue: ['imbue'],
   dice: ['dice'],

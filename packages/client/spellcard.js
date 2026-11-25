@@ -183,7 +183,6 @@ export function initSpellCards() {
   document.addEventListener('contextmenu', (e) => { if (targetOf(e.target) && (timer?.shown || timer?.waiting || card)) e.preventDefault(); }, true);
   // A key on a focused spell.
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { if (card) { e.stopPropagation(); closeSpellCard(); } return; }
     if (!CARD_KEYS.includes(e.key) || e.ctrlKey || e.metaKey || e.altKey || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target?.tagName ?? '')) return;
     const a = targetOf(e.target);
     if (!a) return;
@@ -196,5 +195,8 @@ export function initSpellCards() {
   document.addEventListener('pointerdown', (e) => { if (!card || card.contains(e.target)) return; if (e.pointerType === 'mouse' || !targetOf(e.target)) { pending = null; closeSpellCard(); } }, true);
   document.addEventListener('scroll', (e) => { if (card && !card.contains(e.target)) { pending = null; closeSpellCard(); } }, true);
 }
+// Escape closes the card before anything else hears it (the menu's own Escape would close the menu too). The drawer listens on the window, capturing, from the moment the app starts,
+// so this is put there when the module loads, which is before.
+if (typeof window !== 'undefined') window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && card) { e.preventDefault(); e.stopImmediatePropagation(); closeSpellCard(); } }, true);
 export const spellCardOpen = () => !!card;
 export const spellCardFor = () => anchorNow?.dataset.spellcard ?? null;

@@ -11,6 +11,7 @@
 //   the model     createLog(), add(), seed(), merge(), record(), view()   pure, no page; tests drive them from engine events
 //   the page      initLogView(ctx)                                        chips, <details> groups, the open state, lazy load
 import { foeLine, shares } from './conclusion.js';
+import { decorateLine, initSpellCards } from './spellcard.js';
 
 export const CHIPS = [['combat', 'Fights'], ['explore', 'Exploring'], ['loot', 'Loot and trades'], ['talk', 'Talk'], ['dm', 'DM only']];
 const FILTER = 'hextable.logFilter';
@@ -111,7 +112,7 @@ export function add(m, ev, line, cursor = m.cursor, opts = {}) {
   else if (fight !== null && !spoils && round === null) round = cursor.cur === fight ? cursor.round : null;
   m.lastT = Math.max(m.lastT, t);
   if (!line) return null;
-  const e = { type: ev.type, kind: line[2] ?? kindOf(ev), text: line[0], cls: line[1] || '', dice: ev.dice?.length ? ev.dice : null, round, spoils, t };
+  const e = { type: ev.type, kind: line[2] ?? kindOf(ev), text: line[0], cls: line[1] || '', dice: ev.dice?.length ? ev.dice : null, spell: (ev.type === 'cast' || ev.type === 'delivered') && typeof ev.spell === 'string' ? ev.spell : null, round, spoils, t };
   const block = fight !== null ? fightBlock(m, fight, opts.loaded) : exploreBlock(m, t);
   block.entries.push(e);
   if (m.blocks.length > 1) trim(m);
@@ -233,7 +234,8 @@ export function rounds(entries) {
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 // The list's markup. `line(entry, inFight)` gives one entry's <li> (the app adds the dice glyphs); `isOpen(group)` the open state.
 export function html(groups, { line, isOpen, filtered = false }) {
-  const li = (e, inFight) => (line ? line(e, inFight) : `<li class="lg-line ${esc(e.cls)}" data-kind="${placed(e.kind, inFight)}">${esc(e.text)}</li>`);
+  const spelled = (h, e) => (e.spell ? decorateLine(h, e.spell) : h);      // a cast's spell name opens the spell card (#787)
+  const li = (e, inFight) => spelled(line ? line(e, inFight) : `<li class="lg-line ${esc(e.cls)}" data-kind="${placed(e.kind, inFight)}">${esc(e.text)}</li>`, e);
   const body = (g) => {
     const inFight = g.type === 'fight';
     if (inFight && g.loading) return '<p class="lg-note" role="status">Loading the blow-by-blow…</p>';
@@ -253,6 +255,7 @@ export function html(groups, { line, isOpen, filtered = false }) {
 // ---- the page ----
 // ctx: { root (#log), list (#log-list), prefs, isDM(), nameOf(id), clockText(min), line(entry, inFight), ask(fightId) }
 export function initLogView(ctx) {
+  initSpellCards();
   let m = createLog();
   const open = new Map();        // block id -> what the person chose, over the default
   const chips = document.createElement('div'); chips.id = 'log-chips'; chips.className = 'lg-chips'; chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', 'Filter the log');

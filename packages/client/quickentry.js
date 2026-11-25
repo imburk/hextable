@@ -3,6 +3,7 @@
 // Every number is checked by lintRecord (the same check the engine runs), so nothing here decides a rule.
 import { ABILITIES, DAMAGE_TYPES, SIZES, SKILLS, lintRecord } from './shared/content/schema.js';
 import { SPELLS } from './shared/content/index.js';
+import { initSpellCards, markSpell } from './spellcard.js';
 import { initBuild } from './buildsheet.js';
 import { levelUpWhy } from './levelup.js';
 import { initImport } from './importfg.js';
@@ -147,10 +148,11 @@ export function initQuickEntry({ act, toast, getState, getSelected, me = () => u
     refs[id] = s;
     return el('label', { class: `qe-f ${cls}` }, el('span', { text: label }), s);
   }
-  function tick(label, checked, set, id) {
+  function tick(label, checked, set, id, spell = null) {
     const c = el('input', { type: 'checkbox', checked, id });
     c.onchange = () => { set(c.checked); changed(); };
-    return el('label', { class: 'check qe-tick' }, c, el('span', { text: label }));
+    if (spell) initSpellCards();          // a spell's tick opens the spell card (#787)
+    return markSpell(el('label', { class: 'check qe-tick' }, c, el('span', { text: label })), spell);
   }
   const toggle = (list, v, on) => { const i = list.indexOf(v); if (on && i < 0) list.push(v); if (!on && i >= 0) list.splice(i, 1); };
 
@@ -216,7 +218,7 @@ export function initQuickEntry({ act, toast, getState, getSelected, me = () => u
     for (const sp of Object.values(SPELLS)) (byLevel[sp.level] ??= []).push(sp);
     const sp = el('div', { class: 'qe-spells' });
     for (const lv of Object.keys(byLevel).map(Number).sort((a, b) => a - b)) {
-      sp.append(el('h4', { text: lv === 0 ? 'Cantrips' : `Level ${lv}` }), el('div', { class: 'qe-ticks' }, ...byLevel[lv].sort((a, b) => a.name.localeCompare(b.name)).map((s) => tick(s.name, m.spells.includes(s.id), (on) => toggle(m.spells, s.id, on), `qe-spell-${s.id}`))));
+      sp.append(el('h4', { text: lv === 0 ? 'Cantrips' : `Level ${lv}` }), el('div', { class: 'qe-ticks' }, ...byLevel[lv].sort((a, b) => a.name.localeCompare(b.name)).map((s) => tick(s.name, m.spells.includes(s.id), (on) => toggle(m.spells, s.id, on), `qe-spell-${s.id}`, s.id))));
     }
     const slots = el('div', { class: 'qe-slots' });
     for (let l = 1; l <= 9; l++) slots.append(field(`Level ${l}`, `slot-${l}`, `slot${l}`, { get: () => m.slots[l] ?? '', set: (v) => { if (v.trim() === '') delete m.slots[l]; else m.slots[l] = v; }, max: 1 }));

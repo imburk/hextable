@@ -68,3 +68,16 @@ test('markup for callers', () => {
   assert.equal(decorateLine('Ana hits.', 'fireball'), 'Ana hits.');
   assert.ok(HOVER_MS < 1000);
 });
+test('the log keeps the spell of a cast, so its name can open the card', async () => {
+  const L = await imp('logview.js');
+  const m = L.createLog();
+  const e = L.add(m, { type: 'cast', actor: 'a', spell: 'fireball', name: 'Fireball', t: 1 }, ['Ana casts Fireball.', '']);
+  assert.equal(e.spell, 'fireball');
+  assert.equal(L.add(m, { type: 'move', t: 2 }, ['Ana moves.', '']).spell, null);
+  const h = L.html(L.view(m, {}), { isOpen: () => true });
+  assert.match(h, /<span class="sc-name" data-spellcard="fireball"/);
+});
+test('the action panel row of a spell carries its id', async () => {
+  const src = (await import('node:fs')).readFileSync(join(tmp, 'actionpanel.js'), 'utf8');
+  assert.match(src, /spellAttrs\(r\.spell\)/);
+});
