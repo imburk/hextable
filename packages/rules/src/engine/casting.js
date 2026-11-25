@@ -6,7 +6,7 @@ import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
 import { shiftZone, zonesOf } from '../zones.js';
-import { apart, footprint, FT, gap, landing, overlapAt, unseenAt } from '../space.js';
+import { apart, footprint, FT, gap, landing, overlapAt, sizeOf, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
@@ -26,6 +26,8 @@ import { incapacitatedBy, untrainedGear } from '../modifiers.js';
 // may say otherwise (`blocked`, Dimension Door). The spell says whether the destination must be seen.
 // Does `e` know `o` is there? A creature it cannot know of does not stop it choosing a space.
 const knownTo = (s, e, o) => !hiddenFrom(o, e) && !(e.side === 'party' && (o.hidden || unknown(s, o)));
+// Does `t` occupy this hex column at this height? Its footprint is in the column and its height range holds `z` (a bat 30 feet overhead is not in the space of a sphere on the ground).
+const standsIn = (t, k, z, G) => footprint(t, t.pos, G).some((f) => col(f) === k) && t.pos.z <= z + 1e-9 && z < t.pos.z + Math.max(sizeOf(t).height, FT / 2);
 // A creature-shaped stand-in at a position, for asking whether that space can be seen.
 const spotOf = (e, pos) => ({ pos, size: e.size, cond: {}, side: e.side });
 // Where a teleport step takes `e` when its caster names `hex`: checked before anything is spent.
@@ -451,7 +453,7 @@ export const handlers = {
     while (G.dist(at, to) > 0 && !met) {
       const step = G.range(at, 1).filter((h) => G.dist(h, at) === 1).sort((p, q) => G.dist(p, to) - G.dist(q, to))[0];
       at.q = step.q; at.r = step.r;
-      met = living(s).find((t) => footprint(t, t.pos, G).some((f) => col(f) === col(at))) ?? null;
+      met = living(s).find((t) => standsIn(t, col(at), z.origin.z, G)) ?? null;
     }
     const origin = { q: at.q, r: at.r, z: landing(s.map, at, z.origin.z)?.z ?? ground.z };
     const hexes = areaHexes(s, e, { area: z.area, range: 1 }, origin);
@@ -577,7 +579,8 @@ function castSpell(s, a, ctx, ev, item) {
       a.toward === undefined || (sp.area.placed && a.toward && Number.isInteger(a.toward.q) && Number.isInteger(a.toward.r)) || fail(sp.area.placed ? `Name a space ${sp.name} runs toward.` : `${sp.name} is not a wall: it has no direction to choose.`);
       ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex, a.toward));
       // A zone that rolls (Flaming Sphere) is a thing on the ground: "an unoccupied space", so not one a creature stands in.
-      if (zoneDef?.move && living(s).some((t) => footprint(t, t.pos, gridOf(s.map)).some((f) => col(f) === col(a.hex)))) fail(`${sp.name} appears in an unoccupied space: a creature stands there.`);
+      // A creature the caster does not know of does not count (as in a teleport's landing): the error must not tell a player it is there.
+      if (zoneDef?.move && living(s).some((t) => knownTo(s, e, t) && standsIn(t, col(a.hex), areaOrigin?.z ?? e.pos.z, gridOf(s.map)))) fail(`${sp.name} appears in an unoccupied space: a creature stands there.`);
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
       targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);

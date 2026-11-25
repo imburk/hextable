@@ -343,3 +343,19 @@ test("a placed wall on a square map: centred on the square chosen, across the ca
   assert.equal(saves(cast.events, g.id).length, 1);
   assert.equal(hurt(cast.events, g.id, "fire").length, 1);
 });
+
+test("Flaming Sphere: a creature the caster does not know of does not stop the cast; one far overhead does not stop the roll; one touched is revealed", () => {
+  const s = field(), ghost = spawn(s, "goblin-warrior", 5, 0), bat = spawn(s, "bat", 3, 0);
+  ghost.hidden = true;
+  bat.pos = { ...bat.pos, z: 30 };
+  fight(s); turnOf(s, "wizard");
+  // A player's cast on a hex where a hidden creature stands is not refused (the refusal would tell the player it is there).
+  const cast = ok(apply(s, { type: "cast", actor: "wizard", spell: "flaming-sphere", slot: 2, hex: { q: 3, r: 0 } }, DM));
+  assert.ok(cast.ok);
+  assert.equal(fxOf(s, "Flaming Sphere").zone.origin.q, 3, "a bat 30 feet up does not occupy the space on the ground");
+  turnOf(s, "wizard");
+  const roll = ok(apply(s, { type: "moveZone", actor: "wizard", to: { q: 7, r: 0 } }, DM));
+  assert.equal(roll.events.find((e) => e.type === "zoneMoved").met, ghost.id, "rolled into the hidden creature it stops there, and the creature is found");
+  assert.deepEqual([fxOf(s, "Flaming Sphere").zone.origin.q, fxOf(s, "Flaming Sphere").zone.origin.r], [5, 0]);
+  assert.ok(!s.entities[ghost.id].hidden, "touched, it is revealed");
+});
