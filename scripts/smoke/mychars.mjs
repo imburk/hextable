@@ -127,11 +127,14 @@ async function pass(browser, url, label, opts, grid) {
         if (!(await pcs(page)).some((x) => x.name === 'Tessa Vale')) throw new Error('the remembered party was not used');
       });
 
-      await run.do('the menu\'s New game in a running game also starts with the chosen party', async () => {
+      await run.do('Leave the game in Setup, then New game from the lobby, also starts with the chosen party', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'chronicle', title: 'Second mark' }));
         await wait(page, () => JSON.stringify(window.hextable.state).includes('Second mark'));
-        await openMenu(page, 'settings/leave'); await page.locator('#set-new').scrollIntoViewIfNeeded(); await waitShown(page, '#set-new');
-        await tap('#set-new'); await tap('#set-new');
+        await openMenu(page, 'settings/leave'); await page.locator('#btn-leave').scrollIntoViewIfNeeded(); await waitShown(page, '#btn-leave');
+        await tap('#btn-leave'); await tap('#btn-leave');
+        await waitShown(page, '#lobby'); await waitShown(page, '#lobby-new');
+        await tap('#lobby-new'); await tap('#lobby-new');
+        await wait(page, () => window.hextable?.state?.entities);
         await wait(page, () => !JSON.stringify(window.hextable.state).includes('Second mark'));
         if (!(await pcs(page)).some((x) => x.name === 'Tessa Vale') || (await pcs(page)).length !== 5) throw new Error('the party was lost');
       });
