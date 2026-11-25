@@ -10,7 +10,7 @@ import { partyView, sightRule, unknown } from '../vision.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, shieldEntry, validate } from '../derive.js';
-import { able, control, current, ent, fail, hostile, hpOpts, inFight, living, need, RuleError, up, walled } from './shared.js';
+import { able, control, current, ent, fail, hostile, hpOpts, inFight, living, need, ownerOf, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { cure } from './rolls.js';
 import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing } from './sheets.js';
@@ -99,7 +99,7 @@ export const levelRange = (v) => {
 };
 // The offers as a clean list (a list that is not one, or an entry that is not whole, is read as nothing; never thrown on).
 const offersOf = (s) => (Array.isArray(s.offers) ? s.offers.filter((o) => isRec(o) && typeof o.user === 'string' && o.user && isRec(o.sheet)) : []);
-const hasCharacter = (s, user) => Object.values(s.entities).some((e) => e.owner === user);
+const hasCharacter = (s, user) => Object.values(s.entities).some((e) => e.kind === 'pc' && ownerOf(s, e) === user);
 
 export const handlers = {
   // Roll the six ability scores from the game's seed (docs/specs/ability-scores.md): four d6 each, the lowest die set aside. { type: 'rollAbilityScores' }
