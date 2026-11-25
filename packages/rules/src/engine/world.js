@@ -1086,14 +1086,15 @@ export function aimArea(s, e, name, area, range, hex) {
 // `a.target` (one). At most `most`; one creature more than once only for rays, darts and beams
 // (`repeat`); each within `range` feet with nothing solid between; a harmful one not at its own
 // user; with `within`, each after the first that near the first (Chain Lightning).
-export function creatures(s, e, name, { range, harmful, repeat, within, most, spell = false }, a) {
+export function creatures(s, e, name, { range, harmful, repeat, within, most, spell = false, dead = false }, a) {
   const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
   (Array.isArray(ids) && ids.length > 0) || fail(`Pick a target for ${name}.`);
   ids.length <= most || fail(`${name} has ${most === 1 ? 'one target' : `${most} targets`}.`);
   if (!repeat && new Set(ids).size !== ids.length) fail(`${name} can't target the same creature twice.`);
   const out = ids.map((id) => ent(s, id));
   for (const t of out) {
-    !t.dead || fail(`${t.name} is dead.`);
+    if (dead) bodyFor(s, t, name);
+    else !t.dead || fail(`${t.name} is dead.`);
     if (harmful && t.id === e.id) fail(`${name} needs another target.`);
     const d = apart(s, e, t);
     if (d * FT > range) fail(`${t.name} is ${ft(d)} away. ${name} reaches ${spell && range === 5 ? 'touch (5 ft)' : range + ' ft'}.`);
@@ -1103,13 +1104,25 @@ export function creatures(s, e, name, { range, harmful, repeat, within, most, sp
   return out;
 }
 
+// A spell aimed at the dead (`target.creature.dead`, Revivify) takes a creature that is dead and has a body: not one that is up, not one that vanished
+// (the DM's hidden switch), not one nothing is left of (`remains`: dust or a statue). A body lies under whoever stands over it (the dead fill no space):
+// brought back there, two creatures would fill one space, so it is refused as the DM's `setHp` refuses it. Nothing is changed by a refusal.
+export function bodyFor(s, t, name) {
+  t.dead || fail(`${name} is aimed at a creature that has died, and ${t.name} has not.`);
+  !t.vanished || fail(`${t.name} is gone: there is no body.`);
+  !t.remains || fail(`Nothing is left of ${t.name} but ${t.remains === 'dust' ? 'dust' : 'a frozen statue'}: there is no body to bring back.`);
+  const G = gridOf(s.map), over = living(s).find((o) => o.id !== t.id && overlapAt(o, o.pos, t, t.pos, G));
+  !over || fail(`${over.name} stands where ${t.name}'s body lies: move one of them first.`);
+}
+
 // Creature ids a given attack or spell could legally target right now (range only).
 export function targetsFor(s, e, { attack, spell, action }) {
   const out = [];
   const def = action ?? (attack && e.actions?.find((x) => x.id === attack && !x.multiattack)?.id);
   let far = null;
   if (def) { try { far = actionProfile(e.actions.find((x) => x.id === def)).far; } catch (err) { if (!(err instanceof TypeError)) throw err; } }      // an action with neither reach nor range reaches no one (#421)
-  for (const t of living(s)) {
+  const bodies = !def && !attack && spell && SPELLS[spell]?.dead;       // a spell aimed at the dead: bodies, not the living
+  for (const t of bodies ? Object.values(s.entities).filter((x) => x.dead && !x.vanished && !x.remains) : living(s)) {
     if (!unblocked(s, e, t)) continue;
     const d = apart(s, e, t) * FT;
     if (def) { if (far !== undefined && far !== null && t.id !== e.id && d <= far) out.push(t.id); }

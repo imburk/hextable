@@ -142,6 +142,8 @@ function setup(sp, seed, opts) {
     if (!e.ok) throw new Error(`could not reach the caster's turn: ${e.error}`);
   }
   if (current(s) !== CASTER) throw new Error('could not reach the caster\'s turn');
+  // A spell aimed at the dead (Revivify) is given a body to work on: the first friend, fallen a moment ago.
+  if (sp.def?.target?.creature?.dead === true) for (const [id] of crowd) { const t = s.entities[id]; t.hp = 0; t.dead = true; if (Number.isFinite(s.clock)) t.diedAt = s.clock; }
   return { s, crowd, hex, wiz };
 }
 

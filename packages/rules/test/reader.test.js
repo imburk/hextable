@@ -52,6 +52,7 @@ const FIXTURES = [
     effects: [{ modifier: { on: 'ac', op: 'baseAc', value: { base: 13, ability: 'dex' } }, ends: { on: 'armour' } }] }),
   base('mercy-touch', 'Mercy Touch', { level: 0, range: 15, target: { creature: { count: 1 } }, effects: [{ stabilize: true }], higher: { range: { 5: 30, 11: 60, 17: 120 } } }),
   base('unravel', 'Unravel', { level: 3, school: 'abjuration', range: 120, target: { creature: { count: 1 } }, tier: 'assist', effects: [{ dispel: 3, dc: 10 }] }),
+  base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
   base('honed-edge', 'Honed Edge', { level: 2, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',

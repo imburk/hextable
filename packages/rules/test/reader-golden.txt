@@ -170,6 +170,23 @@ Not checked against any rulebook.
 DM: Step effects.0: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-wake-the-fallen
+"Wake the Fallen" (level 3 necromancy, touch, action, instant).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: healing.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+One creature the caster touches comes back to life with 1 Hit Point if it died no more than a minute ago by the game clock (a round of a fight is a tenth of a minute); a creature that died longer ago is an invalid target: the slot is spent and nothing happens.
+  A body whose time of death the engine did not keep (it died in a game saved before the engine kept it) is not revived: the DM is told and judges. A revived creature is told to the DM with a note that the engine cannot tell whether it died of old age or lacks body parts, which the spell does not undo, nor the diamond the spell consumes.
+The entry is aimed at a creature that is dead, and at no other: the engine refuses a creature that is up, a body that is gone (hidden for good by the DM) and one nothing is left of (dust, a frozen statue), and a body that another creature stands over, and changes nothing. Every other spell still refuses a dead creature.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It is instant: nothing it does is kept as a lasting effect.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: whether the creature died of old age or lacks body parts, and the consumed diamond.
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-glow-pebble
 "Glow Pebble" (evocation cantrip, touch, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

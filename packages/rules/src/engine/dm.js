@@ -329,7 +329,7 @@ export const handlers = {
       const G = gridOf(s.map), over = living(s).find((o) => o.id !== e.id && overlapAt(o, o.pos, e, e.pos, G));
       !over || fail(`${over.name} stands where ${e.name}'s body lies: move one of them before bringing ${e.name} back.`);
     }
-    if (hp > e.hp) { e.dead = false; delete e.remains; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
+    if (hp > e.hp) { e.dead = false; delete e.remains; delete e.diedAt; heal(s, e, hp - e.hp, ev); } else if (hp < e.hp) damage(s, e, e.hp - hp, 'untyped', ev, { raw: true });
     checkEnd(s, ev);
   },
   // The DM's damage and healing, by the rules: Resistance and the like, Temporary Hit Points first, Concentration, death saves.

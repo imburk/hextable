@@ -269,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
@@ -577,7 +577,11 @@ class Reading {
         if (!ts.length || ts.length !== c.types.length) this.bad('`target.creature.types` is not a list of creature types.');
         else this.line(`The entry limits it to ${list(ts.map(cap1), 'or')}: aimed at a creature of another type, the cast and its slot are spent and nothing happens to that creature (it looks like a made save where a made save would mean no effect).`);
       }
-      this.odd(c, ['count', 'repeat', 'within', 'types'], 'The creature target');
+      if (c.dead !== undefined) {
+        if (c.dead !== true) this.bad('`target.creature.dead` is true or left out.');
+        else this.line('The entry is aimed at a creature that is dead, and at no other: the engine refuses a creature that is up, a body that is gone (hidden for good by the DM) and one nothing is left of (dust, a frozen statue), and a body that another creature stands over, and changes nothing. Every other spell still refuses a dead creature.');
+      }
+      this.odd(c, ['count', 'repeat', 'within', 'types', 'dead'], 'The creature target');
       const harmful = this.harmful();
       const bits = [];
       bits.push(c.repeat === true ? 'The caster picks a creature for each one, and may pick one creature more than once' : 'The caster picks the creatures, each one only once');
@@ -1119,6 +1123,14 @@ export const STEP_SENTENCES = {
     this.line('Each spell ends whole, on every creature it is on. It is on the creature if it put a condition, a changed number, a light, Temporary Hit Points or a form on it, or made it, or if it was aimed at the creature and is one the DM applies. What is no spell (a feature, a creature\'s own action) is left, and so are spells on no creature (a zone, changed ground): the DM ends those. Where the engine does not know the spellcasting ability of the one dispelling, it hands that check to the DM.', depth + 1);
     return this.dm(`Step ${at}: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.`);
   },
+  // engine/rolls.js `revive`.
+  revive({ st, at, depth, Who, say }) {
+    if (isInt(st.revive)) this.num(`${at}.revive`, st.revive, 'Hit Point'); else this.bad(`Step ${at}: the revive step has no whole number of Hit Points.`);
+    if (isInt(st.within)) this.num(`${at}.within`, st.within, 'minute'); else this.bad(`Step ${at}: the revive step has no whole number of minutes.`);
+    say(`${Who} comes back to life with ${st.revive} Hit Point${st.revive === 1 ? '' : 's'} if it died no more than ${st.within === 1 ? 'a minute' : `${st.within} minutes`} ago by the game clock (a round of a fight is a tenth of a minute); a creature that died longer ago is an invalid target: the slot is spent and nothing happens.`);
+    this.line('A body whose time of death the engine did not keep (it died in a game saved before the engine kept it) is not revived: the DM is told and judges. A revived creature is told to the DM with a note that the engine cannot tell whether it died of old age or lacks body parts, which the spell does not undo, nor the diamond the spell consumes.', depth + 1);
+    return this.dm('Step ' + at + ': whether the creature died of old age or lacks body parts, and the consumed diamond.');
+  },
   stabilize({ Who, say }) { say(`${Who} becomes Stable if it has 0 Hit Points and is not dead (its Death Saving Throw counts start again). Any other creature is left as it is, and the table is told.`); },
   // engine/rolls.js `shine`: the light is carried by the creature the step works on, for as long as the lasting effect runs.
   light({ st, at, depth, Who, say }) {
@@ -1332,7 +1344,7 @@ export const MONSTER_FIELDS = {
 };
 export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree' };
 export const ACTION_FIELDS = { id: 'skip', name: 'skip', text: 'skip', time: 'head', target: 'aim', effects: 'steps', uses: 'limits', recharge: 'limits', multiattack: 'multi' };
-export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range', 'types'];
+export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'];
 export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'];
 export const MONSTER_TIER_WORDS = {
   auto: 'Tier: auto. The engine runs every trait and action of this creature as listed above.',
@@ -1704,6 +1716,8 @@ class MonsterReading extends Reading {
     if (c.range !== undefined) { if (band) { this.num(`${at}.target.creature.range.0`, band[0], 'feet'); this.num(`${at}.target.creature.range.1`, band[1], 'feet'); } else this.bad(`${at}: \`range\` is not [normal, long] in feet.`); }
     // A creature-type limit is a spell's (`target.creature.types`, #727): `actionProfile` does not carry it, so a creature's action works on any creature.
     if (c.types !== undefined) this.bad(`${at}: \`types\` on a creature target is for a spell; the engine does not apply it to a creature's action, which works on a creature of any type.`);
+    // Aimed at the dead is a spell's too (`target.creature.dead`, Revivify): a creature's action is never aimed at a dead creature.
+    if (c.dead !== undefined) this.bad(`${at}: \`dead\` on a creature target is for a spell; the engine does not aim a creature's action at a dead creature.`);
     const first = Array.isArray(steps) && isObj(steps[0]) ? steps[0] : null;
     const bits = [`It is aimed at ${n > 1 ? `up to ${n} creatures` : 'one creature'}`];
     if (reach) bits.push(`within ${reach} feet`);

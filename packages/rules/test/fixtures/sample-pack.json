@@ -487,6 +487,40 @@
       "text": "The caster points out a creature that is hidden, and it is seen by all. Any spell of level 1 on it ends."
     },
     {
+      "id": "hb-sample-ember-recall",
+      "name": "Ember Recall",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "necromancy",
+      "classes": [
+        "cleric"
+      ],
+      "time": "action",
+      "range": "touch",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1,
+          "dead": true
+        }
+      },
+      "effects": [
+        {
+          "revive": 2,
+          "within": 2
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A touched creature that died within the last 2 minutes returns to life with 2 Hit Points."
+    },
+    {
       "id": "hb-sample-shifting-step",
       "name": "Shifting Step",
       "source": "homebrew:sample",
