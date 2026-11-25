@@ -173,7 +173,7 @@ test("scene actions are the DM's, are checked, and a refused one changes nothing
 test("a fight ends the scene, whether the DM starts it or the party walks up to an enemy; a scene cannot start during one", () => {
   const s = table();
   ok(apply(s, { type: "scene", scene: { title: "Parley" } }, DM));
-  const fight = ok(apply(s, { type: "startEncounter", center: s.entities.m1.pos, radius: 6 }, DM));
+  const fight = ok(apply(s, { type: "startEncounter", center: s.entities.m1.pos, radius: 14 }, DM));   // wide enough to hold a hero (#771)
   assert.equal(s.scene, null);
   const types = fight.events.map((e) => e.type);
   assert.ok(types.indexOf("sceneEnd") >= 0 && types.indexOf("sceneEnd") < types.indexOf("encounterStart"), `${types}`);
