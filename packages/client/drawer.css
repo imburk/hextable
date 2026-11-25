@@ -66,6 +66,17 @@ body.offline #ap-body :is(.ap-row, .ap-bar), body.offline #c-res button, body.of
 #waiting-list[hidden] { display: none; }
 #waiting-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
 #waiting-list button { min-height: 44px; flex: none; }
+/* Pick who you play (#756): the unclaimed characters, each with Play as, in the same box as Waiting for you */
+#menu-pick { padding: 8px 10px; border: 1px solid var(--accent); border-radius: var(--radius); }
+#menu-pick[hidden] { display: none; }
+#menu-pick > h3 { margin: 0 0 6px; font-size: 14px; }
+#menu-pick > .note { margin: 6px 0 0; font-size: 13px; }
+#pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#pick-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
+#pick-list li > span { min-width: 0; display: grid; }
+#pick-list li small { color: var(--muted, inherit); opacity: .8; }
+#pick-list button { min-height: 44px; flex: none; max-width: 60%; }
+#pick-list button.sure { outline: 2px solid currentColor; outline-offset: 2px; }
 #menu-waiting #todo-mount { border: 0; padding: 0; margin: 6px 0 0; }
 
 /* the turn line: one line above the token in a fight */
@@ -189,7 +200,7 @@ body[data-menu-labels="always"] #menu-root .pr-txt small { display: none; }
 /* above the arc: Waiting for you, and once the note about the health ring; each only as big as its words, so the map round them still closes the menu */
 #arc-above { position: absolute; left: 12px; right: 12px; bottom: calc(100% - var(--arc-top, 60%) + 12px); max-height: calc(var(--arc-top, 60%) - 24px); display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; pointer-events: none; }
 #arc-above > * { pointer-events: auto; width: min(420px, 100%); box-sizing: border-box; margin: 0; background: var(--panel-solid, var(--panel)); box-shadow: 0 3px 10px #0008; }
-#arc-above > #menu-waiting { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#arc-above > :is(#menu-waiting, #menu-pick) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 #ring-note { padding: 8px 10px; border: 1px solid var(--good); border-radius: var(--radius); font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 #ring-note[hidden] { display: none; }
 #ring-note button { flex: none; min-height: 44px; }

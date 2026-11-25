@@ -94,6 +94,12 @@
       <ul id="waiting-list"></ul>
       <section id="todo-mount" aria-label="To do" hidden></section>
     </section>
+    <!-- Pick who you play (#756): a player at a hosted table with no character, while some are free. app.js fills it; drawer.js moves it above the arc beside "Waiting for you". -->
+    <section id="menu-pick" aria-labelledby="pick-title" hidden>
+      <h3 id="pick-title">Pick who you play</h3>
+      <ul id="pick-list"></ul>
+      <p class="note">Or ask the DM to give you one</p>
+    </section>
     <div id="party" aria-label="Characters"></div>
     <ul class="menu-list">
       <li><button type="button" class="menu-row" id="tab-sheet" data-go="sheet"><span class="mr-name">Character</span><span class="mr-sum" id="sum-sheet"></span></button></li>

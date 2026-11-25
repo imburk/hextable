@@ -887,6 +887,23 @@ function renderWaiting() {
   if ($('waiting-list').dataset.sig !== html) { $('waiting-list').dataset.sig = html; $('waiting-list').innerHTML = html; }
   $('waiting-list').hidden = !items.length;
 }
+// Pick who you play (#756): at a hosted table a player with no character is shown the characters nobody plays, each with "Play as <name>" (a second tap
+// claims it: the engine's own claim, no approval). The menu opens on it when they join and again when they lose their character or one becomes free, not
+// again after they close it until one of those happens. `pickSeen` is the free characters they have been shown since they last had none.
+const pickSeen = new Set();
+function renderPick() {
+  const box = $('menu-pick'), me = T?.you?.userId;
+  const hasChar = !!S && Object.values(S.entities).some((x) => x.owner === me);
+  const free = !S || T.solo || isDM() || hasChar ? [] : Object.values(S.entities).filter((x) => x.kind === 'pc' && !x.owner && !x.dead);
+  box.hidden = !free.length;
+  const html = free.map((x) => `<li><span><b>${esc(shownName(S, x))}</b><small>Level ${esc(x.level)} ${esc(classTitle(x))}</small></span><button type="button" data-pick="${esc(x.id)}">Play as ${esc(shownName(S, x))}</button></li>`).join('');
+  if ($('pick-list').dataset.sig !== html) { $('pick-list').dataset.sig = html; $('pick-list').innerHTML = html; }
+  if (!free.length) { if (hasChar || !S) pickSeen.clear(); return; }
+  if (!$('lobby').hidden) return;
+  const fresh = free.filter((x) => !pickSeen.has(x.id));
+  pickSeen.clear(); for (const x of free) pickSeen.add(x.id);
+  if (fresh.length && !D.isOpen) D.open();
+}
 // Dead: the character's page says so, with the way to what happened.
 function deadLine(e) {
   const d = $('dead-line'), on = !!e && e.kind === 'pc' && !!e.dead && mine(e);
@@ -1050,7 +1067,7 @@ function refresh() {
   if (isDM()) renderDM();
   TD.sync(); TD.waiting();
   HO.refresh();
-  renderWaiting();
+  renderWaiting(); renderPick();
   SC.refresh();
   RP.refresh();
   CLS.sync(mode);
@@ -1162,6 +1179,14 @@ function renderDM() {
       yes.type = no.type = 'button'; yes.textContent = 'Let in'; no.textContent = 'Decline';
       yes.onclick = () => T.approve(p.id, true); no.onclick = () => T.approve(p.id, false);
       row.lastChild.append(yes, no); table.append(row);
+    }
+    // Players at the table with no character (#756): a line each, and a way to the list that gives one.
+    for (const m of lb.members.filter((m) => m.role === 'player' && !Object.values(S.entities).some((x) => x.owner === m.id))) {
+      const row = document.createElement('div'); row.className = 'req nochar';
+      row.innerHTML = `<span><b>${esc(m.name)}</b> has no character</span><span class="row"></span>`;
+      const give = document.createElement('button'); give.type = 'button'; give.textContent = 'Give a character';
+      give.onclick = () => D.open('dm/creatures');
+      row.lastChild.append(give); table.append(row);
     }
   }
   // Places: the map's regions, and whether the players have been shown each.
@@ -1415,6 +1440,11 @@ foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
 $('party').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) pickChar(b.dataset.id); });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
 $('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
+$('pick-list').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-pick]'); if (!b || !S) return;
+  const x = S.entities[b.dataset.pick]; if (!x) return;
+  twoTap(b, `Tap again to play ${shownName(S, x)}`, '', () => { if (!x.owner) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name }); });
+});
 $('waiting-list').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-wait]'); if (!b || !S) return;
   const [kind, id] = [b.dataset.wait.split(':')[0], b.dataset.wait.split(':').slice(1).join(':')];
