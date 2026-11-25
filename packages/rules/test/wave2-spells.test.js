@@ -56,17 +56,18 @@ test("Spike Growth: assist, Difficult Terrain, and 2d4 piercing for each 5 feet 
   assert.equal(out.events.filter((e) => e.type === "zone").length, 1, "one dose for the step that stays in, none for the one that leaves");
 });
 
-test("Spike Growth, decided: a creature in the air takes nothing; a creature pushed through it takes 2d4 for each 5 feet it is moved", () => {
+test("Spike Growth, decided: a creature that is flying takes nothing; a creature pushed through it takes 2d4 for each 5 feet it is moved", () => {
   const s = field(), bat = spawn(s, "bat", 9, 0), g = spawn(s, "goblin-warrior", 1, 0);
   g.abil.con = 1;                                              // the Thunderwave save fails
   fight(s); turnOf(s, "wizard");
   ok(apply(s, { type: "cast", actor: "wizard", spell: "spike-growth", hex: { q: 4, r: 0 } }, DM));
-  // A creature with a Fly Speed is aloft (world.js aloft): it touches none of the ground, wherever its path goes.
+  // A creature that IS flying (its height is on no surface) touches none of the ground, wherever its path goes.
   turnOf(s, bat.id);
+  ok(apply(s, { type: "move", actor: bat.id, to: { q: 9, r: 0, z: 10 } }, DM));      // up, outside the area
   const hp = bat.hp;
-  const fly = ok(apply(s, { type: "move", actor: bat.id, to: { q: 6, r: 0 } }, DM));
-  assert.deepEqual([bat.pos.q, bat.pos.r], [6, 0]);
-  assert.equal(fly.events.filter((e) => e.type === "zone").length, 0);
+  const fly = ok(apply(s, { type: "move", actor: bat.id, to: { q: 6, r: 0, z: 10 } }, DM));
+  assert.deepEqual([bat.pos.q, bat.pos.r, bat.pos.z], [6, 0, 10]);
+  assert.equal(fly.events.filter((e) => e.type === "zone").length, 0, JSON.stringify(fly.events.filter((e) => e.type === "moved")));
   assert.equal(bat.hp, hp);
   // Pushed 10 feet east by Thunderwave from (1,0) to (3,0): two 5-foot steps, both inside the area: two doses, after the push's own damage.
   turnOf(s, "wizard");
@@ -75,6 +76,18 @@ test("Spike Growth, decided: a creature in the air takes nothing; a creature pus
   const spikes = wave.events.filter((e) => e.type === "zone" && e.id === g.id);
   assert.equal(spikes.length, 2, JSON.stringify(wave.events.map((e) => e.type)));
   assert.equal(hurt(wave.events, g.id, "piercing").length, 2);
+});
+
+test("Spike Growth, decided: having a Fly Speed is not flying: a creature that walks on the ground takes the damage", () => {
+  const s = field(), bat = spawn(s, "bat", 9, 0);
+  fight(s); turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "spike-growth", hex: { q: 4, r: 0 } }, DM));
+  turnOf(s, bat.id);
+  const hp = bat.hp;
+  const walk = ok(apply(s, { type: "move", actor: bat.id, to: { q: 7, r: 0, z: 0 } }, DM));
+  assert.equal(bat.pos.z, 0, "it stayed on the ground");
+  assert.ok(walk.events.filter((e) => e.type === "zone").length >= 1, JSON.stringify(walk.events.map((e) => e.type)));
+  assert.ok(bat.hp < hp, `hurt (${hp} to ${bat.hp})`);
 });
 
 test("Spike Growth, decided: a jump is the DM's (the engine has no jump); the hazard is reported to the DM as a note, and the spell holds at assist", () => {

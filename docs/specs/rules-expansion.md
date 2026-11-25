@@ -1333,7 +1333,7 @@ Blade Barrier and Wall of Stone, all `manual` before. Every number was compared 
 
 **The decisions the issue asked for**, each with a test:
 
-- *Spike Growth and flyers.* A creature with a Fly Speed that can stay up is aloft (`world.js` `aloft`) and touches no ground: it takes nothing wherever it goes. A creature on the ground takes a dose for every 5-foot step it takes in the area.
+- *Spike Growth and flyers.* A creature that is flying (its height is on no surface of its column, `space.js` `ground`; asked in `zones.js` `stepped`) touches no ground: it takes nothing. A creature on the ground takes a dose for every 5-foot step it takes in the area, whether or not it has a Fly Speed (Isaac's default on the board question `spike-fly`; the text says the ground sprouts the spikes).
 - *Spike Growth and jumps.* The engine has no jump action; a jump is the DM's. The entry says so.
 - *Spike Growth and forced movement.* A push or pull is movement: a creature shoved 10 feet through the area takes two doses (tested with Thunderwave).
 - *Wall of Fire, leaving through the wall.* The text deals damage on entering for the first time on a turn and on ending a turn in it, and says nothing of leaving: leaving costs nothing. Crossing the wall costs one dose, on the way in; the walk stops there, as any walk into a zone does.

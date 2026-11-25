@@ -16,7 +16,7 @@
 import { gridOf, col, boxOf, squareAround } from './grid.js';
 import { begin, run } from './effects.js';
 import { effectsOf, endEffect, thisTurn, turnKey } from './durations.js';
-import { FT, footprint, gap, rise, sizeOf } from './space.js';
+import { FT, footprint, gap, ground, rise, sizeOf } from './space.js';
 
 export const zonesOf = (s) => effectsOf(s).filter((fx) => fx.zone);
 
@@ -97,9 +97,10 @@ export function entered(s, ev, kit, before, pre = () => {}) {
 }
 
 // A creature has just taken one 5-foot step on the ground, walking or forced: every `step` zone it now stands in goes off on it (Spike Growth: "2d4 Piercing damage for
-// every 5 feet it travels", into or within the area). The caller asks only for a creature on the ground: one in the air touches nothing. Returns whether any went off.
+// every 5 feet it travels", into or within the area). A creature that is off the ground (its height is on no surface of its column: it is flying) touches nothing; one that has a Fly Speed but stands on the ground is hurt like anyone. Returns whether any went off.
 export function stepped(s, ev, kit, t, pre = () => {}) {
   let hit = false;
+  if (!ground(s.map, t.pos)) return false;
   for (const fx of zonesOf(s)) if (fx.zone.on.includes('step') && holds(s, fx, t) && trigger(s, ev, kit, fx, t, 'step', pre)) hit = true;
   return hit;
 }
