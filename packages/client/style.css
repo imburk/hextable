@@ -348,12 +348,9 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 @media (prefers-reduced-motion: reduce) { .hold-ring { animation: none; border-style: dashed; } .ping i { animation: none; } .ping-name { animation: none; }
   .hold-ring::after { content: 'Keep holding'; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 4px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; background: #000b; padding: 1px 6px; border-radius: 8px; } }
 
-/* The slot a spell is cast with (#604): a thumb-sized menu on touch, and the bar may wrap its buttons under the words on a narrow screen. */
+/* The aim bar may wrap its buttons under the words on a narrow screen. (The slot a spell is cast with, #604, and its other choices are on the character's sheet now: #750 part 2.) */
 #hint, #join { flex-wrap: wrap; }
 #aim-note { flex: 1 0 100%; font-size: 14px; font-weight: 700; } #aim-note[hidden] { display: none; }       /* #750: the count of the choice, at the top with the aim bar */
-#hint #hint-slot, #hint #hint-pick { max-width: 100%; }
-@media (pointer: coarse) { #hint #hint-slot, #hint #hint-pick { min-height: 44px; } }
-@media (max-width: 480px) { #hint #hint-pick { max-width: 100%; } }
 #join { top: auto; bottom: calc(var(--dock-h, 0px) + 6px + var(--turn-h, 52px) + 6px); z-index: 5; }      /* above the turn line, which is above the dock; `--turn-h` is the turn line's measured height (app.js): with quick actions it wraps to two rows on a phone */
 #join[hidden] { display: none; }
 @media (pointer: coarse) { #join button { min-height: 44px; padding: 6px 14px; } }

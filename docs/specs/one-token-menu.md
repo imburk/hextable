@@ -1799,7 +1799,7 @@ separate pull request and follows this section.
 
 ### Build notes: the d20 confirms, part 1 (#750)
 
-Parts 1 and 2 of the amendment are built (`confirm.js`, `app.js` `confirmDie`, `drawer.js`). Part 3 (the
+Points 1 and 2 of the amendment are built (`confirm.js`, `app.js` `confirmDie`, `drawer.js`). Point 3 (the
 choices on the sheet) is a separate pull request.
 
 - **What waits.** `app.js` `refresh()` sets `waitFor` when the aim bar holds something to send: an area
@@ -1843,3 +1843,35 @@ choices on the sheet) is a separate pull request.
 - **Open point 5(h).** On a computer the double-click is the same two taps. Shift is only read by the
   map as a camera turn with a drag and by the dice, never by a tap on a target, so there is no clash.
 - Not built here: 5(a) and 5(b) (part 3), 5(i), 5(j) (the throw zone is as it was), 5(k).
+
+### Build notes: the d20 confirms, part 2 (#750)
+
+Point 3 of the amendment is built (`app.js` `choicesFor`, `actionpanel.js` `#ap-choices`, `confirm.js` `slotOptions`, `pickOptions`, `weaponOptions`). The two small
+menus of the aim bar (`#hint-pick`, `#hint-slot`) are gone from the page and from its CSS.
+
+- **Every kind of choice the popup showed, and where each is now.** (1) The slot level of a spell that a higher slot improves (Magic Missile, Bless, Cure Wounds):
+  one option for each level the caster has slots at, from the spell's own level up. (2) The weapon a spell changes (Shillelagh, Magic Weapon): the caster's weapons, or
+  the weapons of the creature tapped (they appear once it is tapped). (3) A plain choice of the spell (Guidance's skill, Resistance's damage type, a Protection
+  from Energy type, an ability). Nothing else was in the popup. Not part of this: the choosers of `classes.js` (Divine Smite, Metamagic, Wild Shape and the like) are
+  their own cards with their own buttons, not the die's popup; a flyer's column of heights and its place list (`#hint-fly`, `#hint-step`) choose a place for the
+  move, and stay in the aim bar.
+- **What an option looks like.** A block at the top of the open section: "<Spell> waits for the die. Choose, then tap it.", then each choice as a radio group. An option
+  that can be used has a heavy accent border (highlighted). The one the die will confirm with is also filled and has a tick in front of its name (so it is not colour alone).
+  An option that cannot be used is dashed, dim, and says why in words under its name: "No level 1 spell slot left." for a level with no slot, "<Weapon> cannot be used: not a
+  Melee weapon." (the engine's own reason from `weaponsFor`) for a weapon. A tap on a greyed option shows the reason as a toast and changes nothing. A choice
+  with only one usable option is not offered (as before: nothing to choose). Options are at least 44 px high. The block shows the choices of the armed action only; the
+  engine still checks them on the confirm.
+- **Open point 5(a), settled.** The section that holds the armed row opens, with the choices at its top (the section already open, if it holds the row; else the first
+  that does). If the player then opens another section the choices go to the top of that one; closing every section does not hide them (the armed row's section opens again).
+  At 390 x 844 with the status block compact the block is about 105 px high for one choice (Magic Missile, three levels), so the open section's room (Decision 4d, 147 px)
+  holds it and scrolls for the rows below it; the armed row is the one the block describes and is usually just under it. Checked by `dieconfirm`, `upcast`, `imbue`.
+- **Open point 5(b), settled.** Arming still folds the menu, unless the action has choices to make: then the sheet stays open (if it was closed, because the action was
+  armed from the quick actions or a tapped creature gave its weapons, it opens on the sheet 350 ms after the choices appear: sooner, the browser's own click after a tap on
+  the map lands on the new menu's dimmed map and closes it). The die still confirms and does not close it. For an action that aims at the map the first tap on the map
+  closes the sheet, as Decision 3 and amendment point 4 say (on a computer with the column beside the map a tap on the map plays normally: the column is not a
+  modal); the choice made stays. To change it later: Cancel and arm again, or M (computer) to open the menu again. A spell whose levels cannot differ
+  (one slot level, or no level adds anything) has no choices and folds the menu as before.
+- **Existing passes changed.** `upcast` and `imbue` read the options in `#ap-choices` instead of the two selects and close the sheet before they tap the map; `dieconfirm`
+  closes the sheet after arming Bless (a cleric with two slot levels now has a level to choose) and has a new step for the highlighted and greyed levels.
+- Not built here: 5(i), 5(j), 5(k) (as in part 1). Open for Isaac: whether a tap on the map while an action waits on its choices should keep the sheet and pass the tap through
+  on a phone (today it closes it first, one tap more).
