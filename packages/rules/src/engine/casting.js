@@ -542,7 +542,9 @@ function castSpell(s, a, ctx, ev, item) {
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
     if (sp.aim === 'area') {
-      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex));
+      // A wall (a placed Line) may say which way it runs: `toward`, a space on its line (absent, it runs across the line from the caster to `hex`).
+      a.toward === undefined || (sp.area.placed && a.toward && Number.isInteger(a.toward.q) && Number.isInteger(a.toward.r)) || fail(sp.area.placed ? `Name a space ${sp.name} runs toward.` : `${sp.name} is not a wall: it has no direction to choose.`);
+      ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex, a.toward));
       if (sp.area.choose) targets = chosen(e, sp.name, targets, a.targets, most);
     } else if (sp.aim === 'creature') {
       targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);
@@ -671,7 +673,9 @@ function castSpell(s, a, ctx, ev, item) {
       const spare = a.spare ?? [];
       fx.zone = { area: { ...sp.area }, on: [...zoneDef.on], ...(zoneDef.once ? { once: zoneDef.once } : {}),
         ...(sp.area.shape === 'emanation' ? { follows: e.id } : { hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) } }),
-        spare, ...(zoneDef.budget ? { budget: zoneDef.budget, spent: 0 } : {}), steps: structuredClone(steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
+        spare, ...(zoneDef.budget ? { budget: zoneDef.budget, spent: 0 } : {}),
+        // The steps it runs later: the zone's own `effects` if it has them (grown by the slot as the spell's are), else the cast's.
+        steps: structuredClone(zoneDef.effects ? scaleSteps({ ...sp.def, effects: zoneDef.effects }, casterLevel, slot).steps : steps), src: { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, ...(sp.area.types ? { types: [...sp.area.types] } : {}), ...(sp.level === 0 ? { cantrip: true } : {}), healMod }, last: {} };
       hit = zoneDef.atCast ? targets.filter((t) => !spare.includes(t.id)) : [];
       const now = turnKey(s);
       if (now !== null) for (const t of hit) fx.zone.last[t.id] = now;     // "only once per turn": appearing counts

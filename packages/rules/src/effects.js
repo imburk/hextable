@@ -25,12 +25,12 @@ export const CUBE_AIM_MAX = 1000;
 export const AREAS = ['cone', 'sphere', 'cylinder', 'emanation', 'line', 'cube'];
 // Can the engine aim this area? A sphere or cylinder needs somewhere within range to go off
 // (`range`: the spell's range in feet, or an action's `area.range`); a Line with a range is a
-// wall placed at a distance, which the DM places.
+// wall placed at a distance, which the DM places, unless it is `placed` (the wall spells: engine/world.js, layout).
 export function aimable(area, range) {
   if (area.shape === 'cube' && area.size > CUBE_AIM_MAX) return false;   // too large to place by the engine: the DM places it (a `manual` step says so)
   if (!AREAS.includes(area.shape) || area.count > 1) return false;     // several shapes arranged by the caster: the DM
   if (area.shape === 'sphere' || area.shape === 'cylinder') return range > 0;
-  if (area.shape === 'line') return !(range > 0);
+  if (area.shape === 'line') return area.placed ? range > 0 : !(range > 0);        // a placed Line is a wall put down within range (Wall of Fire)
   return true;
 }
 

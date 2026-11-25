@@ -241,11 +241,19 @@ function lintZone(e, say, action = false) {
   const z = e.zone;
   if (z === undefined) return;
   if (!z || typeof z !== 'object' || Array.isArray(z)) return say('`zone` must be an object');
-  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
+  for (const k of Object.keys(z)) if (!['on', 'once', 'atCast', 'spare', 'budget', 'effects'].includes(k)) say(`\`zone.${k}\` is not something a zone has`);
   // `budget: n` (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): the zone's lasting effect ends once the damage its steps have dealt adds up to `n`. A spell's zone only.
   if (z.budget !== undefined && !(isInt(z.budget) && z.budget >= 1 && z.budget <= 120 && !action)) say('`zone.budget` is a whole number of damage, 1 to 120, on a spell\'s zone');
-  if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd');
-  if (z.once !== undefined && z.once !== 'turn') say('`zone.once` is "turn" or left out');
+  if (!(Array.isArray(z.on) && z.on.length && z.on.every((x) => ['enter', 'step', 'turnStart', 'turnEnd'].includes(x)) && new Set(z.on).size === z.on.length)) say('`zone.on` lists enter, turnStart and/or turnEnd, or step (each 5 feet walked within the area)');
+  if (z.once !== undefined && !['turn', 'enter'].includes(z.once)) say('`zone.once` is "turn" or left out (or "enter": only entering is held to once a turn)');
+  if (z.once === 'enter' && !z.on?.includes?.('enter')) say('`zone.once: "enter"` limits the entering, so the zone goes off on `enter`');
+  // `effects`: the steps the zone runs on a creature later, when they are not the steps the cast runs as it appears (Wall of Fire: a Dexterity save as it appears, flat damage after;
+  // Wall of Thorns: Piercing as it appears, Slashing after). The spell's own `effects` are the cast's. A spell's zone only; a higher slot grows both alike.
+  if (z.effects !== undefined) {
+    if (action) say('`zone.effects` is for a spell\'s zone: an action\'s zone runs its own `effects`');
+    else if (!Array.isArray(z.effects) || !z.effects.length) say('`zone.effects` is a list of steps');
+    else lintSteps(z.effects, (m) => say(`in \`zone.effects\`: ${m}`), { manual: false });
+  }
   for (const k of ['atCast', 'spare']) if (z[k] !== undefined && z[k] !== true) say(`\`zone.${k}\` is true or left out`);
   if (!e.target?.area || e.target.area.count || e.target.area.choose) say('a zone needs a single area to lay out');
   if (e.duration === 'instant' || (action && e.duration === undefined)) say('a zone needs a duration');
@@ -684,6 +692,8 @@ function lintTarget(target, say, nearOk = false, typesOk = false) {
     // A Line's width in feet (5 when not given); `exceptCaster` for "each creature other than you".
     if (target.area.width !== undefined && !(target.area.shape === 'line' && isInt(target.area.width) && target.area.width > 0 && target.area.width % 5 === 0)) say('`width` is for a line: feet, a multiple of 5');
     if (target.area.exceptCaster !== undefined && target.area.exceptCaster !== true) say('`exceptCaster` is true or left out');
+    // `placed`: a Line that is a wall put down within the spell's range, centred on the space chosen (the wall spells); `width` is its thickness, `height` how high it stands.
+    if (target.area.placed !== undefined && !(target.area.placed === true && target.area.shape === 'line')) say('`placed` is true, on a line');
     // `types`: only creatures of these types in the area are affected (Turn Undead's Undead).
     if (target.area.types !== undefined && !(allOf(CREATURE_TYPES)(target.area.types) && target.area.types.length)) say('`types` lists creature types');
     // `choose`: up to so many creatures of the caster's choice in the area. `count`: so many of
@@ -2992,7 +3002,7 @@ const SHAPES = {
   spellMap: { what: 'spells by class level', keys: null },
   hitRider: { what: 'a hit rider', keys: ['with'] },
   target: { what: 'a target', keys: ['self', 'creature', 'area', 'near'] },
-  area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'] },
+  area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
@@ -3001,7 +3011,7 @@ const SHAPES = {
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
-  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget'] },
+  zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects'] },
   terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
@@ -3049,6 +3059,7 @@ const SHAPES = {
 // The shape of a child: by its parent's shape and its key. A list's items take the shape given for the list.
 const CHILD = {
   spells: { target: 'target', effects: 'steps', higher: 'higher', choice: 'choice', zone: 'zone', terrain: 'terrain', reaction: 'reaction', hit: 'hitRider' },
+  zone: { effects: 'steps' },
   monsters: { speed: 'speedMap', senses: 'senseMap', skills: 'skillMap', saves: 'saveMap', abilities: 'abilities', traits: 'trait[]', actions: 'action[]' },
   items: { attune: 'attune', base: 'base', charges: 'charges', grants: 'grants', activate: 'activate[]' },
   feats: { prerequisite: 'prerequisite', increase: 'increase', proficiencies: 'proficiencies', spellPick: 'spellPick', grants: 'grants' },
@@ -3214,7 +3225,7 @@ export const HOMEBREW_LENGTHS = Object.freeze({
   // a subclass: 12 features, 13 options to a feature (the SRD's own Fiendish Resilience has 12), 5 spells at a class level (homebrew-subclasses.md, question 2)
   'subclasses.features': 12, 'features.options': 13, 'spells.#': 5,
   'objects.use': 12, 'reaction.blocks': 8, 'spellPick.abilities': 6, 'spellPick.lists': 8, 'spells.classes': 8, 'spells.components': 3, 'spells.kinds': 4, 'step.advantageIf': 4,
-  'step.cure': 14, 'step.eachTurn': 4, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 3,
+  'step.cure': 14, 'step.eachTurn': 4, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 4,
 });
 const GRANTS_LEN = 30;
 // The work one use of an entry may cause (see workOf): the most steps run, the creatures a table is taken to have, and the
@@ -3462,7 +3473,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   requires: { level: 'i', option: 's', spell: 's' },
   spellMap: { '*': 's[]' },
   target: { self: 'b', creature: 'o', area: 'o', near: 'i' },
-  area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i' },
+  area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i', placed: 'b' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
@@ -3471,7 +3482,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
-  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i' },
+  zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a' },
   terrain: { difficult: 'b', obscured: 's', lasts: 's' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },

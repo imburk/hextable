@@ -2,7 +2,7 @@
 // it, or starts or ends its turn there (Moonbeam, Spirit Guardians, Web).
 //
 // A zone is `fx.zone` on a lasting effect (durations.js), made when the spell is cast, or when a subclass feature's action that carries one is used:
-//   { area, on: ['enter' | 'turnStart' | 'turnEnd'], once: 'turn'?, follows: id?,
+//   { area, on: ['enter' | 'step' | 'turnStart' | 'turnEnd'], once: 'turn' | 'enter'?, follows: id?, near?,
 //     hexes: [col keys]?, origin, spare: [ids], steps, src, last: { id: turnKey } }
 // `follows` names the creature an Emanation moves with (Spirit Guardians); otherwise the zone
 // keeps the hexes it was laid out on. `steps` are the spell's own effect steps, scaled and with
@@ -67,6 +67,7 @@ export function holds(s, fx, t) {
   if (shape === 'cylinder') return t.pos.z > o.z - FT / 2 && t.pos.z <= o.z + tall;
   if (shape === 'cube') return t.pos.z < o.z + z.area.size && t.pos.z + sizeOf(t).height > o.z;
   if (shape === 'sphere') return gap(s, o, t.pos) <= n;
+  if (shape === 'line' && z.area.placed) return t.pos.z < o.z + (z.area.height ?? FT) && t.pos.z + sizeOf(t).height > o.z;      // a wall stands from the surface up `height` feet
   return true;
 }
 
@@ -95,6 +96,14 @@ export function entered(s, ev, kit, before, pre = () => {}) {
   return hit;
 }
 
+// A creature has just taken one 5-foot step on the ground, walking or forced: every `step` zone it now stands in goes off on it (Spike Growth: "2d4 Piercing damage for
+// every 5 feet it travels", into or within the area). The caller asks only for a creature on the ground: one in the air touches nothing. Returns whether any went off.
+export function stepped(s, ev, kit, t, pre = () => {}) {
+  let hit = false;
+  for (const fx of zonesOf(s)) if (fx.zone.on.includes('step') && holds(s, fx, t) && trigger(s, ev, kit, fx, t, 'step', pre)) hit = true;
+  return hit;
+}
+
 // A creature's turn starts or ends: the zones it is in that work then go off.
 export function turnInZones(s, ev, kit, e, when) {
   for (const fx of zonesOf(s)) if (fx.zone.on.includes(when) && holds(s, fx, e)) trigger(s, ev, kit, fx, e, when);
@@ -107,7 +116,11 @@ function trigger(s, ev, kit, fx, t, why, pre = () => {}) {
   // those caught when it is cast (the same test, with the same creatureType, which the kit lends); it is not counted as having gone off.
   if (z.area?.types && !z.area.types.includes(kit.creatureType(t))) return false;
   if (z.once === 'turn' && now !== null && thisTurn(s, z.last[t.id])) return false;
-  if (now !== null) z.last[t.id] = now;
+  // `once: 'enter'` (Wall of Fire: "when it enters the wall for the first time on a turn or ends its turn there"): only entering is held to the one go; the end of a turn is its own.
+  if (z.once === 'enter' && why === 'enter') {
+    if (now !== null && thisTurn(s, z.last[`${t.id}/enter`])) return false;
+    if (now !== null) z.last[`${t.id}/enter`] = now;
+  } else if (now !== null && z.once !== 'enter') z.last[t.id] = now;
   if (s.stack?.length) { (s.zoneQueue ??= []).push({ fx: fx.id, id: t.id, why }); return true; }
   pre();
   fire(s, ev, kit, fx, t, why);

@@ -2,7 +2,7 @@
 // marchingOrder, partyFollow). Walking itself: Opportunity Attacks, noticing, traps, engaging.
 import { gridOf, col, key } from '../grid.js';
 import { apart, apartAt, concealed, footprint, FT, ground, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
-import { entered, holds, snapshot, zonesOf } from '../zones.js';
+import { entered, holds, snapshot, stepped, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { seenName, sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
@@ -264,6 +264,8 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
     spent = cost;
     lookAround(s, ev, rider ? [e, rider] : [e], flush);
     if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
+    // Each 5 feet walked within a zone that works on steps (Spike Growth) costs what it says; a creature in the air touches no ground.
+    if (!aloft(s, e)) stepped(s, ev, KIT, e, flush);
     // So does a zone it walks into (Web, Moonbeam), for it or its rider; one that moves with it may catch others.
     if (entered(s, ev, KIT, zonesBefore, flush).some((id) => id === e.id || id === rider?.id) || !up(e)) { checkEnd(s, ev); break; }
     if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
