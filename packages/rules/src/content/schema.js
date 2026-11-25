@@ -3538,6 +3538,8 @@ function lintShape(kind, e, say, { homebrew }) {
     if (homebrew && shape === 'freeCast' && key === 'forms') { bad++; say('A homebrew feature cannot add familiar forms yet.'); return; }
     // Nor what changes a familiar or lets it attack (#464): a feat could otherwise arm any caster's familiar.
     if (homebrew && shape === 'grants' && (key === 'invest' || key === 'forgoAttack')) { bad++; say('A homebrew feature cannot change a familiar or let it attack yet.'); return; }
+    // Nor a swap of a spell slot for a use of a pool, or the other way round (#726 job 7): the engine's limits for it are not in the homebrew tables yet.
+    if (homebrew && shape === 'grants' && key === 'swap') { bad++; say('A homebrew feature cannot swap a spell slot for a use of a pool yet (swap).'); return; }
     // Nor may a feat or an item change what a class feature's form is (#516): `formOf` is for the features of a subclass.
     if (homebrew && shape === 'grants' && key === 'formOf' && kind !== 'subclasses') { bad++; say('Only a subclass\'s feature can change the form of a class feature (formOf).'); return; }
     // Nor may a feat or an item state a trigger on what its holder does (#534): `triggers` is for the features of a subclass.

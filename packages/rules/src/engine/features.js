@@ -637,6 +637,8 @@ function swap(s, e, f, a, ev) {
   if (level !== null) e.slots[level]--; else e.uses[featOf(e, x.give.resource).id] -= n;
   if (x.get.resource !== undefined) e.uses[featOf(e, x.get.resource).id] += x.get.n ?? 1;
   else e.slots[x.get.slot] = (e.slots[x.get.slot] ?? 0) + 1;
+  // Outside a fight there are no turns to count: the limit is the DM's to judge.
+  if (x.per === 'turn' && !key) ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `${f.name} may be used once on each of ${e.name}'s turns. There is no turn outside a fight, so the engine cannot count them: the DM judges that limit here.` });
   const gave = level !== null ? `a level ${level} spell slot` : `${n} use of ${featOf(e, x.give.resource).name}`;
   const got = x.get.resource !== undefined ? `${x.get.n ?? 1} use of ${featOf(e, x.get.resource).name}` : `a level ${x.get.slot} spell slot`;
   ev.push({ type: 'std', id: e.id, action: `${f.name}: ${gave} for ${got}` });

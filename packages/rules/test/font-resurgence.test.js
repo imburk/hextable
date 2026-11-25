@@ -123,3 +123,26 @@ test("the linter takes a swap and refuses bad ones", () => {
   assert.ok(lint([{ id: "b", give: { slot: true }, get: { slot: 1 } }]).some((p) => /not given for a slot/.test(p)));
   assert.ok(lint([good, good]).some((p) => /own id/.test(p)));
 });
+
+test("a homebrew pack's swap is refused for now", async () => {
+  const { loadPack } = await import("../src/content/registry.js");
+  const grants = { swap: [{ id: "a", give: { slot: true }, get: { resource: "hb-p-f2" } }] };
+  const feat = (id, g, more = {}) => ({ id: `hb-p-${id}`, name: id, level: 3, tier: "auto", checked: false, text: "A thing.", grants: g, ...more });
+  const r = loadPack({ format: "hextable-pack", v: 1, pack: { id: "p", name: "P", version: 1, license: "CC0, by the author", attribution: "Written for a test." },
+    subclasses: [{ id: "hb-p-oath", name: "Oath", class: "paladin", source: "homebrew:p", checked: false, text: "Sworn.", features: [feat("f1", grants), feat("f2", {}, { uses: { max: 2, recharge: "long" } })] }] });
+  assert.equal(r.ok, false);
+  assert.match((r.problems ?? []).join("\n"), /cannot swap a spell slot/);
+});
+
+test("outside a fight the DM is told the once-per-turn limit is theirs to judge", () => {
+  const s = field(druid(5)), e = s.entities.hero;
+  e.uses["wild-shape"] = 0;
+  const r = ok(sw(s, "wild-resurgence", "slot-for-shape", 1));
+  assert.ok(r.events.some((x) => x.type === "manual" && /once on each of/.test(x.text)));
+  e.uses["wild-shape"] = 0; fight(s); turnOf(s, "hero");
+  const r2 = ok(sw(s, "wild-resurgence", "slot-for-shape", 1));
+  assert.ok(!r2.events.some((x) => x.type === "manual"));
+  // a swap with no turn limit says nothing
+  e.uses["wild-shape"] = 1; e.slots[1] = 0;
+  assert.ok(!ok(sw(s, "wild-resurgence", "shape-for-slot")).events.some((x) => x.type === "manual"));
+});
