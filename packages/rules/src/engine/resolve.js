@@ -7,7 +7,7 @@ import { d20Faces, die, roll } from '../rng.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { srcOf } from '../homebrew.js';
-import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
+import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, turnSteps, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
@@ -22,7 +22,7 @@ import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedO
 import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
 import { ARENA_RADIUS, ask, blocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
 import { armed, weaponKey } from '../imbue.js';
@@ -297,8 +297,11 @@ export function advanceTurn(s, ev) {
     // A controlled mount has no turn of its own while it is ridden: it moves and acts on its rider's (stage C6a). Its
     // place is passed by when it has had its turn's worth this round, or when the rider steering it is still to come.
     if (enc.rode?.[e.id] === enc.round || riderToCome(s, e)) { idle++; continue; }
+    // What its lasting effects do at the start of its turn comes first, for a creature that is down as for one that is up (Regenerate's Hit Point wakes it before its Death Saving Throw).
+    let stepped = false;
     if (e.hp <= 0) {
-      if (!e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
+      turnSteps(s, ev, KIT, e); stepped = true;
+      if (e.hp <= 0 && !e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
       if (e.hp <= 0) { idle++; continue; }
     }
     const how = auto < enc.order.length ? awayHow(s, e) : null, late = enc.moved?.[e.id];
@@ -318,7 +321,7 @@ export function advanceTurn(s, ev) {
       moveToEnd(s, e.id, how === 'endKeep', null, ev);
       enc.turn = i - 1;                                                  // the next creature is now where it stood
       continue;
-    } else beginTurn(s, e, ev);
+    } else beginTurn(s, e, ev, stepped);
     if (!how) return;
     if (how === 'standIn') { ev.push({ type: 'awayTurn', id: e.id, how, round: enc.round }); return; }
     // Set aside under `dodge`, or under `end`/`endKeep` with nowhere later to go: it takes the Dodge
@@ -331,12 +334,13 @@ export function advanceTurn(s, ev) {
 
 // The start of a creature's turn: what ends then ends, its budget, its Reaction back, a recharge,
 // standing up from Prone.
-function beginTurn(s, e, ev) {
+function beginTurn(s, e, ev, stepped = false) {
   const enc = s.encounter;
   enc.flags = {};
   const prompt = takeCommand(s, e);                                    // a commanded creature's turn is its master's player's (A2)
   turnStarted(s, ev, e, KIT);                                          // what ends "at the start of its turn" ends before it acts
   turnInZones(s, ev, KIT, e, 'turnStart');                            // a zone it starts its turn in (Web)
+  if (!stepped) turnSteps(s, ev, KIT, e);                              // what its lasting effects do each turn (Heroism, Regenerate); already done if it was down
   const speed = speedOf(s, e), can = incapacitated(e) ? 0 : 1;        // an incapacitated creature gets its turn but cannot act
   enc.budget = { move: speed, action: can, bonus: can, dashes: 0 };     // `move` is walking feet left; other ways of moving are worked out from it
   e.reactionUsed = false;
@@ -486,6 +490,7 @@ function mountTurnStarts(s, r, ev) {
   if (!m) return;
   turnStarted(s, ev, m, KIT);
   turnInZones(s, ev, KIT, m, 'turnStart');
+  turnSteps(s, ev, KIT, m);
   if (!s.encounter || !Object.hasOwn(s.entities, m.id) || steering(s, m) !== r) return;
   const enc = s.encounter;
   if (enc.rode?.[m.id] === enc.round) { enc.budget.mount = { move: 0, action: 0, dashes: 0 }; return; }   // it had its turn this round (M1)
@@ -2229,5 +2234,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

@@ -444,11 +444,18 @@
             "dim": 10
           },
           "replaces": true
+        },
+        {
+          "eachTurn": [
+            {
+              "tempHp": "1d4"
+            }
+          ]
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster's skin hardens, raising Armor Class by 2 until the spell ends."
+      "text": "The caster's skin hardens, raising Armor Class by 2 until the spell ends, and 1d4 temporary hit points come at the start of each of its turns."
     },
     {
       "id": "hb-sample-spotters-eye",

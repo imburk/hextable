@@ -91,6 +91,8 @@ Action "Smoke Step": a Bonus Action. In a fight it spends the creature's Bonus A
   It gets to keep 1 Hit Point the first time damage would take it to 0 Hit Points, however large the damage (and a `kill` step does nothing to it instead).
     That one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it.
     It ends at the start of its next turn, or when the fight ends.
+  It gets immunity to the Frightened condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off).
+    It ends at the start of its next turn, or when the fight ends.
   Every ongoing spell on it ends if it was cast at level 3 or lower, or no higher than the slot this was cast with. For each higher one the creature makes an ability check with its spellcasting ability against DC 10 plus the level of that spell, and on a success that spell ends.
     Each spell ends whole, on every creature it is on. It is on the creature if it put a condition, a changed number, a light, Temporary Hit Points or a form on it, or made it, or if it was aimed at the creature and is one the DM applies. What is no spell (a feature, a creature's own action) is left, and so are spells on no creature (a zone, changed ground): the DM ends those. Where the engine does not know the spellcasting ability of the one dispelling, it hands that check to the DM.
   It gets Disadvantage on attack rolls made against it.
@@ -104,7 +106,7 @@ Not checked against any rulebook.
 DM: Moving it by its swim speed.
 DM: Moving it by its burrow speed.
 DM: The trait "Ember Memory": text only.
-DM: Step actions.5.effects.2: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.
+DM: Step actions.5.effects.3: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.
 DM: Whatever the description says beyond the lines above.
 
 == monster hb-rk-gloomwing

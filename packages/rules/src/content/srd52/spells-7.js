@@ -163,10 +163,11 @@ export const spells7 = [
     time: "minute", range: "touch", components: ["v","s","m"],
     duration: "1 hour", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"heal":"4d8+15"}],
+    effects: [{"heal":"4d8+15"}, {"eachTurn": [{"heal": "+1"}]}, {"manual":"Regenerate: any severed body parts of the touched creature regrow after 2 minutes, if it is still under the spell. The DM applies that."}],
+    kinds: ["healing"],
     roll: "none",
     tier: "assist", checked: true,
-    text: "A touched creature regains 4d8+15 hit points, which the engine applies. The DM also gives it 1 hit point at the start of each of its turns for the hour and regrows severed body parts after 2 minutes.",
+    text: "A touched creature regains 4d8+15 hit points, which the engine applies, and 1 hit point at the start of each of its turns in a fight for the hour, which the engine applies too (outside a fight there are no turns). The DM regrows severed body parts after 2 minutes.",
   },
   {
     id: "resurrection", name: "Resurrection", source: "SRD 5.2.1",

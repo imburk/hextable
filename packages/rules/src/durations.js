@@ -10,7 +10,8 @@
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
 //          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
-//          { target, light: true } (a light it gave to carry), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
+//          { target, turn: { steps, src } } (an `eachTurn` step: what the effect runs on the creature at the start of each of its turns, effects.js `turnSteps`;
+//          never sent to players), { target, light: true } (a light it gave to carry), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
 //          raised creature under control). `born` names the turn it was made in (turnKey).
 // A `summon` part is the creature a spell made (docs/specs/companions.md, Decision 4): its bond names the
 // effect (`bond.fx`), and once the part has ended, or the effect has, the creature vanishes ('ended'). Ending

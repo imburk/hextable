@@ -122,8 +122,14 @@ export function aurasOn(s, e) {
   }
   return [...best.values()];
 }
-// Is a creature immune to a condition: its own immunity (a monster's), or an ally's aura (Aura of Courage)?
-export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id));
+// The conditions a lasting effect makes a creature immune to for a while (a modifier step `{ on: 'condition', op: 'immune', scope: { condition } }`: Heroism).
+const spellImmune = (s, e) => {
+  const out = [];
+  for (const fx of s?.effects ?? []) for (const p of fx.parts) if (!p.ended && p.target === e?.id && p.modifier?.on === 'condition' && p.modifier.op === 'immune' && typeof p.modifier.scope?.condition === 'string') out.push(p.modifier.scope.condition);
+  return out;
+};
+// Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)?
+export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e).includes(id);
 
 // What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
 // worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
@@ -142,11 +148,11 @@ function* sources(s, e) {
     // `except`: it does not hold for rolls that creature makes (Sundering Blow: "another creature").
     for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p };
   }
-  const auras = aurasOn(s, e);
+  const auras = aurasOn(s, e), spelled = spellImmune(s, e);
   for (const [id, inst] of conditionsOf(e)) {
     const def = conditionDef(id);
-    // A condition an aura makes it immune to has no effect while it is in the aura (Aura of Courage).
-    if (def && !auras.some((a) => a.immune.includes(id))) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
+    // A condition an aura makes it immune to has no effect while it is in the aura (Aura of Courage); nor one a spell makes it immune to while the spell lasts (Heroism).
+    if (def && !auras.some((a) => a.immune.includes(id)) && !spelled.includes(id)) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
   }
   for (const a of auras) if (a.modifiers.length) yield { name: a.name, modifiers: a.modifiers, level: 1 };
   for (const trait of CONTENT.monsters[e.tpl]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };

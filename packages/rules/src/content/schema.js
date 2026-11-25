@@ -48,11 +48,15 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   'dispel',
   // `revive: hitPoints` with `within` (Revivify): the dead creature it works on returns to life with that many Hit Points, if it died no more than `within` minutes ago
   // (by the game clock). Only in a spell whose creature target says `dead: true`. docs/specs/rules-expansion.md, "Build notes: Revivify".
-  'revive'];
+  'revive',
+  // `eachTurn: [steps]` (Heroism, Regenerate): the creature it works on gets a part that runs those steps on it at the start of each of its turns, for as long as the lasting
+  // effect it is part of holds. Only `heal`, `tempHp` and `manual` steps inside, and only in a spell with a duration. docs/specs/rules-expansion.md, "Build notes: Heroism and Regenerate".
+  'eachTurn'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
-export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked', 'onZero', 'onKill'];
+// `eachTurn`: the steps a lasting effect runs on its creature at the start of each of its turns (it is a step of its own as well).
+export const BRANCHES = ['onHit', 'onMiss', 'onFail', 'onSuccess', 'blocked', 'onZero', 'onKill', 'eachTurn'];
 // What is left of a creature a spell killed: a `remains` step records it on the body.
 export const REMAINS = ['frozen-statue', 'dust'];
 // Where a modifier can attach.
@@ -63,7 +67,10 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'opportunity',
   // `hp.zero`: the creature would drop to 0 Hit Points, or be killed outright by a `kill` step. `{ op: 'min', value: 1, uses: 1 }`, as a modifier step:
   // it drops to 1 Hit Point instead (a kill does nothing to it), and that use ends the part (Death Ward). docs/specs/rules-expansion.md, "Build notes: Death Ward".
-  'hp.zero'];
+  'hp.zero',
+  // `condition`: immunity to one condition, `{ on: 'condition', op: 'immune', scope: { condition } }`, as a modifier step (Heroism: Frightened). While the effect lasts the creature cannot
+  // be given the condition and one it has has no effect. docs/specs/rules-expansion.md, "Build notes: Heroism and Regenerate".
+  'condition'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
@@ -141,6 +148,10 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
   // `hp.zero` (Death Ward): only `{ on, op: 'min', value: 1, uses: 1 }`, and only as a modifier step, so that the use that saves the creature ends it.
   if (m.on === 'hp.zero' && !(stepOk && m.op === 'min' && m.value === 1 && m.uses === 1 && Object.keys(m).length === 4)) say('a modifier on hp.zero is a modifier step `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`: the creature drops to 1 Hit Point instead of 0, once');
+  // `condition` (Heroism): only `{ on, op: 'immune', scope: { condition } }`, as a modifier step: nothing but a lasting effect's part can say "immune for a while".
+  if (m.on === 'condition') {
+    if (!(stepOk && m.op === 'immune' && m.scope && typeof m.scope === 'object' && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition) && Object.keys(m).length === 3)) say('a modifier on condition is a modifier step `{ on: "condition", op: "immune", scope: { condition: <a condition> } }`: the creature is immune to that condition for as long as the effect lasts');
+  }
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
   // dice ("1d4", "-1d4") rolled each time the modifier applies.
   // `{ rolled: true }` (addition F of docs/specs/homebrew-subclasses.md): the number the damage step just before this one rolled; only a modifier step
@@ -164,10 +175,10 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
       // Nothing fills a chosen tool in but a feature's action that makes the choice (`choice: { of: 'tool', from }`, which `lintActionChoice` holds to it): not a spell, a monster, a feat's grant or an aura.
       if (sc.tool === 'chosen' && !rolledOk) say('`scope.tool: "chosen"` is for a modifier step of a subclass feature\'s action that has a `choice` of a tool: nothing else fills it in');
       if (sc.skill !== undefined && sc.tool !== undefined) say('`scope` names a skill or a tool, not both');
-      if (sc.condition !== undefined && !(CONDITIONS.includes(sc.condition) && (m.on === 'save' || m.on.startsWith('save.')))) say('`scope.condition` names a condition, on a save');
+      if (sc.condition !== undefined && !(CONDITIONS.includes(sc.condition) && (m.on === 'save' || m.on.startsWith('save.') || m.on === 'condition'))) say('`scope.condition` names a condition, on a save (or the condition hook)');
       if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
       if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
-      if (!['check', 'save'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
+      if (!['check', 'save', 'condition'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
     }
   }
   // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
@@ -417,6 +428,14 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
         // `orDamaged: true`: it also ends when its creature takes any damage (Knock Out: a repeated save, or damage).
         if (ends?.orDamaged !== undefined && !(ends.orDamaged === true && ends.on === 'save')) say('`ends.orDamaged` is true, on an ending on a save');
       }
+    }
+    // `eachTurn: [steps]` (Heroism, Regenerate): heal, tempHp and manual steps only, a few of them, in a spell that lasts (checked with the spell); not inside one another.
+    if (kind === 'eachTurn') {
+      seen.eachTurn = true;
+      const inner = Array.isArray(step.eachTurn) ? step.eachTurn : [];
+      if (!seen.eachOk) say('an `eachTurn` step is for a spell that lasts: it needs a lasting effect to hang on');
+      if (!(inner.length >= 1 && inner.length <= 4 && inner.every((x) => x && typeof x === 'object' && ['heal', 'tempHp', 'manual'].includes(STEPS.find((k) => k in x))))) say('`eachTurn` lists one to four steps, each a heal, a tempHp or a manual step');
+      if (step.when !== undefined) say('an `eachTurn` step has no `when`: say it on the steps inside');
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
@@ -755,7 +774,7 @@ function lintSpell(e, say) {
       else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make ${words.join(' and ')} when it is cast, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
-  const seen = lintSteps(e.effects, say, { manual: false, hitOk: e.hit !== undefined, reviveOk: true });
+  const seen = lintSteps(e.effects, say, { manual: false, hitOk: e.hit !== undefined, reviveOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
   lintHit(e, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   // A spell aimed at the dead has a revive step, and a revive step is for a spell aimed at the dead (a creature that is up has nothing to revive).
@@ -2912,7 +2931,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3161,7 +3180,7 @@ export const HOMEBREW_LENGTHS = Object.freeze({
   // a subclass: 12 features, 13 options to a feature (the SRD's own Fiendish Resilience has 12), 5 spells at a class level (homebrew-subclasses.md, question 2)
   'subclasses.features': 12, 'features.options': 13, 'spells.#': 5,
   'objects.use': 12, 'reaction.blocks': 8, 'spellPick.abilities': 6, 'spellPick.lists': 8, 'spells.classes': 8, 'spells.components': 3, 'spells.kinds': 4, 'step.advantageIf': 4,
-  'step.cure': 14, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 3,
+  'step.cure': 14, 'step.eachTurn': 4, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 3,
 });
 const GRANTS_LEN = 30;
 // The work one use of an entry may cause (see workOf): the most steps run, the creatures a table is taken to have, and the
@@ -3464,7 +3483,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.manual': { manual: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });
