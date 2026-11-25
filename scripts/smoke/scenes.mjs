@@ -167,7 +167,7 @@ async function scenes(browser, url) {
       // open one during a fight (packages/rules/src/scenes.js).
       const startFight = async () => {
         const n = hostHeard.length;
-        await host.evaluate(() => { const S = window.hextable.state, f = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden); window.hextable.act({ type: 'startEncounter', center: f.pos }); });
+        await host.evaluate(async () => { const S = window.hextable.state, f = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0 && !e.hidden); const { gridOf } = await import('./shared/grid.js'); const G = gridOf(window.hextable.state.map), reach = Math.max(6, 1 + Math.min(...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party' && e.hp > 0 && e.pos).map((e) => G.dist(f.pos, e.pos)))); window.hextable.act({ type: 'startEncounter', center: f.pos, radius: reach }); });   /* wide enough to hold the nearest hero: a fight with none in range is refused (#771) */
         await wait(host, () => !!window.hextable.state.encounter, null, 10000);
         await wait(phone, () => !!window.hextable.state.encounter, null, 10000);
         return n;

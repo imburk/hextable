@@ -171,6 +171,7 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
   const who = living(s).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
+  if (!who.some((e) => e.side === 'party')) fail('No party creature is in range of the fight.');   // foes alone would end it at once as a defeat (#771)
   for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
     id: nextFight(s), center, radius, arena, round: 1, turn: -1, budget: null, flags: {},

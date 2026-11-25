@@ -500,7 +500,7 @@ async function drawerPass(browser, url, label, opts) {
         await closeMenu(page);
       });
       await run.do('in a fight the tracker lists the turns in the engine\'s order, top to bottom, with initiative and the turn marked', async () => {
-        await page.evaluate(() => { document.getElementById('dm-auto').checked = false; const h = window.hextable, S = h.state, foe = Object.values(S.entities).find((e) => e.side === 'foe' && !e.hidden); h.act({ type: 'startEncounter', center: foe.pos }); });
+        await page.evaluate(async () => { document.getElementById('dm-auto').checked = false; const h = window.hextable, S = h.state, foe = Object.values(S.entities).find((e) => e.side === 'foe' && !e.hidden); const { gridOf } = await import('./shared/grid.js'); const G = gridOf(window.hextable.state.map), reach = Math.max(6, 1 + Math.min(...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party' && e.hp > 0 && e.pos).map((e) => G.dist(foe.pos, e.pos)))); h.act({ type: 'startEncounter', center: foe.pos, radius: reach }); });   /* wide enough to hold the nearest hero: a fight with none in range is refused (#771) */
         await wait(page, () => !!window.hextable.state.encounter);
         await openMenu(page, 'turns'); await sleep(300);
         const got = await page.evaluate(() => [...document.querySelectorAll('#tr-list li[data-id]')].map((l) => l.dataset.id));
