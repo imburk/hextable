@@ -1060,7 +1060,7 @@ function refresh() {
           const most = spellMost(e, sp), picked = mode.picked ?? [];
           if (most > 1 && (picked.length || (hl.allies || hl.targets).length)) multi = { most, n: picked.length };
           if (most > 1 && picked.length) {
-            hint = `${sp.name}: ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'}, double-tap one to take it off, then tap the die`;
+            hint = `${sp.name}: ${picked.map(name).join(', ')}. ${sp.repeat ? 'Tap a target again for another dart' : 'Tap another, double-tap one to take it off'}, then tap the die`;
           } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then tap the die (or tap ${name(mode.holder)} again to cast with ${weaponName(mode.choice ?? choicesOf(sp)?.[0])})`; go = true; }
           else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}, then the die` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
@@ -1428,9 +1428,9 @@ R.onTap = (hit) => {
     if (imbueOf(sp) && most <= 1 && mode.holder !== id && weaponsOf(S.entities[id], sp).length > 1) { mode.holder = id; mode.choice = null; mode.picked = [id]; return refresh(); }
     if (most <= 1) return act(castAct({ target: id, ...chosen(sp, id) }));
     // Several targets (#750): each tap on the map chooses one and nothing is sent until the die is tapped. A double-tap (two taps within DOUBLE_MS and DOUBLE_PX on the same
-    // creature) takes a target that was chosen before the pair off; on one that was not chosen it chooses it once (the pair's second tap does nothing more).
+    // creature) takes a target that was chosen before the pair off (not for darts: each tap on one is another dart, so a quick second tap is not a pair); on one that was not chosen it chooses it once (the pair's second tap does nothing more).
     const picked = mode.picked ?? (mode.picked = []), now = Date.now(), at = hit.at ?? null;
-    const pair = isPair(lastTap, { id, at: now, xy: at });
+    const pair = !sp.repeat && isPair(lastTap, { id, at: now, xy: at });      // darts (Magic Missile) are tapped fast at one target: each tap is a dart, no pair
     aimRefusal = null;
     if (pair) {
       const was = lastTap.was; lastTap = null;
@@ -1439,7 +1439,7 @@ R.onTap = (hit) => {
     }
     lastTap = { id, at: now, xy: at, was: picked.includes(id) };
     if (!picked.includes(id) || sp.repeat) {
-      if (picked.length >= most) return toast(`${most} chosen. Double-tap one to take it off, or tap the die.`, true);
+      if (picked.length >= most) return toast(sp.repeat ? `${most} chosen. Tap the die.` : `${most} chosen. Double-tap one to take it off, or tap the die.`, true);
       picked.push(id);
     }
     return refresh();

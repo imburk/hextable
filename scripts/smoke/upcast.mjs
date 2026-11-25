@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, tapAt, onCanvas, closePanels, panelTab, chip } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, tapAt, onCanvas, closePanels, panelTab, chip, tapDie } from './lib.mjs';
 
 // ---------- casting at a higher level: the slot menu (issue #604) ----------
 // A level 3 wizard (one level 1 slot, two level 2) with Magic Missile. Armed, the hint bar offers the level (the default is level 1; level 2 adds a dart);
@@ -10,9 +10,10 @@ async function upcast(browser, url, label, opts) {
     try {
       const page = await ctx.newPage();
       run.watch(page);
+      const casts = () => state(page, (S) => S.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').length);
       const view = () => page.evaluate(() => {
         const sel = document.getElementById('hint-slot'), r = sel.getBoundingClientRect();
-        return { shown: !sel.hidden && sel.getClientRects().length > 0, value: sel.value, options: [...sel.options].map((o) => o.value), h: r.height, hint: document.getElementById('hint-text').textContent, picked: (window.hextable.mode.picked ?? []).length };
+        return { shown: !sel.hidden && sel.getClientRects().length > 0, value: sel.value, options: [...sel.options].map((o) => o.value), h: r.height, hint: document.getElementById('hint-text').textContent, note: document.getElementById('aim-note').textContent, picked: (window.hextable.mode.picked ?? []).length };
       });
       const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${touch ? 'phone' : 'desktop'}-upcast-${n}.png` }); };
       const tapFoe = async (id) => {
@@ -74,13 +75,15 @@ async function upcast(browser, url, label, opts) {
         await wait(page, () => /up to 4/.test(document.getElementById('hint-text').textContent));
         await tapFoe(foe);
         const v = await view();
-        if (v.value !== '2' || v.picked !== 1 || !/1 of 4/.test(v.hint)) throw new Error(`after a tap: ${JSON.stringify(v)}`);
+        if (v.value !== '2' || v.picked !== 1 || !/^1 of 4 targets$/.test(v.note)) throw new Error(`after a tap: ${JSON.stringify(v)}`);
         await shot('2-level-2');
       });
 
       await run.do('four darts at level 2 spend a level 2 slot and no level 1 slot', async () => {
         const before = await state(page, (S, i) => ({ ...S.entities[i].slots }), ria);
         for (let n = 1; n < 4; n++) { await tapFoe(foe); await sleep(150); }
+        if ((await casts()) !== 0) throw new Error('the fourth dart was sent before the die');
+        await tapDie(page, touch);
         await wait(page, () => window.hextable.state.timeline.some((e) => e.type === 'cast' && e.name === 'Magic Missile'), null, 15000);
         const ev = await state(page, (S) => S.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').pop());
         const after = await state(page, (S, i) => ({ ...S.entities[i].slots }), ria);
@@ -108,6 +111,7 @@ async function upcast(browser, url, label, opts) {
         const count = () => state(page, (S) => S.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').length);
         const k = await count();
         for (let i = 0; i < n; i++) { await tapFoe(foe); await sleep(150); }
+        await tapDie(page, touch);
         await wait(page, (c) => window.hextable.state.timeline.filter((e) => e.type === 'cast' && e.name === 'Magic Missile').length > c, k, 15000);
       };
 

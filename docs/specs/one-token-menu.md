@@ -1796,3 +1796,44 @@ separate pull request and follows this section.
      uses the die as its confirm. This section leaves the throw zone as it is.
    - (k) A hold on the die during a confirm. Whether it still pops up the fidget die
      (Decision 1) is not settled here.
+
+### Build notes: the d20 confirms, part 1 (#750)
+
+Parts 1 and 2 of the amendment are built (`confirm.js`, `app.js` `confirmDie`, `drawer.js`). Part 3 (the
+choices on the sheet) is a separate pull request.
+
+- **What waits.** `app.js` `refresh()` sets `waitFor` when the aim bar holds something to send: an area
+  that is aimed, a spell with a slot or weapon to choose, a spell with several targets (even with none
+  chosen yet), a flyer's marked place. The movement an Opportunity Attack gave (Move up to, Give it up)
+  is not a confirm of an armed action and keeps `#hint-go`; it is the only use left of that button.
+- **The ring.** A dashed circle outside the disc (`.tk-wait`), pulsing 2.6 s from 40 % to full
+  opacity and 100 % to 110 % size. The turn ring is solid and glows; the health arc is inside; so the
+  waiting ring differs by shape, not by colour. With reduced motion, or Just appear, it is the same
+  dashed ring, steady. Both rings can be lit on my turn. The die's name is `Confirm <what>`;
+  its description says `Tap to confirm`, or the no-target sentence.
+- **The die, Enter.** A tap on the die confirms and does not open the menu; Enter confirms when no
+  control or dialog has the focus and no dice tray is open (a flyer's column keeps its own Enter).
+  A second tap on an aimed spot confirms too, as before.
+- **A refused confirm.** The aim stays up until the table answers: an update ends it, an error
+  leaves the choices and says the reason in the note after the count (and in the toast). A confirm
+  waits at most 8 s for its answer. Choosing none: the die only redraws; the note already says so.
+- **Several targets** (spells whose `targetCount` is above 1, also from an item): a tap chooses, nothing is sent
+  until the die, reaching the most no longer casts. Fewer than the most goes through: the engine already
+  accepted that from the Cast button (point g needs no engine change). A spell or attack with one
+  target still acts on the tap: the tap is the whole choice and there is no count to show.
+- **Open point 5(c), settled.** A double-tap is two taps on the same creature at most **350 ms** apart and at
+  most **24 px** apart on the map (`confirm.js` `isPair`). The renderer's own rule is untouched: a
+  tap needs under 8 px of movement and a single finger, so a drag (even one that starts on a target, which
+  still pans the map) and a pinch are never half of a pair. The pair's first tap is an ordinary tap:
+  on a target that was already chosen it changes nothing, the second takes it off. A third tap starts a new pair.
+- **Open point 5(d), settled.** A double-tap on a target that is not chosen chooses it once: the first tap
+  chooses it, the second does nothing more.
+- **Darts are the exception to the double-tap.** A spell whose targets repeat (`repeat`: Magic Missile,
+  Scorching Ray, Eldritch Blast) is tapped fast at one creature, a dart a tap, so a quick second tap there is
+  another dart and never a pair. Its count is still "2 of 3 targets"; the die confirms it. Taking one dart
+  back is Cancel and start again (DEBT T106).
+- **Open point 5(e).** The note is the last line of the aim bar (which is at the top of the screen
+  today), so it sits with the aim bar, under the offline bar's place and the banner's.
+- **Open point 5(h).** On a computer the double-click is the same two taps. Shift is only read by the
+  map as a camera turn with a drag and by the dice, never by a tap on a target, so there is no clash.
+- Not built here: 5(a) and 5(b) (part 3), 5(i), 5(j) (the throw zone is as it was), 5(k).
