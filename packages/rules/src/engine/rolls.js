@@ -11,7 +11,7 @@ import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear } from '../modifiers.js';
 import { derive } from '../derive.js';
-import { castAbilOf, current, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { castAbilOf, current, dying, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
 import { baked, weaponKey } from '../imbue.js';
 
 // A creature has died: the game clock when it did is kept on the body (`diedAt`, minutes; a round in a fight is 0.1 of one), for Revivify's "died within
@@ -63,6 +63,22 @@ export function deathSave(s, e, ev) {
   else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
   ev.push({ type: 'deathSave', id: e.id, roll: d, ...(total !== d ? { total } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode }), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, d), ...more.dice], bonus: m.add + all.add, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
+}
+
+// Time passing outside a fight (`advanceTime`, a rest) with a creature dying in the party: it makes a Death Saving Throw for each 6 seconds
+// (a round, 0.1 minute) that passes, until it is Stable, dead or up, so a clock jump rolls the saves it skipped, in the order
+// of the table's entities, each one told as it is rolled (docs/specs/rules-expansion.md, "Death Saving Throws outside a fight"). `minutes` is the time
+// that is about to pass; the clock is moved to each save's moment while it is rolled (so `diedAt` is true) and put back. A third success is
+// Stable, which then regains 1 Hit Point only across a Long Rest (rests.js). Five saves always settle a creature, so a long jump rolls at most five.
+export function deathSavesOver(s, minutes, ev) {
+  const rounds = Math.floor(minutes * 10 + 1e-9), from = s.clock;
+  if (rounds < 1) return;
+  for (const e of Object.values(s.entities)) {
+    if (!dying(e) || e.side !== 'party' || !e.death) continue;
+    ev.push({ type: 'note', id: e.id, text: `${e.name} is dying at 0 Hit Points and makes a Death Saving Throw for each 6 seconds that pass.` });
+    for (let n = 1; n <= rounds && dying(e); n++) { s.clock = from + n / 10; deathSave(s, e, ev); }
+    s.clock = from;
+  }
 }
 
 // ---------- healing, rolls and their results ----------
