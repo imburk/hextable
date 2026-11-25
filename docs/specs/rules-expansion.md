@@ -1093,6 +1093,49 @@ died of old age, nor does it restore any missing body parts." Components: V, S, 
 - **Not built:** Raise Dead, Resurrection, Reincarnate, Clone and True Resurrection (a longer `within`, a Hit Point maximum penalty, Constitution
   checks, a body that is whole: none are in the vocabulary) and the client's picking a body to aim at.
 
+#### Build notes: Death Saving Throws outside a fight (amendment, #726 job 8; DEBT W10)
+
+Tests in `packages/rules/test/death-saves-outside-fight.test.js`. SRD 5.2.1, Dropping to 0 Hit Points: "Whenever you start your turn with 0 Hit Points,
+you must make a Death Saving Throw". Stabilizing a Character: "You can take the Help action to try to stabilize a creature with 0 Hit Points,
+which requires a successful DC 10 Wisdom (Medicine) check ... A Stable creature that isn't healed regains 1 Hit Point after 1d4 hours."
+
+- **The problem.** Outside a fight nobody has a turn, so the trigger the SRD names never comes, and a creature at 0 Hit Points sat dying for ever
+  (a Long Rest handed it to the DM). Three models were weighed. (1) *A fight starts for the dying creature*: invents a fight, an arena and an
+  Initiative the DM did not ask for, and the SRD does not say it. (2) *The DM is handed it* (the old behaviour for a Long Rest): keeps the
+  SRD but leaves the saves to the DM's memory and dice, which is the gap W10 names. (3) *The game clock moving rolls the saves*: the SRD's own
+  unit of time for a turn is 6 seconds (a round), so a creature that is dying while the DM lets time pass makes one save for each 6 seconds
+  that pass. **Model 3 is built**, because it needs no new state, keeps the SRD's counts and 1s and 20s, and uses the same `deathSave` as a fight.
+- **The rule.** `deathSavesOver(s, minutes, ev)` (`engine/rolls.js`), called by `advanceTime`, `shortRest` (60 minutes) and `rest` (480 minutes)
+  after they have validated and before the clock moves. For each creature that is dying (`dying`: at 0 Hit Points, not dead, not Stable) on the
+  party's side with a death record, in the table's order, it writes a `note` ("... makes a Death Saving Throw for each 6 seconds that pass") and
+  then rolls `floor(minutes x 10)` saves at most, one after another, stopping when the creature is Stable, dead or up (a 20). Five saves always
+  settle a creature, so a jump of half a minute or more settles every one and a longer jump rolls no more. Less than 6 seconds rolls nothing.
+  The seeded dice are the same as in a fight, so a game replays exactly; each save is a `deathSave` event with its roll, counts and result, sent to
+  the table as it is in a fight (the DM sees every roll, and the players see what a fight shows them). The clock is set to each save's moment while it
+  is rolled, so a death's `diedAt` (Revivify) is the moment of the failed save, then put back; the handler then moves it by the whole time.
+  **Nobody dies silently**: the rolls and the `died` result are in the events, and `advanceTime` is the DM's own action. The DM who does not
+  want the dice rolled stabilises or heals the creature first (below) or does not let the time pass.
+- **After the saves.** A creature that died is out of the rest (dead: `who` drops it). One made Stable at a Long Rest regains 1 Hit Point as before
+  (the Long Rest is longer than 1d4 hours); at an `advanceTime` or a Short Rest it stays Stable at 0, and the 1 Hit Point after 1d4 hours is still
+  only across a Long Rest (W10's remainder: a Stable creature's 1d4 hours is not tracked on the clock). One that rolled a 20 is up with 1 Hit Point and rests as any
+  creature does (not in the Short Rest it was dying through: its Hit Point Dice were not available when the rest began). A creature still dying
+  after fewer than five rounds (a pass of under half a minute) keeps its counts, and a Long Rest or Short Rest still says it cannot rest.
+- **Foes and companions.** A foe at 0 Hit Points and a creature with no death record are not touched: the engine's own rule for them has not changed.
+- **Stabilizing by Medicine: the `stabilize` action** (`engine/features.js`), `{ type: 'stabilize', actor, target }`. The SRD has no Help action in
+  the engine, so this is the Help action's use: a DC 10 Wisdom (Medicine) check by a creature that is up and able, within 5 feet of the target and
+  with no wall between, on a creature that is dying. Any creature may try (the check uses its own Medicine bonus, trained or not). In a fight it
+  takes the actor's action on its turn (the engine's usual budget); out of one it costs nothing. A success is `stabilise` (the same as Spare the Dying: Stable,
+  both counts reset, a `cond` event); a failure changes nothing and may be tried again (in a fight each try is an action). The `check` event
+  carries `dc: 10`, `success` and `stabilize: <target id>`. Refused before anything is rolled, changing nothing: a target that is up, Stable or dead, the
+  helper itself, a target out of reach, a helper that is down, and a creature a player has not been told of ("No such creature."). A player
+  may stabilise anyone they can reach; control is the usual (`control`).
+- **The play note of 15 November** ("during the exploration phase you can stabilize your team mates") was checked. Spare the Dying (15 feet and
+  growing with level) and healing spells (Cure Wounds) already worked on a creature at 0 Hit Points outside a fight, with no fight needed
+  (tested here); what was missing was the Medicine check, now `stabilize`, and the saves themselves.
+- **Not built:** the 1d4 hours a Stable creature waits before it regains 1 Hit Point (only across a Long Rest, as before); a Help action in general
+  (Advantage to an ally's check or attack: `stabilize` is its Medicine use only); the client's button for `stabilize` (the client lane); travel
+  between places moves no clock, so it rolls nothing.
+
 ### A class
 
 ```js
