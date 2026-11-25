@@ -704,6 +704,7 @@ const ARMS = (m) => !!m && m.kind !== 'move';
 
 // ctx: { prefs, state(), isDM(), mine(e), act, toast, skipping(), setMode(m), move (the idle mode), castSpell(e, id, armed), openSheet(),
 //        shortRest(), hpFraction(e), formLabel(e), budget(e), openFeature(e, id) (a chooser of classes.js), flyInfo(e) ({ has, why, words, aloft, alt, up, down }),
+//        choices() (what the armed spell waits to be told: { key, name, groups }, confirm.js; #750 part 2), choose(group, value),
 //        fly(e, delta) (change the height of the next move), flyOpen(e, armed) (open the column of heights, or close it), metamagic(e) (the Metamagic button of classes.js, or null), render(), selected() }.
 // The groups are drawn into `#ap-body` of the Character screen (`#sheet`): one bar for each group, one open at a time (Decision 4d), under the status block, which draws the turn bar.
 // M10: the page is one accordion. The sheet is its last section (`#sheet-body` is moved into it), and while a section is open the page is pinned (`#sheet.pin`): the status block goes
@@ -720,6 +721,23 @@ export function initActionPanel(ctx) {
   const noteEl = mk('p', { id: 'ap-empty', class: 'ap-why-line', role: 'status' }); noteEl.hidden = true;
   panes.down = mk('div', { id: 'ap-down', class: 'ap-down', role: 'status' }); panes.down.hidden = true;
   body.append(noteEl, panes.down);
+  // #750 part 2: the choices an armed action waits for (a spell's slot level, its weapon or skill), at the top of the open section. One element, moved into the pane that is open.
+  const choicesEl = mk('div', { id: 'ap-choices', class: 'ap-choices', role: 'group' }); choicesEl.hidden = true;
+  let choiceSeen = '';
+  choicesEl.addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-ch]'); if (!b || ctx.skipping()) return;
+    if (b.getAttribute('aria-disabled') === 'true') return ctx.toast(b.dataset.why);
+    const g = b.dataset.ch, v = b.dataset.v;
+    ctx.choose(g, v);
+    choicesEl.querySelector(`[data-ch="${g}"][data-v="${CSS.escape(v)}"]`)?.focus({ preventScroll: true });      // the options are drawn again: the keyboard keeps its place
+  });
+  const choicesHtml = (c) => `<p class="ap-ch-h">${esc(c.name)} waits for the die. Choose, then tap it.</p>${c.groups.map((g) => {
+    const gid = `ap-chl-${g.id}`;
+    return `<div class="ap-ch-g" role="radiogroup" aria-labelledby="${gid}"><span class="ap-ch-l" id="${gid}">${esc(g.label)}</span><div class="ap-ch-o">${g.options.map((o, i) => {
+      const wid = `ap-chw-${g.id}-${i}`;
+      return `<button type="button" role="radio" class="ap-ch ${o.why ? 'off' : 'use'}${o.on ? ' on' : ''}" data-ch="${g.id}" data-v="${esc(o.value)}" data-why="${esc(o.why)}" aria-checked="${o.on}" aria-disabled="${o.why ? 'true' : 'false'}"${o.why ? ` aria-describedby="${wid}"` : ''}><span class="ap-ch-t">${o.on ? '\u2713 ' : ''}${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}${o.why ? `<small class="ap-why" id="${wid}">${esc(o.why)}</small>` : ''}</button>`;
+    }).join('')}</div></div>`;
+  }).join('')}`;
   for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free]), 'sheet']) {
     const bar = mk('button', { type: 'button', class: 'ap-bar', id: `ap-bar-${id}`, 'data-sec': id, 'aria-expanded': 'false', 'aria-controls': `ap-${id}` },
       mk('span', { class: 'ap-bt' }), mk('small', { class: 'ap-tip' }), mk('span', { class: 'ap-chev', 'aria-hidden': 'true' }, '›'));
@@ -1026,11 +1044,16 @@ export function initActionPanel(ctx) {
       if (sel.key !== key) quickLast = enc && lastRun.enc === (enc.id ?? null) ? lastRun.ids[e.id] ?? null : null;
       quickNow = my && enc && cur === e.id ? quickRows(G, { last: quickLast }) : [];
       if (sel.key !== key) sel = { key, tab: null };
+      // #750 part 2: the choices an armed action waits for. When they first appear the section that holds the armed row opens (the one already open if it holds it); they are drawn at its top.
+      const ch = my ? ctx.choices?.() ?? null : null;
+      const armedIn = G.shown.filter((g) => g.rows.some((r) => r.armed)).map((g) => g.id), armedId = armedIn.includes(openNow) ? openNow : armedIn[0] ?? null;
+      if (!ch) choiceSeen = ''; else if (ch.key !== choiceSeen) { choiceSeen = ch.key; if (armedId) sel.tab = armedId; }
       const kinds = G.shown;
       const costOk = (id) => /^cost:(action|bonus)$/.test(id) && G.fight && ctxNow.situation === 'turn';
       const wanted = sel.tab !== null && (sel.tab === '' || sel.tab === 'sheet' || costOk(sel.tab) || kinds.some((g) => g.id === sel.tab)) ? sel.tab : null;
       // A creature with nothing to do here (someone else's, a foe looked at) opens on its sheet: it is the only section it has.
-      const tab = wanted ?? (!kinds.length && !G.empty && ctxNow.situation !== 'down' ? 'sheet' : ctxNow.situation === 'wait' && kinds.some((g) => g.id === 'reactions') ? 'reactions' : defaultTab(ctxNow, kinds, { pref: pref(), last: last() })) ?? '';
+      let tab = wanted ?? (!kinds.length && !G.empty && ctxNow.situation !== 'down' ? 'sheet' : ctxNow.situation === 'wait' && kinds.some((g) => g.id === 'reactions') ? 'reactions' : defaultTab(ctxNow, kinds, { pref: pref(), last: last() })) ?? '';
+      if (ch && !tab) tab = armedId ?? kinds[0]?.id ?? 'sheet';      // the choices need a section to sit in: closing every section does not hide them
       openNow = tab;
       if (ctxNow.situation === 'turn' && tab && sel.tab === null) sel.tab = tab;       // the group a turn opens on stays for the turn: spending the last slot does not move it (opensOnSpells, from main)
       // the status block's turn bar says which segment is open
@@ -1091,6 +1114,10 @@ export function initActionPanel(ctx) {
       // a fight with nothing to do: one line, the engine's reason
       const empty = G.empty && ctxNow.situation !== 'down';
       noteEl.hidden = !empty; if (empty && noteEl.textContent !== G.empty) noteEl.textContent = G.empty;
+      { const host = ch && tab ? panes[cost ? 'cost' : tab] : null;
+        choicesEl.hidden = !host;
+        if (host) { setHtml(choicesEl, choicesHtml(ch)); if (host.firstChild !== choicesEl) host.prepend(choicesEl); }
+        else if (choicesEl.isConnected) choicesEl.remove(); }
       body.hidden = false;
       // Where each bar goes (accordion.js): with a section open, the bars before it fill the rows above it and those after it the rows below, side by side.
       const openId = cost ? 'cost' : tab, ids = [...(cost ? ['cost'] : []), ...sorted.map((g) => g.id), 'sheet'];

@@ -6,7 +6,7 @@ import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
-import { armed as imbued, fitting } from './shared/imbue.js';
+import { armed as imbued, fitting, weaponsFor } from './shared/imbue.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gap, under } from './shared/space.js';
 import { tapAttack, rearm, hintOf as flurryHint, spentWords } from './flurry.js';
@@ -66,7 +66,7 @@ import { mountNewVersion } from './newversion.js';
 import { wire as wireUndo, nameOf } from './undobar.js';
 import { createHold, HOLD_MS } from './hold.js';
 import { createPings, cellAtPoint, pingColor } from './ping.js';
-import { isPair, targetNote } from './confirm.js';
+import { isPair, targetNote, slotOptions, pickOptions, weaponOptions } from './confirm.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -265,7 +265,7 @@ function toast(msg, info = false, ms = info ? 1600 : 3200) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
 let foldMenu = () => {};      // set once the menu exists: an armed action is aimed on the map, so the menu folds away (one overlay at a time)
-function setMode(m) { mode = m; if (m !== MOVE) foldMenu(); refresh(); }
+function setMode(m) { mode = m; if (m !== MOVE && !choicesFor()) foldMenu(); refresh(); }      // #750 part 2: an action that waits to be told something keeps the menu open: its choices are on the sheet
 R.assetUrl = (id) => (T?.assets ? T.assets.url(id) : Promise.reject(new Error('Not at a table.')));      // level pictures come through the table's file store
 R.onPicture = () => { if (ED.on) refresh(); };
 const DICE = createDice($('dice'), prefs, () => R.cameraAngles());
@@ -727,7 +727,7 @@ const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/
 // A spell that changes a weapon (Shillelagh, Magic Weapon; imbue.js) asks which weapon when more than one fits, and uses the only one otherwise.
 const imbueOf = (sp) => (sp?.def.effects ?? []).find((st) => st.imbue)?.imbue ?? null;
 // `holder`: the creature whose weapon it changes: the caster for a spell on itself, else the creature tapped (`mode.holder`), whose weapons are listed, not the caster's.
-const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitting(S, e, spec, ({ fx }) => fx.source === selId && fx.spell === sp.id) : []; };
+const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitting(S, e, spec, skipOf(sp)) : []; };
 const holderOf = (sp) => (sp.aim === 'self' || sp.aim === 'none' ? selId : mode.holder ?? null);
 const choicesOf = (sp) => {
   if (imbueOf(sp)) { const h = holderOf(sp), list = h ? weaponsOf(S.entities[h], sp) : []; return list.length > 1 ? list.map((a) => a.id) : null; }
@@ -746,26 +746,37 @@ function chosen(sp, holder = null) {
   if (!list.includes(mode.choice)) mode.choice = list[0];
   return { choice: mode.choice };
 }
-function showPick() {
-  const sel = $('hint-pick'), sp = mode.kind === 'spell' ? SPELLS[mode.id] : null, list = choicesOf(sp);
-  sel.hidden = !list || $('hint').hidden;
-  if (sel.hidden) return;
-  const key = `${sp.id}|${list.join()}`;
-  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = list.map((v) => `<option value="${v}">${esc(imbueOf(sp) ? weaponName(v) : choiceLabel(sp.def.choice.of, v))}</option>`).join(''); }
-  if (!list.includes(mode.choice)) mode.choice = list[0];
-  sel.value = mode.choice;
+// #750 part 2 (docs/specs/one-token-menu.md "Build notes: the d20 confirms, part 2"): what an armed spell waits to be told is shown on the character's sheet, no longer in a menu in the hint bar.
+// `choicesFor()` is { key, name, groups: [{ id: 'slot' | 'pick', label, options }] } (confirm.js says what an option is), or null. actionpanel.js draws it at the top of the open section.
+// A tap on an option comes back as `choose(group, value)`; one that cannot be used says why (a toast) and changes nothing.
+const skipOf = (sp) => ({ fx }) => fx.source === selId && fx.spell === sp.id;
+const pickLabel = (sp) => (imbueOf(sp) ? `Which weapon does ${sp.name} change?` : `Which ${(sp.def.choice?.of ?? 'one').replace(/([A-Z])/g, ' $1').toLowerCase()} for ${sp.name}?`);
+function choicesFor() {
+  if (!S || mode.kind !== 'spell') return null;
+  const e = S.entities[selId], sp = SPELLS[mode.id];
+  if (!e || !sp) return null;
+  const groups = [], menu = !mode.item ? slotMenu(e, sp) : null;
+  if (menu) groups.push({ id: 'slot', label: `Cast ${sp.name} at which level?`, options: slotOptions(e.slots, sp.level, menu, slotOf(e, sp)) });
+  const list = choicesOf(sp);
+  if (list) {
+    const now = list.includes(mode.choice) ? mode.choice : list[0];
+    groups.push({ id: 'pick', label: pickLabel(sp), options: imbueOf(sp) ? weaponOptions(weaponsFor(S, S.entities[holderOf(sp)], imbueOf(sp), skipOf(sp)), now) : pickOptions(list, now, (v) => choiceLabel(sp.def.choice.of, v)) });
+  }
+  return groups.length ? { key: `${selId}|${mode.id}|${mode.holder ?? ''}`, name: sp.name, groups } : null;
 }
-$('hint-pick').onchange = (ev) => { mode.choice = ev.target.value; if (imbueOf(mode.kind === 'spell' ? SPELLS[mode.id] : null)) refresh(); };      // the hint names the weapon a second tap casts with
-// The slot to cast a levelled spell with (issue #604): shown while it is armed when the caster has more than one level to pay with and a higher one adds something.
-function showSlot() {
-  const sel = $('hint-slot'), e = S.entities[selId], sp = mode.kind === 'spell' && !mode.item ? SPELLS[mode.id] : null, menu = sp && e ? slotMenu(e, sp) : null;
-  sel.hidden = !menu || $('hint').hidden;
-  if (sel.hidden) return;
-  const key = `${sp.id}|${menu.levels.map((r) => r.label).join('|')}`;
-  if (sel.dataset.key !== key) { sel.dataset.key = key; sel.innerHTML = menu.levels.map((r) => `<option value="${r.level}">${esc(r.label)}</option>`).join(''); }
-  sel.value = String(slotOf(e, sp));
+let choicesNow = null, choicesKey = '', showSheet = () => {};      // `showSheet` is set once the menu exists (like foldMenu)
+// New choices to make (an action just armed, or a weapon's owner just tapped) and the menu is not on the sheet: it opens there, at the choices. The menu already open on the sheet is left as it is.
+function openChoices() {
+  const k = choicesNow?.key ?? '';
+  if (k && k !== choicesKey) setTimeout(showSheet, 350);      // not at once: a tap on the map that brought the choices (a weapon's owner) is followed by the browser's own click, which would land on the new menu's dimmed map and close it
+  choicesKey = k;
 }
-$('hint-slot').onchange = (ev) => { mode.slot = +ev.target.value; refresh(); };
+function chooseOption(group, value) {
+  if (group === 'slot') mode.slot = +value;
+  else if (group === 'pick') mode.choice = value;
+  else return;
+  refresh();
+}
 
 // What to tap to aim an area. Cones, Lines and Self cubes are aimed by direction; the rest at a spot in range.
 function aimHow(area, range) {
@@ -1007,6 +1018,7 @@ function refresh() {
   // selected creature card
   const hl = { selected: selId, turn: enc ? cur : null };
   let hint = '', go = false, multi = null;
+  choicesNow = e && mine(e) && !ED.on ? choicesFor() : null;
   AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
   showQuick();
   if (e) {
@@ -1092,7 +1104,7 @@ function refresh() {
   if ((mode.kind === 'fly') !== flyWas) { flyWas = mode.kind === 'fly'; flyCamera(flyWas); }
   hintWords(offer, waits);
   { const fe = S.entities[selId], st = fe && mine(fe) && !ED.on ? flyState(S, fe) : null, b = $('cam-fly'); b.hidden = !st?.has; b.setAttribute('aria-pressed', String(mode.kind === 'fly')); b.classList.toggle('off', !!st && !st.can); }
-  showPick(); showSlot();
+  openChoices();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
   R.setHighlights(ED.on ? ED.marks() : hl);
@@ -1564,6 +1576,7 @@ const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), c
   change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
+showSheet = () => { if (choicesNow && !(D.isOpen && D.tab === 'sheet')) D.open('sheet'); };
 $('party').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) pickChar(b.dataset.id); });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
 $('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
@@ -1799,7 +1812,7 @@ const CLS = initClasses({ act, state: () => S, mine, isDM, toast,
 
 // The action panel (actionpanel.js): the card's head and status, and the tabs with a row for everything a creature can do.
 $('c-level').addEventListener('click', (ev) => { const b = ev.target.closest('[data-levelup]'); if (b && !b.disabled) QE.levelUp(b.dataset.levelup); });
-const AP = initActionPanel({ comp: CP, dry, prefs, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
+const AP = initActionPanel({ comp: CP, dry, prefs, choices: () => choicesNow, choose: chooseOption, state: () => S, isDM, mine, act, toast, skipping, setMode, move: MOVE, render: () => refresh(), selected: () => selId,
   castSpell: startSpell, openSheet: () => D.open('sheet'), lead: (e) => lead(e), formation: (e) => formationFor(e), shortRest: () => { D.open('dm/creatures'); $('dm-short-rest').click(); }, hpFraction, formLabel: (e) => (formOf(e) ? formName(e) : ''),
   budget: (e) => ({ ...S.encounter.budget, attacksLeft: attacksLeft(S.encounter.budget) }),
   openFeature: (e, id) => { foldMenu(); CLS.openFeature(e, id); }, openAttack: (e, id) => { foldMenu(); CLS.openAttack(e, id); }, metamagic: (e) => CLS.buttons(e).find((b) => b.feature === 'metamagic') ?? null, flyInfo: (e) => { const st = flyState(S, e, shownName(S, e)); if (!st.has) return null; const row = flyRow(e); if (!aloft(S, e)) return { has: true, why: st.why, aloft: false }; const H = flyH(e); return { has: true, why: st.why || (H.can ? '' : 'No movement left.'), words: row ? stateLine(H, H.heights.find((r) => r.here) ?? row) : '', aloft: true, alt: row?.ft ?? H.here, up: row ? stepRow(H, row, 1)?.ft ?? null : null, down: row ? stepRow(H, row, -1)?.ft ?? null : null }; },

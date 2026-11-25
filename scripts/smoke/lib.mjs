@@ -456,3 +456,13 @@ export async function fighterBasics(page) {
 // #750: the d20 confirms what waits (its ring is dashed and pulses while `#btn-menu.waiting`; its spoken name is "Confirm <what>"). Tap or click it.
 export const waitDie = (page, on = true, timeout = 8000) => page.waitForFunction((v) => document.getElementById('btn-menu').classList.contains('waiting') === v, on, { timeout });
 export const tapDie = async (page, touch) => { await waitDie(page); await (touch ? page.locator('#btn-menu').tap() : page.locator('#btn-menu').click()); };
+
+// #750 part 2: the choices an armed spell waits for are on the character's sheet (`#ap-choices`, at the top of the open section), not in the aim bar. What one group of them shows:
+// each option { v, label, on (the one the die uses), off (greyed), why (its reason in words) }, the usable values, the chosen one, the smallest option's height, and where the block sits.
+export const choiceView = (page, group) => page.evaluate((g) => {
+  const box = document.getElementById('ap-choices'), btns = box ? [...box.querySelectorAll(`[data-ch="${g}"]`)] : [];
+  const all = btns.map((b) => ({ v: b.dataset.v, label: b.textContent.trim(), on: b.getAttribute('aria-checked') === 'true', off: b.getAttribute('aria-disabled') === 'true', why: b.dataset.why }));
+  return { old: !!document.getElementById('hint-pick') || !!document.getElementById('hint-slot'), shown: !!box && !box.hidden && box.getClientRects().length > 0,
+    inDrawer: !!box && document.getElementById('drawer').contains(box), first: box?.parentElement?.firstElementChild?.id ?? '', pane: box?.parentElement?.id ?? '',
+    all, usable: all.filter((o) => !o.off).map((o) => o.v), on: all.find((o) => o.on)?.v ?? '', minH: btns.length ? Math.min(...btns.map((b) => b.getBoundingClientRect().height)) : 0 };
+}, group);

@@ -125,3 +125,17 @@ button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--a
 #sheet.pin #c-res::-webkit-scrollbar { display: none; }
 #sheet.pin #c-level:not(:empty) { font-size: 13px; }
 #ap-sheet > #sheet-body { padding-top: 2px; }
+
+/* #750 part 2: the choices an armed action waits for, at the top of the open section. A choice that can be used has a bold accent border; the one the die will use is filled and has a tick;
+   one that cannot is dashed and dim, and says why in words under its name (never colour alone). */
+.ap-choices { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--panel-2); }
+.ap-choices[hidden] { display: none; }
+.ap-ch-h { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.ap-ch-g + .ap-ch-g { margin-top: 6px; }
+.ap-ch-l { display: block; margin: 0 0 3px; font-size: 13px; font-weight: 700; }
+.ap-ch-o { display: flex; flex-wrap: wrap; gap: 6px; }
+button.ap-ch { min-height: 44px; padding: 4px 12px; display: grid; gap: 1px; align-content: center; text-align: left; min-width: 0; }
+button.ap-ch small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+button.ap-ch.use { border: 2px solid var(--accent); }
+button.ap-ch.use.on { background: var(--accent); color: var(--accent-ink); } button.ap-ch.on small { color: inherit; }
+button.ap-ch.off { border-style: dashed; } button.ap-ch.off .ap-ch-t { opacity: .6; } button.ap-ch.off small.ap-why { color: var(--ink); font-size: 12px; }
