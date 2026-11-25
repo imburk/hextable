@@ -1,5 +1,6 @@
 // Bring a character (#757 part 2): a player at a hosted table brings a character (built now, then one kept in My characters) and the DM reads it, sets the level range,
 // ticks that the history was looked at and admits it; the second offer is declined. 1280x800 DM, 390x844 touch player. Screenshots go to SMOKE_SHOTS when it is set.
+import { fileURLToPath } from 'node:url';
 import { sleep, scenario, wait, waitShown, open, openMenu, fighterBasics } from './lib.mjs';
 
 const shot = async (page, name, still = 900) => { if (!process.env.SMOKE_SHOTS) return; await sleep(still); await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${name}.png` }); };
@@ -107,6 +108,30 @@ export default async function bringchar(browser, url) {
         if (await dm.evaluate(() => Object.values(window.hextable.state.entities).some((e) => e.name === 'Brought Bran' && e.owner))) throw new Error('a declined character was seated');
         await sleep(500);
         await waitShown(pl, '#bring-wait');
+      });
+
+      await run.do('a third offer, from a Fantasy Grounds file: the player reads it, sees the review, saves and offers it; the DM sees the offer', async () => {
+        await wait(pl, () => window.hextable.drawer.isOpen); await waitShown(pl, '#bring-again');
+        await pl.tap('#bring-again'); await waitShown(pl, '#mc-list'); await waitShown(pl, '#mc-fg');
+        const before = await pl.evaluate(() => JSON.parse(localStorage.getItem('hextable.characters')).length);
+        const [chooser] = await Promise.all([pl.waitForEvent('filechooser'), pl.tap('#mc-fg')]);
+        await chooser.setFiles(fileURLToPath(new URL('../../packages/rules/test/fixtures/fgxml-cleric.xml', import.meta.url)));
+        await waitShown(pl, '#fgi-bring');
+        await waitShown(pl, '#fgi-bring #fgi-summary');
+        if (/Only the DM can import/.test(await pl.textContent('#fgi-bring'))) throw new Error('the DM-only note is shown to a player');
+        if (!/offers it to the DM/.test(await pl.textContent('#fgi-bring #fgi-bring-note'))) throw new Error('the bring note is missing');
+        if (!(await pl.textContent('#fgi-bring')).includes('Not on the sheet')) throw new Error('no review of what was not read');
+        const noX = await pl.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+        if (!noX) throw new Error('the review scrolls sideways on the phone');
+        await shot(pl, 'bringchar-import-review-phone');
+        await pl.tap('#fgi-bring #fgi-add');
+        await waitShown(pl, '#bring-wait'); await waitShown(pl, '#fgi-bring', false);
+        const kept = await pl.evaluate(() => JSON.parse(localStorage.getItem('hextable.characters')).map((f) => [f.sheet.name, f.born.how]));
+        if (kept.length !== before + 1 || !kept.some(([, how]) => how === 'imported-fgxml')) throw new Error(`My characters holds ${JSON.stringify(kept)}`);
+        await openMenu(dm, 'dm'); await waitShown(dm, '#dm-table .offer');
+        const row = await dm.textContent('#dm-table .offer .offer-head');
+        if (!/Smoke Player offered .+, level \d+ Cleric$/.test(row)) throw new Error(`the offer says ${row}`);
+        await shot(dm, 'bringchar-dm-offer-import');
       });
     } finally { await dmCtx.close(); await plCtx.close(); }
   });
