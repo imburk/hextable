@@ -300,6 +300,18 @@
               }
             },
             {
+              "modifier": {
+                "on": "condition",
+                "op": "immune",
+                "scope": {
+                  "condition": "frightened"
+                }
+              },
+              "ends": {
+                "on": "turnStart"
+              }
+            },
+            {
               "dispel": 3,
               "dc": 10
             },

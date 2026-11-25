@@ -1189,6 +1189,47 @@ text each): "doesn't provoke an Opportunity Attack when it flies out of an enemy
   `moved` event alone), and no scenario shows more with the tag than without, so no `twin()` test was added; the test holds that nothing but the move is sent.
 - **Not built:** see DEBT W42.
 
+#### Build notes: Heroism and Regenerate (amendment, #726 job 2)
+
+Tests in `packages/rules/test/turn-start.test.js`. SRD 5.2.1, Heroism: "A willing creature you touch is imbued with bravery. Until the spell ends, the creature is
+immune to the Frightened condition and gains Temporary Hit Points equal to your spellcasting ability modifier at the start of each of its turns. Using a
+Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1." Regenerate: "A creature you touch regains 4d8 + 15 Hit Points.
+For the duration, the target regains 1 Hit Point at the start of each of its turns, and any severed body parts regrow after 2 minutes." DEBT "a turn-start trigger
+outside a zone".
+
+- **Step `eachTurn: [steps]`** (`eachTurn`, `engine/rolls.js`; `turnSteps`, `effects.js`). Run on a creature, it puts a part `{ target, turn: { steps, src } }` on the
+  spell's lasting effect (`src` is the name, the spell and the caster's spellcasting modifier as the cast had them). At the start of each of the creature's turns in a
+  fight (`beginTurn`, `engine/resolve.js`, after what ends then and the zones that go off then; and for a controlled mount, with its rider's turn) the engine runs the
+  steps on it as the effect's source, on top of whatever is on the effect stack, as a reaction is. Inside the list only `heal`, `tempHp` and `manual` steps, one to four,
+  and none inside another (the linter, `lintSteps`); the step is for a spell that lasts, so that there is an effect to hang it on (`eachOk`). A cast with no lasting effect
+  to hold it (an instant spell's bound one) hands the step to the DM, with a `manual` event. `eachTurn` is also a branch name (`BRANCHES`), so every walker of steps (the
+  linter, the work estimate, the dice count, the reader) already reaches the steps inside; the homebrew list ceiling is 4 (`step.eachTurn`).
+- **When it runs.** At the start of each of the creature's turns in a fight, not at a turn's end and not outside a fight (there are no turns then: Regenerate's hour out of
+  a fight gives nothing, and the spell's text says so). A creature at 0 Hit Points gets its steps before its Death Saving Throw (`advanceTurn`): Regenerate's Hit Point
+  raises it to 1, so no save is made; Temporary Hit Points never wake it. A dead creature gets nothing. Ending it is as for any part: the effect ends (its time, Concentration,
+  Dispel Magic, the DM's `endEffect`) and nothing runs after. A creature that is set aside and takes its turn later the same round gets the steps once for the turn it
+  begins, as everything else at the start of a turn does.
+- **Temporary Hit Points a turn gives belong to the creature.** The steps are run without the effect's id, so the points are not taken back when the spell ends: the SRD's
+  Temporary Hit Points "last until they're depleted or you finish a Long Rest". (A `tempHp` step in the cast itself is still tied to its effect, as before.) They do not add up:
+  a creature keeps the larger of what it has and what it is given.
+- **Hook `condition`** (`HOOKS`): one shape, `{ on: "condition", op: "immune", scope: { condition } }`, as a modifier step only (the linter refuses it in a trait, a feat's grant
+  or an aura, which have `conditionImmune` and `aura.immune` already). While its part holds the creature is immune to that condition: `condition()` puts nothing on and says
+  "Immune to Frightened", the DM's `condition` action is refused (`immuneTo`, `modifiers.js`, now also reads the lasting effects), and a condition it already has has no effect
+  (its modifiers are not applied: `sources`, as for an Aura of Courage) and is not taken off, so it counts again when the spell ends. Frightened has no modifiers of its own
+  in the pack (its Disadvantage and "cannot move closer" are in its `also` text for the DM), so for Frightened the effect today is that it cannot be given.
+- **Heroism** is `auto`: a modifier step for the immunity and an `eachTurn` of `{ tempHp: "+0", addMod: true }` (equal to the modifier, with no dice of its own; a modifier of 0
+  or less gives nothing and a lower number never lowers what the creature has). Targets and slots are as before (`higher.slot.targets`). "Willing" is not judged: the engine
+  does not know whether the creature is.
+- **Regenerate** is `assist`: the 4d8 + 15 at the cast, `eachTurn: [{ heal: "+1" }]`, and a `manual` step for the severed body parts, which regrow after 2 minutes: the DM does
+  that, as it hands over every other restoration the engine cannot see.
+- **Views.** `turn` on a part is not sent to players (`viewEffects`, with `born`): it holds the caster's modifier. Nothing else new is sent; a part on a creature a player sees is
+  sent as before. No hidden state is added, so no `twin()` scenario was written: a hidden caster's effect on a party creature is visible by design, and the test holds that a
+  player's view has no `turn` and no `healMod`.
+- **The reader** says both: the hook's sentence and the step's, with what the steps do ("they stay after the spell ends"). The golden spell "Heroic Vigor" and the golden
+  monster "Cinderjaw Hound" (Smoke Step) carry them; the sample pack's Stone Hide has an `eachTurn` for the dry run's coverage (the step cannot stand in a creature's action).
+- **Not built:** steps at the *end* of a turn, other kinds of steps inside (damage at a turn's start is a zone's: Spirit Guardians), a number that grows with the turn, a
+  creature's own action or a feature with an `eachTurn` (the step is for a spell), and a turn outside a fight (DEBT W43).
+
 ### A class
 
 ```js

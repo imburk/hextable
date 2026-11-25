@@ -21,7 +21,7 @@ const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const json = (x) => JSON.stringify(x);
 const wizard = { name: "Wyn", class: "wizard", level: 13, subclass: "evoker", abilities: { str: 10, dex: 14, con: 12, int: 18, wis: 12, cha: 10 }, skills: ["arcana", "history"],
   spells: ["dispel-magic", "hold-person", "mage-armor", "light", "haste", "bless", "death-ward", "fire-bolt"] };
-const cleric = { name: "Pia", class: "cleric", level: 13, subclass: "life", abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 18, cha: 10 }, skills: ["insight", "medicine"], spells: ["death-ward", "bless", "hold-person", "heroism"] };
+const cleric = { name: "Pia", class: "cleric", level: 13, subclass: "life", abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 18, cha: 10 }, skills: ["insight", "medicine"], spells: ["death-ward", "bless", "hold-person", "sanctuary"] };
 
 // Wyn the wizard (Pat's) and Pia the cleric on open grass, the valley's fighter beside them, and a bandit 10 feet off.
 function table(seed = 5) {
@@ -158,17 +158,17 @@ test("a spell on another creature is not touched, nor one its caster only concen
 });
 
 test("a spell the DM applies (no part put on anyone) is on those it was aimed at; one that took hold on another is not on a creature that saved", () => {
-  // Heroism is `manual`: the engine times it and puts nothing on its target.
-  assert.equal(SPELLS.heroism.def.tier, "manual", "if Heroism is built, use another manual spell that lasts here");
+  // Sanctuary is `manual` (Heroism was, until #726 job 2): the engine times it and puts nothing on its target.
+  assert.equal(SPELLS.sanctuary.def.tier, "manual", "if Sanctuary is built, use another manual spell that lasts here");
   const { s } = table();
-  ok(cast(s, "pia", "heroism", { target: "fighter" }));
-  assert.deepEqual(fxOf(s, "heroism").aimed, ["fighter"]);
-  assert.deepEqual(fxOf(s, "heroism").parts, []);
+  ok(cast(s, "pia", "sanctuary", { target: "fighter" }));
+  assert.deepEqual(fxOf(s, "sanctuary").aimed, ["fighter"]);
+  assert.deepEqual(fxOf(s, "sanctuary").parts, []);
   dispelAt(s, "wyn");
-  assert.ok(fxOf(s, "heroism"), "not on Wyn");
+  assert.ok(fxOf(s, "sanctuary"), "not on Wyn");
   const r = dispelAt(s, "fighter");
-  assert.equal(fxOf(s, "heroism"), undefined);
-  assert.ok(r.events.some((e) => e.type === "effectEnd" && e.name === "Heroism"));
+  assert.equal(fxOf(s, "sanctuary"), undefined);
+  assert.ok(r.events.some((e) => e.type === "effectEnd" && e.name === "Sanctuary"));
   // Hold Person at two bandits with a level 3 slot: where one saved and one did not, the spell is on the held one only.
   let split = 0;
   for (let seed = 1; seed <= 60 && !split; seed++) {

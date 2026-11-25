@@ -52,6 +52,8 @@ const FIXTURES = [
     effects: [{ modifier: { on: 'ac', op: 'baseAc', value: { base: 13, ability: 'dex' } }, ends: { on: 'armour' } }] }),
   base('mercy-touch', 'Mercy Touch', { level: 0, range: 15, target: { creature: { count: 1 } }, effects: [{ stabilize: true }], higher: { range: { 5: 30, 11: 60, 17: 120 } } }),
   base('unravel', 'Unravel', { level: 3, school: 'abjuration', range: 120, target: { creature: { count: 1 } }, tier: 'assist', effects: [{ dispel: 3, dc: 10 }] }),
+  base('heroic-vigor', 'Heroic Vigor', { level: 2, school: 'enchantment', range: 'touch', duration: '1 minute', concentration: true, target: { creature: { count: 1 } }, tier: 'assist',
+    effects: [{ modifier: { on: 'condition', op: 'immune', scope: { condition: 'frightened' } } }, { eachTurn: [{ tempHp: '+0', addMod: true }, { heal: '1d4+1' }, { manual: 'Its wounds close a little more.' }] }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
@@ -175,6 +177,11 @@ test('each branch is read under exactly the step kinds that run it (effects.js e
   const src = readFileSync(new URL('../src/effects.js', import.meta.url), 'utf8');
   for (const b of BRANCHES) assert.ok(src.includes(`'${b}'`), `effects.js runs ${b}`);
   for (const b of BRANCHES) {
+    if (b === 'eachTurn') {
+      const r = readEntry('spell', base('branch', 'Branch', { duration: '1 minute', target: { creature: {} }, effects: [{ eachTurn: [{ heal: '1d4' }] }] }));
+      assert.ok(r.lines.some((l) => /^ {2}It regains 1d4 Hit Points/.test(l)), `branch ${b} is read: ${r.lines.join(' | ')}`);
+      continue;
+    }
     const e = base('branch', 'Branch', { target: { creature: {} }, effects: [{ [b === 'onHit' || b === 'onMiss' ? 'attack' : b === 'onFail' || b === 'onSuccess' ? 'save' : b === 'blocked' ? 'teleport' : 'damage']: b === 'onHit' || b === 'onMiss' ? 'melee' : b === 'onFail' || b === 'onSuccess' ? 'dex' : b === 'blocked' ? 30 : '1d6', kind: 'spell', type: 'fire', [b]: [{ damage: '1d4', type: 'cold' }] }] });
     const r = readEntry('spell', e);
     assert.ok(r.lines.some((l) => /^ {2}It takes 1d4 cold damage/.test(l) || /^ {2}The caster takes 1d4 cold damage/.test(l)), `branch ${b} is read: ${r.lines.join(' | ')}`);

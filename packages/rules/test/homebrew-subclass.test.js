@@ -505,8 +505,8 @@ test("a pack without subclasses is sent to players, and hashed for them, byte fo
   const sample = JSON.parse(readFileSync(new URL("./fixtures/sample-pack.json", import.meta.url), "utf8"));
   const kinds = JSON.parse(readFileSync(new URL("./fixtures/reader-kinds-pack.json", import.meta.url), "utf8"));
   // Measured on main before this change: the player hash of each fixture pack.
-  assert.equal(forPlayers(sample).hash.slice(0, 10), "629e7b1fec");      // re-measured for #674: the sample pack gained a Stabilize step and a Light step; and for #726 job 5: a Dispel step on Spotter's Eye, and a Revive step in Ember Recall (#762)
+  assert.equal(forPlayers(sample).hash.slice(0, 10), "0815239ac7");      // re-measured for #674: the sample pack gained a Stabilize step and a Light step; and for #726 job 5: a Dispel step on Spotter's Eye, a Revive step in Ember Recall (#762), and an eachTurn step on Stone Hide (#772)
   assert.equal(forPlayers(kinds).hash.slice(0, 10), "1040f94f12");
-  assert.equal(hashOf(sample).slice(0, 10), "233ac5958c", "and the DM's whole-pack hash");
+  assert.equal(hashOf(sample).slice(0, 10), "b9877e4d19", "and the DM's whole-pack hash");
   assert.equal(Object.hasOwn(forPlayers(sample).data, "subclasses"), false);
 });
