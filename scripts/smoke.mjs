@@ -39,6 +39,7 @@ const REGISTRY = {
   beats: ['beats'],
   controls: ['controls'],
   classes: ['classes'],
+  swapstab: ['swapstab'],
   interface: ['interface'],
   three: ['three'],
   drawer: ['drawer'],
