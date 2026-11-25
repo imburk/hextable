@@ -20,7 +20,7 @@ export const IMPORT_TAG = 'fg-import';
 // A sentence in the grid's words: "hex" and "hexes" become "square" and "squares" on a square map (the editor says the same).
 export const gridWords = (text, G) => (G.kind === 'hex' ? text : String(text).replace(/\bhexes\b/g, G.word.many).replace(/\bhex\b/g, G.word.one));
 // The aim bar's words once an area's aim is locked by a tap (before it, hover previews and the hint says "tap a hex to aim").
-export const aimedWords = (G) => gridWords('Aimed: tap another hex to move it, or Cast', G);
+export const aimedWords = (G) => gridWords('Aimed: tap another hex to move it, or tap the die', G);
 export const gridName = (map) => gridOf(map).word.many;
 
 // The words of the rolled-score rule's choices (engine/dm.js SETTINGS; the longer words are SETTING_TEXT). Short, so a phone's select shows the whole choice.

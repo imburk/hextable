@@ -35,7 +35,11 @@ body.drawer-pretable #btn-menu, body:has(#dice-tray) #btn-menu { visibility: hid
 #btn-menu.offline .tk-x { display: block; }
 #btn-menu:is(.dead, .offline) :is(.tk-face, .tk-line, .tk-num, .tk-disc, .tk-arc) { filter: grayscale(1); opacity: .55; }
 #btn-menu.dead .tk-arc { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { #btn-menu.pulse svg { animation: none; } #btn-menu .tk-arc { transition: none; } }
+/* #750: the die confirms. While an action waits, a dashed ring outside the disc (a shape the turn ring and the health arc do not have) pulses slowly; with reduced motion it is steady. */
+#btn-menu .tk-wait { display: none; fill: none; stroke: var(--accent); stroke-width: 3; stroke-dasharray: 6 5; transform-box: fill-box; transform-origin: center; }
+#btn-menu.waiting .tk-wait { display: block; animation: tk-wait 2.6s ease-in-out infinite; }
+@keyframes tk-wait { 0%, 100% { opacity: .4; transform: scale(1); } 50% { opacity: 1; transform: scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { #btn-menu.pulse svg { animation: none; } #btn-menu .tk-arc { transition: none; } #btn-menu.waiting .tk-wait { animation: none; opacity: 1; } }
 /* the banner at the start of my turn: over the map for 1.6 s, and it takes no tap */
 #turn-banner { position: fixed; z-index: 5; left: 50%; top: 22%; transform: translateX(-50%); pointer-events: none; max-width: calc(100% - 32px); padding: 10px 22px; border-radius: var(--radius);
   background: var(--panel); border: 2px solid var(--accent); font: 700 22px/1.2 var(--head, var(--body)); text-align: center; box-shadow: 0 6px 18px #0008; }

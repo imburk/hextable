@@ -66,11 +66,16 @@ import { mountNewVersion } from './newversion.js';
 import { wire as wireUndo, nameOf } from './undobar.js';
 import { createHold, HOLD_MS } from './hold.js';
 import { createPings, cellAtPoint, pingColor } from './ping.js';
+import { isPair, targetNote } from './confirm.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const signed = (n) => (n >= 0 ? `+${n}` : `${n}`);
 const MOVE = { kind: 'move' };
+// #750: the d20 confirms. `waitFor` is what waits for a confirm right now ({ name, most, n }: most and n only when targets are being chosen), set by refresh() and read by the die
+// (tokenState), the note at the top and the Enter key. `confirming` is when a confirm was sent (its answer is the next update, or an error); `aimRefusal` is the engine's reason for a refusal.
+// `lastTap` is the last tap on a creature while its targets are chosen, for the double-tap that takes one off.
+let waitFor = null, confirming = 0, aimRefusal = null, lastTap = null;
 const OWED = { kind: 'owed' };     // the Move button of an Opportunity Attack's movement was pressed (allowance.js): the next tap on a shaded place is the move
 // The height picked for a flyer's next move (heights.js, docs/specs/fly-swim-control.md C1): one pick, kept only while nothing has changed under it. A move, a fall,
 // a landing, a turn change or the loss of the flight makes it stale, and the move then goes to the height the creature is at.
@@ -625,6 +630,7 @@ function onUpdate(state, events, fresh) {
     const own = Object.values(S.entities).find((e) => e.kind === 'pc' && (isDM() ? true : e.owner === T.you.userId));
     selId = own?.id ?? null;
   }
+  if (confirming) { confirming = 0; mode = MOVE; }       // #750: the table took the confirm
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
   if (mode.kind === 'owed' && !offerOf(S, S.entities[selId])) mode = MOVE;
   // A player is shown the movement an Opportunity Attack gave as soon as it comes: their creature is selected and looked at (the DM keeps their own choice; solo is both).
@@ -800,7 +806,7 @@ function flyAim(e, hl) {
   hl.plane = planeHl(S.map, H, shown, { faint: shown !== row, point: shown === row ? mode.point : null });
   hl.move = [];                                   // the ground reach is not drawn under a plane: two layers would fight
   const cell = mode.point ? row.cells.find((c) => c.key === mode.point) : null, pt = hl.plane.point;
-  if (cell) return `${cellWords(H, cell)}${row.ground ? '' : ` \u00b7 ${row.ft} ft up`}${pt && pt.drop ? ` \u00b7 ${pt.drop} ft above the floor` : ''}${pt?.bad ? ` \u00b7 ${pt.bad}` : ''}${pt?.drop ? ((w) => (w ? `. ${w}` : ''))(fallWarning(S, e, pt.drop)) : ''}${mode.marked ? '. Tap again or Go' : ''}`;
+  if (cell) return `${cellWords(H, cell)}${row.ground ? '' : ` \u00b7 ${row.ft} ft up`}${pt && pt.drop ? ` \u00b7 ${pt.drop} ft above the floor` : ''}${pt?.bad ? ` \u00b7 ${pt.bad}` : ''}${pt?.drop ? ((w) => (w ? `. ${w}` : ''))(fallWarning(S, e, pt.drop)) : ''}${mode.marked ? '. Tap again or tap the die' : ''}`;
   return stateLine(H, shown);
 }
 // The hint bar's two buttons, put to the words of the movement an Opportunity Attack gave (and back to the aiming ones, 'Cast' and 'Cancel', when it is not that).
@@ -810,7 +816,7 @@ function hintWords(offer, waits) {
   go.style.minHeight = cancel.style.minHeight = big;
   cancel.hidden = owedUi === 'wait';
   cancel.textContent = owedUi === 'offer' ? forgoLabel : 'Cancel';
-  go.textContent = owedUi === 'offer' ? moveLabel(offer) : owedUi === 'wait' ? giveUpLabel(waits) : mode.kind === 'fly' ? 'Go' : 'Cast';
+  go.textContent = owedUi === 'offer' ? moveLabel(offer) : owedUi === 'wait' ? giveUpLabel(waits) : '';
   if (owedUi === 'offer') go.hidden = mode.kind === 'owed';       // pressed: the next tap on a shaded place is the move
   else if (owedUi === 'wait') go.hidden = false;
 }
@@ -861,8 +867,8 @@ function tokenState() {
   const now = S.encounter ? S.entities[current(S)] : null, turn = !!now && plays(now) && up(now);
   const frac = known ? Math.max(0, Math.min(1, e.hp / Math.max(1, e.maxHp))) : null;
   const n = Number($('menu-waiting').dataset.count) || 0;
-  const words = [turn ? 'Your turn' : '', known ? (e.dead ? `${shownName(S, e)} has died` : `${shownName(S, e)}, ${e.hp} of ${e.maxHp} Hit Points`) : '', n ? `${n} waiting for you` : '', isOffline() ? 'The link to the table is lost' : ''].filter(Boolean);
-  return { hp: frac, low: known && e.hp <= e.maxHp / 2, down: known && !e.dead && e.hp <= 0, dead: known && !!e.dead, turn, offline: isOffline(), says: words.length ? `${words.join('. ')}.` : '' };
+  const words = [turn ? 'Your turn' : '', known ? (e.dead ? `${shownName(S, e)} has died` : `${shownName(S, e)}, ${e.hp} of ${e.maxHp} Hit Points`) : '', n ? `${n} waiting for you` : '', waitFor ? (waitFor.most && !waitFor.n ? 'No target yet: tap one, then the die' : 'Tap to confirm') : '', isOffline() ? 'The link to the table is lost' : ''].filter(Boolean);
+  return { wait: waitFor?.name ?? null, hp: frac, low: known && e.hp <= e.maxHp / 2, down: known && !e.dead && e.hp <= 0, dead: known && !!e.dead, turn, offline: isOffline(), says: words.length ? `${words.join('. ')}.` : '' };
 }
 // The health label: "Wren 3 / 8 HP" beside the token for 3 s whenever the selected character's Hit Points change.
 function hpNote() {
@@ -1000,7 +1006,7 @@ function refresh() {
 
   // selected creature card
   const hl = { selected: selId, turn: enc ? cur : null };
-  let hint = '', go = false;
+  let hint = '', go = false, multi = null;
   AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
   showQuick();
   if (e) {
@@ -1032,7 +1038,7 @@ function refresh() {
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
-        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the ${imbueOf(sp) ? 'weapon' : 'slot'}, then Cast`; go = true; }
+        if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the ${imbueOf(sp) ? 'weapon' : 'slot'}, then tap the die`; go = true; }
         else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
           const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
@@ -1052,11 +1058,11 @@ function refresh() {
           else hl.targets = ids.filter((id) => hostile(S.entities[id], e));
           // Several targets (Magic Missile's darts, Bless): each tap adds one until there are enough, or Cast.
           const most = spellMost(e, sp), picked = mode.picked ?? [];
+          if (most > 1 && (picked.length || (hl.allies || hl.targets).length)) multi = { most, n: picked.length };
           if (most > 1 && picked.length) {
-            hint = `${sp.name}: ${picked.length} of ${most}${sp.repeat ? '' : ' creatures'} · ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'} or Cast`;
-            go = true;
-          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then Cast (or tap ${name(mode.holder)} again to cast with ${weaponName(mode.choice ?? choicesOf(sp)?.[0])})`; go = true; }
-          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
+            hint = `${sp.name}: ${picked.map(name).join(', ')}. Tap ${sp.repeat ? 'a target' : 'another'}, double-tap one to take it off, then tap the die`;
+          } else if (imbueOf(sp) && mode.holder) { hint = `${sp.name} on ${name(mode.holder)}: choose the weapon, then tap the die (or tap ${name(mode.holder)} again to cast with ${weaponName(mode.choice ?? choicesOf(sp)?.[0])})`; go = true; }
+          else hint = (hl.allies || hl.targets).length ? `${sp.name}: tap ${most > 1 ? `up to ${most} ${sp.repeat ? 'times' : 'targets'}, then the die` : 'a target'}${coverHint(e, hl.targets ?? [])}` : `${sp.name}: nobody within ${sp.range} ft`;
         }
       }
     }
@@ -1077,7 +1083,12 @@ function refresh() {
   if (mode.kind === 'recall' || mode.kind === 'famAttack') hint = CP.hintFor(mode);
   { const h = CP.render(); if (h) { hl.area = h.area; hl.targets = h.targets; hl.allies = h.allies; } }
   if (mode.kind === 'fly') go = !!(mode.marked && mode.point);
-  $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = !go;
+  // #750: what waits for the die. Not the movement an Opportunity Attack gave: that keeps its own two buttons.
+  waitFor = hint && !owedUi && (go || multi) ? { name: mode.kind === 'fly' ? 'move' : mode.kind === 'action' ? e.actions.find((x) => x.id === mode.id)?.name ?? 'action' : mode.kind === 'spell' ? SPELLS[mode.id].name : mode.name ?? 'action', ...(multi ?? {}) } : null;
+  if (!waitFor) { confirming = 0; aimRefusal = null; }
+  { const note = targetNote(waitFor?.most, waitFor?.n, aimRefusal), n = $('aim-note');
+    n.hidden = !note; if (n.textContent !== note) n.textContent = note; }
+  $('hint').hidden = !hint; $('hint-text').textContent = hint; $('hint-go').hidden = true;
   flyBar(S.entities[selId]);
   if ((mode.kind === 'fly') !== flyWas) { flyWas = mode.kind === 'fly'; flyCamera(flyWas); }
   hintWords(offer, waits);
@@ -1379,7 +1390,7 @@ let lastMove = null;
 let pinnedAt = 0;
 function aimTap(hex) {
   const same = mode.pinned && mode.aim && cellKey(mode.aim) === cellKey(hex);
-  if (same && Date.now() - pinnedAt > 400 && !$('hint-go').hidden) return castAimed();
+  if (same && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
   if (!same) pinnedAt = Date.now();
   mode.aim = hex; mode.pinned = true;
   refresh();
@@ -1416,10 +1427,21 @@ R.onTap = (hit) => {
     // A spell that changes a weapon, aimed at a creature with more than one it could change: the menu lists that creature's weapons, and Cast follows the choice.
     if (imbueOf(sp) && most <= 1 && mode.holder !== id && weaponsOf(S.entities[id], sp).length > 1) { mode.holder = id; mode.choice = null; mode.picked = [id]; return refresh(); }
     if (most <= 1) return act(castAct({ target: id, ...chosen(sp, id) }));
-    const picked = mode.picked ?? (mode.picked = []);
-    if (!sp.repeat && picked.includes(id)) picked.splice(picked.indexOf(id), 1);       // tap again to take it back
-    else picked.push(id);
-    if (picked.length >= most) return act(castAct({ targets: picked, ...chosen(sp, picked[0]) }));
+    // Several targets (#750): each tap on the map chooses one and nothing is sent until the die is tapped. A double-tap (two taps within DOUBLE_MS and DOUBLE_PX on the same
+    // creature) takes a target that was chosen before the pair off; on one that was not chosen it chooses it once (the pair's second tap does nothing more).
+    const picked = mode.picked ?? (mode.picked = []), now = Date.now(), at = hit.at ?? null;
+    const pair = isPair(lastTap, { id, at: now, xy: at });
+    aimRefusal = null;
+    if (pair) {
+      const was = lastTap.was; lastTap = null;
+      if (was) mode.picked = picked.filter((x) => x !== id);
+      return refresh();
+    }
+    lastTap = { id, at: now, xy: at, was: picked.includes(id) };
+    if (!picked.includes(id) || sp.repeat) {
+      if (picked.length >= most) return toast(`${most} chosen. Double-tap one to take it off, or tap the die.`, true);
+      picked.push(id);
+    }
     return refresh();
   }
   if (tapped) {
@@ -1469,11 +1491,9 @@ new ResizeObserver(() => document.documentElement.style.setProperty('--turn-h', 
 $('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
 $('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
 $('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
-$('hint-go').onclick = () => {
+$('hint-go').onclick = () => {      // only the movement an Opportunity Attack gave (Move up to, Give it up): every other confirm is the die's (#750)
   if (owedUi === 'offer') return setMode(OWED);
-  if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));
-  if (mode.kind === 'fly') return flyGo();      // the DM gives it up for them; the engine lets the DM
-  castAimed();
+  if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));      // the DM gives it up for them; the engine lets the DM
 };
 function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
@@ -1485,7 +1505,20 @@ function castAimed() {
     act(castAct({ hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
   }
   else act(castAct({ targets: mode.picked ?? [], ...chosen(SPELLS[mode.id], mode.picked?.[0] ?? null) }));
-  mode = MOVE;
+}
+// The die (or Enter, or the second tap on an aimed spot) confirms what waits (#750). Nothing is sent before this. The action is the one the Cast button sent. The aim stays up until
+// the table has answered: a refusal leaves the choices where they were, with the reason in the note (T.on.error); an update ends it. Returns whether the tap was the confirm's.
+function confirmDie() {
+  if (!waitFor || !S || !T || skipping()) return false;
+  if (confirming && Date.now() - confirming < 8000) return true;       // sent, and the answer has not come
+  if (waitFor.most && !waitFor.n) { aimRefusal = null; refresh(); return true; }       // none chosen: the die does nothing, the note says so
+  if (isOffline()) { toast(OFFLINE_WHY); return true; }
+  aimRefusal = null;
+  if (mode.kind === 'fly') { flyGo(); return true; }
+  confirming = Date.now();
+  castAimed();
+  if (armed) { confirming = 0; mode = MOVE; refresh(); }       // a throw waits in the dice tray: the aim is done, the tray sends it
+  return true;
 }
 // Alt (or Ctrl, where Alt is taken) and the wheel step the pick by one block while the column is open; the wheel alone still zooms. This listener is on the canvas before
 // the renderer's own, so it can keep the step from zooming as well.
@@ -1528,7 +1561,7 @@ function pickChar(id) {
   R.focus(x.id);
   D.open('sheet'); refresh();
 }
-const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), selected: () => (S && selId ? S.entities[selId] ?? null : null), charName: () => (S && selId && S.entities[selId] ? shownName(S, S.entities[selId]) : null), pickChar,
+const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), confirm: () => confirmDie(), selected: () => (S && selId ? S.entities[selId] ?? null : null), charName: () => (S && selId && S.entities[selId] ? shownName(S, S.entities[selId]) : null), pickChar,
   change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
@@ -1681,6 +1714,8 @@ addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape' && !armed) setMode(MOVE);
   if (!S || !$('lobby').hidden) return;
   if (ev.key === 'Shift') { KB.shift(true); return; }
+  // #750: Enter confirms what waits (the die's job), unless a control has the focus or a dice tray is open.
+  if (ev.key === 'Enter' && waitFor && mode.kind !== 'fly' && !closeTray && !ev.repeat && !leaveAlone(ev, document) && !ev.target.closest?.('button, a[href], summary, [role="button"]')) { ev.preventDefault(); confirmDie(); return; }
   // While the column is open Enter and Space go to the marked place.
   if (mode.kind === 'fly' && (ev.key === 'Enter' || ev.code === 'Space') && !leaveAlone(ev, document)) { ev.preventDefault(); flyGo(); return; }
   const a = actionOf(ev, keyMap());
@@ -1811,6 +1846,7 @@ function start(transport, map = null) {
   T.on.error = (msg, expired) => {
     // The engine refused a step the monster AI chose: end its turn rather than ask again.
     flick = null; refreshAsk = null;
+    if (confirming) { confirming = 0; aimRefusal = String(msg).replace(/\.?$/, '.'); if (S) refresh(); }       // #750: a refused confirm changes nothing: the choices stay, with the reason
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     if (offerSent && Date.now() - offerSent.at < 5000) { offerForget(); if (S) renderPick(); }      // the offer itself was refused: nothing is waiting
     KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);

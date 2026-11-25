@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { openMenu, scenario, settle, tapAt, onCanvas, wait, state, waitShown, open, playSolo, closePanels, panelTab } from './lib.mjs';
+import { openMenu, scenario, settle, tapAt, onCanvas, wait, state, waitShown, tapDie, open, playSolo, closePanels, panelTab } from './lib.mjs';
 
 // ---------- the action panel's Items tab (docs/specs/table-ui.md, T4b and E18) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. A built fighter carries two Potions of Healing, a Wand of Magic Missiles and a Staff of Striking (a hand-typed
@@ -207,8 +207,7 @@ async function items(browser, url, label, opts, tag) {
         if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error('the goblin is off screen or under a panel');
         await tapAt(page, touch, pt.x, pt.y);
         await shot('7-armed');
-        await waitShown(page, '#hint-go');
-        await tap('#hint-go');
+        await tapDie(page, touch);
         await wait(page, () => window.hextable.mode.kind === 'move');
         await idle(page);
         if ((await charges()) !== 5) throw new Error(`charges ${await charges()}`);

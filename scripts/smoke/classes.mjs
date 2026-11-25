@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { martial } from './paneltabs.mjs';
-import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec, chip, openMenu } from './lib.mjs';
+import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec, chip, openMenu, tapDie, waitDie } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
@@ -379,8 +379,7 @@ export async function casters(browser, url, label, opts) {
         if (!/Overchannel/.test(hint)) throw new Error(`the hint does not say it: ${hint}`);
         const n = await tl();
         await tapCreature(g);
-        await waitShown(page, '#hint-go');                                   // an area: the tap aims it, Cast sends it
-        await tap(page, '#hint-go');
+        await tapDie(page, touch);                                   // an area: the tap aims it, the die sends it
         await waiting((i) => window.hextable.state.entities[i].uses?.overchannel === 1, ids.Wyn);
         const evs = await since(n), notes = evs.filter((e) => e.type === 'note').map((e) => e.text).join(' | ');
         if (!/Overchannel: Fireball deals its maximum damage/.test(notes)) throw new Error(`notes: ${notes}`);
@@ -436,8 +435,8 @@ export async function casters(browser, url, label, opts) {
         if (!/Repelling Blast.*: 5 ft/.test(hint)) throw new Error(`hint: ${hint}`);
         const n = await tl();
         await tapCreature(ids.g4);
-        await waitShown(page, '#hint-go', true, 4000).catch(() => {});       // several beams: Cast sends them at the creatures tapped
-        if (await shown(page, '#hint-go')) await tap(page, '#hint-go');
+        await waitDie(page, true, 4000).catch(() => {});       // several beams: the die sends them at the creatures tapped
+        if (await page.evaluate(() => document.getElementById('btn-menu').classList.contains('waiting'))) await tapDie(page, touch);
         await waiting((k) => window.hextable.state.timeline.slice(k).some((e) => e.type === 'cast' && e.spell === 'eldritch-blast'), n);
       });
 
