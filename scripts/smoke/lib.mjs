@@ -452,3 +452,7 @@ export async function fighterBasics(page) {
   for (const k of ['athletics', 'perception']) await page.check(`#qb-skill-${k}`);
   if (await page.$('#qb-acc-bar-choices')) { await openSec(page, 'choices'); await page.check('#qb-choice-fighting-style--defense'); }
 }
+
+// #750: the d20 confirms what waits (its ring is dashed and pulses while `#btn-menu.waiting`; its spoken name is "Confirm <what>"). Tap or click it.
+export const waitDie = (page, on = true, timeout = 8000) => page.waitForFunction((v) => document.getElementById('btn-menu').classList.contains('waiting') === v, on, { timeout });
+export const tapDie = async (page, touch) => { await waitDie(page); await (touch ? page.locator('#btn-menu').tap() : page.locator('#btn-menu').click()); };

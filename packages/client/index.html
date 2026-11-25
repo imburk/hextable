@@ -36,7 +36,7 @@
   <div id="splash-card"><h1>Hextable</h1><p id="splash-text">Loading&hellip;</p><div class="splash-bar" aria-hidden="true"><i></i></div><button type="button" id="splash-about" class="quiet">About</button></div>
 </div>
 
-<div id="hint" role="status" hidden><span id="hint-text"></span><select id="hint-pick" aria-label="Choice" hidden></select><select id="hint-slot" aria-label="Spell slot" hidden></select><span id="hint-step" role="group" aria-label="Height" hidden><button type="button" id="hint-up" aria-label="One block higher">▲</button><b id="hint-ft" aria-hidden="true"></b><button type="button" id="hint-down" aria-label="One block lower">▼</button></span><select id="hint-fly" aria-label="Fly to a place" hidden></select><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button></div>
+<div id="hint" role="status" hidden><span id="hint-text"></span><select id="hint-pick" aria-label="Choice" hidden></select><select id="hint-slot" aria-label="Spell slot" hidden></select><span id="hint-step" role="group" aria-label="Height" hidden><button type="button" id="hint-up" aria-label="One block higher">▲</button><b id="hint-ft" aria-hidden="true"></b><button type="button" id="hint-down" aria-label="One block lower">▼</button></span><select id="hint-fly" aria-label="Fly to a place" hidden></select><button type="button" id="hint-go" hidden>Cast</button><button type="button" id="hint-cancel">Cancel</button><span id="aim-note" hidden></span></div>
 <div id="fly-live" class="sr-only" aria-live="polite"></div><div id="fly-tip" aria-hidden="true" hidden></div>
 <div id="join" role="status" hidden><span id="join-text">Bring the others in?</span><button type="button" id="join-yes">Bring them in</button><button type="button" id="join-no">Not now</button></div>
 
@@ -69,6 +69,8 @@
     <circle class="tk-disc" cx="34" cy="34" r="31"/>
     <!-- M6: the health arc of the selected character (its length is --hp, set by drawer.js), drawn from the top, clockwise -->
     <circle class="tk-arc" cx="34" cy="34" r="31" pathLength="100" transform="rotate(-90 34 34)"/>
+    <!-- #750: while an action waits for its confirm: a dashed ring outside the disc that pulses slowly (steady under reduced motion) -->
+    <circle class="tk-wait" cx="34" cy="34" r="37"/>
     <g transform="translate(34 34)">
       <polygon class="tk-face" points="0,-21 18,-10.5 18,10.5 0,21 -18,10.5 -18,-10.5"/>
       <polyline class="tk-line" points="0,-21 -10,6 10,6 0,-21"/><polyline class="tk-line" points="-18,-10.5 -10,6 0,21 10,6 18,-10.5"/>

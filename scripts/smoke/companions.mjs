@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt, chipPick, openMenu } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, spawnNear, selectAndMove, panelTab, rowOf, settle, onCanvas, tapAt, chipPick, openMenu, tapDie } from './lib.mjs';
 
 // ---------- companions ----------
 // The client side of companions C1 (docs/specs/companions.md; issue #318). Solo at both sizes, the DM bonds a foe to Brenna as a familiar that
@@ -395,6 +395,7 @@ export async function screens(browser, url, label, opts) {
         await clickRow('companions', 'Shocking Grasp through');
         const fpos = await state(page, (S, f) => S.entities[f].pos, foe);
         await tapHex(fpos, foe);
+        await tapDie(page, false);
         await wait(page, () => /delivers/.test(document.getElementById('log-list')?.textContent ?? '') || window.hextable.state.timeline?.some?.((x) => x.type === 'delivered') || true);
         await calm(page);
         const got = await page.evaluate(() => window.hextable.state.timeline.some((x) => x.type === 'delivered'));

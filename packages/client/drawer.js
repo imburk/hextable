@@ -24,6 +24,7 @@
 import { current } from './shared/engine.js';
 import { symbol, placeSymbol } from './symbols.js';
 import { arcLayout, arcShape } from './menuarc.js';
+import { dieName } from './confirm.js';
 import { dwellTimer } from './scrolltip.js';
 import { mountAccordion } from './accordion.js';
 import { GROUPS, FIXED, normalOrder, normalHidden, moveTo, moveBy, canMove, setHidden, rank, shows, slotOf } from './menuorder.js';
@@ -49,7 +50,7 @@ const FLICK = 0.5, SWIPE = 60;                 // px per ms, px: how far or fast
 const HOLD_MS = 500;                           // a symbol of the arc held this long opens Arrange (Decision 4c)
 const SLIDE_MS = 720;                          // the longest slide (Decision 6, round 2); a panel stays drawn this long after it leaves
 
-export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {}, token: tokenOf = () => null, charName = () => null, pickChar = () => {} }) {
+export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {}, token: tokenOf = () => null, confirm = () => false, charName = () => null, pickChar = () => {} }) {
   const el = $('drawer'), scrim = $('drawer-scrim'), token = $('btn-menu'), title = $('drawer-title'), live = $('drawer-live');
   const rootList = $('menu-root'), moreLevel = $('menu-table'), moreList = $('more-list'), body = $('drawer-body'), arcEl = $('menu-arc'), arc = $('arc');
   const mqWide = matchMedia(WIDE), mqCols = matchMedia(COLUMNS);
@@ -142,12 +143,15 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   let wasTurn = false;
   function paintToken(S) {
     const t = S ? tokenOf() : null, c = token.classList;
-    c.toggle('has-hp', t?.hp != null); c.toggle('low', !!t?.low); c.toggle('down', !!t?.down); c.toggle('dead', !!t?.dead); c.toggle('offline', !!t?.offline); c.toggle('turn', !!t?.turn);
+    c.toggle('has-hp', t?.hp != null); c.toggle('low', !!t?.low); c.toggle('down', !!t?.down); c.toggle('dead', !!t?.dead); c.toggle('offline', !!t?.offline); c.toggle('turn', !!t?.turn); c.toggle('waiting', !!t?.wait);
     token.style.setProperty('--hp', String(Math.round((t?.hp ?? 0) * 100)));
     if (t?.turn && !wasTurn && !still()) { c.remove('pulse'); void token.offsetWidth; c.add('pulse'); }
     if (!t?.turn) c.remove('pulse');
     wasTurn = !!t?.turn;
     // Its name stays "Menu"; what it shows is its description, read after the name ("Menu. Your turn. Wren, 6 of 8 Hit Points. 1 waiting for you.").
+    // #750: while an action waits the die is the confirm button, and its spoken name says what waits ("Confirm Fire Bolt").
+    const name = dieName(t?.wait);
+    if (token.getAttribute('aria-label') !== name) token.setAttribute('aria-label', name);
     const says = t?.says ?? '';
     if ($('token-says').textContent !== says) $('token-says').textContent = says;
   }
@@ -517,7 +521,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   addEventListener('resize', () => { if (isOpen) paint(); });
 
   // ---- buttons ----
-  token.addEventListener('click', toggle);
+  token.addEventListener('click', () => { if (tokenOf()?.wait && confirm()) return; toggle(); });      // #750: a tap on the die while an action waits confirms it and does not open the menu
   $('drawer-close').addEventListener('click', () => close());
   scrim.addEventListener('click', () => close());
   $('drawer-pin').addEventListener('click', () => setPin(!pin));

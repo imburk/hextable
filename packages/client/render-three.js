@@ -973,7 +973,7 @@ export class ThreeRenderer {
       if (stroke) { stroke = false; if (e.type === 'pointerup') this.onDrag.end(); else this.onDrag.cancel(); return; }
       if (p && e.type === 'pointerup' && !pts.size && moved < 8 && performance.now() - downAt < 600 && e.button !== 2) {
         if (this.onPoint) { this.onPoint(p[0], p[1]); return; }
-        const hit = this.#pick(...p); if (hit) this.onTap({ ...hit, pointer: e.pointerType });
+        const hit = this.#pick(...p); if (hit) this.onTap({ ...hit, pointer: e.pointerType, at: p });
       }
     };
     el.addEventListener('pointerup', up, on); el.addEventListener('pointercancel', up, on);

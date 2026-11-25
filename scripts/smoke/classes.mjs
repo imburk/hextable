@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { martial } from './paneltabs.mjs';
-import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec, chip, openMenu } from './lib.mjs';
+import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec, chip, openMenu, tapDie, waitDie } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
@@ -144,7 +144,7 @@ async function classes(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind === 'spell');
         if (!/Quickened: 2 SP/.test(await page.$eval('#hint-text', (x) => x.textContent))) throw new Error('the hint does not carry the Metamagic');
         const tl = await state(page, (S) => S.timeline.length);
-        await tapCreature(foe);
+        await tapCreature(foe); await tapDie(page, touch);
         try { await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['font-of-magic'] === b - 2, [ids.Sorsha, before], 25000); }
         catch { throw new Error(`the cast did not go through; ${await page.evaluate(([f, c]) => { const h = window.hextable, S = h.state; return JSON.stringify([S.entities[f].pos, S.entities[f].hp, S.entities[c].pos, S.encounter?.order[S.encounter.turn]?.id === c, h.R.screenOf(S.entities[f].pos)]); }, [foe, ids.Sorsha])} toast: "${await page.$eval('#toast', (x) => x.hidden ? '' : x.textContent)}", points ${await uses('Sorsha', 'font-of-magic')} of ${before}, mode ${await page.evaluate(() => window.hextable.mode.kind)}`); }
         const types = await newest(tl);
@@ -211,7 +211,7 @@ async function classes(browser, url, label, opts) {
         await tap(page, '#cp-use');
         await wait(page, () => window.hextable.mode.kind === 'spell' && /no spell slot/.test(document.getElementById('hint-text').textContent));
         const before = await uses('Cleo', 'divine-intervention'), slots = await state(page, (S, i) => JSON.stringify(S.entities[i].slots), ids.Cleo);
-        await tapCreature(ids.Pala);
+        await tapCreature(ids.Pala); await tapDie(page, touch);
         await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['divine-intervention'] === b - 1, [ids.Cleo, before], 25000).catch(async (e) => { throw new Error(`${e.message} DIAG ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify({ enc: S.encounter && { cur: S.encounter.order[S.encounter.turn].id, order: S.encounter.order.map((o) => o.id) }, mode: window.hextable.mode, toast: document.getElementById('toast').textContent, hint: document.getElementById('hint-text')?.textContent, waiting: window.hextable.waiting, tl: S.timeline.slice(-4).map((t) => t.type) }); })}`); });
         if ((await state(page, (S, i) => JSON.stringify(S.entities[i].slots), ids.Cleo)) !== slots) throw new Error('a spell slot was spent');
       });
@@ -379,8 +379,7 @@ export async function casters(browser, url, label, opts) {
         if (!/Overchannel/.test(hint)) throw new Error(`the hint does not say it: ${hint}`);
         const n = await tl();
         await tapCreature(g);
-        await waitShown(page, '#hint-go');                                   // an area: the tap aims it, Cast sends it
-        await tap(page, '#hint-go');
+        await tapDie(page, touch);                                   // an area: the tap aims it, the die sends it
         await waiting((i) => window.hextable.state.entities[i].uses?.overchannel === 1, ids.Wyn);
         const evs = await since(n), notes = evs.filter((e) => e.type === 'note').map((e) => e.text).join(' | ');
         if (!/Overchannel: Fireball deals its maximum damage/.test(notes)) throw new Error(`notes: ${notes}`);
@@ -436,8 +435,8 @@ export async function casters(browser, url, label, opts) {
         if (!/Repelling Blast.*: 5 ft/.test(hint)) throw new Error(`hint: ${hint}`);
         const n = await tl();
         await tapCreature(ids.g4);
-        await waitShown(page, '#hint-go', true, 4000).catch(() => {});       // several beams: Cast sends them at the creatures tapped
-        if (await shown(page, '#hint-go')) await tap(page, '#hint-go');
+        await waitDie(page, true, 4000).catch(() => {});       // several beams: the die sends them at the creatures tapped
+        if (await page.evaluate(() => document.getElementById('btn-menu').classList.contains('waiting'))) await tapDie(page, touch);
         await waiting((k) => window.hextable.state.timeline.slice(k).some((e) => e.type === 'cast' && e.spell === 'eldritch-blast'), n);
       });
 
