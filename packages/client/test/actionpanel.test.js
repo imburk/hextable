@@ -14,6 +14,7 @@ cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|t
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const { SPELLS } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
 const { opensOnSpells, panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, handRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { stabilizeRows, groupRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { reactionsHtml } = await import(pathToFileURL(join(tmp, 'reactionsheet.js')));
 const { chooserButtons, kindOf, strikeChoices, payFor, optionWhy } = await import(pathToFileURL(join(tmp, 'classes.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
@@ -839,4 +840,28 @@ test('Explore: a hurt leader\'s healing stays among the first four rows, ahead o
   assert.ok(rows.some((r) => r.id === 'formation'), 'the fighter leads');
   const heal = rows.find((r) => r.id === 'heal:secondWind' || r.id.startsWith('heal:'));
   assert.ok(heal && heal.grid, `healing is on the grid: ${ids(rows)}`);
+});
+
+// ---------- A friend is down: Stabilize in the Heal group (#781) ----------
+test('Heal lists a Stabilize row for each dying ally first, greyed with its reason out of reach, and what it sends the engine takes', () => {
+  const s = hero(fighter()), e = s.entities.hero;
+  s.entities.pal = makeEntity(derive({ ...fighter(), name: 'Pal' }).record, { id: 'pal', kind: 'pc', side: 'party', pos: { q: 4, r: 0, z: 0 }, owner: 'u2' });
+  assert.deepEqual(stabilizeRows(s, e), [], 'nobody is down');
+  s.entities.pal.hp = 0;
+  let rows = stabilizeRows(s, e);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].why, /out of reach/);
+  assert.equal(groupRows(s, e, 'heal')[0].id, 'stabilize:pal', 'first in the group');
+  s.entities.pal.pos = { q: 1, r: 0, z: 0 };
+  rows = stabilizeRows(s, e);
+  assert.equal(rows[0].why, ''); assert.equal(rows[0].chip, '');
+  const r = ok(apply(s, rows[0].send, { role: 'player', userId: 'u1' }));
+  assert.ok(r.events.some((x) => x.type === 'check' && x.stabilize === 'pal'));
+  s.entities.pal.hp = 0; delete s.entities.pal.cond.stable; s.entities.pal.cond.stable = true;
+  assert.deepEqual(stabilizeRows(s, e), [], 'a Stable friend has no row');
+  s.entities.pal.cond = {};
+  inFightAs(s, 'hero');
+  assert.equal(stabilizeRows(s, e)[0].chip, 'Action');
+  s.encounter.budget.action = 0;
+  assert.match(stabilizeRows(s, e)[0].why, /action/i);
 });

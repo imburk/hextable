@@ -352,3 +352,35 @@ test('Hurl Through Hell\'s slot choice is for any caster: a paladin with a use s
   const w = hero(WL).entities.hero; assert.equal(w.pact, true);
   assert.deepEqual(C.slotLevels(w), Object.keys(w.slots).map(Number).filter((l) => w.slots[l] > 0).sort((a, b) => a - b));
 });
+
+// ---------- swaps: Font of Inspiration and Wild Resurgence (#781, DEBT W41) ----------
+const SW = (cls, subclass) => ({ name: 'Sw', class: cls, level: 5, subclass, abilities: { str: 10, dex: 12, con: 14, int: 10, wis: 16, cha: 16 }, skills: cls === 'druid' ? ['nature', 'perception'] : ['arcana', 'history', 'persuasion'], choices: {}, spells: [] });
+test('a feature with `swap` has its own chooser, a row each, greyed with the reason when no swap can be made', () => {
+  const s = hero(SW('druid', 'land')), e = s.entities.hero, f = feat(s, 'wild-resurgence');
+  assert.equal(C.kindOf(f), 'swap');
+  const row = rowsOf(s)['wild-resurgence'];
+  assert.ok(row, 'Wild Resurgence is listed');
+  // a druid with Wild Shape uses left: the slot-for-shape swap is refused (onlyEmpty), shape-for-slot is open
+  assert.match(C.swapWhy(s, e, f, f.swap[0]), /still has uses of Wild Shape/);
+  assert.equal(C.swapWhy(s, e, f, f.swap[1]), '');
+  assert.equal(row.why, '');
+  e.uses['wild-shape'] = 0;
+  assert.equal(C.swapWhy(s, e, f, f.swap[0]), '');
+  assert.match(C.swapWhy(s, e, f, f.swap[1]), /no use of Wild Shape to give up/);
+  e.uses['wild-resurgence'] = 0;
+  assert.match(C.swapWhy(s, e, f, f.swap[1]), /no uses of Wild Resurgence left/);
+  e.slots = {}; assert.match(C.swapWhy(s, e, f, f.swap[0]), /no spell slot to give up/);
+  assert.match(rowsOf(s)['wild-resurgence'].why, /no spell slot|no uses/);
+});
+test('what the swap chooser sends is what the engine takes, and a bard has the row too', () => {
+  const s = hero(SW('druid', 'land')), e = s.entities.hero, f = feat(s, 'wild-resurgence');
+  e.uses['wild-shape'] = 0;
+  const lv = C.slotLevels(e)[0], before = e.slots[lv];
+  ok(apply(s, { type: 'feature', actor: 'hero', feature: 'wild-resurgence', swap: 'slot-for-shape', slot: lv }, DM));
+  assert.equal(e.uses['wild-shape'], 1); assert.equal(e.slots[lv], before - 1);
+  const b = hero(SW('bard', 'lore')), be = b.entities.hero;
+  assert.ok(rowsOf(b)['font-of-inspiration'], 'Font of Inspiration is listed');
+  assert.match(C.swapWhy(b, be, feat(b, 'font-of-inspiration'), feat(b, 'font-of-inspiration').swap[0]), /has all its uses of Bardic Inspiration/);
+  be.uses['bardic-inspiration'] = 0;
+  assert.equal(C.swapWhy(b, be, feat(b, 'font-of-inspiration'), feat(b, 'font-of-inspiration').swap[0]), '');
+});
