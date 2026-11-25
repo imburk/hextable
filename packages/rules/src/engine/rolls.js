@@ -366,6 +366,18 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   return true;
 }
 
+// The `eachTurn` step (Heroism, Regenerate; effects.js `turnSteps`): a part on the lasting effect that runs the step's list on the creature at the start of
+// each of its turns, with the numbers this cast had (its name, spell and spellcasting modifier; not its DC, which no step in the list uses). The steps are run
+// without the effect's id, so Temporary Hit Points they give are the creature's own and last as the SRD says, after the spell ends. False when there is
+// no lasting effect to hang it on (an instant spell's bound effect ends only by its own parts), and the step is handed to the DM.
+export function eachTurn(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead) return false;
+  fx.parts.push({ target: t.id, turn: { steps: structuredClone(step.eachTurn), src: { name: f.src.name, ...(f.src.healMod !== undefined ? { healMod: f.src.healMod } : {}), ...(f.src.spell ? { spell: f.src.spell } : {}) } } });
+  void ev;
+  return true;
+}
+
 // The `imbue` step (imbue.js; docs/specs/on-hit.md, Decision 8): a part on the lasting effect, naming the weapon the cast or the use named (`src.weapon`, the key
 // of one of the holder's weapon records). An earlier imbue of the same spell or feature by the same creature ends ("ends if cast again", "or until you use this
 // feature again"). Returns false when there is nothing to hang it on or no weapon, and the step is handed to the DM.

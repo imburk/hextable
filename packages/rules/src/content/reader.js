@@ -85,7 +85,7 @@ export const HOOK_WORDS = {
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
-  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points',
+  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition',
 };
 // What a modifier does to that thing. `v` is the value in words, `h` the hook's noun.
 export const OP_WORDS = {
@@ -140,7 +140,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
-export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero'];
+export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition'];
 export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spell.attack', 'opportunity'];
 // Hooks nothing calls `modifiers()` for: a trait's modifier there changes nothing (`hp.max` is applied by the step that puts it on, whatever its `when` says).
 export const UNREAD_HOOKS = ['hp.max', 'carry'];
@@ -269,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
 
@@ -818,7 +818,7 @@ class Reading {
     S.call(this, { st, at, depth, who, Who, say, o });
   }
   branchOk(kind, b) {
-    return (b === 'onHit' || b === 'onMiss') ? kind === 'attack' : (b === 'onFail' || b === 'onSuccess') ? kind === 'save' : b === 'blocked' ? kind === 'teleport' : kind === 'damage';
+    return (b === 'onHit' || b === 'onMiss') ? kind === 'attack' : (b === 'onFail' || b === 'onSuccess') ? kind === 'save' : b === 'blocked' ? kind === 'teleport' : b === 'eachTurn' ? kind === 'eachTurn' : kind === 'damage';
   }
   // A step's `when` (effects.js exec): every tag must hold, or the step is skipped; one the engine cannot judge hands the step to the DM.
   // What a step can judge is JUDGED_STEP, and below an attack's `onHit` or `onMiss` also Advantage and Disadvantage (a test plays each).
@@ -990,7 +990,12 @@ export const STEP_SENTENCES = {
     const th = this.amt(st.tempHp, `${at}.tempHp`);
     if (th === null) this.bad(`Step ${at}: the Temporary Hit Points are not dice.`); else if (isDice(st.tempHp)) this.num(`${at}.tempHp`, st.tempHp, 'dice');
     const least = isInt(st.atLeast) ? (this.num(`${at}.atLeast`, st.atLeast, 'Temporary Hit Points'), `, at least ${st.atLeast}`) : '';
-    say(`${Who} gains ${th ?? '(unreadable dice)'}${this.plusMod(st)}${st.addLevel === true && this.sub ? ' plus the class level' : ''}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}; they replace what it has only if they are more${this.fx ? ', and they vanish when the spell ends' : ''}.`);
+    if (st.tempHp === '+0' && st.addMod === true && !this.mon && !this.itm && !this.obj) {
+      // Heroism: equal to the modifier, with no dice of its own.
+      say(`${Who} gains Temporary Hit Points equal to the caster's spellcasting ability modifier (the step has no dice and adds +0 of its own)${least}; they replace what it has only if they are more${this.fx && !this.inTurn ? ', and they vanish when the spell ends' : ''}.`);
+      return;
+    }
+    say(`${Who} gains ${th ?? '(unreadable dice)'}${this.plusMod(st)}${st.addLevel === true && this.sub ? ' plus the class level' : ''}${st.addMod === true && !this.mon && !this.itm && !this.obj ? ' plus the caster\'s spellcasting ability modifier' : ''}${st.addMod === true && this.obj ? ', plus a modifier a thing on the map does not have' : ''} Temporary Hit Points${least}${st.addMod === true && this.mon ? ', plus a modifier the engine does not have here' : ''}${st.addMod === true && this.itm ? ', plus 0: an item\'s own steps have no spellcasting modifier to add' : ''}; they replace what it has only if they are more${this.fx && !this.inTurn ? ', and they vanish when the spell ends' : ''}.`);
     if (this.mon && st.addMod === true) this.noMod(at);
     if (this.obj && st.addMod === true) this.noObjMod(at, 'Temporary Hit Points');
   },
@@ -1123,6 +1128,19 @@ export const STEP_SENTENCES = {
     this.line('Each spell ends whole, on every creature it is on. It is on the creature if it put a condition, a changed number, a light, Temporary Hit Points or a form on it, or made it, or if it was aimed at the creature and is one the DM applies. What is no spell (a feature, a creature\'s own action) is left, and so are spells on no creature (a zone, changed ground): the DM ends those. Where the engine does not know the spellcasting ability of the one dispelling, it hands that check to the DM.', depth + 1);
     return this.dm(`Step ${at}: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.`);
   },
+  // engine/rolls.js `eachTurn`, effects.js `turnSteps`.
+  eachTurn({ st, at, depth, who, say }) {
+    if (!Array.isArray(st.eachTurn) || !st.eachTurn.length || st.eachTurn.some((x) => !isObj(x) || !['heal', 'tempHp', 'manual'].includes(STEPS.find((k) => k in x)))) this.bad(`Step ${at}: an eachTurn step lists heal, tempHp or manual steps.`);
+    say(`At the start of each of its turns in a fight, for as long as the spell lasts, the engine runs these steps on ${who}, with the numbers of this casting:`);
+    const was = this.inTurn;
+    this.inTurn = true;
+    try { this.steps(st.eachTurn, `${at}.eachTurn`, depth + 1, this.it()); } finally { this.inTurn = was; }
+    if (!this.fx || this.fx === 'bound' || this.obj || this.itm || this.mon) {
+      this.line('The spell does not last, so the engine has nothing to hang this on: the DM applies it on each turn.', depth + 1);
+      return this.dm(`Step ${at}: what it does at the start of each turn, since the spell does not last.`);
+    }
+    this.line('A creature that is down or dying gets them before its Death Saving Throw. Temporary Hit Points they give belong to the creature, and stay after the spell ends. Outside a fight there are no turns, so the engine runs nothing then.', depth + 1);
+  },
   // engine/rolls.js `revive`.
   revive({ st, at, depth, Who, say }) {
     if (isInt(st.revive)) this.num(`${at}.revive`, st.revive, 'Hit Point'); else this.bad(`Step ${at}: the revive step has no whole number of Hit Points.`);
@@ -1168,6 +1186,9 @@ function modPhrase(m, at) {
   if (hook === 'hp.zero' && !(op === 'min' && m.value === 1)) { this.bad(`${at}: a modifier on hp.zero is { on: "hp.zero", op: "min", value: 1, uses: 1 }.`); return 'a change at 0 Hit Points the reader cannot read'; }
   if (hook === 'hp.zero') this.num(`${at}.value`, 1, 'Hit Point');
   if (hook === 'hp.zero') return 'to keep 1 Hit Point the first time damage would take it to 0 Hit Points, however large the damage (and a `kill` step does nothing to it instead)';
+  // Heroism (modifiers.js `immuneTo`, `sources`): immunity to one condition for as long as the effect lasts.
+  if (hook === 'condition' && !(op === 'immune' && isObj(m.scope) && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition))) { this.bad(`${at}: a modifier on condition is { on: "condition", op: "immune", scope: { condition } }.`); return 'an immunity the reader cannot read'; }
+  if (hook === 'condition') return `immunity to the ${cond(m.scope.condition)} condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off)`;
   if (op === 'crit') return `${OP_WORDS.crit('', HOOK_WORDS[hook])}`;
   // Mage Armor: a base Armor Class of so much plus an ability modifier (engine/rolls.js `acOf`, `modifier`).
   if (op === 'baseAc') {

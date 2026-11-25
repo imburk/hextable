@@ -170,6 +170,28 @@ Not checked against any rulebook.
 DM: Step effects.0: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-heroic-vigor
+"Heroic Vigor" (level 2 enchantment, touch, action, 1 minute, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: healing and utility.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+One creature the caster touches gets immunity to the Frightened condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off).
+  It lasts as long as the spell.
+At the start of each of its turns in a fight, for as long as the spell lasts, the engine runs these steps on it, with the numbers of this casting:
+  It gains Temporary Hit Points equal to the caster's spellcasting ability modifier (the step has no dice and adds +0 of its own); they replace what it has only if they are more.
+  It regains 1d4+1 Hit Points.
+  The engine does not do this; the DM does this: "Its wounds close a little more."
+  A creature that is down or dying gets them before its Death Saving Throw. Temporary Hit Points they give belong to the creature, and stay after the spell ends. Outside a fight there are no turns, so the engine runs nothing then.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: "Its wounds close a little more."
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
