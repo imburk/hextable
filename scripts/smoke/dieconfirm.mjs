@@ -1,9 +1,11 @@
-import { sleep, scenario, wait, state, open, playSolo, settle, onCanvas, closePanels, panelTab, chip, placeBeside, tapDie } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, settle, onCanvas, closePanels, panelTab, chip, placeBeside, tapDie, waitShown, choiceView } from './lib.mjs';
 
 // ---------- the d20 confirms (#750, docs/specs/one-token-menu.md "Amendment: the d20 confirms") ----------
 // A cleric with Bless (up to three creatures) and two friends beside her. Armed, the die's ring is dashed and pulses (steady under reduced motion), its spoken name is
 // "Confirm Bless", the aim bar has no Go button, and a note at the top says "No target yet: tap one, then the die." (the die does nothing). A tap on a friend and another
 // choose two ("2 of 3 targets", nothing sent); a double-tap on one takes it off ("1 of 3 targets"); the die (a tap on a phone, Enter on a computer) sends the cast with what is chosen.
+// Part 2 (#750): a wizard with Magic Missile and slots 0 / 2 / 1 arms it; there is no menu in the aim bar, the sheet opens at the Cast section with the levels at its top: the ones that can be used are
+// highlighted (the chosen one filled and ticked), the spent one is greyed and says why in words; a tap on it only says so; a tap on another level moves the choice.
 async function run1(browser, url, label, opts) {
   await scenario(label, async (run) => {
     const touch = !!opts.hasTouch;
@@ -69,6 +71,7 @@ async function run1(browser, url, label, opts) {
       });
 
       await run.do('two taps choose two ("2 of 3 targets") and send nothing; a double-tap takes one off ("1 of 3 targets")', async () => {
+        await closePanels(page);                                   // Bless has a level to choose (a higher slot adds a target), so the sheet stayed open at its choices (#750 part 2): the map is next
         await tapOn(await pointOf(fen)); await wait(page, () => window.hextable.mode.picked?.length === 1);
         await tapOn(await pointOf(rae)); await wait(page, () => window.hextable.mode.picked?.length === 2);
         const n = await casts(), v = await view();
@@ -99,6 +102,41 @@ async function run1(browser, url, label, opts) {
         const v = await view();
         if (v.label !== 'Menu' || v.note !== '') throw new Error(`after the confirm: ${JSON.stringify(v)}`);
         await shot('3-cast');
+      });
+
+      await run.do('choices on the sheet: Magic Missile armed with slots 0 / 2 / 1 opens the Cast section at its choices, usable levels highlighted, the spent one greyed with its reason', async () => {
+        await page.evaluate(async () => {
+          const D = await import('./shared/derive.js'), h = window.hextable;
+          const rec = D.derive({ name: 'Ivo', class: 'wizard', level: 3, abilities: { str: 8, dex: 14, con: 14, int: 17, wis: 12, cha: 10 }, skills: ['arcana', 'history'], spells: ['magic-missile'] }).record;
+          rec.slots = { 1: 0, 2: 2, 3: 1 };
+          h.act({ type: 'addCharacter', record: rec, at: { q: -5, r: 3, z: 0 } });
+        });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Ivo'));
+        await closePanels(page);
+        await chip(page, 'Ivo');
+        await panelTab(page, 'spells');
+        await page.click('#ap-spells [data-row="spell:magic-missile"]');
+        await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'magic-missile');
+        await waitShown(page, '#ap-choices');
+        const v = await choiceView(page, 'slot');
+        if (v.old || !v.inDrawer || v.pane !== 'ap-spells' || v.first !== 'ap-choices' || v.all.map((o) => o.v).join() !== '1,2,3' || v.usable.join() !== '2,3' || v.on !== '2') throw new Error(`the levels on the sheet: ${JSON.stringify(v)}`);
+        const spent = v.all[0];
+        if (!spent.off || spent.why !== 'No level 1 spell slot left.' || !spent.label.includes(spent.why)) throw new Error(`the spent level says: ${JSON.stringify(spent)}`);
+        if (touch && v.minH < 44) throw new Error(`the choices are ${v.minH}px high on touch`);
+        const look = await page.evaluate(() => [...document.querySelectorAll('#ap-choices [data-ch="slot"]')].map((b) => { const c = getComputedStyle(b); return { v: b.dataset.v, style: c.borderTopStyle, w: c.borderTopWidth, bg: c.backgroundColor }; }));
+        const [off, on, use] = look;
+        if (off.style !== 'dashed' || use.style !== 'solid' || use.w !== '2px' || on.bg === use.bg || on.bg === off.bg) throw new Error(`highlighted, chosen and greyed look the same: ${JSON.stringify(look)}`);
+        const die = await page.evaluate(() => { const el = document.getElementById('btn-menu'), r = el.getBoundingClientRect(), top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return { ok: top === el || el.contains(top), r: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] }; });
+        if (!die.ok) throw new Error(`the sheet covers the die: ${JSON.stringify(die)}`);
+        await shot('4-choices');
+        await page.click('#ap-choices [data-ch="slot"][data-v="1"]', { force: true });      // aria-disabled: a tap on it is allowed and only says why
+        await wait(page, () => /No level 1 spell slot left/.test(document.getElementById('toast').textContent));
+        if ((await choiceView(page, 'slot')).on !== '2') throw new Error('a tap on a greyed level changed the choice');
+        await page.click('#ap-choices [data-ch="slot"][data-v="3"]');
+        await wait(page, () => window.hextable.mode.slot === 3 && /up to 5/.test(document.getElementById('hint-text').textContent));
+        const w = await choiceView(page, 'slot');
+        if (w.on !== '3' || w.usable.join() !== '2,3' || !(await page.evaluate(() => !document.getElementById('drawer').hidden))) throw new Error(`level 3 chosen: ${JSON.stringify(w)}`);
+        await shot('5-level-3');
       });
     } finally { await ctx.close(); }
   });
