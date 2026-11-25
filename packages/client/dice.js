@@ -325,7 +325,12 @@ export function createDice(canvas, prefs, camera = () => ({ yaw: 0, pitch: 0.95 
   function frame(now) {
     raf = 0;
     if (!current) return;
-    const { w, h } = fit(), c = current, t = (now - c.start) / 1000, T = c.times;
+    // `now` is the frame's own timestamp and can precede `start` (begin() ran later in the same frame, or the page was slow): a throw that has not started has t = 0, never less.
+    // A frame that throws ends the throw: left standing, the promise of play() never resolved and every update behind it waited for good.
+    try { return draw(now); } catch (err) { setTimeout(() => { throw err; }); return next(); }
+  }
+  function draw(now) {
+    const { w, h } = fit(), c = current, t = Math.max(0, now - c.start) / 1000, T = c.times;
     ctx.clearRect(0, 0, w, h);
     const end = T.fly + T.hold + T.fade;
     if (t >= end) return next();
