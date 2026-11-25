@@ -1866,7 +1866,7 @@ export const FEAT_TIER_WORDS = {
   manual: 'Tier: manual. The DM applies this feat; the engine only shows the description.',
 };
 // The keys the item linter refuses in an item's `grants` (a class's own: lintItem). A test holds this equal to the linter's refusals.
-export const ITEM_NO_GRANTS = ['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips',
+export const ITEM_NO_GRANTS = ['action', 'reaction', 'extraAttack', 'sneak', 'martialArts', 'freeCast', 'metamagic', 'metamagicMax', 'exchange', 'swap', 'restore', 'recover', 'cure', 'skills', 'expertise', 'cantrips',
   'spellLists', 'spells', 'proficiency', 'hp', 'formOf', 'triggers'];
 // Where the engine looks for a grant, apart from what a feature does for a class: features of a class only (derive.js reads them through `classFeatures`, or by the class a feature belongs to,
 // and a feat's or an item's feature belongs to none), so a feat or an item that holds the key changes nothing. A test runs derive to hold this to the engine.
@@ -1956,6 +1956,15 @@ export const GRANT_WORDS = {
     for (const [l, x] of Object.entries(v.costs)) if (isInt(x)) this.num(`${at}.costs.${l}`, x, 'points');
     for (const [l, x] of Object.entries(v.minLevel)) if (isInt(x)) this.num(`${at}.minLevel.${l}`, x, 'class level');
     this.line(`Lets the holder trade the feature's points for spell slots and the other way round. A slot of level ${list(Object.keys(v.costs).slice(0, 9))} costs ${list(Object.values(v.costs).slice(0, 9).map(String))} points, and it can be made from the class level ${list(Object.values(v.minLevel).slice(0, 9).map(String))}.`, 1);
+  },
+  swap(v, at) {
+    if (!Array.isArray(v) || !v.length) return this.bad(`${at} is not a list of swaps.`);
+    const side = (x, give) => (!isObj(x) ? 'something unreadable' : x.slot !== undefined ? (give ? 'a spell slot of its choosing' : `a level ${isInt(x.slot) ? x.slot : '?'} spell slot`) : `${isInt(x.n) ? x.n : 1} use${isInt(x.n) && x.n > 1 ? 's' : ''} of ${shown(x.resource)}`);
+    for (const [i, w] of v.slice(0, 4).entries()) {
+      if (!isObj(w)) { this.bad(`${at}[${i}] is not { id, give, get }.`); continue; }
+      const when = [w.onlyEmpty === true ? 'only when it has none of the pool left' : '', w.per === 'turn' ? 'once on each of the holder\'s turns' : w.per === 'use' ? 'for one use of this feature' : ''].filter(Boolean);
+      this.line(`With no action, the holder gives ${side(w.give, true)} for ${side(w.get, false)}${when.length ? `, ${list(when)}` : ''}.${isObj(w.give) && isObj(w.get) && (w.give.resource || w.get.resource) ? ` ${featureNote(w.give.resource ?? w.get.resource)}` : ''}`, 1);
+    }
   },
   restore(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not { of, max }.`);
@@ -2745,7 +2754,7 @@ class SubclassReading extends GrantReading {
     const g = f.grants;
     if (g !== undefined) this.sGrants(g, `${at}.grants`);
     // A feature with uses and no action of its own is spent by hand (engine/features.js, `feature`): its text goes to the DM.
-    if (isObj(f.uses) && !(isObj(g) && ['action', 'freeCast', 'initiative', 'exchange'].some((k) => g[k] !== undefined))) {
+    if (isObj(f.uses) && !(isObj(g) && ['action', 'freeCast', 'initiative', 'exchange', 'swap'].some((k) => g[k] !== undefined))) {
       this.line('Using it spends one use. It has no action of its own, so the engine sends its text to the DM, who applies it.', 1);
       this.dm(`Applying ${name} when it is used.`);
     }

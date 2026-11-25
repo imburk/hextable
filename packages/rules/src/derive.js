@@ -582,7 +582,7 @@ export function derive(sheet, opts = {}) {
     }
     if (g.recover) out.recover = { ...g.recover };
     if (g.freeCast) out.freeCast = structuredClone(g.freeCast);
-    for (const k of ['metamagic', 'metamagicMax', 'exchange']) if (g[k]) out[k] = structuredClone(g[k]);
+    for (const k of ['metamagic', 'metamagicMax', 'exchange', 'swap']) if (g[k]) out[k] = structuredClone(g[k]);
     if (g.restore) out.restore = { of: g.restore.of, max: amount(g.restore.max, c, level, abil) };
     // An aura (Aura of Protection): what it gives its holder and allies within range (modifiers.js, aurasOn).
     if (g.aura) out.aura = { range: amount(g.aura.range, c, level, abil), ...(g.aura.modifiers ? { modifiers: bake(g.aura.modifiers) } : {}), ...(g.aura.immune ? { immune: [...g.aura.immune] } : {}) };
