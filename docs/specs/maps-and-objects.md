@@ -640,3 +640,67 @@ Where the build settled a detail the design left open, or changed it.
 
 - [Universal VTT (Dungeondraft guide)](https://dungeondraft-encyclopaedia.gitbook.io/guide/final-steps/exporting-your-map/universal-vtt)
 - [Universal Virtual Tabletop (UVTT) Support (Roll20 Help Center)](https://help.roll20.net/hc/en-us/articles/41643201127831-Universal-Virtual-Tabletop-UVTT-Support)
+
+## Amendment: solid ground, carving, thick walls and secret passages (owner's request, 24 Nov)
+
+1. **The ask.** The owner wants discovery built into a map:
+   1. secret rooms, found in play;
+   2. places where a wall is just thick, not a single line;
+   3. places where elevation is just terrain, such as a hill or a ledge;
+   4. ground painted as solid and then hollowed out for caves and tunnels;
+   5. thick castle walls that can hide a secret passage or a stairway down.
+
+2. **What already covers it.**
+   1. Regions (decision 7) keep a room out of a player's browser until a party
+      member enters it or stands beside it. A secret room is a region that is
+      not yet revealed.
+   2. A secret door is sent to players as plain wall until a Search meets its
+      DC (decision 6, and M5 in the build notes). Its object has `find.dc`.
+   3. Solid hexes (decision 4) already cover rock and pillars, and the spec
+      says a cave is mostly solid hexes with open ones carved out.
+   4. Levels and the ways between them (decision 2, and the M6 build notes on
+      climbing, ladders and falling) cover a ledge, a stair, a ladder and a drop.
+
+3. **What is new, editor first.** The editor (M8, with Trace from M10) gets:
+   1. **A Solid brush.** It fills hexes with solid rock up to a height, so
+      terrain that is only elevation is painted as solid ground with a top.
+   2. **A Carve brush.** It hollows solid hexes back to floor at a height, for
+      caves, tunnels and rooms cut into rock.
+   3. **A thick wall is a band of solid hexes**, not a thin wall line. Its
+      thickness is the width of the band. Thin walls and doors stay as segments
+      (decision 4).
+   4. **A secret passage is a hidden region carved inside solid**, with a
+      secret door at each end. A stairway down is a way to the level below,
+      placed inside the passage (decision 2).
+   5. **Players see plain solid or plain wall** until a door is found. Finding
+      a door reveals the door and the region behind it in the usual way
+      (decisions 6 and 7).
+
+4. **Rules that hold.**
+   1. Everything hidden is withheld from player views by the existing rules in
+      "What players are sent". Each new hidden thing (a hidden region inside
+      solid, a passage's stairway) lands with a `twin()` test.
+   2. No code is written for a particular room. A secret passage is a region,
+      two doors and carved hexes; the engine does not need to know it is a
+      passage.
+   3. A solid or carved hex is map data and is checked by the map linter in
+      `map.js`.
+   4. A carved hex that is hidden must belong to a region. Hexes in no region
+      are always sent (decision 7), so a hidden passage outside a region would
+      show as an open gap in the rock.
+   5. If the stored shape changes, the map format version goes up and `map.js`
+      gets a migration. The format is `format: 1` today.
+
+5. **Open points for the build.**
+   1. Does solid have a height for each hex, or does it fill the whole level up
+      to one height?
+   2. How is carving under an upper level drawn: does the upper floor hide the
+      cut, or is the opening shown?
+   3. How is a hidden region inside solid drawn? Proposed: the DM sees an
+      outline, and players see nothing.
+   4. Square grids as well as hexes. The brushes should work through the
+      geometry interface in `grid.js`, so they work on squares too, with the
+      same cost as walls on squares (decision 4).
+
+6. **Status.** A design note, not built. It waits behind the current rules
+   work.
