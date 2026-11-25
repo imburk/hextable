@@ -44,6 +44,7 @@ export const PARTY_FIELDS = {
   hitChoices: 'withheld',      // standing instructions for choices after a hit: its controller's and the DM's, sent with the reactions (`viewReactions`)
   reactions: 'withheld',       // standing instructions are their controller's and the DM's (`viewReactions`)
   stealthNoted: 'withheld',    // the DM told once of armour that hinders Stealth: bookkeeping that no player reads
+  swapped: 'withheld',         // the turn a Wild Resurgence swap was last made on (once on each of its creature's turns): bookkeeping that no player reads
   diedAt: 'withheld',          // the game clock (minutes) when it died, kept for Revivify's "within the last minute": the engine judges it, no player is sent when anyone died
   usesAway: 'withheld',        // uses spent of a subclass whose pack is not loaded: bookkeeping until the pack is
 };
