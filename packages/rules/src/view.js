@@ -968,6 +968,9 @@ function viewEventsOf(events, state, viewer) {
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));
         break;
+      case 'declined':                                 // the DM turned an offered character down (engine/characters.js, decline): the offering player is told, with the note; nobody else
+        if (typeof viewer?.userId === 'string' && ev.user === viewer.userId) out.push(pick(ev, ['type', 'user', 'note']));
+        break;
       case 'scoresRolled':                             // ability scores rolled (scores.js): the numbers are the roller's and the DM's; the others are told only that it happened
       case 'scoreRerolled':
         if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ev.type === 'scoresRolled' ? ['type', 'by', 'sets', 'at'] : ['type', 'by', 'index', 'from', 'to', 'stands', 'total', 'at'])));
