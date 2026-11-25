@@ -1063,7 +1063,7 @@ died of old age, nor does it restore any missing body parts." Components: V, S, 
 - **The shape.** `diedAt` is optional and is read only on a dead creature, so the state version stays 31 and there is no migration: a body
   from a game saved before it was kept has no time of death, and none could be made up. Such a body is not revived: the cast is made and paid
   for, and the DM is told (`manual`: "the engine does not know when it died") and brings it back by hand (`setHp`). A body the DM's `setHp`
-  raised keeps a stale `diedAt`, never read for a creature that is up and overwritten by its next death.
+  raised has `diedAt` dropped there (`setHp` deletes it).
 - **Aimed at the dead: `target.creature.dead: true`**, for a spell only (the linter refuses it in a creature's action, in the reader too).
   A spell without it refuses a dead target exactly as before ("... is dead."). With it the spell takes a body: the cast refuses, before
   anything is spent and changing nothing, a creature that is up ("... has not" died), a body that vanished, one nothing is left of
@@ -1078,7 +1078,9 @@ died of old age, nor does it restore any missing body parts." Components: V, S, 
     Saving Throw counts start again and Unconscious, Stable (and Prone outside a fight) end as for any healing, and a `heal` event and a `note`
     ("Revivify: Brenna returns to life") are written. In a fight it is in the order still and takes its turn.
   - died longer ago: an **invalid target** by the SRD's rule (a slot spent, nothing happens): a `note` says it died more than a minute ago.
-    The cast is not refused, because that would tell a player when a creature died, which no player is sent (`diedAt` is withheld).
+    The cast is not refused, because a refusal would tell a player when a creature died, and no player is sent `diedAt` (it is withheld). The note
+    itself does tell the caster that a body the party sees died more than a minute ago: a deliberate reveal about a body the party sees, not about
+    a hidden creature (the twin test plays it).
 - **What goes to the DM.** On every revival one `manual` event (`partial`) says that the engine cannot tell whether the creature died of old
   age (which the spell cannot undo) or lacks body parts (which it does not restore), and that it does not take the diamond worth 300 GP or more
   the spell consumes (the engine charges no component for any spell); the DM undoes the cast if the revival should not have worked, and takes the

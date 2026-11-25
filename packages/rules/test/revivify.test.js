@@ -238,3 +238,12 @@ test("the arena: a body in a fight comes back into it, and the fight is not over
   for (let i = 0; i < 12; i++) { seen.add(current(s)); ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); }
   assert.ok(seen.has("fighter"));
 });
+
+test("the DM's setHp that brings a body above 0 drops its time of death", () => {
+  const s = table();
+  slain(s, "fighter");
+  assert.ok(Number.isFinite(s.entities.fighter.diedAt));
+  ok(apply(s, { type: "setHp", actor: "fighter", hp: 5 }, DM));
+  assert.equal(s.entities.fighter.dead, false);
+  assert.ok(!("diedAt" in s.entities.fighter));
+});
