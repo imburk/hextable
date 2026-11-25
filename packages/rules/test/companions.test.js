@@ -357,7 +357,7 @@ test("nothing in the rules reads `.owner` to decide control, but ownerOf", () =>
     "engine/dm.js": 6,           // claim and release: who sits at a player's character
     "engine/companions.js": 1,   // a creature with a player of its own is not made a companion
     "engine/sheets.js": 1,       // a character remade keeps its player
-    "engine/characters.js": 1,   // likewise
+    "engine/characters.js": 2,   // likewise; and admit gives the character to its player, as claim does
     "history.js": 1,             // a rewind keeps who holds which character
   };
   for (const f of files) {

@@ -10,7 +10,7 @@ import { partyView, sightRule, unknown } from '../vision.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, shieldEntry, validate } from '../derive.js';
-import { able, control, current, ent, fail, hostile, hpOpts, inFight, living, need, RuleError, up, walled } from './shared.js';
+import { able, control, current, ent, fail, hostile, hpOpts, inFight, living, need, ownerOf, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { cure } from './rolls.js';
 import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing } from './sheets.js';
@@ -82,6 +82,24 @@ function keepRolls(e, sheet) {
 // The sheet a client sent, with its rolls cut to the classes and levels it has (an edit that lowers a level or changes a class); values are never changed.
 const trimmed = (sheet) => { try { return sheet && typeof sheet === 'object' && !Array.isArray(sheet) && sheet.hpRolls !== undefined ? trimRolls(sheet, classesOf(sheet)) : sheet; } catch { return sheet; } };
 const hpEvent = (type, e, ctx, done, con, more = {}) => ({ type, id: e.id, name: e.name, by: ctx.userId ?? 'dm', con, levels: done, total: done.reduce((n, x) => n + x.hp, 0), ...more });
+
+// ---------- offering a character to the table, and the DM's answer (docs/specs/portable-characters.md, A4, A5, Decision 5) ----------
+// A player at a table offers a character sheet; it waits in `state.offers` (a list of `{ user, sheet }`, one for each player, the DM's alone: view-fields.js,
+// STATE_FIELDS) until the DM admits it or declines it. Nothing is admitted by itself, whatever the table rule `characters` says: the rule says whether offers
+// are taken at all (`new`: no) and whether the DM must tick a character whose history is not vouched for (`own-trusted`, the default). The engine can vouch for
+// no history (signed blocks are the server's: P1, P3, not built), so every offered character counts as self-reported and `own-trusted` asks for the tick.
+const OFFERS_MOST = 12;                                                  // offers held at once: one for each player, as many as characters a table holds
+const NOTE_MOST = 80;                                                    // letters of the DM's note with a refusal (Decision 5, flow 5)
+export const charactersRule = (s) => (isRec(s.settings) && ['new', 'own', 'own-trusted'].includes(s.settings.characters) ? s.settings.characters : 'own-trusted');
+// The level range the DM set (`{ min, max }`, 1 to 20), or null while there is none. A single number counts as `min = max`.
+export const levelRange = (v) => {
+  const n = (x) => Number.isInteger(x) && x >= 1 && x <= 20;
+  if (n(v)) return { min: v, max: v };
+  return isRec(v) && Object.keys(v).length === 2 && n(v.min) && n(v.max) && v.min <= v.max ? { min: v.min, max: v.max } : null;
+};
+// The offers as a clean list (a list that is not one, or an entry that is not whole, is read as nothing; never thrown on).
+const offersOf = (s) => (Array.isArray(s.offers) ? s.offers.filter((o) => isRec(o) && typeof o.user === 'string' && o.user && isRec(o.sheet)) : []);
+const hasCharacter = (s, user) => Object.values(s.entities).some((e) => e.kind === 'pc' && ownerOf(s, e) === user);
 
 export const handlers = {
   // Roll the six ability scores from the game's seed (docs/specs/ability-scores.md): four d6 each, the lowest die set aside. { type: 'rollAbilityScores' }
@@ -452,6 +470,59 @@ export const handlers = {
     problems.length === 0 || fail(problems[0]);
     e.sheet = sheet;
     ev.push({ type: 'attuning', id: e.id, ...(sheet.attuning ? { key: sheet.attuning.item, item: itemName(CONTENT.items[sheet.items.find((y) => y.id === sheet.attuning.item).item], sheet.items.find((y) => y.id === sheet.attuning.item)), ...(sheet.attuning.end ? { end: true } : {}) } : { cleared: true }) });
+  },
+  // A player offers a character: { type: 'offer', sheet }. The sheet must be one `setSheet` would play; it waits for the DM (`admit` or `decline`). Offering
+  // again replaces the player's earlier offer. Refused at a table whose `characters` rule is `new`, for the DM (who has `setSheet`), and for a player who
+  // already has a character (`claim` allows one). Only the DM is told of it (view.js: `offered` is not a type a player is sent).
+  offer(s, a, ctx, ev) {
+    ctx.role === 'player' && typeof ctx.userId === 'string' && ctx.userId || fail(ctx.role === 'dm' ? 'The DM adds characters with setSheet.' : 'Join the table first.');
+    charactersRule(s) !== 'new' || fail('This table does not take characters people bring. Ask the DM.');
+    !hasCharacter(s, ctx.userId) || fail('You already have a character.');
+    const sheet = trimmed(a.sheet), problems = validate(sheet);
+    problems.length === 0 || fail(`That character can't be offered. ${problems[0]}`);
+    const list = offersOf(s), had = list.some((o) => o.user === ctx.userId);
+    had || list.length < OFFERS_MOST || fail("The DM can't take an offer right now.");
+    s.offers = [...list.filter((o) => o.user !== ctx.userId), { user: ctx.userId, sheet: structuredClone(sheet) }];
+    const range = levelRange(s.settings.level);
+    ev.push({ type: 'offered', user: ctx.userId, name: sheet.name, level: levelOf(sheet), replaced: had, ...(range ? {} : { held: 'Set a level range before admitting characters.' }) });
+  },
+  // The DM lets an offered character in: { type: 'admit', user, userName?, ack?, at? }, or, as the server composes it where it holds the offer itself,
+  // { type: 'admit', sheet, user, ... }. It does what `setSheet` without an actor does, then gives the character to that player, who then has exactly one.
+  // `ack: true` is the DM's tick that this character's history is not vouched for: `own-trusted` needs it for every offered character at present. Every
+  // check is made before anything changes. A level above the range is refused (a fork is the official server's, Decision 8); one below is let in and the DM told.
+  admit(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can admit a character.');
+    const rule = charactersRule(s);
+    rule !== 'new' || fail('This table is set to new characters only. Change the setting `characters` first.');
+    typeof a.user === 'string' && a.user && a.user.length <= 64 || fail('Admit it for a player.');
+    const offer = offersOf(s).find((o) => o.user === a.user);
+    if (offer && a.sheet !== undefined && JSON.stringify(a.sheet) !== JSON.stringify(offer.sheet)) fail('That is not the character that was offered.');
+    const given = trimmed(offer ? offer.sheet : a.sheet);
+    given !== undefined || fail('Nothing has been offered by that player.');
+    !hasCharacter(s, a.user) || fail('That player already has a character.');
+    const problems = validate(given);
+    problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
+    const range = levelRange(s.settings.level) || fail('Set a level range before admitting characters.');
+    const level = levelOf(given);
+    level <= range.max || fail(`${given.name} is level ${level}, above this adventure's levels ${range.min} to ${range.max}. Raise the range or ask for a lower-level sheet.`);
+    rule === 'own' || a.ack === true || fail(`${given.name}'s history is not vouched for. Tick that you have looked at it to admit the character.`);
+    Object.values(s.entities).filter((e) => e.kind === 'pc').length < 12 || fail('A table holds twelve characters at most.');
+    handlers.setSheet(s, { sheet: given, ...(a.at ? { at: a.at } : {}) }, ctx, ev);
+    const id = ev.findLast((x) => x.type === 'spawned').id, e = s.entities[id];
+    e.owner = a.user; e.ownerName = typeof a.userName === 'string' && a.userName ? a.userName.slice(0, 40) : null;
+    s.offers = offersOf(s).filter((o) => o.user !== a.user);
+    ev.push({ type: 'claimed', id, userName: e.ownerName });
+    ev.push({ type: 'admitted', user: a.user, id, level, ...(level < range.min ? { below: range.min } : {}) });
+    if (level < range.min) ev.push({ type: 'manual', actor: null, name: given.name, partial: true, text: `${given.name} is level ${level}, below this adventure's levels ${range.min} to ${range.max}. It was let in as it is; raise it with levelUp if you want.` });
+  },
+  // The DM turns an offer down: { type: 'decline', user, note? }. The note (80 letters at most) is for that player.
+  decline(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can decline a character.');
+    typeof a.user === 'string' && a.user && offersOf(s).some((o) => o.user === a.user) || fail('Nothing has been offered by that player.');
+    a.note === undefined || typeof a.note === 'string' || fail('The note is a few words.');
+    const note = String(a.note ?? '').trim().slice(0, NOTE_MOST);
+    s.offers = offersOf(s).filter((o) => o.user !== a.user);
+    ev.push({ type: 'declined', user: a.user, ...(note ? { note } : {}) });
   },
 };
 
