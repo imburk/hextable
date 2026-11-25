@@ -47,7 +47,7 @@ async function interfacePass(browser, url, label, opts, how) {
         await page.click('#btn-undo');
         await openTab(page, 'turns'); await closeMenu(page);
         await chip(page, 'Brenna'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet'); await closeMenu(page);
-        await page.evaluate(() => { const S = window.hextable.state, f = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0); window.hextable.act({ type: 'startEncounter', center: f.pos }); });
+        await page.evaluate(async () => { const S = window.hextable.state, f = Object.values(S.entities).find((e) => e.side === 'foe' && e.hp > 0); const { gridOf } = await import('./shared/grid.js'); const G = gridOf(window.hextable.state.map), reach = Math.max(6, 1 + Math.min(...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party' && e.hp > 0 && e.pos).map((e) => G.dist(f.pos, e.pos)))); window.hextable.act({ type: 'startEncounter', center: f.pos, radius: reach }); });   /* wide enough to hold the nearest hero: a fight with none in range is refused (#771) */
         await wait(page, () => !!window.hextable.state.encounter);
         await page.evaluate(() => window.hextable.act({ type: 'endEncounter' }));
         await wait(page, () => window.hextable.state.encounter === null);

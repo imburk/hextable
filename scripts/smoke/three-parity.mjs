@@ -201,7 +201,7 @@ async function threeParity(browser, url, label, opts) {
       });
       await run.do('a fight starts, the arena curtain is drawn, a goblin falls, the fight ends', async () => {
         await closePanels(page);
-        await page.evaluate(() => { const h = window.hextable, f = Object.values(h.state.entities).find((e) => e.side === 'foe' && e.hp > 0); h.act({ type: 'startEncounter', center: f.pos }); });
+        await page.evaluate(async () => { const h = window.hextable, f = Object.values(h.state.entities).find((e) => e.side === 'foe' && e.hp > 0); const { gridOf } = await import('./shared/grid.js'); const G = gridOf(window.hextable.state.map), reach = Math.max(6, 1 + Math.min(...Object.values(window.hextable.state.entities).filter((e) => e.side === 'party' && e.hp > 0 && e.pos).map((e) => G.dist(f.pos, e.pos)))); h.act({ type: 'startEncounter', center: f.pos, radius: reach }); });   /* wide enough to hold the nearest hero: a fight with none in range is refused (#771) */
         await wait(page, () => !!window.hextable.state.encounter);
         await wait(page, () => window.hextable.R.inner.edge.n > 0, null, 5000);
         const id = await page.evaluate(() => { const h = window.hextable, f = Object.values(h.state.entities).find((e) => e.side === 'foe' && e.hp > 0); h.act({ type: 'harm', actor: f.id, amount: 99 }); return f.id; });
