@@ -71,6 +71,9 @@ body.offline #ap-body :is(.ap-row, .ap-bar), body.offline #c-res button, body.of
 #menu-pick[hidden] { display: none; }
 #menu-pick > h3 { margin: 0 0 6px; font-size: 14px; }
 #menu-pick > .note { margin: 6px 0 0; font-size: 13px; }
+#menu-pick > .bring { margin: 8px 0 0; }
+#menu-pick .bring button { min-height: 44px; width: 100%; }
+#menu-pick .bring-text { margin: 6px 0 0; font-size: 13px; }
 #pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 #pick-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
 #pick-list li > span { min-width: 0; display: grid; }

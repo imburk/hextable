@@ -3,7 +3,7 @@
 // the file has no keys and no signed blocks, and nothing here decides a rule. A sheet is the `derive.js` sheet; `validate` says
 // whether the engine would play it, and every file and every stored entry is checked with it before it is used (a file is never trusted).
 // The top half of this module is pure (no page, no storage) so a test can run it; `initMyCharacters` is the part that draws.
-import { validate, classesOf, levelOf } from './shared/derive.js';
+import { validate, classesOf, levelOf, derive, mod } from './shared/derive.js';
 import { scoresLine } from './shared/scores.js';
 import { PREGENS } from './shared/content/index.js';
 import { pack } from './shared/content/srd52/pack.js';
@@ -40,10 +40,27 @@ export function sheetProblems(sheet) {
   const n = levelOf(sheet);
   return n >= LIMITS.levelMin && n <= LIMITS.levelMax ? [] : [`A character here is level ${LIMITS.levelMin} to ${LIMITS.levelMax}.`];
 }
+// The classes alone, "Fighter" or "Fighter / Wizard", for "level 3 Fighter".
+export const classNames = (sheet) => classesOf(sheet).map((k) => k.c?.name ?? '?').join(' / ');
 export const classLine = (sheet) => classesOf(sheet).map((k) => `${k.c?.name ?? '?'} ${k.level}`).join(' / ');
 export const levelLine = (f) => `${classLine(f.sheet)}${f.born.level === levelOf(f.sheet) ? `, created at level ${f.born.level}` : `, created at level ${f.born.level}, now ${levelOf(f.sheet)}`}`;
 
 // A character file for a sheet. `how` is how it came to be; `level` is the level it was created at.
+// A sheet read in plain words, for a DM who is asked to let it in (#757): [label, text] lines, from the sheet and what `derive` says of it. Nothing is decided here.
+export function readSheet(sheet) {
+  const lines = [['Class', classLine(sheet) || '?']];
+  let r = null; try { r = derive(sheet).record; } catch { /* a sheet derive cannot work out is read from what it holds */ }
+  if (sheet.species) lines.push(['Species', String(sheet.species)]);
+  if (sheet.background) lines.push(['Background', String(sheet.background)]);
+  if (r) lines.push(['The numbers', `${r.hp} Hit Points, Armor Class ${r.ac}, Speed ${r.speed} ft`]);
+  const a = r?.abil ?? sheet.abilities;
+  if (a) lines.push(['Ability scores', ['str', 'dex', 'con', 'int', 'wis', 'cha'].map((k) => `${k.toUpperCase()} ${a[k]} (${mod(a[k]) >= 0 ? '+' : ''}${mod(a[k])})`).join(', ')]);
+  const rolled = scoresLine(sheet); if (rolled) lines.push(['How the scores were made', rolled]);
+  for (const [label, v] of [['Skills', sheet.skills], ['Feats', (sheet.feats ?? []).map((f) => f.id ?? f)], ['Weapons', sheet.weapons], ['Spells', sheet.spells]]) if (Array.isArray(v) && v.length) lines.push([label, v.join(', ')]);
+  if (sheet.armour) lines.push(['Armor', `${sheet.armour}${sheet.shield ? ', Shield' : ''}`]);
+  lines.push(['History', 'None. This is a character from the player\'s own device; nothing vouches for how it was made.']);
+  return lines;
+}
 export function makeFile(sheet, { how = 'built', cid = newCid(), level = levelOf(sheet) } = {}) {
   return { format: FORMAT, v: 1, cid, sheet: structuredClone(sheet), born: { level, how, by: 'self' }, blocks: [], edits: [], keys: {}, needs: { packs: [{ id: pack.id, version: pack.version }], homebrew: [] }, parked: [] };
 }
@@ -178,7 +195,7 @@ const readJson = (k) => { try { return JSON.parse(localStorage.getItem(k)); } ca
 // `twoTap(button, armedText, note, go)` is the app's own (a second tap within three seconds). Returns { party(), refresh() }.
 export function initMyCharacters({ twoTap, toast }) {
   let { list, error } = loadList();
-  let slots = [], picks = [], msg = '';
+  let slots = [], picks = [], msg = '', chooser = null;      // `chooser`: set while the player brings a character to a table (#757); each row then offers itself
   let count = STARTER_IDS.length;
   // The party the device remembers (or, with nothing remembered, the usual starters): its size and a pick for every place.
   function loadPicks(remembered) {
@@ -264,8 +281,8 @@ export function initMyCharacters({ twoTap, toast }) {
   };
   function drawManager() {
     const bad = (f) => sheetProblems(f.sheet)[0];
-    const bar = startBar(el, { backId: 'mc-close', titleId: 'mc-title', onBack: () => { panel.hidden = true; $('lobby-mychars').focus?.({ preventScroll: true }); } });
-    bar.show([ROOT, 'Characters']);
+    const bar = startBar(el, { backId: 'mc-close', titleId: 'mc-title', onBack: () => { panel.hidden = true; chooser = null; $('lobby-mychars').focus?.({ preventScroll: true }); } });
+    bar.show(chooser ? ['Bring a character', 'Characters'] : [ROOT, 'Characters']);
     const head = bar.bar;
     const row = (f) => {
       const edit = f.sheet.classes ? 'Several classes: the build screen cannot open this one yet.' : '';
@@ -278,20 +295,31 @@ export function initMyCharacters({ twoTap, toast }) {
         : el('strong', { text: f.sheet.name });
       return el('li', { class: 'mc-row', 'data-cid': f.cid }, title, el('small', { class: 'note', text: levelLine(f) }), scoresLine(f.sheet) ? el('small', { class: 'note mc-scores', text: `Scores: ${scoresLine(f.sheet)}` }) : null, bad(f) ? el('small', { class: 'note mc-bad', text: `Cannot be played: ${bad(f)}` }) : null,
         el('div', { class: 'row' },
-          b('edit', 'Edit', () => openBuild({ mode: 'mine', sheet: f.sheet, cid: f.cid, trail: [ROOT, 'Characters', `Edit ${f.sheet.name}`], onSave: (sheet) => { const r = editFile(list, f.cid, sheet); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }), edit),
+          ...(chooser ? [b('offer', 'Offer to the DM', () => offer(f.sheet), bad(f) ? `Cannot be played: ${bad(f)}` : '')] : []),
+          b('edit', 'Edit', () => openBuild({ mode: 'mine', sheet: f.sheet, cid: f.cid, trail: [chooser ? 'Bring a character' : ROOT, 'Characters', `Edit ${f.sheet.name}`], onSave: (sheet) => { const r = editFile(list, f.cid, sheet); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }), edit),
           b('rename', 'Rename', () => { renaming = f.cid; drawManager(); panel.querySelector('.mc-rename input')?.focus(); }),
           b('dup', 'Duplicate', () => { if (commit(duplicateFile(list, f.cid))) { msg = `A copy of ${f.sheet.name} was made.`; notes = []; } drawParty(); drawManager(); }, list.length >= LIMITS.saved ? full() : ''),
           b('export', 'Export', () => download(f)), del));
     };
-    const add = el('button', { type: 'button', id: 'mc-new', text: 'New character', disabled: list.length >= LIMITS.saved, onclick: () => openBuild({ mode: 'mine', trail: [ROOT, 'Characters', 'New character'], onSave: (sheet) => { const r = addFile(list, makeFile(sheet, { how: 'built' })); if (!commit(r)) return msg; msg = `${sheet.name} was saved.`; notes = []; drawParty(); drawManager(); return ''; } }) });
+    // Bringing a character: a character built here is kept in the list (when there is room) and offered at once.
+    const add = el('button', { type: 'button', id: 'mc-new', text: 'New character', disabled: list.length >= LIMITS.saved && !chooser, onclick: () => openBuild({ mode: 'mine', trail: [chooser ? 'Bring a character' : ROOT, 'Characters', 'New character'], onSave: (sheet) => {
+      if (chooser && list.length >= LIMITS.saved) { offer(sheet); return ''; }
+      const r = addFile(list, makeFile(sheet, { how: 'built' })); if (!commit(r)) return msg;
+      msg = `${sheet.name} was saved.`; notes = []; drawParty();
+      if (chooser) offer(sheet); else drawManager();
+      return ''; } }) });
     const imp = el('button', { type: 'button', id: 'mc-import', text: 'Import a file', disabled: list.length >= LIMITS.saved, onclick: () => fileInput.click() });
     panel.replaceChildren(...[head,
       el('p', { class: 'note', text: `These characters are kept in this browser on this device (${list.length} of ${LIMITS.saved}). Clearing the browser's site data deletes them, so use Export to keep a file of each one you care about.` }),
+      chooser ? el('p', { class: 'note', id: 'mc-bring-note', text: 'Choose a character to offer to the DM, or make a new one. The DM reads it and lets it in or not. You keep your own copy either way.' }) : null,
       error ? el('p', { class: 'note mc-bad', id: 'mc-store', text: error }) : null,
       el('div', { class: 'row' }, add, imp, fileInput),
       el('div', { id: 'mc-msg', role: 'status', 'aria-live': 'polite' }, msg ? el('p', { text: msg }) : null, notes.length ? el('ul', {}, ...notes.map((n) => el('li', { text: n }))) : null),
       list.length ? el('ul', { class: 'mc-list', id: 'mc-list' }, ...list.map(row)) : el('p', { class: 'note', id: 'mc-empty', text: 'Nothing here yet. Make a character with New character, or import a character file.' })].filter(Boolean));
   }
+  // Hand the sheet to whoever opened the screen to choose, and close it.
+  function offer(sheet) { const go = chooser; chooser = null; panel.hidden = true; go?.(structuredClone(sheet)); }
+  function openManager() { msg = ''; notes = []; renaming = null; drawManager(); panel.hidden = false; panel.scrollTop = 0; $('mc-close').focus({ preventScroll: true }); }
   $('lobby-mychars').onclick = () => { msg = ''; notes = []; renaming = null; drawManager(); panel.hidden = false; panel.scrollTop = 0; $('mc-close').focus({ preventScroll: true }); };
 
   drawParty();
@@ -299,6 +327,8 @@ export function initMyCharacters({ twoTap, toast }) {
     // The party the lobby has chosen, for newGame: { party, problems }.
     party: () => buildParty(shown(), list),
     list: () => list,
+    // At a table: open My characters to choose a sheet (or build one); `onOffer(sheet)` is called with it, and the screen closes.
+    bring: (onOffer) => { chooser = onOffer; openManager(); },
     refresh: () => { drawParty(); },
     // Start over: the party goes back to the usual starters and the device forgets the one it remembered.
     resetParty: () => { try { localStorage.removeItem(PARTY_KEY); } catch { /* storage unavailable */ } loadPicks(null); drawParty(); },
