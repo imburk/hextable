@@ -490,12 +490,14 @@ async function drawerPass(browser, url, label, opts) {
         if (c2.w !== c2.vw) throw new Error('the canvas is not full width');
         await closeMenu(page);
       });
-      await run.do('a reaction question hides the menu for as long as it is asked, and gives it back after', async () => {
+      await run.do('a reaction question folds the menu; after it the menu stays away until the die is tapped, which returns it to the same place (M2)', async () => {
         await openMenu(page, 'turns');
         await page.evaluate(() => { const h = window.hextable; h.drawer.sync({ ...h.state, prompt: { waiting: true } }); });
         await waitShown(page, '#drawer', false);
         await page.evaluate(() => { const h = window.hextable; h.drawer.sync(h.state); });
-        await waitShown(page, '#drawer');
+        await sleep(700);
+        if (await shown(page, '#drawer')) throw new Error('the menu came back by itself after the question');
+        await page.click('#btn-menu'); await waitShown(page, '#drawer');
         if ((await page.evaluate(() => document.getElementById('drawer').dataset.path)) !== 'turns') throw new Error('the menu did not come back where it was');
         await closeMenu(page);
       });

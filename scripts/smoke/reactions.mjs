@@ -110,7 +110,8 @@ async function reactions(browser, url, label, opts) {
         const seen = () => page.evaluate(() => { const d = document.getElementById('drawer'); return { open: window.hextable.drawer.isOpen, cls: document.body.classList.contains('drawer-open'), drawer: !d.hidden && d.getClientRects().length > 0, scrim: !document.getElementById('drawer-scrim').hidden, rp: !document.getElementById('rp').hidden }; });
         const up = await seen();
         if (!up.rp || up.open || up.cls || up.drawer || up.scrim) throw new Error(`the menu did not fold under the question: ${JSON.stringify(up)}`);
-        await page.locator('#rp .rp-no').click();
+        await page.waitForTimeout(800);                                           // a tap in the first 600 ms is taken for one meant for the map and answers nothing (reactionprompt.js ARM_MS)
+        if (touch) await page.locator('#rp .rp-no').tap(); else await page.locator('#rp .rp-no').click();
         await waitShown(page, '#rp', false);
         await idle();
         await page.waitForTimeout(700);                                           // the menu must not come back by itself
