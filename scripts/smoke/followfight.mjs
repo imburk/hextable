@@ -15,11 +15,9 @@ const inFight = (page, id) => state(page, (S, i) => !!S.encounter?.order.some((o
 const walkIn = (page, id) => page.evaluate((who) => {
   const h = window.hextable;
   for (let i = 0; i < 20 && !h.state.encounter; i++) h.act({ type: 'move', actor: who, to: { q: 2, r: -1, z: 0 } });
-  // A random valley may wall the walk off (rock, water; about 1 map in 70): the fight is called where the goblins are, as the DM would, and the answer says
-  // 'called' so a step that is about the walk itself can take another valley.
-  if (h.state.encounter) return 'walked';
-  h.act({ type: 'startEncounter', center: { q: 2, r: -1 } });
-  return h.state.encounter ? 'called' : false;
+  // A random valley may wall the walk off (rock, water; about 1 map in 70). A fight called where the goblins are would hold no hero and is refused (#771), so the
+  // answer is 'walled' and a step that is about the walk itself takes another valley.
+  return h.state.encounter ? 'walked' : 'walled';
 }, id);
 
 // The question's button rect, once it is on screen: a turn passing re-lays the screen out and the question may be between two frames of that (`boundingBox` is null then).
@@ -61,8 +59,8 @@ async function pass(browser, url, label, opts) {
       });
       await run.do('one walk toward the goblins takes all four into the fight, and nothing asks', async () => {
         let how = await walkIn(page, 'fighter');
-        // The step is about one walk taking the party in: a valley that walled the walk off (the fight had to be called) is not that, so take another.
-        for (let tries = 0; how === 'called' && tries < 8; tries++) { page = await fresh(); how = await walkIn(page, 'fighter'); }
+        // The step is about one walk taking the party in: a valley that walled the walk off is not that, so take another.
+        for (let tries = 0; how !== 'walked' && tries < 8; tries++) { page = await fresh(); how = await walkIn(page, 'fighter'); }
         if (how !== 'walked') throw new Error('no fight started by a walk');
         await calm(page, PLAYED);
         for (const id of ['fighter', 'rogue', 'cleric', 'wizard']) if (!(await inFight(page, id))) throw new Error(`${id} is not in the fight`);
@@ -70,9 +68,9 @@ async function pass(browser, url, label, opts) {
         await shot(page, 'all-in');
       });
 
-      // A fight needs the first hero in it. When a random valley walls the walk off, the fight is "called" where the goblins are, 9 or more hexes from the heroes, and
-      // its order holds the goblins alone: it ends at once as a defeat and nothing is left to ask (seen on CI at 390x844, #767; about 1 game in 25 under load, and
-      // the walk is walled off in about 1 in 70 on a quiet one). So a step about the question takes a new valley, as the first step does.
+      // A fight needs the first hero in it. When a random valley walls the walk off (about 1 game in 70 on a quiet runner), no fight starts: one called where the
+      // goblins alone stand is refused (#771; before, it ended at once as a defeat, seen on CI at 390x844, #767). So a step about the question takes a new valley,
+      // as the first step does.
       const apartFight = async () => {
         let how;
         for (let tries = 0; tries < 8; tries++) { page = await fresh(); await apart(page); how = await walkIn(page, 'fighter'); if (how === 'walked') return; }
