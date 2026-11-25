@@ -78,6 +78,7 @@ const REGISTRY = {
   menuclose: ['menuclose'],
   editorbar: ['editorbar'],
   menushift: ['menushift'],
+  seating: ['seating'],
 };
 
 const only = process.env.SMOKE_ONLY;

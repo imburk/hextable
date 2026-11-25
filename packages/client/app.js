@@ -887,6 +887,23 @@ function renderWaiting() {
   if ($('waiting-list').dataset.sig !== html) { $('waiting-list').dataset.sig = html; $('waiting-list').innerHTML = html; }
   $('waiting-list').hidden = !items.length;
 }
+// Pick who you play (#756): at a hosted table a player with no character is shown the characters nobody plays, each with "Play as <name>" (a second tap
+// claims it: the engine's own claim, no approval). The menu opens on it when they join and again when they lose their character or one becomes free, not
+// again after they close it until one of those happens. `pickSeen` is the free characters they have been shown since they last had none.
+const pickSeen = new Set();
+function renderPick() {
+  const box = $('menu-pick'), me = T?.you?.userId;
+  const hasChar = !!S && Object.values(S.entities).some((x) => x.owner === me);
+  const free = !S || T.solo || isDM() || hasChar ? [] : Object.values(S.entities).filter((x) => x.kind === 'pc' && !x.owner && !x.dead);
+  box.hidden = !free.length;
+  const html = free.map((x) => `<li><span><b>${esc(shownName(S, x))}</b><small>Level ${esc(x.level)} ${esc(classTitle(x))}</small></span><button type="button" data-pick="${esc(x.id)}">Play as ${esc(shownName(S, x))}</button></li>`).join('');
+  if ($('pick-list').dataset.sig !== html) { $('pick-list').dataset.sig = html; $('pick-list').innerHTML = html; }
+  if (!free.length) { if (hasChar || !S) pickSeen.clear(); return; }
+  if (!$('lobby').hidden) return;
+  const fresh = free.filter((x) => !pickSeen.has(x.id));
+  pickSeen.clear(); for (const x of free) pickSeen.add(x.id);
+  if (fresh.length && !D.isOpen) D.open();
+}
 // Dead: the character's page says so, with the way to what happened.
 function deadLine(e) {
   const d = $('dead-line'), on = !!e && e.kind === 'pc' && !!e.dead && mine(e);
@@ -918,9 +935,9 @@ function refresh() {
   $('join').hidden = !out.length;
   if (out.length) $('join-text').textContent = `Bring the others in? ${out.map((x) => shownName(S, x)).join(', ')}`;
   showTurnLine(); turnStarts(); showOffline(); hpNote(); deadLine(e);
-  // Setup's last section: leaving this table on this device (anyone at a table), or a new game (solo).
-  $('btn-leave').hidden = !!T.solo; $('set-new').hidden = !T.solo; $('set-sec-leave').hidden = !!T.readOnly;
-  { const n = T.solo ? 'A new game replaces the one saved on this device.' : leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
+  // Setup's last section: leaving this game for the starting screen (a solo game stays saved on this device; a new one starts from the lobby).
+  $('btn-leave').hidden = false; $('set-sec-leave').hidden = !!T.readOnly;
+  { const n = leaveNote(); if ($('set-leave-note').textContent !== n) $('set-leave-note').textContent = n; }
   showUndo();
 
   // The characters (Decision 4b): one place for each creature this person controls, the first symbols of the strip and the arc (drawer.js draws both from these buttons), in turn order
@@ -1050,7 +1067,7 @@ function refresh() {
   if (isDM()) renderDM();
   TD.sync(); TD.waiting();
   HO.refresh();
-  renderWaiting();
+  renderWaiting(); renderPick();
   SC.refresh();
   RP.refresh();
   CLS.sync(mode);
@@ -1162,6 +1179,14 @@ function renderDM() {
       yes.type = no.type = 'button'; yes.textContent = 'Let in'; no.textContent = 'Decline';
       yes.onclick = () => T.approve(p.id, true); no.onclick = () => T.approve(p.id, false);
       row.lastChild.append(yes, no); table.append(row);
+    }
+    // Players at the table with no character (#756): a line each, and a way to the list that gives one.
+    for (const m of lb.members.filter((m) => m.role === 'player' && !Object.values(S.entities).some((x) => x.owner === m.id))) {
+      const row = document.createElement('div'); row.className = 'req nochar';
+      row.innerHTML = `<span><b>${esc(m.name)}</b> has no character</span><span class="row"></span>`;
+      const give = document.createElement('button'); give.type = 'button'; give.textContent = 'Give a character';
+      give.onclick = () => D.open('dm/creatures');
+      row.lastChild.append(give); table.append(row);
     }
   }
   // Places: the map's regions, and whether the players have been shown each.
@@ -1415,6 +1440,11 @@ foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
 $('party').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) pickChar(b.dataset.id); });
 // Help and feedback is a row of the menu; its panel is its own overlay, so the menu folds away first (one overlay at a time).
 $('fb-btn').addEventListener('click', () => { if (D.isOpen) D.close(false); }, true);
+$('pick-list').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-pick]'); if (!b || !S) return;
+  const x = S.entities[b.dataset.pick]; if (!x) return;
+  twoTap(b, `Tap again to play ${shownName(S, x)}`, '', () => { if (!x.owner) act({ type: 'claim', entity: x.id, user: T.you.userId, userName: T.you.name }); });
+});
 $('waiting-list').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-wait]'); if (!b || !S) return;
   const [kind, id] = [b.dataset.wait.split(':')[0], b.dataset.wait.split(':').slice(1).join(':')];
@@ -1519,14 +1549,15 @@ function disarm(btn) {
   if (!btn.classList.contains('sure')) return;
   btn.classList.remove('sure'); btn.textContent = btn.dataset.label;
 }
+const SOLO_LEAVE_NOTE = 'Your game stays saved on this device. Start a new one from the starting screen.';
 const LEAVE_NOTE = 'Leaving forgets this table on this device.';
-const leaveNote = () => (isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
+const leaveNote = () => (T?.solo ? SOLO_LEAVE_NOTE : isDM() ? `${LEAVE_NOTE} Your players stay, but nobody can let new players in.` : LEAVE_NOTE);
 function leaveTable(btn) { twoTap(btn, 'Tap again to leave', leaveNote(), reallyLeave); }
 function reallyLeave() {
   TL.skip(); T.leave?.(); T = null; S = null; PK.clear(); SC.fresh(); RP.fresh(); DF.fresh(); CC.fresh(); $('scene').hidden = true; document.body.classList.remove('in-scene'); selId = null; clearTimeout(aiTimer);
   D.close(false); D.reset();
   for (const id of ['card', 'viewer']) $(id).hidden = true;
-  $('btn-leave').hidden = $('set-new').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true;
+  $('btn-leave').hidden = $('set-sec-leave').hidden = $('btn-undo').hidden = $('btn-redo').hidden = $('turnline').hidden = true;
   D.sync(null);
   lobbyBusy(false); showLobby('You left the table.');
 }
@@ -1534,7 +1565,6 @@ $('btn-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 $('dm-leave').onclick = (ev) => leaveTable(ev.currentTarget);
 const newWorld = (ev) => twoTap(ev.currentTarget, 'Tap again to start over', 'This replaces the game saved on this device with a new one.', () => { D.close(); T.reset?.({ grid: TC.valleyGrid(), party: MC.party().party ?? undefined }); });
 $('dm-new').onclick = newWorld;
-$('set-new').onclick = newWorld;
 // The DM's "Add a monster" buttons: the monsters the page knows now. Built again when the table's packs change (DEBT T34), so a homebrew monster can be added.
 // A player's page is never given one, and the DM's drawer is not theirs.
 // A search box, a CR filter and a "recent" row sit above the buttons (spawnfind.js, #673); the recent list is kept per table on this device.

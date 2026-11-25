@@ -60,13 +60,21 @@ async function pass(browser, url, label, opts) {
         if (b.x < 0 || b.y < 0 || b.x + b.width > vp.width || b.y + b.height > vp.height) throw new Error(`the button is off screen: ${JSON.stringify(b)}`);
         if (opts.hasTouch && (b.height < 44 || b.width < 44)) throw new Error(`the touch target is ${b.width}x${b.height}`);
         // M4: no dock; the token strip owns the bottom of the screen and the question sits above it (and above the turn line when that is shown)
-        const j = await page.locator('#join').boundingBox();
-        for (const sel of ['#btn-menu', '#turnline']) {
-          const el = page.locator(sel);
-          if (!(await shown(page, sel))) continue;
-          const d = await el.boundingBox();
-          if (d && j.y + j.height > d.y + 1 && j.x < d.x + d.width && j.x + j.width > d.x) throw new Error(`the question sits over ${sel}`);
-        }
+        // The turn line grows (quick actions, a second row) when the turn passes to a hero and the question follows in the same frame (`--turn-h`, a
+        // ResizeObserver), so both rects are read in one synchronous call, and only once they have held still for two frames.
+        const over = await page.evaluate(async () => {
+          const rects = () => ['join', 'btn-menu', 'turnline'].map((i) => { const el = document.getElementById(i); return el && !el.hidden && getComputedStyle(el).display !== 'none' ? el.getBoundingClientRect().toJSON() : null; });
+          const frame = () => new Promise((r) => requestAnimationFrame(r));
+          let last = '', still = 0, bad = '';
+          for (let i = 0; i < 180 && still < 2; i++) {
+            await frame();
+            const [j, ...others] = rects(), now = JSON.stringify([j, ...others]);
+            still = now === last ? still + 1 : 0; last = now;
+            bad = others.map((d, k) => (d && j.bottom > d.top + 1 && j.left < d.right && j.right > d.left ? ['#btn-menu', '#turnline'][k] : '')).filter(Boolean).join(' ');
+          }
+          return still >= 2 ? bad && `${bad} ${last}` : `never settled ${last}`;
+        });
+        if (over) throw new Error(`the question sits over ${over}`);
         await shot(page, 'ask');
       });
       await run.do('one tap brings the rogue in, rolls Initiative, and the question goes', async () => {

@@ -80,7 +80,7 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   const dwell = dwellTimer({ hold: () => { labelsUp = true; arcEl.classList.add('labels'); } });
 
   // Waiting for you sits above the arc (it headed the first level's list; the arc is the first level now). The strip's buttons get their symbols.
-  $('arc-above').prepend($('menu-waiting'));
+  $('arc-above').prepend($('menu-pick'), $('menu-waiting'));      // "Pick who you play" (#756) is above it
   for (const b of rootList.querySelectorAll('.menu-row[data-go]')) {
     const k = placeSymbol(b.dataset.go), i = document.createElement('span');
     i.className = 'mr-sym'; i.setAttribute('aria-hidden', 'true'); i.dataset.sym = k ?? ''; i.innerHTML = symbol(k);

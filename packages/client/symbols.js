@@ -22,10 +22,10 @@ export const SYMBOLS = {
   log: svg('<path d="M4 5h16v11H11l-4.5 3.5V16H4z"/><path d="M8 9h8"/><path d="M8 12h5"/>'),
   // a scroll
   handouts: svg('<path d="M7 4h11a2 2 0 0 1 2 2v1h-4"/><path d="M16 7V6a2 2 0 0 0-2-2"/><path d="M16 6v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1h10v1a2 2 0 0 0 2 2"/><path d="M7 4a2 2 0 0 0-2 2v11"/><path d="M9 9h4"/><path d="M9 12h4"/>'),
-  // a gear: the universal sign
-  setup: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3"/><path d="M12 18.5v3"/><path d="M2.5 12h3"/><path d="M18.5 12h3"/><path d="m5.3 5.3 2.1 2.1"/><path d="m16.6 16.6 2.1 2.1"/><path d="m5.3 18.7 2.1-2.1"/><path d="m16.6 7.4 2.1-2.1"/><circle cx="12" cy="12" r="6.5"/>'),
-  // a wrench
-  dm: svg('<path d="M14.5 6.5a4 4 0 0 0 5.3 5.3L11 20.6a2.3 2.3 0 0 1-3.3-3.3l8.8-8.8"/><path d="M14.5 6.5 18 3a4.5 4.5 0 0 0-5.8 5.8"/>'),
+  // a cog: a ring with eight square teeth and a round hole
+  setup: svg('<path d="M10.10 4.85L10.10 1.80L13.90 1.80L13.90 4.85A7.4 7.4 0 0 1 15.71 5.60L17.87 3.44L20.56 6.13L18.40 8.29A7.4 7.4 0 0 1 19.15 10.10L22.20 10.10L22.20 13.90L19.15 13.90A7.4 7.4 0 0 1 18.40 15.71L20.56 17.87L17.87 20.56L15.71 18.40A7.4 7.4 0 0 1 13.90 19.15L13.90 22.20L10.10 22.20L10.10 19.15A7.4 7.4 0 0 1 8.29 18.40L6.13 20.56L3.44 17.87L5.60 15.71A7.4 7.4 0 0 1 4.85 13.90L1.80 13.90L1.80 10.10L4.85 10.10A7.4 7.4 0 0 1 5.60 8.29L3.44 6.13L6.13 3.44L8.29 5.60A7.4 7.4 0 0 1 10.10 4.85z"/><circle cx="12" cy="12" r="2.8"/>'),
+  // an open-end wrench set on the diagonal: an open C-shaped jaw at the top right, a straight handle to the bottom left
+  dm: svg('<g transform="rotate(45 12 12)"><path d="M10.2 2.3V6.5h3.6V2.3A4.6 4.6 0 0 1 13.5 10.85V19.5a1.5 1.5 0 0 1-3 0V10.85A4.6 4.6 0 0 1 10.2 2.3z"/></g>'),
   // two meeples: people at the table
   characters: svg('<path d="M8 4a2 2 0 0 1 2 2c0 .7 3 1.3 3 3 0 1-1.5 1-2.2 1 .4 2 1.7 5 1.7 6H9.8L8 13.5 6.2 16H3.5c0-1 1.3-4 1.7-6C4.5 10 3 10 3 9c0-1.7 3-2.3 3-3a2 2 0 0 1 2-2z"/><path d="M17 9a1.7 1.7 0 0 1 1.7 1.7c0 .6 2.3 1 2.3 2.4 0 .8-1.2.8-1.8.8.3 1.7 1.3 4.3 1.3 5.1h-2.2L17 17l-1.3 2"/>'),
   // a strapped tome: a book with a clasp

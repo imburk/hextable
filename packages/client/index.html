@@ -94,6 +94,12 @@
       <ul id="waiting-list"></ul>
       <section id="todo-mount" aria-label="To do" hidden></section>
     </section>
+    <!-- Pick who you play (#756): a player at a hosted table with no character, while some are free. app.js fills it; drawer.js moves it above the arc beside "Waiting for you". -->
+    <section id="menu-pick" aria-labelledby="pick-title" hidden>
+      <h3 id="pick-title">Pick who you play</h3>
+      <ul id="pick-list"></ul>
+      <p class="note">Or ask the DM to give you one</p>
+    </section>
     <div id="party" aria-label="Characters"></div>
     <ul class="menu-list">
       <li><button type="button" class="menu-row" id="tab-sheet" data-go="sheet"><span class="mr-name">Character</span><span class="mr-sum" id="sum-sheet"></span></button></li>
@@ -316,7 +322,7 @@
       </section>
       <section id="set-sec-leave" data-sec="leave" data-tip="Leave this game on this device" hidden><h3>Leave the table</h3>
         <p class="note" id="set-leave-note"></p>
-        <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave the table</button><button type="button" id="set-new" class="leave" hidden>New game</button></div>
+        <div class="row"><button type="button" id="btn-leave" class="leave" hidden>Leave the table</button></div>
       </section>
       <!-- Arrange (Decision 4c; M9): a screen under Setup. drawer.js draws the rows: a six-dot handle, the symbol, the name, up and down, and an eye. -->
       <div id="arrange" class="sub-screen" data-sec="arrange" data-title="Arrange the symbols" role="group" aria-label="Arrange the symbols" hidden></div>
