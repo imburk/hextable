@@ -10,6 +10,7 @@ import { newGame } from "../src/scenario.js";
 import { canSee } from "../src/sight.js";
 import { sensesOf } from "../src/modifiers.js";
 import { view } from "../src/view.js";
+import { partyView } from "../src/vision.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -66,6 +67,19 @@ test("True Seeing: the caster has Truesight 120 for the hour and sees an Invisib
   ok(apply(s, { type: "endEffect", actor: "wizard", effect: fx.id }, DM));
   assert.equal(canSee(s, s.entities.wizard, s.entities[g.id]), "no");
   assert.equal(sensesOf(s, s.entities.wizard).truesight, undefined);
+});
+
+test("True Seeing: the party's view shows the Invisible creature after the cast and not before or after the spell ends (no stale cache)", () => {
+  const s = field();
+  s.settings.sight = "light";
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  ok(apply(s, { type: "condition", actor: g.id, condition: "invisible" }, DM));
+  assert.ok(!partyView(s).creatures.has(g.id), "before");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "true-seeing", target: "wizard", slot: 6 }, DM));
+  assert.ok(partyView(s).creatures.has(g.id), "after the cast");
+  const fx = s.effects.find((x) => x.name === "True Seeing");
+  ok(apply(s, { type: "endEffect", actor: "wizard", effect: fx.id }, DM));
+  assert.ok(!partyView(s).creatures.has(g.id), "after it ends");
 });
 
 test("True Seeing: it reaches 120 feet and no further", () => {

@@ -941,6 +941,16 @@ test("true seeing: before the spell an Invisible creature in range is sent to no
   assert.equal(wisp(hidden), wisp(other), "the creature is described to the player in the same way");
 });
 
+test("true seeing: an Invisible creature just past 120 feet, and one behind a wall within 120 feet, are sent to the players as a bare cell is, after the cast", () => {
+  const cast = (setup) => ({ players: ["Pat", "Sam"], setup: (w) => { trueSeeingSetup(w); setup(w); }, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "true-seeing", target: "wizard", slot: 6 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] });
+  // 125 feet: the wizard stands at the west edge, the creature 25 hexes east.
+  const far = twin(cast((w) => w.must({ type: "place", actor: "wizard", to: { q: -12, r: 0 } })), { hide: (w) => unseen(w, { q: 13, r: 0 }, "Wisp"), plain: (w) => burn(w, { q: 12, r: 0 }) });
+  assert.ok(!JSON.stringify(far.hidden.raw.Sam).includes("Wisp"), "125 feet: Sam is told of nothing");
+  // Behind a wall, 30 feet away: Truesight does not see through it.
+  const walled = twin(cast((w) => { w.state.map.walls.push({ id: "wallT", level: "ground", a: [-70, 11], b: [70, 11], kind: "wall" }); }), { hide: (w) => unseen(w, { q: -2, r: 6 }, "Wisp"), plain: (w) => burn(w, { q: -2, r: 7 }) });
+  assert.ok(!JSON.stringify(walled.hidden.raw.Sam).includes("Wisp"), "behind a wall: Sam is told of nothing");
+});
+
 // ---- Antilife Shell (#786 wave 3b part 1): a hidden caster's shell ----
 // A shell refuses a move into it, which would tell the players something stands there. The engine does not enforce the shell of a caster the party does not know of
 // (shellSeen), so a visible creature walking into it is sent what it would be sent on a bare cell.
