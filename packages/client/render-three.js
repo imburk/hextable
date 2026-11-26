@@ -273,7 +273,7 @@ export class ThreeRenderer {
         a.key = key; a.piece.set(a.pup ? makeBase(e, this.theme, this.G) : makePawn(e, this.theme, this.G));
       }
       a.wasDead = !!e.dead;
-      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0 && !(state.barRule?.foeHealth === 'hidden' && !state.barRule.dm && e.side !== 'party'));      // the "(down)" word is health: not for a player under Hidden a.el.classList.toggle('unseen', !!e.hidden);
+      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0 && !(state.barRule?.foeHealth === 'hidden' && !state.barRule.dm && e.side !== 'party')); a.el.classList.toggle('unseen', !!e.hidden);      // the "(down)" word is health: not for a player under Hidden
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
       const shown = e.form?.name ? `${e.name} (${e.form.name})` : e.name;             // a druid in Wild Shape: 'Wren (Brown Bear)'
       a.el.firstChild.textContent = shown;
