@@ -709,7 +709,9 @@ function castSpell(s, a, ctx, ev, item) {
     // it names), so it does not show a caster the DM hid: the creature appears, its caster stays unknown.
     // A zone that affects nobody as it appears (no `atCast`: Guardian of Faith) catches nobody, so it gives away nobody standing in its area.
     const zoneDef0 = sp.def.zone;
-    if (!zoneDef0 || zoneDef0.atCast) for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
+    // A lit sphere with no step that works on a creature (Daylight) catches nobody either: the light shows what stands in it, it does not find it (a hidden creature stays hidden).
+    const lightOnly = !!sp.def.terrain?.light && sp.def.effects.every((x) => x.manual !== undefined);
+    if (!lightOnly && (!zoneDef0 || zoneDef0.atCast)) for (const t of targets) if (!(summoning && t === e)) reveal(s, t, ev);
 
     // What it does: run its effect steps.
     const st = item ? { dc: item.dc, attack: item.attack } : spellStats(e, s, sp.id), { steps, unscaled } = scaleSteps(sp.def, casterLevel, slot);
@@ -782,7 +784,7 @@ function castSpell(s, a, ctx, ev, item) {
       }
       // A Globe's columns include the caster's own space (the Emanation's list leaves it out); a Shell keeps none and moves with its caster.
       const own = ter.globe ? footprint(e, e.pos, gridOf(s.map)).map(col) : [];
-      fx.terrain = { area: { ...sp.area }, hexes: ter.shell ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}) };
+      fx.terrain = { area: { ...sp.area }, hexes: ter.shell ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.light ? { light: ter.light } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}) };
       if (ter.shell && !shellSeen(s, e)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name}: the caster is hiding, so the engine does not enforce the aura (a refusal would tell the players something is there). The DM keeps creatures other than Constructs and Undead from passing into it or reaching through it.` });
     }
     const before = ev.length;

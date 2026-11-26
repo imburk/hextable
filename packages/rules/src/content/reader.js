@@ -705,7 +705,7 @@ class Reading {
     const t = this.def.terrain;
     if (t === undefined) return;
     if (!isObj(t)) return this.bad('`terrain` is not an object.');
-    this.odd(t, ['difficult', 'obscured', 'lasts', 'silence', 'globe', 'shell'], 'The terrain');
+    this.odd(t, ['difficult', 'obscured', 'lasts', 'silence', 'light', 'globe', 'shell'], 'The terrain');
     if (t.globe === true || t.shell === true) {
       if (t.globe === true) this.line('The Emanation stays where it went off, as a barrier for as long as the spell lasts: a spell cast from outside it, of a level below the slot the spell was cast with, cannot affect anything within it (a spell cast with a higher slot counts at that higher level). Such a spell may be aimed at a creature inside, and has no effect on it; the inside is left out of the area of one aimed at an area. A spell cast from inside it is not stopped.');
       else this.line('The Emanation moves with the caster as a barrier for as long as the spell lasts: a creature other than a Construct or an Undead cannot move into it from outside, or make a melee attack of 5 feet reach from outside at one inside it (or from inside at one outside). A creature already inside is not pushed out. Spells, ranged attacks and attacks with more than 5 feet of reach are not stopped. If the caster moves so that a Huge or smaller creature it holds back would be forced through it, the spell ends.');
@@ -720,7 +720,12 @@ class Reading {
       this.line('The area is a Sphere of Silence for as long as the spell lasts: a creature in it cannot cast a spell with a Verbal component (the cast is refused), and a creature entirely inside takes no Thunder damage.');
       if (!what.length) return;
     }
-    if (!what.length) return this.bad('`terrain` makes the area neither difficult, obscured nor silent.');
+    if (t.light !== undefined) {
+      this.num('terrain.light', t.light, 'feet');
+      this.line(`The area is lit as if by a light held at its centre for as long as the spell lasts: Bright Light throughout, and Dim Light ${t.light} feet beyond it. The light is cast where everyone sees it, even by a caster the DM keeps hidden.`);
+      if (!what.length) return;
+    }
+    if (!what.length) return this.bad('`terrain` makes the area neither difficult, obscured, silent nor lit.');
     this.line(`The area is ${list(what)} ${t.lasts === 'nextTurnEnd' ? 'until the end of the caster\'s next turn' : 'for as long as the spell lasts'}.`);
   }
 

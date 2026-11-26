@@ -1508,3 +1508,21 @@ test("a DM-hidden foe carrying a light lights nothing the players are sent (sigh
   });
   if (r.diffs.length) assert.fail(describe(r.diffs));
 });
+
+// ---- Daylight (#786 wave 5 part 2): a lit sphere is cast where everyone sees it, and the light shows a DM-hidden creature in it to nobody ----
+// What the rule shows: the sphere lights the cells (the players are sent the lit area either way); a creature the DM keeps hidden is withheld from the view whether it stands in the light or not.
+const daylightSetup = (w) => {
+  darkvisionSetup(w);
+  const s = w.state;
+  w.must({ type: "place", actor: "wizard", to: { q: -2, r: 0 } });
+  Object.assign(s.entities.wizard, { slots: { 3: 3 }, slotsMax: { 3: 3 } });
+  s.entities.wizard.spells.push("daylight");
+};
+test("daylight: a DM-hidden creature standing in the lit sphere (or just past its Dim Light) is sent to no player: the worlds with and without it are the same", () => {
+  const script = { players: ["Pat", "Sam"], setup: daylightSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "daylight", hex: { q: 4, r: 0 }, slot: 3 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  const sit = (w, at) => { w.must({ type: "spawn", monster: "goblin-warrior", at, name: "Lurker", hidden: true }); Object.assign(byName(w, "Lurker"), { hp: 500, maxHp: 500 }); };
+  for (const q of [8, 4 + 12, 4 + 13]) {
+    const r = twin(script, { hide: (w) => sit(w, { q, r: 0 }), plain: (w) => burn(w, { q: q - 1, r: 0 }) });
+    for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing (q ${q})`);
+  }
+});
