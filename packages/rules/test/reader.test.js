@@ -77,6 +77,8 @@ const FIXTURES = [
     effects: [{ manual: 'Sound made within or through the sphere.' }] }),
   base('clear-eyes', 'Clear Eyes', { level: 2, range: 'self', duration: '1 hour', target: { self: true }, tier: 'auto', effects: [{ modifier: { on: 'invisible', op: 'immune' } }] }),
   base('far-eyes', 'Far Eyes', { level: 6, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto', effects: [{ modifier: { on: 'senses', op: 'set', value: 120, scope: { sense: 'truesight' } } }] }),
+  base('dry-feet', 'Dry Feet', { level: 3, range: 30, duration: '1 hour', target: { creature: { count: 10 } }, tier: 'assist', effects: [{ modifier: { on: 'surface', op: 'immune', scope: { surface: 'water' } } }] }),
+  base('far-step', 'Far Step', { level: 7, range: 10, target: { self: true }, tier: 'assist', choice: { of: 'familiarity' }, effects: [{ teleport: 1000, familiarity: 'chosen' }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.

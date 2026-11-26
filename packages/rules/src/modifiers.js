@@ -314,6 +314,12 @@ export function sensesOf(s, e) {
   return out;
 }
 
+// Does a lasting effect let the creature walk on this surface (Water Walk: `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`)? Only water is known so far.
+export function walksOn(s, e, surface = 'water') {
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'surface' && m.op === 'immune' && m.scope?.surface === surface) return true;
+  return false;
+}
+
 // A number kept within what `min` and `max` modifiers allow.
 export const bounded = (m, n) => Math.min(m.max ?? Infinity, Math.max(m.min ?? -Infinity, n));
 

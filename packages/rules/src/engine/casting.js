@@ -94,6 +94,7 @@ function chooseIn(steps, of, value) {
     if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
     if (Array.isArray(st.cure) && of === 'condition') st.cure = st.cure.map((c) => (c === 'chosen' ? value : c));
     if (st.command === 'chosen' && of === 'command') st.command = value;
+    if (st.familiarity === 'chosen' && of === 'familiarity') st.familiarity = value;
     for (const b of BRANCHES) if (st[b]) visit(st[b]);
   } };
   visit(steps);

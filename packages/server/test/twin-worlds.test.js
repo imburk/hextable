@@ -1094,6 +1094,72 @@ test("detect magic: a hidden creature carrying a magic item within 30 feet is to
   assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost") && !/Ring of Protection/.test(JSON.stringify(hidden.raw.Pat)), "the player is told of none of it");
 });
 
+// ---- Teleport (#786 wave 4 part 4): the Teleportation Outcome roll is told to the DM alone; a hidden creature near the destination changes nothing a player is sent ----
+const TELEPORT = (choice, seed = 5) => ({
+  players: ["Pat"],
+  seed,
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", -8, 4], ["rogue", -8, 5], ["cleric", -8, 6], ["wizard", 0, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", slots: { 7: 1 }, slotsMax: { 7: 1 } });
+    s.entities.wizard.spells.push("teleport");
+  },
+  steps: [
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "teleport", slot: 7, choice, hex: { q: 6, r: 0 } } },
+    { by: "Pat", act: { type: "say", as: "wizard", text: "Well?" } },
+  ],
+});
+test("teleport: the roll and its outcome are told to the DM alone; a hidden creature near the destination changes nothing the player is sent", () => {
+  const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 2 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 6, r: 2 }) };
+  for (const [choice, said] of [["permanent-circle", /on target/], ["false-destination", /Similar Area/]]) {
+    const { hidden } = twin(TELEPORT(choice), sides);
+    assert.ok(said.test(JSON.stringify(hidden.raw.dm)), `${choice}: the DM is told`);
+    assert.ok(!/Teleport \(|\): on target|\): Similar Area/.test(JSON.stringify(hidden.raw.Pat)), `${choice}: the player is told none of the roll`);
+    assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost"));
+  }
+});
+
+test("teleport, very familiar: Mishap damage and Off Target are told to the DM alone, and a hidden creature near the destination changes nothing the player is sent", () => {
+  const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 2 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 6, r: 2 }) };
+  const told = { mishap: false, off: false };
+  for (let seed = 1; seed <= 60 && !(told.mishap && told.off); seed++) {
+    const { hidden } = twin(TELEPORT("very-familiar", seed), sides);
+    const dm = JSON.stringify(hidden.raw.dm), pat = JSON.stringify(hidden.raw.Pat);
+    if (/A Mishap|Mishaps/.test(dm)) told.mishap = true;
+    if (/Off Target\./.test(dm)) told.off = true;
+    assert.ok(!/Teleport \(|miles|Off Target\.|A Mishap:/.test(pat), `seed ${seed}: the player is told none of the roll`);
+  }
+  assert.ok(told.mishap && told.off, JSON.stringify(told));
+});
+// A creature the party does not know of stands ON the destination: the caster arrives as intended, as it would on a bare cell, and the DM alone is told
+// to settle it (one rule for every teleport, Misty Step too). The players are sent the same bytes in both worlds.
+test("teleport: a hidden creature on the destination changes nothing the player is sent; the DM is told", () => {
+  const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 6, r: 0 }) };
+  const { hidden } = twin(TELEPORT("permanent-circle"), sides);
+  assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
+});
+test("misty step: a hidden creature on the landing changes nothing the player is sent; the DM is told", () => {
+  const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4, r: 0 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 4, r: 0 }) };
+  const MISTY = {
+    players: ["Pat"],
+    seed: 5,
+    setup(w) {
+      TELEPORT("permanent-circle").setup(w);
+      Object.assign(w.state.entities.wizard, { slots: { 2: 1 }, slotsMax: { 2: 1 } });
+      w.state.entities.wizard.spells.push("misty-step");
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "wizard", spell: "misty-step", slot: 2, hex: { q: 4, r: 0 } } },
+      { by: "Pat", act: { type: "say", as: "wizard", text: "Well?" } },
+    ],
+  };
+  const { hidden } = twin(MISTY, sides);
+  assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
+});
+
 // ---- deep pits (#806): a party member that falls into a region on the level below ----
 // By the existing rules a party member that lands in a region reveals it (lookAround: it stands in it), so the landing room is
 // sent to the players in both worlds. A second room of that level, far from the landing and unrevealed, is a bare cell in the
