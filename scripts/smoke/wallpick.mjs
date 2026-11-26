@@ -12,7 +12,7 @@ async function aim(browser, url, label, opts) {
       run.watch(page);
       const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${touch ? 'phone' : 'desktop'}-wallpick-${n}.png` }); };
       const view = () => page.evaluate(() => { const h = window.hextable, R = h.R, hl = (R.inner ?? R).hl; return { hint: document.getElementById('hint-text')?.textContent, die: document.getElementById('btn-menu').classList.contains('waiting'), kind: h.mode.kind, wall: h.mode.wall?.id ?? null, lit: hl.range?.length ?? 0, chosen: hl.area?.length ?? 0 }; });
-      const tapHex = async (h) => {
+      const tapHex = async (h, hover = false) => {
         await page.evaluate(async (t) => {
           const G = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, w = G.toWorld(t);
           R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
@@ -20,6 +20,11 @@ async function aim(browser, url, label, opts) {
         await sleep(600);
         const pt = await page.evaluate((t) => window.hextable.R.screenOf(t), h);
         if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`hex ${JSON.stringify(h)} is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
+        if (hover) {       // a mouse resting on the wall lights it alone, before any tap
+          await page.mouse.move(pt.x, pt.y); await sleep(300);
+          const v = await view();
+          if (!v.chosen || v.wall) throw new Error(`hover: ${JSON.stringify(v)}`);
+        }
         await tapAt(page, touch, pt.x, pt.y);
       };
       let ria, pos, north;
@@ -28,7 +33,6 @@ async function aim(browser, url, label, opts) {
         const G = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), me = G.center(p);
         return G.range(p, 1).filter((h) => G.center(h)[1] < me[1] - 1).map((h) => ({ q: h.q, r: h.r, dx: G.center(h)[0] - me[0] })).sort((a, b) => Math.abs(a.dx) - Math.abs(b.dx));
       }, [pos]);
-      const where = () => state(page, (S, i) => S.entities[i].pos, ria);
 
       await run.do('a level 9 wizard with Stone Shape and a 60 ft wall just north of her', async () => {
         await open(page, url); await playSolo(page);
@@ -51,11 +55,10 @@ async function aim(browser, url, label, opts) {
         await chip(page, 'Ria');
       });
 
-      await run.do('before the cast the wall stops her: a step north is refused and she stays', async () => {
-        await page.evaluate((h) => window.hextable.act({ type: 'move', actor: window.hextable.state.entities && Object.values(window.hextable.state.entities).find((e) => e.name === 'Ria').id, to: h }), north[0]);
-        await sleep(600);
-        const p = await where();
-        if (p.q !== pos.q || p.r !== pos.r) throw new Error(`she crossed a wall: ${JSON.stringify(p)}`);
+      // Does the wall stop a step from Ria's space to this hex? (the engine's own test of what a wall blocks; `walls.js` is served beside the page)
+      const stops = (h) => page.evaluate(async ([i, t]) => { const W = await import('./shared/walls.js'), S = window.hextable.state; return W.barriers(S.map).blocked(S.map.levels[0].id, S.entities[i].pos, t, 'move'); }, [ria, h]);
+      await run.do('before the cast the wall stops a step north from every hex across it', async () => {
+        for (const h of north) if (!(await stops(h))) throw new Error(`a step to ${JSON.stringify(h)} is not stopped by the wall`);
       });
 
       await run.do('Stone Shape armed: the wall is lit; no wall is chosen and no die yet', async () => {
@@ -84,7 +87,7 @@ async function aim(browser, url, label, opts) {
           await tapHex({ q: pos.q + 6, r: pos.r + 2 });
           if ((await view()).wall) throw new Error('a far tap chose a wall');
           const hex = north[0];
-          await tapHex(hex);       // centres the view on it; the first tap chooses
+          await tapHex(hex, true);       // centres the view on it; the mouse rests on it, then the first tap chooses
           await wait(page, () => !!window.hextable.mode.wall);
           const v = await view();
           if (!v.die || !v.chosen || !/Stone Shape: the north wall/.test(v.hint)) throw new Error(`chosen: ${JSON.stringify(v)}`);
@@ -100,15 +103,12 @@ async function aim(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind !== 'spell', null, 8000);
         const after = await state(page, (S) => S.map.walls.map((w) => w.id).sort().join());
         if (!(await state(page, (S) => S.map.walls.length)) || after === 'long-wall' && before === 1) throw new Error(`the wall was not cut: ${after}`);
-        // the hex across that lies in the gap: one of the neighbours north of her is now reachable
-        let crossed = false;
-        for (const h of north) {
-          await page.evaluate(([i, t]) => window.hextable.act({ type: 'move', actor: i, to: t }), [ria, h]);
-          await sleep(800);
-          const p = await where();
-          if (p.q === h.q && p.r === h.r) { crossed = true; break; }
-        }
-        if (!crossed) throw new Error('Ria could not walk through the gap');
+        // the hex across that lies in the gap: a step north from her space is no longer stopped, and she walks it
+        let open = null;
+        for (const h of north) if (!(await stops(h))) { open = h; break; }
+        if (!open) throw new Error('no hex across the wall is open to her after the cast');
+        await page.evaluate(([i, t]) => window.hextable.act({ type: 'move', actor: i, to: t }), [ria, open]);
+        await wait(page, ([i, t]) => { const p = window.hextable.state.entities[i].pos; return p.q === t.q && p.r === t.r; }, [ria, open], 10000);
         await shot('3-cast');
       });
     } finally { await ctx.close(); }
