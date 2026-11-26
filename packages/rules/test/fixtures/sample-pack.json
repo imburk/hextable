@@ -401,13 +401,16 @@
                 "save": "wis",
                 "at": "turnEnd"
               }
+            },
+            {
+              "confuse": true
             }
           ]
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "One creature is frightened; at the end of each of its turns it saves again to throw off the fear."
+      "text": "One creature is frightened and confused; at the end of each of its turns it saves again to throw off the fear."
     },
     {
       "id": "hb-sample-stone-hide",

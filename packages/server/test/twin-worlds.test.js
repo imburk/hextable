@@ -920,3 +920,110 @@ test("see invisibility: the caster's table is sent the Invisible creature once t
   const cast = (r) => r.raw.Sam.findIndex((m) => m.t === "events" && JSON.stringify(m).includes("See Invisibility"));
   assert.ok(first(hidden, "Sam") === -1 || first(hidden, "Sam") >= cast(hidden) - 1, "not sent before the spell");
 });
+
+// ---- Antilife Shell (#786 wave 3b part 1): a hidden caster's shell ----
+// A shell refuses a move into it, which would tell the players something stands there. The engine does not enforce the shell of a caster the party does not know of
+// (shellSeen), so a visible creature walking into it is sent what it would be sent on a bare cell.
+const shellOf = (w, caster) => {
+  const g = byName(w, caster), fx = startEffect(w.state, { name: "Antilife Shell", spell: "antilife-shell", source: g.id, conc: true, duration: "1 hour", level: 5 });
+  fx.parts.push({ target: g.id, ends: { on: "concentration" } });
+  fx.terrain = { area: { shape: "emanation", size: 10 }, hexes: [], origin: { ...g.pos }, shell: true, follows: g.id };
+};
+test("antilife shell: a visible creature that moves into the shell of a hidden caster is sent the same as it would be on a bare cell", () => {
+  const { plain, hidden } = twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500 });
+      w.putIn();
+    },
+    steps: [
+      { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Seen").id, to: { q: 8, r: 0 } }), allowError: true },
+      { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Seen").id, to: { q: 5, r: 0 } }), allowError: true },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "What was that?" } },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 7, r: 1 }, name: "Ghost", hidden: true }); shellOf(w, "Ghost"); },
+    plain: (w) => { burn(w, { q: 7, r: 1 }); },
+  });
+  const moved = (r) => JSON.stringify(r.raw.Pat).includes('"moved"');
+  assert.ok(moved(plain) && moved(hidden), "the visible creature moved in both: the shell of a hidden caster refuses nothing");
+});
+
+// ---- Globe of Invulnerability (#786 wave 3b part 1): a hidden creature inside the barrier, and a spell cast from outside at the area ----
+// The barrier leaves the inside out of the area by place, so a hidden creature there is neither hit nor found by it: the same bytes as a bare cell.
+test("globe of invulnerability: a spell cast from outside at an area over a hidden creature inside the barrier is sent the same as over a bare cell", () => {
+  twin({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["wizard", 0, 0], ["rogue", -8, 3], ["fighter", -8, 4], ["cleric", -6, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", slots: { 6: 2 }, slotsMax: { 6: 2 }, spells: [...s.entities.wizard.spells, "globe-of-invulnerability"] });
+      Object.assign(s.entities.cleric, { owner: w.ids.Sam, ownerName: "Sam", slots: { 1: 3 }, slotsMax: { 1: 3 }, spells: [...s.entities.cleric.spells, "fog-cloud"] });
+      w.must({ type: "cast", actor: "wizard", spell: "globe-of-invulnerability" });
+      w.putIn();
+    },
+    steps: [
+      { by: "Sam", act: { type: "cast", actor: "cleric", spell: "fog-cloud", hex: { q: 1, r: 0 } } },
+      { by: "Pat", act: { type: "say", as: "wizard", text: "Anything?" } },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 1 }, name: "Ghost", hidden: true }); },
+    plain: (w) => { burn(w, { q: 1, r: 1 }); },
+  });
+});
+
+// ---- Confusion (#786 wave 3b part 2): a confused creature's d10 and its pick, with a hidden creature in its reach ----
+// A 7 or 8 picks a creature within reach to attack. The pick is made only among creatures the party knows of, and the die for it is drawn whatever the
+// number of them, so a hidden creature changes nothing the players are sent: not the flags (`confusedFoe:<id>:<foe>`), not the turn, not the dice after it.
+// The hidden creature stands outside the arena, as in the other scenarios of a fight: one the DM hides is never in the fight, and one forced into it (a creature
+// that is hiding) shows as `someone` in the order by design, so a hidden creature in the confused one's reach cannot be built here. That the pick leaves out a creature
+// the party does not know of is tested in packages/rules/test/wave3b2-spells.test.js.
+const CONFUSED = (seed) => ({
+  players: ["Pat"],
+  seed,
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", 0, 0], ["rogue", 2, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+    s.entities.rogue.hp = s.entities.rogue.maxHp = 500;
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Seen" });
+    const g = byName(w, "Seen");
+    Object.assign(g, { hp: 500, maxHp: 500, reactionUsed: true });
+    const fx = startEffect(s, { name: "Confusion", spell: "confusion", source: "wizard", conc: true, duration: "1 minute", level: 4 });
+    fx.parts.push({ target: g.id, confuse: { had: false }, ends: { on: "save", save: "wis", at: "turnEnd" }, dc: 13 });
+    w.putIn();                                                  // the hidden creature exists before the fight, which leaves it outside the arena
+    w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+    turnOf(w, "fighter");
+  },
+  steps: [
+    { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    (w) => turnOf(w, byName(w, "Seen").id),                     // the start of its turn: the d10 is rolled here
+    { by: "dm", act: (w) => ({ type: "attack", actor: byName(w, "Seen").id, target: "fighter", attack: byName(w, "Seen").actions.find((x) => !x.multiattack).id }), allowError: true },
+    { by: "dm", act: (w) => ({ type: "attack", actor: byName(w, "Seen").id, target: "rogue", attack: byName(w, "Seen").actions.find((x) => !x.multiattack).id }), allowError: true },
+    { by: "dm", act: (w) => ({ type: "endTurn", actor: byName(w, "Seen").id }), allowError: true },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "What was that?" } },
+  ],
+});
+test("confusion: the roll, the pick and the turn of a confused creature are told to the DM alone, and the players are sent the same with a hidden creature on the map as without", () => {
+  const sides = { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 1 }, name: "Ghost", hidden: true }); Object.assign(byName(w, "Ghost"), { hp: 500, maxHp: 500 }); }, plain: (w) => { burn(w, { q: 6, r: 1 }); } };
+  let seed = 5;
+  for (; seed < 120; seed++) { const { plain } = twinRun(CONFUSED(seed), sides); if (/rolled [78] on the d10/.test(JSON.stringify(plain.raw.dm))) break; }
+  assert.ok(seed < 120, "a seed that rolls a 7 or 8");
+  const { plain, hidden } = twin(CONFUSED(seed), sides);
+  assert.ok(/rolled [78] on the d10/.test(JSON.stringify(hidden.raw.dm)), "the DM is told of the roll in both worlds");
+  assert.ok(!/on the d10|Confused/.test(JSON.stringify(hidden.raw.Pat)) && !/on the d10|Confused/.test(JSON.stringify(plain.raw.Pat)), "the player is told of none of it");
+  assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost"));
+});

@@ -12,10 +12,12 @@ import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { SIZES as SIZE_LIST } from '../content/schema.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, spot, steering, turnBudget, unblocked, up } from './shared.js';
-import { airspace, aloft, along, beyond, footingOf, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { shellSeen, shellsFor, creatureType, airspace, aloft, along, beyond, footingOf, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { passive } from './rolls.js';
+import { inShell, shellsOf } from '../terrain.js';
+import { endEffect } from '../durations.js';
 import { partRefusal } from './attacks.js';
-import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
+import { checkEnd, confusedOnly, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -262,6 +264,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
       if (p !== undefined) b.diagonals = p;                              // 'alternate': is the next diagonal a second one?
     }
     spent = cost;
+    shellCatch(s, ev, e, was, flush);
     lookAround(s, ev, rider ? [e, rider] : [e], flush);
     if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
     // Each 5 feet walked within a zone that works on steps (Spike Growth) costs what it says; a creature that is off the ground touches none (a walker with a Fly Speed does: zones.js `stepped`).
@@ -288,6 +291,17 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
   // A mover found on the way that the end of the walk would have found anyway: what came before is told as then (unfind).
   for (const f of found) unfind(s, f);
   return walked;
+}
+// Antilife Shell: "If you move so that an affected creature is forced to pass through the barrier, the spell ends." The caster has just taken a step from `was`: a creature the
+// aura binds (not a Construct or Undead; Huge or smaller) that stands in it now and did not before is one the aura has moved over, so the spell ends. A creature it already held
+// is not pushed, and a Gargantuan one is not "forced" (the SRD says Huge or smaller). One the caster does not know of (hidden) does not end it: that would tell the player it was there; the DM judges it. The DM is told in the spell's ending (`effectEnd`), which names no creature.
+function shellCatch(s, ev, e, was, flush) {
+  for (const fx of shellsOf(s)) {
+    if (fx.terrain.follows !== e.id || !shellSeen(s, e)) continue;
+    const over = (t) => t.id !== e.id && !['construct', 'undead'].includes(creatureType(t)) && SIZE_LIST.indexOf(t.size ?? 'medium') <= SIZE_LIST.indexOf('huge') && !inShell(s, fx, t, t.pos, was) && inShell(s, fx, t);
+    if (living(s).some((t) => shellSeen(s, t) && over(t))) { flush(); endEffect(s, ev, fx, 'the caster moved so that a creature the aura holds back was forced through it'); }
+    else for (const t of living(s)) if (over(t)) ev.push({ type: 'manual', actor: e.id, name: fx.name, partial: true, text: `${fx.name}: the aura has moved over ${t.name}, which the party does not know of. The DM judges whether it is forced through the barrier, which ends the spell.` });
+  }
 }
 // The rider a mount carries out of a foe's reach, if the foe may make its Opportunity Attack against it instead (stage
 // C6b; Decision 8: "a foe still has one Reaction and chooses which"): hostile to it, within its reach where the pair
@@ -627,6 +641,8 @@ function moveOn(s, a, ctx, ev, own) {
         if (moveOptions(asItsTurn(s, e, bud), e, { unchecked: true }).get(tk)?.canStop) fail(`${e.name} can't drag ${names} that way.`);
         if (moveOptions(asItsTurn(s, e, bud), e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
       }
+      // Antilife Shell: a place only the aura stands in the way of is refused as that (a hidden caster's shell is not in `moveOptions`: it would tell the player something is there).
+      if (shellsFor(s, e).length && moveOptions(asItsTurn(s, e, bud), e, { through: true, unshelled: true }).get(tk)?.canStop) fail(`Antilife Shell keeps ${e.name} from passing into it.`);
       fail(fighting ? `Too far. ${e.name} has ${feetLeft(s, bud.move)} ft of movement left.` : "Can't get there.");
     }
     if (dragFirst(s, e, route(reach, tk), e.side === 'party' ? unseen : null, ev)) return;
@@ -667,6 +683,7 @@ export const handlers = {
   dash(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
+    confusedOnly(s, e, 'Dash');
     if (steering(s, e)) return mountAct(s, e, a, 'Dash', ev);
     const time = actTime(e, 'dash', a);
     // A monk's Dash as a Bonus Action is Step of the Wind; with Fleet Step it may follow another Bonus Action.
@@ -706,6 +723,7 @@ export const handlers = {
   disengage(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Disengage only matters in a fight.');
+    confusedOnly(s, e, 'Disengage');
     if (steering(s, e)) return mountAct(s, e, a, 'Disengage', ev);
     const time = actTime(e, 'disengage', a);
     need(s, e, time);

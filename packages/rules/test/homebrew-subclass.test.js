@@ -505,8 +505,8 @@ test("a pack without subclasses is sent to players, and hashed for them, byte fo
   const sample = JSON.parse(readFileSync(new URL("./fixtures/sample-pack.json", import.meta.url), "utf8"));
   const kinds = JSON.parse(readFileSync(new URL("./fixtures/reader-kinds-pack.json", import.meta.url), "utf8"));
   // Measured on main before this change: the player hash of each fixture pack.
-  assert.equal(forPlayers(sample).hash.slice(0, 10), "b9352d809a");      // re-measured for #786 wave 3a part 2: Stone Hide gained a ward step and its text changed; before: re-measured for #786 wave 3a: Stern Word (a command step) added; before: re-measured for #786: Stone Hide gained an arm step and a save/endSpell, and its text changed; before: re-measured for #674: the sample pack gained a Stabilize step and a Light step; and for #726 job 5: a Dispel step on Spotter's Eye, a Revive step in Ember Recall (#762), and an eachTurn step on Stone Hide (#772)
+  assert.equal(forPlayers(sample).hash.slice(0, 10), "d1f8de94f4");      // re-measured for #786 wave 3b part 2: Gloom Snare gained a confuse step and its text changed; before: re-measured for #786 wave 3a part 2: Stone Hide gained a ward step and its text changed; before: re-measured for #786 wave 3a: Stern Word (a command step) added; before: re-measured for #786: Stone Hide gained an arm step and a save/endSpell, and its text changed; before: re-measured for #674: the sample pack gained a Stabilize step and a Light step; and for #726 job 5: a Dispel step on Spotter's Eye, a Revive step in Ember Recall (#762), and an eachTurn step on Stone Hide (#772)
   assert.equal(forPlayers(kinds).hash.slice(0, 10), "1040f94f12");
-  assert.equal(hashOf(sample).slice(0, 10), "53c6d38d35", "and the DM's whole-pack hash (re-measured for #786, the same fixture edit)");
+  assert.equal(hashOf(sample).slice(0, 10), "83e75ad954", "and the DM's whole-pack hash (re-measured for #786, the same fixture edit)");
   assert.equal(Object.hasOwn(forPlayers(sample).data, "subclasses"), false);
 });
