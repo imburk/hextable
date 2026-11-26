@@ -1354,6 +1354,16 @@ test("stone shape: a refusal from the cut names no hidden creature", () => {
   noDiffs(r);
 });
 
+test("stone shape: a lever linked to the secret door that was cut loses the link; the cut is not refused (second review of #820)", () => {
+  const lever = (links) => (w) => { w.state.map.objects.push({ id: "lv", def: "lever", level: "ground", at: { q: 2, r: 2 }, state: "up", ...(links ? { links } : {}) }); };
+  const r = stoneTwin([{ x: 17.5, y: 0 }], null, {
+    hide: (w) => { lever([{ object: "sd", when: "down", sets: "open" }])(w); w.state.map.objects.push({ id: "sd", def: "secret-door", level: "ground", at: { q: 3, r: 0 }, edge: 0, state: "secret" }); },
+    plain: (w) => { lever(null)(w); w.state.map.walls.push({ id: "w0", level: "ground", kind: "wall", a: SEG_[0], b: SEG_[1] }); } });
+  noDiffs(r);
+  assert.equal(r.hidden.w.state.map.objects.some((o) => o.id === "sd"), false, "the door was cut away");
+  assert.equal(r.hidden.w.state.map.objects.find((o) => o.id === "lv").links, undefined, "the lever's link to it went too");
+});
+
 // ---- leap (#813, wave 4 part 8): what a Long Jump passes over is not entered, so a hidden thing there is not found and does not stop it ----
 const leapScene = (w) => {
   const s = w.state;

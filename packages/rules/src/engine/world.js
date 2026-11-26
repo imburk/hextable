@@ -991,6 +991,14 @@ export function cutWall(s, src, feet, f, ev) {
     else if (!pieces.length) ops.push({ op: 'unwall', id: x.id });
     else { ops.push(rec(pieces[0], x.id)); for (const r of pieces.slice(1)) ops.push(rec(r)); }
   }
+  // A lever or plate linked to a secret door that was cut away loses that link, as if the door had never been (a link to an object that is not
+  // on the map is a lint refusal, and that refusal would tell a player there had been a door: review of #820).
+  if (doors.length) for (const o of s.map.objects) {
+    if (!Array.isArray(o.links) || !o.links.some((l) => doors.includes(l?.object))) continue;
+    const kept = structuredClone(o); kept.links = kept.links.filter((l) => !doors.includes(l?.object));
+    if (!kept.links.length) delete kept.links;
+    ops.push({ op: 'object', object: kept });
+  }
   editMap(s, ops, ev, { footing: false });      // a cut of wall never changes what anyone stands on, and a refusal here must not name a creature
   tell(`${f.src.name} took out ${Math.min(feet, L)} feet of the wall at that point, as if shaped from stone. The engine does not know what a wall is made of: if it is not stone, undo this.${doors.length ? ` An undiscovered secret door stood in the stretch (${doors.join(', ')}) and was cut away with it; the players were told nothing of it.` : ''}`);
   return true;
