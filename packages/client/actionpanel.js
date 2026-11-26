@@ -629,7 +629,7 @@ const meldedGroups = (S, e, o) => {
   const out = [], step = stepOutRow(S, e), self = spellRows(S, e, { mode: o.mode }).filter((r) => SPELLS[r.spell]?.aim === 'self');
   const fight = !!S.encounter && inFight(S, e.id), filtered = fight ? (l) => l.filter(offered) : (l) => l;
   for (const [id, rows] of [['stone', [step]], ['spells', self]]) {
-    const g = { id, label: GROUP_LABEL[id], rows, offered: filtered(rows), tip: '', why: '', shown: id === 'stone' || rows.length > 0 };
+    const g = { id, label: GROUP_LABEL[id], rows, offered: id === 'stone' ? rows : filtered(rows), tip: '', why: '', shown: id === 'stone' || rows.length > 0 };
     g.tip = g.offered.length ? names(g.offered) : rows.find((r) => r.why)?.why || '';
     out.push(g);
   }
@@ -794,7 +794,7 @@ export function initActionPanel(ctx) {
       return `<button type="button" role="radio" class="ap-ch ${o.why ? 'off' : 'use'}${o.on ? ' on' : ''}" data-ch="${g.id}" data-v="${esc(o.value)}" data-why="${esc(o.why)}" aria-checked="${o.on}" aria-disabled="${o.why ? 'true' : 'false'}"${o.why ? ` aria-describedby="${wid}"` : ''}><span class="ap-ch-t">${o.on ? '\u2713 ' : ''}${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}${o.why ? `<small class="ap-why" id="${wid}">${esc(o.why)}</small>` : ''}</button>`;
     }).join('')}</div></div>`;
   }).join('')}`;
-  for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free]), 'sheet']) {
+  for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free, 'stone']), 'sheet']) {      // 'stone': the one group of a creature merged with stone
     const bar = mk('button', { type: 'button', class: 'ap-bar', id: `ap-bar-${id}`, 'data-sec': id, 'aria-expanded': 'false', 'aria-controls': `ap-${id}` },
       mk('span', { class: 'ap-bt' }), mk('small', { class: 'ap-tip' }), mk('span', { class: 'ap-chev', 'aria-hidden': 'true' }, '›'));
     const pane = mk('div', { id: `ap-${id}`, class: 'ap-pane', role: 'region', 'aria-labelledby': `ap-bar-${id}` }); pane.hidden = true;
@@ -802,7 +802,7 @@ export function initActionPanel(ctx) {
     const sec = mk('section', { class: 'ap-sec', 'data-sec': id }, mk('h3', { class: 'ap-h' }, bar), likely, pane); sec.hidden = true;
     secs[id] = sec; panes[id] = pane; bars[id] = bar; body.append(sec);
   }
-  const LISTS = ['explore', 'attacks', 'spells', 'heal', 'move', 'defend', 'use', 'features', 'companions', 'rest', 'cost', 'items'];
+  const LISTS = ['explore', 'attacks', 'spells', 'heal', 'move', 'defend', 'use', 'features', 'companions', 'rest', 'stone', 'cost', 'items'];
   let picking = null;                                    // the Inventory, Heal or Use row whose potion is being given: { id, actor }
   let giving = null;                                     // the Give... button whose list of creatures is open: { id (of the act), actor }
   // The Cast section's sort (kept on this device) and filters (kept while the page is open, not between sessions).
