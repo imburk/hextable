@@ -1574,6 +1574,7 @@ function pickChar(id) {
   D.open('sheet'); refresh();
 }
 const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), confirm: () => confirmDie(), selected: () => (S && selId ? S.entities[selId] ?? null : null), charName: () => (S && selId && S.entities[selId] ? shownName(S, S.entities[selId]) : null), pickChar,
+  passTap: () => !!choicesNow && D.tab === 'sheet', tapMap: (x, y, type) => R.tapAt(x, y, type),
   change: (why) => { if (why === 'close') menuCloses++; refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
