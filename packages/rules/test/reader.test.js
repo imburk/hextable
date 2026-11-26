@@ -173,6 +173,8 @@ const FIXTURES = [
   base('long-casts', 'Long Casts', { time: '12 hours', duration: '7 days', target: { self: true }, effects: [{ heal: '1d4' }] }),
   base('wall-gap', 'Wall Gap', { level: 4, school: 'transmutation', range: 'touch', target: { wall: {} }, tier: 'assist', choice: { of: 'shape' }, kinds: ['utility'],
     effects: [{ cut: 5, ifChoice: ['passage'] }, { manual: 'Any other shape is the DM\'s.', ifChoice: ['other'] }] }),
+  base('stone-hide', 'Stone Hide', { level: 3, school: 'transmutation', range: 'touch', duration: '8 hours', target: { wall: {} }, tier: 'assist', kinds: ['utility'],
+    effects: [{ meld: true }, { modifier: { on: 'check', op: 'disadvantage', scope: { skill: 'perception' } } }, { manual: 'Whether the wall is stone is the DM\'s.' }] }),
 ];
 
 const readingOf = (e) => { const r = readEntry('spell', e); return [`== ${e.id}`, ...r.lines, ...r.doesNot.map((x) => `DM: ${x}`), ...r.problems.map((x) => `PROBLEM: ${x}`), ''].join('\n'); };

@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ACTION_TYPES, apply, current, TERRAIN_ACTIONS } from "../src/engine.js";
 import { aiStep } from "../src/ai.js";
+import { gridOf } from "../src/grid.js";
 import { newMap } from "../src/map.js";
 import * as H from "../src/hex.js";
 import { newGame } from "../src/scenario.js";
@@ -129,6 +130,8 @@ const SENSE2 = [
   // A leap (the Long Jump, #813): 10 ft over the ground beside the fighter, so it is reached by a script.
   { a: (s) => ({ type: "leap", actor: "fighter", to: { q: s.entities.fighter.pos.q - 2, r: s.entities.fighter.pos.r } }) },
   { a: (s) => ({ type: "leap", actor: "fighter", to: { q: s.entities.fighter.pos.q, r: s.entities.fighter.pos.r - 2 } }) },
+  // Meld into Stone: the wizard merges with a wall beside it, then leaves the stone (`unmeld`); the cast is the DM's, so a fight's turn does not matter to the script.
+  { pre: (s) => { const c = gridOf(s.map).center(s.entities.wizard.pos); s.map.walls.push({ id: "meldwall", level: s.map.levels[0].id, kind: "wall", a: [c[0] + 2.5, c[1] - 20], b: [c[0] + 2.5, c[1] + 20] }); Object.assign(s.entities.wizard, { slots: { 3: 2 }, slotsMax: { 3: 2 } }); s.entities.wizard.spells.push("meld-into-stone"); if (s.encounter) turnOf(s, "wizard"); const r = apply(s, { type: "cast", actor: "wizard", spell: "meld-into-stone", slot: 3, wall: { level: s.map.levels[0].id, x: c[0] + 2.5, y: c[1] } }, DM); if (!r.ok) throw new Error(r.error); }, a: { type: "unmeld", actor: "wizard" } },
   // Movement an Opportunity Attack's rider gave (docs/specs/homebrew-subclasses.md, addition H), kept as a turn flag, given up (a fight only: the first base has none, and the setup is skipped there).
   { pre: (s) => { s.encounter.flags["rmove:fighter"] = 15; }, a: { type: "forgoMove", actor: "fighter" } },
   // Places of a world (docs/specs/travel.md, W2): the map in play made a place, another battle place kept, a navigation node above.
