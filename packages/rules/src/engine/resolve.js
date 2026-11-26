@@ -231,7 +231,7 @@ function teleport(s, t, step, to, ev) {
       ev.push({ type: 'manual', actor: t.id, name: objectName(o), partial: true, text: `${t.name} teleported onto ${objectName(o)}. Whether it goes off is the DM's call.` });
   }
   lookAround(s, ev, [t]);
-  if (s.encounter?.arena[col(at)] && !inFight(s, t.id) && !t.dead) joinEncounter(s, t, ev);
+  if (s.encounter?.arena[col(at)] && !inFight(s, t.id) && !t.dead && !step.noJoin) joinEncounter(s, t, ev);
   return true;
 }
 
@@ -254,7 +254,10 @@ function meldInto(s, t, f, ev) {
 // rules of any other arrival (`teleport`: a creature standing there that its side does not know of is shared with and left to the DM).
 ON.meldEnd = (s, ev, t, m) => {
   ev.push({ type: 'note', id: t.id, text: `${t.name} comes out of the stone` });
-  teleport(s, t, { said: 'came out of the stone into', name: 'Meld into Stone' }, m.at, ev);
+  // One the party does not know of comes out unseen: joining the fight's order would reveal it (joinEncounter), so it does not, and the DM is told.
+  const hush = t.side !== 'party' && (t.hidden || unknown(s, t));
+  teleport(s, t, { said: 'came out of the stone into', name: 'Meld into Stone', noJoin: hush }, m.at, ev);
+  if (hush && s.encounter && !inFight(s, t.id)) ev.push({ type: 'manual', actor: null, name: 'Meld into Stone', partial: true, text: `${t.name} came out of the stone unseen, and is not in the fight's order: joining it would tell the players it is there. The DM adds it (joinFight) when it shows itself.` });
 };
 // A cut of the wall (Stone Shape's `cut` step; `cut` is the stretch taken out, `{ level, a, b }`): a creature merged with the stone within 2.5 feet of
 // it is expelled: the spell ends, it comes out at the nearest unoccupied space, takes 6d6 Force damage and is Prone. Any other damage or destruction of
@@ -293,7 +296,7 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   for (const h of G.range(center, radius)) if (hasColumn(s.map, h)) arena[col(h)] = 1;    // a fight locks whole columns, every level
   catchUp(s, arena, walked, ev);                         // those walking with the party are with it
   // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
-  const who = Object.values(s.entities).filter((e) => !e.dead).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
+  const who = Object.values(s.entities).filter((e) => !e.dead && (e.side === 'party' || !e.melded)).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
   if (!who.some((e) => e.side === 'party')) fail('No party creature is in range of the fight.');   // foes alone would end it at once as a defeat (#771)
   for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = confusedNow(s, e); reveal(s, e, ev); }   // nobody fights unseen

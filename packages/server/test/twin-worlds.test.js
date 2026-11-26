@@ -1394,3 +1394,54 @@ test("leap: a hidden pit that is not found, as a creature's own pit: an undiscov
   twin({ players: ["Pat"], setup: leapScene, steps: [LEAP] },
     { hide: (w) => { w.state.map.objects.push({ id: "pit1", def: "pit-trap", level: "ground", at: { q: 4, r: 0 }, state: "hidden" }); }, plain: () => {} });
 });
+
+// ---- Meld into Stone (#824, wave 4 part 10): a creature merged with a wall is, to players who do not run it, exactly as if it were not there ----
+// (a) A hostile creature (hidden by the DM from the start) melds into the wall beside the party; the other world has no creature. Before, while the party walks onto its
+// space, Searches and casts an area spell over it, and when it leaves the stone unseen: every player is sent the same bytes in both worlds.
+const MELD_WALL = [[17.5, -30], [17.5, 30]];
+const meldScene = (w, { fight = false } = {}) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+  s.map.walls.push({ id: "mw", level: "ground", kind: "wall", a: MELD_WALL[0], b: MELD_WALL[1] });
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", 1, 0], ["rogue", -8, 5], ["cleric", -8, 6], ["wizard", 3, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+  Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500, slots: { 1: 4, 3: 3 }, slotsMax: { 1: 4, 3: 3 } });
+  s.entities.wizard.spells.push("fireball");
+};
+const MELDED_FOE_SEQ = 3;           // the ids a melded foe uses up in the world that has it (its creature and the spell's effect), spent in the other as well (DEBT T11)
+const meldFoe = (w, { seen = false } = {}) => {
+  w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 1 }, name: "Wallflower", hidden: true });
+  const g = byName(w, "Wallflower");
+  Object.assign(g, { hp: 500, maxHp: 500, slots: { 3: 2 }, slotsMax: { 3: 2 }, spells: ["meld-into-stone"], castAbil: "wis", prof: 2, abil: { ...g.abil, wis: 14 } });
+  w.must({ type: "cast", actor: g.id, spell: "meld-into-stone", slot: 3, wall: { level: "ground", x: 17.5, y: 4 } });
+  assert.ok(g.melded, "it is merged");
+  if (seen) delete g.hidden;           // no one was sent anything while it was hidden: from here only its being merged keeps it from them
+};
+const meldTwin = (extra = {}) => ({
+  players: ["Pat", "Sam"],
+  seed: 7,
+  setup: (w) => meldScene(w),
+  steps: [
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 2, r: 1 } } },                                     // walks past
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 3, r: 1 } } },                                     // onto the space the creature stands in
+    { by: "Pat", act: { type: "search", actor: "wizard" }, allowError: true },                                      // looks for it
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "fireball", slot: 3, hex: { q: 3, r: 1 } }, allowError: true },    // an area spell over its space
+    { by: "Pat", act: { type: "say", as: "wizard", text: "Hm." } },
+    (w) => { const g = byName(w, "Wallflower"); if (g) { const fx = w.state.effects.find((f) => f.source === g.id); w.must({ type: "endEffect", effect: fx.id }); } },     // it leaves the stone, unseen
+    { by: "Pat", act: { type: "say", as: "wizard", text: "Nothing." } },
+  ],
+  ...extra,
+});
+const meldSides = { hide: (w) => meldFoe(w), plain: (w) => { w.state.seq += MELDED_FOE_SEQ; } };
+test("meld into stone: a hidden foe merged with a wall beside the party, and none, are sent the same, as the party walks onto it, Searches, casts over it and it leaves", () => {
+  twin(meldTwin(), meldSides);
+});
+// (b) The same, but the DM never hid the creature: it stands in plain view in the open and merges before anyone is sent anything, so it is the merging alone that keeps it from the players
+// (no leaving: a creature that steps out in view is seen).
+test("meld into stone: a foe the DM never hid, merged with a wall, is sent as no creature at all, through the same walk, Search and area spell", () => {
+  const sc = meldTwin();
+  sc.steps = sc.steps.filter((s) => typeof s !== "function");
+  twin(sc, { hide: (w) => meldFoe(w, { seen: true }), plain: (w) => { w.state.seq += MELDED_FOE_SEQ; } });
+});
