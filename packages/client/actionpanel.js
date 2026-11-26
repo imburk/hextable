@@ -20,6 +20,7 @@ import { SPELLS, MONSTERS, CONTENT, rollLabel } from './shared/content/index.js'
 import { lightAt } from './shared/sight.js';
 import { under, apart } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
+import { noObjectWhy } from './objectaim.js';
 import { gridPlan } from './accordion.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
@@ -369,6 +370,7 @@ const LONGER = { minute: '1 minute', hour: '1 hour' };
 export const castGroup = (sp) => (CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.time] : 'Longer');
 const rangeWhy = (S, e, sp) => {
   const reach = rangeAt(sp.def, e.level);
+  if (sp.aim === 'object') return noObjectWhy(S, e, sp);
   if (sp.aim !== 'creature' || !(reach > 0)) return '';
   try { return targetsFor(S, e, { spell: sp.id }).length ? '' : `Nobody within ${reach} ft.`; } catch { return ''; }
 };
