@@ -96,17 +96,14 @@ test("Misty Step without a destination: the slot is spent and the DM moves the c
   assert.ok(r.events.some((e) => e.type === "manual" && /names no destination/.test(e.text) && !e.partial));
 });
 
-test("teleport onto a creature the caster did not know of: the nearest unoccupied space instead", () => {
+test("teleport onto a creature the caster did not know of: it arrives as intended, sharing the space, and the DM alone is told to settle it", () => {
   const s = field(); learn(s, "wizard", "misty-step");
   const g = spawn(s, 0, -3); g.hidden = true;
   const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "misty-step", hex: { q: 0, r: -3 } }, DM));
-  const w = s.entities.wizard;
-  assert.notDeepEqual(at(w), [0, -3]);
-  assert.equal(Math.max(Math.abs(w.pos.q), Math.abs(w.pos.r), Math.abs(w.pos.q + w.pos.r - (0 + -3))) >= 0, true);
-  // It is beside where it meant to go.
-  const dq = w.pos.q - 0, dr = w.pos.r + 3;
-  assert.equal((Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2, 1);
+  assert.deepEqual(at(s.entities.wizard), [0, -3], "where it meant to go: anywhere else would tell the players something is there");
   assert.ok(r.events.some((e) => e.type === "moved" && e.teleport));
+  const note = r.events.find((e) => e.type === "manual" && /did not know of/.test(e.text));
+  assert.ok(note && note.partial, "the DM's alone");
 });
 
 test("Dimension Door: assist; 500 ft with no need to see, and 4d6 Force with no teleport when a creature it did not know of is there", () => {

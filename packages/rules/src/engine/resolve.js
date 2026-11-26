@@ -14,7 +14,7 @@ import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { silentAll, silentAt } from '../terrain.js';
 import { entered, flushZones, snapshot, stepped, turnInZones } from '../zones.js';
-import { canSee, COVER, coverOf, inViewOf } from '../sight.js';
+import { canSee, COVER, coverOf, hiddenFrom, inViewOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
@@ -151,16 +151,24 @@ function teleport(s, t, step, to, ev) {
   const G = gridOf(s.map), taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos, G));
   let at = to;
   if (taken(at)) {
-    // Teleport (`familiarity`): a creature the caster does not know of stands there. The nearest free space would tell the players something is there, so nobody is moved and the DM places the caster.
-    if (step.blocked || step.familiarity !== undefined) return false;
-    // Something it did not know of stands there: the nearest unoccupied space instead (the SRD
-    // lets it choose; the engine takes the nearest, the first found on each ring).
-    at = null;
-    for (let n = 1; n <= 6 && !at; n++) for (const h of G.range(to, n).filter((x) => G.dist(x, to) === n)) {
-      const p = landing(s.map, h, to.z);
-      if (p && Math.abs(p.z - to.z) <= STEP_MAX && !roomAt(s, t, p) && !taken(p)) { at = p; break; }
+    if (step.blocked) return false;                                     // Dimension Door's own rule (its `blocked` steps)
+    // A creature the teleporter's side does not know of stands there (the casting already refused a space it knows is taken).
+    // Moving the teleporter anywhere else, or not at all, would tell the players something is there, so it arrives as
+    // intended and shares the space for now; the DM settles it (the SRD wants an unoccupied space). The note is the DM's alone.
+    const there = living(s).filter((o) => o.id !== t.id && overlapAt(o, o.pos, t, at, G));
+    const unknownToIt = (o) => hiddenFrom(o, t) || (t.side === 'party' && (o.hidden || unknown(s, o)));
+    if (there.every(unknownToIt)) {
+      ev.push({ type: 'manual', actor: t.id, name: step.familiarity !== undefined ? 'Teleport' : 'Teleportation', partial: true,
+        text: `${t.name} teleported into the space where ${there.map((o) => o.name).join(' and ')} stands, which its side did not know of. The engine put ${t.name} there so the players learn nothing; the DM decides where each of them ends up (the spell wants an unoccupied space).` });
+    } else {
+      // A creature it knew of (not refused at the cast, as when the space filled since): the nearest unoccupied space, the first found on each ring.
+      at = null;
+      for (let n = 1; n <= 6 && !at; n++) for (const h of G.range(to, n).filter((x) => G.dist(x, to) === n)) {
+        const p = landing(s.map, h, to.z);
+        if (p && Math.abs(p.z - to.z) <= STEP_MAX && !roomAt(s, t, p) && !taken(p)) { at = p; break; }
+      }
+      if (!at) { ev.push({ type: 'manual', actor: t.id, name: 'Teleport', text: `${t.name} cannot arrive where it meant to, and the engine found no unoccupied space near it. The DM places it.` }); return true; }
     }
-    if (!at) { ev.push({ type: 'manual', actor: t.id, name: 'Teleport', text: `${t.name} cannot arrive where it meant to, and the engine found no unoccupied space near it. The DM places it.` }); return true; }
   }
   const zonesBefore = snapshot(s);
   t.pos = { ...at };

@@ -1134,12 +1134,30 @@ test("teleport, very familiar: Mishap damage and Off Target are told to the DM a
   }
   assert.ok(told.mishap && told.off, JSON.stringify(told));
 });
-// A creature the party does not know of stands ON the destination: the engine moves nobody and tells the DM. The players are sent that the caster stayed (the engine cannot hide that), and nothing of what is there or of the roll.
-test("teleport: a hidden creature on the destination moves nobody; the DM is told, the player is sent no word of the creature or the roll", () => {
+// A creature the party does not know of stands ON the destination: the caster arrives as intended, as it would on a bare cell, and the DM alone is told
+// to settle it (one rule for every teleport, Misty Step too). The players are sent the same bytes in both worlds.
+test("teleport: a hidden creature on the destination changes nothing the player is sent; the DM is told", () => {
   const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 6, r: 0 }) };
-  const { hidden } = twinRun(TELEPORT("permanent-circle"), sides);
-  assert.ok(/did not know of stands/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
-  assert.ok(!/Ghost|did not know of|Teleport \(|stands in the space/.test(JSON.stringify(hidden.raw.Pat)), "the player is told none of it");
+  const { hidden } = twin(TELEPORT("permanent-circle"), sides);
+  assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
+});
+test("misty step: a hidden creature on the landing changes nothing the player is sent; the DM is told", () => {
+  const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4, r: 0 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 4, r: 0 }) };
+  const MISTY = {
+    players: ["Pat"],
+    seed: 5,
+    setup(w) {
+      TELEPORT("permanent-circle").setup(w);
+      Object.assign(w.state.entities.wizard, { slots: { 2: 1 }, slotsMax: { 2: 1 } });
+      w.state.entities.wizard.spells.push("misty-step");
+    },
+    steps: [
+      { by: "Pat", act: { type: "cast", actor: "wizard", spell: "misty-step", slot: 2, hex: { q: 4, r: 0 } } },
+      { by: "Pat", act: { type: "say", as: "wizard", text: "Well?" } },
+    ],
+  };
+  const { hidden } = twin(MISTY, sides);
+  assert.ok(/did not know of/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
 });
 
 // ---- deep pits (#806): a party member that falls into a region on the level below ----

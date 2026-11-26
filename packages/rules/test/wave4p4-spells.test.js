@@ -154,7 +154,7 @@ test("Teleport: a casting without a familiarity is refused, and no slot is spent
   assert.equal(s.entities.wizard.slots[7], 1, "no slot spent");
 });
 
-test("Teleport: a destination a known creature occupies, or one with nothing to stand on, is refused with no slot spent; an unknown creature there means the DM places the caster", () => {
+test("Teleport: a destination a known creature occupies, or one with nothing to stand on, is refused with no slot spent; an unknown creature there: it arrives as intended and the DM settles it", () => {
   const s = field();
   const cast = (hex) => apply(s, { type: "cast", actor: "wizard", spell: "teleport", slot: 7, choice: "permanent-circle", hex }, DM);
   const from = { ...ON(s) };
@@ -162,10 +162,10 @@ test("Teleport: a destination a known creature occupies, or one with nothing to 
   assert.equal(cast({ q: 500, r: 500 }).ok, false, "nothing there to stand on");
   assert.equal(s.entities.wizard.slots[7], 1, "no slot spent");
   assert.deepEqual(ON(s), from);
-  // A creature the party does not know of stands on the destination: the caster is not moved; the DM is told.
+  // A creature the party does not know of stands on the destination: the caster arrives as intended (as with a bare cell); the DM alone is told to settle it.
   ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 8, r: 3 }, name: "Ghost", hidden: true }, DM));
   const r = ok(cast({ q: 8, r: 3 }));
-  assert.deepEqual(ON(s), from, "not moved");
-  assert.ok(!r.events.some((e) => e.type === "moved"));
-  assert.ok(/did not know of stands/.test(r.events.find((e) => e.type === "manual" && e.partial).text));
+  assert.ok(r.events.some((e) => e.type === "moved"), "a permanent circle is always on target");
+  assert.deepEqual([ON(s).q, ON(s).r], [8, 3], "where it meant to go");
+  assert.ok(r.events.some((e) => e.type === "manual" && e.partial && /did not know of/.test(e.text)), "the DM alone is told");
 });
