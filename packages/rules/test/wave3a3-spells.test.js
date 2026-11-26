@@ -154,3 +154,49 @@ test("Silence: a creature only partly inside the sphere is not entirely inside i
   ok(apply(s, { type: "harm", actor: edge.id, amount: 10, dtype: "thunder" }, DM));
   assert.equal(edge.hp, 290);
 });
+
+// ---------- Silence and reaction spells ----------
+import { slotsFor } from "../src/engine/rolls.js";
+test("Silence: a reaction spell with a Verbal component is neither offered nor cast from inside the sphere (Shield, Hellish Rebuke); one with none (Counterspell) and one cast from outside still are", () => {
+  const s = field();
+  for (const id of ["wizard"]) Object.assign(s.entities[id], { slots: { 1: 4, 2: 3, 3: 3 }, slotsMax: { 1: 4, 2: 3, 3: 3 } });
+  const w = s.entities.wizard;
+  silence(s, "cleric", 0, 0);
+  for (const id of ["shield", "hellish-rebuke"]) assert.deepEqual(slotsFor(s, w, SPELLS[id]), [], `${id} inside`);
+  assert.ok(!SPELLS.counterspell.def.components.includes("v"));
+  assert.ok(slotsFor(s, w, SPELLS.counterspell).length, "Counterspell has no Verbal component");
+  w.pos = { q: -12, r: 0, z: 0 };
+  for (const id of ["shield", "hellish-rebuke"]) assert.ok(slotsFor(s, w, SPELLS[id]).length, `${id} outside`);
+});
+
+test("Silence: Shield on a standing instruction does not fire when the wizard is hit from inside the sphere, and does when it is outside", () => {
+  for (const inside of [true, false]) {
+    const s = field();
+    const g = spawn(s, "goblin-warrior", 1, 0);
+    const w = s.entities.wizard;
+    w.spells.push("shield"); w.reactions = { shield: "always" };
+    g.actions.find((a) => a.id === "scimitar").effects[0].bonus = 40;
+    if (inside) silence(s, "cleric", 0, 0);
+    ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 }, DM));
+    for (let i = 0; i < 20 && current(s) !== g.id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    s.encounter.budget.action = 1;
+    const r = ok(apply(s, { type: "act", actor: g.id, action: "scimitar", target: "wizard" }, DM));
+    assert.equal(r.events.some((e) => e.type === "reaction" && e.reaction === "shield"), !inside);
+  }
+});
+
+// ---------- See Invisibility from a trait ----------
+test("See Invisibility: a trait that gives the hook rebuilds the party's view (a creature gaining it after the view was built is shown)", () => {
+  const s = field();
+  s.settings.sight = "light";
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  ok(apply(s, { type: "condition", actor: g.id, condition: "invisible" }, DM));
+  assert.equal(view(s, { role: "dm", userId: "dm" }).entities[g.id] !== undefined, true);
+  const seen = (u) => view(s, u).entities[g.id] !== undefined;
+  const PAT = { role: "player", userId: "pat" };
+  s.entities.wizard.owner = "pat";
+  assert.equal(seen(PAT), false, "view built, unseen");
+  s.entities.wizard.feats = [...(s.entities.wizard.feats ?? []), { id: "clear-eyes", name: "Clear Eyes", modifiers: [{ on: "invisible", op: "immune" }] }];
+  assert.equal(canSee(s, s.entities.wizard, s.entities[g.id]), "yes", "sight reads the trait");
+  assert.equal(seen(PAT), true, "and the party's view was rebuilt");
+});

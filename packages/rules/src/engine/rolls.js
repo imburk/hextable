@@ -1,6 +1,7 @@
 // Rolls and what they do to a creature (engine.js): healing, Temporary Hit Points, Advantage and
 // Disadvantage, saving throws, conditions and modifiers, damage parts, checks, death saves, and the
 // lasting effects an action leaves behind.
+import { silentAt } from '../terrain.js';
 import { d20Faces, die, negate, roll } from '../rng.js';
 import { ABILITIES, COMMANDS, SKILLS } from '../content/schema.js';
 import { CONTENT, SPELLS } from '../content/index.js';
@@ -206,6 +207,7 @@ export function rerollSave(s, t, abil, dc, onFail, from, ev) {
 export function slotsFor(s, e, sp) {
   if (untrainedGear(e).length) return [];                      // armour worn without training bars spellcasting (SRD "Armor Training")
   if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return [];
+  if (sp.def.components?.includes('v') && silentAt(s, e.pos)) return [];       // Silence: no Verbal component can be spoken in the sphere (a reaction spell is neither offered nor cast)
   if (sp.level === 0) return [0];
   if (s.encounter && (current(s) === e.id ? s.encounter.flags.slot : s.encounter.flags[`slot:${e.id}`])) return [];
   const out = [];
