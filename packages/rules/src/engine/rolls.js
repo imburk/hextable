@@ -46,7 +46,9 @@ export function cure(s, t, list, ev) {
       continue;
     }
     if (c === 'curse') {
-      for (const fx of [...effectsOf(s)]) if (SPELLS[fx.spell]?.def.choice?.of === 'curse' && fx.parts.some((p) => !p.ended && p.target === t.id)) endEffect(s, ev, fx, `${t.name} was freed of the curse`);
+      // "a curse": one, the oldest on it (Bestow Curse is one lasting effect; a second caster's curse stays, and the DM may pick another).
+      const fx = effectsOf(s).find((x) => SPELLS[x.spell]?.def.choice?.of === 'curse' && x.parts.some((p) => !p.ended && p.target === t.id));
+      if (fx) endEffect(s, ev, fx, `${t.name} was freed of the curse`);
       continue;
     }
     if (!t.cond[c]) continue;

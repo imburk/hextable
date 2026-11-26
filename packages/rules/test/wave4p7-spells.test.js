@@ -130,8 +130,23 @@ test("ability score and Hit Point maximum: the engine ends nothing and tells the
   }
 });
 
-test("another creature's curse choice does not leak steps: Lesser Restoration still takes its own choice", () => {
-  const d = SPELLS["lesser-restoration"].def;
-  assert.deepEqual(lint(d), []);
-  assert.deepEqual(SPELLS["bestow-curse"].def.choice, { of: "curse" });
+test("two curses on one creature (two casters): one cast ends one of them, the oldest", () => {
+  const s = field();
+  const slots = { 1: 4, 2: 3, 3: 3, 4: 3, 5: 4, 6: 2 };
+  Object.assign(s.entities.wizard, { slots: { ...slots }, slotsMax: { ...slots } });
+  s.entities.wizard.spells.push("bestow-curse");
+  const sk = spawn(s, "skeleton", -1, 1);
+  unsaved(sk);
+  inFight(s);
+  curseOn(s, sk, "str");
+  const first = s.effects.find((fx) => fx.name === "Bestow Curse").id;
+  for (let i = 0; i < 60 && current(s) !== "wizard"; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "bestow-curse", target: sk.id, slot: 3, choice: "dodge" }, DM));
+  assert.equal(s.effects.filter((fx) => fx.name === "Bestow Curse").length, 2);
+  turnOfCleric(s);
+  ok(cast(s, "curse", sk.id));
+  const left = s.effects.filter((fx) => fx.name === "Bestow Curse");
+  assert.equal(left.length, 1, "\"a curse\": one ends");
+  assert.notEqual(left[0].id, first, "the oldest went");
+  assert.ok(cursedNow(s, sk.id));
 });
