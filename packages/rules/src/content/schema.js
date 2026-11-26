@@ -100,7 +100,10 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'invisible',
   // `senses`: `{ on: 'senses', op: 'set', value: <feet>, scope: { sense } }`, a sense a lasting effect lends for a while (True Seeing: truesight 120); sight.js and vision.js read it through `sensesOf`.
   // docs/specs/rules-expansion.md, "Build notes: wave 4 part 3".
-  'senses'];
+  'senses',
+  // `surface`: `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`, a modifier step: the creature walks on water as on solid ground for as long as the effect lasts (Water Walk); engine/world.js `moveOptions` reads it through `walksOn`.
+  // docs/specs/rules-expansion.md, "Build notes: wave 4 part 4".
+  'surface'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
@@ -179,7 +182,9 @@ export const COMMANDS = ['approach', 'drop', 'flee', 'grovel', 'halt'];
 // `curse`: the four curses of Bestow Curse, the first as the ability it is for: `str` to `cha` (Disadvantage on checks and saves with that ability), `attacks` (Disadvantage on attack rolls against the caster), `dodge` (a Wisdom save
 // each turn or the Dodge action) and `damage` (an extra 1d8 Necrotic damage from the caster). A step with `ifChoice` is part of the cast only for the values it lists.
 export const CURSES = [...ABILITIES, 'attacks', 'dodge', 'damage'];
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES };
+// How well the caster knows a teleport's destination (Teleport; SRD 5.2.1 "Teleportation Outcome"): the rows of the table. engine/effects.js `TELEPORT_TABLE` holds its numbers.
+export const FAMILIARITY = ['permanent-circle', 'linked-object', 'very-familiar', 'seen-casually', 'viewed-once-or-described', 'false-destination'];
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -191,6 +196,8 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   }
   // `terrain` (Freedom of Movement): only `{ on: 'terrain', op: 'immune' }`.
   if (m.on === 'terrain' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on terrain is `{ on: "terrain", op: "immune" }`: the creature\'s movement is unaffected by Difficult Terrain');
+  // `surface` (Water Walk): only a modifier step `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`.
+  if (m.on === 'surface' && !(stepOk && m.op === 'immune' && m.scope?.surface === 'water' && Object.keys(m.scope).length === 1 && Object.keys(m).length === 3)) say('a modifier on surface is a modifier step `{ on: "surface", op: "immune", scope: { surface: "water" } }`: the creature walks on water as on solid ground for as long as the effect lasts');
   // `invisible` (See Invisibility): only `{ on: 'invisible', op: 'immune' }`, from a spell's lasting effect or a creature's trait (it sees the Invisible).
   // `senses` (True Seeing): only a modifier step `{ on: 'senses', op: 'set', value: <5 to 240 feet>, scope: { sense } }`.
   if (m.on === 'senses' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 120 && m.value % 5 === 0 && m.scope?.sense !== undefined && Object.keys(m).length === 4)) say('a modifier on senses is a modifier step `{ on: "senses", op: "set", value: <5 to 120 feet, a multiple of 5>, scope: { sense } }`');
@@ -214,7 +221,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.scope !== undefined) {
     const sc = m.scope;
     // `scope.condition`: a save to avoid or end that condition (Protection from Poison). `scope.tool`: a check made with that tool (addition C: a tool is a kebab-case id such as thieves-tools).
-    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition', 'tool', 'sense'].includes(k))) say('`scope` gives a skill, an ability, a tool, a condition or a sense');
+    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition', 'tool', 'sense', 'surface'].includes(k))) say('`scope` gives a skill, an ability, a tool, a condition, a sense or a surface');
     else {
       if (sc.tool !== undefined && !((typeof sc.tool === 'string' && sc.tool.length <= 40 && ID.test(sc.tool)) || sc.tool === 'chosen')) say('`scope.tool` is a tool id in kebab-case, such as thieves-tools');
       if (sc.tool !== undefined && m.on !== 'check') say('`scope.tool` is for checks');
@@ -225,7 +232,8 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
       if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
       if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
       if (sc.sense !== undefined && !(m.on === 'senses' && Object.keys(sc).length === 1 && ['truesight', 'darkvision', 'blindsight', 'tremorsense'].includes(sc.sense))) say('`scope.sense` is truesight, darkvision, blindsight or tremorsense, alone, on the senses hook');
-      else if (!['check', 'save', 'condition', 'senses'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
+      else if (sc.surface !== undefined && !(m.on === 'surface' && Object.keys(sc).length === 1 && sc.surface === 'water')) say('`scope.surface` is "water", alone, on the surface hook');
+      else if (!['check', 'save', 'condition', 'senses', 'surface'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
     }
   }
   // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
@@ -342,7 +350,7 @@ function lintChoice(e, say) {
     if (m.scope?.ability === 'chosen') used.add(c?.of === 'curse' ? 'curse' : 'ability');
     if (m.types?.includes('chosen')) used.add('damageType');
   });
-  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); });
+  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); if (st.familiarity === 'chosen') used.add('familiarity'); });
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
     if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && c.from.every((x) => CHOICES[c.of].includes(x)))) say(`\`choice.from\` lists ${c.of} values`);
@@ -585,7 +593,10 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       seen.teleport = true;
       if (!(isInt(step.teleport) && step.teleport > 0 && step.teleport % 5 === 0)) say('`teleport` must be a distance in feet, a multiple of 5');
       if (step.see !== undefined && step.see !== true) say('`see` is true or left out');
+      // `familiarity: 'chosen'` (Teleport): the engine rolls the SRD's Teleportation Outcome table for the familiarity the caster chose (`choice: { of: 'familiarity' }`), which docs/specs/rules-expansion.md, "Build notes: wave 4 part 4", describes.
+      if (step.familiarity !== undefined && step.familiarity !== 'chosen') say('`familiarity` is "chosen" or left out');
     }
+    if (step.familiarity !== undefined && kind !== 'teleport') say('`familiarity` is for a teleport step');
     if (step.blocked !== undefined && kind !== 'teleport') say('`blocked` is for a teleport step');
     // `summon`: the caster makes creatures in unoccupied spaces it names, bound to it (docs/specs/companions.md,
     // Decision 2). What it names is checked against the pack in lintPack; its place in a spell in lintSpell.
@@ -3046,7 +3057,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3078,7 +3089,7 @@ const SHAPES = {
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
-  scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool', 'sense'] },
+  scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool', 'sense', 'surface'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
@@ -3550,7 +3561,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', magic: 'b', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
-  scope: { skill: 's', ability: 's', condition: 's', tool: 's', sense: 's' },
+  scope: { skill: 's', ability: 's', condition: 's', tool: 's', sense: 's', surface: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
@@ -3600,7 +3611,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.heal': { heal: 'd', addMod: 'b', atLeast: 'i' }, 'step.tempHp': { tempHp: 'd', addMod: 'b', atLeast: 'i' },
   'step.condition': { condition: 's', ends: 'o', escape: 'i', largest: 's', holds: 'i', escapeDis: 'b', whileHeld: 'b' }, 'step.modifier': { modifier: 'o', ends: 'o', to: 's' },
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
-  'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
+  'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
   'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's' },

@@ -409,6 +409,38 @@ It lasts up to 1 hour. The engine times it, and when it ends, so does everything
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
+== hb-test-dry-feet
+"Dry Feet" (level 3 evocation, 30 feet, action, 1 hour).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+Each of up to 10 creatures within 30 feet gets the ability to walk across water as if it were solid ground, and to stop on it.
+  It lasts as long as the spell.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Whatever the description says beyond the steps above.
+
+== hb-test-far-step
+"Far Step" (level 7 evocation, 10 feet, action, instant).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+When casting it, the caster chooses how familiar the destination is; each step below that says "chosen" uses that choice.
+The caster teleports up to 1000 feet to a space the caster names when casting. With no space named, the DM moves it.
+The engine rolls 1d100 on the Teleportation Outcome table for the familiarity the caster chose: on a Mishap the traveller takes 3d10 Force damage and it rolls again; on Similar Area or Off Target (2d12 miles away, a direction rolled) it tells the DM, who places the traveller; on On Target the traveller goes to the space named.
+It is aimed at the caster alone.
+It is instant: nothing it does is kept as a lasting effect.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: placing the travellers after a Similar Area or Off Target outcome, and moving the others.
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

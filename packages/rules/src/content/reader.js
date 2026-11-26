@@ -65,7 +65,7 @@ export const SUMMON_ONE_WORDS = {
   replace: 'If the caster already has one from this spell, casting it again replaces that one.',
 };
 export const CURSE_WORDS = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', attacks: 'Disadvantage on attack rolls against the caster', dodge: 'the forced Dodge action', damage: 'extra Necrotic damage' };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is' };
 // A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
 export const ROLL_WORDS = (r) => (r === 'attack' ? 'the caster makes a spell attack roll' : r === 'none' ? 'no attack roll and no saving throw' : `the target makes a ${ABILITY_WORDS[r.slice(5)] ?? r.slice(5)} saving throw`);
 export const KIND_WORDS = { damage: 'damage', healing: 'healing', control: 'control', utility: 'utility' };
@@ -86,7 +86,7 @@ export const HOOK_WORDS = {
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
-  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain', invisible: 'the Invisible condition', senses: 'its senses',
+  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain', invisible: 'the Invisible condition', senses: 'its senses', surface: 'the surface it walks on',
 };
 // What a modifier does to that thing. `v` is the value in words, `h` the hook's noun.
 export const OP_WORDS = {
@@ -141,7 +141,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
-export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition', 'terrain', 'invisible', 'senses'];
+export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition', 'terrain', 'invisible', 'senses', 'surface'];
 export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spell.attack', 'opportunity'];
 // Hooks nothing calls `modifiers()` for: a trait's modifier there changes nothing (`hp.max` is applied by the step that puts it on, whatever its `when` says).
 export const UNREAD_HOOKS = ['hp.max', 'carry'];
@@ -269,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
   'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'terrain', 'zone', 'reaction', 'hit'];
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
-  modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
+  modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
   endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
@@ -1110,6 +1110,8 @@ export const STEP_SENTENCES = {
     if (!(isInt(st.teleport) && st.teleport > 0)) this.bad(`Step ${at}: \`teleport\` is not feet.`); else this.num(`${at}.teleport`, st.teleport, 'feet');
     if (this.obj) { say(`${Who} would be teleported up to ${st.teleport} feet, but a thing on the map names no space: the engine cannot do this, tells the DM, and the DM moves it.`); this.dm(`Step ${at}: moving a creature up to ${st.teleport} feet.`); }
     else say(`${Who} teleports up to ${st.teleport} feet to a space the caster names when casting${st.see === true ? ', one the caster can see' : ''}. With no space named, the DM moves it.`);
+    if (st.familiarity !== undefined && st.familiarity !== 'chosen') this.bad(`Step ${at}: \`familiarity\` is "chosen".`);
+    else if (st.familiarity === 'chosen' && !this.obj) { say('The engine rolls 1d100 on the Teleportation Outcome table for the familiarity the caster chose: on a Mishap the traveller takes 3d10 Force damage and it rolls again; on Similar Area or Off Target (2d12 miles away, a direction rolled) it tells the DM, who places the traveller; on On Target the traveller goes to the space named.'); this.dm(`Step ${at}: placing the travellers after a Similar Area or Off Target outcome, and moving the others.`); }
     if (st.blocked !== undefined && this.obj) this.line('The steps for a taken space are never run: the engine has no space to try.', depth);
     else if (st.blocked !== undefined) { this.line('If that space turns out to be taken:', depth); this.steps(st.blocked, `${at}.blocked`, depth + 1, this.it()); }
   },
@@ -1272,6 +1274,9 @@ function modPhrase(m, at) {
   // True Seeing (modifiers.js `sensesOf`): a sense lent for as long as the effect lasts.
   if (hook === 'senses' && !(op === 'set' && isObj(m.scope) && typeof m.scope.sense === 'string' && Number.isInteger(m.value))) { this.bad(`${at}: a modifier on senses is { on: "senses", op: "set", value: <feet>, scope: { sense } }.`); return 'a sense the reader cannot read'; }
   if (hook === 'senses') { this.num(`${at}.value`, m.value, 'foot'); return `${m.scope.sense} out to ${m.value} feet (the longer of this and its own)`; }
+  // Water Walk (engine/world.js `moveOptions`, modifiers.js `walksOn`).
+  if (hook === 'surface' && !(op === 'immune' && isObj(m.scope) && m.scope.surface === 'water' && Object.keys(m.scope).length === 1 && Object.keys(m).length === 3)) { this.bad(`${at}: a modifier on surface is { on: "surface", op: "immune", scope: { surface: "water" } }.`); return 'a surface the reader cannot read'; }
+  if (hook === 'surface') return 'the ability to walk across water as if it were solid ground, and to stop on it';
   if (hook === 'terrain') return 'movement unaffected by Difficult Terrain: a step into it costs what it would on open ground';
   if (hook === 'speed' && op === 'immune') { if (m.magic !== true) { this.bad(`${at}: an immune modifier on speed is { on: "speed", op: "immune", magic: true }.`); return 'an immunity the reader cannot read'; } return 'a Speed that the lasting effect of a spell cannot reduce (a reduction from anything else, a condition included, still counts)'; }
   if (hook === 'condition') return `immunity to the ${cond(m.scope.condition)} condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off)`;

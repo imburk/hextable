@@ -14,7 +14,7 @@ import { holds, zonesOf } from '../zones.js';
 import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { itemName } from '../derive.js';
 import { confusedNow, effectsOf, restamp } from '../durations.js';
-import { incapacitated, modifiers, speedOf } from '../modifiers.js';
+import { incapacitated, modifiers, speedOf, walksOn } from '../modifiers.js';
 import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, mountOf, riderOf, RuleError, spellStats, steering, turnBudget, unblocked, up, walled } from './shared.js';
 
 // ---------- grapples ----------
@@ -350,6 +350,8 @@ export function moveOptions(s, e, opts = {}) {
   // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
   // climbed as anyone climbs (the maps have heights, not wall faces).
   const acrobat = !!e.feats?.some((f) => f.surfaces) && (e.armour ?? 'none') === 'none' && !e.shield, wet = new Set();
+  // Water Walk (a `surface` modifier): water is solid ground for it, to cross and to stop on. When the effect ends the creature is in the water, which the engine cannot show (no swimming yet): the DM places it (docs/DEBT.md W58).
+  const walker = walksOn(s, e, 'water');
   // `opts.footing`: only where it gets on foot with no climb: no face climbed up or down, no ladder or rope (what shares its footing: a formation's places, #728).
   const climbSpeed = speedOf(s, e, 'climb'), climbs = !opts.footing && s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
   // What each way of moving has left this turn. A creature that changes from one to another has
@@ -375,10 +377,10 @@ export function moveOptions(s, e, opts = {}) {
         if (fighting && !enc.arena[col(n)]) continue;                     // the arena is locked
         const column = columnOf(n);
         for (const sf of column) {
-          const dz = sf.z - from.z, up_ = Math.abs(dz), water = acrobat && sf.tile.t === 'water', terrain = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
+          const dz = sf.z - from.z, up_ = Math.abs(dz), water = (acrobat || walker) && sf.tile.t === 'water', terrain = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
           const h = { q: n.q, r: n.r, z: sf.z };
-          if (water) wet.add(key(h));
+          if (water && !walker) wet.add(key(h));
           if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
           if (!bodyFits(from, h, here.id)) continue;
           if (blocks(h) || shelled(from, h)) continue;

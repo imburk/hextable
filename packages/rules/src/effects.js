@@ -19,6 +19,12 @@ import { effectsOf, useUp } from './durations.js';
 const tooBig = (t, step) => step.largest !== undefined && SIZES.indexOf(t.size ?? 'medium') > SIZES.indexOf(step.largest);
 const cap = (x) => x[0].toUpperCase() + x.slice(1);
 export const stepKind = (step) => STEPS.find((k) => k in step);
+// SRD 5.2.1 "Teleportation Outcome" (srd52-flow.txt 31451): for each familiarity the highest d100 roll that is a Mishap, a Similar Area and an Off Target one; a higher roll is On Target.
+// 100 stands for "00". A permanent circle and a linked object always arrive; a false destination never does (51-00 is Similar Area).
+export const TELEPORT_TABLE = {
+  'permanent-circle': [0, 0, 0], 'linked-object': [0, 0, 0], 'very-familiar': [5, 13, 24], 'seen-casually': [33, 43, 53], 'viewed-once-or-described': [43, 53, 73], 'false-destination': [50, 100, 100],
+};
+const COMPASS = ['east', 'southeast', 'south', 'southwest', 'west', 'northwest', 'north', 'northeast'];
 // Area shapes the engine can lay out on hexes (engine/world.js, layout()).
 // The largest cube the engine places (feet): the gate's own most. A cube is placed by trying blocks, so it cannot be cut to the map.
 export const CUBE_AIM_MAX = 1000;
@@ -417,6 +423,32 @@ function exec(s, ev, kit, f, step, at) {
       crit: f.crit, mode: f.mode, half: f.half, evade: f.evade, told: f.told, hit: f.hit, weapon: f.weapon, n: f.n, ...extra });
   };
 
+  // Teleport (the Teleportation Outcome table): the engine rolls 1d100 for the familiarity the caster chose. A Mishap (3d10 Force damage to the caster, then a new roll) is applied;
+  // Similar Area and Off Target are told to the DM alone (Off Target with its distance and direction rolled), who places the caster; On Target goes to the space the cast named.
+  // What the roll was reaches no player: the note is partial. The other travellers are the DM's (the spell's own manual step says so).
+  const teleportRolled = () => {
+    const row = TELEPORT_TABLE[step.familiarity], tell = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text });
+    if (!row) return handOver(`${f.src.name} names a familiarity the engine does not know. The DM rolls the Teleportation Outcome table.`);
+    let mishaps = 0, r = 0, outcome = 'mishap';
+    while (outcome === 'mishap' && mishaps <= 20) {
+      r = roll(s, '1d100').total || 100;
+      outcome = r <= row[0] ? 'mishap' : r <= row[1] ? 'similar' : r <= row[2] ? 'off' : 'on';
+      if (outcome === 'mishap') {
+        mishaps++;
+        s.stack.push({ kind: 'seq', steps: [{ damage: '3d10', type: 'force' }], path: `${at}.mishap${mishaps}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared, told: f.told });
+      }
+    }
+    const row_ = step.familiarity.replace(/-/g, ' '), hurt = mishaps ? ` ${mishaps === 1 ? 'A Mishap' : `${mishaps} Mishaps`}: ${t.name} took 3d10 Force damage ${mishaps === 1 ? '' : 'each time '}(the engine rolled it), and every other traveller takes the same, rolled for each.` : '';
+    if (outcome === 'on') {
+      if (!f.src.to) return tell(`Teleport (${row_}): on target.${hurt} The cast named no space, so the engine cannot move ${t.name}. The DM moves the caster and the travellers to the destination.`);
+      if (!kit.teleport(s, t, step, f.src.to, ev)) branch('blocked');
+      return tell(`Teleport (${row_}): on target.${hurt} ${t.name} arrived at the space named. The DM moves the other travellers there.`);
+    }
+    if (outcome === 'similar') return tell(`Teleport (${row_}): Similar Area.${hurt} The caster and the travellers appear in the closest place that is visually or thematically similar to the destination. ${t.name} has not been moved: the DM places the whole group.`);
+    const miles = roll(s, '2d12').total, dir = COMPASS[roll(s, '1d8').total - 1];
+    return tell(`Teleport (${row_}): Off Target.${hurt} The caster and the travellers appear ${miles} miles ${dir} of the destination. ${t.name} has not been moved: the DM places the whole group.`);
+  };
+
   if (kind === 'manual') {
     if (f.told) { if (f.told[at]) return; f.told[at] = true; }
     return handOver(step.manual);
@@ -543,6 +575,7 @@ function exec(s, ev, kit, f, step, at) {
   if (kind === 'summon') return kit.summon ? kit.summon(s, t, step, f.src, ev) : handOver(`${f.src.name} summons a creature, which the engine cannot make here. The DM adds it.`);
   // Teleport the target (the caster) to the place the cast named, checked when it was cast.
   if (kind === 'teleport') {
+    if (step.familiarity !== undefined) return teleportRolled();
     if (!f.src.to) return handOver(`${f.src.name} names no destination, so the engine cannot teleport ${t.name}. The DM moves it, up to ${step.teleport} ft${step.see ? ' to a space it can see' : ''}.`);
     if (!kit.teleport(s, t, step, f.src.to, ev)) branch('blocked');
     return;
