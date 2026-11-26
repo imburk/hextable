@@ -14,7 +14,7 @@ cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|t
 after(() => rmSync(tmp, { recursive: true, force: true }));
 const { SPELLS } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
 const { opensOnSpells, panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, handRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
-const { stabilizeRows, groupRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { stabilizeRows, groupRows, groupsFor, stepOutRow, meldedLeft } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { reactionsHtml } = await import(pathToFileURL(join(tmp, 'reactionsheet.js')));
 const { chooserButtons, kindOf, strikeChoices, payFor, optionWhy } = await import(pathToFileURL(join(tmp, 'classes.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
@@ -22,6 +22,7 @@ const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')))
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
 const { makeEntity } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { featureRows } = await import(pathToFileURL(join(tmp, 'features.js')));
+const { gridOf } = await import(pathToFileURL(join(tmp, 'shared/grid.js')));
 
 const DM = { role: 'dm', userId: 'dm' };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -904,4 +905,41 @@ test('leap row: a standing start in a fight is half, and the sub-line says how t
   const L = leapState(s, me);
   if (me.speed) { assert.equal(L.run, me.speed - 25 >= 10); }
   s.encounter.flags = null; assert.equal(leapState(s, me).run, null); assert.match(leapState(s, me).sub, /half from a standing start/);
+});
+
+// ---------- Merged with stone: one Step out row (#827, for Meld into Stone, #826) ----------
+test('a creature merged with stone is offered Step out and its spells on itself, the header says so, and what Step out sends the engine takes', () => {
+  const s = newGame(9), e = s.entities.wizard;
+  ok(apply(s, { type: 'setting', key: 'autoEngage', value: false }, DM));
+  Object.assign(e, { owner: 'pat', slots: { 1: 4, 3: 3 }, slotsMax: { 1: 4, 3: 3 } });
+  e.spells.push('meld-into-stone', 'mage-armor', 'fireball', 'false-life');
+  const G = gridOf(s.map), c = G.center(e.pos);
+  s.map.walls = [{ id: 'w1', level: s.map.levels[0].id, kind: 'wall', a: [c[0] + 2.5, c[1] - 30], b: [c[0] + 2.5, c[1] + 30] }];
+  const P = { role: 'player', userId: 'pat' };
+  ok(apply(s, { type: 'cast', actor: 'wizard', spell: 'meld-into-stone', slot: 3, wall: { level: s.map.levels[0].id, x: c[0] + 2.5, y: c[1] } }, P));
+  assert.ok(e.melded, 'merged');
+  const ctx = panelContext(s, e, { mine: true }), G1 = groupsFor(s, e, ctx, {});
+  assert.deepEqual(G1.shown.map((g) => g.id), ['stone', 'spells'], 'only Step out and the self spells');
+  assert.deepEqual(G1.shown[0].rows.map((r) => r.id), ['unmeld']);
+  assert.ok(G1.shown[1].rows.length > 0 && G1.shown[1].rows.every((r) => SPELLS[r.spell].aim === 'self'), `self spells only: ${ids(G1.shown[1].rows)}`);
+  assert.ok(!G1.shown[1].rows.some((r) => r.spell === 'fireball' || r.spell === 'meld-into-stone'), 'an aimed spell is not offered');
+  assert.match(statusHtml(s, e, { mine: true, full: true }), /Melded into stone/);
+  assert.ok(meldedLeft(s, e) === '' || /until|rounds left/.test(meldedLeft(s, e)));
+  assert.equal(stepOutRow(s, e).why, '', 'outside a fight it costs nothing');
+  // a fight: out of turn it is greyed with the engine's reason; with under 5 ft left too
+  ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM));
+  const first = current(s);
+  if (first !== 'wizard') {
+    assert.match(stepOutRow(s, e).why, /isn't .*'s turn/);
+    assert.equal(apply(s, stepOutRow(s, e).send, P).ok, false, 'the engine refuses it too');
+    s.encounter.turn = s.encounter.order.findIndex((o) => (o.id ?? o) === 'wizard');
+  }
+  assert.equal(current(s), 'wizard');
+  s.encounter.budget.move = 0;
+  assert.match(stepOutRow(s, e).why, /takes 5 ft of movement/);
+  assert.equal(apply(s, stepOutRow(s, e).send, P).ok, false);
+  s.encounter.budget.move = 30;
+  assert.equal(stepOutRow(s, e).why, '');
+  ok(apply(s, stepOutRow(s, e).send, P));
+  assert.equal(e.melded, undefined, 'out of the stone');
 });
