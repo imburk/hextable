@@ -169,3 +169,20 @@ test("the linter takes `fall` for a Reaction spell aimed at up to five creatures
   const six = structuredClone(base); six.target = { creature: { count: 6 } };
   assert.match(lint(six), /up to 5 creatures/);
 });
+
+// DEBT W58(5), #819: a fall the gravity pass starts (here a floor the DM takes away) measures Feather Fall's range and sight from where the
+// fall began, not from the floor below. The fighter at -2,0 drops 80 ft into the cellar; the wizard stands on the ground 45 ft away:
+// 45 ft from where the fall began (in range), 75 ft from the landing by the table's default height rule (the larger of across and up).
+test("a fall from the gravity pass measures range and sight from where it began (#819)", () => {
+  const s = world({ depth: 80, wizardAt: { q: -11, r: 0 } });
+  const hp = s.entities.fighter.hp;
+  const r = ok(apply(s, { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: { q: -2, r: 0 } }] }, DM));
+  assert.equal(s.entities.fighter.pos.z, -80);
+  assert.ok(r.events.some((e) => e.type === "reaction" && e.reaction === "feather-fall" && e.id === "wizard"), "the wizard saw it begin, 45 ft away");
+  assert.equal(s.entities.fighter.hp, hp);
+  // And the other way: a wizard 70 ft from where the fall began is out of range, wherever the landing is.
+  const far = world({ depth: 80, wizardAt: { q: -16, r: 0 } });
+  const r2 = ok(apply(far, { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: { q: -2, r: 0 } }] }, DM));
+  assert.ok(!r2.events.some((e) => e.type === "reaction" && e.reaction === "feather-fall"));
+  assert.ok(r2.events.some((e) => e.type === "damage"));
+});
