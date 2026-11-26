@@ -2,7 +2,7 @@
 // Disadvantage, saving throws, conditions and modifiers, damage parts, checks, death saves, and the
 // lasting effects an action leaves behind.
 import { d20Faces, die, negate, roll } from '../rng.js';
-import { SKILLS } from '../content/schema.js';
+import { COMMANDS, SKILLS } from '../content/schema.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { walk as walkSteps } from '../effects.js';
 import { concentrationLost, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
@@ -288,7 +288,7 @@ function ending(s, step, f, ev, t) {
 // (the Disadvantage is a modifier for a hold; a holder drags what it holds when it walks, movement.js), so the DM is told neither.
 export function condition(s, t, id, ev, f = null, step = null, level = undefined, ended = false) {
   if (!up(t) || t.cond[id]) return;
-  if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
+  if (immuneTo(s, t, id, f?.actor !== undefined ? s.entities[f.actor] : undefined)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   // An instant spell's effect that exists only to hold the endings of its other steps (`bound`) cannot end a condition
   // whose step names no ending: tied to it, the condition would never end and no one would say so. It is kept off the
   // effect instead, and the DM is told below that nothing ends it (T32).
@@ -377,6 +377,17 @@ export function eachTurn(s, t, step, f, ev) {
   void ev;
   return true;
 }
+
+// The `command` step (Command): a part on the lasting effect, carried out at the start of the creature's next turn (resolve.js `commandsOn`) and gone with that turn (`ends: turnEnd`, of the creature). `born` is
+// the turn it was made in, so a command given in the creature's own turn waits for the next. False when there is no effect to hang it on, and the step is handed to the DM.
+export function command(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || t.dead || !COMMANDS.includes(step.command)) return false;
+  fx.parts.push({ target: t.id, command: step.command, ends: { on: 'turnEnd' }, born: turnKey(s) });
+  ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name} will ${COMMAND_WORDS[step.command]} on its next turn.` });   // for the DM alone: a note would name the creature to players
+  return true;
+}
+export const COMMAND_WORDS = { approach: 'approach the caster', drop: 'drop what it holds and end its turn', flee: 'flee from the caster', grovel: 'fall Prone and end its turn', halt: 'do nothing and not move' };
 
 // The `endSpell` step (Searing Smite: "On a successful save, the spell ends"), run inside an `eachTurn`: the lasting effect those steps belong to ends, taking off everything it
 // put on anyone (`src.fxEnd`, which `turnSteps` names). Nothing happens when there is none (the effect has already ended).
@@ -691,7 +702,7 @@ export function recharge(s, e, ev) {
 // `bound` to its parts, which ends when they do. Null if no step has an `ends`.
 export function boundEffect(s, name, source, steps, spell = null) {
   let timed = false;
-  walkSteps(steps, (st) => { if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save' || st.ends.on === 'damaged')) timed = true; });
+  walkSteps(steps, (st) => { if (st.command !== undefined) timed = true; if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save' || st.ends.on === 'damaged')) timed = true; });
   if (!timed) return null;
   const fx = startEffect(s, { name, spell, source, conc: false, duration: 'special' });
   fx.bound = true;
