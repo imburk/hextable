@@ -88,7 +88,7 @@ export const HOOK_WORDS = {
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
-  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain', invisible: 'the Invisible condition', senses: 'its senses', surface: 'the surface it walks on',
+  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain', invisible: 'the Invisible condition', senses: 'its senses', surface: 'the surface it walks on', leap: 'its leaps',
 };
 // What a modifier does to that thing. `v` is the value in words, `h` the hook's noun.
 export const OP_WORDS = {
@@ -1284,6 +1284,9 @@ function modPhrase(m, at) {
   // Water Walk (engine/world.js `moveOptions`, modifiers.js `walksOn`).
   if (hook === 'surface' && !(op === 'immune' && isObj(m.scope) && m.scope.surface === 'water' && Object.keys(m.scope).length === 1 && Object.keys(m).length === 3)) { this.bad(`${at}: a modifier on surface is { on: "surface", op: "immune", scope: { surface: "water" } }.`); return 'a surface the reader cannot read'; }
   if (hook === 'surface') return 'the ability to walk across water as if it were solid ground, and to stop on it';
+  // Jump (engine/movement.js `leap`, modifiers.js `leapOf`).
+  if (hook === 'leap' && !(op === 'set' && Number.isInteger(m.value) && Object.keys(m).length === 3)) { this.bad(`${at}: a modifier on leap is { on: "leap", op: "set", value: <feet> }.`); return 'a leap the reader cannot read'; }
+  if (hook === 'leap') { this.num(`${at}.value`, m.value, 'foot'); return `once on each of its turns, a leap of up to ${m.value} feet for 10 feet of movement, with or without a running start`; }
   if (hook === 'terrain') return 'movement unaffected by Difficult Terrain: a step into it costs what it would on open ground';
   if (hook === 'speed' && op === 'immune') { if (m.magic !== true) { this.bad(`${at}: an immune modifier on speed is { on: "speed", op: "immune", magic: true }.`); return 'an immunity the reader cannot read'; } return 'a Speed that the lasting effect of a spell cannot reduce (a reduction from anything else, a condition included, still counts)'; }
   if (hook === 'condition') return `immunity to the ${cond(m.scope.condition)} condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off)`;
