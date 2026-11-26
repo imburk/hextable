@@ -1305,3 +1305,34 @@ test("knock: a player naming an undiscovered secret door is refused in the same 
   assert.equal(hidden.w.state.map.objects.find((o) => o.id === "c1").state, "closed", "the known locked door was unlocked, as in the other world");
   assert.equal(hidden.w.state.entities.wizard.slots[2], 2, "the refused cast spent nothing: only the second was paid for");
 });
+
+// ---- leap (#813, wave 4 part 8): what a Long Jump passes over is not entered, so a hidden thing there is not found and does not stop it ----
+const leapScene = (w) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  const tiles = Object.fromEntries(H.range({ q: 0, r: 0 }, 12).map((h) => [H.col(h), { t: "grass" }]));
+  w.must({ type: "loadMap", map: newMap({ id: "leap", name: "Leap", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }] }) });
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+  s.entities.fighter.abil.str = 40;                              // 40 ft: eight hexes, a free run-up outside a fight
+  w.putIn();                                                     // the hidden thing is in before the script starts
+};
+const LEAP = { by: "Pat", act: { type: "leap", actor: "fighter", to: { q: 7, r: 0 } } };
+test("leap: a hidden creature on a hex the leap passes over: the players are sent what a bare cell sends them", () => {
+  const { plain } = twin({ players: ["Pat"], setup: leapScene, steps: [LEAP, { by: "Pat", act: { type: "leap", actor: "fighter", to: { q: 0, r: 0 } } }] },
+    { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Lurker", hidden: true }); }, plain: burn });
+  assert.ok(!plain.raw.Pat.some((m) => m.t === "error"), "and the leaps were not refused");
+  assert.ok(JSON.stringify(plain.raw.Pat).includes("leaps"), "the script did leap");
+});
+test("leap: a hidden trap on a hex the leap passes over: the players are sent what a bare cell sends them (it is not set off, found or told)", () => {
+  const { plain, hidden } = twin({ players: ["Pat"], setup: leapScene, steps: [LEAP, { by: "Pat", act: { type: "leap", actor: "fighter", to: { q: 0, r: 0 } } }] },
+    { hide: (w) => { w.state.map.objects.push({ id: "trap1", def: "spiked-pit", level: "ground", at: { q: 3, r: 0 }, state: "hidden" }); }, plain: () => {} });
+  assert.ok(!plain.raw.Pat.some((m) => m.t === "error"));
+  assert.ok(!JSON.stringify(hidden.raw.Pat).includes("trap1") && !JSON.stringify(hidden.raw.Pat).includes("triggered"), "nothing of the trap reached the player");
+  assert.ok(JSON.stringify(hidden.raw.dm).includes("trap1"), "the trap is there, for the DM");
+});
+test("leap: a hidden pit that is not found, as a creature's own pit: an undiscovered pit-trap on the line, same bytes", () => {
+  twin({ players: ["Pat"], setup: leapScene, steps: [LEAP] },
+    { hide: (w) => { w.state.map.objects.push({ id: "pit1", def: "pit-trap", level: "ground", at: { q: 4, r: 0 }, state: "hidden" }); }, plain: () => {} });
+});
