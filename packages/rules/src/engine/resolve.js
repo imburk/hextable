@@ -12,6 +12,7 @@ import { breakConcentration, concentrationCheck, concentrationLost, damaged, eff
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
+import { silentAll, silentAt } from '../terrain.js';
 import { entered, flushZones, snapshot, stepped, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf, inViewOf } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
@@ -878,7 +879,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
     const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced || (warded && DAMAGE_TYPES.includes(p.type))), vulnerable = applies(m.vulnerable, t.vuln);
     let n = base[pi];
-    if (!pierce && applies(m.immune, t.immune)) n = 0;
+    if (!pierce && (applies(m.immune, t.immune) || (p.type === 'thunder' && silentAll(s, t)))) n = 0;       // Silence: entirely inside the sphere
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
     const ref = cut ? base[pi] : p.amount;                 // after a reaction's cut, Resistance is judged against what was left
     const note = n === 0 && ref > 0 ? 'immune' : resisted && vulnerable && ref > 0 ? 'resisted and vulnerable' : n < ref ? 'resisted' : n > ref ? 'vulnerable' : undefined;
@@ -1344,6 +1345,7 @@ function hitWays(s, e, sp, atk, spare = 0) {
   const none = { slots: [], free: [] };
   if (!s.encounter || e.object || e.bond?.noAttack || e.form || incapacitatedBy(e) || untrainedGear(e).length) return none;
   if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return none;
+  if (sp.def.components?.includes('v') && silentAt(s, e.pos)) return none;       // Silence: no Verbal component can be spoken there
   if (!fitsHit(sp.def.hit.with, atk) || blocked(s, e, 'bonus') || s.encounter.budget.bonus - spare < 1) return none;
   return {
     slots: (e.spells ?? []).includes(sp.id) ? slotsFor(s, e, sp) : [],

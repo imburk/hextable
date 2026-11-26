@@ -282,6 +282,37 @@ It lasts up to 1 hour. The engine times it, and when it ends, so does everything
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
+== hb-test-quiet-ground
+"Quiet Ground" (level 2 evocation, 120 feet, action, 10 minutes, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: control.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+It is aimed at each creature in a 20-foot sphere.
+The engine does not do this; the DM does this: "Sound made within or through the sphere."
+The sphere is centred on a point the caster picks within 120 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
+The area is a Sphere of Silence for as long as the spell lasts: a creature in it cannot cast a spell with a Verbal component (the cast is refused), and a creature entirely inside takes no Thunder damage.
+It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: "Sound made within or through the sphere."
+DM: Whatever the description says beyond the steps above.
+
+== hb-test-clear-eyes
+"Clear Eyes" (level 2 evocation, self, action, 1 hour).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+The caster gets sight that sees creatures and objects with the Invisible condition as if they were visible.
+  It lasts as long as the spell.
+It is aimed at the caster alone.
+It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

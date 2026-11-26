@@ -6,6 +6,7 @@ import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, endWards, startEffect, turnKey } from '../durations.js';
 import { shiftZone, zonesOf } from '../zones.js';
+import { silentAt } from '../terrain.js';
 import { apart, footprint, FT, gap, landing, overlapAt, sizeOf, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
@@ -568,6 +569,8 @@ function castSpell(s, a, ctx, ev, item) {
     const casterLevel = item ? 1 : e.level;           // an item casts at the lowest caster level
     if (item?.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${sp.name} from ${item.name} targets ${e.name} only.`);
     const mm = metamagicFor(s, e, sp, a, slot);
+    // Silence: no sound can be made inside its sphere, so a spell with a Verbal component cannot be cast from there (Subtle Spell leaves the component out).
+    if (!mm.has.subtle && (item ? item.comps : sp.def.components ?? []).includes('v') && silentAt(s, e.pos)) fail(`${e.name} cannot cast ${sp.name} here: it has a Verbal component and ${e.name} stands in a Sphere of Silence.`);
     // A touch its familiar delivers (`a.deliver`): reached from the familiar, for its Reaction (checked now, spent below).
     const toucher = deliverFor(s, e, sp, a);
     // Eldritch Spear (`spellRange: { spell, add }`): that spell's range is longer by so many feet.
@@ -736,7 +739,7 @@ function castSpell(s, a, ctx, ev, item) {
         fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
         ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
       }
-      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
+      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}) };
     }
     const before = ev.length;
     const shared = sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps, !!evo.overchannel) : null;

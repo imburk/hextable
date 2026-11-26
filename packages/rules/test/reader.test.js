@@ -64,6 +64,9 @@ const FIXTURES = [
     effects: [{ ward: 'wis' }, { manual: 'Whether a creature that failed may pick a new target.' }] }),
   base('free-stride', 'Free Stride', { level: 4, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',
     effects: [{ modifier: { on: 'terrain', op: 'immune' } }, { modifier: { on: 'speed', op: 'immune', magic: true } }, { modifier: { on: 'condition', op: 'immune', scope: { condition: 'restrained' }, magic: true } }] }),
+  base('quiet-ground', 'Quiet Ground', { level: 2, range: 120, duration: '10 minutes', concentration: true, target: { area: { shape: 'sphere', size: 20 } }, terrain: { silence: true }, tier: 'assist',
+    effects: [{ manual: 'Sound made within or through the sphere.' }] }),
+  base('clear-eyes', 'Clear Eyes', { level: 2, range: 'self', duration: '1 hour', target: { self: true }, tier: 'auto', effects: [{ modifier: { on: 'invisible', op: 'immune' } }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.

@@ -85,7 +85,7 @@ export const HOOK_WORDS = {
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
-  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain',
+  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain', invisible: 'the Invisible condition',
 };
 // What a modifier does to that thing. `v` is the value in words, `h` the hook's noun.
 export const OP_WORDS = {
@@ -140,7 +140,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
-export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition', 'terrain'];
+export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition', 'terrain', 'invisible'];
 export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spell.attack', 'opportunity'];
 // Hooks nothing calls `modifiers()` for: a trait's modifier there changes nothing (`hp.max` is applied by the step that puts it on, whatever its `when` says).
 export const UNREAD_HOOKS = ['hp.max', 'carry'];
@@ -693,13 +693,17 @@ class Reading {
     const t = this.def.terrain;
     if (t === undefined) return;
     if (!isObj(t)) return this.bad('`terrain` is not an object.');
-    this.odd(t, ['difficult', 'obscured', 'lasts'], 'The terrain');
+    this.odd(t, ['difficult', 'obscured', 'lasts', 'silence'], 'The terrain');
     if (aim !== 'area') {
       this.line('The entry changes the ground in its area, but the engine cannot lay the area out: the DM marks it.');
       return this.dm('The changed ground: the engine cannot lay out the area.');
     }
     const what = [t.difficult === true ? 'Difficult Terrain' : null, t.obscured === 'heavy' ? 'Heavily Obscured' : t.obscured === 'light' ? 'Lightly Obscured' : null].filter(Boolean);
-    if (!what.length) return this.bad('`terrain` makes the area neither difficult nor obscured.');
+    if (t.silence === true) {
+      this.line('The area is a Sphere of Silence for as long as the spell lasts: a creature in it cannot cast a spell with a Verbal component (the cast is refused), and a creature entirely inside takes no Thunder damage.');
+      if (!what.length) return;
+    }
+    if (!what.length) return this.bad('`terrain` makes the area neither difficult, obscured nor silent.');
     this.line(`The area is ${list(what)} ${t.lasts === 'nextTurnEnd' ? 'until the end of the caster\'s next turn' : 'for as long as the spell lasts'}.`);
   }
 
@@ -1230,6 +1234,9 @@ function modPhrase(m, at) {
   if (hook === 'condition' && !(op === 'immune' && isObj(m.scope) && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition))) { this.bad(`${at}: a modifier on condition is { on: "condition", op: "immune", scope: { condition } }.`); return 'an immunity the reader cannot read'; }
   // Freedom of Movement (world.js `moveOptions`, modifiers.js `speedOf`).
   if (hook === 'terrain' && !(op === 'immune' && Object.keys(m).length === 2)) { this.bad(`${at}: a modifier on terrain is { on: "terrain", op: "immune" }.`); return 'an immunity the reader cannot read'; }
+  // See Invisibility (sight.js `sees`).
+  if (hook === 'invisible' && !(op === 'immune' && Object.keys(m).length === 2)) { this.bad(`${at}: a modifier on invisible is { on: "invisible", op: "immune" }.`); return 'an immunity the reader cannot read'; }
+  if (hook === 'invisible') return 'sight that sees creatures and objects with the Invisible condition as if they were visible';
   if (hook === 'terrain') return 'movement unaffected by Difficult Terrain: a step into it costs what it would on open ground';
   if (hook === 'speed' && op === 'immune') { if (m.magic !== true) { this.bad(`${at}: an immune modifier on speed is { on: "speed", op: "immune", magic: true }.`); return 'an immunity the reader cannot read'; } return 'a Speed that the lasting effect of a spell cannot reduce (a reduction from anything else, a condition included, still counts)'; }
   if (hook === 'condition') return `immunity to the ${cond(m.scope.condition)} condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off)`;

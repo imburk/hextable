@@ -88,7 +88,10 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'condition',
   // `terrain`: `{ on: 'terrain', op: 'immune' }`, the creature's movement is unaffected by Difficult Terrain (Freedom of Movement): a step costs what it would on open ground (a wall, water it cannot enter and climbing are not Difficult Terrain).
   // docs/specs/rules-expansion.md, "Build notes: wave 3a part 2".
-  'terrain'];
+  'terrain',
+  // `invisible`: `{ on: 'invisible', op: 'immune' }`, the creature sees creatures and objects that have the Invisible condition as if they were visible (See Invisibility), as Truesight does (sight.js `sees`).
+  // docs/specs/rules-expansion.md, "Build notes: wave 3a part 3".
+  'invisible'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
@@ -176,6 +179,8 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   }
   // `terrain` (Freedom of Movement): only `{ on: 'terrain', op: 'immune' }`.
   if (m.on === 'terrain' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on terrain is `{ on: "terrain", op: "immune" }`: the creature\'s movement is unaffected by Difficult Terrain');
+  // `invisible` (See Invisibility): only `{ on: 'invisible', op: 'immune' }`, from a spell's lasting effect or a creature's trait (it sees the Invisible).
+  if (m.on === 'invisible' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on invisible is `{ on: "invisible", op: "immune" }`: the creature sees Invisible creatures and objects as if they were visible');
   // `magic: true` (Freedom of Movement): on the condition hook, the immunity holds only against a condition a spell gives; on `speed` with op `immune`, the creature's Speed is not reduced by the lasting effect of a spell.
   if (m.magic !== undefined && !(m.magic === true && ((m.on === 'condition' && m.op === 'immune') || (m.on === 'speed' && m.op === 'immune')))) say('`magic` is true, on the condition hook (op immune) or on `speed` with op `immune`');
   if (m.on === 'speed' && m.op === 'immune' && !(stepOk && m.magic === true && Object.keys(m).length === 3)) say('an `immune` modifier on speed is a modifier step `{ on: "speed", op: "immune", magic: true }`: spells do not reduce the creature\'s Speed');
@@ -290,15 +295,17 @@ function lintZone(e, say, action = false) {
 // `terrain`: the spell's area is Difficult Terrain (`difficult: true`) and/or Heavily or Lightly
 // Obscured (`obscured: 'heavy' | 'light'`) while it lasts; an instant spell says how long with
 // `lasts: 'nextTurnEnd'` (until the end of the caster's next turn: Ice Storm). An Emanation that
-// moves with its caster cannot carry it yet.
+// moves with its caster cannot carry it yet. `silence: true` (Silence): a Sphere of Silence: a creature in it cannot cast a spell with a Verbal component, and one entirely inside takes no
+// Thunder damage (terrain.js `silentAt`, `silentAll`). A lasting spell's area only. docs/specs/rules-expansion.md, "Build notes: wave 3a part 3".
 function lintTerrain(e, say) {
   const t = e.terrain;
   if (t === undefined) return;
   if (!t || typeof t !== 'object' || !Object.keys(t).length) return say('`terrain` must be an object');
-  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
+  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts', 'silence'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
   if (t.difficult !== undefined && t.difficult !== true) say('`terrain.difficult` is true or left out');
   if (t.obscured !== undefined && !['heavy', 'light'].includes(t.obscured)) say('`terrain.obscured` is "heavy" or "light"');
-  if (!t.difficult && !t.obscured) say('`terrain` makes the area difficult or obscured');
+  if (t.silence !== undefined && !(t.silence === true && e.duration !== 'instant' && e.target?.area?.shape === 'sphere')) say('`terrain.silence` is true, on a lasting spell whose area is a sphere');
+  if (!t.difficult && !t.obscured && !t.silence) say('`terrain` makes the area difficult, obscured or silent');
   if (!e.target?.area || e.target.area.count || e.target.area.choose || e.target.area.shape === 'emanation') say('`terrain` needs a single area that stays where it is laid out');
   if (e.duration === 'instant' ? t.lasts !== 'nextTurnEnd' : t.lasts !== undefined) say('`terrain.lasts` is "nextTurnEnd", for an instant spell only (otherwise it lasts as the spell does)');
 }
@@ -3044,7 +3051,7 @@ const SHAPES = {
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
   zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'] },
-  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts'] },
+  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
   count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
@@ -3515,7 +3522,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
   zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i' },
-  terrain: { difficult: 'b', obscured: 's', lasts: 's' },
+  terrain: { difficult: 'b', obscured: 's', lasts: 's', silence: 'b' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },
   bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's', first: 's' },

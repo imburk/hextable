@@ -1383,6 +1383,23 @@ Tests in `packages/rules/test/wave3a2-spells.test.js`. Sanctuary and Freedom of 
 
 **Decisions.** A failed Sanctuary save loses the attack or spell: the SRD gives the attacker the choice of a new target, which would need a prompt; the DM may allow it. `keepSpeed` leaves out every spell `set` on Speed, even one that would raise it (nothing in the SRD does). A failed Sanctuary save takes the target out of the spell whole: no attack roll, save or rider (`wardLost` in `casting.js`, not Shield's `blocked`); a trap (an object actor) never makes the save. A zone's conditions are not `magic` (a zone's `src` does not name its spell); Web and Entangle cast as a spell are. One save is made for each attack roll or spell aimed at the warded creature, as the SRD says "targets".
 
+#### Build notes: wave 3a part 3 (amendment, #786)
+
+Tests in `packages/rules/test/wave3a3-spells.test.js`, and a `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Silence and See Invisibility are built (both `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (See Invisibility 30517, Silence 30743).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Silence | manual | assist | the Deafened condition for a creature entirely inside; sound made within or passing through the sphere; objects' Immunity to Thunder damage |
+| See Invisibility | manual | assist | the Ethereal Plane (the engine keeps none) |
+
+**Added.**
+- **Terrain key `silence: true`** (Silence): `terrain: { silence: true }` on a lasting spell whose area is a sphere. `casting.js` puts `silence` on `fx.terrain`. `terrain.js` `silentAt(s, pos)` is whether a place is in a sphere; `silentAll(s, t)` whether every hex of a creature's space, at its feet and its head, is. `casting.js` refuses a cast with a Verbal component by a creature that stands in one (before anything is spent or changed; Subtle Spell is let through, as it drops the component), and `resolve.js` `hitWays` offers no spell cast after a hit with a Verbal component from there. `damage()` gives a creature entirely inside Immunity to Thunder damage. Schema lint, reader words, HOMEBREW tables (`terrain.silence`) and a lint test.
+- **Hook `invisible`, op `immune`** (See Invisibility): `{ on: 'invisible', op: 'immune' }` as a modifier step. `sight.js` `sees`: a viewer that has it sees a target with the Invisible condition (and one hiding, which is the Invisible condition against its enemies) as if it were visible, at any distance, as it would with Truesight in range; the other checks (light, fog, walls, Blinded) still apply. `vision.js` `signature` includes the lasting effects that carry it, so the party's view is built again when the spell starts or ends. Schema lint, reader words (`HOOK_WORDS`, `HOLDER_HOOKS`) and a lint test.
+
+**What players are sent.** Nothing new for a table with no See Invisibility on it: an Invisible creature is still left out of every view, which the twin scenario pins (the same bytes with and without such a creature). While the spell lasts, the party's shared view (`partyView`: a creature is seen if any party member can see it, as with Truesight or Blindsight) holds the Invisible creature, so every player at the table is sent it, not only the caster's player. A per-player sight rule would be a bigger change (W49).
+
+**Decisions.** Silence is not a zone: it has no steps to run on a creature that enters, so the terrain machinery (a place, not an event) fits. "In the sphere" for casting is the caster's own hex. Deafened is left to the DM because a condition put on by a zone stays on after a creature leaves it.
+
 ### A class
 
 ```js

@@ -3,7 +3,7 @@
 import { gridOf, col } from './grid.js';
 import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
 import { barriers, objectBlocks, objectDef, objectSegment } from './walls.js';
-import { has, immuneTo } from './modifiers.js';
+import { has, immuneTo, modifiers } from './modifiers.js';
 import { obscuredAt, terrainsOf } from './terrain.js';
 import { SIZES } from './content/sizes.js';
 
@@ -342,10 +342,12 @@ export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) 
   viewer = lift(s, viewer); target = lift(s, target);
   if (has(viewer, 'blinded')) return { see: 'no', why: 'blinded' };
   if (!inViewOf(s.map, viewer, target)) return { see: 'no', why: 'out of sight' };
+  // Truesight in range, or a spell that shows the Invisible (See Invisibility: `{ on: 'invisible', op: 'immune' }`, whatever the distance): the Invisible condition, and hiding, hide nothing.
   const truesight = (senses.truesight ?? 0) >= d;
+  const piercing = truesight || ((has(target, 'invisible') || hiddenFrom(target, viewer)) && modifiers(s, viewer, 'invisible').immune === true);
   // A creature that cannot benefit from Invisible (Faerie Fire's light: modifiers.js, immuneTo) is seen as if it were not.
-  if (!truesight && has(target, 'invisible') && !immuneTo(s, target, 'invisible')) return { see: 'no', why: 'invisible' };
-  if (!truesight && !ignoreHiding && hiddenFrom(target, viewer)) return { see: 'no', why: 'hidden' };
+  if (!piercing && has(target, 'invisible') && !immuneTo(s, target, 'invisible')) return { see: 'no', why: 'invisible' };
+  if (!piercing && !ignoreHiding && hiddenFrom(target, viewer)) return { see: 'no', why: 'hidden' };
   // SRD: a creature trying to see something in a Heavily Obscured space has the Blinded condition;
   // in a Lightly Obscured one it sees as in Dim Light. The least obscured part of a big creature
   // counts. Truesight does not see through fog; Blindsight (above) does.

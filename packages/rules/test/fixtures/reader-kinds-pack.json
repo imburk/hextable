@@ -568,6 +568,10 @@
             {
               "on": "terrain",
               "op": "immune"
+            },
+            {
+              "on": "invisible",
+              "op": "immune"
             }
           ]
         },
