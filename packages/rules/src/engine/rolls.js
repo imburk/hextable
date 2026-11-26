@@ -384,7 +384,7 @@ export function command(s, t, step, f, ev) {
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   if (!fx || t.dead || !COMMANDS.includes(step.command)) return false;
   fx.parts.push({ target: t.id, command: step.command, ends: { on: 'turnEnd' }, born: turnKey(s) });
-  ev.push({ type: 'note', id: t.id, text: `${f.src.name}: ${t.name} will ${COMMAND_WORDS[step.command]} on its next turn` });
+  ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name} will ${COMMAND_WORDS[step.command]} on its next turn.` });   // for the DM alone: a note would name the creature to players
   return true;
 }
 export const COMMAND_WORDS = { approach: 'approach the caster', drop: 'drop what it holds and end its turn', flee: 'flee from the caster', grovel: 'fall Prone and end its turn', halt: 'do nothing and not move' };

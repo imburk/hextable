@@ -136,8 +136,8 @@ const spellImmune = (s, e, giver = undefined, unrestricted = true) => {
   }
   return out;
 };
-// A creature's type, as far as the engine can tell (a pack monster's, its own, or Humanoid for a player character); null when it cannot say.
-export const typeOf = (t) => (t ? t.type ?? CONTENT.monsters[t.tpl]?.type ?? CONTENT.summons?.[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null) : null);
+// A creature's type, as far as the engine can tell (the stat block of the form it is in, a pack monster's, its own, or Humanoid for a player character); null when it cannot say.
+export const typeOf = (t) => (t ? (t.form ? CONTENT.monsters[t.form.block]?.type : undefined) ?? t.type ?? CONTENT.monsters[t.tpl]?.type ?? CONTENT.summons?.[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null) : null);
 const ofTypes = (t, types) => { const ty = typeOf(t); return ty !== null && types.includes(ty); };
 // Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)? `giver`: the creature that would give it, for an immunity that is only against some creatures.
 export const immuneTo = (s, e, id, giver = undefined) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false).includes(id);

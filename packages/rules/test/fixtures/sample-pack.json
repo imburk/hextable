@@ -785,6 +785,45 @@
           "times": 1
         }
       }
+    },
+    {
+      "id": "hb-sample-stern-word",
+      "name": "Stern Word",
+      "source": "homebrew:sample",
+      "level": 1,
+      "school": "enchantment",
+      "classes": [
+        "cleric"
+      ],
+      "time": "action",
+      "range": 30,
+      "components": [
+        "v"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "choice": {
+        "of": "command"
+      },
+      "effects": [
+        {
+          "save": "wis",
+          "onFail": [
+            {
+              "command": "chosen"
+            }
+          ]
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "A creature makes a Wisdom save or obeys one chosen word on its next turn."
     }
   ]
 }

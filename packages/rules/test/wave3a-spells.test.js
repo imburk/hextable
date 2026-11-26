@@ -6,6 +6,7 @@ import { SPELLS } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
+import { viewEvents } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -152,4 +153,31 @@ test("Command: a creature that makes the save is untouched; a higher slot takes 
   assert.equal(two.s.effects.find((fx) => fx.name === "Command").parts.filter((p) => p.command === "halt").length, 2);
   const one = commanded("halt", { extra: true });
   assert.ok(one.cast.error, "two targets need a higher slot");
+});
+
+test("Command: a commanded creature that has become Invisible before its turn gives the players no event naming it, in the cast or at the start of the turn", () => {
+  const PAT = { role: "player", userId: "pat" };
+  const s = field(), g = spawn(s, "goblin-warrior", 4, 0);
+  g.abil.wis = -20;
+  s.entities.fighter.owner = "pat";
+  fight(s); turnOf(s, "cleric");
+  const all = [...ok(apply(s, { type: "cast", actor: "cleric", spell: "command", target: g.id, choice: "halt" }, DM)).events];
+  g.cond.invisible = {};                                         // it slips out of sight (the party has no way to see it)
+  g.pos = { q: 14, r: 0, z: 0 };
+  while (current(s) !== g.id) all.push(...ok(apply(s, { type: "endTurn", actor: current(s) }, DM)).events);
+  assert.deepEqual([s.encounter.budget.action, s.encounter.budget.move], [0, 0], "the command was carried out");
+  // What the command itself adds (the cast's and the turn's lines) is `manual` and partial: the DM's alone, never a `note` (a note is sent to every player as it is, with the creature's id).
+  const mine = all.filter((e) => e.type === "note" || (e.type === "manual" && e.partial));
+  assert.ok(mine.length >= 2 && mine.every((e) => e.type === "manual"), JSON.stringify(mine));
+  assert.deepEqual(viewEvents(mine, s, PAT), [], "none of it reaches a player");
+  assert.equal(viewEvents(mine, s, DM).length, mine.length, "the DM has it all");
+});
+
+test("Command: a command nobody carried out (the fight ends first) is gone with the fight, and its effect with it", () => {
+  const { s, g, cast } = commanded("halt");
+  ok(cast);
+  assert.ok(s.effects.some((fx) => fx.name === "Command"));
+  ok(apply(s, { type: "endEncounter" }, DM));
+  assert.ok(!s.effects.some((fx) => fx.name === "Command"), "ended with the fight");
+  assert.ok(!g.cond.prone);
 });

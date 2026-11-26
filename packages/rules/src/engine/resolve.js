@@ -384,7 +384,7 @@ function commandsOn(s, e, ev) {
     const by = s.entities[fx.source], caster = by?.name ?? 'the caster', what = COMMAND_WORDS[p.command];
     if (p.command === 'grovel') condition(s, e, 'prone', ev, { actor: fx.source, src: { name: fx.name } });
     if (['halt', 'grovel', 'drop'].includes(p.command)) { b.move = 0; b.action = 0; b.bonus = 0; }
-    ev.push({ type: 'note', id: e.id, text: `${fx.name}: ${e.name} ${p.command === 'halt' ? 'does not move and takes no action or Bonus Action this turn' : `must ${what} on this turn`}` });
+    ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} ${p.command === 'halt' ? 'does not move and takes no action or Bonus Action this turn' : `must ${what} on this turn`}.` });   // for the DM alone (a note would name a creature the players may not see)
     if (p.command === 'approach') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} moves toward ${caster} by the shortest, most direct route, and its turn ends if it moves within 5 feet of ${caster}. The engine does not walk it: the DM moves it.` });
     if (p.command === 'flee') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} spends its turn moving away from ${caster} by the fastest means it has (it may Dash). The engine does not walk it: the DM moves it.` });
     if (p.command === 'drop') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} drops whatever it is holding, then its turn ends (the engine has taken its movement, action and Bonus Action). The DM puts what it held on the ground.` });

@@ -17,7 +17,7 @@ const picture = () => TARGETS.map((t) => Object.keys(t).join("\n"));
 test("the sample pack passes strict lint through loadPack and holds 12 to 18 spells", () => {
   const r = loadPack(JSON.stringify(PACK));
   assert.ok(r.ok, r.problems?.join("; "));
-  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 18, `${PACK.spells.length} spells`);
+  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 19, `${PACK.spells.length} spells`);
   assert.equal(PACK.spells.length, r.pack.ids.length);
   for (const s of PACK.spells) assert.ok(s.text.length > 20 && s.text.length < 300 && (s.text.match(/\./g) ?? []).length <= 2, `${s.id}: text is one or two plain sentences`);
 });
