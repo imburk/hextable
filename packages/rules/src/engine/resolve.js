@@ -3,12 +3,12 @@
 // a fight starts, passes from turn to turn and ends.
 import { noteRuns } from '../todo.js';
 import { gridOf, col } from '../grid.js';
-import { d20Faces, die, roll } from '../rng.js';
+import { d20Faces, die, rand, roll } from '../rng.js';
 import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, turnSteps, walk as walkSteps } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, endWards, fightOver, holds, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, confusedNow, concentrationLost, damaged, effectsOf, endEffect, endWards, fightOver, holds, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
@@ -21,9 +21,9 @@ import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedOf, untrainedGear } from '../modifiers.js';
 import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
-import { ARENA_RADIUS, ask, blocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
+import { ARENA_RADIUS, ask, blocked, unblocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, ward, command, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, ward, command, confuse, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
 import { armed, weaponKey } from '../imbue.js';
@@ -174,7 +174,7 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   const who = living(s).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
   if (!who.some((e) => e.side === 'party')) fail('No party creature is in range of the fight.');   // foes alone would end it at once as a defeat (#771)
-  for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = false; reveal(s, e, ev); }   // nobody fights unseen
+  for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = confusedNow(s, e); reveal(s, e, ev); }   // nobody fights unseen
   s.encounter = {
     id: nextFight(s), center, radius, arena, round: 1, turn: -1, budget: null, flags: {},
     order: null, where: fightPlace(s, center), ...(opts?.owed ? { owed: structuredClone(opts.owed) } : {}),
@@ -374,6 +374,7 @@ function beginTurn(s, e, ev, stepped = false) {
     ev.push({ type: 'stood', id: e.id });
   }
   commandsOn(s, e, ev);                                                // Command: what it was told to do on this turn
+  confusedOn(s, e, ev);                                                // Confusion: no Bonus Action, no Reaction, and a d10 for what it does
 }
 
 // Command (the `command` step, rolls.js): at the start of the creature's turn, the commands put on it before this turn are carried out. Halt, Grovel and Drop leave it no movement, no action and no Bonus Action (its Reaction is its own);
@@ -389,6 +390,46 @@ function commandsOn(s, e, ev) {
     if (p.command === 'approach') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} moves toward ${caster} by the shortest, most direct route, and its turn ends if it moves within 5 feet of ${caster}. The engine does not walk it: the DM moves it.` });
     if (p.command === 'flee') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} spends its turn moving away from ${caster} by the fastest means it has (it may Dash). The engine does not walk it: the DM moves it.` });
     if (p.command === 'drop') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} drops whatever it is holding, then its turn ends (the engine has taken its movement, action and Bonus Action). The DM puts what it held on the ground.` });
+  }
+}
+
+// Confusion (the `confuse` step, rolls.js): at the start of the creature's turn it has no Bonus Action and (its Reaction marked spent again, as the turn gave it back) no Reaction, and the engine rolls 1d10 for its behavior.
+// 1: it uses all its movement to move in a direction (1d4: north, east, south, west) and takes no action: the engine takes the movement and the action, and the DM walks it (the engine does not steer a creature on a compass heading).
+// 2 to 6: it neither moves nor acts: the engine takes the movement and the action. 7 and 8: it does not move, and it takes the Attack action for one melee attack against a random creature within reach: the engine takes the movement and
+// picks the creature (one draw, whatever the number of creatures, so the dice do not depend on who is near) from those in its longest melee reach that the party knows of (never one hidden from it: a pick must not tell a player of a creature it
+// cannot see; the DM adds any it hides to the pool), and the attack handler allows the one attack at that creature only (`confusedFoe`, attacks.js). 9 and 10: it chooses. All told to the DM alone (`partial` manual: a note would name a creature).
+const COMPASS = ['north', 'east', 'south', 'west'];
+export const confusedFoe = (s, e) => {
+  if (!s.encounter || current(s) !== e.id) return null;
+  const pre = `confusedFoe:${e.id}:`, k = Object.keys(s.encounter.flags ?? {}).find((x) => x.startsWith(pre));
+  return k ? k.slice(pre.length) : null;
+};
+function confusedOn(s, e, ev) {
+  const enc = s.encounter, b = enc.budget;
+  for (const fx of [...effectsOf(s)]) for (const p of fx.parts) {
+    if (p.ended || p.target !== e.id || !p.confuse) continue;
+    e.reactionUsed = true; p.confuse.had = false; b.bonus = 0;
+    const r = die(s, 10), draw = rand(s), name = fx.name;
+    const tell = (text) => ev.push({ type: 'manual', actor: fx.source, name, partial: true, text });
+    if (r === 1) {
+      const way = COMPASS[die(s, 4) - 1], feet = b.move;
+      b.move = 0; b.action = 0;
+      return tell(`${e.name} is Confused and rolled 1 on the d10: it takes no action and uses all its movement (${feet} feet) to move ${way}. The engine has taken its movement and action; it does not steer a creature on a compass heading, so the DM moves it ${way}, as far as it can go.`);
+    }
+    if (r <= 6) {
+      b.move = 0; b.action = 0;
+      return tell(`${e.name} is Confused and rolled ${r} on the d10: it does not move and takes no action (the engine has taken its movement, action and Bonus Action).`);
+    }
+    if (r <= 8) {
+      b.move = 0;
+      enc.flags[`confused:${e.id}`] = true;
+      const reach = Math.max(FT, ...(e.attacks ?? []).filter((a) => a.type === 'melee').map((a) => a.reach ?? FT), ...(e.actions ?? []).map((a) => a.target?.creature?.reach ?? 0));
+      const pool = living(s).filter((o) => o.id !== e.id && !o.object && inFight(s, o.id) && !unknown(s, o) && apart(s, e, o) * FT <= reach && unblocked(s, e, o)).sort((x, y) => (x.id < y.id ? -1 : 1));
+      const v = pool.length ? pool[Math.min(pool.length - 1, Math.floor(draw * pool.length))] : null;
+      if (v) enc.flags[`confusedFoe:${e.id}:${v.id}`] = true;
+      return tell(`${e.name} is Confused and rolled ${r} on the d10: it does not move, and takes the Attack action to make one melee attack against a random creature within reach. ${v ? `The engine picked ${v.name} from the ${pool.length} within ${reach} feet that the party knows of, and allows that one attack at it only; no spell or other action. The DM adds any creature the party does not know of to the pool and, if one is picked instead, makes the attack by hand.` : `No creature the party knows of is within ${reach} feet: if the DM finds none that the party does not know of either, it takes no action.`}`);
+    }
+    return tell(`${e.name} is Confused and rolled ${r} on the d10: it chooses its behavior this turn, with no Bonus Action and no Reaction.`);
   }
 }
 
@@ -2275,5 +2316,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

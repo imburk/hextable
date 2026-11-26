@@ -357,7 +357,8 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   const end = ending(s, step, f, ev, t);
   if (fx.bound && end.told && !end.part.ends && !Number.isInteger(mod_.uses)) return false;       // nothing could end it: the DM applies it and ends it
   const { against, except, ...m } = mod_;
-  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...end.part };
+  if (against === 'source' && !f.actor) return false;                 // a limit to the caster, and no caster: never a modifier that holds against everyone
+  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : against === 'source' && f.actor ? { against: f.actor } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...end.part };
   if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'number' && !holder.dead) {
     holder.maxHp += m.value;
     holder.hp = m.value > 0 && holder.hp > 0 ? holder.hp + m.value : Math.min(holder.hp, holder.maxHp);
@@ -390,6 +391,22 @@ export function command(s, t, step, f, ev) {
   return true;
 }
 export const COMMAND_WORDS = { approach: 'approach the caster', drop: 'drop what it holds and end its turn', flee: 'flee from the caster', grovel: 'fall Prone and end its turn', halt: 'do nothing and not move' };
+
+// The `confuse` step (Confusion): a part on the lasting effect, with the ending the step gives (a Wisdom save at the end of each of the creature's turns: durations.js `boundary`). While it holds the creature can take no Bonus Action
+// and no Reaction (its Reaction is marked spent, `reactionUsed`, which `canReact` reads; resolve.js `confusedOn` keeps that, and zeroes the Bonus Action, at the start of each turn, and rolls its behaviour). `had` is what its Reaction was when
+// it was put on, so that ending the last such part gives it back as it was. False when there is no lasting effect to hang it on, and the step is handed to the DM.
+export function confuse(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead || t.object) return false;
+  const held = effectsOf(s).flatMap((x) => x.parts).find((p) => !p.ended && p.confuse && p.target === t.id);
+  if (held && effectsOf(s).find((x) => x.parts.includes(held))?.id === fx.id) return true;      // already confused by this casting
+  const end = ending(s, step, f, ev, t);
+  fx.parts.push({ target: t.id, confuse: { had: held ? held.confuse.had : !!t.reactionUsed }, ...end.part });
+  t.reactionUsed = true;
+  if (s.encounter && current(s) === t.id) s.encounter.budget.bonus = 0;
+  ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name} is Confused: it can take no Bonus Action or Reaction, and rolls 1d10 at the start of each of its turns for its behavior (the engine rolls it and takes away what it can).` });   // for the DM alone
+  return true;
+}
 
 // The `ward` step (Sanctuary): a part on the lasting effect that makes a creature targeting this one with an attack roll or a damaging spell save first (resolve.js `wardCheck`, casting.js) and ends the effect when this one attacks, casts or deals
 // damage (durations.js `endWards`). The save is against the spell's save DC. False when there is no lasting effect to hang it on (the step is handed to the DM).

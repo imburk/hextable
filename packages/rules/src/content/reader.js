@@ -19,7 +19,7 @@
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
-import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, COMMANDS, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
+import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
@@ -64,7 +64,8 @@ export const SUMMON_ONE_WORDS = {
   reform: 'If the caster already has one from this spell, casting it again gives that one the new form instead of making another.',
   replace: 'If the caster already has one from this spell, casting it again replaces that one.',
 };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command' };
+export const CURSE_WORDS = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', attacks: 'Disadvantage on attack rolls against the caster', dodge: 'the forced Dodge action', damage: 'extra Necrotic damage' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse' };
 // A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
 export const ROLL_WORDS = (r) => (r === 'attack' ? 'the caster makes a spell attack roll' : r === 'none' ? 'no attack roll and no saving throw' : `the target makes a ${ABILITY_WORDS[r.slice(5)] ?? r.slice(5)} saving throw`);
 export const KIND_WORDS = { damage: 'damage', healing: 'healing', control: 'control', utility: 'utility' };
@@ -268,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
   'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'terrain', 'zone', 'reaction', 'hit'];
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
-  modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
+  modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
   endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
@@ -659,11 +660,12 @@ class Reading {
   choice() {
     const c = this.def.choice;
     if (c === undefined) return;
-    if (!isObj(c) || !Object.hasOwn(CHOICES, c.of)) return this.bad('The choice is not of a skill, an ability, a damage type, a condition or a command.');
+    if (!isObj(c) || !Object.hasOwn(CHOICES, c.of)) return this.bad('The choice is not of a skill, an ability, a damage type, a condition, a command or a curse.');
     this.odd(c, ['of', 'from'], 'The choice');
     const from = Array.isArray(c.from) ? c.from.filter((x) => CHOICES[c.of].includes(x)) : null;
-    const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : x);
-    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${from ? ` (${list(from.map(word), 'or')})` : ''}; each step below that says "chosen" uses that choice.`);
+    const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : x);
+    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : '';
+    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : 'each step below that says "chosen" uses that choice'}.`);
   }
 
   zone(aim) {
@@ -826,16 +828,23 @@ class Reading {
     const kinds = STEPS.filter((k) => k in st);
     if (kinds.length !== 1) { this.bad(`${at} names ${kinds.length ? 'several steps' : 'no step'}; each step names exactly one.`); this.line('(A step the reader cannot read.)', depth); return; }
     const kind = kinds[0];
-    this.odd(st, [kind, 'when', ...STEP_KEYS[kind], ...BRANCHES], `Step ${at}`);
+    this.odd(st, [kind, 'when', 'ifChoice', ...STEP_KEYS[kind], ...BRANCHES], `Step ${at}`);
     for (const b of BRANCHES) if (st[b] !== undefined && !this.branchOk(kind, b)) this.bad(`Step ${at} has \`${b}\`, which a ${kind} step does not run.`);
     const Who = cap1(who);
-    const when = this.whenOf(st.when, at);
+    const when = this.whenOf(st.when, at) + this.choiceOf(st.ifChoice, at);
     const say = (text) => this.line(`${text}${when}`, depth);
     const S = STEP_SENTENCES[kind];
     S.call(this, { st, at, depth, who, Who, say, o });
   }
   branchOk(kind, b) {
     return (b === 'onHit' || b === 'onMiss') ? kind === 'attack' : (b === 'onFail' || b === 'onSuccess') ? kind === 'save' : b === 'blocked' ? kind === 'teleport' : b === 'eachTurn' ? kind === 'eachTurn' : kind === 'damage';
+  }
+  // A step's `ifChoice` (engine/casting.js `chooseIn`): the step is part of the cast only for the curse the caster chose.
+  choiceOf(v, at) {
+    if (v === undefined) return '';
+    const c = this.def?.choice;
+    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !CURSES.includes(x)) || new Set(v).size !== v.length || !isObj(c) || c.of !== 'curse') { this.bad(`Step ${at}: \`ifChoice\` lists values of a curse choice, in a spell that has one.`); return ' (with an unreadable choice)'; }
+    return ` This is part of the cast only if the caster chose ${list(v.map((x) => CURSE_WORDS[x]), 'or')}.`;
   }
   // A step's `when` (effects.js exec): every tag must hold, or the step is skipped; one the engine cannot judge hands the step to the DM.
   // What a step can judge is JUDGED_STEP, and below an attack's `onHit` or `onMiss` also Advantage and Disadvantage (a test plays each).
@@ -1173,6 +1182,16 @@ export const STEP_SENTENCES = {
     this.line('Given outside a fight, it waits for the creature\'s first turn of the next one. Whether a creature that cannot be told understands the word is for the DM to decide: the spell says nothing of it.', depth + 1);
     return this.dm(`Step ${at}: moving the creature toward or away from the caster, what it drops, and whether it understands the word.`);
   },
+  // engine/rolls.js `confuse`, resolve.js `confusedOn` (Confusion).
+  confuse({ st, at, Who, say, depth }) {
+    if (st.confuse !== true) return this.bad(`Step ${at}: \`confuse\` is true.`);
+    say(`${Who} is Confused: it can take no Bonus Action and no Reaction, and at the start of each of its turns the engine rolls 1d10 for its behavior. 1: it takes no action and uses all its movement to move in a direction rolled on 1d4 (north, east, south or west): the engine takes the movement and the action, and the DM walks it. 2 to 6: it does not move and takes no action. 7 or 8: it does not move, and takes the Attack action to make one melee attack against a random creature within its reach: the engine picks the creature from those within reach that the party knows of and allows that one attack at it only. 9 or 10: it chooses its own behavior.`);
+    if (!this.fx || this.fx === 'bound' || this.obj || this.itm || this.mon) { this.line('The spell does not last, so the engine has nothing to hang it on: the DM runs it.', depth + 1); return this.dm(`Step ${at}: what the creature does on each turn.`); }
+    const end = this.ending(st, at, 'condition');
+    if (end) this.line(end, depth + 1);
+    this.line('Everything about the roll is told to the DM alone. A creature that is Confused when a fight begins or when it joins one has no Reaction until its first turn. Spells and other actions on a 7 or 8, a creature the party does not know of in its reach, and the walking on a 1 are the DM\'s.', depth + 1);
+    return this.dm(`Step ${at}: walking a creature that rolled 1, creatures the party does not know of that a 7 or 8 could pick, and what a 7 or 8 may not do besides the attack.`);
+  },
   // engine/rolls.js `ward`, resolve.js `wardCheck` (Sanctuary).
   ward({ st, at, Who, say, depth }) {
     if (!ABILITIES.includes(st.ward)) return this.bad(`Step ${at}: \`ward\` is an ability.`);
@@ -1295,6 +1314,7 @@ function modPhrase(m, at) {
 // The rest of a modifier's fields, in one sentence.
 function modExtras(m, at, toCaster) {
   const bits = [];
+  if (m.against === 'source') bits.push('it holds only against attack rolls aimed at the caster');
   if (m.against === 'target') bits.push(toCaster ? 'it holds only against the spell\'s target' : 'it holds only against the spell\'s target');
   if (m.uses === 1) { this.num(`${at}.uses`, 1, 'use'); bits.push(this.inTrait ? 'a trait has no use to spend, so it applies every time' : m.on === 'hp.zero' ? 'that one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it' : 'the first roll it applies to uses it up'); }
   if (m.once === 'turn') bits.push('it applies at most once a turn');

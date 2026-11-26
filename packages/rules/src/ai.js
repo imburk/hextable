@@ -39,6 +39,8 @@ export function aiStep(s, id, opts) {
   // control): on a turn of its own (its rider got back on after its place) it is offered nothing it would be refused,
   // and its turn ends (DEBT W24).
   if (steering(s, e)) return end;
+  // Confusion (resolve.js `confusedOn`): on a 7 or 8 it makes one melee attack at the creature the dice chose, and nothing else (it does not move); on any other roll its movement and action were taken away.
+  if (s.encounter?.flags?.[`confused:${id}`]) return confusedStep(s, e);
   // A party creature acts only on what the party knows (ai-casting.md, Decision 2): it reads the copy the companion brain reads,
   // with the creatures the party is not told of left out. A foe reads the true state, as it always has (`knownTo` returns `s`).
   const k = knownTo(s, e);
@@ -49,6 +51,20 @@ export function aiStep(s, id, opts) {
   if (k.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(k, e)) return { type: 'hide', actor: id };
   if (!foes.length) return end;
   return e.actions ? withActions(k, e, foes) : withAttacks(k, e, foes);
+}
+
+// One melee attack at the creature Confusion chose, from the action it has left (`confusedFoe:<id>:<foe>` in the fight's flags); otherwise its turn ends. A refusal ends the turn too, as it does for every step of the brain.
+function confusedStep(s, e) {
+  const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id }, pre = `confusedFoe:${id}:`;
+  const key = Object.keys(s.encounter.flags).find((k) => k.startsWith(pre)), t = key ? s.entities[key.slice(pre.length)] : null;
+  if (!t || !up(t) || b.action < 1 || b.attacks) return end;
+  const d = apart(s, e, t);
+  if (e.actions) {
+    const x = profiled(e.actions).find((x) => x.p.harmful && x.p.time === 'action' && x.p.aim === 'creature' && x.p.roll === 'melee' && !actionSpent(e, x.def) && d * FT <= x.p.far && !shelledReach(s, e, t, x.p.far));
+    return x ? { type: 'act', actor: id, action: x.def.id, target: t.id } : end;
+  }
+  const w = steadiest(e, (e.attacks ?? []).filter((a) => a.type === 'melee' && !attackRefusal(s, e, a, fromPool(b, a.id)) && d * FT <= (a.reach ?? FT) && !shelledReach(s, e, t, a.reach)), s);
+  return w ? { type: 'attack', actor: id, target: t.id, attack: w.id } : end;
 }
 
 // A creature held by someone, with nothing it can hit from where it stands and no one of its own held, takes the Escape action

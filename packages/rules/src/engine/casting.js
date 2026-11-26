@@ -84,9 +84,12 @@ function blockSpell(s, caster, spellId, targets, ev) {
 
 // Put the caster's choice where a spell's steps say "chosen".
 function chooseIn(steps, of, value) {
-  const visit = (list) => { for (const st of list) {
+  const visit = (list) => {
+    // Bestow Curse: a step for another curse is no part of this cast (`ifChoice`), and one that is keeps nothing of the key.
+    if (of === 'curse') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else delete list[i].ifChoice; }
+    for (const st of list) {
     const m = st.modifier;
-    if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && k === of) m.scope[k] = value;
+    if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && (k === of || (of === 'curse' && k === 'ability'))) m.scope[k] = value;
     if (m?.types && of === 'damageType') m.types = m.types.map((t) => (t === 'chosen' ? value : t));
     if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
     if (Array.isArray(st.cure) && of === 'condition') st.cure = st.cure.map((c) => (c === 'chosen' ? value : c));

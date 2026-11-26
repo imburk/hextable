@@ -153,11 +153,14 @@ export const spells5 = [
     time: "action", range: "self", components: ["v","s","m"],
     duration: "1 minute", concentration: true, ritual: false,
     target: {"self":true},
-    effects: [{"manual":"Dispel Evil and Good: for up to 1 minute Celestials, Elementals, Fey, Fiends and Undead have Disadvantage on attack rolls against the caster. The caster can end the spell early with a Magic action for one of two functions. Break Enchantment: touch a creature that is possessed by, or Charmed or Frightened by, such creatures, ending that effect. Dismissal: a creature of those types within 5 feet makes a Charisma save or is sent to its home plane (Undead to the Shadowfell, Fey to the Feywild if not on their home planes). The DM applies it."}],
+    effects: [
+      {"modifier": {"on": "attack.received", "op": "disadvantage", "from": ["celestial","elemental","fey","fiend","undead"]}},
+      {"manual": "Dispel Evil and Good: the engine gives Disadvantage on attack rolls against the caster to Celestials, Elementals, Fey, Fiends and Undead for as long as the spell lasts. The caster can end the spell early with a Magic action for one of two functions, which the DM runs and then ends the spell. Break Enchantment: the caster touches a creature that is possessed by, or Charmed or Frightened by, a creature of those types, and it is no longer possessed, Charmed or Frightened by such creatures (the DM removes the condition that came from them). Dismissal: a creature of those types that the caster can see within 5 feet makes a Charisma save against the caster's spell save DC or is sent back to its home plane if it is not there already (Undead to the Shadowfell, Fey to the Feywild if not on their home planes); the DM rolls it and removes the creature. A creature whose type the engine cannot tell is the DM's to judge."}
+    ],
     kinds: ["control", "utility"],
     roll: "save:cha",
-    tier: "manual", checked: true,
-    text: "Creatures of the listed outsider types have Disadvantage attacking the caster for a minute; the caster can end the spell to break an enchantment or banish one.",
+    tier: "assist", checked: true,
+    text: "For up to a minute of Concentration Celestials, Elementals, Fey, Fiends and Undead have Disadvantage on attack rolls against the caster, which the engine applies. The caster can end the spell early with a Magic action: Break Enchantment frees a touched creature of possession, Charm or Fear from such creatures, and Dismissal sends one such creature within 5 feet home on a failed Charisma save. The DM runs both and ends the spell.",
   },
   {
     id: "dominate-person", name: "Dominate Person", source: "SRD 5.2.1",

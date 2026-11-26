@@ -13,7 +13,7 @@ import { CONTENT, SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
+import { advanceTurn, checkEnd, confusedFoe, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 import { handlers as featureHandlers } from './features.js';
@@ -373,6 +373,8 @@ const base = {
     if (a.familiar !== undefined) return familiarAttack(s, a, ctx, ev);
     const e = ent(s, a.actor), t = ent(s, a.target); control(s, e, ctx);
     !e.bond?.noAttack || fail(`${e.name} can't attack.`);          // a familiar (docs/specs/companions.md, Decision 1)
+    const foe = confusedFoe(s, e);                                    // Confusion (resolve.js `confusedOn`): on this turn its one attack is at the creature the dice chose
+    foe === null || foe === t.id || fail(`${e.name} is Confused: its attack this turn is at ${s.entities[foe]?.name ?? 'the creature the dice chose'}.`);
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
       noStrikeFields(a);

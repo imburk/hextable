@@ -215,8 +215,8 @@ test("M2: no wrong type or absurd value is accepted in any field of any shape (n
 test("M2: a value of the wrong kind of type, by the type table, is refused in every field", () => {
   let combos = 0; const accepted = [];
   for (const [k, [kind, e, path, shape, key]] of nodes) {
-    const spec = HOMEBREW_TYPES[shape]?.[key] ?? HOMEBREW_TYPES[shape]?.["*"] ?? (shape.startsWith("step.") && key === "when" ? "s[]" : undefined);
-    if (!spec) { assert.ok(shape === "open" || shape === "grants" || key === "when", `${k} has no type`); continue; }
+    const spec = HOMEBREW_TYPES[shape]?.[key] ?? HOMEBREW_TYPES[shape]?.["*"] ?? (shape.startsWith("step.") && (key === "when" || key === "ifChoice") ? "s[]" : undefined);
+    if (!spec) { assert.ok(shape === "open" || shape === "grants" || key === "when" || key === "ifChoice", `${k} has no type`); continue; }
     if (spec === "?" || SRD_WONT_CONVERT.has(e.id)) continue;
     const t = spec.split("|"), tries = [];
     if (!t.some((x) => ["s", "d", "id"].includes(x))) tries.push("zz");

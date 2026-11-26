@@ -264,6 +264,54 @@ DM: Step effects.0: letting an attacker that failed choose a new target, and a s
 DM: "Whether a creature that failed may pick a new target."
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-dizzy-spell
+"Dizzy Spell" (level 4 evocation, 90 feet, action, 1 minute, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the target makes a Wisdom saving throw (read from its steps, since the entry does not say).
+Each creature in a 10-foot sphere makes a Wisdom saving throw.
+On a failure:
+  It is Confused: it can take no Bonus Action and no Reaction, and at the start of each of its turns the engine rolls 1d10 for its behavior. 1: it takes no action and uses all its movement to move in a direction rolled on 1d4 (north, east, south or west): the engine takes the movement and the action, and the DM walks it. 2 to 6: it does not move and takes no action. 7 or 8: it does not move, and takes the Attack action to make one melee attack against a random creature within its reach: the engine picks the creature from those within reach that the party knows of and allows that one attack at it only. 9 or 10: it chooses its own behavior.
+    It makes a Wisdom saving throw at the end of each of its turns, against the caster's spell save DC; a success ends it. It also ends with the spell.
+    Everything about the roll is told to the DM alone. A creature that is Confused when a fight begins or when it joins one has no Reaction until its first turn. Spells and other actions on a 7 or 8, a creature the party does not know of in its reach, and the walking on a 1 are the DM's.
+The engine does not do this; the DM does this: "The walk on a roll of 1."
+The sphere is centred on a point the caster picks within 90 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
+Saving throws are against the caster's spell save DC.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0.onFail.0: walking a creature that rolled 1, creatures the party does not know of that a 7 or 8 could pick, and what a 7 or 8 may not do besides the attack.
+DM: "The walk on a roll of 1."
+DM: Whatever the description says beyond the steps above.
+
+== hb-test-mean-word
+"Mean Word" (level 3 evocation, touch, action, 1 minute, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: control.
+Its roll: the target makes a Wisdom saving throw (read from its steps, since the entry does not say).
+When casting it, the caster chooses a curse (Strength checks and saves, Dexterity checks and saves, Constitution checks and saves, Intelligence checks and saves, Wisdom checks and saves, Charisma checks and saves, Disadvantage on attack rolls against the caster, the forced Dodge action or extra Necrotic damage); a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it.
+One creature the caster touches makes a Wisdom saving throw.
+On a failure:
+  It gets Disadvantage on the chosen ability's checks. This is part of the cast only if the caster chose Strength or Dexterity.
+    It lasts as long as the spell.
+  It gets Disadvantage on its attack rolls. This is part of the cast only if the caster chose Disadvantage on attack rolls against the caster.
+    It holds only against attack rolls aimed at the caster.
+    It lasts as long as the spell.
+The engine does not do this; the DM does this: "The rest."
+The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
+Saving throws are against the caster's spell save DC.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: "The rest."
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-free-stride
 "Free Stride" (level 4 evocation, touch, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

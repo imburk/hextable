@@ -13,7 +13,7 @@ import { hiddenFrom } from '../sight.js';
 import { holds, zonesOf } from '../zones.js';
 import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
 import { itemName } from '../derive.js';
-import { effectsOf, restamp } from '../durations.js';
+import { confusedNow, effectsOf, restamp } from '../durations.js';
 import { incapacitated, modifiers, speedOf } from '../modifiers.js';
 import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, mountOf, riderOf, RuleError, spellStats, steering, turnBudget, unblocked, up, walled } from './shared.js';
 
@@ -830,7 +830,7 @@ export function rollInit(s, e, faces = null) {
 export function joinEncounter(s, e, ev) {
   const enc = s.encounter, cur = current(s);
   reveal(s, e, ev);
-  e.reactionUsed = false;
+  e.reactionUsed = confusedNow(s, e);
   // A stamp from before state version 22 names a place in the order (durations.js, thisTurn): name it by
   // its creature before the order is sorted again, as settleOrder (resolve.js) does before a place moves.
   for (const fx of effectsOf(s)) {

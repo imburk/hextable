@@ -66,7 +66,10 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `ward: <ability>` (Sanctuary): a creature that targets the one it works on with an attack roll or a damaging spell first makes a saving throw with that ability against the spell's save DC; on a failure
   // the attack or the spell is lost (against that creature). Area effects are not stopped. The lasting effect ends when the warded creature makes an attack roll, casts a spell or deals damage.
   // A spell with a duration only. docs/specs/rules-expansion.md, "Build notes: wave 3a part 2".
-  'ward'];
+  'ward',
+  // `confuse: true` (Confusion), with `ends` like a condition's: the creature it works on can take no Bonus Action and no Reaction for as long as the lasting effect holds, and at the start of each of its turns the engine rolls 1d10 for its
+  // behaviour (it keeps from moving, or from acting, or must make one melee attack against a random creature in reach; the DM walks a creature that moves at random). A spell with a duration only. docs/specs/rules-expansion.md, "Build notes: wave 3b part 2".
+  'confuse'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -167,7 +170,10 @@ function lintWhen(when, say) {
 // `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
 // `command`: the five words of Command.
 export const COMMANDS = ['approach', 'drop', 'flee', 'grovel', 'halt'];
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS };
+// `curse`: the four curses of Bestow Curse, the first as the ability it is for: `str` to `cha` (Disadvantage on checks and saves with that ability), `attacks` (Disadvantage on attack rolls against the caster), `dodge` (a Wisdom save
+// each turn or the Dodge action) and `damage` (an extra 1d8 Necrotic damage from the caster). A step with `ifChoice` is part of the cast only for the values it lists.
+export const CURSES = [...ABILITIES, 'attacks', 'dodge', 'damage'];
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -214,8 +220,8 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
     }
   }
   // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
-  // against the spell's target (Hex, Hunter's Mark).
-  if (m.against !== undefined && m.against !== 'target') say('`against` is "target" or left out');
+  // against the spell's target (Hex, Hunter's Mark). `against: 'source'`: on a modifier a spell puts on its target, it holds only against the spell's caster (Bestow Curse: Disadvantage on attack rolls against the caster); on attack.roll only.
+  if (m.against !== undefined && !(m.against === 'target' || (m.against === 'source' && m.on === 'attack.roll'))) say('`against` is "target" (on a modifier put on the caster), "source" (on attack.roll, on the target) or left out');
   // `uses: 1`: the first roll it applies to uses it up (Guiding Bolt, Vicious Mockery).
   if (m.uses !== undefined && m.uses !== 1) say('`uses` is 1 or left out');
   // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
@@ -318,22 +324,29 @@ function lintTerrain(e, say) {
 
 // Every "chosen" in a spell's steps needs a `choice` of the right kind.
 function lintChoice(e, say) {
-  const used = new Set();
+  const used = new Set(), c = e.choice;
   walkSteps(e.effects, (st) => {
+    if (st.ifChoice !== undefined) used.add('curse');
     const m = st.modifier;
     if (!m) return;
     if (m.scope?.skill === 'chosen') used.add('skill');
-    if (m.scope?.ability === 'chosen') used.add('ability');
+    if (m.scope?.ability === 'chosen') used.add(c?.of === 'curse' ? 'curse' : 'ability');
     if (m.types?.includes('chosen')) used.add('damageType');
   });
   walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); });
-  const c = e.choice;
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
     if (c.from !== undefined && !(Array.isArray(c.from) && c.from.length > 1 && c.from.every((x) => CHOICES[c.of].includes(x)))) say(`\`choice.from\` lists ${c.of} values`);
     if (!used.has(c.of)) say('a choice that no step uses');
   }
   for (const k of used) if (c?.of !== k) say(`a step uses the chosen ${k}, but the spell has no \`choice: { of: "${k}" }\``);
+  // `ifChoice: [values]` (Bestow Curse): the step is part of the cast only when the caster chose one of them; the values are the spell's own.
+  walkSteps(e.effects, (st) => {
+    if (st.ifChoice === undefined) return;
+    const list = c?.from ?? (c ? CHOICES[c.of] : []);
+    if (!(Array.isArray(st.ifChoice) && st.ifChoice.length >= 1 && st.ifChoice.length <= 9 && new Set(st.ifChoice).size === st.ifChoice.length && st.ifChoice.every((x) => list.includes(x)))) say('`ifChoice` lists one or more different values of the spell\'s choice');
+    if (c?.of !== 'curse') say('`ifChoice` is for a spell whose choice is of a curse');
+  });
 }
 const seenCounter = (actions) => { let n = false; for (const a of actions ?? []) walkSteps(a.effects, (st) => { if (st && 'counter' in st) n = true; }); return n; };
 function walkSteps(steps, visit) {
@@ -484,7 +497,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'move' && step.largest !== undefined && !SIZES.includes(step.largest)) say(`\`largest\` is one of ${SIZES.join(', ')}`);
     // What ends a condition or a modifier on its own: a turn boundary of the target or the source
     // ("until the end of your next turn"), or a repeat save.
-    if (kind === 'condition' || kind === 'modifier') {
+    if (kind === 'condition' || kind === 'modifier' || kind === 'confuse') {
       const ends = step.ends;
       if (ends !== undefined) {
         if (!['turnStart', 'turnEnd', 'save', 'damaged', 'armour'].includes(ends?.on)) say('`ends.on` must be turnStart, turnEnd, save, damaged or armour');
@@ -517,6 +530,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'command' && !(COMMANDS.includes(step.command) || step.command === 'chosen')) say(`\`command\` is one of ${COMMANDS.join(', ')} or "chosen"`);
     // `ward` (Sanctuary): an ability, in a spell that lasts: the lasting effect holds the ward, and it ends the effect.
     if (kind === 'ward') { if (!ABILITIES.includes(step.ward)) say('`ward` is an ability (the one the attacker saves with)'); if (!seen.eachOk) say('a `ward` step is for a spell that lasts: the ward goes when the spell ends'); }
+    // `confuse` (Confusion): true, in a spell that lasts; its `ends` is a repeated save at the end of the creature's turn, as a condition's.
+    if (kind === 'confuse') { if (step.confuse !== true) say('`confuse` is true'); if (!seen.eachOk) say('a `confuse` step is for a spell that lasts: the effect holds it'); if (step.ends !== undefined && !(step.ends?.on === 'save' && step.ends.at === 'turnEnd')) say('a `confuse` step ends on a save at the end of its creature\'s turn: `ends: { on: "save", save, at: "turnEnd" }`'); }
     if (kind === 'arm') { lintArm(step.arm, say); if (!seen.eachOk) say('an `arm` step is for a spell that lasts: the action it gives goes when the spell ends'); }
     if (kind === 'endSpell') { if (step.endSpell !== true) say('`endSpell` is true'); if (!seen.inTurn) say('an `endSpell` step goes inside an `eachTurn`: it ends the lasting effect those steps belong to'); }
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
@@ -533,7 +548,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       lintModifier(step.modifier ?? {}, say, seen.rolledOk === true, true);
       if (seen.inAttack && isRolled(step.modifier?.value)) say(ROLLED_IN_ATTACK);
       if (step.to !== undefined && step.to !== 'caster') say('a modifier step\'s `to` is "caster" or left out');
-      if (step.modifier?.against !== undefined && step.to !== 'caster') say('`against: "target"` is for a modifier put on the caster (`to: "caster"`)');
+      if (step.modifier?.against === 'target' && step.to !== 'caster') say('`against: "target"` is for a modifier put on the caster (`to: "caster"`)');
+      if (step.modifier?.against === 'source' && step.to !== undefined) say('`against: "source"` is for a modifier put on the target: it holds against the caster');
     }
     if (kind === 'move') {
       if (!(isInt(step.move) && step.move > 0 && step.move % 5 === 0)) say('`move` must be a distance in feet, a multiple of 5');
@@ -3018,7 +3034,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 // linter already (a map of skills, of states, of levels); its values are walked for the shapes below.
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
-  heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
+  heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'],
   reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
@@ -3149,7 +3165,7 @@ export function lintKeys(kind, entry, say, visit) {
         if (!st || typeof st !== 'object' || Array.isArray(st)) { visit?.('step[]', i, st, `${path}[${i}]`, v); return; }
         const p = `${path}[${i}]`, kinds = STEPS.filter((k) => Object.hasOwn(st, k));
         if (kinds.length !== 1) return;                       // the linter says so already
-        const allowed = ['when', kinds[0], ...STEP_KEYS[kinds[0]]];
+        const allowed = ['when', 'ifChoice', kinds[0], ...STEP_KEYS[kinds[0]]];
         for (const k of Object.keys(st)) {
           if (BAD_KEYS.includes(k)) { say(`${p}: has a key "${k}", which no content may have`); continue; }
           if (!allowed.includes(k)) { say(`${p}: "${k}" is not something a ${kinds[0]} step has`); continue; }
@@ -3270,7 +3286,7 @@ export const HOMEBREW_LENGTHS = Object.freeze({
   // a subclass: 12 features, 13 options to a feature (the SRD's own Fiendish Resilience has 12), 5 spells at a class level (homebrew-subclasses.md, question 2)
   'subclasses.features': 12, 'features.options': 13, 'spells.#': 5,
   'objects.use': 12, 'reaction.blocks': 8, 'spellPick.abilities': 6, 'spellPick.lists': 8, 'spells.classes': 8, 'spells.components': 3, 'spells.kinds': 4, 'step.advantageIf': 4,
-  'step.cure': 14, 'step.eachTurn': 4, 'step.forms': 40, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 4,
+  'step.cure': 14, 'step.eachTurn': 4, 'step.forms': 40, 'step.ifChoice': 9, 'step.types': 14, 'step.variants': 14, 'step.when': 4, 'trait.modifier': 8, 'trigger.from': 20, 'use.from': 20, 'weapons.properties': 9, 'weapons.range': 2, 'zone.on': 4,
 });
 const GRANTS_LEN = 30;
 // The work one use of an entry may cause (see workOf): the most steps run, the creatures a table is taken to have, and the
@@ -3574,7 +3590,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
@@ -3582,7 +3598,7 @@ export const HOMEBREW_TYPES = Object.freeze({
 // The check a key gets while the key lists are walked: its type, in words, or null.
 function typeProblem(shape, key, value) {
   const T = HOMEBREW_TYPES[shape];
-  const spec = T?.[key] ?? T?.['*'] ?? (shape.startsWith('step.') && key === 'when' ? 's[]' : undefined);
+  const spec = T?.[key] ?? T?.['*'] ?? (shape.startsWith('step.') && (key === 'when' || key === 'ifChoice') ? 's[]' : undefined);
   if (!spec || spec === '?' || fits(spec, value)) return null;
   return `must be ${describe(spec)}`;
 }

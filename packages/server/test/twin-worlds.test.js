@@ -981,3 +981,49 @@ test("globe of invulnerability: a spell cast from outside at an area over a hidd
     plain: (w) => { burn(w, { q: 1, r: 1 }); },
   });
 });
+
+// ---- Confusion (#786 wave 3b part 2): a confused creature's d10 and its pick, with a hidden creature in its reach ----
+// A 7 or 8 picks a creature within reach to attack. The pick is made only among creatures the party knows of, and the die for it is drawn whatever the
+// number of them, so a hidden creature changes nothing the players are sent: not the flags (`confusedFoe:<id>:<foe>`), not the turn, not the dice after it.
+// The hidden creature stands outside the arena, as in the other scenarios of a fight: one the DM hides is never in the fight, and one forced into it (a creature
+// that is hiding) shows as `someone` in the order by design, so a hidden creature in the confused one's reach cannot be built here. That the pick leaves out a creature
+// the party does not know of is tested in packages/rules/test/wave3b2-spells.test.js.
+const CONFUSED = (seed) => ({
+  players: ["Pat"],
+  seed,
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", 0, 0], ["rogue", 2, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+    s.entities.rogue.hp = s.entities.rogue.maxHp = 500;
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0 }, name: "Seen" });
+    const g = byName(w, "Seen");
+    Object.assign(g, { hp: 500, maxHp: 500, reactionUsed: true });
+    const fx = startEffect(s, { name: "Confusion", spell: "confusion", source: "wizard", conc: true, duration: "1 minute", level: 4 });
+    fx.parts.push({ target: g.id, confuse: { had: false }, ends: { on: "save", save: "wis", at: "turnEnd" }, dc: 13 });
+    w.putIn();                                                  // the hidden creature exists before the fight, which leaves it outside the arena
+    w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 });
+    turnOf(w, "fighter");
+  },
+  steps: [
+    { by: "Pat", act: { type: "endTurn", actor: "fighter" } },
+    (w) => turnOf(w, byName(w, "Seen").id),                     // the start of its turn: the d10 is rolled here
+    { by: "dm", act: (w) => ({ type: "attack", actor: byName(w, "Seen").id, target: "fighter", attack: byName(w, "Seen").actions.find((x) => !x.multiattack).id }), allowError: true },
+    { by: "dm", act: (w) => ({ type: "attack", actor: byName(w, "Seen").id, target: "rogue", attack: byName(w, "Seen").actions.find((x) => !x.multiattack).id }), allowError: true },
+    { by: "dm", act: (w) => ({ type: "endTurn", actor: byName(w, "Seen").id }), allowError: true },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "What was that?" } },
+  ],
+});
+test("confusion: the roll, the pick and the turn of a confused creature are told to the DM alone, and the players are sent the same with a hidden creature on the map as without", () => {
+  const sides = { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 1 }, name: "Ghost", hidden: true }); Object.assign(byName(w, "Ghost"), { hp: 500, maxHp: 500 }); }, plain: (w) => { burn(w, { q: 6, r: 1 }); } };
+  let seed = 5;
+  for (; seed < 120; seed++) { const { plain } = twinRun(CONFUSED(seed), sides); if (/rolled [78] on the d10/.test(JSON.stringify(plain.raw.dm))) break; }
+  assert.ok(seed < 120, "a seed that rolls a 7 or 8");
+  const { plain, hidden } = twin(CONFUSED(seed), sides);
+  assert.ok(/rolled [78] on the d10/.test(JSON.stringify(hidden.raw.dm)), "the DM is told of the roll in both worlds");
+  assert.ok(!/on the d10|Confused/.test(JSON.stringify(hidden.raw.Pat)) && !/on the d10|Confused/.test(JSON.stringify(plain.raw.Pat)), "the player is told of none of it");
+  assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost"));
+});
