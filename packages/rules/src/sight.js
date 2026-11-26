@@ -3,7 +3,7 @@
 import { gridOf, col } from './grid.js';
 import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
 import { barriers, objectBlocks, objectDef, objectSegment } from './walls.js';
-import { has, immuneTo, modifiers } from './modifiers.js';
+import { has, immuneTo, modifiers, sensesOf } from './modifiers.js';
 import { obscuredAt, terrainsOf } from './terrain.js';
 import { SIZES } from './content/sizes.js';
 
@@ -337,7 +337,7 @@ export function lightAt(s, pos, sources = lightSources(s)) {
 export const hiddenFrom = (target, viewer) => !!target.hiding && target.side !== viewer.side;
 export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) {
   if (viewer === target || (viewer.id && viewer.id === target.id)) return { see: 'yes' };
-  const senses = viewer.senses ?? {}, d = apart(s, viewer, target) * FT;
+  const senses = sensesOf(s, viewer), d = apart(s, viewer, target) * FT;
   if ((senses.blindsight ?? 0) >= d && coverOf(s, viewer, target) !== 'total') return { see: 'yes' };
   viewer = lift(s, viewer); target = lift(s, target);
   if (has(viewer, 'blinded')) return { see: 'no', why: 'blinded' };

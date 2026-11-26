@@ -44,7 +44,32 @@ export function objectEffects(s, o, steps, targets, ev) {
 // `feet` is a number, or "surface" (docs/specs/maps-and-objects.md: "the target drops a number of feet, or to the next
 // surface"): it drops to the surface under it, as the gravity pass would put it, by the height between. Already standing
 // on a surface it does not fall. A creature riding or ridden is the DM's: it would part the pair.
-export function fall(s, t, feet, ev) {
+// `into`: the pit object that drops it (a placement's own depth, `fall` on the object, docs/specs/maps-and-objects.md
+// "Amendment: deep pits"). When the pit is deeper than its own 10 feet and a floor lies within its depth in this column,
+// the creature lands on the highest such floor and falls only the actual drop; with no object, or none such, nothing moves.
+export function fall(s, t, feet, ev, into = null) {
+  if (into && feet > 10 && Number.isInteger(feet)) {
+    const z = t.pos.z ?? 0, sf = surfaces(s.map, t.pos).filter((x) => x.z <= z - 10 && x.z >= z - feet).pop();
+    if (!sf && !t.dead) {
+      ev.push({ type: 'manual', actor: null, name: 'Falling', partial: true, text: `${t.name} falls into a pit ${feet} feet deep, but there is no floor within that depth under the hex it stands on (a big creature's other hexes do not count). The DM places ${t.name} and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.` });
+      return;
+    }
+    if (sf && !t.dead) {
+      if (t.riding || t.rider) {
+        ev.push({ type: 'manual', actor: null, name: 'Falling', partial: true, text: `${t.name} falls into a pit deep enough to reach the floor below, but it is riding or being ridden, and the engine would part the pair. The DM moves ${t.name} down and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.` });
+        return;
+      }
+      const to = nearestFree(s, t, { q: t.pos.q, r: t.pos.r, z: sf.z });
+      if (!to) {
+        ev.push({ type: 'manual', actor: null, name: 'Falling', partial: true, text: `${t.name} falls into a pit deep enough to reach the floor below, but there is no room for it to land. The DM places ${t.name} and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.` });
+        return;
+      }
+      const drop = z - to.z;
+      t.pos = { q: to.q, r: to.r, z: to.z };
+      fall(s, t, drop, ev);
+      return lookAround(s, ev, [t]);
+    }
+  }
   if (feet === 'surface') {
     const said = (text, manual) => ev.push(manual ? { type: 'manual', actor: null, name: 'Falling', partial: true, text } : { type: 'note', id: t.id, text });
     if (ground(s.map, t.pos)) return said(`${t.name} is standing on a surface, so it does not fall`);

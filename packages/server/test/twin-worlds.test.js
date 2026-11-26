@@ -921,6 +921,36 @@ test("see invisibility: the caster's table is sent the Invisible creature once t
   assert.ok(first(hidden, "Sam") === -1 || first(hidden, "Sam") >= cast(hidden) - 1, "not sent before the spell");
 });
 
+// ---- True Seeing (#786 wave 4 part 3): Truesight lent for an hour shows an Invisible creature; a player is sent what the sight rules give a Truesight creature ----
+const trueSeeingSetup = (w) => { seeInvisibleSetup(w); Object.assign(w.state.entities.wizard, { slots: { 2: 3, 6: 2 }, slotsMax: { 2: 3, 6: 2 } }); w.state.entities.wizard.spells.push("true-seeing"); };
+test("true seeing: before the spell an Invisible creature in range is sent to no player (the same as a bare cell); after it the caster's player is sent exactly what See Invisibility's sight gives, no more", () => {
+  const sides = { hide: (w) => unseen(w, { q: 3, r: 0 }, "Wisp"), plain: (w) => burn(w, { q: 6, r: 1 }) };
+  const before = { players: ["Pat", "Sam"], setup: trueSeeingSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  twin(before, sides);
+  const cast = { players: ["Pat", "Sam"], setup: trueSeeingSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "true-seeing", target: "wizard", slot: 6 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }] };
+  const { plain, hidden, diffs } = twinRun(cast, sides);
+  assert.ok(diffs.length > 0, "the players are told the creature once the spell is cast");
+  const sent = (r, who) => JSON.stringify(r.raw[who]).includes("Wisp");
+  assert.ok(sent(hidden, "Sam") && !sent(plain, "Sam"));
+  // The same in the world where the sight comes from See Invisibility: Truesight shows the creature, and what is sent about it is what the sight rules already give.
+  const sight = (r) => r.raw.Sam.filter((m) => m.t === "events" ? false : JSON.stringify(m).includes("Wisp")).length > 0;
+  assert.equal(sight(hidden), true);
+  const seeInv = { ...cast, steps: [cast.steps[0], { by: "Sam", act: { type: "cast", actor: "wizard", spell: "see-invisibility", target: "wizard" } }, cast.steps[2]] };
+  const other = twinRun(seeInv, sides).hidden;
+  const wisp = (r) => r.raw.Sam.flatMap((m) => JSON.stringify(m).match(/"name":"Wisp"[^}]*/g) ?? []).at(-1);
+  assert.equal(wisp(hidden), wisp(other), "the creature is described to the player in the same way");
+});
+
+test("true seeing: an Invisible creature just past 120 feet, and one behind a wall within 120 feet, are sent to the players as a bare cell is, after the cast", () => {
+  const cast = (setup) => ({ players: ["Pat", "Sam"], setup: (w) => { trueSeeingSetup(w); setup(w); }, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "true-seeing", target: "wizard", slot: 6 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] });
+  // 125 feet: the wizard stands at the west edge, the creature 25 hexes east.
+  const far = twin(cast((w) => w.must({ type: "place", actor: "wizard", to: { q: -12, r: 0 } })), { hide: (w) => unseen(w, { q: 13, r: 0 }, "Wisp"), plain: (w) => burn(w, { q: 12, r: 0 }) });
+  assert.ok(!JSON.stringify(far.hidden.raw.Sam).includes("Wisp"), "125 feet: Sam is told of nothing");
+  // Behind a wall, 30 feet away: Truesight does not see through it.
+  const walled = twin(cast((w) => { w.state.map.walls.push({ id: "wallT", level: "ground", a: [-70, 11], b: [70, 11], kind: "wall" }); }), { hide: (w) => unseen(w, { q: -2, r: 6 }, "Wisp"), plain: (w) => burn(w, { q: -2, r: 7 }) });
+  assert.ok(!JSON.stringify(walled.hidden.raw.Sam).includes("Wisp"), "behind a wall: Sam is told of nothing");
+});
+
 // ---- Antilife Shell (#786 wave 3b part 1): a hidden caster's shell ----
 // A shell refuses a move into it, which would tell the players something stands there. The engine does not enforce the shell of a caster the party does not know of
 // (shellSeen), so a visible creature walking into it is sent what it would be sent on a bare cell.
@@ -1062,4 +1092,40 @@ test("detect magic: a hidden creature carrying a magic item within 30 feet is to
   const { hidden } = twin(SENSE("detect-magic", 1), sides);
   assert.ok(/Ghost: Ring of Protection/.test(JSON.stringify(hidden.raw.dm)), "the DM is told of it");
   assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost") && !/Ring of Protection/.test(JSON.stringify(hidden.raw.Pat)), "the player is told of none of it");
+});
+
+// ---- deep pits (#806): a party member that falls into a region on the level below ----
+// By the existing rules a party member that lands in a region reveals it (lookAround: it stands in it), so the landing room is
+// sent to the players in both worlds. A second room of that level, far from the landing and unrevealed, is a bare cell in the
+// plain world and a whole layout in the other; the players are sent the same in both.
+const ROOM_B = "5,-3";
+const pitWorld = () => {
+  const ground = Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "grass" }]));
+  const cellar = { "0,0": { t: "stone" }, "1,0": { t: "stone" }, [ROOM_B]: { t: "stone" } };
+  return newMap({ id: "deep", name: "Deep", starts: [{ q: -4, r: 0 }],
+    levels: [{ id: "ground", name: "Ground", z: 0, tiles: ground }, { id: "cellar", name: "Cellar", z: -30, tiles: cellar }],
+    regions: [{ id: "landing", name: "Landing", level: "cellar", hexes: ["0,0", "1,0"], revealed: false }, { id: "far", name: "Far room", level: "cellar", hexes: [ROOM_B], revealed: false }],
+    objects: [{ id: "pit1", def: "hidden-pit", level: "ground", at: { q: 1, r: 0 }, state: "hidden", fall: 30 }] });
+};
+test("deep pits: a party member that falls into the room below reveals that room by the usual rules, and sends players nothing of another unrevealed room there", () => {
+  const { hidden } = twin({
+    setup(w) {
+      for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+      w.must({ type: "loadMap", map: pitWorld() });
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      Object.assign(w.state.entities.fighter, { hp: 500, maxHp: 500 });
+    },
+    steps: [
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 1, r: 0 } } },
+      { by: "Pat", send: { t: "sync" } },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Ow." } },
+    ],
+  }, { hide: (w) => w.must({ type: "mapEdit", ops: [{ op: "tile", level: "cellar", at: { q: 6, r: -3 }, tile: { t: "stone" } }, { op: "tile", level: "cellar", at: { q: 5, r: -2 }, tile: { t: "stone" } },
+      { op: "region", region: { id: "far", name: "Far room", level: "cellar", hexes: [ROOM_B, "6,-3", "5,-2"], revealed: false } }] }), plain: () => {} });
+  const st = hidden.w.state;
+  assert.deepEqual(st.entities.fighter.pos, { q: 1, r: 0, z: -30 }, "the fighter fell to the cellar");
+  assert.equal(st.map.regions.find((r) => r.id === "landing").revealed, true, "the landing room is revealed by the fall");
+  assert.equal(st.map.regions.find((r) => r.id === "far").revealed, false);
+  assert.ok(JSON.stringify(hidden.raw.Pat).includes("cellar"), "Pat is sent the room the party fell into");
+  { const t = JSON.stringify(hidden.raw.Pat); const m = t.match(/.{150}(6,-3|5,-2)\\*":\\*\{\\*"t\\*":\\*"stone.{40}/); assert.ok(!m, "and nothing of the far room: " + m?.[0]); }
 });

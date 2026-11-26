@@ -704,3 +704,28 @@ Where the build settled a detail the design left open, or changed it.
 
 6. **Status.** A design note, not built. It waits behind the current rules
    work.
+
+## Amendment: deep pits (#806)
+
+1. **The ask.** A pit object always fell 10 feet (`fall: 10` in its definition) and the creature stayed on its level. A
+   module map needs a pit that drops a creature 30, 40 or 60 feet into the room directly beneath.
+2. **The field.** A placed object may carry `fall`: the pit's depth in feet. It is a whole multiple of 10 from 10 to 200
+   (200 is where falling damage stops growing, 20d6). The definition's number is the default, so a placement with no
+   `fall` plays exactly as before. The field replaces the number of every `fall` step the object runs (its triggers and
+   its uses); a spell's own `fall` step is not touched. The linter refuses `fall` on an object whose kind has no `fall` step.
+3. **Where it lands.** When `fall` is more than 10, the creature lands on the highest floor in its own column that is at
+   least 10 feet and at most `fall` feet below where it stood, on any other level. It takes the fall rule's damage for
+   the actual drop (1d6 Bludgeoning per full 10 feet, 20d6 at most) and is Prone if that hurt; the spiked pit's piercing
+   step then runs as it always did. If another creature stands where it would land, it lands on the nearest free place on
+   that floor (the search ignores walls, so it may be a place across a wall; see DEBT W55). A creature whose own column has no floor in range (a big creature set off by a hex it covers; only its anchor column counts), a rider or ridden creature, or a landing with no room, is handed to the DM with a `manual` note, as
+   `fall: "surface"` does. With `fall` of 10, or none, nothing moves: the creature stays on the pit's own level and takes
+   1d6, as before. The engine lands it with `lookAround`, as any fall to a surface does: a party member that lands in an
+   unrevealed room reveals it by the usual rules (it stands in it); a monster that lands there reveals nothing.
+4. **No floor below.** A `fall` above 10 with no floor in that range under the pit's hex is a linter problem, so a map
+   cannot be saved or loaded that way. The linter also refuses a `fall` that is not a multiple of 10 or is outside 10 to 200.
+5. **Editing.** `fall` is a placement field like `dc`: the `object` edit carries it and `mapEdit` lints the result whole.
+   Taking away the floor beneath a deep pit (`unlevel`, `tile`) is refused for the same reason.
+6. **Tests.** `packages/rules/test/deep-pits.test.js`, and a twin test (`packages/server/test/twin-worlds.test.js`) that a
+   party member falling into the room below reveals that room by the usual rules and sends players nothing of another
+   unrevealed room of that level (a bare cell in the plain world). Monsters avoid pits (forced movement runs no
+   trigger), so a monster falls only by the DM's hand.
