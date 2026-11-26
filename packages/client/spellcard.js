@@ -147,6 +147,8 @@ export function openSpellCard(anchor, id, via = 'key') {
   return card;
 }
 
+// A text field takes the key as a letter; a tick box does not.
+const typing = (t) => /^(TEXTAREA|SELECT)$/.test(t?.tagName ?? '') || (t?.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(t.type)) || !!t?.isContentEditable;
 const targetOf = (t) => (t instanceof Element ? t.closest('[data-spellcard]') : null);
 export function initSpellCards() {
   if (wired || typeof document === 'undefined') return;
@@ -158,16 +160,27 @@ export function initSpellCards() {
     timer[via]();
   };
   let pressed = false, pending = null;
-  // A computer: the mouse rests on a spell.
-  document.addEventListener('pointerover', (e) => {
-    if (e.pointerType !== 'mouse') return;
-    const a = targetOf(e.target); if (!a || a === anchorNow || a === pending) return;
+  // A computer: the mouse rests on a spell. Only a mouse that moves onto it counts (a row drawn under a still pointer does not), never after a press or click on that same row
+  // until the pointer has left it and come back, never while a press is held, and never while an action waits for its confirm (the die's ring): the card must not stand over
+  // what is being done. A screen with no hover (a phone) has long press only.
+  const noHover = () => window.matchMedia?.('(hover: none)').matches || document.getElementById('btn-menu')?.classList.contains('waiting');
+  let quiet = null;
+  document.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || e.buttons) return;
+    const a = targetOf(e.target); if (!a || a === anchorNow || a === pending || a === quiet || noHover()) return;
     pending = a; arm(a, HOVER_MS, 'hover');
   });
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const a = targetOf(e.target); if (!a) return;
+    quiet = a; pending = null; timer?.reset(); closeSpellCard();
+  }, true);
   document.addEventListener('pointerout', (e) => {
     if (e.pointerType !== 'mouse') return;
-    const a = targetOf(e.target); if (!a || a !== pending) return;
-    if (e.relatedTarget instanceof Node && (a.contains(e.relatedTarget) || card?.contains(e.relatedTarget))) return;
+    const a = targetOf(e.target);
+    if (a && e.relatedTarget instanceof Node && (a.contains(e.relatedTarget) || card?.contains(e.relatedTarget))) return;
+    if (a && a === quiet) quiet = null;
+    if (!a || a !== pending) return;
     pending = null; timer?.leave(); timer?.reset(); closeSpellCard();
   });
   // A phone: a press that stays, without moving.
@@ -183,7 +196,7 @@ export function initSpellCards() {
   document.addEventListener('contextmenu', (e) => { if (targetOf(e.target) && (timer?.shown || timer?.waiting || card)) e.preventDefault(); }, true);
   // A key on a focused spell.
   document.addEventListener('keydown', (e) => {
-    if (!CARD_KEYS.includes(e.key) || e.ctrlKey || e.metaKey || e.altKey || /^(TEXTAREA|INPUT|SELECT)$/.test(e.target?.tagName ?? '')) return;
+    if (!CARD_KEYS.includes(e.key) || e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return;
     const a = targetOf(e.target);
     if (!a) return;
     if (card && anchorNow === a) { closeSpellCard(); e.preventDefault(); return; }
