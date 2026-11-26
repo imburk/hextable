@@ -60,6 +60,10 @@ const FIXTURES = [
     effects: [{ arm: { damage: '2d6', type: 'fire', addMod: true } }] }),
   base('stern-word', 'Stern Word', { level: 1, range: 60, components: ['v'], target: { creature: { count: 1 } }, tier: 'assist', choice: { of: 'command' },
     effects: [{ save: 'wis', onFail: [{ command: 'chosen' }] }, { command: 'halt' }] }),
+  base('hush-ward', 'Hush Ward', { level: 1, range: 30, duration: '1 minute', target: { creature: { count: 1 } }, tier: 'assist',
+    effects: [{ ward: 'wis' }, { manual: 'Whether a creature that failed may pick a new target.' }] }),
+  base('free-stride', 'Free Stride', { level: 4, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',
+    effects: [{ modifier: { on: 'terrain', op: 'immune' } }, { modifier: { on: 'speed', op: 'immune', magic: true } }, { modifier: { on: 'condition', op: 'immune', scope: { condition: 'restrained' }, magic: true } }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.

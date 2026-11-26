@@ -246,6 +246,42 @@ DM: Step effects.0.onFail.0: moving the creature toward or away from the caster,
 DM: Step effects.1: moving the creature toward or away from the caster, what it drops, and whether it understands the word.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-hush-ward
+"Hush Ward" (level 1 evocation, 30 feet, action, 1 minute).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+One creature within 30 feet is warded. A creature that targets it with an attack roll, or with a spell that makes an attack roll or deals damage, first makes a Wisdom saving throw against the caster's spell save DC; on a failure the attack or spell is lost against it. Area effects are not stopped.
+  The rules let the creature choose a new target instead of losing the attack; the engine takes the loss and tells the DM, who may allow a new target. The ward ends when the warded creature makes an attack roll, casts a spell or deals damage.
+The engine does not do this; the DM does this: "Whether a creature that failed may pick a new target."
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: letting an attacker that failed choose a new target, and a spell with several targets.
+DM: "Whether a creature that failed may pick a new target."
+DM: Whatever the description says beyond the steps above.
+
+== hb-test-free-stride
+"Free Stride" (level 4 evocation, touch, action, 1 hour).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+One creature the caster touches gets movement unaffected by Difficult Terrain: a step into it costs what it would on open ground.
+  It lasts as long as the spell.
+It gets a Speed that the lasting effect of a spell cannot reduce (a reduction from anything else, a condition included, still counts).
+  It lasts as long as the spell.
+It gets immunity to the Restrained condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off).
+  It holds only against a condition that a spell gives (a condition from anything else, or from the DM, is not stopped).
+  It lasts as long as the spell.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

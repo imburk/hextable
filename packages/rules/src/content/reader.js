@@ -85,7 +85,7 @@ export const HOOK_WORDS = {
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
-  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition',
+  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain',
 };
 // What a modifier does to that thing. `v` is the value in words, `h` the hook's noun.
 export const OP_WORDS = {
@@ -140,7 +140,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
-export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition'];
+export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition', 'terrain'];
 export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spell.attack', 'opportunity'];
 // Hooks nothing calls `modifiers()` for: a trait's modifier there changes nothing (`hp.max` is applied by the step that puts it on, whatever its `when` says).
 export const UNREAD_HOOKS = ['hp.max', 'carry'];
@@ -269,9 +269,9 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
-const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'when'];
+const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
 
 //   ctx (all optional):
 //     pack     the id of the homebrew pack the entry belongs to. With it (or, without it, an id in the entry's own `source`, "homebrew:<pack>", or an id
@@ -1164,6 +1164,14 @@ export const STEP_SENTENCES = {
     this.line('Given outside a fight, it waits for the creature\'s first turn of the next one. Whether a creature that cannot be told understands the word is for the DM to decide: the spell says nothing of it.', depth + 1);
     return this.dm(`Step ${at}: moving the creature toward or away from the caster, what it drops, and whether it understands the word.`);
   },
+  // engine/rolls.js `ward`, resolve.js `wardCheck` (Sanctuary).
+  ward({ st, at, Who, say, depth }) {
+    if (!ABILITIES.includes(st.ward)) return this.bad(`Step ${at}: \`ward\` is an ability.`);
+    say(`${Who} is warded. A creature that targets it with an attack roll, or with a spell that makes an attack roll or deals damage, first makes a ${ABILITY_WORDS[st.ward]} saving throw against the caster's spell save DC; on a failure the attack or spell is lost against it. Area effects are not stopped.`);
+    if (!this.fx || this.fx === 'bound' || this.obj || this.itm || this.mon) this.line('The spell does not last, so the engine has nothing to hang the ward on: the DM runs it.', depth + 1);
+    this.line('The rules let the creature choose a new target instead of losing the attack; the engine takes the loss and tells the DM, who may allow a new target. The ward ends when the warded creature makes an attack roll, casts a spell or deals damage.', depth + 1);
+    return this.dm(`Step ${at}: letting an attacker that failed choose a new target, and a spell with several targets.`);
+  },
   // engine/rolls.js `arm`: an attack the spell gives its caster while it lasts (Flame Blade).
   arm({ st, at, Who, say }) {
     const a = st.arm;
@@ -1220,6 +1228,10 @@ function modPhrase(m, at) {
   if (hook === 'hp.zero') return 'to keep 1 Hit Point the first time damage would take it to 0 Hit Points, however large the damage (and a `kill` step does nothing to it instead)';
   // Heroism (modifiers.js `immuneTo`, `sources`): immunity to one condition for as long as the effect lasts.
   if (hook === 'condition' && !(op === 'immune' && isObj(m.scope) && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition))) { this.bad(`${at}: a modifier on condition is { on: "condition", op: "immune", scope: { condition } }.`); return 'an immunity the reader cannot read'; }
+  // Freedom of Movement (world.js `moveOptions`, modifiers.js `speedOf`).
+  if (hook === 'terrain' && !(op === 'immune' && Object.keys(m).length === 2)) { this.bad(`${at}: a modifier on terrain is { on: "terrain", op: "immune" }.`); return 'an immunity the reader cannot read'; }
+  if (hook === 'terrain') return 'movement unaffected by Difficult Terrain: a step into it costs what it would on open ground';
+  if (hook === 'speed' && op === 'immune') { if (m.magic !== true) { this.bad(`${at}: an immune modifier on speed is { on: "speed", op: "immune", magic: true }.`); return 'an immunity the reader cannot read'; } return 'a Speed that the lasting effect of a spell cannot reduce (a reduction from anything else, a condition included, still counts)'; }
   if (hook === 'condition') return `immunity to the ${cond(m.scope.condition)} condition: it cannot be given the condition, and one it has has no effect while this lasts (it is not taken off)`;
   if (op === 'crit') return `${OP_WORDS.crit('', HOOK_WORDS[hook])}`;
   // Mage Armor: a base Armor Class of so much plus an ability modifier (engine/rolls.js `acOf`, `modifier`).
@@ -1286,6 +1298,7 @@ function modExtras(m, at, toCaster) {
       : hook === 'condition' ? `it holds only against a condition given by a ${list(types, 'or')} (a condition given by anyone else, or by no one the engine can name, is not stopped)`
       : `it holds only when the condition it is about was given to the creature by a ${list(types, 'or')} (the engine names the giver of a condition it put on)`);
   }
+  if (m.magic !== undefined && m.on === 'condition') bits.push('it holds only against a condition that a spell gives (a condition from anything else, or from the DM, is not stopped)');
   if (m.stack === false) bits.push('several of the same name do not add up');
   if (typeof m.spell === 'string') bits.push(`it holds only for the damage of ${nameOf('spells', m.spell)}`);
   if (m.when !== undefined) {

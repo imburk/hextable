@@ -8,7 +8,7 @@ import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/ind
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, turnSteps, walk as walkSteps } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, endWards, fightOver, holds, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
@@ -22,7 +22,7 @@ import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedO
 import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
 import { ARENA_RADIUS, ask, blocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, command, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, ward, command, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
 import { armed, weaponKey } from '../imbue.js';
@@ -890,7 +890,9 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
     ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, ...(p.spell ? { from: p.from } : {}), hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}), ...rolledOf(p, n) });
   }
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
-  if (total > 0) damaged(s, ev, t, parts.find((p) => typeof p.by === 'string')?.by ?? null, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
+  const dealtBy = parts.find((p) => typeof p.by === 'string')?.by ?? null;
+  if (total > 0 && dealtBy !== null) endWards(s, ev, dealtBy, `${s.entities[dealtBy]?.name ?? 'The warded creature'} dealt damage`);        // Sanctuary: the warded creature deals damage
+  if (total > 0) damaged(s, ev, t, dealtBy, KIT);      // "until it takes any damage" (Turn Undead); a save on damage (Dominate Monster)
   // Death Ward (a modifier on `hp.zero`): the creature would drop to 0 Hit Points and drops to 1 instead, however much the damage was, and the
   // use ends the ward. Not when the DM sets its Hit Points (`raw`). It comes before Relentless Rage: the creature never reaches 0.
   // Every damage event of this hit says `hp: 0` (several damage parts in one hit each put the target at 0), so each is patched to the 1 it was left at.
@@ -1484,7 +1486,25 @@ function hitAfter(s, e, t, casts, ev) {
 // Attack dice is taken off before the dice are rolled, and their steps run after the damage, only if
 // Sneak Attack is dealt. One that keeps its creature hidden (Stealth Attack) holds off the attack's
 // unhiding to the end of the turn (attacks.js, endTurn); if it is not paid for, the attack unhides it.
+// A creature targets another with an attack roll or a damaging spell, and that one is warded (the `ward` step: Sanctuary): it makes the saving throw first, against the ward's DC, and on a failure the attack or the
+// spell is lost. The SRD lets it choose a new target instead; the engine takes the other way out, loses it, and tells the DM, who may let it choose again. True when it is lost. Area effects never come here.
+export function wardCheck(s, e, t, ev, what = 'attack') {
+  if (!e || !t || e.id === t.id) return false;
+  for (const fx of effectsOf(s)) for (const p of fx.parts) {
+    if (p.ended || p.target !== t.id || !p.ward) continue;
+    const { used, ...sv } = savingThrow(s, e, p.ward.save, p.ward.dc, null, null, null, null, ev);
+    ev.push({ type: 'save', id: e.id, abil: p.ward.save, dc: p.ward.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) });
+    useUp(s, ev, used ?? []);
+    if (sv.success) return false;
+    ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} failed its ${p.ward.save.toUpperCase()} save against ${fx.name}, so its ${what} against ${t.name} is lost (its action is spent). The SRD lets it choose a new target instead: the DM may allow that.` });
+    return true;
+  }
+  return false;
+}
+
 export function resolveAttack(s, e, t, atk0, ev, extra = {}, { brutal = null, cunning = null, onHit = null } = {}) {
+  if (wardCheck(s, e, t, ev, 'attack')) return;
+  endWards(s, ev, e.id, `${e.name} made an attack roll`);
   // A weapon changed by a spell or a feature (imbue.js): every attack with it reads the record through `armed`; the type that hurts the target most is taken.
   const atk0b = armed(s, e, atk0), atk = atk0b.alt ? { ...atk0b, dtype: bestType(s, t, [atk0b.dtype, ...atk0b.alt]) } : atk0b;
   const keepHidden = !!e.hiding && !!cunning?.some((o) => o.keepHidden);
@@ -2253,5 +2273,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, command, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

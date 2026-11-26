@@ -564,6 +564,10 @@
               "on": "spell.attack",
               "op": "add",
               "value": 1
+            },
+            {
+              "on": "terrain",
+              "op": "immune"
             }
           ]
         },

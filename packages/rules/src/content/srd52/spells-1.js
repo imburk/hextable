@@ -565,11 +565,14 @@ export const spells1 = [
     time: "bonus", range: 30, components: ["v", "s", "m"],
     duration: "1 minute", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Sanctuary: the caster guards a creature in range for 1 minute. A creature that targets the warded creature with an attack roll or a damaging spell first makes a Wisdom save; on a failure it must choose a new target or lose the attack or spell. It does not protect against area effects. The spell ends if the warded creature makes an attack roll, casts a spell or deals damage. The DM runs it."}],
+    effects: [
+      {"ward": "wis"},
+      {"manual": "Sanctuary: the engine makes a creature that targets the warded creature with an attack roll, or with a spell that makes an attack roll or deals damage, save with Wisdom against the caster's spell save DC; on a failure the attack or spell is lost against it (the SRD lets it choose a new target instead: the DM may allow that, and decides for a spell with several targets whether it is lost whole). Area effects are never stopped. The engine ends the spell when the warded creature makes an attack roll, casts a spell or deals damage it can name the source of; the DM ends it for damage the engine cannot attribute to the warded creature (a zone or effect from an earlier spell, or damage the DM sets), and decides whether a spell that only sets a condition or forces a save is a damaging spell (the engine counts a spell with an attack roll or a damage step)."}
+    ],
     kinds: ["utility"],
-    roll: "save:wis",
-    tier: "manual", checked: true,
-    text: "A warded creature is hard to attack: attackers make a Wisdom save or must pick a new target. It ends if the warded creature attacks or casts.",
+    roll: "none",
+    tier: "assist", checked: true,
+    text: "A creature within 30 feet is warded for 1 minute. A creature that targets it with an attack roll or a damaging spell makes a Wisdom save first and on a failure loses the attack or spell (the DM may let it choose a new target). Area effects are not stopped. The ward ends when the warded creature makes an attack roll, casts a spell or deals damage.",
   },
   {
     id: "searing-smite", name: "Searing Smite", source: "SRD 5.2.1",

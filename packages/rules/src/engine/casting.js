@@ -4,7 +4,7 @@ import { gridOf, col, key } from '../grid.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
-import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
+import { breakConcentration, durationMinutes, effectsOf, endEffect, endWards, startEffect, turnKey } from '../durations.js';
 import { shiftZone, zonesOf } from '../zones.js';
 import { apart, footprint, FT, gap, landing, overlapAt, sizeOf, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
@@ -14,7 +14,7 @@ import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, f
 import { aimArea, areaHexes, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, KIT, counterWindow, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
 import { incapacitatedBy, untrainedGear } from '../modifiers.js';
@@ -55,6 +55,8 @@ const typeWords = (types) => types.map((t) => `${/^[aeiou]/.test(t) ? 'an' : 'a'
 // Targets of a spell that a reaction keeps from taking its damage (Shield against Magic Missile):
 // one that has the blocking spell going already, or casts it now by its instruction (or its
 // player's answer). Returns their ids.
+// A spell that makes an attack roll or deals damage: what Sanctuary guards against (a spell that only gives a condition is not "a damaging spell").
+const damaging = (def) => { let yes = false; walkSteps(def.effects, (st) => { if ('attack' in st || 'damage' in st) yes = true; }); return yes; };
 function blockSpell(s, caster, spellId, targets, ev) {
   const out = [];
   for (const t of new Set(targets)) {
@@ -651,6 +653,7 @@ function castSpell(s, a, ctx, ev, item) {
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
     // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
+    endWards(s, ev, e.id, `${e.name} cast a spell`);                    // Sanctuary: the warded creature casts a spell
     const counteredBy = mm.has.subtle && !(sp.def.costly && !noMaterial) ? null : counterWindow(s, e, sp, ev, comps);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
@@ -678,6 +681,8 @@ function castSpell(s, a, ctx, ev, item) {
     if (toucher) ev.push({ type: 'delivered', id: toucher.id, by: e.id, spell: a.spell });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
+    // Sanctuary: a creature that targets a warded one with an attack roll or a damaging spell saves first; on a failure the spell is lost against it. Area effects are not stopped.
+    if (sp.aim === 'creature' && damaging(sp.def)) for (const t of new Set(targets)) if (!blocked.includes(t.id) && wardCheck(s, e, t, ev, 'spell')) blocked.push(t.id);
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;
