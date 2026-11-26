@@ -58,6 +58,8 @@ const FIXTURES = [
     effects: [{ eachTurn: [{ damage: '1d4', type: 'fire' }, { save: 'con', onSuccess: [{ endSpell: true }] }] }] }),
   base('fire-fist', 'Fire Fist', { level: 2, range: 'self', duration: '1 minute', concentration: true, target: { self: true }, tier: 'auto',
     effects: [{ arm: { damage: '2d6', type: 'fire', addMod: true } }] }),
+  base('stern-word', 'Stern Word', { level: 1, range: 60, components: ['v'], target: { creature: { count: 1 } }, tier: 'assist', choice: { of: 'command' },
+    effects: [{ save: 'wis', onFail: [{ command: 'chosen' }] }, { command: 'halt' }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
