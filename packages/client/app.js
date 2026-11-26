@@ -6,6 +6,7 @@ import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
 import { objectsFor, objectAt, objectOptions, objectWords, isObjectAim } from './objectaim.js';
 import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers } from './wallaim.js';
+import { leapState } from './leapui.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
 import { armed as imbued, fitting, weaponsFor } from './shared/imbue.js';
@@ -640,6 +641,7 @@ function onUpdate(state, events, fresh) {
   if (confirming) { confirming = 0; mode = MOVE; }       // #750: the table took the confirm
   if (mode !== MOVE && (!S.entities[selId] || !up(S.entities[selId]))) mode = MOVE;
   if (mode.kind === 'owed' && !offerOf(S, S.entities[selId])) mode = MOVE;
+  if (mode.kind === 'leap' && (!S.entities[selId] || leapState(S, S.entities[selId]).why || (mode.spell && !leapState(S, S.entities[selId]).spellFree))) mode = MOVE;      // #818: the leap is put down when it can't be made now
   // A player is shown the movement an Opportunity Attack gave as soon as it comes: their creature is selected and looked at (the DM keeps their own choice; solo is both).
   if (!isDM() || T.solo) { const o = offers(S).find((x) => !hadOffer.has(x.id) && mine(S.entities[x.id])); if (o) { select(o.id); R.focus(o.id); } }
   if (mode.kind === 'attack' || mode.kind === 'famAttack' || mode.kind === 'feature' || (mode.kind === 'action' && !mode.area) || (mode.kind === 'spell' && !mode.keep)) mode = MOVE;
@@ -1056,6 +1058,7 @@ function refresh() {
       if (mode.kind === 'attack' && mode.flurry && hl.targets.length) hint = flurryHint(S, e, mode) || hint;
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'fly') hint = flyAim(e, hl);
+      if (mode.kind === 'leap') hint = gridWords(`Tap a hex to leap${mode.spell ? ' (Jump)' : ''}`, gridOf(S.map));
       if (mode.kind === 'roll') hint = rollWords(mode.name, rollers(S, e).find((r) => r.id === mode.effect)?.feet ?? 30);
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
@@ -1459,6 +1462,7 @@ R.onTap = (hit) => {
     return tapped ? toast('Only another member of the party can be followed.') : undefined;
   }
   if (mode.kind === 'fly' && e) return flyTap(e, hit);
+  if (mode.kind === 'leap' && e) { const m = mode; setMode(MOVE); return hex ? act({ type: 'leap', actor: selId, to: hex, ...(m.spell ? { spell: true } : {}) }) : undefined; }      // #818
   if (mode.kind === 'roll') { const m = mode; setMode(MOVE); return e && hex ? act(rollAct(selId, m, hex)) : undefined; }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id, ...(mode.extra ?? {}) }) : setMode(MOVE);
   if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
