@@ -1195,3 +1195,113 @@ test("deep pits: a party member that falls into the room below reveals that room
   assert.ok(JSON.stringify(hidden.raw.Pat).includes("cellar"), "Pat is sent the room the party fell into");
   { const t = JSON.stringify(hidden.raw.Pat); const m = t.match(/.{150}(6,-3|5,-2)\\*":\\*\{\\*"t\\*":\\*"stone.{40}/); assert.ok(!m, "and nothing of the far room: " + m?.[0]); }
 });
+
+// ---- Feather Fall (#786 wave 4 part 5): a caster of the DM's side with the instruction set, and a hidden ally of it that falls ----
+// The floor under the hidden creature is taken away (a mapEdit), so it falls. A visible foe caster must not react for a creature the party does
+// not know of (its Reaction and cast would be sent to the players); a hidden caster may, and is sent to nobody.
+const fallWorld = () => newMap({ id: "drop", name: "Drop", starts: [{ q: -4, r: 0 }],
+  levels: [{ id: "ground", name: "Ground", z: 0, tiles: Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "grass" }])) },
+    { id: "cellar", name: "Cellar", z: -30, tiles: Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "stone" }])) }] });
+function fallTwin(casterHidden) {
+  const caster = (w) => {
+    const c = w.state.entities.foe = structuredClone(w.state.entities.wizard);
+    delete c.owner; delete c.reactions;
+    Object.assign(c, { id: "foe", name: "Foe", side: "foe", kind: "npc", pos: { q: 2, r: 1, z: 0 }, reactionUsed: false, slots: { 1: 4 }, slotsMax: { 1: 4 }, ...(casterHidden ? { hidden: true } : {}) });
+    if (!c.spells.includes("feather-fall")) c.spells.push("feather-fall");
+    c.reactions = { "feather-fall": "always" };
+    return c;
+  };
+  const ghost = (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Ghost", hidden: true }); };
+  return twin({
+    setup(w) {
+      for (const [n, id] of [["Pat", "fighter"], ["Sam", "wizard"]]) w.state.entities[id].owner = w.ids[n];
+      w.must({ type: "loadMap", map: fallWorld() });
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const id of Object.keys(w.state.entities)) if (w.state.entities[id].side === "foe") delete w.state.entities[id];
+      w.must({ type: "place", actor: "fighter", to: { q: 0, r: 0 } });
+      w.must({ type: "place", actor: "wizard", to: { q: 0, r: 1 } });
+      caster(w);
+    },
+    steps: [
+      { by: "dm", act: { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: { q: 3, r: 0 }, tile: null }] } },
+      { by: "Pat", send: { t: "sync" } },
+      { by: "Sam", act: { type: "say", as: "wizard", text: "What was that?" } },
+    ],
+  }, { hide: ghost, plain: (w) => burn(w, { q: 3, r: 0 }) });
+}
+test("feather fall: a visible foe caster with the instruction does not react for a hidden ally that falls: the players are sent the same as with no creature there", () => {
+  const { hidden } = fallTwin(false);
+  const g = byName(hidden.w, "Ghost");
+  assert.equal(g.pos.z, -30, "it fell");
+  assert.equal(hidden.w.state.entities.foe.slots[1], 4, "and the caster spent nothing");
+  assert.ok(g.hp < g.maxHp, "and was hurt");
+});
+// The other way round: a hidden caster must not react for a VISIBLE ally that falls. Its saving fall (no damage) would tell the players that
+// something they do not know of is there, where a bare cell lets the fall hurt. The hidden thing here is the caster; the faller is in both worlds.
+test("feather fall: a hidden caster does not react for a visible ally that falls: the players are sent the same as with no caster there", () => {
+  const { hidden } = twin({
+    setup(w) {
+      for (const [n, id] of [["Pat", "fighter"], ["Sam", "wizard"]]) w.state.entities[id].owner = w.ids[n];
+      w.must({ type: "loadMap", map: fallWorld() });
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const id of Object.keys(w.state.entities)) if (w.state.entities[id].side === "foe") delete w.state.entities[id];
+      w.must({ type: "place", actor: "fighter", to: { q: 0, r: 0 } });
+      w.must({ type: "place", actor: "wizard", to: { q: 0, r: 1 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Faller" });
+    },
+    steps: [
+      { by: "dm", act: { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: { q: 3, r: 0 }, tile: null }] } },
+      { by: "Pat", send: { t: "sync" } },
+      { by: "Sam", act: { type: "say", as: "wizard", text: "What was that?" } },
+    ],
+  }, {
+    hide: (w) => {
+      const c = w.state.entities.foe = structuredClone(w.state.entities.wizard);
+      delete c.owner; delete c.reactions;
+      Object.assign(c, { id: "foe", name: "Foe", side: "foe", kind: "npc", pos: { q: 2, r: 1, z: 0 }, reactionUsed: false, slots: { 1: 4 }, slotsMax: { 1: 4 }, hidden: true });
+      if (!c.spells.includes("feather-fall")) c.spells.push("feather-fall");
+      c.reactions = { "feather-fall": "always" };
+    },
+    plain: (w) => burn(w, { q: 2, r: 1 }),
+  });
+  assert.equal(hidden.w.state.entities.foe.slots[1], 4, "the hidden caster spent nothing");
+  const f = byName(hidden.w, "Faller");
+  assert.ok(f.hp < f.maxHp, "the visible faller was hurt, as on a bare cell");
+});
+test("feather fall: a hidden caster may react for its hidden ally, and the players are sent the same as with neither there", () => {
+  const { hidden } = fallTwin(true);
+  assert.equal(byName(hidden.w, "Ghost").pos.z, -30);
+});
+
+// ---- Knock (#786 wave 4 part 6): a spell aimed at a map object. An undiscovered secret door is refused in the same words as an object that is not there ----
+const KNOCK = (seed = 5) => ({
+  players: ["Pat"],
+  seed,
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", -8, 4], ["rogue", -8, 5], ["cleric", -8, 6], ["wizard", 0, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", slots: { 1: 4, 2: 3 }, slotsMax: { 1: 4, 2: 3 } });
+    s.entities.wizard.spells.push("knock");
+    s.map.objects.push({ id: "c1", def: "door-iron", level: "ground", at: { q: 2, r: 1 }, edge: 0, state: "locked", key: "iron-key" });
+  },
+  steps: [
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "knock", slot: 2, object: "sd" }, allowError: true },      // the secret door, or nothing: refused the same words, and nothing spent
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "knock", slot: 2, object: "c1" } },                         // the locked iron door: unlocked
+    { by: "Pat", act: { type: "say", as: "wizard", text: "Open." } },
+  ],
+});
+test("knock: a player naming an undiscovered secret door is refused in the same words as for an object that is not there, and the players are sent the same", () => {
+  const { plain, hidden } = twin(KNOCK(), {
+    hide: (w) => { w.state.map.objects.push({ id: "sd", def: "secret-door", level: "ground", at: { q: 3, r: 0 }, edge: 0, state: "secret" }); },
+    plain: (w) => { w.state.map.walls.push({ id: "w0", level: "ground", kind: "wall", a: [17.5, -1.4433756729740645], b: [17.5, 1.4433756729740645] }); },       // a secret door looks like the wall it stands in
+  });
+  const refused = (world) => world.raw.Pat.filter((m) => m.t === "error").map((m) => m.error);
+  assert.deepEqual(refused(hidden), refused(plain));
+  assert.match(refused(hidden)[0], /No such object/);
+  assert.equal(hidden.w.state.map.objects.find((o) => o.id === "sd").state, "secret", "the secret door stays undiscovered");
+  assert.equal(hidden.w.state.map.objects.find((o) => o.id === "c1").state, "closed", "the known locked door was unlocked, as in the other world");
+  assert.equal(hidden.w.state.entities.wizard.slots[2], 2, "the refused cast spent nothing: only the second was paid for");
+});

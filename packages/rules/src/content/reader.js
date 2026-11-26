@@ -19,7 +19,7 @@
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
-import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
+import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, AFFLICTIONS, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
@@ -56,6 +56,7 @@ export const REACTION_WORDS = {
   hit: 'when an attack roll hits the caster',
   cast: 'when the caster sees a hostile creature within the spell\'s range casting a spell; it is aimed at that creature',
   damaged: 'when a hostile creature the caster can see within the spell\'s range damages the caster; it is aimed at that creature',
+  fall: 'when the caster, or an ally of the caster that the caster can see within the spell\'s range, falls far enough to be hurt; the fall is slowed to a landing with no damage and not Prone, and up to five creatures that fall together are covered',
 };
 export const SUMMON_KIND_WORDS = { familiar: 'familiar', steed: 'steed', summon: 'summoned creature', undead: 'undead servant', object: 'animated object', servant: 'servant', pet: 'pet' };
 export const SUMMON_TURN_WORDS = { own: 'It rolls Initiative and takes its own turns.', after: 'It acts on the caster\'s count, right after (or before) the caster\'s turn.' };
@@ -65,7 +66,8 @@ export const SUMMON_ONE_WORDS = {
   replace: 'If the caster already has one from this spell, casting it again replaces that one.',
 };
 export const CURSE_WORDS = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', attacks: 'Disadvantage on attack rolls against the caster', dodge: 'the forced Dodge action', damage: 'extra Necrotic damage' };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is' };
+export const AFFLICTION_WORDS = { exhaustion: 'one level of Exhaustion', charmed: 'the Charmed condition', petrified: 'the Petrified condition', curse: 'a curse', 'ability-score': 'a reduction to an ability score', 'hit-point-maximum': 'a reduction to the Hit Point maximum' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends' };
 // A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
 export const ROLL_WORDS = (r) => (r === 'attack' ? 'the caster makes a spell attack roll' : r === 'none' ? 'no attack roll and no saving throw' : `the target makes a ${ABILITY_WORDS[r.slice(5)] ?? r.slice(5)} saving throw`);
 export const KIND_WORDS = { damage: 'damage', healing: 'healing', control: 'control', utility: 'utility' };
@@ -269,7 +271,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
   'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'terrain', 'zone', 'reaction', 'hit'];
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
-  modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
+  modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
   endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
@@ -538,10 +540,11 @@ class Reading {
 
   aimOf(t) {
     if (!t) return 'none';
-    const kinds = ['self', 'creature', 'area'].filter((k) => k in t);
-    if (kinds.length !== 1) { this.bad('The target names none, or more than one, of self, creature and area.'); this.noneWhy = 'the target is unreadable'; return 'none'; }
-    this.odd(t, ['self', 'creature', 'area'], 'The target');
+    const kinds = ['self', 'creature', 'area', 'object'].filter((k) => k in t);
+    if (kinds.length !== 1) { this.bad('The target names none, or more than one, of self, creature, area and object.'); this.noneWhy = 'the target is unreadable'; return 'none'; }
+    this.odd(t, ['self', 'creature', 'area', 'object'], 'The target');
     if (t.self) return 'self';
+    if (t.object) { if (!isObj(t.object) || Object.keys(t.object).length) this.bad('`target.object` is not an empty object.'); return this.mon ? 'none' : 'object'; }
     if (t.creature) { if (!isObj(t.creature)) { this.bad('`target.creature` is not an object.'); t.creature = {}; } return 'creature'; }
     const a = t.area;
     if (!isObj(a) || !AREA_SHAPES.includes(a.shape) || !(typeof a.size === 'number' && a.size > 0)) { this.bad('The area has no shape the engine knows, or no size in feet.'); this.noneWhy = 'its shape or size is unreadable'; return 'none'; }
@@ -558,6 +561,7 @@ class Reading {
   subject(t) {
     if (!t || this.aim === 'none') return 'each creature affected';
     if (t.self) return 'the caster';
+    if (t.object) return `the object ${typeof this.def.range === 'number' ? `within ${this.def.range} feet` : 'in range'} that the cast names`;
     if (t.area) return `each creature in ${AREA_WORDS[t.area.shape](t.area)}`;
     const c = t.creature, n = isInt(c.count) ? c.count : 1;
     const where = this.def.range === 'touch' ? 'the caster touches' : typeof this.def.range === 'number' ? `within ${this.def.range} feet` : 'in range';
@@ -632,6 +636,7 @@ class Reading {
       }
     }
     if (this.mon) return;
+    if (t.object) this.line(`It is aimed at one map object that the cast names (\`object\`): the caster must not be Blinded, some part of the object must be within ${typeof d.range === 'number' ? `${d.range} feet` : 'range'} in a clear line, and it must be a thing that can be locked (an object with an unlock use). A player cannot name an object the party does not know of: the refusal is the same as for an object that is not there. Nothing is spent if the cast is refused.`);
     if (t.self && d.zone === undefined && !this.def.effects?.some?.((st) => isObj(st) && 'summon' in st)) this.line('It is aimed at the caster alone.');
     if (this.anySave(true)) this.line('Saving throws are against the caster\'s spell save DC.');
     if (this.anyAttack()) this.line('Spell attack rolls use the caster\'s spell attack bonus; a ranged one reaches as far as the spell\'s range, a melee one 5 feet. A Critical Hit doubles the damage dice behind it.');
@@ -663,9 +668,9 @@ class Reading {
     if (!isObj(c) || !Object.hasOwn(CHOICES, c.of)) return this.bad('The choice is not of a skill, an ability, a damage type, a condition, a command or a curse.');
     this.odd(c, ['of', 'from'], 'The choice');
     const from = Array.isArray(c.from) ? c.from.filter((x) => CHOICES[c.of].includes(x)) : null;
-    const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : x);
-    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : '';
-    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : 'each step below that says "chosen" uses that choice'}.`);
+    const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : c.of === 'affliction' ? AFFLICTION_WORDS[x] : x);
+    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : '';
+    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : 'each step below that says "chosen" uses that choice'}.`);
   }
 
   zone(aim) {
@@ -843,8 +848,9 @@ class Reading {
   choiceOf(v, at) {
     if (v === undefined) return '';
     const c = this.def?.choice;
-    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !CURSES.includes(x)) || new Set(v).size !== v.length || !isObj(c) || c.of !== 'curse') { this.bad(`Step ${at}: \`ifChoice\` lists values of a curse choice, in a spell that has one.`); return ' (with an unreadable choice)'; }
-    return ` This is part of the cast only if the caster chose ${list(v.map((x) => CURSE_WORDS[x]), 'or')}.`;
+    const words = isObj(c) && c.of === 'affliction' ? AFFLICTION_WORDS : CURSE_WORDS;
+    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !Object.hasOwn(words, x)) || new Set(v).size !== v.length || !isObj(c) || (c.of !== 'curse' && c.of !== 'affliction')) { this.bad(`Step ${at}: \`ifChoice\` lists values of a curse or affliction choice, in a spell that has one.`); return ' (with an unreadable choice)'; }
+    return ` This is part of the cast only if the caster chose ${list(v.map((x) => words[x]), 'or')}.`;
   }
   // A step's `when` (effects.js exec): every tag must hold, or the step is skipped; one the engine cannot judge hands the step to the DM.
   // What a step can judge is JUDGED_STEP, and below an attack's `onHit` or `onMiss` also Advantage and Disadvantage (a test plays each).
@@ -1088,6 +1094,7 @@ export const STEP_SENTENCES = {
   },
   set({ st, at, say }) {
     if (this.obj) return objectSet.call(this, st, at, say);
+    if (this.aim === 'object') return say(st.from !== undefined ? `If the object is ${shown(st.from)}, it is set to ${shown(st.set)}; in any other state it is left as it is and the table is told nothing is held shut.` : `The object is set to ${shown(st.set)}.`);
     say(`This step would set a map object to the state ${shown(st.set)}; a spell has no object for it to work on, so the DM applies it.`);
     this.dm(`Step ${at}: setting a map object's state.`);
   },
@@ -1117,7 +1124,7 @@ export const STEP_SENTENCES = {
   },
   cure({ st, at, Who, say }) {
     const ids = Array.isArray(st.cure) ? st.cure : [];
-    const names = ids.map((c) => (c === 'chosen' ? 'the condition chosen when casting' : CONDITIONS.includes(c) ? `the ${cond(c)} condition` : null));
+    const names = ids.map((c) => (c === 'chosen' ? 'the condition chosen when casting' : c === 'exhaustionLevel' ? 'one level of Exhaustion' : c === 'curse' ? 'the lasting curses the engine keeps (a curse the engine does not keep is the DM\'s)' : CONDITIONS.includes(c) ? `the ${cond(c)} condition` : null));
     if (!ids.length || names.includes(null)) this.bad(`Step ${at}: \`cure\` is not a list of conditions.`);
     say(`${Who} is rid of ${list(names.filter(Boolean)) || 'no condition the reader can read'}.`);
   },

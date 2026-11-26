@@ -154,7 +154,7 @@ function summarise(def) {
   if (kind === 'confuse') return { short: 'confused', long: `The target can take no Bonus Action or Reaction and acts at random on its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}` };
   if (kind === 'arm') return { short: `${step.arm.damage} ${step.arm.type}`, long: `Gives the caster a melee spell attack for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage for as long as it lasts` };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
-  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.join(', ')}` };
+  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.map((c) => (c === 'exhaustionLevel' ? 'one Exhaustion level' : c === 'curse' ? 'curses' : c)).join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
     if (m.on === 'condition') return { short: `immune to ${m.scope.condition}`, long: `Immune to the ${cap(m.scope.condition)} condition for ${def.duration}${def.concentration ? ', Concentration' : ''}` };
@@ -242,10 +242,10 @@ export function spellProfile(def) {
   const t = def.target, tp = def.effects.find((st) => 'teleport' in st), sm = def.effects.find((st) => 'summon' in st);
   // A spell's sphere or cylinder goes off within its range (a Self one, on the caster's own hex).
   const within = t.area && ['sphere', 'cylinder'].includes(t.area.shape) ? Math.max(1, feet(def.range)) : feet(def.range);
-  const aim = t.self ? 'self' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
+  const aim = t.self ? 'self' : t.object ? 'object' : t.area ? (aimable(t.area, within) ? 'area' : 'none') : 'creature';
   return {
     id: def.id, name: def.name, level: def.level, time: def.time, range: feet(def.range),
-    aim,                                           // 'creature' | 'area' | 'self' | 'none' (nothing the engine can aim)
+    aim,                                           // 'creature' | 'area' | 'self' | 'object' (a map object the cast names) | 'none' (nothing the engine can aim)
     ...(aim === 'area' ? { area: { ...t.area } } : {}),
     ...(aim === 'creature' ? { count: t.creature.count ?? 1, ...(t.creature.repeat ? { repeat: true } : {}), ...(t.creature.within ? { within: t.creature.within } : {}),
       // The creature types it works on (Hold Person: Humanoid); one of another type is an invalid target, and the cast does nothing to it.
@@ -642,7 +642,9 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'set' || kind === 'reveal') {
     if (kind === 'reveal' && step.reveal === 'target') return kit.reveal(s, t, ev);
-    if (kit.objectStep(s, f.src.object, kind === 'set' ? step.of ?? 'self' : step.reveal, kind === 'set' ? step.set : null, ev)) return;
+    const did = kit.objectStep(s, f.src.object, kind === 'set' ? step.of ?? 'self' : step.reveal, kind === 'set' ? step.set : null, ev, kind === 'set' ? step.from : undefined);
+    if (did === 'idle') return ev.push({ type: 'note', id: f.actor, text: `${f.src.name}: nothing is held shut that it can open.` });     // `from`: the object is not in that state (a door that is not locked)
+    if (did) return;
     return handOver(`Part of ${f.src.name} works something on the map, but the engine found nothing for it to work. The DM applies it.`);
   }
   handOver(`The engine cannot apply this part of ${f.src.name} yet (${kind}). The DM applies it.`);

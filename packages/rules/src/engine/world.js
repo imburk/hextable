@@ -528,13 +528,14 @@ export function objectActor(s, id) {
     cond: {}, features: {}, attacks: [], gear: [], abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, prof: 0, resist: [], vuln: [], immune: [] } : null;
 }
 // A `set` or `reveal` step: work the thing itself or what it is linked to. False if there is nothing to work.
-export function objectStep(s, id, of, state, ev) {
+export function objectStep(s, id, of, state, ev, from = undefined) {
   const self = s.map.objects.find((x) => x.id === id);
   const all = of === 'link' ? (self?.links ?? []).map((l) => s.map.objects.find((x) => x.id === l.object)).filter(Boolean) : [self].filter(Boolean);
   let did = false;
   for (const o of all) {
     const def = objectDef(o), to = state ?? (def.states[o.state].hidden ? def.find?.to : null);
     if (!to || !Object.hasOwn(def.states, to)) continue;
+    if (from !== undefined && o.state !== from) { did ||= 'idle'; continue; }       // `from` (Knock): only an object in that state; any other is left as it is
     did = true;
     if (o.state !== to) setObject(s, o, to, ev);
   }
@@ -881,6 +882,25 @@ export function findable(s, e, o, feet) {
   return !!near && measure(s, G)(near, e.pos) * FT <= feet && clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) });
 }
 export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
+
+// A spell aimed at a map object (`target.object`, Knock; docs/specs/rules-expansion.md, "Build notes: wave 4 part 6"): the cast names it (`object`, an id).
+// Checked before anything is spent, in this order, and the first two give one answer: an id that names no object and one a player's party does not know of
+// (an undiscovered secret door, a place not yet shown) are both 'No such object.', so a refusal never tells a player a thing is there. Then it must be seen:
+// the caster not Blinded, some hex of the object within `range` feet and in the clear line from the caster (`clear`, as `findable` judges a hidden thing).
+// Last, that it is a thing that can be locked (a use named `unlock`), so Knock is not cast at a lever or a torch. Returns the object.
+export function aimObject(s, e, name, range, id, ctx) {
+  typeof id === 'string' || fail(`Pick an object for ${name}.`);
+  const o = objectOf(s, id, ctx);
+  !e.cond?.blinded || fail(`${e.name} is Blinded and can't see the ${objectName(o).toLowerCase()}.`);
+  const level = s.map.levels.find((l) => l.id === o.level), G = gridOf(s.map), m = measure(s, G);
+  const near = level ? objectHexes(o, G).filter((h) => level.tiles[col(h)]).sort((x, y) => m(x, e.pos) - m(y, e.pos))[0] : null;
+  near || fail('No such object.');
+  const d = m(near, e.pos) * FT;
+  d <= range || fail(`The ${objectName(o).toLowerCase()} is ${d} ft away. ${name} reaches ${range} ft.`);
+  clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) }) || fail(`${e.name} can't see the ${objectName(o).toLowerCase()} from here.`);
+  objectDef(o).use?.some((u) => u.id === 'unlock') || fail(`${name} opens a lock, and the ${objectName(o).toLowerCase()} has none.`);
+  return o;
+}
 
 // A `sense` step (Find Traps, Detect Magic; docs/specs/rules-expansion.md, "Build notes: wave 4 part 2"): what the caster `e` would sense within
 // `step.feet` feet, worked out from the whole state and told to the DM ALONE (a `manual` event with `partial`, which no player is sent): the DM

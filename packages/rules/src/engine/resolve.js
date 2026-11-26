@@ -47,7 +47,7 @@ export function objectEffects(s, o, steps, targets, ev) {
 // `into`: the pit object that drops it (a placement's own depth, `fall` on the object, docs/specs/maps-and-objects.md
 // "Amendment: deep pits"). When the pit is deeper than its own 10 feet and a floor lies within its depth in this column,
 // the creature lands on the highest such floor and falls only the actual drop; with no object, or none such, nothing moves.
-export function fall(s, t, feet, ev, into = null) {
+export function fall(s, t, feet, ev, into = null, from = null) {
   if (into && feet > 10 && Number.isInteger(feet)) {
     const z = t.pos.z ?? 0, sf = surfaces(s.map, t.pos).filter((x) => x.z <= z - 10 && x.z >= z - feet).pop();
     if (!sf && !t.dead) {
@@ -64,9 +64,9 @@ export function fall(s, t, feet, ev, into = null) {
         ev.push({ type: 'manual', actor: null, name: 'Falling', partial: true, text: `${t.name} falls into a pit deep enough to reach the floor below, but there is no room for it to land. The DM places ${t.name} and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.` });
         return;
       }
-      const drop = z - to.z;
+      const drop = z - to.z, top = { ...t.pos };
       t.pos = { q: to.q, r: to.r, z: to.z };
-      fall(s, t, drop, ev);
+      fall(s, t, drop, ev, null, top);
       return lookAround(s, ev, [t]);
     }
   }
@@ -78,18 +78,66 @@ export function fall(s, t, feet, ev, into = null) {
     const sf = under(s.map, t.pos);
     if (!sf) return said(`${t.name} is to fall to the surface below, but the engine finds no surface under it. The DM places ${t.name} and works out the fall.`, true);
     feet = (t.pos.z ?? 0) - sf.z;
+    const top = { ...t.pos };
     t.pos = { q: t.pos.q, r: t.pos.r, z: sf.z };
     if (t.dead) { ev.push({ type: 'fell', id: t.id, feet }); return lookAround(s, ev, [t]); }          // a body comes down with no damage, as the gravity pass puts it
-    fall(s, t, feet, ev);
+    fall(s, t, feet, ev, null, top);
     return lookAround(s, ev, [t]);
   }
   const dice = Math.min(20, Math.floor(feet / 10));
+  if (dice && !t.dead && featherFall(s, t, feet, ev, from)) return;
   ev.push({ type: 'fell', id: t.id, feet });
   if (!dice) return;
   const mark = ev.length;
   const r = roll(s, `${dice}d6`);
   damage(s, t, [{ amount: r.total, type: 'bludgeoning', dice: r.dice, bonus: r.bonus }], null, ev);
   if (ev.slice(mark).some((x) => x.type === 'damage' && x.amount > 0)) condition(s, t, 'prone', ev);
+}
+// Feather Fall (docs/specs/rules-expansion.md, "Build notes: wave 4 part 5"; trigger `fall`): a creature that falls far enough to be hurt (10 feet
+// or more) sets off the Reaction of a caster who is it or an ally (not hostile to it), with the spell's standing instruction not `never`, a
+// slot, a Reaction, the faller within the spell's range and seen (`seesFor`: the party's casters never see a creature the party does not know
+// of). The fall is instant in the engine, so the creature lands at once, with no damage and not Prone (a fall of more than 60 feet would take
+// rounds at 60 feet per round; the spell's note tells the DM). The spell ends for it on landing. One cast covers up to five creatures that fall in
+// the same action (a pit under a group): the caster's `cast` event of this action lists them. Returns true when the fall was slowed.
+function featherFall(s, t, feet, ev, from) {
+  const land = () => { ev.push({ type: 'fell', id: t.id, feet, slowed: true }); return true; };
+  // Range and sight are worked out from where it began to fall (`from`: the creature has already been put on the floor below).
+  const near = (r, sp) => {
+    const at = t.pos;
+    if (from) t.pos = from;
+    try { return apart(s, r, t) * FT <= (typeof sp.range === 'number' ? sp.range : 0) && (r.id === t.id || seesFor(s, r, t)); } finally { t.pos = at; }
+  };
+  // A caster reacts for another creature only when the party knows of both or of neither. A known caster saving an unknown faller would
+  // tell the players of the faller (its reaction and cast); an unknown caster saving a known faller would tell them of the caster (the fall
+  // seen to do no harm, where a bare cell would hurt). A creature saving itself tells nothing more than its own fall.
+  const known = (x) => !(x.hidden || unknown(s, x));
+  const tells = (r) => r.id !== t.id && known(t) !== known(r);
+  for (const r of Object.values(s.entities)) {
+    if (r.object || r.dead || (r.id !== t.id && hostile(r, t)) || tells(r)) continue;
+    const covered = ev.findLast((x) => x.type === 'cast' && x.actor === r.id && x.spell === 'feather-fall' && x.reaction === true);
+    if (covered && covered.targets.length < 5 && near(r, SPELLS['feather-fall'])) { covered.targets.push(t.id); return land(); }
+  }
+  for (const r of Object.values(s.entities)) {
+    if (!canReact(r) || r.object || (r.id !== t.id && hostile(r, t)) || tells(r)) continue;
+    const rx = reactionsOf(r).find((x) => x.kind === 'spell' && x.on === 'fall');
+    if (!rx) continue;
+    const w = instruction(r, rx);
+    if (w === 'never') continue;
+    const sp = SPELLS[rx.id], slots = slotsFor(s, r, sp);
+    if (!slots.length || !near(r, sp)) continue;
+    let slot = slots[0];
+    if (w === 'ask') {
+      const a = ask(s, r, { trigger: 'fall', ...(r.id !== t.id && seesFor(s, r, t) ? { by: t.id } : {}) }, [spellOffer(rx, slots)]);
+      if (a === null) { tellDM(r, rx, `${t.name} falls ${feet} feet.`, ev); continue; }
+      if (a.take !== rx.id) continue;
+      slot = a.slot ?? slot;
+    }
+    const src = castReaction(s, r, sp, slot, 'fall', r.id === t.id ? null : t.id, ev, [t.id]);
+    const fx = src.fx && effectsOf(s).find((x) => x.id === src.fx);
+    if (fx) endEffect(s, ev, fx, 'landed');
+    return land();
+  }
+  return false;
 }
 // Forced movement: shove a creature so many feet straight away from a point, or toward it. It
 // stops at a wall, a drop, or anything in the way. It provokes nothing and sets nothing off.
@@ -660,9 +708,10 @@ function drop(s, e, ev) {
   const sf = under(s.map, e.pos);
   if (!sf) return;
   const feet = e.pos.z - sf.z;
+  const top = { ...e.pos };
   e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
   if (e.dead) return;                                                  // a body comes down with it, as the gravity pass puts it (no damage)
-  fall(s, e, feet, ev);
+  fall(s, e, feet, ev, null, top);
   lookAround(s, ev, [e]);
   checkEnd(s, ev);
 }
@@ -1304,8 +1353,9 @@ export function castReaction(s, e, sp, slot, trigger, against, ev, targets = [e.
   const st = spellStats(e, s, sp.id), depth = s.stack?.length ?? 0;
   const src = { name: sp.name, dc: st.dc, attack: st.attack, range: sp.range, healMod: mod(e.abil[castAbilOf(e, sp.id)] ?? 10), ...(fx ? { fx: fx.id } : {}), ...(trigger === 'cast' ? { counters: true } : {}) };
   begin(s, { steps, actor: e.id, targets: [...targets], src });
+  const mark = ev.length;
   run(s, ev, KIT, depth);
-  if (sp.def.tier !== 'auto') ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true });
+  if (sp.def.tier !== 'auto' && !ev.slice(mark).some((x) => x.type === 'manual' && x.name === sp.name)) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true });
   if (unscaled) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `Cast with a level ${slot} slot. The engine could not add ${unscaled}; the DM does.` });
   return src;
 }

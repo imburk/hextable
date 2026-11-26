@@ -729,3 +729,7 @@ Where the build settled a detail the design left open, or changed it.
    party member falling into the room below reveals that room by the usual rules and sends players nothing of another
    unrevealed room of that level (a bare cell in the plain world). Monsters avoid pits (forced movement runs no
    trigger), so a monster falls only by the DM's hand.
+
+## Amendment: a spell aimed at an object (#786 wave 4 part 6, Knock)
+
+A spell's `target` may be `{ object: {} }`: the cast names a map object by id (`object`), and `engine/world.js` `aimObject` checks it as `docs/specs/rules-expansion.md` ("Build notes: wave 4 part 6") says. Nothing about the objects themselves changes: an object is "locked" when its state is `locked` and its definition has a use named `unlock` (`key: true`, `from: ['locked']`, `to: 'closed'`). A spell reaches that use's end by the `set` step with `from: 'locked'`, so it needs no key and no check; picking and forcing (`pick`, `force`, their DCs) and the key are not touched. An object in a hidden state (an undiscovered secret door) is not one a player may name: the answer is the same as for no object at all.
