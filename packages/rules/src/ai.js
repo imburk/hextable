@@ -28,6 +28,8 @@ export function aiStep(s, id, opts) {
   // While an action waits for a player's reaction (reactions.js) nothing else can happen: no move,
   // not even ending the turn. The answer, from the player or the DM, carries the table on.
   if (!e || current(s) !== id || s.pending) return null;
+  // Merged with stone (Meld into Stone): it does nothing on its turn but let it pass (it leaves, if it does, by the DM's hand).
+  if (e.melded) return end;
   // A companion (a creature with a `bond`) is played by the companion brain (below). Everything after this line is the
   // monster AI as it was before the brain, for every creature with no bond (companions-brain-replay.test.js).
   if (e.bond) return companionStep(s, id, opts);
@@ -45,7 +47,7 @@ export function aiStep(s, id, opts) {
   // with the creatures the party is not told of left out. A foe reads the true state, as it always has (`knownTo` returns `s`).
   const k = knownTo(s, e);
   // It does not act on creatures it has not found.
-  const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
+  const foes = Object.values(k.entities).filter((o) => up(o) && !o.melded && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));      // a creature merged with stone is never picked
   // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.
   const b = k.encounter.budget;
   if (k.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(k, e)) return { type: 'hide', actor: id };
@@ -299,7 +301,7 @@ export function casterStep(s, e, foes, lim = {}) {
   if (!known.length) return null;
 
   // What it reads of its own side: Hit Points are in every party creature's open record.
-  const mine = Object.values(s.entities).filter((o) => !o.dead && !hostile(o, e) && inFight(s, o.id));
+  const mine = Object.values(s.entities).filter((o) => !o.dead && !o.melded && !hostile(o, e) && inFight(s, o.id));
   const upMine = mine.filter(up), downMine = mine.filter((o) => !up(o) && o.id !== id);
   const missing = (o) => o.maxHp - o.hp, badly = (o) => up(o) && o.hp * 4 <= o.maxHp;
   // A hard fight (amendment 1 to Decision 5): the foes able to act outnumber the creatures of its side able to act, or one of its side is
@@ -313,7 +315,7 @@ export function casterStep(s, e, foes, lim = {}) {
   // For a party creature, what the party can know: the foe's senses are a stat block it is not sent, so it assumes a foe beside it sees
   // (unless it is Blinded, which the party sees). A foe's creature reads the engine's own test.
   const sees = (o) => (e.side === 'party' ? !o.cond?.blinded : canSee(s, o, e) !== 'no');
-  const close = Object.values(s.entities).some((o) => up(o) && hostile(o, e) && !incapacitatedBy(o) && apart(s, o, e) <= 1 && sees(o));
+  const close = Object.values(s.entities).some((o) => up(o) && !o.melded && hostile(o, e) && !incapacitatedBy(o) && apart(s, o, e) <= 1 && sees(o));
   const hit = (kind) => (kind === 'ranged' && close ? DISADV : HIT);
 
   // Slots. One slot a turn (the engine's rule), the lowest that can cast the spell, and one kept back for a downed ally by a caster that
@@ -598,10 +600,10 @@ export function companionStep(s, id, opts = {}) {
   const mode = brainMode(s, e, opts);
   if (mode !== 'guard' && mode !== 'protect' && mode !== 'free' && mode !== 'hold') return null;
   // Dropped in its own turn (an Opportunity Attack as it stepped away): its turn is over (review of #368, L3).
-  if (!up(e)) return { type: 'endTurn', actor: id };
+  if (!up(e) || e.melded) return { type: 'endTurn', actor: id };
   if (mode === 'hold') return s.encounter.budget.action > 0 && !e.cond?.dodging && !incapacitatedBy(e) ? { type: 'dodge', actor: id } : { type: 'endTurn', actor: id };
   const k = knownTo(s, e), m = masterOf(s, e);
-  const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
+  const foes = Object.values(k.entities).filter((o) => up(o) && !o.melded && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));      // a creature merged with stone is never picked
   const leash = typeof e.bond.leash === 'number' && m && (e.side === 'party' || !unknown(s, m)) ? { m, feet: e.bond.leash } : null;
   // A creature it holds goes where it goes (docs/specs/grapple-shove.md, Decision 6): stepping away from it is no escape, so it is
   // not a foe to step away from. Read from the true state: it knows what it holds. It still walks, paying the cost, for any other.

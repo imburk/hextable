@@ -274,7 +274,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
 
@@ -1236,6 +1236,12 @@ export const STEP_SENTENCES = {
     if (isInt(st.cut)) this.num(`${at}.cut`, st.cut, 'feet'); else this.bad(`Step ${at}: the cut step has no whole number of feet.`);
     say(`${st.cut} feet of the wall the cast aimed at are taken out, centred on the point named (moved to lie inside the wall when the point is near its end; a wall of that length or less goes whole), as the DM's own map edit does: the views, what the party remembers and the patches update as for a DM edit. Anything standing along the same line in those feet (another wall, an undiscovered secret door) goes with it. A creature now seen through the gap is seen by the ordinary rules.`);
     return this.dm(`Step ${at}: whether the wall is stone (the engine does not know what a wall is made of: if it is not, undo the cut), and a secret door cut away with it.`);
+  },
+  // engine/world.js `meld`, resolve.js `meldInto`: a lasting state held on the creature (`melded`), a part of the cast's effect.
+  meld({ st, at, say }) {
+    if (st.meld !== true) this.bad(`Step ${at}: the meld step is not true.`);
+    say('The caster steps into the wall the cast aimed at and is held there for as long as the spell lasts (the effect it makes; no Concentration). While it is: it fills no space (others may stand where it stood) and is not seen by any creature, so it cannot be targeted, attacked, pushed, caught in an area or found by a Search, and to a player who does not run it the table is exactly as if it were not there. It sees nothing: the party gets no sight from it. It may cast spells aimed at itself; everything else it would do (move, attack, any other action, a spell aimed at another) is refused with one message, except leaving: `unmeld`, which costs 5 feet of movement in a fight, ends the spell and puts it back where it entered, or in the nearest unoccupied space if that is taken. When the spell ends by time it comes out the same way. A Stone Shape cut whose removed stretch is within 2.5 feet of where it entered expels it: 6d6 Force damage, the nearest unoccupied space, and the Prone condition, and the spell ends.');
+    return this.dm(`Step ${at}: whether the wall is stone, large enough to hold the caster and its gear (the engine does not know), Truesight and any other sense that could find the caster, and any damage or destruction of the stone other than a Stone Shape cut (partial damage expels it with 6d6 Force damage, destruction with 50 Force damage).`);
   },
   // engine/world.js `sense`: the DM alone is told.
   sense({ st, at, say }) {

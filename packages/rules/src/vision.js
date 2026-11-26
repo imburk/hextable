@@ -28,7 +28,7 @@ const up = (e) => !e.dead && e.hp > 0;
 // own, so it sees, and is seen, from that high: its position raised by the mount's height (`riding.size`, kept in step
 // with the mount). Everything else about it is its own.
 export const raised = (e) => (e?.riding && SIZES[e.riding.size] ? { ...e, pos: { ...e.pos, z: (e.pos.z ?? 0) + SIZES[e.riding.size].height } } : e);
-const eyesOf = (s) => Object.values(s.entities).filter((e) => e.side === 'party' && up(e)).map(raised);
+const eyesOf = (s) => Object.values(s.entities).filter((e) => e.side === 'party' && up(e) && !e.melded).map(raised);      // a creature merged with stone (Meld into Stone) sees nothing: the party gets no sight from it
 const placeOf = (level, h) => { const t = level.tiles[col(h)]; return t ? { q: h.q, r: h.r, z: level.z + (t.h ?? 0) } : null; };
 
 // ---------- places in sight ----------
@@ -85,7 +85,7 @@ function signature(s, rule) {
     (s.effects ?? []).filter((fx) => fx.terrain?.obscured).map((fx) => fx.id).join()];        // a spell's fog (terrain.js)
   for (const e of Object.values(s.entities)) {
     const cond = Object.keys(e.cond ?? {}).filter((k) => e.cond[k]).sort().join('+');
-    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(sensesOf(s, e))}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}${e.side === 'party' && !e.dead && modifiers(s, e, 'invisible').immune === true ? ':sees-invisible' : ''}`);       // a spell, a trait, an aura or a form that shows it the Invisible (sight.js)
+    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}${e.melded ? 1 : 0}:${cond}:${JSON.stringify(sensesOf(s, e))}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}${e.side === 'party' && !e.dead && modifiers(s, e, 'invisible').immune === true ? ':sees-invisible' : ''}`);       // a spell, a trait, an aura or a form that shows it the Invisible (sight.js)
   }
   return parts.join('|');
 }
@@ -103,7 +103,7 @@ export function partyView(s) {
   const map = s.map, G = gridOf(map), eyes = eyesOf(s), sources = rule === 'light' ? lightSources(s) : null;
   const creatures = new Set();
   for (const c of Object.values(s.entities)) {
-    if (c.side === 'party' || concealed(map, c)) continue;
+    if (c.side === 'party' || c.melded || concealed(map, c)) continue;      // merged with stone: seen by nobody
     const at = raised(c);
     if (eyes.some((v) => (rule === 'los' ? inViewOf(map, v, at) : canSee(s, v, at, { sources }) !== 'no'))) creatures.add(c.id);
   }
@@ -136,7 +136,7 @@ export function partyView(s) {
 // The name players are told for a creature: one not of the party in a form (Wild Shape) is the Beast (view.js).
 export const seenName = (e) => (e.form && e.side !== 'party' ? e.form.name ?? e.name : e.name);
 
-export const unknown = (s, e) => !!e && e.side !== 'party' && (concealed(s.map, e) || (sightRule(s) !== 'rooms' && !partyView(s).creatures.has(e.id)));
+export const unknown = (s, e) => !!e && e.side !== 'party' && (!!e.melded || concealed(s.map, e) || (sightRule(s) !== 'rooms' && !partyView(s).creatures.has(e.id)));
 
 // ---------- memory ----------
 // map.seen = { tiles: { [level]: ["q,r", ...] }, objects: { [id]: state } }: the tiles the party has

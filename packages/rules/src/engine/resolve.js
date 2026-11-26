@@ -8,14 +8,14 @@ import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/ind
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, turnSteps, walk as walkSteps } from '../effects.js';
-import { breakConcentration, concentrationCheck, confusedNow, concentrationLost, damaged, effectsOf, endEffect, endWards, fightOver, holds, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, confusedNow, concentrationLost, damaged, effectsOf, endEffect, endWards, fightOver, holds, ON, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { silentAll, silentAt } from '../terrain.js';
 import { entered, flushZones, snapshot, stepped, turnInZones } from '../zones.js';
 import { canSee, COVER, coverOf, hiddenFrom, inViewOf } from '../sight.js';
-import { barriers, objectDef } from '../walls.js';
+import { barriers, distToSegment, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
@@ -206,8 +206,8 @@ function teleport(s, t, step, to, ev) {
     const there = living(s).filter((o) => o.id !== t.id && overlapAt(o, o.pos, t, at, G));
     const unknownToIt = (o) => hiddenFrom(o, t) || (t.side === 'party' && (o.hidden || unknown(s, o)));
     if (there.every(unknownToIt)) {
-      ev.push({ type: 'manual', actor: t.id, name: step.familiarity !== undefined ? 'Teleport' : 'Teleportation', partial: true,
-        text: `${t.name} teleported into the space where ${there.map((o) => o.name).join(' and ')} stands, which its side did not know of. The engine put ${t.name} there so the players learn nothing; the DM decides where each of them ends up (the spell wants an unoccupied space).` });
+      ev.push({ type: 'manual', actor: t.id, name: step.name ?? (step.familiarity !== undefined ? 'Teleport' : 'Teleportation'), partial: true,
+        text: `${t.name} ${step.said ?? 'teleported into'} the space where ${there.map((o) => o.name).join(' and ')} stands, which its side did not know of. The engine put ${t.name} there so the players learn nothing; the DM decides where each of them ends up (the spell wants an unoccupied space).` });
     } else {
       // A creature it knew of (not refused at the cast, as when the space filled since): the nearest unoccupied space, the first found on each ring.
       at = null;
@@ -231,8 +231,51 @@ function teleport(s, t, step, to, ev) {
       ev.push({ type: 'manual', actor: t.id, name: objectName(o), partial: true, text: `${t.name} teleported onto ${objectName(o)}. Whether it goes off is the DM's call.` });
   }
   lookAround(s, ev, [t]);
-  if (s.encounter?.arena[col(at)] && !inFight(s, t.id) && !t.dead) joinEncounter(s, t, ev);
+  if (s.encounter?.arena[col(at)] && !inFight(s, t.id) && !t.dead && !step.noJoin) joinEncounter(s, t, ev);
   return true;
+}
+
+// ---------- Meld into Stone (docs/specs/rules-expansion.md, "Build notes: wave 4 part 10") ----------
+// The `meld` step: the caster (`t`) is merged with the wall the cast aimed at (`f.src.wall`) for as long as the spell's effect lasts. The mark is `melded`
+// on the creature: { fx, level, x, y, at }, the effect that holds it, the point on the wall, and the space it went in from (its `pos` stays there; it
+// fills no space, see `living`). It has no hiding left to keep, and a hold or a ride is not part of this (the cast refuses a mounted caster). The effect's
+// part (`meld: true`) is what brings it out again when the effect ends, by whatever means (`ON.meldEnd` below). False when there is no effect to hang it on.
+function meldInto(s, t, f, ev) {
+  const fx = f.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null, w = f.src.wall;
+  if (!fx || !w || t.melded) return false;
+  delete t.hiding;
+  if (t.follow) unfollow(s, t, ev);
+  t.melded = { fx: fx.id, level: w.level, x: w.x, y: w.y, at: { q: t.pos.q, r: t.pos.r, z: t.pos.z } };
+  fx.parts.push({ target: t.id, meld: true });
+  ev.push({ type: 'note', id: t.id, text: `${t.name} steps into the stone` });
+  return true;
+}
+// Out of the stone, by any ending (time, Dispel Magic, leaving, expelled): back at the space it went in from, or the nearest unoccupied one, by the
+// rules of any other arrival (`teleport`: a creature standing there that its side does not know of is shared with and left to the DM).
+ON.meldEnd = (s, ev, t, m) => {
+  ev.push({ type: 'note', id: t.id, text: `${t.name} comes out of the stone` });
+  // One the party does not know of comes out unseen: joining the fight's order would reveal it (joinEncounter), so it does not, and the DM is told.
+  const hush = t.side !== 'party' && (t.hidden || unknown(s, t));
+  teleport(s, t, { said: 'came out of the stone into', name: 'Meld into Stone', noJoin: hush }, m.at, ev);
+  if (hush && s.encounter && !inFight(s, t.id)) ev.push({ type: 'manual', actor: null, name: 'Meld into Stone', partial: true, text: `${t.name} came out of the stone unseen, and is not in the fight's order: joining it would tell the players it is there. The DM adds it (joinFight) when it shows itself.` });
+};
+// A cut of the wall (Stone Shape's `cut` step; `cut` is the stretch taken out, `{ level, a, b }`): a creature merged with the stone within 2.5 feet of
+// it is expelled: the spell ends, it comes out at the nearest unoccupied space, takes 6d6 Force damage and is Prone. Any other damage or destruction of
+// the stone is the DM's (the spell's manual note says so).
+export const MELD_NEAR = 2.5;
+function expelMelded(s, cut, f, ev) {
+  for (const t of Object.values(s.entities)) {
+    const m = t.melded;
+    if (!m || m.level !== cut.level || distToSegment([m.x, m.y], [cut.a, cut.b]) > MELD_NEAR + 1e-6) continue;
+    const fx = effectsOf(s).find((x) => x.id === m.fx);
+    ev.push({ type: 'note', id: t.id, text: `${t.name} is thrown out of the stone` });
+    if (fx) endEffect(s, ev, fx, `${f.src.name} cut the stone around ${t.name}`);
+    else { delete t.melded; ON.meldEnd(s, ev, t, m); }
+    const r = roll(s, '6d6');
+    ev.push({ type: 'note', id: t.id, text: `Expelled from the stone: 6d6 Force damage (${r.total})` });
+    condition(s, t, 'prone', ev);                                      // first: one taken to 0 Hit Points by the damage is Prone as well
+    damage(s, t, r.total, 'force', ev);
+  }
 }
 
 // ---------- encounters (joining one, rollInit and fightPlace are in world.js) ----------
@@ -253,7 +296,7 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   for (const h of G.range(center, radius)) if (hasColumn(s.map, h)) arena[col(h)] = 1;    // a fight locks whole columns, every level
   catchUp(s, arena, walked, ev);                         // those walking with the party are with it
   // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
-  const who = living(s).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
+  const who = Object.values(s.entities).filter((e) => !e.dead && (e.side === 'party' || !e.melded)).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
   if (!who.some((e) => e.side === 'party')) fail('No party creature is in range of the fight.');   // foes alone would end it at once as a defeat (#771)
   for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = confusedNow(s, e); reveal(s, e, ev); }   // nobody fights unseen
@@ -2408,5 +2451,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

@@ -144,6 +144,7 @@ function summarise(def) {
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
   if (kind === 'summon' && step.on === 'corpse') return { short: 'summon', long: `Raises ${step.count && step.count !== 1 ? 'corpses' : 'a corpse'} as undead under the caster's control for 24 hours` };
   if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
+  if (kind === 'meld') return { short: 'meld into stone', long: 'The caster steps into the wall it aimed at and is held there: unseen, out of every space, sensing nothing, until it leaves (5 feet of movement), the spell ends, or a cut of the wall expels it' };
   if (kind === 'cut') return { short: `cut ${step.cut} ft`, long: `Takes ${step.cut} feet out of the wall it is aimed at (the DM is told, and undoes it if the wall is not stone)` };
   if (kind === 'sense') return { short: `sense ${step.sense}`, long: `Senses ${step.sense === 'traps' ? 'traps' : 'magic'} within ${step.feet} feet (the DM is told, and tells the player)` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
@@ -600,7 +601,8 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
-  if (kind === 'cut') { kit.cutWall(s, f.src.wall, step.cut, f, ev); return; }
+  if (kind === 'cut') { const cut = kit.cutWall(s, f.src.wall, step.cut, f, ev); if (cut) kit.expelMelded(s, cut, f, ev); return; }      // a creature merged with stone near the cut is thrown out of it
+  if (kind === 'meld') return kit.meldInto(s, t, f, ev) || handOver(`${f.src.name} merges the caster with the stone, which the engine has no lasting effect or wall to hang on. The DM applies it: the caster is out of sight and out of every space until it leaves.`);
   if (kind === 'sense') return kit.sense(s, t, step, f, ev);
   if (kind === 'dispel') return kit.dispel(s, t, step, ev, f);
   if (kind === 'revive') return kit.revive(s, t, step, ev, f);

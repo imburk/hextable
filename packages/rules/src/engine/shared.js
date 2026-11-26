@@ -18,7 +18,10 @@ export const fail = (msg) => { throw new RuleError(msg); };
 
 export const up = (e) => !e.dead && e.hp > 0;
 export const hostile = (a, b) => a.side !== b.side;
-export const living = (s) => Object.values(s.entities).filter((e) => !e.dead);
+// The creatures that are here: not dead, and not merged with stone (Meld into Stone, `melded`): one that is fills no space, is not seen, aimed at,
+// caught in an area or found, and sees nothing, so every place that asks "who is there" through this leaves it out. What must still reach it (its turn,
+// its effects, ending the spell) goes by `s.entities`.
+export const living = (s) => Object.values(s.entities).filter((e) => !e.dead && !e.melded);
 export const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 export const current = (s) => (s.encounter ? s.encounter.order[s.encounter.turn]?.id ?? null : null);
 // A spellcaster's spell attack bonus and save DC, with what modifiers change about them when the
@@ -100,6 +103,9 @@ export const commandedNow = (s, e) => {
 // Outside the fight going on, a command given there (`at: null`) lifts it too. Only the acting creature (`actor`) is
 // locked: a locked creature named as the leader of a `partyFollow` or `formation` is not doing anything itself.
 const UNLOCKED = new Set(['move', 'dodge', 'endTurn', 'stand', 'follow', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
+// What a creature merged with stone (Meld into Stone) may still send: a spell (aimed at itself: casting.js), leaving, ending its turn, the
+// checks it makes and its standing instructions. Everything else is refused in `control`, with one message.
+const MELDED_MAY = new Set(['cast', 'unmeld', 'endTurn', 'check', 'reactions', 'react', 'companion']);
 export function commandLock(s, e) {
   const b = e?.bond;
   if (b?.orders !== 'command' || (typeof b.standing === 'string' && b.standing)) return false;
@@ -113,6 +119,7 @@ export const control = (s, e, ctx) => {
     // A controlled mount "moves on your turn as you direct it": its rider's player sends its moves, Dash and Disengage.
     (!!who && who === ctx.userId) || (acting && DIRECTED.has(type) && !!r && ownerOf(s, r) === ctx.userId) || fail(`${e.name} isn't yours to control.`);
   }
+  if (acting && e.melded && !MELDED_MAY.has(type)) fail(`${e.name} is merged with the stone and can do nothing but cast a spell on itself or leave the stone (unmeld).`);
   if (acting && !UNLOCKED.has(type) && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
   if (acting && steering(s, e)) {
     RIDDEN.has(type) || fail('A controlled mount can only Dash, Disengage or Dodge.');

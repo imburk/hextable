@@ -74,7 +74,9 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // Never sent to a player. docs/specs/rules-expansion.md, "Build notes: wave 4 part 2".
   'sense',
   // `cut: feet` (Stone Shape): 5 feet of the wall the cast aimed at (`target.wall`) is taken out, centred on the aimed point, through the DM's own map edit. A spell aimed at a wall only.
-  'cut'];
+  'cut',
+  // `meld: true` (Meld into Stone): the caster steps into the wall the cast aimed at (`target.wall`) and is held there for the spell's duration: it fills no space, cannot be seen, targeted or found, sees nothing, and leaves with `unmeld`. A spell aimed at a wall only.
+  'meld'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -559,6 +561,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
     if (kind === 'cut') { if (!seen.cutOk) say('a `cut` step is for a spell whose target is a wall (`target: { wall: {} }`)'); seen.cut = true; if (!(isInt(step.cut) && step.cut >= 5 && step.cut <= 10 && step.cut % 5 === 0)) say('`cut` is the feet of wall taken out: 5 or 10'); }
+    if (kind === 'meld') { if (!seen.cutOk) say('a `meld` step is for a spell whose target is a wall (`target: { wall: {} }`)'); if (step.meld !== true) say('`meld` is true'); }
     if (kind === 'sense' && !(['traps', 'magic'].includes(step.sense) && isInt(step.feet) && step.feet > 0 && step.feet % 5 === 0)) say('`sense` is "traps" or "magic", with `feet`: a multiple of 5');
     // `command` (Command): one of the five words, or `chosen` (the spell's `choice: { of: 'command' }`).
     if (kind === 'command' && !seen.commandOk) say('a `command` step is for a spell: it is carried out on a creature\'s next turn');
@@ -939,7 +942,7 @@ function lintSpell(e, say) {
   if (e.target?.wall !== undefined) {
     if (!(e.range === 'touch' || (isInt(e.range) && e.range > 0))) say('a spell aimed at a wall needs a range: touch, or feet');
     if (e.reaction !== undefined || e.zone !== undefined || e.terrain !== undefined || e.hit !== undefined) say('a spell aimed at a wall is not a reaction, a zone, terrain or a hit');
-    if (!e.effects.some((st) => 'cut' in st)) say('a spell aimed at a wall has a `cut` step to work on it');
+    if (!e.effects.some((st) => 'cut' in st || 'meld' in st)) say('a spell aimed at a wall has a `cut` step (or a `meld` step) to work on it');
   }
   if (seen.teleport && !(e.target?.self && e.effects.some((st) => 'teleport' in st))) say('a `teleport` step is for a spell aimed at its caster, in its own list of steps');
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
@@ -3092,7 +3095,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3648,7 +3651,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },

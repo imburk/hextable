@@ -864,6 +864,36 @@
       "tier": "assist",
       "checked": false,
       "text": "The caster opens a 5-foot passage through a wall within touch. The DM judges what the wall is made of."
+    },
+    {
+      "id": "hb-sample-stone-merge",
+      "name": "Stone Merge",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "touch",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 hour",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "wall": {}
+      },
+      "effects": [
+        {
+          "meld": true
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "The caster steps into a wall within touch and is hidden there for an hour. The DM judges what the wall is made of."
     }
   ]
 }

@@ -4,21 +4,21 @@ import { gridOf, col, key } from '../grid.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
-import { breakConcentration, durationMinutes, effectsOf, endEffect, endWards, startEffect, turnKey } from '../durations.js';
+import { breakConcentration, durationMinutes, effectsOf, endEffect, endWards, ON, startEffect, turnKey } from '../durations.js';
 import { shiftZone, zonesOf } from '../zones.js';
 import { globesOf, inGlobe, silentAt } from '../terrain.js';
 import { apart, footprint, FT, gap, landing, overlapAt, sizeOf, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
-import { aimArea, aimObject, aimWall, areaHexes, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { able, ask, BOND_MAX, castAbilOf, control, current, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
+import { aimArea, aimObject, aimWall, areaHexes, below, feetLeft, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, confusedOnly, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
-import { incapacitatedBy, untrainedGear } from '../modifiers.js';
+import { incapacitatedBy, speedOf, untrainedGear } from '../modifiers.js';
 
 // ---------- teleportation ----------
 // SRD Rules Glossary, Teleportation: the creature disappears and reappears elsewhere without
@@ -470,6 +470,26 @@ export const handlers = {
     shiftZone(s, ev, KIT, fx, { hexes, origin }, met);
     checkEnd(s, ev);
   },
+  // Leave the stone (Meld into Stone): "You can use 5 feet of movement to leave the stone where you entered it, which ends the spell." In a fight that is
+  // 5 feet off the creature's movement on its turn; outside one it costs nothing. The spell ends and the creature is back where it went in (or the nearest
+  // unoccupied space, ON.meldEnd in durations.js). I made it an action of its own and not `endEffect`, which the DM and Concentration use and which has no
+  // movement to pay. { type: 'unmeld', actor }
+  unmeld(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    e.melded || fail(`${e.name} is not merged with stone.`);
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    if (s.encounter && inFight(s, e.id)) {
+      current(s) === e.id || fail(`It isn't ${e.name}'s turn.`);
+      speedOf(s, e) >= FT || fail(`${e.name} has too little Speed to leave the stone.`);
+      !below(s.encounter.budget.move, FT) || fail(`Leaving the stone takes ${FT} ft of movement; ${e.name} has ${feetLeft(s, s.encounter.budget.move)} ft left.`);
+      s.encounter.budget.move -= FT;
+    }
+    const fx = effectsOf(s).find((x) => x.id === e.melded.fx);
+    if (fx) endEffect(s, ev, fx, `${e.name} left the stone`);
+    else { const m = e.melded; delete e.melded; ON.meldEnd(s, ev, e, m); }
+    checkEnd(s, ev);
+  },
   // End a lasting effect early: its caster dropping Concentration, or the DM. { type: 'endEffect', effect }
   endEffect(s, a, ctx, ev) {
     const fx = effectsOf(s).find((x) => x.id === a.effect) || fail('No such effect.');
@@ -477,6 +497,8 @@ export const handlers = {
     // To a player, an effect of a creature they do not know of, on nobody they know of, is nothing.
     if (ctx.role !== 'dm' && !own && (!src || unknown(s, src)) && !fx.parts.some((p) => s.entities[p.target] && !unknown(s, s.entities[p.target]))) fail('No such effect.');
     ctx.role === 'dm' || own || fail(`${fx.name} isn't yours to end.`);
+    // Leaving the stone costs 5 feet of movement (`unmeld`); a player may not end the spell any cheaper.
+    if (ctx.role !== 'dm' && fx.parts.some((p) => p.meld && !p.ended)) fail(`${fx.name} ends when its caster leaves the stone: use unmeld.`);
     endEffect(s, ev, fx, own || !src ? `${src?.name ?? 'its caster'} ended it` : 'the DM ended it');
   },
 };
@@ -551,6 +573,13 @@ function castSpell(s, a, ctx, ev, item) {
       ? `${sp.name} is cast as a Reaction, by ${e.name}'s standing instruction for it (set it with the reactions on the sheet).`
       : `${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
     !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
+    // Merged with stone (Meld into Stone): "you can cast spells on yourself", and nothing else. One message for every other spell, whatever it is aimed at.
+    if (e.melded) {
+      const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
+      (sp && (sp.aim === 'self' || (sp.aim === 'creature' && Array.isArray(ids) && ids.length > 0 && ids.every((id) => id === e.id)))) || fail(`${e.name} is merged with the stone and can cast only spells aimed at itself.`);
+    }
+    // Stepping into stone takes a creature on its own two feet: not one that is carried, nor one that carries another.
+    if (sp?.aim === 'wall' && sp.def.effects.some((st) => 'meld' in st)) !(e.riding || e.rider) || fail(`${e.name} can't merge with stone while mounted or carrying a rider.`);
     const unfit = untrainedGear(e);
     unfit.length === 0 || fail(`${e.name} can't cast spells: ${unfit.join(' and ')} worn without training (SRD Armor Training).`);
     const raging = effectsOf(s).find((fx) => fx.source === e.id && fx.noSpells);
@@ -601,7 +630,7 @@ function castSpell(s, a, ctx, ev, item) {
       targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);
     } else if (sp.aim === 'self') targets = [e];
     else if (sp.aim === 'object') object = aimObject(s, e, sp.name, range, a.object, ctx);      // checked now, before anything is spent: one answer for an object that is not there and one the party does not know of
-    else if (sp.aim === 'wall' && sp.def.effects.some((st) => 'cut' in st && (st.ifChoice === undefined || st.ifChoice.includes(a.choice)))) wall = aimWall(s, e, sp.name, range, a.wall, ctx);      // checked now, before anything is spent: one answer for a wall that is not there and one the party does not know of (a shape that cuts nothing, Stone Shape's `other`, names no wall)
+    else if (sp.aim === 'wall' && sp.def.effects.some((st) => ('cut' in st || 'meld' in st) && (st.ifChoice === undefined || st.ifChoice.includes(a.choice)))) wall = aimWall(s, e, sp.name, range, a.wall, ctx);      // checked now, before anything is spent: one answer for a wall that is not there and one the party does not know of (a shape that cuts nothing, Stone Shape's `other`, names no wall)
     // `target.creature.types` (Hold Person's Humanoid): a creature of another type is an invalid target. SRD 5.2.1, "Invalid Targets": "nothing
     // happens to that target, but if you used a spell slot to cast the spell, the slot is still expended." So the cast is made and paid for as
     // aimed, and those creatures are left out of what it does (`invalid`, below). One whose type the engine cannot tell is the DM's to judge.

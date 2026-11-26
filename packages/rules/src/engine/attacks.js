@@ -81,7 +81,7 @@ function partFull(s, e, def, targets) {
 function reactToAttacker(s, e, ev) {
   if (!s.encounter || e.object || !up(e) || !inFight(s, e.id)) return true;
   for (const t of Object.values(s.entities)) {
-    if (t.id === e.id || t.object || t.actions || !hostile(t, e) || !canReact(t) || !inFight(s, t.id)) continue;
+    if (t.id === e.id || t.object || t.actions || t.melded || !hostile(t, e) || !canReact(t) || !inFight(s, t.id)) continue;      // a creature merged with stone reacts to nothing
     for (const r of reactionsOf(t)) {
       if (r.kind !== 'feature' || r.on !== 'attacks' || !underEffect(s, t, r.reaction.of, e)) continue;
       const w = instruction(t, r, s);
