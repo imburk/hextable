@@ -29,6 +29,7 @@ import { levelUpChip } from './levelup.js';
 import { classTitle } from './buildsheet.js';
 import { initSpellCards, spellAttrs } from './spellcard.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
+import { rollers, rollMode } from './wallaim.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -428,6 +429,7 @@ export function bonusRows(S, e, { mode = null, fly = null } = {}) {
     add({ ...base, id: `${kind}-bonus`, label: `${base.label} (Bonus)`, chip: CHIP.bonus, time: 'bonus', why: kind === 'hide' && base.kind === 'none' ? base.why : (kind === 'hide' ? (S.encounter && inFight(S, e.id) ? blocked(S, e, 'bonus') : '') || hideProblem(S, e) : blocked(S, e, 'bonus')),
       ...(base.send ? { send: { ...base.send, bonus: true } } : {}) });
   }
+  for (const r of rollers(S, e)) add({ id: `roll:${r.id}`, kind: 'arm', label: `Roll ${r.name}`, sub: `Up to ${r.feet} ft · tap the map`, chip: CHIP.bonus, time: 'bonus', armed: !!mode && mode.kind === 'roll' && mode.effect === r.id, mode: rollMode(r) });
   const why = blocked(S, e, 'bonus');
   return { rows: rows.map((r) => (r.why || !why ? r : { ...r, why })), available: !why, why };
 }
