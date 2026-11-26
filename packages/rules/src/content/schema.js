@@ -69,7 +69,10 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   'ward',
   // `confuse: true` (Confusion), with `ends` like a condition's: the creature it works on can take no Bonus Action and no Reaction for as long as the lasting effect holds, and at the start of each of its turns the engine rolls 1d10 for its
   // behaviour (it keeps from moving, or from acting, or must make one melee attack against a random creature in reach; the DM walks a creature that moves at random). A spell with a duration only. docs/specs/rules-expansion.md, "Build notes: wave 3b part 2".
-  'confuse'];
+  'confuse',
+  // `sense: 'traps' | 'magic', feet: feet` (Find Traps, Detect Magic): the engine works out what the caster would sense within `within` feet and tells the DM alone, who tells the player.
+  // Never sent to a player. docs/specs/rules-expansion.md, "Build notes: wave 4 part 2".
+  'sense'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -526,6 +529,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       if (step.when !== undefined) say('an `eachTurn` step has no `when`: say it on the steps inside');
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
+    if (kind === 'sense' && !(['traps', 'magic'].includes(step.sense) && isInt(step.feet) && step.feet > 0 && step.feet % 5 === 0)) say('`sense` is "traps" or "magic", with `feet`: a multiple of 5');
     // `command` (Command): one of the five words, or `chosen` (the spell's `choice: { of: 'command' }`).
     if (kind === 'command' && !seen.commandOk) say('a `command` step is for a spell: it is carried out on a creature\'s next turn');
     if (kind === 'command' && !(COMMANDS.includes(step.command) || step.command === 'chosen')) say(`\`command\` is one of ${COMMANDS.join(', ')} or "chosen"`);
@@ -3036,7 +3040,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3243,8 +3247,8 @@ export const HOMEBREW_RANGES = Object.freeze({
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
-  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
-  'modifier.value': [-40, 40], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
+  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
+  'modifier.value': [-40, 40], 'speedModifier.value': [-120, 120], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
@@ -3301,7 +3305,7 @@ const GRANTS_LEN = 30;
 export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14, dice: 900 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
-const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (inGrants ? GRANTS_ANY : undefined);
+const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (owner === 'speedModifier' ? rangeOf('modifier', key, inGrants) : inGrants ? GRANTS_ANY : undefined);
 // The numbers of an entry with the name that finds their range: [context, value, path, inGrants].
 export function numbersOf(kind, entry) {
   const out = [], stack = [];
@@ -3310,7 +3314,8 @@ export function numbersOf(kind, entry) {
     const [v, owner, key, path, g] = stack.pop();
     if (typeof v === 'number') out.push([`${owner}.${nameOf(key)}`, v, path, g, owner, nameOf(key)]);
     else if (Array.isArray(v)) v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g]));
-    else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push([v[k], nameOf(key), k, `${path}.${k}`, g || key === 'grants']);
+    // A modifier on a speed (Fly's Fly Speed of 60) is held to the speeds' range, not the 40 of every other modifier.
+    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && SPEED_HOOKS.includes(v.on) ? 'speedModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
   }
   return out;
 }
@@ -3591,7 +3596,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },

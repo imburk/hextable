@@ -880,6 +880,68 @@ export function findable(s, e, o, feet) {
 }
 export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
 
+// A `sense` step (Find Traps, Detect Magic; docs/specs/rules-expansion.md, "Build notes: wave 4 part 2"): what the caster `e` would sense within
+// `step.feet` feet, worked out from the whole state and told to the DM ALONE (a `manual` event with `partial`, which no player is sent): the DM
+// tells the player. Nothing here changes the state, and the order of the lines gives nothing away (they are sorted by their words, for traps).
+// Traps: a map object with a trigger that has effects and fires from the state it is in (a covered pit, a spotted dart trap, a pit already open;
+// not one sprung or disarmed), in line of sight, with the general nature of its danger (damage types, a fall, a condition) and not where it is.
+// Magic: the magic items on creatures' sheets and in piles, and the spells running on creatures, in range and not behind total cover.
+const dangers = (steps, out = new Set()) => {
+  for (const x of steps ?? []) {
+    if (!x || typeof x !== 'object') continue;
+    if ('damage' in x) out.add(`${x.type} damage`);
+    else if ('fall' in x) out.add('a fall');
+    else if ('condition' in x) out.add(`the ${x.condition} condition`);
+    else if ('manual' in x) out.add('a danger of another kind');
+    for (const b of ['onFail', 'onSuccess', 'onHit', 'onMiss']) dangers(x[b], out);
+  }
+  return out;
+};
+export function sense(s, e, step, f, ev) {
+  const G = gridOf(s.map), m = measure(s, G), within = step.feet, far = (h) => m(h, e.pos) * FT;
+  // The nearest hex of an object that the caster could see along a clear line, with its distance in feet; null if none is in range.
+  const reach = (o) => {
+    const level = s.map.levels.find((l) => l.id === o.level);
+    const hexes = level ? objectHexes(o, G).filter((h) => level.tiles[col(h)]).sort((a, b) => far(a) - far(b)) : [];
+    const near = hexes[0];
+    return near && far(near) <= within && clear(s, e.pos, { q: near.q, r: near.r, z: objectZ(s, o) }) ? far(near) : null;
+  };
+  const lines = [];
+  if (step.sense === 'traps') {
+    for (const o of s.map.objects) {
+      const def = objectDef(o);
+      if (!def || objectSegment(o, G) || reach(o) === null) continue;
+      const live = (def.triggers ?? []).filter((tr) => tr.effects?.length && tr.from?.includes(o.state));
+      if (!live.length) continue;
+      const what = [...live.reduce((set, tr) => dangers(tr.effects, set), new Set())].sort();
+      lines.push(`a trap that poses ${what.length ? what.join(', ') : 'a danger the engine cannot name'}`);
+    }
+    lines.sort();
+  } else {
+    const found = [];
+    for (const c of living(s)) {
+      if (far(c.pos) > within || (c.id !== e.id && !unblocked(s, e, c))) continue;
+      const things = [];
+      for (const x of c.sheet?.items ?? []) if (x?.item && CONTENT.items[x.item]) things.push(itemName(CONTENT.items[x.item], x));
+      for (const fx of effectsOf(s)) if (fx.parts?.some((p) => p.target === c.id && !p.ended)) things.push(SPELLS[fx.spell] ? `${SPELLS[fx.spell].def.name}, ${SPELLS[fx.spell].def.school}` : `${fx.name ?? 'a lasting effect'}`);
+      if (things.length) found.push([far(c.pos), `${c.name}${c.id === e.id ? ' (the caster)' : ''}: ${things.join('; ')}`]);
+    }
+    for (const o of s.map.objects) {
+      if (!isPile(o)) continue;
+      const d = reach(o), things = (o.contents ?? []).filter((x) => wellFormed(x) && x.item).map((x) => itemName(CONTENT.items[x.item], x));
+      if (d !== null && things.length) found.push([d, `${objectName(o)}: ${things.join('; ')}`]);
+    }
+    found.sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : 1));
+    for (const [d, text] of found) lines.push(`${text} (${d} ft)`);
+  }
+  const name = f.src.name;
+  const text = step.sense === 'traps'
+    ? `${name} (for the DM alone; tell ${e.name}): ${lines.length ? `${e.name} senses ${lines.length} trap${lines.length === 1 ? '' : 's'} within ${within} ft in line of sight, without where: ${lines.join('; ')}.` : `the engine found no trap on the map within ${within} ft in ${e.name}'s line of sight.`} Alarm, Glyph of Warding and any trap the map does not hold as an object are the DM's to add; a natural weakness in the floor is no trap.`
+    : `${name} (for the DM alone; tell ${e.name}): ${lines.length ? `magic the engine keeps track of within ${within} ft: ${lines.join('; ')}.` : `the engine knows of no magic within ${within} ft.`} It keeps no track of magic in a monster's stat block, of areas, or of how thick a wall is (1 foot of stone, dirt or wood, 1 inch of metal or a thin sheet of lead blocks the spell): the DM adds and judges those. With a Magic action ${e.name} sees the aura on a visible creature or object that bears magic and learns the school of a spell's magic.`;
+  ev.push({ type: 'manual', actor: f.actor, name, partial: true, text });
+  return true;
+}
+
 // How an area is laid out on the hexes when `e` aims it at `aim`: { hexes, origin, high }.
 // `range` is the spell's range in feet (0 for Self), or an action's `area.range`.
 //   cone      opens from `e` toward `aim`.

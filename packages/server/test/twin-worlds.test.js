@@ -1027,3 +1027,39 @@ test("confusion: the roll, the pick and the turn of a confused creature are told
   assert.ok(!/on the d10|Confused/.test(JSON.stringify(hidden.raw.Pat)) && !/on the d10|Confused/.test(JSON.stringify(plain.raw.Pat)), "the player is told of none of it");
   assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost"));
 });
+
+// ---- Find Traps and Detect Magic (#786 wave 4 part 2): what the spells find is told to the DM alone ----
+const SENSE = (spell, slot, seed = 5) => ({
+  players: ["Pat"],
+  seed,
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    s.map.walls.push({ id: "wall1", level: "ground", a: [-70, 11], b: [70, 11], kind: "wall" });          // between row 2 and row 3
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", -8, 4], ["rogue", -8, 5], ["cleric", -8, 6], ["wizard", 0, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", slots: { 1: 4, 2: 3 }, slotsMax: { 1: 4, 2: 3 } });
+    s.entities.wizard.spells.push("find-traps", "detect-magic");
+  },
+  steps: [
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell, slot } },
+    { by: "Pat", act: { type: "say", as: "wizard", text: "Well?" } },
+  ],
+});
+const trapAt = (q, r) => (w) => { w.state.map.objects.push({ id: "trap1", def: "spiked-pit", level: "ground", at: { q, r }, state: "hidden" }); };
+test("find traps: a hidden trap in range is told to the DM alone; the players are sent the same as with a bare cell, and the same for one behind a wall", () => {
+  for (const [label, at] of [["in sight", [3, 0]], ["behind a wall", [0, 6]]]) {
+    const { plain, hidden } = twin(SENSE("find-traps", 2), { hide: trapAt(...at), plain: () => {} });
+    assert.ok(!/trap that poses/.test(JSON.stringify(hidden.raw.Pat)), `${label}: Pat was told what the trap is`);
+    assert.ok(/found no trap|senses \d trap/.test(JSON.stringify(hidden.raw.dm)), `${label}: the DM is told`);
+    if (label === "in sight") assert.ok(/senses 1 trap/.test(JSON.stringify(hidden.raw.dm)) && /found no trap/.test(JSON.stringify(plain.raw.dm)), "the DM is told of the trap in one world and of none in the other");
+    else assert.ok(/found no trap/.test(JSON.stringify(hidden.raw.dm)), "a trap behind a wall is not sensed");
+  }
+});
+test("detect magic: a hidden creature carrying a magic item within 30 feet is told to the DM alone; the players are sent the same as with none there", () => {
+  const sides = { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Ghost", hidden: true }); const g = byName(w, "Ghost"); g.sheet = { items: [{ id: "i1", item: "ring-of-protection" }] }; }, plain: (w) => { burn(w, { q: 3, r: 0 }); } };
+  const { hidden } = twin(SENSE("detect-magic", 1), sides);
+  assert.ok(/Ghost: Ring of Protection/.test(JSON.stringify(hidden.raw.dm)), "the DM is told of it");
+  assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost") && !/Ring of Protection/.test(JSON.stringify(hidden.raw.Pat)), "the player is told of none of it");
+});

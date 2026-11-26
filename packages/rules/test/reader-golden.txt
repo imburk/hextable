@@ -246,6 +246,41 @@ DM: Step effects.0.onFail.0: moving the creature toward or away from the caster,
 DM: Step effects.1: moving the creature toward or away from the caster, what it drops, and whether it understands the word.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-trap-sense
+"Trap Sense" (level 2 evocation, 120 feet, action, instant).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+The engine works out which traps (map objects made to cause danger) lie within 120 feet in the caster's line of sight and what kind of danger each is, without where, and tells the DM alone to pass on.
+The engine does not do this; the DM does this: "Alarm, Glyph of Warding and traps the map does not hold."
+It is aimed at the caster alone.
+It is instant: nothing it does is kept as a lasting effect.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: telling the player, and anything the engine does not keep track of.
+DM: "Alarm, Glyph of Warding and traps the map does not hold."
+DM: Whatever the description says beyond the steps above.
+
+== hb-test-magic-sense
+"Magic Sense" (level 1 evocation, self, action, 10 minutes, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+The engine lists the magic it keeps track of within 30 feet and not behind total cover (magic items carried or lying in a pile, spells running on creatures), with each one's distance, and tells the DM alone to pass on.
+The engine does not do this; the DM does this: "Walls and areas."
+It is aimed at the caster alone.
+It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: telling the player, and anything the engine does not keep track of.
+DM: "Walls and areas."
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-hush-ward
 "Hush Ward" (level 1 evocation, 30 feet, action, 1 minute).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
