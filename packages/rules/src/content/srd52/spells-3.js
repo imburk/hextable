@@ -343,11 +343,14 @@ export const spells3 = [
     time: "action", range: "touch", components: ["v", "s"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Remove Curse: at the caster's touch all curses affecting one creature or object end. If the object is a cursed magic item its curse remains, but the spell breaks its owner's Attunement to it so it can be removed or discarded. The DM removes the curses."}],
+    effects: [
+      {"cure": ["curses"]},
+      {"manual": "Remove Curse: the engine ended every Bestow Curse effect on the creature. Any other curse on it is the DM's to end. If the target is a cursed magic item (a touched object), its curse remains, but the spell breaks its owner's Attunement to it so it can be removed or discarded: the DM does that."}
+    ],
     kinds: ["healing"],
     roll: "none",
-    tier: "manual", checked: true,
-    text: "Ends all curses on a touched creature or object. A cursed magic item keeps its curse, but its owner's Attunement is broken so it can be removed or discarded.",
+    tier: "assist", checked: true,
+    text: "Ends every curse on a touched creature: the engine ends the Bestow Curse effects on it, whole; any other curse, and a cursed magic item (whose curse remains while its owner's Attunement is broken so it can be removed or discarded), are the DM's.",
   },
   {
     id: "revivify", name: "Revivify", source: "SRD 5.2.1",

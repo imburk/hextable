@@ -197,8 +197,8 @@ export const FAMILIARITY = ['permanent-circle', 'linked-object', 'very-familiar'
 // Stone Shape's choice: a 5-foot passage cut through a wall (the engine's), or any other shape (the DM's).
 export const STONE_SHAPES = ['passage', 'other'];
 export const AFFLICTIONS = ['exhaustion', 'charmed', 'petrified', 'curse', 'ability-score', 'hit-point-maximum'];
-// The words a `cure` step may use besides a condition: `exhaustionLevel` lowers the target's Exhaustion by one level; `curse` ends the lasting curses (Bestow Curse) on it.
-export const CURE_WORDS = ['exhaustionLevel', 'curse'];
+// The words a `cure` step may use besides a condition: `exhaustionLevel` lowers the target's Exhaustion by one level; `curse` ends the oldest lasting curse (Bestow Curse) on it, `curses` (Remove Curse) all of them.
+export const CURE_WORDS = ['exhaustionLevel', 'curse', 'curses'];
 export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
@@ -626,7 +626,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     // `cure: [conditions]`: the conditions end on the creature it works on (Heal); "chosen" is one
     // the caster picks from the spell's `choice: { of: 'condition', from }` (Lesser Restoration).
     // Exhaustion is not ended whole this way: `exhaustionLevel` lowers it by one level (Greater Restoration), and `curse` ends the lasting curses on the creature (CURE_WORDS).
-    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || CURE_WORDS.includes(c) || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), "exhaustionLevel", "curse", or "chosen"');
+    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || CURE_WORDS.includes(c) || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), "exhaustionLevel", "curse", "curses", or "chosen"');
     for (const b of ['onZero', 'onKill']) if (step[b] !== undefined && kind !== 'damage') say(`\`${b}\` is for a damage step`);
     // `kill: true`: the creature dies, a character at 0 Hit Points too; `remains`: what is left of
     // the body. Both only under a damage step's onZero or onKill, where the damage brought it there.

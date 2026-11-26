@@ -34,8 +34,10 @@ export function kill(s, t, ev) {
 }
 // A `cure` step: the conditions listed end on `t`, whatever put them there (a lasting effect's part
 // that held one is ended with it). One it does not have is passed over.
-// Two more words are not conditions (Greater Restoration; schema.js CURE_WORDS): `exhaustionLevel` lowers Exhaustion by one level (the condition ends at level 0, as a Long Rest does it), and `curse` ends every lasting
-// curse on `t` (a lasting effect of a spell whose choice is of a curse, Bestow Curse, that has a part on `t`), whole, taking off all it put on anyone; a curse the engine does not keep is the DM's, whose `manual` step says so.
+// Two more words are not conditions (Greater Restoration; schema.js CURE_WORDS): `exhaustionLevel` lowers Exhaustion by one level (the condition ends at level 0, as a Long Rest does it), and `curse` ends the oldest lasting
+// curse on `t` and `curses` (Remove Curse) every one of them (a lasting effect of a spell whose choice is of a curse, Bestow Curse, that has a part on `t`), whole, taking off all it put on anyone; a curse the engine does not keep is the DM's, whose `manual` step says so.
+// The oldest lasting effect of a spell whose choice is of a curse (Bestow Curse) that has a part on `t`, if any.
+const cursedBy = (s, t) => effectsOf(s).find((x) => SPELLS[x.spell]?.def.choice?.of === 'curse' && x.parts.some((p) => !p.ended && p.target === t.id));
 export function cure(s, t, list, ev) {
   for (const c of list) {
     if (c === 'exhaustionLevel') {
@@ -47,8 +49,13 @@ export function cure(s, t, list, ev) {
     }
     if (c === 'curse') {
       // "a curse": one, the oldest on it (Bestow Curse is one lasting effect; a second caster's curse stays, and the DM may pick another).
-      const fx = effectsOf(s).find((x) => SPELLS[x.spell]?.def.choice?.of === 'curse' && x.parts.some((p) => !p.ended && p.target === t.id));
+      const fx = cursedBy(s, t);
       if (fx) endEffect(s, ev, fx, `${t.name} was freed of the curse`);
+      continue;
+    }
+    if (c === 'curses') {
+      // Remove Curse: every one of them, each ended whole as `endEffect` does (the loop re-reads the list: ending one may end a caster's Concentration on another).
+      for (let fx = cursedBy(s, t); fx; fx = cursedBy(s, t)) endEffect(s, ev, fx, `${t.name} was freed of the curse`);
       continue;
     }
     if (!t.cond[c]) continue;

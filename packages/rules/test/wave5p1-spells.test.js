@@ -5,7 +5,8 @@ import { test } from "node:test";
 import { SPELLS } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
-import { apply } from "../src/engine.js";
+import { apply, current } from "../src/engine.js";
+import { concentrating } from "../src/durations.js";
 import { newGame } from "../src/scenario.js";
 import { canSee } from "../src/sight.js";
 import { sensesOf } from "../src/modifiers.js";
@@ -23,7 +24,7 @@ function field(seed = 5) {
   for (const [id, q, r] of [["wizard", 0, 0], ["fighter", -2, 0], ["rogue", -4, 4], ["cleric", -3, 0]]) ok(apply(s, { type: "place", actor: id, to: { q, r } }, DM));
   const slots = { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 2 };
   for (const id of ["wizard", "cleric"]) Object.assign(s.entities[id], { slots: { ...slots }, slotsMax: { ...slots } });
-  s.entities.wizard.spells.push("darkvision", "remove-curse");
+  s.entities.wizard.spells.push("darkvision", "remove-curse", "bestow-curse");
   s.entities.cleric.spells.push("remove-curse", "bestow-curse");
   for (const e of Object.values(s.entities)) e.hp = e.maxHp = 40;
   return s;
@@ -77,4 +78,72 @@ test("Darkvision: the party's view follows the cast and the end of the effect (n
   assert.ok(partyView(s).creatures.has(g.id), "after the cast");
   ok(apply(s, { type: "endEffect", actor: "wizard", effect: s.effects.find((x) => x.name === "Darkvision").id }, DM));
   assert.ok(!partyView(s).creatures.has(g.id), "after it ends");
+});
+
+// ---- Remove Curse ----
+const spawnHp = (s, monster, q, r) => { const e = s.entities[ok(apply(s, { type: "spawn", monster, at: { q, r } }, DM)).events[0].id]; e.hp = e.maxHp = 300; return e; };
+const near = (s) => { ok(apply(s, { type: "place", actor: "cleric", to: { q: -2, r: 1 } }, DM)); };
+const unsaved = (e) => { e.abil.wis = 1; e.saveBonus = { ...(e.saveBonus ?? {}), wis: -20 }; };
+const turnOf = (s, id) => { for (let i = 0; i < 60 && current(s) !== id; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); };
+// The caster's turn, a new one if it has spent its action on this one.
+const cast = (s, by, payload) => {
+  turnOf(s, by);
+  let r = apply(s, { type: "cast", actor: by, slot: 3, ...payload }, DM);
+  if (!r.ok && /already used an action/.test(r.error)) { ok(apply(s, { type: "endTurn", actor: by }, DM)); turnOf(s, by); r = apply(s, { type: "cast", actor: by, slot: 3, ...payload }, DM); }
+  return ok(r);
+};
+const curse = (s, by, e, choice) => cast(s, by, { spell: "bestow-curse", target: e.id, choice });
+const cursed = (s, id) => s.effects.filter((fx) => fx.name === "Bestow Curse" && fx.parts.some((p) => !p.ended && p.target === id));
+const removeCurse = (s, target) => cast(s, "cleric", { spell: "remove-curse", target });
+
+test("tiers: Remove Curse is assist; the entry lints and reads; `curses` is a cure word", () => {
+  assert.equal(SPELLS["remove-curse"].def.tier, "assist");
+  assert.deepEqual(lint(SPELLS["remove-curse"].def), []);
+  assert.deepEqual(readEntry("spell", SPELLS["remove-curse"].def, {}).problems ?? [], []);
+  assert.deepEqual(lint({ ...SPELLS["remove-curse"].def, effects: [{ cure: ["curses", "curses"] }] }).length > 0, true, "a word once");
+  assert.deepEqual(lint({ ...SPELLS["remove-curse"].def, effects: [{ cure: ["curses", "poisoned"] }] }), []);
+});
+
+test("Remove Curse: every Bestow Curse on the creature ends (two casters), a curse on another creature stays, and the DM is told about the rest", () => {
+  const s = field();
+  const sk = spawnHp(s, "skeleton", -1, 1), other = spawnHp(s, "skeleton", 1, -1);
+  unsaved(sk); unsaved(other); near(s);
+  Object.assign(s.entities.fighter, { slots: { 3: 1 }, slotsMax: { 3: 1 } }); s.entities.fighter.spells = ["bestow-curse"];
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: 2, r: -1 } }, DM));
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 14 }, DM));
+  curse(s, "cleric", sk, "str");
+  curse(s, "wizard", sk, "dodge");
+  cast(s, "fighter", { spell: "bestow-curse", target: other.id, choice: "attacks" });
+  assert.equal(cursed(s, sk.id).length, 2);
+  const r = removeCurse(s, sk.id);
+  assert.equal(cursed(s, sk.id).length, 0, "both ended");
+  assert.equal(cursed(s, other.id).length, 1, "another creature's curse is left alone");
+  assert.equal(r.events.filter((e) => e.type === "effectEnd" && e.name === "Bestow Curse").length, 2);
+  assert.equal(r.events.filter((e) => e.type === "manual" && /^Remove Curse:/.test(e.text)).length, 1, "the cursed item and other curses are the DM's");
+});
+
+test("Remove Curse: the caster's Concentration on a curse ends with it, and a creature with no curse is passed over", () => {
+  const s = field();
+  const sk = spawnHp(s, "skeleton", -1, 1);
+  unsaved(sk); near(s);
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 14 }, DM));
+  curse(s, "wizard", sk, "str");
+  assert.ok(concentrating(s, "wizard").length, "the wizard concentrates on the curse");
+  removeCurse(s, sk.id);
+  assert.ok(!concentrating(s, "wizard").length, "and no longer does");
+  const r = removeCurse(s, "fighter");
+  assert.ok(!r.events.some((e) => e.type === "effectEnd"));
+});
+
+test("Greater Restoration's `curse` still ends one curse, the oldest", () => {
+  const s = field();
+  s.entities.cleric.spells.push("greater-restoration");
+  const sk = spawnHp(s, "skeleton", -1, 1);
+  unsaved(sk); near(s);
+  ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 14 }, DM));
+  curse(s, "cleric", sk, "str");
+  curse(s, "wizard", sk, "dodge");
+  assert.equal(cursed(s, sk.id).length, 2);
+  cast(s, "cleric", { spell: "greater-restoration", target: sk.id, slot: 5, choice: "curse" });
+  assert.equal(cursed(s, sk.id).length, 1);
 });

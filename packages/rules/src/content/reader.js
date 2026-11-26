@@ -1129,7 +1129,7 @@ export const STEP_SENTENCES = {
   },
   cure({ st, at, Who, say }) {
     const ids = Array.isArray(st.cure) ? st.cure : [];
-    const names = ids.map((c) => (c === 'chosen' ? 'the condition chosen when casting' : c === 'exhaustionLevel' ? 'one level of Exhaustion' : c === 'curse' ? 'the lasting curses the engine keeps (a curse the engine does not keep is the DM\'s)' : CONDITIONS.includes(c) ? `the ${cond(c)} condition` : null));
+    const names = ids.map((c) => (c === 'chosen' ? 'the condition chosen when casting' : c === 'exhaustionLevel' ? 'one level of Exhaustion' : c === 'curse' ? 'one of the lasting curses the engine keeps, the oldest (a curse the engine does not keep is the DM\'s)' : c === 'curses' ? 'all the lasting curses the engine keeps (a curse the engine does not keep is the DM\'s)' : CONDITIONS.includes(c) ? `the ${cond(c)} condition` : null));
     if (!ids.length || names.includes(null)) this.bad(`Step ${at}: \`cure\` is not a list of conditions.`);
     say(`${Who} is rid of ${list(names.filter(Boolean)) || 'no condition the reader can read'}.`);
   },
