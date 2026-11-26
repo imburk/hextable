@@ -86,6 +86,17 @@ test("Sanctuary: a spell that makes an attack roll or deals damage is lost again
   assert.ok(wave.events.some((e) => e.type === "damage" || (e.type === "save" && e.id === g.id)), JSON.stringify(wave.events));
 });
 
+test("Sanctuary: a spell attack at the warded creature asks for the save once, at the cast, not again at its attack roll", () => {
+  const s = field(), g = spawn(s, "goblin-warrior", 2, 0);
+  s.entities.wizard.abil.wis = 30;
+  fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "sanctuary", target: g.id }, DM));
+  turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "ray-of-frost", target: g.id }, DM));
+  assert.equal(r.events.filter((e) => e.type === "save" && e.id === "wizard" && e.against === "Sanctuary").length, 1, JSON.stringify(r.events));
+  assert.equal(r.events.filter((e) => e.type === "attack").length, 1, "the save passed: the ray is rolled");
+});
+
 test("Sanctuary: it ends when the warded creature makes an attack roll, or casts a spell; not when someone else does", () => {
   const swing = () => {
     const s = field(), g = spawn(s, "goblin-warrior", -1, 0);

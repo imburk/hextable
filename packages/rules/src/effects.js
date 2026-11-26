@@ -440,8 +440,8 @@ function exec(s, ev, kit, f, step, at) {
     if (step.advantageIf) atk.advantageIf = step.advantageIf;
     // A touch spell the caster's familiar delivers (`src.via`, engine/casting.js; stage C5c): the roll is made from its space.
     if (step.kind === 'spell' && typeof f.src.via === 'string') atk.via = f.src.via;
-    // Sanctuary: a warded target makes its attacker save first (a spell cast at it was dealt with when it was cast); the warded creature's own attack roll ends its ward.
-    if (kit.wardCheck(s, e, t, ev, 'attack')) return;
+    // Sanctuary: a warded target makes its attacker save first; a spell cast at it was dealt with when it was cast (`src.wardDone`, engine/casting.js), so its attack roll is not saved against again. The warded creature's own attack roll ends its ward.
+    if (!f.src.wardDone && kit.wardCheck(s, e, t, ev, 'attack')) return;
     kit.endWards(s, ev, e.id, `${e.name} made an attack roll`);
     const r = kit.rollToHit(s, e, t, atk, ev, f.src.tag ?? {});         // `tag` marks the attack event, as an Opportunity Attack for one
     // `cut`: a reaction cut this attack's damage (Uncanny Dodge). It holds for the damage steps

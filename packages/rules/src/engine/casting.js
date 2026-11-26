@@ -682,7 +682,8 @@ function castSpell(s, a, ctx, ev, item) {
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
     // Sanctuary: a creature that targets a warded one with an attack roll or a damaging spell saves first; on a failure the spell is lost against it. Area effects are not stopped.
-    if (sp.aim === 'creature' && damaging(sp.def)) for (const t of new Set(targets)) if (!blocked.includes(t.id) && wardCheck(s, e, t, ev, 'spell')) blocked.push(t.id);
+    const wardDone = sp.aim === 'creature' && damaging(sp.def);
+    if (wardDone) for (const t of new Set(targets)) if (!blocked.includes(t.id) && wardCheck(s, e, t, ev, 'spell')) blocked.push(t.id);
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;
@@ -748,7 +749,7 @@ function castSpell(s, a, ctx, ev, item) {
       src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
-        spell: sp.id, slot: Math.max(slot, sp.level), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
+        spell: sp.id, slot: Math.max(slot, sp.level), ...(wardDone ? { wardDone: true } : {}), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
         ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}), ...(toucher ? { via: toucher.id } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
