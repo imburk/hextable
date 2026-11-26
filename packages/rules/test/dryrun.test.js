@@ -178,3 +178,12 @@ test("dryrun.js is pure: no I/O, clock or Math.random", () => {
   const src = readFileSync(new URL("../src/content/dryrun.js", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
   for (const bad of [/node:/, /Math\.random/, /Date\b/, /performance\./, /process\./, /\bfetch\b/, /setTimeout|setInterval/]) assert.doesNotMatch(src, bad);
 });
+
+test("a homebrew spell aimed at an object (a copy of Knock) is tried on a locked chest, and unlocks it", () => {
+  const k = structuredClone(SPELLS.knock.def ?? SPELLS.knock);
+  Object.assign(k, { id: "hb-t-knock", name: "Zz Knock", source: "homebrew:t", checked: false });
+  const r = dryRun("spells", k);
+  assert.ok(r.ok, JSON.stringify(r.problems));
+  assert.ok(r.events.some((e) => e.type === "cast" && e.object === "dryrun-chest"));
+  assert.ok(r.events.some((e) => e.type === "object" && e.object === "dryrun-chest" && e.state === "closed"), "unlocked: locked to closed");
+});
