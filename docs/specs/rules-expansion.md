@@ -2012,3 +2012,21 @@ Tests in `packages/rules/test/wave3b2-spells.test.js`, and a `twin()` scenario i
 
 **Decisions.** Dispel Evil and Good's list has no Aberration (Protection from Evil and Good's does; the SRD text of this spell lists five types, tested against an Aboleth); the cast has no roll of its own, but the entry keeps `roll: "save:cha"` for the Dismissal save so the pinned counts by roll do not move. Break Enchantment and Dismissal are the DM's because a Magic action of a spell already cast has no hook (W52). Confusion: "within reach" is the longest melee reach of the creature (its attack records, or a monster action's `reach`), 5 feet at the least, through nothing that gives Total Cover; the creature itself is never in the pool; creatures at 0 Hit Points are. A 7 or 8 with nobody the party knows of in reach takes the creature's action (the SRD: no action; the DM makes the one attack by hand if it finds an unknown creature in reach); this depends only on creatures the party knows of, so it shows a player nothing about a hidden one. With a creature picked, only the one melee attack is allowed: Dodge, Dash, Disengage, Hide, Search, a feature, a spell and an `act` at another target are refused with the reason (`confusedOnly`). A party creature's player is sent a plain `note` with the roll and what it may do. Casting Confusion again on a creature it already holds keeps one part. Bestow Curse: "Disadvantage on ability checks and saving throws made with that ability" is two modifiers (`check`, `save`) with the one ability; the extra Necrotic damage is added to all damage the caster deals the creature through `damage.dealt` (an attack or a spell, as the SRD says), once for each damage roll. A curse cast with a higher slot keeps a minute of Concentration in the engine (W52).
 
+
+#### Build notes: wave 4 part 1 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p1-spells.test.js`. No engine change: Fly is made of a modifier the engine already has, and the two spells the engine cannot do stay `manual`. Numbers compared with `reference/srd52/srd52-flow.txt` (Fly 27146: level 3, Action, touch, Concentration up to 10 minutes, Fly Speed 60 feet, hover, one more creature per slot level above 3; Feather Fall 26756: level 1, Reaction, 60 feet, 1 minute, up to five falling creatures, 60 feet per round, no damage on landing; Jump 28399: level 1, Bonus Action, touch, 1 minute, 30 feet for 10 feet of movement once on each of its turns, one more creature per slot level above 1).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Fly | manual | assist | hovering (the engine lends the Fly Speed through `speed.fly`, not `hover`, so a flyer knocked Prone or Incapacitated falls); a creature that can stop its own fall |
+| Feather Fall | manual | manual | everything: the cast, the slowed descent and the landing without damage |
+| Jump | manual | manual | everything: the engine has no jump |
+
+**Added.** Nothing: no new step, hook or op.
+
+**Found.** A lent Fly Speed that ends while the creature is aloft already makes it fall: `gravity` in `engine.js` runs after every action (and so after `endEffect`, Concentration breaking and an effect running out), and `aloft` reads the modifier. The tests show a creature at 30 feet dropping to the ground with damage when Fly ends. Nothing was needed to close that gap.
+
+**What players are sent.** Nothing new. Fly adds a lasting effect and a `fell` event the engine already sends; a fall is shown to a player only for a creature they can see, as before.
+
+**Decisions.** Fly keeps its `manual` step for hovering, and says so. Feather Fall: the SRD trigger is "a creature you can see within 60 feet of you", so the falling creatures must be ones the caster can see; the text says so and a test pins it. It stays `manual` because the engine has no reaction trigger on a fall (`reactions.js` has none, and `cast` refuses a Reaction spell without a standing instruction): adding one means a prompt in the middle of `fall` and the gravity pass, and a slowed descent the fall rule does not have. Jump stays `manual`: movement has no jump, so there is nothing for a spell to lend (W53).

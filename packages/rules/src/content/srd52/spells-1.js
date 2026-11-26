@@ -293,7 +293,7 @@ export const spells1 = [
     time: "reaction", range: 60, components: ["v", "m"],
     duration: "1 minute", concentration: false, ritual: false,
     target: {"creature": {"count": 5}},
-    effects: [{"manual": "Feather Fall: cast as a Reaction when the caster or a creature within 60 feet falls. Up to five falling creatures in range slow to 60 feet per round and take no damage from the fall if they land before the spell ends; the spell ends for each creature when it lands. The DM applies it."}],
+    effects: [{"manual": "Feather Fall: cast as a Reaction when the caster or a creature the caster can see within 60 feet falls. Up to five falling creatures in range slow to 60 feet per round and take no damage from the fall if they land before the spell ends; the spell ends for each creature when it lands. The DM applies it."}],
     kinds: ["utility"],
     roll: "none",
     tier: "manual", checked: true,
