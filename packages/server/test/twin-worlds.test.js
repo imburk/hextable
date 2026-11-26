@@ -920,3 +920,38 @@ test("see invisibility: the caster's table is sent the Invisible creature once t
   const cast = (r) => r.raw.Sam.findIndex((m) => m.t === "events" && JSON.stringify(m).includes("See Invisibility"));
   assert.ok(first(hidden, "Sam") === -1 || first(hidden, "Sam") >= cast(hidden) - 1, "not sent before the spell");
 });
+
+// ---- Antilife Shell (#786 wave 3b part 1): a hidden caster's shell ----
+// A shell refuses a move into it, which would tell the players something stands there. The engine does not enforce the shell of a caster the party does not know of
+// (shellSeen), so a visible creature walking into it is sent what it would be sent on a bare cell.
+const shellOf = (w, caster) => {
+  const g = byName(w, caster), fx = startEffect(w.state, { name: "Antilife Shell", spell: "antilife-shell", source: g.id, conc: true, duration: "1 hour", level: 5 });
+  fx.parts.push({ target: g.id, ends: { on: "concentration" } });
+  fx.terrain = { area: { shape: "emanation", size: 10 }, hexes: [], origin: { ...g.pos }, shell: true, follows: g.id };
+};
+test("antilife shell: a visible creature that moves into the shell of a hidden caster is sent the same as it would be on a bare cell", () => {
+  const { plain, hidden } = twin({
+    players: ["Pat"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 5, r: 0 }, name: "Seen" });
+      Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500 });
+      w.putIn();
+    },
+    steps: [
+      { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Seen").id, to: { q: 8, r: 0 } }), allowError: true },
+      { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Seen").id, to: { q: 5, r: 0 } }), allowError: true },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "What was that?" } },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 7, r: 1 }, name: "Ghost", hidden: true }); shellOf(w, "Ghost"); },
+    plain: (w) => { burn(w, { q: 7, r: 1 }); },
+  });
+  const moved = (r) => JSON.stringify(r.raw.Pat).includes('"moved"');
+  assert.ok(moved(plain) && moved(hidden), "the visible creature moved in both: the shell of a hidden caster refuses nothing");
+});

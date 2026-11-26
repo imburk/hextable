@@ -1972,3 +1972,22 @@ depends on nothing and can start today.
 Suggested order for the strongest model: R1, R2, R3, R4, then R9 (space),
 because size and height change what "adjacent" and "in range" mean and are
 cheaper to add before hundreds of monsters are entered than after.
+
+#### Build notes: wave 3b part 1 (amendment, #786)
+
+Tests in `packages/rules/test/wave3b1-spells.test.js`, and a `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Globe of Invulnerability and Antilife Shell are built (both `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (Globe of Invulnerability 27505, Antilife Shell 24136: the 10-foot Emanation, Concentration, up to 1 minute and up to 1 hour, Constructs and Undead excepted, levels 6 and 5, "level 5 or lower ... even if cast with a higher slot", one level more for each slot level above 6).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Globe of Invulnerability | manual | assist | objects inside; spells the engine cannot aim; effects already running; the barrier's height |
+| Antilife Shell | manual | assist | touch spells, Opportunity Attacks, forced movement through it; a creature whose type is unknown; the whole aura when its caster is hidden from the party |
+
+**Added.**
+- **Terrain keys `globe: true` and `shell: true`**, each alone in its `terrain`, on a lasting spell whose area is an Emanation (until now an Emanation could carry no terrain, as it moves with its caster). Schema lint, reader words, HOMEBREW tables (`terrain.globe`, `terrain.shell`) and a lint test. `terrain.js`: `globesOf`, `shellsOf`, `inGlobe`, `inShell`. `casting.js` lays out a globe's columns (the caster's own space too) and its origin where it went off; a shell keeps `follows: caster` and no hexes.
+- **Globe**: in `cast`, a spell whose level is below the globe's (`fx.level`, the slot it was cast with, less one: 5 or lower from a level 6 slot; the spell's own level counts, so a higher slot does not get it through) cast by a creature not inside that globe leaves out what is inside. Aimed at an area, the creatures inside are left out of its targets and the barrier's columns out of its hexes (so a zone or terrain it lays out leaves the inside bare). Aimed at creatures, one inside may be targeted and the cast is paid for, and the creature is treated as an invalid target (`warded`: a `note` "does nothing", never a faked save). Cast from inside, a spell is not looked at.
+- **Shell**: `world.js` `shellsFor`, `shelledStep`, `shelledReach`, `shellRefusal`. `moveOptions` leaves out a step that takes a bound creature from outside the aura into it (walking, climbing, flying and ladders), so the AI never plans it, and `move` names the aura when that is the only reason a place is refused (`opts.unshelled` asks the question). `attack` (a melee attack) and `aimAction` (an action with a reach) refuse an attack with one end inside and the other outside, before anything is spent; the monster brain (`ai.js`) skips such targets (`shelledReach` is exported from `engine.js`: the one change there). A creature already inside is not pushed and may move within and out. After each step of the caster (`movement.js` `shellCatch`) the spell ends if a Huge or smaller bound creature is inside the aura that was not before. Constructs and Undead are not bound; the caster is not bound by its own; allies are.
+
+**What players are sent.** A refused move or attack of a creature the party can see names the aura (`Antilife Shell keeps ... from passing into it`). A shell whose caster the party does not know of (hidden, hiding or unseen: `shellSeen`) binds nobody and ends for nobody, so a refusal, or a spell that ends, never tells a player that something stands in a place; the `manual` event at the cast is the DM's alone. The twin scenario holds a visible creature walking into a hidden caster's shell: the same bytes as on a bare cell. A globe judges by the caster's and the targets' places only, and a creature that is hidden inside is left out of an area by its hex, not by being there, so the cast event is the same with or without it.
+
+**Decisions.** The SRD's "Huge or smaller" ends the spell, so a Gargantuan creature the aura moves over does not. A creature whose type the engine cannot tell is bound (it cannot be shown to be a Construct or Undead). Opportunity Attacks and touch spells are not gated: they are reach, but go through other paths; the DM judges them (W51).
+

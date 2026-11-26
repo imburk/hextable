@@ -6,13 +6,13 @@ import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
 import { breakConcentration, durationMinutes, effectsOf, endEffect, endWards, startEffect, turnKey } from '../durations.js';
 import { shiftZone, zonesOf } from '../zones.js';
-import { silentAt } from '../terrain.js';
+import { globesOf, inGlobe, silentAt } from '../terrain.js';
 import { apart, footprint, FT, gap, landing, overlapAt, sizeOf, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
-import { aimArea, areaHexes, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { aimArea, areaHexes, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
@@ -580,10 +580,14 @@ function castSpell(s, a, ctx, ev, item) {
     const range = typeof (mm.range ?? grown) === 'number' && spear ? (mm.range ?? grown) + spear : mm.range ?? grown;
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
+    // Globe of Invulnerability: a spell of a level below the Globe's (its slot level less one, whatever slot this one is cast with) cast from outside it cannot affect anything within it. A spell
+    // aimed at creatures may target one inside, and has no effect on it (as an invalid target: `warded`, below); the inside is left out of the area of one aimed at an area. What the caster stands in is judged by where it stands, never by who is hidden in it.
+    const globes = globesOf(s).filter((fx) => sp.level <= fx.level - 1 && !inGlobe(s, fx, e)), globed = (x) => globes.some((fx) => inGlobe(s, fx, x));
     if (sp.aim === 'area') {
       // A wall (a placed Line) may say which way it runs: `toward`, a space on its line (absent, it runs across the line from the caster to `hex`).
       a.toward === undefined || (sp.area.placed && a.toward && Number.isInteger(a.toward.q) && Number.isInteger(a.toward.r)) || fail(sp.area.placed ? `Name a space ${sp.name} runs toward.` : `${sp.name} is not a wall: it has no direction to choose.`);
       ({ targets, hexes, origin: areaOrigin } = aimArea(s, e, sp.name, sp.area, range, a.hex, a.toward));
+      if (globes.length) { targets = targets.filter((x) => !globed(x)); hexes = hexes.filter((h) => !globes.some((fx) => fx.terrain.hexes.includes(col(h)))); }
       // A zone that rolls (Flaming Sphere) is a thing on the ground: "an unoccupied space", so not one a creature stands in.
       // A creature the caster does not know of does not count (as in a teleport's landing): the error must not tell a player it is there.
       if (zoneDef?.move && living(s).some((t) => knownTo(s, e, t) && standsIn(t, col(a.hex), areaOrigin?.z ?? e.pos.z, gridOf(s.map)))) fail(`${sp.name} appears in an unoccupied space: a creature stands there.`);
@@ -594,8 +598,9 @@ function castSpell(s, a, ctx, ev, item) {
     // `target.creature.types` (Hold Person's Humanoid): a creature of another type is an invalid target. SRD 5.2.1, "Invalid Targets": "nothing
     // happens to that target, but if you used a spell slot to cast the spell, the slot is still expended." So the cast is made and paid for as
     // aimed, and those creatures are left out of what it does (`invalid`, below). One whose type the engine cannot tell is the DM's to judge.
-    const invalid = sp.aim === 'creature' && sp.types ? targets.filter((t) => { const ty = creatureType(t); return ty !== null && !sp.types.includes(ty); }) : [];
-    const untyped = sp.aim === 'creature' && sp.types ? targets.filter((t) => creatureType(t) === null) : [];
+    const warded = sp.aim === 'creature' && globes.length ? new Set(targets.filter(globed)) : new Set();      // Globe of Invulnerability
+    const invalid = sp.aim === 'creature' ? [...new Set([...(sp.types ? targets.filter((t) => { const ty = creatureType(t); return ty !== null && !sp.types.includes(ty); }) : []), ...warded])] : [];
+    const untyped = sp.aim === 'creature' && sp.types ? targets.filter((t) => creatureType(t) === null && !warded.has(t)) : [];
     if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
     if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
     // A teleport goes where `a.hex` names (Misty Step), checked now, before anything is spent.
@@ -714,7 +719,7 @@ function castSpell(s, a, ctx, ev, item) {
     if (invalid.length) {
       const first = steps[0], asSave = first && 'save' in first && !first.half && !(first.onSuccess ?? []).length;
       for (const t of new Set(invalid)) {
-        if (asSave) ev.push({ type: 'save', id: t.id, abil: first.save, dc: first.dc ?? st.dc, success: true, invalid: true });
+        if (asSave && !warded.has(t)) ev.push({ type: 'save', id: t.id, abil: first.save, dc: first.dc ?? st.dc, success: true, invalid: true });
         else ev.push({ type: 'note', id: t.id, text: `${sp.name} does nothing to ${t.name}.` });
       }
     }
@@ -739,7 +744,10 @@ function castSpell(s, a, ctx, ev, item) {
         fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
         ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
       }
-      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}) };
+      // A Globe's columns include the caster's own space (the Emanation's list leaves it out); a Shell keeps none and moves with its caster.
+      const own = ter.globe ? footprint(e, e.pos, gridOf(s.map)).map(col) : [];
+      fx.terrain = { area: { ...sp.area }, hexes: ter.shell ? [] : [...new Set([...hexes.map(col), ...own])], origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}), ...(ter.globe ? { globe: true } : {}), ...(ter.shell ? { shell: true, follows: e.id } : {}) };
+      if (ter.shell && !shellSeen(s, e)) ev.push({ type: 'manual', actor: e.id, name: sp.name, partial: true, text: `${sp.name}: the caster is hiding, so the engine does not enforce the aura (a refusal would tell the players something is there). The DM keeps creatures other than Constructs and Undead from passing into it or reaching through it.` });
     }
     const before = ev.length;
     const shared = sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps, !!evo.overchannel) : null;

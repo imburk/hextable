@@ -7,7 +7,7 @@ import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { actionProfile, CUBE_AIM_MAX, loadOf, rangeAt, scaleSteps, targetCount, WORK } from '../effects.js';
 import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
-import { difficultAt, terrainsOf } from '../terrain.js';
+import { difficultAt, inShell, shellsOf, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule, unknown } from '../vision.js';
 import { hiddenFrom } from '../sight.js';
 import { holds, zonesOf } from '../zones.js';
@@ -334,6 +334,8 @@ export function moveOptions(s, e, opts = {}) {
   const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
   // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
   const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
+  // Antilife Shell: it cannot be walked, climbed or flown into from outside (and ladders are no way round it).
+  const shells = opts.unshelled ? [] : shellsFor(s, e), shelled = shells.length ? (from, h) => shelledStep(s, e, from, h, shells) : () => false;
   // Freedom of Movement (`{ on: 'terrain', op: 'immune' }`): Difficult Terrain costs it nothing extra (a tile of it, a rise, a creature's space, ground a spell made difficult).
   const easy = modifiers(s, e, 'terrain').immune === true;
   const big = shapeOf(e, G).length > 1, tall = sizeOf(e).height;
@@ -379,7 +381,7 @@ export function moveOptions(s, e, opts = {}) {
           if (water) wet.add(key(h));
           if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
           if (!bodyFits(from, h, here.id)) continue;
-          if (blocks(h)) continue;
+          if (blocks(h) || shelled(from, h)) continue;
           const diag = diagonal(from, n);
           if (diag && !cornersFree(from, h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
@@ -406,7 +408,7 @@ export function moveOptions(s, e, opts = {}) {
         if (grounded || opts.footing || !o.to || !objectDef(o).connects) continue;
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
         const h = key(a) === key(from) ? b : b && key(b) === key(from) ? a : null;
-        if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
+        if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || shelled(from, h) || !fitsOn(map, e, h, B)) continue;
         const cost = Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2);
         out.push({ h, cost, max: limit.climb, flat: 0, extra: cost, diag: false });
       }
@@ -424,7 +426,7 @@ export function moveOptions(s, e, opts = {}) {
         if (dz < 0 && column.some((sf) => sf.z > h.z && sf.z <= from.z)) continue;
         if (room.landed && (B.solid(room.landed.level.id, n) || (e.side !== 'party' && hazards.has(`${room.landed.level.id}|${col(n)}`)))) continue;
         if (walled_ && n !== from && [from.z, h.z].some((z) => wallsAt(map, z).some((l) => B.blocked(l.id, from, n, z - l.z >= FT ? 'tall' : 'move')))) continue;
-        if (blocks(h)) continue;
+        if (blocks(h) || shelled(from, h)) continue;
         const diag = diagonal(from, n);
         if (diag && !cornersFree(from, h)) continue;
         const flat = crowded(h) ? 2 : 1;
@@ -1174,6 +1176,7 @@ export function aimAction(s, e, def, a, all = false, ctx = null) {
     if (!(far > 0)) fail(`${e.name}'s ${def.name} says neither how far it reaches nor how far it shoots, so it cannot be aimed at anyone. The DM can apply it by hand.`);
     for (const id of a.targets ?? [a.target]) { const x = ent(s, id); !x.dead || fail(`${x.name} is already dead.`); }
     const targets = creatures(s, e, def.name, { range: far, harmful: true, repeat: c.repeat, within: c.within, most: c.count ?? 1 }, a);
+    if (c.reach !== undefined) for (const x of targets) { const why = shellRefusal(s, e, x); if (why) fail(why); }      // Antilife Shell: no reaching through it
     return { targets, hexes: null, origin: null };
   }
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
@@ -1195,6 +1198,20 @@ function pickCaught(e, name, caught, ids, most) {
 }
 // A creature's type: a pack monster's, else a character's (Humanoid). Null for one the engine cannot tell.
 export const creatureType = (e) => e.type ?? CONTENT.monsters[e.tpl]?.type ?? (e.kind === 'pc' ? 'humanoid' : null);
+
+// Antilife Shell (terrain `shell`; docs/specs/rules-expansion.md, "Build notes: wave 3b part 1"): the shells that bind creature `e`. Constructs and Undead are not bound; a creature
+// whose type the engine cannot tell is (the DM lets it through if it is one). The caster is not bound by its own. A shell whose caster the party does not know of (hidden,
+// hiding, or not seen) binds nobody: a refusal would tell the players something stands there, as a bare cell would not, so the DM judges it (the cast told the DM so).
+export const shellSeen = (s, c) => !c.hidden && !c.hiding && !unknown(s, c);
+export function shellsFor(s, e) {
+  if (!shellsOf(s).length || ['construct', 'undead'].includes(creatureType(e))) return [];
+  return shellsOf(s).filter((fx) => { const c = s.entities[fx.terrain.follows]; return c.id !== e.id && shellSeen(s, c); });
+}
+// Would a step of `e` from `from` to `to` take it into a shell from outside (a creature already inside is not pushed out, and may move within it)?
+export const shelledStep = (s, e, from, to, shells = shellsFor(s, e)) => shells.some((fx) => !inShell(s, fx, e, from) && inShell(s, fx, e, to));
+// Is a reach attack (a melee weapon attack, or an action with a reach) from `a` at `t` through a shell: one of them inside it, the other outside?
+export const shelledReach = (s, a, t) => shellsFor(s, a).some((fx) => inShell(s, fx, a) !== inShell(s, fx, t));
+export const shellRefusal = (s, a, t) => shelledReach(s, a, t) ? `${t.name} is out of reach: Antilife Shell keeps ${a.name} from reaching through it.` : null;
 
 // Who an area action would catch if aimed at `hex`, or null if it cannot be aimed there. For the AI and the UI.
 export function areaTargets(s, e, def, hex) {

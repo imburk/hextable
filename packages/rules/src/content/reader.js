@@ -693,7 +693,12 @@ class Reading {
     const t = this.def.terrain;
     if (t === undefined) return;
     if (!isObj(t)) return this.bad('`terrain` is not an object.');
-    this.odd(t, ['difficult', 'obscured', 'lasts', 'silence'], 'The terrain');
+    this.odd(t, ['difficult', 'obscured', 'lasts', 'silence', 'globe', 'shell'], 'The terrain');
+    if (t.globe === true || t.shell === true) {
+      if (t.globe === true) this.line('The Emanation stays where it went off, as a barrier for as long as the spell lasts: a spell cast from outside it, of a level below the slot the spell was cast with, cannot affect anything within it. Such a spell may be aimed at a creature inside, and has no effect on it; the inside is left out of the area of one aimed at an area. A spell cast from inside it is not stopped.');
+      else this.line('The Emanation moves with the caster as a barrier for as long as the spell lasts: a creature other than a Construct or an Undead cannot move into it from outside, or make a melee or reach attack from outside at one inside it (or from inside at one outside). A creature already inside is not pushed out. Spells and ranged attacks are not stopped. If the caster moves so that a Huge or smaller creature it holds back would be forced through it, the spell ends.');
+      return;
+    }
     if (aim !== 'area') {
       this.line('The entry changes the ground in its area, but the engine cannot lay the area out: the DM marks it.');
       return this.dm('The changed ground: the engine cannot lay out the area.');

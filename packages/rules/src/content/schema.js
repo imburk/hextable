@@ -295,18 +295,24 @@ function lintZone(e, say, action = false) {
 // `terrain`: the spell's area is Difficult Terrain (`difficult: true`) and/or Heavily or Lightly
 // Obscured (`obscured: 'heavy' | 'light'`) while it lasts; an instant spell says how long with
 // `lasts: 'nextTurnEnd'` (until the end of the caster's next turn: Ice Storm). An Emanation that
-// moves with its caster cannot carry it yet. `silence: true` (Silence): a Sphere of Silence: a creature in it cannot cast a spell with a Verbal component, and one entirely inside takes no
+// moves with its caster cannot carry those. `silence: true` (Silence): a Sphere of Silence: a creature in it cannot cast a spell with a Verbal component, and one entirely inside takes no
 // Thunder damage (terrain.js `silentAt`, `silentAll`). A lasting spell's area only. docs/specs/rules-expansion.md, "Build notes: wave 3a part 3".
+// `globe: true` (Globe of Invulnerability): an Emanation that stays where it went off; a spell of a lower level than the spell's own slot, cast from outside it, cannot affect anything within.
+// `shell: true` (Antilife Shell): an Emanation that moves with its caster; creatures other than Constructs and Undead cannot move into it from outside or make a reach attack through it.
+// Both are the whole of their terrain (nothing else with them) and need a lasting spell whose area is an Emanation. "Build notes: wave 3b part 1".
 function lintTerrain(e, say) {
   const t = e.terrain;
   if (t === undefined) return;
   if (!t || typeof t !== 'object' || !Object.keys(t).length) return say('`terrain` must be an object');
-  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts', 'silence'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
+  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts', 'silence', 'globe', 'shell'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
   if (t.difficult !== undefined && t.difficult !== true) say('`terrain.difficult` is true or left out');
   if (t.obscured !== undefined && !['heavy', 'light'].includes(t.obscured)) say('`terrain.obscured` is "heavy" or "light"');
   if (t.silence !== undefined && !(t.silence === true && e.duration !== 'instant' && e.target?.area?.shape === 'sphere')) say('`terrain.silence` is true, on a lasting spell whose area is a sphere');
-  if (!t.difficult && !t.obscured && !t.silence) say('`terrain` makes the area difficult, obscured or silent');
-  if (!e.target?.area || e.target.area.count || e.target.area.choose || e.target.area.shape === 'emanation') say('`terrain` needs a single area that stays where it is laid out');
+  const barrier = t.globe !== undefined || t.shell !== undefined;
+  for (const k of ['globe', 'shell']) if (t[k] !== undefined && !(t[k] === true && e.duration !== 'instant' && e.target?.area?.shape === 'emanation' && Object.keys(t).length === 1)) say(`\`terrain.${k}\` is true, alone, on a lasting spell whose area is an Emanation`);
+  if (t.globe !== undefined && t.shell !== undefined) say('`terrain` is a globe or a shell, not both');
+  if (!t.difficult && !t.obscured && !t.silence && !barrier) say('`terrain` makes the area difficult, obscured, silent, a globe or a shell');
+  if (!e.target?.area || e.target.area.count || e.target.area.choose || (e.target.area.shape === 'emanation' && !barrier)) say('`terrain` needs a single area that stays where it is laid out');
   if (e.duration === 'instant' ? t.lasts !== 'nextTurnEnd' : t.lasts !== undefined) say('`terrain.lasts` is "nextTurnEnd", for an instant spell only (otherwise it lasts as the spell does)');
 }
 
@@ -3051,7 +3057,7 @@ const SHAPES = {
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
   zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'] },
-  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence'] },
+  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence', 'globe', 'shell'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
   count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
@@ -3522,7 +3528,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
   zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i' },
-  terrain: { difficult: 'b', obscured: 's', lasts: 's', silence: 'b' },
+  terrain: { difficult: 'b', obscured: 's', lasts: 's', silence: 'b', globe: 'b', shell: 'b' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },
   bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's', first: 's' },
