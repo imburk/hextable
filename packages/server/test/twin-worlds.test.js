@@ -1445,3 +1445,11 @@ test("meld into stone: a foe the DM never hid, merged with a wall, is sent as no
   sc.steps = sc.steps.filter((s) => typeof s !== "function");
   twin(sc, { hide: (w) => meldFoe(w, { seen: true }), plain: (w) => { w.state.seq += MELDED_FOE_SEQ; } });
 });
+// (c) The same under the table's sight rules: the party is sent only what it sees, and a creature merged with stone is seen by no one (partyView, `unknown`, `sees`).
+for (const rule of ["los", "light"]) test(`meld into stone: under the ${rule} sight rule a foe in plain view, merged with a wall, is sent as no creature at all`, () => {
+  const sc = meldTwin();
+  sc.steps = sc.steps.filter((s) => typeof s !== "function");
+  const setup = sc.setup;
+  sc.setup = (w) => { setup(w); w.must({ type: "setting", key: "sight", value: rule }); };
+  twin(sc, { hide: (w) => meldFoe(w, { seen: true }), plain: (w) => { w.state.seq += MELDED_FOE_SEQ; } });
+});

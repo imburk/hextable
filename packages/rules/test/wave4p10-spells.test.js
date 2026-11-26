@@ -12,7 +12,9 @@ import { gridOf } from "../src/grid.js";
 import { newMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
 import { describeStep } from "../src/history.js";
-import { partyView } from "../src/vision.js";
+import { partyView, unknown } from "../src/vision.js";
+import { canSee } from "../src/sight.js";
+import { holds } from "../src/zones.js";
 import { classify, view } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -344,4 +346,52 @@ test("history: leaving the stone has a label", () => {
 
 test("the CONTENT entry is the one the engine runs", () => {
   assert.equal(CONTENT.spells["meld-into-stone"].tier, "assist");
+});
+
+test("seen by no creature: a foe cannot see it, it sees no one, and it is unknown and out of the party's view whoever else looks", () => {
+  const s = floor();
+  ok(apply(s, { type: "setting", key: "sight", value: "los" }, DM));
+  ok(apply(s, { type: "place", actor: "fighter", to: { q: -2, r: 0 } }, DM));       // beside it, and on the near side of the window
+  const g = foe(s, -3, 0);
+  assert.notEqual(canSee(s, g, s.entities.wizard), "no", "before: the foe sees the wizard");
+  ok(meld(s));
+  assert.equal(canSee(s, g, s.entities.wizard), "no", "a foe sees nothing of it");
+  assert.equal(canSee(s, s.entities.wizard, g), "no", "and it sees nothing outside");
+  assert.ok(partyView(s).creatures.has(g.id), "the fighter still sees the foe");
+  const h = foe(s, -1, 0, "Other");
+  ok(apply(s, { type: "place", actor: "cleric", to: { q: -3, r: 1 } }, DM));
+  h.melded = { fx: "x", level: "ground", x: 2.5, y: 0, at: { ...h.pos } };
+  assert.ok(!partyView(s).creatures.has(h.id), "a foe merged with stone is in no one's view");
+  assert.equal(unknown(s, h), true);
+  assert.equal(unknown(s, g), false);
+});
+
+test("a lasting area over its space does not hold it", () => {
+  const s = melded();
+  const fx = { zone: { area: { shape: "sphere", size: 20 }, on: ["enter"], hexes: [H.col({ q: 0, r: 0 }), H.col({ q: 1, r: 0 })], origin: { q: 0, r: 0, z: 0 }, spare: [] } };
+  assert.equal(holds(s, fx, s.entities.cleric), true, "a creature of the party standing there is held");
+  ok(apply(s, { type: "place", actor: "cleric", to: { q: 0, r: 0 } }, DM));
+  assert.equal(holds(s, fx, s.entities.cleric), true);
+  assert.equal(holds(s, fx, s.entities.wizard), false, "the merged one is in no zone");
+});
+
+// Twin (b), a party member merged with stone. The design says a merged creature is still among its party's records (its mark `melded` is sent, so a player
+// knows where an ally is), and that it sees nothing. So what is compared with a world where it simply stepped out of view is the one thing that must
+// match: what the other player is sent of the creatures that are not the party's (the foe only the merged one could have seen) and the party's sight of it.
+// What differs on purpose: the wizard's own record (its mark, its place) and the tiles around it that it saw before it merged.
+test("a party member merged with stone, and one that stepped out of view, leave the other player sent the same of the creatures outside the party", () => {
+  const build = (merge) => {
+    const s = floor();
+    ok(apply(s, { type: "setting", key: "sight", value: "los" }, DM));
+    for (const [i, id] of ["fighter", "rogue", "cleric"].entries()) ok(apply(s, { type: "place", actor: id, to: { q: 12, r: i } }, DM));
+    foe(s, -3, 0);
+    if (merge) ok(meld(s)); else ok(apply(s, { type: "place", actor: "wizard", to: { q: 12, r: 3 } }, DM));
+    return s;
+  };
+  const outside = (s) => Object.values(view(s, SAM).entities ?? view(s, SAM).creatures ?? {}).filter((e) => e.side !== "party").map((e) => e.name);
+  const merged = build(true), away = build(false);
+  assert.deepEqual(outside(merged), outside(away));
+  assert.deepEqual(outside(merged), [], "the foe is not sent in either");
+  assert.deepEqual([...partyView(merged).creatures], [...partyView(away).creatures]);
+  assert.notDeepEqual(JSON.stringify(view(merged, SAM)), JSON.stringify(view(away, SAM)), "the wizard's own record does differ: that is not hidden");
 });
