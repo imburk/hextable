@@ -511,7 +511,7 @@ function shownMap(state) {
   // out, with the light of each that is not bright. Only tiles that are sent.
   let sight;
   if (rule !== 'rooms') {
-    const now = {}, light = {}, sources = rule === 'light' ? lightSources(state) : null;
+    const now = {}, light = {}, sources = rule === 'light' ? lightSources(state, { party: true }) : null;
     for (const t of pv.seen.values()) {
       if (!has(t.level, t)) continue;
       (now[t.level] ??= []).push(col(t));

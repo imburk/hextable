@@ -1487,3 +1487,24 @@ test("produce flame: a creature in the dark just past the flame's 40 feet is sen
   const inside = twinRun(cast, { hide: (w) => lurk(w, { q: 4, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 5, r: 0 }) });     // 30 feet
   assert.ok(inside.diffs.length > 0 && sent(inside.hidden, "Sam") && !sent(inside.plain, "Sam"), "30 feet: the flame shows it");
 });
+
+// ---- A light carried by a creature the DM keeps hidden (review of #830, F1): it lights nothing the players are sent ----
+test("a DM-hidden foe carrying a light lights nothing the players are sent (sight rule 'light', a dark level)", () => {
+  const byN = (w, name) => Object.values(w.state.entities).find((e) => e.name === name);
+  const setup = (w) => {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (let q = -16; q <= 17; q++) for (let r = -3; r <= 3; r++) s.map.levels[0].tiles[`${q},${r}`] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    w.must({ type: "setting", key: "sight", value: "light" });
+    w.must({ type: "mapEdit", ops: [{ op: "level", level: { id: "ground", light: "dark" } }] });
+    for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -2, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+    Object.assign(s.entities.wizard, { owner: w.ids.Sam, ownerName: "Sam" });
+  };
+  const r = twinRun({ players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } }] }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 8, r: 0 }, name: "Lurker", hidden: true }); Object.assign(byN(w, "Lurker"), { light: { bright: 20, dim: 20 } }); },
+    plain: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 9, r: 0 }, name: "Burnt", hidden: true }); delete w.state.entities[byN(w, "Burnt").id]; },
+  });
+  if (r.diffs.length) assert.fail(describe(r.diffs));
+});
