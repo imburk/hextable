@@ -424,6 +424,19 @@ When it is cast, the DM is shown the author's description (unless a step has alr
 Not checked against any rulebook.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-leaping
+"Leaping" (level 1 evocation, touch, action, 1 minute).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+One creature the caster touches gets once on each of its turns, a leap of up to 30 feet for 10 feet of movement, with or without a running start.
+  It lasts as long as the spell.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-far-step
 "Far Step" (level 7 evocation, 10 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
