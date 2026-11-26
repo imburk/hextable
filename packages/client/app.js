@@ -4,6 +4,7 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
+import { objectsFor, objectAt, objectOptions, objectWords, isObjectAim } from './objectaim.js';
 import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers } from './wallaim.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
@@ -763,6 +764,7 @@ function choicesFor() {
   if (!e || !sp) return null;
   const groups = [], menu = !mode.item ? slotMenu(e, sp) : null;
   if (menu) groups.push({ id: 'slot', label: `Cast ${sp.name} at which level?`, options: slotOptions(e.slots, sp.level, menu, slotOf(e, sp)) });
+  if (isObjectAim(sp)) { const offers = objectsFor(S, e, sp); if (offers.length) groups.push({ id: 'object', label: `Which object does ${sp.name} work on?`, options: objectOptions(offers, mode.object ?? null) }); }
   const list = choicesOf(sp);
   if (list) {
     const now = list.includes(mode.choice) ? mode.choice : list[0];
@@ -780,6 +782,7 @@ function openChoices() {
 function chooseOption(group, value) {
   if (group === 'slot') mode.slot = +value;
   else if (group === 'pick') mode.choice = value;
+  else if (group === 'object') { aimRefusal = null; mode.object = String(value); }
   else return;
   refresh();
 }
@@ -1058,6 +1061,14 @@ function refresh() {
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
         if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the ${imbueOf(sp) ? 'weapon' : 'slot'}, then tap the die`; go = true; }
+        else if (isObjectAim(sp)) {
+          const offers = objectsFor(S, e, sp);
+          if (!offers.some((o) => o.id === mode.object)) mode.object = null;       // it went out of reach, or out of view: the choice goes with it
+          hl.range = offers.filter((o) => o.id !== mode.object).flatMap((o) => o.hexes);
+          hl.area = offers.find((o) => o.id === mode.object)?.hexes ?? [];
+          hint = objectWords(sp.name, offers, mode.object);
+          go = !!mode.object;
+        }
         else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
           const wall = isWall(sp) && !!mode.aim, hexes = aimed ? areaHexes(S, e, sp, mode.aim, wall ? wallToward(mode) : undefined) : [];
@@ -1421,6 +1432,17 @@ function aimTap(hex) {
   mode.aim = hex; mode.pinned = true;
   refresh();
 }
+// A tap while aiming a spell at an object (Knock): a lit object is chosen (another tap swaps it; a second tap on the chosen one confirms, as an area's does); a tap elsewhere says so and changes nothing.
+function objectTap(e, sp, hex) {
+  const id = objectAt(S, objectsFor(S, e, sp), hex);
+  if (!id) return toast(`${sp.name} needs one of the lit objects.`, true);
+  aimRefusal = null;
+  const same = mode.object === id;
+  if (same && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
+  if (!same) pinnedAt = Date.now();
+  mode.object = id;
+  refresh();
+}
 R.onTap = (hit) => {
   const { hex, id } = hit;
   if (!S || !T || skipping()) return;
@@ -1447,6 +1469,7 @@ R.onTap = (hit) => {
   if (mode.kind === 'spell') {
     const sp = SPELLS[mode.id];
     if (sp.aim === 'self' || sp.aim === 'none') return;       // armed only to choose the slot: Cast or Cancel in the hint bar
+    if (isObjectAim(sp)) return objectTap(e, sp, hex);
     if (sp.area) return aimTap(hex);
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
@@ -1526,6 +1549,7 @@ $('hint-go').onclick = () => {      // only the movement an Opportunity Attack g
 function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
   else if (SPELLS[mode.id].aim === 'self' || SPELLS[mode.id].aim === 'none') act(castAct({ ...chosen(SPELLS[mode.id]) }));
+  else if (isObjectAim(SPELLS[mode.id])) act(castAct({ object: mode.object, ...chosen(SPELLS[mode.id]) }));
   else if (SPELLS[mode.id].area) {
     const sp = SPELLS[mode.id], me = S.entities[selId];
     // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.

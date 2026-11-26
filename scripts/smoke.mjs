@@ -27,6 +27,7 @@ const REGISTRY = {
   base: ['solo', 'multiplayer'],
   armed: ['armed'],
   aimrange: ['aimrange'],
+  objectaim: ['objectaim'],
   walls: ['walls'],
   healthbars: ['healthbars'],
   dieconfirm: ['dieconfirm'],
