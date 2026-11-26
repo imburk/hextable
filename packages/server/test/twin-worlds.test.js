@@ -1477,3 +1477,13 @@ test("darkvision: before the spell a creature 140 feet off in the dark is sent t
   const walled = twin(cast((w) => { w.state.map.walls.push({ id: "wallD", level: "ground", a: [-70, 11], b: [70, 11], kind: "wall" }); w.must({ type: "place", actor: "wizard", to: { q: -2, r: 0 } }); }), { hide: (w) => lurk(w, { q: -2, r: 6 }, "Lurker"), plain: (w) => burn(w, { q: -2, r: 7 }) });
   assert.ok(!JSON.stringify(walled.hidden.raw.Sam).includes("Lurker"), "behind a wall: Sam is told of nothing");
 });
+
+// ---- Produce Flame (#786 wave 5 part 1): the flame the caster carries lights 40 feet round it, and no more ----
+test("produce flame: a creature in the dark just past the flame's 40 feet is sent as a bare cell is; one inside it is sent to the caster's player after the cast", () => {
+  const cast = { players: ["Pat", "Sam"], setup: (w) => { darkvisionSetup(w); w.state.entities.wizard.spells.push("produce-flame"); w.must({ type: "place", actor: "wizard", to: { q: -2, r: 0 } }); }, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "produce-flame" } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  const sent = (r, who) => JSON.stringify(r.raw[who]).includes("Lurker");
+  const outside = twin(cast, { hide: (w) => lurk(w, { q: 7, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 8, r: 0 }) });      // 45 feet
+  assert.ok(!sent(outside.hidden, "Sam"), "45 feet: Sam is told of nothing");
+  const inside = twinRun(cast, { hide: (w) => lurk(w, { q: 4, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 5, r: 0 }) });     // 30 feet
+  assert.ok(inside.diffs.length > 0 && sent(inside.hidden, "Sam") && !sent(inside.plain, "Sam"), "30 feet: the flame shows it");
+});

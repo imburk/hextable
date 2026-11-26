@@ -1220,7 +1220,8 @@ export const STEP_SENTENCES = {
     if (!isObj(a)) return this.bad(`Step ${at}: \`arm\` is not an attack.`);
     const dice = isDice(a.damage) ? a.damage : null;
     if (dice) this.num(`${at}.arm.damage`, dice, 'dice'); else this.bad(`Step ${at}: the arm step has no readable damage dice.`);
-    say(`${Who} gets one more action to take for as long as the spell lasts: a melee spell attack (reach 5 feet) with the caster's spell attack bonus, dealing ${dice ?? '(unreadable dice)'}${a.addMod === true ? ' plus the spellcasting ability modifier' : ''} ${a.type ?? '(unreadable type)'} damage on a hit. It takes ${a.time === 'bonus' ? 'a Bonus Action' : 'the Action'}, and goes when the spell ends.`);
+    if (a.range !== undefined) { if (isInt(a.range)) this.num(`${at}.arm.range`, a.range, 'feet'); else this.bad(`Step ${at}: the arm step has no readable range.`); }
+    say(`${Who} gets one more action to take for as long as the spell lasts: ${isInt(a.range) ? `a ranged spell attack at a creature within ${a.range} feet` : 'a melee spell attack (reach 5 feet)'} with the caster's spell attack bonus, dealing ${dice ?? '(unreadable dice)'}${a.addMod === true ? ' plus the spellcasting ability modifier' : ''} ${a.type ?? '(unreadable type)'} damage on a hit. It takes ${a.time === 'bonus' ? 'a Bonus Action' : 'the Action'}, and goes when the spell ends.`);
     if (!this.fx || this.fx === 'bound' || this.obj || this.itm || this.mon) { this.line('The spell does not last, so the engine has nothing to hang the attack on: the DM resolves it.', 1); return this.dm(`Step ${at}: the attack the spell gives.`); }
   },
   // engine/rolls.js `revive`.

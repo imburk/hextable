@@ -74,7 +74,7 @@ export function scaleSteps(def, casterLevel = 0, slot = def.level) {
   const byLevel = def.higher?.level;
   if (byLevel) {
     const reached = Object.keys(byLevel).map(Number).filter((l) => l <= casterLevel).sort((x, y) => y - x)[0];
-    const dmg = first('damage');
+    const dmg = first('damage') ?? first('arm')?.arm;          // a cantrip that gives an attack (`arm`: Produce Flame) grows it as its damage
     if (reached !== undefined && dmg) dmg.damage = byLevel[reached];
   }
   const up = slot - def.level, bySlot = def.higher?.slot;
@@ -154,9 +154,9 @@ function summarise(def) {
   if (kind === 'ward') return { short: 'ward', long: `Attackers and damaging spells aimed at the target need a ${step.ward.toUpperCase()} save first; the ward ends when the target attacks, casts a spell or deals damage` };
   if (kind === 'command') return { short: 'command', long: 'The target follows a one-word command on its next turn' };
   if (kind === 'confuse') return { short: 'confused', long: `The target can take no Bonus Action or Reaction and acts at random on its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}` };
-  if (kind === 'arm') return { short: `${step.arm.damage} ${step.arm.type}`, long: `Gives the caster a melee spell attack for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage for as long as it lasts` };
+  if (kind === 'arm') return { short: `${step.arm.damage} ${step.arm.type}`, long: `Gives the caster a ${step.arm.range ? `ranged spell attack within ${step.arm.range} feet` : 'melee spell attack'} for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage for as long as it lasts` };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
-  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.map((c) => (c === 'exhaustionLevel' ? 'one Exhaustion level' : c === 'curse' ? 'curses' : c)).join(', ')}` };
+  if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.map((c) => (c === 'exhaustionLevel' ? 'one Exhaustion level' : c === 'curse' ? 'one curse' : c === 'curses' ? 'all curses' : c)).join(', ')}` };
   if (kind === 'modifier') {
     const m = step.modifier, what = m.on === 'ac' ? 'AC' : m.on;
     if (m.on === 'condition') return { short: `immune to ${m.scope.condition}`, long: `Immune to the ${cap(m.scope.condition)} condition for ${def.duration}${def.concentration ? ', Concentration' : ''}` };

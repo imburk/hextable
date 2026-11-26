@@ -24,7 +24,7 @@ function field(seed = 5) {
   for (const [id, q, r] of [["wizard", 0, 0], ["fighter", -2, 0], ["rogue", -4, 4], ["cleric", -3, 0]]) ok(apply(s, { type: "place", actor: id, to: { q, r } }, DM));
   const slots = { 1: 4, 2: 3, 3: 3, 4: 3, 5: 2, 6: 2 };
   for (const id of ["wizard", "cleric"]) Object.assign(s.entities[id], { slots: { ...slots }, slotsMax: { ...slots } });
-  s.entities.wizard.spells.push("darkvision", "remove-curse", "bestow-curse");
+  s.entities.wizard.spells.push("darkvision", "remove-curse", "bestow-curse", "produce-flame");
   s.entities.cleric.spells.push("remove-curse", "bestow-curse");
   for (const e of Object.values(s.entities)) e.hp = e.maxHp = 40;
   return s;
@@ -146,4 +146,79 @@ test("Greater Restoration's `curse` still ends one curse, the oldest", () => {
   assert.equal(cursed(s, sk.id).length, 2);
   cast(s, "cleric", { spell: "greater-restoration", target: sk.id, slot: 5, choice: "curse" });
   assert.equal(cursed(s, sk.id).length, 1);
+});
+
+// ---- Produce Flame ----
+const flame = (s) => s.entities.wizard.actions?.find((x) => x.id === "produce-flame");
+test("tiers: Produce Flame is assist; the entry lints and reads; `arm.range` is feet", () => {
+  const def = SPELLS["produce-flame"].def;
+  assert.equal(def.tier, "assist");
+  assert.deepEqual(lint(def), []);
+  assert.deepEqual(readEntry("spell", def, {}).problems ?? [], []);
+  const bad = (range) => lint({ ...def, effects: [{ arm: { damage: "1d8", type: "fire", range } }] });
+  assert.deepEqual(bad(120), []);
+  for (const r of [0, 4, 7, 125, "60"]) assert.ok(bad(r).some((p) => /arm.range/.test(p)), String(r));
+});
+
+test("Produce Flame: a light and a hurl for 10 minutes; the hurl is a ranged spell attack within 60 feet for 1d8 Fire, a Magic action, and the spell goes on after it", () => {
+  const s = field();
+  const sk = spawn(s, "goblin-warrior", 10, 0), far = spawn(s, "goblin-warrior", 13, 0);        // 50 and 65 feet from the wizard at 0
+  for (const g of [sk, far]) Object.assign(g, { hp: 500, maxHp: 500, ac: 1 });
+  ok(apply(s, { type: "startEncounter", center: { q: 5, r: 0 }, radius: 14 }, DM));
+  turnOf(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "produce-flame" }, DM));
+  assert.ok(!r.events.some((e) => e.type === "manual" && !e.partial && /engine cannot/.test(e.text)));
+  assert.equal(s.encounter.budget.bonus, 0, "the cast took the Bonus Action");
+  const fx = s.effects.find((x) => x.spell === "produce-flame");
+  assert.equal(fx.conc, false);
+  assert.equal(fx.lasts, "10 minutes");
+  assert.deepEqual([s.entities.wizard.light.bright, s.entities.wizard.light.dim], [20, 20]);
+  const act = flame(s);
+  assert.equal(act.armed, fx.id);
+  assert.equal(act.time, "action");
+  assert.equal(act.effects[0].attack, "ranged");
+  assert.deepEqual(act.target.creature.range, [60, 60]);
+  assert.equal(act.effects[0].onHit[0].damage, "1d8");
+  assert.equal(apply(s, { type: "attack", actor: "wizard", target: far.id, attack: "produce-flame" }, DM).ok, false, "65 feet is out of reach");
+  const a = ok(apply(s, { type: "attack", actor: "wizard", target: sk.id, attack: "produce-flame" }, DM));
+  const at = a.events.find((e) => e.type === "attack");
+  assert.ok(at && at.hit !== undefined, JSON.stringify(a.events));
+  assert.equal(s.encounter.budget.action, 0, "the hurl took the Action");
+  const dmg = a.events.filter((e) => e.type === "damage" && e.target === sk.id);
+  if (at.hit) assert.deepEqual([dmg[0].dice.length, dmg[0].dice[0].sides, dmg[0].dtype], [at.crit ? 2 : 1, 8, "fire"]);
+  assert.ok(flame(s), "the spell goes on after the hurl (the SRD does not end it)");
+  assert.equal(s.effects.filter((x) => x.spell === "produce-flame").length, 1);
+});
+
+test("Produce Flame: the damage grows with character level, 2d8 at 5, 3d8 at 11, 4d8 at 17", () => {
+  for (const [level, dice] of [[1, "1d8"], [4, "1d8"], [5, "2d8"], [10, "2d8"], [11, "3d8"], [16, "3d8"], [17, "4d8"], [20, "4d8"]]) {
+    const s = field();
+    s.entities.wizard.level = level;
+    ok(apply(s, { type: "cast", actor: "wizard", spell: "produce-flame" }, DM));
+    assert.equal(flame(s).effects[0].onHit[0].damage, dice, `level ${level}`);
+  }
+});
+
+test("Produce Flame: casting it again replaces the flame; the spell ending takes the hurl and the light away; another creature never had it", () => {
+  const s = field();
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "produce-flame" }, DM));
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "produce-flame" }, DM));
+  assert.equal(s.effects.filter((x) => x.spell === "produce-flame").length, 1, "one flame");
+  assert.equal(s.entities.wizard.actions.filter((x) => x.id === "produce-flame").length, 1);
+  assert.equal(flame({ entities: { wizard: s.entities.cleric } }), undefined);
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  ok(apply(s, { type: "endEffect", actor: "wizard", effect: s.effects.find((x) => x.spell === "produce-flame").id }, DM));
+  assert.equal(flame(s), undefined);
+  assert.equal(s.entities.wizard.light, undefined);
+  assert.equal(apply(s, { type: "attack", actor: "wizard", target: g.id, attack: "produce-flame" }, DM).ok, false);
+});
+
+test("Produce Flame: it lasts 10 minutes and no more", () => {
+  const s = field();
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "produce-flame" }, DM));
+  ok(apply(s, { type: "advanceTime", minutes: 9 }, DM));
+  assert.ok(flame(s));
+  ok(apply(s, { type: "advanceTime", minutes: 2 }, DM));
+  assert.equal(flame(s), undefined);
+  assert.equal(s.entities.wizard.light, undefined);
 });

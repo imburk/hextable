@@ -458,11 +458,11 @@ export function arm(s, t, step, f, ev) {
   if (!fx || fx.bound || t.dead || !Number.isFinite(f.src.attack)) return false;
   const a = step.arm, add = a.addMod ? f.src.healMod ?? 0 : 0, id = f.src.spell ?? fx.spell;
   t.actions = (t.actions ?? []).filter((x) => x.id !== id);
-  t.actions.push({ id, name: f.src.name, time: a.time ?? 'action', armed: fx.id, target: { creature: { reach: 5 } },
-    effects: [{ attack: 'melee', kind: 'spell', bonus: f.src.attack, onHit: [{ damage: add ? `${a.damage}${add > 0 ? '+' : ''}${add}` : a.damage, type: a.type }] }],
-    text: `${f.src.name}: a melee spell attack, ${a.damage}${add ? (add > 0 ? `+${add}` : `${add}`) : ''} ${a.type} damage.` });
+  t.actions.push({ id, name: f.src.name, time: a.time ?? 'action', armed: fx.id, target: { creature: a.range ? { range: [a.range, a.range] } : { reach: 5 } },
+    effects: [{ attack: a.range ? 'ranged' : 'melee', kind: 'spell', bonus: f.src.attack, onHit: [{ damage: add ? `${a.damage}${add > 0 ? '+' : ''}${add}` : a.damage, type: a.type }] }],
+    text: `${f.src.name}: a ${a.range ? `ranged spell attack within ${a.range} ft` : 'melee spell attack'}, ${a.damage}${add ? (add > 0 ? `+${add}` : `${add}`) : ''} ${a.type} damage.` });
   fx.parts.push({ target: t.id, arm: id });
-  ev.push({ type: 'note', id: t.id, text: `${f.src.name}: ${t.name} can make a melee spell attack with it` });
+  ev.push({ type: 'note', id: t.id, text: `${f.src.name}: ${t.name} can make a ${a.range ? 'ranged' : 'melee'} spell attack with it` });
   return true;
 }
 

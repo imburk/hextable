@@ -55,8 +55,9 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `endSpell: true` (Searing Smite), only inside an `eachTurn`: the lasting effect those steps belong to ends, with everything it put on any creature. Put in a save's `onSuccess`: "a success ends the spell".
   // docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
   'endSpell',
-  // `arm: { damage, type, addMod?, time? }` (Flame Blade): for as long as the lasting effect holds, the creature it works on has one more action to take with the Attack command: a melee spell
+  // `arm: { damage, type, addMod?, time?, range? }` (Flame Blade; Produce Flame with `range`): for as long as the lasting effect holds, the creature it works on has one more action to take with the Attack command: a melee spell
   // attack (reach 5 feet) with the caster's spell attack bonus, dealing `damage` (plus the spellcasting modifier with `addMod`) of `type`. It takes the Action, or the Bonus Action with `time: 'bonus'`.
+  // With `range: <feet>` it is a ranged spell attack at a creature within that many feet instead (Produce Flame's hurl, 60).
   // It goes when the effect ends. docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
   'arm',
   // `command: 'approach' | 'drop' | 'flee' | 'grovel' | 'halt' | 'chosen'` (Command): what the creature it works on does on its next turn. The engine puts a part on the lasting effect that is carried out at the start of the creature's next turn
@@ -476,12 +477,13 @@ function lintImbue(i, say) {
 const EACH_TURN_KINDS = ['heal', 'tempHp', 'damage', 'save', 'endSpell', 'manual'];
 // `arm`: a melee spell attack the spell gives its caster for as long as it lasts (Flame Blade).
 function lintArm(a, say) {
-  if (!a || typeof a !== 'object' || Array.isArray(a)) return say('`arm` is { damage, type, addMod?, time? }');
-  for (const k of Object.keys(a)) if (!['damage', 'type', 'addMod', 'time'].includes(k)) say(`arm: "${k}" is not something an arm has`);
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return say('`arm` is { damage, type, addMod?, time?, range? }');
+  for (const k of Object.keys(a)) if (!['damage', 'type', 'addMod', 'time', 'range'].includes(k)) say(`arm: "${k}" is not something an arm has`);
   if (!(isDice(a.damage) && /^\d+d\d+$/.test(a.damage) && +a.damage.split('d')[0] <= 20)) say('arm.damage is dice like 3d6 (up to 20 of them)');
   if (!DAMAGE_TYPES.includes(a.type)) say(`arm.type is one of ${DAMAGE_TYPES.join(', ')}`);
   if (a.addMod !== undefined && a.addMod !== true) say('arm.addMod is true or left out');
   if (a.time !== undefined && !['action', 'bonus'].includes(a.time)) say('arm.time is "action" or "bonus"');
+  if (a.range !== undefined && !(Number.isInteger(a.range) && a.range >= 5 && a.range <= 120 && a.range % 5 === 0)) say('arm.range is feet, 5 to 120, a multiple of 5');
 }
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
@@ -3154,7 +3156,7 @@ const SHAPES = {
   check: { what: 'a check', keys: ['ability', 'skill', 'tool', 'dc'] },
   activate: { what: 'an item use', keys: ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'upTo', 'self', 'dc', 'effects'] },
   attune: { what: 'attunement', keys: ['by', 'spellcaster'] },
-  arm: { what: 'an arm step', keys: ['damage', 'type', 'addMod', 'time'] },
+  arm: { what: 'an arm step', keys: ['damage', 'type', 'addMod', 'time', 'range'] },
   imbue: { what: 'an imbue step', keys: ['weapons', 'melee', 'nonmagical', 'abil', 'die', 'plus', 'attackAdd', 'types'] },
   base: { what: 'a base item', keys: ['weapon', 'armour'] },
   charges: { what: 'charges', keys: ['max', 'regain'] },
@@ -3297,7 +3299,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
-  'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
+  'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
   'targets.#': [1, 20], 'range.#': [5, 240], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
@@ -3652,7 +3654,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
   'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
-  arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
+  arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });
