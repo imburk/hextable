@@ -21,6 +21,7 @@
 // whatever is open), hextable.menuLabels ('3s' | 'always': the words under the symbols), hextable.seen.ring (the note about the health ring was read),
 // hextable.menuOrder and hextable.menuHidden (M9, Arrange: the order of the places and which are hidden; menuorder.js).
 // Where the menu is open is in memory only, and a closed menu opens on its arc.
+import { mapTap } from './passtap.js';
 import { current } from './shared/engine.js';
 import { symbol, placeSymbol } from './symbols.js';
 import { arcLayout, arcShape } from './menuarc.js';
@@ -50,7 +51,7 @@ const FLICK = 0.5, SWIPE = 60;                 // px per ms, px: how far or fast
 const HOLD_MS = 500;                           // a symbol of the arc held this long opens Arrange (Decision 4c)
 const SLIDE_MS = 720;                          // the longest slide (Decision 6, round 2); a panel stays drawn this long after it leaves
 
-export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {}, token: tokenOf = () => null, confirm = () => false, charName = () => null, pickChar = () => {} }) {
+export function initDrawer({ prefs, state, isDM, selected = () => null, change = () => {}, token: tokenOf = () => null, confirm = () => false, charName = () => null, pickChar = () => {}, passTap = () => false, tapMap = () => {} }) {
   const el = $('drawer'), scrim = $('drawer-scrim'), token = $('btn-menu'), title = $('drawer-title'), live = $('drawer-live');
   const rootList = $('menu-root'), moreLevel = $('menu-table'), moreList = $('more-list'), body = $('drawer-body'), arcEl = $('menu-arc'), arc = $('arc');
   const mqWide = matchMedia(WIDE), mqCols = matchMedia(COLUMNS);
@@ -532,7 +533,14 @@ export function initDrawer({ prefs, state, isDM, selected = () => null, change =
   // ---- buttons ----
   token.addEventListener('click', () => { if (tokenOf()?.wait && confirm()) return; toggle(); });      // #750: a tap on the die while an action waits confirms it and does not open the menu
   $('drawer-close').addEventListener('click', () => close());
-  scrim.addEventListener('click', () => close());
+  // #793: where the finger went down on the dimmed map, so its click can be told from a drag; when the app says this tap is also the map's (passTap), it is passed on after the menu closes
+  let scrimDown = null;
+  scrim.addEventListener('pointerdown', (e) => { scrimDown = { x: e.clientX, y: e.clientY, t: performance.now(), type: e.pointerType }; });
+  scrim.addEventListener('click', (e) => {
+    const tap = mapTap(scrimDown, { x: e.clientX, y: e.clientY, t: performance.now() }, passTap());
+    scrimDown = null; close();
+    if (tap) tapMap(tap.x, tap.y, tap.type);
+  });
   $('drawer-pin').addEventListener('click', () => setPin(!pin));
 
   // ---- keys: m toggles (not while typing); Escape closes an unpinned menu and always the arc. On the arc the arrow keys move round it in order and

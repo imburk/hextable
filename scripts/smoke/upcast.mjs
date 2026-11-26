@@ -17,15 +17,20 @@ async function upcast(browser, url, label, opts) {
           ...(await page.evaluate(() => ({ hint: document.getElementById('hint-text').textContent, note: document.getElementById('aim-note').textContent, picked: (window.hextable.mode.picked ?? []).length }))) };
       };
       const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/${touch ? 'phone' : 'desktop'}-upcast-${n}.png` }); };
-      const tapFoe = async (id) => {
+      const tapFoe = async (id, canCover = false) => {
         await page.evaluate(async (i) => {
           const S = window.hextable.state, G = (await import('./shared/grid.js')).gridOf(S.map), R = window.hextable.R, w = G.toWorld(S.entities[i].pos);
           R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
         }, id);
         await sleep(600);
         const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), id);
-        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the foe is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
+        // #793: with the sheet up over the map the dimmed map is what the tap lands on; that one tap closes the sheet and is the tap on the foe
+        const through = !!pt && (await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id === 'drawer-scrim', [pt.x, pt.y]));
+        if (!pt) throw new Error('the foe has no place on screen');
+        if (!through && canCover && !(await onCanvas(page, pt.x, pt.y)) && await page.evaluate(() => !document.getElementById('drawer').hidden)) return null;      // the sheet itself covers the foe (a phone): the caller closes it first
+        if (!through && !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the foe is not on screen where a tap can reach it: ${JSON.stringify(pt)}`);
         await tapAt(page, touch, pt.x, pt.y);
+        return through;
       };
       const arm = async () => {
         await panelTab(page, 'spells');
@@ -74,8 +79,11 @@ async function upcast(browser, url, label, opts) {
       await run.do('level 2 chosen: the hint now asks for four darts, and a tap keeps the choice', async () => {
         await page.click('#ap-choices [data-ch="slot"][data-v="2"]');
         await wait(page, () => /up to 4/.test(document.getElementById('hint-text').textContent));
-        await closePanels(page);                                   // the map is next: the sheet closes (a tap on a phone's dimmed map would do it), the armed spell stays armed
-        await tapFoe(foe);
+        // #793: the sheet is still up at its choices; one tap on the foe through the dimmed map closes it AND picks the foe. Where the sheet covers the foe (a phone) it is closed first, as before.
+        const through = await tapFoe(foe, true);
+        if (through) await waitShown(page, '#drawer', false);
+        else { await closePanels(page); await tapFoe(foe); }
+        console.log(`    (#793: the foe was ${through ? 'tapped through the dimmed map' : 'under the sheet, so the sheet was closed first'})`);
         const v = await view();
         if (v.value !== '2' || v.picked !== 1 || !/^1 of 4 targets$/.test(v.note)) throw new Error(`after a tap: ${JSON.stringify(v)}`);
         await shot('2-level-2');
