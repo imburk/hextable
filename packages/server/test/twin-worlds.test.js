@@ -1236,6 +1236,38 @@ test("feather fall: a visible foe caster with the instruction does not react for
   assert.equal(hidden.w.state.entities.foe.slots[1], 4, "and the caster spent nothing");
   assert.ok(g.hp < g.maxHp, "and was hurt");
 });
+// The other way round: a hidden caster must not react for a VISIBLE ally that falls. Its saving fall (no damage) would tell the players that
+// something they do not know of is there, where a bare cell lets the fall hurt. The hidden thing here is the caster; the faller is in both worlds.
+test("feather fall: a hidden caster does not react for a visible ally that falls: the players are sent the same as with no caster there", () => {
+  const { hidden } = twin({
+    setup(w) {
+      for (const [n, id] of [["Pat", "fighter"], ["Sam", "wizard"]]) w.state.entities[id].owner = w.ids[n];
+      w.must({ type: "loadMap", map: fallWorld() });
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const id of Object.keys(w.state.entities)) if (w.state.entities[id].side === "foe") delete w.state.entities[id];
+      w.must({ type: "place", actor: "fighter", to: { q: 0, r: 0 } });
+      w.must({ type: "place", actor: "wizard", to: { q: 0, r: 1 } });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Faller" });
+    },
+    steps: [
+      { by: "dm", act: { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: { q: 3, r: 0 }, tile: null }] } },
+      { by: "Pat", send: { t: "sync" } },
+      { by: "Sam", act: { type: "say", as: "wizard", text: "What was that?" } },
+    ],
+  }, {
+    hide: (w) => {
+      const c = w.state.entities.foe = structuredClone(w.state.entities.wizard);
+      delete c.owner; delete c.reactions;
+      Object.assign(c, { id: "foe", name: "Foe", side: "foe", kind: "npc", pos: { q: 2, r: 1, z: 0 }, reactionUsed: false, slots: { 1: 4 }, slotsMax: { 1: 4 }, hidden: true });
+      if (!c.spells.includes("feather-fall")) c.spells.push("feather-fall");
+      c.reactions = { "feather-fall": "always" };
+    },
+    plain: (w) => burn(w, { q: 2, r: 1 }),
+  });
+  assert.equal(hidden.w.state.entities.foe.slots[1], 4, "the hidden caster spent nothing");
+  const f = byName(hidden.w, "Faller");
+  assert.ok(f.hp < f.maxHp, "the visible faller was hurt, as on a bare cell");
+});
 test("feather fall: a hidden caster may react for its hidden ally, and the players are sent the same as with neither there", () => {
   const { hidden } = fallTwin(true);
   assert.equal(byName(hidden.w, "Ghost").pos.z, -30);

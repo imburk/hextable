@@ -107,9 +107,11 @@ function featherFall(s, t, feet, ev, from) {
     if (from) t.pos = from;
     try { return apart(s, r, t) * FT <= (typeof sp.range === 'number' ? sp.range : 0) && (r.id === t.id || seesFor(s, r, t)); } finally { t.pos = at; }
   };
-  // A caster the party knows of never reacts for a faller the party does not know of: its reaction would tell the players of it.
+  // A caster reacts for another creature only when the party knows of both or of neither. A known caster saving an unknown faller would
+  // tell the players of the faller (its reaction and cast); an unknown caster saving a known faller would tell them of the caster (the fall
+  // seen to do no harm, where a bare cell would hurt). A creature saving itself tells nothing more than its own fall.
   const known = (x) => !(x.hidden || unknown(s, x));
-  const tells = (r) => r.id !== t.id && !known(t) && known(r);
+  const tells = (r) => r.id !== t.id && known(t) !== known(r);
   for (const r of Object.values(s.entities)) {
     if (r.object || r.dead || (r.id !== t.id && hostile(r, t)) || tells(r)) continue;
     const covered = ev.findLast((x) => x.type === 'cast' && x.actor === r.id && x.spell === 'feather-fall' && x.reaction === true);
