@@ -153,6 +153,7 @@ export const JUDGED_ON = {
   ...Object.fromEntries(HOLDER_HOOKS.map((h) => [h, ['target.prone', 'target.unconscious', 'target.notFiend', 'target.fiendOrUndead', 'self.notIncapacitated', ...(h === 'check' ? ['check.proficient', 'check.unskilled', 'check.escape'] : [])]])),
   ...Object.fromEntries(BARE_HOOKS.map((h) => [h, ['self.notIncapacitated']])),
   ...Object.fromEntries(UNREAD_HOOKS.map((h) => [h, []])),
+  leap: [],                                  // `leapOf` reads no `when` tag (Jump)
 };
 // Judged only some of the time. At the attack hooks `attack.str` is known for a character's attack (it says which ability it uses) and for a
 // spell's (never Strength), and never for a creature's own action. At `damage.dealt`, the damage of a character's attack from its sheet knows
