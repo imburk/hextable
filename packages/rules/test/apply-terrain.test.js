@@ -298,9 +298,10 @@ test("nothing in the engine writes to a level's tiles, the levels or the walls i
     const text = readFileSync(f, "utf8");
     text.split("\n").forEach((line, i) => { if (!/^\s*\/\//.test(line) && WRITES.some((re) => re.test(line))) found.push(`${f.slice(src.length)}:${i + 1}`); });
   }
-  // map.js's EDITS (applied by dm.js to `structuredClone(s.map)`); nothing else.
+  // map.js's EDITS (applied by `editMap` of engine/world.js, which the DM's mapEdit and Stone Shape's cut both call, to `structuredClone(s.map)`); nothing else.
   assert.ok(found.every((x) => x.startsWith("map.js:")), `writes to the terrain outside map.js: ${found.join(", ")}`);
   const users = files.filter((f) => /\bEDITS\b/.test(readFileSync(f, "utf8"))).map((f) => f.slice(src.length)).sort();
-  assert.deepEqual(users, ["engine/dm.js", "map.js"]);
-  assert.match(readFileSync(join(src, "engine/dm.js"), "utf8"), /const map = structuredClone\(s\.map\);[\s\S]*?EDITS|structuredClone\(s\.map\)[\s\S]{0,400}edit\(map, op\)/);
+  assert.deepEqual(users, ["engine/world.js", "map.js"]);
+  assert.match(readFileSync(join(src, "engine/world.js"), "utf8"), /const map = structuredClone\(s\.map\);[\s\S]*?EDITS|structuredClone\(s\.map\)[\s\S]{0,400}edit\(map, op\)/);
+  assert.match(readFileSync(join(src, "engine/dm.js"), "utf8"), /editMap\(s, a\.ops, ev\)/);
 });

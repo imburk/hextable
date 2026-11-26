@@ -52,7 +52,7 @@ test("a wall-aimed spell is linted: a cut step to work on it, no cut step elsewh
   assert.ok(lint({ ...base, target: { self: true } }).some((m) => /`cut` step is for a spell whose target is a wall/.test(m)));
   assert.ok(lint({ ...base, target: { wall: { x: 1 } } }).length);
   assert.ok(lint({ ...base, range: "self" }).some((m) => /needs a range/.test(m)));
-  assert.ok(lint({ ...base, effects: [{ cut: 10 }] }).some((m) => /`cut` is 5/.test(m)));
+  assert.ok(lint({ ...base, effects: [{ cut: 7 }] }).some((m) => /5 or 10/.test(m)));
   assert.ok(lint({ ...base, duration: "1 minute", concentration: true, effects: base.effects }).length === 0 || true);
   const monster = { id: "m", name: "M", actions: [{ id: "a", name: "A", target: { wall: {} }, effects: [{ cut: 5 }] }] };
   assert.ok(lintEntry("monsters", monster, { strict: false }).length, "a monster's action is not aimed at a wall");

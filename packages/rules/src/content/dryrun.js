@@ -111,8 +111,8 @@ function setup(sp, seed, opts) {
   const { hex, list } = spotted(sp);
   const crowd = [];                              // who stands where: [id, role]
   const heal = sp.heals || !sp.harmful;
-  if (sp.aim === 'self' || sp.aim === 'object') {
-    // nobody needed: a self spell (a teleport wants a place to go, named below), or one aimed at an object (it is put below)
+  if (sp.aim === 'self' || sp.aim === 'object' || sp.aim === 'wall') {
+    // nobody needed: a self spell (a teleport wants a place to go, named below), or one aimed at an object or a wall (they are put below)
   } else {
     const most = sp.aim === 'creature' ? Math.min(sp.count ?? 1, ROSTER) : ROSTER;
     const friends = sp.aim === 'creature' ? (heal ? Math.min(most, FRIENDS.length) : 0) : Math.min(2, FRIENDS.length);
@@ -129,9 +129,11 @@ function setup(sp, seed, opts) {
     // A friend that is not in the area is moved off to the side, out of everything.
     for (const id of FRIENDS) if (!crowd.some(([c]) => c === id)) place(id, { q: -9, r: 4 + FRIENDS.indexOf(id) });
   }
-  if (sp.aim === 'self' || sp.aim === 'object') for (const id of FRIENDS) place(id, { q: -9, r: 4 + FRIENDS.indexOf(id) });
+  if (sp.aim === 'self' || sp.aim === 'object' || sp.aim === 'wall') for (const id of FRIENDS) place(id, { q: -9, r: 4 + FRIENDS.indexOf(id) });
   // A spell aimed at an object (Knock) is given one to work on: a locked chest two spaces from the caster.
   if (sp.aim === 'object') s.map.objects.push({ id: 'dryrun-chest', def: 'chest', level: s.map.levels[0].id, at: { q: 2, r: 0 }, state: 'locked' });
+  // A spell aimed at a wall (Stone Shape) is given one to work on: a long wall along the east side of the caster's space, within a touch.
+  if (sp.aim === 'wall') s.map.walls.push({ id: 'dryrun-wall', level: s.map.levels[0].id, kind: 'wall', a: [2.5, -30], b: [2.5, 30] });
   // The fight needs a foe to go on. One stands far off to the north-east, out of reach of everything (not part of the crowd).
   if (!crowd.some(([, role]) => role === 'foe')) {
     const r = apply(s, { type: 'spawn', monster: 'goblin-warrior', at: { q: 9, r: -6 } }, DM);
@@ -157,13 +159,14 @@ function castOf(sp, game, opts) {
   if (sp.aim === 'creature') a.targets = ids.slice(0, Math.max(1, Math.min(ids.length, sp.count ?? 1)));
   else if (sp.aim === 'area' && game.hex) a.hex = game.hex;
   else if (sp.aim === 'object') a.object = 'dryrun-chest';
+  else if (sp.aim === 'wall') a.wall = { level: game.s.map.levels[0].id, x: 2.5, y: 0 };
   else if (sp.aim === 'self' && sp.teleport) a.hex = { q: Math.max(1, Math.min(Math.floor(sp.teleport.feet / FT / 2), 6)), r: 0 };
   const pick = sp.def.choice;
   if (pick) a.choice = (pick.from ?? CONTENT_CHOICES[pick.of])[0];
   return a;
 }
 const CONTENT_CHOICES = Object.freeze({
-  skill: ['athletics'], ability: ['str'], damageType: ['fire'], condition: ['poisoned'], command: ['halt'], curse: ['str'], affliction: ['charmed'],
+  skill: ['athletics'], ability: ['str'], damageType: ['fire'], condition: ['poisoned'], command: ['halt'], curse: ['str'], affliction: ['charmed'], shape: ['passage'],
 });
 
 // ---------- one cast ----------

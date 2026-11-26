@@ -834,6 +834,36 @@
       "tier": "assist",
       "checked": false,
       "text": "A creature makes a Wisdom save or obeys one chosen word on its next turn."
+    },
+    {
+      "id": "hb-sample-stone-door",
+      "name": "Stone Door",
+      "source": "homebrew:sample",
+      "level": 4,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "touch",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "wall": {}
+      },
+      "effects": [
+        {
+          "cut": 5
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "The caster opens a 5-foot passage through a wall within touch. The DM judges what the wall is made of."
     }
   ]
 }

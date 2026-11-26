@@ -387,7 +387,7 @@ export const spells4 = [
     kinds: ["utility"],
     roll: "none",
     tier: "assist", checked: true,
-    text: "The caster reshapes a Medium-sized stone object or a 5-foot section of stone into any form without fine mechanical detail.",
+    text: "The caster reshapes a Medium-sized stone object or a 5-foot section of stone into any form without fine mechanical detail. The engine cuts a 5-foot passage through a wall; any other shape is the DM's.",
   },
   {
     id: "stoneskin", name: "Stoneskin", source: "SRD 5.2.1",

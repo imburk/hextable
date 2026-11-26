@@ -558,7 +558,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       if (step.when !== undefined) say('an `eachTurn` step has no `when`: say it on the steps inside');
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
-    if (kind === 'cut') { if (!seen.cutOk) say('a `cut` step is for a spell whose target is a wall (`target: { wall: {} }`)'); seen.cut = true; if (step.cut !== 5) say('`cut` is 5 (feet): the passage Stone Shape makes'); }
+    if (kind === 'cut') { if (!seen.cutOk) say('a `cut` step is for a spell whose target is a wall (`target: { wall: {} }`)'); seen.cut = true; if (!(isInt(step.cut) && step.cut >= 5 && step.cut <= 10 && step.cut % 5 === 0)) say('`cut` is the feet of wall taken out: 5 or 10'); }
     if (kind === 'sense' && !(['traps', 'magic'].includes(step.sense) && isInt(step.feet) && step.feet > 0 && step.feet % 5 === 0)) say('`sense` is "traps" or "magic", with `feet`: a multiple of 5');
     // `command` (Command): one of the five words, or `chosen` (the spell's `choice: { of: 'command' }`).
     if (kind === 'command' && !seen.commandOk) say('a `command` step is for a spell: it is carried out on a creature\'s next turn');
@@ -3299,7 +3299,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
-  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000],
+  'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000], 'step.cut': [5, 10],
   'modifier.value': [-40, 40], 'speedModifier.value': [-120, 120], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60],
   // items, feats, objects, weapons, armour

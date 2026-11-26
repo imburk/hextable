@@ -273,7 +273,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
 
@@ -1232,8 +1232,8 @@ export const STEP_SENTENCES = {
   },
   // engine/world.js `cutWall`: a map edit, the DM's own path; the DM alone is told.
   cut({ st, at, say }) {
-    if (st.cut === 5) say('Five feet of the wall the cast aimed at is taken out, centred on the point named (moved to lie inside the wall when the point is near its end; a wall of five feet or less goes whole), as the DM\'s own map edit does: the views, what the party remembers and the patches update as for a DM edit. Anything standing along the same line in those five feet (another wall, an undiscovered secret door) goes with it. A creature now seen through the gap is seen by the ordinary rules.');
-    else this.bad(`Step ${at}: the cut step is not 5 feet.`);
+    if (isInt(st.cut)) this.num(`${at}.cut`, st.cut, 'feet'); else this.bad(`Step ${at}: the cut step has no whole number of feet.`);
+    say(`${st.cut} feet of the wall the cast aimed at are taken out, centred on the point named (moved to lie inside the wall when the point is near its end; a wall of that length or less goes whole), as the DM's own map edit does: the views, what the party remembers and the patches update as for a DM edit. Anything standing along the same line in those feet (another wall, an undiscovered secret door) goes with it. A creature now seen through the gap is seen by the ordinary rules.`);
     return this.dm(`Step ${at}: whether the wall is stone (the engine does not know what a wall is made of: if it is not, undo the cut), and a secret door cut away with it.`);
   },
   // engine/world.js `sense`: the DM alone is told.

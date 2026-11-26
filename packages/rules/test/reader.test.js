@@ -170,6 +170,8 @@ const FIXTURES = [
     effects: [{ damage: '4d4', type: 'slashing', onZero: [{ remains: 'frozen-statue' }] }, { damage: '+2', type: 'piercing' }], higher: { targets: { 5: 4, 11: 5 } } }),
   base('stray-hour', 'Stray Hour', { time: 'hour', duration: '12 hours', target: { self: true }, effects: [{ tempHp: '10' }] }),
   base('long-casts', 'Long Casts', { time: '12 hours', duration: '7 days', target: { self: true }, effects: [{ heal: '1d4' }] }),
+  base('wall-gap', 'Wall Gap', { level: 4, school: 'transmutation', range: 'touch', target: { wall: {} }, tier: 'assist', choice: { of: 'shape' }, kinds: ['utility'],
+    effects: [{ cut: 5, ifChoice: ['passage'] }, { manual: 'Any other shape is the DM\'s.', ifChoice: ['other'] }] }),
 ];
 
 const readingOf = (e) => { const r = readEntry('spell', e); return [`== ${e.id}`, ...r.lines, ...r.doesNot.map((x) => `DM: ${x}`), ...r.problems.map((x) => `PROBLEM: ${x}`), ''].join('\n'); };

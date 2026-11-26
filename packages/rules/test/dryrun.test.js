@@ -14,10 +14,10 @@ const TARGETS = [...new Set(Object.values(HOMEBREW_LOOKUPS).flatMap((l) => l.map
 const picture = () => TARGETS.map((t) => Object.keys(t).join("\n"));
 
 // ---------- the sample pack ----------
-test("the sample pack passes strict lint through loadPack and holds 12 to 18 spells", () => {
+test("the sample pack passes strict lint through loadPack and holds 12 to 20 spells", () => {
   const r = loadPack(JSON.stringify(PACK));
   assert.ok(r.ok, r.problems?.join("; "));
-  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 19, `${PACK.spells.length} spells`);
+  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 20, `${PACK.spells.length} spells`);
   assert.equal(PACK.spells.length, r.pack.ids.length);
   for (const s of PACK.spells) assert.ok(s.text.length > 20 && s.text.length < 300 && (s.text.match(/\./g) ?? []).length <= 2, `${s.id}: text is one or two plain sentences`);
 });
