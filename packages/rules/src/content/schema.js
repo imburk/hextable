@@ -148,9 +148,10 @@ export const TRIGGERS = ['enter', 'leave', 'near'];
 // What sets off a reaction given in data (a spell's, a feature's or a monster trait's `reaction`;
 // reactions.js). `hit`: its creature is hit by an attack roll. `cast`: it sees a hostile creature
 // within the spell's range casting a spell (Counterspell). `damaged`: it takes damage from a hostile
-// creature it can see within the spell's range (Hellish Rebuke). (Leaving reach, for the
+// creature it can see within the spell's range (Hellish Rebuke). `fall`: a creature that is it or its ally, seen within the spell's range, falls
+// far enough to be hurt (Feather Fall; engine/resolve.js, featherFall). (Leaving reach, for the
 // Opportunity Attack, is the engine's own and needs no data.) Features and traits use `hit` only.
-export const REACTION_TRIGGERS = ['hit', 'cast', 'damaged'];
+export const REACTION_TRIGGERS = ['hit', 'cast', 'damaged', 'fall'];
 export const SKILLS = { acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int',
   insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha',
   persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis' };
@@ -871,7 +872,8 @@ function lintSpell(e, say) {
     if (r?.blocks !== undefined && !(Array.isArray(r.blocks) && r.blocks.length && r.blocks.every((x) => ID.test(x)))) say('`reaction.blocks` lists spell ids');
     if (r?.on === 'hit' && !e.target?.self) say('a reaction spell set off by a hit is aimed at its caster');
     if (r && r.on !== 'hit') {
-      if (!(e.target?.creature && (e.target.creature.count ?? 1) === 1)) say(`a reaction spell set off by \`${r.on}\` is aimed at the one creature that set it off`);
+      const most = r.on === 'fall' ? 5 : 1;
+      if (!(e.target?.creature && (e.target.creature.count ?? 1) >= 1 && (e.target.creature.count ?? 1) <= most)) say(most === 1 ? `a reaction spell set off by \`${r.on}\` is aimed at the one creature that set it off` : `a reaction spell set off by \`${r.on}\` is aimed at up to ${most} creatures`);
       if (r.blocks !== undefined) say('`reaction.blocks` is for a spell set off by a hit');
       if (typeof e.range !== 'number') say(`a reaction spell set off by \`${r.on}\` needs a range in feet`);
     }

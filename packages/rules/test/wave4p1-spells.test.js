@@ -20,15 +20,14 @@ function field() {
   return s;
 }
 
-test("tiers: Fly is assist; Feather Fall and Jump stay manual", () => {
+test("tiers: Fly is assist; Jump stays manual (Feather Fall became assist in wave 4 part 5)", () => {
   assert.equal(SPELLS.fly.def.tier, "assist");
-  assert.equal(SPELLS["feather-fall"].def.tier, "manual");
+  assert.equal(SPELLS["feather-fall"].def.tier, "assist");
   assert.equal(SPELLS.jump.def.tier, "manual");
 });
 
 test("Feather Fall's falling creatures must be ones the caster can see (SRD trigger)", () => {
-  const text = JSON.stringify(SPELLS["feather-fall"].def.effects);
-  assert.match(text, /creature the caster can see within 60 feet/);
+  assert.match(SPELLS["feather-fall"].def.text, /ally the caster can see within 60 feet/);
 });
 
 test("Fly lends a Fly Speed of 60, and the creature falls when Concentration ends", () => {

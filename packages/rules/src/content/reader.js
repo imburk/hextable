@@ -56,6 +56,7 @@ export const REACTION_WORDS = {
   hit: 'when an attack roll hits the caster',
   cast: 'when the caster sees a hostile creature within the spell\'s range casting a spell; it is aimed at that creature',
   damaged: 'when a hostile creature the caster can see within the spell\'s range damages the caster; it is aimed at that creature',
+  fall: 'when the caster, or an ally of the caster that the caster can see within the spell\'s range, falls far enough to be hurt; the fall is slowed to a landing with no damage and not Prone, and up to five creatures that fall together are covered',
 };
 export const SUMMON_KIND_WORDS = { familiar: 'familiar', steed: 'steed', summon: 'summoned creature', undead: 'undead servant', object: 'animated object', servant: 'servant', pet: 'pet' };
 export const SUMMON_TURN_WORDS = { own: 'It rolls Initiative and takes its own turns.', after: 'It acts on the caster\'s count, right after (or before) the caster\'s turn.' };

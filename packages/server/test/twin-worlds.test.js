@@ -1195,3 +1195,29 @@ test("deep pits: a party member that falls into the room below reveals that room
   assert.ok(JSON.stringify(hidden.raw.Pat).includes("cellar"), "Pat is sent the room the party fell into");
   { const t = JSON.stringify(hidden.raw.Pat); const m = t.match(/.{150}(6,-3|5,-2)\\*":\\*\{\\*"t\\*":\\*"stone.{40}/); assert.ok(!m, "and nothing of the far room: " + m?.[0]); }
 });
+
+// ---- Feather Fall (#786 wave 4 part 5): a party member falls near a caster with the standing instruction; a hidden creature stands by ----
+test("feather fall: a party member's fall is cast for by an ally's standing instruction, and a hidden creature standing by changes nothing any player is sent", () => {
+  const { hidden } = twin({
+    setup(w) {
+      for (const [n, id] of [["Pat", "fighter"], ["Sam", "wizard"]]) w.state.entities[id].owner = w.ids[n];
+      w.must({ type: "loadMap", map: pitWorld() });
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      const wz = w.state.entities.wizard;
+      Object.assign(wz, { slots: { 1: 4 }, slotsMax: { 1: 4 } });
+      if (!wz.spells.includes("feather-fall")) wz.spells.push("feather-fall");
+      w.must({ type: "reactions", actor: "wizard", set: { "feather-fall": "always" } });
+      w.must({ type: "place", actor: "wizard", to: { q: -2, r: 1 } });
+      w.must({ type: "place", actor: "fighter", to: { q: -2, r: 0 } });
+    },
+    steps: [
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 1, r: 0 } } },
+      { by: "Pat", send: { t: "sync" } },
+      { by: "Sam", act: { type: "say", as: "wizard", text: "Caught you." } },
+    ],
+  }, { hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4, r: -5 }, name: "Ghost", hidden: true }); }, plain: (w) => burn(w, { q: 4, r: -5 }) });
+  const st = hidden.w.state;
+  assert.equal(st.entities.wizard.slots[1], 3, "the slot was spent");
+  assert.equal(st.entities.fighter.pos.z, -30);
+  assert.equal(st.entities.fighter.hp, st.entities.fighter.maxHp, "no fall damage");
+});
