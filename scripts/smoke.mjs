@@ -84,6 +84,7 @@ const REGISTRY = {
   fly: ['fly'],
   leap: ['leap'],
   wallpick: ['wallpick'],
+  meld: ['meld'],
   menuclose: ['menuclose'],
   editorbar: ['editorbar'],
   menushift: ['menushift'],

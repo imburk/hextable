@@ -560,7 +560,7 @@ export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
 // The old tabs sorted rows by kind; the groups sort the same rows by what the player wants to do. A row may be in two groups (a healing spell is in Cast and in Heal): it is the same row.
 // In a fight only what can be used now is shown (R29): a row with a `why` is left out unless it is armed (a tap on it puts it down), and a group with nothing left is left out. Out of a fight the
 // rows stay and say why. `groupsFor` is pure: a test walks it.
-export const GROUP_LABEL = { explore: 'Explore', attacks: 'Attack', spells: 'Cast', heal: 'Heal', move: 'Move', defend: 'Defend and hide', use: 'Use', features: 'Features', companions: 'Companions', reactions: 'Reactions', rest: 'Rest', items: 'Inventory' };
+export const GROUP_LABEL = { stone: 'In the stone', explore: 'Explore', attacks: 'Attack', spells: 'Cast', heal: 'Heal', move: 'Move', defend: 'Defend and hide', use: 'Use', features: 'Features', companions: 'Companions', reactions: 'Reactions', rest: 'Rest', items: 'Inventory' };
 // The order never changes within a state (Decision 4), so a hand learns it. Inventory ends the list in both.
 export const GROUP_ORDER = { fight: ['attacks', 'spells', 'heal', 'move', 'defend', 'use', 'features', 'companions', 'reactions', 'items'], free: ['explore', 'spells', 'heal', 'use', 'rest', 'features', 'companions', 'items'] };
 // What a turn-bar segment opens (Decision 4: the segment is the question): a screen of everything that costs that, or the group it stands for.
@@ -613,6 +613,29 @@ export function stabilizeRows(S, e) {
     });
 }
 
+// ---------- Merged with stone (Meld into Stone, #826; #827) ----------
+// A creature in the wall (`melded`) can do only what the engine's `control` allows: leave (`unmeld`), cast on itself, end its turn, check and answer reactions. So its page is two groups:
+// Step out (greyed with the engine's own reason: out of turn, or under 5 ft of movement left in a fight) and the spells it may cast on itself. Pure.
+export const meldedLeft = (S, e) => { const fx = (S.effects ?? []).find((x) => x.id === e.melded?.fx), t = fx ? untilText(S, fx) : ''; return t ? t.replace(/^until /, 'until ') : ''; };
+export function stepOutRow(S, e) {
+  const fight = !!S.encounter && inFight(S, e.id);
+  let why = '';
+  if (e.hp <= 0 || e.dead) why = `${e.name} is down.`;
+  else if (fight && current(S) !== e.id) why = `It isn't ${e.name}'s turn.`;
+  else if (fight && S.encounter.budget.move < FT - 1e-9) why = `Leaving the stone takes ${FT} ft of movement; ${e.name} has ${feetShown(S, S.encounter.budget.move)} ft left.`;
+  return { id: 'unmeld', kind: 'send', label: 'Step out', sub: `Leave the stone${fight ? ` · costs ${FT} ft of movement` : ''}`, chip: fight ? 'Move' : '', time: null, why, send: { type: 'unmeld', actor: e.id } };
+}
+const meldedGroups = (S, e, o) => {
+  const out = [], step = stepOutRow(S, e), self = spellRows(S, e, { mode: o.mode }).filter((r) => SPELLS[r.spell]?.aim === 'self');
+  const fight = !!S.encounter && inFight(S, e.id), filtered = fight ? (l) => l.filter(offered) : (l) => l;
+  for (const [id, rows] of [['stone', [step]], ['spells', self]]) {
+    const g = { id, label: GROUP_LABEL[id], rows, offered: id === 'stone' ? rows : filtered(rows), tip: '', why: '', shown: id === 'stone' || rows.length > 0 };
+    g.tip = g.offered.length ? names(g.offered) : rows.find((r) => r.why)?.why || '';
+    out.push(g);
+  }
+  return out;
+};
+
 // What a group says closed, in a few words: the rows to use now (or, with none, why).
 const names = (rows, n = 2) => { const l = rows.map((r) => r.label); return l.slice(0, n).join(', ') + (l.length > n ? ` +${l.length - n}` : ''); };
 
@@ -622,6 +645,7 @@ export function groupsFor(S, e, ctx, o = {}) {
   const fight = !!S.encounter && inFight(S, e.id), mine = ctx.situation !== 'watch' && ctx.situation !== 'none' && ctx.situation !== 'down';
   if (!mine) return { situation: ctx.situation, fight, groups: [], shown: [], empty: '' };
   const dm = !!o.dm, inv = o.inv ?? itemRows(S, e, { dm, mode: o.mode });
+  if (e.melded && ctx.situation !== 'down') { const groups = meldedGroups(S, e, o), shown = groups.filter((g) => g.shown); return { situation: ctx.situation, fight, groups, shown, empty: '' }; }
   const react = o.react ?? reactionState(S, e, { dm }), groups = [];
   const filtered = fight ? (list) => list.filter(offered) : (list) => list;
   for (const id of GROUP_ORDER[fight ? 'fight' : 'free']) {
@@ -725,7 +749,7 @@ export function statusHtml(S, e, { mine = false, full = false, formLabel = '', b
   return (b ? pip('Action', b.action > 0, 'action') + (b.attacks ? pip(`Attacks left ${b.attacksLeft}`, true) : '') + pip('Bonus Action', b.bonus > 0, 'bonus') + pip(`Move ${feetShown(S, b.move)} ft`, b.move >= 5, 'move') : '') +
     (full && enc && inFight(S, e.id) ? pip('Reaction', !e.reactionUsed, 'reaction') : '') +
     Object.keys(e.slotsMax || {}).map((l) => pip(`Level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`, e.slots[l] > 0)).join('') +
-    plain + (formLabel ? `<b class="form">${esc(formLabel)} form</b>` : '') + (dying ? pill('dying', esc(dying)) : '') + (e.hidden ? '<span>Hidden from players</span>' : '') +
+    (e.melded && !e.dead ? `<span class="stone">Melded into stone${meldedLeft(S, e) ? ` · ${esc(meldedLeft(S, e))}` : ''}</span>` : '') + plain + (formLabel ? `<b class="form">${esc(formLabel)} form</b>` : '') + (dying ? pill('dying', esc(dying)) : '') + (e.hidden ? '<span>Hidden from players</span>' : '') +
     conds.map((c) => pill(`cond:${c}`, esc(c === 'grappled' ? heldText(S, e) : conditionName(c) + (e.cond[c].level ? ` ${e.cond[c].level}` : '')))).join('') + lasting;
 }
 
@@ -770,7 +794,7 @@ export function initActionPanel(ctx) {
       return `<button type="button" role="radio" class="ap-ch ${o.why ? 'off' : 'use'}${o.on ? ' on' : ''}" data-ch="${g.id}" data-v="${esc(o.value)}" data-why="${esc(o.why)}" aria-checked="${o.on}" aria-disabled="${o.why ? 'true' : 'false'}"${o.why ? ` aria-describedby="${wid}"` : ''}><span class="ap-ch-t">${o.on ? '\u2713 ' : ''}${esc(o.label)}</span>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}${o.why ? `<small class="ap-why" id="${wid}">${esc(o.why)}</small>` : ''}</button>`;
     }).join('')}</div></div>`;
   }).join('')}`;
-  for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free]), 'sheet']) {
+  for (const id of ['cost', ...new Set([...GROUP_ORDER.fight, ...GROUP_ORDER.free, 'stone']), 'sheet']) {      // 'stone': the one group of a creature merged with stone
     const bar = mk('button', { type: 'button', class: 'ap-bar', id: `ap-bar-${id}`, 'data-sec': id, 'aria-expanded': 'false', 'aria-controls': `ap-${id}` },
       mk('span', { class: 'ap-bt' }), mk('small', { class: 'ap-tip' }), mk('span', { class: 'ap-chev', 'aria-hidden': 'true' }, '›'));
     const pane = mk('div', { id: `ap-${id}`, class: 'ap-pane', role: 'region', 'aria-labelledby': `ap-bar-${id}` }); pane.hidden = true;
@@ -778,7 +802,7 @@ export function initActionPanel(ctx) {
     const sec = mk('section', { class: 'ap-sec', 'data-sec': id }, mk('h3', { class: 'ap-h' }, bar), likely, pane); sec.hidden = true;
     secs[id] = sec; panes[id] = pane; bars[id] = bar; body.append(sec);
   }
-  const LISTS = ['explore', 'attacks', 'spells', 'heal', 'move', 'defend', 'use', 'features', 'companions', 'rest', 'cost', 'items'];
+  const LISTS = ['explore', 'attacks', 'spells', 'heal', 'move', 'defend', 'use', 'features', 'companions', 'rest', 'stone', 'cost', 'items'];
   let picking = null;                                    // the Inventory, Heal or Use row whose potion is being given: { id, actor }
   let giving = null;                                     // the Give... button whose list of creatures is open: { id (of the act), actor }
   // The Cast section's sort (kept on this device) and filters (kept while the page is open, not between sessions).

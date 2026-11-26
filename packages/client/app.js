@@ -1477,7 +1477,7 @@ function stoneTap(e, sp, hex) {
 R.onTap = (hit) => {
   const { hex, id } = hit;
   if (!S || !T || skipping()) return;
-  const e = S.entities[selId], tapped = id ? S.entities[id] : null;
+  const e = S.entities[selId], seen = id ? S.entities[id] : null, tapped = seen?.melded && mode.kind !== 'move' ? null : seen;       // a creature merged with stone (Meld into Stone) is no target: a tap on its marker only selects it
   const inZone = [...new Set(R.zonesAt(hex))];
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
   if (CP.tap(mode, hex, id)) return;
@@ -1529,7 +1529,7 @@ R.onTap = (hit) => {
   }
   if (tapped) {
     const myTurn = e && mine(e) && S.encounter && current(S) === e.id;
-    if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead && !e.bond?.noAttack) {         // tap an enemy on your turn: attack with whatever reaches
+    if (myTurn && tapped.id !== e.id && hostile(tapped, e) && !tapped.dead && !tapped.melded && !e.bond?.noAttack) {         // tap an enemy on your turn: attack with whatever reaches
       const d = gap(S, e.pos, tapped.pos) * FT;
       if (e.actions) {             // a monster: the first of its attacks that reaches, from what a Multiattack left if it did
         const b = S.encounter.budget;
