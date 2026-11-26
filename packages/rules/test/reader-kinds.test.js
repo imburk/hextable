@@ -114,7 +114,7 @@ test('the golden monsters use every field, shape, step, hook and op the strict l
   assert.deepEqual([...traitKeys].sort(), keysOf(HOMEBREW_TYPES.trait));
   assert.deepEqual([...actionKeys].sort(), keysOf(HOMEBREW_TYPES.action));
   assert.deepEqual([...creatureKeys].sort(), keysOf(HOMEBREW_TYPES.creature));
-  assert.deepEqual([...areaKeys].sort(), keysOf(HOMEBREW_TYPES.area));
+  assert.deepEqual([...areaKeys].sort(), keysOf(HOMEBREW_TYPES.area).filter((k) => k !== 'placed'), '`placed` (a wall) is for a spell: no monster action has one');
   assert.deepEqual([...shapes].sort(), ['cone', 'cube', 'cylinder', 'emanation', 'line', 'sphere']);
   assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter' && s !== 'imbue' && s !== 'revive' && s !== 'eachTurn' && s !== 'endSpell' && s !== 'arm').sort(), 'a creature\'s action cannot hold a summon, a counter, an imbue, a revive, an eachTurn, an endSpell or an arm step');
   assert.deepEqual([...branches].sort(), BRANCHES.filter((b) => b !== 'eachTurn').sort());

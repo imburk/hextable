@@ -1300,6 +1300,56 @@ The new `twin()` scenario holds the zone: a player's cast of Guardian of Faith w
 **Not built.** Heat Metal and Guardian of Faith do not track the object or the guardian as things on the map (DEBT W44); Spiritual Weapon's first attack is the weapon's turn straight after the cast, not inside it; Flame Blade does not look at
 the free hand; Faerie Fire outlines no object; the "willing" and "can drop it" questions are the DM's.
 
+#### Build notes: wave 2 areas and walls (amendment, #786)
+
+Tests in `packages/rules/test/wave2-spells.test.js` and one `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Second of the four waves: Spike Growth, Flaming Sphere, Wall of Fire, Wall of Thorns,
+Blade Barrier and Wall of Stone, all `manual` before. Every number was compared with `reference/srd52/srd52-flow.txt` (Spike Growth 31004, Flaming Sphere 27073, Wall of Fire 31989, Wall of Stone 32076, Wall of Thorns
+32112, Blade Barrier 24648) and the entries keep `checked: true`. The wording of each entry's `text` is our own, under 600 characters.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Spike Growth | manual | assist | judges a jump, and the Search action and check that spot the hazard |
+| Flaming Sphere | manual | assist | the barriers and pits it crosses, the objects it sets alight, its light |
+| Wall of Fire | manual | assist | the hot side's 10 feet (creatures that end a turn beside the wall) and the ringed form |
+| Wall of Thorns | manual | assist | the 4-feet-per-foot cost (the engine charges none: Difficult Terrain is a flat 2, so the cast hands it to the DM) and the circular form |
+| Blade Barrier | manual | assist | Three-Quarters Cover for attacks across it, from both sides, and the ringed form |
+| Wall of Stone | manual | **manual** | all of it: see "A wall that is an object" below |
+
+**What the vocabulary already said** (no change): the zone (`on`, `once`, `atCast`), `terrain` (`difficult`, `obscured: "heavy"` for sight blocked) and the `line` area with a `width`.
+
+**What was added**, each as small as it could be:
+
+- **Zone trigger `step`** (`zone.on`, `zones.js` `stepped`; called after each 5-foot step in `engine/movement.js` and each pushed or pulled step in `engine/resolve.js` `push`). Spike Growth: "When a creature moves into or within the area, it takes 2d4 Piercing damage
+  for every 5 feet it travels." A step that ends inside the zone is one dose, whatever it costs in movement (Difficult Terrain doubles the cost, not the feet travelled); the step that leaves it is none. Not once-a-turn.
+- **Placed lines** (`area.placed: true`, a Line with `height`; `engine/world.js` `layout` and `squareLayout`, `aimArea`'s `toward`; `effects.js` `aimable`): a wall put down within the spell's range, centred on the space chosen, `size` feet in all, `width` thick,
+  `height` high from the surface there. It runs across the line from the caster to the space unless `toward` (a space on its line) is named in the cast. Before this a Line with a range was a wall "of any shape" and handed to the DM. A zone's and a terrain's
+  vertical test (`zones.js` `holds`, `terrain.js` `inside`) reads `height`. Straight walls only: the ringed form of each spell stays the DM's (a `manual` line in the entry's text). A hex is 5 feet, so Wall of Fire's 1-foot thickness is one hex.
+- **`zone.effects`**: the steps a zone runs on later comers when they are not the cast's own. Wall of Fire: a Dexterity save for half as it appears, flat damage after ("takes the same damage", no save). Wall of Thorns: Piercing as it appears, Slashing after.
+  The higher slot grows both (`scaleSteps` run on each list).
+- **`zone.once: "enter"`**: only entering is held to once a turn. Wall of Fire "when it enters the wall for the first time on a turn or ends its turn there": ending a turn inside is its own go. (`once: "turn"` holds both together, as Moonbeam and Blade Barrier need.)
+- **`zone.move: n` and the action `moveZone { actor, to, effect? }`** (a sphere zone that rolls; `engine/casting.js`, `zones.js` `shiftZone`). A Bonus Action; the zone goes up to `n` feet toward `to`, one step at a time, and stops in the first space a creature stands in; that creature
+  makes the zone's save at once ("If you move the sphere into a creature's space, that creature makes the save against the sphere, and the sphere stops moving for the turn"), and is revealed if it was hidden. The cast puts the sphere in an unoccupied space.
+  The barriers and pits are not looked at. Event `zoneMoved`, not sent to players (they are never sent a zone).
+
+**The decisions the issue asked for**, each with a test:
+
+- *Spike Growth and flyers.* A creature that is flying (its height is on no surface of its column, `space.js` `ground`; asked in `zones.js` `stepped`) touches no ground: it takes nothing. A creature on the ground takes a dose for every 5-foot step it takes in the area, whether or not it has a Fly Speed (Isaac's default on the board question `spike-fly`; the text says the ground sprouts the spikes).
+- *Spike Growth and jumps.* The engine has no jump action; a jump is the DM's. The entry says so.
+- *Spike Growth and forced movement.* A push or pull is movement: a creature shoved 10 feet through the area takes two doses (tested with Thunderwave).
+- *Wall of Fire, leaving through the wall.* The text deals damage on entering for the first time on a turn and on ending a turn in it, and says nothing of leaving: leaving costs nothing. Crossing the wall costs one dose, on the way in; the walk stops there, as any walk into a zone does.
+- *Blade Barrier, cover.* The wall gives Three-Quarters Cover to attacks across it from either side. The engine's cover comes from walls and objects on the map, which a spell cannot put there (below), so the cover is the DM's: the entry's text and the cast's `manual` event say it, for both sides.
+- *Blade Barrier, the save.* "ends it turn there" (2024), not "starts" (2014): the zone goes off on `enter` and `turnEnd`, never `turnStart`, and a creature saves once a turn (`once: "turn"`, and the cast's own save counts for the turn it was made in).
+- *Flaming Sphere's school.* The SRD 5.2.1 header reads "Level 2 Conjuration (Druid, Sorcerer, Wizard)": the entry keeps conjuration. The evocation the community pass reports is not in the text this repository holds.
+
+**A wall that is an object (Wall of Stone, and the cover and sight of the others).** Wall of Stone is a nonmagical object with panels, Hit Points, AC and a shape the caster chooses, and the others need cover. `walls.js` reads walls and objects from the map document (`map.walls`, `map.objects`) and caches by their signature;
+a spell-made wall would have to put segments there and take them away when the effect ends, which touches the map's linter, its migration, what players are sent of the map and the undo history. That is a larger mechanism than this wave: Wall of Stone stays `manual` (its entry already hands the DM everything), Blade Barrier's cover is
+the DM's, and Wall of Thorns' sight block is Heavily Obscured in its area (`terrain.obscured`), the nearest thing the engine has. DEBT W45.
+
+**Views.** `fx.zone` (its hexes, origin, `move`) is never sent to a player, as for every zone; the new `zoneMoved` event is dropped for players (`viewEvents` names the types a player receives). The new `twin()` scenario holds the sphere: a player's cast with a hidden creature in its area, and the sphere rolled away, are sent
+the same as with none.
+
+**Not built.** See DEBT W45: the ring of Wall of Fire, Thorns and Blade Barrier, the hot side of Wall of Fire, 4-for-1 movement through Thorns, walls as map objects, light from the sphere and objects it ignites, the client's way to name a wall's direction and to roll a zone.
+
 ### A class
 
 ```js

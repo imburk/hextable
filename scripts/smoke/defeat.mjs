@@ -49,6 +49,7 @@ async function defeat(browser, url, label, opts) {
         await closeMenu(page);
       });
       await run.do('the card comes only when the last one has died', async () => {
+        await openTab(page, 'log');          // M2: the menu is open when the card comes; the next step looks at what became of it
         for (let k = 0; k < pcs.length; k++) {
           const id = pcs[k];
           for (let n = 0; n < 8; n++) {
@@ -66,6 +67,27 @@ async function defeat(browser, url, label, opts) {
         if (rows.length !== pcs.length || !rows.every((r) => /died|down, stable/.test(r))) throw new Error(`rows: ${rows}`);
         if (/!/.test(await page.textContent('#df'))) throw new Error('an exclamation mark on the card');
         await shot('defeat-card');
+      });
+      await run.do('the card folded the menu; put aside, the screen is clean and one tap on the die returns to the same screen', async () => {
+        const menu = () => page.evaluate(() => { const d = document.getElementById('drawer'); return { open: window.hextable.drawer.isOpen, cls: document.body.classList.contains('drawer-open'), shown: !d.hidden && d.getClientRects().length > 0, scrim: !document.getElementById('drawer-scrim').hidden, path: d.dataset.path }; });
+        const gone = (m) => !m.open && !m.cls && !m.shown && !m.scrim;
+        await waitShown(page, '#drawer', false);                                // it slides away, then it is hidden
+        let m = await menu();
+        if (!gone(m)) throw new Error(`the card came and the menu stayed up: ${JSON.stringify(m)}`);
+        await tap(page, '#df .df-x');
+        await waitShown(page, '#df', false); await waitShown(page, '#df-chip');
+        await sleep(700);                                                       // it must not come back by itself
+        m = await menu();
+        if (!gone(m)) throw new Error(`the menu came back by itself: ${JSON.stringify(m)}`);
+        await tap(page, '#btn-menu');
+        await waitShown(page, '#drawer');
+        m = await menu();
+        if (m.path.split('/')[0] !== 'log') throw new Error(`one tap on the die did not return to the same screen: ${JSON.stringify(m)}`);
+        await closeMenu(page);
+        await tap(page, '#df-chip');
+        await waitShown(page, '#df');
+        // The card slides in again (df-in): measure it once that has finished, or a button reads a fraction under its 44 px.
+        await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'), null, { timeout: 5000 });
       });
       await run.do('the card fits the screen, its buttons are big enough, and the map around it is still the map', async () => {
         const m = await page.evaluate(() => {
