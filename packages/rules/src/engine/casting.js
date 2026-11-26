@@ -12,7 +12,7 @@ import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
-import { aimArea, areaHexes, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { aimArea, aimObject, areaHexes, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, confusedOnly, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
@@ -584,7 +584,7 @@ function castSpell(s, a, ctx, ev, item) {
     const grown = typeof sp.range === 'number' ? rangeAt(sp.def, casterLevel) : sp.range;
     const range = typeof (mm.range ?? grown) === 'number' && spear ? (mm.range ?? grown) + spear : mm.range ?? grown;
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
-    let targets = [], hexes = null, areaOrigin = null;
+    let targets = [], hexes = null, areaOrigin = null, object = null;
     // Globe of Invulnerability: a spell of a level below the Globe's (its slot level less one; a spell cast with a higher slot "takes on the higher level for that casting", SRD, so the slot counts) cast from outside it cannot affect anything within it. A spell
     // aimed at creatures may target one inside, and has no effect on it (as an invalid target: `warded`, below); the inside is left out of the area of one aimed at an area. What the caster stands in is judged by where it stands, never by who is hidden in it.
     const globes = globesOf(s).filter((fx) => Math.max(slot, sp.level) <= fx.level - 1 && !inGlobe(s, fx, e)), globed = (x) => globes.some((fx) => inGlobe(s, fx, x));
@@ -600,6 +600,7 @@ function castSpell(s, a, ctx, ev, item) {
     } else if (sp.aim === 'creature') {
       targets = creatures(s, toucher ?? e, sp.name, { range, harmful: sp.harmful, repeat: sp.repeat, within: sp.within, most, spell: true, dead: sp.dead === true }, a);
     } else if (sp.aim === 'self') targets = [e];
+    else if (sp.aim === 'object') object = aimObject(s, e, sp.name, range, a.object, ctx);      // checked now, before anything is spent: one answer for an object that is not there and one the party does not know of
     // `target.creature.types` (Hold Person's Humanoid): a creature of another type is an invalid target. SRD 5.2.1, "Invalid Targets": "nothing
     // happens to that target, but if you used a spell slot to cast the spell, the slot is still expended." So the cast is made and paid for as
     // aimed, and those creatures are left out of what it does (`invalid`, below). One whose type the engine cannot tell is the DM's to judge.
@@ -690,7 +691,7 @@ function castSpell(s, a, ctx, ev, item) {
     // Repelling Blast: a hit with the spell's attack pushes a Large or smaller target so many feet away.
     if (repel) walkSteps(steps, (x) => { if ('attack' in x) (x.onHit ??= []).push({ move: repel, dir: 'away', largest: 'large' }); });
     if (mm.has.transmuted) walkSteps(steps, (st) => { if ('damage' in st && TRANSMUTE.includes(st.type)) st.type = a.transmute; });
-    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}), ...(item ? { item: item.name } : {}) });
+    ev.push({ type: 'cast', actor: e.id, spell: a.spell, name: sp.name, hexes, targets: targets.map((t) => t.id), ...(object ? { object: object.id } : {}), ...(slot > sp.level ? { slot } : {}), ...(pick ? { choice: a.choice } : {}), ...(via ? { via: via.name } : {}), ...(item ? { item: item.name } : {}) });
     if (toucher) ev.push({ type: 'delivered', id: toucher.id, by: e.id, spell: a.spell });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
@@ -765,8 +766,8 @@ function castSpell(s, a, ctx, ev, item) {
       evo.empower.done = true;
     }
     begin(s, {
-      steps, actor: e.id, targets: sp.aim === 'none' ? null : hit.map((t) => t.id),
-      src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
+      steps, actor: e.id, targets: sp.aim === 'none' ? null : sp.aim === 'object' ? [e.id] : hit.map((t) => t.id),
+      src: { name: sp.name, ...(object ? { object: object.id } : {}), dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
         spell: sp.id, slot: Math.max(slot, sp.level), ...(wardDone ? { wardDone: true } : {}), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),

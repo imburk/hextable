@@ -1272,3 +1272,36 @@ test("feather fall: a hidden caster may react for its hidden ally, and the playe
   const { hidden } = fallTwin(true);
   assert.equal(byName(hidden.w, "Ghost").pos.z, -30);
 });
+
+// ---- Knock (#786 wave 4 part 6): a spell aimed at a map object. An undiscovered secret door is refused in the same words as an object that is not there ----
+const KNOCK = (seed = 5) => ({
+  players: ["Pat"],
+  seed,
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", -8, 4], ["rogue", -8, 5], ["cleric", -8, 6], ["wizard", 0, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", slots: { 1: 4, 2: 3 }, slotsMax: { 1: 4, 2: 3 } });
+    s.entities.wizard.spells.push("knock");
+    s.map.objects.push({ id: "c1", def: "door-iron", level: "ground", at: { q: 2, r: 1 }, edge: 0, state: "locked", key: "iron-key" });
+  },
+  steps: [
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "knock", slot: 2, object: "sd" }, allowError: true },      // the secret door, or nothing: refused the same words, and nothing spent
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "knock", slot: 2, object: "c1" } },                         // the locked iron door: unlocked
+    { by: "Pat", act: { type: "say", as: "wizard", text: "Open." } },
+  ],
+});
+test("knock: a player naming an undiscovered secret door is refused in the same words as for an object that is not there, and the players are sent the same", () => {
+  const { plain, hidden } = twin(KNOCK(), {
+    hide: (w) => { w.state.map.objects.push({ id: "sd", def: "secret-door", level: "ground", at: { q: 3, r: 0 }, edge: 0, state: "secret" }); },
+    plain: (w) => { w.state.map.walls.push({ id: "w0", level: "ground", kind: "wall", a: [17.5, -1.4433756729740645], b: [17.5, 1.4433756729740645] }); },       // a secret door looks like the wall it stands in
+  });
+  const refused = (world) => world.raw.Pat.filter((m) => m.t === "error").map((m) => m.error);
+  assert.deepEqual(refused(hidden), refused(plain));
+  assert.match(refused(hidden)[0], /No such object/);
+  assert.equal(hidden.w.state.map.objects.find((o) => o.id === "sd").state, "secret", "the secret door stays undiscovered");
+  assert.equal(hidden.w.state.map.objects.find((o) => o.id === "c1").state, "closed", "the known locked door was unlocked, as in the other world");
+  assert.equal(hidden.w.state.entities.wizard.slots[2], 2, "the refused cast spent nothing: only the second was paid for");
+});

@@ -270,7 +270,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
   'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'terrain', 'zone', 'reaction', 'hit'];
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
-  modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
+  modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
   endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
@@ -539,10 +539,11 @@ class Reading {
 
   aimOf(t) {
     if (!t) return 'none';
-    const kinds = ['self', 'creature', 'area'].filter((k) => k in t);
-    if (kinds.length !== 1) { this.bad('The target names none, or more than one, of self, creature and area.'); this.noneWhy = 'the target is unreadable'; return 'none'; }
-    this.odd(t, ['self', 'creature', 'area'], 'The target');
+    const kinds = ['self', 'creature', 'area', 'object'].filter((k) => k in t);
+    if (kinds.length !== 1) { this.bad('The target names none, or more than one, of self, creature, area and object.'); this.noneWhy = 'the target is unreadable'; return 'none'; }
+    this.odd(t, ['self', 'creature', 'area', 'object'], 'The target');
     if (t.self) return 'self';
+    if (t.object) { if (!isObj(t.object) || Object.keys(t.object).length) this.bad('`target.object` is not an empty object.'); return this.mon ? 'none' : 'object'; }
     if (t.creature) { if (!isObj(t.creature)) { this.bad('`target.creature` is not an object.'); t.creature = {}; } return 'creature'; }
     const a = t.area;
     if (!isObj(a) || !AREA_SHAPES.includes(a.shape) || !(typeof a.size === 'number' && a.size > 0)) { this.bad('The area has no shape the engine knows, or no size in feet.'); this.noneWhy = 'its shape or size is unreadable'; return 'none'; }
@@ -559,6 +560,7 @@ class Reading {
   subject(t) {
     if (!t || this.aim === 'none') return 'each creature affected';
     if (t.self) return 'the caster';
+    if (t.object) return `the object ${typeof this.def.range === 'number' ? `within ${this.def.range} feet` : 'in range'} that the cast names`;
     if (t.area) return `each creature in ${AREA_WORDS[t.area.shape](t.area)}`;
     const c = t.creature, n = isInt(c.count) ? c.count : 1;
     const where = this.def.range === 'touch' ? 'the caster touches' : typeof this.def.range === 'number' ? `within ${this.def.range} feet` : 'in range';
@@ -633,6 +635,7 @@ class Reading {
       }
     }
     if (this.mon) return;
+    if (t.object) this.line(`It is aimed at one map object that the cast names (\`object\`): the caster must not be Blinded, some part of the object must be within ${typeof d.range === 'number' ? `${d.range} feet` : 'range'} in a clear line, and it must be a thing that can be locked (an object with an unlock use). A player cannot name an object the party does not know of: the refusal is the same as for an object that is not there. Nothing is spent if the cast is refused.`);
     if (t.self && d.zone === undefined && !this.def.effects?.some?.((st) => isObj(st) && 'summon' in st)) this.line('It is aimed at the caster alone.');
     if (this.anySave(true)) this.line('Saving throws are against the caster\'s spell save DC.');
     if (this.anyAttack()) this.line('Spell attack rolls use the caster\'s spell attack bonus; a ranged one reaches as far as the spell\'s range, a melee one 5 feet. A Critical Hit doubles the damage dice behind it.');
@@ -1089,6 +1092,7 @@ export const STEP_SENTENCES = {
   },
   set({ st, at, say }) {
     if (this.obj) return objectSet.call(this, st, at, say);
+    if (this.aim === 'object') return say(st.from !== undefined ? `If the object is ${shown(st.from)}, it is set to ${shown(st.set)}; in any other state it is left as it is and the table is told nothing is held shut.` : `The object is set to ${shown(st.set)}.`);
     say(`This step would set a map object to the state ${shown(st.set)}; a spell has no object for it to work on, so the DM applies it.`);
     this.dm(`Step ${at}: setting a map object's state.`);
   },

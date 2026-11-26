@@ -581,6 +581,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kind === 'set') {
       if (!ID.test(step.set ?? '')) say('`set` must name a state');
       if (step.of !== undefined && !['self', 'link'].includes(step.of)) say('`of` must be self or link');
+      // `from`: the step works only on an object in that state (Knock sets a locked one to closed and leaves an open door alone).
+      if (step.from !== undefined && !ID.test(step.from)) say('`from` must name a state');
     }
     if (kind === 'reveal' && !['self', 'link', 'target'].includes(step.reveal)) say('`reveal` must be self, link or target');
     // `counter: "spell"`: the spell that set this reaction off fails (Counterspell; only in a spell
@@ -764,8 +766,10 @@ function lintNoSummonAmounts(e, say) {
 
 function lintTarget(target, say, nearOk = false, typesOk = false) {
   if (!target || typeof target !== 'object') return say('needs a target');
-  const kinds = ['self', 'creature', 'area'].filter((k) => k in target);
-  if (kinds.length !== 1) return say('target needs exactly one of self, creature, area');
+  const kinds = ['self', 'creature', 'area', 'object'].filter((k) => k in target);
+  if (kinds.length !== 1) return say('target needs exactly one of self, creature, area, object');
+  // `object: {}` (Knock; docs/specs/rules-expansion.md, "Build notes: wave 4 part 6"): a map object the caster sees within the spell's range, named in the cast (`object`). A spell only, with a `set` step that says `from`.
+  if (target.object !== undefined && !(typesOk && isObj(target.object) && !Object.keys(target.object).length)) say('`object` is `{}`, for a spell: it aims the spell at a map object, which the cast names');
   // `near` (addition G): a second creature near the first target, for the action of a subclass's feature alone (`lintNear` holds the rest).
   if (target.near !== undefined && !nearOk) say('`near` (a second target near the first) is for the action of a subclass\'s feature, not a spell, a monster or an object');
   if (target.area) {
@@ -908,6 +912,12 @@ function lintSpell(e, say) {
   // A spell aimed at the dead has a revive step, and a revive step is for a spell aimed at the dead (a creature that is up has nothing to revive).
   if (e.target?.creature?.dead === true && !seen.revive) say('a spell aimed at a dead creature (`target.creature.dead`) needs a `revive` step');
   if (seen.revive && e.target?.creature?.dead !== true) say('a `revive` step is for a spell whose creature target says `dead: true`');
+  // A spell aimed at a map object names it in the cast and sees it within its range: a range in feet, and nothing that lasts (a zone, terrain or a reaction), which would have no creature or place to hang on.
+  if (e.target?.object !== undefined) {
+    if (!(isInt(e.range) && e.range > 0)) say('a spell aimed at a map object needs a range in feet');
+    if (e.reaction !== undefined || e.zone !== undefined || e.terrain !== undefined || e.choice !== undefined || e.hit !== undefined) say('a spell aimed at a map object is not a reaction, a zone, terrain, a choice or a hit');
+    if (!e.effects.some((st) => 'set' in st || 'reveal' in st)) say('a spell aimed at a map object has a `set` or `reveal` step to work on it');
+  }
   if (seen.teleport && !(e.target?.self && e.effects.some((st) => 'teleport' in st))) say('a `teleport` step is for a spell aimed at its caster, in its own list of steps');
   if (e.tier === 'auto' && seen.manual) say('marked auto but contains a manual step');
   if (e.tier === 'manual' && !seen.manual) say('marked manual but has no manual step');
@@ -3058,7 +3068,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 // linter already (a map of skills, of states, of levels); its values are walked for the shapes below.
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
-  heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'],
+  heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
   reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
@@ -3086,7 +3096,7 @@ const SHAPES = {
   requires: { what: 'what an option requires', keys: ['level', 'option', 'spell'] },
   spellMap: { what: 'spells by class level', keys: null },
   hitRider: { what: 'a hit rider', keys: ['with'] },
-  target: { what: 'a target', keys: ['self', 'creature', 'area', 'near'] },
+  target: { what: 'a target', keys: ['self', 'creature', 'area', 'near', 'object'] },
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'] },
@@ -3558,7 +3568,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   featureUses: { max: 'i|o', recharge: 's|o', short: 'i' },
   requires: { level: 'i', option: 's', spell: 's' },
   spellMap: { '*': 's[]' },
-  target: { self: 'b', creature: 'o', area: 'o', near: 'i' },
+  target: { self: 'b', creature: 'o', area: 'o', near: 'i', object: 'o' },
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i', placed: 'b' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', magic: 'b', when: 's[]' },
@@ -3612,7 +3622,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.damage': { damage: 'd', type: 's', times: 'i', onZero: 'a', onKill: 'a', withHit: 'b' },
   'step.heal': { heal: 'd', addMod: 'b', atLeast: 'i' }, 'step.tempHp': { tempHp: 'd', addMod: 'b', atLeast: 'i' },
   'step.condition': { condition: 's', ends: 'o', escape: 'i', largest: 's', holds: 'i', escapeDis: 'b', whileHeld: 'b' }, 'step.modifier': { modifier: 'o', ends: 'o', to: 's' },
-  'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
+  'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
   'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },

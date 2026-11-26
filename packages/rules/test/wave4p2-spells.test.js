@@ -1,4 +1,4 @@
-// Wave 4, part 2, of issue #786: Find Traps and Detect Magic (assist, through the new `sense` step), Knock (kept manual, on purpose).
+// Wave 4, part 2, of issue #786: Find Traps and Detect Magic (assist, through the new `sense` step), Knock (kept manual here; wave 4 part 6 made it assist, aimed at a map object).
 // Built to docs/specs/rules-expansion.md, "Build notes: wave 4 part 2". Every test goes through apply().
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -30,10 +30,9 @@ function floor(objects = [], walls = []) {
 const cast = (s, spell, slot) => ok(apply(s, { type: "cast", actor: "wizard", spell, slot }, DM));
 const toDm = (r) => r.events.filter((e) => e.type === "manual" && e.partial).map((e) => e.text).join("\n");
 
-test("tiers: Find Traps and Detect Magic are assist; Knock stays manual (a spell cannot be aimed at an object)", () => {
+test("tiers: Find Traps and Detect Magic are assist (Knock was manual at this wave; part 6 made it assist: wave4p6-spells.test.js)", () => {
   assert.equal(SPELLS["find-traps"].def.tier, "assist");
   assert.equal(SPELLS["detect-magic"].def.tier, "assist");
-  assert.equal(SPELLS.knock.def.tier, "manual");
 });
 
 test("Find Traps: the DM is told which traps are in line of sight within 120 feet and their general danger, not where", () => {
@@ -95,7 +94,7 @@ test("Detect Magic: a pile behind total cover is left out, and the cast never se
   assert.ok(!/Protection/.test(JSON.stringify(view(s, P).events ?? [])));
 });
 
-test("Knock: stays manual and still says what it does, the loud knock included", () => {
+test("Knock: still says what it does, the loud knock and Arcane Lock included", () => {
   const text = JSON.stringify(SPELLS.knock.def.effects);
   assert.match(text, /audible up to 300 feet/);
   assert.match(text, /Arcane Lock/);
