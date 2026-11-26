@@ -7,7 +7,7 @@ import { effectsOf, endEffect, useUp } from '../durations.js';
 import { FT, landing, overlapAt, regionAt, SQUARE_RANGES, surfaces, under } from '../space.js';
 import { LIGHTS } from '../content/lights.js';
 import { copyPacks, packsProblem } from '../content/packs.js';
-import { EDITS, lintMap, migrateMap } from '../map.js';
+import { lintMap, migrateMap } from '../map.js';
 import { arrivalSpots, marchOrder, setPin } from '../places.js';
 import { loadNode, placeIn } from './travel.js';
 import { handoutActions } from '../handouts.js';
@@ -17,7 +17,7 @@ import { SQUARE_COVERS } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionDef, immuneTo } from '../modifiers.js';
 import { ARENA_RADIUS, control, current, ent, fail, inFight, living, pocketOf, spot, up } from './shared.js';
-import { airspace, AREA_FILLS, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
+import { airspace, AREA_FILLS, editMap, bringIn, DIAGONALS, joinEncounter, lookAround, objectName, objectOf, placeCreature, reveal, revealRegion, setObject, summonCaster, unfollow, unhide } from './world.js';
 import { condition, GRANTS, grantOf, heal, savingThrow } from './rolls.js';
 import { ABILITIES, DAMAGE_TYPES } from '../content/schema.js';
 import { roll } from '../rng.js';
@@ -196,22 +196,7 @@ export const handlers = {
     ctx.role === 'dm' || fail('Only the DM can change the map.');
     !s.map?.holding || fail('This is not a battle map: there is nothing to edit here.');
     (Array.isArray(a.ops) && a.ops.length > 0 && a.ops.length <= 2000) || fail('Nothing to change.');
-    const map = structuredClone(s.map);
-    for (const op of a.ops) {
-      const edit = (op && Object.hasOwn(EDITS, op.op) && EDITS[op.op]) || fail(`Unknown map change: ${op?.op}`);
-      const problem = edit(map, op);
-      if (problem) fail(problem);
-    }
-    const problems = lintMap(map);
-    problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
-    const B = barriers(map);
-    for (const e of living(s)) {                         // a floor may give way under someone, but there must be something to land on
-      const sf = under(map, e.pos);
-      (sf && !(sf.z === e.pos.z && B.solid(sf.level.id, e.pos))) || fail(`${e.name} would be left with nowhere to stand.`);
-    }
-    s.map = map;
-    ev.push({ type: 'mapEdit', count: a.ops.length });
-    lookAround(s, ev);
+    editMap(s, a.ops, ev);                              // the DM's map edit and Stone Shape's cut are one path (engine/world.js)
   },
   // Take a creature out of the game. { type: 'remove', actor }
   remove(s, a, ctx, ev) {

@@ -314,6 +314,13 @@ export function sensesOf(s, e) {
   return out;
 }
 
+// The longest leap a lasting effect lends for 10 feet of movement once a turn (Jump: `{ on: 'leap', op: 'set', value: 30 }`), in feet, or 0.
+export function leapOf(s, e) {
+  let best = 0;
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'leap' && m.op === 'set' && Number.isInteger(m.value) && m.value > best) best = m.value;
+  return best;
+}
+
 // Does a lasting effect let the creature walk on this surface (Water Walk: `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`)? Only water is known so far.
 export function walksOn(s, e, surface = 'water') {
   for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'surface' && m.op === 'immune' && m.scope?.surface === surface) return true;

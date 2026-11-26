@@ -104,3 +104,41 @@ export function barriers(map) {
   cache.set(map, out);
   return out;
 }
+
+// ---------- what players are sent of a wall (moved from view.js) ----------
+// A cell's corner, in feet from its centre, and a hair more: `G.cornerReach` of the map's grid
+// (5/√3 on hexes; docs/specs/square-grid.md, E7). On squares the stretch is the part inside the
+// square itself and a hair round it (half a side and 0.02 ft each way), not a circle through its
+// corners, which would reach a foot into the square beyond (review of #262, L2).
+export const reachOf = (G) => G.cornerReach + 0.02;
+export const SQUARE_CLIP = 2.5 + 0.02;
+// The stretches of a wall that lie within `reach` of any of these cell centres, or, with
+// `box` set, within `box` feet of one along each axis (a square).
+export function clipWall(w, centres, reach = reachOf(HEX), box = 0) {
+  const REACH = reach;
+  const [ax, ay] = w.a, dx = w.b[0] - ax, dy = w.b[1] - ay, len2 = dx * dx + dy * dy, spans = [];
+  for (const [cx, cy] of centres) {
+    if (box) {                                                     // the segment's part inside the box round this centre
+      let t0 = 0, t1 = 1;
+      for (const [d, v, c] of [[dx, ax, cx], [dy, ay, cy]]) {
+        if (Math.abs(d) < 1e-12) { if (Math.abs(v - c) > box) { t0 = 1; t1 = 0; } continue; }
+        let u0 = (c - box - v) / d, u1 = (c + box - v) / d;
+        if (u0 > u1) [u0, u1] = [u1, u0];
+        t0 = Math.max(t0, u0); t1 = Math.min(t1, u1);
+      }
+      if (t0 <= t1) spans.push([t0, t1]);
+      continue;
+    }
+    const fx = ax - cx, fy = ay - cy;
+    if (!len2) { if (fx * fx + fy * fy <= REACH * REACH) spans.push([0, 1]); continue; }
+    const b = 2 * (fx * dx + fy * dy), disc = b * b - 4 * len2 * (fx * fx + fy * fy - REACH * REACH);
+    if (disc < 0) continue;
+    const root = Math.sqrt(disc), t0 = Math.max(0, (-b - root) / (2 * len2)), t1 = Math.min(1, (-b + root) / (2 * len2));
+    if (t0 <= t1) spans.push([t0, t1]);
+  }
+  spans.sort((p, q) => p[0] - q[0]);
+  const merged = [];
+  for (const sp of spans) { const last = merged.at(-1); if (last && sp[0] <= last[1] + 1e-9) last[1] = Math.max(last[1], sp[1]); else merged.push([...sp]); }
+  const whole = merged.length === 1 && merged[0][0] === 0 && merged[0][1] === 1;
+  return merged.map(([t0, t1], i) => ({ id: whole ? w.id : `${w.id}~${i}`, level: w.level, kind: w.kind, a: [ax + dx * t0, ay + dy * t0], b: [ax + dx * t1, ay + dy * t1] }));
+}

@@ -126,6 +126,9 @@ const SENSE2 = [
   { pre: (s) => apply(s, { type: "bond", actor: GOB, to: "wizard", kind: "familiar" }, DM), a: { type: "companion", actor: GOB, auto: true } },
   { pre: (s) => apply(s, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: 3, r: -1 } }, DM), a: (s) => ({ type: "endEffect", effect: lasting(s) }) },
   { pre: (s) => apply(s, { type: "scene", scene: { title: "S" } }, DM), a: { type: "endScene" } },
+  // A leap (the Long Jump, #813): 10 ft over the ground beside the fighter, so it is reached by a script.
+  { a: (s) => ({ type: "leap", actor: "fighter", to: { q: s.entities.fighter.pos.q - 2, r: s.entities.fighter.pos.r } }) },
+  { a: (s) => ({ type: "leap", actor: "fighter", to: { q: s.entities.fighter.pos.q, r: s.entities.fighter.pos.r - 2 } }) },
   // Movement an Opportunity Attack's rider gave (docs/specs/homebrew-subclasses.md, addition H), kept as a turn flag, given up (a fight only: the first base has none, and the setup is skipped there).
   { pre: (s) => { s.encounter.flags["rmove:fighter"] = 15; }, a: { type: "forgoMove", actor: "fighter" } },
   // Places of a world (docs/specs/travel.md, W2): the map in play made a place, another battle place kept, a navigation node above.
@@ -298,9 +301,10 @@ test("nothing in the engine writes to a level's tiles, the levels or the walls i
     const text = readFileSync(f, "utf8");
     text.split("\n").forEach((line, i) => { if (!/^\s*\/\//.test(line) && WRITES.some((re) => re.test(line))) found.push(`${f.slice(src.length)}:${i + 1}`); });
   }
-  // map.js's EDITS (applied by dm.js to `structuredClone(s.map)`); nothing else.
+  // map.js's EDITS (applied by `editMap` of engine/world.js, which the DM's mapEdit and Stone Shape's cut both call, to `structuredClone(s.map)`); nothing else.
   assert.ok(found.every((x) => x.startsWith("map.js:")), `writes to the terrain outside map.js: ${found.join(", ")}`);
   const users = files.filter((f) => /\bEDITS\b/.test(readFileSync(f, "utf8"))).map((f) => f.slice(src.length)).sort();
-  assert.deepEqual(users, ["engine/dm.js", "map.js"]);
-  assert.match(readFileSync(join(src, "engine/dm.js"), "utf8"), /const map = structuredClone\(s\.map\);[\s\S]*?EDITS|structuredClone\(s\.map\)[\s\S]{0,400}edit\(map, op\)/);
+  assert.deepEqual(users, ["engine/world.js", "map.js"]);
+  assert.match(readFileSync(join(src, "engine/world.js"), "utf8"), /const map = structuredClone\(s\.map\);[\s\S]*?EDITS|structuredClone\(s\.map\)[\s\S]{0,400}edit\(map, op\)/);
+  assert.match(readFileSync(join(src, "engine/dm.js"), "utf8"), /editMap\(s, a\.ops, ev\)/);
 });

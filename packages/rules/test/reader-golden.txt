@@ -424,6 +424,19 @@ When it is cast, the DM is shown the author's description (unless a step has alr
 Not checked against any rulebook.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-leaping
+"Leaping" (level 1 evocation, touch, action, 1 minute).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+One creature the caster touches gets once on each of its turns, a leap of up to 30 feet for 10 feet of movement, with or without a running start.
+  It lasts as long as the spell.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 minute. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-far-step
 "Far Step" (level 7 evocation, 10 feet, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).
@@ -1097,3 +1110,21 @@ It is aimed at the caster alone.
 It lasts up to 7 days. The engine times it, and when it ends, so does everything it put on creatures.
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
+
+== hb-test-wall-gap
+"Wall Gap" (level 4 transmutation, touch, action, instant).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the entry does not say, and the steps cannot tell, so the list shows no roll for it.
+When casting it, the caster chooses what to shape the stone into (a 5-foot passage cut through a wall or any other shape (a weapon, a coffer, a statue, a door shaped shut)); a step below that names a shape is part of the cast only for the one chosen.
+5 feet of the wall the cast aimed at are taken out, centred on the point named (moved to lie inside the wall when the point is near its end; a wall of that length or less goes whole), as the DM's own map edit does: the views, what the party remembers and the patches update as for a DM edit. Anything standing along the same line in those feet (another wall, an undiscovered secret door) goes with it. A creature now seen through the gap is seen by the ordinary rules. This is part of the cast only if the caster chose a 5-foot passage cut through a wall.
+The engine does not do this; the DM does this: "Any other shape is the DM's." This is part of the cast only if the caster chose any other shape (a weapon, a coffer, a statue, a door shaped shut).
+It is aimed at a point on a wall of the map that the cast names (`wall`: level, x, y in feet): the caster must not be Blinded, the point must be within the caster's reach (touch, 5 feet) and on a wall, not a window, a rail or a curtain. A player cannot name a wall the party does not know of: the refusal is the same as for a point on no wall. Nothing is spent if the cast is refused.
+It is instant: nothing it does is kept as a lasting effect.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0: whether the wall is stone (the engine does not know what a wall is made of: if it is not, undo the cut), and a secret door cut away with it.
+DM: "Any other shape is the DM's."
+DM: Whatever the description says beyond the steps above.

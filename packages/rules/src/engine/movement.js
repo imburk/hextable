@@ -7,14 +7,14 @@ import { canSee, hiddenFrom } from '../sight.js';
 import { seenName, sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
 import { afterOpportunity, canReact, grappleInstead, instruction, OPPORTUNITY, OWED_MOVE, OPPORTUNITY_GRAPPLE, opportunityAttack, opportunityAttacks, reactionsOf } from '../reactions.js';
-import { flyby, incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
+import { flyby, incapacitated, incapacitatedBy, leapOf, modifiers, speedOf } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { SIZES as SIZE_LIST } from '../content/schema.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, spot, steering, turnBudget, unblocked, up } from './shared.js';
 import { shellSeen, shellsFor, creatureType, airspace, aloft, along, beyond, footingOf, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
-import { passive } from './rolls.js';
-import { inShell, shellsOf } from '../terrain.js';
+import { abilityCheck, condition, passive } from './rolls.js';
+import { difficultAt, inShell, shellsOf } from '../terrain.js';
 import { endEffect } from '../durations.js';
 import { partRefusal } from './attacks.js';
 import { checkEnd, confusedOnly, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
@@ -657,7 +657,119 @@ function moveOn(s, a, ctx, ev, own) {
     checkEnd(s, ev);
 }
 
+// ---------- leaping (SRD "Long Jump"; the Jump spell lends `leap`) ----------
+// The hexes a leap passes over, from the one after `from` to `to`, on the straight line between their centres.
+function lineOver(G, from, to) {
+  const n = G.dist(from, to), a = G.center(from), b = G.center(to), out = [];
+  for (let i = 1; i <= n; i++) out.push(G.cell(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n));
+  return out;
+}
+// What a leap of `feet` costs `e` and how it is made, or null if it can't be made. `ord`: the Long Jump's distance (Strength, or half of it
+// standing, in whole 5 ft); `spell`: what a lasting effect lends for 10 feet of movement (0 if none, or already used this turn). Of the legal ways
+// the cheaper is taken (a tie goes to the ordinary leap, which leaves the spell's once-a-turn use); `wantSpell` insists on the spell's.
+function leapWay(feet, ord, spell, wantSpell) {
+  const ways = [];
+  if (!wantSpell && feet <= ord) ways.push({ cost: feet, spell: false });
+  if (spell > 0 && feet <= spell) ways.push({ cost: Math.min(feet, 10), spell: true });
+  return ways.sort((x, y) => x.cost - y.cost || (x.spell ? 1 : 0) - (y.spell ? 1 : 0))[0] ?? null;
+}
+const LEAP_RUN = 10;                     // feet walked immediately before a Long Jump for a running start
+// Feet of movement this creature has used this turn (what its Speed and Dashes gave, less what is left): a running start is walking since the last leap.
+const usedFeet = (s, e, bud) => speedOf(s, e) * (1 + (bud.dashes | 0)) - bud.move;
+
+function leapOn(s, a, ctx, ev) {
+  const e = ent(s, a.actor); control(s, e, ctx);
+  spot(a.to, 'where to leap');
+  if (a.spell !== undefined && typeof a.spell !== 'boolean') fail('`spell` is true or left out.');
+  if (mountOf(s, e) || riderOf(s, e)) fail(`${e.name} can't leap while it rides or is ridden.`);
+  up(e) || fail(`${e.name} can't move.`);
+  (speedOf(s, e) > 0) || fail(`${e.name} can't move: its Speed is 0.`);
+  aloft(s, e) && fail(`${e.name} is flying: it moves, it does not leap.`);
+  e.cond.prone && fail(`${e.name} is Prone: stand up first.`);
+  draggedBy(s, e).length && fail(`${e.name} can't leap while it holds a creature.`);
+  const str = e.abil?.str;
+  Number.isInteger(str) || fail(`${e.name} has no Strength score, so the engine can't work out its leap.`);
+  const fighting = inFight(s, e.id), bud = fighting ? turnBudget(s, e) : null;
+  if (fighting && !bud) fail(`It isn't ${e.name}'s turn.`);
+  const G = gridOf(s.map), B = barriers(s.map), flags = s.encounter?.flags;
+  const here = ground(s.map, e.pos);
+  here || fail(`${e.name} has nothing under it to leap from.`);
+  const to = landing(s.map, a.to, e.pos.z);
+  to || fail("There's nothing there to stand on.");
+  const land = ground(s.map, to);
+  if (!land || land.level !== here.level || Math.abs(to.z - e.pos.z) > STEP_MAX) fail('A leap stays on one level: a climb or a drop is not a leap.');
+  if (fighting && !s.encounter.arena[col(to)]) fail('The arena is locked until the fight ends.');
+  const feet = G.dist(e.pos, to) * FT;
+  feet > 0 || fail(`${e.name} is already there.`);
+  // The distance: Strength with a running start (10 feet walked since its last leap, in a fight; always outside one), half standing, in whole 5 feet.
+  const mark = fighting ? flags[`leapm:${e.id}`] ?? 0 : 0;
+  const running = !fighting || usedFeet(s, e, bud) - mark >= LEAP_RUN;
+  const ord = Math.floor((running ? str : Math.floor(str / 2)) / FT) * FT;
+  const lent = leapOf(s, e), spellFree = lent > 0 && !(fighting && flags[`leaps:${e.id}`]);
+  if (a.spell === true && !lent) fail(`${e.name} has no spell that lends it a leap.`);
+  if (a.spell === true && !spellFree) fail(`${e.name} has already made its spell's leap this turn.`);
+  // Outside a fight no movement is spent and the spell's use is not counted: the limit is all there is.
+  const way = leapWay(feet, ord, spellFree ? lent : 0, a.spell === true);
+  way || fail(`Too far: ${e.name} can leap ${a.spell === true ? lent : Math.max(ord, spellFree ? lent : 0)} ft${a.spell === true || running ? '' : ' from a standing start'}.${a.spell === true || running || !fighting ? '' : ` With a running start (walk ${LEAP_RUN} ft first) it can leap ${Math.floor(str / FT) * FT} ft.`}`);
+  if (fighting && way.cost > bud.move) fail(`Too far. ${e.name} has ${feetLeft(s, bud.move)} ft of movement left.`);
+  // A wall or a shut door across the line stops it (as walking is stopped); what is only passed over does not.
+  B.blocked(here.level.id, e.pos, to) && fail('A wall or a shut door is in the way.');
+  if (B.solid(land.level.id, to) || TILES[land.tile.t].cost === Infinity || !fitsOn(s.map, e, to, B)) fail("Can't get there.");
+  // Where it comes down: a creature it knows of there refuses the leap; one it does not know of is found, and the leap stops short of it.
+  const unseen = (o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e);
+  const at = (h) => living(s).filter((o) => o.id !== e.id && overlapAt(o, o.pos, e, h, G));
+  const holders = at(to);
+  if (holders.some((o) => !unseen(o))) fail(`That ${G.word.one} is occupied.`);
+  let lurker = holders[0] ?? null, stop = to, short = feet, cost = way, spent = way.cost;
+  if (lurker) {
+    const over = lineOver(G, e.pos, to).slice(0, -1);
+    let i = over.length - 1;
+    for (; i >= 0; i--) {
+      const sf = landing(s.map, over[i], e.pos.z), g = sf && ground(s.map, sf);
+      if (!(g && g.level === here.level && Math.abs(sf.z - e.pos.z) <= STEP_MAX && !B.solid(g.level.id, sf) && TILES[g.tile.t].cost !== Infinity && fitsOn(s.map, e, sf, B))) continue;
+      // Judged on what the leaper's side knows (as walk's known routes are): a hex a known creature holds is passed by; one an unseen creature
+      // holds is where it comes down short of instead, and that creature is the one it finds (a reveal by bumping, never a stop that betrays it).
+      const there = at(sf);
+      if (there.some((o) => !unseen(o))) continue;
+      if (there.length) { lurker = there[0]; continue; }
+      stop = sf; break;
+    }
+    if (i < 0) return void bumped(s, lurker, e, ev);                 // nowhere to come down short of it: it does not leap, and finds it
+    short = G.dist(e.pos, stop) * FT;
+    cost = leapWay(short, ord, spellFree ? lent : 0, a.spell === true) ?? way;
+    spent = cost.cost;
+  }
+  if (!fighting && e.follow) unfollow(s, e, ev);
+  // The leap is one step of a walk to the landing: Opportunity Attacks for leaving a reach, what is on the landing hex, noticing, the fight beginning;
+  // the hexes between are not entered. Its cost is what the leap costs.
+  const reach = new Map([[key(e.pos), { cost: 0, prev: null, h: e.pos, canStop: false }], [key(stop), { cost: spent, prev: key(e.pos), h: stop, canStop: true }]]);
+  const had = !!s.encounter;
+  const walked = walk(s, e, reach, key(stop), ev, fighting, bud ?? undefined, e.side === 'party' ? unseen : null);
+  if (!walked) return;                                                // something caught the eye before it set off
+  const landed = key(e.pos) === key(stop);
+  if (landed && fighting && bud) {
+    flags[`leapm:${e.id}`] = usedFeet(s, e, bud);                      // the walking before the next leap counts from here
+    if (cost.spell) flags[`leaps:${e.id}`] = true;
+  }
+  if (landed && up(e)) {
+    const text = `${e.name} leaps ${short} ft${cost.spell ? ' (Jump)' : ''}.`;
+    ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: 'Leap', partial: true, text });
+    // SRD "Long Jump": landing in Difficult Terrain takes a DC 10 Dexterity (Acrobatics) check, or the creature is Prone.
+    const hard = modifiers(s, e, 'terrain').immune !== true && (TILES[land.tile.t].cost > 1 || difficultAt(s, e.pos));
+    if (hard) {
+      const r = abilityCheck(s, e, { skill: 'acrobatics' }), good = r.total >= 10;
+      ev.push({ type: 'check', id: e.id, ability: 'dex', skill: 'acrobatics', ...r, dc: 10, success: good, what: 'Landing in Difficult Terrain' });
+      if (!good) condition(s, e, 'prone', ev);
+    }
+  }
+  if (landed && lurker && !lurker.dead) bumped(s, lurker, e, ev);
+  if (!fighting && (had || !s.encounter) && walked.length > 1) { march(s, e, walked, ev); }
+  checkEnd(s, ev);
+}
+
 export const handlers = {
+  leap(s, a, ctx, ev) { leapOn(s, a, ctx, ev); },
+
   move(s, a, ctx, ev) {
     const own = {};
     moveOn(s, a, ctx, ev, own);

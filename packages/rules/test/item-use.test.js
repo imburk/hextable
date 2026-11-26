@@ -261,7 +261,8 @@ test("Ring of Jumping: Jump on its wearer only; a spell from an item still can't
   no(apply(s, { type: "use", actor: "hero", item: "j", target: "rogue" }, PAT), /targets Tavin only/);
   const r = ok(apply(s, { type: "use", actor: "hero", item: "j", target: "hero" }, PAT));
   assert.ok(r.events.some((e) => e.type === "cast" && e.spell === "jump"));
-  assert.ok(r.events.some((e) => e.type === "manual" && e.actor === "hero"), "Jump itself is the DM's (a manual spell)");
+  assert.ok(!r.events.some((e) => e.type === "manual" && e.actor === "hero"), "Jump is auto now (wave 4 part 8): no manual step for the DM");
+  assert.ok(s.effects.some((fx) => fx.name === "Jump" && fx.parts?.length), "its lasting effect lends the leap");
   fight(s);
   no(apply(s, { type: "use", actor: "hero", item: "w", target: "m1", metamagic: ["quickened"] }, PAT), /"metamagic" is not for a spell cast from/);
   no(apply(s, { type: "use", actor: "hero", item: "w", target: "m1", slot: 2 }, PAT), /"slot" is not for/);

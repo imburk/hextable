@@ -8,10 +8,11 @@ import { actionProfile, CUBE_AIM_MAX, loadOf, rangeAt, scaleSteps, targetCount, 
 import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, inShell, shellsOf, terrainsOf } from '../terrain.js';
-import { objectKnown, regionsInSight, sightRule, unknown } from '../vision.js';
+import { objectKnown, regionsInSight, sightRule, tileSent, unknown } from '../vision.js';
+import { EDITS, lintMap } from '../map.js';
 import { hiddenFrom } from '../sight.js';
 import { holds, zonesOf } from '../zones.js';
-import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
+import { barriers, clipWall, distToSegment, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from '../walls.js';
 import { itemName } from '../derive.js';
 import { confusedNow, effectsOf, restamp } from '../durations.js';
 import { incapacitated, modifiers, speedOf, walksOn } from '../modifiers.js';
@@ -900,6 +901,107 @@ export function aimObject(s, e, name, range, id, ctx) {
   clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) }) || fail(`${e.name} can't see the ${objectName(o).toLowerCase()} from here.`);
   objectDef(o).use?.some((u) => u.id === 'unlock') || fail(`${name} opens a lock, and the ${objectName(o).toLowerCase()} has none.`);
   return o;
+}
+
+// The DM's map edit (`mapEdit`, engine/dm.js) and a spell's (`cut`, below) are one path: the changes are made to a copy of the map, the copy is
+// checked whole, nobody may be left with nowhere to stand, and only then is the copy put in, as the map in play, with the party looking around
+// again (so views, vision memory and patches update as for a DM edit). `ops` is a list of `EDITS` of map.js. A refusal is a RuleError and changes nothing.
+export function editMap(s, ops, ev, { footing = true } = {}) {
+  const map = structuredClone(s.map);
+  for (const op of ops) {
+    const edit = (op && Object.hasOwn(EDITS, op.op) && EDITS[op.op]) || fail(`Unknown map change: ${op?.op}`);
+    const problem = edit(map, op);
+    if (problem) fail(problem);
+  }
+  const problems = lintMap(map);
+  problems.length === 0 || fail(footing ? `That change can't be made. ${problems[0]}` : "That wall can't be cut.");      // a spell's refusal names nothing of the map
+  const B = barriers(map);
+  if (footing) for (const e of living(s)) {                         // a floor may give way under someone, but there must be something to land on
+    const sf = under(map, e.pos);
+    (sf && !(sf.z === e.pos.z && B.solid(sf.level.id, e.pos))) || fail(`${e.name} would be left with nowhere to stand.`);
+  }
+  s.map = map;
+  ev.push({ type: 'mapEdit', count: ops.length });
+  lookAround(s, ev);
+}
+
+// A spell aimed at a wall (`target.wall`, Stone Shape; docs/specs/rules-expansion.md, "Build notes: wave 4 part 9"): the cast names a point in map feet,
+// `wall: { level, x, y }`, on a wall of the map (a point rather than a hex edge: a wall is a line segment of any length and place, walls.js).
+// Checked before anything is spent, in this order, and the first gives one answer: a point on no wall and a point on a wall the party does not know
+// of (a stretch of wall no hex the players are sent is near, `view.js` `clipWall`) are both 'No such wall.', so a refusal never tells a player a wall is
+// there. An undiscovered secret door stands as the wall it passes for (it is sent to players as one): it is a wall here too, so it is not refused.
+// Then the caster must not be Blinded, the point must be within `range` feet of the caster's space (touch is 5), and the wall's kind must be `wall`
+// (a window, a rail or a curtain is refused). The DM names any wall. Returns the aimed point and what is there to cut.
+export const WALL_ON = 1, CUT_FEET = 5;
+// Every segment a creature could take for a wall on a level: the map's walls and the undiscovered doors (kind wall, `door` the object's id).
+export function wallSegments(s, levelId) {
+  const G = gridOf(s.map), out = [];
+  for (const w of s.map.walls) if (w.level === levelId) out.push({ id: w.id, kind: w.kind, a: w.a, b: w.b });
+  for (const o of s.map.objects) {
+    const seg = o.level === levelId && objectSegment(o, G), st = objectDef(o)?.states[o.state];
+    if (seg && st?.hidden && st.blocks.includes('move') && st.blocks.includes('sight')) out.push({ id: o.id, door: true, kind: 'wall', a: seg[0], b: seg[1] });
+  }
+  return out;
+}
+export function aimWall(s, e, name, range, w, ctx) {
+  (w && typeof w === 'object' && !Array.isArray(w) && typeof w.level === 'string' && Number.isFinite(w.x) && Number.isFinite(w.y)) || fail(`Pick a point on a wall for ${name}.`);
+  const none = () => fail('No such wall.');
+  s.map.holding && none();
+  const level = s.map.levels.find((l) => l.id === w.level) || none(), G = gridOf(s.map), P = [w.x, w.y];
+  let near = wallSegments(s, level.id).filter((x) => distToSegment(P, [x.a, x.b]) <= WALL_ON).sort((x, y) => distToSegment(P, [x.a, x.b]) - distToSegment(P, [y.a, y.b]));
+  if (ctx?.role !== 'dm') {
+    // A player knows a segment only as far as it is sent (view.js: each wall clipped to the sent hexes): one piece of it within WALL_ON of the point.
+    const rule = sightRule(s), centres = G.range(G.cell(P[0], P[1]), 3).filter((h) => level.tiles[col(h)] && tileSent(s, level.id, h, rule)).map((h) => G.center(h));
+    near = near.filter((x) => clipWall(x, centres, reachOf(G), G.kind === 'square' ? SQUARE_CLIP : 0).some((piece) => distToSegment(P, [piece.a, piece.b]) <= WALL_ON));
+  }
+  near.length || none();
+  !e.cond?.blinded || fail(`${e.name} is Blinded and can't see the wall.`);
+  const mine = under(s.map, e.pos);
+  const d = mine?.level.id === level.id ? Math.min(...footprint(e, e.pos, G).map((h) => Math.hypot(G.center(h)[0] - P[0], G.center(h)[1] - P[1]) - FT / 2)) : Infinity;
+  d <= range + 1e-9 || fail(`That wall is out of the caster's reach. ${name} reaches ${range} ft.`);
+  const target = near.find((x) => x.kind === 'wall') || fail(`${name} cuts a wall, and this is a ${near[0].kind}.`);
+  return { level: level.id, x: P[0], y: P[1], target: target.id };
+}
+
+// A `cut` step (Stone Shape): five feet of the wall at the point the cast named come out, through `editMap`. The window is `CUT_FEET` along the wall,
+// centred on the point and moved to lie inside the segment (so a cut near an end is still a whole five feet); a segment of five feet or less goes
+// whole. Every other `wall`-kind segment or undiscovered door lying along the same line and overlapping the window is cut by it too (what is left of
+// one is a wall of its own), so the gap is open whatever it was drawn as: players see the same walls either way. The DM alone is told (what the engine
+// cannot tell: the wall's material; a secret door that went with it). Returns false if nothing was there to cut.
+export function cutWall(s, src, feet, f, ev) {
+  const G = gridOf(s.map), P = [src.x, src.y], tell = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text });
+  const segs = wallSegments(s, src.level), T = segs.find((x) => x.id === src.target && x.kind === 'wall');
+  if (!T) { tell(`${f.src.name}: there was no wall left at the point named, so nothing was cut.`); return false; }
+  const [A, B] = [T.a, T.b], L = Math.hypot(B[0] - A[0], B[1] - A[1]), u = L ? [(B[0] - A[0]) / L, (B[1] - A[1]) / L] : [1, 0];
+  const along = (p) => (p[0] - A[0]) * u[0] + (p[1] - A[1]) * u[1], off = (p) => Math.abs((p[0] - A[0]) * u[1] - (p[1] - A[1]) * u[0]);
+  const t = Math.max(0, Math.min(L, along(P)));
+  const lo = L <= feet + 1e-9 ? 0 : Math.max(0, Math.min(L - feet, t - feet / 2)), hi = L <= feet + 1e-9 ? L : lo + feet;
+  const ops = [], doors = [];
+  for (const x of segs) {
+    if (x.kind !== 'wall' || off(x.a) > 0.05 || off(x.b) > 0.05) continue;
+    const sa = along(x.a), sb = along(x.b), s0 = Math.min(sa, sb), s1 = Math.max(sa, sb);
+    if (Math.min(s1, hi) - Math.max(s0, lo) <= 1e-6) continue;
+    const point = (v) => (Math.abs(v - sa) < 1e-9 ? x.a : Math.abs(v - sb) < 1e-9 ? x.b : [A[0] + u[0] * v, A[1] + u[1] * v]);
+    const pieces = [];
+    if (lo - s0 > 1e-6) pieces.push([s0, lo]);
+    if (s1 - hi > 1e-6) pieces.push([hi, s1]);
+    const base = x.door ? { kind: 'wall', level: src.level } : structuredClone(s.map.walls.find((w) => w.id === x.id));
+    const rec = (r, id) => { const wall = { ...base, a: sa <= sb ? point(r[0]) : point(r[1]), b: sa <= sb ? point(r[1]) : point(r[0]) }; if (id) wall.id = id; else delete wall.id; return { op: 'wall', wall }; };
+    if (x.door) { doors.push(x.id); ops.push({ op: 'unobject', id: x.id }); for (const r of pieces) ops.push(rec(r)); }
+    else if (!pieces.length) ops.push({ op: 'unwall', id: x.id });
+    else { ops.push(rec(pieces[0], x.id)); for (const r of pieces.slice(1)) ops.push(rec(r)); }
+  }
+  // A lever or plate linked to a secret door that was cut away loses that link, as if the door had never been (a link to an object that is not
+  // on the map is a lint refusal, and that refusal would tell a player there had been a door: review of #820).
+  if (doors.length) for (const o of s.map.objects) {
+    if (!Array.isArray(o.links) || !o.links.some((l) => doors.includes(l?.object))) continue;
+    const kept = structuredClone(o); kept.links = kept.links.filter((l) => !doors.includes(l?.object));
+    if (!kept.links.length) delete kept.links;
+    ops.push({ op: 'object', object: kept });
+  }
+  editMap(s, ops, ev, { footing: false });      // a cut of wall never changes what anyone stands on, and a refusal here must not name a creature
+  tell(`${f.src.name} took out ${Math.min(feet, L)} feet of the wall at that point, as if shaped from stone. The engine does not know what a wall is made of: if it is not stone, undo this.${doors.length ? ` An undiscovered secret door stood in the stretch (${doors.join(', ')}) and was cut away with it; the players were told nothing of it.` : ''}`);
+  return true;
 }
 
 // A `sense` step (Find Traps, Detect Magic; docs/specs/rules-expansion.md, "Build notes: wave 4 part 2"): what the caster `e` would sense within
