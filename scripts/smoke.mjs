@@ -81,6 +81,7 @@ const REGISTRY = {
   levelup: ['levelup'],
   followfight: ['followfight'],
   fly: ['fly'],
+  leap: ['leap'],
   menuclose: ['menuclose'],
   editorbar: ['editorbar'],
   menushift: ['menushift'],

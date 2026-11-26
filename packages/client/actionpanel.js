@@ -585,7 +585,7 @@ export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found
     case 'features': return featureRows(S, e, { mode }).filter((r) => !healsRow(r));
     case 'companions': return [...cr.features, ...cr.move];
     // Out of a fight there is no Move group: a flyer finds Fly… here, among the first tiles (it is the word a player looks for); Higher and Lower are under More.
-    case 'explore': return [...std('fly').map((r) => ({ ...r, grid: true })), ...rankExplore(S, e, { dm, mode, found }), ...std('fly-up', 'fly-down', 'fly-to')].filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
+    case 'explore': return [...std('fly').map((r) => ({ ...r, grid: true })), ...rankExplore(S, e, { dm, mode, found }), ...std('leap', 'leap-jump', 'fly-up', 'fly-down', 'fly-to')].filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
     case 'rest': return rankExplore(S, e, { dm, mode, found }).filter((r) => r.id === 'shortRest' || r.id === 'longRest');
     case 'items': { const it = items(); return [...it.uses, ...(it.light ? [it.light] : [])]; }
     default: return [];
