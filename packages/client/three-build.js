@@ -63,10 +63,28 @@ export function lightAt(clock) {
   return { light: c0.map((v, j) => v + (c1[j] - v) * k), sky: s0 + (s1 - s0) * k };
 }
 // How full to draw a health bar. Players are not sent a monster's numbers, only a
-// word for how it looks, so a record without maxHp is drawn from that word.
+// word for how it looks, so a record without maxHp is drawn from that word. Bloodied is half, drawn
+// with a notch by barFor so it does not read as a number (docs/specs/one-token-menu.md, Decision 7a).
 export function hpFraction(e) {
   if (e.maxHp > 0) return Math.max(0, Math.min(1, e.hp / e.maxHp));
-  return { healthy: 1, bloodied: 0.45, down: 0, dead: 0 }[e.health] ?? (e.hp > 0 ? 1 : 0);
+  return { healthy: 1, bloodied: 0.5, down: 0, dead: 0 }[e.health] ?? (e.hp > 0 ? 1 : 0);
+}
+
+// What the bar over a creature shows: { show, frac, notch }. Pure, so it is tested alone.
+//   pref       this device's `hextable.bars`: 'always' (the default), 'fight' (only while a fight runs), 'never'.
+//   dm         the viewer is the DM: every bar is exact.
+//   foeHealth  the table's rule `settings.foeHealth`: 'rough' (the default) or 'hidden'. It binds players only.
+//   fight      a fight is running.
+// The party's bars are exact. A foe's bar, for a player under 'rough', is read from the word the view sends (`health`):
+// full, half with a notch (bloodied), or empty (down, dead). Under 'hidden' a player sees no bar over a foe.
+export function barFor(e, { dm = false, pref = 'always', foeHealth = 'rough', fight = false } = {}) {
+  const none = { show: false, frac: 0, notch: false };
+  if (pref === 'never' || (pref === 'fight' && !fight)) return none;
+  if (dm || e.side === 'party') return { show: true, frac: hpFraction(e), notch: false };
+  if (foeHealth === 'hidden') return none;
+  const word = e.health ?? (e.dead ? 'dead' : e.maxHp > 0 ? (e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy') : e.hp > 0 ? 'healthy' : 'down');
+  const frac = { healthy: 1, bloodied: 0.5, down: 0, dead: 0 }[word] ?? 1;
+  return { show: true, frac, notch: word === 'bloodied' };
 }
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];

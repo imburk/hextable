@@ -103,3 +103,16 @@ test("the table rule for unseen turns: say by default, quiet by choice, the DM's
   delete old.settings.unseenTurns;
   assert.equal(migrate(old).settings.unseenTurns, "say");
 });
+
+test("the table rule for foes' health bars: rough by default, hidden by choice, the DM's to set, sent to everyone, and nothing else", () => {
+  const s = newGame(3);
+  assert.equal(s.settings.foeHealth ?? "rough", "rough");
+  assert.equal(apply(s, { type: "setting", key: "foeHealth", value: "hidden" }, PAT).error, "Only the DM can change table settings.");
+  assert.equal(apply(s, { type: "setting", key: "foeHealth", value: "exact" }, DM).error, "That setting can be: rough, hidden.");
+  assert.equal(apply(s, { type: "setting", key: "foeHealth", value: "whisper" }, DM).error, "That setting can be: rough, hidden.");
+  ok(apply(s, { type: "setting", key: "foeHealth", value: "hidden" }, DM));
+  assert.equal(s.settings.foeHealth, "hidden");
+  assert.equal(view(s, PAT).settings.foeHealth, "hidden");
+  ok(apply(s, { type: "setting", key: "foeHealth", value: "rough" }, DM));
+  assert.equal(s.settings.foeHealth, "rough");
+});

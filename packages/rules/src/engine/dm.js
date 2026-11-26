@@ -469,7 +469,7 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // Square maps only (docs/specs/square-grid.md): how a diagonal step is counted, how reach and
   // range are measured, and which squares a Sphere, Cylinder or Emanation covers. Absent means the
   // first value. What each means is SETTING_TEXT, below.
-  diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
+  diagonals: DIAGONALS, squareRange: SQUARE_RANGES, areaFill: AREA_FILLS, autoEngage: [true, false], passiveFind: ['off', 'traps', 'all'], vertical: ['max', 'sum', 'true'], climbing: ['on', 'off'], cover: ['on', 'off'], creatureCover: ['on', 'off'], engageRange: [10, 30, 60], unseenTurns: ['say', 'quiet'], foeHealth: ['rough', 'hidden'], diceThrow: ['auto', 'throw'], pace: ['wait', 'flow', 'instant'],
   // Who reviews the rewards of a fight (rewards.js): the DM first, nobody (published at once), or none are made.
   conclusion: ['dm', 'auto', 'off'], xpShare: ['split', 'full'],
   // Travel (docs/specs/travel.md, Decision 5, W4): whether a player whose characters are in a place that is not in play watches the place that is, live (the

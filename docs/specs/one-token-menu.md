@@ -273,6 +273,18 @@ The menu › "Quick actions on the turn line on my turn" turns them off (on by d
 creature: a DM who has selected another creature than the one whose turn it is sees none. The menu's own path is still four taps; question 29 (open the character's page on my turn) is
 M10's.
 
+### M7 build notes (health bars)
+
+**Built** (#798), Rough and Hidden; Exact is not built (it needs E-M3, not approved) and is not a choice anywhere.
+- **`barFor(e, { dm, pref, foeHealth, fight })`** (`three-build.js`) is the one decision, pure and tested (`client/test/healthbars.test.js`): `{ show, frac, notch }`. The preference (`never`, or `fight` with no fight) comes
+  first and beats everything, the DM's own device included; then the DM and the party are exact (Hit Points over maximum, a creature at 0 empty); then a foe for a player: `hidden` shows nothing, `rough` reads the word the view sends (`health`):
+  healthy full, Bloodied **half with a notch**, Down or dead empty. `hpFraction` now says 0.5 for Bloodied (it was 0.45) for the places that draw a plain bar.
+- **How the renderer hears of the rule:** `app.js` `shownState` adds `barRule` (`dm`, `pref`, `foeHealth`) to the copy of the state it gives the renderer, so the renderer interface gains no member. A change of the device preference draws the shown state again at once.
+- **Device preference** `hextable.bars` (`always` default, `fight`, `never`): Setup › Display and controls › "Health bars over creatures". **Table rule** `settings.foeHealth` (`rough` default, absent means rough, no migration; `hidden`): DM tools › Sight and light › "Foes' health bars, for players", and a line in Setup's table rules for everyone. Rules: `SETTINGS` (`engine/dm.js`) and `foeHealth: 'sent'` (`view-fields.js`).
+- **The notch** is a white line down the middle of the bar (`.bar.notch`); a foe's bar stays red, a party bar green.
+- **Hidden and the tracker:** `tracker.js` keeps every foe's row (name, turn) and draws no bar, no word and no greying for Down; under Rough its bar takes `barFor`'s notch. The selected-creature card (`actionpanel.js`) hides its Hit Points line for a foe under Hidden (W50 lists what is left).
+- Looked at by hand at 390x844 (touch) and 1280x800 as a player and as the DM, for each rule and preference; the smoke pass `healthbars` checks the numbers.
+
 ### M8 build notes (the arc, the strip, the symbols, the names)
 
 **Built.**

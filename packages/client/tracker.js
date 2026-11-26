@@ -6,7 +6,7 @@
 import { inFight, clockText, FT, up } from './shared/engine.js';
 import { under } from './shared/space.js';
 import { conditionName } from './shared/modifiers.js';
-import { hpFraction } from './three-build.js';
+import { barFor } from './three-build.js';
 import { MONSTERS } from './shared/content/index.js';
 import { rowDotHTML } from './linkdot.js';
 
@@ -120,7 +120,10 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
     const left = !f.until ? '' : f.until.clock !== undefined ? ` until ${clockText(f.until.clock)}` : enc ? ` ${Math.max(0, f.until.round - enc.round)}r` : '';
     return `${f.name}${f.conc ? ' (C)' : ''}${left}`;
   });
-  const out = e.dead || (typeof e.hp === 'number' ? e.hp <= 0 : word === 'down');
+  // The table's rule for foes' health (Decision 7a): under `hidden` a player's row for a foe says nothing of its health: no bar, no word, and no greying for Down.
+  const bar = barFor(e, { dm, foeHealth: S.settings?.foeHealth === 'hidden' ? 'hidden' : 'rough' });
+  if (!bar.show) hp = '';
+  const out = e.dead || (bar.show && (typeof e.hp === 'number' ? e.hp <= 0 : word === 'down'));
   const ctl = (dm ? `${typeof e.maxHp === 'number' ? '<button type="button" data-do="dmg" aria-label="Damage by the typed amount">\u2212</button><button type="button" data-do="heal" aria-label="Heal by the typed amount">+</button>' : ''}` +
       `${enc && now ? '<button type="button" data-do="skip">Skip turn</button>' : ''}${e.hidden ? '<button type="button" data-do="reveal">Reveal</button>' : ''}` : '') +
     (e.abil ? `<button type="button" data-do="sheet" aria-label="Sheet: ${esc(nm)}">Sheet</button>` : '');
@@ -128,7 +131,7 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
       ${dm && typeof e.maxHp === 'number' ? `<input type="checkbox" class="tr-tick" aria-label="Select ${esc(nm)}" ${ticked.has(e.id) ? 'checked' : ''}>` : '<span class="tr-nobox"></span>'}
       <span class="tr-init">${init !== undefined ? init : ''}</span>
       <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(nm)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}${dm && link(e) ? `<span class="tr-link">${rowDotHTML(link(e).state, link(e).who ?? e.name, link(e).text)}</span>` : ''}</span>
-        <span class="tr-hp"><span class="bar"><i style="width:${hpFraction(e) * 100}%"></i></span><span>${esc(hp)}</span></span>
+        ${bar.show ? `<span class="tr-hp"><span class="bar${bar.notch ? ' notch' : ''}"><i style="width:${bar.frac * 100}%"></i></span><span>${esc(hp)}</span></span>` : ''}
         ${tags.length || conds.length || fx.length ? `<span class="tr-tags">${[...tags, ...conds, ...fx].map((t) => `<span>${esc(t)}</span>`).join('')}</span>` : ''}</button>${ctl ? `<span class="tr-ctl">${ctl}</span>` : ''}</li>`;
 }
 

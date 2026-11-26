@@ -246,3 +246,18 @@ test('the turn line says the table waits for a reaction, and a downed player rea
   s.entities.fighter.dead = true;
   assert.doesNotMatch(screenTurnLine(view(s, PAT), mineOnly).text, /You are down/);
 });
+
+test('foes\' health: Rough draws the Bloodied word and a notch; Hidden keeps the row, the name and the turn but no bar and no word; the DM is unchanged', () => {
+  const { s } = fight();
+  const foeId = Object.values(view(s, PAT).entities).find((e) => e.side === 'foe').id;
+  ok(apply(s, { type: 'setHp', actor: foeId, hp: 1 }, DM));
+  const rowFor = (V, o) => rowHTML(V, trackerRows(V, o).find((r) => r.e?.id === foeId), { dm: !!o?.dm });
+  const rough = rowFor(view(s, PAT));
+  assert.match(rough, /class="bar notch"/); assert.match(text(rough), /Bloodied/);
+  ok(apply(s, { type: 'setting', key: 'foeHealth', value: 'hidden' }, DM));
+  const V = view(s, PAT), hidden = rowFor(V);
+  assert.ok(trackerRows(V).some((r) => r.e?.id === foeId), 'the row stays');
+  assert.match(hidden, /tr-name/); assert.ok(!/tr-hp|class="bar|Bloodied|Healthy|Down|out/.test(hidden.replace(/tr-nobox/, '')), hidden);
+  const dm = rowFor(s, { dm: true });
+  assert.match(dm, /tr-hp/); assert.doesNotMatch(dm, /notch/);
+});
