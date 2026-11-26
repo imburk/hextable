@@ -32,11 +32,21 @@ export const spells3 = [
     time: "action", range: "touch", components: ["v", "s"],
     duration: "1 minute", concentration: true, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Bestow Curse: a creature the caster touches makes a Wisdom save or is cursed for up to a minute (Concentration). The caster picks one effect: (1) Disadvantage on ability checks and saving throws with one chosen ability; (2) Disadvantage on attack rolls against the caster; (3) in combat, a Wisdom save at the start of each of the target's turns or it must take the Dodge action; (4) the target takes an extra 1d8 Necrotic damage when the caster deals damage to it with an attack roll or a spell. A level 4 slot allows Concentration up to 10 minutes; a level 5 or 6 slot needs no Concentration and lasts 8 hours; a level 7 or 8 slot lasts 24 hours; a level 9 slot lasts until dispelled. The DM applies the effect."}],
+    choice: {"of": "curse"},
+    effects: [
+      {"save": "wis", "onFail": [
+        {"modifier": {"on": "check", "op": "disadvantage", "scope": {"ability": "chosen"}}, "ifChoice": ["str", "dex", "con", "int", "wis", "cha"]},
+        {"modifier": {"on": "save", "op": "disadvantage", "scope": {"ability": "chosen"}}, "ifChoice": ["str", "dex", "con", "int", "wis", "cha"]},
+        {"modifier": {"on": "attack.roll", "op": "disadvantage", "against": "source"}, "ifChoice": ["attacks"]},
+        {"eachTurn": [{"save": "wis", "onFail": [{"manual": "Bestow Curse (the Dodge curse): the cursed creature failed its Wisdom save at the start of its turn, so on this turn it is forced to take the Dodge action. The engine does not force a creature's action: the DM sets it."}]}], "ifChoice": ["dodge"]},
+        {"modifier": {"on": "damage.dealt", "op": "add", "value": "1d8", "types": ["necrotic"], "against": "target"}, "to": "caster", "ifChoice": ["damage"]}
+      ]},
+      {"manual": "Bestow Curse: the engine applies the curse the caster chose to a creature that fails the save: Disadvantage on checks and saves with one ability, Disadvantage on its attack rolls against the caster, an extra 1d8 Necrotic damage on damage the caster deals it with an attack roll or a spell, or (Dodge) a Wisdom save it rolls at the start of each of its turns. The DM applies the forced Dodge action; the longer time from a higher slot (a level 4 slot: Concentration up to 10 minutes; level 5 or 6: no Concentration, 8 hours; level 7 or 8: 24 hours; level 9: until dispelled), which the engine keeps at a minute of Concentration; and the extra damage from a source the engine does not attribute to the caster's attack or spell (a zone from another spell, damage the DM sets)."}
+    ],
     kinds: ["damage", "control"],
     roll: "save:wis",
-    tier: "manual", checked: true,
-    text: "A touched creature makes a Wisdom save or is cursed for up to a minute with one of four effects: Disadvantage on one ability's checks and saves, Disadvantage on attacks against the caster, a forced Dodge, or +1d8 necrotic damage from the caster. Higher slots lengthen it.",
+    tier: "assist", checked: true,
+    text: "A touched creature makes a Wisdom save or is cursed for up to a minute of Concentration with the one curse the caster chooses: Disadvantage on one ability's checks and saves, Disadvantage on attack rolls against the caster, a Wisdom save each turn or the Dodge action, or an extra 1d8 Necrotic damage from the caster. The engine applies all but the forced Dodge (it rolls the save; the DM sets the action) and the longer time of a higher slot, which the DM gives.",
   },
   {
     id: "blink", name: "Blink", source: "SRD 5.2.1",

@@ -10,6 +10,7 @@
 //          | { enc, round } (in a fight: the start of the source's turn in that round)
 //   parts: what it put on creatures, so ending it takes exactly that off again:
 //          { target, cond, ends?, dc?, born? }, { target, modifier, ends?, dc?, born?, against? }
+//          { target, confuse: { had } } (a `confuse` step: Confusion; `had` is what its Reaction was before),
 //          { target, turn: { steps, src } } (an `eachTurn` step: what the effect runs on the creature at the start of each of its turns, effects.js `turnSteps`;
 //          never sent to players), { target, light: true } (a light it gave to carry), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
 //          raised creature under control). `born` names the turn it was made in (turnKey).
@@ -68,6 +69,8 @@ function endPart(s, ev, fx, p) {
   if (p.hpMax && t && !t.dead) { t.maxHp -= p.hpMax; t.hp = Math.min(t.hp, t.maxHp); ev.push({ type: 'maxHp', id: t.id, maxHp: t.maxHp, hp: t.hp }); }
   // A form it held ends: what the form replaced is put back (forms.js).
   if (p.form && t?.form?.fx === fx.id) { leaveForm(t); ev.push({ type: 'form', id: t.id, form: null }); }
+  // Confusion ends on it (a `confuse` step): its Reaction comes back as it was, unless another Confusion still holds it.
+  if (p.confuse && t && !t.dead && !effectsOf(s).some((x) => x.parts.some((q) => q !== p && q.confuse && !q.ended && q.target === t.id))) t.reactionUsed = !!p.confuse.had;
   // A light it gave goes out (a `light` step: Light).
   if (p.light && t?.light?.fx === fx.id) { delete t.light; ev.push({ type: 'light', id: t.id, bright: 0, dim: 0 }); }
   // An action a spell gave it goes (an `arm` step: Flame Blade).
@@ -75,6 +78,8 @@ function endPart(s, ev, fx, p) {
   // Temporary Hit Points that came from this effect vanish with it (those from elsewhere since stay).
   if (p.temp && t?.tempFx === fx.id) { const lost = t.tempHp ?? 0; t.tempHp = 0; delete t.tempFx; if (lost) ev.push({ type: 'tempHp', id: t.id, amount: -lost, tempHp: 0 }); }
 }
+// Is a creature held by Confusion (a `confuse` part, not ended)? Its Reaction is then spent, as the fight begins or it joins one (resolve.js, world.js).
+export const confusedNow = (s, e) => effectsOf(s).some((fx) => fx.parts.some((p) => p.confuse && !p.ended && p.target === e.id));
 const targetsOf = (fx) => [...new Set(fx.parts.map((p) => p.target))];
 // Does the lasting effect its bond names still keep this creature? (a `summon` part on it, not ended: on the map; or a
 // `bond` part, Animate Dead's and Create Undead's 24 hours of control, Decision 7: under its master's control. What

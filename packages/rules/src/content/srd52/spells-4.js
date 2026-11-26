@@ -91,12 +91,15 @@ export const spells4 = [
     level: 4, school: "enchantment", classes: ["bard","druid","sorcerer","wizard"],
     time: "action", range: 90, components: ["v","s","m"],
     duration: "1 minute", concentration: true, ritual: false,
-    target: {"self":true},
-    effects: [{"manual":"Confusion: each creature in a 10-foot-radius Sphere centred on a point in range makes a Wisdom save or, for up to 1 minute, cannot take Bonus Actions or Reactions and rolls 1d10 at the start of each of its turns: 1 it takes no action and uses all its movement in a random direction (1d4: north, east, south, west); 2-6 it neither moves nor acts; 7-8 it does not move and makes one melee attack against a random creature in reach, or does nothing if none; 9-10 it chooses. An affected target repeats the save at the end of each of its turns, ending the spell on itself on a success. The Sphere grows 5 feet in radius per slot level above 4. The DM runs it."}],
+    target: {"area": {"shape": "sphere", "size": 10}},
+    effects: [
+      {"save": "wis", "onFail": [{"confuse": true, "ends": {"on": "save", "save": "wis", "at": "turnEnd"}}]},
+      {"manual": "Confusion: the engine puts the effect on each creature in the Sphere that fails its save: no Bonus Actions or Reactions, a d10 rolled at the start of each of its turns, and a Wisdom save at the end of each of its turns that ends it on that creature. The roll is told to the DM alone. On a 1 the engine takes the creature's movement and action; the DM walks it in the direction rolled (1d4: north, east, south, west). On a 7 or 8 the engine picks the creature within reach that is attacked, from those the party knows of, and allows only that one attack at it; the DM adds any creature the party does not know of to the pool, and keeps the creature from casting or taking another action. The Sphere's radius grows 5 feet for each slot level above 4: the engine keeps the 10 feet, so the DM catches the others."}
+    ],
     kinds: ["control"],
     roll: "save:wis",
-    tier: "manual", checked: true,
-    text: "Creatures in a 10-foot sphere make a Wisdom save or act randomly each turn (d10 behaviour table) while the caster concentrates, repeating the save at turn end.",
+    tier: "assist", checked: true,
+    text: "Creatures in a 10-foot-radius sphere make a Wisdom save or, for up to a minute of Concentration, can take no Bonus Actions or Reactions and act at random: a d10 each turn gives either a walk in a random direction, doing nothing, one melee attack at a random creature in reach, or its own choice. It repeats the save at the end of each of its turns. The engine rolls the d10, takes away what each roll forbids and picks the creature a 7 or 8 attacks; the DM walks a creature on a 1, handles creatures the party does not know of, and widens the sphere for a higher slot (5 feet per level above 4).",
   },
   {
     id: "conjure-minor-elementals", name: "Conjure Minor Elementals", source: "SRD 5.2.1",

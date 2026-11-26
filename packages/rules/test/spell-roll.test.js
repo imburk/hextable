@@ -63,8 +63,8 @@ test("a spell that does not say is read from its steps; one the steps cannot rea
   assert.equal(spellRoll(bare("fire-bolt")), "attack");
   assert.equal(spellRoll(bare("fireball")), "save:dex");
   assert.equal(spellRoll(bare("magic-missile")), "none");         // auto, no roll step, no manual step
-  assert.equal(spellRoll(bare("bestow-curse")), null);            // a manual step may hide a roll
-  assert.equal(spellRoll({ ...bare("bestow-curse"), roll: "save:wis" }), "save:wis");
+  assert.equal(spellRoll(bare("enthrall")), null);            // a manual step may hide a roll
+  assert.equal(spellRoll({ ...bare("enthrall"), roll: "save:wis" }), "save:wis");
   assert.equal(spellRoll({ ...bare("fire-bolt"), roll: "bogus" }), "attack", "an unknown value is ignored by the reader of steps");
   assert.equal(spellRoll(null), null);
 });
@@ -87,7 +87,7 @@ test("the linter takes the field as optional, refuses another value, and refuses
   const zone = { ...bare, duration: "1 minute", concentration: true, zone: { on: ["turnEnd"], once: "turn" }, effects: [{ save: "dex", onFail: [{ damage: "1d6", type: "fire" }] }] };
   assert.deepEqual(ok({ ...zone, roll: "none" }), []);       // a zone's save made only on later turns is a side case
   // A manual spell may say any roll: the steps do not show it.
-  assert.deepEqual(ok({ ...CONTENT.spells["bestow-curse"], roll: "save:wis" }), []);
+  assert.deepEqual(ok({ ...CONTENT.spells["enthrall"], roll: "save:wis" }), []);
 });
 
 test("the reader says it in plain words", () => {
@@ -97,7 +97,7 @@ test("the reader says it in plain words", () => {
   assert.match(read(CONTENT.spells["magic-missile"]), /Its roll: no attack roll and no saving throw\./);
   const { roll, ...bare } = CONTENT.spells.fireball;
   assert.match(read(bare), /Its roll: the target makes a Dexterity saving throw \(read from its steps/);
-  const { roll: r2, ...manual } = CONTENT.spells["bestow-curse"];
+  const { roll: r2, ...manual } = CONTENT.spells["enthrall"];
   assert.match(read(manual), /Its roll: the entry does not say/);
 });
 
