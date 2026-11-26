@@ -30,7 +30,8 @@ jobs:
       - run: npm run build
         env:
           HEXTABLE_FEEDBACK_URL: https://hextable-production.up.railway.app
-      - uses: actions/upload-pages-artifact@v3
+      # v3 artifacts were not found by deploy-pages@v4 in 3 of 4 runs (25-26 Nov: "No artifacts named github-pages"). v4 leaves dotfiles out; dist has none.
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
       - id: deployment
