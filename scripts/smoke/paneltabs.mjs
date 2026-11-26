@@ -125,7 +125,10 @@ async function tabs(browser, url, label, opts) {
         await tap('#ap-move [data-row="dash"]');
         await wait(page, () => window.hextable.state.encounter.budget.dashes === 1 && window.hextable.state.encounter.budget.action === 0); await idle(page);
         await wait(page, () => /Move 60 ft/.test(document.querySelector('#c-res')?.textContent ?? ''));
-        for (const g of ['attacks', 'move', 'defend']) if (await page.$(`#ap-body .ap-sec:not([hidden]) #ap-bar-${g}`)) throw new Error(`${g} is shown with the action spent`);
+        for (const g of ['attacks', 'defend']) if (await page.$(`#ap-body .ap-sec:not([hidden]) #ap-bar-${g}`)) throw new Error(`${g} is shown with the action spent`);
+        // Move may stay for a leap (#813, #821): it needs movement, not the action; nothing else is left in it.
+        const left = await page.$$eval('#ap-body .ap-sec:not([hidden]) [data-row]', (l) => l.map((x) => x.dataset.row).filter((id) => ['dash', 'disengage', 'leap', 'leap-jump', 'fly', 'fly-up', 'fly-down', 'fly-to'].includes(id)));
+        if (left.some((id) => id !== 'leap' && id !== 'leap-jump')) throw new Error(`move rows with the action spent: ${left.join(', ')}`);
         for (const row of ['dodge', 'dash', 'disengage', 'hide', 'search']) await gone(page, row);
         // a tap on a greyed row cannot happen, but the engine still refuses the action if it is sent
         const n = await state(page, (S) => S.timeline.length);
