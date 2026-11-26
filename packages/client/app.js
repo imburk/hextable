@@ -5,6 +5,7 @@ import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
 import { objectsFor, objectAt, objectOptions, objectWords, isObjectAim } from './objectaim.js';
+import { wallsFor, wallAt, wallOptions, stoneWords, wallArg, isWallAim, wallNeeded } from './wallpick.js';
 import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers } from './wallaim.js';
 import { leapState } from './leapui.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
@@ -771,6 +772,7 @@ function choicesFor() {
   if (list) {
     const now = list.includes(mode.choice) ? mode.choice : list[0];
     groups.push({ id: 'pick', label: pickLabel(sp), options: imbueOf(sp) ? weaponOptions(weaponsFor(S, S.entities[holderOf(sp)], imbueOf(sp), skipOf(sp)), now) : pickOptions(list, now, (v) => choiceLabel(sp.def.choice.of, v)) });
+    if (wallNeeded(sp, now)) { const offers = wallsFor(S, e, sp); if (offers.length) groups.push({ id: 'wall', label: `Which wall does ${sp.name} cut?`, options: wallOptions(offers, mode.wall?.id ?? null) }); }
   }
   return groups.length ? { key: `${selId}|${mode.id}|${mode.holder ?? ''}`, name: sp.name, groups } : null;
 }
@@ -785,6 +787,7 @@ function chooseOption(group, value) {
   if (group === 'slot') mode.slot = +value;
   else if (group === 'pick') mode.choice = value;
   else if (group === 'object') { aimRefusal = null; mode.object = String(value); }
+  else if (group === 'wall') { const o = wallsFor(S, S.entities[selId], SPELLS[mode.id]).find((x) => x.id === String(value)); if (!o) return; aimRefusal = null; mode.wall = { id: o.id, point: o.near }; }
   else return;
   refresh();
 }
@@ -1071,6 +1074,18 @@ function refresh() {
           hl.area = offers.find((o) => o.id === mode.object)?.hexes ?? [];
           hint = objectWords(sp.name, offers, mode.object);
           go = !!mode.object;
+        }
+        else if (isWallAim(sp)) {
+          if (!wallNeeded(sp, mode.choice ?? choicesOf(sp)?.[0])) { mode.wall = null; hint = `${sp.name}: another shape names no wall. Tap the die, the DM applies it`; go = true; }
+          else {
+            const offers = wallsFor(S, e, sp);
+            if (!offers.some((o) => o.id === mode.wall?.id)) mode.wall = null;       // it went out of reach, or out of view: the choice goes with it
+            const on = mode.wall?.id ?? (mode.hoverWall && offers.some((o) => o.id === mode.hoverWall) ? mode.hoverWall : null);
+            hl.range = offers.filter((o) => o.id !== on).flatMap((o) => o.hexes);
+            hl.area = offers.find((o) => o.id === on)?.hexes ?? [];
+            hint = stoneWords(sp.name, offers, mode.wall?.id);
+            go = !!mode.wall;
+          }
         }
         else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
@@ -1446,6 +1461,19 @@ function objectTap(e, sp, hex) {
   mode.object = id;
   refresh();
 }
+// A tap while aiming a spell at a wall (Stone Shape): the nearest lit wall to the tap is chosen with the point of it nearest the tap (another tap swaps it; a second tap on the chosen one confirms);
+// a tap away from every lit wall says so and changes nothing. The engine judges the rest.
+function stoneTap(e, sp, hex) {
+  if (!wallNeeded(sp, mode.choice ?? choicesOf(sp)?.[0])) return;
+  const G = gridOf(S.map), got = wallAt(S, wallsFor(S, e, sp), hex, rangeAt(sp.def, e.level), G.center(e.pos));
+  if (!got) return toast(`${sp.name} needs one of the lit walls.`, true);
+  aimRefusal = null;
+  const same = mode.wall?.id === got.id;
+  if (same && Date.now() - pinnedAt > 400 && waitFor) { mode.wall = got; return confirmDie(); }
+  if (!same) pinnedAt = Date.now();
+  mode.wall = got;
+  refresh();
+}
 R.onTap = (hit) => {
   const { hex, id } = hit;
   if (!S || !T || skipping()) return;
@@ -1474,6 +1502,7 @@ R.onTap = (hit) => {
     const sp = SPELLS[mode.id];
     if (sp.aim === 'self' || sp.aim === 'none') return;       // armed only to choose the slot: Cast or Cancel in the hint bar
     if (isObjectAim(sp)) return objectTap(e, sp, hex);
+    if (isWallAim(sp)) return stoneTap(e, sp, hex);
     if (sp.area) return aimTap(hex);
     if (!tapped) return setMode(MOVE);
     if (!mode.deliver && !targetsFor(S, e, { spell: mode.id }).includes(id)) return toast(`${sp.name} can't reach ${tapped.name}.`);
@@ -1528,6 +1557,11 @@ R.onTap = (hit) => {
   }
 };
 R.onHover = (hex, hit) => {
+  if (mode.kind === 'spell' && isWallAim(SPELLS[mode.id]) && S?.entities[selId]) {       // a mouse over a lit wall lights that wall alone
+    const sp = SPELLS[mode.id], e = S.entities[selId], over = wallAt(S, wallsFor(S, e, sp), hex)?.id ?? null;
+    if (over !== (mode.hoverWall ?? null)) { mode.hoverWall = over; refresh(); }
+    return;
+  }
   if (mode.kind === 'fly') {       // a mouse over the column lights a block and previews its plane; over the plane it points at a place
     const e = S?.entities[selId], row = e ? flyRow(e) : null, over = hit?.block ?? null;
     const cell = !row || over !== null || !hit ? null : hit.plane ? row.cells.find((c) => c.key === cellKey(hit.hex)) ?? null : cellAt(row, hit.hex), point = cell?.key ?? null;
@@ -1554,6 +1588,10 @@ function castAimed() {
   if (mode.kind === 'action') act({ type: 'act', actor: selId, action: mode.id, hex: mode.aim ?? undefined });
   else if (SPELLS[mode.id].aim === 'self' || SPELLS[mode.id].aim === 'none') act(castAct({ ...chosen(SPELLS[mode.id]) }));
   else if (isObjectAim(SPELLS[mode.id])) act(castAct({ object: mode.object, ...chosen(SPELLS[mode.id]) }));
+  else if (isWallAim(SPELLS[mode.id])) {
+    const sp = SPELLS[mode.id], pick = chosen(sp), o = wallNeeded(sp, pick.choice) && mode.wall ? wallsFor(S, S.entities[selId], sp).find((x) => x.id === mode.wall.id) : null;
+    act(castAct({ ...(o ? wallArg(o, mode.wall.point) : {}), ...pick }));
+  }
   else if (SPELLS[mode.id].area) {
     const sp = SPELLS[mode.id], me = S.entities[selId];
     // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.

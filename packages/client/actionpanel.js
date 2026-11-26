@@ -21,6 +21,7 @@ import { lightAt } from './shared/sight.js';
 import { under, apart } from './shared/space.js';
 import { reactionsHtml, bindReactions, reactionRows } from './reactionsheet.js';
 import { noObjectWhy } from './objectaim.js';
+import { noWallWhy } from './wallpick.js';
 import { gridPlan } from './accordion.js';
 import { featureRows as baseFeatureRows, CHIP } from './features.js';
 import { strikeChoices, slotAim, slotSub, skillBonus } from './classes.js';
@@ -376,6 +377,7 @@ export const castGroup = (sp) => (CHIP[sp.time] && sp.time !== 'free' ? CHIP[sp.
 const rangeWhy = (S, e, sp) => {
   const reach = rangeAt(sp.def, e.level);
   if (sp.aim === 'object') return noObjectWhy(S, e, sp);
+  if (sp.aim === 'wall') return noWallWhy(S, e, sp);
   if (sp.aim !== 'creature' || !(reach > 0)) return '';
   try { return targetsFor(S, e, { spell: sp.id }).length ? '' : `Nobody within ${reach} ft.`; } catch { return ''; }
 };
