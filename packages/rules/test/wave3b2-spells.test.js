@@ -5,7 +5,8 @@ import { test } from "node:test";
 import { SPELLS } from "../src/content/index.js";
 import { lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
-import { apply, current } from "../src/engine.js";
+import { apply, current, makeEntity } from "../src/engine.js";
+import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { aiStep } from "../src/ai.js";
 import { viewEvents } from "../src/view.js";
@@ -221,7 +222,8 @@ test("Confusion: a 7 or 8 with nobody in reach picks nobody, and the DM is told;
   assert.ok(!Object.keys(t.encounter.flags).some((k) => k.startsWith("confusedFoe")));
   assert.ok(events.some((e) => e.type === "manual" && e.partial && /No creature the party knows of is within 5 feet/.test(e.text)));
   assert.equal(t.encounter.budget.action, 0, "nobody to attack: it takes no action");
-  assert.equal(apply(t, { type: "dodge", actor: sk.id }, DM).ok, false);
+  const r = apply(t, { type: "dodge", actor: sk.id }, DM);
+  assert.equal(r.ok, false); assert.match(r.error, /no creature it may attack is within its reach, so it takes no action this turn and cannot Dodge/);
   assert.deepEqual(aiStep(t, sk.id), { type: "endTurn", actor: sk.id });
 });
 
@@ -432,4 +434,22 @@ test("lint: ifChoice outside a spell with a curse choice, and against source out
   const feat = (m) => lintEntry("feats", { id: "t", name: "T", source: "SRD 5.2.1", category: "general", text: "x", checked: false, tier: "auto", grants: { modifiers: [m] } }, { strict: false });
   assert.deepEqual(feat({ on: "attack.roll", op: "disadvantage" }), []);
   assert.ok(feat({ on: "attack.roll", op: "disadvantage", against: "source" }).length, "a modifier of a feat is not a lasting part"); 
+});
+
+test("Confusion: a feature used with the Attack action (Sacred Weapon) goes with the one attack at the chosen creature; used by itself it is refused", () => {
+  const s = field();
+  const sheet = { name: "Ka", class: "paladin", level: 5, subclass: "devotion", abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 12, cha: 16 },
+    skills: ["athletics", "religion"], choices: { "fighting-style": "defense" }, armour: "chain-mail", weapons: ["longsword", "longbow"] };
+  s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: 3, r: 0, z: 0 } });
+  const sk = spawn(s, "skeleton", 4, 0), other = spawn(s, "skeleton", 4, -1);
+  fight(s); turnOf(s, "hero");
+  // The dice said 7 or 8 and chose the first skeleton (resolve.js `confusedOn` sets these flags at the start of the turn).
+  Object.assign(s.encounter.flags, { "confused:hero": true, [`confusedFoe:hero:${sk.id}`]: true });
+  const alone = apply(s, { type: "feature", actor: "hero", feature: "sacred-weapon" }, DM);
+  assert.equal(alone.ok, false); assert.match(alone.error, /Confused: this turn it can only make one melee attack at .*cannot use a feature/);
+  const wrong = apply(s, { type: "attack", actor: "hero", target: other.id, attack: "longsword", use: "sacred-weapon" }, DM);
+  assert.equal(wrong.ok, false); assert.match(wrong.error, /Confused: its attack this turn is at/);
+  const r = ok(apply(s, { type: "attack", actor: "hero", target: sk.id, attack: "longsword", use: "sacred-weapon" }, DM));
+  assert.ok(r.events.some((x) => x.type === "attack" && x.target === sk.id));
+  assert.equal(s.entities.hero.uses["channel-divinity"], 1, "a use of Channel Divinity spent with the attack");
 });

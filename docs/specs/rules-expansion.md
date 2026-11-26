@@ -2000,7 +2000,7 @@ Tests in `packages/rules/test/wave3b2-spells.test.js`, and a `twin()` scenario i
 | Spell | Before | After | What the DM still does |
 |---|---|---|---|
 | Dispel Evil and Good | manual | assist | Break Enchantment and Dismissal (Magic actions of the spell, with the Charisma save and sending a creature home), and ending the spell with them |
-| Confusion | manual | assist | walking a creature that rolled 1; creatures the party does not know of that a 7 or 8 could pick; spells and other actions on a 7 or 8; the Sphere's radius for a slot above 4 |
+| Confusion | manual | assist | walking a creature that rolled 1; creatures the party does not know of that a 7 or 8 could pick; the later attacks of Extra Attack at the chosen creature on a 7 or 8; the Sphere's radius for a slot above 4 |
 | Bestow Curse | manual | assist | the Dodge action forced by the third curse (the engine rolls the save); the longer time and no Concentration from a higher slot |
 
 **Added.**

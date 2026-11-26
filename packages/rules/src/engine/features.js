@@ -165,7 +165,7 @@ export const handlers = {
   // `via` is not from the action: the `attack` handler (attacks.js) passes `{ weapon }` when a feature with `withAttack` is used with the Attack action.
   feature(s, a, ctx, ev, via = null) {
     const e = ent(s, a.actor); control(s, e, ctx);
-    confusedOnly(s, e, 'use a feature');
+    if (!via) confusedOnly(s, e, 'use a feature');        // a feature named on Confusion's one attack (`use`, `withAttack`) goes with that attack, which the attack handler has already held to the chosen creature
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
     // spend) still spends what it costs and hands the rest to the DM, as before these were built.

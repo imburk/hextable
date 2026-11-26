@@ -403,7 +403,8 @@ const COMPASS = ['north', 'east', 'south', 'west'];
 export function confusedOnly(s, e, what) {
   if (!s.encounter || current(s) !== e.id || !s.encounter.flags?.[`confused:${e.id}`]) return;
   const foe = confusedFoe(s, e);
-  fail(`${e.name} is Confused: this turn it can only make one melee attack${foe ? ` at ${s.entities[foe]?.name ?? 'the creature the dice chose'}` : ''}, so it cannot ${what}.`);
+  fail(foe ? `${e.name} is Confused: this turn it can only make one melee attack at ${s.entities[foe]?.name ?? 'the creature the dice chose'}, so it cannot ${what}.`
+    : `${e.name} is Confused: the dice called for one melee attack, but no creature it may attack is within its reach, so it takes no action this turn and cannot ${what}.`);
 }
 export const confusedFoe = (s, e) => {
   if (!s.encounter || current(s) !== e.id) return null;
