@@ -98,6 +98,23 @@ test("Sanctuary: a spell attack at the warded creature asks for the save once, a
   assert.equal(r.events.filter((e) => e.type === "attack").length, 1, "the save passed: the ray is rolled");
 });
 
+test("Sanctuary: a Concentration spell lost against its only target starts nothing and keeps the caster's Concentration on another spell", () => {
+  const s = field(), g = spawn(s, "goblin-warrior", 2, 0);
+  s.entities.wizard.abil.wis = -20;
+  s.entities.wizard.spells.push("mind-spike", "bless");
+  fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "sanctuary", target: g.id }, DM));
+  turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "bless", targets: ["wizard"] }, DM));
+  const before = s.effects.length;
+  again(s, "wizard");
+  const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "mind-spike", target: g.id }, DM));
+  assert.ok(!r.events.some((e) => e.type === "effectStart"), JSON.stringify(r.events));
+  assert.ok(s.effects.some((fx) => fx.name === "Bless" && fx.conc), "Bless is still held");
+  assert.equal(s.effects.length, before);
+  assert.ok(!r.events.some((e) => e.type === "manual" && e.standing), "the DM is not told how to apply a spell that was lost");
+});
+
 test("Sanctuary: it ends when the warded creature makes an attack roll, or casts a spell; not when someone else does", () => {
   const swing = () => {
     const s = field(), g = spawn(s, "goblin-warrior", -1, 0);

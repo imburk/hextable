@@ -685,19 +685,21 @@ function castSpell(s, a, ctx, ev, item) {
     const wardDone = sp.aim === 'creature' && damaging(sp.def);
     const wardLost = new Set();      // a failed Sanctuary save takes the target out of the spell whole (not only its damage: `blocked` is Shield's)
     if (wardDone) for (const t of new Set(targets)) if (wardCheck(s, e, t, ev, 'spell')) wardLost.add(t.id);
+    // Every target lost to a ward: the spell is lost whole (slot and action spent). It starts no lasting effect, so it does not end the caster's Concentration on another spell, and the DM is not told how to apply it.
+    const allLost = wardLost.size > 0 && targets.every((t) => wardLost.has(t.id));
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;
-    if (sp.def.duration !== 'instant') {
+    if (sp.def.duration !== 'instant' && !allLost) {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
       fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration, level: Math.max(slot, sp.level) });
       // Whom a spell aimed at creatures (or at its caster) was aimed at, less those it can do nothing to: where the engine puts no part on any of them
       // (a spell the DM applies), this is how Dispel Magic knows the spell is on them (engine/rolls.js, dispel).
-      if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t)).map((t) => t.id))];
+      if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t) && !wardLost.has(t.id)).map((t) => t.id))];
       // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
       if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
-    } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
+    } else if (!allLost) fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
     // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
     let hit = invalid.length ? targets.filter((t) => !invalid.includes(t)) : targets;
@@ -773,7 +775,7 @@ function castSpell(s, a, ctx, ev, item) {
     // Whatever the engine did not do, it says, so nothing is quietly skipped.
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
-    if (sp.def.tier !== 'auto' && !toldAlready) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
+    if (sp.def.tier !== 'auto' && !toldAlready && !allLost) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
     if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);
     if (fx?.bound) settle(s, ev, fx, targets);
     else if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);
