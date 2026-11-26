@@ -12,7 +12,7 @@ import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
 import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, ft, hostile, inFight, living, mod, need, roomForCompanions, spellStats, tellDM, unblocked, up } from './shared.js';
-import { aimArea, aimObject, aimWall, cutWall, areaHexes, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
+import { aimArea, aimObject, aimWall, areaHexes, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
 import { castReaction, CORPSE, checkEnd, confusedOnly, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
@@ -82,8 +82,6 @@ function blockSpell(s, caster, spellId, targets, ev) {
   return out;
 }
 
-// Stone Shape's cut is run by `effects.js` through the kit, which `resolve.js` (not in this job's files) fills; it is lent here, where the spell is cast.
-KIT.cutWall ??= cutWall;
 // Put the caster's choice where a spell's steps say "chosen".
 function chooseIn(steps, of, value) {
   const visit = (list) => {

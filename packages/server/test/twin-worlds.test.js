@@ -1335,6 +1335,25 @@ test("stone shape: a secret door on the cut stretch is cut away with the wall, a
   assert.equal(hidden.w.state.entities.wizard.slots[4], 2, "the refused cast spent nothing");
 });
 
+// Stone Shape, review of #820: a wall the players are not sent is refused as no wall, even when it lies within a foot of the aimed point; and a refusal from the map edit names no hidden creature.
+const SEG_ = [[17.5, -1.4433756729740645], [17.5, 1.4433756729740645]];
+const unexploredEast = (w) => { const keys = Object.keys(w.state.map.levels[0].tiles).filter((k) => Number(k.split(",")[0]) >= 4); w.state.map.regions.push({ id: "r1", name: "Hid", level: "ground", hexes: keys, revealed: false }); };
+const stoneTwin = (casts, setup, sides) => twinRun({ ...STONE(), setup(w) { STONE().setup(w); setup?.(w); },
+  steps: [...casts.map((c) => ({ by: "Pat", act: { type: "cast", actor: "wizard", spell: "stone-shape", slot: 4, choice: "passage", wall: { level: "ground", ...c } }, allowError: true })), { by: "Pat", act: { type: "say", as: "wizard", text: "Done." } }] }, sides);
+const noDiffs = (r) => { if (r.diffs.length) assert.fail(describe(r.diffs)); };
+for (const kind of ["wall", "window"]) test(`stone shape: an unsent ${kind} just beyond the aimed point is refused as no wall`, () => {
+  const r = stoneTwin([{ x: 17.8, y: 0 }], unexploredEast, { hide: (w) => { w.state.map.walls.push({ id: "h", level: "ground", kind, a: [18.6, -1], b: [18.6, 1] }); }, plain: () => {} });
+  noDiffs(r);
+  assert.equal(r.hidden.w.state.map.walls.length, 1, "nothing was cut");
+});
+test("stone shape: a refusal from the cut names no hidden creature", () => {
+  const spawn = (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 8, r: 3 }, name: "Skulker", hidden: true }); };
+  const r = stoneTwin([{ x: 17.5, y: 0 }], (w) => { w.state.map.walls.push({ id: "w0", level: "ground", kind: "wall", a: SEG_[0], b: SEG_[1] }); }, {
+    hide: (w) => { spawn(w); delete w.state.map.levels[0].tiles["8,3"]; },
+    plain: (w) => { spawn(w); delete w.state.entities[Object.values(w.state.entities).find((e) => e.name === "Skulker").id]; delete w.state.map.levels[0].tiles["8,3"]; } });
+  noDiffs(r);
+});
+
 // ---- leap (#813, wave 4 part 8): what a Long Jump passes over is not entered, so a hidden thing there is not found and does not stop it ----
 const leapScene = (w) => {
   const s = w.state;

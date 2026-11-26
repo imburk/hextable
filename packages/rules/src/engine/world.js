@@ -12,7 +12,7 @@ import { objectKnown, regionsInSight, sightRule, tileSent, unknown } from '../vi
 import { EDITS, lintMap } from '../map.js';
 import { hiddenFrom } from '../sight.js';
 import { holds, zonesOf } from '../zones.js';
-import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
+import { barriers, clipWall, distToSegment, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from '../walls.js';
 import { itemName } from '../derive.js';
 import { confusedNow, effectsOf, restamp } from '../durations.js';
 import { incapacitated, modifiers, speedOf, walksOn } from '../modifiers.js';
@@ -906,7 +906,7 @@ export function aimObject(s, e, name, range, id, ctx) {
 // The DM's map edit (`mapEdit`, engine/dm.js) and a spell's (`cut`, below) are one path: the changes are made to a copy of the map, the copy is
 // checked whole, nobody may be left with nowhere to stand, and only then is the copy put in, as the map in play, with the party looking around
 // again (so views, vision memory and patches update as for a DM edit). `ops` is a list of `EDITS` of map.js. A refusal is a RuleError and changes nothing.
-export function editMap(s, ops, ev) {
+export function editMap(s, ops, ev, { footing = true } = {}) {
   const map = structuredClone(s.map);
   for (const op of ops) {
     const edit = (op && Object.hasOwn(EDITS, op.op) && EDITS[op.op]) || fail(`Unknown map change: ${op?.op}`);
@@ -914,9 +914,9 @@ export function editMap(s, ops, ev) {
     if (problem) fail(problem);
   }
   const problems = lintMap(map);
-  problems.length === 0 || fail(`That change can't be made. ${problems[0]}`);
+  problems.length === 0 || fail(footing ? `That change can't be made. ${problems[0]}` : "That wall can't be cut.");      // a spell's refusal names nothing of the map
   const B = barriers(map);
-  for (const e of living(s)) {                         // a floor may give way under someone, but there must be something to land on
+  if (footing) for (const e of living(s)) {                         // a floor may give way under someone, but there must be something to land on
     const sf = under(map, e.pos);
     (sf && !(sf.z === e.pos.z && B.solid(sf.level.id, e.pos))) || fail(`${e.name} would be left with nowhere to stand.`);
   }
@@ -948,16 +948,13 @@ export function aimWall(s, e, name, range, w, ctx) {
   const none = () => fail('No such wall.');
   s.map.holding && none();
   const level = s.map.levels.find((l) => l.id === w.level) || none(), G = gridOf(s.map), P = [w.x, w.y];
-  const near = wallSegments(s, level.id).filter((x) => distToSegment(P, [x.a, x.b]) <= WALL_ON).sort((x, y) => distToSegment(P, [x.a, x.b]) - distToSegment(P, [y.a, y.b]));
-  near.length || none();
+  let near = wallSegments(s, level.id).filter((x) => distToSegment(P, [x.a, x.b]) <= WALL_ON).sort((x, y) => distToSegment(P, [x.a, x.b]) - distToSegment(P, [y.a, y.b]));
   if (ctx?.role !== 'dm') {
-    const rule = sightRule(s), reach = G.cornerReach + 0.02;
-    G.range(G.cell(P[0], P[1]), 2).some((h) => {
-      if (!level.tiles[col(h)] || !tileSent(s, level.id, h, rule)) return false;
-      const c = G.center(h);
-      return G.kind === 'square' ? Math.abs(c[0] - P[0]) <= 2.52 && Math.abs(c[1] - P[1]) <= 2.52 : Math.hypot(c[0] - P[0], c[1] - P[1]) <= reach;
-    }) || none();
+    // A player knows a segment only as far as it is sent (view.js: each wall clipped to the sent hexes): one piece of it within WALL_ON of the point.
+    const rule = sightRule(s), centres = G.range(G.cell(P[0], P[1]), 3).filter((h) => level.tiles[col(h)] && tileSent(s, level.id, h, rule)).map((h) => G.center(h));
+    near = near.filter((x) => clipWall(x, centres, reachOf(G), G.kind === 'square' ? SQUARE_CLIP : 0).some((piece) => distToSegment(P, [piece.a, piece.b]) <= WALL_ON));
   }
+  near.length || none();
   !e.cond?.blinded || fail(`${e.name} is Blinded and can't see the wall.`);
   const mine = under(s.map, e.pos);
   const d = mine?.level.id === level.id ? Math.min(...footprint(e, e.pos, G).map((h) => Math.hypot(G.center(h)[0] - P[0], G.center(h)[1] - P[1]) - FT / 2)) : Infinity;
@@ -994,7 +991,7 @@ export function cutWall(s, src, feet, f, ev) {
     else if (!pieces.length) ops.push({ op: 'unwall', id: x.id });
     else { ops.push(rec(pieces[0], x.id)); for (const r of pieces.slice(1)) ops.push(rec(r)); }
   }
-  editMap(s, ops, ev);
+  editMap(s, ops, ev, { footing: false });      // a cut of wall never changes what anyone stands on, and a refusal here must not name a creature
   tell(`${f.src.name} took out ${Math.min(feet, L)} feet of the wall at that point, as if shaped from stone. The engine does not know what a wall is made of: if it is not stone, undo this.${doors.length ? ` An undiscovered secret door stood in the stretch (${doors.join(', ')}) and was cut away with it; the players were told nothing of it.` : ''}`);
   return true;
 }
