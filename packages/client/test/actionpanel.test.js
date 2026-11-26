@@ -189,7 +189,7 @@ test('Attacks: a monster lists its actions, Multiattack, recharge and uses a day
 test('Move: Dash, Disengage, Dodge, Hide, Search and the objects in reach, each with its cost and its reason; the meter is the speed left', () => {
   const s = newGame(7), e = inFightAs(s, 'fighter');
   door(s, e.pos); const rows = moveRows(s, e);
-  assert.deepEqual(ids(rows).slice(0, 5), ['dash', 'disengage', 'dodge', 'hide', 'search']);
+  assert.deepEqual(ids(rows).slice(0, 5), ['dash', 'disengage', 'dodge', 'leap', 'hide']);
   assert.ok(ids(rows).some((x) => x.startsWith('use:door')));
   assert.equal(rows.find((r) => r.id === 'dash').chip, 'Action'); assert.equal(whys(rows).filter((r) => r.id !== 'hide').length, 0);
   assert.deepEqual(moveBudget(s, e), { left: 30, max: 30, prone: false });
@@ -864,4 +864,44 @@ test('Heal lists a Stabilize row for each dying ally first, greyed with its reas
   assert.equal(stabilizeRows(s, e)[0].chip, 'Action');
   s.encounter.budget.action = 0;
   assert.match(stabilizeRows(s, e)[0].why, /action/i);
+});
+
+// ---------- the Leap row (#818) ----------
+const { leapState } = await import(pathToFileURL(join(tmp, 'leapui.js')));
+
+test('leap row: Strength in feet outside a fight, armed by a tap, Jump as a second row only when lent', () => {
+  const s = newGame(7), e = s.entities.fighter ?? Object.values(s.entities).find((x) => x.side === 'party' && Number.isInteger(x.abil?.str));
+  const L = leapState(s, e), want = Math.floor(e.abil.str / 5) * 5;
+  assert.equal(L.why, ''); assert.equal(L.sub, `Up to ${want} ft`);
+  const rows = moveRows(s, e, {}), leap = rows.find((r) => r.id === 'leap');
+  assert.ok(leap); assert.equal(leap.kind, 'arm'); assert.deepEqual(leap.mode, { kind: 'leap', id: e.id, spell: false });
+  assert.ok(!rows.some((r) => r.id === 'leap-jump'));
+  assert.equal(moveRows(s, e, { mode: leap.mode }).find((r) => r.id === 'leap').armed, true);
+  s.entities.wizard.spells.push('jump'); Object.assign(s.entities.wizard, { slots: { 1: 4 }, slotsMax: { 1: 4 } });
+  ok(apply(s, { type: 'place', actor: 'wizard', to: { q: e.pos.q + 1, r: e.pos.r } }, DM));
+  ok(apply(s, { type: 'cast', actor: 'wizard', spell: 'jump', target: e.id, slot: 1 }, DM));
+  const J = leapState(s, e);
+  assert.ok(J.spellFree); assert.match(J.sub, /Up to 30 ft \(Jump\)/);
+  const j = moveRows(s, e, {}).find((r) => r.id === 'leap-jump');
+  assert.ok(j); assert.deepEqual(j.mode, { kind: 'leap', id: e.id, spell: true });
+});
+
+test('leap row: greyed with the reason (not its turn, Prone, Speed 0, no movement)', () => {
+  const s = fight(), cur = current(s), other = Object.values(s.entities).find((x) => x.id !== cur && x.side === 'party' && Number.isInteger(x.abil?.str));
+  assert.match(leapState(s, other).why, /outside the battle|turn/);
+  const me = s.entities[cur]; me.abil = { ...(me.abil ?? {}), str: me.abil?.str ?? 15 };
+  if (me.side === 'party') {
+    const clean = leapState(s, me); assert.equal(clean.why, '');
+    s.encounter.budget.move = 0; assert.match(leapState(s, me).why, /no movement/);
+    s.encounter.budget.move = 30; me.cond = { ...me.cond, prone: true }; assert.match(leapState(s, me).why, /Prone/);
+  }
+});
+
+test('leap row: a standing start in a fight is half, and the sub-line says how to run', () => {
+  const s = fight(), me = s.entities[current(s)];
+  me.abil = { ...(me.abil ?? {}), str: 16 };
+  s.encounter.budget.move = 25; s.encounter.flags = { [`leapm:${me.id}`]: 0 };
+  const L = leapState(s, me);
+  if (me.speed) { assert.equal(L.run, me.speed - 25 >= 10); }
+  s.encounter.flags = null; assert.equal(leapState(s, me).run, null); assert.match(leapState(s, me).sub, /half from a standing start/);
 });
