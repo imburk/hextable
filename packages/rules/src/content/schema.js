@@ -159,7 +159,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.on === 'hp.zero' && !(stepOk && m.op === 'min' && m.value === 1 && m.uses === 1 && Object.keys(m).length === 4)) say('a modifier on hp.zero is a modifier step `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`: the creature drops to 1 Hit Point instead of 0, once');
   // `condition` (Heroism): only `{ on, op: 'immune', scope: { condition } }`, as a modifier step: nothing but a lasting effect's part can say "immune for a while".
   if (m.on === 'condition') {
-    if (!(stepOk && m.op === 'immune' && m.scope && typeof m.scope === 'object' && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition) && Object.keys(m).length === 3)) say('a modifier on condition is a modifier step `{ on: "condition", op: "immune", scope: { condition: <a condition> } }`: the creature is immune to that condition for as long as the effect lasts');
+    if (!(stepOk && m.op === 'immune' && m.scope && typeof m.scope === 'object' && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition) && Object.keys(m).length === (m.from === undefined ? 3 : 4))) say('a modifier on condition is a modifier step `{ on: "condition", op: "immune", scope: { condition: <a condition> }, from?: [creature types] }`: the creature is immune to that condition for as long as the effect lasts (with `from`, only when a creature of one of those types gives it)');
   }
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
   // dice ("1d4", "-1d4") rolled each time the modifier applies.
@@ -206,6 +206,13 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.on === 'd20' && !m.onFail) say('the d20 hook is for onFail dice');
   if (m.op === 'floor' && !(m.on === 'check' && isInt(m.value) && m.value >= 2 && m.value <= 20)) say('`floor` is on check, with a d20 value');
   if (m.on === 'opportunity' && m.op !== 'autoFail') say('the opportunity hook takes autoFail (no Opportunity Attacks)');
+  // `from: [creature types]` (Protection from Evil and Good): the modifier holds only against a creature of one of those types: the attacker of an attack roll made against the creature (`attack.received`),
+  // the creature that gave it a condition it is immune to (`condition`), or the creature that gave a condition it has already when it saves against that condition (a save with `scope.condition`).
+  // docs/specs/rules-expansion.md, "Build notes: wave 3a".
+  if (m.from !== undefined) {
+    if (!(Array.isArray(m.from) && m.from.length >= 1 && m.from.every((t) => CREATURE_TYPES.includes(t)) && new Set(m.from).size === m.from.length)) say('`from` lists creature types');
+    else if (!(m.on === 'attack.received' || m.on === 'condition' || ((m.on === 'save' || m.on.startsWith('save.')) && m.scope?.condition !== undefined))) say('`from` is for attack.received, for the condition hook, or for a save with `scope.condition`');
+  }
   // `except: 'source'`: on a modifier a creature puts on another, it does not hold for rolls the
   // source itself makes (Sundering Blow: "another creature"). `stack: false`: of several modifiers
   // of one name, only one applies to a roll (and only that one is used up).
@@ -3006,7 +3013,7 @@ const SHAPES = {
   target: { what: 'a target', keys: ['self', 'creature', 'area', 'near'] },
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
-  modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'] },
+  modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
@@ -3223,7 +3230,7 @@ export const HOMEBREW_LENGTHS = Object.freeze({
   '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'creature.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
-  'modifier.when': 8, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
+  'modifier.when': 8, 'modifier.from': 14, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
   // a subclass: 12 features, 13 options to a feature (the SRD's own Fiendish Resilience has 12), 5 spells at a class level (homebrew-subclasses.md, question 2)
   'subclasses.features': 12, 'features.options': 13, 'spells.#': 5,
   'objects.use': 12, 'reaction.blocks': 8, 'spellPick.abilities': 6, 'spellPick.lists': 8, 'spells.classes': 8, 'spells.components': 3, 'spells.kinds': 4, 'step.advantageIf': 4,
@@ -3477,7 +3484,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   target: { self: 'b', creature: 'o', area: 'o', near: 'i' },
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i', placed: 'b' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
-  modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', when: 's[]' },
+  modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },

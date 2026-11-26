@@ -518,11 +518,18 @@ export const spells1 = [
     time: "action", range: "touch", components: ["v", "s", "m"], costly: true,
     duration: "10 minutes", concentration: true, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Protection from Evil and Good: a willing creature the caster touches is protected from Aberrations, Celestials, Elementals, Fey, Fiends and Undead for up to 10 minutes. Those creatures have Disadvantage on attack rolls against it, cannot possess it or Charm or Frighten it, and if it is already so affected it has Advantage on any new save against that effect. The DM applies it."}],
+    effects: [
+      {"modifier": {"on": "attack.received", "op": "disadvantage", "from": ["aberration","celestial","elemental","fey","fiend","undead"]}},
+      {"modifier": {"on": "condition", "op": "immune", "scope": {"condition": "charmed"}, "from": ["aberration","celestial","elemental","fey","fiend","undead"]}},
+      {"modifier": {"on": "condition", "op": "immune", "scope": {"condition": "frightened"}, "from": ["aberration","celestial","elemental","fey","fiend","undead"]}},
+      {"modifier": {"on": "save", "op": "advantage", "scope": {"condition": "charmed"}, "from": ["aberration","celestial","elemental","fey","fiend","undead"]}},
+      {"modifier": {"on": "save", "op": "advantage", "scope": {"condition": "frightened"}, "from": ["aberration","celestial","elemental","fey","fiend","undead"]}},
+      {"manual": "Protection from Evil and Good: the engine does not keep possession (nothing in the rules it runs lets one creature possess another). The DM stops an Aberration, Celestial, Elemental, Fey, Fiend or Undead possessing the warded creature, and if it is possessed already gives it Advantage on a new save against the possession. The DM also judges whether the target is willing, and a creature whose type the engine cannot tell."}
+    ],
     kinds: ["utility"],
     roll: "none",
-    tier: "manual", checked: true,
-    text: "A touched creature is guarded against aberrations, celestials, elementals, fey, fiends and undead while the caster concentrates.",
+    tier: "assist", checked: true,
+    text: "A willing creature the caster touches is guarded for 10 minutes (Concentration; a flask of Holy Water, consumed, is the component). Aberrations, Celestials, Elementals, Fey, Fiends and Undead have Disadvantage on attack rolls against it and cannot give it the Charmed or Frightened condition; if one of them has already, the target has Advantage on its saves against that condition. The engine applies all of it; possession is the DM's.",
   },
   {
     id: "purify-food-and-drink", name: "Purify Food and Drink", source: "SRD 5.2.1",

@@ -125,13 +125,22 @@ export function aurasOn(s, e) {
   return [...best.values()];
 }
 // The conditions a lasting effect makes a creature immune to for a while (a modifier step `{ on: 'condition', op: 'immune', scope: { condition } }`: Heroism).
-const spellImmune = (s, e) => {
+// With `from` (Protection from Evil and Good: no Charmed or Frightened "from them") the immunity holds only against a condition a creature of one of those types gives: `giver` is that creature, and with none named (the DM puts it on, a
+// condition the engine cannot say the source of) the immunity does not apply, and does not hide a condition the creature already has (`sources`, which asks with no giver and `unrestricted`).
+const spellImmune = (s, e, giver = undefined, unrestricted = true) => {
   const out = [];
-  for (const fx of s?.effects ?? []) for (const p of fx.parts) if (!p.ended && p.target === e?.id && p.modifier?.on === 'condition' && p.modifier.op === 'immune' && typeof p.modifier.scope?.condition === 'string') out.push(p.modifier.scope.condition);
+  for (const fx of s?.effects ?? []) for (const p of fx.parts) {
+    if (p.ended || p.target !== e?.id || p.modifier?.on !== 'condition' || p.modifier.op !== 'immune' || typeof p.modifier.scope?.condition !== 'string') continue;
+    if (p.modifier.from === undefined) out.push(p.modifier.scope.condition);
+    else if (!unrestricted && ofTypes(giver, p.modifier.from)) out.push(p.modifier.scope.condition);
+  }
   return out;
 };
-// Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)?
-export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e).includes(id);
+// A creature's type, as far as the engine can tell (a pack monster's, its own, or Humanoid for a player character); null when it cannot say.
+export const typeOf = (t) => (t ? t.type ?? CONTENT.monsters[t.tpl]?.type ?? CONTENT.summons?.[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null) : null);
+const ofTypes = (t, types) => { const ty = typeOf(t); return ty !== null && types.includes(ty); };
+// Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)? `giver`: the creature that would give it, for an immunity that is only against some creatures.
+export const immuneTo = (s, e, id, giver = undefined) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false).includes(id);
 
 // What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
 // worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
@@ -143,6 +152,13 @@ const UNTRAINED = ['str', 'dex'].flatMap((ability) => [
   { on: `save.${ability}`, op: 'disadvantage' }, { on: 'check', op: 'disadvantage', scope: { ability } }, { on: 'attack.roll', op: 'disadvantage', scope: { ability } },
 ]).concat([{ on: 'initiative', op: 'disadvantage' }]);
 
+// `from` on a modifier: does the other creature in the roll have one of those types? The attacker, for an attack roll made against `e`; for a save about a condition, the creature that gave `e` the condition it already has
+// (its `cond[id].source`: a condition the engine cannot say the source of is not matched).
+function fromHolds(s, e, m, hook, sit) {
+  if (hook === 'attack.received') return ofTypes(sit.attacker, m.from);
+  if (hook === 'save' || hook.startsWith('save.')) return (sit.conditions ?? []).some((c) => e.cond?.[c] && ofTypes(s?.entities?.[e.cond[c].source], m.from));
+  return false;
+}
 // Where a creature's modifiers come from, each with the name to show as the reason.
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
@@ -247,6 +263,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
+      if (m.from !== undefined && !fromHolds(s, e, m, hook, sit)) continue;                          // only against creatures of those types (Protection from Evil and Good)
       if (!inScope(m, sit)) continue;
       // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).
       if (m.stack === false) { if (once.has(src.name)) continue; once.add(src.name); }

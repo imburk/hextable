@@ -271,7 +271,7 @@ const STEP_KEYS = {
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
   endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
-const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'when'];
+const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'when'];
 
 //   ctx (all optional):
 //     pack     the id of the homebrew pack the entry belongs to. With it (or, without it, an id in the entry's own `source`, "homebrew:<pack>", or an id
@@ -1269,6 +1269,14 @@ function modExtras(m, at, toCaster) {
   if (m.onFail === true) bits.push('the dice are added only to a roll that failed, where they could turn it');
   if (typeof m.cost === 'string') bits.push(`it spends a use of ${shown(m.cost)} when it turns a roll`);
   if (m.except === 'source') bits.push('it does not hold for rolls the caster makes');
+  if (m.from !== undefined) {
+    const types = Array.isArray(m.from) ? m.from.filter((t) => CREATURE_TYPES.includes(t)) : [];
+    if (!Array.isArray(m.from) || !types.length || types.length !== m.from.length) this.bad(`${at}: \`from\` lists creature types.`);
+    const hook = typeof m.on === 'string' ? m.on : '';
+    bits.push(hook === 'attack.received' ? `it holds only against attack rolls made by ${list(types.map((t) => `${t}s`), 'or')}`
+      : hook === 'condition' ? `it holds only against a condition given by a ${list(types, 'or')} (a condition given by anyone else, or by no one the engine can name, is not stopped)`
+      : `it holds only when the condition it is about was given to the creature by a ${list(types, 'or')} (the engine names the giver of a condition it put on)`);
+  }
   if (m.stack === false) bits.push('several of the same name do not add up');
   if (typeof m.spell === 'string') bits.push(`it holds only for the damage of ${nameOf('spells', m.spell)}`);
   if (m.when !== undefined) {
