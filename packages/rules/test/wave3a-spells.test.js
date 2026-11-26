@@ -76,3 +76,80 @@ test("Protection from Evil and Good: a creature already Frightened by a Fiend ha
   assert.equal(endTurnSave(true).dice.length, 2, "rolled with Advantage");
   assert.equal(endTurnSave(false).dice.length, 1, "one die without the ward");
 });
+
+// ---------- Command ----------
+const budgetOf = (s) => ({ ...s.encounter.budget });
+function commanded(word, { slot, extra } = {}) {
+  const s = field(), g = spawn(s, "goblin-warrior", 4, 0);
+  g.abil.wis = -20;
+  const h = extra ? spawn(s, "goblin-warrior", 4, 1) : null;
+  if (h) h.abil.wis = -20;
+  fight(s); turnOf(s, "cleric");
+  const cast = apply(s, { type: "cast", actor: "cleric", spell: "command", ...(slot ? { slot } : {}), ...(h ? { targets: [g.id, h.id] } : { target: g.id }), choice: word }, DM);
+  return { s, g, h, cast };
+}
+
+test("Command: assist; a word is chosen when casting, and a cast with no word, or one that is not among the five, is refused and spends nothing", () => {
+  const def = SPELLS.command.def;
+  assert.equal(def.tier, "assist"); assert.equal(def.checked, true);
+  assert.deepEqual(lint(def), []);
+  assert.deepEqual(def.choice, { of: "command" });
+  const s = field(), g = spawn(s, "goblin-warrior", 4, 0);
+  fight(s); turnOf(s, "cleric");
+  const slots = s.entities.cleric.slots[1];
+  assert.match(apply(s, { type: "cast", actor: "cleric", spell: "command", target: g.id }, DM).error, /command/i);
+  assert.match(apply(s, { type: "cast", actor: "cleric", spell: "command", target: g.id, choice: "dance" }, DM).error, /command/i);
+  assert.equal(s.entities.cleric.slots[1], slots);
+});
+
+test("Command, Halt: on its next turn the creature does not move and takes no action or Bonus Action; it is gone when that turn ends", () => {
+  const { s, g, cast } = commanded("halt");
+  ok(cast);
+  assert.ok(cast.events.some((e) => e.type === "manual" && /understand/.test(e.text)), "the DM is told what the engine does not judge");
+  assert.ok(s.effects.some((fx) => fx.name === "Command" && fx.parts.some((p) => p.command === "halt" && p.target === g.id)));
+  turnOf(s, g.id);
+  assert.deepEqual([s.encounter.budget.move, s.encounter.budget.action, s.encounter.budget.bonus], [0, 0, 0]);
+  assert.match(apply(s, { type: "move", actor: g.id, to: { q: 5, r: 0 } }, DM).error ?? "", /./, "it cannot walk");
+  ok(apply(s, { type: "endTurn", actor: g.id }, DM));
+  assert.ok(!s.effects.some((fx) => fx.name === "Command"), "spent with its turn");
+  turnOf(s, g.id);                                              // a round later it is free
+  assert.ok(s.encounter.budget.action > 0 && s.encounter.budget.move > 0);
+});
+
+test("Command, Grovel: it is Prone and its turn is over at once; it can stand on its next turn", () => {
+  const { s, g, cast } = commanded("grovel");
+  ok(cast);
+  assert.ok(!g.cond.prone, "nothing yet: it is for its next turn");
+  turnOf(s, g.id);
+  assert.ok(g.cond.prone);
+  assert.deepEqual([s.encounter.budget.move, s.encounter.budget.action, s.encounter.budget.bonus], [0, 0, 0]);
+  ok(apply(s, { type: "endTurn", actor: g.id }, DM));
+  turnOf(s, g.id);
+  assert.ok(!g.cond.prone, "it stood up (half its movement)");
+});
+
+test("Command, Drop: its turn is over (the DM puts down what it held); Approach and Flee leave the movement to the DM, who is told", () => {
+  const drop = commanded("drop"); ok(drop.cast);
+  turnOf(drop.s, drop.g.id);
+  assert.deepEqual([drop.s.encounter.budget.move, drop.s.encounter.budget.action], [0, 0]);
+  for (const word of ["approach", "flee"]) {
+    const { s, g, cast } = commanded(word); ok(cast);
+    let told = false;
+    for (let i = 0; i < 40 && current(s) !== g.id; i++) { const r = ok(apply(s, { type: "endTurn", actor: current(s) }, DM)); if (current(s) === g.id) told = r.events.some((e) => e.type === "manual" && e.name === "Command" && /DM moves it/.test(e.text)); }
+    assert.ok(told, `${word}: the DM is told`);
+    assert.ok(s.encounter.budget.move > 0 && s.encounter.budget.action > 0, `${word}: the engine does not take its turn`);
+  }
+});
+
+test("Command: a creature that makes the save is untouched; a higher slot takes one more creature", () => {
+  const s = field(), g = spawn(s, "goblin-warrior", 4, 0);
+  g.abil.wis = 60;
+  fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "command", target: g.id, choice: "halt" }, DM));
+  assert.ok(!s.effects.some((fx) => fx.name === "Command"), "no effect: nobody failed");
+  const two = commanded("halt", { slot: 2, extra: true });
+  ok(two.cast);
+  assert.equal(two.s.effects.find((fx) => fx.name === "Command").parts.filter((p) => p.command === "halt").length, 2);
+  const one = commanded("halt", { extra: true });
+  assert.ok(one.cast.error, "two targets need a higher slot");
+});

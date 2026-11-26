@@ -96,12 +96,16 @@ export const spells1 = [
     time: "action", range: 60, components: ["v"],
     duration: "instant", concentration: false, ritual: false,
     target: {"creature": {"count": 1}},
-    effects: [{"manual": "Command: a creature the caster can see makes a Wisdom save. On a failure, on its next turn it obeys a one-word command: Approach (move toward the caster by the shortest, most direct route, ending its turn within 5 feet of the caster), Drop (drop what it holds, then its turn ends), Flee (spend its turn moving away from the caster by the fastest available means), Grovel (fall Prone, then its turn ends) or Halt (on its turn it does not move and takes no action or Bonus Action). One more creature per slot level above 1. The DM runs the save and the obedience."}],
+    choice: {"of": "command"},
+    effects: [
+      {"save": "wis", "onFail": [{"command": "chosen"}]},
+      {"manual": "Command: the caster speaks one word to a creature it can see. On a failed save the engine holds the chosen command for the creature's next turn and carries out what it can at the start of that turn: Halt, Grovel and Drop take its movement, action and Bonus Action (Grovel also makes it Prone). The DM moves the creature for Approach (toward the caster by the shortest, most direct route; its turn ends if it comes within 5 feet) and Flee (away from the caster by the fastest means), puts down what it holds for Drop, and decides whether a creature that cannot understand the word follows it: the SRD text says nothing about that. One more creature per slot level above 1: name each."}
+    ],
     higher: {"slot": {"targets": 1}},
     kinds: ["control"],
     roll: "save:wis",
-    tier: "manual", checked: true,
-    text: "One creature makes a Wisdom save or follows a one-word command (approach, drop, flee, grovel or halt) on its next turn.",
+    tier: "assist", checked: true,
+    text: "One creature makes a Wisdom save or follows a one-word command on its next turn: Approach, Drop, Flee, Grovel or Halt. The engine takes the turn away for Halt, Grovel (Prone) and Drop; the DM moves the creature for Approach and Flee. One more creature per slot level above 1.",
   },
   {
     id: "comprehend-languages", name: "Comprehend Languages", source: "SRD 5.2.1",

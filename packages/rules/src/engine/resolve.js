@@ -8,7 +8,7 @@ import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/ind
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, turnSteps, walk as walkSteps } from '../effects.js';
-import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
+import { breakConcentration, concentrationCheck, concentrationLost, damaged, effectsOf, endEffect, fightOver, holds, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
 import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
@@ -22,7 +22,7 @@ import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedO
 import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
 import { ARENA_RADIUS, ask, blocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
 import { aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
-import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
+import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, command, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
 import { armed, weaponKey } from '../imbue.js';
@@ -371,6 +371,23 @@ function beginTurn(s, e, ev, stepped = false) {
     delete e.cond.prone;
     enc.budget.move -= Math.floor(speed / 2 / FT) * FT;
     ev.push({ type: 'stood', id: e.id });
+  }
+  commandsOn(s, e, ev);                                                // Command: what it was told to do on this turn
+}
+
+// Command (the `command` step, rolls.js): at the start of the creature's turn, the commands put on it before this turn are carried out. Halt, Grovel and Drop leave it no movement, no action and no Bonus Action (its Reaction is its own);
+// Grovel also makes it Prone (after it has stood up, as it would have). Approach and Flee are its movement, which the engine cannot steer, and what a Drop lets go of is not kept: the DM does those, told here.
+function commandsOn(s, e, ev) {
+  const b = s.encounter.budget;
+  for (const fx of [...effectsOf(s)]) for (const p of fx.parts) {
+    if (p.ended || p.target !== e.id || !p.command || thisTurn(s, p.born)) continue;
+    const by = s.entities[fx.source], caster = by?.name ?? 'the caster', what = COMMAND_WORDS[p.command];
+    if (p.command === 'grovel') condition(s, e, 'prone', ev, { actor: fx.source, src: { name: fx.name } });
+    if (['halt', 'grovel', 'drop'].includes(p.command)) { b.move = 0; b.action = 0; b.bonus = 0; }
+    ev.push({ type: 'note', id: e.id, text: `${fx.name}: ${e.name} ${p.command === 'halt' ? 'does not move and takes no action or Bonus Action this turn' : `must ${what} on this turn`}` });
+    if (p.command === 'approach') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} moves toward ${caster} by the shortest, most direct route, and its turn ends if it moves within 5 feet of ${caster}. The engine does not walk it: the DM moves it.` });
+    if (p.command === 'flee') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} spends its turn moving away from ${caster} by the fastest means it has (it may Dash). The engine does not walk it: the DM moves it.` });
+    if (p.command === 'drop') ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} drops whatever it is holding, then its turn ends (the engine has taken its movement, action and Bonus Action). The DM puts what it held on the ground.` });
   }
 }
 
@@ -2236,5 +2253,5 @@ function whyNobody(src) {
   const area = typeof src.spell === 'string' && Object.hasOwn(SPELLS, src.spell) ? SPELLS[src.spell].def.target?.area : null;
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
-export const KIT = { stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, command, imbue, judge, objectActor, objectStep, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

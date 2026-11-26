@@ -223,6 +223,29 @@ It needs Concentration: it also ends if the caster loses Concentration or begins
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
+== hb-test-stern-word
+"Stern Word" (level 1 evocation, 60 feet, action, instant).
+Components: Verbal (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the target makes a Wisdom saving throw (read from its steps, since the entry does not say).
+When casting it, the caster chooses a one-word command; each step below that says "chosen" uses that choice.
+One creature within 60 feet makes a Wisdom saving throw.
+On a failure:
+  It follows the chosen command on its next turn, at the start of which the engine carries out what it can: Halt, Grovel and Drop leave it no movement, no action and no Bonus Action (its Reaction is its own), and Grovel also makes it Prone; the part is gone when that turn ends. Approach and Flee are movement the engine cannot steer, and what a Drop lets go of is not kept: the DM does those, and is told at the start of the turn.
+    Given outside a fight, it waits for the creature's first turn of the next one. Whether a creature that cannot be told understands the word is for the DM to decide: the spell says nothing of it.
+It follows halt on its next turn, at the start of which the engine carries out what it can: Halt, Grovel and Drop leave it no movement, no action and no Bonus Action (its Reaction is its own), and Grovel also makes it Prone; the part is gone when that turn ends. Approach and Flee are movement the engine cannot steer, and what a Drop lets go of is not kept: the DM does those, and is told at the start of the turn.
+  Given outside a fight, it waits for the creature's first turn of the next one. Whether a creature that cannot be told understands the word is for the DM to decide: the spell says nothing of it.
+The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.
+Saving throws are against the caster's spell save DC.
+It is instant: nothing it does is kept as a lasting effect.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Step effects.0.onFail.0: moving the creature toward or away from the caster, what it drops, and whether it understands the word.
+DM: Step effects.1: moving the creature toward or away from the caster, what it drops, and whether it understands the word.
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

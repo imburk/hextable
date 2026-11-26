@@ -1350,6 +1350,21 @@ the same as with none.
 
 **Not built.** See DEBT W45: the ring of Wall of Fire, Thorns and Blade Barrier, the hot side of Wall of Fire, 4-for-1 movement through Thorns, walls as map objects, light from the sphere and objects it ignites, the client's way to name a wall's direction and to roll a zone.
 
+#### Build notes: wave 3a wards and conditions (amendment, #786)
+
+Tests in `packages/rules/test/wave3a-spells.test.js`. Third wave, first part: Protection from Evil and Good and Command are built; Sanctuary, Silence, See Invisibility and Freedom of Movement are not yet (still `manual`; see the PR). Numbers compared with `reference/srd52/srd52-flow.txt` (Protection from Evil and Good 30005, Command 25027). The flow text drops Command's "Using a Higher-Level Spell Slot" paragraph at a page break; the layout file `reference/srd52/srd52.txt` (line 7085) has it ("one additional creature for each spell slot level above 1"), so the entry's `higher` is right.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Protection from Evil and Good | manual | assist | possession; whether the target is willing; a creature whose type the engine cannot tell |
+| Command | manual | assist | Approach and Flee movement, what a Drop lets go of, whether a creature that cannot understand the word follows it (the SRD text is silent) |
+
+**Added.**
+- **Modifier key `from: [creature types]`**: the modifier holds only against a creature of those types. On `attack.received` the attacker's type; on the `condition` hook (immunity) the creature giving the condition (`condition()` passes its source; a DM-applied condition has none, so a restricted immunity does not stop it); on a `save` with `scope.condition`, the source recorded on the condition the creature already has (`cond[id].source`). `modifiers.js` `fromHolds`, `typeOf`, `immuneTo(s, e, id, giver)`. Schema lint, reader words, HOMEBREW_TYPES and `modifier.from` length 14. A restricted immunity never hides a condition already on the creature.
+- **Step `command: <word>|'chosen'`, choice kind `command`** (`COMMANDS`): on a failed save a part is put on the lasting (bound) effect, carried out at the start of the creature's next turn (`resolve.js` `commandsOn`) and gone when that turn ends. Halt, Grovel and Drop set movement, action and Bonus Action to 0 (Reaction untouched); Grovel also puts Prone on (after the creature would have stood). Approach and Flee give a `manual` event to the DM. Spells only (`commandOk`).
+
+**Decisions.** Protection from Evil and Good: Advantage on a save about Charmed or Frightened applies when the creature's existing condition came from one of the six types (an over-approximation: a new, unrelated Charm during it also gets it). Command: a command cast during the target's own turn waits for its next turn; outside a fight it waits for the first turn of the next fight.
+
 ### A class
 
 ```js

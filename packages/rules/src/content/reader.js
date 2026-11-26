@@ -19,7 +19,7 @@
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
-import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
+import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, COMMANDS, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
@@ -64,7 +64,7 @@ export const SUMMON_ONE_WORDS = {
   reform: 'If the caster already has one from this spell, casting it again gives that one the new form instead of making another.',
   replace: 'If the caster already has one from this spell, casting it again replaces that one.',
 };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command' };
 // A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
 export const ROLL_WORDS = (r) => (r === 'attack' ? 'the caster makes a spell attack roll' : r === 'none' ? 'no attack roll and no saving throw' : `the target makes a ${ABILITY_WORDS[r.slice(5)] ?? r.slice(5)} saving throw`);
 export const KIND_WORDS = { damage: 'damage', healing: 'healing', control: 'control', utility: 'utility' };
@@ -269,7 +269,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'when'];
 
@@ -659,7 +659,7 @@ class Reading {
   choice() {
     const c = this.def.choice;
     if (c === undefined) return;
-    if (!isObj(c) || !Object.hasOwn(CHOICES, c.of)) return this.bad('The choice is not of a skill, an ability, a damage type or a condition.');
+    if (!isObj(c) || !Object.hasOwn(CHOICES, c.of)) return this.bad('The choice is not of a skill, an ability, a damage type, a condition or a command.');
     this.odd(c, ['of', 'from'], 'The choice');
     const from = Array.isArray(c.from) ? c.from.filter((x) => CHOICES[c.of].includes(x)) : null;
     const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : x);
@@ -1154,6 +1154,15 @@ export const STEP_SENTENCES = {
     if (st.endSpell !== true) this.bad(`Step ${at}: \`endSpell\` is true.`);
     if (!this.inTurn) this.bad(`Step ${at}: an endSpell step goes inside an eachTurn.`);
     say('The spell ends, and with it everything it put on any creature.');
+  },
+  // engine/rolls.js `command` (Command): what the creature does on its next turn, and the part of it the engine does.
+  command({ st, at, Who, say, depth }) {
+    const c = st.command;
+    if (!(c === 'chosen' || COMMANDS.includes(c))) return this.bad(`Step ${at}: \`command\` is one of ${COMMANDS.join(', ')} or "chosen".`);
+    const word = c === 'chosen' ? 'the chosen command' : c;
+    say(`${Who} follows ${word} on its next turn, at the start of which the engine carries out what it can: Halt, Grovel and Drop leave it no movement, no action and no Bonus Action (its Reaction is its own), and Grovel also makes it Prone; the part is gone when that turn ends. Approach and Flee are movement the engine cannot steer, and what a Drop lets go of is not kept: the DM does those, and is told at the start of the turn.`);
+    this.line('Given outside a fight, it waits for the creature\'s first turn of the next one. Whether a creature that cannot be told understands the word is for the DM to decide: the spell says nothing of it.', depth + 1);
+    return this.dm(`Step ${at}: moving the creature toward or away from the caster, what it drops, and whether it understands the word.`);
   },
   // engine/rolls.js `arm`: an attack the spell gives its caster while it lasts (Flame Blade).
   arm({ st, at, Who, say }) {

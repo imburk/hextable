@@ -58,7 +58,11 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `arm: { damage, type, addMod?, time? }` (Flame Blade): for as long as the lasting effect holds, the creature it works on has one more action to take with the Attack command: a melee spell
   // attack (reach 5 feet) with the caster's spell attack bonus, dealing `damage` (plus the spellcasting modifier with `addMod`) of `type`. It takes the Action, or the Bonus Action with `time: 'bonus'`.
   // It goes when the effect ends. docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
-  'arm'];
+  'arm',
+  // `command: 'approach' | 'drop' | 'flee' | 'grovel' | 'halt' | 'chosen'` (Command): what the creature it works on does on its next turn. The engine puts a part on the lasting effect that is carried out at the start of the creature's next turn
+  // (Halt, Grovel and Drop end the turn at once: no movement, action or Bonus Action; Grovel also makes it Prone) and ends with that turn; moving it toward or away from the caster, and the dropping, are the DM's.
+  // With `chosen`, the spell has `choice: { of: 'command' }`. docs/specs/rules-expansion.md, "Build notes: wave 3a".
+  'command'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -151,7 +155,9 @@ function lintWhen(when, say) {
 }
 // A spell's choice made when it is cast (`choice: { of, from? }`); a modifier names it as "chosen".
 // `condition`: one condition a `cure` step ends (Lesser Restoration), from `from`.
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion') };
+// `command`: the five words of Command.
+export const COMMANDS = ['approach', 'drop', 'flee', 'grovel', 'halt'];
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -295,7 +301,7 @@ function lintChoice(e, say) {
     if (m.scope?.ability === 'chosen') used.add('ability');
     if (m.types?.includes('chosen')) used.add('damageType');
   });
-  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); });
+  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); });
   const c = e.choice;
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
@@ -481,6 +487,9 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       if (step.when !== undefined) say('an `eachTurn` step has no `when`: say it on the steps inside');
     }
     if (kind === 'stabilize' && step.stabilize !== true) say('`stabilize` is true');
+    // `command` (Command): one of the five words, or `chosen` (the spell's `choice: { of: 'command' }`).
+    if (kind === 'command' && !seen.commandOk) say('a `command` step is for a spell: it is carried out on a creature\'s next turn');
+    if (kind === 'command' && !(COMMANDS.includes(step.command) || step.command === 'chosen')) say(`\`command\` is one of ${COMMANDS.join(', ')} or "chosen"`);
     if (kind === 'arm') { lintArm(step.arm, say); if (!seen.eachOk) say('an `arm` step is for a spell that lasts: the action it gives goes when the spell ends'); }
     if (kind === 'endSpell') { if (step.endSpell !== true) say('`endSpell` is true'); if (!seen.inTurn) say('an `endSpell` step goes inside an `eachTurn`: it ends the lasting effect those steps belong to'); }
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
@@ -826,7 +835,7 @@ function lintSpell(e, say) {
       else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make ${words.join(' and ')} when it is cast, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
-  const seen = lintSteps(e.effects, say, { manual: false, hitOk: e.hit !== undefined, reviveOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
+  const seen = lintSteps(e.effects, say, { manual: false, hitOk: e.hit !== undefined, reviveOk: true, commandOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
   lintHit(e, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   // A spell aimed at the dead has a revive step, and a revive step is for a spell aimed at the dead (a creature that is up has nothing to revive).
@@ -2983,7 +2992,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3538,7 +3547,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },

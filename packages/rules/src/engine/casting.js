@@ -87,6 +87,7 @@ function chooseIn(steps, of, value) {
     if (m?.types && of === 'damageType') m.types = m.types.map((t) => (t === 'chosen' ? value : t));
     if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
     if (Array.isArray(st.cure) && of === 'condition') st.cure = st.cure.map((c) => (c === 'chosen' ? value : c));
+    if (st.command === 'chosen' && of === 'command') st.command = value;
     for (const b of BRANCHES) if (st[b]) visit(st[b]);
   } };
   visit(steps);
@@ -553,7 +554,7 @@ function castSpell(s, a, ctx, ev, item) {
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
-    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
+    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
     // A zone may spare creatures the caster names (Spirit Guardians): `a.spare`.
     const zoneDef = sp.def.zone;
     if (a.spare !== undefined) {
