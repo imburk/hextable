@@ -1122,6 +1122,26 @@ test("teleport: the roll and its outcome are told to the DM alone; a hidden crea
   }
 });
 
+test("teleport, very familiar: Mishap damage and Off Target are told to the DM alone, and a hidden creature near the destination changes nothing the player is sent", () => {
+  const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 2 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 6, r: 2 }) };
+  const told = { mishap: false, off: false };
+  for (let seed = 1; seed <= 60 && !(told.mishap && told.off); seed++) {
+    const { hidden } = twin(TELEPORT("very-familiar", seed), sides);
+    const dm = JSON.stringify(hidden.raw.dm), pat = JSON.stringify(hidden.raw.Pat);
+    if (/A Mishap|Mishaps/.test(dm)) told.mishap = true;
+    if (/Off Target\./.test(dm)) told.off = true;
+    assert.ok(!/Teleport \(|miles|Off Target\.|A Mishap:/.test(pat), `seed ${seed}: the player is told none of the roll`);
+  }
+  assert.ok(told.mishap && told.off, JSON.stringify(told));
+});
+// A creature the party does not know of stands ON the destination: the engine moves nobody and tells the DM. The players are sent that the caster stayed (the engine cannot hide that), and nothing of what is there or of the roll.
+test("teleport: a hidden creature on the destination moves nobody; the DM is told, the player is sent no word of the creature or the roll", () => {
+  const sides = { hide: (w) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 }, name: "Ghost", hidden: true }), plain: (w) => burn(w, { q: 6, r: 0 }) };
+  const { hidden } = twinRun(TELEPORT("permanent-circle"), sides);
+  assert.ok(/did not know of stands/.test(JSON.stringify(hidden.raw.dm)), "the DM is told");
+  assert.ok(!/Ghost|did not know of|Teleport \(|stands in the space/.test(JSON.stringify(hidden.raw.Pat)), "the player is told none of it");
+});
+
 // ---- deep pits (#806): a party member that falls into a region on the level below ----
 // By the existing rules a party member that lands in a region reveals it (lookAround: it stands in it), so the landing room is
 // sent to the players in both worlds. A second room of that level, far from the landing and unrevealed, is a bare cell in the

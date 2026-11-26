@@ -151,7 +151,8 @@ function teleport(s, t, step, to, ev) {
   const G = gridOf(s.map), taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos, G));
   let at = to;
   if (taken(at)) {
-    if (step.blocked) return false;
+    // Teleport (`familiarity`): a creature the caster does not know of stands there. The nearest free space would tell the players something is there, so nobody is moved and the DM places the caster.
+    if (step.blocked || step.familiarity !== undefined) return false;
     // Something it did not know of stands there: the nearest unoccupied space instead (the SRD
     // lets it choose; the engine takes the nearest, the first found on each ring).
     at = null;

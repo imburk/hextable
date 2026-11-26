@@ -5,7 +5,8 @@ import { test } from "node:test";
 import { SPELLS } from "../src/content/index.js";
 import { lintEntry, CHOICES, FAMILIARITY } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
-import { apply } from "../src/engine.js";
+import { apply, makeEntity } from "../src/engine.js";
+import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
 import { moveOptions } from "../src/engine/world.js";
 import { TELEPORT_TABLE } from "../src/effects.js";
@@ -75,12 +76,22 @@ test("Water Walk: before the spell the water is no way across; after it the targ
   assert.equal(at(-5), undefined, "and no more water to walk on");
 });
 
-test("Water Walk: a Monk's Acrobatic Movement still may not stop on water; Water Walk gives it the stop", () => {
+test("Water Walk and a real Monk: Acrobatic Movement crosses water without stopping; with Water Walk the Monk may stop; the spell does not change the feature", () => {
   const s = field();
-  for (const h of [{ q: 1, r: 0 }, { q: 2, r: 0 }]) s.map.levels[0].tiles[col(h)] = { t: "water" };
-  ok(apply(s, { type: "cast", actor: "wizard", spell: "water-walk", targets: ["wizard"], slot: 3 }, DM));
-  const v = [...moveOptions(s, s.entities.wizard).values()].find((x) => x.h.q === 1 && x.h.r === 0);
-  assert.ok(v?.canStop);
+  const sheet = { name: "Lo", class: "monk", level: 9, subclass: "open-hand", abilities: { str: 10, dex: 16, con: 14, int: 10, wis: 14, cha: 8 }, skills: ["acrobatics", "insight"], weapons: ["quarterstaff"] };
+  s.entities.monk = makeEntity(derive(sheet).record, { id: "monk", kind: "pc", side: "party", pos: { q: 2, r: 2, z: 0 } });
+  for (const h of [{ q: 3, r: 2 }, { q: 4, r: 2 }]) s.map.levels[0].tiles[col(h)] = { t: "water" };
+  const at = (q) => [...moveOptions(s, s.entities.monk).values()].find((v) => v.h.q === q && v.h.r === 2);
+  assert.ok(at(3) && !at(3).canStop, "without the spell: crossed, not stood on");
+  assert.ok(at(5)?.canStop, "the far bank");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "water-walk", targets: ["monk"], slot: 3 }, DM));
+  assert.ok(at(3)?.canStop && at(4)?.canStop && at(5)?.canStop, "with the spell: it may stop on the water");
+  const t = field();
+  t.entities.monk = makeEntity(derive(sheet).record, { id: "monk", kind: "pc", side: "party", pos: { q: 2, r: 2, z: 0 } });
+  for (const h of [{ q: 3, r: 2 }, { q: 4, r: 2 }]) t.map.levels[0].tiles[col(h)] = { t: "water" };
+  ok(apply(t, { type: "cast", actor: "wizard", spell: "water-walk", targets: ["fighter"], slot: 3 }, DM));
+  const u = [...moveOptions(t, t.entities.monk).values()].find((v) => v.h.q === 3 && v.h.r === 2);
+  assert.ok(u && !u.canStop, "the spell on someone else leaves the feature as it was");
 });
 
 const ON = (s) => s.entities.wizard.pos;
@@ -135,10 +146,26 @@ test("Teleport, very familiar: over many seeds every outcome comes up, Mishap da
   assert.ok(seen.on > 40 && seen.similar > 0 && seen.off > 0 && seen.mishap > 0, JSON.stringify(seen));
 });
 
-test("Teleport: a destination the map does not hold is refused for a player (the cast is not made), as for Misty Step; a casting without a familiarity is refused", () => {
+test("Teleport: a casting without a familiarity is refused, and no slot is spent", () => {
   const s = field();
   const r = apply(s, { type: "cast", actor: "wizard", spell: "teleport", slot: 7, hex: { q: 8, r: 3 } }, DM);
   assert.equal(r.ok, false);
   assert.ok(/familiarity/i.test(r.error), r.error);
   assert.equal(s.entities.wizard.slots[7], 1, "no slot spent");
+});
+
+test("Teleport: a destination a known creature occupies, or one with nothing to stand on, is refused with no slot spent; an unknown creature there means the DM places the caster", () => {
+  const s = field();
+  const cast = (hex) => apply(s, { type: "cast", actor: "wizard", spell: "teleport", slot: 7, choice: "permanent-circle", hex }, DM);
+  const from = { ...ON(s) };
+  assert.equal(cast({ q: -2, r: 0 }).ok, false, "the fighter stands there");
+  assert.equal(cast({ q: 500, r: 500 }).ok, false, "nothing there to stand on");
+  assert.equal(s.entities.wizard.slots[7], 1, "no slot spent");
+  assert.deepEqual(ON(s), from);
+  // A creature the party does not know of stands on the destination: the caster is not moved; the DM is told.
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 8, r: 3 }, name: "Ghost", hidden: true }, DM));
+  const r = ok(cast({ q: 8, r: 3 }));
+  assert.deepEqual(ON(s), from, "not moved");
+  assert.ok(!r.events.some((e) => e.type === "moved"));
+  assert.ok(/did not know of stands/.test(r.events.find((e) => e.type === "manual" && e.partial).text));
 });
