@@ -726,7 +726,13 @@ function leapOn(s, a, ctx, ev) {
     let i = over.length - 1;
     for (; i >= 0; i--) {
       const sf = landing(s.map, over[i], e.pos.z), g = sf && ground(s.map, sf);
-      if (g && g.level === here.level && Math.abs(sf.z - e.pos.z) <= STEP_MAX && !B.solid(g.level.id, sf) && TILES[g.tile.t].cost !== Infinity && fitsOn(s.map, e, sf, B) && !at(sf).length) { stop = sf; break; }
+      if (!(g && g.level === here.level && Math.abs(sf.z - e.pos.z) <= STEP_MAX && !B.solid(g.level.id, sf) && TILES[g.tile.t].cost !== Infinity && fitsOn(s.map, e, sf, B))) continue;
+      // Judged on what the leaper's side knows (as walk's known routes are): a hex a known creature holds is passed by; one an unseen creature
+      // holds is where it comes down short of instead, and that creature is the one it finds (a reveal by bumping, never a stop that betrays it).
+      const there = at(sf);
+      if (there.some((o) => !unseen(o))) continue;
+      if (there.length) { lurker = there[0]; continue; }
+      stop = sf; break;
     }
     if (i < 0) return void bumped(s, lurker, e, ev);                 // nowhere to come down short of it: it does not leap, and finds it
     short = G.dist(e.pos, stop) * FT;

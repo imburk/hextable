@@ -272,6 +272,20 @@ test("a hidden creature on the landing hex is found, and the leap stops in the l
   assert.equal(b.hidden, undefined);
 });
 
+test("a second unseen creature on the hex it would stop on: it comes down short of that one and finds it, never a stop that betrays it (review of #816)", () => {
+  // Fighter at -6, landing -3 holds a hidden Lurker, -4 holds a hiding Second. The leap stops at -5 and finds Second (the nearer one);
+  // with -4 free it would have stopped there and found Lurker. Either way the creature that changed the stop is revealed.
+  const s = floor();
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: -3, r: 0 }, name: "Lurker", hidden: true }, DM));
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Second" }, DM));
+  const second = Object.values(s.entities).find((e) => e.name === "Second");
+  second.hiding = { dc: 30 };
+  const r = ok(leap(s, -3, 0));
+  assert.deepEqual(pos(s), [-5, 0]);
+  assert.equal(second.hiding, undefined, "the creature on the stop hex is found");
+  assert.ok(r.events.some((e) => (e.type === "unhidden" || e.type === "revealed") && e.id === second.id));
+});
+
 test("Opportunity Attacks: leaving a hostile's reach by a leap provokes; Disengage prevents it", () => {
   const mk = () => {
     const s = floor();
