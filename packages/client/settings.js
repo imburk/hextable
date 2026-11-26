@@ -24,6 +24,7 @@ export function rulesLines(settings = {}) {
     `Dice: ${(settings.diceThrow ?? 'auto') === 'throw' ? 'thrown by whoever acts' : 'rolled as soon as someone acts'}.`,
     `Sight: ${SIGHT[settings.sight ?? 'rooms'] ?? settings.sight}.`,
     `An unseen creature's turn: ${(settings.unseenTurns ?? 'say') === 'quiet' ? 'nothing is said' : 'the table says something moves unseen'}.`,
+    `Foes' health bars for players: ${(settings.foeHealth ?? 'rough') === 'hidden' ? 'none' : 'rough (full, half with a notch, empty)'}. The DM sees exact bars.`,
     `A fight starts when the party comes within ${settings.engageRange ?? 10} ft of enemies: ${on(settings.autoEngage ?? true) ? 'yes' : 'no, the DM calls it'}.`,
     `Noticing hidden things in passing: ${PASSIVE[settings.passiveFind ?? 'off'] ?? settings.passiveFind}.`,
     `Distance when one creature is higher than another: ${VERTICAL[settings.vertical ?? 'max'] ?? settings.vertical}.`,
@@ -33,7 +34,7 @@ export function rulesLines(settings = {}) {
   ];
 }
 
-// ctx: { prefs, themeId(), setTheme(id), look(key, value), dice, repace(), drawer, state(), isDM() }
+// ctx: { bars() (redraw the health bars), prefs, themeId(), setTheme(id), look(key, value), dice, repace(), drawer, state(), isDM() }
 export function initSettings(ctx) {
   const { prefs, drawer } = ctx;
   $('set-theme').innerHTML = Object.entries(THEMES).map(([id, t]) => `<option value="${esc(id)}">${esc(t.name)}</option>`).join('');
@@ -50,6 +51,10 @@ export function initSettings(ctx) {
   $('set-floors').onchange = (ev) => { prefs.set('hextable.floors', ev.target.value); ctx.look('floors', ev.target.value); };
   $('set-cutaway').onchange = (ev) => { prefs.set('hextable.cutaway', ev.target.checked); ctx.look('cutaway', ev.target.checked); };
   $('set-caves').onchange = (ev) => { prefs.set('hextable.caves', ev.target.checked); ctx.look('caves', ev.target.checked); };
+
+  // Health bars over creatures (docs/specs/one-token-menu.md, Decision 7a): this device's own choice; the table's rule for foes is the DM's.
+  { const saved = prefs.get('hextable.bars'); $('set-bars').value = ['always', 'fight', 'never'].includes(saved) ? saved : 'always'; }
+  $('set-bars').onchange = (ev) => { prefs.set('hextable.bars', ev.target.value); ctx.bars?.(); };
 
   // Shadows (docs/specs/renderer.md, R15): it has no place in index.html, so the control is made here. The
   // renderer hears of a change by the page event `hextable-shadows`; it reads the stored preference itself when it starts.

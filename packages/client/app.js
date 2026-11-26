@@ -243,6 +243,7 @@ const known = new Map();
 // whose shown name differs is copied; the rest of the state is the same object.
 function shownState(st) {
   if (!st) return st;
+  st = { ...st, barRule: barRuleNow(st) };      // what the health bars over creatures show (three-build.js barFor): the renderer reads it from here
   let ents = null;
   for (const e of Object.values(st.entities ?? {})) {
     if (!e.bond) continue;
@@ -251,6 +252,9 @@ function shownState(st) {
   }
   return ents ? { ...st, entities: ents } : st;
 }
+// The health bars (docs/specs/one-token-menu.md, Decision 7a): this device's preference, the table's rule for foes, and whether this is the DM.
+const BAR_PREFS = ['always', 'fight', 'never'];
+const barRuleNow = (st) => ({ dm: isDM(), pref: BAR_PREFS.includes(prefs.get('hextable.bars')) ? prefs.get('hextable.bars') : 'always', foeHealth: st?.settings?.foeHealth === 'hidden' ? 'hidden' : 'rough' });
 // What a summoned creature is: its name without its master's ("Giant Wasp"), else its template's.
 const summonedName = (st, e) => {
   const m = st.entities[e?.bond?.to];
@@ -1116,6 +1120,7 @@ function refresh() {
 
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet-body').innerHTML = '<p class="note">Select one of the characters to see its sheet.</p>'; }
+  document.body.dataset.foeHealth = !isDM() && S.settings?.foeHealth === 'hidden' ? 'hidden' : '';      // the tracker says nothing of a foe's health (style.css)
   tracker.render();
   TC.sync(S);
   if (isDM()) renderDM();
@@ -1208,6 +1213,7 @@ function renderDM() {
   renderMarch();
   $('dm-sight').value = S.settings.sight ?? 'rooms';
   $('dm-unseen-turns').value = S.settings.unseenTurns ?? 'say';
+  $('dm-foe-health').value = S.settings.foeHealth ?? 'rough';
   $('dm-dice-throw').value = S.settings.diceThrow ?? 'auto';
   const lvl = dmLevel(); $('dm-ambient').value = lvl?.light ?? 'bright'; $('dm-ambient-level').textContent = lvl ? lvl.name : '';
   const lit = S.entities[selId]?.light; $('dm-torch').disabled = !S.entities[selId]; $('dm-torch').textContent = lit ? 'Put out selected\'s light' : 'Give selected a torch';
@@ -1608,7 +1614,7 @@ $('lobby-about').onclick = (ev) => D.open('about', ev.currentTarget);
 $('splash-about').onclick = (ev) => D.open('about', ev.currentTarget);
 const renderAbout = () => { const html = aboutHTML({ stateVersion: VERSION, tableVersion: S?.version, buildLine: FB.buildLine() }); if ($('about').dataset.sig !== html) { $('about').dataset.sig = html; $('about').innerHTML = html; } };
 const setTheme = (id) => { if (!THEMES[id]) return; themeId = id; prefs.set('hextable.theme', themeId); applyTheme(); R.setTheme(THEMES[themeId]); };
-const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM });
+const ST = initSettings({ prefs, themeId: () => themeId, setTheme, look: (k, v) => { if (setLook(k, v)) R.setTheme(THEMES[themeId]); }, dice: DICE, repace: () => { TL.setPace(pace()); syncPlaying(); }, drawer: D, isDM, bars: () => { const st = TL.shown(); if (st) R.setState(shownState(st), []); } });
 // Where the drawer covers the map, a DM tool that asks for a tap on the map closes it first.
 const closeDM = () => { if (!D.pinnedOpen()) D.close(); };
 $('dm-edit').addEventListener('click', closeDM);
@@ -1671,6 +1677,7 @@ $('dm-passive').onchange = (ev) => act({ type: 'setting', key: 'passiveFind', va
 function dmLevel() { const e = S?.entities[selId]; return (e && under(S.map, e.pos)?.level) || S?.map.levels[0] || null; }
 $('dm-sight').onchange = (ev) => act({ type: 'setting', key: 'sight', value: ev.target.value });
 $('dm-unseen-turns').onchange = (ev) => act({ type: 'setting', key: 'unseenTurns', value: ev.target.value });
+$('dm-foe-health').onchange = (ev) => act({ type: 'setting', key: 'foeHealth', value: ev.target.value });
 $('dm-dice-throw').onchange = (ev) => act({ type: 'setting', key: 'diceThrow', value: ev.target.value });
 $('dm-ambient').onchange = (ev) => { const l = dmLevel(); if (l) act({ type: 'mapEdit', ops: [{ op: 'level', level: { id: l.id, light: ev.target.value === 'bright' ? null : ev.target.value } }] }); };
 $('dm-torch').onclick = () => { const e = S.entities[selId]; if (e) act({ type: 'setLight', actor: e.id, item: e.light ? null : 'torch' }); };

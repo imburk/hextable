@@ -27,6 +27,7 @@ const REGISTRY = {
   base: ['solo', 'multiplayer'],
   armed: ['armed'],
   aimrange: ['aimrange'],
+  healthbars: ['healthbars'],
   dieconfirm: ['dieconfirm'],
   spellcard: ['spellcard'],
   upcast: ['upcast'],

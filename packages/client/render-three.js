@@ -14,7 +14,7 @@ import { tileAlongRay } from './tilepick.js';
 import { createGovernor, shadowLevels } from './governor.js';
 import { CONTENT } from './shared/content/index.js';
 import { Models, fit, makeBase, modelFor, modelsMode } from './models.js';
-import { BLOCK, THUMB, growFor, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, buildTerrain, buildWalls, cutSetFor, girth, hpFraction, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
+import { BLOCK, THUMB, growFor, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, barFor, buildTerrain, buildWalls, cutSetFor, girth, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5, RETRY_MS = 8000, HOLD_MAX = 4, SLAB = 0.35;
@@ -278,7 +278,8 @@ export class ThreeRenderer {
       const shown = e.form?.name ? `${e.name} (${e.form.name})` : e.name;             // a druid in Wild Shape: 'Wren (Brown Bear)'
       a.el.firstChild.textContent = shown;
       { const tag = a.el.querySelector('.alt'), up = sf && !e.dead ? e.pos.z - sf.z : 0; tag.hidden = !(up > 0); if (up > 0) { tag.textContent = `\u2191${up} ft`; tag.setAttribute('aria-label', `${shown}: ${up} ft up. Choose a height`); } }
-      a.el.querySelector('i').style.width = `${hpFraction(e) * 100}%`;
+      { const bar = barFor(e, { ...state.barRule, fight: !!state.encounter }), el = a.el.querySelector('.bar');
+        el.hidden = !bar.show; el.classList.toggle('notch', bar.notch); a.el.querySelector('i').style.width = `${bar.frac * 100}%`; }
       const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging', e.follow && !state.encounter && 'following'].filter(Boolean);
       const mk = marks.join();
       if (mk !== a.marks) { a.marks = mk; a.el.lastChild.replaceChildren(...marks.map((m) => Object.assign(document.createElement('b'), { className: m, textContent: MARKS[m] }))); }
