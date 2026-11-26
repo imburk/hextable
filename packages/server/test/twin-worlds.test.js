@@ -1453,3 +1453,27 @@ for (const rule of ["los", "light"]) test(`meld into stone: under the ${rule} si
   sc.setup = (w) => { setup(w); w.must({ type: "setting", key: "sight", value: rule }); };
   twin(sc, { hide: (w) => meldFoe(w, { seen: true }), plain: (w) => { w.state.seq += MELDED_FOE_SEQ; } });
 });
+
+// ---- Darkvision (#786 wave 5 part 1): Darkvision lent for 8 hours shows a creature in the dark out to 150 feet; the players are sent what the sight rules give a creature with Darkvision ----
+const lurk = (w, at, name) => { const r = apply(w.state, { type: "spawn", monster: "goblin-warrior", at, name }, { role: "dm", userId: "dm" }); assert.ok(r.ok, r.error); Object.assign(byName(w, name), { hp: 500, maxHp: 500 }); };
+const darkvisionSetup = (w) => {
+  seeInvisibleSetup(w);
+  const s = w.state;
+  for (let q = -16; q <= 17; q++) s.map.levels[0].tiles[`${q},0`] = { t: "grass" };           // a row long enough for 150 feet
+  w.must({ type: "mapEdit", ops: [{ op: "level", level: { id: "ground", light: "dark" } }] });
+  w.must({ type: "place", actor: "wizard", to: { q: -14, r: 0 } });
+  s.entities.wizard.spells.push("darkvision");
+};
+test("darkvision: before the spell a creature 140 feet off in the dark is sent to no player (a bare cell); after it the caster's player is sent it; a creature at 155 feet and one behind a wall are sent as a bare cell is", () => {
+  const cast = (setup) => ({ players: ["Pat", "Sam"], setup: (w) => { darkvisionSetup(w); setup(w); }, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "darkvision", target: "wizard", slot: 2 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] });
+  const before = { players: ["Pat", "Sam"], setup: darkvisionSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  twin(before, { hide: (w) => lurk(w, { q: 14, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 13, r: 0 }) });
+  const near = twinRun(cast(() => {}), { hide: (w) => lurk(w, { q: 14, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 13, r: 0 }) });
+  assert.ok(near.diffs.length > 0, "the players are told the creature once the spell is cast");
+  const sent = (r, who) => JSON.stringify(r.raw[who]).includes("Lurker");
+  assert.ok(sent(near.hidden, "Sam") && !sent(near.plain, "Sam"), "the caster's player is sent the creature at 140 feet");
+  const far = twin(cast(() => {}), { hide: (w) => lurk(w, { q: 17, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 16, r: 0 }) });
+  assert.ok(!JSON.stringify(far.hidden.raw.Sam).includes("Lurker"), "155 feet: Sam is told of nothing");
+  const walled = twin(cast((w) => { w.state.map.walls.push({ id: "wallD", level: "ground", a: [-70, 11], b: [70, 11], kind: "wall" }); w.must({ type: "place", actor: "wizard", to: { q: -2, r: 0 } }); }), { hide: (w) => lurk(w, { q: -2, r: 6 }, "Lurker"), plain: (w) => burn(w, { q: -2, r: 7 }) });
+  assert.ok(!JSON.stringify(walled.hidden.raw.Sam).includes("Lurker"), "behind a wall: Sam is told of nothing");
+});

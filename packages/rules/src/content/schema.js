@@ -215,7 +215,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.on === 'surface' && !(stepOk && m.op === 'immune' && m.scope?.surface === 'water' && Object.keys(m.scope).length === 1 && Object.keys(m).length === 3)) say('a modifier on surface is a modifier step `{ on: "surface", op: "immune", scope: { surface: "water" } }`: the creature walks on water as on solid ground for as long as the effect lasts');
   // `invisible` (See Invisibility): only `{ on: 'invisible', op: 'immune' }`, from a spell's lasting effect or a creature's trait (it sees the Invisible).
   // `senses` (True Seeing): only a modifier step `{ on: 'senses', op: 'set', value: <5 to 240 feet>, scope: { sense } }`.
-  if (m.on === 'senses' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 120 && m.value % 5 === 0 && m.scope?.sense !== undefined && Object.keys(m).length === 4)) say('a modifier on senses is a modifier step `{ on: "senses", op: "set", value: <5 to 120 feet, a multiple of 5>, scope: { sense } }`');
+  if (m.on === 'senses' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 240 && m.value % 5 === 0 && m.scope?.sense !== undefined && Object.keys(m).length === 4)) say('a modifier on senses is a modifier step `{ on: "senses", op: "set", value: <5 to 240 feet, a multiple of 5>, scope: { sense } }`');
   if (m.on === 'invisible' &&!(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on invisible is `{ on: "invisible", op: "immune" }`: the creature sees Invisible creatures and objects as if they were visible');
   // `leap` (Jump): only a modifier step `{ on: 'leap', op: 'set', value: <5 to 40 feet, a multiple of 5> }`.
   if (m.on === 'leap' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 40 && m.value % 5 === 0 && Object.keys(m).length === 3)) say('a modifier on leap is a modifier step `{ on: "leap", op: "set", value: <5 to 40 feet, a multiple of 5> }`: once on each of its turns the creature may leap that far for 10 feet of movement');
@@ -3303,7 +3303,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000], 'step.cut': [5, 10],
-  'modifier.value': [-40, 40], 'speedModifier.value': [-120, 120], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
+  'modifier.value': [-40, 40], 'speedModifier.value': [-120, 120], 'senseModifier.value': [5, 240], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
@@ -3360,7 +3360,7 @@ const GRANTS_LEN = 30;
 export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14, dice: 900 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
-const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (owner === 'speedModifier' ? rangeOf('modifier', key, inGrants) : inGrants ? GRANTS_ANY : undefined);
+const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (owner === 'speedModifier' || owner === 'senseModifier' ? rangeOf('modifier', key, inGrants) : inGrants ? GRANTS_ANY : undefined);
 // The numbers of an entry with the name that finds their range: [context, value, path, inGrants].
 export function numbersOf(kind, entry) {
   const out = [], stack = [];
@@ -3370,7 +3370,7 @@ export function numbersOf(kind, entry) {
     if (typeof v === 'number') out.push([`${owner}.${nameOf(key)}`, v, path, g, owner, nameOf(key)]);
     else if (Array.isArray(v)) v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g]));
     // A modifier on a speed (Fly's Fly Speed of 60) is held to the speeds' range, not the 40 of every other modifier.
-    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && (SPEED_HOOKS.includes(v.on) || v.on === 'senses') ? 'speedModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
+    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && SPEED_HOOKS.includes(v.on) ? 'speedModifier' : nameOf(key) === 'modifier' && v.on === 'senses' ? 'senseModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
   }
   return out;
 }

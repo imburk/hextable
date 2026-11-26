@@ -544,6 +544,14 @@ test("#430: an area's creature types are a list with a ceiling (every type once,
   refused(strict("spells", types([...CREATURE_TYPES, "undead"])), /a list of \d+; the most is 14/);
 });
 
+test("B1: a modifier on senses (Darkvision's 150) may go to 240, and to no more", () => {
+  const dv = CONTENT.spells.find ? CONTENT.spells.find((s) => s.id === "darkvision") : CONTENT.spells.darkvision;
+  assert.deepEqual(strict("spells", homebrew("spells", dv)), [], "the SRD's Darkvision, as homebrew");
+  const at = (value) => { const e = homebrew("spells", dv); e.effects[0] = { modifier: { on: "senses", op: "set", value, scope: { sense: "darkvision" } } }; return strict("spells", e); };
+  assert.deepEqual(at(240), []);
+  assert.ok(at(245).length);
+});
+
 test("B1: a modifier on a speed (Fly's Fly Speed of 60) may go to 120; a modifier on any other hook stays within 40", () => {
   const fly = CONTENT.spells.find ? CONTENT.spells.find((s) => s.id === "fly") : CONTENT.spells.fly;
   assert.deepEqual(strict("spells", homebrew("spells", fly)), [], "the SRD's Fly, as homebrew");
