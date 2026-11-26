@@ -11,6 +11,7 @@ import { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, BACKGROUNDS, ARRAY_BY_CLASS, 
   standing, applyBackground, checkScores, scoresLine, dmLine, setText, dayText } from './shared/scores.js';
 import { keyedRng } from './shared/rng.js';
 import { hide as scrollOff } from './scrolltip.js';
+import { initSpellCards, openSpellCard, markSpell } from './spellcard.js';
 import { el, accordion, pickRow, chip, groupHead, disclosure } from './pickui.js';
 import { SETTING_TEXT } from './shared/engine.js';
 import { signed, nice, usesText, weaponLines, weaponSummary, armourLines, armourSummary, armourCost, armourAlso, weaponCost, weaponNoTrainLines, armourNoTrainLines, weaponWords, weaponTrained, trainLine, bareFeatures, featureWhen, firstSentence,
@@ -712,7 +713,16 @@ export function initBuild({ act, toast, getState, getSelected, importButton, me 
   // with the engine's own sentence (why it cannot be taken). Radio rows: one feat a place.
   const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', minute: '1 minute', hour: '1 hour' };
   const spellMeta = (s) => [TIME[s.time] ?? s.time, s.range === 'self' ? 'Self' : s.range === 'touch' ? 'Touch' : typeof s.range === 'number' ? `${s.range} ft` : s.range, s.concentration ? 'Concentration' : '', s.ritual ? 'Ritual' : ''].filter(Boolean).join(' · ');
-  const spellRow = (s, o) => pickRow({ id: o.id, kind: 'check', checked: o.on, disabled: o.off, title: s.name, lead: s.level ? `(lvl ${s.level})` : '(cantrip)', chips: [spellTag(s)].filter(Boolean), summary: firstSentence(s.text), also: spellMeta(s), why: o.why, info: () => spellCard(s), onchange: o.onchange });
+  // A spell row opens the spell card (#787): hover, long press or the I key on the row, or its i button. The scroll card's own reveal is not hooked to it, so one card answers.
+  const spellRow = (s, o) => {
+    initSpellCards();
+    const row = pickRow({ id: o.id, kind: 'check', checked: o.on, disabled: o.off, title: s.name, lead: s.level ? `(lvl ${s.level})` : '(cantrip)', chips: [spellTag(s)].filter(Boolean), summary: firstSentence(s.text), also: spellMeta(s), why: o.why, onchange: o.onchange });
+    markSpell(row, s.id);
+    const b = el('button', { type: 'button', class: 'ibtn', 'aria-label': `About ${s.name}` }, el('i', { text: 'i' }));
+    b.onclick = () => openSpellCard(row, s.id, 'key');
+    row.append(b);
+    return row;
+  };
   const chipRadios = (id, label, options, value, onchange) => el('div', { class: 'abpick', id }, el('span', { class: 'pk-lead', text: label }),
     el('div', { class: 'chipset', role: 'radiogroup', 'aria-label': label }, ...options.map(([v, t]) => el('label', {}, el('input', { type: 'radio', name: id, id: `${id}-${v ? `o-${v}` : 'none'}`, checked: (value ?? '') === v, onchange: () => onchange(v) }), el('span', { text: t })))));
   function featsSection(slots) {
