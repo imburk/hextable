@@ -764,11 +764,11 @@ function choicesFor() {
   }
   return groups.length ? { key: `${selId}|${mode.id}|${mode.holder ?? ''}`, name: sp.name, groups } : null;
 }
-let choicesNow = null, choicesKey = '', showSheet = () => {};      // `showSheet` is set once the menu exists (like foldMenu)
+let choicesNow = null, choicesKey = '', menuCloses = 0, showSheet = () => {};      // `showSheet` is set once the menu exists (like foldMenu)
 // New choices to make (an action just armed, or a weapon's owner just tapped) and the menu is not on the sheet: it opens there, at the choices. The menu already open on the sheet is left as it is.
 function openChoices() {
   const k = choicesNow?.key ?? '';
-  if (k && k !== choicesKey) setTimeout(showSheet, 350);      // not at once: a tap on the map that brought the choices (a weapon's owner) is followed by the browser's own click, which would land on the new menu's dimmed map and close it
+  if (k && k !== choicesKey) { const c = menuCloses; setTimeout(() => { if (c === menuCloses) showSheet(); }, 350); }      // a person who shuts the menu in that moment is not met with it opening again; not at once: a tap on the map that brought the choices (a weapon's owner) is followed by the browser's own click, which would land on the new menu's dimmed map and close it
   choicesKey = k;
 }
 function chooseOption(group, value) {
@@ -1573,7 +1573,7 @@ function pickChar(id) {
   D.open('sheet'); refresh();
 }
 const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), confirm: () => confirmDie(), selected: () => (S && selId ? S.entities[selId] ?? null : null), charName: () => (S && selId && S.entities[selId] ? shownName(S, S.entities[selId]) : null), pickChar,
-  change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
+  change: (why) => { if (why === 'close') menuCloses++; refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
 showSheet = () => { if (choicesNow && !(D.isOpen && D.tab === 'sheet')) D.open('sheet'); };
