@@ -106,11 +106,11 @@ function gravity(s, ev) {
     if (ground(s.map, e.pos) || aloft(s, e)) continue;
     const sf = under(s.map, e.pos);
     if (!sf) continue;                                   // nothing below at all: the DM's to sort out
-    const feet = e.pos.z - sf.z;
+    const feet = e.pos.z - sf.z, from = { ...e.pos };
     e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
     if (e.dead) continue;
     any = true;
-    fall(s, e, feet, ev);
+    fall(s, e, feet, ev, null, from);                    // range and sight (Feather Fall) from where the fall began (DEBT W58(5), #819)
     lookAround(s, ev, [e]);
   }
   if (any) checkEnd(s, ev);

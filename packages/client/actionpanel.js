@@ -31,6 +31,7 @@ import { classTitle } from './buildsheet.js';
 import { initSpellCards, spellAttrs } from './spellcard.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 import { rollers, rollMode } from './wallaim.js';
+import { leapState } from './leapui.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -315,6 +316,10 @@ export function moveRows(S, e, { fly = null, mode = null } = {}) {
   const dt = nimble ? 'bonus' : 'action';
   rows.push(row({ id: 'disengage', kind: 'send', label: 'Disengage', sub: 'No Opportunity Attacks', chip: CHIP[dt], time: dt, why: blocked(S, e, dt), send: { type: 'disengage', actor: e.id } }));
   rows.push(row({ id: 'dodge', kind: 'send', label: 'Dodge', sub: 'Attackers roll with Disadvantage', chip: CHIP.action, time: 'action', why: blocked(S, e, 'action'), send: { type: 'dodge', actor: e.id } }));
+  // Leap (#818): arm it, then a tap on a hex sends `leap`; "Use Jump" is the same with `spell: true`, only for a creature with a Jump effect it has not used this turn.
+  { const L = leapState(S, e), lm = mode?.kind === 'leap';
+    rows.push(row({ id: 'leap', kind: 'arm', label: 'Leap', sub: L.sub, chip: 'Move', time: null, std: false, why: L.why, armed: lm && !mode.spell, arm: { kind: 'leap', id: e.id }, mode: { kind: 'leap', id: e.id, spell: false } }));
+    if (L.spellFree && !L.why) rows.push(row({ id: 'leap-jump', kind: 'arm', label: 'Use Jump', sub: `Leap up to ${L.spell} ft${enc?.budget ? ' for 10 ft of movement' : ''}`, chip: 'Move', time: null, std: false, armed: lm && !!mode.spell, arm: { kind: 'leap', id: e.id }, mode: { kind: 'leap', id: e.id, spell: true } })); }
   rows.push(hideRow(S, e, row));
   rows.push(row({ id: 'search', kind: 'send', label: 'Search', sub: `Perception ${signed(skillBonus(S, e, 'perception'))} · secret doors, traps, things hiding · 15 ft`, chip: CHIP.action, time: 'action',
     why: blocked(S, e, 'action'), send: { type: 'search', actor: e.id } }));
@@ -542,7 +547,7 @@ export function handRows(S, e, { dm = false } = {}) {
 export function tabRows(S, e, id, { mode = null, fly = null } = {}) {
   if (id === 'attacks') { const h = holdRows(S, e); return [...h.escape, ...attackRows(S, e, { mode }), ...h.letGo]; }       // breaking free comes first for a held creature: nothing else is likely worth its action
   if (id === 'bonus') return bonusRows(S, e, { mode, fly }).rows;
-  if (id === 'move') return moveRows(S, e, { fly });
+  if (id === 'move') return moveRows(S, e, { fly, mode });
   if (id === 'features') return [...featureRows(S, e, { mode }), ...holdRows(S, e).letGo];
   if (id === 'spells') return spellRows(S, e, { mode });
   return [];
@@ -574,13 +579,13 @@ export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found
     case 'attacks': return [...attackRows(S, e, { mode }), ...cr.attacks, ...spellRows(S, e, { mode }).filter((r) => r.roll === 'attack')];
     case 'spells': return spellRows(S, e, { mode });
     case 'heal': return [...stabilizeRows(S, e), ...spellRows(S, e, { mode }).filter(healsRow), ...featureRows(S, e, { mode }).filter(healsRow), ...items().uses.filter(healsRow)];
-    case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'fly-up', 'fly-down', 'fly-to'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
+    case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'leap', 'leap-jump', 'fly-up', 'fly-down', 'fly-to'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
     case 'defend': return [...std('dodge', 'hide', 'search', 'shield'), ...bonusStd('hide-bonus')];
     case 'use': return [...moveRows(S, e, { fly }).filter((r) => r.id.startsWith('use:')), ...items().uses.filter((r) => !healsRow(r))];
     case 'features': return featureRows(S, e, { mode }).filter((r) => !healsRow(r));
     case 'companions': return [...cr.features, ...cr.move];
     // Out of a fight there is no Move group: a flyer finds Fly… here, among the first tiles (it is the word a player looks for); Higher and Lower are under More.
-    case 'explore': return [...std('fly').map((r) => ({ ...r, grid: true })), ...rankExplore(S, e, { dm, mode, found }), ...std('fly-up', 'fly-down', 'fly-to')].filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
+    case 'explore': return [...std('fly').map((r) => ({ ...r, grid: true })), ...rankExplore(S, e, { dm, mode, found }), ...std('leap', 'leap-jump', 'fly-up', 'fly-down', 'fly-to')].filter((r) => r.kind !== 'jump' && r.id !== 'shortRest' && r.id !== 'longRest');
     case 'rest': return rankExplore(S, e, { dm, mode, found }).filter((r) => r.id === 'shortRest' || r.id === 'longRest');
     case 'items': { const it = items(); return [...it.uses, ...(it.light ? [it.light] : [])]; }
     default: return [];

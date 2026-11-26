@@ -42,6 +42,9 @@ const SQUARE_HINTS = {
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
 const fresh = (base, taken) => { let id = base, n = 2; while (taken.has(id)) id = `${base}-${n++}`; return id; };
 const same = (p, q) => Math.abs(p[0] - q[0]) < 1e-6 && Math.abs(p[1] - q[1]) < 1e-6;
+// Does this kind of object drop whoever is on it? The same 3-line test as `falls` in packages/rules/src/map.js (not exported there): a `fall` number anywhere in its triggers or use.
+const falls = (def) => { let yes = false; const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if (Number.isInteger(v.fall)) yes = true; Object.values(v).forEach(walk); } }; walk(def.triggers); walk(def.use); return yes; };
+const DEPTHS = Array.from({ length: 20 }, (_, i) => (i + 1) * 10);
 const sameSeg = (w, [a, b]) => (same(w.a, a) && same(w.b, b)) || (same(w.a, b) && same(w.b, a));
 
 export class Editor {
@@ -377,6 +380,7 @@ export class Editor {
     if (!P || !f.elements.state) return;
     const d = P.draft, v = (n) => f.elements[n]?.value.trim() ?? '';
     d.state = f.elements.state.value; d.name = v('name'); d.key = v('key');
+    if (f.elements.depth) { const n = Number(f.elements.depth.value); if (n > 10) d.fall = n; else delete d.fall; }     // 10 ft is the old behaviour: no key
     d.dc = {};
     for (const el of f.querySelectorAll('[data-dc]')) if (el.value.trim() !== '') d.dc[el.dataset.dc] = Number(el.value);
     P.when = f.elements.when?.value; P.sets = f.elements.sets?.value;
@@ -408,6 +412,7 @@ export class Editor {
       <label>Name <input name="name" maxlength="40" value="${esc(d.name ?? '')}" placeholder="shown to the DM" autocomplete="off"></label>
       ${usesKey ? `<label>Key <input name="key" maxlength="40" value="${esc(d.key ?? '')}" placeholder="name of the item that fits" autocomplete="off"></label>` : ''}
       ${dcs.length ? `<div class="ed-dcs">${dcs.map(([k, t, dflt]) => `<label>${esc(t)} <input type="number" inputmode="numeric" min="1" max="40" step="1" data-dc="${esc(k)}" value="${d.dc?.[k] ?? ''}" placeholder="${dflt ?? ''}"></label>`).join('')}</div>` : ''}
+      ${falls(def) ? `<label>Depth <select name="depth">${DEPTHS.map((n) => `<option value="${n}"${n === (d.fall ?? 10) ? ' selected' : ''}>${n === 10 ? '10 ft (same level)' : `${n} ft`}</option>`).join('')}</select></label>${P.depthNote ? `<p class="ed-note" id="ed-depthnote" role="alert">${esc(P.depthNote)}</p>` : ''}` : ''}
       ${def.connects ? `<div class="ed-line"><span>Leads to ${d.to ? `${d.to.q},${d.to.r} at ${d.to.z} ft` : 'nowhere yet'}</span><button type="button" id="ed-pickto"${P.pick === 'to' ? ' class="sel"' : ''}>${P.pick === 'to' ? 'Tap a tile now' : 'Pick the place'}</button></div>` : ''}
       <div class="ed-links"><span>Links</span><ul>${links || '<li class="none">None. Linking makes another object change when this one does.</li>'}</ul>
         <div class="ed-line"><span>${target ? esc(label(target)) : 'Nothing picked'}</span><button type="button" id="ed-picklink"${P.pick === 'link' ? ' class="sel"' : ''}>${P.pick === 'link' ? 'Tap an object now' : 'Pick an object'}</button></div>
@@ -438,6 +443,19 @@ export class Editor {
     for (const k of ['name', 'key']) if (!o[k]) delete o[k];
     if (!Object.keys(o.dc ?? {}).length) delete o.dc;
     if (!o.links?.length) delete o.links;
+    P.depthNote = '';
+    if (falls(CONTENT.objects[o.def])) {       // the linter's own words about a pit with no floor that deep below it; a refused depth goes back to the saved one
+      const trial = structuredClone(this.S.map), at = trial.objects.findIndex((x) => x.id === o.id);
+      if (at >= 0) trial.objects[at] = o;
+      let why = [];
+      try { why = lintMap(trial).filter((m) => m.includes(`"${o.id}"`) && /fall|deep/.test(m)); } catch { why = []; }
+      if (why.length) {
+        const saved = this.S.map.objects.find((x) => x.id === o.id);
+        if (saved?.fall) d.fall = saved.fall; else delete d.fall;
+        P.depthNote = why[0];
+        return this.#renderForm();
+      }
+    }
     this.edit([{ op: 'object', object: o }]);
   }
 
