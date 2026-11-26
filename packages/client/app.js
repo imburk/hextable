@@ -26,6 +26,7 @@ import { createTracker, shownName, screenTurnLine } from './tracker.js';
 import { symbol } from './symbols.js';
 import { mountDot } from './linkdot.js';
 import { seenState } from './linkquality.js';
+import { spellAttrs } from './spellcard.js';          // the sheet's spell table opens the spell card (#787)
 import { initActionPanel } from './actionpanel.js';
 import { initCompanions, isSummon, orderText, pocketHtml } from './companions.js';
 import { initFormation, formationWhy, leads, whyNoFormation, followersOf } from './formation.js';
@@ -764,11 +765,11 @@ function choicesFor() {
   }
   return groups.length ? { key: `${selId}|${mode.id}|${mode.holder ?? ''}`, name: sp.name, groups } : null;
 }
-let choicesNow = null, choicesKey = '', showSheet = () => {};      // `showSheet` is set once the menu exists (like foldMenu)
+let choicesNow = null, choicesKey = '', menuCloses = 0, showSheet = () => {};      // `showSheet` is set once the menu exists (like foldMenu)
 // New choices to make (an action just armed, or a weapon's owner just tapped) and the menu is not on the sheet: it opens there, at the choices. The menu already open on the sheet is left as it is.
 function openChoices() {
   const k = choicesNow?.key ?? '';
-  if (k && k !== choicesKey) setTimeout(showSheet, 350);      // not at once: a tap on the map that brought the choices (a weapon's owner) is followed by the browser's own click, which would land on the new menu's dimmed map and close it
+  if (k && k !== choicesKey) { const c = menuCloses; setTimeout(() => { if (c === menuCloses) showSheet(); }, 350); }      // a person who shuts the menu in that moment is not met with it opening again; not at once: a tap on the map that brought the choices (a weapon's owner) is followed by the browser's own click, which would land on the new menu's dimmed map and close it
   choicesKey = k;
 }
 function chooseOption(group, value) {
@@ -1189,7 +1190,7 @@ function renderSheet() {
     ${sec('spells', 'Spells known', `
     ${st ? `<section><h3>Spells · save DC ${st.dc} · attack ${signed(st.attack)} · ${Object.keys(e.slotsMax).map((l) => `level ${l} slots ${e.slots[l]}/${e.slotsMax[l]}`).join(', ')}</h3>
       <table><tr><th>Spell</th><th>Level</th><th>Casting</th><th>Range</th><th>Effect</th></tr>
-      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}`)}
+      ${e.spells.map((id) => { const sp = SPELLS[id]; if (!sp) return `<tr class="hb-missing"><td colspan="5">${PK.isHomebrew(id) ? 'A homebrew spell this page does not have yet' : 'A spell this page does not know'}: <code>${esc(id)}</code>. It shows here when its pack arrives.</td></tr>`; return `<tr${spellAttrs(id)} tabindex="0"><td>${esc(sp.name)}${PK.isHomebrew(id) ? ` <small class="hb-tag">homebrew${PK.packOf(id) ? `: ${esc(PK.packOf(id).name)}` : ''}</small> <button type="button" class="hb-read" data-hb="${esc(id)}">Reading</button>` : ''}</td><td>${sp.level || 'Cantrip'}</td><td>${sp.time === 'bonus' ? 'Bonus Action' : sp.time === 'action' ? 'Action' : esc(sp.time)}</td><td>${sp.area ? `${sp.area.size} ft ${sp.area.shape}` : rangeAt(sp.def, e.level) === 5 ? 'Touch' : sp.range === 0 ? 'Self' : `${rangeAt(sp.def, e.level)} ft`}</td><td>${sp.heal ? `Heal ${sp.heal.dice}${sp.heal.addMod ? signed(mod(e.abil[e.castAbil])) : ''}` : esc(sp.long)}</td></tr>`; }).join('')}</table></section>` : ''}`)}
     ${sec('story', 'Story', `${story}
     ${e.gear.length ? `<section><h3>Gear</h3><div class="facts">${e.gear.map((g) => `<span>${esc(g)}</span>`).join('')}</div></section>` : ''}
     ${isDM() && e.kind === 'pc' && e.side === 'party' ? `<section id="sheet-refresh-box"><h3>Sheet</h3><div class="row"><button type="button" id="sheet-refresh">Refresh from sheet</button></div><p class="note" id="sheet-refresh-note">${esc(refreshNote(dry({ type: 'refresh', actor: e.id })))}</p></section>` : ''}`)}`;
@@ -1573,7 +1574,7 @@ function pickChar(id) {
   D.open('sheet'); refresh();
 }
 const D = initDrawer({ prefs, state: () => S, isDM, token: () => tokenState(), confirm: () => confirmDie(), selected: () => (S && selId ? S.entities[selId] ?? null : null), charName: () => (S && selId && S.entities[selId] ? shownName(S, S.entities[selId]) : null), pickChar,
-  change: () => { refresh(); if (!$('about').hidden) renderAbout(); } });
+  change: (why) => { if (why === 'close') menuCloses++; refresh(); if (!$('about').hidden) renderAbout(); } });
 const openPanel = (id) => D.open(id);
 foldMenu = () => { if (D.isOpen && !D.pinnedOpen()) D.close(false); };
 showSheet = () => { if (choicesNow && !(D.isOpen && D.tab === 'sheet')) D.open('sheet'); };
@@ -1799,6 +1800,14 @@ const RP = initReactionPrompt({ act, state: () => shownState(S), isDM });
 // The cards that come after a fight: the party has fallen (defeat.js). Drawn from the state once the beats that led to it have played.
 const DF = initDefeat({ state: () => S, isDM, solo: () => !!T?.solo, info: () => T?.undoInfo ?? {}, rewind: (to) => T.rewind?.(to) });
 const CC = initConclusion({ act, state: () => S, isDM, solo: () => !!T?.solo, code: () => T?.you?.code ?? 'solo', prefs, levelUp: (id) => QE.levelUp(id) });
+// Decision 2 (one overlay at a time): a card (rewards, defeat) folds the menu as a prompt does, once, as it comes, and the menu does not come back by itself.
+// The cards show and hide themselves (a chip, a button of the DM's tools, a sync), so what is watched is the page: the class each puts on the body.
+{ let up = false;
+  new MutationObserver(() => {
+    const now = document.body.classList.contains('df-open') || document.body.classList.contains('cc-open');
+    if (now && !up) D.fold();
+    up = now;
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] }); }
 function syncCards() {
   const calm = !TL.busy();
   DF.sync(S, { calm }); CC.sync(S, { calm });

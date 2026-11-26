@@ -519,6 +519,9 @@ async function scrollPass(browser, url, label, opts, grid) {
       const tap = (sel) => (touch ? page.tap(sel) : page.click(sel));
       const card = () => page.evaluate(() => { const c = document.querySelector('#scrolltip'); if (!c) return null; const r = c.getBoundingClientRect(); return { text: c.querySelector('p')?.textContent, title: c.querySelector('b')?.textContent, sub: c.querySelector('small')?.textContent, l: r.left, t: r.top, r: r.right, b: r.bottom, vw: document.documentElement.clientWidth, vh: innerHeight }; });
       const gone = () => wait(page, () => !document.querySelector('#scrolltip'));
+      // The spell card (#787) is what a spell row shows; the scroll card above is still what a feature, option or item shows.
+      const scard = () => page.evaluate(() => { const c = document.querySelector('#spellcard'); if (!c) return null; const r = c.getBoundingClientRect(); return { text: c.querySelector('.sc-text')?.textContent, title: c.querySelector('.sc-name-h')?.textContent, sub: c.querySelector('.sc-meta')?.textContent, l: r.left, t: r.top, r: r.right, b: r.bottom, vw: document.documentElement.clientWidth, vh: innerHeight }; });
+      const sgone = () => wait(page, () => !document.querySelector('#spellcard'));
       const SP = 'fire-bolt', ROW = `.opt:has(#qb-spell-${SP}) > label`, want = CONTENT.spells[SP];
       const inside = (c) => c.l >= 0 && c.t >= 0 && c.r <= c.vw && c.b <= c.vh;
       await open(page, url, { grid });
@@ -581,45 +584,44 @@ async function scrollPass(browser, url, label, opts, grid) {
         await openSec(page, 'who'); await page.selectOption('#qb-class', 'wizard'); await openSec(page, 'gear');
       });
 
-      await run.do(touch ? 'a 500 ms press on a spell shows its scroll card inside the screen, does not tick the spell, and a tap elsewhere hides it' : 'hovering a spell shows nothing before 3 s, then its scroll card; Escape and moving away hide it', async () => {
+      await run.do(touch ? 'a 500 ms press on a spell shows its spell card inside the screen, does not tick the spell, and a tap elsewhere hides it' : 'hovering a spell shows nothing at once, then its spell card (#787: the scroll card is for what is not a spell); Escape and moving away hide it', async () => {
         await openSec(page, 'spells');
         await page.$eval(ROW, (e) => e.scrollIntoView({ block: 'center' }));
         const sel = ROW;
         if (!touch) {
-          await page.hover(sel); await sleep(2500);
-          if (await card()) throw new Error('the card came up before 3 s');
-          await wait(page, () => document.querySelector('#scrolltip'));
-          let c = await card();
-          if (c.text !== want.text || c.title !== want.name || !/^Cantrip · /.test(c.sub)) throw new Error(`card: ${JSON.stringify(c)}`);
+          await page.mouse.move(5, 5); await page.hover(sel); await sleep(100);
+          if (await scard()) throw new Error('the card came up at once');
+          await wait(page, () => document.querySelector('#spellcard'));
+          let c = await scard();
+          if (c.text !== want.text || c.title !== want.name || !/cantrip/.test(c.sub)) throw new Error(`card: ${JSON.stringify(c)}`);
           if (!inside(c)) throw new Error(`card outside the screen: ${JSON.stringify(c)}`);
-          if (!(await page.evaluate(() => getComputedStyle(document.querySelector('#scrolltip')).backgroundImage.includes('gradient')))) throw new Error('the card has no parchment');
-          await shot('2-hover'); await page.keyboard.press('Escape'); await gone();
-          await page.hover(sel); await sleep(300); await page.mouse.move(5, 5); await sleep(3300);
-          if (await card()) throw new Error('moving away did not stop the card');
-          await page.hover(sel); await wait(page, () => document.querySelector('#scrolltip')); await page.mouse.move(5, 5); await gone();
+          await shot('2-hover'); await page.keyboard.press('Escape'); await sgone();
+          await page.mouse.move(5, 5); await page.hover(sel); await sleep(100); await page.mouse.move(5, 5); await sleep(800);
+          if (await scard()) throw new Error('moving away did not stop the card');
+          await page.mouse.move(5, 5); await page.hover(sel); await wait(page, () => document.querySelector('#spellcard')); await page.mouse.move(5, 5); await sgone();
         } else {
           const cdp = await ctx.newCDPSession(page);
           const at = await page.$eval(sel, (e) => { const r = e.getBoundingClientRect(); return [r.left + 20, r.top + r.height / 2]; });
           const pt = [{ x: at[0], y: at[1], id: 1 }];
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt }); await sleep(250);
-          if (await card()) throw new Error('the card came up before the press was held');
+          if (await scard()) throw new Error('the card came up before the press was held');
           await sleep(450);
-          const c = await card(); if (!c) throw new Error('no card after a 500 ms press');
+          const c = await scard(); if (!c) throw new Error('no card after a 500 ms press');
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(300);
           if (c.text !== want.text || !inside(c)) throw new Error(`card: ${JSON.stringify(c)}`);
           if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('the press ticked the spell');
-          if (!(await card())) throw new Error('lifting the finger hid the card');
+          if (!(await scard())) throw new Error('lifting the finger hid the card');
           await shot('2-press');
-          await page.touchscreen.tap(370, 30); await gone();       // blank space: a tap near a button is snapped to the button by the browser
+          await page.touchscreen.tap(3, 400); await sgone();       // blank space: a tap near a button is snapped to the button by the browser
           await tap(sel); if (!(await page.isChecked(`#qb-spell-${SP}`))) throw new Error('a plain tap no longer ticks the spell');
           await tap(sel); if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('a second tap did not untick');
         }
       });
 
-      await run.do('focus and the I key show the card; Escape hides it; a feature\'s option has one too', async () => {
+      await run.do('focus and the I key show the spell card; Escape hides it; a feature\'s option has one too', async () => {
         await page.focus(`#qb-spell-${SP}`); await page.keyboard.press('i');
-        const c = await card(); if (!c || c.text !== want.text) throw new Error(`key card: ${JSON.stringify(c)}`);
-        await page.keyboard.press('Escape'); await gone();
+        const c = await scard(); if (!c || c.text !== want.text) throw new Error(`key card: ${JSON.stringify(c)}`);
+        await page.keyboard.press('Escape'); await sgone();
         if (await page.isChecked(`#qb-spell-${SP}`)) throw new Error('the I key ticked the spell');
         await openSec(page, 'who'); await page.selectOption('#qb-class', 'sorcerer'); await page.selectOption('#qb-levelsel', '2'); await openSec(page, 'choices');
         const opt = await page.$('#qb [data-option]');

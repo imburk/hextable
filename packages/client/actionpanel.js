@@ -27,6 +27,7 @@ import { slotChoices } from './upcast.js';
 import { shownName } from './tracker.js';
 import { levelUpChip } from './levelup.js';
 import { classTitle } from './buildsheet.js';
+import { initSpellCards, spellAttrs } from './spellcard.js';
 import { formationWhy, leads, shapeLabel, currentShape } from './formation.js';
 import { strikeRows, holdRows, heldText, howHeldEnds } from './grapple.js';
 
@@ -729,6 +730,7 @@ const ARMS = (m) => !!m && m.kind !== 'move';
 // M10: the page is one accordion. The sheet is its last section (`#sheet-body` is moved into it), and while a section is open the page is pinned (`#sheet.pin`): the status block goes
 // compact, the open section's pane scrolls, and the other bars stay on the screen above and below it as titles side by side (accordion.js `gridPlan`), so every one is one tap away.
 export function initActionPanel(ctx) {
+  initSpellCards();                                      // hover, long press or the I key on any node with data-spellcard (#787)
   const { prefs } = ctx;
   const card = $('card'), body = $('ap-body'), how = $('ap-how');
   let sel = { key: '', tab: null }, rowsBy = {}, moreOpen = false, howKey = null, ctxNow = null, found = [false, false], openNow = '', curE = null, groupsNow = [], lastRun = { enc: null, ids: {} }, quickNow = [], quickLast = null;
@@ -893,7 +895,7 @@ export function initActionPanel(ctx) {
   const rollTagHtml = (roll) => (rollLabel(roll) ? `<span class="ap-roll" data-roll="${roll === 'attack' || roll === 'none' ? roll : 'save'}">${esc(rollLabel(roll))}</span> ` : '');
   const rowHtml = (r) => {
     const wid = `ap-w-${esc(r.id).replace(/[^\w-]/g, '_')}`, tag = r.kind === 'none' && !r.why ? 'div' : 'button';
-    return `<${tag}${tag === 'button' ? ' type="button"' : ''} class="ap-row${r.armed ? ' armed' : ''}${r.why ? ' off' : ''}${tag === 'div' ? ' info' : ''}" data-row="${esc(r.id)}"${tag === 'button' ? ` aria-disabled="${r.why ? 'true' : 'false'}"` : ''}${r.why ? ` aria-describedby="${wid}"` : ''}>
+    return `<${tag}${tag === 'button' ? ' type="button"' : ''} class="ap-row${r.armed ? ' armed' : ''}${r.why ? ' off' : ''}${tag === 'div' ? ' info' : ''}" data-row="${esc(r.id)}"${r.spell && SPELLS[r.spell] ? spellAttrs(r.spell) : ''}${tag === 'button' ? ` aria-disabled="${r.why ? 'true' : 'false'}"` : ''}${r.why ? ` aria-describedby="${wid}"` : ''}>
     <span class="ap-top"><span class="ap-t">${esc(r.label)}</span>${r.chip ? `<span class="ap-chip">${esc(r.chip)}</span>` : ''}</span>${r.sub || rollLabel(r.roll) ? `<small class="ap-s">${rollTagHtml(r.roll)}${esc(r.sub ?? '')}</small>` : ''}${pipsHtml(r.pips)}${r.why ? `<small class="ap-why" id="${wid}">${esc(r.why)}</small>` : ''}</${tag}>`;
   };
   const rowsHtml = (list) => list.map((r) => { const on = r.kind === 'item' && picking?.id === r.id; return rowHtml(on ? { ...r, armed: true } : r) + (on ? picker(r, curE) : ''); }).join('');

@@ -1,0 +1,20 @@
+/* The spell card (#787). Colour, type and radius come from the theme tokens; a phone gets the card inside the screen, clear of the die (spellcard.js placeClear). */
+.spellcard { position: fixed; z-index: 60; box-sizing: border-box; display: flex; flex-direction: column; padding: 12px 14px; color: var(--ink); background: var(--panel-solid, var(--panel));
+  border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: 0 6px 24px #000a; font: 14px/1.4 var(--body); text-align: left; }
+.sc-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-bottom: 6px; }
+.sc-name-h { font: 600 17px var(--display); letter-spacing: .02em; }
+.sc-meta { color: var(--muted); }
+.sc-tag { padding: 1px 8px; border: 1px solid var(--accent); border-radius: 999px; font-size: 12px; color: var(--accent); }
+.sc-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.sc-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0 0 8px; }
+.sc-facts dt { color: var(--muted); } .sc-facts dd { margin: 0; }
+.sc-text { margin: 0 0 8px; }
+.sc-none { margin: 0; color: var(--muted); }
+.sc-sec { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+.sc-sec h4 { margin: 0 0 4px; font: 600 13px var(--display); color: var(--muted); letter-spacing: .04em; }
+.sc-tier { margin: 0 0 4px; font-weight: 600; }
+.sc-lines { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.sc-name { text-decoration: underline dotted; cursor: help; }
+[data-spellcard] { -webkit-touch-callout: none; }
+@media (pointer: coarse) { [data-spellcard] { -webkit-user-select: none; user-select: none; } }
+@media (prefers-reduced-motion: no-preference) { .spellcard { animation: sc-in .12s ease-out; } @keyframes sc-in { from { opacity: 0; } } }
