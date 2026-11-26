@@ -112,6 +112,56 @@ test("one cast covers up to five creatures that fall in the same action", () => 
   assert.deepEqual([s.entities.fighter.pos.z, s.entities.rogue.pos.z], [0, 0]);
 });
 
+test("ask: the caster's player gets the prompt; take casts it, decline lets the fall happen, and a later caster is still tried", () => {
+  const SAM = { role: "player", userId: "sam" };
+  const mk = () => {
+    const s = world({ set: "ask" });
+    apply(s, { type: "claim", entity: "wizard", user: "sam", userName: "Sam" }, SAM);
+    s.entities.wizard.owner = "sam";
+    return s;
+  };
+  const s = mk(), hp = s.entities.fighter.hp;
+  const r = ok(walkIn(s));
+  assert.ok(s.pending, "the fall waits");
+  assert.equal(s.pending.ask.reactor, "wizard");
+  assert.equal(s.pending.ask.trigger, "fall");
+  assert.equal(s.entities.fighter.pos.z, 0, "nothing has happened yet");
+  const take = ok(apply(s, { type: "react", prompt: s.pending.n, take: "feather-fall", slot: 1 }, SAM));
+  assert.ok(take.events.some((e) => e.type === "fell" && e.slowed));
+  assert.equal(s.entities.fighter.hp, hp);
+  assert.equal(s.entities.wizard.slots[1], 3);
+  const d = mk();
+  ok(walkIn(d));
+  const no = ok(apply(d, { type: "react", prompt: d.pending.n, take: null }, SAM));
+  assert.ok(no.events.some((e) => e.type === "damage"), "declined: it falls and is hurt");
+  assert.equal(d.entities.wizard.slots[1], 4);
+  // A declined first caster does not bar a later one: the rogue (always) is tried next.
+  const t = mk();
+  Object.assign(t.entities.rogue, { slots: { 1: 2 }, slotsMax: { 1: 2 }, reactionUsed: false });
+  if (!t.entities.rogue.spells) t.entities.rogue.spells = [];
+  t.entities.rogue.spells.push("feather-fall");
+  t.entities.rogue.reactions = { "feather-fall": "always" };
+  ok(apply(t, { type: "place", actor: "rogue", to: { q: -3, r: 1 } }, DM));
+  { const rg = t.entities.rogue; delete t.entities.rogue; t.entities.rogue = rg; }
+  ok(walkIn(t));
+  const later = ok(apply(t, { type: "react", prompt: t.pending.n, take: null }, SAM));
+  assert.ok(later.events.some((e) => e.type === "reaction" && e.id === "rogue"), "the rogue cast it");
+  assert.equal(t.entities.fighter.hp, t.entities.fighter.maxHp);
+});
+
+test("a visible foe caster never reacts for a hidden ally that falls", () => {
+  const s = world({ set: null });
+  const foe = s.entities.foe = structuredClone(s.entities.wizard);
+  delete foe.owner;
+  Object.assign(foe, { id: "foe", name: "Foe", side: "foe", kind: "npc", pos: { q: 2, r: 1, z: 0 }, reactionUsed: false, slots: { 1: 4 }, reactions: { "feather-fall": "always" } });
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 0 }, name: "Ghost", hidden: true }, DM));
+  const g = Object.values(s.entities).find((e) => e.name === "Ghost");
+  const r = ok(apply(s, { type: "mapEdit", ops: [{ op: "tile", level: "ground", at: { q: 3, r: 0 }, tile: null }] }, DM));
+  assert.equal(g.pos.z, -30);
+  assert.ok(!r.events.some((e) => e.type === "reaction" && e.reaction === "feather-fall"));
+  assert.equal(foe.slots[1], 4);
+});
+
 test("the linter takes `fall` for a Reaction spell aimed at up to five creatures, and no more", () => {
   const base = structuredClone(SPELLS["feather-fall"].def);
   const lint = (d) => lintPack({ id: "t", name: "t", spells: [d] }).join(" | ");

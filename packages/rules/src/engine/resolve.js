@@ -107,13 +107,16 @@ function featherFall(s, t, feet, ev, from) {
     if (from) t.pos = from;
     try { return apart(s, r, t) * FT <= (typeof sp.range === 'number' ? sp.range : 0) && (r.id === t.id || seesFor(s, r, t)); } finally { t.pos = at; }
   };
+  // A caster the party knows of never reacts for a faller the party does not know of: its reaction would tell the players of it.
+  const known = (x) => !(x.hidden || unknown(s, x));
+  const tells = (r) => r.id !== t.id && !known(t) && known(r);
   for (const r of Object.values(s.entities)) {
-    if (r.object || r.dead || (r.id !== t.id && hostile(r, t))) continue;
+    if (r.object || r.dead || (r.id !== t.id && hostile(r, t)) || tells(r)) continue;
     const covered = ev.findLast((x) => x.type === 'cast' && x.actor === r.id && x.spell === 'feather-fall' && x.reaction === true);
     if (covered && covered.targets.length < 5 && near(r, SPELLS['feather-fall'])) { covered.targets.push(t.id); return land(); }
   }
   for (const r of Object.values(s.entities)) {
-    if (!canReact(r) || r.object || (r.id !== t.id && hostile(r, t))) continue;
+    if (!canReact(r) || r.object || (r.id !== t.id && hostile(r, t)) || tells(r)) continue;
     const rx = reactionsOf(r).find((x) => x.kind === 'spell' && x.on === 'fall');
     if (!rx) continue;
     const w = instruction(r, rx);
@@ -124,7 +127,7 @@ function featherFall(s, t, feet, ev, from) {
     if (w === 'ask') {
       const a = ask(s, r, { trigger: 'fall', ...(r.id !== t.id && seesFor(s, r, t) ? { by: t.id } : {}) }, [spellOffer(rx, slots)]);
       if (a === null) { tellDM(r, rx, `${t.name} falls ${feet} feet.`, ev); continue; }
-      if (a.take !== rx.id) return false;
+      if (a.take !== rx.id) continue;
       slot = a.slot ?? slot;
     }
     const src = castReaction(s, r, sp, slot, 'fall', r.id === t.id ? null : t.id, ev, [t.id]);
@@ -703,9 +706,10 @@ function drop(s, e, ev) {
   const sf = under(s.map, e.pos);
   if (!sf) return;
   const feet = e.pos.z - sf.z;
+  const top = { ...e.pos };
   e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
   if (e.dead) return;                                                  // a body comes down with it, as the gravity pass puts it (no damage)
-  fall(s, e, feet, ev);
+  fall(s, e, feet, ev, null, top);
   lookAround(s, ev, [e]);
   checkEnd(s, ev);
 }
