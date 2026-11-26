@@ -1120,7 +1120,6 @@ function refresh() {
 
   if (!$('log').hidden) renderLog();
   if (!$('sheet').hidden) { if (S.entities[selId]?.abil) renderSheet(); else $('sheet-body').innerHTML = '<p class="note">Select one of the characters to see its sheet.</p>'; }
-  document.body.dataset.foeHealth = !isDM() && S.settings?.foeHealth === 'hidden' ? 'hidden' : '';      // the tracker says nothing of a foe's health (style.css)
   tracker.render();
   TC.sync(S);
   if (isDM()) renderDM();

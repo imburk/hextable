@@ -1035,8 +1035,11 @@ export function initActionPanel(ctx) {
       $('c-sub').textContent = e.bond && ctx.comp?.subLine(e) ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)} · ${ctx.comp.subLine(e)}` : e.bond ? `${e.bond.kind[0].toUpperCase()}${e.bond.kind.slice(1)}${MONSTERS[e.tpl] ? ` · ${MONSTERS[e.tpl].name}` : ''}` : e.kind === 'pc' ? `Level ${e.level} ${classTitle(e)}${e.ownerName ? ` · ${e.ownerName}` : ''}` : MONSTERS[e.tpl]?.name ?? 'Creature';
       $('c-hp').querySelector('i').style.width = `${ctx.hpFraction(e) * 100}%`;
       const showNumbers = full && (my || e.side === 'party');
+      const noHealth = !showNumbers && !ctx.isDM() && S.settings?.foeHealth === 'hidden';      // Decision 7a: under Hidden a player's card for a foe says nothing of its health
+      $('c-hp').hidden = noHealth;
       const looks = e.health ?? (e.dead ? 'dead' : e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy');
       $('c-hp-text').textContent = showNumbers ? `${e.hp} / ${e.maxHp} HP${e.tempHp > 0 ? ` +${e.tempHp} temp` : ''}` : { dead: 'Dead', down: 'Down', bloodied: 'Bloodied', healthy: 'Healthy' }[looks];
+      if (noHealth) $('c-hp-text').textContent = '';
       $('c-ac').textContent = showNumbers ? `AC ${acShown(S, e, ctx.isDM()).ac}` : '';
       setHtml($('c-level'), showNumbers && e.kind === 'pc' ? levelUpChip(S, e, { dm: ctx.isDM() }) : '');      // XP reached the next level: Level up (the DM), or why not (#672)
       $('c-end').hidden = !(my && enc && cur === e.id);      // the turn line's own End turn (`#btn-end`, app.js) follows the same rule

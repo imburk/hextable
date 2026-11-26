@@ -282,7 +282,7 @@ M10's.
 - **How the renderer hears of the rule:** `app.js` `shownState` adds `barRule` (`dm`, `pref`, `foeHealth`) to the copy of the state it gives the renderer, so the renderer interface gains no member. A change of the device preference draws the shown state again at once.
 - **Device preference** `hextable.bars` (`always` default, `fight`, `never`): Setup › Display and controls › "Health bars over creatures". **Table rule** `settings.foeHealth` (`rough` default, absent means rough, no migration; `hidden`): DM tools › Sight and light › "Foes' health bars, for players", and a line in Setup's table rules for everyone. Rules: `SETTINGS` (`engine/dm.js`) and `foeHealth: 'sent'` (`view-fields.js`).
 - **The notch** is a white line down the middle of the bar (`.bar.notch`); a foe's bar stays red, a party bar green.
-- **Hidden and the tracker:** a player's Turns screen hides a foe's health line by a style rule (see W50).
+- **Hidden and the tracker:** `tracker.js` keeps every foe's row (name, turn) and draws no bar, no word and no greying for Down; under Rough its bar takes `barFor`'s notch. The selected-creature card (`actionpanel.js`) hides its Hit Points line for a foe under Hidden (W50 lists what is left).
 - Looked at by hand at 390x844 (touch) and 1280x800 as a player and as the DM, for each rule and preference; the smoke pass `healthbars` checks the numbers.
 
 ### M8 build notes (the arc, the strip, the symbols, the names)

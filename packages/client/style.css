@@ -42,8 +42,7 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 .label .marks b.dodging { background: #8fd0e8; } .label .marks b.dying { background: #e0685a; color: #fff; animation: pulse 1s ease-in-out infinite alternate; }
 @keyframes pulse { to { opacity: .6; } } @media (prefers-reduced-motion: reduce) { .label .marks b.dying { animation: none; } }
 .label .bar { width: 44px; position: relative; }
-.bar.notch::after { content: ''; position: absolute; left: calc(50% - 1px); top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px #000a; }
-body[data-foe-health="hidden"] #tracker li[data-side="foe"] .tr-hp { display: none; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
+.bar.notch::after { content: ''; position: absolute; left: calc(50% - 1px); top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px #000a; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
 .label.down span::after { content: ' (down)'; font-weight: 400; }
 .bar { height: 6px; background: #0008; border-radius: 3px; overflow: hidden; border: 1px solid #0006; }
 .bar i { display: block; height: 100%; background: var(--good); transition: width .3s; }
