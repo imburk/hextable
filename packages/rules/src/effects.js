@@ -441,7 +441,7 @@ function exec(s, ev, kit, f, step, at) {
     const row_ = step.familiarity.replace(/-/g, ' '), hurt = mishaps ? ` ${mishaps === 1 ? 'A Mishap' : `${mishaps} Mishaps`}: ${t.name} took 3d10 Force damage ${mishaps === 1 ? '' : 'each time '}(the engine rolled it), and every other traveller takes the same, rolled for each.` : '';
     if (outcome === 'on') {
       if (!f.src.to) return tell(`Teleport (${row_}): on target.${hurt} The cast named no space, so the engine cannot move ${t.name}. The DM moves the caster and the travellers to the destination.`);
-      if (!kit.teleport(s, t, step, f.src.to, ev)) return tell(`Teleport (${row_}): on target.${hurt} A creature the caster did not know of stands in the space named, so the engine has not moved ${t.name}: the DM places the caster and the travellers.`);
+      if (!kit.teleport(s, t, step, f.src.to, ev)) { tell(`Teleport (${row_}): on target.${hurt} The space named was taken, so the spell's own steps for that ran instead.`); return branch('blocked'); }      // only a step with `blocked` (a homebrew teleport) comes here: an unknown creature there is shared (resolve.js `teleport`)
       return tell(`Teleport (${row_}): on target.${hurt} ${t.name} arrived at the space named. The DM moves the other travellers there.`);
     }
     if (outcome === 'similar') return tell(`Teleport (${row_}): Similar Area.${hurt} The caster and the travellers appear in the closest place that is visually or thematically similar to the destination. ${t.name} has not been moved: the DM places the whole group.`);
