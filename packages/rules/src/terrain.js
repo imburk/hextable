@@ -3,11 +3,11 @@
 // build notes for #165.
 //
 // It is `fx.terrain` on a lasting effect (durations.js), made when the spell is cast (engine/casting.js):
-//   { area, hexes: [col keys], origin, difficult?: true, obscured?: 'heavy' | 'light' }
+//   { area, hexes: [col keys], origin, difficult?: true, obscured?: 'heavy' | 'light', silence?: true }
 // laid out as the spell's area was, and gone when the effect ends. Movement reads difficultAt()
 // (engine/world.js, moveOptions); sight reads obscuredAt() (sight.js, sees).
-import { col } from './grid.js';
-import { FT, gap } from './space.js';
+import { col, gridOf } from './grid.js';
+import { FT, footprint, gap, sizeOf } from './space.js';
 
 export const terrainsOf = (s) => (s.effects ?? []).filter((fx) => fx.terrain);
 
@@ -37,4 +37,16 @@ export function obscuredAt(s, pos) {
     out = 'light';
   }
   return out;
+}
+// Is this place inside a Sphere of Silence (the `silence` terrain: Silence)? No sound is made there, and a spell with a Verbal component cannot be cast from it.
+export function silentAt(s, pos) {
+  for (const fx of terrainsOf(s)) if (fx.terrain.silence && inside(s, fx.terrain, pos)) return true;
+  return false;
+}
+// Is the creature entirely inside such a sphere (Silence: Immunity to Thunder damage, Deafened)? Every hex of its space, at its feet and at its head.
+export function silentAll(s, t) {
+  if (!t.pos) return false;
+  const G = gridOf(s.map), z0 = t.pos.z ?? 0, z1 = z0 + Math.max(0, (sizeOf(t).height ?? FT) - 1);
+  const cells = footprint(t, t.pos, G);
+  return terrainsOf(s).some((fx) => fx.terrain.silence && cells.every((c) => inside(s, fx.terrain, { ...c, z: z0 }) && inside(s, fx.terrain, { ...c, z: z1 })));
 }

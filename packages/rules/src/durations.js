@@ -88,6 +88,10 @@ export function endEffect(s, ev, fx, why) {
   for (const p of fx.parts) endPart(s, ev, fx, p);
   ev.push({ type: 'effectEnd', fx: fx.id, name: fx.name, source: fx.source, targets: targetsOf(fx), why });
 }
+// The ward a creature has from a spell (the `ward` step: Sanctuary) ends when it makes an attack roll, casts a spell or deals damage.
+export function endWards(s, ev, id, why) {
+  for (const fx of [...effectsOf(s)]) if (fx.parts.some((p) => !p.ended && p.ward && p.target === id)) endEffect(s, ev, fx, why);
+}
 // An effect whose every part has ended has nothing left to do.
 // `ends.keeps` (Heat Metal): a part that ended with it leaves the spell standing, though nothing is left on any creature.
 const spent = (fx) => fx.parts.length > 0 && fx.parts.every((p) => p.ended && !p.ends?.keeps);

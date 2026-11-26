@@ -14,7 +14,7 @@ import { gridOf, col } from './grid.js';
 import { FT, concealed, gap, regionAt, shown } from './space.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { canSee, coverOf, inView, inViewOf, lightAt, lightSources } from './sight.js';
-import { has } from './modifiers.js';
+import { has, modifiers } from './modifiers.js';
 import { SIZES } from './content/sizes.js';
 
 export const SIGHT_RULES = ['rooms', 'los', 'light'];
@@ -85,7 +85,7 @@ function signature(s, rule) {
     (s.effects ?? []).filter((fx) => fx.terrain?.obscured).map((fx) => fx.id).join()];        // a spell's fog (terrain.js)
   for (const e of Object.values(s.entities)) {
     const cond = Object.keys(e.cond ?? {}).filter((k) => e.cond[k]).sort().join('+');
-    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(e.senses ?? {})}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}`);
+    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(e.senses ?? {})}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}${e.side === 'party' && !e.dead && modifiers(s, e, 'invisible').immune === true ? ':sees-invisible' : ''}`);       // a spell, a trait, an aura or a form that shows it the Invisible (sight.js)
   }
   return parts.join('|');
 }

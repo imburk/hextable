@@ -169,6 +169,8 @@ Trait "Warding Light": the engine runs this.
 Trait "Borrowed Craft": the engine runs this.
   +1 to its spell save DC.
   +1 to its spell attack rolls.
+  Movement unaffected by Difficult Terrain: a step into it costs what it would on open ground.
+  Sight that sees creatures and objects with the Invisible condition as if they were visible.
 Trait "Legendary Actions": text only. The engine does nothing with it; the DM runs it.
   The engine has no legendary, lair or mythic actions. Whatever this trait describes, the DM runs.
 Action "Multiattack": an action. In a fight it spends the creature's action.

@@ -334,6 +334,8 @@ export function moveOptions(s, e, opts = {}) {
   const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
   // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
   const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
+  // Freedom of Movement (`{ on: 'terrain', op: 'immune' }`): Difficult Terrain costs it nothing extra (a tile of it, a rise, a creature's space, ground a spell made difficult).
+  const easy = modifiers(s, e, 'terrain').immune === true;
   const big = shapeOf(e, G).length > 1, tall = sizeOf(e).height;
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from, G).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h, G)[i])));
@@ -371,7 +373,7 @@ export function moveOptions(s, e, opts = {}) {
         if (fighting && !enc.arena[col(n)]) continue;                     // the arena is locked
         const column = columnOf(n);
         for (const sf of column) {
-          const dz = sf.z - from.z, up_ = Math.abs(dz), water = acrobat && sf.tile.t === 'water', terrain = water ? 1 : TILES[sf.tile.t].cost;
+          const dz = sf.z - from.z, up_ = Math.abs(dz), water = acrobat && sf.tile.t === 'water', terrain = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
           const h = { q: n.q, r: n.r, z: sf.z };
           if (water) wet.add(key(h));
@@ -382,7 +384,7 @@ export function moveOptions(s, e, opts = {}) {
           if (diag && !cornersFree(from, h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
-            const flat = Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1) + toll;               // Difficult Terrain does not stack; dragging adds to it
+            const flat = Math.max(terrain, !easy && (up_ > STEP_FREE || crowded(h) || spelled(h)) ? 2 : 1) + toll;               // Difficult Terrain does not stack; dragging adds to it
             let next = null;
             if (checked) { const d = dragStep(there ?? s, e, h); if (d.blocked) continue; next = d.next; }                       // what it holds could not follow
             out.push({ h, cost: flat * FT, max: limit.walk, flat, extra: 0, diag, level: up_ <= STEP_FREE });     // a rise the cost does not count

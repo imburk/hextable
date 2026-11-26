@@ -127,12 +127,14 @@ export function aurasOn(s, e) {
 // The conditions a lasting effect makes a creature immune to for a while (a modifier step `{ on: 'condition', op: 'immune', scope: { condition } }`: Heroism).
 // With `from` (Protection from Evil and Good: no Charmed or Frightened "from them") the immunity holds only against a condition a creature of one of those types gives: `giver` is that creature, and with none named (the DM puts it on, a
 // condition the engine cannot say the source of) the immunity does not apply, and does not hide a condition the creature already has (`sources`, which asks with no giver and `unrestricted`).
-const spellImmune = (s, e, giver = undefined, unrestricted = true) => {
+const spellImmune = (s, e, giver = undefined, unrestricted = true, magic = false) => {
   const out = [];
   for (const fx of s?.effects ?? []) for (const p of fx.parts) {
     if (p.ended || p.target !== e?.id || p.modifier?.on !== 'condition' || p.modifier.op !== 'immune' || typeof p.modifier.scope?.condition !== 'string') continue;
-    if (p.modifier.from === undefined) out.push(p.modifier.scope.condition);
-    else if (!unrestricted && ofTypes(giver, p.modifier.from)) out.push(p.modifier.scope.condition);
+    const m = p.modifier;
+    if (m.from === undefined && m.magic === undefined) out.push(m.scope.condition);
+    // `magic` (Freedom of Movement): only a condition a spell gave; `from`: only one a creature of those types gave. Both say what gives it, so neither hides a condition the creature has already.
+    else if (!unrestricted && (m.from === undefined || ofTypes(giver, m.from)) && (m.magic !== true || magic)) out.push(m.scope.condition);
   }
   return out;
 };
@@ -141,7 +143,8 @@ const spellImmune = (s, e, giver = undefined, unrestricted = true) => {
 export const typeOf = (t) => (t ? t.type ?? CONTENT.monsters[t.tpl]?.type ?? CONTENT.summons?.[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null) : null);
 const ofTypes = (t, types) => { const ty = typeOf(t); return ty !== null && types.includes(ty); };
 // Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)? `giver`: the creature that would give it, for an immunity that is only against some creatures.
-export const immuneTo = (s, e, id, giver = undefined) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false).includes(id);
+// `magic`: a spell gives the condition (a modifier with `magic: true` holds only then).
+export const immuneTo = (s, e, id, giver = undefined, magic = false) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false, magic).includes(id);
 
 // What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
 // worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
@@ -160,12 +163,13 @@ function fromHolds(s, e, m, hook, sit) {
   if (hook === 'save' || hook.startsWith('save.')) return (sit.conditions ?? []).some((c) => e.cond?.[c] && ofTypes(s?.entities?.[e.cond[c].source], m.from));
   return false;
 }
+const value_ = (m, src) => (typeof m.value === 'object' && m.value !== null ? m.value.perLevel * src.level : m.value);
 // Where a creature's modifiers come from, each with the name to show as the reason.
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
     // `against`: the modifier holds only against that creature (Hex, Hunter's Mark: the marked target).
     // `except`: it does not hold for rolls that creature makes (Sundering Blow: "another creature").
-    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p };
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p, magic: !!fx.spell };
   }
   const auras = aurasOn(s, e), spelled = spellImmune(s, e);
   for (const [id, inst] of conditionsOf(e)) {
@@ -266,6 +270,8 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
       if (m.from !== undefined && !fromHolds(s, e, m, hook, sit)) continue;                          // only against creatures of those types (Protection from Evil and Good)
       if (!inScope(m, sit)) continue;
+      // Freedom of Movement: a Speed the creature keeps against spells (`speedOf`) leaves out what a spell's lasting effect takes off it.
+      if (sit.keepSpeed && hook === 'speed' && src.magic && (m.op === 'set' || (m.op === 'add' && typeof value_(m, src) === 'number' && value_(m, src) < 0))) continue;
       // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).
       if (m.stack === false) { if (once.has(src.name)) continue; once.add(src.name); }
       // `baseAc` (Mage Armor): the best base Armor Class any of them gives, from the creature's own score (acOf, engine/rolls.js, says whether it is better than its own).
@@ -307,6 +313,8 @@ export function speedOf(s, e, mode = 'walk') {
   let base = mode === 'walk' ? e.speed ?? 0 : e.speeds?.[mode] ?? 0;
   // A Fly Speed something gives for a while (Dragon Wings: `speed.fly` set 60), if it is more than its own.
   if (mode === 'fly') { const f = modifiers(s, e, 'speed.fly'); if (f.set !== null) base = Math.max(base, f.set); }
-  const m = modifiers(s, e, 'speed');
+  let m = modifiers(s, e, 'speed');
+  // Freedom of Movement (`{ on: 'speed', op: 'immune', magic: true }`): what the lasting effect of a spell takes off the Speed is left out.
+  if (m.immune === true) m = modifiers(s, e, 'speed', { keepSpeed: true });
   return base > 0 ? Math.max(0, bounded(m, m.set !== null ? m.set : base + m.add)) : 0;
 }

@@ -1367,6 +1367,39 @@ Tests in `packages/rules/test/wave3a-spells.test.js`. Third wave, first part: Pr
 
 The Advantage-on-save modifier matches the recorded source of the condition (`cond[id].source`), as above. For `from`, a creature in a form keeps its own type (SRD 5.2.1: Wild Shape and Polymorph both retain the creature type), via `typeOf`; one with no known type matches nothing, and a player character reads Humanoid.
 
+#### Build notes: wave 3a part 2 (amendment, #786)
+
+Tests in `packages/rules/test/wave3a2-spells.test.js`. Sanctuary and Freedom of Movement are built (both `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (Sanctuary 30372, Freedom of Movement 27256). Silence and See Invisibility are still `manual`. The SRD 5.2.1 text of Freedom of Movement says nothing of attack penalties underwater (the 2014 text did): the entry gives a Swim Speed only, which the engine does not keep, so it is the DM's.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Sanctuary | manual | assist | letting an attacker that failed choose a new target instead of losing the attack (the engine takes the loss); whether a spell with several targets is lost whole (the engine drops only the warded target); damage the engine cannot attribute to the warded creature (a zone or effect from an earlier spell, damage the DM sets) |
+| Freedom of Movement | manual | assist | other magic than a spell (an item, a trap, a monster's own ability) reducing Speed or giving Paralyzed or Restrained; a condition a spell gave before this one; the Swim Speed; the 5 feet of movement to escape nonmagical restraints or a grapple |
+
+**Added.**
+- **Step `ward: <ability>`** (Sanctuary): a part `{ ward: { save, dc } }` on the lasting effect (`rolls.js` `ward`; needs a spell that lasts and a save DC, else the step goes to the DM). `resolve.js` `wardCheck`: a creature that targets the warded one with an attack roll (`resolveAttack`, and the `attack` step in `effects.js`, which runs a creature's action attack and a spell's attack roll) or with a spell that has an attack or damage step and an aim at creatures (`casting.js` `damaging`) first makes the saving throw against the spell's DC; on a failure the attack is not rolled, or the spell is left off that target (`src.blocked`, the list Shield uses), and the DM is told in a `partial` `manual` event. A `save` event is sent, no `note` (a note would name an attacker that went hidden). Area spells (`aim` not `creature`) are never checked. `durations.js` `endWards` ends the effect when the warded creature makes an attack roll (the same two places), casts a spell (`casting.js`, before the Counterspell window: a countered spell was still cast) or deals damage (`damage()`, where a damage part names `by`).
+- **Hook `terrain`, op `immune`** (Freedom of Movement): `{ on: 'terrain', op: 'immune' }`. `world.js` `moveOptions`: a step into a Difficult Terrain tile (forest), a rise above `STEP_FREE`, a hostile creature's space and ground a spell made difficult cost what open ground does. Water and rock stay impassable; climbing is not Difficult Terrain and is unchanged.
+- **Modifier key `magic: true`**, only on the `condition` hook (op `immune`) and on `speed` (op `immune`). On `condition`: the immunity holds only against a condition a spell gives (`condition()` in `rolls.js` passes `f.src.spell`; `immuneTo(..., magic)`); like `from`, it never hides a condition already on the creature, and a DM-applied condition is not stopped. On `speed`: `speedOf` leaves out what a spell's lasting effect (a part of an effect whose `spell` is set) takes off (`add` below 0, or `set`); a Speed cut by a condition that is on already, or by a feature's effect, still counts. Schema lint, reader words, HOMEBREW tables (`step.ward`, modifier key `magic`) and a lint test.
+
+**Decisions.** A failed Sanctuary save loses the attack or spell: the SRD gives the attacker the choice of a new target, which would need a prompt; the DM may allow it. `keepSpeed` leaves out every spell `set` on Speed, even one that would raise it (nothing in the SRD does). A failed Sanctuary save takes the target out of the spell whole: no attack roll, save or rider (`wardLost` in `casting.js`, not Shield's `blocked`); a trap (an object actor) never makes the save. A zone's conditions are not `magic` (a zone's `src` does not name its spell); Web and Entangle cast as a spell are. One save is made for each attack roll or spell aimed at the warded creature, as the SRD says "targets".
+
+#### Build notes: wave 3a part 3 (amendment, #786)
+
+Tests in `packages/rules/test/wave3a3-spells.test.js`, and a `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Silence and See Invisibility are built (both `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (See Invisibility 30517, Silence 30743).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Silence | manual | assist | the Deafened condition for a creature entirely inside; sound made within or passing through the sphere; objects' Immunity to Thunder damage |
+| See Invisibility | manual | assist | the Ethereal Plane (the engine keeps none) |
+
+**Added.**
+- **Terrain key `silence: true`** (Silence): `terrain: { silence: true }` on a lasting spell whose area is a sphere. `casting.js` puts `silence` on `fx.terrain`. `terrain.js` `silentAt(s, pos)` is whether a place is in a sphere; `silentAll(s, t)` whether every hex of a creature's space, at its feet and its head, is. `casting.js` refuses a cast with a Verbal component by a creature that stands in one (before anything is spent or changed; Subtle Spell is let through, as it drops the component), and `resolve.js` `hitWays` offers no spell cast after a hit with a Verbal component from there. `damage()` gives a creature entirely inside Immunity to Thunder damage. The Verbal gate sits in `rolls.js` `slotsFor`, beside the `noSpells` gate, so every way of casting passes it: a reaction spell with a Verbal component (Shield, Hellish Rebuke) is neither offered nor cast from inside the sphere, and a spell cast after a hit is not offered; Counterspell (Somatic only) is. A Multiattack that holds a spell-like action, and a feature that is only spoken, are not gated. Schema lint, reader words, HOMEBREW tables (`terrain.silence`) and a lint test.
+- **Hook `invisible`, op `immune`** (See Invisibility): `{ on: 'invisible', op: 'immune' }` as a modifier step. `sight.js` `sees`: a viewer that has it sees a target with the Invisible condition (and one hiding, which is the Invisible condition against its enemies) as if it were visible, at any distance, as it would with Truesight in range; the other checks (light, fog, walls, Blinded) still apply. `vision.js` `signature` includes whether each living party creature has the hook from any source (`modifiers()`: a spell, a trait, an aura, a form), so the party's view is built again when it is gained or lost. Schema lint, reader words (`HOOK_WORDS`, `HOLDER_HOOKS`) and a lint test.
+
+**What players are sent.** Nothing new for a table with no See Invisibility on it: an Invisible creature is still left out of every view, which the twin scenario pins (the same bytes with and without such a creature). While the spell lasts, the party's shared view (`partyView`: a creature is seen if any party member can see it, as with Truesight or Blindsight) holds the Invisible creature, so every player at the table is sent it, not only the caster's player. A per-player sight rule would be a bigger change (W49).
+
+**Decisions.** Silence is not a zone: it has no steps to run on a creature that enters, so the terrain machinery (a place, not an event) fits. "In the sphere" for casting is the caster's own hex. Deafened is left to the DM because a condition put on by a zone stays on after a creature leaves it.
+
 ### A class
 
 ```js

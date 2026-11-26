@@ -62,7 +62,11 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `command: 'approach' | 'drop' | 'flee' | 'grovel' | 'halt' | 'chosen'` (Command): what the creature it works on does on its next turn. The engine puts a part on the lasting effect that is carried out at the start of the creature's next turn
   // (Halt, Grovel and Drop end the turn at once: no movement, action or Bonus Action; Grovel also makes it Prone) and ends with that turn; moving it toward or away from the caster, and the dropping, are the DM's.
   // With `chosen`, the spell has `choice: { of: 'command' }`. docs/specs/rules-expansion.md, "Build notes: wave 3a".
-  'command'];
+  'command',
+  // `ward: <ability>` (Sanctuary): a creature that targets the one it works on with an attack roll or a damaging spell first makes a saving throw with that ability against the spell's save DC; on a failure
+  // the attack or the spell is lost (against that creature). Area effects are not stopped. The lasting effect ends when the warded creature makes an attack roll, casts a spell or deals damage.
+  // A spell with a duration only. docs/specs/rules-expansion.md, "Build notes: wave 3a part 2".
+  'ward'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -81,7 +85,13 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'hp.zero',
   // `condition`: immunity to one condition, `{ on: 'condition', op: 'immune', scope: { condition } }`, as a modifier step (Heroism: Frightened). While the effect lasts the creature cannot
   // be given the condition and one it has has no effect. docs/specs/rules-expansion.md, "Build notes: Heroism and Regenerate".
-  'condition'];
+  'condition',
+  // `terrain`: `{ on: 'terrain', op: 'immune' }`, the creature's movement is unaffected by Difficult Terrain (Freedom of Movement): a step costs what it would on open ground (a wall, water it cannot enter and climbing are not Difficult Terrain).
+  // docs/specs/rules-expansion.md, "Build notes: wave 3a part 2".
+  'terrain',
+  // `invisible`: `{ on: 'invisible', op: 'immune' }`, the creature sees creatures and objects that have the Invisible condition as if they were visible (See Invisibility), as Truesight does (sight.js `sees`).
+  // docs/specs/rules-expansion.md, "Build notes: wave 3a part 3".
+  'invisible'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
@@ -165,8 +175,15 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.on === 'hp.zero' && !(stepOk && m.op === 'min' && m.value === 1 && m.uses === 1 && Object.keys(m).length === 4)) say('a modifier on hp.zero is a modifier step `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`: the creature drops to 1 Hit Point instead of 0, once');
   // `condition` (Heroism): only `{ on, op: 'immune', scope: { condition } }`, as a modifier step: nothing but a lasting effect's part can say "immune for a while".
   if (m.on === 'condition') {
-    if (!(stepOk && m.op === 'immune' && m.scope && typeof m.scope === 'object' && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition) && Object.keys(m).length === (m.from === undefined ? 3 : 4))) say('a modifier on condition is a modifier step `{ on: "condition", op: "immune", scope: { condition: <a condition> }, from?: [creature types] }`: the creature is immune to that condition for as long as the effect lasts (with `from`, only when a creature of one of those types gives it)');
+    if (!(stepOk && m.op === 'immune' && m.scope && typeof m.scope === 'object' && Object.keys(m.scope).length === 1 && CONDITIONS.includes(m.scope.condition) && Object.keys(m).length === 3 + (m.from === undefined ? 0 : 1) + (m.magic === undefined ? 0 : 1))) say('a modifier on condition is a modifier step `{ on: "condition", op: "immune", scope: { condition: <a condition> }, from?: [creature types], magic?: true }`: the creature is immune to that condition for as long as the effect lasts (with `from`, only when a creature of one of those types gives it; with `magic`, only when a spell gives it)');
   }
+  // `terrain` (Freedom of Movement): only `{ on: 'terrain', op: 'immune' }`.
+  if (m.on === 'terrain' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on terrain is `{ on: "terrain", op: "immune" }`: the creature\'s movement is unaffected by Difficult Terrain');
+  // `invisible` (See Invisibility): only `{ on: 'invisible', op: 'immune' }`, from a spell's lasting effect or a creature's trait (it sees the Invisible).
+  if (m.on === 'invisible' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on invisible is `{ on: "invisible", op: "immune" }`: the creature sees Invisible creatures and objects as if they were visible');
+  // `magic: true` (Freedom of Movement): on the condition hook, the immunity holds only against a condition a spell gives; on `speed` with op `immune`, the creature's Speed is not reduced by the lasting effect of a spell.
+  if (m.magic !== undefined && !(m.magic === true && ((m.on === 'condition' && m.op === 'immune') || (m.on === 'speed' && m.op === 'immune')))) say('`magic` is true, on the condition hook (op immune) or on `speed` with op `immune`');
+  if (m.on === 'speed' && m.op === 'immune' && !(stepOk && m.magic === true && Object.keys(m).length === 3)) say('an `immune` modifier on speed is a modifier step `{ on: "speed", op: "immune", magic: true }`: spells do not reduce the creature\'s Speed');
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
   // dice ("1d4", "-1d4") rolled each time the modifier applies.
   // `{ rolled: true }` (addition F of docs/specs/homebrew-subclasses.md): the number the damage step just before this one rolled; only a modifier step
@@ -278,15 +295,17 @@ function lintZone(e, say, action = false) {
 // `terrain`: the spell's area is Difficult Terrain (`difficult: true`) and/or Heavily or Lightly
 // Obscured (`obscured: 'heavy' | 'light'`) while it lasts; an instant spell says how long with
 // `lasts: 'nextTurnEnd'` (until the end of the caster's next turn: Ice Storm). An Emanation that
-// moves with its caster cannot carry it yet.
+// moves with its caster cannot carry it yet. `silence: true` (Silence): a Sphere of Silence: a creature in it cannot cast a spell with a Verbal component, and one entirely inside takes no
+// Thunder damage (terrain.js `silentAt`, `silentAll`). A lasting spell's area only. docs/specs/rules-expansion.md, "Build notes: wave 3a part 3".
 function lintTerrain(e, say) {
   const t = e.terrain;
   if (t === undefined) return;
   if (!t || typeof t !== 'object' || !Object.keys(t).length) return say('`terrain` must be an object');
-  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
+  for (const k of Object.keys(t)) if (!['difficult', 'obscured', 'lasts', 'silence'].includes(k)) say(`\`terrain.${k}\` is not something terrain has`);
   if (t.difficult !== undefined && t.difficult !== true) say('`terrain.difficult` is true or left out');
   if (t.obscured !== undefined && !['heavy', 'light'].includes(t.obscured)) say('`terrain.obscured` is "heavy" or "light"');
-  if (!t.difficult && !t.obscured) say('`terrain` makes the area difficult or obscured');
+  if (t.silence !== undefined && !(t.silence === true && e.duration !== 'instant' && e.target?.area?.shape === 'sphere')) say('`terrain.silence` is true, on a lasting spell whose area is a sphere');
+  if (!t.difficult && !t.obscured && !t.silence) say('`terrain` makes the area difficult, obscured or silent');
   if (!e.target?.area || e.target.area.count || e.target.area.choose || e.target.area.shape === 'emanation') say('`terrain` needs a single area that stays where it is laid out');
   if (e.duration === 'instant' ? t.lasts !== 'nextTurnEnd' : t.lasts !== undefined) say('`terrain.lasts` is "nextTurnEnd", for an instant spell only (otherwise it lasts as the spell does)');
 }
@@ -490,6 +509,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     // `command` (Command): one of the five words, or `chosen` (the spell's `choice: { of: 'command' }`).
     if (kind === 'command' && !seen.commandOk) say('a `command` step is for a spell: it is carried out on a creature\'s next turn');
     if (kind === 'command' && !(COMMANDS.includes(step.command) || step.command === 'chosen')) say(`\`command\` is one of ${COMMANDS.join(', ')} or "chosen"`);
+    // `ward` (Sanctuary): an ability, in a spell that lasts: the lasting effect holds the ward, and it ends the effect.
+    if (kind === 'ward') { if (!ABILITIES.includes(step.ward)) say('`ward` is an ability (the one the attacker saves with)'); if (!seen.eachOk) say('a `ward` step is for a spell that lasts: the ward goes when the spell ends'); }
     if (kind === 'arm') { lintArm(step.arm, say); if (!seen.eachOk) say('an `arm` step is for a spell that lasts: the action it gives goes when the spell ends'); }
     if (kind === 'endSpell') { if (step.endSpell !== true) say('`endSpell` is true'); if (!seen.inTurn) say('an `endSpell` step goes inside an `eachTurn`: it ends the lasting effect those steps belong to'); }
     // `revive: hitPoints` with `within`: the Hit Points it returns with, and how many minutes after its death it may be done (Revivify: 1 and 1).
@@ -2992,7 +3013,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], move: ['dir', 'largest'], fall: [], set: ['of'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3022,7 +3043,7 @@ const SHAPES = {
   target: { what: 'a target', keys: ['self', 'creature', 'area', 'near'] },
   area: { what: 'an area', keys: ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed'] },
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
-  modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'when'] },
+  modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
   scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
@@ -3030,7 +3051,7 @@ const SHAPES = {
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
   choice: { what: 'a choice', keys: ['of', 'from'] },
   zone: { what: 'a zone', keys: ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'] },
-  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts'] },
+  terrain: { what: 'terrain', keys: ['difficult', 'obscured', 'lasts', 'silence'] },
   reaction: { what: 'a reaction', keys: ['on', 'blocks', 'ac', 'attack', 'manual'] },
   bond: { what: 'a summon bond', keys: SUMMON_BOND_KEYS },
   count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
@@ -3493,7 +3514,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   target: { self: 'b', creature: 'o', area: 'o', near: 'i' },
   area: { shape: 's', size: 'i', range: 'i', width: 'i', height: 'i', exceptCaster: 'b', types: 's[]', choose: 'i', count: 'i', placed: 'b' },
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
-  modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', when: 's[]' },
+  modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', magic: 'b', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
   scope: { skill: 's', ability: 's', condition: 's', tool: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },
@@ -3501,7 +3522,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },
   choice: { of: 's', from: 's[]' },
   zone: { on: 's[]', once: 's', atCast: 'b', spare: 'b', budget: 'i', effects: 'a', move: 'i' },
-  terrain: { difficult: 'b', obscured: 's', lasts: 's' },
+  terrain: { difficult: 'b', obscured: 's', lasts: 's', silence: 'b' },
   reaction: { on: 's', blocks: 's[]', ac: 'i', attack: 's', manual: 's' },
   hitRider: { with: 's' },
   bond: { kind: 's', turn: 's', orders: 's', range: 'i', at0: 's', ends: 's[]', leash: 'i', noAttack: 'b', mount: 's', first: 's' },
@@ -3547,7 +3568,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
