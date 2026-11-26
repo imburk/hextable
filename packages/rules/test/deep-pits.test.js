@@ -120,3 +120,70 @@ test("the map editor accepts a depth, lints it, and keeps the map as it was when
   walkIn(s);
   assert.equal(s.entities.fighter.pos.z, -30);
 });
+
+// ---- the DM's branches, big creatures, raised tiles and where it stands (review of #806) ----
+import { viewEvents } from "../src/view.js";
+const manuals = (r) => r.events.filter((e) => e.type === "manual");
+const found = (objects, lower) => { const s = world(objects, lower); ok(apply(s, { type: "setObject", object: "pit", state: "found" }, DM)); return s; };
+
+test("a rider or a ridden creature is handed to the DM, not moved, and players are sent no note", () => {
+  const s = found([pit({ fall: 30 }, "pit-trap")]);
+  s.entities.fighter.riding = "cleric";                       // the pair is the DM's
+  const r = walkIn(s);
+  const m = manuals(r);
+  assert.equal(m.length, 1);
+  assert.equal(m[0].partial, true);
+  assert.match(m[0].text, /riding or being ridden/);
+  assert.equal(s.entities.fighter.pos.z, 0);
+  assert.equal(viewEvents(r.events, s, PAT).filter((e) => e.type === "manual").length, 0);
+});
+
+test("with no room to land the DM is told, nothing moves, and players are sent no note", () => {
+  const s = found([pit({ fall: 30 }, "pit-trap")], { id: "cellar", name: "Cellar", z: -30, tiles: { "1,0": { t: "stone" } } });
+  ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 0, z: -30 } }, DM));
+  const r = walkIn(s);
+  const m = manuals(r);
+  assert.equal(m.length, 1);
+  assert.equal(m[0].partial, true);
+  assert.match(m[0].text, /no room/);
+  assert.equal(s.entities.fighter.pos.z, 0);
+  assert.equal(viewEvents(r.events, s, PAT).filter((e) => e.type === "manual").length, 0);
+});
+
+test("a pit on a raised tile drops from the tile's top: the floor is measured from the tile, not the level", () => {
+  const up = { ...tiles(6), "1,0": { t: "stone", h: 5 } };
+  const s = world([pit({ fall: 40 }, "pit-trap")], { id: "cellar", name: "Cellar", z: -35, tiles: tiles(6) });
+  s.map.levels[0].tiles = up;
+  ok(apply(s, { type: "setObject", object: "pit", state: "found" }, DM));
+  assert.equal(lintMap(structuredClone(s.map)).join(), "");
+  const r = walkIn(s);
+  assert.equal(fell(r).feet, 40);
+  assert.equal(s.entities.fighter.pos.z, -35);
+  assert.ok(lintMap(newMap({ id: "p", name: "P", starts: [{ q: -4, r: 0 }], levels: [{ id: "ground", name: "G", z: 0, tiles: up }, { id: "cellar", name: "C", z: -35, tiles: tiles(6) }], objects: [pit({ fall: 30 })] })).join().includes("no floor within 30"), "from 5 up, 30 ft reaches -25 only");
+});
+
+test("a Large creature that triggers the pit by a hex it covers, its anchor elsewhere, lands under its anchor column", () => {
+  const s = found([pit({ fall: 30 }, "pit-trap")]);
+  Object.assign(s.entities.fighter, { size: "large" });
+  const r = apply(s, { type: "move", actor: "fighter", to: { q: 0, r: 0 } }, PAT);
+  assert.ok(r.ok, r.error);
+  assert.ok(r.events.some((e) => e.type === "triggered"));
+  assert.equal(fell(r).feet, 30);
+  assert.deepEqual(s.entities.fighter.pos, { q: 0, r: 0, z: -30 }, "under where it stands, not under the pit hex");
+});
+
+test("a Large creature that triggers the pit by a hex it covers, with no floor under its anchor hex, is handed to the DM, not hurt for a fall it did not make", () => {
+  const cellar = { id: "cellar", name: "Cellar", z: -30, tiles: Object.fromEntries(Object.entries(tiles(6)).filter(([k]) => k !== "0,0")) };
+  const s = found([pit({ fall: 30 }, "pit-trap")], cellar);
+  Object.assign(s.entities.fighter, { size: "large" });
+  const hp = s.entities.fighter.hp;
+  const r = apply(s, { type: "move", actor: "fighter", to: { q: 0, r: 0 } }, PAT);
+  assert.ok(r.ok, r.error);
+  assert.ok(r.events.some((e) => e.type === "triggered"), "the pit went off");
+  assert.deepEqual(s.entities.fighter.pos, { q: 0, r: 0, z: 0 }, "the creature's anchor is not on the pit hex");
+  assert.equal(manuals(r).length, 1);
+  assert.equal(manuals(r)[0].partial, true);
+  assert.match(manuals(r)[0].text, /no floor within that depth/);
+  assert.equal(s.entities.fighter.hp, hp);
+  assert.ok(!fell(r));
+});

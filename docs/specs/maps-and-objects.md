@@ -717,7 +717,7 @@ Where the build settled a detail the design left open, or changed it.
    least 10 feet and at most `fall` feet below where it stood, on any other level. It takes the fall rule's damage for
    the actual drop (1d6 Bludgeoning per full 10 feet, 20d6 at most) and is Prone if that hurt; the spiked pit's piercing
    step then runs as it always did. If another creature stands where it would land, it lands on the nearest free place on
-   that floor. A rider or a ridden creature, or a landing with no room, is handed to the DM with a `manual` note, as
+   that floor (the search ignores walls, so it may be a place across a wall; see DEBT W55). A creature whose own column has no floor in range (a big creature set off by a hex it covers; only its anchor column counts), a rider or ridden creature, or a landing with no room, is handed to the DM with a `manual` note, as
    `fall: "surface"` does. With `fall` of 10, or none, nothing moves: the creature stays on the pit's own level and takes
    1d6, as before. The engine lands it with `lookAround`, as any fall to a surface does: a party member that lands in an
    unrevealed room reveals it by the usual rules (it stands in it); a monster that lands there reveals nothing.

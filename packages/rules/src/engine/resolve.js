@@ -50,6 +50,10 @@ export function objectEffects(s, o, steps, targets, ev) {
 export function fall(s, t, feet, ev, into = null) {
   if (into && feet > 10 && Number.isInteger(feet)) {
     const z = t.pos.z ?? 0, sf = surfaces(s.map, t.pos).filter((x) => x.z <= z - 10 && x.z >= z - feet).pop();
+    if (!sf && !t.dead) {
+      ev.push({ type: 'manual', actor: null, name: 'Falling', partial: true, text: `${t.name} falls into a pit ${feet} feet deep, but there is no floor within that depth under the hex it stands on (a big creature's other hexes do not count). The DM places ${t.name} and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.` });
+      return;
+    }
     if (sf && !t.dead) {
       if (t.riding || t.rider) {
         ev.push({ type: 'manual', actor: null, name: 'Falling', partial: true, text: `${t.name} falls into a pit deep enough to reach the floor below, but it is riding or being ridden, and the engine would part the pair. The DM moves ${t.name} down and works out the fall: 1d6 bludgeoning damage for each 10 feet, up to 20d6, and Prone if that hurt.` });
