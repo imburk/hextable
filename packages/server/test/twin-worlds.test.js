@@ -1306,6 +1306,35 @@ test("knock: a player naming an undiscovered secret door is refused in the same 
   assert.equal(hidden.w.state.entities.wizard.slots[2], 2, "the refused cast spent nothing: only the second was paid for");
 });
 
+// ---- Stone Shape (#817, wave 4 part 9): a cut through a wall. An undiscovered secret door on the cut stretch stands as the wall it passes for, and is cut away with it ----
+const STONE = (seed = 5) => ({
+  players: ["Pat"],
+  seed,
+  setup(w) {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    for (const [id, q, r] of [["fighter", -8, 4], ["rogue", -8, 5], ["cleric", -8, 6], ["wizard", 3, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", slots: { 1: 4, 4: 3 }, slotsMax: { 1: 4, 4: 3 } });
+    s.entities.wizard.spells.push("stone-shape");
+  },
+  steps: [
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "stone-shape", slot: 4, choice: "passage", wall: { level: "ground", x: 17.5, y: 30 } }, allowError: true },     // no wall there: refused
+    { by: "Pat", act: { type: "cast", actor: "wizard", spell: "stone-shape", slot: 4, choice: "passage", wall: { level: "ground", x: 17.5, y: 0 } } },                        // the secret door, or the wall: cut
+    { by: "Pat", act: { type: "say", as: "wizard", text: "Done." } },
+  ],
+});
+test("stone shape: a secret door on the cut stretch is cut away with the wall, and the players are sent the same as for a plain wall", () => {
+  const { plain, hidden } = twin(STONE(), {
+    hide: (w) => { w.state.map.objects.push({ id: "sd", def: "secret-door", level: "ground", at: { q: 3, r: 0 }, edge: 0, state: "secret" }); },
+    plain: (w) => { w.state.map.walls.push({ id: "w0", level: "ground", kind: "wall", a: [17.5, -1.4433756729740645], b: [17.5, 1.4433756729740645] }); },
+  });
+  assert.equal(hidden.w.state.map.objects.some((o) => o.id === "sd"), false, "the door went with the cut");
+  assert.equal(plain.w.state.map.walls.length, 0);
+  assert.equal(hidden.w.state.entities.wizard.slots[4], 2, "the refused cast spent nothing");
+});
+
 // ---- leap (#813, wave 4 part 8): what a Long Jump passes over is not entered, so a hidden thing there is not found and does not stop it ----
 const leapScene = (w) => {
   const s = w.state;

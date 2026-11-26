@@ -133,7 +133,7 @@ function setup(sp, seed, opts) {
   // A spell aimed at an object (Knock) is given one to work on: a locked chest two spaces from the caster.
   if (sp.aim === 'object') s.map.objects.push({ id: 'dryrun-chest', def: 'chest', level: s.map.levels[0].id, at: { q: 2, r: 0 }, state: 'locked' });
   // A spell aimed at a wall (Stone Shape) is given one to work on: a long wall along the east side of the caster's space, within a touch.
-  if (sp.aim === 'wall') s.map.walls.push({ id: 'dryrun-wall', level: s.map.levels[0].id, kind: 'wall', a: [2.5, -30], b: [2.5, 30] });
+  if (sp.aim === 'wall') apply(s, { type: 'mapEdit', ops: [{ op: 'wall', wall: { id: 'dryrun-wall', level: s.map.levels[0].id, kind: 'wall', a: [2.5, -30], b: [2.5, 30] } }] }, DM);
   // The fight needs a foe to go on. One stands far off to the north-east, out of reach of everything (not part of the crowd).
   if (!crowd.some(([, role]) => role === 'foe')) {
     const r = apply(s, { type: 'spawn', monster: 'goblin-warrior', at: { q: 9, r: -6 } }, DM);
