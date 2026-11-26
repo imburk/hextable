@@ -224,12 +224,18 @@ export const spells4 = [
     time: "action", range: "touch", components: ["v","s","m"],
     duration: "1 hour", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"manual":"Freedom of Movement: a willing creature the caster touches, for 1 hour, ignores Difficult Terrain, cannot have its Speed reduced or be made Paralyzed or Restrained by spells and other magical effects, has a Swim Speed equal to its Speed, and can spend 5 feet of movement to escape nonmagical restraints or a grapple. One more creature per slot level above 4. The DM applies it."}],
+    effects: [
+      {"modifier": {"on": "terrain", "op": "immune"}},
+      {"modifier": {"on": "speed", "op": "immune", "magic": true}},
+      {"modifier": {"on": "condition", "op": "immune", "scope": {"condition": "paralyzed"}, "magic": true}},
+      {"modifier": {"on": "condition", "op": "immune", "scope": {"condition": "restrained"}, "magic": true}},
+      {"manual": "Freedom of Movement: the engine makes the touched creature's movement ignore Difficult Terrain, keeps a spell's lasting effect from cutting its Speed, and stops a spell from giving it Paralyzed or Restrained. The DM does the rest: other magic (a magic item, a trap, a monster's own magical ability) that would reduce its Speed or give it those conditions, and a condition a spell gave before this one; the Swim Speed equal to its Speed (the engine keeps no swimming); and the creature spending 5 feet of movement to escape nonmagical restraints or a grapple, which the engine does not offer. One more creature per slot level above 4: name each."}
+    ],
     higher: {"slot": {"targets": 1}},
     kinds: ["utility"],
     roll: "none",
-    tier: "manual", checked: true,
-    text: "A touched willing creature moves freely for an hour: ignores difficult terrain, cannot be slowed, paralyzed or restrained by magic, swims at full speed and slips nonmagical bonds.",
+    tier: "assist", checked: true,
+    text: "A willing creature the caster touches moves freely for an hour: Difficult Terrain costs it nothing extra, and spells cannot reduce its Speed or make it Paralyzed or Restrained. The DM handles other magic, the Swim Speed, and its 5 feet of movement to slip nonmagical restraints or a grapple. One more creature per slot level above 4.",
   },
   {
     id: "giant-insect", name: "Giant Insect", source: "SRD 5.2.1",

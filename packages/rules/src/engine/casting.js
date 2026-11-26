@@ -4,8 +4,9 @@ import { gridOf, col, key } from '../grid.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { BRANCHES, CHOICES } from '../content/schema.js';
 import { begin, rangeAt, scaleSteps, sharedRolls, targetCount, walk as walkSteps } from '../effects.js';
-import { breakConcentration, durationMinutes, effectsOf, endEffect, startEffect, turnKey } from '../durations.js';
+import { breakConcentration, durationMinutes, effectsOf, endEffect, endWards, startEffect, turnKey } from '../durations.js';
 import { shiftZone, zonesOf } from '../zones.js';
+import { silentAt } from '../terrain.js';
 import { apart, footprint, FT, gap, landing, overlapAt, sizeOf, unseenAt } from '../space.js';
 import { canSee, hiddenFrom, lightAt } from '../sight.js';
 import { seenName, unknown } from '../vision.js';
@@ -14,7 +15,7 @@ import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, f
 import { aimArea, areaHexes, creatureType, creatures, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, KIT, counterWindow, seesFor, damage, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
 import { incapacitatedBy, untrainedGear } from '../modifiers.js';
@@ -55,6 +56,8 @@ const typeWords = (types) => types.map((t) => `${/^[aeiou]/.test(t) ? 'an' : 'a'
 // Targets of a spell that a reaction keeps from taking its damage (Shield against Magic Missile):
 // one that has the blocking spell going already, or casts it now by its instruction (or its
 // player's answer). Returns their ids.
+// A spell that makes an attack roll or deals damage: what Sanctuary guards against (a spell that only gives a condition is not "a damaging spell").
+const damaging = (def) => { let yes = false; walkSteps(def.effects, (st) => { if ('attack' in st || 'damage' in st) yes = true; }); return yes; };
 function blockSpell(s, caster, spellId, targets, ev) {
   const out = [];
   for (const t of new Set(targets)) {
@@ -566,6 +569,8 @@ function castSpell(s, a, ctx, ev, item) {
     const casterLevel = item ? 1 : e.level;           // an item casts at the lowest caster level
     if (item?.self) [a.target, ...(a.targets ?? [])].every((id) => id === undefined || id === e.id) || fail(`${sp.name} from ${item.name} targets ${e.name} only.`);
     const mm = metamagicFor(s, e, sp, a, slot);
+    // Silence: no sound can be made inside its sphere, so a spell with a Verbal component cannot be cast from there (Subtle Spell leaves the component out).
+    if (!mm.has.subtle && (item ? item.comps : sp.def.components ?? []).includes('v') && silentAt(s, e.pos)) fail(`${e.name} cannot cast ${sp.name} here: it has a Verbal component and ${e.name} stands in a Sphere of Silence.`);
     // A touch its familiar delivers (`a.deliver`): reached from the familiar, for its Reaction (checked now, spent below).
     const toucher = deliverFor(s, e, sp, a);
     // Eldritch Spear (`spellRange: { spell, add }`): that spell's range is longer by so many feet.
@@ -651,6 +656,7 @@ function castSpell(s, a, ctx, ev, item) {
     // effect: the action or Bonus Action is wasted, but a spell slot is not expended (SRD), and so
     // does not count as the one slot this turn.
     // Subtle Spell: nothing to see being cast, unless a Material component with a cost or one the spell consumes is left.
+    endWards(s, ev, e.id, `${e.name} cast a spell`);                    // Sanctuary: the warded creature casts a spell
     const counteredBy = mm.has.subtle && !(sp.def.costly && !noMaterial) ? null : counterWindow(s, e, sp, ev, comps);
     if (counteredBy) {
       if (slotted) { e.slots[slot]++; if (s.encounter) { if (slotFlag) s.encounter.flags.slot = slotFlag; else delete s.encounter.flags.slot; } }
@@ -678,22 +684,29 @@ function castSpell(s, a, ctx, ev, item) {
     if (toucher) ev.push({ type: 'delivered', id: toucher.id, by: e.id, spell: a.spell });
     // A target may answer the spell with a reaction that keeps its damage off (Shield against Magic Missile).
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
+    // Sanctuary: a creature that targets a warded one with an attack roll or a damaging spell saves first; on a failure the spell is lost against it. Area effects are not stopped.
+    const wardDone = sp.aim === 'creature' && damaging(sp.def);
+    const wardLost = new Set();      // a failed Sanctuary save takes the target out of the spell whole (not only its damage: `blocked` is Shield's)
+    if (wardDone) for (const t of new Set(targets)) if (wardCheck(s, e, t, ev, 'spell')) wardLost.add(t.id);
+    // Every target lost to a ward: the spell is lost whole (slot and action spent). It starts no lasting effect, so it does not end the caster's Concentration on another spell, and the DM is not told how to apply it.
+    const allLost = wardLost.size > 0 && targets.every((t) => wardLost.has(t.id));
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;
-    if (sp.def.duration !== 'instant') {
+    if (sp.def.duration !== 'instant' && !allLost) {
       if (sp.def.concentration) breakConcentration(s, ev, e.id, `${e.name} began concentrating on ${sp.name}`);
       fx = startEffect(s, { name: sp.name, spell: a.spell, source: e.id, conc: sp.def.concentration, duration: mm.duration ?? sp.def.duration, level: Math.max(slot, sp.level) });
       // Whom a spell aimed at creatures (or at its caster) was aimed at, less those it can do nothing to: where the engine puts no part on any of them
       // (a spell the DM applies), this is how Dispel Magic knows the spell is on them (engine/rolls.js, dispel).
-      if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t)).map((t) => t.id))];
+      if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t) && !wardLost.has(t.id)).map((t) => t.id))];
       // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
       if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
       ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
-    } else fx = boundEffect(s, sp.name, e.id, steps, a.spell);
+    } else if (!allLost) fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
     // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
     let hit = invalid.length ? targets.filter((t) => !invalid.includes(t)) : targets;
+    if (wardLost.size) hit = hit.filter((t) => !wardLost.has(t.id));
     // What the table is shown of an invalid target (SRD, "Invalid Targets"): "If the spell normally has no effect on a target that succeeds on
     // a saving throw, the invalid target appears to have succeeded on its saving throw, even though it didn't attempt one ... Otherwise, you
     // perceive that the spell did nothing to the target." No die is rolled. The `invalid` mark is for the DM and the creature's own player
@@ -726,7 +739,7 @@ function castSpell(s, a, ctx, ev, item) {
         fx.parts.push({ target: e.id, ends: { on: 'turnEnd', of: 'source' }, born: turnKey(s) });
         ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: false, lasts: 'until the end of its next turn', targets: [] });
       }
-      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}) };
+      fx.terrain = { area: { ...sp.area }, hexes: hexes.map(col), origin: { ...(areaOrigin ?? e.pos) }, ...(ter.difficult ? { difficult: true } : {}), ...(ter.obscured ? { obscured: ter.obscured } : {}), ...(ter.silence ? { silence: true } : {}) };
     }
     const before = ev.length;
     const shared = sp.aim === 'area' || (hit.length > 1 && !sp.repeat) ? sharedRolls(s, steps, !!evo.overchannel) : null;
@@ -743,7 +756,7 @@ function castSpell(s, a, ctx, ev, item) {
       src: { name: sp.name, dc: st.dc, attack: st.attack, range, ...(sp.level === 0 ? { cantrip: true } : {}), healMod, ...(fx ? { fx: fx.id } : {}),
         ...(mm.has.careful ? { careful: [...a.careful] } : {}), ...(mm.has.heightened ? { heightened: a.heightened } : {}), ...(areaOrigin ? { origin: areaOrigin } : {}), ...(blocked.length ? { blocked } : {}), ...(tpTo ? { to: tpTo } : {}),
         ...(evo.overchannel ? { max: true } : {}), ...(evo.empower && !evo.empower.done ? { empower: evo.empower } : {}),
-        spell: sp.id, slot: Math.max(slot, sp.level), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
+        spell: sp.id, slot: Math.max(slot, sp.level), ...(wardDone ? { wardDone: true } : {}), ...(weapon ? { weapon } : {}), ...(via?.freeCast.sureSave ? { sure: [e.id] } : {}), ...(via?.freeCast.maxTemp ? { maxTemp: true } : {}),
         ...(summoning ? { summon: { ...summoning, slot: Math.max(slot, sp.level), caster: summonCaster(s, e, sp.id) } } : {}), ...(toucher ? { via: toucher.id } : {}) },
       // Damage from one effect that several creatures save against at once is rolled once (SRD
       // "Damage against Multiple Targets"); rays, darts and beams each roll their own.
@@ -765,7 +778,7 @@ function castSpell(s, a, ctx, ev, item) {
     // Whatever the engine did not do, it says, so nothing is quietly skipped.
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
-    if (sp.def.tier !== 'auto' && !toldAlready) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
+    if (sp.def.tier !== 'auto' && !toldAlready && !allLost) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
     if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);
     if (fx?.bound) settle(s, ev, fx, targets);
     else if (fx && fx.until === null) note(`${sp.name} lasts ${sp.def.duration}. The engine cannot time that; the DM ends it.`);

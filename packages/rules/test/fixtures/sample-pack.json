@@ -465,11 +465,14 @@
             "damage": "1d6",
             "type": "bludgeoning"
           }
+        },
+        {
+          "ward": "wis"
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster's skin hardens, raising Armor Class by 2, giving 1d4 temporary hit points at the start of each of its turns and a stone fist for a melee spell attack of 1d6 bludgeoning. A Constitution save at the start of each of its turns may end the spell."
+      "text": "The caster's skin hardens: +2 Armor Class, 1d4 temporary hit points and a 1d6 stone fist each turn, and a creature that targets it with an attack roll or damaging spell makes a Wisdom save or loses it. A Constitution save each turn may end the spell."
     },
     {
       "id": "hb-sample-spotters-eye",

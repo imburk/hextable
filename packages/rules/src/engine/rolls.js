@@ -1,8 +1,9 @@
 // Rolls and what they do to a creature (engine.js): healing, Temporary Hit Points, Advantage and
 // Disadvantage, saving throws, conditions and modifiers, damage parts, checks, death saves, and the
 // lasting effects an action leaves behind.
+import { silentAt } from '../terrain.js';
 import { d20Faces, die, negate, roll } from '../rng.js';
-import { COMMANDS, SKILLS } from '../content/schema.js';
+import { ABILITIES, COMMANDS, SKILLS } from '../content/schema.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { walk as walkSteps } from '../effects.js';
 import { concentrationLost, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
@@ -206,6 +207,7 @@ export function rerollSave(s, t, abil, dc, onFail, from, ev) {
 export function slotsFor(s, e, sp) {
   if (untrainedGear(e).length) return [];                      // armour worn without training bars spellcasting (SRD "Armor Training")
   if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return [];
+  if (sp.def.components?.includes('v') && silentAt(s, e.pos)) return [];       // Silence: no Verbal component can be spoken in the sphere (a reaction spell is neither offered nor cast)
   if (sp.level === 0) return [0];
   if (s.encounter && (current(s) === e.id ? s.encounter.flags.slot : s.encounter.flags[`slot:${e.id}`])) return [];
   const out = [];
@@ -288,7 +290,7 @@ function ending(s, step, f, ev, t) {
 // (the Disadvantage is a modifier for a hold; a holder drags what it holds when it walks, movement.js), so the DM is told neither.
 export function condition(s, t, id, ev, f = null, step = null, level = undefined, ended = false) {
   if (!up(t) || t.cond[id]) return;
-  if (immuneTo(s, t, id, f?.actor !== undefined ? s.entities[f.actor] : undefined)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
+  if (immuneTo(s, t, id, f?.actor !== undefined ? s.entities[f.actor] : undefined, f?.src?.spell !== undefined)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   // An instant spell's effect that exists only to hold the endings of its other steps (`bound`) cannot end a condition
   // whose step names no ending: tied to it, the condition would never end and no one would say so. It is kept off the
   // effect instead, and the DM is told below that nothing ends it (T32).
@@ -388,6 +390,16 @@ export function command(s, t, step, f, ev) {
   return true;
 }
 export const COMMAND_WORDS = { approach: 'approach the caster', drop: 'drop what it holds and end its turn', flee: 'flee from the caster', grovel: 'fall Prone and end its turn', halt: 'do nothing and not move' };
+
+// The `ward` step (Sanctuary): a part on the lasting effect that makes a creature targeting this one with an attack roll or a damaging spell save first (resolve.js `wardCheck`, casting.js) and ends the effect when this one attacks, casts or deals
+// damage (durations.js `endWards`). The save is against the spell's save DC. False when there is no lasting effect to hang it on (the step is handed to the DM).
+export function ward(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead || !ABILITIES.includes(step.ward) || !Number.isFinite(f.src.dc)) return false;
+  fx.parts.push({ target: t.id, ward: { save: step.ward, dc: f.src.dc } });
+  void ev;
+  return true;
+}
 
 // The `endSpell` step (Searing Smite: "On a successful save, the spell ends"), run inside an `eachTurn`: the lasting effect those steps belong to ends, taking off everything it
 // put on anyone (`src.fxEnd`, which `turnSteps` names). Nothing happens when there is none (the effect has already ended).

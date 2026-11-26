@@ -4,6 +4,7 @@
 import { key as cellKey, col as cellCol, gridOf } from './shared/grid.js';
 import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
+import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers } from './wallaim.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
 import { armed as imbued, fitting, weaponsFor } from './shared/imbue.js';
@@ -1052,20 +1053,21 @@ function refresh() {
       if (mode.kind === 'attack' && mode.flurry && hl.targets.length) hint = flurryHint(S, e, mode) || hint;
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'fly') hint = flyAim(e, hl);
+      if (mode.kind === 'roll') hint = rollWords(mode.name, rollers(S, e).find((r) => r.id === mode.effect)?.feet ?? 30);
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
         if (sp.aim === 'self' || sp.aim === 'none') { hint = `${sp.name}: choose the ${imbueOf(sp) ? 'weapon' : 'slot'}, then tap the die`; go = true; }
         else if (sp.area) {
           const aimed = !!mode.aim || sp.area.shape === 'emanation';       // an emanation surrounds the caster: nothing to aim
-          const hexes = aimed ? areaHexes(S, e, sp, mode.aim) : [];
+          const wall = isWall(sp) && !!mode.aim, hexes = aimed ? areaHexes(S, e, sp, mode.aim, wall ? wallToward(mode) : undefined) : [];
           hl.area = hexes.map(cellKey);
           const caught = Object.values(S.entities).filter((x) => !x.dead && hl.area.includes(cellCol(x.pos)));
           const how = aimHow(sp.area, sp.range);
           // An area whose caster picks among those caught (Slow, Mass Cure Wounds): foes for a harmful one, friends for a kind one.
           if (sp.area.choose && aimed) mode.picked = caught.filter((x) => hostile(x, e) === sp.harmful).slice(0, spellMost(e, sp)).map((x) => x.id);
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
-          hint = aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
+          hint = wall ? wallWords(sp.name, mode, named) : aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
           const far = reachAim(e, hl, sp.name, sp.area, sp.range);
           if (far) { hint = far; go = false; }
@@ -1406,6 +1408,13 @@ let lastMove = null;
 // A spot out of reach is shown but never cast (the hint says how far it is, and Cast is hidden). A second tap straight after the first is a double tap and waits.
 let pinnedAt = 0;
 function aimTap(hex) {
+  if (mode.kind === 'spell' && isWall(SPELLS[mode.id])) {
+    const next = wallTap(mode.pinned ? mode : { aim: null }, hex);       // a mouse's hover has set `aim` before the tap: only a tapped spot counts
+    if (next.cast && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
+    if (next.cast) return;       // a double tap straight after the last waits
+    pinnedAt = Date.now(); mode.aim = next.aim; mode.toward = next.toward; mode.hoverTo = null; mode.pinned = true;
+    return refresh();
+  }
   const same = mode.pinned && mode.aim && cellKey(mode.aim) === cellKey(hex);
   if (same && Date.now() - pinnedAt > 400 && waitFor) return confirmDie();
   if (!same) pinnedAt = Date.now();
@@ -1428,6 +1437,7 @@ R.onTap = (hit) => {
     return tapped ? toast('Only another member of the party can be followed.') : undefined;
   }
   if (mode.kind === 'fly' && e) return flyTap(e, hit);
+  if (mode.kind === 'roll') { const m = mode; setMode(MOVE); return e && hex ? act(rollAct(selId, m, hex)) : undefined; }
   if (mode.kind === 'attack') return tapped && tapped.id !== selId ? act({ type: 'attack', actor: selId, target: id, attack: mode.id, ...(mode.extra ?? {}) }) : setMode(MOVE);
   if (mode.kind === 'feature') { const f = mode.id, mode0 = mode; setMode(MOVE); return tapped ? act({ type: 'feature', actor: selId, feature: f, target: id, ...(mode0.extra ?? {}) }) : undefined; }
   if (mode.kind === 'action') {
@@ -1497,6 +1507,7 @@ R.onHover = (hex, hit) => {
     if (over !== mode.hover || point !== mode.point) { mode.hover = over; mode.point = point; mode.marked = false; refresh(); }
     return;
   }
+  if (mode.kind === 'spell' && isWall(SPELLS[mode.id]) && mode.pinned && mode.aim && !mode.toward && hex && (!mode.hoverTo || cellKey(mode.hoverTo) !== cellKey(hex))) { mode.hoverTo = hex; refresh(); return; }
   if (((mode.kind === 'spell' && SPELLS[mode.id].area) || (mode.kind === 'action' && mode.area)) && hex && !mode.pinned && cellKey(hex) !== (mode.aim && cellKey(mode.aim))) { mode.aim = hex; refresh(); } };
 
 // ---------- controls ----------
@@ -1519,7 +1530,7 @@ function castAimed() {
     const sp = SPELLS[mode.id], me = S.entities[selId];
     // A zone that spares whom the caster names (Spirit Guardians) spares the caster's side.
     const spare = sp.def.zone?.spare ? Object.values(S.entities).filter((x) => !x.dead && x.id !== selId && !hostile(x, me)).map((x) => x.id) : null;
-    act(castAct({ hex: mode.aim ?? undefined, ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
+    act(castAct({ hex: mode.aim ?? undefined, ...(isWall(sp) ? towardArg(mode) : {}), ...(sp.area.choose ? { targets: mode.picked ?? [] } : {}), ...(spare ? { spare } : {}), ...chosen(sp) }));
   }
   else { const sp = SPELLS[mode.id], one = spellMost(S.entities[selId], sp) <= 1 && !imbueOf(sp); act(castAct({ ...(one ? { target: mode.picked?.[0] } : { targets: mode.picked ?? [] }), ...chosen(sp, mode.picked?.[0] ?? null) })); }
 }

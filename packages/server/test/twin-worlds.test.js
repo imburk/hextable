@@ -13,7 +13,7 @@ import { CONTENT } from "../../rules/src/content/index.js";
 import { riverPack } from "../../rules/test/fixtures/world-pack.js";
 import { createAssets } from "../src/assets.js";
 import { worldAssets } from "../src/tables.js";
-import { current, makeEntity } from "../../rules/src/engine.js";
+import { apply, current, makeEntity } from "../../rules/src/engine.js";
 import { derive } from "../../rules/src/derive.js";
 import { startEffect } from "../../rules/src/durations.js";
 import { describe, diffStreams, twin, twinRun } from "./twin.js";
@@ -873,4 +873,50 @@ test("flyby: a hidden owl (outside the arena: a hidden creature in it is reveale
     hide: (w) => { w.must({ type: "spawn", monster: "owl", at: { q: 5, r: 0 }, name: "Ghost", hidden: true }); },
     plain: (w) => { burn(w, { q: 5, r: 0 }); w.state.seq++; },
   });
+});
+
+// ---- See Invisibility (#786 wave 3a part 3): an Invisible creature, and a character that does or does not have the spell ----
+// Put in through the rules, not the table (the harness syncs everyone after): the spawn must not tell the players of it before it is Invisible.
+const unseen = (w, at, name) => { const r = apply(w.state, { type: "spawn", monster: "goblin-warrior", at, name }, { role: "dm", userId: "dm" }); assert.ok(r.ok, r.error); const g = byName(w, name); Object.assign(g, { hp: 500, maxHp: 500 }); const c = apply(w.state, { type: "condition", actor: g.id, condition: "invisible" }, { role: "dm", userId: "dm" }); assert.ok(c.ok, c.error); };
+const seeInvisibleSetup = (w) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  w.must({ type: "setting", key: "sight", value: "light" });
+  for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -2, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+  Object.assign(s.entities.wizard, { owner: w.ids.Sam, ownerName: "Sam", slots: { 2: 3 }, slotsMax: { 2: 3 } });
+  s.entities.wizard.spells.push("see-invisibility");
+};
+test("see invisibility: with no See Invisibility at the table, an Invisible creature in plain view is sent to no player: the worlds with and without it are the same", () => {
+  twin({
+    players: ["Pat", "Sam"],
+    setup: seeInvisibleSetup,
+    steps: [
+      { by: "dm", act: { type: "advanceTime", minutes: 1 } },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } },
+      { by: "dm", act: (w) => ({ type: "move", actor: byName(w, "Wisp")?.id ?? "none", to: { q: 4, r: 1 } }), allowError: true },
+    ],
+  }, { hide: (w) => unseen(w, { q: 3, r: 0 }, "Wisp"), plain: (w) => burn(w, { q: 6, r: 1 }) });
+});
+test("see invisibility: the caster's table is sent the Invisible creature once the spell is cast (the party shares what one of its members sees, as with Truesight), and the other worlds' bytes differ", () => {
+  const scenario = {
+    players: ["Pat", "Sam"],
+    setup: seeInvisibleSetup,
+    steps: [
+      { by: "dm", act: { type: "advanceTime", minutes: 1 } },
+      { by: "Sam", act: { type: "cast", actor: "wizard", spell: "see-invisibility", target: "wizard" } },
+      { by: "dm", act: { type: "advanceTime", minutes: 1 } },
+    ],
+  };
+  const { plain, hidden, diffs } = twinRun(scenario, { hide: (w) => unseen(w, { q: 3, r: 0 }, "Wisp"), plain: (w) => burn(w, { q: 6, r: 1 }) });
+  assert.ok(diffs.length > 0, "the players are told the creature");
+  const sent = (r, who) => JSON.stringify(r.raw[who]).includes("Wisp");
+  assert.ok(sent(hidden, "Sam"), "the caster's player is sent the Invisible creature");
+  assert.ok(!sent(plain, "Sam"), "not in the world with none");
+  // Before the cast nothing differs: the first messages of the hidden world carry no Wisp for either player.
+  const first = (r, who) => r.raw[who].findIndex((m) => JSON.stringify(m).includes("Wisp"));
+  const cast = (r) => r.raw.Sam.findIndex((m) => m.t === "events" && JSON.stringify(m).includes("See Invisibility"));
+  assert.ok(first(hidden, "Sam") === -1 || first(hidden, "Sam") >= cast(hidden) - 1, "not sent before the spell");
 });
