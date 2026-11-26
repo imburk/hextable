@@ -1410,7 +1410,7 @@ const meldScene = (w, { fight = false } = {}) => {
   Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500, slots: { 1: 4, 3: 3 }, slotsMax: { 1: 4, 3: 3 } });
   s.entities.wizard.spells.push("fireball");
 };
-const MELDED_FOE_SEQ = 3;           // the ids a melded foe uses up in the world that has it (its creature and the spell's effect), spent in the other as well (DEBT T11)
+const MELDED_FOE_SEQ = 2;           // the ids a melded foe uses up in the world that has it (its creature and the spell's effect), spent in the other as well (DEBT T11)
 const meldFoe = (w, { seen = false } = {}) => {
   w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 3, r: 1 }, name: "Wallflower", hidden: true });
   const g = byName(w, "Wallflower");
