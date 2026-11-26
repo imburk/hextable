@@ -683,7 +683,8 @@ function castSpell(s, a, ctx, ev, item) {
     const blocked = sp.harmful && sp.aim === 'creature' ? blockSpell(s, e, a.spell, targets, ev) : [];
     // Sanctuary: a creature that targets a warded one with an attack roll or a damaging spell saves first; on a failure the spell is lost against it. Area effects are not stopped.
     const wardDone = sp.aim === 'creature' && damaging(sp.def);
-    if (wardDone) for (const t of new Set(targets)) if (!blocked.includes(t.id) && wardCheck(s, e, t, ev, 'spell')) blocked.push(t.id);
+    const wardLost = new Set();      // a failed Sanctuary save takes the target out of the spell whole (not only its damage: `blocked` is Shield's)
+    if (wardDone) for (const t of new Set(targets)) if (wardCheck(s, e, t, ev, 'spell')) wardLost.add(t.id);
     // A spell that lasts becomes an effect: it is timed, it can hold conditions and modifiers on
     // creatures, and ending it takes them off. Concentrating on a new spell ends the old one.
     let fx = null;
@@ -700,6 +701,7 @@ function castSpell(s, a, ctx, ev, item) {
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
     // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
     let hit = invalid.length ? targets.filter((t) => !invalid.includes(t)) : targets;
+    if (wardLost.size) hit = hit.filter((t) => !wardLost.has(t.id));
     // What the table is shown of an invalid target (SRD, "Invalid Targets"): "If the spell normally has no effect on a target that succeeds on
     // a saving throw, the invalid target appears to have succeeded on its saving throw, even though it didn't attempt one ... Otherwise, you
     // perceive that the spell did nothing to the target." No die is rolled. The `invalid` mark is for the DM and the creature's own player

@@ -178,7 +178,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.on === 'terrain' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on terrain is `{ on: "terrain", op: "immune" }`: the creature\'s movement is unaffected by Difficult Terrain');
   // `magic: true` (Freedom of Movement): on the condition hook, the immunity holds only against a condition a spell gives; on `speed` with op `immune`, the creature's Speed is not reduced by the lasting effect of a spell.
   if (m.magic !== undefined && !(m.magic === true && ((m.on === 'condition' && m.op === 'immune') || (m.on === 'speed' && m.op === 'immune')))) say('`magic` is true, on the condition hook (op immune) or on `speed` with op `immune`');
-  if (m.on === 'speed' && m.op === 'immune' && !(m.magic === true && Object.keys(m).length === 3)) say('an `immune` modifier on speed is `{ on: "speed", op: "immune", magic: true }`: spells do not reduce the creature\'s Speed');
+  if (m.on === 'speed' && m.op === 'immune' && !(stepOk && m.magic === true && Object.keys(m).length === 3)) say('an `immune` modifier on speed is a modifier step `{ on: "speed", op: "immune", magic: true }`: spells do not reduce the creature\'s Speed');
   // A value is a number, { perLevel: n } for conditions that stack in levels, or for `add`
   // dice ("1d4", "-1d4") rolled each time the modifier applies.
   // `{ rolled: true }` (addition F of docs/specs/homebrew-subclasses.md): the number the damage step just before this one rolled; only a modifier step

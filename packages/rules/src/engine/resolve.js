@@ -1489,14 +1489,14 @@ function hitAfter(s, e, t, casts, ev) {
 // A creature targets another with an attack roll or a damaging spell, and that one is warded (the `ward` step: Sanctuary): it makes the saving throw first, against the ward's DC, and on a failure the attack or the
 // spell is lost. The SRD lets it choose a new target instead; the engine takes the other way out, loses it, and tells the DM, who may let it choose again. True when it is lost. Area effects never come here.
 export function wardCheck(s, e, t, ev, what = 'attack') {
-  if (!e || !t || e.id === t.id) return false;
+  if (!e || !t || e.id === t.id || e.object !== undefined || !e.abil) return false;           // a trap or other thing on the map does not choose a target
   for (const fx of effectsOf(s)) for (const p of fx.parts) {
     if (p.ended || p.target !== t.id || !p.ward) continue;
     const { used, ...sv } = savingThrow(s, e, p.ward.save, p.ward.dc, null, null, null, null, ev);
     ev.push({ type: 'save', id: e.id, abil: p.ward.save, dc: p.ward.dc, ...sv, against: fx.name, ...srcOf(s, fx.source, fx.id) });
     useUp(s, ev, used ?? []);
     if (sv.success) return false;
-    ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} failed its ${p.ward.save.toUpperCase()} save against ${fx.name}, so its ${what} against ${t.name} is lost (its action is spent). The SRD lets it choose a new target instead: the DM may allow that.` });
+    ev.push({ type: 'manual', actor: fx.source, name: fx.name, partial: true, text: `${e.name} failed its ${p.ward.save.toUpperCase()} save against ${fx.name}, so its ${what} against ${t.name} is lost. The rules let it choose a new target instead: the DM may allow that.` });
     return true;
   }
   return false;

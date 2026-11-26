@@ -2,7 +2,8 @@
 // Built to docs/specs/rules-expansion.md, "Build notes: wave 3a part 2". Every test goes through apply().
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SPELLS } from "../src/content/index.js";
+import { CONTENT, MONSTERS, SPELLS } from "../src/content/index.js";
+import { wardCheck } from "../src/engine/resolve.js";
 import { lintEntry } from "../src/content/schema.js";
 import { readEntry } from "../src/content/reader.js";
 import { apply, current } from "../src/engine.js";
@@ -177,4 +178,41 @@ test("lint: terrain, magic and ward are held to the shapes they are for", () => 
   const sanct = { ...SPELLS.sanctuary.def };
   assert.match(lint({ ...sanct, effects: [{ ward: "luck" }] }).join("|"), /ward/);
   assert.match(lint({ ...sanct, duration: "instant", effects: [{ ward: "wis" }] }).join("|"), /ward/);
+});
+
+// ---------- review fixes ----------
+function wardedGoblin(spells = []) {
+  const s = field(), g = spawn(s, "goblin-warrior", 2, 0), o = spawn(s, "goblin-warrior", 3, 1);
+  s.entities.wizard.abil.wis = -20;
+  s.entities.wizard.spells.push("scorching-ray", ...spells);
+  s.entities.cleric.spells.push("sacred-flame");
+  fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "sanctuary", target: g.id }, DM));
+  return { s, g, o };
+}
+test("Sanctuary: a failed save takes the target out of the spell whole (no attack roll, no save, no rider)", () => {
+  { const { s, g } = wardedGoblin(); turnOf(s, "wizard"); const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "ray-of-frost", target: g.id }, DM));
+    assert.ok(!r.events.some((e) => e.type === "attack"), JSON.stringify(r.events)); assert.equal(speedOf(s, g), g.speed, "not slowed"); }
+  { const { s, g } = wardedGoblin(); s.entities.cleric.abil.wis = -20; again(s, "cleric"); const r = ok(apply(s, { type: "cast", actor: "cleric", spell: "sacred-flame", target: g.id }, DM));
+    assert.ok(!r.events.some((e) => e.type === "save" && e.id === g.id && e.against !== "Sanctuary"), JSON.stringify(r.events)); }
+  { const { s, g } = wardedGoblin(); turnOf(s, "wizard"); const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "scorching-ray", slot: 2, targets: [g.id, g.id, g.id] }, DM));
+    assert.ok(!r.events.some((e) => e.type === "attack"), "no ray rolled"); }
+  { const { s, g, o } = wardedGoblin(); turnOf(s, "wizard"); const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "scorching-ray", slot: 2, targets: [g.id, o.id, o.id] }, DM));
+    assert.equal(r.events.filter((e) => e.type === "attack").length, 2, "the other rays still roll"); assert.ok(r.events.filter((e) => e.type === "attack").every((e) => e.target === o.id)); }
+});
+
+test("Sanctuary: a thing on the map (a trap) makes no save and does not crash", () => {
+  const s = field(); fight(s); turnOf(s, "cleric");
+  ok(apply(s, { type: "cast", actor: "cleric", spell: "sanctuary", target: "fighter" }, DM));
+  const trap = { id: null, object: true, name: "Arrow trap", side: "object", cond: {}, features: {}, attacks: [], abil: {}, prof: 0 };
+  assert.equal(wardCheck(s, trap, s.entities.fighter, []), false);
+  assert.ok(warded(s, "fighter"));
+});
+
+test("lint: an immune modifier on speed is a modifier step, not a trait", () => {
+  const goblin = structuredClone(MONSTERS["goblin-warrior"]?.def ?? SPELLS.sanctuary.def);
+  const m = structuredClone(CONTENT.monsters["goblin-warrior"]);
+  const trait = { id: "x", name: "X", text: "x", modifiers: [{ on: "speed", op: "immune", magic: true }] };
+  assert.match(lintEntry("monsters", { ...m, traits: [...(m.traits ?? []), trait] }, { strict: false }).join("|"), /speed/);
+  void goblin;
 });
