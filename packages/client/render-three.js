@@ -18,6 +18,7 @@ import { BLOCK, THUMB, growFor, blockBox, planeY, Builder, UNIT, arenaFlashCells
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5, RETRY_MS = 8000, HOLD_MAX = 4, SLAB = 0.35;
+const MELD_SINK = 0.55, MELD_ALPHA = 0.38;       // how plain the marker of a creature merged with stone is drawn
 const SECS = { door: 0.5, portcullis: 0.8, region: 0.6, rise: 1.2, sink: 0.6, fall: 0.6, prone: 0.3, stand: 0.4, appear: 0.4, vanish: 0.3, placed: 0.3, drop: 0.6 };
 const smooth = (p) => p * p * (3 - 2 * p);
 const accel = (p) => p * p;
@@ -217,6 +218,13 @@ export class ThreeRenderer {
   }
 
   // ---------- public ----------
+  // Where a creature's pawn is drawn: at its space, or, merged with stone (Meld into Stone, `melded`), sunk into the wall at the point it went into (feet on the map, as the engine keeps it).
+  #sunk(e, map) {
+    const m = e.melded, G = this.G;
+    const lv = map.levels.find((l) => l.id === m.level), c = G.cell(m.x, m.y), w = G.toWorld(c), n = G.toWorld({ q: c.q + 1, r: c.r }), cf = G.center(c), nf = G.center({ q: c.q + 1, r: c.r });
+    const k = Math.hypot(n.x - w.x, n.z - w.z) / (Math.hypot(nf[0] - cf[0], nf[1] - cf[1]) || 1);       // drawing units in a foot
+    return { x: w.x + (m.x - cf[0]) * k, y: stand(map, { q: c.q, r: c.r, z: lv?.z ?? e.pos.z }).y - MELD_SINK, z: w.z + (m.y - cf[1]) * k };
+  }
   setTheme(theme) { this.theme = theme; this.#dropModels(); this.#makeBlob(); this.terrainKey = ''; for (const a of this.actors.values()) a.key = ''; if (this.state) this.setState(this.state, []); }
 
   setState(state, events = [], opt = {}) {
@@ -244,7 +252,7 @@ export class ThreeRenderer {
     }
     for (const e of Object.values(state.entities)) {
       let a = this.actors.get(e.id);
-      const w = spot(state.map, e, e.pos), calm = snap || !!e.hidden;
+      const w = e.melded ? this.#sunk(e, state.map) : spot(state.map, e, e.pos), calm = snap || !!e.hidden;
       if (!a) {
         const el = document.createElement('div');
         el.className = 'label'; el.innerHTML = '<span></span><button type="button" class="alt" hidden></button><div class="bar"><i></i></div><em class="marks"></em>';
@@ -255,7 +263,7 @@ export class ThreeRenderer {
         if (!calm) { a.fade = 0; a.hold = true; a.holdAt = now; }
         this.actors.set(e.id, a);
       }
-      a.unseen = !!e.hidden;
+      a.unseen = !!e.hidden; a.melded = !!e.melded;
       if (snap) a.lift = undefined;
       if (a.hold && (calm || appeared.has(e.id))) { a.hold = false; if (calm) a.fade = 1; else a.fadeTw = { from: 0, to: 1, t0: now, dur: SECS.appear }; }
       const mid = this.#modelOf(e);
@@ -273,9 +281,9 @@ export class ThreeRenderer {
         a.key = key; a.piece.set(a.pup ? makeBase(e, this.theme, this.G) : makePawn(e, this.theme, this.G));
       }
       a.wasDead = !!e.dead;
-      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0 && !(state.barRule?.foeHealth === 'hidden' && !state.barRule.dm && e.side !== 'party')); a.el.classList.toggle('unseen', !!e.hidden);      // the "(down)" word is health: not for a player under Hidden
+      a.el.dataset.side = e.side; a.el.classList.toggle('dead', e.dead); a.el.classList.toggle('down', !e.dead && e.hp <= 0 && !(state.barRule?.foeHealth === 'hidden' && !state.barRule.dm && e.side !== 'party')); a.el.classList.toggle('unseen', !!e.hidden); a.el.classList.toggle('melded', !!e.melded);      // the "(down)" word is health: not for a player under Hidden
       const sf = ground(state.map, e.pos) ? null : under(state.map, e.pos);
-      const shown = e.form?.name ? `${e.name} (${e.form.name})` : e.name;             // a druid in Wild Shape: 'Wren (Brown Bear)'
+      const shown = (e.form?.name ? `${e.name} (${e.form.name})` : e.name) + (e.melded ? ' (in the stone)' : '');             // a druid in Wild Shape: 'Wren (Brown Bear)'
       a.el.firstChild.textContent = shown;
       { const tag = a.el.querySelector('.alt'), up = sf && !e.dead ? e.pos.z - sf.z : 0; tag.hidden = !(up > 0); if (up > 0) { tag.textContent = `\u2191${up} ft`; tag.setAttribute('aria-label', `${shown}: ${up} ft up. Choose a height`); } }
       { const bar = barFor(e, { ...state.barRule, fight: !!state.encounter }), el = a.el.querySelector('.bar');
@@ -309,11 +317,11 @@ export class ThreeRenderer {
       if (ev.type === 'attack' && hurt && ev.hit && ev.crit) { hurt.shake = SHAKE; hurt.flash = FLASH; }
     }
     for (const e of Object.values(state.entities)) {
-      const a = this.actors.get(e.id), w = this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);
+      const a = this.actors.get(e.id), w = e.melded ? this.#sunk(e, state.map) : this.G.kind === 'hex' ? this.#stand(e.pos) : spot(state.map, e, e.pos);
       if (e.riding && this.actors.has(e.riding.on) && !a.boarding) continue;       // a rider is where its mount is drawn (#ride); the frame sets it
       // on hexes a big creature is put at its own hex here, on squares at the middle of its squares
       if (!a.way.length && (Math.abs(a.x - w.x) > 0.01 || Math.abs(a.z - w.z) > 0.01)) Object.assign(a, w);
-      const yy = spot(state.map, e, e.pos).y;
+      const yy = e.melded ? w.y : spot(state.map, e, e.pos).y;
       if (!a.way.length && Math.abs(a.y - yy) > 0.01) {
         if (!snap && !a.unseen && this.fell.has(e.id) && yy < a.y) a.fall = { from: a.y, to: yy, t0: now, dur: SECS.drop, ease: accel };
         else if (!a.fall) { a.y = yy; }
@@ -815,13 +823,13 @@ export class ThreeRenderer {
       a.piece.place(model(a.x, a.y + (a.lift ?? 0), a.z, a.yaw, 0)); a.piece.tint(1, 1, 1, alpha); a.piece.show(true);       // the token it stands on
     };
     for (const a of this.actors.values()) {
-      const fading = a.fade < 1;
-      if (a.pup) { puppet(a, fading ? a.fade : 1); a.dying?.piece.show(false); }
-      else { a.piece.show(!(a.dying && fading)); pawn(a, a.piece, fading ? a.fade : 1); }
+      const fading = a.fade < 1, ghostly = a.melded ? MELD_ALPHA * a.fade : fading ? a.fade : 1;       // merged with stone: a faint marker on the wall point
+      if (a.pup) { puppet(a, ghostly); a.dying?.piece.show(false); }
+      else { a.piece.show(!(a.dying && fading)); pawn(a, a.piece, ghostly); }
       if (a.dying && !a.pup) { a.dying.piece.show(true); pawn(a, a.dying.piece, 1 - Math.min(1, (this.now - a.dying.t0) / a.dying.dur)); }
       const k = a.k ?? 1, fade = 1 / (1 + a.air * 0.5);
-      a.blob.show(!this.sh.on && !a.rides);       // a rider's shadow is its mount's
-      a.blob.place(model(a.x - 0.14 * k, a.y - a.air + 0.016, a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade))); a.blob.tint(1, 1, 1, fade * (a.fade ?? 1));
+      a.blob.show((!this.sh.on || a.melded) && !a.rides);       // a rider's shadow is its mount's
+      a.blob.place(model(a.x - 0.14 * k, a.y - a.air + 0.016 + (a.melded ? MELD_SINK : 0), a.z - 0.1 * k, 0, 0, 0.92 * k * (0.6 + 0.4 * fade))); if (a.melded) a.blob.tint(0.62, 0.64, 0.7, 0.85); else a.blob.tint(1, 1, 1, fade * (a.fade ?? 1));       // merged with stone: a stone-grey ring under the marker
     }
     for (const g of this.ghosts) { pawn(g, g.piece, 1 - Math.min(1, (this.now - g.t0) / g.dur)); }
     let swinging = false;
@@ -876,7 +884,7 @@ export class ThreeRenderer {
       else if (a.hold && now - a.holdAt > HOLD_MAX) { a.hold = false; a.fade = 1; }
       if (a.fall) { const r = tweenAt(a.fall, now); a.y = r.v; if (r.done) a.fall = null; }
       if (a.dying && now - a.dying.t0 >= a.dying.dur) { a.dying.piece.free(); a.dying = null; }
-      const op = a.fade < 1 ? a.fade.toFixed(2) : '';
+      const op = a.fade < 1 ? a.fade.toFixed(2) : a.melded ? '0.7' : '';
       if (op !== a.opa) { a.opa = op; a.el.style.opacity = op; }
     }
     if (this.ghosts.length) {
@@ -934,7 +942,7 @@ export class ThreeRenderer {
         const top = surfY(column[i].z, column[i].tile);
         if (y > top || (i > 0 && y < top - SLAB)) continue;
         const hex = { q: h.q, r: h.r, z: column[i].z };
-        const here = Object.values(this.state.entities).filter((e) => !e.dead && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
+        const here = Object.values(this.state.entities).filter((e) => !e.dead && !e.melded && e.pos.z === hex.z && footprint(e, e.pos, this.G).some((f) => f.q === hex.q && f.r === hex.r));
         const occ = here.find((e) => !e.riding) ?? here[0];       // on the ground of a ridden pair: the mount (the rider is on top of it)
         return { hex, id: occ?.id ?? null };
       }
