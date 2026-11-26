@@ -20,10 +20,10 @@ function field() {
   return s;
 }
 
-test("tiers: Fly is assist; Jump stays manual (Feather Fall became assist in wave 4 part 5)", () => {
+test("tiers: Fly is assist; Jump became auto in wave 4 part 8 (Feather Fall became assist in wave 4 part 5)", () => {
   assert.equal(SPELLS.fly.def.tier, "assist");
   assert.equal(SPELLS["feather-fall"].def.tier, "assist");
-  assert.equal(SPELLS.jump.def.tier, "manual");
+  assert.equal(SPELLS.jump.def.tier, "auto");
 });
 
 test("Feather Fall's falling creatures must be ones the caster can see (SRD trigger)", () => {

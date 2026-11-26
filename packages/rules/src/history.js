@@ -273,6 +273,7 @@ export function describeStep(action, events, before, after) {
   let label;
   switch (a.type) {
     case 'move': label = `${who} moved`; break;
+    case 'leap': label = `${who} leaped`; break;
     case 'shield': label = ev('shield')?.on === false ? 'Shield away' : 'Shield up'; break;
     // An Unarmed Strike's Grapple and Shove options are named for what they are (docs/specs/grapple-shove.md).
     case 'attack': label = `${who} ${a.option === 'grapple' ? 'grappled' : a.option === 'shove' ? 'shoved' : 'attacked'} ${name(a.target)}`; break;
