@@ -17,7 +17,7 @@ import { passive } from './rolls.js';
 import { inShell, shellsOf } from '../terrain.js';
 import { endEffect } from '../durations.js';
 import { partRefusal } from './attacks.js';
-import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
+import { checkEnd, confusedOnly, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -683,6 +683,7 @@ export const handlers = {
   dash(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
+    confusedOnly(s, e, 'Dash');
     if (steering(s, e)) return mountAct(s, e, a, 'Dash', ev);
     const time = actTime(e, 'dash', a);
     // A monk's Dash as a Bonus Action is Step of the Wind; with Fleet Step it may follow another Bonus Action.
@@ -722,6 +723,7 @@ export const handlers = {
   disengage(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Disengage only matters in a fight.');
+    confusedOnly(s, e, 'Disengage');
     if (steering(s, e)) return mountAct(s, e, a, 'Disengage', ev);
     const time = actTime(e, 'disengage', a);
     need(s, e, time);

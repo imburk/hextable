@@ -399,6 +399,12 @@ function commandsOn(s, e, ev) {
 // picks the creature (one draw, whatever the number of creatures, so the dice do not depend on who is near) from those in its longest melee reach that the party knows of (never one hidden from it: a pick must not tell a player of a creature it
 // cannot see; the DM adds any it hides to the pool), and the attack handler allows the one attack at that creature only (`confusedFoe`, attacks.js). 9 and 10: it chooses. All told to the DM alone (`partial` manual: a note would name a creature).
 const COMPASS = ['north', 'east', 'south', 'west'];
+// On a 7 or 8 the only action a Confused creature may take is the one melee attack (`attack`, and `act` at the creature chosen); anything else is refused, with the reason. `what`: the action it asked for.
+export function confusedOnly(s, e, what) {
+  if (!s.encounter || current(s) !== e.id || !s.encounter.flags?.[`confused:${e.id}`]) return;
+  const foe = confusedFoe(s, e);
+  fail(`${e.name} is Confused: this turn it can only make one melee attack${foe ? ` at ${s.entities[foe]?.name ?? 'the creature the dice chose'}` : ''}, so it cannot ${what}.`);
+}
 export const confusedFoe = (s, e) => {
   if (!s.encounter || current(s) !== e.id) return null;
   const pre = `confusedFoe:${e.id}:`, k = Object.keys(s.encounter.flags ?? {}).find((x) => x.startsWith(pre));
@@ -410,15 +416,16 @@ function confusedOn(s, e, ev) {
     if (p.ended || p.target !== e.id || !p.confuse) continue;
     e.reactionUsed = true; p.confuse.had = false; b.bonus = 0;
     const r = die(s, 10), draw = rand(s), name = fx.name;
-    const tell = (text) => ev.push({ type: 'manual', actor: fx.source, name, partial: true, text });
+    // A party creature's own player is told the roll and what it may do (a plain `note`: the pick is only among creatures the party knows of, so it names no one hidden); the DM's `manual` stays.
+    const tell = (text, plain) => { ev.push({ type: 'manual', actor: fx.source, name, partial: true, text }); if (e.side === 'party') ev.push({ type: 'note', id: e.id, text: `${e.name} is Confused and rolled ${r} on the d10: ${plain}` }); };
     if (r === 1) {
       const way = COMPASS[die(s, 4) - 1], feet = b.move;
       b.move = 0; b.action = 0;
-      return tell(`${e.name} is Confused and rolled 1 on the d10: it takes no action and uses all its movement (${feet} feet) to move ${way}. The engine has taken its movement and action; it does not steer a creature on a compass heading, so the DM moves it ${way}, as far as it can go.`);
+      return tell(`${e.name} is Confused and rolled 1 on the d10: it takes no action and uses all its movement (${feet} feet) to move ${way}. The engine has taken its movement and action; it does not steer a creature on a compass heading, so the DM moves it ${way}, as far as it can go.`, `it takes no action and uses all its movement to move ${way}; the DM moves it.`);
     }
     if (r <= 6) {
       b.move = 0; b.action = 0;
-      return tell(`${e.name} is Confused and rolled ${r} on the d10: it does not move and takes no action (the engine has taken its movement, action and Bonus Action).`);
+      return tell(`${e.name} is Confused and rolled ${r} on the d10: it does not move and takes no action (the engine has taken its movement, action and Bonus Action).`, 'it does not move and takes no action.');
     }
     if (r <= 8) {
       b.move = 0;
@@ -426,10 +433,10 @@ function confusedOn(s, e, ev) {
       const reach = Math.max(FT, ...(e.attacks ?? []).filter((a) => a.type === 'melee').map((a) => a.reach ?? FT), ...(e.actions ?? []).map((a) => a.target?.creature?.reach ?? 0));
       const pool = living(s).filter((o) => o.id !== e.id && !o.object && inFight(s, o.id) && !unknown(s, o) && apart(s, e, o) * FT <= reach && unblocked(s, e, o)).sort((x, y) => (x.id < y.id ? -1 : 1));
       const v = pool.length ? pool[Math.min(pool.length - 1, Math.floor(draw * pool.length))] : null;
-      if (v) enc.flags[`confusedFoe:${e.id}:${v.id}`] = true;
-      return tell(`${e.name} is Confused and rolled ${r} on the d10: it does not move, and takes the Attack action to make one melee attack against a random creature within reach. ${v ? `The engine picked ${v.name} from the ${pool.length} within ${reach} feet that the party knows of, and allows that one attack at it only; no spell or other action. The DM adds any creature the party does not know of to the pool and, if one is picked instead, makes the attack by hand.` : `No creature the party knows of is within ${reach} feet: if the DM finds none that the party does not know of either, it takes no action.`}`);
+      if (v) enc.flags[`confusedFoe:${e.id}:${v.id}`] = true; else b.action = 0;       // nobody it may attack: it takes no action
+      return tell(`${e.name} is Confused and rolled ${r} on the d10: it does not move, and takes the Attack action to make one melee attack against a random creature within reach. ${v ? `The engine picked ${v.name} from the ${pool.length} within ${reach} feet that the party knows of, and allows that one attack at it only; no spell or other action. The DM adds any creature the party does not know of to the pool and, if one is picked instead, makes the attack by hand.` : `No creature the party knows of is within ${reach} feet, so the engine has taken its action; if the DM finds one the party does not know of, the DM makes its one attack by hand.`}`, v ? `it does not move, and its one action is a single melee attack at ${v.name}; nothing else.` : 'it does not move and takes no action.');
     }
-    return tell(`${e.name} is Confused and rolled ${r} on the d10: it chooses its behavior this turn, with no Bonus Action and no Reaction.`);
+    return tell(`${e.name} is Confused and rolled ${r} on the d10: it chooses its behavior this turn, with no Bonus Action and no Reaction.`, 'it chooses what to do, with no Bonus Action and no Reaction.');
   }
 }
 

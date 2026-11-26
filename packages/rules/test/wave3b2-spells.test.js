@@ -220,6 +220,8 @@ test("Confusion: a 7 or 8 with nobody in reach picks nobody, and the DM is told;
   const { s: t, events } = withRoll(s, sk.id, (r) => r === 7 || r === 8);
   assert.ok(!Object.keys(t.encounter.flags).some((k) => k.startsWith("confusedFoe")));
   assert.ok(events.some((e) => e.type === "manual" && e.partial && /No creature the party knows of is within 5 feet/.test(e.text)));
+  assert.equal(t.encounter.budget.action, 0, "nobody to attack: it takes no action");
+  assert.equal(apply(t, { type: "dodge", actor: sk.id }, DM).ok, false);
   assert.deepEqual(aiStep(t, sk.id), { type: "endTurn", actor: sk.id });
 });
 
@@ -391,4 +393,43 @@ test("Bestow Curse: it lasts a minute of Concentration, and ends with it", () =>
 test("Bestow Curse: the longer time of a higher slot is told to the DM", () => {
   const { cast } = cursed("str");
   assert.ok(ok(cast).events.some((e) => e.type === "manual" && /level 9: until dispelled/.test(e.text)));
+});
+
+test("Confusion: with a creature picked on a 7 or 8, Dodge, Dash, Disengage, a spell and an action at another target are refused with a reason, and the one attack is allowed", () => {
+  const { s, sk } = confused({ extra: (g) => { Object.assign(g.entities.rogue.pos, { q: 7, r: 0 }); } });
+  const { s: t } = withRoll(s, sk.id, (r) => r === 7 || r === 8);
+  const foe = Object.keys(t.encounter.flags).find((k) => k.startsWith("confusedFoe")).split(":")[2];
+  t.entities[sk.id].spells = ["fire-bolt"];
+  for (const act of [{ type: "dodge" }, { type: "dash" }, { type: "disengage" }, { type: "hide" }, { type: "cast", spell: "fire-bolt", target: foe }]) {
+    const r = apply(t, { actor: sk.id, ...act }, DM);
+    assert.equal(r.ok, false, act.type); assert.match(r.error, /Confused: this turn it can only make one melee attack at/, act.type);
+  }
+  const other = t.entities[sk.id].actions.find((x) => !x.multiattack);
+  const r = apply(t, { type: "act", actor: sk.id, action: other.id, target: foe === "rogue" ? "fighter" : "rogue" }, DM);
+  assert.equal(r.ok, false); assert.match(r.error, /Confused/);
+  assert.ok(apply(t, { type: "act", actor: sk.id, action: other.id, target: foe }, DM).ok);
+});
+
+test("Confusion: a party creature's own player is told the roll and what it may do, in a plain note; an enemy's roll is not", () => {
+  const s = field();
+  const sk = spawn(s, "skeleton", 6, 0); sure(sk, true);
+  for (const id of ["wizard", "cleric", "fighter"]) sure(s.entities[id], true);
+  sure(s.entities.rogue, false); at(s.entities.rogue, 6, 1);
+  fight(s); turnOf(s, "wizard");
+  ok(apply(s, { type: "cast", actor: "wizard", spell: "confusion", hex: { q: 6, r: 1 }, slot: 4 }, DM));
+  assert.ok(effect(s, "Confusion").parts.some((p) => p.target === "rogue"));
+  const { events } = withRoll(s, "rogue", () => true);
+  const note = events.find((e) => e.type === "note" && e.id === "rogue" && /rolled \d+ on the d10/.test(e.text));
+  assert.ok(note, "a note for its player");
+  const player = { role: "player", userId: "u-rogue", chars: ["rogue"] };
+  assert.ok(viewEvents(events, s, player).some((e) => e.type === "note" && /on the d10/.test(e.text)));
+  assert.ok(events.some((e) => e.type === "manual" && e.partial), "the DM keeps the manual");
+});
+
+test("lint: ifChoice outside a spell with a curse choice, and against source outside a modifier step, are refused", () => {
+  const sp = SPELLS.confusion.def;
+  assert.ok(lint({ ...sp, effects: [{ save: "wis", onFail: [{ condition: "frightened", ifChoice: ["str"] }] }] }).length, "no curse choice");
+  const feat = (m) => lintEntry("feats", { id: "t", name: "T", source: "SRD 5.2.1", category: "general", text: "x", checked: false, tier: "auto", grants: { modifiers: [m] } }, { strict: false });
+  assert.deepEqual(feat({ on: "attack.roll", op: "disadvantage" }), []);
+  assert.ok(feat({ on: "attack.roll", op: "disadvantage", against: "source" }).length, "a modifier of a feat is not a lasting part"); 
 });

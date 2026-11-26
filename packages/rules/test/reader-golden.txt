@@ -299,7 +299,7 @@ On a failure:
   It gets Disadvantage on the chosen ability's checks. This is part of the cast only if the caster chose Strength or Dexterity.
     It lasts as long as the spell.
   It gets Disadvantage on its attack rolls. This is part of the cast only if the caster chose Disadvantage on attack rolls against the caster.
-    It holds only against attack rolls aimed at the caster.
+    It holds only against attack rolls aimed at the spell's caster.
     It lasts as long as the spell.
 The engine does not do this; the DM does this: "The rest."
 The caster picks the creatures, each one only once; none of them can be the caster, since the spell does harm; a wall between the caster and a creature keeps it from being picked.

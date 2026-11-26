@@ -13,7 +13,7 @@ import { CONTENT, SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
-import { advanceTurn, checkEnd, confusedFoe, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
+import { advanceTurn, checkEnd, confusedFoe, confusedOnly, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
 import { handlers as featureHandlers } from './features.js';
@@ -474,6 +474,7 @@ const base = {
   act(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const def = e.actions?.find((x) => x.id === a.action) || fail(`${e.name} has no such action.`);
+    { const foe = confusedFoe(s, e); if (s.encounter?.flags?.[`confused:${e.id}`] && current(s) === e.id && !(foe !== null && foe === a.target && isAttack(def))) confusedOnly(s, e, 'take that action'); }
     noStrikeFields(a);
     !e.bond?.noAttack || !isAttack(def) || fail(`${e.name} can't attack.`);
     up(e) || fail(`${e.name} is down.`);
@@ -505,6 +506,7 @@ const base = {
   },
   dodge(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'Dodge');
     s.encounter || fail('Dodge only matters in a fight.');
     if (steering(s, e)) return mountAct(s, e, a, 'Dodge', ev);          // a controlled mount: from its own action, on its rider's turn (C6a)
     need(s, e, 'action');

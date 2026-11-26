@@ -17,7 +17,7 @@ import { unknown } from '../vision.js';
 import { dawn } from './rests.js';
 import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
 import { abilityCheck, boundEffect, checkBonus, checkSit, GRANTS, grantOf, deathSavesOver, heal, passive, settle, stabilise, tempHp } from './rolls.js';
-import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
+import { checkEnd, confusedOnly, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
 import { castFromItem } from './casting.js';
@@ -165,6 +165,7 @@ export const handlers = {
   // `via` is not from the action: the `attack` handler (attacks.js) passes `{ weapon }` when a feature with `withAttack` is used with the Attack action.
   feature(s, a, ctx, ev, via = null) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'use a feature');
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
     // spend) still spends what it costs and hands the rest to the DM, as before these were built.
@@ -574,6 +575,7 @@ export const handlers = {
   // is the DC; in Dim Light the check has Disadvantage). { type: 'search', actor }
   search(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'Search');
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (s.encounter && inFight(s, e.id)) { need(s, e, 'action'); s.encounter.budget.action--; }
@@ -590,6 +592,7 @@ export const handlers = {
   // A creature with Nimble Escape takes it as a Bonus Action. { type: 'hide', actor }
   hide(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'Hide');
     up(e) || fail(`${e.name} is down.`);
     able(e);
     const why = hideProblem(s, e);

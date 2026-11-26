@@ -221,7 +221,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   }
   // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
   // against the spell's target (Hex, Hunter's Mark). `against: 'source'`: on a modifier a spell puts on its target, it holds only against the spell's caster (Bestow Curse: Disadvantage on attack rolls against the caster); on attack.roll only.
-  if (m.against !== undefined && !(m.against === 'target' || (m.against === 'source' && m.on === 'attack.roll'))) say('`against` is "target" (on a modifier put on the caster), "source" (on attack.roll, on the target) or left out');
+  if (m.against !== undefined && !(m.against === 'target' || (m.against === 'source' && m.on === 'attack.roll' && stepOk))) say('`against` is "target" (on a modifier step put on the caster), "source" (on an attack.roll modifier step, put on the target) or left out');
   // `uses: 1`: the first roll it applies to uses it up (Guiding Bolt, Vicious Mockery).
   if (m.uses !== undefined && m.uses !== 1) say('`uses` is 1 or left out');
   // `once: 'turn'`: it applies at most once a turn (the Resistance cantrip).
@@ -457,6 +457,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kinds.length !== 1) { say(`each effect step needs exactly one of: ${STEPS.join(', ')} (found ${kinds.length ? kinds.join(' and ') : 'none'})`); continue; }
     const kind = kinds[0];
     lintWhen(step.when, say);
+    if (step.ifChoice !== undefined && !seen.choiceOk) say('`ifChoice` is for a step of a spell whose choice is of a curse');
     if (kind === 'attack') {
       if (!['melee', 'ranged'].includes(step.attack)) say('attack must be "melee" or "ranged"');
       if (!['weapon', 'spell'].includes(step.kind)) say('an attack step needs kind "weapon" or "spell"');
@@ -878,7 +879,7 @@ function lintSpell(e, say) {
       else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make ${words.join(' and ')} when it is cast, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
-  const seen = lintSteps(e.effects, say, { manual: false, hitOk: e.hit !== undefined, reviveOk: true, commandOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
+  const seen = lintSteps(e.effects, say, { manual: false, choiceOk: e.choice?.of === 'curse', hitOk: e.hit !== undefined, reviveOk: true, commandOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
   lintHit(e, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   // A spell aimed at the dead has a revive step, and a revive step is for a spell aimed at the dead (a creature that is up has nothing to revive).

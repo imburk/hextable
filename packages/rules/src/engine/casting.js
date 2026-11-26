@@ -15,7 +15,7 @@ import { able, ask, BOND_MAX, castAbilOf, control, ent, ownerOf, fail, featOf, f
 import { aimArea, areaHexes, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
+import { castReaction, CORPSE, checkEnd, confusedOnly, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
 import { incapacitatedBy, untrainedGear } from '../modifiers.js';
@@ -506,6 +506,7 @@ function imbueFor(s, e, sp, a, targets, ctx) {
 
 function castSpell(s, a, ctx, ev, item) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'cast a spell');
     const sp = SPELLS[a.spell];
     if (item) for (const k of ['via', 'slot', 'metamagic', 'empower', 'overchannel', 'repel', 'ritual']) a[k] === undefined || fail(`"${k}" is not for a spell cast from ${item.name}.`);
     // Cast through a feature (`a.via`, a feature with `freeCast`: Divine Intervention): any spell

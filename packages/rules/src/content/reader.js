@@ -1314,7 +1314,7 @@ function modPhrase(m, at) {
 // The rest of a modifier's fields, in one sentence.
 function modExtras(m, at, toCaster) {
   const bits = [];
-  if (m.against === 'source') bits.push('it holds only against attack rolls aimed at the caster');
+  if (m.against === 'source') bits.push('it holds only against attack rolls aimed at the spell\'s caster');
   if (m.against === 'target') bits.push(toCaster ? 'it holds only against the spell\'s target' : 'it holds only against the spell\'s target');
   if (m.uses === 1) { this.num(`${at}.uses`, 1, 'use'); bits.push(this.inTrait ? 'a trait has no use to spend, so it applies every time' : m.on === 'hp.zero' ? 'that one time uses it up: this part of the effect ends, and the whole effect with it if nothing else is left of it' : 'the first roll it applies to uses it up'); }
   if (m.once === 'turn') bits.push('it applies at most once a turn');
