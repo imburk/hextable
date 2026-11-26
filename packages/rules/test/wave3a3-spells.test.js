@@ -10,6 +10,7 @@ import { newGame } from "../src/scenario.js";
 import { canSee } from "../src/sight.js";
 import { view } from "../src/view.js";
 import * as terrain from "../src/terrain.js";
+import { casterStep } from "../src/ai.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -199,4 +200,18 @@ test("See Invisibility: a trait that gives the hook rebuilds the party's view (a
   s.entities.wizard.feats = [...(s.entities.wizard.feats ?? []), { id: "clear-eyes", name: "Clear Eyes", modifiers: [{ on: "invisible", op: "immune" }] }];
   assert.equal(canSee(s, s.entities.wizard, s.entities[g.id]), "yes", "sight reads the trait");
   assert.equal(seen(PAT), true, "and the party's view was rebuilt");
+});
+
+test("Silence: a caster the AI plays does not try a Verbal spell from inside the sphere (it would be refused every time)", () => {
+  const pick = (silenced) => {
+    const s = field(), g = spawn(s, "goblin-warrior", 3, 0);
+    if (silenced) silence(s, "cleric", 0, 0);
+    ok(apply(s, { type: "startEncounter", center: { q: 0, r: 0 }, radius: 12 }, DM));
+    for (let i = 0; i < 40 && current(s) !== "wizard"; i++) ok(apply(s, { type: "endTurn", actor: current(s) }, DM));
+    return casterStep(s, s.entities.wizard, [g]);
+  };
+  const free = pick(false);
+  assert.ok(free && SPELLS[free.spell]?.def.components.includes("v"), "outside the sphere it casts a Verbal spell: " + JSON.stringify(free));
+  const hushed = pick(true);
+  assert.ok(!hushed || !SPELLS[hushed.spell]?.def.components.includes("v"), JSON.stringify(hushed));
 });

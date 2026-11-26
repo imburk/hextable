@@ -12,6 +12,7 @@ import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effect
 import { flyby, incapacitatedBy, untrainedGear } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
+import { silentAt } from './terrain.js';
 import { unknown } from './vision.js';
 
 // Does this creature know where that one is? Not if it is hiding from it, unless Tremorsense
@@ -273,8 +274,10 @@ export function casterStep(s, e, foes, lim = {}) {
   if (!e.spells?.length || e.actions || e.form || untrainedGear(e).length || incapacitatedBy(e) || (s.effects ?? []).some((fx) => fx.source === id && fx.noSpells)) return null;
   const flags = enc.flags ?? {};
   const known = [];
+  const hushed = silentAt(s, e.pos);        // standing in a Sphere of Silence (Silence): no spell with a Verbal component can be cast, so it is not tried
   e.spells.forEach((sid, i) => {
     const sp = Object.hasOwn(SPELLS, sid) ? SPELLS[sid] : null, sh = sp && castShape(sp);
+    if (sh && hushed && sp.def.components?.includes('v')) return;
     if (sh && !(lim.noAttack && sh.attack)) known.push({ sp, i, kind: sh.kind });
   });
   if (!known.length) return null;
