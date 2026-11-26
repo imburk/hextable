@@ -69,6 +69,7 @@ async function aim(browser, url, label, opts) {
         });
       } else {
         await run.do('a tap on the far chest is not an aim; a tap on the near one chooses it and the die waits', async () => {
+          await closePanels(page);       // the sheet's list is the other way to pick; here the map is tapped
           await tapHex({ q: pos.q + 14, r: pos.r });
           if ((await view()).object) throw new Error('the far chest was chosen');
           await tapHex({ q: pos.q + 3, r: pos.r });
