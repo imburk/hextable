@@ -437,6 +437,12 @@ export class ThreeRenderer {
     const end = a.way.length ? a.way[a.way.length - 1] : a;
     if (snap) { this.cam.x = end.x; this.cam.z = end.z; this.cam.goal = null; } else this.cam.goal = { x: end.x, z: end.z };
   }
+  // A tap the menu's dimmed map took on the canvas's behalf (#793): x and y are the page's (client) coordinates; it goes where a tap on the canvas would.
+  tapAt(cx, cy, pointer = 'touch') {
+    const r = this.canvas.getBoundingClientRect(), p = [cx - r.left, cy - r.top];
+    if (this.onPoint) { this.onPoint(p[0], p[1]); return; }
+    const hit = this.#pick(...p); if (hit) this.onTap({ ...hit, pointer, at: p });
+  }
   planeHex(px, py, feet = 0) { const p = this.#plane(px, py, feet); return p && this.G.fromWorld(p[0], p[1]); }
   // The cell of a level's tile that the ray through a pixel meets first, at the tile's drawn top (the map editor's tap, #738); the base plane's cell where it meets none.
   tileHex(px, py, level) {
