@@ -52,6 +52,7 @@ const REGISTRY = {
   log: ['log'],
   'three-parity': ['three-parity'],
   maps: ['maps'],
+  pitdepth: ['pitdepth'],
   pinch: ['pinch'],
   ping: ['ping'],
   newgame: ['newgame'],
