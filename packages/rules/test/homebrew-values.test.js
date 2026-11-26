@@ -543,3 +543,12 @@ test("#430: an area's creature types are a list with a ceiling (every type once,
   assert.equal(HOMEBREW_LENGTHS["area.types"], CREATURE_TYPES.length, "the ceiling is the number of creature types");
   refused(strict("spells", types([...CREATURE_TYPES, "undead"])), /a list of \d+; the most is 14/);
 });
+
+test("B1: a modifier on a speed (Fly's Fly Speed of 60) may go to 120; a modifier on any other hook stays within 40", () => {
+  const fly = CONTENT.spells.find ? CONTENT.spells.find((s) => s.id === "fly") : CONTENT.spells.fly;
+  assert.deepEqual(strict("spells", homebrew("spells", fly)), [], "the SRD's Fly, as homebrew");
+  const at = (on, value) => { const e = homebrew("spells", fly); e.effects[0] = { modifier: { on, op: on.startsWith("speed") ? "set" : "add", value } }; return strict("spells", e); };
+  assert.deepEqual(at("speed.fly", 120), []);
+  assert.ok(at("speed.fly", 121).some((x) => /121 is not allowed/.test(x)));
+  assert.ok(at("attack", 41).some((x) => /41 is not allowed/.test(x)), "an attack bonus is still held to 40");
+});
