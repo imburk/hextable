@@ -126,6 +126,9 @@ const SENSE2 = [
   { pre: (s) => apply(s, { type: "bond", actor: GOB, to: "wizard", kind: "familiar" }, DM), a: { type: "companion", actor: GOB, auto: true } },
   { pre: (s) => apply(s, { type: "cast", actor: "wizard", spell: "moonbeam", hex: { q: 3, r: -1 } }, DM), a: (s) => ({ type: "endEffect", effect: lasting(s) }) },
   { pre: (s) => apply(s, { type: "scene", scene: { title: "S" } }, DM), a: { type: "endScene" } },
+  // A leap (the Long Jump, #813): 10 ft over the ground beside the fighter, so it is reached by a script.
+  { a: (s) => ({ type: "leap", actor: "fighter", to: { q: s.entities.fighter.pos.q - 2, r: s.entities.fighter.pos.r } }) },
+  { a: (s) => ({ type: "leap", actor: "fighter", to: { q: s.entities.fighter.pos.q, r: s.entities.fighter.pos.r - 2 } }) },
   // Movement an Opportunity Attack's rider gave (docs/specs/homebrew-subclasses.md, addition H), kept as a turn flag, given up (a fight only: the first base has none, and the setup is skipped there).
   { pre: (s) => { s.encounter.flags["rmove:fighter"] = 15; }, a: { type: "forgoMove", actor: "fighter" } },
   // Places of a world (docs/specs/travel.md, W2): the map in play made a place, another battle place kept, a navigation node above.
