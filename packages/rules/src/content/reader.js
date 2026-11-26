@@ -76,7 +76,7 @@ export const TIER_WORDS = {
 // What ends a lasting condition or modifier (`ends.on`; schema.js lintSteps).
 export const ENDS_ON = ['turnStart', 'turnEnd', 'save', 'damaged', 'armour'];
 // When a zone goes off (`zone.on`; schema.js lintZone).
-export const ZONE_ON_WORDS = { enter: 'enters the area (or the area reaches it)', turnStart: 'starts its turn there', turnEnd: 'ends its turn there' };
+export const ZONE_ON_WORDS = { enter: 'enters the area (or the area reaches it)', step: 'moves 5 feet on the ground within the area, or into it', turnStart: 'starts its turn there', turnEnd: 'ends its turn there' };
 
 // Where a modifier attaches: a noun for the thing it changes.
 export const HOOK_WORDS = {
@@ -544,7 +544,7 @@ class Reading {
     if (t.creature) { if (!isObj(t.creature)) { this.bad('`target.creature` is not an object.'); t.creature = {}; } return 'creature'; }
     const a = t.area;
     if (!isObj(a) || !AREA_SHAPES.includes(a.shape) || !(typeof a.size === 'number' && a.size > 0)) { this.bad('The area has no shape the engine knows, or no size in feet.'); this.noneWhy = 'its shape or size is unreadable'; return 'none'; }
-    this.odd(a, ['shape', 'size', 'height', 'width', 'exceptCaster', 'types', 'choose', 'count', ...(this.mon ? ['range'] : [])], 'The area');
+    this.odd(a, ['shape', 'size', 'height', 'width', 'exceptCaster', 'types', 'choose', 'count', ...(this.mon ? ['range'] : ['placed'])], 'The area');
     const range = feetOf(this.def.range);
     // A spell's sphere is centred within its range, at least 1 foot; a creature's action goes off only where its own `range` says.
     const within = !this.mon && ['sphere', 'cylinder'].includes(a.shape) ? Math.max(1, typeof range === 'number' ? range : 0) : range;
@@ -595,10 +595,12 @@ class Reading {
     if (t.area && aim !== 'none') {
       const a = t.area;
       this.num(`${this.pre}target.area.size`, a.size, 'feet');
-      if (a.height !== undefined) { if (a.shape === 'cylinder' && typeof a.height === 'number') this.num(`${this.pre}target.area.height`, a.height, 'feet'); else this.bad('`height` is for a cylinder, in feet.'); }
+      if (a.height !== undefined) { if ((a.shape === 'cylinder' || (a.shape === 'line' && a.placed === true)) && typeof a.height === 'number') this.num(`${this.pre}target.area.height`, a.height, 'feet'); else this.bad('`height` is for a cylinder or a placed line, in feet.'); }
+      if (a.placed !== undefined && !(a.placed === true && a.shape === 'line')) this.bad('`placed` is true, on a line.');
       if (a.width !== undefined) { if (isInt(a.width)) this.num(`${this.pre}target.area.width`, a.width, 'feet'); else this.bad('`width` is not feet.'); }
       const range = typeof d.range === 'number' ? d.range : 0;
-      const bits = [`The ${a.shape} ${AREA_PLACE[a.shape](range)}`];
+      const bits = [`The ${a.shape} ${a.placed === true && a.shape === 'line' ? `is put down within ${range} feet` : AREA_PLACE[a.shape](range)}`];
+      if (a.placed === true && a.shape === 'line') bits.push(`it is a wall centred on the space the caster picks, running toward a second space the caster may name (otherwise across the line from the caster to the first), ${a.width ?? 5} feet thick and ${isInt(a.height) ? a.height : 5} feet high`);
       bits.push(a.exceptCaster === true || (d.zone !== undefined && a.shape === 'emanation') ? 'it catches every creature in it except the caster' : 'it catches every creature in it, the caster too if the caster is in it');
       bits.push('a wall between the area\'s origin and a creature keeps that creature out');
       this.line(`${bits.join('; ')}.`);
@@ -667,7 +669,8 @@ class Reading {
   zone(aim) {
     const z = this.def.zone;
     if (!isObj(z) || !Array.isArray(z.on)) return this.bad('The zone is not an object with a list `on`.');
-    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget'], 'The zone');
+    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'], 'The zone');
+    if (z.move !== undefined && !isInt(z.move)) this.bad('The zone\'s `move` is not a whole number of feet.');
     if (z.budget !== undefined && !isInt(z.budget)) this.bad('The zone\'s `budget` is not a whole number.');
     const a = this.def.target?.area;
     if (aim !== 'area' || !isObj(a)) {
@@ -677,9 +680,12 @@ class Reading {
     const when = z.on.filter((x) => Object.hasOwn(ZONE_ON_WORDS, x)).map((x) => ZONE_ON_WORDS[x]);
     const moves = a.shape === 'emanation' ? 'It moves with the caster and never affects the caster.' : 'It stays where it was laid out.';
     this.line(`${cap1(AREA_WORDS[a.shape](a))} stays for as long as the spell lasts. ${moves}`);
-    this.line(z.atCast === true ? 'As it appears, the steps below run on each creature in it.' : 'As it appears it affects nobody.');
-    this.line(`From then on, the steps below run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : ''}.${this.damageOutside() ? ' Each creature rolls its own damage.' : ''}`);
+    const own = Array.isArray(z.effects) && z.effects.length > 0;
+    this.line(z.atCast === true ? `As it appears, the steps ${own ? 'listed after the zone\'s own' : 'below'} run on each creature in it.` : 'As it appears it affects nobody.');
+    this.line(`From then on, ${own ? 'the zone\'s own steps, listed next,' : 'the steps below'} run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : z.once === 'enter' ? ', entering at most once a turn for each creature (the end of a turn is its own)' : ''}.${this.damageOutside() ? ' Each creature rolls its own damage.' : ''}`);
+    if (own) this.steps(z.effects, 'zone.effects', 0, 'that creature', { top: true });
     if (z.spare === true) this.line('When casting it, the caster may name creatures the area leaves alone.');
+    if (isInt(z.move)) { this.num('zone.move', z.move, 'feet'); this.line(`As a Bonus Action the caster may roll the area up to ${z.move} feet along the ground. It stops in the first space a creature stands in, and the steps run on that creature at once.`); }
     if (isInt(z.budget)) { this.num('zone.budget', z.budget, 'damage'); this.line(`The area goes when the damage it has dealt (what the creatures lose, after a save halves it or a Resistance cuts it) adds up to ${z.budget}. The spell ends then, whatever time it has left.`); }
   }
 
@@ -1384,7 +1390,7 @@ export const MONSTER_FIELDS = {
 export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree', flyby: 'flyby' };
 export const ACTION_FIELDS = { id: 'skip', name: 'skip', text: 'skip', time: 'head', target: 'aim', effects: 'steps', uses: 'limits', recharge: 'limits', multiattack: 'multi' };
 export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'];
-export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count'];
+export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed'];
 export const MONSTER_TIER_WORDS = {
   auto: 'Tier: auto. The engine runs every trait and action of this creature as listed above.',
   assist: 'Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.',

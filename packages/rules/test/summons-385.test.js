@@ -88,7 +88,7 @@ test("Phantom Steed (SRD 29404-29428): the Riding Horse block with Speed 100, an
 // The rest of the group: each needs one mechanism the vocabulary does not have (the PR's table), so none has a summon
 // step and each keeps its tier. If one of these moves, its test belongs with the work that moved it.
 const LEFT = {
-  "mage-hand": "manual", "floating-disk": "manual", "unseen-servant": "manual", "flaming-sphere": "manual",
+  "mage-hand": "manual", "floating-disk": "manual", "unseen-servant": "manual",
   "conjure-animals": "manual", "faithful-hound": "manual",
   "arcane-hand": "manual", "conjure-elemental": "manual", "conjure-fey": "manual", "planar-ally": "manual",
   "arcane-sword": "manual", "finger-of-death": "assist", "simulacrum": "manual",
