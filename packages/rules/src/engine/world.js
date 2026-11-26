@@ -350,7 +350,7 @@ export function moveOptions(s, e, opts = {}) {
   // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
   // climbed as anyone climbs (the maps have heights, not wall faces).
   const acrobat = !!e.feats?.some((f) => f.surfaces) && (e.armour ?? 'none') === 'none' && !e.shield, wet = new Set();
-  // Water Walk (a `surface` modifier): water is solid ground for it, to cross and to stop on. When the effect ends the creature is in the water, which the engine cannot show (no swimming yet): the DM places it (docs/DEBT.md W58).
+  // Water Walk (a `surface` modifier): water is solid ground for it, to cross and to stop on. When the effect ends the creature is in the water, which the engine cannot show (no swimming yet): the DM places it (docs/DEBT.md W57).
   const walker = walksOn(s, e, 'water');
   // `opts.footing`: only where it gets on foot with no climb: no face climbed up or down, no ladder or rope (what shares its footing: a formation's places, #728).
   const climbSpeed = speedOf(s, e, 'climb'), climbs = !opts.footing && s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
