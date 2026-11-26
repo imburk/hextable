@@ -1063,3 +1063,39 @@ test("detect magic: a hidden creature carrying a magic item within 30 feet is to
   assert.ok(/Ghost: Ring of Protection/.test(JSON.stringify(hidden.raw.dm)), "the DM is told of it");
   assert.ok(!JSON.stringify(hidden.raw.Pat).includes("Ghost") && !/Ring of Protection/.test(JSON.stringify(hidden.raw.Pat)), "the player is told of none of it");
 });
+
+// ---- deep pits (#806): a party member that falls into a region on the level below ----
+// By the existing rules a party member that lands in a region reveals it (lookAround: it stands in it), so the landing room is
+// sent to the players in both worlds. A second room of that level, far from the landing and unrevealed, is a bare cell in the
+// plain world and a whole layout in the other; the players are sent the same in both.
+const ROOM_B = "5,-3";
+const pitWorld = () => {
+  const ground = Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "grass" }]));
+  const cellar = { "0,0": { t: "stone" }, "1,0": { t: "stone" }, [ROOM_B]: { t: "stone" } };
+  return newMap({ id: "deep", name: "Deep", starts: [{ q: -4, r: 0 }],
+    levels: [{ id: "ground", name: "Ground", z: 0, tiles: ground }, { id: "cellar", name: "Cellar", z: -30, tiles: cellar }],
+    regions: [{ id: "landing", name: "Landing", level: "cellar", hexes: ["0,0", "1,0"], revealed: false }, { id: "far", name: "Far room", level: "cellar", hexes: [ROOM_B], revealed: false }],
+    objects: [{ id: "pit1", def: "hidden-pit", level: "ground", at: { q: 1, r: 0 }, state: "hidden", fall: 30 }] });
+};
+test("deep pits: a party member that falls into the room below reveals that room by the usual rules, and sends players nothing of another unrevealed room there", () => {
+  const { hidden } = twin({
+    setup(w) {
+      for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+      w.must({ type: "loadMap", map: pitWorld() });
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      Object.assign(w.state.entities.fighter, { hp: 500, maxHp: 500 });
+    },
+    steps: [
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 1, r: 0 } } },
+      { by: "Pat", send: { t: "sync" } },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Ow." } },
+    ],
+  }, { hide: (w) => w.must({ type: "mapEdit", ops: [{ op: "tile", level: "cellar", at: { q: 6, r: -3 }, tile: { t: "stone" } }, { op: "tile", level: "cellar", at: { q: 5, r: -2 }, tile: { t: "stone" } },
+      { op: "region", region: { id: "far", name: "Far room", level: "cellar", hexes: [ROOM_B, "6,-3", "5,-2"], revealed: false } }] }), plain: () => {} });
+  const st = hidden.w.state;
+  assert.deepEqual(st.entities.fighter.pos, { q: 1, r: 0, z: -30 }, "the fighter fell to the cellar");
+  assert.equal(st.map.regions.find((r) => r.id === "landing").revealed, true, "the landing room is revealed by the fall");
+  assert.equal(st.map.regions.find((r) => r.id === "far").revealed, false);
+  assert.ok(JSON.stringify(hidden.raw.Pat).includes("cellar"), "Pat is sent the room the party fell into");
+  { const t = JSON.stringify(hidden.raw.Pat); const m = t.match(/.{150}(6,-3|5,-2)\\*":\\*\{\\*"t\\*":\\*"stone.{40}/); assert.ok(!m, "and nothing of the far room: " + m?.[0]); }
+});

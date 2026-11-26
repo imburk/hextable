@@ -163,6 +163,14 @@ export function lintMap(doc, extra = []) {
     if (o.links !== undefined && !Array.isArray(o.links)) bad.push(`Object "${o.id}": links must be a list.`);
     if (o.to !== undefined && !(def.connects && o.to && Number.isInteger(o.to.q) && Number.isInteger(o.to.r) && doc.levels.some((l) => l.tiles?.[col(o.to)]))) bad.push(`Object "${o.id}" leads to a place that is not on the map, or is not something that joins places.`);
     if (def.connects && o.to === undefined) bad.push(`Object "${o.id}" joins two places and needs \`to\`.`);
+    if (o.fall !== undefined) {
+      if (!Number.isInteger(o.fall) || o.fall < 10 || o.fall > PIT_MAX || o.fall % 10) bad.push(`Object "${o.id}" has a fall of ${JSON.stringify(o.fall)} feet; it must be a multiple of 10 from 10 to ${PIT_MAX}.`);
+      else if (!falls(def)) bad.push(`Object "${o.id}" has a fall, and its kind does not fall.`);
+      else if (o.fall > 10 && o.at && level.tiles[col(o.at)]) {
+        const z = level.z + (level.tiles[col(o.at)].h ?? 0);
+        if (!doc.levels.some((l) => l !== level && l.tiles?.[col(o.at)] && l.z + (l.tiles[col(o.at)].h ?? 0) <= z - 10 && l.z + (l.tiles[col(o.at)].h ?? 0) >= z - o.fall)) bad.push(`Object "${o.id}" is a pit ${o.fall} feet deep with no floor within ${o.fall} feet below it.`);
+      }
+    }
     if (o.dc !== undefined && !(o.dc && typeof o.dc === 'object' && Object.values(o.dc).every((n) => Number.isInteger(n) && n > 0 && n <= 40))) bad.push(`Object "${o.id}" has DCs that are not whole numbers.`);
   }
   // Entries (docs/specs/travel.md, Decision 3): unique ids, each with a start, every start's entry known,
@@ -235,6 +243,9 @@ const nextId = (list, prefix) => {
   for (const x of list) { const m = new RegExp(`^${prefix}(\\d+)$`).exec(x.id ?? ''); if (m) n = Math.max(n, +m[1]); }
   return `${prefix}${n + 1}`;
 };
+// A pit's depth on a placement (`fall`): a multiple of 10, up to the 200 feet at which falling damage stops growing (20d6).
+export const PIT_MAX = 200;
+const falls = (def) => { let yes = false; const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') { if (Number.isInteger(v.fall)) yes = true; Object.values(v).forEach(walk); } }; walk(def.triggers); walk(def.use); return yes; };
 const put = (list, item) => { const i = list.findIndex((x) => x.id === item.id); if (i < 0) list.push(item); else list[i] = item; };
 const drop = (list, id, what) => { const i = list.findIndex((x) => x.id === id); if (i < 0) return `There is no ${what} "${id}".`; list.splice(i, 1); };
 export const EDITS = {
