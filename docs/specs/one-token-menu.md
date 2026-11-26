@@ -1875,3 +1875,30 @@ menus of the aim bar (`#hint-pick`, `#hint-slot`) are gone from the page and fro
   closes the sheet after arming Bless (a cleric with two slot levels now has a level to choose) and has a new step for the highlighted and greyed levels.
 - Not built here: 5(i), 5(j), 5(k) (as in part 1). Open for Isaac: whether a tap on the map while an action waits on its choices should keep the sheet and pass the tap through
   on a phone (today it closes it first, one tap more).
+
+### Build notes: M2 (one overlay at a time, #785)
+
+Client only. `drawer.js` (`fold`, `folded`, the rule in `toggle`, `open` and `sync`), `app.js` (an observer on the body for the cards), the smoke passes `reactions`, `rewards`, `defeat` and the helper `openArc`.
+
+**Every overlay, and what happened when two met (before this stage).**
+
+| Overlay | Where | Before | Now |
+|---|---|---|---|
+| Reaction question (`#rp`, z 15; the DM's `pending` too) | `reactionprompt.js` | The menu was *hidden* while it waited (`held` in `drawer.js`) but stayed open underneath, and **came back by itself** when the question was answered | The menu folds when the question arrives (its place is kept) and stays folded; `open()` is refused while a question waits |
+| Rewards card (`#cc`, z 3) | `conclusion.js` | Under the menu (z 3 against the menu's 5): an open menu hid it, and nothing folded | Folds the menu as it appears; the DM's chip, "Settle" and the tools' button all go through the same rule |
+| Defeat card (`#df`, z 3) | `defeat.js` | As the rewards card | As the rewards card |
+| Conclusion's waiting line (`#cc-wait`), the "table is waiting" bar (`#rp-wait`) | | Lines, not cards: the menu is left as it is | Unchanged: they take no tap |
+| Aim bar (`#hint`) | `app.js` `refresh` | Arming folds the menu (`foldMenu` in `setMode`), unless the action has choices to make (#750 part 2). The die stays visible and confirms (#750 part 1) | Unchanged: it is the amendment's rule |
+| Throw zone (`#dice-tray`) | `dice.js` | `body:has(#dice-tray) #btn-menu` hides the token; arming folds the menu | Unchanged |
+| Toast, turn line, banners | | Never take a tap | Unchanged |
+| The menu, and the fidget die (a hold on the die) | `drawer.js` | The fidget die is not built yet (D6); the menu is the rank-4 overlay | The menu is the one that yields |
+
+**What is built.**
+- **A prompt folds the menu and it stays folded.** `drawer.sync` sees a question (`prompt` or `pending`) arrive and calls `fold()`: the menu closes (no focus move), and its place (`path`, with the open section; each section already keeps its scroll) is remembered in `folded`. Answering the question does not reopen it.
+- **A card folds it the same way**, once, as it appears. The cards show and hide themselves from several places (a sync, a chip, a button of the DM's tools), so `app.js` watches the body's `df-open` and `cc-open` classes and folds on the way up.
+- **One tap on the die returns to the same screen.** From a fold, the next `toggle()` opens `folded` and not the arc. Anything else that opens the menu (a symbol, a key, code) forgets it first; so does closing the menu by hand and `reset()`. Escape, a tap on the map and a tap on the die still close the menu as before.
+- **A pinned column is folded too** (Decision 2 puts no exception: a question or a card is above the menu).
+- **Left as it was, on purpose.** (1) A person may open the menu on purpose while a *card* is up (the defeat smoke step "the menu open, closed or pinned" asks for exactly that): the card yields only when it arrives. (2) The sheet that opens by itself for an armed action's choices (#750 part 2, after 350 ms) and the menu that opens for a player with no character (#756, `renderPick`) are not "reopening by itself" after a fold; the second is refused while a question waits.
+- **Smoke.** `reactions`: Shield on "ask", the menu open on the sheet, the question folds it, "Do not react", the screen is clean (nothing reopens in 700 ms), one tap on the die shows the sheet again. `rewards` (a phone) and `defeat` (both sizes): the menu open on Log, the card folds it, the card goes, the screen stays clean, one tap on the die returns to Log. `openArc` in `lib.mjs` forgets a folded place first, so the passes that want the arc still get it.
+
+**Not built here.** A card shown again while the menu is open on purpose (the chip is hidden while the menu is modal, so only the DM's tools button can do it: it folds the menu, as it did in `foldMenu` for the Waiting card). The fidget die (D6).
