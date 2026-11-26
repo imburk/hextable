@@ -378,11 +378,15 @@ export const spells4 = [
     level: 4, school: "transmutation", classes: ["cleric","druid","wizard"],
     time: "action", range: "touch", components: ["v","s","m"],
     duration: "instant", concentration: false, ritual: false,
-    target: {"self":true},
-    effects: [{"manual":"Stone Shape: the caster touches a stone object of Medium size or smaller, or a section of stone no more than 5 feet in any dimension, and forms it into any shape, for example a weapon, statue, coffer, a small passage through a 5-foot-thick wall, or a door shaped shut. The result can have up to two hinges and a latch but no finer mechanism. The DM applies it."}],
+    target: {"wall":{}},
+    choice: {"of": "shape"},
+    effects: [
+      {"cut": 5, "ifChoice": ["passage"]},
+      {"manual": "Stone Shape (another shape): the caster touches a stone object of Medium size or smaller, or a section of stone no more than 5 feet in any dimension, and forms it into the shape it named, for example a weapon, statue, coffer or a door shaped shut. The result can have up to two hinges and a latch but no finer mechanism. The DM applies it.", "ifChoice": ["other"]}
+    ],
     kinds: ["utility"],
     roll: "none",
-    tier: "manual", checked: true,
+    tier: "assist", checked: true,
     text: "The caster reshapes a Medium-sized stone object or a 5-foot section of stone into any form without fine mechanical detail.",
   },
   {
