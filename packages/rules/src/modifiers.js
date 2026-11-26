@@ -304,6 +304,16 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   return out;
 }
 
+// A creature's senses and what lasting effects lend it for a while (True Seeing: `{ on: 'senses', op: 'set', value: 120, scope: { sense: 'truesight' } }`): the longer range of each wins.
+export function sensesOf(s, e) {
+  const out = { ...(e.senses ?? {}) };
+  for (const src of sources(s, e)) for (const m of src.modifiers) {
+    if (m.on !== 'senses' || m.op !== 'set' || typeof m.scope?.sense !== 'string' || typeof m.value !== 'number') continue;
+    if (m.value > (out[m.scope.sense] ?? 0)) out[m.scope.sense] = m.value;
+  }
+  return out;
+}
+
 // A number kept within what `min` and `max` modifiers allow.
 export const bounded = (m, n) => Math.min(m.max ?? Infinity, Math.max(m.min ?? -Infinity, n));
 

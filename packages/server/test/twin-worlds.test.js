@@ -921,6 +921,26 @@ test("see invisibility: the caster's table is sent the Invisible creature once t
   assert.ok(first(hidden, "Sam") === -1 || first(hidden, "Sam") >= cast(hidden) - 1, "not sent before the spell");
 });
 
+// ---- True Seeing (#786 wave 4 part 3): Truesight lent for an hour shows an Invisible creature; a player is sent what the sight rules give a Truesight creature ----
+const trueSeeingSetup = (w) => { seeInvisibleSetup(w); Object.assign(w.state.entities.wizard, { slots: { 2: 3, 6: 2 }, slotsMax: { 2: 3, 6: 2 } }); w.state.entities.wizard.spells.push("true-seeing"); };
+test("true seeing: before the spell an Invisible creature in range is sent to no player (the same as a bare cell); after it the caster's player is sent exactly what See Invisibility's sight gives, no more", () => {
+  const sides = { hide: (w) => unseen(w, { q: 3, r: 0 }, "Wisp"), plain: (w) => burn(w, { q: 6, r: 1 }) };
+  const before = { players: ["Pat", "Sam"], setup: trueSeeingSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  twin(before, sides);
+  const cast = { players: ["Pat", "Sam"], setup: trueSeeingSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "true-seeing", target: "wizard", slot: 6 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }] };
+  const { plain, hidden, diffs } = twinRun(cast, sides);
+  assert.ok(diffs.length > 0, "the players are told the creature once the spell is cast");
+  const sent = (r, who) => JSON.stringify(r.raw[who]).includes("Wisp");
+  assert.ok(sent(hidden, "Sam") && !sent(plain, "Sam"));
+  // The same in the world where the sight comes from See Invisibility: Truesight shows the creature, and what is sent about it is what the sight rules already give.
+  const sight = (r) => r.raw.Sam.filter((m) => m.t === "events" ? false : JSON.stringify(m).includes("Wisp")).length > 0;
+  assert.equal(sight(hidden), true);
+  const seeInv = { ...cast, steps: [cast.steps[0], { by: "Sam", act: { type: "cast", actor: "wizard", spell: "see-invisibility", target: "wizard" } }, cast.steps[2]] };
+  const other = twinRun(seeInv, sides).hidden;
+  const wisp = (r) => r.raw.Sam.flatMap((m) => JSON.stringify(m).match(/"name":"Wisp"[^}]*/g) ?? []).at(-1);
+  assert.equal(wisp(hidden), wisp(other), "the creature is described to the player in the same way");
+});
+
 // ---- Antilife Shell (#786 wave 3b part 1): a hidden caster's shell ----
 // A shell refuses a move into it, which would tell the players something stands there. The engine does not enforce the shell of a caster the party does not know of
 // (shellSeen), so a visible creature walking into it is sent what it would be sent on a bare cell.

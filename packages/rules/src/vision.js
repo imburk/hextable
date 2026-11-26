@@ -14,7 +14,7 @@ import { gridOf, col } from './grid.js';
 import { FT, concealed, gap, regionAt, shown } from './space.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { canSee, coverOf, inView, inViewOf, lightAt, lightSources } from './sight.js';
-import { has, modifiers } from './modifiers.js';
+import { has, modifiers, sensesOf } from './modifiers.js';
 import { SIZES } from './content/sizes.js';
 
 export const SIGHT_RULES = ['rooms', 'los', 'light'];
@@ -70,7 +70,7 @@ export function tilesInSight(map, eye) {
 // light and senses. Blindsight in range needs no light and no line past a curtain, only no total cover.
 export function seesPlace(s, v, pos, rule, sources) {
   if (rule !== 'light') return inViewOf(s.map, v, pos);
-  const d = gap(s, v.pos, pos) * FT, sn = v.senses ?? {};
+  const d = gap(s, v.pos, pos) * FT, sn = sensesOf(s, v);
   if ((sn.blindsight ?? 0) >= d && coverOf(s, v, { pos }) !== 'total') return true;
   if (has(v, 'blinded') || !inViewOf(s.map, v, pos)) return false;
   if ((sn.truesight ?? 0) >= d || (sn.darkvision ?? 0) >= d) return true;
@@ -85,7 +85,7 @@ function signature(s, rule) {
     (s.effects ?? []).filter((fx) => fx.terrain?.obscured).map((fx) => fx.id).join()];        // a spell's fog (terrain.js)
   for (const e of Object.values(s.entities)) {
     const cond = Object.keys(e.cond ?? {}).filter((k) => e.cond[k]).sort().join('+');
-    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(e.senses ?? {})}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}${e.side === 'party' && !e.dead && modifiers(s, e, 'invisible').immune === true ? ':sees-invisible' : ''}`);       // a spell, a trait, an aura or a form that shows it the Invisible (sight.js)
+    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(sensesOf(s, e))}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}${e.side === 'party' && !e.dead && modifiers(s, e, 'invisible').immune === true ? ':sees-invisible' : ''}`);       // a spell, a trait, an aura or a form that shows it the Invisible (sight.js)
   }
   return parts.join('|');
 }
@@ -116,7 +116,7 @@ export function partyView(s) {
   }
   // Blindsight perceives places beside it that no line of sight reaches (past a curtain, in a cloud).
   if (rule === 'light') for (const v of eyes) {
-    const b = v.senses?.blindsight ?? 0;
+    const b = sensesOf(s, v).blindsight ?? 0;
     if (!b) continue;
     for (const h of G.range(v.pos, Math.floor(b / FT))) for (const l of map.levels) {
       const p = placeOf(l, h), k = `${l.id}|${col(h)}`;

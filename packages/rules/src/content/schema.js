@@ -97,7 +97,10 @@ export const HOOKS = ['check', 'save', 'attack.roll', 'attack.received', 'damage
   'terrain',
   // `invisible`: `{ on: 'invisible', op: 'immune' }`, the creature sees creatures and objects that have the Invisible condition as if they were visible (See Invisibility), as Truesight does (sight.js `sees`).
   // docs/specs/rules-expansion.md, "Build notes: wave 3a part 3".
-  'invisible'];
+  'invisible',
+  // `senses`: `{ on: 'senses', op: 'set', value: <feet>, scope: { sense } }`, a sense a lasting effect lends for a while (True Seeing: truesight 120); sight.js and vision.js read it through `sensesOf`.
+  // docs/specs/rules-expansion.md, "Build notes: wave 4 part 3".
+  'senses'];
 export const OPS = ['add', 'set', 'min', 'max', 'advantage', 'disadvantage', 'autoFail', 'autoSucceed', 'resist', 'vulnerable', 'immune', 'crit',
   // `floor`: a d20 rolled lower than `value` counts as `value` (Reliable Talent, on checks).
   'floor',
@@ -189,7 +192,9 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   // `terrain` (Freedom of Movement): only `{ on: 'terrain', op: 'immune' }`.
   if (m.on === 'terrain' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on terrain is `{ on: "terrain", op: "immune" }`: the creature\'s movement is unaffected by Difficult Terrain');
   // `invisible` (See Invisibility): only `{ on: 'invisible', op: 'immune' }`, from a spell's lasting effect or a creature's trait (it sees the Invisible).
-  if (m.on === 'invisible' && !(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on invisible is `{ on: "invisible", op: "immune" }`: the creature sees Invisible creatures and objects as if they were visible');
+  // `senses` (True Seeing): only a modifier step `{ on: 'senses', op: 'set', value: <5 to 240 feet>, scope: { sense } }`.
+  if (m.on === 'senses' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 240 && m.value % 5 === 0 && m.scope?.sense !== undefined && Object.keys(m).length === 4)) say('a modifier on senses is a modifier step `{ on: "senses", op: "set", value: <5 to 240 feet, a multiple of 5>, scope: { sense } }`');
+  if (m.on === 'invisible' &&!(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on invisible is `{ on: "invisible", op: "immune" }`: the creature sees Invisible creatures and objects as if they were visible');
   // `magic: true` (Freedom of Movement): on the condition hook, the immunity holds only against a condition a spell gives; on `speed` with op `immune`, the creature's Speed is not reduced by the lasting effect of a spell.
   if (m.magic !== undefined && !(m.magic === true && ((m.on === 'condition' && m.op === 'immune') || (m.on === 'speed' && m.op === 'immune')))) say('`magic` is true, on the condition hook (op immune) or on `speed` with op `immune`');
   if (m.on === 'speed' && m.op === 'immune' && !(stepOk && m.magic === true && Object.keys(m).length === 3)) say('an `immune` modifier on speed is a modifier step `{ on: "speed", op: "immune", magic: true }`: spells do not reduce the creature\'s Speed');
@@ -209,7 +214,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.scope !== undefined) {
     const sc = m.scope;
     // `scope.condition`: a save to avoid or end that condition (Protection from Poison). `scope.tool`: a check made with that tool (addition C: a tool is a kebab-case id such as thieves-tools).
-    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition', 'tool'].includes(k))) say('`scope` gives a skill, an ability, a tool or a condition');
+    if (!sc || typeof sc !== 'object' || !Object.keys(sc).length || Object.keys(sc).some((k) => !['skill', 'ability', 'condition', 'tool', 'sense'].includes(k))) say('`scope` gives a skill, an ability, a tool, a condition or a sense');
     else {
       if (sc.tool !== undefined && !((typeof sc.tool === 'string' && sc.tool.length <= 40 && ID.test(sc.tool)) || sc.tool === 'chosen')) say('`scope.tool` is a tool id in kebab-case, such as thieves-tools');
       if (sc.tool !== undefined && m.on !== 'check') say('`scope.tool` is for checks');
@@ -219,7 +224,8 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
       if (sc.condition !== undefined && !(CONDITIONS.includes(sc.condition) && (m.on === 'save' || m.on.startsWith('save.') || m.on === 'condition'))) say('`scope.condition` names a condition, on a save (or the condition hook)');
       if (sc.skill !== undefined && !(Object.hasOwn(SKILLS, sc.skill) || sc.skill === 'chosen')) say(`unknown skill "${sc.skill}" in scope`);
       if (sc.ability !== undefined && !(ABILITIES.includes(sc.ability) || sc.ability === 'chosen')) say(`unknown ability "${sc.ability}" in scope`);
-      if (!['check', 'save', 'condition'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
+      if (sc.sense !== undefined && !(m.on === 'senses' && Object.keys(sc).length === 1 && ['truesight', 'darkvision', 'blindsight', 'tremorsense'].includes(sc.sense))) say('`scope.sense` is truesight, darkvision, blindsight or tremorsense, alone, on the senses hook');
+      else if (!['check', 'save', 'condition', 'senses'].includes(m.on) && !m.on.startsWith('save.')) say('`scope` is for checks and saves');
     }
   }
   // `against: 'target'`: on a modifier a spell puts on its caster (`to: 'caster'`), it holds only
@@ -2107,7 +2113,7 @@ function lintSubclass(e, say, ctx = {}) {
     }
   }
   // A number in a modifier may pass 40 only on a speed (a Fly Speed of 60); on any other hook it is held to the 40 a feat's is.
-  for (const m of modifiersIn(features)) if (!SPEED_HOOKS.includes(m.on) && Math.abs(m.value) > 40) say(`a modifier on "${m.on}" has the value ${m.value}; only a speed may go past 40 (up to 120)`);
+  for (const m of modifiersIn(features)) if (!SPEED_HOOKS.includes(m.on) && m.on !== 'senses' && Math.abs(m.value) > 40) say(`a modifier on "${m.on}" has the value ${m.value}; only a speed may go past 40 (up to 120)`);
   // What a cost, `with`, `of` or `while` names is a feature of the class or of this subclass (a cost: one with uses).
   const own = [...cls.features ?? [], ...features];
   const known = new Set(own.flatMap((f) => [f?.id, ...(Array.isArray(f?.options) ? f.options.map((o) => o?.id) : [])]));
@@ -3072,7 +3078,7 @@ const SHAPES = {
   creature: { what: 'a creature target', keys: ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'] },
   modifier: { what: 'a modifier', keys: ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'] },
   value: { what: 'a modifier value', keys: [...AMOUNT_KEYS, 'rolled', 'base', 'ability'] },
-  scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool'] },
+  scope: { what: 'a scope', keys: ['skill', 'ability', 'condition', 'tool', 'sense'] },
   ends: { what: 'an ending', keys: ['on', 'of', 'by', 'save', 'at', 'dc', 'orDamaged', 'keeps'] },
   higher: { what: 'casting higher', keys: ['level', 'targets', 'slot', 'range'] },
   slot: { what: 'casting with a higher slot', keys: ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'] },
@@ -3315,7 +3321,7 @@ export function numbersOf(kind, entry) {
     if (typeof v === 'number') out.push([`${owner}.${nameOf(key)}`, v, path, g, owner, nameOf(key)]);
     else if (Array.isArray(v)) v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g]));
     // A modifier on a speed (Fly's Fly Speed of 60) is held to the speeds' range, not the 40 of every other modifier.
-    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && SPEED_HOOKS.includes(v.on) ? 'speedModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
+    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && (SPEED_HOOKS.includes(v.on) || v.on === 'senses') ? 'speedModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
   }
   return out;
 }
@@ -3544,7 +3550,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   creature: { count: 'i', repeat: 'b', within: 'i', reach: 'i', range: 'i[]', types: 's[]', dead: 'b' },
   modifier: { on: 's', op: 's', value: 'i|s|o', types: 's[]', scope: 'o', against: 's', uses: 'i', once: 's', onFail: 'b', cost: 's', except: 's', stack: 'b', spell: 's', from: 's[]', magic: 'b', when: 's[]' },
   value: { perLevel: 'i', column: 's', mod: 's', min: 'i', die: 's', byLevel: 'o', prof: 'i', base: 'i', ability: 's' },
-  scope: { skill: 's', ability: 's', condition: 's', tool: 's' },
+  scope: { skill: 's', ability: 's', condition: 's', tool: 's', sense: 's' },
   ends: { on: 's', of: 's', by: 's', save: 's', at: 's', dc: 'i', orDamaged: 'b', keeps: 'b' },
   higher: { level: 'o', targets: 'o', slot: 'o', range: 'o' },
   slot: { damage: 'd', heal: 'd', tempHp: 'd', times: 'i', targets: 'i', value: 'i' },

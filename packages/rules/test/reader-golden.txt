@@ -396,6 +396,19 @@ It lasts up to 1 hour. The engine times it, and when it ends, so does everything
 Tier: auto. The engine rolls and applies all of this.
 Not checked against any rulebook.
 
+== hb-test-far-eyes
+"Far Eyes" (level 6 evocation, touch, action, 1 hour).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: no attack roll and no saving throw (read from its steps, since the entry does not say).
+One creature the caster touches gets truesight out to 120 feet (the longer of this and its own).
+  It lasts as long as the spell.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: auto. The engine rolls and applies all of this.
+Not checked against any rulebook.
+
 == hb-test-wake-the-fallen
 "Wake the Fallen" (level 3 necromancy, touch, action, instant).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

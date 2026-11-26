@@ -357,6 +357,8 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   const end = ending(s, step, f, ev, t);
   if (fx.bound && end.told && !end.part.ends && !Number.isInteger(mod_.uses)) return false;       // nothing could end it: the DM applies it and ends it
   const { against, except, ...m } = mod_;
+  // A Hit Point maximum raised by dice (Heroes' Feast: 2d10) is rolled once for this creature, and the number is what the part keeps.
+  if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'string') m.value = Math.max(0, rollDice(s, [{ dice: m.value, name: f?.src.name ?? 'Hit Point maximum' }]).total);
   if (against === 'source' && !f.actor) return false;                 // a limit to the caster, and no caster: never a modifier that holds against everyone
   const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : against === 'source' && f.actor ? { against: f.actor } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...end.part };
   if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'number' && !holder.dead) {

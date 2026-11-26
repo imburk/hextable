@@ -118,7 +118,8 @@ test('the golden monsters use every field, shape, step, hook and op the strict l
   assert.deepEqual([...shapes].sort(), ['cone', 'cube', 'cylinder', 'emanation', 'line', 'sphere']);
   assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter' && s !== 'imbue' && s !== 'revive' && s !== 'eachTurn' && s !== 'endSpell' && s !== 'arm' && s !== 'command' && s !== 'ward' && s !== 'confuse' && s !== 'sense').sort(), 'a creature\'s action cannot hold a summon, a counter, an imbue, a revive, an eachTurn, an endSpell, an arm, a command, a ward, a confuse or a sense step');
   assert.deepEqual([...branches].sort(), BRANCHES.filter((b) => b !== 'eachTurn').sort());
-  assert.deepEqual([...hooks].sort(), [...HOOKS].sort());
+  // `senses` (True Seeing) is a modifier step of a spell: the linter refuses it in a monster's trait or action, so no golden monster uses it (reader.test.js reads it in a spell).
+  assert.deepEqual([...hooks].sort(), HOOKS.filter((h) => h !== 'senses').sort());
   // `proficient` (addition C of docs/specs/homebrew-subclasses.md) is for a modifier step of a subclass feature's action: the linter refuses it in a monster's trait or action, so no golden monster uses it.
   assert.deepEqual([...ops].sort(), OPS.filter((o) => o !== 'proficient').sort());
   assert.deepEqual([...moves].sort(), [...MOVE_MODES].sort());
