@@ -298,8 +298,9 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
 function shellCatch(s, ev, e, was, flush) {
   for (const fx of shellsOf(s)) {
     if (fx.terrain.follows !== e.id || !shellSeen(s, e)) continue;
-    const caught = living(s).some((t) => t.id !== e.id && shellSeen(s, t) && !['construct', 'undead'].includes(creatureType(t)) && SIZE_LIST.indexOf(t.size ?? 'medium') <= SIZE_LIST.indexOf('huge') && !inShell(s, fx, t, t.pos, was) && inShell(s, fx, t));
-    if (caught) { flush(); endEffect(s, ev, fx, 'the caster moved so that a creature the aura holds back was forced through it'); }
+    const over = (t) => t.id !== e.id && !['construct', 'undead'].includes(creatureType(t)) && SIZE_LIST.indexOf(t.size ?? 'medium') <= SIZE_LIST.indexOf('huge') && !inShell(s, fx, t, t.pos, was) && inShell(s, fx, t);
+    if (living(s).some((t) => shellSeen(s, t) && over(t))) { flush(); endEffect(s, ev, fx, 'the caster moved so that a creature the aura holds back was forced through it'); }
+    else for (const t of living(s)) if (over(t)) ev.push({ type: 'manual', actor: e.id, name: fx.name, partial: true, text: `${fx.name}: the aura has moved over ${t.name}, which the party does not know of. The DM judges whether it is forced through the barrier, which ends the spell.` });
   }
 }
 // The rider a mount carries out of a foe's reach, if the foe may make its Opportunity Attack against it instead (stage

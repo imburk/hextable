@@ -1176,7 +1176,7 @@ export function aimAction(s, e, def, a, all = false, ctx = null) {
     if (!(far > 0)) fail(`${e.name}'s ${def.name} says neither how far it reaches nor how far it shoots, so it cannot be aimed at anyone. The DM can apply it by hand.`);
     for (const id of a.targets ?? [a.target]) { const x = ent(s, id); !x.dead || fail(`${x.name} is already dead.`); }
     const targets = creatures(s, e, def.name, { range: far, harmful: true, repeat: c.repeat, within: c.within, most: c.count ?? 1 }, a);
-    if (c.reach !== undefined) for (const x of targets) { const why = shellRefusal(s, e, x); if (why) fail(why); }      // Antilife Shell: no reaching through it
+    if (c.reach !== undefined) for (const x of targets) { const why = shellRefusal(s, e, x, c.reach); if (why) fail(why); }      // Antilife Shell: no 5-foot reaching through it
     return { targets, hexes: null, origin: null };
   }
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
@@ -1209,9 +1209,10 @@ export function shellsFor(s, e) {
 }
 // Would a step of `e` from `from` to `to` take it into a shell from outside (a creature already inside is not pushed out, and may move within it)?
 export const shelledStep = (s, e, from, to, shells = shellsFor(s, e)) => shells.some((fx) => !inShell(s, fx, e, from) && inShell(s, fx, e, to));
-// Is a reach attack (a melee weapon attack, or an action with a reach) from `a` at `t` through a shell: one of them inside it, the other outside?
-export const shelledReach = (s, a, t) => shellsFor(s, a).some((fx) => inShell(s, fx, a) !== inShell(s, fx, t));
-export const shellRefusal = (s, a, t) => shelledReach(s, a, t) ? `${t.name} is out of reach: Antilife Shell keeps ${a.name} from reaching through it.` : null;
+// Is a melee attack of `reach` feet from `a` at `t` through a shell: one of them inside it, the other outside? The SRD lets an affected creature attack "with Ranged or Reach weapons through the barrier":
+// a weapon with reach beyond 5 feet (a Reach weapon, an ogre's or troll's long reach) is let through; a 5-foot melee attack (a natural attack, or a weapon without Reach) is stopped.
+export const shelledReach = (s, a, t, reach = 5) => reach <= 5 && shellsFor(s, a).some((fx) => inShell(s, fx, a) !== inShell(s, fx, t));
+export const shellRefusal = (s, a, t, reach = 5) => shelledReach(s, a, t, reach) ? `${t.name} is out of reach: Antilife Shell keeps ${a.name} from reaching through it.` : null;
 
 // Who an area action would catch if aimed at `hex`, or null if it cannot be aimed there. For the AI and the UI.
 export function areaTargets(s, e, def, hex) {

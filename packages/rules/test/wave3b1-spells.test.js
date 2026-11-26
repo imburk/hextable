@@ -297,3 +297,53 @@ test("Shell: the monster brain does not choose a reach attack through it (it wou
     if (a.type === "endTurn") break;
   }
 });
+
+// ---------- the review's changes ----------
+test("Shell: an attack with a Reach weapon (a glaive, 10 feet) goes through the barrier; a longsword adjacent across the boundary is refused", () => {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  at(s.entities.fighter, 1, 0);
+  shell(s);
+  const f = s.entities.fighter, sword = f.attacks.find((x) => x.type === "melee");
+  f.attacks.push({ ...sword, id: "glaive", name: "Glaive", reach: 10 });
+  at(g, 3, 0); at(f, 2, 0);
+  fight(s, "fighter");
+  const r = apply(s, { type: "attack", actor: "fighter", target: g.id, attack: sword.id }, DM);
+  assert.equal(r.ok, false); assert.match(r.error, /Antilife Shell/);
+  const r2 = apply(s, { type: "attack", actor: "fighter", target: g.id, attack: "glaive" }, DM);
+  assert.equal(r2.ok, true, r2.error);
+});
+
+test("Shell: a monster action with 10 feet of reach (a violet fungus) goes through it; one with 5 feet is refused", () => {
+  const s = field();
+  const v = spawn(s, "violet-fungus", 3, 0), g = spawn(s, "goblin-warrior", 4, 1);
+  at(s.entities.fighter, 2, 0);
+  shell(s);
+  fight(s, v.id);
+  const touch = v.actions.find((x) => x.target?.creature?.reach === 10);
+  const r = apply(s, { type: "act", actor: v.id, action: touch.id, target: "fighter" }, DM);
+  assert.equal(r.ok, true, r.error);
+  turnOf(s, g.id);
+  const hit = g.actions.find((x) => x.target?.creature?.reach === 5);
+  assert.equal(apply(s, { type: "act", actor: g.id, action: hit.id, target: "fighter" }, DM).ok, false);
+});
+
+test("Globe: a spell cast with a slot above the barrier's reach counts at the slot's level and gets through (SRD: it takes on the higher level for that casting)", () => {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", 1, 0);
+  globe(s);
+  at(s.entities.cleric, -4, 0);
+  fight(s, "cleric");
+  const r = ok(apply(s, { type: "cast", actor: "cleric", spell: "guiding-bolt", target: g.id, slot: 6 }, DM));
+  assert.ok(r.events.some((e) => e.type === "attack" && e.target === g.id), "a level 1 spell cast with a level 6 slot is a level 6 spell: the barrier does not stop it");
+});
+
+test("Shell: the aura moving over a creature the party does not know of ends nothing, and the DM alone is told to judge it", () => {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  g.hidden = true;
+  shell(s);
+  const r = ok(apply(s, { type: "move", actor: "wizard", to: { q: 1, r: 0 } }, DM));
+  assert.ok(effect(s, "Antilife Shell"), "not ended");
+  assert.ok(r.events.some((e) => e.type === "manual" && e.partial && /judges whether/.test(e.text)));
+});

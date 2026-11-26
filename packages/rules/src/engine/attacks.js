@@ -392,7 +392,7 @@ const base = {
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
     walled(s, e, t);
-    if (atk.type === 'melee') { const why = shellRefusal(s, e, t); if (why) fail(why); }          // Antilife Shell: no reaching through it
+    if (atk.type === 'melee') { const why = shellRefusal(s, e, t, atk.reach); if (why) fail(why); }          // Antilife Shell: no reaching through it
     const option = optionOf(s, e, t, atk, a);
     a.use === undefined || s.encounter || fail('A feature used with the Attack action is used on a turn in a fight.');
     a.onHit === undefined || (s.encounter && option === 'damage') || fail('A choice named for a hit goes with a damaging attack on a turn in a fight.');

@@ -955,3 +955,29 @@ test("antilife shell: a visible creature that moves into the shell of a hidden c
   const moved = (r) => JSON.stringify(r.raw.Pat).includes('"moved"');
   assert.ok(moved(plain) && moved(hidden), "the visible creature moved in both: the shell of a hidden caster refuses nothing");
 });
+
+// ---- Globe of Invulnerability (#786 wave 3b part 1): a hidden creature inside the barrier, and a spell cast from outside at the area ----
+// The barrier leaves the inside out of the area by place, so a hidden creature there is neither hit nor found by it: the same bytes as a bare cell.
+test("globe of invulnerability: a spell cast from outside at an area over a hidden creature inside the barrier is sent the same as over a bare cell", () => {
+  twin({
+    players: ["Pat", "Sam"],
+    setup(w) {
+      const s = w.state;
+      for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+      for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      for (const [id, q, r] of [["wizard", 0, 0], ["rogue", -8, 3], ["fighter", -8, 4], ["cleric", -6, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+      Object.assign(s.entities.wizard, { owner: w.ids.Pat, ownerName: "Pat", slots: { 6: 2 }, slotsMax: { 6: 2 }, spells: [...s.entities.wizard.spells, "globe-of-invulnerability"] });
+      Object.assign(s.entities.cleric, { owner: w.ids.Sam, ownerName: "Sam", slots: { 1: 3 }, slotsMax: { 1: 3 }, spells: [...s.entities.cleric.spells, "fog-cloud"] });
+      w.must({ type: "cast", actor: "wizard", spell: "globe-of-invulnerability" });
+      w.putIn();
+    },
+    steps: [
+      { by: "Sam", act: { type: "cast", actor: "cleric", spell: "fog-cloud", hex: { q: 1, r: 0 } } },
+      { by: "Pat", act: { type: "say", as: "wizard", text: "Anything?" } },
+    ],
+  }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 1, r: 1 }, name: "Ghost", hidden: true }); },
+    plain: (w) => { burn(w, { q: 1, r: 1 }); },
+  });
+});

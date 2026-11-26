@@ -580,9 +580,9 @@ function castSpell(s, a, ctx, ev, item) {
     const range = typeof (mm.range ?? grown) === 'number' && spear ? (mm.range ?? grown) + spear : mm.range ?? grown;
     const most = targetCount(sp.def, casterLevel, Math.max(slot, sp.level) + (mm.has.twinned ? 1 : 0));
     let targets = [], hexes = null, areaOrigin = null;
-    // Globe of Invulnerability: a spell of a level below the Globe's (its slot level less one, whatever slot this one is cast with) cast from outside it cannot affect anything within it. A spell
+    // Globe of Invulnerability: a spell of a level below the Globe's (its slot level less one; a spell cast with a higher slot "takes on the higher level for that casting", SRD, so the slot counts) cast from outside it cannot affect anything within it. A spell
     // aimed at creatures may target one inside, and has no effect on it (as an invalid target: `warded`, below); the inside is left out of the area of one aimed at an area. What the caster stands in is judged by where it stands, never by who is hidden in it.
-    const globes = globesOf(s).filter((fx) => sp.level <= fx.level - 1 && !inGlobe(s, fx, e)), globed = (x) => globes.some((fx) => inGlobe(s, fx, x));
+    const globes = globesOf(s).filter((fx) => Math.max(slot, sp.level) <= fx.level - 1 && !inGlobe(s, fx, e)), globed = (x) => globes.some((fx) => inGlobe(s, fx, x));
     if (sp.aim === 'area') {
       // A wall (a placed Line) may say which way it runs: `toward`, a space on its line (absent, it runs across the line from the caster to `hex`).
       a.toward === undefined || (sp.area.placed && a.toward && Number.isInteger(a.toward.q) && Number.isInteger(a.toward.r)) || fail(sp.area.placed ? `Name a space ${sp.name} runs toward.` : `${sp.name} is not a wall: it has no direction to choose.`);
