@@ -46,6 +46,8 @@ test("Fly lends a Fly Speed of 60, and the creature falls when Concentration end
 
 test("Fly cast with a higher slot takes one more creature", () => {
   const s = field();
+  const third = apply(structuredClone(s), { type: "cast", actor: "wizard", spell: "fly", slot: 3, targets: ["fighter", "rogue"] }, DM);
+  assert.equal(third.ok, false, "a 3rd-level slot touches one creature");
   ok(apply(s, { type: "cast", actor: "wizard", spell: "fly", slot: 4, targets: ["fighter", "rogue"] }, DM));
   assert.equal(s.effects.flatMap((fx) => fx.parts).filter((p) => p.modifier?.on === "speed.fly").length, 2);
 });

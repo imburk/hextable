@@ -726,6 +726,10 @@
       },
       "effects": [
         {
+          "sense": "traps",
+          "feet": 30
+        },
+        {
           "set": "open"
         },
         {
@@ -737,7 +741,7 @@
       ],
       "tier": "manual",
       "checked": false,
-      "text": "A wisp of light works a latch or a lock and the DM decides what opens."
+      "text": "A wisp of light works a latch or a lock and the DM decides what opens; the DM is first told of any trap within 30 feet."
     },
     {
       "id": "hb-sample-ashen-pulse",

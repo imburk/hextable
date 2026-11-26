@@ -1052,7 +1052,7 @@ test("find traps: a hidden trap in range is told to the DM alone; the players ar
   for (const [label, at] of [["in sight", [3, 0]], ["behind a wall", [0, 6]]]) {
     const { plain, hidden } = twin(SENSE("find-traps", 2), { hide: trapAt(...at), plain: () => {} });
     assert.ok(!/trap that poses/.test(JSON.stringify(hidden.raw.Pat)), `${label}: Pat was told what the trap is`);
-    assert.ok(/found no trap|senses \d trap/.test(JSON.stringify(hidden.raw.dm)) || label === "in sight", `${label}: the DM is told`);
+    assert.ok(/found no trap|senses \d trap/.test(JSON.stringify(hidden.raw.dm)), `${label}: the DM is told`);
     if (label === "in sight") assert.ok(/senses 1 trap/.test(JSON.stringify(hidden.raw.dm)) && /found no trap/.test(JSON.stringify(plain.raw.dm)), "the DM is told of the trap in one world and of none in the other");
     else assert.ok(/found no trap/.test(JSON.stringify(hidden.raw.dm)), "a trap behind a wall is not sensed");
   }
