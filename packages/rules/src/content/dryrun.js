@@ -163,7 +163,7 @@ function castOf(sp, game, opts) {
   return a;
 }
 const CONTENT_CHOICES = Object.freeze({
-  skill: ['athletics'], ability: ['str'], damageType: ['fire'], condition: ['poisoned'], command: ['halt'], curse: ['str'],
+  skill: ['athletics'], ability: ['str'], damageType: ['fire'], condition: ['poisoned'], command: ['halt'], curse: ['str'], affliction: ['charmed'],
 });
 
 // ---------- one cast ----------

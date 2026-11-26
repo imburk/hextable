@@ -185,7 +185,12 @@ export const COMMANDS = ['approach', 'drop', 'flee', 'grovel', 'halt'];
 export const CURSES = [...ABILITIES, 'attacks', 'dodge', 'damage'];
 // How well the caster knows a teleport's destination (Teleport; SRD 5.2.1 "Teleportation Outcome"): the rows of the table. engine/effects.js `TELEPORT_TABLE` holds its numbers.
 export const FAMILIARITY = ['permanent-circle', 'linked-object', 'very-familiar', 'seen-casually', 'viewed-once-or-described', 'false-destination'];
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY };
+// `affliction`: what Greater Restoration ends, one of six: `exhaustion` (one level, the `cure` word `exhaustionLevel`), `charmed`, `petrified` (`cure`), `curse` (the `cure` word `curse`: the lasting curses the
+// engine keeps; the rest is the DM's) and `ability-score` and `hit-point-maximum` (a `manual` step: the engine keeps no such reduction). Steps for the other five are not part of the cast (`ifChoice`).
+export const AFFLICTIONS = ['exhaustion', 'charmed', 'petrified', 'curse', 'ability-score', 'hit-point-maximum'];
+// The words a `cure` step may use besides a condition: `exhaustionLevel` lowers the target's Exhaustion by one level; `curse` ends the lasting curses (Bestow Curse) on it.
+export const CURE_WORDS = ['exhaustionLevel', 'curse'];
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -344,7 +349,7 @@ function lintTerrain(e, say) {
 function lintChoice(e, say) {
   const used = new Set(), c = e.choice;
   walkSteps(e.effects, (st) => {
-    if (st.ifChoice !== undefined) used.add('curse');
+    if (st.ifChoice !== undefined) used.add(c?.of === 'affliction' ? 'affliction' : 'curse');
     const m = st.modifier;
     if (!m) return;
     if (m.scope?.skill === 'chosen') used.add('skill');
@@ -363,7 +368,7 @@ function lintChoice(e, say) {
     if (st.ifChoice === undefined) return;
     const list = c?.from ?? (c ? CHOICES[c.of] : []);
     if (!(Array.isArray(st.ifChoice) && st.ifChoice.length >= 1 && st.ifChoice.length <= 9 && new Set(st.ifChoice).size === st.ifChoice.length && st.ifChoice.every((x) => list.includes(x)))) say('`ifChoice` lists one or more different values of the spell\'s choice');
-    if (c?.of !== 'curse') say('`ifChoice` is for a spell whose choice is of a curse');
+    if (c?.of !== 'curse' && c?.of !== 'affliction') say('`ifChoice` is for a spell whose choice is of a curse or an affliction');
   });
 }
 const seenCounter = (actions) => { let n = false; for (const a of actions ?? []) walkSteps(a.effects, (st) => { if (st && 'counter' in st) n = true; }); return n; };
@@ -475,7 +480,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kinds.length !== 1) { say(`each effect step needs exactly one of: ${STEPS.join(', ')} (found ${kinds.length ? kinds.join(' and ') : 'none'})`); continue; }
     const kind = kinds[0];
     lintWhen(step.when, say);
-    if (step.ifChoice !== undefined && !seen.choiceOk) say('`ifChoice` is for a step of a spell whose choice is of a curse');
+    if (step.ifChoice !== undefined && !seen.choiceOk) say('`ifChoice` is for a step of a spell whose choice is of a curse or an affliction');
     if (kind === 'attack') {
       if (!['melee', 'ranged'].includes(step.attack)) say('attack must be "melee" or "ranged"');
       if (!['weapon', 'spell'].includes(step.kind)) say('an attack step needs kind "weapon" or "spell"');
@@ -607,8 +612,8 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (step.plus !== undefined) say('`plus` (an amount added to dice) is for a summon block');
     // `cure: [conditions]`: the conditions end on the creature it works on (Heal); "chosen" is one
     // the caster picks from the spell's `choice: { of: 'condition', from }` (Lesser Restoration).
-    // Exhaustion is not ended this way: a spell lowers it by levels.
-    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), or "chosen"');
+    // Exhaustion is not ended whole this way: `exhaustionLevel` lowers it by one level (Greater Restoration), and `curse` ends the lasting curses on the creature (CURE_WORDS).
+    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || CURE_WORDS.includes(c) || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), "exhaustionLevel", "curse", or "chosen"');
     for (const b of ['onZero', 'onKill']) if (step[b] !== undefined && kind !== 'damage') say(`\`${b}\` is for a damage step`);
     // `kill: true`: the creature dies, a character at 0 Hit Points too; `remains`: what is left of
     // the body. Both only under a damage step's onZero or onKill, where the damage brought it there.
@@ -906,7 +911,7 @@ function lintSpell(e, say) {
       else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make ${words.join(' and ')} when it is cast, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
-  const seen = lintSteps(e.effects, say, { manual: false, choiceOk: e.choice?.of === 'curse', hitOk: e.hit !== undefined, reviveOk: true, commandOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
+  const seen = lintSteps(e.effects, say, { manual: false, choiceOk: e.choice?.of === 'curse' || e.choice?.of === 'affliction', hitOk: e.hit !== undefined, reviveOk: true, commandOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
   lintHit(e, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
   // A spell aimed at the dead has a revive step, and a revive step is for a spell aimed at the dead (a creature that is up has nothing to revive).

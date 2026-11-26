@@ -1,4 +1,4 @@
-// Wave 4, part 3, of issue #786: True Seeing (assist, through the `senses` hook), Heroes' Feast (assist, a rolled Hit Point maximum), Greater Restoration (kept manual).
+// Wave 4, part 3, of issue #786: True Seeing (assist, through the `senses` hook), Heroes' Feast (assist, a rolled Hit Point maximum), Greater Restoration (kept manual here; assist from wave 4 part 7).
 // Built to docs/specs/rules-expansion.md, "Build notes: wave 4 part 3". Every test goes through apply().
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -29,10 +29,10 @@ function field(seed = 5) {
 }
 const spawn = (s, id, q, r) => { ok(apply(s, { type: "spawn", monster: id, at: { q, r } }, DM)); return Object.values(s.entities).at(-1); };
 
-test("tiers: True Seeing and Heroes' Feast are assist; Greater Restoration stays manual; the entries lint and read", () => {
+test("tiers: True Seeing and Heroes' Feast are assist; Greater Restoration was manual then (wave 4 part 7 makes it assist); the entries lint and read", () => {
   assert.equal(SPELLS["true-seeing"].def.tier, "assist");
   assert.equal(SPELLS["heroes-feast"].def.tier, "assist");
-  assert.equal(SPELLS["greater-restoration"].def.tier, "manual");
+  assert.equal(SPELLS["greater-restoration"].def.tier, "assist");      // wave 4 part 7
   for (const id of ["true-seeing", "heroes-feast"]) {
     assert.deepEqual(lint(SPELLS[id].def), [], id);
     assert.deepEqual(readEntry("spell", SPELLS[id].def, {}).problems ?? [], [], id);

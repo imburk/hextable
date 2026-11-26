@@ -34,8 +34,21 @@ export function kill(s, t, ev) {
 }
 // A `cure` step: the conditions listed end on `t`, whatever put them there (a lasting effect's part
 // that held one is ended with it). One it does not have is passed over.
+// Two more words are not conditions (Greater Restoration; schema.js CURE_WORDS): `exhaustionLevel` lowers Exhaustion by one level (the condition ends at level 0, as a Long Rest does it), and `curse` ends every lasting
+// curse on `t` (a lasting effect of a spell whose choice is of a curse, Bestow Curse, that has a part on `t`), whole, taking off all it put on anyone; a curse the engine does not keep is the DM's, whose `manual` step says so.
 export function cure(s, t, list, ev) {
   for (const c of list) {
+    if (c === 'exhaustionLevel') {
+      const ex = t.cond.exhaustion;
+      if (!ex) continue;
+      if ((ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: t.id, cond: 'exhaustion', level: ex.level }); }
+      else cure(s, t, ['exhaustion'], ev);
+      continue;
+    }
+    if (c === 'curse') {
+      for (const fx of [...effectsOf(s)]) if (SPELLS[fx.spell]?.def.choice?.of === 'curse' && fx.parts.some((p) => !p.ended && p.target === t.id)) endEffect(s, ev, fx, `${t.name} was freed of the curse`);
+      continue;
+    }
     if (!t.cond[c]) continue;
     const fxId = t.cond[c].effect;
     delete t.cond[c];

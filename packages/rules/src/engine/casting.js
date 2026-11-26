@@ -85,8 +85,8 @@ function blockSpell(s, caster, spellId, targets, ev) {
 // Put the caster's choice where a spell's steps say "chosen".
 function chooseIn(steps, of, value) {
   const visit = (list) => {
-    // Bestow Curse: a step for another curse is no part of this cast (`ifChoice`), and one that is keeps nothing of the key.
-    if (of === 'curse') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else delete list[i].ifChoice; }
+    // Bestow Curse, Greater Restoration: a step for another value is no part of this cast (`ifChoice`), and one that is keeps nothing of the key.
+    if (of === 'curse' || of === 'affliction') for (let i = list.length - 1; i >= 0; i--) { if (list[i].ifChoice !== undefined && !list[i].ifChoice.includes(value)) list.splice(i, 1); else delete list[i].ifChoice; }
     for (const st of list) {
     const m = st.modifier;
     if (m?.scope && of !== 'damageType') for (const k of ['skill', 'ability']) if (m.scope[k] === 'chosen' && (k === of || (of === 'curse' && k === 'ability'))) m.scope[k] = value;
@@ -562,7 +562,7 @@ function castSpell(s, a, ctx, ev, item) {
 
     // A choice made in casting (Guidance's skill, Resistance's damage type): `a.choice`.
     const pick = sp.def.choice;
-    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
+    if (pick) (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : pick.of === 'affliction' ? `an affliction to end (${(pick.from ?? CHOICES.affliction).join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
     // A zone may spare creatures the caster names (Spirit Guardians): `a.spare`.
     const zoneDef = sp.def.zone;
     if (a.spare !== undefined) {

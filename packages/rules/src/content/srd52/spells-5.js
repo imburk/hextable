@@ -214,11 +214,20 @@ export const spells5 = [
     time: "action", range: "touch", components: ["v","s","m"], costly: true,
     duration: "instant", concentration: false, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"manual":"Greater Restoration: the caster touches a creature and removes one of: 1 Exhaustion level; the Charmed or Petrified condition; a curse, including attunement to a cursed magic item; any reduction to one of its ability scores; any reduction to its Hit Point maximum. The DM removes the chosen effect."}],
+    choice: {"of": "affliction"},
+    effects: [
+      {"cure": ["exhaustionLevel"], "ifChoice": ["exhaustion"]},
+      {"cure": ["charmed"], "ifChoice": ["charmed"]},
+      {"cure": ["petrified"], "ifChoice": ["petrified"]},
+      {"cure": ["curse"], "ifChoice": ["curse"]},
+      {"manual": "Greater Restoration (a curse): the engine ended the Bestow Curse effects on the creature. Any other curse on it, including its Attunement to a cursed magic item, is the DM's to end.", "ifChoice": ["curse"]},
+      {"manual": "Greater Restoration (an ability score): the DM removes one reduction to one of the creature's ability scores, as the caster chose. The engine keeps no such reduction.", "ifChoice": ["ability-score"]},
+      {"manual": "Greater Restoration (Hit Point maximum): the DM removes one reduction to the creature's Hit Point maximum. The engine keeps no such reduction.", "ifChoice": ["hit-point-maximum"]}
+    ],
     kinds: ["healing"],
     roll: "none",
-    tier: "manual", checked: true,
-    text: "A touched creature is cleansed of one lingering affliction: an exhaustion level, charm, petrification, a curse, or a reduction to an ability score or maximum hit points.",
+    tier: "assist", checked: true,
+    text: "A touched creature is cleansed of one lingering affliction, the one the caster chooses: one level of Exhaustion, the Charmed or Petrified condition (the engine ends it), a curse (the engine ends the Bestow Curse effects on it; any other curse and its attunement to a cursed item are the DM's), a reduction to an ability score or a reduction to the Hit Point maximum (the DM removes it).",
   },
   {
     id: "hallow", name: "Hallow", source: "SRD 5.2.1",
