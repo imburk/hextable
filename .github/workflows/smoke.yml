@@ -34,7 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     # homebrew reloads the page many times and takes about 11 minutes on main; the models (R12) add to what each load and frame costs in SwiftShader.
     # companions takes about 12 minutes on a free runner and went past 15 on a busy one (24 Nov, #735).
-    timeout-minutes: ${{ (matrix.pass == 'homebrew' || matrix.pass == 'companions') && 30 || 15 }}
+    # drawer's pass takes about 12.5 minutes on main; on #800 (26 Nov) a slow Chromium install (2:26, usually 0:17) pushed the job past 15 twice.
+    timeout-minutes: ${{ (matrix.pass == 'homebrew' || matrix.pass == 'companions') && 30 || matrix.pass == 'drawer' && 22 || 15 }}
     strategy:
       fail-fast: false
       matrix:
