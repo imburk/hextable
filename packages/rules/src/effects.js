@@ -138,6 +138,7 @@ function summarise(def) {
   if (kind === 'condition') return { short: step.condition, long: `Target is ${step.condition}` };
   if (kind === 'summon' && step.on === 'corpse') return { short: 'summon', long: `Raises ${step.count && step.count !== 1 ? 'corpses' : 'a corpse'} as undead under the caster's control for 24 hours` };
   if (kind === 'summon') return { short: 'summon', long: `Summons ${step.count && step.count !== 1 ? 'creatures' : 'a creature'} for ${def.duration === 'instant' ? 'as long as it lasts' : `up to ${def.duration}`}${def.concentration ? ', Concentration' : ''}` };
+  if (kind === 'sense') return { short: `sense ${step.sense}`, long: `Senses ${step.sense === 'traps' ? 'traps' : 'magic'} within ${step.feet} feet (the DM is told, and tells the player)` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
   if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} back to life with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'}` };
   if (kind === 'dispel') return { short: 'end spells', long: `Ends spells of level ${step.dispel} or lower on it; a check against DC ${step.dc} plus the level for each higher one` };
@@ -565,6 +566,7 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
+  if (kind === 'sense') return kit.sense(s, t, step, f, ev);
   if (kind === 'dispel') return kit.dispel(s, t, step, ev, f);
   if (kind === 'revive') return kit.revive(s, t, step, ev, f);
   if (kind === 'endSpell') return kit.endSpell(s, f, ev);

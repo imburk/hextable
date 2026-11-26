@@ -270,7 +270,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of'], reveal: [], resource: [], counter: [], teleport: ['see'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when'];
 
@@ -1216,6 +1216,14 @@ export const STEP_SENTENCES = {
     say(`${Who} comes back to life with ${st.revive} Hit Point${st.revive === 1 ? '' : 's'} if it died no more than ${st.within === 1 ? 'a minute' : `${st.within} minutes`} ago by the game clock (a round of a fight is a tenth of a minute); a creature that died longer ago is an invalid target: the slot is spent and nothing happens.`);
     this.line('A body whose time of death the engine did not keep (it died in a game saved before the engine kept it) is not revived: the DM is told and judges. A revived creature is told to the DM with a note that the engine cannot tell whether it died of old age or lacks body parts, which the spell does not undo, nor the diamond the spell consumes.', depth + 1);
     return this.dm('Step ' + at + ': whether the creature died of old age or lacks body parts, and the consumed diamond.');
+  },
+  // engine/world.js `sense`: the DM alone is told.
+  sense({ st, at, say }) {
+    if (isInt(st.feet)) this.num(`${at}.feet`, st.feet, 'feet'); else this.bad(`Step ${at}: the sense step has no whole number of feet.`);
+    if (st.sense === 'traps') say(`The engine works out which traps (map objects made to cause danger) lie within ${st.feet} feet in the caster's line of sight and what kind of danger each is, without where, and tells the DM alone to pass on.`);
+    else if (st.sense === 'magic') say(`The engine lists the magic it keeps track of within ${st.feet} feet and not behind total cover (magic items carried or lying in a pile, spells running on creatures), with each one's distance, and tells the DM alone to pass on.`);
+    else this.bad(`Step ${at}: the sense step names nothing the engine can sense.`);
+    return this.dm(`Step ${at}: telling the player, and anything the engine does not keep track of.`);
   },
   stabilize({ Who, say }) { say(`${Who} becomes Stable if it has 0 Hit Points and is not dead (its Death Saving Throw counts start again). Any other creature is left as it is, and the table is told.`); },
   // engine/rolls.js `shine`: the light is carried by the creature the step works on, for as long as the lasting effect runs.
