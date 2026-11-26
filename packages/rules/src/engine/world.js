@@ -1304,6 +1304,7 @@ export function creatures(s, e, name, { range, harmful, repeat, within, most, sp
   if (!repeat && new Set(ids).size !== ids.length) fail(`${name} can't target the same creature twice.`);
   const out = ids.map((id) => ent(s, id));
   for (const t of out) {
+    t.melded && t.id !== e.id && fail('No such creature.');      // merged with stone (Meld into Stone): nothing is there to name, and the refusal says what it says for an id that is no creature
     if (dead) bodyFor(s, t, name);
     else !t.dead || fail(`${t.name} is dead.`);
     if (harmful && t.id === e.id) fail(`${name} needs another target.`);

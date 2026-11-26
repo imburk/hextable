@@ -270,8 +270,8 @@ function expelMelded(s, cut, f, ev) {
     else { delete t.melded; ON.meldEnd(s, ev, t, m); }
     const r = roll(s, '6d6');
     ev.push({ type: 'note', id: t.id, text: `Expelled from the stone: 6d6 Force damage (${r.total})` });
+    condition(s, t, 'prone', ev);                                      // first: one taken to 0 Hit Points by the damage is Prone as well
     damage(s, t, r.total, 'force', ev);
-    condition(s, t, 'prone', ev);
   }
 }
 
@@ -293,7 +293,7 @@ export function startEncounter(s, center, ev, radius = ARENA_RADIUS, walked = nu
   for (const h of G.range(center, radius)) if (hasColumn(s.map, h)) arena[col(h)] = 1;    // a fight locks whole columns, every level
   catchUp(s, arena, walked, ev);                         // those walking with the party are with it
   // Whatever is somewhere the party has not seen stays out of it until that place is revealed.
-  const who = living(s).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
+  const who = Object.values(s.entities).filter((e) => !e.dead).filter((e) => arena[col(e.pos)] && (e.side === 'party' || !unseenAt(s.map, e.pos)));
   if (!who.length) fail('Nobody is close enough to fight here.');
   if (!who.some((e) => e.side === 'party')) fail('No party creature is in range of the fight.');   // foes alone would end it at once as a defeat (#771)
   for (const e of who) { if (!opts?.keep?.has(e.id)) e.reactionUsed = confusedNow(s, e); reveal(s, e, ev); }   // nobody fights unseen
