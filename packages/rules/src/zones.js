@@ -39,7 +39,7 @@ export function startZone(s, fx, { def, area, holder, hexes, origin, spare = [],
 // Is creature `t` inside this zone now? Spared creatures and the dead never are.
 export function holds(s, fx, t) {
   const z = fx.zone;
-  if (!t || t.dead || z.spare.includes(t.id)) return false;
+  if (!t || t.dead || t.melded || z.spare.includes(t.id)) return false;      // merged with stone (Meld into Stone): in no zone
   const n = z.area.size / FT, G = gridOf(s.map);
   // On squares (docs/specs/square-grid.md, S7): an Emanation is laid out afresh round its creature's
   // whole space by the table rule `areaFill`, as engine/world.js lays it out when it is cast, and a

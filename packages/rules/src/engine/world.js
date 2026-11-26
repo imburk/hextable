@@ -967,7 +967,7 @@ export function aimWall(s, e, name, range, w, ctx) {
 // centred on the point and moved to lie inside the segment (so a cut near an end is still a whole five feet); a segment of five feet or less goes
 // whole. Every other `wall`-kind segment or undiscovered door lying along the same line and overlapping the window is cut by it too (what is left of
 // one is a wall of its own), so the gap is open whatever it was drawn as: players see the same walls either way. The DM alone is told (what the engine
-// cannot tell: the wall's material; a secret door that went with it). Returns false if nothing was there to cut.
+// cannot tell: the wall's material; a secret door that went with it). Returns false if nothing was there to cut, else the stretch taken out.
 export function cutWall(s, src, feet, f, ev) {
   const G = gridOf(s.map), P = [src.x, src.y], tell = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text });
   const segs = wallSegments(s, src.level), T = segs.find((x) => x.id === src.target && x.kind === 'wall');
@@ -1001,7 +1001,7 @@ export function cutWall(s, src, feet, f, ev) {
   }
   editMap(s, ops, ev, { footing: false });      // a cut of wall never changes what anyone stands on, and a refusal here must not name a creature
   tell(`${f.src.name} took out ${Math.min(feet, L)} feet of the wall at that point, as if shaped from stone. The engine does not know what a wall is made of: if it is not stone, undo this.${doors.length ? ` An undiscovered secret door stood in the stretch (${doors.join(', ')}) and was cut away with it; the players were told nothing of it.` : ''}`);
-  return true;
+  return { level: src.level, a: [A[0] + u[0] * lo, A[1] + u[1] * lo], b: [A[0] + u[0] * hi, A[1] + u[1] * hi] };      // the stretch taken out (a creature merged with the stone near it is expelled: resolve.js, expelMelded)
 }
 
 // A `sense` step (Find Traps, Detect Magic; docs/specs/rules-expansion.md, "Build notes: wave 4 part 2"): what the caster `e` would sense within

@@ -128,7 +128,7 @@ export function coverOf(s, from, target, others = []) {
   if (rules.creatureCover !== 'off' && G.dist(best.o, best.t) > 1) {
     const p = G.center(best.o), q = G.center(best.t), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     for (const c of others) {
-      if (c === from || c === target || c.dead || (c.id && (c.id === from.id || c.id === target.id)) || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
+      if (c === from || c === target || c.dead || c.melded || (c.id && (c.id === from.id || c.id === target.id)) || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
       for (const f of shapeOf(c, G).length === 1 ? [c.pos] : footprint(c, c.pos, G)) {
         const m = G.center(f), t = ((m[0] - p[0]) * (q[0] - p[0]) + (m[1] - p[1]) * (q[1] - p[1])) / (len * len);
         if (t > 0.05 && t < 0.95 && Math.hypot(m[0] - (p[0] + t * (q[0] - p[0])), m[1] - (p[1] + t * (q[1] - p[1]))) < 1.5) return 'half';
@@ -337,6 +337,8 @@ export function lightAt(s, pos, sources = lightSources(s)) {
 export const hiddenFrom = (target, viewer) => !!target.hiding && target.side !== viewer.side;
 export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) {
   if (viewer === target || (viewer.id && viewer.id === target.id)) return { see: 'yes' };
+  // Merged with stone (Meld into Stone): it sees nothing outside, and nothing of it is visible or otherwise detectable by nonmagical senses (Truesight is the DM's).
+  if (viewer.melded || target.melded) return { see: 'no', why: 'merged with stone' };
   const senses = sensesOf(s, viewer), d = apart(s, viewer, target) * FT;
   if ((senses.blindsight ?? 0) >= d && coverOf(s, viewer, target) !== 'total') return { see: 'yes' };
   viewer = lift(s, viewer); target = lift(s, target);

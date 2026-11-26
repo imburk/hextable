@@ -32,6 +32,7 @@ export function classify(state, id) {
   const e = state.entities[id];
   if (!e) return 'hidden';
   if (e.side === 'party') return 'open';
+  if (e.melded) return 'hidden';                             // merged with stone (Meld into Stone): known to nobody, as if it were not there
   if (concealed(state.map, e)) return 'hidden';             // hidden by the DM, hiding, or somewhere not yet seen
   // Under the los and light table rules, also any creature nobody in the party can see now.
   return sightRule(state) !== 'rooms' && !partyView(state).creatures.has(id) ? 'hidden' : 'seen';
