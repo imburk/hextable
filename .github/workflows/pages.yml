@@ -15,11 +15,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # Two jobs, as GitHub's own Pages template has them: the deploy job starts only after the build job has finished and its
+  # artifact is stored. In one job, deploy-pages@v4 often could not find the artifact just uploaded ("No artifacts named
+  # github-pages", 25-26 Nov, also with upload-pages-artifact v4: #804, #803).
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,9 +30,15 @@ jobs:
       - run: npm run build
         env:
           HEXTABLE_FEEDBACK_URL: https://hextable-production.up.railway.app
-      # v3 artifacts were not found by deploy-pages@v4 in 3 of 4 runs (25-26 Nov: "No artifacts named github-pages"). v4 leaves dotfiles out; dist has none.
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
