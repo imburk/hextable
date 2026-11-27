@@ -96,7 +96,7 @@ export const spells3 = [
     kinds: ["damage"],
     roll: "save:dex",
     tier: "assist", checked: true,
-    text: "A Large pack of spectral, intangible animals (the caster picks wolves, serpents, birds or the like: only a name) fills a space the caster can see within 60 feet and lasts up to 10 minutes of Concentration. It is not a creature: it has no Hit Points, cannot be targeted and blocks nothing. A foe of the caster that the caster can see makes a Dexterity save when the pack moves to within 10 feet of it, when it enters a space within 10 feet of the pack, and when it ends its turn there, at most once a turn, taking 3d10 slashing damage on a failure and none on a success (1d10 more per slot level above 3). A creature on the caster's side, one the caster cannot see, or one the caster names as spared when casting is never made to save. The caster has Advantage on Strength saves within 5 feet of the pack, and when it moves on its turn it can move the pack up to 30 feet to an unoccupied space it can see (the moveZone action, which costs nothing).",
+    text: "A Large pack of intangible spirit animals fills a space the caster can see within 60 feet for up to 10 minutes of Concentration; it is no creature and blocks nothing. A foe the caster can see makes a Dexterity save when the pack moves within 10 feet of it, or it enters or ends its turn there, once a turn: 3d10 slashing on a failure (1d10 more per slot above 3). The caster has Advantage on Strength saves within 5 feet of it and moves it 30 feet when it moves (moveZone). The DM judges the rest."
   },
   {
     id: "counterspell", name: "Counterspell", source: "SRD 5.2.1",
@@ -254,7 +254,7 @@ export const spells3 = [
     kinds: ["control", "utility"],
     roll: "none",
     tier: "assist", checked: true,
-    text: "A 10-foot-radius, 20-foot-tall cylinder centred on a point on the ground within 10 feet lasts 1 hour (1 minute to cast; salt and powdered silver worth 100+ GP, consumed), one more hour per slot level above 3. The caster picks one or more of Celestials, Elementals, Fey, Fiends and Undead, and may reverse it. A creature of a chosen type cannot willingly walk, fly or climb into the cylinder (forced movement still takes it in), must succeed on a Charisma save (the caster's spell save DC) to teleport into it, has Disadvantage on attack rolls against targets inside, and cannot give a target inside the Charmed or Frightened condition (possession is the DM's). Reversed, the same holds the other way: such a creature cannot willingly leave, must save to teleport out, and the protection is for targets outside.",
+    text: "A 10-foot-radius, 20-foot-tall cylinder on the ground within 10 feet lasts 1 hour (+1 per slot level above 3; costly material, consumed). The caster picks types (Celestial, Elemental, Fey, Fiend, Undead) and may reverse it. A creature of a chosen type cannot willingly walk, fly or climb in, must pass a Charisma save to teleport in, has Disadvantage attacking targets inside, and cannot Charm or Frighten them. Reversed: it cannot leave, and targets outside are the protected ones. Possession and the rest are the DM's."
   },
   {
     id: "major-image", name: "Major Image", source: "SRD 5.2.1",
