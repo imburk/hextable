@@ -351,7 +351,7 @@ so. The answer is `react` with `take: 'legendary-resistance'` or `null`.
 
 **When a failure matters** (one pure function, `failureMatters`, shared with the AI of Decision 8):
 
-Beej's reading of leg-2 and leg-3, for the owner to confirm: every failed save can be resisted
+Beej's reading of leg-2 and leg-3, confirmed by the owner (leg-11): every failed save can be resisted
 (leg-3), and a failed save *matters* when failing it changes something for this monster. One that
 changes nothing never spends a use.
 
@@ -608,7 +608,7 @@ a decision, and the sections named were changed to follow it.
   per creature per window. See Decision 3.
 - **leg-2. Legendary Resistance by default.** Owner, 23 Nov: "I'm not sure what you mean by only
   when it matters. If you mean maybe they have natural resistance to a fireball, then yes, only
-  when it matters." Beej's reading, for the owner to confirm: the default for each monster is "Only
+  when it matters." Beej's reading, confirmed by the owner (leg-11, and leg-10's note): the default for each monster is "Only
   when it matters" (not "Ask me"), and with leg-3 a failed save matters when failing it changes
   something for the monster (damage it does not resist or ignore, a condition it is not immune to,
   and the like); a failed save that changes nothing never spends a use. The DM can still switch a
@@ -630,11 +630,13 @@ a decision, and the sections named were changed to follow it.
   ahead of L1b and before dm-helper's sharper tactics. See the build plan's Order.
 - **leg-10. A forgotten legendary action.** Owner, 23 Nov: "This should be prompted at the end of
   every player's turn so not sure how it becomes late. I wouldn't want to undo someone else's
-  turn." Beej's reading, for the owner to confirm: the game offers a legendary action after every
+  turn." Beej's reading, confirmed by the owner (leg-11, and leg-10's note): the game offers a legendary action after every
   other creature's turn, so none is ever late; there is no late legendary action, and the fix is
   never an undo across another player's turn. The old answer (undo back to the window) is dropped.
   See Decision 3.
 
-## Still to confirm with the owner
+## Confirmed by the owner
 
-Nothing was decided by this revision. Two of the owner's answers rest on a reading that was marked "for the owner to confirm" and has not been confirmed: **leg-2** (that "only when it matters" means a failure that changes something for the monster, Decision 6's `matters` list) and **leg-10** (that no legendary action is ever late). The list in `failureMatters` (a condition, Concentration, `kill`/`teleport`/`set`/`summon`/form, damage not resisted) and the rule that an unreadable `manual` step is asked, not guessed, are the draft's, not the owner's. L2 should not start before leg-2 is confirmed.
+- **leg-2** (and leg-3): confirmed on the board as leg-11 ("A failed save that changes nothing, a Fireball on a fire-immune monster, never spends Legendary Resistance?": "Yes, that's what I meant"). "Only when it matters" means only when failing would actually do something to the monster; any such failed save counts.
+- **leg-10**: the owner's note ("This should be prompted at the end of every player's turn so not sure how it becomes late. I wouldn't want to undo someone else's turn") settles it: a window is offered after every other creature's turn, so none is ever late, and no fix-up undoes another creature's turn.
+- Still the draft's own, to be shown to the owner when L2 is built: the exact `failureMatters` list (a condition, Concentration, `kill`/`teleport`/`set`/`summon`/form, damage not resisted) and the rule that an unreadable `manual` step is asked, not guessed.
