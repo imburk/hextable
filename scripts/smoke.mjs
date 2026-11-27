@@ -88,6 +88,7 @@ const REGISTRY = {
   meld: ['meld'],
   menuclose: ['menuclose'],
   editorbar: ['editorbar'],
+  water: ['water'],
   menushift: ['menushift'],
   seating: ['seating'],
   bringchar: ['bringchar'],

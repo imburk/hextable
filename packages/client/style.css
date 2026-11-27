@@ -385,3 +385,11 @@ body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet se
 #say-form select { min-height: 44px; max-width: 9.5em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; }
 #say-form input { flex: 1; min-width: 0; min-height: 44px; }
 #say-form button { min-height: 44px; }
+/* The DM's water and tides (water.js): thumb-sized controls, the numbers beside their labels. */
+#dm-water .row { flex-wrap: wrap; gap: 8px; align-items: center; }
+#dm-water button, #dm-water select, #dm-water input { min-height: 44px; }
+#dm-water .water-num { display: inline-flex; align-items: center; gap: 6px; }
+#dm-water .water-num input { width: 5.5em; }
+#dm-water .req { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; }
+#dm-water h4 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+#dm-water #water-says { color: var(--bad, #c0392b); }
