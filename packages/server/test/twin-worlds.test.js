@@ -1544,3 +1544,19 @@ test("enlarge: a Large fighter growing into the spaces of hidden creatures (all 
   for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
   assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it grew (the players are sent the new size)");
 });
+
+// ---- review of #832: a non-party caster, and a DM-hidden Daylight caster ----
+const wait1 = [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } }];
+test("enlarge: a visible foe enlarging itself next to hidden creatures is sent the same as with bare cells (room is judged on what the players know)", () => {
+  const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+  const setup = (w) => { seeInvisibleSetup(w); w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4, r: 0 }, name: "Shaman" }); Object.assign(byName(w, "Shaman"), { size: "medium", hp: 500, maxHp: 500, spells: ["enlarge-reduce"], slots: { 2: 3 }, slotsMax: { 2: 3 } }); };
+  const script = { players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: (w) => ({ type: "cast", actor: byName(w, "Shaman").id, spell: "enlarge-reduce", target: byName(w, "Shaman").id, choice: "enlarge", slot: 2 }) }, ...wait1] };
+  twin(script, { hide: (w) => ring.forEach(([dq, dr], i) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 4 + dq, r: dr }, name: `Lurker${i}`, hidden: true })), plain: (w) => ring.forEach(([dq, dr]) => burn(w, { q: 12 + dq, r: dr - 6 })) });
+});
+test("daylight: a DM-hidden caster's sphere lights nothing the players are sent (the cast is not public either)", () => {
+  const script = { players: ["Pat", "Sam"], setup: darkvisionSetup, steps: wait1 };
+  twin(script, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 10, r: 0 }, name: "Mage", hidden: true }); Object.assign(byName(w, "Mage"), { hp: 500, maxHp: 500, spells: ["daylight"], slots: { 3: 3 }, slotsMax: { 3: 3 } }); w.must({ type: "cast", actor: byName(w, "Mage").id, spell: "daylight", hex: { q: 8, r: 0 }, slot: 3 }); },
+    plain: (w) => burn(w, { q: 10, r: 0 }),
+  });
+});

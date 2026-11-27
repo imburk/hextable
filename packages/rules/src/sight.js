@@ -290,7 +290,7 @@ export function ambientAt(map, pos) {
 }
 // Everything giving light: things on the map in a state that is lit, and creatures carrying a light.
 // `party: true` builds what the party's view is lit by: the light of a creature the DM keeps hidden from the players (`hidden`, not of the party)
-// is left out, so a hidden foe's torch or Produce Flame lights nothing they are sent (review of #830); a lit sphere of a spell (Daylight) is kept: the cast is public. The engine's own judgements keep every light.
+// is left out, so a hidden foe's torch or Produce Flame lights nothing they are sent (review of #830); so is a lit sphere (Daylight) of such a creature. The engine's own judgements keep every light.
 export function lightSources(s, { party = false } = {}) {
   const out = [];
   for (const o of s.map.objects) {
@@ -300,7 +300,7 @@ export function lightSources(s, { party = false } = {}) {
   for (const e of Object.values(s.entities)) if (e.light && (e.light.bright > 0 || e.light.dim > 0) && !(party && e.hidden && e.side !== 'party')) out.push({ pos: e.pos, bright: e.light.bright, dim: e.light.dim, id: e.id });
   // A lasting spell's lit sphere (Daylight: terrain.js, `terrain.light`): Bright Light throughout the sphere, Dim Light that far beyond, held at the point it was laid out round.
   // It is cast where everyone sees it, so the caster being hidden from the players does not leave it out (`party` leaves out only a hidden creature's own light).
-  for (const fx of terrainsOf(s)) if (fx.terrain.light) out.push({ pos: fx.terrain.origin, bright: fx.terrain.area.size, dim: fx.terrain.light, fx: fx.id });
+  for (const fx of terrainsOf(s)) if (fx.terrain.light && !(party && s.entities[fx.source]?.hidden && s.entities[fx.source].side !== 'party')) out.push({ pos: fx.terrain.origin, bright: fx.terrain.area.size, dim: fx.terrain.light, fx: fx.id });
   return out;
 }
 // What one source gives a place: 0, 1 (dim) or 2 (bright). Kept per source and position, and thrown

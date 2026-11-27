@@ -567,7 +567,8 @@ export function dealt(s, e, t, parts, sit, crit) {
   if (!e || e.object) return parts;
   const m = modifiers(s, e, 'damage.dealt', { attacker: e, target: t, ...sit }, 'attacker');
   if (!m.dealt.length) return parts;
-  const out = parts.map((p) => ({ ...p }));
+  const out = parts.map((p) => ({ ...p })), first = out[0]?.amount ?? 0;
+  let floor = 0;
   for (const x of m.dealt) {
     // `once`: once on each of its own turns (Divine Strike, Primal Strike); outside a fight there are no turns.
     if (x.once && s.encounter) {
@@ -581,10 +582,13 @@ export function dealt(s, e, t, parts, sit, crit) {
     if (x.types) out.push({ amount: Math.max(0, n), type: x.types.length > 1 ? bestType(s, t, x.types) : x.types[0], from: x.name, dice, bonus, by: e.id });
     else if (out.length) {
       const p = out[0];
-      p.amount = Math.max(Math.min(x.atLeast ?? 0, p.amount), p.amount + n);        // `atLeast` (Reduce): a part is brought down to 1, not to nothing
+      p.amount = Math.max(0, p.amount + n);
+      if (x.atLeast) floor = Math.max(floor, x.atLeast);        // `atLeast` (Reduce): the floor is on the total, applied after every add (below)
       if (p.dice) { p.dice = [...p.dice, ...dice]; p.bonus = (p.bonus ?? 0) + bonus; }
     }
   }
+  // "This can't reduce the damage below 1": the first part ends at least at 1 (or at what it was, if that was less), whatever order the adds came in. A critical hit doubles the dice of the -1d4 as it does any damage dice.
+  if (floor && out.length) out[0].amount = Math.max(out[0].amount, Math.min(floor, first));
   return out;
 }
 

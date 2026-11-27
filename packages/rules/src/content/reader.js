@@ -724,7 +724,7 @@ class Reading {
     }
     if (t.light !== undefined) {
       this.num('terrain.light', t.light, 'feet');
-      this.line(`The area is lit as if by a light held at its centre for as long as the spell lasts: Bright Light throughout, and Dim Light ${t.light} feet beyond it. The light is cast where everyone sees it, even by a caster the DM keeps hidden.`);
+      this.line(`The area is lit as if by a light held at its centre for as long as the spell lasts: Bright Light throughout, and Dim Light ${t.light} feet beyond it. A caster the DM keeps hidden lights nothing the players are sent.`);
       if (!what.length) return;
     }
     if (!what.length) return this.bad('`terrain` makes the area neither difficult, obscured, silent nor lit.');

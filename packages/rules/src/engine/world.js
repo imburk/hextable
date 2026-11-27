@@ -677,14 +677,14 @@ export function roomAt(s, e, to) {
 
 // ---------- size changes (a `resize` step: Enlarge/Reduce) ----------
 // What stands in the way of a creature at a size (`body`) where it is: the first of the others whose space it would be in, judged on what the caster's side knows. A creature the DM keeps
-// hidden, or one the party has no way to know of, is not counted when the caster is of the party, so that neither a refusal nor a smaller result tells the players it is there; the DM is told
-// of it instead (`told`). A caster of another side judges every creature.
+// hidden, or one the party has no way to know of, is never counted, whoever casts (a visible foe's growth is sent to the players too), so that neither a refusal nor a smaller result tells the players it is there; the DM is told
+// of it instead (`told`). 
 function inTheWay(s, t, body, caster) {
   const G = gridOf(s.map), told = [];
   let found = null;
   for (const o of living(s)) {
     if (o.id === t.id || !o.pos || !overlapAt(o, o.pos, body, t.pos, G)) continue;
-    if (caster?.side === 'party' && o.side !== 'party' && (o.hidden || unknown(s, o))) { told.push(o); continue; }
+    if (o.side !== 'party' && (o.hidden || unknown(s, o))) { told.push(o); continue; }
     found ??= o;
   }
   return { found, told };

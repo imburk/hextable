@@ -69,13 +69,15 @@ test("Daylight: the party's view follows the cast and the end (no stale cache)",
   assert.ok(!partyView(s).creatures.has(g.id), "after it ends");
 });
 
-test("Daylight: a caster the DM keeps hidden still lights the players' view (the cast is public)", () => {
+test("Daylight: a DM-hidden caster's sphere lights nothing in the players' view, but the engine's own judgement keeps it (as a hidden creature's carried light, W66)", () => {
   const s = field();
   dark(s);
   s.entities.cleric.hidden = true;
+  s.entities.cleric.side = "foe";
   const g = spawn(s, "goblin-warrior", 8, 0);
   ok(apply(s, { type: "cast", actor: "cleric", spell: "daylight", hex: { q: 8, r: 0 }, slot: 3 }, DM));
-  assert.ok(partyView(s).creatures.has(g.id));
+  assert.ok(!partyView(s).creatures.has(g.id), "the players' view is not lit by it");
+  assert.equal(lightAt(s, at(9)), "bright", "the engine's own judgement keeps the light");
 });
 
 test("Daylight: a DM-hidden creature in the sphere stays hidden (the light shows, it does not find)", () => {
