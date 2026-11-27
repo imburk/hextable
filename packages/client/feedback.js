@@ -61,7 +61,7 @@ export function createScrubber(monsterName = (tpl) => MONSTERS[tpl]?.name) {
 export const LINE_KINDS = {
   encounterStart: 'engine', encounterEnd: 'engine', turn: 'engine', joined: 'engine', attack: 'engine', damage: 'engine', heal: 'engine', cast: 'engine', act: 'engine',
   recharge: 'engine', save: 'engine', down: 'engine', died: 'engine', deathSave: 'engine', std: 'engine', cond: 'engine', condEnd: 'engine', manual: 'engine',
-  effectStart: 'engine', effectEnd: 'engine', concentration: 'engine', stood: 'engine', time: 'engine', rest: 'engine', tempHp: 'engine', spawned: 'engine',
+  effectStart: 'engine', zoneMoved: 'engine', effectEnd: 'engine', concentration: 'engine', stood: 'engine', time: 'engine', rest: 'engine', tempHp: 'engine', spawned: 'engine',
   summoned: 'engine', bonded: 'engine', unbonded: 'engine', companion: 'engine', vanished: 'engine', fell: 'engine', size: 'engine', speed: 'engine',
   revealed: 'engine', concealed: 'engine', hid: 'engine', unhidden: 'engine', light: 'engine', follow: 'engine', formation: 'engine', marchingOrder: 'engine',
   rewound: 'engine', levelReady: 'engine', conclusionSkipped: 'engine', conclusionReady: 'engine', scoresRolled: 'engine', hpRolled: 'engine', hpRerolled: 'engine', scoreRerolled: 'engine', xp: 'engine', conclusionEdited: 'engine',

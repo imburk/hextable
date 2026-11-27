@@ -6,7 +6,7 @@ import { reactionsHtml, bindReactions } from './reactionsheet.js';
 import { featuresHtml, initShortRest } from './features.js';
 import { objectsFor, objectAt, objectOptions, objectWords, isObjectAim } from './objectaim.js';
 import { wallsFor, wallAt, wallOptions, stoneWords, wallArg, isWallAim, wallNeeded } from './wallpick.js';
-import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers } from './wallaim.js';
+import { wallTap, wallToward, towardArg, wallWords, isWall, rollMode, rollWords, rollAct, rollers, isWard, wardKinds, wardToggle, wardArg, wardWords, wardOptions, reverseOptions } from './wallaim.js';
 import { leapState } from './leapui.js';
 import { moveOptions, acShown, current, inFight, up, hostile, targetsFor, areaHexes, areaTargets, spellStats, clockText, mod, recall, passive, aloft, FT, fromPool, attacksLeft, actionSpent, ownerOf, BOND_KINDS, apply } from './shared/engine.js';
 import { actionProfile, rangeAt, targetCount } from './shared/effects.js';
@@ -476,6 +476,7 @@ function words(ev) {
     case 'cond': return [ev.cond === 'prone' ? `${n(ev.id)} is knocked Prone.` : `${n(ev.id)} ${conditionPhrase(ev.cond)}${ev.level ? ` (level ${ev.level})` : ''}.`];
     case 'condEnd': return [ev.cond === 'grappled' ? heldEndText(ev, n) : `${n(ev.id)} no longer ${conditionPhrase(ev.cond)}.`];
     case 'manual': return [`${ev.name}: ${ev.text}`, 'head'];
+    case 'zoneMoved': return [`${n(ev.by)} moves ${ev.name}${ev.met ? ` into ${n(ev.met)}` : ''}.`];
     case 'effectStart': return [`${ev.name} takes hold${ev.conc ? ` (${n(ev.source)} is concentrating)` : ''}: ${ev.lasts}.`];
     case 'effectEnd': return [`${ev.name} ends: ${ev.why}.`];
     case 'concentration': return [`${n(ev.id)} rolls to keep Concentration on ${ev.name}: ${ev.total} vs DC ${ev.dc}. ${ev.success ? 'Held.' : 'Lost.'}`];
@@ -730,7 +731,7 @@ function startSpell(e, id, armed) {
   const sp = SPELLS[id];
   if (isSummon(id)) { if (armed) return setMode(MOVE); foldMenu(); return CP.openChooser(e, id); }       // a summon asks for its picks first (companions.js)
   if (sp.aim === 'self' || sp.aim === 'none') { if (armed) setMode(MOVE); else selfCast(e, id); }
-  else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [] });
+  else setMode(armed ? MOVE : { kind: 'spell', id, aim: null, keep: !!sp.area, picked: [], ...(isWard(sp) ? { wards: [], reverse: false } : {}) });
 }
 // A choice made in casting (Guidance's skill, Resistance's damage type): a menu beside the hint.
 const choiceLabel = (of, v) => (of === 'ability' ? v.toUpperCase() : v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
@@ -741,10 +742,12 @@ const weaponsOf = (e, sp) => { const spec = imbueOf(sp); return e && spec ? fitt
 const holderOf = (sp) => (sp.aim === 'self' || sp.aim === 'none' ? selId : mode.holder ?? null);
 const choicesOf = (sp) => {
   if (imbueOf(sp)) { const h = holderOf(sp), list = h ? weaponsOf(S.entities[h], sp) : []; return list.length > 1 ? list.map((a) => a.id) : null; }
+  if (isWard(sp)) return null;       // Magic Circle's kinds are a list kept in `mode.wards`, not one pick (wallaim.js)
   return sp?.def.choice ? sp.def.choice.from ?? CHOICES[sp.def.choice.of] : null;
 };
 const weaponName = (id) => S.entities[holderOf(SPELLS[mode.id]) ?? selId]?.attacks?.find((a) => a.id === id)?.name ?? id;
 function chosen(sp, holder = null) {
+  if (isWard(sp)) return wardArg(sp, mode);
   if (imbueOf(sp)) {
     const list = weaponsOf(S.entities[holder ?? selId], sp).map((a) => a.id);
     if (list.length < 2) return {};
@@ -768,6 +771,10 @@ function choicesFor() {
   const groups = [], menu = !mode.item ? slotMenu(e, sp) : null;
   if (menu) groups.push({ id: 'slot', label: `Cast ${sp.name} at which level?`, options: slotOptions(e.slots, sp.level, menu, slotOf(e, sp)) });
   if (isObjectAim(sp)) { const offers = objectsFor(S, e, sp); if (offers.length) groups.push({ id: 'object', label: `Which object does ${sp.name} work on?`, options: objectOptions(offers, mode.object ?? null) }); }
+  if (isWard(sp)) {
+    groups.push({ id: 'ward', multi: true, label: `Which kinds of creature does ${sp.name} work against? (one or more)`, options: wardOptions(wardKinds(sp), mode.wards ?? []) });
+    groups.push({ id: 'reverse', multi: true, label: 'Which way round?', options: reverseOptions(mode.reverse) });
+  }
   const list = choicesOf(sp);
   if (list) {
     const now = list.includes(mode.choice) ? mode.choice : list[0];
@@ -786,6 +793,8 @@ function openChoices() {
 function chooseOption(group, value) {
   if (group === 'slot') mode.slot = +value;
   else if (group === 'pick') mode.choice = value;
+  else if (group === 'ward') { aimRefusal = null; mode.wards = wardToggle(mode.wards ?? [], value); }
+  else if (group === 'reverse') { aimRefusal = null; mode.reverse = !mode.reverse; }
   else if (group === 'object') { aimRefusal = null; mode.object = String(value); }
   else if (group === 'wall') { const o = wallsFor(S, S.entities[selId], SPELLS[mode.id]).find((x) => x.id === String(value)); if (!o) return; aimRefusal = null; mode.wall = { id: o.id, point: o.near }; }
   else return;
@@ -1062,7 +1071,7 @@ function refresh() {
       if (mode.kind === 'feature') hint = `${mode.name}: tap a creature`;
       if (mode.kind === 'fly') hint = flyAim(e, hl);
       if (mode.kind === 'leap') hint = gridWords(`Tap a hex to leap${mode.spell ? ' (Jump)' : ''}`, gridOf(S.map));
-      if (mode.kind === 'roll') hint = rollWords(mode.name, rollers(S, e).find((r) => r.id === mode.effect)?.feet ?? 30);
+      if (mode.kind === 'roll') hint = rollWords(mode.name, rollers(S, e).find((r) => r.id === mode.effect)?.feet ?? 30, !!mode.pack);
       if (mode.kind === 'action') ({ hint, go } = actionAim(e, hl));
       if (mode.kind === 'spell') {
         const sp = SPELLS[mode.id];
@@ -1098,6 +1107,7 @@ function refresh() {
           const named = sp.area.choose ? (mode.picked ?? []).map(name) : caught.map((x) => x.name);
           hint = wall ? wallWords(sp.name, mode, named) : aimed ? `${sp.name} ${sp.area.choose ? 'affects' : 'catches'} ${named.length ? named.join(', ') : 'nobody'}${mode.pinned ? `. ${aimedWords(gridOf(S.map))}` : ''}` : `${sp.name}: ${how}`;
           go = aimed && hexes.length > 0;
+          { const ask = isWard(sp) && aimed ? wardWords(sp, mode) : null; if (ask) { hint = ask; go = false; } }       // Magic Circle: at least one kind before the die confirms
           const far = reachAim(e, hl, sp.name, sp.area, sp.range);
           if (far) { hint = far; go = false; }
         } else {

@@ -14,7 +14,7 @@ import { tileAlongRay } from './tilepick.js';
 import { createGovernor, shadowLevels } from './governor.js';
 import { CONTENT } from './shared/content/index.js';
 import { Models, fit, makeBase, modelFor, modelsMode } from './models.js';
-import { BLOCK, THUMB, growFor, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, barFor, buildTerrain, buildWalls, cutSetFor, girth, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes } from './three-build.js';
+import { BLOCK, THUMB, growFor, blockBox, planeY, Builder, UNIT, arenaFlashCells, buildEdge, buildOverlay, barFor, buildTerrain, buildWalls, cutSetFor, girth, lightAt, makeBlob, makePawn, makeVeil, model, pawnHeight, sightSig, spot, stand, surfY, swingDoor, tileSig, zoneHexes, zoneLabel } from './three-build.js';
 
 const MARKS = { dying: '✚ Dying', prone: '▼ Prone', dodging: '◆ Dodging', following: '↪ Following' };
 const FLASH = 0.45, SHAKE = 0.5, RETRY_MS = 8000, HOLD_MAX = 4, SLAB = 0.35;
@@ -486,7 +486,7 @@ export class ThreeRenderer {
   }
   zonesAt(hex) {
     if (!hex || !this.state) return [];
-    return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map((fx) => fx.name);
+    return (this.state.effects ?? []).filter((fx) => { const zh = zoneHexes(this.state, fx); return zh?.hexes.some((h) => h.q === hex.q && h.r === hex.r); }).map(zoneLabel);
   }
   screenOf(hex, up = 0) { const w = this.#stand(hex); return this.C ? this.#project(this.C, w.x, w.y + up, w.z) : null; }       // `up`: drawing units above the floor (a rider's saddle)
   screenOfPawn(id, up = 0) { const a = this.actors.get(id); return a && this.C ? this.#project(this.C, a.x, a.y + up, a.z) : null; }       // where a pawn is drawn, `up` drawing units over its foot (the smoke script's, to tap a rider and a mount apart)

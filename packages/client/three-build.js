@@ -496,6 +496,38 @@ function drawFly(b, x, s, G, hl, th) {
   }
 }
 
+// The circle's name on the map: "Magic Circle (fey, undead), 1 hour" and "reversed" when it is. A pack's is its name alone.
+export const zoneLabel = (fx) => { const w = fx?.zone?.ward; return w ? `${fx.name} (${(w.types ?? []).join(', ')})${fx.lasts ? `, ${fx.lasts}` : ''}${w.reverse ? ', reversed' : ''}` : fx?.name; };
+// A Magic Circle (`zone.ward`): a ring of runes on the ground round the edge of its cells, in the theme's accent; a faint wash inside. A Conjure Animals pack (`zone.body`): a translucent
+// spectral shape on each cell of its own space, and its 10-ft reach shaded faintly. Nothing here is a model: plain flat shapes, and only what the view carried (a player is sent no zone shape).
+const accentOf = (th) => { const c = th.hl?.select ?? [1, 1, 1, 0.9]; return [c[0], c[1], c[2]]; };
+function drawHeld(b, G, s, th, fx, zh) {
+  const have = new Set(zh.hexes.map(cellCol)), rgb = accentOf(th), onGround = (h) => stand(s.map, { q: h.q, r: h.r, z: zh.at }).y;
+  if (fx.zone.ward) {
+    for (const h of zh.hexes) {
+      const w = G.toWorld(h), y = onGround(h) + 0.02, rim = G.neighbors(h).some((n) => !have.has(cellCol(n)));
+      b.flatHex(w.x, w.z, y, 0, 1.02, [...rgb, 0.07]);
+      if (!rim) continue;
+      b.flatHex(w.x, w.z, y + 0.004, 0.84, 0.94, [...rgb, 0.85]);       // the rune's ring
+      dashes(b, w.x, w.z, y + 0.008, 0.5, 0.66, [...rgb, 0.8]);       // and the marks inside it: a rune is never colour alone
+    }
+    return;
+  }
+  const body = new Set((fx.zone.body ?? []).map((k) => cellCol(cellParse(k))));
+  const ghost = [0.82, 0.9, 1];
+  for (const h of zh.hexes) {
+    if (body.has(cellCol(h))) continue;
+    const w = G.toWorld(h), y = onGround(h) + 0.015;
+    b.flatHex(w.x, w.z, y, 0, 1.0, [...ghost, 0.09]);
+  }
+  for (const k of body) {
+    const h = cellParse(k), w = G.toWorld(h), y = onGround(h) + 0.03;
+    b.flatHex(w.x, w.z, y, 0, 0.9, [...ghost, 0.3]);
+    b.flatHex(w.x, w.z, y + 0.004, 0.62, 0.9, [...ghost, 0.55]);
+    b.flatHex(w.x, w.z, y + 0.008, 0.22, 0.38, [...ghost, 0.7]);       // a shape inside the shape
+  }
+}
+
 // The overlay: what is marked on the board. The Builder returned carries `through`, a second Builder of the faint outlines that are
 // drawn through walls and floors (a plane cell behind a wall is not lost); it is empty unless a column or a plane is up.
 export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bars = [], barZ = 0 }) {
@@ -506,6 +538,7 @@ export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bar
   const at = (k) => G.toWorld(cellParse(k));
   for (const fx of s.effects ?? []) {
     const zh = zoneHexes(s, fx); if (!zh?.hexes.length) continue;
+    if (fx.zone.ward || fx.zone.body) { drawHeld(b, G, s, th, fx, zh); continue; }
     const t = zoneType(fx.zone.steps), rgb = th.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(cellCol));
     for (const h of zh.hexes) {
       const w = G.toWorld(h), y = stand(s.map, { q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = G.neighbors(h).some((n) => !have.has(cellCol(n)));
