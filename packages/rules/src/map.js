@@ -286,6 +286,7 @@ export const EDITS = {
     // A tile that stops being water drops its depth (a client that sends the old tile with a new type must not leave one on stone: the linter refuses it).
     if (tile) {
       const next = structuredClone(tile);
+      delete next.dry;                                  // the DM's paint is the new dry ground: a `dry` sent with it would bring the old one back (tides.js)
       if (next.t === 'water' && next.depth === undefined) next.depth = WATER_DEPTH.default;
       else if (next.t !== 'water') delete next.depth;
       l.tiles[col(at)] = next;

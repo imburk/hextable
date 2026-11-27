@@ -6,7 +6,8 @@ import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 import { lintMap, newMap } from "../src/map.js";
 import { setSurface } from "../src/tides.js";
-import { waterAt, submerged } from "../src/space.js";
+import { waterAt, submerged, footprint } from "../src/space.js";
+import { gridOf } from "../src/grid.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -188,4 +189,32 @@ test("a tide can be stopped, does not move outside a fight, and a falling tide d
   assert.equal(s.tides, undefined);
   assert.equal(s.map.levels[0].tiles["2,0"].t, "stone");
   assert.equal(s.map.levels[0].tiles["2,0"].h, -10);
+});
+
+test("lowering water brings a Large creature down to what holds its anchor, with no fall: the anchor's bed is deeper than the others'", () => {
+  const s = room();
+  const big = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 3, r: -2 } }, DM)).events.find((e) => e.type === "spawned").id;
+  ok(apply(s, { type: "setSize", actor: big, size: "large" }, DM));
+  const e = s.entities[big];
+  Object.assign(e, { hp: 500, maxHp: 500, pos: { q: 4, r: 1, z: 0 } });
+  const cells = footprint(e, e.pos, gridOf(s.map)).map((c) => `${c.q},${c.r}`);
+  assert.equal(cells[0], "4,1", "the anchor is the first cell of its footprint");
+  const lv = s.map.levels[0];
+  const tiles = { ...lv.tiles };
+  cells.forEach((k, i) => { tiles[k] = { t: "water", h: 0, depth: i === 0 ? 10 : 5 }; });
+  s.map = { ...s.map, levels: [{ ...lv, tiles }] };
+  const hp = e.hp, r = ok(apply(s, { type: "water", level: "g", cells, surface: -10 }, DM));
+  assert.equal(e.pos.z, -10, "it is on the anchor's bed, where the water went");
+  assert.equal(r.events.some((x) => x.type === "fell" || x.type === "damage" || x.type === "hit"), false, "no fall");
+  assert.equal(e.hp, hp);
+  assert.equal(e.cond.prone, undefined);
+});
+
+test("a mapEdit tile drops any `dry` it is sent: the DM's paint is the new dry ground", () => {
+  const s = room();
+  ok(apply(s, { type: "mapEdit", ops: [{ op: "tile", level: "g", at: { q: 2, r: 0 }, tile: { t: "grass", dry: { t: "stone" } } }] }, DM));
+  assert.deepEqual(s.map.levels[0].tiles["2,0"], { t: "grass" });
+  ok(apply(s, { type: "water", level: "g", cells: ["2,0"], surface: 5 }, DM));
+  ok(apply(s, { type: "water", level: "g", cells: ["2,0"], surface: 0 }, DM));
+  assert.equal(s.map.levels[0].tiles["2,0"].t, "grass");
 });

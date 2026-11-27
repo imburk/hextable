@@ -94,8 +94,11 @@ function carry(s, from, to, levelId, changed, ev) {
       if (nowTop > wasTop) { if (z === wasTop) up.push(nowTop); }
       else if (nowTop < wasTop && z > nowTop) down.push(nowTop);
     }
-    const next = up.length ? Math.max(...up) : down.length ? Math.max(...down) : z;
-    if (next === z || !ground(to, { q: e.pos.q, r: e.pos.r, z: next })) continue;
+    // Rising: the highest new surface under it. Lowering: the highest place under its footprint that holds its anchor up (the anchor cell's own new top at
+    // worst), so the gravity pass has nothing to do and the water lowers it with no fall.
+    const held = (n) => !!ground(to, { q: e.pos.q, r: e.pos.r, z: n });
+    const next = up.length ? Math.max(...up) : down.length ? Math.max(...down.filter(held), -Infinity) : z;
+    if (next === z || next === -Infinity || !held(next)) continue;
     e.pos = { q: e.pos.q, r: e.pos.r, z: next };
     moved.set(e.id, e.pos);
     ev.push({ type: 'moved', id: e.id, path: [{ ...e.pos }], water: true });
