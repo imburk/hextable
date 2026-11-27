@@ -1,14 +1,14 @@
 # Spec: legendary actions and Legendary Resistance
 
 Status: Draft, by an agent; the owner answered its ten questions on 23 November (see "The owner's answers" at the end). DEBT M5. Docs only: nothing here is
-built. Every rule is from `reference/srd52/srd52-flow.txt`; the numbers after a section name are its
+built. Checked against main on 27 November (state version 31): the code claims below are as of then, and the build plan was cut into smaller stages. Every rule is from `reference/srd52/srd52-flow.txt`; the numbers after a section name are its
 lines.
 
 It stands on the reactions and prompts machinery (`reactions.js`, the `react` handler in
-`engine.js`, `prompts.md` (on PR #694, not yet merged)), the turn order in `engine/resolve.js`, the monster
+`engine.js`, [`prompts.md`](prompts.md), built with #694), the turn order in `engine/resolve.js`, the monster
 brain (`ai.js`), [`homebrew.md`](homebrew.md), [`hidden-information.md`](hidden-information.md), and
 it shows in the places [`one-token-menu.md`](one-token-menu.md), the DM's to-do tray (#684,
-`dm-todo.md`) and `dm-helper.md` (PR #681, not yet merged) made.
+`dm-todo.md`) and `dm-helper.md` (PR #681, still open on 27 November, so not in `docs/specs`) made.
 
 ## In plain words
 
@@ -84,7 +84,7 @@ after its first slice, before sharper tactics.
 
 ## Where we are
 
-Read from the code at `d371fcbf` (21 November).
+Read from the code at `d371fcbf` (21 November), and checked again against main on 27 November: nothing of this spec was built meanwhile (the only `legendary` in `packages/rules/src` besides the SRD data is the to-do tray's pattern, the reader's pattern and the called save's note below).
 
 - **The data.** 30 SRD monsters have a trait `legendary-actions` and 32 a trait
   `legendary-resistance` (the balor and the pit fiend have only the second), all `assist`. Both are
@@ -95,16 +95,23 @@ Read from the code at `d371fcbf` (21 November).
 - **The to-do tray** (#684, built) makes a "You run" card for a monster whose block has a Legendary
   Actions or Legendary Resistance trait with nothing the engine reads, when it is added and at its
   first turn. It says that those cards stop by themselves when M5 gives the traits fields.
-- **A called save** (#694, open) puts a `manual` event to the DM alone when a creature with
-  Legendary Resistance fails it, and applies the failure. Nothing else looks at the trait.
+- **A called save** (#694, merged 22 November; `engine/dm.js`, the `call` handler) puts a `manual` event to the DM alone when a
+  creature whose template has the `legendary-resistance` trait fails it, and applies the failure. It reads the trait from
+  `CONTENT.monsters[t.tpl].traits`, so once the trait is taken out of the entry (Decision 1) this line must read
+  `e.legendary.resistance` instead. Nothing else looks at the trait.
 - **Turns.** `endTurn` (`engine/attacks.js`) runs `finishTurn` and then `advanceTurn`
   (`engine/resolve.js`), which steps to the next creature, rolls a dying creature's death save,
-  plays a turn set aside, and calls `beginTurn` (budget, Reaction back, recharge). There is no
-  moment between one turn's end and the next turn's start where anything can happen.
+  plays a turn set aside, and calls `beginTurn` (budget, Reaction back, recharge; a private function of `resolve.js`). `advanceTurn` is
+  also called from `engine/dm.js` (`stepAway`, a held or set-aside turn) and twice inside `resolve.js` (the start of a fight and
+  the end of a fall or a ride), so the window is opened inside `advanceTurn` and not at each caller. There is no
+  moment between one turn's end and the next turn's start where anything can happen. A new round starts inside the same
+  loop (`enc.round++`, `newRound`, `stepTides`, `roundStarted`), before the next creature is looked at.
 - **Questions.** `ask()` (`engine/shared.js`) stops an action and keeps it in `s.pending` until the
-  `react` answer re-runs it. For a creature the DM controls it does not stop: the DM is told by a
-  `manual` event and the action carries on (`reactions.js`, header: "monster turns and the AI never
-  stop on themselves").
+  `react` answer re-runs it. It returns `null`, and nothing waits, for a creature no player controls (`ownerOf`) or where
+  the action cannot pause (`RUN.canPause`); the DM is then told by a `manual` event and the action carries on
+  (`reactions.js`, header: "monster turns and the AI never stop on themselves"). `mayAsk` is in `reactions.js` (it
+  decides whether `apply()` takes the copy). `WHILE_WAITING` is in `reactions.js` too, and `engine.js` checks it in `apply()` beside `s.pending`.
+  There is no `askDM` yet.
 - **Off-turn actions.** A creature that is not the current one can act only as a Reaction, or move
   with the feet an Opportunity Attack's rider gave (`rmove`, `engine/movement.js`).
 
@@ -249,7 +256,7 @@ action, with the same events. A fight with no legendary creature is byte for byt
   tools that change nothing about whose turn it is (Damage, Heal, Condition, Set AC, Place, a
   called save, notes, handouts, the to-do tray's Done), and ending the fight. Anything else is
   refused before it changes anything: "Between turns: the DM is deciding on legendary actions."
-  (`BETWEEN_OK` beside `WHILE_WAITING` in `engine.js`.)
+  (`BETWEEN_OK` is defined beside `WHILE_WAITING` in `reactions.js` and checked in `apply()` in `engine.js`, next to the `s.pending` test.)
 - **One option per offered creature per window** (the reading the SRD's own words give and that
   our data already says: "one action can be taken after another creature's turn"; owner, 23 Nov,
   leg-1).
@@ -274,8 +281,8 @@ monsters share initiative is out of scope here.
 | **Incapacitated** | Not offered. Made Incapacitated during its own legendary action: the rest of that option is not made (the move stops; the attack is not made), and the use stays spent, with a note |
 | **The move part** | Walked by the engine's walk with a budget of its own (the half or full Speed of the option; `mode`), as the `rmove` feet are. If the walk stops short (an Opportunity Attack, a creature found), the attack is made only if its target is still in reach; else it is lost, with a note to the DM. The destination and the target are checked before anything moves, so a refused option changes nothing |
 | **End of the fight** | `between` goes; `acts` and `again` reset; `resisted` stays until a Long Rest |
-| **Undo, redo, rewind** | The window is part of `s.encounter`, so undo puts it back as it was: undo of a legendary action reopens the window with that creature offered again; undo of the `endTurn` that opened it takes the table back into that turn. `history.js` gets labels ("Verdigris: Pounce", "Skipped Verdigris's legendary action"). The timeline records the events, so `recall()` and an AI DM can read them |
-| **The DM-helper** (dm-helper.md) | A creature whose intention is Talk or Give up is never offered a harmful option by the AI, and its window card says so. H10's "boss marks" for legendary actions and Legendary Resistance are replaced by the real counters of Decision 2; H10 keeps marks only for what the engine still does not count |
+| **Undo, redo, rewind** | The window is part of `s.encounter`, so undo puts it back as it was: undo of a legendary action reopens the window with that creature offered again; undo of the `endTurn` that opened it takes the table back into that turn. `history.js` gets a label for each new action type (`ACTS` and the `phrase` switch in `describeStep`; a test fails for an action with none): "Verdigris: Pounce" (the option's name is read from the creature, as `act`'s is), "Skipped Verdigris's legendary action", and one for `legendarySet`. The timeline records the events, so `recall()` and an AI DM can read them |
+| **The DM-helper** (dm-helper.md, PR #681, still open) | A creature whose intention is Talk or Give up is never offered a harmful option by the AI, and its window card says so. H10's "boss marks" for legendary actions and Legendary Resistance are replaced by the real counters of Decision 2; H10 keeps marks only for what the engine still does not count |
 | **The to-do tray** (#684) | A "You run" card is no longer made for a block the engine runs. It is made for each `manual` option and for Spellcasting still as text, so the DM still has the reminder for what is theirs |
 | **Stepping away, standing in** | A creature set aside is not offered. A stand-in (`standIn`) plays its windows as the brain does (Decision 8) |
 
@@ -337,7 +344,7 @@ nothing waits. Legendary Resistance is the one exception, because the brief asks
 not a note: `askDM` (beside `ask` in `engine/shared.js`) stops the action and puts the question in
 `s.pending` addressed to the controller, which for a monster is the DM. Everything else about it is
 the existing machinery: the copy before the action, the re-run on `react`, the numbered question.
-`mayAsk` answers yes while any creature in play has a use left under `ask` or `matters`, so the copy
+`mayAsk` (`reactions.js`) answers yes while any creature in play has a use left under `ask` or `matters`, so the copy
 is taken (about 1.4 ms at 70 creatures, DEBT T55). Where an action cannot stop (no copy was taken),
 the engine applies the failure and puts the question to the DM as today's `manual` note, and says
 so. The answer is `react` with `take: 'legendary-resistance'` or `null`.
@@ -482,27 +489,38 @@ All optional: an entry or a state without them reads as "no legendary anything".
 | `s.encounter` | `between: { after, round, offered, done }` while a window is open |
 | actions | `legendary`, `legendarySet` (Decision 5), in a new domain module `engine/legendary.js` |
 | events | `legendary`, `legendaryWindow`, `legendarySkip`; on `save`, `resisted: true` |
-| `view-fields.js` | `legendary: 'sent'` and `legend: 'sent'` for a creature of the party (its own block and counters: a player running a legendary ally sees them) |
+| `view-fields.js` | `legendary: 'sent'` and `legend: 'sent'` in `PARTY_FIELDS` (a creature of the party: its own block and counters; a player running a legendary ally sees them). A foe goes through `seenRecord` in `view.js`, which names its fields one by one and so sends neither; `test/view-fields.test.js` fails until both new fields are classified |
+| `view.js` | `viewEncounter` gains `between: true` while a window is open (it builds the encounter's view field by field, so `between` itself is never sent) |
+| `history.js` | a label for `legendary` and `legendarySet` (`ACTS`, `phrase`) |
+| `migrate.js` | `VERSION` 31 to 32 (`scenario.js` reads it): an SRD monster gets its template's `legendary` block and a `legend` record |
+| `AGENTS.md` | the Layout list names `engine/legendary.js`: `test/guides.test.js` fails for a rules module it does not name. This spec said CLAUDE.md; CLAUDE.md only includes AGENTS.md |
+| `shared.js` / `reactions.js` | `BETWEEN_OK` (`reactions.js`); `askDM` (`engine/shared.js`, stage L2); `UNLOCKED` (`engine/shared.js`) needs no entry: a command-locked creature is a companion, never a legendary one |
 
 Limits: 5 uses, 8 options, cost 3 (and never more than `uses`), 3 ids in a `use`, Legendary
 Resistance 10 a day, an option's text 400 letters.
 
 ## Build plan
 
-Each stage is one small pull request with its tests. L1 and L2 are engine jobs for the strongest
-model (they touch `advanceTurn`, every save site and the pause).
+Each stage is one small pull request with its tests, sized for one worker and one review. L1b, L1c and L2 are engine jobs for the strongest model (they touch `advanceTurn`, the walk and every save site); L1a, L1d and the content stages are for a mid-sized one.
+
+**`engine.js` is named in the issue of every stage that touches it** (AGENTS.md hard limit: it is not edited unless the issue names it). Here that is L1b (the `BETWEEN_OK` check in `apply()` and the handler table) and L1c (the handler table gains nothing new if `legendary` is already spread in L1b, so L1c does not name it). `packages/server/src/tables.js` is touched by none.
+
+Every stage that changes a creature's fields must keep the replays pinned to main passing (`e23-replay`, `companions-brain-replay`, `companions-brain-history`, `starters-built-golden`, `items-between`, `summons-385`, AGENT-BRIEF): a new field in the hashed state is normalised out in them with a comment, never re-recorded.
 
 | Stage | What | Size and kind | Files | Needs | Done when |
 |---|---|---|---|---|---|
-| L1 | **Engine and data**: the vocabulary and its lint; the reader; the copy onto the creature; `e.legend`; the window in `advanceTurn`; `legendary` and `legendarySet`; `BETWEEN_OK`; the views (`between`, `legendary`, `show`); history labels; migrate; lair XP in rewards; server README; CLAUDE.md's engine layout (the new module). Data: the unicorn, the adult green and adult blue dragons, the vampire, the lich, and the balor and pit fiend (resistance only), each `checked` against the SRD | engine L, content S | `content/schema.js`, `content/reader.js`, `content/srd52/monsters-*.js`, `engine/legendary.js` (new), `engine/resolve.js`, `engine/sheets.js`, `engine.js` (the module in its table, `BETWEEN_OK`), `view.js`, `view-fields.js`, `history.js`, `migrate.js`, `rewards.js`, `todo.js` (the "You run" trigger), `packages/server/README.md`, `CLAUDE.md`, tests, a `twin()` scenario | none | Tests 1 to 7 pass; every existing test passes unchanged; `npm run content` counts the blocks |
-| L1b | **The other 23 legendary monsters** entered, each `checked` | content M | `content/srd52/monsters-*.js` | L1 | All 32 SRD monsters with a legendary trait have a block and no legendary trait; the reader reads each |
-| L2 | **Legendary Resistance**: `resistFailure` at every save site, `askDM`, the instruction and `matters`, `failureMatters`, the `resisted` save, the called save's note replaced | engine M | `engine/shared.js`, `engine/rolls.js`, `effects.js`, `durations.js`, `engine/dm.js`, `engine/resolve.js`, `reactions.js`, `view.js`, tests, a `twin()` scenario | L1's vocabulary; #694 merged | Tests 8 to 12 pass |
-| L3 | **The AI**: `legendaryPick`; the browser loop plays windows under "By themselves"; the pick feeds dm-helper's `advise` when H7 exists | rules M, client S | `ai.js`, `packages/client/app.js` (`idled`), tests | L1 (L2 for `failureMatters`) | Tests 13 and 14 pass |
-| L4 | **The DM's screen**: the window bar and sheet, the Legendary Resistance card, the counters in Turns, the creature switches, "In its lair", "Show its uses", the players' "Waiting for the DM"; a smoke pass at 390 x 844 and wide | client M | `packages/client/legendary.js` (new), its CSS, `tracker.js`, `reactionprompt` (the card beside the reaction question), the DM tools' Creatures section, smoke | L1, L2 (L3 for the pick) | A DM plays a dragon's windows with one tap each and answers a Legendary Resistance question with one tap, on a phone; a player in the same smoke pass sees the events and "Waiting for the DM", nothing else |
+| L1a | **The data and the state.** In `content/schema.js`: the `legendary` key, its option keys, `LEGENDARY_AGAIN`, `LEGENDARY_SPEEDS`, the limits, the monster `SHAPES` entry, `HOMEBREW_TYPES`, `HOMEBREW_LENGTHS['legendary.options']`, and the lint. In `content/reader.js`: the plain-words reading (replacing its `LEGENDARY` pattern for an entry that has the key). `makeEntity` copies the block as `e.legendary` and adds `e.legend`. `migrate.js` bumps `VERSION` to 32 and gives an SRD monster the template's block. Data, `checked` against the SRD: the unicorn, the adult green and adult blue dragons, the vampire, the lich, and the balor and pit fiend (resistance only); their two traits are taken out. The called save's note in `engine/dm.js` reads `e.legendary.resistance` | engine S, content S | `content/schema.js`, `content/reader.js`, `content/srd52/monsters-a-c.js`, `monsters-h-o.js`, `monsters-p-z.js`, `engine/sheets.js`, `engine/dm.js` (one line), `migrate.js`, `view-fields.js` (the two `PARTY_FIELDS`), tests: lint, the reader goldens (`reader.test.js`, `reader-kinds.test.js`, `reader-when.test.js`), `homebrew-values.test.js`, migrate, the called-save test | none | Test 1 passes (the replays above, with `legendary` and `legend` normalised out); a bad block is refused by the lint and a homebrew pack's block is read back in plain words; an old save migrates; `npm run content` counts the seven blocks and no "You run" card is made for them; `view-fields.test.js` passes. No engine behaviour has changed. No `engine.js` |
+| L1b | **The window.** `advanceTurn` opens and closes `s.encounter.between` and goes on from where it stopped; `engine/legendary.js` (new) holds the window's open and close, `legendary` with `skip` and `done`, and `legendarySet`; the handlers are spread into the table; `BETWEEN_OK` and its refusal. `viewEncounter` sends `between: true`. History labels for `skip`, `done`, `legendarySet`. Lair XP is not here. `AGENTS.md` names the new module (the guides test). A `twin()` scenario with a window open. At this stage an option cannot yet be taken: a window offers it, and a creature can only be skipped | engine L | `engine/resolve.js` (`advanceTurn`), `engine/legendary.js` (new), `engine.js` (the module in its table, the `BETWEEN_OK` check: **name it in the issue**), `reactions.js` (`BETWEEN_OK`), `view.js` (`viewEncounter`), `history.js`, `AGENTS.md`, tests, one `twin()` scenario | L1a | Tests 2, 3 and 5 pass; test 7 passes for skip and done (undo of a skip reopens the window; undo of the `endTurn` goes back into that turn); test 1 still passes; the twin scenario passes |
+| L1c | **Taking an option.** `legendary` with `option`: the destination and the aim checked before anything changes; the move part through the engine's walk with its own budget; `use` of the creature's own action; `target` and `effects` as `act`'s; `cost` and `again`; a `manual` option spends the use and makes its `manual` event (the to-do tray then makes its card); the `legendary` event; `acts` and `again` regained in `beginTurn` and at the end of a fight; a creature Incapacitated or dropped mid-option. A label for it in `history.js`. Data: none new | engine L | `engine/legendary.js`, `engine/resolve.js` (`beginTurn`, end of fight), `engine/movement.js` (only if the walk needs an export), `history.js`, `todo.js` (only if a `manual` option needs its "You run" card to name the option), tests. `engine.js` is not named: it is not touched | L1b | Tests 4 and 6 pass; test 7 passes for an option; every refusal in Decision 5 is tested with the state compared whole. A re-run after a reaction spends the use once |
+| L1d | **What players are sent, lair XP, README.** `legendary` event as an `act` is, for a creature the party knows; the `legendaryWindow`, `legendarySkip`, `legendarySet` events dropped from `viewEvents`; `show` and the `legend: { left, max }` record on the creature's view; `s.encounter.between` never sent as anything but `true`. `rewards.js` reads `lair.xp` for a creature marked in its lair. `packages/server/README.md` lists the new actions and events. The `twin()` scenario for the rest: worlds that differ only in uses left (both above 0), the lair mark, the options not taken, `show` off; with `show` on the count is sent | engine M | `view.js`, `view-fields.js`, `rewards.js`, `packages/server/README.md`, `packages/server/test/twin-worlds.test.js` (or a new file beside it), `hidden-ids` test, tests. No `engine.js` | L1c | The part of test 12 that does not need Legendary Resistance (no saving throw is resisted yet) passes, and a `show` world sends the count; lair XP is tested; every existing test passes unchanged |
+| L1e | **The other 23 legendary monsters** entered, each `checked` (was L1b). Four hands may split it by file | content M | `content/srd52/monsters-*.js` | L1a (L1c to run them in a test) | All 32 SRD monsters with a legendary trait have a block and no legendary trait; the reader reads each; `npm run content` counts them |
+| L2 | **Legendary Resistance**: `resistFailure` at every save site, `askDM`, the instruction and `matters`, `failureMatters`, the `resisted` save, the called save's note replaced | engine M | `engine/shared.js`, `engine/rolls.js`, `effects.js`, `durations.js`, `engine/dm.js`, `engine/resolve.js`, `reactions.js`, `view.js`, tests, a `twin()` scenario (test 12's Legendary Resistance part). `engine.js` is not named unless `react` needs a change for `take: 'legendary-resistance'`; if it does, the issue names it | L1a (L1d for the `twin()` file). #694 is merged | Tests 8 to 11 pass, and test 12's resisted-save and instruction part. It may be split in two if the save sites are many: `resistFailure` at the sites first, `askDM` and `matters` after |
+| L3 | **The AI**: `legendaryPick`; the browser loop plays windows under "By themselves"; the pick feeds dm-helper's `advise` when H7 exists (dm-helper is PR #681, still open) | rules M, client S | `ai.js`, `packages/client/app.js` (`idled`, line 676 today), tests | L1c (L2 for `failureMatters`) | Tests 13 and 14 pass |
+| L4 | **The DM's screen**: the window bar and sheet, the Legendary Resistance card, the counters in Turns, the creature switches, "In its lair", "Show its uses", the players' "Waiting for the DM"; a smoke pass at 390 x 844 and wide | client M | `packages/client/legendary.js` (new), its CSS, `tracker.js`, `reactionprompt.js` (the card beside the reaction question), the DM tools' Creatures section, `scripts/smoke/` and both places the smoke pass is registered (`scripts/smoke.mjs`, `.github/workflows/smoke.yml`) | L1d, L2 (L3 for the pick) | A DM plays a dragon's windows with one tap each and answers a Legendary Resistance question with one tap, on a phone; a player in the same smoke pass sees the events and "Waiting for the DM", nothing else |
 
-**Order.** L1, then L2 (the owner's party will meet saves against dragons before anything else),
-then L3 and L4 side by side, L1b whenever a content hand is free. Then DEBT M6, which turns the
-`manual` cast options into the engine's (recommended next: leg-9, which the owner accepted).
+**Order.** L1a, L1b, L1c, L1d in turn (each needs the one before; L1a and L1e's data are the only content). Then L2 (the owner's party will meet saves against dragons before anything else), then L3 and L4 side by side, L1e whenever a content hand is free. Then DEBT M6, which turns the `manual` cast options into the engine's (recommended next: leg-9, which the owner accepted).
+
+**Which model.** L1b and L1c are the delicate ones (`advanceTurn` stops and resumes; the walk and the reaction re-run). If either is still too much for one review, cut L1c at the move part (L1c: `use`, `effects`, `manual`, `cost`, `again`; L1c2: `move`).
 
 ## Tests that say it is safe
 
@@ -542,7 +560,7 @@ then L3 and L4 side by side, L1b whenever a content hand is free. Then DEBT M6, 
     against a creature immune to fire, a condition it is immune to): not spent, not asked. A
     `manual` step under `onFail`: asked.
 11. **Long Rest.** Uses come back only when the DM's Long Rest names the creature.
-12. **Hidden information (twin).** Also: a resisted save is sent without the words "Legendary
+12. **Hidden information (twin).** (L1b has its own scenario for an open window; L1d the part without Legendary Resistance; L2 the rest.) Also: a resisted save is sent without the words "Legendary
     Resistance" (leg-4). Worlds differing only in Legendary Resistance left (2 or 3), the
     lair mark, the instruction (`ask` answered by a decline, or `never`), `show` off, and the
     options not taken: every player is sent the same bytes. With `show` on, the count is sent.
@@ -616,3 +634,7 @@ a decision, and the sections named were changed to follow it.
   other creature's turn, so none is ever late; there is no late legendary action, and the fix is
   never an undo across another player's turn. The old answer (undo back to the window) is dropped.
   See Decision 3.
+
+## Still to confirm with the owner
+
+Nothing was decided by this revision. Two of the owner's answers rest on a reading that was marked "for the owner to confirm" and has not been confirmed: **leg-2** (that "only when it matters" means a failure that changes something for the monster, Decision 6's `matters` list) and **leg-10** (that no legendary action is ever late). The list in `failureMatters` (a condition, Concentration, `kill`/`teleport`/`set`/`summon`/form, damage not resisted) and the rule that an unreadable `manual` step is asked, not guessed, are the draft's, not the owner's. L2 should not start before leg-2 is confirmed.
