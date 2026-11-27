@@ -55,8 +55,9 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `endSpell: true` (Searing Smite), only inside an `eachTurn`: the lasting effect those steps belong to ends, with everything it put on any creature. Put in a save's `onSuccess`: "a success ends the spell".
   // docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
   'endSpell',
-  // `arm: { damage, type, addMod?, time? }` (Flame Blade): for as long as the lasting effect holds, the creature it works on has one more action to take with the Attack command: a melee spell
+  // `arm: { damage, type, addMod?, time?, range? }` (Flame Blade; Produce Flame with `range`): for as long as the lasting effect holds, the creature it works on has one more action to take with the Attack command: a melee spell
   // attack (reach 5 feet) with the caster's spell attack bonus, dealing `damage` (plus the spellcasting modifier with `addMod`) of `type`. It takes the Action, or the Bonus Action with `time: 'bonus'`.
+  // With `range: <feet>` it is a ranged spell attack at a creature within that many feet instead (Produce Flame's hurl, 60).
   // It goes when the effect ends. docs/specs/rules-expansion.md, "Build notes: wave 1 fight spells (#786)".
   'arm',
   // `command: 'approach' | 'drop' | 'flee' | 'grovel' | 'halt' | 'chosen'` (Command): what the creature it works on does on its next turn. The engine puts a part on the lasting effect that is carried out at the start of the creature's next turn
@@ -197,8 +198,8 @@ export const FAMILIARITY = ['permanent-circle', 'linked-object', 'very-familiar'
 // Stone Shape's choice: a 5-foot passage cut through a wall (the engine's), or any other shape (the DM's).
 export const STONE_SHAPES = ['passage', 'other'];
 export const AFFLICTIONS = ['exhaustion', 'charmed', 'petrified', 'curse', 'ability-score', 'hit-point-maximum'];
-// The words a `cure` step may use besides a condition: `exhaustionLevel` lowers the target's Exhaustion by one level; `curse` ends the lasting curses (Bestow Curse) on it.
-export const CURE_WORDS = ['exhaustionLevel', 'curse'];
+// The words a `cure` step may use besides a condition: `exhaustionLevel` lowers the target's Exhaustion by one level; `curse` ends the oldest lasting curse (Bestow Curse) on it, `curses` (Remove Curse) all of them.
+export const CURE_WORDS = ['exhaustionLevel', 'curse', 'curses'];
 export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
@@ -215,7 +216,7 @@ function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolle
   if (m.on === 'surface' && !(stepOk && m.op === 'immune' && m.scope?.surface === 'water' && Object.keys(m.scope).length === 1 && Object.keys(m).length === 3)) say('a modifier on surface is a modifier step `{ on: "surface", op: "immune", scope: { surface: "water" } }`: the creature walks on water as on solid ground for as long as the effect lasts');
   // `invisible` (See Invisibility): only `{ on: 'invisible', op: 'immune' }`, from a spell's lasting effect or a creature's trait (it sees the Invisible).
   // `senses` (True Seeing): only a modifier step `{ on: 'senses', op: 'set', value: <5 to 240 feet>, scope: { sense } }`.
-  if (m.on === 'senses' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 120 && m.value % 5 === 0 && m.scope?.sense !== undefined && Object.keys(m).length === 4)) say('a modifier on senses is a modifier step `{ on: "senses", op: "set", value: <5 to 120 feet, a multiple of 5>, scope: { sense } }`');
+  if (m.on === 'senses' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 240 && m.value % 5 === 0 && m.scope?.sense !== undefined && Object.keys(m).length === 4)) say('a modifier on senses is a modifier step `{ on: "senses", op: "set", value: <5 to 240 feet, a multiple of 5>, scope: { sense } }`');
   if (m.on === 'invisible' &&!(m.op === 'immune' && Object.keys(m).length === 2)) say('a modifier on invisible is `{ on: "invisible", op: "immune" }`: the creature sees Invisible creatures and objects as if they were visible');
   // `leap` (Jump): only a modifier step `{ on: 'leap', op: 'set', value: <5 to 40 feet, a multiple of 5> }`.
   if (m.on === 'leap' && !(stepOk && m.op === 'set' && Number.isInteger(m.value) && m.value >= 5 && m.value <= 40 && m.value % 5 === 0 && Object.keys(m).length === 3)) say('a modifier on leap is a modifier step `{ on: "leap", op: "set", value: <5 to 40 feet, a multiple of 5> }`: once on each of its turns the creature may leap that far for 10 feet of movement');
@@ -476,12 +477,13 @@ function lintImbue(i, say) {
 const EACH_TURN_KINDS = ['heal', 'tempHp', 'damage', 'save', 'endSpell', 'manual'];
 // `arm`: a melee spell attack the spell gives its caster for as long as it lasts (Flame Blade).
 function lintArm(a, say) {
-  if (!a || typeof a !== 'object' || Array.isArray(a)) return say('`arm` is { damage, type, addMod?, time? }');
-  for (const k of Object.keys(a)) if (!['damage', 'type', 'addMod', 'time'].includes(k)) say(`arm: "${k}" is not something an arm has`);
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return say('`arm` is { damage, type, addMod?, time?, range? }');
+  for (const k of Object.keys(a)) if (!['damage', 'type', 'addMod', 'time', 'range'].includes(k)) say(`arm: "${k}" is not something an arm has`);
   if (!(isDice(a.damage) && /^\d+d\d+$/.test(a.damage) && +a.damage.split('d')[0] <= 20)) say('arm.damage is dice like 3d6 (up to 20 of them)');
   if (!DAMAGE_TYPES.includes(a.type)) say(`arm.type is one of ${DAMAGE_TYPES.join(', ')}`);
   if (a.addMod !== undefined && a.addMod !== true) say('arm.addMod is true or left out');
   if (a.time !== undefined && !['action', 'bonus'].includes(a.time)) say('arm.time is "action" or "bonus"');
+  if (a.range !== undefined && !(Number.isInteger(a.range) && a.range >= 5 && a.range <= 120 && a.range % 5 === 0)) say('arm.range is feet, 5 to 120, a multiple of 5');
 }
 function lintSteps(steps, say, seen = { manual: false }, under = false, inMonster = false) {
   if (!Array.isArray(steps) || !steps.length) { say('effects must be a non-empty list'); return seen; }
@@ -626,7 +628,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     // `cure: [conditions]`: the conditions end on the creature it works on (Heal); "chosen" is one
     // the caster picks from the spell's `choice: { of: 'condition', from }` (Lesser Restoration).
     // Exhaustion is not ended whole this way: `exhaustionLevel` lowers it by one level (Greater Restoration), and `curse` ends the lasting curses on the creature (CURE_WORDS).
-    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || CURE_WORDS.includes(c) || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), "exhaustionLevel", "curse", or "chosen"');
+    if (kind === 'cure' && !(Array.isArray(step.cure) && step.cure.length && new Set(step.cure).size === step.cure.length && step.cure.every((c) => c === 'chosen' || CURE_WORDS.includes(c) || (CONDITIONS.includes(c) && c !== 'exhaustion')))) say('`cure` lists conditions (not exhaustion), "exhaustionLevel", "curse", "curses", or "chosen"');
     for (const b of ['onZero', 'onKill']) if (step[b] !== undefined && kind !== 'damage') say(`\`${b}\` is for a damage step`);
     // `kill: true`: the creature dies, a character at 0 Hit Points too; `remains`: what is left of
     // the body. Both only under a damage step's onZero or onKill, where the damage brought it there.
@@ -3154,7 +3156,7 @@ const SHAPES = {
   check: { what: 'a check', keys: ['ability', 'skill', 'tool', 'dc'] },
   activate: { what: 'an item use', keys: ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'upTo', 'self', 'dc', 'effects'] },
   attune: { what: 'attunement', keys: ['by', 'spellcaster'] },
-  arm: { what: 'an arm step', keys: ['damage', 'type', 'addMod', 'time'] },
+  arm: { what: 'an arm step', keys: ['damage', 'type', 'addMod', 'time', 'range'] },
   imbue: { what: 'an imbue step', keys: ['weapons', 'melee', 'nonmagical', 'abil', 'die', 'plus', 'attackAdd', 'types'] },
   base: { what: 'a base item', keys: ['weapon', 'armour'] },
   charges: { what: 'charges', keys: ['max', 'regain'] },
@@ -3297,13 +3299,13 @@ export const HOMEBREW_RANGES = Object.freeze({
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
-  'creature.count': [1, 20], 'creature.range': [5, 1200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
+  'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
   'targets.#': [1, 20], 'range.#': [5, 240], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
   // steps and modifiers
   'step.bonus': [-10, 40], 'step.dc': [1, 50], 'step.dispel': [0, 9], 'step.revive': [1, 2], 'step.within': [1, 2], 'step.feet': [5, 240], 'step.escape': [1, 40], 'step.holds': [1, 20], 'step.times': [1, 10], 'step.atLeast': [1, 100], 'step.move': [5, 120], 'step.fall': [1, 100], 'step.teleport': [5, 1000], 'step.cut': [5, 10],
-  'modifier.value': [-40, 40], 'speedModifier.value': [-120, 120], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
+  'modifier.value': [-40, 40], 'speedModifier.value': [-120, 120], 'senseModifier.value': [5, 240], 'modifier.uses': [1, 1], 'value.perLevel': [1, 10], 'value.min': [0, 20], 'value.prof': [1, 4], 'value.base': [1, 26], 'byLevel.#': [-40, 40],
   'ends.dc': [1, 50], 'zone.budget': [1, 120], 'zone.move': [5, 60],
   // items, feats, objects, weapons, armour
   'items.bonus': [1, 3], 'charges.max': [1, 50], 'activate.cost': [1, 20], 'activate.dc': [5, 30], 'activate.level': [1, 9], 'activate.upTo': [1, 9],
@@ -3360,7 +3362,7 @@ const GRANTS_LEN = 30;
 export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14, dice: 900 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
-const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (owner === 'speedModifier' ? rangeOf('modifier', key, inGrants) : inGrants ? GRANTS_ANY : undefined);
+const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (owner === 'speedModifier' || owner === 'senseModifier' ? rangeOf('modifier', key, inGrants) : inGrants ? GRANTS_ANY : undefined);
 // The numbers of an entry with the name that finds their range: [context, value, path, inGrants].
 export function numbersOf(kind, entry) {
   const out = [], stack = [];
@@ -3370,7 +3372,7 @@ export function numbersOf(kind, entry) {
     if (typeof v === 'number') out.push([`${owner}.${nameOf(key)}`, v, path, g, owner, nameOf(key)]);
     else if (Array.isArray(v)) v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g]));
     // A modifier on a speed (Fly's Fly Speed of 60) is held to the speeds' range, not the 40 of every other modifier.
-    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && (SPEED_HOOKS.includes(v.on) || v.on === 'senses') ? 'speedModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
+    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && SPEED_HOOKS.includes(v.on) ? 'speedModifier' : nameOf(key) === 'modifier' && v.on === 'senses' ? 'senseModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
   }
   return out;
 }
@@ -3652,7 +3654,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
   'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
-  arm: { damage: 's', type: 's', addMod: 'b', time: 's' },
+  arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });

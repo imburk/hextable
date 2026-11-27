@@ -100,7 +100,7 @@ export function partyView(s) {
   if (rule === 'rooms') return ROOMS;
   const sig = signature(s, rule), had = views.get(s);
   if (had && had.sig === sig && had.map === s.map) return had.pv;
-  const map = s.map, G = gridOf(map), eyes = eyesOf(s), sources = rule === 'light' ? lightSources(s) : null;
+  const map = s.map, G = gridOf(map), eyes = eyesOf(s), sources = rule === 'light' ? lightSources(s, { party: true }) : null;
   const creatures = new Set();
   for (const c of Object.values(s.entities)) {
     if (c.side === 'party' || c.melded || concealed(map, c)) continue;      // merged with stone: seen by nobody

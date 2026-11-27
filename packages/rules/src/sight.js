@@ -289,13 +289,15 @@ export function ambientAt(map, pos) {
   return regionAt(map, sf.level.id, pos)?.light ?? sf.level.light ?? 'bright';
 }
 // Everything giving light: things on the map in a state that is lit, and creatures carrying a light.
-export function lightSources(s) {
+// `party: true` builds what the party's view is lit by: the light of a creature the DM keeps hidden from the players (`hidden`, not of the party)
+// is left out, so a hidden foe's torch or Produce Flame lights nothing they are sent (review of #830). The engine's own judgements keep every light.
+export function lightSources(s, { party = false } = {}) {
   const out = [];
   for (const o of s.map.objects) {
     const l = objectDef(o)?.states[o.state]?.light, level = l && s.map.levels.find((x) => x.id === o.level);
     if (level) out.push({ pos: { q: o.at.q, r: o.at.r, z: level.z + (level.tiles[col(o.at)]?.h ?? 0) }, bright: l.bright, dim: l.dim, object: o.id });
   }
-  for (const e of Object.values(s.entities)) if (e.light && (e.light.bright > 0 || e.light.dim > 0)) out.push({ pos: e.pos, bright: e.light.bright, dim: e.light.dim, id: e.id });
+  for (const e of Object.values(s.entities)) if (e.light && (e.light.bright > 0 || e.light.dim > 0) && !(party && e.hidden && e.side !== 'party')) out.push({ pos: e.pos, bright: e.light.bright, dim: e.light.dim, id: e.id });
   return out;
 }
 // What one source gives a place: 0, 1 (dim) or 2 (bright). Kept per source and position, and thrown

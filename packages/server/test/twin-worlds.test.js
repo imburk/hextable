@@ -1453,3 +1453,58 @@ for (const rule of ["los", "light"]) test(`meld into stone: under the ${rule} si
   sc.setup = (w) => { setup(w); w.must({ type: "setting", key: "sight", value: rule }); };
   twin(sc, { hide: (w) => meldFoe(w, { seen: true }), plain: (w) => { w.state.seq += MELDED_FOE_SEQ; } });
 });
+
+// ---- Darkvision (#786 wave 5 part 1): Darkvision lent for 8 hours shows a creature in the dark out to 150 feet; the players are sent what the sight rules give a creature with Darkvision ----
+const lurk = (w, at, name) => { const r = apply(w.state, { type: "spawn", monster: "goblin-warrior", at, name }, { role: "dm", userId: "dm" }); assert.ok(r.ok, r.error); Object.assign(byName(w, name), { hp: 500, maxHp: 500 }); };
+const darkvisionSetup = (w) => {
+  seeInvisibleSetup(w);
+  const s = w.state;
+  for (let q = -16; q <= 17; q++) s.map.levels[0].tiles[`${q},0`] = { t: "grass" };           // a row long enough for 150 feet
+  w.must({ type: "mapEdit", ops: [{ op: "level", level: { id: "ground", light: "dark" } }] });
+  w.must({ type: "place", actor: "wizard", to: { q: -14, r: 0 } });
+  s.entities.wizard.spells.push("darkvision");
+};
+test("darkvision: before the spell a creature 140 feet off in the dark is sent to no player (a bare cell); after it the caster's player is sent it; a creature at 155 feet and one behind a wall are sent as a bare cell is", () => {
+  const cast = (setup) => ({ players: ["Pat", "Sam"], setup: (w) => { darkvisionSetup(w); setup(w); }, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "darkvision", target: "wizard", slot: 2 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] });
+  const before = { players: ["Pat", "Sam"], setup: darkvisionSetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  twin(before, { hide: (w) => lurk(w, { q: 14, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 13, r: 0 }) });
+  const near = twinRun(cast(() => {}), { hide: (w) => lurk(w, { q: 14, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 13, r: 0 }) });
+  assert.ok(near.diffs.length > 0, "the players are told the creature once the spell is cast");
+  const sent = (r, who) => JSON.stringify(r.raw[who]).includes("Lurker");
+  assert.ok(sent(near.hidden, "Sam") && !sent(near.plain, "Sam"), "the caster's player is sent the creature at 140 feet");
+  const far = twin(cast(() => {}), { hide: (w) => lurk(w, { q: 17, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 16, r: 0 }) });
+  assert.ok(!JSON.stringify(far.hidden.raw.Sam).includes("Lurker"), "155 feet: Sam is told of nothing");
+  const walled = twin(cast((w) => { w.state.map.walls.push({ id: "wallD", level: "ground", a: [-70, 11], b: [70, 11], kind: "wall" }); w.must({ type: "place", actor: "wizard", to: { q: -2, r: 0 } }); }), { hide: (w) => lurk(w, { q: -2, r: 6 }, "Lurker"), plain: (w) => burn(w, { q: -2, r: 7 }) });
+  assert.ok(!JSON.stringify(walled.hidden.raw.Sam).includes("Lurker"), "behind a wall: Sam is told of nothing");
+});
+
+// ---- Produce Flame (#786 wave 5 part 1): the flame the caster carries lights 40 feet round it, and no more ----
+test("produce flame: a creature in the dark just past the flame's 40 feet is sent as a bare cell is; one inside it is sent to the caster's player after the cast", () => {
+  const cast = { players: ["Pat", "Sam"], setup: (w) => { darkvisionSetup(w); w.state.entities.wizard.spells.push("produce-flame"); w.must({ type: "place", actor: "wizard", to: { q: -2, r: 0 } }); }, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "produce-flame" } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything there?" } }] };
+  const sent = (r, who) => JSON.stringify(r.raw[who]).includes("Lurker");
+  const outside = twin(cast, { hide: (w) => lurk(w, { q: 7, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 8, r: 0 }) });      // 45 feet
+  assert.ok(!sent(outside.hidden, "Sam"), "45 feet: Sam is told of nothing");
+  const inside = twinRun(cast, { hide: (w) => lurk(w, { q: 4, r: 0 }, "Lurker"), plain: (w) => burn(w, { q: 5, r: 0 }) });     // 30 feet
+  assert.ok(inside.diffs.length > 0 && sent(inside.hidden, "Sam") && !sent(inside.plain, "Sam"), "30 feet: the flame shows it");
+});
+
+// ---- A light carried by a creature the DM keeps hidden (review of #830, F1): it lights nothing the players are sent ----
+test("a DM-hidden foe carrying a light lights nothing the players are sent (sight rule 'light', a dark level)", () => {
+  const byN = (w, name) => Object.values(w.state.entities).find((e) => e.name === name);
+  const setup = (w) => {
+    const s = w.state;
+    for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+    for (let q = -16; q <= 17; q++) for (let r = -3; r <= 3; r++) s.map.levels[0].tiles[`${q},${r}`] = { t: "grass" };
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    w.must({ type: "setting", key: "sight", value: "light" });
+    w.must({ type: "mapEdit", ops: [{ op: "level", level: { id: "ground", light: "dark" } }] });
+    for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -2, 0]]) w.must({ type: "place", actor: id, to: { q, r } });
+    Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+    Object.assign(s.entities.wizard, { owner: w.ids.Sam, ownerName: "Sam" });
+  };
+  const r = twinRun({ players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } }] }, {
+    hide: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 8, r: 0 }, name: "Lurker", hidden: true }); Object.assign(byN(w, "Lurker"), { light: { bright: 20, dim: 20 } }); },
+    plain: (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 9, r: 0 }, name: "Burnt", hidden: true }); delete w.state.entities[byN(w, "Burnt").id]; },
+  });
+  if (r.diffs.length) assert.fail(describe(r.diffs));
+});
