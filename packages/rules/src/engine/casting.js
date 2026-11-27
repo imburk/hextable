@@ -878,6 +878,8 @@ function castSpell(s, a, ctx, ev, item) {
     const note = (text) => ev.push({ type: 'manual', actor: e.id, name: sp.name, text, partial: true });
     // A creature the caster's side does not know of in the pack's space: not refused, not found; the DM alone is told (`partial`).
     if (spaceBody) { const G = gridOf(s.map), there = living(s).filter((t) => !knownTo(s, e, t) && overlapAt(t, t.pos, { size: sp.area.space }, areaOrigin, G)); if (there.length) note(`${sp.name} appeared in the space where ${there.map((t) => t.name).join(' and ')} stands, which the caster's side does not know of. The pack is intangible and was put there so that the players learn nothing; nothing goes off on ${there.length > 1 ? 'them' : 'it'} (the caster cannot see ${there.length > 1 ? 'them' : 'it'}).`); }
+    // Magic Circle by a caster the party does not know of: a refusal or a stop at its edge would tell the players something is there, so it holds no creature of the party (a shell's rule, `shellSeen`); the DM judges it.
+    if (zoneDef?.ward && fx?.zone && !shellSeen(s, e)) note(`${sp.name}: the caster is hiding, so the engine does not bar the party's creatures from it (a refusal would tell the players something is there). It holds creatures the DM plays; the DM keeps the party's creatures of the chosen types out (or in, if reversed).`);
     const toldAlready = ev.slice(before).some((x) => x.type === 'manual' && !x.partial);
     if (sp.def.tier !== 'auto' && !toldAlready && !allLost) ev.push({ type: 'manual', actor: e.id, name: sp.name, text: sp.def.text, partial: true, standing: sp.def.tier, spell: sp.id });
     if (unscaled) note(`Cast ${item ? `at level ${slot}` : `with a level ${slot} slot`}. The engine could not add ${unscaled}; the DM does.`);
