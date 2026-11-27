@@ -3,6 +3,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONTENT, PACKS } from "../src/content/index.js";
+import { makeEntity } from "../src/engine/sheets.js";
+import { MONSTERS } from "../src/content/index.js";
+import { apply } from "../src/engine.js";
+import { migrate, VERSION } from "../src/migrate.js";
+import { newGame } from "../src/scenario.js";
 import { readEntry } from "../src/content/reader.js";
 import { HOMEBREW_LENGTHS, HOMEBREW_RANGES, LEGENDARY_AGAIN, LEGENDARY_LIMITS, LEGENDARY_SPEEDS, lintEntry, lintBaked } from "../src/content/schema.js";
 
@@ -101,4 +106,68 @@ test("the reader says a block in plain words, and a bad one with a problem", () 
   assert.match(readEntry("monster", bad).problems.join("\n"), /names a Multiattack, which an option never uses/);
   assert.match(readEntry("monster", bad).problems.join("\n"), /the option does nothing/);
   assert.match(readEntry("monster", green((l) => { l.nope = 1; })).problems.join("\n"), /has a key "nope" the engine does not use/);
+});
+
+test("the seven SRD blocks are entered, checked and lint clean; no other monster has one yet", () => {
+  const have = SRD.filter((m) => m.legendary).map((m) => m.id).sort();
+  assert.deepEqual(have, ["adult-blue-dragon", "adult-green-dragon", "balor", "lich", "pit-fiend", "unicorn", "vampire"]);
+  for (const m of SRD.filter((x) => x.legendary)) assert.equal(m.checked, true, m.id);
+  // The numbers, as the SRD 5.2.1 stat blocks print them.
+  const L = (id) => CONTENT.monsters[id].legendary;
+  assert.deepEqual(L("balor"), { resistance: { day: 3 } });
+  assert.deepEqual(L("pit-fiend"), { resistance: { day: 4 } });
+  assert.deepEqual([L("unicorn").actions.uses, L("unicorn").resistance.day, L("unicorn").lair], [3, 3, undefined]);
+  assert.deepEqual(L("vampire").lair, { uses: 4, resistance: 4, xp: 11500 });
+  assert.deepEqual(L("lich").lair, { uses: 4, resistance: 5, xp: 41000 });
+  assert.deepEqual(L("adult-green-dragon").lair, { uses: 4, resistance: 4, xp: 15000 });
+  assert.deepEqual(L("adult-blue-dragon").lair, { uses: 4, resistance: 4, xp: 18000 });
+  assert.deepEqual(L("lich").actions.options.map((o) => o.id), ["deathly-teleport", "disrupt-life", "frightening-gaze"]);
+  assert.equal(L("adult-green-dragon").actions.options[1].effects[0].dc, 17);
+});
+
+test("a creature made from a monster with a block carries it, and its counters start at nothing spent", () => {
+  const e = makeEntity(MONSTERS["adult-green-dragon"], { id: "d1", name: "Dragon", tpl: "adult-green-dragon", side: "foe", pos: { x: 0, y: 0 } });
+  assert.deepEqual(e.legendary, CONTENT.monsters["adult-green-dragon"].legendary);
+  assert.deepEqual(e.legend, { acts: 0, resisted: 0, again: {}, lair: false, show: false });
+  e.legendary.resistance.day = 99;
+  assert.equal(CONTENT.monsters["adult-green-dragon"].legendary.resistance.day, 3, "the creature has its own copy");
+  const gob = makeEntity(MONSTERS["goblin-warrior"], { id: "g1", name: "Goblin", tpl: "goblin-warrior", side: "foe", pos: { x: 0, y: 0 } });
+  assert.equal("legendary" in gob, false);
+  assert.equal("legend" in gob, false, "a creature with no block has no counters");
+});
+
+const DM = { role: "dm", userId: "dm" };
+test("an old save migrates: an SRD monster gets its template's block and a fresh counter record; the rest is left alone", () => {
+  assert.equal(VERSION, 32);
+  const s = newGame(1);
+  const spawn = (monster) => {
+    // The first free hex of a row: a creature cannot be put where another stands.
+    for (let q = 3; q < 12; q++) if (apply(s, { type: "spawn", monster, at: { q, r: 3 } }, DM).ok) return Object.keys(s.entities).find((k) => s.entities[k].tpl === monster);
+    assert.fail("no free hex");
+  };
+  const dragon = spawn("adult-green-dragon"), gob = spawn("goblin-warrior"), pit = spawn("pit-fiend");
+  assert.ok(s.entities[dragon].legendary && s.entities[dragon].legend, "a creature made now has them");
+  // The save as version 31 wrote it: none of the two fields, on any creature.
+  const old = structuredClone(s);
+  for (const e of Object.values(old.entities)) { delete e.legendary; delete e.legend; }
+  old.version = 31;
+  const saved = structuredClone(old);          // migrate works in place
+  const m = migrate(old);
+  assert.equal(m.version, 32);
+  assert.deepEqual(m.entities[dragon].legendary, CONTENT.monsters["adult-green-dragon"].legendary);
+  assert.deepEqual(m.entities[dragon].legend, { acts: 0, resisted: 0, again: {}, lair: false, show: false });
+  assert.deepEqual(m.entities[pit].legendary, { resistance: { day: 4 } });
+  assert.equal("legendary" in m.entities[gob], false);
+  assert.equal("legend" in m.entities[gob], false);
+  assert.equal("legendary" in m.entities.fighter, false, "a character has none");
+  // It keeps what it has spent, and its own copy of the block; running it again changes nothing.
+  m.entities[dragon].legend.resisted = 2; m.entities[dragon].legendary.resistance.day = 5;
+  const again = migrate(structuredClone(m));
+  assert.deepEqual(again, m);
+  // A creature with no template (or a homebrew one) is left as it was.
+  const odd = structuredClone(saved); odd.entities[dragon].tpl = "hb-gone-dragon"; delete odd.entities[dragon].legendary;
+  assert.equal("legendary" in migrate(odd).entities[dragon], false);
+  // A creature parked in another place is brought up too.
+  const w = structuredClone(saved); w.parked = { elsewhere: { map: structuredClone(saved.map), entities: { d: structuredClone(saved.entities[dragon]) }, effects: [], since: 0 } };
+  assert.deepEqual(migrate(w).parked.elsewhere.entities.d.legendary, CONTENT.monsters["adult-green-dragon"].legendary);
 });

@@ -17,8 +17,9 @@ import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
 import { cleanPurse } from './market.js';
 import { derive } from './derive.js';
+import { freshLegend } from './engine/sheets.js';
 
-export const VERSION = 31;
+export const VERSION = 32;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -280,6 +281,15 @@ export function migrate(state) {
   for (const e of Object.values(state.entities)) e.saveBonus ??= structuredClone(MONSTERS[e.tpl]?.saveBonus ?? {});
   // Also version 11: a monster's Initiative modifier, from the template (only where the SRD gives one).
   for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
+  // Version 32 (docs/specs/legendary.md, Decision 2): a creature made from an SRD monster that has a legendary block carries it, with its counters at nothing
+  // spent. The data is the SRD's, so it is safe to give it from the template. A creature without a `tpl`, or made from a homebrew monster, keeps what it had:
+  // the DM adds it again from the pack to get the block. A creature that has the block already keeps its own copy (it was made after the version).
+  for (const e of Object.values(state.entities)) {
+    const block = typeof e.tpl === 'string' && Object.hasOwn(MONSTERS, e.tpl) ? MONSTERS[e.tpl].legendary : undefined;
+    if (!block) continue;
+    if (e.legendary === undefined) e.legendary = structuredClone(block);
+    e.legend ??= freshLegend();
+  }
   return state;
 }
 

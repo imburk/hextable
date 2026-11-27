@@ -207,7 +207,7 @@ test("a caster whose spellcasting ability the engine does not know: the check is
 });
 
 test("a table saved before version 31: its spell effects get the spell's own level", () => {
-  assert.equal(VERSION, 31);
+  assert.equal(VERSION, 32);
   const { s } = table();
   ok(cast(s, "pia", "death-ward", { target: "fighter" }));
   ok(cast(s, "pia", "bless", { targets: ["pia"], slot: 3 }));
@@ -216,7 +216,7 @@ test("a table saved before version 31: its spell effects get the spell's own lev
   for (const fx of old.effects) delete fx.level;
   old.effects.push({ id: "fxh", name: "Homebrew Hex", spell: "hb-not-in-the-pack", source: "pia", conc: false, lasts: "1 hour", parts: [], until: null });
   migrate(old);
-  assert.equal(old.version, 31);
+  assert.equal(old.version, 32);
   assert.deepEqual(old.effects.map((fx) => fx.level), [4, 1, undefined], "the slot Bless was cast with is not known: its own level");
 });
 

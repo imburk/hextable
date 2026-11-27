@@ -14,7 +14,9 @@ import { view, viewEvents } from "../src/view.js";
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" }, SAM = { role: "player", userId: "sam" };
 const FIXTURE = new URL("./fixtures/starters-built-golden.json", import.meta.url);
 // #836 (swimming): a view carries the map as format 3 with `depth: 10` on each water tile; read back as it was (format 2, no depth) so the recorded hashes stand.
-const old = (x) => { const o = JSON.stringify(x, (k, v) => (k === "depth" && v === 10 ? undefined : k === "format" && v === 3 ? 2 : v)); return o; };
+// Legendary actions (L1a, docs/specs/legendary.md): the state version is 32 and a view carries it; read back as 31, as it was when this was recorded. A creature with a legendary block would
+// also carry `legendary` and `legend`; none of the creatures here does, and they are left out of the hash all the same, so a later monster in the starter valley cannot move it.
+const old = (x) => { const o = JSON.stringify(x, (k, v) => (k === "depth" && v === 10 ? undefined : k === "format" && v === 3 ? 2 : k === "version" && v === 32 ? 31 : k === "legendary" || k === "legend" ? undefined : v)); return o; };
 const sha = (x) => createHash("sha256").update(old(x)).digest("hex").slice(0, 16);
 
 function run() {

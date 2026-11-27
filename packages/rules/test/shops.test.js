@@ -235,8 +235,8 @@ test("a table saved at version 27 migrates to 28: no markets, no shops, purses c
   s.entities.cleric.coins = "35 gp";
   s.entities.wizard.coins = {};
   migrate(s);
-  assert.equal(VERSION, 31);
-  assert.equal(s.version, 31);
+  assert.equal(VERSION, 32);
+  assert.equal(s.version, 32);
   assert.deepEqual([s.markets, s.shops], [[], []]);
   assert.deepEqual(s.entities.fighter.coins, { gp: 12 });
   for (const id of ["rogue", "cleric", "wizard"]) assert.equal(s.entities[id].coins, undefined, id);
