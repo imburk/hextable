@@ -15,7 +15,7 @@ import { holds, zonesOf } from '../zones.js';
 import { barriers, clipWall, distToSegment, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from '../walls.js';
 import { itemName } from '../derive.js';
 import { confusedNow, effectsOf, restamp } from '../durations.js';
-import { incapacitated, modifiers, speedOf, walksOn, wardsFor, warded } from '../modifiers.js';
+import { incapacitated, modifiers, speedOf, walksOn, lendCasterSight, wardsBinding, warded } from '../modifiers.js';
 import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, mountOf, riderOf, RuleError, spellStats, steering, turnBudget, unblocked, up, walled } from './shared.js';
 
 // ---------- grapples ----------
@@ -1446,6 +1446,7 @@ export const creatureType = (e) => e.type ?? CONTENT.monsters[e.tpl]?.type ?? (e
 // whose type the engine cannot tell is (the DM lets it through if it is one). The caster is not bound by its own. A shell whose caster the party does not know of (hidden,
 // hiding, or not seen) binds nobody: a refusal would tell the players something stands there, as a bare cell would not, so the DM judges it (the cast told the DM so).
 export const shellSeen = (s, c) => !c.hidden && !c.hiding && !unknown(s, c);
+lendCasterSight(shellSeen);
 export function shellsFor(s, e) {
   if (!shellsOf(s).length || ['construct', 'undead'].includes(creatureType(e))) return [];
   return shellsOf(s).filter((fx) => { const c = s.entities[fx.terrain.follows]; return c.id !== e.id && shellSeen(s, c); });
@@ -1454,7 +1455,7 @@ export function shellsFor(s, e) {
 // they know of (as a shell's, `shellSeen`) or whose caster is gone. A refusal, or a stop at the edge, by a circle the players were never shown would tell them something is there; the cast told the DM so, and the DM judges it.
 // A creature the DM plays is barred by every circle (a refusal goes to the DM alone).
 export function circlesFor(s, e) {
-  return wardsFor(s, e).filter((fx) => { if (e.side !== 'party') return true; const c = s.entities[fx.source]; return !c || shellSeen(s, c); });
+  return wardsBinding(s, e);
 }
 // Would a step of `e` from `from` to `to` take it into a shell from outside (a creature already inside is not pushed out, and may move within it)?
 export const shelledStep = (s, e, from, to, shells = shellsFor(s, e)) => shells.some((fx) => !inShell(s, fx, e, from) && inShell(s, fx, e, to));

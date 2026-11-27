@@ -1624,3 +1624,35 @@ test("magic circle: a party creature of a chosen type that tries to walk into a 
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
   assert.ok(JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "the party's creature was refused by the circle");
 });
+
+// ---- review of #837: a circle cast by a DM-hidden creature binds nothing the players are sent (attack Disadvantage, Charmed/Frightened refusal) ----
+const hiddenCircle = (w) => {
+  w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 }, name: "Ghost", hidden: true });
+  Object.assign(byName(w, "Ghost"), { hp: 500, maxHp: 500, spells: ["magic-circle"], slots: { 3: 3 }, slotsMax: { 3: 3 } });
+  w.must({ type: "cast", actor: byName(w, "Ghost").id, spell: "magic-circle", hex: { q: 8, r: 0 }, slot: 3, choice: ["fey"] });
+};
+// The plain world spends the same ids (creature and effect counters are shared, DEBT T11) and then drops both the caster and its circle.
+const burnCircle = (w) => { hiddenCircle(w); delete w.state.entities[byName(w, "Ghost").id]; w.state.effects = w.state.effects.filter((fx) => !fx.zone?.ward); };
+const seenInCircle = (w, monster = "goblin-warrior") => { w.must({ type: "spawn", monster, at: { q: 10, r: 0 }, name: "Seen" }); Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500 }); };
+test("magic circle: a party creature of a chosen type attacking a target inside a hidden caster's circle (a fight started with the caster outside) rolls as it would with no circle", () => {
+  const script = {
+    players: ["Pat"],
+    setup(w) { w5p3Field(w, { fey: true }); w.must({ type: "place", actor: "fighter", to: { q: 11, r: 0 } }); seenInCircle(w); w.putIn(); },
+    steps: [
+      { by: "dm", act: { type: "startEncounter", center: { q: 11, r: 0 }, radius: 3 } },
+      { by: "Pat", act: (w) => { turnOf(w, "fighter"); return { type: "attack", actor: "fighter", attack: "longsword", target: byName(w, "Seen").id }; } },
+    ],
+  };
+  const r = twin(script, { hide: hiddenCircle, plain: burnCircle });
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
+});
+test("magic circle: a party creature of a chosen type giving Charmed to a target inside a hidden caster's circle is sent the same as with no circle (no refusal note)", () => {
+  const script = {
+    players: ["Pat"],
+    setup(w) { w5p3Field(w, { fey: true }); w.must({ type: "place", actor: "wizard", to: { q: 13, r: 0 } }); seenInCircle(w, "bandit"); byName(w, "Seen").abil.wis = 1; Object.assign(w.state.entities.wizard, { type: "fey", spells: [...w.state.entities.wizard.spells, "charm-person"], slots: { 1: 3 }, slotsMax: { 1: 3 } }); w.putIn(); },
+    steps: [{ by: "dm", act: { type: "startEncounter", center: { q: 11, r: 0 }, radius: 4 } }, { by: "dm", act: (w) => { turnOf(w, "wizard"); return { type: "cast", actor: "wizard", spell: "charm-person", target: byName(w, "Seen").id, slot: 1 }; } }],
+  };
+  const r = twin(script, { hide: hiddenCircle, plain: burnCircle });
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "no refusal told");
+});

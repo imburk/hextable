@@ -116,13 +116,18 @@ export function inWard(s, fx, c, pos = c.pos) {
 const wardOfType = (fx, c) => { const ty = typeOf(c); return ty !== null && fx.zone.ward.types.includes(ty); };
 // The circles whose type list includes this creature's.
 export const wardsFor = (s, c) => wardsOf(s).filter((fx) => wardOfType(fx, c));
+// What the party can know of (a leak guard): a circle binds a creature of the party only if its caster is known to the party or gone; otherwise it would show the players that something is there, and the DM is told
+// at the cast and judges it. `shellSeen` (engine/world.js) is lent here when that module loads, as vision.js already imports this file.
+let casterSeen = () => true;
+export const lendCasterSight = (fn) => { casterSeen = fn; };
+export const wardsBinding = (s, c) => wardsFor(s, c).filter((fx) => { if (c.side !== 'party') return true; const k = s.entities[fx.source]; return !k || casterSeen(s, k); });
 // Would a step (or a teleport) of `c` from `from` to `to` cross the barrier of circle `fx` the way it bars: into it, or out of it if reversed?
 export const warded = (s, fx, c, from, to) => (fx.zone.ward.reverse ? inWard(s, fx, c, from) && !inWard(s, fx, c, to) : !inWard(s, fx, c, from) && inWard(s, fx, c, to));
 // Does circle `fx` protect target `t`: within it, or outside it if reversed?
 export const wardCovers = (s, fx, t) => (fx.zone.ward.reverse ? !inWard(s, fx, t) : inWard(s, fx, t));
 // Is `t` kept from the Charmed or Frightened condition by a circle, when the creature `giver` would give it? Only when the giver is known and is of a chosen type.
-const wardGuards = (s, t, id, giver) => (id === 'charmed' || id === 'frightened') && !!giver && wardsFor(s, giver).some((fx) => wardCovers(s, fx, t));
-export const wardName = (s, t, id, giver) => wardsFor(s, giver).find((fx) => wardCovers(s, fx, t) && wardGuards(s, t, id, giver))?.name;
+const wardGuards = (s, t, id, giver) => (id === 'charmed' || id === 'frightened') && !!giver && wardsBinding(s, giver).some((fx) => wardCovers(s, fx, t));
+export const wardName = (s, t, id, giver) => wardsBinding(s, giver).find((fx) => wardCovers(s, fx, t) && wardGuards(s, t, id, giver))?.name;
 
 // Auras (a built character's feature with `aura`: Aura of Protection, Aura of Courage): what
 // reaches creature `e` from its own auras and those of its allies. An aura is an Emanation of
@@ -330,7 +335,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
     }
   }
   // Magic Circle: a creature of a chosen type has Disadvantage on attack rolls against targets the circle protects.
-  if (hook === 'attack.roll' && sit.target) for (const fx of wardsFor(s, e)) if (wardCovers(s, fx, sit.target)) out.disadvantage.push(fx.name);
+  if (hook === 'attack.roll' && sit.target) for (const fx of wardsBinding(s, e)) if (wardCovers(s, fx, sit.target)) out.disadvantage.push(fx.name);
   return out;
 }
 

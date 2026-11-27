@@ -188,14 +188,14 @@ function push(s, t, feet, dir, from, ev) {
 }
 // The effect step: `t` goes to `to` (from teleportSpot). Returns false if it could not go, which
 // runs the step's `blocked` steps instead when it has them.
-function teleport(s, t, step, to, ev) {
+function teleport(s, t, step, to, ev, own = true) {
   // One of a riding pair teleports alone, so the ride ends (stage C6b; teleportApart).
   if (mountOf(s, t) || riderOf(s, t)) {
     const body = mountOf(s, t) ? { ...t, riding: undefined } : t, G = gridOf(s.map);
     if (step.blocked && living(s).some((o) => o.id !== t.id && !paired(o, t) && overlapAt(o, o.pos, body, to, G))) return false;
   }
   const parted = teleportApart(s, t, ev);
-  if (parted) { const went = teleport(s, t, step, to, ev); parted(); return went; }
+  if (parted) { const went = teleport(s, t, step, to, ev, own); parted(); return went; }
   const G = gridOf(s.map), taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos, G));
   let at = to;
   if (taken(at)) {
@@ -221,7 +221,8 @@ function teleport(s, t, step, to, ev) {
   // Magic Circle: "If the creature tries to use teleportation ... to [enter], it must first succeed on a Charisma saving throw" (reversed, to leave). On a failure the teleportation does not happen: the spell, its slot
   // and the action are spent as cast (the engine has no other failed-teleport rule, so the cost stands), and nothing else of the step runs (not its `blocked` steps, which are for a collision). Only a circle the party
   // can know of is judged for a creature of the party (`circlesFor`).
-  for (const fx of circlesFor(s, t)) {
+  // Only when the creature itself tries to teleport (its own spell or feature, `own`), not when another creature's effect moves it.
+  for (const fx of own ? circlesFor(s, t) : []) {
     if (!warded(s, fx, t, t.pos, at)) continue;
     const dc = fx.zone.src?.dc;
     if (dc === undefined) { ev.push({ type: 'manual', actor: t.id, name: fx.name, partial: true, text: `${fx.name} calls for a Charisma save from ${t.name} to teleport ${fx.zone.ward.reverse ? 'out of' : 'into'} the circle, and no DC is known. The DM applies it.` }); continue; }

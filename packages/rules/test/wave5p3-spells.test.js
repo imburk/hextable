@@ -9,6 +9,7 @@ import { apply, current } from "../src/engine.js";
 import { newGame } from "../src/scenario.js";
 import { spaceOf } from "../src/zones.js";
 import { modifiers } from "../src/modifiers.js";
+import { KIT } from "../src/engine/resolve.js";
 
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -487,4 +488,18 @@ test("Magic Circle: a circle of a caster the party cannot see holds no creature 
   void gob;
   const foe = spawn(s, "goblin-warrior", 14, -4, "Foe");
   bad(apply(s, { type: "move", actor: foe.id, to: { q: 9, r: 0 } }, DM), /keeps Foe/);
+});
+
+test("Magic Circle: the Charisma save is for a creature that tries to teleport itself, not for one another creature's effect teleports", () => {
+  const s = field();
+  ok(circle(s));
+  const gob = spawn(s, "goblin-warrior", 13, 0, "Gob");
+  const to = { q: 9, r: 0, z: 0 };
+  const own = [], other = [];
+  KIT.teleport(s, gob, { name: "Test" }, to, own, true);
+  assert.equal(saves({ events: own }).filter((e) => e.id === gob.id && e.abil === "cha").length, 1, "its own teleportation: a save");
+  gob.pos = { q: 13, r: 0, z: 0 };
+  assert.equal(KIT.teleport(s, gob, { name: "Test" }, to, other, false), true);
+  assert.deepEqual(saves({ events: other }), [], "moved by another creature's effect: no save");
+  assert.equal(gob.pos.q, 9, "and it arrives");
 });
