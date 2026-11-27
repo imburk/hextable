@@ -5,13 +5,14 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, aimArea, castAbilOf, dying, mod, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack } from './engine.js';
+import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, aimArea, castAbilOf, dying, mod, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack, shelledReach } from './engine.js';
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { SPELLS } from './content/index.js';
 import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effects.js';
-import { incapacitatedBy } from './modifiers.js';
+import { flyby, incapacitatedBy, untrainedGear } from './modifiers.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
+import { silentAt } from './terrain.js';
 import { unknown } from './vision.js';
 
 // Does this creature know where that one is? Not if it is hiding from it, unless Tremorsense
@@ -27,6 +28,8 @@ export function aiStep(s, id, opts) {
   // While an action waits for a player's reaction (reactions.js) nothing else can happen: no move,
   // not even ending the turn. The answer, from the player or the DM, carries the table on.
   if (!e || current(s) !== id || s.pending) return null;
+  // Merged with stone (Meld into Stone): it does nothing on its turn but let it pass (it leaves, if it does, by the DM's hand).
+  if (e.melded) return end;
   // A companion (a creature with a `bond`) is played by the companion brain (below). Everything after this line is the
   // monster AI as it was before the brain, for every creature with no bond (companions-brain-replay.test.js).
   if (e.bond) return companionStep(s, id, opts);
@@ -38,16 +41,32 @@ export function aiStep(s, id, opts) {
   // control): on a turn of its own (its rider got back on after its place) it is offered nothing it would be refused,
   // and its turn ends (DEBT W24).
   if (steering(s, e)) return end;
+  // Confusion (resolve.js `confusedOn`): on a 7 or 8 it makes one melee attack at the creature the dice chose, and nothing else (it does not move); on any other roll its movement and action were taken away.
+  if (s.encounter?.flags?.[`confused:${id}`]) return confusedStep(s, e);
   // A party creature acts only on what the party knows (ai-casting.md, Decision 2): it reads the copy the companion brain reads,
   // with the creatures the party is not told of left out. A foe reads the true state, as it always has (`knownTo` returns `s`).
   const k = knownTo(s, e);
   // It does not act on creatures it has not found.
-  const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
+  const foes = Object.values(k.entities).filter((o) => up(o) && !o.melded && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));      // a creature merged with stone is never picked
   // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.
   const b = k.encounter.budget;
   if (k.encounter.round === 1 && !e.hiding && e.skillBonus?.stealth !== undefined && (e.features?.nimbleEscape ? b.bonus > 0 : b.action > 0) && !hideProblem(k, e)) return { type: 'hide', actor: id };
   if (!foes.length) return end;
   return e.actions ? withActions(k, e, foes) : withAttacks(k, e, foes);
+}
+
+// One melee attack at the creature Confusion chose, from the action it has left (`confusedFoe:<id>:<foe>` in the fight's flags); otherwise its turn ends. A refusal ends the turn too, as it does for every step of the brain.
+function confusedStep(s, e) {
+  const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id }, pre = `confusedFoe:${id}:`;
+  const key = Object.keys(s.encounter.flags).find((k) => k.startsWith(pre)), t = key ? s.entities[key.slice(pre.length)] : null;
+  if (!t || !up(t) || b.action < 1 || b.attacks) return end;
+  const d = apart(s, e, t);
+  if (e.actions) {
+    const x = profiled(e.actions).find((x) => x.p.harmful && x.p.time === 'action' && x.p.aim === 'creature' && x.p.roll === 'melee' && !actionSpent(e, x.def) && d * FT <= x.p.far && !shelledReach(s, e, t, x.p.far));
+    return x ? { type: 'act', actor: id, action: x.def.id, target: t.id } : end;
+  }
+  const w = steadiest(e, (e.attacks ?? []).filter((a) => a.type === 'melee' && !attackRefusal(s, e, a, fromPool(b, a.id)) && d * FT <= (a.reach ?? FT) && !shelledReach(s, e, t, a.reach)), s);
+  return w ? { type: 'attack', actor: id, target: t.id, attack: w.id } : end;
 }
 
 // A creature held by someone, with nothing it can hit from where it stands and no one of its own held, takes the Escape action
@@ -96,7 +115,7 @@ function withActions(s, e, foes, lim = {}) {
   // Nearest first, then the most hurt, then by id, so the order never depends on anything else.
   const order = [...foes].sort((x, y) => apart(s, e, x) - apart(s, e, y) || byHp(e, x, y) || (x.id < y.id ? -1 : 1));
   const all = profiled(e.actions).filter((x) => x.p.harmful && !actionSpent(e, x.def) && (x.p.time === 'action' || b.bonus > 0) && !(lim.noAttack && rolled(x.p)));
-  const reaches = (x, t) => x.p.aim === 'creature' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t) && !partRefusal(s, e, x.def, [t]);
+  const reaches = (x, t) => x.p.aim === 'creature' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t) && !partRefusal(s, e, x.def, [t]) && !(x.def.target.creature?.reach !== undefined && shelledReach(s, e, t, x.def.target.creature.reach));      // Antilife Shell: no reaching through it
   const act = (x, extra) => ({ type: 'act', actor: id, action: x.def.id, ...extra });
   // The best attack it can make right now among `list`: at the nearest foe it can reach, melee
   // if that reaches, else ranged, else anything aimed at one creature.
@@ -187,7 +206,7 @@ function withAttacks(s, e, foes, lim = {}) {
   // The Unarmed Strike every built character has (derive.js) is only a last resort (weapons.js, spareStrike).
   const spare = (a) => spareStrike(e, a);
   // Among its allowed attacks of a kind, not a Heavy weapon it swings with Disadvantage if another will do (weapons.js, steadiest).
-  let melee = steadiest(e, e.attacks.filter((a) => a.type === 'melee' && !spare(a) && allowed(a))), ranged = steadiest(e, e.attacks.filter((a) => a.type === 'ranged' && allowed(a)));
+  let melee = steadiest(e, e.attacks.filter((a) => a.type === 'melee' && !spare(a) && allowed(a)), s), ranged = steadiest(e, e.attacks.filter((a) => a.type === 'ranged' && allowed(a)), s);
   const d = apart(s, e, target);
   // With none, it punches a foe beside it (and does not walk in to punch: that is the Dodge it took before).
   if (!melee && !ranged && d <= 1 && open(target)) melee = e.attacks.find((a) => spare(a) && allowed(a));
@@ -201,7 +220,7 @@ function withAttacks(s, e, foes, lim = {}) {
   }
   // Attacks it has but may not make now (a Shield and nothing but a Two-Handed weapon): it takes the Dodge action rather than lose the turn.
   if (b.action > 0 && !b.attacks && !melee && !ranged && e.attacks.some((a) => !spare(a)) && !e.cond?.dodging) return { type: 'dodge', actor: id };
-  if (can && melee && d <= 1 && open(target)) return { type: 'attack', actor: id, target: target.id, attack: melee.id };
+  if (can && melee && d <= 1 && open(target) && !shelledReach(s, e, target, melee.reach)) return { type: 'attack', actor: id, target: target.id, attack: melee.id };
   if (melee && d > 1 && b.move >= FT && !cast1) { const mv = approach(s, e, foes); if (mv) return mv; }
   if (can && ranged && d * FT <= ranged.range[1] && open(target)) return { type: 'attack', actor: id, target: target.id, attack: ranged.id };
   if (b.action > 0 && melee && d > 1 && b.move < FT && !cast1) return { type: 'dash', actor: id };
@@ -246,7 +265,7 @@ function castShape(sp) {
   if (SHAPE.has(sp)) return SHAPE.get(sp);
   let out = null;
   const d = sp.def;
-  if (d && sp.turn && sp.time !== 'reaction' && (sp.aim === 'creature' || sp.aim === 'area') && !d.choice && !d.zone && !d.terrain && !sp.summon && !sp.teleport && !d.concentration) {
+  if (d && !d.hit && !sp.types && sp.turn && sp.time !== 'reaction' && (sp.aim === 'creature' || sp.aim === 'area') && !d.choice && !d.zone && !d.terrain && !sp.summon && !sp.teleport && !d.concentration) {
     let plain = true, dmg = false, heal = false, attack = false;
     walk(d.effects, (st) => {
       const kind = stepKind(st);
@@ -270,17 +289,19 @@ export function casterStep(s, e, foes, lim = {}) {
   const enc = s.encounter, b = enc?.budget, id = e.id;
   // Not in a fight, in the middle of an Attack action, or nothing left to cast with.
   if (!enc || !b || b.attacks || (b.action < 1 && b.bonus < 1)) return null;
-  if (!e.spells?.length || e.actions || e.form || incapacitatedBy(e) || (s.effects ?? []).some((fx) => fx.source === id && fx.noSpells)) return null;
+  if (!e.spells?.length || e.actions || e.form || untrainedGear(e).length || incapacitatedBy(e) || (s.effects ?? []).some((fx) => fx.source === id && fx.noSpells)) return null;
   const flags = enc.flags ?? {};
   const known = [];
+  const hushed = silentAt(s, e.pos);        // standing in a Sphere of Silence (Silence): no spell with a Verbal component can be cast, so it is not tried
   e.spells.forEach((sid, i) => {
     const sp = Object.hasOwn(SPELLS, sid) ? SPELLS[sid] : null, sh = sp && castShape(sp);
+    if (sh && hushed && sp.def.components?.includes('v')) return;
     if (sh && !(lim.noAttack && sh.attack)) known.push({ sp, i, kind: sh.kind });
   });
   if (!known.length) return null;
 
   // What it reads of its own side: Hit Points are in every party creature's open record.
-  const mine = Object.values(s.entities).filter((o) => !o.dead && !hostile(o, e) && inFight(s, o.id));
+  const mine = Object.values(s.entities).filter((o) => !o.dead && !o.melded && !hostile(o, e) && inFight(s, o.id));
   const upMine = mine.filter(up), downMine = mine.filter((o) => !up(o) && o.id !== id);
   const missing = (o) => o.maxHp - o.hp, badly = (o) => up(o) && o.hp * 4 <= o.maxHp;
   // A hard fight (amendment 1 to Decision 5): the foes able to act outnumber the creatures of its side able to act, or one of its side is
@@ -294,7 +315,7 @@ export function casterStep(s, e, foes, lim = {}) {
   // For a party creature, what the party can know: the foe's senses are a stat block it is not sent, so it assumes a foe beside it sees
   // (unless it is Blinded, which the party sees). A foe's creature reads the engine's own test.
   const sees = (o) => (e.side === 'party' ? !o.cond?.blinded : canSee(s, o, e) !== 'no');
-  const close = Object.values(s.entities).some((o) => up(o) && hostile(o, e) && !incapacitatedBy(o) && apart(s, o, e) <= 1 && sees(o));
+  const close = Object.values(s.entities).some((o) => up(o) && !o.melded && hostile(o, e) && !incapacitatedBy(o) && apart(s, o, e) <= 1 && sees(o));
   const hit = (kind) => (kind === 'ranged' && close ? DISADV : HIT);
 
   // Slots. One slot a turn (the engine's rule), the lowest that can cast the spell, and one kept back for a downed ally by a caster that
@@ -450,11 +471,11 @@ export function casterStep(s, e, foes, lim = {}) {
   function weaponScore() {
     if (b.action < 1 || lim.noAttack) return 0;
     const allowed = (a) => !attackRefusal(s, e, a, fromPool(b, a.id)), atks = e.attacks ?? [], times = 1 + (e.features?.extraAttack ?? 0);
-    const melee = steadiest(e, atks.filter((a) => a.type === 'melee' && !spareStrike(e, a) && allowed(a)));
-    const ranged = steadiest(e, atks.filter((a) => a.type === 'ranged' && allowed(a)));
+    const melee = steadiest(e, atks.filter((a) => a.type === 'melee' && !spareStrike(e, a) && allowed(a)), s);
+    const ranged = steadiest(e, atks.filter((a) => a.type === 'ranged' && allowed(a)), s);
     let w = 0;
     const value = (a, p) => { const v = p * avgOf(a.damage) * times; return Number.isFinite(v) ? v : 0; };
-    if (melee && (order.some((t) => apart(s, e, t) <= 1 && unblocked(s, e, t)) || closeIn())) w = value(melee, HIT);
+    if (melee && (order.some((t) => apart(s, e, t) <= 1 && unblocked(s, e, t) && !shelledReach(s, e, t, melee.reach)) || closeIn())) w = value(melee, HIT);
     if (ranged && order.some((t) => apart(s, e, t) * FT <= (ranged.range?.[1] ?? 0) && unblocked(s, e, t))) w = Math.max(w, value(ranged, hit('ranged')));
     return w;
   }
@@ -579,10 +600,10 @@ export function companionStep(s, id, opts = {}) {
   const mode = brainMode(s, e, opts);
   if (mode !== 'guard' && mode !== 'protect' && mode !== 'free' && mode !== 'hold') return null;
   // Dropped in its own turn (an Opportunity Attack as it stepped away): its turn is over (review of #368, L3).
-  if (!up(e)) return { type: 'endTurn', actor: id };
+  if (!up(e) || e.melded) return { type: 'endTurn', actor: id };
   if (mode === 'hold') return s.encounter.budget.action > 0 && !e.cond?.dodging && !incapacitatedBy(e) ? { type: 'dodge', actor: id } : { type: 'endTurn', actor: id };
   const k = knownTo(s, e), m = masterOf(s, e);
-  const foes = Object.values(k.entities).filter((o) => up(o) && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));
+  const foes = Object.values(k.entities).filter((o) => up(o) && !o.melded && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));      // a creature merged with stone is never picked
   const leash = typeof e.bond.leash === 'number' && m && (e.side === 'party' || !unknown(s, m)) ? { m, feet: e.bond.leash } : null;
   // A creature it holds goes where it goes (docs/specs/grapple-shove.md, Decision 6): stepping away from it is no escape, so it is
   // not a foe to step away from. Read from the true state: it knows what it holds. It still walks, paying the cost, for any other.
@@ -613,7 +634,7 @@ function guard(s, e, foes, leash) {
   const id = e.id, b = s.encounter.budget, end = { type: 'endTurn', actor: id };
   if (b.action > 0 && !e.cond?.dodging && !incapacitatedBy(e)) return { type: 'dodge', actor: id };
   if (!foes.some((f) => apart(s, e, f) <= 1)) return end;
-  const threats = foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
+  const threats = flyby(s, e) ? [] : foes.filter((f) => opportunityAttack(f, s) && !incapacitatedBy(f) && canSee(s, f, e) !== 'no');
   const safe = (pos) => !threats.some((f) => apartAt(s, e, pos, f, f.pos) <= 1);
   if (!safe(e.pos)) return end;                                     // any step away from it would provoke
   const near = (pos) => Math.min(...foes.map((f) => apartAt(s, e, pos, f, f.pos)));
@@ -639,9 +660,9 @@ function protect(s, e, m, foes) {
   const reach = Math.max(FT, ...moves.filter((x) => x.p.roll === 'melee').map((x) => x.p.far));
   if (b.action > 0) {
     for (const t of close) {
-      const x = moves.find((x) => x.p.roll === 'melee' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t)) ?? moves.find((x) => apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t));
+      const x = moves.find((x) => x.p.roll === 'melee' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t) && !shelledReach(s, e, t, x.p.far)) ?? moves.find((x) => x.p.roll !== 'melee' && apart(s, e, t) * FT <= x.p.far && unblocked(s, e, t));
       if (x) return { type: 'act', actor: id, action: x.def.id, target: t.id };
-      const w = !e.actions && steadiest(e, (e.attacks ?? []).filter((a) => !attackRefusal(s, e, a, fromPool(b, a.id)) && (a.type === 'melee' ? apart(s, e, t) <= 1 : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t)));
+      const w = !e.actions && steadiest(e, (e.attacks ?? []).filter((a) => !attackRefusal(s, e, a, fromPool(b, a.id)) && (a.type === 'melee' ? apart(s, e, t) <= 1 && !shelledReach(s, e, t, a.reach) : apart(s, e, t) * FT <= (a.range?.[1] ?? 0)) && unblocked(s, e, t)), s);
       if (w) return { type: 'attack', actor: id, target: t.id, attack: w.id };
     }
   }

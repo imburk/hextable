@@ -1,8 +1,8 @@
-import { sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, settle, onCanvas, tapAt } from './lib.mjs';
+import { stillInit, sleep, scenario, wait, shown, waitShown, open, closeMenu, openTab, calm, settle, onCanvas, tapAt, chipPick } from './lib.mjs';
 
 // ---------- the movement an Opportunity Attack gave, at the table (issue #536, DEBT T93; docs/specs/homebrew-subclasses.md, "Build notes: H") ----------
 // A DM hosts and a player joins. The DM adds an invented pack (the "Oath of the Hollow Bell": `triggers.opportunityHit`), the DM makes a paladin of it and the player plays it.
-// A goblin beside the paladin walks away on the DM's order and the paladin's Opportunity Attack hits (a goblin is tried again until it does). Then, with the DM's auto-play
+// A goblin beside the paladin walks away on the DM's order and the paladin's Opportunity Attack hits (scripted: the page asks its own engine on a copy, and uses up dice with ability checks until the walk draws a hit). Then, with the DM's auto-play
 // ON, the pass checks what each side sees and does:
 //   the player: the movement is offered at once (Move up to N ft, Don't move), the reach is shaded, a tap before Move spends nothing, a tap after it moves and provokes nothing,
 //   the DM: the auto-play does not end the goblin's turn (it waits, with a visible line and a button that gives the movement up for the player), and once the movement is spent,
@@ -23,18 +23,42 @@ const SHEET = { name: 'Sir Bell', class: 'paladin', level: 5, subclass: OATH, ab
 async function table(browser, url, label, hostOpts, playerOpts, tag) {
   await scenario(label, async (run) => {
     const hostCtx = await browser.newContext(hostOpts), playerCtx = await browser.newContext(playerOpts);
+    await hostCtx.addInitScript(stillInit); await playerCtx.addInitScript(stillInit);
+    const sigInit = () => { window.__sig = () => { const S = window.hextable.state, T = S?.timeline ?? []; return JSON.stringify([S?.rng, S?.seq, S?.encounter?.turn, S?.encounter?.round, T.length, T.slice(-2)]); }; };
+    await hostCtx.addInitScript(sigInit); await playerCtx.addInitScript(sigInit);
+    // SMOKE_LAG=<ms> delays every action a page sends and SMOKE_THROTTLE=<n> slows the page's CPU n times: a slow runner on demand (how the 24 Nov flakes were reproduced).
+    if (process.env.SMOKE_LAG) for (const c of [hostCtx, playerCtx]) await c.addInitScript(`{ const W = window.WebSocket, ms = ${+process.env.SMOKE_LAG}; window.WebSocket = class extends W { send(d) { setTimeout(() => super.send(d), typeof d === 'string' && /"t":"(ping|pong)"/.test(d) ? 0 : ms); } }; }`);
     try {
       const dm = await hostCtx.newPage(), pl = await playerCtx.newPage();
       run.watch(dm, ' (DM)'); run.watch(pl, ' (player)');
+      if (process.env.SMOKE_THROTTLE) for (const pg of [dm, pl]) await (await pg.context().newCDPSession(pg)).send('Emulation.setCPUThrottlingRate', { rate: +process.env.SMOKE_THROTTLE });
       const touch = !!playerOpts.hasTouch;
-      let bell = null;
+      let bell = null, home = null;
       const text = (page, sel) => page.evaluate((s) => document.querySelector(s)?.textContent ?? '', sel);
       const hintOf = (page) => page.evaluate(() => { const h = document.getElementById('hint'); return h.hidden ? '' : h.textContent; });
       const turnOf = (page) => page.evaluate(() => { const S = window.hextable.state; return S.encounter ? S.encounter.order[S.encounter.turn].id : null; });
       const flag = (page) => page.evaluate(() => window.hextable.state.encounter?.flags?.['rmove:' + Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id] ?? 0);
       const asked = (page) => page.evaluate(() => !!(window.hextable.state.prompt || window.hextable.state.pending));
       const idle = (page) => calm(page, 20000);
-      const botsOff = () => dm.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+      // An action sent is not an action applied (a flake, three times on 24 Nov): `calm` only says no dice are in the air and no beats are left, so on a slow runner it returned before the
+      // table had answered, and a loop that read the state next read the state from before its own action (60 "dice used up" that were never thrown, 40 endTurns that were never applied).
+      // `send` sends one action and waits until this page's state has changed, which is the table's answer (a refusal changes nothing, and is said as a timeout with the game's state).
+      const send = async (page, action, ms = 25000) => {
+        const before = await page.evaluate(() => window.__sig());
+        await page.evaluate((a) => window.__still(a), action);
+        await wait(page, (b) => window.__sig() !== b, before, ms).catch((e) => { throw new Error(`${action.type} was not applied: ${e.message}`); });
+        await idle(page);
+      };
+      // What a stuck fight looks like from the page (#688): whose turn, what it waits for, what is asked, the last events and refusals, whether the auto-play is on.
+      const dump = (page) => page.evaluate(() => { const h = window.hextable, S = h.state, E = S?.encounter, t = document.getElementById('toast'); return JSON.stringify({ encounter: E && { turn: E.order[E.turn]?.id, round: E.round, order: E.order.map((o) => o.id), budget: E.budget, flags: E.flags, waiting: E.waiting }, prompt: S?.prompt ?? null, pending: S?.pending ?? null, auto: document.getElementById('dm-auto')?.checked, busy: h.timeline.busy(), waits: h.waiting, pace: h.timeline.pace, hint: document.getElementById('hint')?.hidden ? '' : document.getElementById('hint')?.textContent, toast: t?.hidden ? '' : t?.textContent, now: Math.round(performance.now()), wire: window.__wire, played: h.played.slice(-15).map((x) => `${x.type}@${Math.round(performance.now() - x.t)}ms`), seq: S?.seq, log: (S?.timeline ?? []).slice(-20).map((x) => x.type + (x.id ? ':' + x.id : '') + (x.actor ? ':' + x.actor : '')), hp: Object.values(S?.entities ?? {}).map((e) => `${e.name}/${e.side}:${e.hp}${e.dead ? 'x' : ''}`) }); });
+      const endFight = async (page) => {
+        await page.evaluate(() => window.__still({ type: 'endEncounter' }));
+        await wait(page, () => !window.hextable.state.encounter, null, 20000).catch(async (e) => { throw new Error(`${e.message}; the DM's page: ${await dump(dm)}; the player's: ${await dump(pl)}`); });
+      };
+      // Unchecking the box as the DM does: the `change` event is what clears the auto-play's timer (app.js, `dm-auto`.onchange). Setting `checked` alone left a foe's move
+      // armed for the turn that had just come (#688: the move landed 25 ms after the script's endEncounter, the foe walked up to the party, and the engine began a new fight, so
+      // `!state.encounter` never held). An action already sent still lands, so wait for the round trip and for the pictures to be still.
+      const botsOff = async () => { await dm.evaluate(() => { const c = document.getElementById('dm-auto'); c.checked = false; c.dispatchEvent(new Event('change')); }); await sleep(600); await idle(dm); await idle(pl); };
       const botsOn = () => dm.evaluate(() => { const c = document.getElementById('dm-auto'); c.checked = true; c.dispatchEvent(new Event('change')); });
       const box = (page, sel) => page.evaluate((s) => { const b = document.querySelector(s)?.getBoundingClientRect(); return b && { x: b.x, y: b.y, w: b.width, h: b.height, iw: innerWidth, ih: innerHeight }; }, sel);
 
@@ -58,10 +82,11 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
         await dm.click('#pm-go');
         await wait(pl, (p) => window.hextable.packs.built.includes(p), P, 10000);
         await dm.click('#pm .pm-close'); await waitShown(dm, '#pm', false); await closeMenu(dm);
-        await dm.evaluate((sheet) => window.hextable.act({ type: 'setSheet', sheet }), SHEET);
+        await dm.evaluate((sheet) => window.__still({ type: 'setSheet', sheet }), SHEET);
         await wait(pl, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Sir Bell'), null, 10000);
         bell = await pl.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id);
-        await pl.locator('#party button:has-text("Play as Sir Bell")').click();
+        home = await pl.evaluate((b) => window.hextable.state.entities[b].pos, bell);
+        await chipPick(pl, 'Play as Sir Bell', 'click');
         await wait(dm, (b) => !!window.hextable.state.entities[b].owner, bell);
         await botsOff();
         const feat = await dm.evaluate((b) => window.hextable.state.entities[b].feats.some((f) => f.triggers?.opportunityHit), bell);
@@ -69,10 +94,39 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       });
 
       // One try: a goblin beside Sir Bell, a fight, the goblin's turn, the goblin walks off, and Sir Bell's Opportunity Attack may hit. Returns the goblin's id when it did.
-      let tries = 0;
       const attempt = async () => {
-        tries++;
-        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await dm.evaluate(() => window.hextable.act({ type: 'endEncounter' })); await wait(dm, () => !window.hextable.state.encounter, null, 10000); await idle(dm); }
+        if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await endFight(dm); await idle(dm); }
+        // The same ground every try (a flake, #633): the foes of the valley (they wake in a fight, walk up to Sir Bell and stand on the hexes the search needs), the goblins
+        // left by the tries before and Sir Bell's own place after a tap are what made "no hex beside Sir Bell takes a goblin". Clear the foes, put her back where she began,
+        // and stand one Guard four hexes off in the arena: a fight with only the goblin in it would end the moment her Opportunity Attack kills it, and the allowance with it.
+        // Asked again until it holds, and said in words when it does not (#661): a removal refused (the fight had not quite ended) or a place taken leaves the foes or Sir Bell
+        // where they were, and a single try with one 20 s wait could only say that a predicate was false.
+        const cleared = () => dm.evaluate(([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home]);
+        for (let i = 0; i < 6 && !(await cleared()); i++) {
+          if (await dm.evaluate(() => !!window.hextable.state.encounter)) { await endFight(dm); }
+          await dm.evaluate(async ([b, h]) => {
+            for (const e of Object.values(window.hextable.state.entities)) if (e.side !== 'party') await window.__still({ type: 'remove', actor: e.id });
+            const p = window.hextable.state.entities[b].pos;
+            if (p.q !== h.q || p.r !== h.r) await window.__still({ type: 'place', actor: b, to: { q: h.q, r: h.r } });
+          }, [bell, home]);
+          await idle(dm);
+          await wait(dm, ([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return p.q === h.q && p.r === h.r && Object.values(S.entities).every((e) => e.side === 'party'); }, [bell, home], 4000).catch(() => {});
+        }
+        if (!(await cleared())) throw new Error(`the ground could not be cleared: ${await dm.evaluate(([b, h]) => { const S = window.hextable.state, p = S.entities[b].pos; return `Bell at ${p.q},${p.r} wanted ${h.q},${h.r}; others ${Object.values(S.entities).filter((e) => e.id !== b && (e.side !== 'party' || (e.pos && e.pos.q === h.q && e.pos.r === h.r))).map((e) => `${e.name}/${e.side}@${e.pos?.q},${e.pos?.r}`).join(', ')}; encounter ${!!S.encounter}; prompt ${!!S.prompt} pending ${!!S.pending}; toast "${document.getElementById('toast')?.textContent ?? ''}"`; }, [bell, home])}`);
+        const guardAt = await dm.evaluate(async (b) => {
+          const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
+          const S = window.hextable.state, G = gridOf(S.map), me = S.entities[b];
+          for (const h of G.range(me.pos, 4)) {
+            if (G.dist(me.pos, h) !== 4) continue;
+            const c = structuredClone({ ...S, timeline: [] });
+            if (apply(c, { type: 'spawn', monster: 'goblin-warrior', at: h, name: 'Guard' }, { role: 'dm', userId: 'dm' }).ok && !c.encounter) return h;     // a place that does not begin the fight by itself
+          }
+          return null;
+        }, bell);
+        if (!guardAt) throw new Error('no place four hexes from Sir Bell for the Guard');
+        await dm.evaluate((at) => window.__still({ type: 'spawn', monster: 'goblin-warrior', at, name: 'Guard' }), guardAt);
+        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Guard'), null, 20000);
+        await idle(dm);
         const found = await dm.evaluate(async (b) => {
           const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js');
           const S = window.hextable.state, G = gridOf(S.map), me = S.entities[b], DM = { role: 'dm', userId: 'dm' };
@@ -93,26 +147,48 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
               const m = apply(k, { type: 'move', actor: gid, to: d }, DM); if (m.ok) return { at: h, to: d }; why.push(`move: ${m.error}`);
             }
           }
-          return { why: [...new Set(why)].slice(0, 6) };
+          const near = Object.values(S.entities).filter((x) => x.id !== b && G.dist(me.pos, x.pos) <= 3).map((x) => `${x.name}@${x.pos.q},${x.pos.r} hp${x.hp}`);
+          return { why: [...new Set(why)].slice(0, 6), at: undefined, ctx: `Bell@${me.pos.q},${me.pos.r} hp${me.hp} cond ${JSON.stringify(me.conditions ?? [])}; prompt ${!!S.prompt} pending ${!!S.pending}; encounter ${!!S.encounter}; near ${near.join(', ')}` };
         }, bell);
-        if (!found.at) throw new Error(`no hex beside Sir Bell takes a goblin that can walk away from her on this map: ${found.why.join(' | ')}`);
-        await dm.evaluate(([at]) => window.hextable.act({ type: 'spawn', monster: 'goblin-warrior', at, name: 'Gob' }), [found.at]);
-        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Gob' && e.hp > 0));
+        if (!found.at) throw new Error(`no hex beside Sir Bell takes a goblin that can walk away from her on this map: ${found.why.join(' | ')} [${found.ctx}]`);
+        await dm.evaluate(([at]) => window.__still({ type: 'spawn', monster: 'goblin-warrior', at, name: 'Gob' }), [found.at]);
+        await wait(dm, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Gob' && e.hp > 0), null, 15000);
         const gob = await dm.evaluate(() => Object.values(window.hextable.state.entities).filter((e) => e.name === 'Gob' && e.hp > 0).pop().id);
-        await dm.evaluate(([c]) => window.hextable.act({ type: 'startEncounter', center: c, radius: 6 }), [await dm.evaluate((b) => window.hextable.state.entities[b].pos, bell)]);
-        await wait(dm, () => !!window.hextable.state.encounter);
+        await dm.evaluate(([c]) => window.__still({ type: 'startEncounter', center: c, radius: 6 }), [await dm.evaluate((b) => window.hextable.state.entities[b].pos, bell)]);
+        await wait(dm, () => !!window.hextable.state.encounter, null, 15000);
         await idle(dm);
-        for (let i = 0; i < 40 && (await turnOf(dm)) !== gob; i++) { await dm.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), await turnOf(dm)); await idle(dm); }
-        if ((await turnOf(dm)) !== gob) throw new Error('the goblin\'s turn did not come');
+        for (let i = 0; i < 40 && (await turnOf(dm)) !== gob; i++) await send(dm, { type: 'endTurn', actor: await turnOf(dm) });
+        if ((await turnOf(dm)) !== gob) throw new Error('the goblin\'s turn did not come ' + await dump(dm) + ' PL ' + await dump(pl));
         // the goblin is a fresh foe each try: it is not the DM's page that sees the allowance when it hits, the table does; read the flag on the DM's page
-        await dm.evaluate(([g, to]) => window.hextable.act({ type: 'move', actor: g, to }), [gob, found.to]);
+        // The hit is scripted, not hoped for (#661): the dice are a keyed stream in the game state, so the DM's page asks its own engine, on a copy, whether this walk draws
+        // an Opportunity Attack that hits. If it does not, one harmless ability check of Sir Bell's uses up dice (nothing else changes) and the copy is asked again.
+        // How many checks use up the dice before the walk draws a hit is worked out on a copy, once; then exactly that many are sent, each waited for. (Not "send one, ask again": a page that asks again
+        // before the table has answered asks about the same dice, and the search ran out without a die thrown.)
+        const walkHits = async ([g, to, b]) => {
+          const { apply } = await import('./shared/engine.js'), DM = { role: 'dm', userId: 'dm' };
+          const c = structuredClone({ ...window.hextable.state, timeline: [] });
+          for (let i = 0; i <= 400; i++) {
+            const k = structuredClone(c), r = apply(k, { type: 'move', actor: g, to }, DM);
+            if (r.ok && (k.encounter?.flags?.['rmove:' + b] ?? 0) > 0) return { checks: i };
+            const q = apply(c, { type: 'check', actor: b, skill: 'athletics' }, DM);
+            if (!q.ok) return { error: 'check: ' + q.error, checks: i };
+          }
+          return { error: 'none in 400 checks', checks: 400 };
+        };
+        const worked = await dm.evaluate(walkHits, [gob, found.to, bell]);
+        if (worked.error) throw new Error(`no roll of the dice makes the goblin's walk draw an Opportunity Attack that hits: ${worked.error} after ${worked.checks}; ${await dump(dm)}`);
+        for (let i = 0; i < worked.checks; i++) await send(dm, { type: 'check', actor: bell, skill: 'athletics' });
+        await idle(dm); await idle(pl);
+        const again = await dm.evaluate(walkHits, [gob, found.to, bell]);
+        if (again.checks !== 0) throw new Error(`the copy said ${worked.checks} checks, and after them still ${again.checks} more (the page's dice and the copy's differ): ${await dump(dm)}`);
+        await send(dm, { type: 'move', actor: gob, to: found.to });
+        await wait(dm, (b) => (window.hextable.state.encounter?.flags?.['rmove:' + b] ?? 0) > 0, bell, 15000).catch(async (e) => { throw new Error(`Sir Bell's Opportunity Attack did not hit although the copy of the game said it would: ${e.message}; ${await dump(dm)}`); });
         await idle(dm); await idle(pl);
         return (await flag(dm)) > 0 ? gob : null;
       };
       const arrive = async () => {
-        let gob = null;
-        for (let i = 0; i < 10 && !gob; i++) gob = await attempt();
-        if (!gob) throw new Error(`Sir Bell's Opportunity Attack did not hit in ${tries} tries`);
+        const gob = await attempt();
+        if (!gob) throw new Error(`Sir Bell's Opportunity Attack did not hit although the copy of the game said it would (the table's dice and the page's differ): ${await dm.evaluate((b) => { const e = window.hextable.state.entities[b]; return JSON.stringify({ hp: e.hp, conditions: e.conditions, reaction: window.hextable.state.encounter?.budget, flags: window.hextable.state.encounter?.flags, log: window.hextable.state.timeline?.slice(-6) }); }, bell)}`);
         return gob;
       };
 
@@ -202,15 +278,15 @@ async function table(browser, url, label, hostOpts, playerOpts, tag) {
       await run.do('the DM\'s button gives it up for the player, and the foes go on', async () => {
         await botsOff();
         gob = await arrive();
-        await wait(pl, () => /Move up to/.test(document.getElementById('hint-go').textContent), null, 8000);
+        await wait(pl, () => /Move up to/.test(document.getElementById('hint-go').textContent), null, 15000);
         await botsOn();
         await dm.evaluate((g) => window.hextable.select(g), gob);
-        await wait(dm, () => /Waiting for Sir Bell to move/.test(document.getElementById('hint').textContent), null, 5000);
+        await wait(dm, () => /Waiting for Sir Bell to move/.test(document.getElementById('hint').textContent), null, 10000);
         const b = await box(dm, '#hint-go'); if (b.h < 43.5 || b.x < 0 || b.x + b.w > b.iw) throw new Error(`the DM's button is ${JSON.stringify(b)}`);
         await (hostOpts.hasTouch ? dm.locator('#hint-go').tap() : dm.click('#hint-go'));
-        await wait(pl, (g) => !window.hextable.state.encounter.flags['rmove:' + Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id], gob, 8000);
-        await wait(pl, () => !/move up to/.test(document.getElementById('hint').textContent), null, 5000);
-        await wait(dm, (g) => { const S = window.hextable.state; return !S.encounter || S.encounter.order[S.encounter.turn].id !== g; }, gob, 20000);
+        await wait(pl, (g) => !window.hextable.state.encounter.flags['rmove:' + Object.values(window.hextable.state.entities).find((e) => e.name === 'Sir Bell').id], gob, 15000);
+        await wait(pl, () => !/move up to/.test(document.getElementById('hint').textContent), null, 10000);
+        await wait(dm, (g) => { const S = window.hextable.state; return !S.encounter || S.encounter.order[S.encounter.turn].id !== g; }, gob, 30000);
         await shot(dm, `allowance-after-dm-${tag}`);
       });
       await run.do('with the auto-play off the DM sees no waiting line, and a foe\'s own turn is not held up when nobody holds anything', async () => {

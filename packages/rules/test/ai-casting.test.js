@@ -361,3 +361,16 @@ test("sight los: a stand-in fighter does not walk toward a foe behind a shut doo
   assert.deepEqual(aiStep(make("los"), FIGHTER), { type: "endTurn", actor: FIGHTER });
   assert.equal(aiStep(make("rooms"), FIGHTER).type, "move");
 });
+
+for (const grid of GRIDS) {
+  test(`${grid}: a caster in armour it is not trained in (the engine refuses its spells) proposes no cast; a Shield alone changes nothing (#648)`, () => {
+    const s = scene(grid, (s) => goblinAt(s, WIZARD, 12), WIZARD);
+    standIn(s, WIZARD);
+    assert.equal(aiStep(structuredClone(s), WIZARD).type, "cast", "baseline: it casts");
+    s.entities[WIZARD].untrained = ["Chain Mail"];
+    assert.equal(casterStep(s, s.entities[WIZARD], []), null);
+    const a = aiStep(s, WIZARD);
+    assert.ok(a && a.type !== "cast", `it does something else: ${json(a)}`);
+    assert.ok(apply(s, a, DM).ok, "and the engine takes it");
+  });
+}

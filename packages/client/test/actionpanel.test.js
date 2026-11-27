@@ -12,7 +12,9 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, handRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { SPELLS } = await import(pathToFileURL(join(tmp, 'shared/content/index.js')));
+const { opensOnSpells, panelContext, visibleTabs, defaultTab, rankExplore, howItEnds, statusHtml, reactionState, attackRows, bonusRows, moveRows, moveBudget, tabRows, feetShown, spellRows, slotStrip, filterSpells, sortSpells, noFilters, filtersOn, castGroup, spellRow, itemRows, handRows, gearRows, lightRow, potionTargets, featureRows: panelFeatureRows } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
+const { stabilizeRows, groupRows, groupsFor, stepOutRow, meldedLeft } = await import(pathToFileURL(join(tmp, 'actionpanel.js')));
 const { reactionsHtml } = await import(pathToFileURL(join(tmp, 'reactionsheet.js')));
 const { chooserButtons, kindOf, strikeChoices, payFor, optionWhy } = await import(pathToFileURL(join(tmp, 'classes.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
@@ -20,6 +22,7 @@ const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')))
 const { derive } = await import(pathToFileURL(join(tmp, 'shared/derive.js')));
 const { makeEntity } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { featureRows } = await import(pathToFileURL(join(tmp, 'features.js')));
+const { gridOf } = await import(pathToFileURL(join(tmp, 'shared/grid.js')));
 
 const DM = { role: 'dm', userId: 'dm' };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
@@ -162,7 +165,7 @@ const whys = (rows) => rows.filter((r) => r.why);
 test('Attacks: a character\'s attacks with bonus, damage and reach; greyed with the engine\'s words once the action is spent', () => {
   const s = newGame(7), e = inFightAs(s, 'fighter');
   let rows = attackRows(s, e);
-  assert.deepEqual(ids(rows), e.attacks.map((a) => `atk:${a.id}`));
+  assert.deepEqual(ids(rows).filter((i) => i.startsWith('atk:')), e.attacks.map((a) => `atk:${a.id}`));       // (a built hero also has the Unarmed Strike's grapple, push and prone rows)
   assert.match(rows[0].sub, /^\+\d+ to hit · .+ · reach 5 ft$/); assert.equal(rows[0].why, ''); assert.equal(rows[0].chip, 'Action');
   assert.deepEqual(rows[0].mode, { kind: 'attack', id: e.attacks[0].id });
   assert.equal(attackRows(s, e, { mode: rows[0].mode })[0].armed, true);
@@ -187,7 +190,7 @@ test('Attacks: a monster lists its actions, Multiattack, recharge and uses a day
 test('Move: Dash, Disengage, Dodge, Hide, Search and the objects in reach, each with its cost and its reason; the meter is the speed left', () => {
   const s = newGame(7), e = inFightAs(s, 'fighter');
   door(s, e.pos); const rows = moveRows(s, e);
-  assert.deepEqual(ids(rows).slice(0, 5), ['dash', 'disengage', 'dodge', 'hide', 'search']);
+  assert.deepEqual(ids(rows).slice(0, 5), ['dash', 'disengage', 'dodge', 'leap', 'hide']);
   assert.ok(ids(rows).some((x) => x.startsWith('use:door')));
   assert.equal(rows.find((r) => r.id === 'dash').chip, 'Action'); assert.equal(whys(rows).filter((r) => r.id !== 'hide').length, 0);
   assert.deepEqual(moveBudget(s, e), { left: 30, max: 30, prone: false });
@@ -265,6 +268,12 @@ test('spell rows carry level, cost, range, concentration and kinds; a spell with
   assert.equal(by['sacred-flame'].level, 0); assert.equal(by['healing-word'].cast, 'Bonus'); assert.equal(by['healing-word'].chip, 'Bonus');
   assert.match(by['sacred-flame'].sub, /Cantrip · 60 ft/); assert.ok(by['shield-of-faith'].conc); assert.match(by['shield-of-faith'].sub, /Concentration/);
   assert.ok(by['cure-wounds'].kinds.includes('healing'));
+});
+
+test('every spell row says its roll (#605): a save names the ability, a heal says none, and the tag is in the markup rules the CSS styles', () => {
+  const s = newGame(7), by = Object.fromEntries(spellRows(s, cleric(s)).map((r) => [r.spell, r]));
+  assert.equal(by['sacred-flame'].roll, 'save:dex'); assert.equal(by['cure-wounds'].roll, 'none'); assert.equal(by['healing-word'].roll, 'none');
+  for (const r of Object.values(by)) assert.ok(/^(attack|none|save:(str|dex|con|int|wis|cha))$/.test(r.roll), r.spell);
 });
 
 test('the slot strip: one entry per level with what is left; Pact slots are one row labelled so', () => {
@@ -765,4 +774,172 @@ test('reactions: the familiarDamaged trigger has words in the sheet and the prom
   assert.equal(row().now, 'always'); assert.equal(row().dflt, 'always');
   s.entities.mor.owner = 'u1';
   assert.equal(row().now, 'ask'); assert.equal(row().dflt, 'ask');
+});
+
+// ---------- #678: a caster with no weapon worth using opens its turn on Spells ----------
+{
+  const AB = { str: 12, dex: 14, con: 14, int: 16, wis: 14, cha: 16 };
+  const sheetOf = (o) => ({ name: 'Cas', level: 5, abilities: AB, skills: ['arcana', 'perception'], ...o });
+  const turnTab = (sheet, tweak) => {
+    const s = hero(sheetOf(sheet)); const e = inFightAs(s, 'hero'); tweak?.(s, e);
+    const c = panelContext(s, e, { dm: true });
+    return { s, e, c, tab: defaultTab(c, visibleTabs(c)) };
+  };
+  test('678: a wizard (no weapon, slots and cantrips) opens on Spells', () => {
+    const { e, tab } = turnTab({ class: 'wizard', spells: ['fire-bolt', 'mage-hand', 'magic-missile', 'shield'] });
+    assert.equal(opensOnSpells(newGame(7), e), true); assert.equal(tab, 'spells');
+  });
+  test('678: a wizard with only a dagger or a quarterstaff still opens on Spells', () => {
+    assert.equal(turnTab({ class: 'wizard', weapons: ['dagger', 'quarterstaff'], spells: ['fire-bolt', 'magic-missile'] }).tab, 'spells');
+  });
+  test('678: a fighter opens on Attacks', () => {
+    assert.equal(turnTab({ class: 'fighter', weapons: ['longsword'] }).tab, 'attacks');
+  });
+  test('678: a paladin with a greatsword (has spells and slots) opens on Attacks', () => {
+    const { e, tab } = turnTab({ class: 'paladin', weapons: ['greatsword'], spells: ['bless', 'cure-wounds'] });
+    assert.ok(e.spells?.length && Object.keys(e.slotsMax ?? {}).length, 'the paladin does cast'); assert.equal(tab, 'attacks');
+  });
+  test('678: a cleric with a mace and spells opens on Attacks', () => {
+    const { e, tab } = turnTab({ class: 'cleric', abilities: { ...AB, str: 14 }, weapons: ['mace'], spells: ['guidance', 'sacred-flame', 'bless', 'cure-wounds'] });
+    assert.ok(e.spells?.length); assert.equal(tab, 'attacks');
+  });
+  test('678: a sorcerer out of slots but with an attack cantrip opens on Spells; with no such cantrip, on Attacks', () => {
+    const out = (s, e) => { for (const l of Object.keys(e.slots ?? {})) e.slots[l] = 0; };
+    const r = turnTab({ class: 'sorcerer', spells: ['fire-bolt', 'light', 'magic-missile', 'shield'] }, out);
+    assert.ok(r.e.spells.some((id) => SPELLS[id]?.level === 0 && (SPELLS[id].roll === 'attack' || /^save:/.test(SPELLS[id].roll ?? ''))), 'has an attack or save cantrip');
+    assert.equal(r.tab, 'spells');
+    assert.equal(turnTab({ class: 'sorcerer', spells: ['fire-bolt', 'light', 'magic-missile', 'shield'] }, (s, e) => { out(s, e); e.spells = e.spells.filter((id) => SPELLS[id]?.level > 0); }).tab, 'attacks', 'nothing left to cast: Attacks');
+  });
+  test('678: a druid in Wild Shape opens on Attacks', () => {
+    const s = hero(sheetOf({ class: 'druid', level: 6, weapons: [], spells: ['produce-flame', 'thorn-whip', 'entangle'] })), e0 = s.entities.hero;
+    assert.equal(opensOnSpells(s, e0), true, 'in its own shape a druid with no weapon opens on Spells');
+    ok(apply(s, { type: 'feature', actor: 'hero', feature: 'wild-shape', form: 'wolf' }, DM));
+    const e = inFightAs(s, 'hero'); assert.ok(e.form, 'it is a wolf');
+    const c = panelContext(s, e, { dm: true });
+    assert.equal(defaultTab(c, visibleTabs(c)), 'attacks');
+  });
+  test('678: a tab the player picked is kept; only the default changes', () => {
+    const { c } = turnTab({ class: 'wizard', spells: ['fire-bolt', 'mage-hand', 'magic-missile', 'shield'] });
+    assert.equal(defaultTab(c, visibleTabs(c)), 'spells');
+    assert.equal(defaultTab(c, visibleTabs(c), { pref: 'remember', last: { turn: 'attacks' } }), 'attacks', 'a remembered choice beats the default');
+    assert.ok(visibleTabs(c).some((t) => t.id === 'attacks'), 'Attacks stays one tap away');
+  });
+}
+
+test('Features: a built Fighter\'s Second Wind is greyed at full Hit Points, with the words, and live once she is hurt (#672)', () => {
+  const s = newGame(7), e = s.entities.fighter;
+  const row = () => panelFeatureRows(s, e).find((r) => r.id === 'feat:second-wind');
+  assert.match(row().why, /Brenna is at full Hit Points\./);
+  e.hp = 5;
+  assert.equal(row().why, '');
+});
+
+test('Explore: a hurt leader\'s healing stays among the first four rows, ahead of Formation... (#671)', () => {
+  const s = newGame(7, { follow: true }), e = s.entities.fighter;
+  e.hp = 3;
+  const rows = rankExplore(s, e);
+  assert.ok(rows.some((r) => r.id === 'formation'), 'the fighter leads');
+  const heal = rows.find((r) => r.id === 'heal:secondWind' || r.id.startsWith('heal:'));
+  assert.ok(heal && heal.grid, `healing is on the grid: ${ids(rows)}`);
+});
+
+// ---------- A friend is down: Stabilize in the Heal group (#781) ----------
+test('Heal lists a Stabilize row for each dying ally first, greyed with its reason out of reach, and what it sends the engine takes', () => {
+  const s = hero(fighter()), e = s.entities.hero;
+  s.entities.pal = makeEntity(derive({ ...fighter(), name: 'Pal' }).record, { id: 'pal', kind: 'pc', side: 'party', pos: { q: 4, r: 0, z: 0 }, owner: 'u2' });
+  assert.deepEqual(stabilizeRows(s, e), [], 'nobody is down');
+  s.entities.pal.hp = 0;
+  let rows = stabilizeRows(s, e);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].why, /out of reach/);
+  assert.equal(groupRows(s, e, 'heal')[0].id, 'stabilize:pal', 'first in the group');
+  s.entities.pal.pos = { q: 1, r: 0, z: 0 };
+  rows = stabilizeRows(s, e);
+  assert.equal(rows[0].why, ''); assert.equal(rows[0].chip, '');
+  const r = ok(apply(s, rows[0].send, { role: 'player', userId: 'u1' }));
+  assert.ok(r.events.some((x) => x.type === 'check' && x.stabilize === 'pal'));
+  s.entities.pal.hp = 0; delete s.entities.pal.cond.stable; s.entities.pal.cond.stable = true;
+  assert.deepEqual(stabilizeRows(s, e), [], 'a Stable friend has no row');
+  s.entities.pal.cond = {};
+  inFightAs(s, 'hero');
+  assert.equal(stabilizeRows(s, e)[0].chip, 'Action');
+  s.encounter.budget.action = 0;
+  assert.match(stabilizeRows(s, e)[0].why, /action/i);
+});
+
+// ---------- the Leap row (#818) ----------
+const { leapState } = await import(pathToFileURL(join(tmp, 'leapui.js')));
+
+test('leap row: Strength in feet outside a fight, armed by a tap, Jump as a second row only when lent', () => {
+  const s = newGame(7), e = s.entities.fighter ?? Object.values(s.entities).find((x) => x.side === 'party' && Number.isInteger(x.abil?.str));
+  const L = leapState(s, e), want = Math.floor(e.abil.str / 5) * 5;
+  assert.equal(L.why, ''); assert.equal(L.sub, `Up to ${want} ft`);
+  const rows = moveRows(s, e, {}), leap = rows.find((r) => r.id === 'leap');
+  assert.ok(leap); assert.equal(leap.kind, 'arm'); assert.deepEqual(leap.mode, { kind: 'leap', id: e.id, spell: false });
+  assert.ok(!rows.some((r) => r.id === 'leap-jump'));
+  assert.equal(moveRows(s, e, { mode: leap.mode }).find((r) => r.id === 'leap').armed, true);
+  s.entities.wizard.spells.push('jump'); Object.assign(s.entities.wizard, { slots: { 1: 4 }, slotsMax: { 1: 4 } });
+  ok(apply(s, { type: 'place', actor: 'wizard', to: { q: e.pos.q + 1, r: e.pos.r } }, DM));
+  ok(apply(s, { type: 'cast', actor: 'wizard', spell: 'jump', target: e.id, slot: 1 }, DM));
+  const J = leapState(s, e);
+  assert.ok(J.spellFree); assert.match(J.sub, /Up to 30 ft \(Jump\)/);
+  const j = moveRows(s, e, {}).find((r) => r.id === 'leap-jump');
+  assert.ok(j); assert.deepEqual(j.mode, { kind: 'leap', id: e.id, spell: true });
+});
+
+test('leap row: greyed with the reason (not its turn, Prone, Speed 0, no movement)', () => {
+  const s = fight(), cur = current(s), other = Object.values(s.entities).find((x) => x.id !== cur && x.side === 'party' && Number.isInteger(x.abil?.str));
+  assert.match(leapState(s, other).why, /outside the battle|turn/);
+  const me = s.entities[cur]; me.abil = { ...(me.abil ?? {}), str: me.abil?.str ?? 15 };
+  if (me.side === 'party') {
+    const clean = leapState(s, me); assert.equal(clean.why, '');
+    s.encounter.budget.move = 0; assert.match(leapState(s, me).why, /no movement/);
+    s.encounter.budget.move = 30; me.cond = { ...me.cond, prone: true }; assert.match(leapState(s, me).why, /Prone/);
+  }
+});
+
+test('leap row: a standing start in a fight is half, and the sub-line says how to run', () => {
+  const s = fight(), me = s.entities[current(s)];
+  me.abil = { ...(me.abil ?? {}), str: 16 };
+  s.encounter.budget.move = 25; s.encounter.flags = { [`leapm:${me.id}`]: 0 };
+  const L = leapState(s, me);
+  if (me.speed) { assert.equal(L.run, me.speed - 25 >= 10); }
+  s.encounter.flags = null; assert.equal(leapState(s, me).run, null); assert.match(leapState(s, me).sub, /half from a standing start/);
+});
+
+// ---------- Merged with stone: one Step out row (#827, for Meld into Stone, #826) ----------
+test('a creature merged with stone is offered Step out and its spells on itself, the header says so, and what Step out sends the engine takes', () => {
+  const s = newGame(9), e = s.entities.wizard;
+  ok(apply(s, { type: 'setting', key: 'autoEngage', value: false }, DM));
+  Object.assign(e, { owner: 'pat', slots: { 1: 4, 3: 3 }, slotsMax: { 1: 4, 3: 3 } });
+  e.spells.push('meld-into-stone', 'mage-armor', 'fireball', 'false-life');
+  const G = gridOf(s.map), c = G.center(e.pos);
+  s.map.walls = [{ id: 'w1', level: s.map.levels[0].id, kind: 'wall', a: [c[0] + 2.5, c[1] - 30], b: [c[0] + 2.5, c[1] + 30] }];
+  const P = { role: 'player', userId: 'pat' };
+  ok(apply(s, { type: 'cast', actor: 'wizard', spell: 'meld-into-stone', slot: 3, wall: { level: s.map.levels[0].id, x: c[0] + 2.5, y: c[1] } }, P));
+  assert.ok(e.melded, 'merged');
+  const ctx = panelContext(s, e, { mine: true }), G1 = groupsFor(s, e, ctx, {});
+  assert.deepEqual(G1.shown.map((g) => g.id), ['stone', 'spells'], 'only Step out and the self spells');
+  assert.deepEqual(G1.shown[0].rows.map((r) => r.id), ['unmeld']);
+  assert.ok(G1.shown[1].rows.length > 0 && G1.shown[1].rows.every((r) => SPELLS[r.spell].aim === 'self'), `self spells only: ${ids(G1.shown[1].rows)}`);
+  assert.ok(!G1.shown[1].rows.some((r) => r.spell === 'fireball' || r.spell === 'meld-into-stone'), 'an aimed spell is not offered');
+  assert.match(statusHtml(s, e, { mine: true, full: true }), /Melded into stone/);
+  assert.ok(meldedLeft(s, e) === '' || /until|rounds left/.test(meldedLeft(s, e)));
+  assert.equal(stepOutRow(s, e).why, '', 'outside a fight it costs nothing');
+  // a fight: out of turn it is greyed with the engine's reason; with under 5 ft left too
+  ok(apply(s, { type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }, DM));
+  const first = current(s);
+  if (first !== 'wizard') {
+    assert.match(stepOutRow(s, e).why, /isn't .*'s turn/);
+    assert.equal(apply(s, stepOutRow(s, e).send, P).ok, false, 'the engine refuses it too');
+    s.encounter.turn = s.encounter.order.findIndex((o) => (o.id ?? o) === 'wizard');
+  }
+  assert.equal(current(s), 'wizard');
+  s.encounter.budget.move = 0;
+  assert.match(stepOutRow(s, e).why, /takes 5 ft of movement/);
+  assert.equal(apply(s, stepOutRow(s, e).send, P).ok, false);
+  s.encounter.budget.move = 30;
+  assert.equal(stepOutRow(s, e).why, '');
+  ok(apply(s, stepOutRow(s, e).send, P));
+  assert.equal(e.melded, undefined, 'out of the stone');
 });

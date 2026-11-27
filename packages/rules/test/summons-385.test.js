@@ -22,7 +22,7 @@ function refused(s, action, ctx, words) {
   assert.equal(json(s), before, "a refused action changes nothing");
 }
 const ABIL = { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 };
-const sheet = (cls, spells) => ({ name: "Ven", class: cls, level: 17, abilities: ABIL, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells });
+const sheet = (cls, spells) => ({ name: "Ven", class: cls, level: 17, abilities: ABIL, skills: [], ...(cls === "wizard" ? {} : { armour: "leather-armor" }), weapons: ["quarterstaff"], spells });
 function spots(s, near, r, monster) {
   const G = gridOf(s.map), out = [];
   for (const h of G.range(near, r)) if (apply(structuredClone(s), { type: "spawn", monster, at: h }, DM).ok) out.push(h);
@@ -88,8 +88,8 @@ test("Phantom Steed (SRD 29404-29428): the Riding Horse block with Speed 100, an
 // The rest of the group: each needs one mechanism the vocabulary does not have (the PR's table), so none has a summon
 // step and each keeps its tier. If one of these moves, its test belongs with the work that moved it.
 const LEFT = {
-  "mage-hand": "manual", "floating-disk": "manual", "unseen-servant": "manual", "flaming-sphere": "manual",
-  "spiritual-weapon": "manual", "conjure-animals": "manual", "faithful-hound": "manual", "guardian-of-faith": "manual",
+  "mage-hand": "manual", "floating-disk": "manual", "unseen-servant": "manual",
+  "conjure-animals": "manual", "faithful-hound": "manual",
   "arcane-hand": "manual", "conjure-elemental": "manual", "conjure-fey": "manual", "planar-ally": "manual",
   "arcane-sword": "manual", "finger-of-death": "assist", "simulacrum": "manual",
 };
@@ -99,7 +99,7 @@ test("the spells of the group that need a mechanism the vocabulary lacks have no
     assert.equal(sp.tier, tier, id);
     assert.ok(!json(sp.effects).includes('"summon"'), id);
   }
-  // Already entered with a summon step and assist: Find Steed (Life Bond), Animate Dead (bones), Create Undead (night, Ghasts...).
+  // Already entered with a summon step and assist: Find Steed (Life Bond), Animate Dead (bones), Create Undead (night, Ghasts...). Spiritual Weapon (#786) joins them; Guardian of Faith has no summon step and left this list when it went to assist.
   for (const id of ["find-steed", "animate-dead", "create-undead", "animate-objects", "phantom-steed"]) {
     assert.equal(CONTENT.spells[id].tier, "assist", id);
     assert.ok(CONTENT.spells[id].effects.some((x) => "summon" in x), id);

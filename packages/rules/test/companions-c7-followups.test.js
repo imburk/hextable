@@ -160,9 +160,9 @@ test("square: a rider's attack looks from its raised eye: a goblin seen only fro
   assert.ok(found, "a place behind the low wall, open to the saddle only");
   const { t, foot, id } = found;
   assert.notEqual(canSee(t, t.entities.fighter, t.entities[id]), "no", "seen from the saddle");
-  ok(apply(t, { type: "attack", actor: "fighter", target: id, attack: "javelin" }, U1));
+  ok(apply(t, { type: "attack", actor: "fighter", target: id, attack: "javelin-thrown" }, U1));
   const before = json(foot);
-  no(apply(foot, { type: "attack", actor: "fighter", target: id, attack: "javelin" }, U1), /wall/);
+  no(apply(foot, { type: "attack", actor: "fighter", target: id, attack: "javelin-thrown" }, U1), /wall/);
   assert.equal(json(foot), before, "refused on foot, and nothing changed");
   // The goblin sees the rider too: the raised eye works both ways (cover of the rider from the goblin).
   assert.notEqual(coverOf(t, t.entities[id], t.entities.fighter), "total");
@@ -185,8 +185,8 @@ test("hex: a rider's attack looks from its raised eye over a low wall", () => {
     if (coverOf(t, t.entities.fighter, t.entities[id]) !== "total" && coverOf(foot, foot.entities.fighter, foot.entities[id]) === "total") { found = { t, foot, id }; break; }
   }
   assert.ok(found, "a hex behind the low wall, open to the saddle only");
-  ok(apply(found.t, { type: "attack", actor: "fighter", target: found.id, attack: "javelin" }, U1));
-  no(apply(found.foot, { type: "attack", actor: "fighter", target: found.id, attack: "javelin" }, U1), /wall/);
+  ok(apply(found.t, { type: "attack", actor: "fighter", target: found.id, attack: "javelin-thrown" }, U1));
+  no(apply(found.foot, { type: "attack", actor: "fighter", target: found.id, attack: "javelin-thrown" }, U1), /wall/);
 });
 
 test("the raised eye lifts only the record in the state: a copy (vision.js passes riders raised already) is not lifted twice", () => {

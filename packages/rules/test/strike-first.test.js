@@ -46,12 +46,12 @@ test("the setting: off unless set (a new game has none), the DM's to switch, 'of
 });
 
 test("the migration: a table saved before version 27 gets 'casts' where autoEngage was on (or unset), else 'off'; a new one is left as it is", () => {
-  assert.equal(VERSION, 28);
+  assert.equal(VERSION, 31);
   for (const on of [true, false, undefined]) {
     const old = newGame(5); old.version = 26; if (on === undefined) delete old.settings.autoEngage; else old.settings.autoEngage = on;
     migrate(old);
     assert.equal(old.settings.strikeFirst, on === false ? "off" : "casts");
-    assert.equal(old.version, 28);
+    assert.equal(old.version, 31);
     const again = json(old); migrate(old); assert.equal(json(old), again, "migrating again changes nothing");
   }
   const fresh = newGame(5), f = json(fresh); migrate(fresh); assert.equal(json(fresh), f);

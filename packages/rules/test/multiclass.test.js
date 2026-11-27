@@ -121,7 +121,8 @@ test("a later class gives only its multiclass training; Extra Attack does not st
   const wf = { name: "Kel", classes: [{ class: "wizard", level: 1, spells: ["fire-bolt", "mage-hand", "light", "magic-missile"] }, { class: "fighter", level: 1 }], abilities: A, skills: ["arcana", "history"], choices: { "fighting-style": "defense" }, weapons: ["longsword"] };
   assert.deepEqual(validate(wf), []);
   assert.deepEqual(validate({ ...wf, armour: "chain-shirt", shield: true }), []);
-  assert.ok(validate({ ...wf, armour: "plate-armor" }).some((p) => /no training with heavy armour/.test(p)), "a Fighter taken later gives no heavy armour");
+  assert.deepEqual(validate({ ...wf, armour: "plate-armor" }), []);
+  assert.deepEqual(derive({ ...wf, armour: "plate-armor" }).record.untrained, ["Plate Armor"], "a Fighter taken later gives no heavy armour: it is worn untrained");
   const r = derive(wf).record;
   assert.deepEqual(r.saveProf, ["int", "wis"]);
   assert.equal(r.attacks.find((a) => a.id === "longsword").bonus, 2 + 2, "martial weapons from the Fighter");

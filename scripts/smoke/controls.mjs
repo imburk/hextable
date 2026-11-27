@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, closePanels, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, closePanels, openTab, openMenu } from './lib.mjs';
 
 // ---------- table controls (issue #163) ----------
 // The DM's pace setting, the stock maps (lobby and DM panel, asking before a map replaces a game) and the import report kept in the
@@ -65,7 +65,7 @@ async function controlsSolo(browser, url, label, opts) {
         await closePanels(page);
         const id = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Mira Testwell').id);
         await page.evaluate((i) => window.hextable.select(i), id);
-        await waitShown(page, '#btn-sheet'); await tap(page, '#btn-sheet');
+        await openMenu(page, 'sheet');
         await waitShown(page, '#sheet-import');
         const t = await page.$eval('#sheet-import', (e) => e.textContent);
         if (!/chronicle/.test(t) || !/Mira Testwell/.test(t)) throw new Error(t);
@@ -104,7 +104,7 @@ async function controlsTable(browser, url) {
       await run.do('the DM sets the pace and the phone sees it but cannot change it', async () => {
         await host.selectOption('#dm-pace', 'flow');
         await wait(phone, () => window.hextable.state.settings.pace === 'flow');
-        await openTab(phone, 'settings');
+        await openTab(phone, 'settings/rules');
         await wait(phone, () => /flow/.test(document.querySelector('#pace-table').textContent));
         if (!/Only the DM/.test(await phone.$eval('#pace-table', (e) => e.textContent))) throw new Error('the phone is not told it cannot change it');
         if (await phone.$('#dm-pace:not([hidden])') && (await shown(phone, '#dm-pace'))) throw new Error('the phone can see the DM control');
@@ -134,13 +134,13 @@ async function controlsTable(browser, url) {
         // The DM's sheet line is there after the history has come back.
         const id = await state(host, (S) => Object.values(S.entities).find((e) => e.name === 'Mira Testwell').id);
         await host.evaluate((i) => window.hextable.select(i), id);
-        await waitShown(host, '#btn-sheet'); await host.click('#btn-sheet');
+        await openMenu(host, 'sheet');
         await wait(host, () => document.querySelector('#sheet-import'));
         // What the phone has been sent, live: nothing of the report. And what it gets when it asks for the record.
         const leak = frames.find((f) => /fg-import|Imported from Fantasy|ADJUSTMENTS|"chronicle"/.test(f));
         if (leak) throw new Error(`the phone was sent the report: ${leak.match(/.{0,60}(fg-import|Imported from Fantasy|ADJUSTMENTS|"chronicle").{0,60}/)?.[0]}`);
         const asked = await phone.evaluate(() => new Promise((resolve) => {
-          const sess = JSON.parse(localStorage.getItem('hextable.session')), got = [];
+          const sess = JSON.parse(sessionStorage.getItem('hextable.session')), got = [];
           const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
           ws.onopen = () => ws.send(JSON.stringify({ t: 'resume', ...sess }));
           ws.onmessage = (m) => { got.push(m.data); if (JSON.parse(m.data).t === 'welcome') { ws.send(JSON.stringify({ t: 'history', types: ['chronicle'], limit: 200 })); ws.send(JSON.stringify({ t: 'history', limit: 500 })); } };

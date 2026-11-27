@@ -34,8 +34,8 @@ test('hex words become square words on a square map and are left alone on a hex 
 });
 
 test('the locked-aim hint says it is aimed, how to move it, and Cast, in the grid\'s words', () => {
-  assert.equal(aimedWords(HEX), 'Aimed: tap another hex to move it, or Cast');
-  assert.equal(aimedWords(SQUARE), 'Aimed: tap another square to move it, or Cast');
+  assert.equal(aimedWords(HEX), 'Aimed: tap another hex to move it, or tap the die');
+  assert.equal(aimedWords(SQUARE), 'Aimed: tap another square to move it, or tap the die');
 });
 
 test('the Strike first choice (#585): off unless the state says otherwise, a name and the engine\'s words for each value', () => {
@@ -45,4 +45,12 @@ test('the Strike first choice (#585): off unless the state says otherwise, a nam
   for (const v of ['casts', 'all']) assert.deepEqual(strikeFirstRule({ strikeFirst: v }), { value: v, text: SETTING_TEXT.strikeFirst[v] });
   assert.match(SETTING_TEXT.strikeFirst.off, /Initiative/);
   for (const v of ['casts', 'all']) assert.match(SETTING_TEXT.strikeFirst[v], /not in the SRD/);
+});
+
+test('turning on Spells and attacks asks first (#649); turning it off or choosing the other values does not', async () => {
+  const { strikeFirstNeedsAsk, STRIKE_FIRST_WARNING } = await import(pathToFileURL(join(tmp, 'tablecontrols.js')));
+  for (const from of [undefined, 'off', 'casts']) assert.equal(strikeFirstNeedsAsk(from, 'all'), true, `from ${from}`);
+  assert.equal(strikeFirstNeedsAsk('all', 'all'), false);
+  for (const to of ['off', 'casts']) for (const from of [undefined, 'off', 'casts', 'all']) assert.equal(strikeFirstNeedsAsk(from, to), false, `${from} to ${to}`);
+  assert.ok(STRIKE_FIRST_WARNING.split(/(?<=\.)\s/).length <= 2, 'one or two sentences');
 });

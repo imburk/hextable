@@ -17,12 +17,13 @@
 // again rolls the same dice. The history is not part of the game state: it is never saved with the
 // game and never sent to players. Pure: no network, no clock, no randomness.
 import { viewEvents, classify, seenName } from './view.js';
+import { learnShops } from './shopids.js';
 
 export const UNDO_LIMIT = 30;
 export const UNDO_BYTES = 8 * 1024 * 1024;       // per game, both lists together
 
 // Lobby changes are who sits where, not the game: they are never undone.
-const LOBBY = new Set(['claim', 'release', 'ping']);      // a ping changes nothing to take back
+const LOBBY = new Set(['claim', 'release', 'ping', 'offer', 'decline']);      // a ping changes nothing to take back
 export const undoable = (action) => !LOBBY.has(action?.type);
 
 // What a state looked like, cheaply enough to take before every action. The timeline only ever
@@ -178,11 +179,15 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
       const tree = structuredClone(keep ? { ...p.tree, markets: null } : p.tree), owners = {};
       if (keep) tree.markets = p.tree.markets;                 // the market list as pinned, shared and never edited (see mark)
       for (const [id, e] of Object.entries(was.entities ?? {})) owners[id] = { owner: e.owner, ownerName: e.ownerName };
-      const rng = state.rng, seq = state.seq;
+      const rng = state.rng, seq = state.seq, fights = state.fightSeq, shopSeq = state.shopSeq, aliases = state.shopAlias;
       for (const k of Object.keys(state)) delete state[k];
       for (const [k, v] of Object.entries(tree)) state[k] = k === 'timeline' ? tl : v;
       state.rng = rng;
       if (Number.isInteger(seq)) state.seq = Math.max(seq, state.seq ?? 0);
+      if (Number.isInteger(shopSeq)) state.shopSeq = Math.max(shopSeq, state.shopSeq ?? 0);                      // a shop opened again has a new id
+      if (Array.isArray(aliases) && aliases.length > (state.shopAlias?.length ?? 0)) state.shopAlias = [...aliases];      // a number given never comes to mean another shop
+      learnShops(state);                                                                                          // a pin from before version 29 has no list: the shops shown are numbered now
+      if (Number.isInteger(fights)) state.fightSeq = Math.max(fights, state.fightSeq ?? 0);      // a fight fought again has a new number too
       for (const [id, e] of Object.entries(state.entities)) {
         if (!owners[id]) continue;
         for (const k of ['owner', 'ownerName']) { if (owners[id][k] === undefined) delete e[k]; else e[k] = owners[id][k]; }
@@ -214,12 +219,12 @@ export function createHistory({ limit = UNDO_LIMIT, maxBytes = UNDO_BYTES } = {}
 // A step is named in plain words from the action and what it did. Players are told only about
 // steps they could see: every creature the action names must be one they know of, and at least
 // one event must have reached them. Otherwise `shown` is null and they are told nothing.
-const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage action', dodge: 'took the Dodge action', secondWind: 'used Second Wind', reactions: 'set standing instructions for reactions',
+const ACTS = { dash: 'took the Dash action', disengage: 'took the Disengage action', dodge: 'took the Dodge action', secondWind: 'used Second Wind', reactions: 'set standing instructions for reactions', hitChoices: 'set standing instructions for what to do after a hit',
   endTurn: 'ended their turn', use: 'used something', check: 'made a check', search: 'searched', setSpeed: 'had their speed changed',
-  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed',
+  editCharacter: 'was edited', setSize: 'changed size', give: 'had their gear changed', setHp: 'had their hit points set', harm: 'took damage', mend: 'was healed', setAc: 'had their Armor Class set',
   condition: 'had a condition changed', place: 'was placed', remove: 'was removed', setLight: 'had their light changed', hide: 'tried to hide',
-  feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', rollAbilityScores: 'rolled ability scores', rerollAbilityScore: 'rolled an ability score again', levelUp: 'levelled up', equip: 'put on or took off an item', shield: 'put a Shield away or took it up', attune: 'chose an item to attune to',
-  forgoMove: 'gave up their movement', drop: 'dropped something', pickUp: 'picked something up', escape: 'tried to escape a grapple' };
+  feature: 'used a feature', stand: 'stood up', shortRest: 'took a Short Rest', setSheet: 'had their sheet set', rollHp: 'rolled Hit Points', rerollHp: 'rolled a Hit Point die again', rollAbilityScores: 'rolled ability scores', rerollAbilityScore: 'rolled an ability score again', levelUp: 'levelled up', equip: 'put on or took off an item', shield: 'put a Shield away or took it up', attune: 'chose an item to attune to',
+  forgoMove: 'gave up their movement', drop: 'dropped something', pickUp: 'picked something up', escape: 'tried to escape a grapple', stabilize: 'tried to stabilize a creature' };
 
 // How a formation reads in a step's label (engine/world.js, SHAPES).
 const SHAPE_WORDS = { column: 'in single file', pairs: 'two abreast', line: 'four across', wedge: 'in a wedge', held: 'as they stand' };
@@ -257,7 +262,7 @@ export function describeStep(action, events, before, after) {
   function told(who, words) { return who === null ? null : `${who} ${words}`; }
   // A shop by the action's id, as it is after the step or was before it (closed, it is only in the state before).
   function shopName() {
-    const id = action.shop ?? events.find((e) => typeof e.shop === 'string')?.shop;
+    const id = events.find((e) => typeof e.shop === 'string')?.shop ?? action.shop;      // the events carry the shop's own id; a player's action, the number they were given
     const sh = (after.shops ?? []).find((x) => x.id === id) ?? (prior?.shops ?? []).find((x) => x.id === id);
     return sh?.name ?? 'A shop';
   }
@@ -268,6 +273,7 @@ export function describeStep(action, events, before, after) {
   let label;
   switch (a.type) {
     case 'move': label = `${who} moved`; break;
+    case 'leap': label = `${who} leaped`; break;
     case 'shield': label = ev('shield')?.on === false ? 'Shield away' : 'Shield up'; break;
     // An Unarmed Strike's Grapple and Shove options are named for what they are (docs/specs/grapple-shove.md).
     case 'attack': label = `${who} ${a.option === 'grapple' ? 'grappled' : a.option === 'shove' ? 'shoved' : 'attacked'} ${name(a.target)}`; break;
@@ -298,6 +304,8 @@ export function describeStep(action, events, before, after) {
     case 'startEncounter': label = 'The fight began'; break;
     case 'endEncounter': label = 'The fight was ended'; break;
     case 'endEffect': label = 'A lasting effect was ended'; break;
+    case 'unmeld': label = `${who} left the stone`; break;
+    case 'moveZone': label = `${who} rolled a lasting area to ${a.to && Number.isInteger(a.to.q) ? `${a.to.q},${a.to.r}` : 'a new place'}`; break;
     case 'rest': label = 'The long rest'; break;
     case 'advanceTime': label = `${a.minutes} minutes passed`; break;
     case 'chronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
@@ -305,7 +313,10 @@ export function describeStep(action, events, before, after) {
     case 'setPacks': label = { label: "The table's homebrew packs were set", shown: null }; break;
     case 'worldIndex': label = { label: 'A world was loaded', shown: null }; break;     // the server's, recording the DM's world pack (travel W3); players are told nothing, and no world id or name is in the label     // the DM's; players are told nothing, and no pack id is in the label
     case 'conclusion': label = a.publish ? 'The rewards were given out' : a.skip ? 'The rewards were skipped' : 'The rewards were changed'; break;
+    // A called save (docs/specs/prompts.md): the DM's, and players are told nothing of the step (the save events say what they may know).
+    case 'save': label = { label: `A ${a.ability ?? ''} saving throw was called`.replace('  ', ' '), shown: null }; break;
     case 'act': label = `${who} used ${after.entities[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? prior?.entities?.[a.actor]?.actions?.find((x) => x.id === a.action)?.name ?? 'an action'}`; break;
+    case 'joinFight': { const ids = events.filter((e) => e.type === 'joined').map((e) => e.id); label = ids.length ? `${who} brought ${names(ids, name)} into the fight` : `${who} tried to bring the others into the fight`; break; }
     case 'follow': label = a.leader === null || a.leader === undefined ? `${who} stopped following` : `${who} started following ${name(a.leader)}`; break;
     case 'partyFollow': label = `The party fell in behind ${name(a.leader)}${SHAPE_WORDS[a.shape] ? ` ${SHAPE_WORDS[a.shape]}` : ''}`; break;
     case 'formation': label = a.slots ? `The places behind ${name(a.leader)} were changed` : `The party walks behind ${name(a.leader)} ${SHAPE_WORDS[a.shape] ?? 'in a formation'}`; break;
@@ -316,6 +327,7 @@ export function describeStep(action, events, before, after) {
     case 'showHandout': label = 'A handout was shown'; break;
     case 'hideHandout': label = 'A handout was taken back'; break;
     case 'removeHandout': label = 'A handout was removed'; break;
+    case 'todoDone': label = { label: a.all === true ? 'Every to-do card was done' : 'A to-do card was done', shown: null }; break;     // the DM's alone (todo.js)
     // Shops (docs/specs/shops.md, Decision 9). The DM's steps are the DM's: players are told nothing of them, and no label shown to a
     // player names a shop, a line or a price (a player the shop is not shown to hears the step too; the gear and coins events say what
     // changed hands to those who may know).
@@ -350,6 +362,10 @@ export function describeStep(action, events, before, after) {
     case 'askCheck': label = 'A check was asked for'; break;
     case 'sceneChronicle': label = `Chronicle: ${String(a.title ?? '').trim().slice(0, 40)}`; break;
     case 'claim': label = `${name(a.entity)} was taken by ${a.userName ?? 'a player'}`; break;
+    // An offered character is the DM's business until it is let in: players are told nothing of an offer or a refusal, and of an admission only what `claim` says.
+    case 'offer': label = { label: `${ev('offered')?.name ?? 'A character'} was offered`, shown: null }; break;
+    case 'decline': label = { label: 'An offered character was declined', shown: null }; break;
+    case 'admit': label = `${real(ev('admitted')?.id)} was admitted to the table`; break;
     case 'release': label = `${name(a.entity)} was given up by their player`; break;
     case 'note': label = 'A note was sent'; break;
     // Stepping away (E20). Players are told of a party creature's; of another's only that the order changed.

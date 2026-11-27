@@ -317,12 +317,15 @@ for (const grid of GRIDS) {
     const r = ok(apply(a.s, { type: "move", actor: a.horse, to: a.to }, DM));
     const asked = r.events.find((e) => e.type === "reactionAsked");
     assert.ok(asked, "Ann is asked");
-    assert.deepEqual(asked.ask.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
-    assert.equal(asked.ask.options[1].against, a.gob);
+    // (Brenna is built from her sheet now, so her Unarmed Strike's grapple Opportunity Attack is offered too: the two that matter here are the weapon one on the mount and the one on its rider.)
+    const sans = (list) => list.filter((o) => o.reaction !== "opportunity-attack-grapple");
+    assert.deepEqual(asked.ask.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER, "opportunity-attack-grapple"], "a built hero's list is exactly these three");
+    assert.deepEqual(sans(asked.ask.options).map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
+    assert.equal(sans(asked.ask.options)[1].against, a.gob);
     assert.equal(asked.ask.by, a.horse, "set off by the mount");
     const v = view(a.s, U1).prompt;
-    assert.deepEqual(v.options.map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
-    assert.equal(v.options[1].against, a.gob);
+    assert.deepEqual(sans(v.options).map((o) => o.reaction), [OPPORTUNITY, OPPORTUNITY_RIDER]);
+    assert.equal(sans(v.options)[1].against, a.gob);
     // Against the rider.
     const b = structuredClone(a.s);
     const r2 = ok(apply(b, { type: "react", prompt: asked.n, take: OPPORTUNITY_RIDER }, U1));
@@ -542,9 +545,13 @@ for (const grid of GRIDS) {
   test(`${grid}: an old save from main (C6a) loads and plays`, () => {
     const { horse, save } = OLD[grid];
     const s = migrate(structuredClone(save));
-    const { packs, scoreRolls, world, place, parked, journey, markets, shops, ...rest } = s;                    // version 24 (#390) raises the version and adds `packs: []`
+    const starters = ["fighter", "rogue", "cleric", "wizard"].filter((id) => s.entities[id]?.sheet);
+    assert.ok(starters.length > 0, "the starters of an old save are given their sheets (#672)");
+    for (const id of starters) delete s.entities[id].sheet;      // ... which is the one thing the comparison below must not count as a change
+    const { packs, scoreRolls, world, place, parked, journey, markets, shops, fightSeq, ...rest } = s;                    // version 24 (#390) raises the version and adds `packs: []`
     assert.deepEqual(packs, []); assert.deepEqual(scoreRolls, {});   // version 25 (#557) adds `scoreRolls`
     assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });   // version 26 (#579) adds the places of a world
+    assert.equal(fightSeq, save.encounter?.id);                    // version 29 (#630) adds `fightSeq`, the number of the fight in progress (none: absent)
     assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 27 (#596) adds the markets and shops, empty
     const { strikeFirst, ...settings } = rest.settings;           // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
     assert.equal(strikeFirst, save.settings.autoEngage !== false ? "casts" : "off");

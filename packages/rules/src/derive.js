@@ -22,6 +22,7 @@
 import { CONTENT } from './content/index.js';
 import { ABILITIES, DAMAGE_TYPES, SKILLS, WEAR_ONE } from './content/schema.js';
 import { checkScores } from './scores.js';
+import { checkHpRolls, fixedOf, levelsOwed, rollsFor } from './hitpoints.js';
 
 export const mod = (score) => Math.floor((score - 10) / 2);
 export const proficiencyFor = (level) => 2 + Math.floor((level - 1) / 4);
@@ -267,7 +268,7 @@ function itemFeature(y, level) {
 // A number that grows with the class (schema.js, lintAmount).
 export function amount(x, c, level, abil, pb = proficiencyFor(level)) {
   if (typeof x === 'number') return x;
-  if (x?.prof !== undefined) return x.prof * pb;                                   // so many times the Proficiency Bonus (Alert)
+  if (x?.prof !== undefined) return Math.floor(x.prof * pb);                       // so many times the Proficiency Bonus (Alert); 0.5 is half, rounded down (Jack of All Trades)
   if (x?.column !== undefined) return c.table[x.column][level - 1];
   // { mod, min, die }: so many of that die as the modifier (Sear Undead: Wisdom modifier d8s, at least one).
   if (x?.mod !== undefined && x.die !== undefined) return `${Math.max(x.min ?? 0, mod(abil[x.mod]))}d${x.die}`;
@@ -363,7 +364,7 @@ function gather(sheet) {
 
 // ---------- the record ----------
 
-export function derive(sheet) {
+export function derive(sheet, opts = {}) {
   const { ks, c, level, chosen, feats, G, abil, armourWords, weaponWords, featSkills, featTools, held, suit, shieldItem, trainedSuit, picks, pb } = gather(sheet);
   const multi = ks.length > 1;
   const why = {};
@@ -371,6 +372,9 @@ export function derive(sheet) {
   const armour = suit ? itemBase(suit.def, suit.x) : sheet.armour ? CONTENT.armour[sheet.armour] : null, gone = typeof sheet.shield === 'string' && !sheet.shieldStowed && !shieldEntry(sheet),
     shield = (!!sheet.shield && !sheet.shieldStowed && !gone) || !!shieldItem;   // a Shield id whose entry is not loaded (a pack removed) is no Shield held
   const shieldOk = shield && armourWords.has('shield');
+  // SRD "Armor Training": armour worn without training gives Disadvantage on D20 Tests that use Strength or Dexterity and bars spellcasting.
+  // The record names it (`untrained`); modifiers.js and the cast action apply it. A Shield without training only loses its Armor Class bonus (`shieldOk`).
+  const untrainedGear = armour && !armourWords.has(armour.category) && trainedSuit !== armour.category ? [armour.name] : [];
   const unarmoured = !armour, bare = unarmoured && !shield;
   const sum = (k) => G.reduce((n, g) => n + (typeof g[k] === 'number' ? g[k] : 0), 0);
 
@@ -380,11 +384,19 @@ export function derive(sheet) {
   const con = mod(abil.con);
   let hp = 0;
   why.hp = [];
+  let unrolledHp = 0;                              // levels a rolled table has still to roll (0 at a fixed table)
+  const rolled = opts?.hp === 'rolled';            // the table rolls its Hit Points (hitpoints.js): the sheet's rolls count, a level not rolled yet counts the fixed value
   ks.forEach((k, i) => {
-    const fixed = k.c.hitDie / 2 + 1, n = i === 0 ? k.level - 1 : k.level;
+    const fixed = fixedOf(k.c.hitDie), n = levelsOwed(k.level, i === 0), rolls = rolled ? rollsFor(sheet, k.c.id, n) : [];
     if (i === 0) { hp += Math.max(1, k.c.hitDie + con); why.hp.push(`${k.c.hitDie} at level 1`); }
-    hp += n * Math.max(1, fixed + con);
-    if (n) why.hp.push(multi ? `${fixed} for each of ${n} ${k.c.name} level${n === 1 ? '' : 's'}${i === 0 ? ' after the first' : ''}` : `${fixed} for each of ${n} more levels`);
+    const got = rolls.filter((v) => v !== null), unrolled = n - got.length;
+    if (rolled) unrolledHp += unrolled;
+    for (const v of got) hp += Math.max(1, v + con);
+    hp += unrolled * Math.max(1, fixed + con);
+    if (got.length) why.hp.push(`Rolled${multi ? ` for ${k.c.name}` : ''}: ${got.join(', ')} (d${k.c.hitDie})`);
+    if (unrolled) why.hp.push(rolled
+      ? `${fixed} for each of ${unrolled} ${multi ? `${k.c.name} ` : ''}level${unrolled === 1 ? '' : 's'} not rolled yet (the fixed value stands until they are)`
+      : multi ? `${fixed} for each of ${unrolled} ${k.c.name} level${unrolled === 1 ? '' : 's'}${i === 0 ? ' after the first' : ''}` : `${fixed} for each of ${unrolled} more levels`);
   });
   why.hp.push(`Constitution ${signed(con)} a level${scoreBonusOf(sheet, 'con') ? ` (score includes the DM's bonus of +${scoreBonusOf(sheet, 'con')})` : ''}`);
   for (const x of feats) if (x.f.grants?.hp) { const n = amount(x.f.grants.hp, x.cls.c, x.cls.level, abil); hp += n; why.hp.push(`${x.f.name} ${signed(n)}`); }
@@ -405,6 +417,7 @@ export function derive(sheet) {
       if (n > ac) { ac = n; acWhy = [`${x.f.name}: ${f.base}`, ...f.abilities.map((a) => `${nice(a)} ${signed(mod(abil[a]))}`)]; }
     }
   }
+  const acBase = ac;           // what the armour, or the best way to work it out unarmoured, gives: before a Shield and what features and items add (Mage Armor replaces this, never those)
   if (gone && !shieldItem) acWhy.push(`Shield "${sheet.shield.slice(0, 60)}": its entry is not loaded at this table, so it gives no Armor Class`);
   if (shieldOk) {
     const se = shieldEntry(sheet, shieldItem);
@@ -466,14 +479,15 @@ export function derive(sheet) {
     const m = mod(abil[ab]), trained = weaponTrained(w, [...weaponWords]);
     const base = m + (trained ? pb : 0) + plus, die = monkWeapon ? bigger(w.damage, maDie) : w.damage;
     const dmg = (d) => (/^\d+$/.test(d) ? signed(+d + m + plus) : dice(d, m + plus));
-    const common = { dtype: it?.dtype ?? w.type, abil: ab, weapon: w.id, ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
+    // `plus`, `magic` and `trained` (and each record's own `die`, below) are what imbue.js reads to change a weapon for a while (docs/specs/on-hit.md, Decision 8).
+    const common = { dtype: it?.dtype ?? w.type, abil: ab, weapon: w.id, plus, ...(it ? { magic: true } : {}), ...(trained ? { trained: true } : { untrained: true }), ...(finesse && w.properties.includes('finesse') ? { finesse: true } : {}) };
     const reach = w.properties.includes('reach') ? 10 : 5;
     if (w.kind === 'melee') {
-      add({ id: key, name: label, type: 'melee', bonus: base, damage: dmg(die), reach, ...common });
+      add({ id: key, name: label, type: 'melee', bonus: base, damage: dmg(die), die, reach, ...common });
       // Versatile: the two-handed damage, while no Shield takes the other hand.
-      if (w.versatile && !shield) add({ id: `${key}-two-handed`, name: `${label} (two hands)`, type: 'melee', bonus: base, damage: dmg(monkWeapon ? bigger(w.versatile, maDie) : w.versatile), reach, ...common });
-      if (w.properties.includes('thrown')) add({ id: `${key}-thrown`, name: `${label} (thrown)`, type: 'ranged', bonus: base, damage: dmg(w.damage), range: [...w.range], ...common });
-    } else add({ id: key, name: label, type: 'ranged', bonus: base + ranged, damage: dmg(die), range: [...w.range], ...common });
+      if (w.versatile && !shield) { const d2 = monkWeapon ? bigger(w.versatile, maDie) : w.versatile; add({ id: `${key}-two-handed`, name: `${label} (two hands)`, type: 'melee', bonus: base, damage: dmg(d2), die: d2, reach, ...common }); }
+      if (w.properties.includes('thrown')) add({ id: `${key}-thrown`, name: `${label} (thrown)`, type: 'ranged', bonus: base, damage: dmg(w.damage), die: w.damage, range: [...w.range], ...common });
+    } else add({ id: key, name: label, type: 'ranged', bonus: base + ranged, damage: dmg(die), die, range: [...w.range], ...common });
   };
   for (const id of sheet.weapons ?? []) {
     if (id === 'unarmed-strike') continue;
@@ -568,7 +582,7 @@ export function derive(sheet) {
     }
     if (g.recover) out.recover = { ...g.recover };
     if (g.freeCast) out.freeCast = structuredClone(g.freeCast);
-    for (const k of ['metamagic', 'metamagicMax', 'exchange']) if (g[k]) out[k] = structuredClone(g[k]);
+    for (const k of ['metamagic', 'metamagicMax', 'exchange', 'swap']) if (g[k]) out[k] = structuredClone(g[k]);
     if (g.restore) out.restore = { of: g.restore.of, max: amount(g.restore.max, c, level, abil) };
     // An aura (Aura of Protection): what it gives its holder and allies within range (modifiers.js, aurasOn).
     if (g.aura) out.aura = { range: amount(g.aura.range, c, level, abil), ...(g.aura.modifiers ? { modifiers: bake(g.aura.modifiers) } : {}), ...(g.aura.immune ? { immune: [...g.aura.immune] } : {}) };
@@ -679,7 +693,7 @@ export function derive(sheet) {
   const record = {
     name: String(sheet.name ?? '').trim(), cls, level, size: sheet.size ?? sp?.sizes[0] ?? 'medium',
     ...(sp && sp.type !== 'humanoid' ? { type: sp.type } : {}),
-    ac, hp, speed, ...(Object.keys(speeds).length ? { speeds } : {}), ...(Object.keys(senses).length ? { senses } : {}),
+    ac, acBase, hp, speed, ...(Object.keys(speeds).length ? { speeds } : {}), ...(Object.keys(senses).length ? { senses } : {}),
     prof: pb, abil, saveProf: ABILITIES.filter((a) => saveProf.has(a)), skills, expertise,
     tools: [...(thieves ? ['thieves-tools'] : []), ...(sheet.tools ?? []), ...featTools].filter((t, i, l) => l.indexOf(t) === i),
     attacks,
@@ -691,6 +705,7 @@ export function derive(sheet) {
     ...(multi ? { classes: ks.map((k) => ({ id: k.c.id, level: k.level, ...(k.subclass !== undefined ? { subclass: k.subclass } : {}) })) } : {}),
     ...(Object.keys(hitDice).length > 1 ? { hitDice } : {}),
     armour: armour?.category ?? 'none', ...(shield ? { shield: true } : {}),
+    ...(untrainedGear.length ? { untrained: untrainedGear } : {}),
     ...(critOn < 20 ? { critOn } : {}), ...(bonusActs.size ? { bonusActs: [...bonusActs] } : {}), ...(resist.size ? { resist: [...resist] } : {}), ...(condImmune.size ? { conditionImmune: [...condImmune] } : {}),
     ...(sheet.gear?.length ? { gear: [...sheet.gear] } : {}),
     ...(sheet.look ? { look: { ...sheet.look } } : {}),
@@ -710,14 +725,14 @@ export function derive(sheet) {
     why.species = [`${sp.name}${lin ? ` (${sp.lineage.name}: ${lin.name})` : ''}`, `${nice(record.size)}, Speed ${sp.speed} ft`,
       ...(sp.type !== 'humanoid' ? [`Creature type: ${nice(sp.type)}`] : []), ...(ab ? [`Spellcasting ability for its spells: ${ABILITY_NAMES[ab]}`] : [])];
   } else if (spGone.length) why.species = [`Species "${spGone[0].id.slice(0, 60)}": its entry is not loaded at this table, so it gives no traits.`];
-  return { record, why, missing: [...missingOf(sheet), ...spGone] };
+  return { record, why, unrolledHp, missing: [...missingOf(sheet), ...spGone] };
 }
 
 // ---------- what is wrong with a sheet ----------
 
 // What the DM's score bonus adds to one ability (0 where there is none); the sheet's field is checked by validate, this only reads it.
 const scoreBonusOf = (sheet, a) => (sheet.scoreBonus && Number.isInteger(sheet.scoreBonus[a]) && sheet.scoreBonus[a] > 0 ? Math.min(10, sheet.scoreBonus[a]) : 0);
-const SHEET_FIELDS = ['name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'shieldStowed', 'weapons', 'spells',
+const SHEET_FIELDS = ['hpRolls', 'name', 'class', 'subclass', 'level', 'classes', 'abilities', 'skills', 'extraSkills', 'expertise', 'choices', 'armour', 'shield', 'shieldStowed', 'weapons', 'spells',
   'size', 'speed', 'senses', 'tools', 'gear', 'look', 'feats', 'items', 'attuning', 'scoreBonus', 'scores', 'species'];
 export function validate(sheet) {
   const bad = [], say = (m) => bad.push(m);
@@ -772,6 +787,7 @@ export function validate(sheet) {
     const ok = rq.all ? rq.all.every((a) => sheet.abilities[a] >= 13) : rq.any.some((a) => sheet.abilities[a] >= 13);
     if (!ok) say(`A character with levels in ${k.c.name} and another class needs ${(rq.all ?? rq.any).map((a) => ABILITY_NAMES[a]).join(rq.all ? ' and ' : ' or ')} of 13 or more.`);
   }
+  for (const m of checkHpRolls(sheet, classesOf(sheet))) say(m);
   for (const m of checkScores(sheet)) say(m);            // how the scores were made, if the sheet says (scores.js); a sheet that does not say is not checked
   const { feats, G, abil, abilBase, armourWords, weaponWords, cf, chosen, before, featSkills, trainedSuit, picks } = gather(sheet);
   if (sheet.scoreBonus !== undefined) {
@@ -856,13 +872,10 @@ export function validate(sheet) {
     const a = CONTENT.armour[sheet.armour];
     if (!a) say(`"${sheet.armour}" is not armour in the equipment tables.`);
     else if (a.category === 'shield') say(`"${sheet.armour}" is a Shield, not armour: use the Shield field of the sheet.`);
-    else if (!armourWords.has(a.category) && trainedSuit !== a.category) say(`${multi ? 'This character' : `A ${c.name}`} has no training with ${a.category} armour: wearing ${a.name} gives Disadvantage on Strength and Dexterity D20 Tests and stops spellcasting. The engine does not apply that; choose other armour.`);
   }
-  if (sheet.shield && !sheet.shieldStowed && !armourWords.has('shield')) say(`${multi ? 'This character' : `A ${c.name}`} has no training with Shields, and the engine does not yet apply the rules for holding one untrained, so it is refused.`);
   for (const id of sheet.weapons ?? []) {
     if (id === 'unarmed-strike') continue;
     if (!CONTENT.weapons[id]) say(`"${id}" is not a weapon in the equipment tables.`);
-    else if (!weaponTrained(CONTENT.weapons[id], [...weaponWords])) say(`${multi ? 'This character' : `A ${c.name}`} is not proficient with the ${CONTENT.weapons[id].name}, and the engine does not yet apply attacking without proficiency, so choose another weapon.`);
   }
 
   // Spells, for each class by its own level, as if it were the only one (Multiclassing, Spells Prepared).
@@ -961,7 +974,12 @@ function checkFeats(sheet, { cf, chosen, before, skills }, say) {
     if (pr.feature && !hasFeature(cf, pr.feature)) say(`${def.name} needs the ${nice(pr.feature)} feature.`);
     const again = had.filter((z) => z.def.id === def.id);
     if (again.length && !def.repeatable) say(`${def.name} can be taken only once.`);
-    if (def.repeatable === 'list' && again.some((z) => z.x.list !== undefined && z.x.list === x.list)) say(`${def.name} is taken again only with another spell list.`);
+    // A feat repeatable "by list" (Magic Initiate) needs its list on every copy, and no two copies share one (#635).
+    if (def.repeatable === 'list') {
+      const all = def.spellPick?.lists ?? [], names = (ids) => ids.map(nice).join(', '), taken = again.map((z) => z.x.list).filter((l) => typeof l === 'string' && all.includes(l));
+      if (x.list === undefined) say(`${def.name}: choose a spell list (${names(all)}) for this copy; each copy needs its own${taken.length ? `, and ${names(taken)} ${taken.length === 1 ? 'is' : 'are'} already taken` : ''}.`);
+      else if (taken.includes(x.list)) say(`${def.name} is taken again only with another spell list: ${nice(String(x.list))} is already taken (taken: ${names(taken)}).`);
+    }
     if (styles.includes(def.id)) say(`${def.name} is already this character's Fighting Style.`);
     had.push(y);
     // Ability points: so many, to the abilities the feat names, none above its maximum.
@@ -1017,7 +1035,12 @@ export function featChoices(sheet) {
   return slots.map((sl) => {
     const taken = list.find((x) => x?.at === sl.at) ?? null, others = { ...sheet, feats: list.filter((x) => x?.at !== sl.at) };
     const was = new Set(validate(others));
-    const offer = Object.values(CONTENT.feats).filter((d) => validate({ ...others, feats: [...others.feats, { id: d.id, at: sl.at }] }).every((p) => was.has(p))).map((d) => d.id);
+    // A feat repeatable by list is tried with the first list the other copies have not taken (none left: not offered).
+    const offer = Object.values(CONTENT.feats).filter((d) => {
+      const e = { id: d.id, at: sl.at };
+      if (d.repeatable === 'list') { const free = (d.spellPick?.lists ?? []).find((l) => !others.feats.some((x) => x?.id === d.id && x.list === l)); if (free === undefined) return false; e.list = free; }
+      return validate({ ...others, feats: [...others.feats, e] }).every((p) => was.has(p));
+    }).map((d) => d.id);
     const def = taken && CONTENT.feats[taken.id], open = [];
     if (def?.increase && taken.abilities === undefined) open.push('abilities');
     if (def?.proficiencies && (taken.skills ?? []).length + (taken.tools ?? []).length < def.proficiencies.n) open.push('skills');
@@ -1063,12 +1086,7 @@ function checkItems(sheet, { armourWords, weaponWords, trainedSuit, multi, who }
     if (x.charges !== undefined && !(def.charges && Number.isInteger(x.charges) && x.charges >= 0 && x.charges <= def.charges.max)) say(def.charges ? `${name} has 0 to ${def.charges.max} charges.` : `${name} has no charges.`);
     // Worn or held.
     if (x.equipped === true && def.wear !== 'carried') (worn[def.wear] ??= []).push(name);
-    if (x.equipped === true && def.wear === 'armour') {
-      const b = itemBase(def, x);
-      if (b && !armourWords.has(b.category) && trainedSuit !== b.category) say(`${multi ? 'This character' : who} has no training with ${b.category} armour, so can't wear ${name}. Take it off.`);
-    }
-    if (x.equipped === true && def.wear === 'shield' && !armourWords.has('shield')) say(`${name}: no training with Shields. Take it off.`);
-    if (x.equipped === true && def.base?.weapon !== undefined) { const b = itemBase(def, x); if (b && !weaponTrained(b, [...weaponWords])) say(`${multi ? 'This character' : who} is not proficient with the ${b.name}, and the engine does not yet apply attacking without proficiency, so leave ${name} unequipped.`); }
+    // Armour worn without training, a Shield used without it (no AC), or a weapon without proficiency is allowed: derive() applies what the SRD says (Armor Training; Proficiency Bonus on attack rolls).
     // Attunement.
     if (x.attuned === true) {
       const why = attuneProblem(sheet, def);

@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, open, playSolo, settle, tapAt, onCanvas, closePanels, panelTab, placeBeside, chip, tapDie } from './lib.mjs';
 
 // ---------- armed class features ----------
 // Stunning Strike, a row of the Features tab (packages/client/actionpanel.js, features.js): arm it, then tap a creature. A monk
@@ -61,7 +61,7 @@ async function armed(browser, url, label, opts) {
         }
         await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, lo, 20000);
         await closePanels(page);
-        await page.click('#party button:has-text("Lo")');
+        await chip(page, 'Lo');
         await page.evaluate(async (a) => {          // both creatures in view
           const H = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, S = window.hextable.state;
           const m = (p, q) => ({ q: (p.q + q.q) / 2, r: (p.r + q.r) / 2 });
@@ -73,6 +73,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm Stunning Strike, then cancel: armed, hint shown, nothing sent', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature' && window.hextable.mode.id === 'stunning-strike');
         if (!/Stunning Strike: tap a creature/.test((await snap()).hint ?? '')) throw new Error('no hint to tap a creature');
@@ -87,6 +88,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm and tap a creature out of reach: refused, nothing spent, disarmed', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapEntity(far);
@@ -100,6 +102,7 @@ async function armed(browser, url, label, opts) {
 
       await run.do('arm and tap the goblin: sent, a Focus Point spent, the save shown', async () => {
         const a = await snap();
+        await panelTab(page, 'features');                   // arming folds the menu: open the group again
         await (touch ? btn().tap() : btn().click());
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapEntity(foe);
@@ -136,7 +139,7 @@ async function aimLock(browser, url, label, opts) {
       };
       // A pointer moving about: a mouse over the map and then the Cast button; on touch nothing hovers, so the hover is sent as the renderer would.
       const wander = async (hexes) => {
-        if (!touch) { await page.mouse.move(300, 300); await page.mouse.move(640, 420, { steps: 5 }); const b = await page.locator('#hint-go').boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 }); }
+        if (!touch) { await page.mouse.move(300, 300); await page.mouse.move(640, 420, { steps: 5 }); const b = await page.locator('#btn-menu').boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 }); }
         await page.evaluate((hs) => { for (const h of hs) window.hextable.R.onHover(h); }, hexes);
         await sleep(200);
       };
@@ -155,7 +158,7 @@ async function aimLock(browser, url, label, opts) {
         }
         await wait(page, () => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === 'wizard'; }, null, 20000).catch(async () => { throw new Error(`no turn for the wizard: ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify([S.encounter?.order.map((o) => o.id), S.encounter?.turn, S.timeline.slice(-3).map((e) => e.type), document.getElementById('toast')?.textContent]); })}`); });
         await closePanels(page);
-        await page.click('#party button:has-text("Tavin")');
+        await chip(page, 'Tavin');
         await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'burning-hands');
@@ -173,7 +176,7 @@ async function aimLock(browser, url, label, opts) {
         await tapHex(a);
         const v = await view();
         if (!v.pinned || v.aim?.q !== a.q || v.aim?.r !== a.r) throw new Error(`the tap did not lock at ${JSON.stringify(a)}: ${JSON.stringify(v)}`);
-        if (!/Aimed: tap another \w+ to move it, or Cast/.test(v.hint)) throw new Error(`after the tap the hint says "${v.hint}"`);
+        if (!/Aimed: tap another \w+ to move it, or tap the die/.test(v.hint)) throw new Error(`after the tap the hint says "${v.hint}"`);
         await shot('1-locked');
         await wander([b, c, wiz]);
         const w = await view();
@@ -188,7 +191,7 @@ async function aimLock(browser, url, label, opts) {
         await wander([a]);
         if ((await view()).aim?.r !== b.r) throw new Error('hover moved the second lock');
         const n = await state(page, (S) => S.timeline.length);
-        await (touch ? page.locator('#hint-go').tap() : page.click('#hint-go'));
+        await tapDie(page, touch);
         await wait(page, (k) => window.hextable.state.timeline.length > k, n, 15000);
         const ev = await page.evaluate((k) => window.hextable.state.timeline.slice(k).find((e) => e.type === 'cast'), n);
         const at = ev?.hex ?? ev?.at ?? ev?.target;
@@ -214,10 +217,126 @@ async function aimLock(browser, url, label, opts) {
         if (!(await view()).pinned) throw new Error('no lock on the tap');
         await (touch ? page.locator('#hint-cancel').tap() : page.click('#hint-cancel'));
         await wait(page, () => window.hextable.mode.kind !== 'spell');
+        await panelTab(page, 'spells');
         await page.click('#ap-spells [data-row="spell:burning-hands"]');
         await wait(page, () => window.hextable.mode.kind === 'spell');
         const v = await view();
         if (v.pinned || v.aim) throw new Error(`a new arming starts with the old lock: ${JSON.stringify(v)}`);
+      });
+    } finally { await ctx.close(); }
+  });
+}
+
+// Flurry of Blows (issue #614): the strikes it grants are armed for the player, the panel and the hint say how many are left, a Focus Point
+// spent is said, and a tap on a foe makes them (not the Spear, which reaches first). A level 5 monk with a Spear beside an ogre: Attack with
+// the Unarmed Strike (the Attack action), use Flurry of Blows, tap the foe twice.
+async function flurry(browser, url, label, opts) {
+  await scenario(label, async (run) => {
+    const touch = !!opts.hasTouch;
+    const ctx = await browser.newContext(opts);
+    try {
+      const page = await ctx.newPage();
+      run.watch(page);
+      const click = (loc) => (touch ? loc.tap() : loc.click());
+      const snap = () => state(page, (S, [i, f]) => { const b = S.encounter.budget; return { tl: S.timeline.length, focus: S.entities[i].uses['monks-focus'], bonus: b.bonus, action: b.action, left: b.bonusAttacks?.left ?? 0, hp: S.entities[f].hp, mode: window.hextable.mode.kind, flurry: !!window.hextable.mode.flurry, hint: document.getElementById('hint-text')?.textContent, hintShown: !document.getElementById('hint').hidden }; }, [lo, foe]);
+      const strikes = (n) => page.evaluate((k) => window.hextable.state.timeline.slice(k).filter((e) => e.type === 'attack').map((e) => e.name), n);
+      const tapFoe = async () => {
+        await page.evaluate(async (i) => {
+          const H = (await import('./shared/grid.js')).gridOf(window.hextable.state.map), R = window.hextable.R, w = H.toWorld(window.hextable.state.entities[i].pos);
+          R.cam.x = w.x; R.cam.z = w.z; R.cam.goal = null; R.cam.dist = 22;
+        }, foe);
+        await settle(page, foe);
+        const pt = await page.evaluate((i) => window.hextable.R.screenOf(window.hextable.state.entities[i].pos), foe);
+        // on a slow runner the action panel may still be folding away: give the map a moment to be reachable
+        for (let t = 0; pt && t < 20 && !(await onCanvas(page, pt.x, pt.y)); t++) await page.waitForTimeout(150);
+        if (!pt || !(await onCanvas(page, pt.x, pt.y))) throw new Error(`the foe is not on screen where a tap can reach it: ${JSON.stringify(pt)}; on top: ` + await page.evaluate(([x,y])=>{const e=document.elementFromPoint(x,y);const ch=[];for(let n=e;n;n=n.parentElement)ch.push(n.tagName+'#'+n.id+'.'+n.className);return ch.join(' < ')},[pt.x,pt.y]));
+        await tapAt(page, touch, pt.x, pt.y);
+      };
+      let lo, foe;
+
+      await run.do('a level 5 monk with a Spear beside an ogre, in a fight, on her turn', async () => {
+        await open(page, url); await playSolo(page);
+        await page.evaluate(async () => {
+          const D = await import('./shared/derive.js'), h = window.hextable;
+          const rec = D.derive({ name: 'Lo', class: 'monk', level: 5, subclass: 'open-hand', abilities: { str: 16, dex: 16, con: 14, int: 10, wis: 14, cha: 10 }, skills: ['acrobatics', 'insight'], weapons: ['spear'] }).record;
+          h.act({ type: 'addCharacter', record: rec, at: { q: 0, r: 0, z: 0 } });
+        });
+        await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Lo'));
+        lo = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Lo').id);
+        const before = await state(page, (S) => Object.keys(S.entities));
+        await page.evaluate(async () => {          // the first open hex that takes an ogre, found on a copy
+          document.getElementById('dm-auto').checked = false;
+          const { apply } = await import('./shared/engine.js'), { gridOf } = await import('./shared/grid.js'), h = window.hextable, S = h.state, G = gridOf(S.map);
+          const p = Object.values(S.entities).find((e) => e.name === 'Lo').pos;
+          for (const t of G.range(p, 8)) {
+            if (G.dist(p, t) < 4) continue;
+            if (apply(structuredClone({ ...S, timeline: [] }), { type: 'spawn', monster: 'ogre', name: 'Brute', at: { q: t.q, r: t.r } }, { role: 'dm', userId: 'dm' }).ok) { h.act({ type: 'spawn', monster: 'ogre', name: 'Brute', at: { q: t.q, r: t.r } }); return; }
+          }
+        });
+        await wait(page, (b) => Object.keys(window.hextable.state.entities).some((k) => !b.includes(k)), before).catch(async () => { throw new Error(`the ogre was not made: toast "${await page.evaluate(() => document.getElementById('toast')?.textContent ?? '')}"`); });
+        foe = await state(page, (S) => Object.values(S.entities).find((e) => e.name === 'Brute').id);
+        await placeBeside(page, lo, foe);
+        await page.evaluate((f) => window.hextable.act({ type: 'startEncounter', center: window.hextable.state.entities[f].pos }), foe);
+        await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        for (let i = 0; i < 30; i++) {
+          const cur = await state(page, (S) => S.encounter?.order[S.encounter.turn]?.id);
+          if (cur === lo) break;
+          await page.evaluate((c) => window.hextable.act({ type: 'endTurn', actor: c }), cur);
+          await wait(page, () => window.hextable.waiting === 0, null, 20000);
+        }
+        await wait(page, (i) => { const S = window.hextable.state; return S.encounter?.order[S.encounter.turn]?.id === i; }, lo, 20000);
+        await closePanels(page);
+        await chip(page, 'Lo');
+        await panelTab(page, 'attacks');
+      });
+
+      await run.do('Attack with the Unarmed Strike: one strike, the Action spent', async () => {
+        const a = await snap();
+        await click(page.locator('#ap-attacks [data-row="atk:unarmed-strike"]'));
+        await wait(page, () => window.hextable.mode.kind === 'attack' && window.hextable.mode.id === 'unarmed-strike');
+        await tapFoe();
+        await wait(page, (n) => window.hextable.state.timeline.length > n, a.tl, 15000);
+        await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000);
+        const names = await strikes(a.tl), b = await snap();
+        if (names.join() !== 'Unarmed Strike') throw new Error(`the Attack action struck with ${names}`);
+        if (b.action !== a.action - 1) throw new Error(`Action ${a.action} -> ${b.action}`);
+      });
+
+      await run.do('use Flurry of Blows: a Focus Point spent and said, the Unarmed Strike armed with a hint, the row says Flurry: 2 left', async () => {
+        const a = await snap();
+        await panelTab(page, 'features').catch(() => { throw new Error('the Features tab did not open'); });
+        await click(page.locator('#ap-features [data-row="feat:flurry-of-blows"]'));
+        await wait(page, (n) => window.hextable.state.timeline.length > n, a.tl, 15000).catch(async (e) => { throw new Error(`Flurry was not sent: ${JSON.stringify(await snap())} toast "${await page.evaluate(() => document.getElementById('toast')?.textContent ?? '')}" row ${await page.locator('#ap-features [data-row="feat:flurry-of-blows"]').getAttribute('class')}`); });
+        await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000).catch(() => { throw new Error('the table did not settle after Flurry'); });
+        const b = await snap();
+        if (b.focus !== a.focus - 1) throw new Error(`Focus Points ${a.focus} -> ${b.focus}`);
+        if (b.bonus !== a.bonus - 1 || b.left !== 2) throw new Error(`Flurry did not spend the Bonus Action and grant two strikes: ${JSON.stringify([a, b])}`);
+        if (b.mode !== 'attack' || !b.flurry) throw new Error(`the strike is not armed: ${JSON.stringify(b)}`);
+        if (!b.hintShown || !/Flurry of Blows: 2 Unarmed Strikes\. Tap a foe\./.test(b.hint)) throw new Error(`the hint says "${b.hint}"`);
+        const said = await page.evaluate((n) => { const ev = window.hextable.state.timeline.slice(n).find((e) => e.type === 'std'); return ev ? window.hextable.describe(ev) : null; }, a.tl);      // the log's words for the event
+        if (!said || said !== `Flurry of Blows: 1 Focus Point spent (${b.focus} left).`) throw new Error(`the log says "${said}"`);
+        // armed on a phone, the panel folds away so the map can be tapped: the row is read from the page, not clicked
+        await page.evaluate(() => { const b = document.getElementById('ap-bar-attacks'); if (b.getAttribute('aria-expanded') !== 'true') b.click(); });      // the Attack group's bar (M4: groups, not tabs)
+        await wait(page, () => document.getElementById('ap-bar-attacks').getAttribute('aria-expanded') === 'true');
+        const row = await page.evaluate(() => document.querySelector('#ap-attacks [data-row="atk:unarmed-strike"]')?.textContent ?? '');
+        if (!/Flurry: 2 left/.test(row)) throw new Error(`the Unarmed Strike row says "${row}"`);
+        await closePanels(page);                                                                  // reading the group opened the menu: clear the map again for the taps
+      });
+
+      await run.do('tap the foe twice: two Unarmed Strikes on the Bonus Action, re-armed between, no Spear', async () => {
+        const a = await snap();
+        await tapFoe();
+        await wait(page, (n) => window.hextable.state.timeline.length > n, a.tl, 15000);
+        await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000);
+        const mid = await snap();
+        if (mid.left !== 1 || mid.mode !== 'attack' || !/Flurry of Blows: 1 Unarmed Strike\. Tap a foe\./.test(mid.hint)) throw new Error(`after one strike: ${JSON.stringify(mid)}`);
+        await tapFoe();
+        await wait(page, (n) => window.hextable.state.timeline.length > n, mid.tl, 15000);
+        await wait(page, () => window.hextable.waiting === 0 && !window.hextable.timeline.busy(), null, 20000);
+        const b = await snap(), names = await strikes(a.tl);
+        if (names.join() !== 'Unarmed Strike,Unarmed Strike') throw new Error(`the taps struck with ${names}`);
+        if (b.left !== 0 || b.action !== a.action) throw new Error(`budget after Flurry: ${JSON.stringify([a, b])}`);
+        if (b.focus !== a.focus || b.mode === 'attack' && b.flurry) throw new Error(`the strike is still armed or a Focus Point went: ${JSON.stringify(b)}`);
       });
     } finally { await ctx.close(); }
   });
@@ -229,4 +348,6 @@ export default async function (browser, url) {
   await armed(browser, url, 'armed features at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   await aimLock(browser, url, 'aim lock at 1280x800', { viewport: { width: 1280, height: 800 } });
   await aimLock(browser, url, 'aim lock at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  await flurry(browser, url, 'Flurry of Blows at 1280x800', { viewport: { width: 1280, height: 800 } });
+  await flurry(browser, url, 'Flurry of Blows at 390x844 with touch', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 }

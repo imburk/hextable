@@ -1,5 +1,5 @@
 /* The rewards after a fight (conclusion.js). Under the drawer (what the DM opened is in front of it), above the dock, far under a reaction question. The map around the card stays tappable. */
-#cc { position: fixed; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); z-index: 3; display: grid; place-items: center; padding: calc(max(10px, env(safe-area-inset-top)) + 58px) 12px calc(var(--dock-h, 0px) + 12px); background: #0006; pointer-events: none; }
+#cc { position: fixed; inset: 0 var(--inset-r, 0px) 0 var(--inset-l, 0px); z-index: 3; display: grid; place-items: center; padding: calc(max(10px, env(safe-area-inset-top)) + 58px) 12px calc(var(--dock-h, 0px) + max(16px, env(safe-area-inset-bottom)) + 76px); background: #0006; pointer-events: none; }
 #cc[hidden], #cc-chip[hidden], #cc-wait[hidden] { display: none; }
 .cc-card { pointer-events: auto; width: min(520px, 100%); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; background: var(--panel-2); color: var(--ink); border: 2px solid var(--line); border-top: 4px solid var(--accent); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; animation: df-in .2s ease-out; }
 .cc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -33,3 +33,15 @@ body.drawer-modal #cc-chip, body.rp-open #cc-chip { display: none; }
 #log-rewards { margin: 0 0 8px; min-height: 44px; }
 @media (prefers-reduced-motion: reduce) { .cc-card { animation: none; } }
 body.editing #cc, body.editing #cc-chip, body.editing #cc-wait { display: none; }
+/* "Brenna can reach level 2." and its button, on the rewards card and the sheet (levelup.js) */
+.cc-ready { padding: 4px 0 8px; list-style: none; }
+.lu { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.lu-line { margin: 0; flex: 1 1 100%; color: var(--accent); font-weight: 700; }
+.lu-go { min-height: 48px; padding: 0 16px; flex: 1 1 180px; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.lu-go:disabled { background: var(--panel-2); color: var(--muted); border-color: var(--border, var(--muted)); font-weight: 400; }
+.lu-why { margin: 0; flex: 1 1 100%; color: var(--text); font-size: 14px; }
+#c-level:empty { display: none; }
+.lu-chip { margin: 0; gap: 2px 10px; flex-wrap: wrap; }
+.lu-chip .lu-line { flex: 1 1 auto; }
+.lu-chip .lu-go { flex: 0 0 auto; min-height: 44px; padding: 0 16px; }
+.lu-chip .lu-why { flex: 1 1 100%; font-size: 12.5px; }

@@ -1,28 +1,63 @@
 // Rolls and what they do to a creature (engine.js): healing, Temporary Hit Points, Advantage and
 // Disadvantage, saving throws, conditions and modifiers, damage parts, checks, death saves, and the
 // lasting effects an action leaves behind.
+import { silentAt } from '../terrain.js';
 import { d20Faces, die, negate, roll } from '../rng.js';
-import { SKILLS } from '../content/schema.js';
+import { ABILITIES, COMMANDS, SKILLS } from '../content/schema.js';
 import { CONTENT, SPELLS } from '../content/index.js';
 import { walk as walkSteps } from '../effects.js';
 import { concentrationLost, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
 import { apart, FT } from '../space.js';
 import { canSee, COVER, coverOf, sees } from '../sight.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers } from '../modifiers.js';
-import { current, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { bounded, conditionDef, conditionName, conditionPhrase, immuneTo, incapacitated, modifiers, untrainedGear } from '../modifiers.js';
+import { derive } from '../derive.js';
+import { castAbilOf, current, dying, fail, hostile, inFight, living, mod, rollDice, rolledOf, up } from './shared.js';
+import { baked, weaponKey } from '../imbue.js';
 
+// A creature has died: the game clock when it did is kept on the body (`diedAt`, minutes; a round in a fight is 0.1 of one), for Revivify's "died within
+// the last minute" (`revive`). Not kept where the clock is not a number. Not for a creature that vanished (it was not killed).
+export function died(s, t) { if (Number.isFinite(s.clock)) t.diedAt = s.clock; else delete t.diedAt; }
 // A `kill` step: the creature dies, a character at 0 Hit Points as well (Disintegrate).
 export function kill(s, t, ev) {
   if (t.dead) return;
-  t.dead = true; t.hp = 0;
+  // Death Ward (a modifier on `hp.zero`): "an effect that would kill it instantly without dealing damage ... is negated against the target, and the spell ends".
+  const z = modifiers(s, t, 'hp.zero', { target: t });
+  if (z.min !== null) {
+    const name = effectsOf(s).find((fx) => z.used.some((p) => fx.parts.includes(p)))?.name ?? 'A ward';
+    ev.push({ type: 'note', id: t.id, text: `${name}: not killed` });
+    return useUp(s, ev, z.used);
+  }
+  t.dead = true; t.hp = 0; died(s, t);
   ev.push({ type: 'died', id: t.id });
   concentrationLost(s, ev, t, `${t.name} died`);
 }
 // A `cure` step: the conditions listed end on `t`, whatever put them there (a lasting effect's part
 // that held one is ended with it). One it does not have is passed over.
+// Two more words are not conditions (Greater Restoration; schema.js CURE_WORDS): `exhaustionLevel` lowers Exhaustion by one level (the condition ends at level 0, as a Long Rest does it), and `curse` ends the oldest lasting
+// curse on `t` and `curses` (Remove Curse) every one of them (a lasting effect of a spell whose choice is of a curse, Bestow Curse, that has a part on `t`), whole, taking off all it put on anyone; a curse the engine does not keep is the DM's, whose `manual` step says so.
+// The oldest lasting effect of a spell whose choice is of a curse (Bestow Curse) that has a part on `t`, if any.
+const cursedBy = (s, t) => effectsOf(s).find((x) => SPELLS[x.spell]?.def.choice?.of === 'curse' && x.parts.some((p) => !p.ended && p.target === t.id));
 export function cure(s, t, list, ev) {
   for (const c of list) {
+    if (c === 'exhaustionLevel') {
+      const ex = t.cond.exhaustion;
+      if (!ex) continue;
+      if ((ex.level ?? 1) > 1) { ex.level = (ex.level ?? 1) - 1; ev.push({ type: 'cond', id: t.id, cond: 'exhaustion', level: ex.level }); }
+      else cure(s, t, ['exhaustion'], ev);
+      continue;
+    }
+    if (c === 'curse') {
+      // "a curse": one, the oldest on it (Bestow Curse is one lasting effect; a second caster's curse stays, and the DM may pick another).
+      const fx = cursedBy(s, t);
+      if (fx) endEffect(s, ev, fx, `${t.name} was freed of the curse`);
+      continue;
+    }
+    if (c === 'curses') {
+      // Remove Curse: every one of them, each ended whole as `endEffect` does (the loop re-reads the list: ending one may end a caster's Concentration on another).
+      for (let fx = cursedBy(s, t); fx; fx = cursedBy(s, t)) endEffect(s, ev, fx, `${t.name} was freed of the curse`);
+      continue;
+    }
     if (!t.cond[c]) continue;
     const fxId = t.cond[c].effect;
     delete t.cond[c];
@@ -47,10 +82,26 @@ export function deathSave(s, e, ev) {
   else if (d === 1) e.death.f += 2;
   else if (total >= 10) e.death.s++;
   else e.death.f++;
-  if (e.death.f >= 3) e.dead = true;
+  if (e.death.f >= 3) { e.dead = true; died(s, e); }
   else if (e.death.s >= 3) { e.cond.stable = {}; e.death = { s: 0, f: 0 }; }   // both counts reset on becoming Stable
   ev.push({ type: 'deathSave', id: e.id, roll: d, ...(total !== d ? { total } : {}), ...(r2 === null ? {} : { rolls: [r1, r2], mode }), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, d), ...more.dice], bonus: m.add + all.add, s: e.death.s, f: e.death.f, dead: e.dead, stable: !!e.cond.stable, hp: e.hp });
+}
+
+// Time passing outside a fight (`advanceTime`, a rest) with a creature dying in the party: it makes a Death Saving Throw for each 6 seconds
+// (a round, 0.1 minute) that passes, until it is Stable, dead or up, so a clock jump rolls the saves it skipped, in the order
+// of the table's entities, each one told as it is rolled (docs/specs/rules-expansion.md, "Death Saving Throws outside a fight"). `minutes` is the time
+// that is about to pass; the clock is moved to each save's moment while it is rolled (so `diedAt` is true) and put back. A third success is
+// Stable, which then regains 1 Hit Point only across a Long Rest (rests.js). Five saves always settle a creature, so a long jump rolls at most five.
+export function deathSavesOver(s, minutes, ev) {
+  const rounds = Math.floor(minutes * 10 + 1e-9), from = s.clock;
+  if (rounds < 1) return;
+  for (const e of Object.values(s.entities)) {
+    if (!dying(e) || e.side !== 'party' || !e.death) continue;
+    ev.push({ type: 'note', id: e.id, text: `${e.name} is dying at 0 Hit Points and makes a Death Saving Throw for each 6 seconds that pass.` });
+    for (let n = 1; n <= rounds && dying(e); n++) { s.clock = from + n / 10; deathSave(s, e, ev); }
+    s.clock = from;
+  }
 }
 
 // ---------- healing, rolls and their results ----------
@@ -110,6 +161,25 @@ export function tempHp(s, t, amount, ev, f = null, r = null) {
   ev.push({ type: 'tempHp', id: t.id, amount, tempHp: amount, ...rolledOf(r, amount) });
 }
 
+// ---------- Advantage and Disadvantage the DM grants (`adv` on check, save, attack and act; docs/specs/prompts.md, "Call for a roll") ----------
+// Only the DM may send it. It is one more source of Advantage or Disadvantage, combined with every other by the SRD's rule (any of each cancels).
+export const GRANTS = { advantage: 'DM grants Advantage', disadvantage: 'DM grants Disadvantage' };
+export function grantOf(a, ctx) {
+  if (a.adv === undefined) return null;
+  ctx.role === 'dm' || fail('Only the DM grants Advantage or Disadvantage.');
+  return Object.hasOwn(GRANTS, a.adv) ? a.adv : fail("`adv` is 'advantage' or 'disadvantage'.");
+}
+// A grant for the attack rolls one creature makes while a handler runs (rollMode reads it). Cleared however the handler ends, a refusal included.
+// Said to the DM if no attack roll was made to use it (a Shove has none), never dropped quietly.
+let GRANT = null;
+export function withGrant(s, e, mode, ev, fn) {
+  if (!mode) return fn();
+  const own = { who: e.id, mode, used: false };
+  GRANT = own;
+  try { fn(); } finally { GRANT = null; }
+  if (!own.used) ev.push({ type: 'manual', actor: e.id, name: GRANTS[mode], partial: true, text: `${GRANTS[mode]} on ${e.name}'s attack, but no attack roll was made, so it was not applied.` });
+}
+
 // Advantage and Disadvantage for an attack, with the reasons. Any of each cancels to a normal roll.
 // Conditions and traits supply theirs as data (modifiers.js); the two rules written out here
 // belong to ranged attacks themselves. Also returns `add` (a bonus or penalty to the roll) and
@@ -117,10 +187,11 @@ export function tempHp(s, t, amount, ev, f = null, r = null) {
 export function rollMode(s, e, t, atk) {
   const d = apart(s, e, t), ranged = atk.type === 'ranged';
   // A built character's attack says which ability it uses (`abil`), for Rage and Reckless Attack.
-  const sit = { attacker: e, target: t, ranged, spell: !!atk.spell, opportunity: !!atk.opportunity, ...(atk.abil ? { str: atk.abil === 'str' } : atk.spell ? { str: false } : {}) };
+  const sit = { attacker: e, target: t, ranged, spell: !!atk.spell, opportunity: !!atk.opportunity, ...(atk.abil ? { str: atk.abil === 'str', ability: atk.abil } : atk.spell ? { str: false } : {}) };
   const theirs = modifiers(s, t, 'attack.received', sit, 'target'), mine = modifiers(s, e, 'attack.roll', sit, 'attacker');
   const adv = [...theirs.advantage, ...mine.advantage], dis = [...theirs.disadvantage, ...mine.disadvantage];
   if (ranged && d * FT > atk.range[0]) dis.push('long range');
+  if (GRANT && GRANT.who === e.id) { GRANT.used = true; (GRANT.mode === 'advantage' ? adv : dis).push(GRANTS[GRANT.mode]); }
   // SRD Ranged Attacks in Close Combat: only an enemy within 5 feet who can see the attacker and is not Incapacitated counts.
   if (ranged && !e.object && living(s).some((o) => up(o) && hostile(o, e) && !incapacitated(o) && apart(s, o, e) <= 1 && canSee(s, o, e) !== 'no')) dis.push('enemy within 5 ft');
   // SRD Unseen Attackers and Targets. Blinded and Invisible say so in their own data (as "attacker
@@ -156,7 +227,9 @@ export function rerollSave(s, t, abil, dc, onFail, from, ev) {
 // not barred from spells (Rage), and has not spent a spell slot already this turn (SRD: one a
 // turn). A cantrip needs none: [0]. Empty if it cannot.
 export function slotsFor(s, e, sp) {
+  if (untrainedGear(e).length) return [];                      // armour worn without training bars spellcasting (SRD "Armor Training")
   if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return [];
+  if (sp.def.components?.includes('v') && silentAt(s, e.pos)) return [];       // Silence: no Verbal component can be spoken in the sphere (a reaction spell is neither offered nor cast)
   if (sp.level === 0) return [0];
   if (s.encounter && (current(s) === e.id ? s.encounter.flags.slot : s.encounter.flags[`slot:${e.id}`])) return [];
   const out = [];
@@ -177,10 +250,43 @@ export function renew(s, e, t) {
 }
 
 // Armor Class after anything that changes it.
-export function acOf(s, t) {
-  const m = modifiers(s, t, 'ac', { target: t });
-  return bounded(m, (m.set ?? t.ac) + m.add);
+// A `baseAc` modifier (Mage Armor: 13 + Dexterity) replaces the base of an unarmoured character's Armor Class when it is better than the base its
+// own way of working it out gives (`acBase`, from derive: SRD "If you have multiple ways to calculate your Armor Class, you can benefit from only
+// one at a time"); what is added to the base (a Shield, a magic item, a feature) stays. A creature with no `acBase` (a monster, a hand-typed
+// record) is not known to wear nothing, so the modifier is never put on it (`modifier`, below) and nothing here changes its number.
+// The base of a character's Armor Class (derive's `acBase`). A character saved before the record kept it has it worked out again from its sheet,
+// with whatever content is lent at that moment (a table's homebrew, when called inside `using`). The answer is trusted only if that derive finds
+// nothing missing and comes to the very `ac` and armour the creature has: a sheet with homebrew gear whose pack is not lent, or one the DM has
+// edited by hand, gives null (not a built character as far as Mage Armor can tell; refreshing the character writes `acBase` for good). A null or a
+// throw is never kept, so a later call with the content lent is asked again. A kept answer is for one sheet and the `ac` and armour it matched:
+// sheet.items edited in place (vanishUnseen and the pocket dimension empty it, engine/resolve.js) leave the sheet object the same, which is why
+// the match is checked on every use, not only when it was made.
+const BASES = new WeakMap();
+export function acBaseOf(t) {
+  if (Number.isInteger(t.acBase)) return t.acBase;
+  if (t.kind !== 'pc' || !t.sheet || typeof t.sheet !== 'object') return null;
+  const had = BASES.get(t.sheet);
+  if (had && had.ac === t.ac && had.armour === (t.armour ?? 'none')) return had.base;
+  try {
+    const d = derive(t.sheet);
+    if (d.missing?.length || !Number.isInteger(d.record.acBase) || d.record.ac !== t.ac || (d.record.armour ?? 'none') !== (t.armour ?? 'none')) return null;
+    BASES.set(t.sheet, { ac: t.ac, armour: t.armour ?? 'none', base: d.record.acBase });
+    return d.record.acBase;
+  } catch { return null; }
 }
+export function acNow(s, t) {
+  const m = modifiers(s, t, 'ac', { target: t });
+  let ac = m.set ?? t.ac;
+  const own = m.baseAc === null ? null : acBaseOf(t), base = own !== null && !t.form && (t.armour ?? 'none') === 'none' && m.baseAc > own;
+  if (base) ac += m.baseAc - own;
+  const now = bounded(m, ac + m.add);
+  // The names of what made it differ from the creature's own number, for the sheet ("AC 15: Mage Armor").
+  const why = now === t.ac ? [] : [...new Set([...(base ? [m.baseAcFrom] : []), ...m.from])];
+  return { ac: now, why };
+}
+export const acOf = (s, t) => acNow(s, t).ac;
+// The Armor Class to show: the DM has the whole state and works it out; a player is sent `acNow` (and `acWhy`) where it is not the creature's own number (view.js).
+export const acShown = (s, e, dm) => (dm ? acNow(s, e) : { ac: e.acNow ?? e.ac, why: e.acWhy ?? [] });
 
 // The ending a step gives its condition or modifier, as the part keeps it: with the DC it is rolled against (the ending's own,
 // `ends.dc`: an entry says it for a creature's action, and runAction fills it in from the save that put the condition on when
@@ -206,7 +312,7 @@ function ending(s, step, f, ev, t) {
 // (the Disadvantage is a modifier for a hold; a holder drags what it holds when it walks, movement.js), so the DM is told neither.
 export function condition(s, t, id, ev, f = null, step = null, level = undefined, ended = false) {
   if (!up(t) || t.cond[id]) return;
-  if (immuneTo(s, t, id)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
+  if (immuneTo(s, t, id, f?.actor !== undefined ? s.entities[f.actor] : undefined, f?.src?.spell !== undefined)) return ev.push({ type: 'note', id: t.id, text: `Immune to ${conditionName(id)}` });
   // An instant spell's effect that exists only to hold the endings of its other steps (`bound`) cannot end a condition
   // whose step names no ending: tied to it, the condition would never end and no one would say so. It is kept off the
   // effect instead, and the DM is told below that nothing ends it (T32).
@@ -264,10 +370,19 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   if (fx.bound && !step.ends && !Number.isInteger(mod_.uses)) return false;
   const holder = step.to === 'caster' ? s.entities[f.actor] : t;
   if (!holder) return false;
+  // `baseAc` (Mage Armor, "a willing creature who isn't wearing armor"): put on only where the engine knows the creature wears no armour and how it
+  // works its Armor Class out (a built character, `acBase`, not in a form). Any other creature is the DM's: it is told, and nothing is put on.
+  if (mod_.op === 'baseAc' && !(acBaseOf(holder) !== null && !holder.form && (holder.armour ?? 'none') === 'none')) {
+    ev.push({ type: 'manual', actor: f.actor ?? holder.id, name: f.src.name, partial: true, waits: true, text: `${holder.name} ${holder.form ? 'is in a form' : (holder.armour ?? 'none') !== 'none' ? 'is wearing armor' : holder.sheet ? 'has a sheet the engine could not work its Armor Class out from' : 'is not a built character, so the engine does not know whether it wears armor or how its Armor Class is worked out'}. The engine did not change its Armor Class: the DM decides whether ${f.src.name} works and sets the number.` });
+    return true;
+  }
   const end = ending(s, step, f, ev, t);
   if (fx.bound && end.told && !end.part.ends && !Number.isInteger(mod_.uses)) return false;       // nothing could end it: the DM applies it and ends it
   const { against, except, ...m } = mod_;
-  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...end.part };
+  if (against === 'source' && !f.actor) return false;                 // a limit to the caster, and no caster: never a modifier that holds against everyone
+  // A Hit Point maximum raised by dice (Heroes' Feast: 2d10) is rolled once for this creature, and the number is what the part keeps.
+  if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'string') m.value = Math.max(0, rollDice(s, [{ dice: m.value, name: f?.src.name ?? 'Hit Point maximum' }]).total);
+  const part = { target: holder.id, modifier: m, ...(against === 'target' ? { against: t.id } : against === 'source' && f.actor ? { against: f.actor } : {}), ...(except === 'source' && f.actor ? { except: f.actor } : {}), ...end.part };
   if (m.on === 'hp.max' && m.op === 'add' && typeof m.value === 'number' && !holder.dead) {
     holder.maxHp += m.value;
     holder.hp = m.value > 0 && holder.hp > 0 ? holder.hp + m.value : Math.min(holder.hp, holder.maxHp);
@@ -278,6 +393,173 @@ export function modifier(s, t, mod_, ev, f, step = {}) {
   return true;
 }
 
+// The `eachTurn` step (Heroism, Regenerate; effects.js `turnSteps`): a part on the lasting effect that runs the step's list on the creature at the start of
+// each of its turns, with the numbers this cast had (its name, spell and spellcasting modifier; not its DC, which no step in the list uses). The steps are run
+// without the effect's id, so Temporary Hit Points they give are the creature's own and last as the SRD says, after the spell ends. False when there is
+// no lasting effect to hang it on (an instant spell's bound effect ends only by its own parts), and the step is handed to the DM.
+export function eachTurn(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead) return false;
+  fx.parts.push({ target: t.id, turn: { steps: structuredClone(step.eachTurn), src: { name: f.src.name, ...(f.src.healMod !== undefined ? { healMod: f.src.healMod } : {}), ...(f.src.spell ? { spell: f.src.spell } : {}), ...(f.src.dc !== undefined ? { dc: f.src.dc } : {}) } } });
+  void ev;
+  return true;
+}
+
+// The `command` step (Command): a part on the lasting effect, carried out at the start of the creature's next turn (resolve.js `commandsOn`) and gone with that turn (`ends: turnEnd`, of the creature). `born` is
+// the turn it was made in, so a command given in the creature's own turn waits for the next. False when there is no effect to hang it on, and the step is handed to the DM.
+export function command(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || t.dead || !COMMANDS.includes(step.command)) return false;
+  fx.parts.push({ target: t.id, command: step.command, ends: { on: 'turnEnd' }, born: turnKey(s) });
+  ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name} will ${COMMAND_WORDS[step.command]} on its next turn.` });   // for the DM alone: a note would name the creature to players
+  return true;
+}
+export const COMMAND_WORDS = { approach: 'approach the caster', drop: 'drop what it holds and end its turn', flee: 'flee from the caster', grovel: 'fall Prone and end its turn', halt: 'do nothing and not move' };
+
+// The `confuse` step (Confusion): a part on the lasting effect, with the ending the step gives (a Wisdom save at the end of each of the creature's turns: durations.js `boundary`). While it holds the creature can take no Bonus Action
+// and no Reaction (its Reaction is marked spent, `reactionUsed`, which `canReact` reads; resolve.js `confusedOn` keeps that, and zeroes the Bonus Action, at the start of each turn, and rolls its behaviour). `had` is what its Reaction was when
+// it was put on, so that ending the last such part gives it back as it was. False when there is no lasting effect to hang it on, and the step is handed to the DM.
+export function confuse(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead || t.object) return false;
+  const held = effectsOf(s).flatMap((x) => x.parts).find((p) => !p.ended && p.confuse && p.target === t.id);
+  if (held && effectsOf(s).find((x) => x.parts.includes(held))?.id === fx.id) return true;      // already confused by this casting
+  const end = ending(s, step, f, ev, t);
+  fx.parts.push({ target: t.id, confuse: { had: held ? held.confuse.had : !!t.reactionUsed }, ...end.part });
+  t.reactionUsed = true;
+  if (s.encounter && current(s) === t.id) s.encounter.budget.bonus = 0;
+  ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name} is Confused: it can take no Bonus Action or Reaction, and rolls 1d10 at the start of each of its turns for its behavior (the engine rolls it and takes away what it can).` });   // for the DM alone
+  return true;
+}
+
+// The `ward` step (Sanctuary): a part on the lasting effect that makes a creature targeting this one with an attack roll or a damaging spell save first (resolve.js `wardCheck`, casting.js) and ends the effect when this one attacks, casts or deals
+// damage (durations.js `endWards`). The save is against the spell's save DC. False when there is no lasting effect to hang it on (the step is handed to the DM).
+export function ward(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead || !ABILITIES.includes(step.ward) || !Number.isFinite(f.src.dc)) return false;
+  fx.parts.push({ target: t.id, ward: { save: step.ward, dc: f.src.dc } });
+  void ev;
+  return true;
+}
+
+// The `endSpell` step (Searing Smite: "On a successful save, the spell ends"), run inside an `eachTurn`: the lasting effect those steps belong to ends, taking off everything it
+// put on anyone (`src.fxEnd`, which `turnSteps` names). Nothing happens when there is none (the effect has already ended).
+export function endSpell(s, f, ev) {
+  const fx = f?.src.fxEnd ? effectsOf(s).find((x) => x.id === f.src.fxEnd) : null;
+  if (fx) endEffect(s, ev, fx, `${s.entities[f.target]?.name ?? 'its creature'} made the save`);
+}
+
+// The `arm` step (Flame Blade; effects.js `scaleSteps` grew its dice): the creature gets one more action for as long as the lasting effect holds: a melee spell attack with the
+// caster's spell attack bonus, as the cast had it (`src.attack`), in the form of a creature's action (`e.actions`), so the Attack command takes it with `attack: <the spell's id>`.
+// The action is marked `armed: <effect id>` and the part `arm`, and durations.js `endPart` takes it away again. Casting it again replaces the earlier one. False when there is
+// no lasting effect to hang it on, and the step is handed to the DM.
+export function arm(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound || t.dead || !Number.isFinite(f.src.attack)) return false;
+  const a = step.arm, add = a.addMod ? f.src.healMod ?? 0 : 0, id = f.src.spell ?? fx.spell;
+  t.actions = (t.actions ?? []).filter((x) => x.id !== id);
+  t.actions.push({ id, name: f.src.name, time: a.time ?? 'action', armed: fx.id, target: { creature: a.range ? { range: [a.range, a.range] } : { reach: 5 } },
+    effects: [{ attack: a.range ? 'ranged' : 'melee', kind: 'spell', bonus: f.src.attack, onHit: [{ damage: add ? `${a.damage}${add > 0 ? '+' : ''}${add}` : a.damage, type: a.type }] }],
+    text: `${f.src.name}: a ${a.range ? `ranged spell attack within ${a.range} ft` : 'melee spell attack'}, ${a.damage}${add ? (add > 0 ? `+${add}` : `${add}`) : ''} ${a.type} damage.` });
+  fx.parts.push({ target: t.id, arm: id });
+  ev.push({ type: 'note', id: t.id, text: `${f.src.name}: ${t.name} can make a ${a.range ? 'ranged' : 'melee'} spell attack with it` });
+  return true;
+}
+
+// The `imbue` step (imbue.js; docs/specs/on-hit.md, Decision 8): a part on the lasting effect, naming the weapon the cast or the use named (`src.weapon`, the key
+// of one of the holder's weapon records). An earlier imbue of the same spell or feature by the same creature ends ("ends if cast again", "or until you use this
+// feature again"). Returns false when there is nothing to hang it on or no weapon, and the step is handed to the DM.
+export function imbue(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null, key = f?.src.weapon, spec = step.imbue;
+  if (!fx || typeof key !== 'string' || !spec) return false;
+  const rec = (t.attacks ?? []).find((a) => a.weapon && weaponKey(a) === key);
+  if (!rec) return false;
+  const caster = s.entities[f.actor] ?? t, level = caster.level ?? 1;
+  const reach = (map, n) => { const k = Object.keys(map ?? {}).map(Number).filter((l) => l <= n).sort((x, y) => y - x)[0]; return k === undefined ? null : map[k]; };
+  for (const x of [...effectsOf(s)]) if (x !== fx && x.source === fx.source && x.name === fx.name && x.parts.some((p) => p.imbue && !p.ended)) endEffect(s, ev, x, `${fx.name} was used again`);
+  const die = typeof spec.die === 'string' ? spec.die : spec.die ? reach(spec.die.byLevel, level) : null;
+  const plus = typeof spec.plus === 'number' ? spec.plus : spec.plus ? reach(spec.plus.bySlot, f.src.slot ?? 0) : null;
+  const abil = spec.abil === 'spell' ? castAbilOf(caster, f.src.spell) : null;
+  fx.parts.push({ target: t.id, imbue: { weapon: key, name: f.src.name, ...(abil ? { abil } : {}), ...(die ? { die } : {}), ...(plus ? { plus } : {}),
+    ...(spec.attackAdd !== undefined ? { attackAdd: typeof spec.attackAdd === 'number' ? spec.attackAdd : Math.max(spec.attackAdd.min ?? -Infinity, mod(caster.abil?.[spec.attackAdd.mod] ?? 10)) } : {}),
+    ...(spec.types ? { types: [...spec.types] } : {}) } });
+  if (!baked(rec)) ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text: `${t.name}'s ${rec.name} was made before the engine could change a weapon, so ${f.src.name} does not change its numbers yet (they change at its next remake: equipping, resting or levelling). The DM applies ${f.src.name} to ${rec.name} until then.` });
+  return true;
+}
+
+// A `stabilize` step (Spare the Dying): a creature at 0 Hit Points that is not dead becomes Stable, as when its third Death Saving Throw succeeds
+// (both counts start again). Any other creature is left as it is, and the table is told why.
+export function stabilise(s, t, ev, f = null) {
+  const why = t.dead ? 'is dead' : t.hp > 0 ? 'is not at 0 Hit Points' : t.cond.stable ? 'is Stable already' : null;
+  if (why) return ev.push({ type: 'note', id: t.id, ...(f?.actor ? { actor: f.actor } : {}), text: `${t.name} ${why}, so ${f?.src.name ?? 'the spell'} does nothing.` });
+  t.cond.stable = {}; t.death = { s: 0, f: 0 };
+  ev.push({ type: 'cond', id: t.id, cond: 'stable' });
+}
+
+// A `dispel` step (Dispel Magic; SRD 5.2.1: "Any ongoing spell of level 3 or lower on the target ends. For each ongoing spell of level 4 or higher on the
+// target, make an ability check using your spellcasting ability (DC 10 plus that spell's level). On a successful check, the spell ends. ... You
+// automatically end a spell on the target if the spell's level is equal to or less than the level of the spell slot you use."). A spell is on `t` if a
+// part of its lasting effect is (a condition, a modifier, a light, Temporary Hit Points, a form, the bond of a creature a spell made), or if it was aimed at
+// `t` and the engine put no part on anyone it was aimed at (`fx.aimed`: a spell the DM applies, such as a `manual` one); its level is the
+// one it was cast at (`fx.level`), else the spell's own. The spell ends whole, on every creature it is on, as the SRD's words say. What is not a spell's
+// (a feature's effect, a creature's action) is left, and so is a spell with nothing on a creature (a zone, changed ground): those are the DM's.
+export function dispel(s, t, step, ev, f) {
+  const caster = s.entities[f.actor] ?? null, name = f.src.name;
+  const outright = Math.max(step.dispel, f.src.slot ?? 0);
+  const live = (fx, id) => fx.parts.some((p) => !p.ended && p.target === id);
+  // On it: a part of the spell is, or the spell was aimed at it and the engine put no part on anyone it was aimed at (the DM applies that spell).
+  const on = effectsOf(s).filter((fx) => typeof fx.spell === 'string' && (live(fx, t.id) || (Array.isArray(fx.aimed) && fx.aimed.includes(t.id) && !fx.aimed.some((id) => live(fx, id)))));
+  let ended = 0;
+  for (const fx of on) {
+    if (!effectsOf(s).includes(fx)) continue;                                 // ended with another (its caster lost Concentration)
+    const level = Number.isInteger(fx.level) ? fx.level : SPELLS[fx.spell]?.level ?? 0;
+    if (level > outright) {
+      const ability = caster ? castAbilOf(caster, f.src.spell) : null;
+      if (!ability) { ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text: `${name}: ${fx.name} on ${t.name} is a level ${level} spell, which takes an ability check with the caster's spellcasting ability against DC ${step.dc + level}. The engine does not know that ability here: the DM rolls it and ends the spell on a success.` }); continue; }
+      const dc = step.dc + level, r = abilityCheck(s, caster, { ability });
+      ev.push({ type: 'check', id: caster.id, ability, ...r, dc, success: r.total >= dc, what: name });
+      if (r.total < dc) continue;
+    }
+    endEffect(s, ev, fx, 'it was dispelled');
+    ended++;
+  }
+  ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${ended === 0 ? 'no spell ends' : ended === 1 ? '1 spell ends' : `${ended} spells end`}` });
+}
+
+// A `revive` step (Revivify; SRD 5.2.1: "You touch a creature that has died within the last minute. That creature revives with 1 Hit Point. This spell can't
+// revive a creature that has died of old age, nor does it restore any missing body parts."). `t` is dead (the cast refused a creature that is not, and a body
+// that is gone). The time of death is the game clock when it died (`diedAt`): a body that died longer ago than `within` minutes is an invalid target, so the slot
+// is spent and nothing happens (SRD, "Invalid Targets"); a body with no time kept (it died before the engine kept one) is the DM's to judge. What the engine
+// cannot know (death of old age, missing body parts, the 300 GP diamond the spell consumes) is handed to the DM in a `manual` event, never guessed.
+export function revive(s, t, step, ev, f) {
+  const name = f.src.name, actor = f.actor ?? t.id;
+  if (!t.dead) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} is not dead, so ${name} does nothing.` });
+  if (!Number.isFinite(t.diedAt)) return ev.push({ type: 'manual', actor, name, text: `${name} was cast on ${t.name}, but the engine does not know when ${t.name} died (it died before the engine kept the time), so it did not revive it. If it died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} and not of old age, the DM brings it back with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'} (setHp).` });
+  const ago = s.clock - t.diedAt;
+  if (!(ago <= step.within + 1e-6)) return ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${t.name} died more than ${step.within === 1 ? 'a minute' : `${step.within} minutes`} ago, so ${name} does nothing to it.` });
+  t.dead = false; delete t.diedAt; t.hp = 0;
+  ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${t.name} returns to life` });
+  heal(s, t, Math.min(step.revive, t.maxHp), ev, null, f);
+  ev.push({ type: 'manual', actor, name, partial: true, text: `${name} brought ${t.name} back. The engine cannot tell whether ${t.name} died of old age (which the spell cannot undo) or lacks body parts (which it does not restore), and it does not take the diamond worth 300 GP or more that the spell consumes. The DM checks those: if the revival should not have worked, undo this cast; and the DM takes the diamond from the party's gear.` });
+}
+
+// A `light` step (Light): `t` carries a light for as long as the lasting effect that ran the step does, and it goes out with it (durations.js, endPart).
+// `replaces`: the caster casting it again ends the earlier one ("The spell ends if you cast it again"). A creature carries one light in the engine (`setLight`): one it
+// already carries, from elsewhere, is not put out or taken for this one, and the DM is told. Returns false where there is no lasting effect to hang it on.
+export function shine(s, t, step, ev, f) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound) return false;
+  if (step.replaces) for (const old of [...effectsOf(s)]) if (old !== fx && old.spell === fx.spell && old.source === fx.source) endEffect(s, ev, old, `${f.src.name} was cast again`);
+  if (t.light) {
+    ev.push({ type: 'manual', actor: f.actor ?? t.id, name: f.src.name, partial: true, text: `${t.name} already carries a light, and the engine keeps one light for a creature. It did not add ${f.src.name}'s: the DM tracks both, and sets the larger with setLight if they should show.` });
+    return true;
+  }
+  t.light = { bright: step.light.bright, dim: step.light.dim, fx: fx.id };
+  fx.parts.push({ target: t.id, light: true });
+  ev.push({ type: 'light', id: t.id, bright: step.light.bright, dim: step.light.dim, name: f.src.name });
+  return true;
+}
+
 // Extra damage a creature deals, from its `damage.dealt` modifiers: a modifier with `types` adds a
 // part of that type (Hex's 1d6 necrotic), one without is added to the first part. Extra dice are
 // doubled on a critical hit like the rest. `sit` says whether it came from a hit and a weapon.
@@ -285,7 +567,8 @@ export function dealt(s, e, t, parts, sit, crit) {
   if (!e || e.object) return parts;
   const m = modifiers(s, e, 'damage.dealt', { attacker: e, target: t, ...sit }, 'attacker');
   if (!m.dealt.length) return parts;
-  const out = parts.map((p) => ({ ...p }));
+  const out = parts.map((p) => ({ ...p })), first = out[0]?.amount ?? 0;
+  let floor = 0;
   for (const x of m.dealt) {
     // `once`: once on each of its own turns (Divine Strike, Primal Strike); outside a fight there are no turns.
     if (x.once && s.encounter) {
@@ -300,9 +583,12 @@ export function dealt(s, e, t, parts, sit, crit) {
     else if (out.length) {
       const p = out[0];
       p.amount = Math.max(0, p.amount + n);
+      if (x.atLeast) floor = Math.max(floor, x.atLeast);        // `atLeast` (Reduce): the floor is on the total, applied after every add (below)
       if (p.dice) { p.dice = [...p.dice, ...dice]; p.bonus = (p.bonus ?? 0) + bonus; }
     }
   }
+  // "This can't reduce the damage below 1": the first part ends at least at 1 (or at what it was, if that was less), whatever order the adds came in. A critical hit doubles the dice of the -1d4 as it does any damage dice.
+  if (floor && out.length) out[0].amount = Math.max(out[0].amount, Math.min(floor, first));
   return out;
 }
 
@@ -328,7 +614,7 @@ export function rescue(s, t, hook, short, ev) {
 
 // Of the damage types a creature may choose among (Divine Strike: Necrotic or Radiant), the one
 // that hurts the target most: one it is Vulnerable to, then one it does not resist, then the first.
-function bestType(s, t, types) {
+export function bestType(s, t, types) {
   if (!t) return types[0];
   const m = modifiers(s, t, 'damage.taken', { target: t });
   const has = (list, own, k) => list === true || list.includes(k) || (own ?? []).includes(k);
@@ -421,11 +707,40 @@ export function checkBonus(e, { ability, skill, tool }, lent = []) {
   else if (tool && (e.tools?.includes(tool) || lent.some((x) => x.tool === tool))) b += e.prof;
   return b;
 }
+// `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
+// (Search uses it for what it can see only dimly); it is not part of what is shown.
+// `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
+export const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}), ...(what.tool ? { tool: what.tool } : {}) });
+export function abilityCheck(s, e, what, dimToo = false, dis = [], adv = []) {
+  const ability = what.ability ?? SKILLS[what.skill];
+  // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
+  const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
+  const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what, m.lent) + m.add;
+  if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
+  if (adv.length) m.advantage = [...m.advantage, ...adv];
+  if (m.autoFail) return { roll: 0, total: 0, bonus };
+  // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
+  const lends = (k, v) => m.lent.some((x) => x[k] === v);      // a proficiency lent for a time counts as one (addition C of docs/specs/homebrew-subclasses.md)
+  if (what.tool && what.skill && (e.tools?.includes(what.tool) || lends('tool', what.tool)) && (e.skills?.includes(what.skill) || lends('skill', what.skill))) m.advantage = [...m.advantage, 'tool and skill'];
+  const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
+  const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
+  // Reliable Talent: each d20 under its `floor` counts as it.
+  const lift = (d) => (d !== null && m.floor !== null ? Math.max(d, m.floor) : d), raw1 = die(s, 20), raw2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
+  const r1 = lift(raw1), r2 = lift(raw2), floored = m.floor !== null && (raw1 < m.floor || (raw2 !== null && raw2 < m.floor));
+  const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
+  const more = rollDice(s, m.dice);
+  if (m.used.length) useUp(s, [], m.used);
+  // The dice are the faces rolled; `roll` is the d20 as it counts, and `floor.was` what it showed.
+  const shown = pickOf(mode) === r1 ? raw1 : raw2;
+  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
+    ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
+}
 // A passive score: 10 plus the bonus, 5 more with Advantage, 5 less with Disadvantage.
 // Dice from modifiers (Guidance) are not rolled for a passive score: it is not a roll.
 // `dis` adds reasons for Disadvantage that are not modifiers, such as Dim Light.
 export function passive(s, e, skill, dis = []) {
-  const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill] }, '');
+  const proficient = !!(e.skills?.includes(skill) || e.skillBonus?.[skill] !== undefined);      // as `abilityCheck` judges it (engine/features.js)
+  const m = modifiers(s, e, 'check', { target: e, skill, ability: SKILLS[skill], proficient }, '');
   m.disadvantage = [...m.disadvantage, ...dis];
   return 10 + checkBonus(e, { skill }, m.lent) + m.add + (m.advantage.length && !m.disadvantage.length ? 5 : 0) - (m.disadvantage.length && !m.advantage.length ? 5 : 0);
 }
@@ -444,7 +759,7 @@ export function recharge(s, e, ev) {
 // `bound` to its parts, which ends when they do. Null if no step has an `ends`.
 export function boundEffect(s, name, source, steps, spell = null) {
   let timed = false;
-  walkSteps(steps, (st) => { if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save' || st.ends.on === 'damaged')) timed = true; });
+  walkSteps(steps, (st) => { if (st.command !== undefined) timed = true; if (st.ends && (st.ends.on === 'turnStart' || st.ends.on === 'turnEnd' || st.ends.on === 'save' || st.ends.on === 'damaged')) timed = true; });
   if (!timed) return null;
   const fx = startEffect(s, { name, spell, source, conc: false, duration: 'special' });
   fx.bound = true;

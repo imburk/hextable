@@ -185,12 +185,12 @@ test("a sheet made from the table's roll carries its record: the faces, the rule
 });
 
 test("state version 25: a new game has no rolled scores; an older state gets an empty record, once; nothing else moves", () => {
-  assert.equal(VERSION, 28);                                   // 26: places of a world (#579); 27, the table rule strikeFirst (#585); 28, purses and shops (#596)
+  assert.equal(VERSION, 31);                                   // 26: places of a world (#579); 27, the table rule strikeFirst (#585); 28, purses and shops (#596); 29, shop numbers and fight numbers (#630)
   const s = newGame(5);
-  assert.deepEqual(s.scoreRolls, {}); assert.equal(s.version, 28);
+  assert.deepEqual(s.scoreRolls, {}); assert.equal(s.version, 31);
   const old = newGame(5); delete old.scoreRolls; old.version = 24;
   migrate(old);
-  assert.deepEqual(old.scoreRolls, {}); assert.equal(old.version, 28);
+  assert.deepEqual(old.scoreRolls, {}); assert.equal(old.version, 31);
   const { world, place, parked, journey, markets, shops, ...rest } = old;       // version 26 adds the places of a world, empty
   assert.deepEqual({ world, place, parked, journey }, { world: null, place: null, parked: {}, journey: null });
   assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 28 (#596) adds the markets and shops, empty

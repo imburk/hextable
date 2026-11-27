@@ -353,6 +353,9 @@
           "cure": [
             "poisoned"
           ]
+        },
+        {
+          "stabilize": true
         }
       ],
       "tier": "auto",
@@ -398,13 +401,16 @@
                 "save": "wis",
                 "at": "turnEnd"
               }
+            },
+            {
+              "confuse": true
             }
           ]
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "One creature is frightened; at the end of each of its turns it saves again to throw off the fear."
+      "text": "One creature is frightened and confused; at the end of each of its turns it saves again to throw off the fear."
     },
     {
       "id": "hb-sample-stone-hide",
@@ -429,16 +435,50 @@
       },
       "effects": [
         {
+          "resize": "larger"
+        },
+        {
           "modifier": {
             "on": "ac",
             "op": "add",
             "value": 2
           }
+        },
+        {
+          "light": {
+            "bright": 10,
+            "dim": 10
+          },
+          "replaces": true
+        },
+        {
+          "eachTurn": [
+            {
+              "tempHp": "1d4"
+            },
+            {
+              "save": "con",
+              "onSuccess": [
+                {
+                  "endSpell": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "arm": {
+            "damage": "1d6",
+            "type": "bludgeoning"
+          }
+        },
+        {
+          "ward": "wis"
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster's skin hardens, raising Armor Class by 2 until the spell ends."
+      "text": "The caster's skin hardens: +2 Armor Class, 1d4 temporary hit points and a 1d6 stone fist each turn, and a creature that targets it with an attack roll or damaging spell makes a Wisdom save or loses it. A Constitution save each turn may end the spell."
     },
     {
       "id": "hb-sample-spotters-eye",
@@ -466,11 +506,49 @@
       "effects": [
         {
           "reveal": "target"
+        },
+        {
+          "dispel": 1,
+          "dc": 10
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster points out a creature that is hidden, and it is seen by all."
+      "text": "The caster points out a creature that is hidden, and it is seen by all. Any spell of level 1 on it ends."
+    },
+    {
+      "id": "hb-sample-ember-recall",
+      "name": "Ember Recall",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "necromancy",
+      "classes": [
+        "cleric"
+      ],
+      "time": "action",
+      "range": "touch",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1,
+          "dead": true
+        }
+      },
+      "effects": [
+        {
+          "revive": 2,
+          "within": 2
+        }
+      ],
+      "tier": "auto",
+      "checked": false,
+      "text": "A touched creature that died within the last 2 minutes returns to life with 2 Hit Points."
     },
     {
       "id": "hb-sample-shifting-step",
@@ -651,6 +729,10 @@
       },
       "effects": [
         {
+          "sense": "traps",
+          "feet": 30
+        },
+        {
           "set": "open"
         },
         {
@@ -662,7 +744,7 @@
       ],
       "tier": "manual",
       "checked": false,
-      "text": "A wisp of light works a latch or a lock and the DM decides what opens."
+      "text": "A wisp of light works a latch or a lock and the DM decides what opens; the DM is first told of any trap within 30 feet."
     },
     {
       "id": "hb-sample-ashen-pulse",
@@ -716,6 +798,105 @@
           "times": 1
         }
       }
+    },
+    {
+      "id": "hb-sample-stern-word",
+      "name": "Stern Word",
+      "source": "homebrew:sample",
+      "level": 1,
+      "school": "enchantment",
+      "classes": [
+        "cleric"
+      ],
+      "time": "action",
+      "range": 30,
+      "components": [
+        "v"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "creature": {
+          "count": 1
+        }
+      },
+      "choice": {
+        "of": "command"
+      },
+      "effects": [
+        {
+          "save": "wis",
+          "onFail": [
+            {
+              "command": "chosen"
+            }
+          ]
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "A creature makes a Wisdom save or obeys one chosen word on its next turn."
+    },
+    {
+      "id": "hb-sample-stone-door",
+      "name": "Stone Door",
+      "source": "homebrew:sample",
+      "level": 4,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "touch",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "instant",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "wall": {}
+      },
+      "effects": [
+        {
+          "cut": 5
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "The caster opens a 5-foot passage through a wall within touch. The DM judges what the wall is made of."
+    },
+    {
+      "id": "hb-sample-stone-merge",
+      "name": "Stone Merge",
+      "source": "homebrew:sample",
+      "level": 3,
+      "school": "transmutation",
+      "classes": [
+        "wizard"
+      ],
+      "time": "action",
+      "range": "touch",
+      "components": [
+        "v",
+        "s"
+      ],
+      "duration": "1 hour",
+      "concentration": false,
+      "ritual": false,
+      "target": {
+        "wall": {}
+      },
+      "effects": [
+        {
+          "meld": true
+        }
+      ],
+      "tier": "assist",
+      "checked": false,
+      "text": "The caster steps into a wall within touch and is hidden there for an hour. The DM judges what the wall is made of."
     }
   ]
 }

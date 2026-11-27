@@ -6,24 +6,34 @@
 //   TIMELINE_CAP  timeline entries kept besides chronicle entries (default 5000)
 //   TRUST_PROXY, CLIENT_IP_HEADER   how to find the client address behind a proxy (default: socket address only)
 //   LIMIT_*    abuse and size limits, see limits.js and the README (defaults are the production values)
-//   FEEDBACK_GITHUB_REPO, FEEDBACK_GITHUB_TOKEN   optional: also file player feedback (POST /feedback) as GitHub issues, see feedback.js
+//   FEEDBACK_GITHUB_REPO, FEEDBACK_GITHUB_TOKEN   optional: also file player feedback (POST /feedback) as GitHub issues, see feedback.js; the same pair files engine crashes (label `crash`), see crashes.js
+//   Crash bundles are kept in DATA_DIR/crashes (the last 100; never served), the kinds of crash filed in DATA_DIR/crash-issues.json.
 //   Player feedback is kept in DATA_DIR/feedback.jsonl (five files of 5 MB: FEEDBACK_MAX_BYTES and FEEDBACK_FILES change that; when full, new reports are refused and nothing is deleted).
 //   LIMIT_FEEDBACK_FORWARD_HOUR / _DAY   the whole server's cap on feedback issues filed on GitHub (20 an hour, 100 a day)
+//   JOURNAL=off, JOURNAL_FILE_BYTES (5 MB), JOURNAL_FILES (5), JOURNAL_TOTAL_BYTES (500 MB)   the per-table action journal beside the table saves (DATA_DIR/ABC123.journal.*), see the README
+//   IDLE_EVICT_MINUTES (30; 0 = never)   a table with nobody connected for this long is saved and dropped from memory; the next join loads it. Tables are read lazily: only an index is kept at start.
+//   ARCHIVE_DAYS (90; 0 = never)   a table untouched this long moves, files and all, to DATA_DIR/archive/<code>/; joining its code brings it back. Nothing is deleted.
+//   BACKUP_DIR (unset = no backups), BACKUP_KEEP (7), BACKUP_HOUR (3, UTC), BACKUP_ARCHIVE (auto | yes | no), BACKUP_ARCHIVE_MAX_MB (500)   a dated copy of DATA_DIR once a night, see the README and scripts/backup.mjs
 //   Files DMs upload are kept under DATA_DIR/assets/<table code>/.
 import { createServer } from "node:http";
-import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { clientAddress, createLimits, limitsFromEnv, proxyFromEnv, LIMIT_MESSAGE } from "./limits.js";
+import { clientAddress, createLimits, limitsFromEnv, proxyFromEnv, proxyReport, LIMIT_MESSAGE } from "./limits.js";
 import { createTables, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, WORLD_FRAME_BYTES, worldAssets } from "./tables.js";
 import { assetRefs } from "../../rules/src/handouts.js";
 import { createAssets } from "./assets.js";
 import { assetRoute, handleAssets } from "./assets-http.js";
 import { acceptWebSocket } from "./ws.js";
 import { createFeedback, feedbackRoute } from "./feedback.js";
+import { createJournal, journalFromEnv } from "./journal.js";
+import { clientErrorRoute, createCrashes } from "./crashes.js";
+import { createStore } from "./store.js";
+import { backupDue, backupRunning, realish, runBackup } from "./backup.js";
 import { buildInfo } from "./build-info.js";
 
 const SITE = fileURLToPath(new URL("../../../dist", import.meta.url));
@@ -42,7 +52,17 @@ const TYPES = {
 const COMPRESSIBLE = new Set([".html", ".js", ".css", ".json", ".svg"]);
 const GZIP_MIN = 1024;
 const gzipAsync = promisify(gzip);
-const siteCache = new Map();                 // target path -> { key: "mtimeMs:size", raw: Promise<Buffer>, gz: Promise<Buffer> | null }
+const siteCache = new Map();                 // target path -> { key: "mtimeMs:size", raw: Promise<Buffer>, gz: Promise<Buffer> | null, tag: string | null }
+
+// Validators (#646). Every file of the game is sent with a strong ETag (a hash of its bytes, taken once per read of the file, so a file
+// changed on disk, which the cache above notices by mtime and size on every request, gets a new tag) and `Cache-Control: no-cache`: the browser
+// keeps its copy and asks each time, and an unchanged file is answered 304 with no body. The gzipped form is other bytes, so its tag ends `-gzip`.
+const tagOf = (raw) => `"${createHash("sha256").update(raw).digest("base64url").slice(0, 27)}"`;
+// Does an If-None-Match header match this tag? The weak comparison of RFC 9110: `W/` is ignored, and `*` matches any file that exists.
+export function noneMatch(header, tag) {
+  if (typeof header !== "string") return false;
+  return header.split(",").some((x) => { const t = x.trim().replace(/^W\//, ""); return t === "*" || t === tag; });
+}
 
 // Does an Accept-Encoding header allow gzip? A listed q of 0 refuses it; "*" allows it unless gzip is listed.
 function acceptsGzip(header) {
@@ -64,15 +84,17 @@ async function siteFile(target, compress) {
   const key = `${st.mtimeMs}:${st.size}`;
   let e = siteCache.get(target);
   if (!e || e.key !== key) {
-    e = { key, raw: readFile(target), gz: null };
+    e = { key, raw: readFile(target), gz: null, tag: null };
     siteCache.set(target, e);
     e.raw.catch(() => { if (siteCache.get(target) === e) siteCache.delete(target); });
   }
   const raw = await e.raw;
-  if (!compress || raw.length < GZIP_MIN) return { body: raw, gzipped: false };
+  e.tag ??= tagOf(raw);
+  const tag = e.tag;
+  if (!compress || raw.length < GZIP_MIN) return { body: raw, gzipped: false, etag: tag };
   e.gz ??= gzipAsync(raw, { level: 9 });
-  try { return { body: await e.gz, gzipped: true }; }
-  catch { e.gz = null; return { body: raw, gzipped: false }; }
+  try { return { body: await e.gz, gzipped: true, etag: `${tag.slice(0, -1)}-gzip"` }; }
+  catch { e.gz = null; return { body: raw, gzipped: false, etag: tag }; }
 }
 
 // A frame is an action plus a little envelope. Until someone is seated as the DM, frames are small:
@@ -119,15 +141,10 @@ function securityHeaders(req) {
 try { mkdirSync(DATA, { recursive: true }); writeFileSync(join(DATA, ".write-test"), ""); rmSync(join(DATA, ".write-test")); }
 catch (err) { console.error(`DATA_DIR ${DATA} is not writable (${err.code ?? err.message}): refusing to start, because tables could not be saved. Give the user running the server write access to it.`); process.exit(1); }
 const file = (code) => join(DATA, `${code}.json`);
-function load() {
-  const out = [];
-  for (const name of readdirSync(DATA)) {
-    if (!/^[A-Z0-9]{6}\.json$/.test(name)) continue;
-    try { out.push(JSON.parse(readFileSync(join(DATA, name), "utf8"))); }
-    catch (err) { console.error(`Skipping unreadable table file ${name}: ${err.message}`); }
-  }
-  return out;
-}
+// Tables are not read at start: the store lists the saves by their timestamps and a table is read when its code is first used (tables.js).
+// First, finish any archiving a crash cut short, so that the journals and files below are counted where they are.
+const store = createStore({ dir: DATA });
+for (const code of store.repair()) console.error(`Table ${code}: an archive move that was cut short was put back.`);
 // The DM's undo history sits beside the table: ABC123.undo.json. Missing or unreadable, the table
 // loads all the same with an empty history.
 const historyFile = (code) => join(DATA, `${code}.undo.json`);
@@ -138,17 +155,21 @@ function loadHistory(code) {
   catch (err) { console.error(`Ignoring unreadable undo history for table ${code}: ${err.message}`); return null; }
 }
 const dirty = new Map();
-function flush() {
-  for (const [code, t] of dirty) {
-    try { writeFileSync(file(code) + ".tmp", JSON.stringify(t)); renameSync(file(code) + ".tmp", file(code)); }
-    catch (err) { console.error(`Could not save table ${code}: ${err.message}`); }
-    try {
-      const h = tables.exportHistory(code);
-      if (h) { writeFileSync(historyFile(code) + ".tmp", JSON.stringify(h)); renameSync(historyFile(code) + ".tmp", historyFile(code)); }
-    } catch (err) { console.error(`Could not save undo history for table ${code}: ${err.message}`); }
-  }
-  dirty.clear();
+// Write one table's save and undo history now. False if the save itself could not be written (the table must then stay in memory).
+function flushOne(code) {
+  const t = dirty.get(code);
+  if (!t) return true;
+  dirty.delete(code);
+  let ok = true;
+  try { writeFileSync(file(code) + ".tmp", JSON.stringify(t)); renameSync(file(code) + ".tmp", file(code)); }
+  catch (err) { ok = false; console.error(`Could not save table ${code}: ${err.message}`); }
+  try {
+    const h = tables.exportHistory(code);
+    if (h) { writeFileSync(historyFile(code) + ".tmp", JSON.stringify(h)); renameSync(historyFile(code) + ".tmp", historyFile(code)); }
+  } catch (err) { ok = false; tables.historyFailed(code); console.error(`Could not save undo history for table ${code}: ${err.message}`); }       // false: a table is not evicted with its undo history unwritten
+  return ok;
 }
+function flush() { for (const code of [...dirty.keys()]) flushOne(code); }
 let timer = null;
 function save(t) {
   dirty.set(t.code, t);
@@ -158,11 +179,27 @@ function save(t) {
 // A world pack's pictures go into the table's file store (tables.js, worldAssets).
 const { importAssets, dropAssets } = worldAssets(() => assets);
 
-const tables = createTables({ load, save, loadHistory, importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+// The action journal (journal.js, #659): beside each table's save, never in the way of an action.
+const journal = createJournal({ dir: DATA, ...journalFromEnv(process.env) });
+const whole = (v, dflt) => (/^\d+$/.test(v ?? "") ? Number(v) : dflt);
+const evictMinutes = whole(process.env.IDLE_EVICT_MINUTES, 30), archiveDays = whole(process.env.ARCHIVE_DAYS, 90);
+// Crash bundles, GitHub crash issues and the browser's error reports (crashes.js, #689). Bundles are in DATA_DIR/crashes, which no route serves.
+const crashReports = createCrashes({ dir: DATA, env: process.env, build: () => build.commit });
+// Tests only (#691): with HEXTABLE_TEST_CRASH set, an advanceTime of 4242 minutes throws inside the engine call, so the crash path can be tested
+// with no malformed action to rely on. Without the variable nothing is hooked.
+const crashTest = process.env.HEXTABLE_TEST_CRASH ? (a) => { if (a?.type === "advanceTime" && a.minutes === 4242 /* reserved for this test-only crash hook */) throw new TypeError("test crash (HEXTABLE_TEST_CRASH)"); } : null;
+const tables = createTables({ journal, crashes: crashReports, crashTest, save, loadHistory, index: () => store.list(), loadOne: (code) => store.read(code), archived: () => store.archived(), flushNow: flushOne,
+  evictMs: evictMinutes > 0 ? evictMinutes * 60_000 : Infinity, archiveMs: archiveDays > 0 ? archiveDays * 86_400_000 : Infinity,
+  // A table's files and journals leave the counts before they move, and come back after they return.
+  archive: (code) => { if (backupRunning()) return false; assets.release(code); const ok = store.archive(code); if (ok) journal.forget(code); else assets.adopt(code); return ok; },
+  restore: (code) => { const ok = store.restore(code); if (ok) { assets.adopt(code); journal.adopt(code); } return ok; },
+  importAssets, dropAssets, allowPack: (code) => limits.allowPack(code), allowPackData: (id) => limits.allowPackData(id), exportAssets: (code, state, first) => assets.pack(code, { first: first ?? assetRefs(state) }), ...(timelineCap !== undefined && { timelineCap }) });
+const archivedAtStart = store.archived();
+journal.sweep((code) => existsSync(file(code)) || archivedAtStart.has(code));        // journals of tables whose save file is gone are removed at start; a save that cannot be read still counts as there (its journal is the best evidence)
 
 // Table files. A folder whose table is gone (its file deleted) is cleared away at start.
 const assets = createAssets({ dir: join(DATA, "assets"), limits: limits.config });
-for (const code of assets.codes()) if (!tables.get(code)) assets.removeTable(code);
+for (const code of assets.codes()) if (!tables.has(code)) assets.removeTable(code);       // `has`: a table not yet read, or in the archive, still counts as there
 
 // Seats with a live connection: "<code> <token>" -> how many. Changing a table's files needs one, so a
 // token alone (kept from an old session) cannot upload.
@@ -208,6 +245,10 @@ const server = createServer(async (req, res) => {
     try { return feedback.handle(req, res, { limits, addr: addressOf(req) }); }
     catch (err) { console.error(`Feedback request failed: ${err.message}`); if (!res.headersSent) res.writeHead(500).end(); else res.destroy(); return; }
   }
+  if (clientErrorRoute(req.url)) {
+    try { return crashReports.handleHttp(req, res, { addr: addressOf(req) }); }
+    catch (err) { console.error(`Client error request failed: ${err.message}`); if (!res.headersSent) res.writeHead(500).end(); else res.destroy(); return; }
+  }
   const route = assetRoute(/^https?:/i.test(req.url) ? new URL(req.url).pathname : req.url);
   if (route) {
     try { return handleAssets(req, res, route, { assets, tables, limits, addr: addressOf(req), online }); }
@@ -224,14 +265,27 @@ const server = createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end('{"ok":true}');
     return;
   }
+  if (path === `${sep}api${sep}health`) {
+    if (!limits.allowHealth(addressOf(req))) { res.writeHead(429, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({ ok: false, error: LIMIT_MESSAGE })); return; }
+    // Counts only: nothing about any table, member, code or token. `proxy` is about this one request: the address the server sees for the caller.
+    const { crashes, crashesByType } = tables.stats();
+    res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }).end(JSON.stringify({
+      ok: true, uptime: Math.round(process.uptime()), tables: { loaded: tables.size(), saved: tables.savedSize(), archived: tables.archivedSize(), active: tables.activeSize() },
+      connections: [...peers.values()].reduce((n, set) => n + set.size, 0), crashes, crashesByType, ...crashReports.stats(), build: build.commit,
+      proxy: proxyReport(req, proxy),
+    }));
+    return;
+  }
   const target = join(SITE, path.endsWith(sep) ? path + "index.html" : path);
   if (target !== SITE && !target.startsWith(SITE + sep)) { res.writeHead(403).end(); return; }
   try {
     const ext = extname(target);
     const text = COMPRESSIBLE.has(ext);
-    const { body, gzipped } = await siteFile(target, text && req.headers.range === undefined && acceptsGzip(req.headers["accept-encoding"]));
-    const headers = { "content-type": TYPES[ext] || "application/octet-stream", "content-length": body.length };
+    const { body, gzipped, etag } = await siteFile(target, text && req.headers.range === undefined && acceptsGzip(req.headers["accept-encoding"]));
+    const headers = { "content-type": TYPES[ext] || "application/octet-stream", etag, "cache-control": "no-cache" };
     if (text) headers.vary = "Accept-Encoding";
+    if (noneMatch(req.headers["if-none-match"], etag)) { res.writeHead(304, headers).end(); return; }       // the browser's copy is current: no body
+    headers["content-length"] = body.length;
     if (gzipped) headers["content-encoding"] = "gzip";
     res.writeHead(200, headers).end(body);
   } catch {
@@ -290,6 +344,8 @@ server.on("upgrade", (req, socket) => {
     // legitimate client nothing.
     if (msg?.t === "ping") { ws.send(JSON.stringify({ t: "pong", n: Number.isSafeInteger(msg.n) ? msg.n : 0 })); return; }
     if (msg?.t === "link") { relayLink(peer, msg); return; }
+    // A browser's error report touches no table: nothing is sent back, saved or journalled, and a refused or throttled one is dropped silently.
+    if (msg?.t === "clientError") { try { crashReports.clientError(msg.report, { conn: peer, table: peer.code }); } catch { /* never in the way of play */ } return; }
     if ((msg?.t === "host" && !limits.allowHost(addr)) || (msg?.t === "join" && !limits.allowJoin(addr))) {
       ws.send(JSON.stringify({ t: "error", error: LIMIT_MESSAGE }));
       return;
@@ -307,5 +363,41 @@ server.on("upgrade", (req, socket) => {
   ws.onclose = () => { release(); if (peer.code) { const set = peers.get(peer.code); set?.delete(peer); if (set && !set.size) peers.delete(peer.code); } if (seat) { sit(seat, -1); seat = null; } session.disconnect(); };
 });
 
-server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${server.address().port} (${tables.size()} saved tables)`));
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { flush(); process.exit(0); });
+server.listen(PORT, () => console.log(`Hextable table server at http://localhost:${server.address().port} (${tables.savedSize()} saved tables)`));
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { flush(); journal.flushSync(); process.exit(0); });
+
+// Once a minute: tables nobody is at are saved and dropped from memory, long-untouched ones are archived. Never allowed to throw into the timer.
+setInterval(() => {
+  try {
+    const r = tables.sweep();
+    if (r.evicted.length || r.archived.length) console.log(`tables: ${r.evicted.length} evicted from memory, ${r.archived.length} archived`);
+  } catch (err) { console.error(`Sweep failed: ${err?.stack ?? err}`); }
+}, 60_000).unref();
+
+// Nightly backup (backup.js): only when BACKUP_DIR is set. Checked every ten minutes, so a server that was down at 03:00 makes it up when it is back.
+const BACKUP_DIR = (process.env.BACKUP_DIR ?? "").trim();
+if (BACKUP_DIR) {
+  const hour = Math.min(23, whole(process.env.BACKUP_HOUR, 3));
+  // On the same disk as the tables a backup guards against a bad save, not against losing the disk: say so once at start.
+  Promise.all([realish(DATA), realish(BACKUP_DIR)]).then(async ([d, b]) => {
+    const { statSync } = await import("node:fs");
+    const dev = (p) => { for (let x = p; ; x = join(x, "..")) { try { return statSync(x).dev; } catch { if (x === join(x, "..")) return null; } } };
+    if (dev(d) !== null && dev(d) === dev(b)) console.error(`BACKUP_DIR ${BACKUP_DIR} is on the same disk as DATA_DIR ${DATA}: backups there help against a bad save but not if the disk is lost. Use the host's volume backups or a different disk as well.`);
+  }).catch(() => {});
+  let failures = 0, notBefore = 0;
+  const nightly = async () => {
+    try {
+      if (Date.now() < notBefore || !(await backupDue(BACKUP_DIR, new Date(), hour))) return;
+      flush();
+      const r = await runBackup({ dataDir: DATA, backupDir: BACKUP_DIR, keep: whole(process.env.BACKUP_KEEP, 7) || 7, archive: process.env.BACKUP_ARCHIVE || "auto",
+        archiveMax: whole(process.env.BACKUP_ARCHIVE_MAX_MB, 500) * 1024 * 1024, log: (l) => console.log(l) });
+      if (r.busy) return;
+      if (r.ok) { failures = 0; return; }
+      // After a failed run, wait before the next: an hour, then two, then four, at most six, so a full disk costs a log line now and then, not a copy every ten minutes.
+      notBefore = Date.now() + Math.min(6, 2 ** failures++) * 3600_000;
+      console.error(`Backup failed: ${r.error} (next try in ${Math.min(6, 2 ** (failures - 1))} h)`);
+    } catch (err) { console.error(`Backup failed: ${err?.message ?? err}`); }
+  };
+  setInterval(nightly, 10 * 60_000).unref();
+  setTimeout(nightly, 60_000).unref();
+}

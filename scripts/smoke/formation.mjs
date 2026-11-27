@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, calm } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, calm, panelTab } from './lib.mjs';
 import { mkdirSync } from 'node:fs';
 
 // ---------- the formation popup (docs/specs/table-ui.md, "E22: formations, client", issue #304) ----------
@@ -10,7 +10,7 @@ import { mkdirSync } from 'node:fs';
 const ids = (page) => state(page, (S) => Object.values(S.entities).filter((x) => x.side === 'party' && !x.dead && !x.hidden && x.follow === 'fighter').map((x) => x.id).sort());
 const rowClick = async (page, id) => {
   const sel = `#ap-explore [data-row="${id}"]`;
-  await waitShown(page, '#ap-explore');
+  await panelTab(page, 'explore');                     // the Explore group of the Character screen (M4)
   if (!(await shown(page, sel))) { await page.click('#ap-explore .ap-more summary'); await waitShown(page, sel); }
   await page.click(sel);
 };
@@ -32,7 +32,6 @@ async function pass(browser, url, label, opts, grid) {
         await open(page, url, { grid });
         await page.click('#lobby-solo'); await wait(page, () => window.hextable?.state?.entities?.fighter);
         await page.evaluate(() => window.hextable.select('fighter'));
-        await waitShown(page, '#ap-explore');
         await rowClick(page, 'lead');
         await waitShown(page, '#fm');
         const want = await ids(page);

@@ -1,18 +1,17 @@
-/* The action panel (actionpanel.js, docs/specs/table-ui.md Decision 6). It lives in the card of #dock; colour, type and radius come from the theme tokens only. */
+/* The action panel (actionpanel.js, docs/specs/table-ui.md Decision 6). It lives in the Character screen of the menu (#card, under the status block; the dock is gone, M4); colour, type and radius come from the theme tokens only. */
 #c-res button.pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; min-height: 32px; font: inherit; font-size: 12px; color: inherit; background: transparent; }
 #c-res button.pill[aria-expanded="true"] { border-color: var(--accent); }
 #ap-how { border: 1px solid var(--accent); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; background: var(--panel-2); }
 #ap-how p { margin: 4px 0 0; color: var(--muted); } #ap-how .row { margin: 8px 0 0; } #ap-how button { min-height: 44px; }
 
-#ap-body { min-height: 0; }
-#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items, #ap-reactions, #ap-down { max-height: 132px; overflow-y: auto; overscroll-behavior: contain; }
-#card[data-raised] :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items, #ap-reactions, #ap-down) { max-height: max(132px, calc(55vh - 200px)); }
-#card[data-collapsed] #ap-body { display: none; }
 .ap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .ap-list { display: grid; gap: 6px; margin-top: 6px; }
 .ap-row { text-align: left; display: grid; align-content: center; gap: 1px; min-height: 48px; padding: 6px 10px; min-width: 0; }
 .ap-row .ap-t { font-weight: 700; }
 .ap-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ap-roll { display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.5; padding: 0 6px; margin-right: 4px; color: var(--ink); background: transparent; border: 1.5px solid currentColor; white-space: nowrap; }
+.ap-row .ap-roll { color: var(--ink); } .ap-row.armed .ap-roll { color: var(--accent-ink); }
+.ap-roll[data-roll="attack"] { border-radius: 999px; } .ap-roll[data-roll="save"] { border-radius: 2px; } .ap-roll[data-roll="none"] { border-radius: 999px; border-style: dotted; font-weight: 600; }
 .ap-chip { flex: none; font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; color: var(--muted); }
 .ap-row small.ap-pips { color: var(--ink); } .ap-pips .pips { letter-spacing: 1px; color: var(--accent); }
 .ap-row.info { border: 1px dashed var(--line); border-radius: var(--radius); background: transparent; cursor: default; }
@@ -25,35 +24,21 @@
 #ap-reactions .rx { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; } #ap-reactions .rx select { min-height: 44px; }
 #ap-reactions small { display: block; color: var(--muted); }
 
-#ap-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-#ap-tabs button { flex: 1 1 auto; min-width: 0; min-height: 48px; padding: 4px 6px; white-space: nowrap; }
-#ap-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
-#ap-tabs button.off { opacity: .5; }
-#ap-tabs button#ap-grip { flex: none; min-width: 44px; background: transparent; }
-#ap-tabs button.pulse { border-color: var(--accent); animation: ap-pulse .9s ease-in-out infinite alternate; }
-@keyframes ap-pulse { to { background: var(--accent); color: var(--accent-ink); } }
-@media (prefers-reduced-motion: reduce) { #ap-tabs button.pulse { animation: none; background: var(--accent); color: var(--accent-ink); } }
 
 @media (min-width: 900px) {
-  :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items) .ap-list { grid-template-columns: 1fr 1fr; }
-  #card[data-raised] :is(#ap-explore, #ap-attacks, #ap-spells, #ap-bonus, #ap-move, #ap-features, #ap-items, #ap-reactions, #ap-down) { max-height: max(184px, calc(40vh - 130px)); }
+  :is(#ap-explore, #ap-attacks, #ap-spells, #ap-heal, #ap-move, #ap-defend, #ap-use, #ap-features, #ap-companions, #ap-rest, #ap-cost, #ap-items) .ap-list { grid-template-columns: 1fr; }
 }
 
-/* The card is a grid; its rows must not grow to the width of the bar of buttons, which scrolls sideways inside it. */
-#card { grid-template-columns: minmax(0, 1fr); }
-#ap-body, #ap-spells, #ap-items { min-width: 0; }
+#ap-body, .ap-pane, .ap-sec { min-width: 0; }
 
 /* A greyed row keeps its reason at full strength: only the name and the numbers fade, so the words can be read without a hover. */
 button.ap-row.off { opacity: 1; border-style: dashed; }
-.ap-row.off .ap-top, .ap-row.off .ap-s, .ap-row.off .ap-pips { opacity: .55; }
+.ap-row.off .ap-top, .ap-row.off .ap-pips { opacity: .55; } .ap-row.off .ap-s { opacity: .75; }   /* the roll tag sits in it: kept readable */
 
 
-/* Under a pane with more rows than fit: how many are below. */
-#ap-cue { width: 100%; min-height: 28px; margin-top: 4px; padding: 0 8px; font-size: 12px; color: var(--muted); background: transparent; border-style: dashed; }
 
 /* The Spells tab: the slot strip stays at the top of the pane whatever the sort or filters; the sort and filters and the groups scroll under it. */
-#ap-spells { max-height: 176px; }
-.ap-spellhead { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; margin: 0 0 6px; padding: 2px 6px; border-radius: var(--radius); background: var(--panel-2); }
+.ap-spellhead { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 12px; margin: 0 0 6px; padding: 2px 6px; border-radius: var(--radius); background: var(--panel-2); }
 .ap-slots { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 13px; }
 .ap-slot .pips { letter-spacing: 1px; color: var(--accent); } .ap-slot.spent b { opacity: .6; }
 .ap-tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
@@ -64,7 +49,7 @@ button.ap-fchip { min-height: 44px; padding: 2px 12px; border-radius: 999px; fon
 button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .ap-head { margin: 8px 0 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .ap-head:first-child { margin-top: 0; }
-@media (min-width: 900px) { .ap-head { grid-column: 1 / -1; } #card[data-raised] #ap-spells { max-height: max(184px, calc(40vh - 130px)); } }
+@media (min-width: 900px) { .ap-head { grid-column: 1 / -1; } }
 
 /* The Items tab: gear with its equip and attune buttons, and whom a potion is given to. */
 .ap-row.ap-gear { border-style: solid; background: var(--panel-2); gap: 4px; }
@@ -87,3 +72,70 @@ button.ap-fchip[aria-pressed="true"] { background: var(--accent); color: var(--a
 .ap-line button.off { border-style: dashed; opacity: .7; }
 .ap-pick button small.ap-why { display: block; font-size: 11px; }
 .ap-pick button.off { border-style: dashed; opacity: .7; }
+
+/* The groups of the Character screen: a bar for each (a button: the title, a tip, a chevron); one open at a time (Decision 4d). Nothing scrolls by itself: the screen keeps its scroll. */
+#card { margin-top: 10px; }
+#ap-body { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; align-content: start; }
+#ap-body > * { grid-column: 1 / -1; }
+#ap-body[hidden], .ap-sec[hidden] { display: none; }
+#ap-empty { margin: 0; padding: 8px 2px; color: var(--muted); }
+.ap-down { padding: 6px 2px; }
+.ap-sec { display: block; }
+.ap-h { margin: 0; font-size: inherit; }
+.ap-bar { width: 100%; min-height: 52px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; text-align: left; padding: 6px 12px; }
+.ap-bar .ap-bt { font-weight: 700; }
+.ap-bar .ap-tip { color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.ap-bar .ap-chev { grid-column: 3; color: var(--muted); font-size: 20px; line-height: 1; transition: transform .15s; }
+.ap-bar[aria-expanded="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.ap-bar[aria-expanded="true"] .ap-tip, .ap-bar[aria-expanded="true"] .ap-chev { color: inherit; }
+.ap-bar[aria-expanded="true"] .ap-chev { transform: rotate(90deg); }
+.ap-bar.off .ap-bt { opacity: .6; } .ap-bar.off { border-style: dashed; }
+/* with one open, the other bars show their titles only: more room for the open one */
+#ap-body[data-open-any] .ap-bar[aria-expanded="false"] .ap-tip { display: none; }
+#ap-body[data-open-any] .ap-bar[aria-expanded="false"] { min-height: 44px; }
+.ap-likely { display: block; width: 100%; min-height: 44px; margin-top: 4px; padding: 4px 12px; text-align: left; border-style: dashed; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-likely[hidden] { display: none; }
+.ap-pane { padding-top: 6px; }
+/* the turn bar: four buttons in the status block */
+#c-res button.pip { min-height: 44px; padding: 2px 12px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: 12px; }
+#c-res button.pip.spent { opacity: .4; text-decoration: line-through; }
+#c-res button.pip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); opacity: 1; text-decoration: none; }
+
+/* M10, one accordion (Decision 4d, R27): while a section is open the page is pinned. The status block goes compact (the name, Hit Points and Armor Class on one
+   line, then the turn bar); the open section's pane is what scrolls; every other bar stays on the screen, above or below it, as a title, up to three side by side
+   (accordion.js works out the rows). If a screen is too short for the bars and 164 px of the open section, the bars scroll with it rather than squeeze it. */
+#sheet.pin > #card { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; margin-top: 6px; }
+#sheet.pin #ap-body { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-content: stretch; }
+#sheet.pin .ap-sec.open { display: flex; flex-direction: column; min-height: 0; }
+#sheet.pin .ap-sec.open > .ap-pane { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
+#sheet.pin .ap-sec.open > .ap-h { flex: none; }
+#sheet.pin .ap-likely { display: none; }
+#sheet.pin .ap-bar { min-height: 44px; }
+#sheet.pin .ap-bar[aria-expanded="false"] { grid-template-columns: minmax(0, 1fr); padding: 4px 6px; text-align: center; font-size: 13px; }
+#sheet.pin .ap-bar[aria-expanded="false"] .ap-bt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sheet.pin .ap-bar[aria-expanded="false"] :is(.ap-tip, .ap-chev) { display: none; }
+#sheet.pin #status-block { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 10px; }
+#sheet.pin #status-block > * { grid-column: 1 / -1; margin-top: 0; }
+#sheet.pin #card-head { grid-column: 1; min-height: 44px; min-width: 0; }
+#sheet.pin #card-head > div:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sheet.pin #c-sub { display: none; }
+#sheet.pin #c-hp { grid-column: 2; grid-row: 1; gap: 8px; white-space: nowrap; }
+#sheet.pin #c-hp .bar { display: none; }
+#sheet.pin #c-res { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+#sheet.pin #c-res::-webkit-scrollbar { display: none; }
+#sheet.pin #c-level:not(:empty) { font-size: 13px; }
+#ap-sheet > #sheet-body { padding-top: 2px; }
+
+/* #750 part 2: the choices an armed action waits for, at the top of the open section. A choice that can be used has a bold accent border; the one the die will use is filled and has a tick;
+   one that cannot is dashed and dim, and says why in words under its name (never colour alone). */
+.ap-choices { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--panel-2); }
+.ap-choices[hidden] { display: none; }
+.ap-ch-h { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.ap-ch-g + .ap-ch-g { margin-top: 6px; }
+.ap-ch-l { display: block; margin: 0 0 3px; font-size: 13px; font-weight: 700; }
+.ap-ch-o { display: flex; flex-wrap: wrap; gap: 6px; }
+button.ap-ch { min-height: 44px; padding: 4px 12px; display: grid; gap: 1px; align-content: center; text-align: left; min-width: 0; }
+button.ap-ch small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+button.ap-ch.use { border: 2px solid var(--accent); }
+button.ap-ch.use.on { background: var(--accent); color: var(--accent-ink); } button.ap-ch.on small { color: inherit; }
+button.ap-ch.off { border-style: dashed; } button.ap-ch.off .ap-ch-t { opacity: .6; } button.ap-ch.off small.ap-why { color: var(--ink); font-size: 12px; }

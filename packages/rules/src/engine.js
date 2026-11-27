@@ -6,6 +6,7 @@
 // action against the rules, mutates state, and returns events. Renderers turn events
 // into numbers or animations; the server broadcasts them; the timeline records them;
 // an AI DM or AI character is just another caller of apply().
+import { noteManual, tidy } from './todo.js';
 import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
@@ -16,6 +17,7 @@ import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
 import { checkEnd, fall, NotBattleMap, settleBonds, settleHolds } from './engine/resolve.js';
 import { NO_WALK, staleCheck } from './places.js';
 import { learn, translate } from './known.js';
+import { learnShops, translateShops } from './shopids.js';
 import { watch } from './engine/features.js';
 import { handlers as movement } from './engine/movement.js';
 import { handlers as attacks } from './engine/attacks.js';
@@ -33,9 +35,9 @@ export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying,
 export { BOND_KINDS, BOND_MAX } from './engine/companions.js';   // companions (docs/specs/companions.md, C1)
 export { vanish } from './engine/resolve.js';
 export { presetSlots, SHAPES, SLOT_MAX, slotsFor, validFormation, validSlot } from './engine/world.js';   // formations (#303)
-export { aimArea, aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, holdsOf, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, targetsFor } from './engine/world.js';
+export { aimArea, aloft, areaHexes, areaTargets, CATCH_UP, contentName, creatureType, holdsOf, isPile, moveOptions, nearObject, NOTICE_FEET, objectName, objectShown, openContents, PILE_MAX, pileContents, pileOpen, SEARCH_FEET, shelledReach, targetsFor } from './engine/world.js';
 export { GEAR_MAX, HAND_FEET, interactionOf, passTargets, pickUpsFor } from './engine/characters.js';
-export { checkBonus, passive, rollMode } from './engine/rolls.js';
+export { acBaseOf, acNow, acOf, acShown, checkBonus, passive, rollMode } from './engine/rolls.js';
 export { makeEntity } from './engine/sheets.js';
 export { ENGAGE_RANGE } from './engine/movement.js';
 export { actionSpent, attacksLeft, fromPool, partRefusal } from './engine/attacks.js';
@@ -104,11 +106,11 @@ function gravity(s, ev) {
     if (ground(s.map, e.pos) || aloft(s, e)) continue;
     const sf = under(s.map, e.pos);
     if (!sf) continue;                                   // nothing below at all: the DM's to sort out
-    const feet = e.pos.z - sf.z;
+    const feet = e.pos.z - sf.z, from = { ...e.pos };
     e.pos = { q: e.pos.q, r: e.pos.r, z: sf.z };
     if (e.dead) continue;
     any = true;
-    fall(s, e, feet, ev);
+    fall(s, e, feet, ev, null, from);                    // range and sight (Feather Fall) from where the fall began (DEBT W58(5), #819)
     lookAround(s, ev, [e]);
   }
   if (any) checkEnd(s, ev);
@@ -153,7 +155,8 @@ function dispatch(s, action, ctx, ev) {
   // that is not a string, `toString`) is refused as unknown.
   // The places, pins and entries a player names are the ids they were given (known.js); each is turned into the world's own
   // here, and one that is nothing to them is refused as a place that does not exist, before the handler looks at anything.
-  if (ctx.role !== 'dm') action = translate(s, action, fail);
+  // The same for a shop: a player names it by the number it was given (shopids.js); any other id is refused as "No such shop.".
+  if (ctx.role !== 'dm') action = translateShops(s, translate(s, action, fail), fail, ctx);
   const type = action?.type;
   const h = (typeof type === 'string' && handlers.get(type)) || fail(`Unknown action: ${typeof type === 'object' && type !== null ? 'not a name' : typeof type === 'symbol' ? type.toString() : String(type)}`);
   // Nobody walks on a holding map (docs/specs/travel.md, Decision 1): on a navigation or scene node a group stands at a pin,
@@ -204,6 +207,38 @@ function thaw(s, snap) {
   for (const k of Object.keys(s)) delete s[k];
   for (const k of Object.keys(snap)) s[k] = k === 'timeline' ? tl : snap[k];
 }
+// A refusal (a RuleError out of the handler) puts the game back by mending it IN PLACE: whatever the refused action left changed is set back to
+// what the copy holds, and every object that was not changed stays the very same object. A refusal is the commonest way an action ends, and what
+// holds a creature or a list (a test, a view) keeps holding it, as it did while a refusal changed nothing. This keeps identity only for objects
+// the handler did not replace: one it swapped for another (or added, or removed) comes back as the copy's object. `thaw`, which swaps whole
+// objects, is still what a throw that is not a refusal, a question, the work ceiling (`overWork`) and `NotBattleMap` use.
+// Same key order as the copy, so the game's JSON is identical. Terrain held by reference in the copy is the same object and is skipped.
+// Aliasing: a handler may leave one live object at two paths (`a.pos = b.pos`) and then refuse. Mending it in place at the first path would
+// write one creature's values into the other's, so an object already mended once (`seen`) is replaced by the copy's own object at its second path.
+const plain = (x) => x !== null && typeof x === 'object' && (Array.isArray(x) || Object.getPrototypeOf(x) === Object.prototype);
+// A write only where it differs (unchanged terrain may be frozen, apply-terrain.test.js); an own `__proto__` key is defined, never assigned.
+const put = (o, k, v) => {
+  if (k === '__proto__') Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+  else if (o[k] !== v) o[k] = v;
+};
+function back(t, c, seen) {
+  if (t === c) return t;
+  if (!plain(t) || !plain(c) || Array.isArray(t) !== Array.isArray(c) || seen.has(t)) return c;
+  seen.add(t);
+  if (Array.isArray(c)) { if (t.length !== c.length) t.length = c.length; for (let i = 0; i < c.length; i++) put(t, i, back(t[i], c[i], seen)); return t; }
+  const tk = Object.keys(t), ck = Object.keys(c);
+  if (tk.length === ck.length && tk.every((k, i) => k === ck[i])) { for (const k of ck) put(t, k, back(t[k], c[k], seen)); return t; }
+  const old = new Map(tk.map((k) => [k, t[k]]));          // the keys differ: take them all off and put them back in the copy's order
+  for (const k of tk) delete t[k];
+  for (const k of ck) { const v = back(old.get(k), c[k], seen); if (k === '__proto__') put(t, k, v); else t[k] = v; }
+  return t;
+}
+// The copy has no timeline (apply() does not restore it), so the game's own is kept; a game with no `timeline` key gets none.
+export function mend(s, snap) {      // exported for refusal-mend.test.js only
+  const c = { ...snap };
+  if (Object.hasOwn(s, 'timeline')) c.timeline = s.timeline; else delete c.timeline;
+  back(s, c, new WeakSet());
+}
 
 // The work count is switched off however the action ends, a throw included.
 //
@@ -228,7 +263,6 @@ function applyInner(s, action, ctx) {
   const asks = !!s.pending || action?.type === 'react' || mayAsk(s);
   const heavy = mayBeHeavy(s, action ?? {});            // true: a cast or action that may meet the ceiling; 'copy': a use whose work is not read from here
   const snap = asks || heavy ? copyFor(s, action) : null;
-  const putBack = asks || heavy === true;
   // Any handler may throw something that is not a rule refusal (a TypeError, a bad dice expression met in content, a state a bug or an
   // old save left wrong) after it has changed things; the game is then put back as it was (below, and for the settle phase after it) and the
   // error goes on up (#421 for `act` and `cast`, #425 for every action). So a copy is kept for every action a handler exists for (an
@@ -265,8 +299,11 @@ function applyInner(s, action, ctx) {
       setRun(null);
       return safe(() => record(s, ev));
     }
-    if (net && !(err instanceof RuleError)) thaw(s, net);   // anything but a refusal (a TypeError, a bad dice expression met in content) puts the game back as it was, then goes on up: a bug is not hidden
-    else if (snap && putBack) thaw(s, snap);              // (a copy taken for an item, feature or object use is put back only for the work ceiling: a plain refusal changed nothing, and what holds the state keeps holding it) a refused answer leaves the question waiting, as it was
+    // Every way an action can fail puts the game back from the copy taken above, a rule refusal too: a refused action changes nothing,
+    // however the handler got there (review R3, #617; engine/casting.js once set a flag before it refused). A refusal of an answer to a
+    // reaction question restores the copy taken for it, so the question is left waiting, as it was. A non-refusal throw goes on up: a bug is not hidden.
+    // `net` is only null for an action no handler exists for, which changes nothing.
+    if (net) { if (err instanceof RuleError) mend(s, net); else thaw(s, net); }
     setRun(null);
     if (err instanceof RuleError) return { ok: false, error: err.message, events: [] };
     throw err;
@@ -275,10 +312,13 @@ function applyInner(s, action, ctx) {
   // A companion that has dropped to 0, lost its master or strayed past its leash leaves the map (resolve.js, settleBonds);
   // a grapple whose grappler is gone, Incapacitated or out of range ends (settleHolds).
   // A joint purchase that can no longer be paid ends (engine/trade.js, settleShops: a fight, a buyer out of the shop area, stock gone).
-  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); settleShops(s, ev); learn(s); checkEvents(ev); } catch (err) {
+  try { gravity(s, ev); settleBonds(s, ev); settleHolds(s, ev); watch(s, ev); look(s, ev); staleCheck(s, ev); settleShops(s, ev); learn(s); learnShops(s); checkEvents(ev); } catch (err) {
     if (err instanceof NotBattleMap) { stopWork(); delete s.stack; if (net) thaw(s, net); return { ok: false, error: err.message, events: [] }; }
     if (err instanceof WorkLimit) { stopWork(); delete s.stack; return safe(() => overWork(s, snap, err, ev, action, was)); }
-    if (!(err instanceof RuleError)) { stopWork(); throw restoreAfter(s, net, tlLen, err); }
+    // A refusal here is not a refusal of the action: the handler is done and has changed the game. Letting it pass would leave that half-applied
+    // and tell nobody, so the game goes back as it was and it is thrown as a crash (the server answers "couldn't make sense"; review R3, L4).
+    stopWork(); delete s.stack;
+    throw restoreAfter(s, net, tlLen, err instanceof RuleError ? new Error(`The settle phase refused an action that had been applied: ${err.message}`) : err);
   }
   stopWork();
   try {
@@ -366,7 +406,7 @@ function record(s, ev) {
   const unseen = (x) => typeof x === 'string' && unknown(s, s.entities[x]);
   for (const e of ev) {
     if (e.type === 'moved' || e.type === 'ping') continue;       // a ping is seen once by those at the table and kept nowhere (docs/specs/table-ui.md, Ping)
-    const ids = [e.id, e.actor, e.target, e.by, e.src, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
+    const ids = [e.id, e.actor, e.target, e.by, e.src, e.against, ...(Array.isArray(e.targets) ? e.targets : []), ...(e.type === 'arrived' && Array.isArray(e.ids) ? e.ids : []), ...(Array.isArray(e.order) ? e.order.map((o) => o.id) : [])].filter(unseen);
     // A copy all through: an event may hold an object of the state itself (`placed` its creature's `pos`), and
     // an entry sharing it would change with it; undo and redo, which put the state back field by field, then
     // could not give the record back as it was (#320).
@@ -374,7 +414,9 @@ function record(s, ev) {
     // before the fight's start revealed them; casting.js): both are kept (fix round 1 of #373, L1).
     const all = [...new Set([...(Array.isArray(e.unseen) ? e.unseen : []), ...ids])];
     s.timeline.push(structuredClone({ t: s.clock, ...e, ...(all.length ? { unseen: all } : {}) }));
+    if (e.type === 'manual') noteManual(s, e);       // the DM's to-do tray (todo.js): a card, kept in the state
   }
+  tidy(s);
   return { ok: true, events: ev };
 }
 

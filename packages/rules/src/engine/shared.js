@@ -18,7 +18,10 @@ export const fail = (msg) => { throw new RuleError(msg); };
 
 export const up = (e) => !e.dead && e.hp > 0;
 export const hostile = (a, b) => a.side !== b.side;
-export const living = (s) => Object.values(s.entities).filter((e) => !e.dead);
+// The creatures that are here: not dead, and not merged with stone (Meld into Stone, `melded`): one that is fills no space, is not seen, aimed at,
+// caught in an area or found, and sees nothing, so every place that asks "who is there" through this leaves it out. What must still reach it (its turn,
+// its effects, ending the spell) goes by `s.entities`.
+export const living = (s) => Object.values(s.entities).filter((e) => !e.dead && !e.melded);
 export const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 export const current = (s) => (s.encounter ? s.encounter.order[s.encounter.turn]?.id ?? null : null);
 // A spellcaster's spell attack bonus and save DC, with what modifiers change about them when the
@@ -31,6 +34,9 @@ export const spellStats = (e, s = null, spell = null) => {
   const a = modifiers(s, e, 'spell.attack', {}, ''), d = modifiers(s, e, 'spell.dc', {}, '');
   return { attack: bounded(a, m + a.add), dc: bounded(d, 8 + m + d.add) };
 };
+// A place on the map as an action names it: { q, r } whole numbers, and `z` (a height) only if it is a number. Anything else is
+// refused with a sentence before a handler reads it (#691): `null.q` and `undefined.q` are crashes, not refusals.
+export const spot = (h, what = 'a place on the map') => (h && typeof h === 'object' && !Array.isArray(h) && Number.isInteger(h.q) && Number.isInteger(h.r) && (h.z === undefined || Number.isFinite(h.z)) ? h : fail(`Name ${what}: a hex with whole-number q and r.`));
 export const ent = (s, id) => s.entities[id] || fail('No such creature.');
 // Who plays a creature: its own player, or for a companion (a creature with a `bond`; engine/companions.js,
 // docs/specs/companions.md, Decision 1) its master's player. A bonded creature has no `owner` of its own, so
@@ -97,6 +103,9 @@ export const commandedNow = (s, e) => {
 // Outside the fight going on, a command given there (`at: null`) lifts it too. Only the acting creature (`actor`) is
 // locked: a locked creature named as the leader of a `partyFollow` or `formation` is not doing anything itself.
 const UNLOCKED = new Set(['move', 'dodge', 'endTurn', 'stand', 'follow', 'reactions', 'companion', 'react', 'stepAway', 'stepBack']);
+// What a creature merged with stone (Meld into Stone) may still send: a spell (aimed at itself: casting.js), leaving, ending its turn, the
+// checks it makes and its standing instructions. Everything else is refused in `control`, with one message.
+const MELDED_MAY = new Set(['cast', 'unmeld', 'endTurn', 'check', 'reactions', 'react', 'companion']);
 export function commandLock(s, e) {
   const b = e?.bond;
   if (b?.orders !== 'command' || (typeof b.standing === 'string' && b.standing)) return false;
@@ -110,6 +119,7 @@ export const control = (s, e, ctx) => {
     // A controlled mount "moves on your turn as you direct it": its rider's player sends its moves, Dash and Disengage.
     (!!who && who === ctx.userId) || (acting && DIRECTED.has(type) && !!r && ownerOf(s, r) === ctx.userId) || fail(`${e.name} isn't yours to control.`);
   }
+  if (acting && e.melded && !MELDED_MAY.has(type)) fail(`${e.name} is merged with the stone and can do nothing but cast a spell on itself or leave the stone (unmeld).`);
   if (acting && !UNLOCKED.has(type) && commandLock(s, e)) fail(`${e.name} has no command to follow, so it only takes the Dodge action and moves to avoid harm.`);
   if (acting && steering(s, e)) {
     RIDDEN.has(type) || fail('A controlled mount can only Dash, Disengage or Dodge.');
@@ -296,3 +306,6 @@ export function roomForCompanions(s, m, n = 1) {
 // on the master as `pocket = { [id]: record }`, so nothing on the map, in sight or in the fight sees them. Only the
 // master's own keys, in the order they were put there.
 export const pocketOf = (m) => (m?.pocket && typeof m.pocket === 'object' && !Array.isArray(m.pocket) ? Object.keys(m.pocket).map((k) => m.pocket[k]) : []);
+
+// What derive() needs to know of the table to count Hit Points: a rolled table counts the rolls kept on a sheet (hitpoints.js), a fixed one ignores them.
+export const hpOpts = (s) => ({ hp: s?.settings?.hpMethod === 'rolled' ? 'rolled' : 'fixed' });

@@ -3,10 +3,10 @@
 // is given and sends existing actions (harm, mend, setHp for the dead, endTurn, reveal); it never changes anything itself. It shows
 // only what that state holds, so a player's tracker shows exactly what the player's view sent: no hidden creature, no number the
 // view held back, and a turn taken by a creature the party cannot see is one row that says so and names no one.
-import { inFight, clockText, FT } from './shared/engine.js';
+import { inFight, clockText, FT, up } from './shared/engine.js';
 import { under } from './shared/space.js';
 import { conditionName } from './shared/modifiers.js';
-import { hpFraction } from './three-build.js';
+import { barFor } from './three-build.js';
 import { MONSTERS } from './shared/content/index.js';
 import { rowDotHTML } from './linkdot.js';
 
@@ -53,6 +53,41 @@ export function turnLine(S) {
   return !o ? '' : o.someone ? 'Something moves unseen' : S.entities[o.id] ? `${shownName(S, S.entities[o.id])}'s turn` : '';
 }
 
+// The turn line of the clean screen (docs/specs/one-token-menu.md, Decision 1): one line, in a fight only. "Round 2 · Goblin's turn · you in 3", "Round 2 · Your turn",
+// "Round 2 · Something moves unseen" (just "Round 2" when the table says nothing of an unseen turn). `mine(e)` says whether the viewer plays e.
+// Returns { text, mine } or null outside a fight; `mine` is true on the viewer's own turn.
+// M6 (Decision 7): `waiting` (the table waits for someone else's reaction: a player's view says only that, `prompt.waiting`) puts "Waiting for a reaction…" in the
+// line's place; a player whose one character is down and dying reads "You are down · Death saves ✓ ✓ ○ ✗ ○ ○" there (the round and whose turn it is are in Turns).
+// The count to the viewer's turn steps over the turns that will be taken: an unseen creature's slot is one, a dead creature's is none.
+// `mine` stays true on the viewer's own turn whatever the words, so End turn stays.
+export const deathMarks = (e) => { const d = e?.death ?? {}, row = (n, mark) => Array.from({ length: 3 }, (_, i) => (i < (n ?? 0) ? mark : '\u25cb')).join(' '); return `${row(d.s, '\u2713')} ${row(d.f, '\u2717')}`; };
+export const turnsAway = (S, mine = () => false) => {
+  const enc = S?.encounter; if (!enc) return 0;
+  let n = 0;
+  for (let k = 1; k <= enc.order.length; k++) {
+    const x = enc.order[(enc.turn + k) % enc.order.length], e = x && !x.someone ? S.entities[x.id] : null;
+    if (x?.someone) { n++; continue; }
+    if (!e || e.dead) continue;
+    n++;
+    if (up(e) && mine(e)) return n;
+  }
+  return 0;
+};
+export function screenTurnLine(S, mine = () => false) {
+  const enc = S?.encounter; if (!enc) return null;
+  const o = enc.order[enc.turn], round = `Round ${enc.round}`;
+  const cur = o && !o.someone ? S.entities[o.id] : null, myTurn = !!cur && mine(cur);
+  if (S.prompt?.waiting === true) return { text: 'Waiting for a reaction\u2026', mine: myTurn, waiting: true };
+  const played = Object.values(S.entities).filter((e) => e.kind === 'pc' && mine(e));
+  if (played.length === 1 && !played[0].dead && played[0].hp <= 0 && played[0].death) return { text: played[0].cond?.stable ? 'You are down \u00b7 Stable' : `You are down \u00b7 Death saves ${deathMarks(played[0])}`, mine: myTurn, down: true };
+  if (!o) return { text: round, mine: false };
+  if (o.someone) return { text: S.settings?.unseenTurns === 'quiet' ? round : `${round} \u00b7 Something moves unseen`, mine: false };
+  if (!cur) return { text: round, mine: false };
+  if (myTurn) return { text: `${round} \u00b7 Your turn`, mine: true };
+  const away = turnsAway(S, mine);
+  return { text: `${round} \u00b7 ${shownName(S, cur)}'s turn${away === 1 ? ' \u00b7 you next' : away ? ` \u00b7 you in ${away}` : ''}`, mine: false };
+}
+
 // One row. `opts`: { dm, mine(e), ticked: Set } . The same function draws every viewer's row; what differs is what the state holds.
 export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new Set(), link = () => null } = {}) {
   if (item.unseen) return `<li class="tr-ghost${item.now ? ' now' : ''}" data-side="unseen"${item.now ? ' aria-current="step"' : ''}><span class="tr-init"></span><span class="tr-main"><span class="tr-name">Something moves unseen</span></span></li>`;
@@ -85,7 +120,10 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
     const left = !f.until ? '' : f.until.clock !== undefined ? ` until ${clockText(f.until.clock)}` : enc ? ` ${Math.max(0, f.until.round - enc.round)}r` : '';
     return `${f.name}${f.conc ? ' (C)' : ''}${left}`;
   });
-  const out = e.dead || (typeof e.hp === 'number' ? e.hp <= 0 : word === 'down');
+  // The table's rule for foes' health (Decision 7a): under `hidden` a player's row for a foe says nothing of its health: no bar, no word, and no greying for Down.
+  const bar = barFor(e, { dm, foeHealth: S.settings?.foeHealth === 'hidden' ? 'hidden' : 'rough' });
+  if (!bar.show) hp = '';
+  const out = e.dead || (bar.show && (typeof e.hp === 'number' ? e.hp <= 0 : word === 'down'));
   const ctl = (dm ? `${typeof e.maxHp === 'number' ? '<button type="button" data-do="dmg" aria-label="Damage by the typed amount">\u2212</button><button type="button" data-do="heal" aria-label="Heal by the typed amount">+</button>' : ''}` +
       `${enc && now ? '<button type="button" data-do="skip">Skip turn</button>' : ''}${e.hidden ? '<button type="button" data-do="reveal">Reveal</button>' : ''}` : '') +
     (e.abil ? `<button type="button" data-do="sheet" aria-label="Sheet: ${esc(nm)}">Sheet</button>` : '');
@@ -93,7 +131,7 @@ export function rowHTML(S, item, { dm = false, mine = () => false, ticked = new 
       ${dm && typeof e.maxHp === 'number' ? `<input type="checkbox" class="tr-tick" aria-label="Select ${esc(nm)}" ${ticked.has(e.id) ? 'checked' : ''}>` : '<span class="tr-nobox"></span>'}
       <span class="tr-init">${init !== undefined ? init : ''}</span>
       <button type="button" class="tr-main" data-do="pick"><span class="tr-name">${now ? '<b class="tr-turn" aria-hidden="true">\u25B6</b>' : ''}${esc(nm)}${now ? '<span class="sr-only"> (current turn)</span>' : ''}${dm && link(e) ? `<span class="tr-link">${rowDotHTML(link(e).state, link(e).who ?? e.name, link(e).text)}</span>` : ''}</span>
-        <span class="tr-hp"><span class="bar"><i style="width:${hpFraction(e) * 100}%"></i></span><span>${esc(hp)}</span></span>
+        ${bar.show ? `<span class="tr-hp"><span class="bar${bar.notch ? ' notch' : ''}"><i style="width:${bar.frac * 100}%"></i></span><span>${esc(hp)}</span></span>` : ''}
         ${tags.length || conds.length || fx.length ? `<span class="tr-tags">${[...tags, ...conds, ...fx].map((t) => `<span>${esc(t)}</span>`).join('')}</span>` : ''}</button>${ctl ? `<span class="tr-ctl">${ctl}</span>` : ''}</li>`;
 }
 
@@ -103,7 +141,7 @@ export function createTracker(ctx) {
   const { root } = ctx;
   const ticked = new Set();
   let lastKey = '';
-  root.innerHTML = `<div class="tr-head"><div><strong id="tr-title"></strong><span id="tr-turn"></span></div><button type="button" id="tr-edit" aria-pressed="false" hidden>Edit</button></div>
+  root.innerHTML = `<div class="tr-head"><div><strong id="tr-title"></strong><span id="tr-turn"></span><span id="tr-clock"></span></div><button type="button" id="tr-edit" aria-pressed="false" hidden>Edit</button></div>
     <div class="tr-dm" id="tr-dm" hidden><input id="tr-amt" type="number" inputmode="numeric" min="0" placeholder="Amount" aria-label="Hit Points amount">
       <button type="button" data-all="dmg">Damage ticked</button><button type="button" data-all="heal">Heal ticked</button></div>
     <ol id="tr-list"></ol>`;
@@ -127,6 +165,7 @@ export function createTracker(ctx) {
     const dm = ctx.isDM(), enc = S.encounter, rs = trackerRows(S, { dm });
     q('tr-title').textContent = enc ? `Round ${enc.round}` : 'The party';
     q('tr-turn').textContent = turnLine(S);
+    q('tr-clock').textContent = clockText(S.clock);      // the clock left the top bar: it is the header of Turns now
     q('tr-dm').hidden = !dm; q('tr-edit').hidden = !dm;      // the button shows on a phone only (style.css)
     for (const id of [...ticked]) if (!S.entities[id]) ticked.delete(id);
     const keep = list.scrollTop, opts = { dm, mine: ctx.mine, ticked, link: ctx.link };

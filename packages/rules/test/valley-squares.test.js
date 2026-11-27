@@ -8,6 +8,7 @@ import { apply, current } from "../src/engine.js";
 import { HEX, SQUARE } from "../src/grid.js";
 import { lintMap } from "../src/map.js";
 import { newGame } from "../src/scenario.js";
+import { typedGame } from "./fixtures/typed.js";        // the digests are of a valley whose starters were hand-typed (#672)
 import { TILES } from "../src/content/terrain.js";
 
 const DM = { role: "dm", userId: "dm" };
@@ -31,11 +32,11 @@ const MAIN = {
 const asMain = (s) => { const { packs, scoreRolls, ...rest } = s; return { ...rest, version: 21 }; };   // `packs: []` (24, #390) and `scoreRolls` (25, #557) are new too
 test("the default valley is the hex valley, byte for byte what main made, for several seeds", () => {
   for (const [seed, digest] of Object.entries(MAIN)) {
-    assert.equal(sha(asMain(newGame(Number(seed)))), digest, `seed ${seed}`);
-    assert.equal(sha(asMain(newGame(Number(seed), {}))), digest, `seed ${seed} with empty options`);
-    assert.equal(sha(asMain(newGame(Number(seed), { grid: "hex" }))), digest, `seed ${seed} asked for hexes`);
+    assert.equal(sha(asMain(typedGame(Number(seed)))), digest, `seed ${seed}`);
+    assert.equal(sha(asMain(typedGame(Number(seed), {}))), digest, `seed ${seed} with empty options`);
+    assert.equal(sha(asMain(typedGame(Number(seed), { grid: "hex" }))), digest, `seed ${seed} asked for hexes`);
   }
-  assert.equal(sha(asMain(newGame())), MAIN[7], "the default seed");
+  assert.equal(sha(asMain(typedGame())), MAIN[7], "the default seed");
   assert.equal(newGame(7).map.grid, "hex");
 });
 

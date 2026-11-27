@@ -188,11 +188,11 @@ test("proficiency.weapons names weapons: the sheet may carry them, derive trains
     assert.deepEqual(validate(thau({ weapons: ["mace", "rapier", "whip"] })), []);
     const why = derive(thau({ weapons: ["mace", "rapier", "whip"] })).why.attacks;
     for (const id of ["rapier", "whip"]) assert.ok(!why[id].includes("not proficient") && why[id].includes("Proficiency +2"), JSON.stringify(why[id]));
-    assert.match(validate(thau({ weapons: ["mace", "longsword"] })).join(" "), /not proficient with the Longsword/, "a martial weapon not named stays refused");
-    assert.match(validate(thau({ weapons: ["scimitar"] })).join(" "), /not proficient with the Scimitar/);
+    assert.equal(derive(thau({ weapons: ["mace", "longsword"] })).why.attacks.longsword.includes("not proficient"), true, "a martial weapon not named stays untrained");
+    assert.equal(derive(thau({ weapons: ["scimitar"] })).why.attacks.scimitar.includes("not proficient"), true);
   });
-  assert.match(validate({ ...thau({ weapons: ["rapier"] }), subclass: undefined, level: 2, choices: { "divine-order": "thaumaturge" } }).join(" "), /not proficient with the Rapier/, "without the subclass, as before");
-  using(ON, () => assert.match(validate(thau({ level: 2, subclass: undefined, weapons: ["rapier"], choices: { "divine-order": "thaumaturge" } })).join(" "), /not proficient with the Rapier/, "below the level the feature is gained"));
+  assert.equal(derive({ ...thau({ weapons: ["rapier"] }), subclass: undefined, level: 2, choices: { "divine-order": "thaumaturge" } }).why.attacks.rapier.includes("not proficient"), true, "without the subclass, as before");
+  using(ON, () => assert.equal(derive(thau({ level: 2, subclass: undefined, weapons: ["rapier"], choices: { "divine-order": "thaumaturge" } })).why.attacks.rapier.includes("not proficient"), true, "below the level the feature is gained"));
 });
 
 // ---------- the gate ----------

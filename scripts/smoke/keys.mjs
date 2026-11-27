@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, open, playSolo, calm, closePanels, waitShown, onCanvas, openTab } from './lib.mjs';
+import { sleep, scenario, wait, state, open, playSolo, calm, closePanels, waitShown, onCanvas, openTab, openMenu } from './lib.mjs';
 import { squareRoom } from '../../packages/rules/test/fixtures/square-room.js';
 
 // ---------- keyboard movement, the follow camera and key maps (docs/specs/keyboard.md, #357) ----------
@@ -138,7 +138,7 @@ async function desktop(browser, url) {
       await run.do('the feedback panel: "wasd" typed in its textarea is text, nothing moves, and Space and Shift do nothing to the view', async () => {
         if (!(await page.$('#fb-btn'))) throw new Error('no feedback button');
         const from = await posOf(page, id), cam = await page.evaluate(() => JSON.stringify(window.hextable.R.cameraAngles()));
-        await page.click('#fb-btn'); await waitShown(page, '#fb-panel');
+        await openMenu(page, 'settings/help'); await page.click('#fb-btn'); await waitShown(page, '#fb-panel');      // Help and feedback is a row of the menu; the menu folds away
         await page.fill('#fb-text', ''); await page.focus('#fb-text');
         await page.keyboard.type('wasd '); await page.keyboard.down('Shift'); await page.keyboard.type('WASD'); await page.keyboard.up('Shift');
         await sleep(500);
@@ -152,7 +152,7 @@ async function desktop(browser, url) {
       });
 
       await run.do('Settings lists the keys of the preset, and the preset is kept on this device', async () => {
-        await openTab(page, 'settings');
+        await openTab(page, 'settings/display');
         await page.click('#set-keys-show');
         await waitShown(page, '#set-keys-list');
         const t = await page.textContent('#set-keys-list');
@@ -167,6 +167,17 @@ async function desktop(browser, url) {
       await run.do('in a fight a key\'s step spends movement exactly as a click on the same hex does', async () => {
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         const here = await posOf(page, id);
+        // The others walk behind the fighter (they follow it since #671) and a fight sets them around it, maybe on the hex the key steps to:
+        // they stop following and are put out of its way, behind it (the walk's own cost is what this step is about).
+        const others = await state(page, (S, me) => Object.values(S.entities).filter((e) => e.side === 'party' && e.id !== me).map((e) => e.id), id);
+        const spare = [4, 5, 3, 6, 7].flatMap((k) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0]].map(([a, b]) => ({ q: here.q - dir[0] * k + a, r: here.r - dir[1] * k + b })));
+        for (const o of others) {
+          await act({ type: 'follow', actor: o, leader: null });
+          for (const at of spare) {
+            await act({ type: 'place', actor: o, to: at });
+            if (await state(page, (S, [i, h]) => { const p = S.entities[i].pos; return p.q === h.q && p.r === h.r; }, [o, at])) break;
+          }
+        }
         // A foe, behind and out of the way: a fight needs one. The map is random, so the hex the engine takes the spawn on is asked of the
         // engine, nearest first behind the fighter, and the foe is checked to be there. (A refused spawn left a fight of heroes only, which
         // ended at the first end of turn: #406.)
@@ -288,7 +299,7 @@ async function phone(browser, url) {
       await run.do('play solo; Settings shows the keys control inside the drawer\'s width', async () => {
         await open(page, url); await playSolo(page);
         await wait(page, () => window.hextable.state.entities.fighter);
-        await openTab(page, 'settings');
+        await openTab(page, 'settings/display');
         const r = await page.evaluate(() => { const s = document.getElementById('set-keys').getBoundingClientRect(), d = document.getElementById('drawer').getBoundingClientRect(); return { s: s.right, d: d.right, w: document.documentElement.scrollWidth }; });
         if (r.s > r.d + 1 || r.w > 391) throw new Error(`the control reaches ${r.s} in a drawer to ${r.d}; the page is ${r.w} wide`);
         if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/keys-4-phone.png` }).catch(() => {});

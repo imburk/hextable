@@ -418,3 +418,20 @@ test("a follower who stops following, or dies, loses its place in a held formati
   ok(apply(s, { type: "move", actor: "fighter", to: { q: 6, r: 0 } }, DM));
   assert.deepEqual(Object.keys(s.entities.fighter.formation.slots), ["cleric"]);
 });
+
+// #741: what the party lays out and who is crowded is judged on the game the party knows. A hidden hostile creature standing in a follower's
+// own cell, or in the corridor between a member and its place, is not counted for the decision. The test is a guard: anything that changes a
+// follower's reach lies on its route, so the walk or the engage range finds the creature first, and no twin can see the decision alone.
+test("a hidden hostile creature in a follower's own cell does not make it move off or refuse the move (#741)", () => {
+  const run = (hide) => {
+    const s = game(squareField(), [["fighter", 8, 8], ["rogue", 6, 8]]);
+    for (const id of ["cleric", "wizard"]) delete s.entities[id];
+    ok(apply(s, { type: "follow", actor: "rogue", leader: "fighter" }, DM));
+    if (hide) { ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 20, r: 20 }, name: "Ghost", hidden: true }, DM)); Object.values(s.entities).find((e) => e.name === "Ghost").pos = { q: 6, r: 8, z: 0 }; }
+    const r = apply(s, { type: "move", actor: "fighter", to: { q: 9, r: 8 } }, DM);
+    return { r, at: at(s, "rogue") };
+  };
+  const plain = run(false), hidden = run(true);
+  assert.equal(hidden.r.ok, plain.r.ok, plain.r.error ?? hidden.r.error);
+  assert.deepEqual(hidden.at, plain.at);
+});

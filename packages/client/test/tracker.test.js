@@ -12,7 +12,7 @@ const here = dirname(fileURLToPath(import.meta.url)), tmp = mkdtempSync(join(tmp
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
 cpSync(join(here, '..'), tmp, { recursive: true, filter: (p) => !/[\\/](vendor|test)$/.test(p) });
 after(() => rmSync(tmp, { recursive: true, force: true }));
-const { trackerRows, rowHTML, turnLine } = await import(pathToFileURL(join(tmp, 'tracker.js')));
+const { trackerRows, rowHTML, turnLine, screenTurnLine, turnsAway, deathMarks } = await import(pathToFileURL(join(tmp, 'tracker.js')));
 const { apply, current } = await import(pathToFileURL(join(tmp, 'shared/engine.js')));
 const { newGame } = await import(pathToFileURL(join(tmp, 'shared/scenario.js')));
 const { view } = await import(pathToFileURL(join(tmp, 'shared/view.js')));
@@ -177,4 +177,87 @@ test("a party creature a player is sent as a seen record (a homebrew companion t
   const S = structuredClone(theirs);
   S.encounter.turn = S.encounter.order.findIndex((o) => o.id === id);
   assert.match(turnLine(S), /Ember wolfling's turn/);
+});
+
+// The turn line of the clean screen (docs/specs/one-token-menu.md, M3): one line, in a fight only, saying whose turn and when mine comes.
+test('the clean screen\'s turn line: nothing out of a fight, "Your turn" on mine, whose turn and "you in N" otherwise', () => {
+  const s0 = newGame(7);
+  assert.equal(screenTurnLine(s0, () => true), null);
+  const { s } = fight();
+  const V = view(s, PAT), mineOnly = (e) => e.id === 'fighter';
+  const out = [];
+  for (let i = 0; i < V.encounter.order.length * 2 + 2; i++) {
+    const t = screenTurnLine(view(s, PAT), mineOnly);
+    out.push(t);
+    ok(apply(s, { type: 'endTurn', actor: current(s) }, DM));
+  }
+  assert.ok(out.every((t) => /^Round \d+/.test(t.text)));
+  assert.ok(out.some((t) => t.mine && t.text.endsWith('Your turn')), 'my own turn says so');
+  assert.ok(out.some((t) => !t.mine && /'s turn · you (next|in \d+)$/.test(t.text)), 'another\'s turn says when mine comes');
+  assert.ok(!out.some((t) => t.mine && /you/.test(t.text.replace('Your turn', ''))), 'my turn has no countdown');
+});
+
+// M6 of docs/specs/one-token-menu.md (Decision 7).
+test('"you in N" counts the turns the player can know of before their own: a dead creature\'s is none, and an unseen creature\'s is never given away', () => {
+  const { s, ghost } = fight();
+  const mineOnly = (e) => e.id === 'fighter';
+  // A foe the party sees dies: its place in the order is no turn any more.
+  const seen = Object.values(s.entities).find((e) => e.side === 'foe' && e.id !== ghost.id && s.encounter.order.some((o) => o.id === e.id));
+  ok(apply(s, { type: 'harm', actor: seen.id, amount: 999 }, DM));
+  let checked = 0, onSlot = 0, pastGhost = 0;
+  for (let i = 0; i < s.encounter.order.length * 3 && s.encounter; i++) {
+    const V = view(s, PAT), said = turnsAway(V, mineOnly), line = screenTurnLine(V, mineOnly);
+    if (current(s) !== 'fighter') {
+      // Play it out on a copy: the turns that start before the fighter's, and how many of them are the unseen goblin's.
+      const c = structuredClone(s); let n = 0, hidden = 0;
+      while (c.encounter && current(c) !== 'fighter' && n < 40) { ok(apply(c, { type: 'endTurn', actor: current(c) }, DM)); n++; if (c.encounter && current(c) === ghost.id) hidden++; }
+      if (c.encounter) {
+        assert.equal(said, n - hidden, `"you in ${said}": the fighter's turn is ${n} turns away, ${hidden} of them unseen`);
+        if (hidden) pastGhost++;
+        if (current(s) === ghost.id) { onSlot++; assert.match(line.text, /Something moves unseen$/); }
+        else assert.match(line.text, said === 1 ? / · you next$/ : new RegExp(` · you in ${said}$`));
+        checked++;
+      }
+    } else assert.equal(line.text, `Round ${s.encounter.round} · Your turn`);
+    ok(apply(s, { type: 'endTurn', actor: current(s) }, DM));
+  }
+  assert.ok(checked >= 3, 'the count was checked on several turns');
+  assert.ok(onSlot >= 1, 'it was checked from the unseen creature\'s own slot');
+  assert.ok(pastGhost >= 1, 'and with the unseen creature\'s turn still to come, which the count does not give away');
+  assert.doesNotMatch(JSON.stringify(view(s, PAT).encounter.order.filter((o) => !o.someone)), new RegExp(ghost.id), 'the order a player is sent never names it');
+});
+
+test('the turn line says the table waits for a reaction, and a downed player reads their death saves there', () => {
+  const { s } = fight();
+  const mineOnly = (e) => e.owner === 'pat';
+  const V = view(s, PAT);
+  assert.deepEqual(screenTurnLine({ ...V, prompt: { waiting: true } }, mineOnly).text, 'Waiting for a reaction\u2026');
+  assert.equal(deathMarks({ death: { s: 2, f: 1 } }), '\u2713 \u2713 \u25cb \u2717 \u25cb \u25cb');
+  assert.equal(deathMarks({}), '\u25cb \u25cb \u25cb \u25cb \u25cb \u25cb');
+  ok(apply(s, { type: 'harm', actor: 'fighter', amount: s.entities.fighter.hp }, DM));
+  const D = view(s, PAT);
+  assert.ok(D.entities.fighter.hp <= 0 && !D.entities.fighter.dead);
+  const down = screenTurnLine(D, mineOnly);
+  assert.equal(down.text, `You are down \u00b7 Death saves ${deathMarks(D.entities.fighter)}`);
+  assert.equal(down.mine, current(s) === 'fighter', 'End turn stays on my own turn');
+  // The DM, who plays everyone, is not "down" because one of the party is.
+  assert.doesNotMatch(screenTurnLine(s, (e) => e.side === 'party').text, /You are down/);
+  // Dead: nothing new on the line.
+  s.entities.fighter.dead = true;
+  assert.doesNotMatch(screenTurnLine(view(s, PAT), mineOnly).text, /You are down/);
+});
+
+test('foes\' health: Rough draws the Bloodied word and a notch; Hidden keeps the row, the name and the turn but no bar and no word; the DM is unchanged', () => {
+  const { s } = fight();
+  const foeId = Object.values(view(s, PAT).entities).find((e) => e.side === 'foe').id;
+  ok(apply(s, { type: 'setHp', actor: foeId, hp: 1 }, DM));
+  const rowFor = (V, o) => rowHTML(V, trackerRows(V, o).find((r) => r.e?.id === foeId), { dm: !!o?.dm });
+  const rough = rowFor(view(s, PAT));
+  assert.match(rough, /class="bar notch"/); assert.match(text(rough), /Bloodied/);
+  ok(apply(s, { type: 'setting', key: 'foeHealth', value: 'hidden' }, DM));
+  const V = view(s, PAT), hidden = rowFor(V);
+  assert.ok(trackerRows(V).some((r) => r.e?.id === foeId), 'the row stays');
+  assert.match(hidden, /tr-name/); assert.ok(!/tr-hp|class="bar|Bloodied|Healthy|Down|out/.test(hidden.replace(/tr-nobox/, '')), hidden);
+  const dm = rowFor(s, { dm: true });
+  assert.match(dm, /tr-hp/); assert.doesNotMatch(dm, /notch/);
 });

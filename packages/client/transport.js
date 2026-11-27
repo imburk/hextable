@@ -24,11 +24,13 @@ import { PackError } from './shared/content/registry.js';
 import { cleanPacks, inUse, packsMatch, vetAdd, vetPacks, vetUpdate } from './shared/content/packs.js';
 import { localAssets, serverAssets } from './assets.js';
 import { assetBytesOf, exportFirst, fillMap, indexOf, loadWorld, needsMap, picturesShown, storedWorld, worldSummary } from './shared/worldpack.js';
+import { sessionKeeper } from './windowseat.js';
 import { LINK, LINK_FAST, start as linkStart, step as linkStep, explain as linkExplain, average as linkAverage } from './linkquality.js';
 
+export const SOLO_KEY = 'hextable.solo';              // the browser's solo save; a window that plays a copy has its own key (#625)
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
   del(k) { try { localStorage.removeItem(k); } catch { /* storage unavailable */ } },
 };
 
@@ -129,14 +131,17 @@ async function sha256Hex(bytes) {
   return [...d].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-// The valley's options for a grid and a party: squares if asked, a party if given (newGame's `party`, scenario.js), otherwise nothing (the hex valley with the four starters, as always).
-const valleyOptions = (grid, party) => (grid === 'square' || party ? { ...(grid === 'square' && { grid: 'square' }), ...(party && { party }) } : undefined);
+// The valley's options for a grid and a party: squares if asked, a party if given (newGame's `party`, scenario.js), otherwise the hex valley with the four starters.
+// Every new solo game starts with the party following the first hero (`follow`, #671).
+const valleyOptions = (grid, party) => ({ follow: true, ...(grid === 'square' && { grid: 'square' }), ...(party && { party }) });
 
 // Solo: the engine runs here and you are the DM and every hero.
 // `grid` is the grid a NEW game's valley is on ('square', or anything else for hexes); a saved game keeps its own.
 // `party` is the heroes of a NEW game (see `partyProblems` in scenario.js); a saved game keeps its own.
-export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {}) {
-  let state = migrate(store.get('hextable.solo'));       // a saved solo game may predate the current content ids
+// `saveKey` is the save this window plays (the browser's one by default; a copy has its own, #625). `readOnly` looks at a save another window is playing and
+// writes nothing. `copyOf` is the save a NEW copy starts from (read once; the copy keeps its own from the first change).
+export function localTransport({ timelineCap = TIMELINE_CAP, grid, party, saveKey = SOLO_KEY, readOnly = false, copyOf = null } = {}) {
+  let state = migrate(store.get(saveKey) ?? (copyOf ? store.get(copyOf) : null));       // a saved solo game may predate the current content ids
   if (!state || state.version !== VERSION) state = newGame((Math.random() * 1e9) | 0, valleyOptions(grid, party));
   capTimeline(state.timeline, timelineCap);       // a game saved before the cap, or under a larger one
   // The browser's packs, checked again now (storage is not trusted): `records` are the packs that passed, `dropped` what did not and what the saved game
@@ -170,21 +175,31 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
   // the last fight, the last rest) are kept in this browser beside the game, since the history is not;
   // `pinsError` says why there are none if the browser refused the space.
   const history = createHistory();
-  const PINS = 'hextable.solo.pins';
+  const PINS = `${saveKey}.pins`;
   let pinsError = null;
   const saved = store.get(PINS);
   // A saved copy to go back to is let go if it was taken with other packs than this browser holds now: it could bring back what a missing pack made.
   if (saved && Object.values(saved).every((p) => !p || (p.tree?.version === VERSION && packsMatch(p.tree.packs ?? [], names(records)) === true))) history.restore({ v: 2, undos: [], redos: [], pins: saved });
   const keepPins = () => {
+    if (readOnly) return;
     try { localStorage.setItem(PINS, JSON.stringify(history.dump().pins)); pinsError = null; }
     catch { history.clear(); store.del(PINS); pinsError = 'This browser has no room left to keep a copy of the table to go back to.'; }
   };
   const told = () => { t.undoInfo = { undo: history.list(), redo: history.listRedo(), pins: history.pins(), ...(pinsError && { pinsError }) }; t.on.undoable?.(t.undoInfo); };
+  // Keeping the game. A refusal (the browser's storage is full or off) is SAID, once until a save works again, never swallowed (review R17): the page shows `on.saveError`.
+  let saveFailing = false;
+  const keep = () => {
+    if (readOnly) return;
+    if (store.set(saveKey, state)) { saveFailing = false; return; }
+    if (saveFailing) return;
+    saveFailing = true;
+    t.on.saveError?.('This browser could not save your game: its storage is full or turned off. You can go on playing, but what you do now is lost if this window closes. Free some space, or use Export in the menu to keep a copy.');
+  };
   const step = (kind, done) => {
     const s = history[kind](state);
     if (!s) return t.on.error(`Nothing to ${kind}.`);
     resync();
-    store.set('hextable.solo', state);
+    keep();
     told();
     t.on.update(state, [{ type: done, label: s.label }]);
   };
@@ -248,7 +263,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
           const v2 = vet(records); loaded = v2.ok ? v2.loaded : undefined;
           // A removed pack's creatures are gone, but an undo step (or a copy kept to go back to) could bring one back: the history is cleared.
           if (op === 'remove') { history.clear(); store.del(PINS); pinsError = null; told(); }
-          store.set('hextable.solo', state);
+          keep();
           const answer = packsMsg({ op, id, ...(record && { version: record.version }) });
           announce(answer, record);
           t.on.update?.(state, []);
@@ -271,7 +286,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
         if (history.track(action, res.events, before, state)) keepPins();
         told();
       }
-      store.set('hextable.solo', state);
+      keep();
       t.on.update(state, res.events);
     },
     // The DM's world pack, as the table server's `world` message does it, in the same order: the rules' budget and linter; the engine's
@@ -326,7 +341,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
         for (const a of Object.values(before.assets)) if (a?.id && !now.has(a.id) && !shown.has(a.id)) { try { await t.assets.remove(a.id); } catch { /* best effort */ } }
       }
       history.clear(); store.del(PINS); pinsError = null; told();
-      store.set('hextable.solo', state);
+      keep();
       t.on.update(state, res.events);
       const msg = { t: 'world', world: worldSummary(data, r.hash) };
       t.on.world?.(msg);
@@ -341,7 +356,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
       const s = to === 'fight' || to === 'rest' ? history.rewind(state, to) : null;
       if (!s) return t.on.error(to === 'rest' ? 'No rest to go back to.' : 'No fight to go back to.');
       resync();
-      store.set('hextable.solo', state);
+      keep();
       told();
       t.on.update(state, [{ type: 'rewound', to, label: s.label }]);
     },
@@ -353,7 +368,7 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
     },
     // A new game starts without a world: the record this browser kept and its pictures are let go (in turn with any world message).
     reset({ grid: g = grid, party: p = party } = {}) {
-      state = newGame((Math.random() * 1e9) | 0, valleyOptions(g, p)); resync(); history.clear(); store.del(PINS); pinsError = null; told(); store.set('hextable.solo', state); t.on.update(state, [], true);
+      state = newGame((Math.random() * 1e9) | 0, valleyOptions(g, p)); resync(); history.clear(); store.del(PINS); pinsError = null; told(); keep(); t.on.update(state, [], true);
       worldChain = worldChain.then(dropWorld).catch(() => {});
       return worldChain;
     },
@@ -365,6 +380,19 @@ export function localTransport({ timelineCap = TIMELINE_CAP, grid, party } = {})
     world = null;
     try { await worldStore('readwrite', (st) => st.delete('current')); } catch { /* the browser keeps it; it is read again and not used by a game without a world */ }
     for (const a of Object.values(was.assets ?? {})) if (a?.id && !shown.has(a.id)) { try { await t.assets.remove(a.id); } catch { /* best effort */ } }
+  }
+  t.readOnly = readOnly; t.saveKey = saveKey;
+  if (copyOf && !readOnly && store.get(saveKey) == null) queueMicrotask(keep);      // a copy is kept from the start, so a reload goes on with it
+  if (readOnly) {
+    // A window that only looks: nothing it is asked to change is changed, and it follows the save as the playing window writes it.
+    const say = 'This window is read-only: another window is playing this game. Make a copy to play here.';
+    for (const k of ['send', 'undo', 'redo', 'rewind', 'reset']) t[k] = () => t.on.error?.(say);
+    for (const k of ['packOp', 'worldOp']) t[k] = () => Promise.reject({ error: say });
+    globalThis.addEventListener?.('storage', (e) => {
+      if (e.key !== saveKey || !e.newValue) return;
+      let next = null; try { next = migrate(JSON.parse(e.newValue)); } catch { /* not readable: keep what is shown */ }
+      if (next && next.version === VERSION) { state = next; t.on.update(state, [], true); }
+    });
   }
   return t;
 }
@@ -451,13 +479,13 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
 
   const open = () => {
     ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-    ws.onopen = () => { retry = 0; if (everOpen) reconnects.push(Date.now()); everOpen = true; waitingPong = null; startLink(); ws.send(JSON.stringify(hello)); };
+    ws.onopen = () => { retry = 0; if (everOpen) { reconnects.push(Date.now()); t.on.reconnected?.(); } everOpen = true; waitingPong = null; startLink(); ws.send(JSON.stringify(hello)); };
     ws.onmessage = (m) => {
       const msg = JSON.parse(m.data);
       if (msg.t === 'welcome') {
         t.you = { role: msg.role, userId: msg.userId, name: msg.name, code: msg.code, approved: msg.approved };
         hello = { t: 'resume', code: msg.code, token: msg.token };
-        store.set('hextable.session', { code: msg.code, token: msg.token });
+        keeper.remember({ code: msg.code, token: msg.token, name: msg.name });
         packsSeen = false;
         t.on.welcome?.(t.you);
       } else if (msg.t === 'update') {
@@ -478,7 +506,7 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
       else if (msg.t === 'undoable') { t.undoInfo = { undo: msg.undo, redo: msg.redo, ...(msg.pins && { pins: msg.pins }) }; t.on.undoable?.(t.undoInfo); }
       else if (msg.t === 'lobby') { t.lobby = msg; t.on.lobby?.(msg); }
       else if (msg.t === 'error' && pendingPack && !msg.expired && answersPack(msg)) { clearTimeout(pendingPack.timer); const p = pendingPack; pendingPack = null; p.reject(msg); }
-      else if (msg.t === 'error') { if (msg.expired) { store.del('hextable.session'); hello = null; } t.on.error(msg.error, msg.expired); }
+      else if (msg.t === 'error') { if (msg.expired) { keeper.forget(); hello = null; } t.on.error(msg.error, msg.expired); }
     };
     ws.onclose = () => { waitingPong = null; if (pinger) down(); if (hello?.t === 'resume') setTimeout(open, Math.min(8000, 500 * 2 ** retry++)); };
   };
@@ -486,8 +514,10 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   // Drop this connection for good (used when the player starts over with a different table).
   t.close = () => { hello = null; stopLink(); clearTimeout(heldTimer); held.length = 0; clearTimeout(pendingPack?.timer); pendingPack = null; clearTimeout(pendingWorld?.timer); pendingWorld = null; if (ws) { ws.onmessage = null; ws.close(); } };
   t.send = (action) => ws?.readyState === 1 ? ws.send(JSON.stringify({ t: 'act', action })) : t.on.error('Reconnecting to the table…');
+  // A report of an error the page raised (errorreport.js, #689). Nothing comes back and nothing waits; false when there is no open socket.
+  t.reportError = (report) => { if (ws?.readyState !== 1) return false; ws.send(JSON.stringify({ t: 'clientError', report })); return true; };
   // Leave the table for good and forget it on this device.
-  t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); store.del('hextable.session'); t.close(); };
+  t.leave = () => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'leave' })); keeper.forget(); t.close(); };
   // Ask for past entries from the table's record: { types, since, limit }. The answer arrives on on.history.
   t.history = (query) => { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'history', ...query })); };
   // A pack's data, once, by its id (the table sends it unasked when a pack is added or updated). The answer arrives on on.packData.
@@ -523,9 +553,18 @@ export function serverTransport(first, { link: cfg = linkConfig() } = {}) {
   t.approve = (userId, ok) => ws.send(JSON.stringify({ t: 'approve', userId, ok }));
   return t;
 }
-export const savedSession = () => store.get('hextable.session');
+// The table this WINDOW sits at (sessionStorage: a reload keeps it, another window has its own, #625) and, for a window with none, the one the device used last.
+const keeper = sessionKeeper();
+export const savedSession = () => keeper.mine();
+export const lastSession = () => keeper.suggestion();
+export const forgetSession = () => keeper.forget();
+export const forgetLastSession = () => keeper.forgetSuggestion();
 // Does this device hold a solo game, or a table it remembers? (The lobby offers Continue / Rejoin from these.)
-export const hasSoloGame = () => !!store.get('hextable.solo');
-export const forgetSession = () => store.del('hextable.session');
-export const forgetSolo = () => { store.del('hextable.solo'); store.del('hextable.solo.pins'); };
+export const hasSoloGame = (key = SOLO_KEY) => !!store.get(key);
+export const forgetSolo = (key = SOLO_KEY) => { store.del(key); store.del(`${key}.pins`); };
+// Which solo save this window plays: its own copy if it made one (kept for the window in sessionStorage, so a reload goes on with it), else the browser's.
+const WINDOW_SOLO = 'hextable.solo.window';
+export const windowSoloKey = () => { try { const k = sessionStorage.getItem(WINDOW_SOLO); return typeof k === 'string' && k.startsWith(`${SOLO_KEY}.copy.`) ? k : SOLO_KEY; } catch { return SOLO_KEY; } };
+export const setWindowSoloKey = (key) => { try { if (key === SOLO_KEY) sessionStorage.removeItem(WINDOW_SOLO); else sessionStorage.setItem(WINDOW_SOLO, key); } catch { /* storage unavailable */ } };
+export const newCopyKey = () => `${SOLO_KEY}.copy.${Math.random().toString(36).slice(2, 10)}`;
 export const prefs = store;

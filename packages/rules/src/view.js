@@ -15,11 +15,14 @@ import { concealed, inArea } from './space.js';
 import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
+import { playerShop } from './shopids.js';
 import { playerConclusion } from './rewards.js';
-import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
+import { barriers, clipWall, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from './walls.js';
 import { hasWorld, knownOf, partyAt, playerEntry, playerNode, playerPin, playerRoute } from './known.js';
-import { controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
+import { acNow, controllerOf, hbId, homebrewBlock, isPile, lineName, marketEnv, marketOfShop, openContents, ownerOf, pileOpen } from './engine.js';
 import { buysOf, kindOf, listPrice } from './market.js';
+import { isOwnName } from './todo.js';
+import { SETTING_FIELDS, partyFields, sentFields } from './view-fields.js';
 
 const isDM = (viewer) => viewer?.role === 'dm';
 
@@ -29,6 +32,7 @@ export function classify(state, id) {
   const e = state.entities[id];
   if (!e) return 'hidden';
   if (e.side === 'party') return 'open';
+  if (e.melded) return 'hidden';                             // merged with stone (Meld into Stone): known to nobody, as if it were not there
   if (concealed(state.map, e)) return 'hidden';             // hidden by the DM, hiding, or somewhere not yet seen
   // Under the los and light table rules, also any creature nobody in the party can see now.
   return sightRule(state) !== 'rooms' && !partyView(state).creatures.has(id) ? 'hidden' : 'seen';
@@ -71,6 +75,13 @@ function holdsShown(state, rec) {
     if (state.entities[h.by]?.side !== 'party') { delete h.escape; delete h.escapeDis; }
     if (classify(state, h.by) === 'hidden') { delete h.with; delete h.range; }       // a grappler the party does not know of is only "someone" (scrub renames `by`)
   }
+}
+// The Armor Class that applies now, where it is not the creature's own number (Mage Armor, Barkskin): `acNow`, and the names of what changed it, `acWhy`.
+function acShown(state, e) {
+  const { ac, why } = acNow(state, e);
+  // A carried light is sent without the id of the lasting effect that keeps it (`fx`): that is the engine's bookkeeping.
+  const light = e.light?.fx !== undefined ? { light: { bright: e.light.bright, dim: e.light.dim, ...(e.light.item ? { item: e.light.item } : {}) } } : {};
+  return { ...(ac === e.ac ? {} : { acNow: ac, acWhy: why }), ...light };
 }
 function seenRecord(e, state) {
   const cond = {};
@@ -241,8 +252,10 @@ const foeName = (state, f) => (state.entities[f.id] ? seenName(state.entities[f.
 
 export function view(state, viewer) {
   if (isDM(viewer)) return state;
-  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: offWatcher(state, viewer) ? [] : viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer) };
+  return { ...forViewer(playerView(state), state, viewer), handouts: viewHandouts(state, viewer), shops: offWatcher(state, viewer) ? [] : viewShops(state, viewer), reactions: viewReactions(state, viewer), prompt: viewPrompt(state, viewer), waiting: orNone(viewWaiting(state, viewer)) };
 }
+// An empty list is not sent at all, so a player who waits on nothing is sent what they were sent before the tray (and no field named for waiting).
+const orNone = (list) => (list.length ? list : undefined);
 
 // An action waiting for a reaction to be answered (reactions.js; engine.js, apply), as this viewer
 // may know of it. The player who controls the creature being asked gets the question:
@@ -260,8 +273,11 @@ export function viewPrompt(state, viewer) {
   if (isDM(viewer)) return { n: p.n, ...structuredClone(p.ask), action: structuredClone(p.action) };
   const t = state.entities[p.ask.reactor];
   if (!t || typeof viewer?.userId !== 'string' || ownerOf(state, t) !== viewer.userId) return !offWatcher(state, viewer) && perceived(state, p) ? { waiting: true } : null;
-  const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => ({ ...pick(o, ['reaction', 'name', 'slots', 'ac']), ...(typeof o.against === 'string' && classify(state, o.against) !== 'hidden' ? { against: o.against } : {}) })) };
+  const q = p.ask, out = { n: p.n, reactor: t.id, trigger: q.trigger, options: q.options.map((o) => ({ ...pick(o, ['reaction', 'name', 'slots', 'ac', 'kind', 'ends', 'free']), ...(typeof o.against === 'string' && classify(state, o.against) !== 'hidden' ? { against: o.against } : {}) })) };
   if (typeof q.by === 'string' && classify(state, q.by) !== 'hidden') out.by = q.by;
+  // A choice after the creature's own hit (docs/specs/on-hit.md, Decision 6): the target only where the party knows of it.
+  if (typeof q.target === 'string' && classify(state, q.target) !== 'hidden') out.target = q.target;
+  if (q.moment !== undefined) out.moment = q.moment;
   // `dtype`: the damage type its own creature is taking (Superior Hunter's Defense).
   for (const k of ['attack', 'total', 'ac', 'crit', 'spell', 'dtype']) if (q[k] !== undefined) out[k] = q[k];
   return structuredClone(out);
@@ -280,7 +296,24 @@ function perceived(state, p) {
 export function viewReactions(state, viewer) {
   const out = {};
   if (typeof viewer?.userId !== 'string') return out;
-  for (const [id, e] of Object.entries(state.entities)) if (e.reactions && ownerOf(state, e) === viewer.userId) out[id] = structuredClone(e.reactions);
+  // The standing instructions for choices after a hit (hitchoices.js) go with them: the ids cannot meet, a spell cast after a hit being a Bonus Action.
+  for (const [id, e] of Object.entries(state.entities)) if ((e.reactions || e.hitChoices) && ownerOf(state, e) === viewer.userId) out[id] = structuredClone({ ...e.reactions, ...e.hitChoices });
+  return out;
+}
+
+// What a player's own creatures wait on the DM for: [{ id, name }], one for each spell or feature of theirs that the engine
+// handed to the DM and the DM has not yet settled (todo.js). Only the name of what they used, which they know, and never
+// the DM's words or a note about anything else; no card number, so the count of the DM's cards is not told. The DM has the
+// cards themselves in the state, and so gets nothing here.
+export function viewWaiting(state, viewer) {
+  const out = [];
+  if (isDM(viewer) || typeof viewer?.userId !== 'string') return out;
+  for (const c of Array.isArray(state.todo?.cards) ? state.todo.cards : []) {
+    if (c.kind !== 'manual' || typeof c.actor !== 'string' || c.waits !== true) continue;
+    const e = state.entities[c.actor];
+    if (!e || e.side !== 'party' || ownerOf(state, e) !== viewer.userId || !isOwnName(e, c.name)) continue;
+    if (!out.some((x) => x.id === e.id && x.name === c.name)) out.push({ id: e.id, name: c.name });
+  }
   return out;
 }
 
@@ -310,19 +343,12 @@ function scrub(x, hidden) {
 }
 const hiddenIds = (state) => new Set(Object.keys(state.entities).filter((id) => classify(state, id) === 'hidden'));
 
-// `speedSet` (engine/sheets.js) is the DM's bookkeeping, on a creature and on a familiar in its master's pocket dimension.
-function noSpeedSet(e) {
-  delete e.speedSet;
-  if (e.pocket && typeof e.pocket === 'object') for (const c of Object.values(e.pocket)) if (c && typeof c === 'object') delete c.speedSet;
-}
 export function playerView(state) {
   const entities = {}, hidden = hiddenIds(state);
   for (const [id, e] of Object.entries(state.entities)) {
     const c = classify(state, id);
     if (c === 'open') {
-      entities[id] = structuredClone(e);
-      noSpeedSet(entities[id]);                          // bookkeeping of the DM's `setSpeed`: the speeds themselves are already sent
-      delete entities[id].reactions;                     // standing instructions are their controller's and the DM's (viewReactions)
+      entities[id] = partyFields(e);                     // an allow-list: view-fields.js names every field of a creature and says if it is sent
       if (e.follow && classify(state, e.follow) !== 'open') delete entities[id].follow;     // only ever a party member, but never point at what they cannot see
       // A formation's places are party members' (#303); one for anyone else (a creature since gone, or no longer of the party) is not sent.
       const slots = entities[id].formation?.slots;
@@ -332,6 +358,7 @@ export function playerView(state) {
       if (e.riding && !(typeof e.riding.on === 'string' && classify(state, e.riding.on) !== 'hidden')) delete entities[id].riding;
       if (e.rider !== undefined && !(typeof e.rider === 'string' && classify(state, e.rider) !== 'hidden')) delete entities[id].rider;
       holdsShown(state, entities[id]);
+      Object.assign(entities[id], acShown(state, e));
       Object.assign(entities[id], heldBy(state, e));
       scrub(entities[id], hidden);
     }
@@ -340,7 +367,7 @@ export function playerView(state) {
   return {
     // No `seq`: it counts creatures as they are added, so it would tick when the DM adds a hidden one.
     version: state.version, clock: state.clock,
-    settings: structuredClone(state.settings),
+    settings: sentFields(state.settings ?? {}, SETTING_FIELDS),
     map: structuredClone(shownMap(state).doc),
     entities,
     encounter: viewEncounter(state),
@@ -371,7 +398,8 @@ export function viewShops(state, viewer) {
   if (isDM(viewer)) return structuredClone(Array.isArray(state.shops) ? state.shops : []);
   const env = marketEnv(), open = (id) => typeof id === 'string' && classify(state, id) === 'open', out = [];
   for (const shop of Array.isArray(state.shops) ? state.shops : []) {
-    if (!shownTo(shop, viewer?.userId)) continue;
+    const alias = playerShop(state, shop.id);       // the id a player is given (shopids.js), never the shop's own; a shop with none was shown to nobody
+    if (!shownTo(shop, viewer?.userId) || alias === null) continue;
     const market = marketOfShop(state, shop), store = shop.kind === 'store', ids = new Set(), lines = [];
     const all = [...(shop.lines ?? []), ...(shop.lists ?? []).flatMap((lid) => (market?.lists ?? []).find((x) => x?.id === lid)?.lines ?? [])];
     for (const l of all) {
@@ -384,7 +412,7 @@ export function viewShops(state, viewer) {
       lines.push({ id: l.id, name: lineName(l), ...(l.item !== undefined ? { item: l.item } : {}), ...(l.base !== undefined ? { base: l.base } : {}), ...(l.spell !== undefined ? { spell: l.spell } : {}),
         kind: kindOf(l, env), ...(l.art !== undefined ? { art: l.art } : {}), ...(l.note !== undefined ? { note: l.note } : {}), ...(price !== null ? { price } : {}), ...(left !== undefined ? { qty: left } : {}) });
     }
-    const rec = { id: shop.id, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
+    const rec = { id: alias, kind: shop.kind, name: shop.name, ...(shop.blurb !== undefined ? { blurb: shop.blurb } : {}), ...(shop.art !== undefined ? { art: shop.art } : {}), lines };
     if (!store) { rec.coins = { ...(shop.coins ?? {}) }; out.push(rec); continue; }
     rec.buys = buysOf(shop.buys);
     rec.quotes = (shop.quotes ?? []).filter((q) => open(q.for) && (q.line === undefined || ids.has(q.line)))
@@ -422,42 +450,8 @@ export function viewShopArea(state, shop, viewer) {
 // Players are sent the hexes of revealed regions and of no region, the stretches of wall beside
 // those hexes, the objects that touch them, and the regions already revealed. Nothing else: an
 // unrevealed room is simply absent. Built once and kept until the map or what is revealed changes.
-// A cell's corner, in feet from its centre, and a hair more: `G.cornerReach` of the map's grid
-// (5/√3 on hexes; docs/specs/square-grid.md, E7). On squares the stretch is the part inside the
-// square itself and a hair round it (half a side and 0.02 ft each way), not a circle through its
-// corners, which would reach a foot into the square beyond (review of #262, L2).
-const reachOf = (G) => G.cornerReach + 0.02;
-export const SQUARE_CLIP = 2.5 + 0.02;
-// The stretches of a wall that lie within `reach` of any of these cell centres, or, with
-// `box` set, within `box` feet of one along each axis (a square).
-export function clipWall(w, centres, reach = reachOf(HEX), box = 0) {
-  const REACH = reach;
-  const [ax, ay] = w.a, dx = w.b[0] - ax, dy = w.b[1] - ay, len2 = dx * dx + dy * dy, spans = [];
-  for (const [cx, cy] of centres) {
-    if (box) {                                                     // the segment's part inside the box round this centre
-      let t0 = 0, t1 = 1;
-      for (const [d, v, c] of [[dx, ax, cx], [dy, ay, cy]]) {
-        if (Math.abs(d) < 1e-12) { if (Math.abs(v - c) > box) { t0 = 1; t1 = 0; } continue; }
-        let u0 = (c - box - v) / d, u1 = (c + box - v) / d;
-        if (u0 > u1) [u0, u1] = [u1, u0];
-        t0 = Math.max(t0, u0); t1 = Math.min(t1, u1);
-      }
-      if (t0 <= t1) spans.push([t0, t1]);
-      continue;
-    }
-    const fx = ax - cx, fy = ay - cy;
-    if (!len2) { if (fx * fx + fy * fy <= REACH * REACH) spans.push([0, 1]); continue; }
-    const b = 2 * (fx * dx + fy * dy), disc = b * b - 4 * len2 * (fx * fx + fy * fy - REACH * REACH);
-    if (disc < 0) continue;
-    const root = Math.sqrt(disc), t0 = Math.max(0, (-b - root) / (2 * len2)), t1 = Math.min(1, (-b + root) / (2 * len2));
-    if (t0 <= t1) spans.push([t0, t1]);
-  }
-  spans.sort((p, q) => p[0] - q[0]);
-  const merged = [];
-  for (const sp of spans) { const last = merged.at(-1); if (last && sp[0] <= last[1] + 1e-9) last[1] = Math.max(last[1], sp[1]); else merged.push([...sp]); }
-  const whole = merged.length === 1 && merged[0][0] === 0 && merged[0][1] === 1;
-  return merged.map(([t0, t1], i) => ({ id: whole ? w.id : `${w.id}~${i}`, level: w.level, kind: w.kind, a: [ax + dx * t0, ay + dy * t0], b: [ax + dx * t1, ay + dy * t1] }));
-}
+// clipWall, reachOf and SQUARE_CLIP live in walls.js (engine/world.js `aimWall` judges what a player is sent by the same clip).
+export { clipWall, SQUARE_CLIP };
 const stateDef = (o, st) => objectDef(o)?.states[st];
 const mapCache = new WeakMap();
 // Under the los and light rules (vision.js) a thing is sent as it is while the party sees it, and
@@ -517,7 +511,7 @@ function shownMap(state) {
   // out, with the light of each that is not bright. Only tiles that are sent.
   let sight;
   if (rule !== 'rooms') {
-    const now = {}, light = {}, sources = rule === 'light' ? lightSources(state) : null;
+    const now = {}, light = {}, sources = rule === 'light' ? lightSources(state, { party: true }) : null;
     for (const t of pv.seen.values()) {
       if (!has(t.level, t)) continue;
       (now[t.level] ??= []).push(col(t));
@@ -548,6 +542,8 @@ function viewEffects(state) {
         const q = structuredClone(p);
         // `born` names the turn it was made in, by whose turn it was (durations.js, turnKey): never sent.
         delete q.born;
+        // `turn` is what the part runs at the start of its creature's turns, with its caster's numbers (effects.js, turnSteps): never sent.
+        delete q.turn;
         if (q.ends?.who !== undefined && classify(state, q.ends.who) === 'hidden') delete q.ends.who;
         // A modifier that holds against, or not for, a creature they do not know of: that it does, never who.
         for (const k of ['against', 'except']) if (typeof q[k] === 'string' && classify(state, q[k]) === 'hidden') q[k] = 'someone';
@@ -583,7 +579,7 @@ const TRADE_KEYS = {
 };
 
 // Event types a player receives unchanged. A type not named in this file is dropped.
-const AS_IS = new Set(['moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
+const AS_IS = new Set(['hpRolled', 'hpRerolled', 'moved', 'stood', 'std', 'note', 'down', 'died', 'claimed', 'released',
   'rest', 'time', 'encounterEnd', 'spawned', 'placed', 'deathSave', 'revealed', 'map', 'region', 'fell', 'speed', 'size', 'edited', 'follow', 'marchingOrder', 'light', 'hid', 'remains',
   'xp', 'levelReady', 'conclusionSkipped']);   // XP and levels are only ever a party character's; a skip says nothing but that
 
@@ -591,8 +587,19 @@ export function viewEvents(events, state, viewer) {
   if (isDM(viewer)) return events;
   // A player whose characters are in another place, with the table rule `watching: 'off'`, is told the table's out-of-character talk and what is shown
   // to them, and nothing of the place in play.
-  return viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer);
+  return inOrder(viewEventsOf(offWatcher(state, viewer) ? events.filter((ev) => (ev?.type === 'say' && (ev.as === null || (ev.far === true && Array.isArray(ev.to) && typeof viewer?.userId === 'string' && ev.to.includes(viewer.userId)))) || ev?.type === 'handoutShown') : events, state, viewer));
 }
+// Every event a player is sent has its fields in one fixed order (#779): keys sorted, recursively, in plain string order;
+// arrays keep their order. What was withheld, scrubbed or rebuilt on the way then cannot show in the order of the fields
+// (#748). One copy per object, none for a primitive. (An integer-like key is always written first, ascending, by JavaScript itself.)
+function sorted(v) {
+  if (v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map(sorted);
+  const o = {};
+  for (const k of Object.keys(v).sort()) Object.defineProperty(o, k, { value: sorted(v[k]), enumerable: true, writable: true, configurable: true });      // a key named __proto__ stays a key
+  return o;
+}
+const inOrder = (evs) => evs.map(sorted);
 function viewEventsOf(events, state, viewer) {
   // The faces of a damage, healing or Temporary Hit Points roll (docs/specs/dice.md) go with the
   // event only where the player has the number they add up to: always if one of theirs rolled
@@ -645,12 +652,13 @@ function viewEventsOf(events, state, viewer) {
   let casterOpen = false;                  // whether the one who cast the spell (or used the action) that the following saves answer is theirs
   for (const ev of events) {
     out.ev = ev;
+    if (ev.hush) continue;                 // spent to turn a secret save: the DM's (engine/dm.js `save`)
     was = Array.isArray(ev.unseen) ? ev.unseen : null;
     if (ev.type === 'cast' || ev.type === 'act' || ev.type === 'attack' || ev.type === 'strikeOption') casterOpen = cls(ev.actor) === 'open';      // a save on a hit or a Shove answers the attacker: told the DC if the attacker is theirs, as said at the event that began it (a stamp is read there)
     if (ev.type === 'turn') {
       const hidden = cls(ev.id) === 'hidden', before = lastTurnHidden ?? turnBeforeUnseen(state, ev);
       lastTurnHidden = hidden;
-      if (!hidden) { out.push(structuredClone(ev)); continue; }
+      if (!hidden) { out.push(pick(ev, ['type', 'id', 'round'])); continue; }
       // Something moves where they cannot see: once for a run of such turns, and never who.
       if (unseenTurns(state) === 'say' && !before) out.push({ type: 'turn', round: ev.round, someone: true });
       continue;
@@ -694,7 +702,7 @@ function viewEventsOf(events, state, viewer) {
         break;
       case 'damage':
       case 'heal': {
-        const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'note', 'hp']), ...facesFor(ev) };
+        const e = { ...pick(ev, ['type', 'target', 'amount', 'dtype', 'from', 'note', 'hp']), ...facesFor(ev) };
         if (cls(ev.target) === 'seen') {
           const t = state.entities[ev.target];
           e.hp = ev.hp > 0 ? 1 : 0;
@@ -705,6 +713,16 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'save': {
+        // A save the DM called for (`called`): told in full of a creature of theirs, with the DC and the outcome only if it is not `secret`;
+        // of any other, only the outcome and the DC, and not at all if secret. Never a monster's modifiers.
+        if (ev.called) {
+          if (cls(ev.id) === 'open') {
+            const e = structuredClone(ev);
+            if (e.secret) { delete e.dc; delete e.success; delete e.reroll; delete e.rescued; }
+            out.push(e);
+          } else if (cls(ev.id) !== 'hidden' && !ev.secret) out.push(pick(ev, ['type', 'id', 'abil', 'dc', 'success', 'called']));
+          break;
+        }
         // A save names the creature whose DC it is (`src`, only a homebrew one: the DC is a number of its block): told to the player who runs
         // it and to no other, whoever the target is. Any other save: the target's own, or the caster of the step it follows, as ever.
         const told = ev.src !== undefined ? runs(ev.src) : null;
@@ -775,7 +793,7 @@ function viewEventsOf(events, state, viewer) {
       case 'cond':
       case 'condEnd':                                  // gaining or losing a condition, if it is one you could see
         // A grapple's: who held it (`by`) only where they know of the grappler (docs/specs/grapple-shove.md, Decision 9).
-        if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) { const e = structuredClone(ev); if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by; out.push(e); }
+        if (cls(ev.id) === 'open' || conditionDef(ev.cond)?.visible) { const e = pick(ev, ['type', 'id', 'cond', 'level', 'by', 'why']); if (e.by !== undefined && cls(e.by) === 'hidden') delete e.by; out.push(e); }
         break;
       case 'hold':
       case 'holdEnd':                                  // another grappler takes hold of a creature already Grappled, or one of two lets go: as the condition is seen
@@ -793,7 +811,10 @@ function viewEventsOf(events, state, viewer) {
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
           const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source']), ...(unknownIds.length ? [] : ['why'])]), targets };
           if (unknownIds.length && ev.why !== undefined) e.why = unknownIds.some((id) => !namesOf(id).length || namesOf(id).some((n) => n && String(ev.why).includes(n))) ? 'it ended' : ev.why;
-          out.push(e);
+          // Keys in the event's own order whatever was withheld, so the bytes are not a tell (#748).
+          const ordered = {};
+          for (const k of [...Object.keys(ev), ...Object.keys(e)]) if (k in e && !(k in ordered)) ordered[k] = e[k];
+          out.push(ordered);
         }
         break;
       }
@@ -888,7 +909,7 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'chronicle':
-        if (ev.public === true) out.push(structuredClone(ev));
+        if (ev.public === true) out.push(structuredClone(pick(ev, ['type', 'title', 'text', 'tags', 'scene', 'fight', 'public'])));
         break;
       case 'conclusion': {                             // the published rewards, shaped as the player's card (rewards.js)
         const { id, ...shaped } = playerConclusion({ ...ev, id: ev.fight, published: true }, (f) => foeName(state, f));
@@ -927,9 +948,12 @@ function viewEventsOf(events, state, viewer) {
       case 'privateNote':                              // a note is between the two people it names, and the DM
         if (typeof viewer?.userId === 'string' && (ev.from === viewer.userId || ev.to === viewer.userId)) out.push(pick(ev, ['type', 'from', 'to', 'text']));
         break;
+      case 'declined':                                 // the DM turned an offered character down (engine/characters.js, decline): the offering player is told, with the note; nobody else
+        if (typeof viewer?.userId === 'string' && ev.user === viewer.userId) out.push(pick(ev, ['type', 'user', 'note']));
+        break;
       case 'scoresRolled':                             // ability scores rolled (scores.js): the numbers are the roller's and the DM's; the others are told only that it happened
       case 'scoreRerolled':
-        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(ev));
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ev.type === 'scoresRolled' ? ['type', 'by', 'sets', 'at'] : ['type', 'by', 'index', 'from', 'to', 'stands', 'total', 'at'])));
         else out.push({ type: ev.type });
         break;
       case 'sceneStart':
@@ -940,6 +964,15 @@ function viewEventsOf(events, state, viewer) {
       case 'sceneNpc':                                 // someone came or left, or a name or face changed; not a change to the DM's notes
         if (ev.prep !== true && (ev.change !== 'edited' || ev.changed?.some((k) => k !== 'notes'))) out.push(pick(ev, ['type', 'scene', 'npc', 'name', 'change']));
         break;
+      // A group came to a place of the world (docs/specs/travel.md; issue #650): told only where the place is one the players know (the id
+      // they were given and the name the atlas gives it) and only of the creatures of the party they may know of; the pack's own id, the entry
+      // and pin it arrived by and where it came from are never sent. A group none of whom they may know of, or a place they were not given, is no event.
+      case 'arrived': {
+        const at = typeof ev.node === 'string' ? playerNode(state, ev.node) : null;
+        const ids = (Array.isArray(ev.ids) ? ev.ids : []).filter((id) => typeof id === 'string' && (cls(id) === 'open' || (!was?.includes(id) && partyParked(state, id))));
+        if (at && ids.length) out.push({ type: 'arrived', node: at, name: typeof nodeIn(state, ev.node)?.name === 'string' ? nodeIn(state, ev.node).name : 'A place', ids });
+        break;
+      }
       case 'ping':                                     // a spot pointed out: a cell the sender chose and their name, nothing of the game
         out.push(pick(ev, ['type', 'from', 'name', 'at']));
         break;
@@ -951,7 +984,11 @@ function viewEventsOf(events, state, viewer) {
         break;
       }
       case 'checkAsked':                               // a request for a check is between the player who asked and the DM
-        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) out.push(structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about'])));
+        if (typeof viewer?.userId === 'string' && ev.by === viewer.userId) {
+          const e = structuredClone(pick(ev, ['type', 'actor', 'skill', 'by', 'about']));
+          if (e.about) { const alias = playerShop(state, e.about.shop); if (alias === null) break; e.about.shop = alias; }      // a shop as the id the player was given
+          out.push(e);
+        }
         break;
       // Shops (docs/specs/shops.md, Decision 3 and X5): each trade event carries the shop's audience when it happened (`to`, `except`;
       // engine/trade.js) and goes to a player in it alone, live or from the record, shaped from an allow list; the audience is never sent,
@@ -962,7 +999,10 @@ function viewEventsOf(events, state, viewer) {
         const hears = (ev.to === 'all' || (Array.isArray(ev.to) && typeof u === 'string' && ev.to.includes(u))) && !(Array.isArray(ev.except) && typeof u === 'string' && ev.except.includes(u));
         const named = [ev.for, ev.buyer, ev.who, ...(Array.isArray(ev.split) ? ev.split : []), ...(Array.isArray(ev.payers) ? ev.payers.map((p) => p?.id) : [])].filter((x) => x !== undefined);
         if (!hears || named.some((id) => cls(id) === 'hidden')) break;
+        const alias = playerShop(state, ev.shop);      // a shop is named by the id the player was given (shopids.js); one never given is not named
+        if (alias === null) break;
         const e = structuredClone(pick(ev, TRADE_KEYS[ev.type]));
+        e.shop = alias;
         // A joint purchase ended because its buyer's player is no longer shown the store says, to the others, only that it ended: who
         // is shown a store is the DM's business (review of #598, M2).
         if (e.type === 'jointEnded' && e.why === 'hidden') e.why = 'ended';
@@ -978,7 +1018,7 @@ function viewEventsOf(events, state, viewer) {
       // A number about a creature (its Speed, a death save's roll) is not told of a homebrew creature that is not the viewer's.
       case 'speed':
       case 'deathSave':
-        if (!theirs(ev.id)) out.push(structuredClone(ev));
+        if (!theirs(ev.id)) out.push(structuredClone(pick(ev, ev.type === 'speed' ? ['type', 'id', 'mode', 'feet'] : ['type', 'id', 'roll', 'total', 'rolls', 'mode', 'extra', 'dice', 'bonus', 's', 'f', 'dead', 'stable', 'hp'])));
         break;
       default:
         if (AS_IS.has(ev.type)) out.push(structuredClone(ev));
@@ -993,6 +1033,8 @@ function viewEventsOf(events, state, viewer) {
 
 // ---------- the places of a world (docs/specs/travel.md, Decisions 4, 5 and 12; build row W4) ----------
 // What players are sent of an atlas, by allow list. With no world none of this adds a key: the view is the view it always was.
+// Whether `id` is a creature of the party that is kept in a place that is not in play (so not in `state.entities`).
+const partyParked = (state, id) => Object.values(state.parked ?? {}).some((rec) => Object.hasOwn(rec?.entities ?? {}, id) && rec.entities[id]?.side === 'party');
 const nodeIn = (state, id) => (Object.hasOwn(state.world?.nodes ?? {}, id) ? state.world.nodes[id] : null);
 
 // The shared part, `atlas`, the same for every player: the places they know, by the ids they were given, the routes they know, where
@@ -1092,9 +1134,8 @@ function awayRecord(rec, e, viewer) {
   const pseudo = { entities: rec.entities }, party = new Set(Object.values(rec.entities).filter((x) => x.side === 'party').map((x) => x.id));
   const others = new Set(Object.keys(rec.entities).filter((id) => !party.has(id)));
   if (homebrewBlock(e) && !controlledBy(pseudo, e, viewer?.userId)) return seenRecord(e, null);
-  const out = structuredClone(e);
-  noSpeedSet(out);
-  delete out.reactions;
+  const out = partyFields(e);
+  Object.assign(out, acShown({ entities: rec.entities, effects: rec.effects ?? [] }, e));
   if (out.follow && !party.has(out.follow)) delete out.follow;
   const slots = out.formation?.slots;
   if (slots) for (const k of Object.keys(slots)) if (!party.has(k)) delete slots[k];

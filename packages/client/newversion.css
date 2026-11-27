@@ -1,0 +1,5 @@
+/* "A new version is ready" (#646): a card above the dock, left, clear of the top bar, the read-only frame and bar (top, and 8px frame), and the action panel (inside the dock). */
+#new-version { position: fixed; left: max(12px, env(safe-area-inset-left)); bottom: calc(var(--dock-h, 0px) + 8px); z-index: 8; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); box-sizing: border-box; padding: 6px 6px 6px 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--accent); border-radius: var(--radius); box-shadow: 0 4px 20px #0006; font-weight: 600; }
+#new-version[hidden] { display: none; }
+#new-version button { min-width: 44px; min-height: 44px; }
+#new-version-reload { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }

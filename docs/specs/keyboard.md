@@ -1,5 +1,7 @@
 # Spec: keyboard movement, the follow camera and key maps
 
+Status: built (#357); to be reviewed by the design owner.
+
 Issue #357. The owner, 15 November: "arrow keys or asdw should work for moving around the screen. My intent was
 movement. Shift or alt could alter that... a default should be chosen. Then there should be maps to popular games ...
 that live on the clients interface. For me I'd like movement with the camera reorienting to my direction of travel but

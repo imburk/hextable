@@ -499,8 +499,8 @@ test("an ordinary move is a small message, and patches leak nothing a full view 
   const mine = JSON.stringify(player.raw.at(-1)), theirs = JSON.stringify(dm.raw.at(-1));
   assert.ok(player.raw.at(-1).patch);
   assert.ok(fullSize > 20000);
-  assert.ok(mine.length < 1500, `a move cost the player ${mine.length} bytes`);
-  assert.ok(theirs.length < 1500, `a move cost the DM ${theirs.length} bytes`);
+  assert.ok(mine.length < 2800, `a move cost the player ${mine.length} bytes`);       // a patch carries the whole record of whoever moved: a hero built from a sheet is about 2.5 KB (#672)
+  assert.ok(theirs.length < 2800, `a move cost the DM ${theirs.length} bytes`);
 
   // A monster moves: the player's patch carries its public record only.
   dm.say({ t: "act", action: { type: "move", actor: "m1", to: freeHex(state, "m1") } });
@@ -1266,7 +1266,7 @@ test("a saved table with a 32-bit seed is given a key when loaded, and its undo 
   assert.deepEqual(t.state.rng, { key: "c3".repeat(32), n: 0 });
   const dm2 = sitDM(second, code, dm.last("welcome").token);
   assert.deepEqual(dm2.last("undoable").undo, []);
-  dm2.say({ t: "act", action: { type: "attack", actor: "fighter", target: "m1", attack: "javelin" } });
+  dm2.say({ t: "act", action: { type: "attack", actor: "fighter", target: "m1", attack: "javelin-thrown" } });
   assert.ok(t.state.rng.n > 0 || t.state.encounter, "it plays on, from the key");
 });
 
@@ -1299,7 +1299,7 @@ function cryptWithWolf(dm, state) {
 }
 const fightHere = (dm, state) => dm.say({ t: "act", action: { type: "startEncounter", center: state.entities.m1.pos, radius: 30 } });
 const turns = (dm, state, n) => { for (let i = 0; i < n && state.encounter; i++) dm.say({ t: "act", action: aiStep(state, current(state)) ?? { type: "endTurn", actor: current(state) } }); };
-const withoutDice = (state) => JSON.stringify({ ...state, rng: null, seq: null, timeline: null });
+const withoutDice = (state) => JSON.stringify({ ...state, rng: null, seq: null, fightSeq: null, timeline: null });
 
 test("rewind: the DM takes the table back to the start of the fight, with new dice; undo brings the lost fight back", () => {
   const tables = createTables({ seed: () => 5 });
@@ -1515,4 +1515,31 @@ test("an action type every object has is refused like any unknown action; the ta
   }
   dm.say({ t: "act", action: { type: "rest" } });
   assert.equal(dm.last("update").events[0].type, "rest");
+});
+
+// Review R3 (#617): after a refusal the table's own state is exactly what it was, and so is what was last saved and sent. The engine puts
+// the game back itself (a refused cast once set a flag first and the server kept it); the server's own copy (`mark`) is now a second one (DEBT T55).
+test("a refused action leaves the table's state, its saved copy and the broadcast count unchanged", () => {
+  const saved = [];
+  const tables = createTables({ seed: () => 5, save: (t) => saved.push(JSON.stringify(t.state)) });
+  const { dm, code } = seated(tables);
+  const act = (action) => dm.say({ t: "act", action });
+  const state = () => tables.get(code).state;
+  const spawn = (monster, dq) => { const p = state().entities.cleric.pos; act({ type: "spawn", monster, at: { q: p.q + dq, r: p.r } }); return Object.keys(state().entities).findLast((id) => state().entities[id].name.toLowerCase().includes(monster.split("-")[0])); };
+  act({ type: "setting", key: "autoEngage", value: false });
+  for (const id of Object.keys(state().entities)) if (state().entities[id].side !== "party") act({ type: "remove", actor: id });
+  const near = spawn("goblin-warrior", 2), p = state().entities.cleric.pos;
+  act({ type: "startEncounter", center: { q: p.q, r: p.r }, radius: 3 });
+  const far = spawn("skeleton", 6);          // added after the fight began: outside it
+  for (let i = 0; i < 30 && current(state()) !== "cleric"; i++) act({ type: "endTurn", actor: current(state()) });
+  assert.equal(current(state()), "cleric");
+  assert.ok(near && far && near !== far);
+  const before = JSON.stringify(state()), writes = saved.length, updates = dm.count("update"), errors = dm.count("error");
+  act({ type: "cast", actor: "cleric", spell: "sacred-flame", target: far });
+  assert.equal(dm.count("error"), errors + 1, "the cast is refused");
+  assert.match(dm.last("error").error, /outside the battle/);
+  assert.equal(JSON.stringify(state()), before, "the table's state is unchanged");
+  assert.equal(state().encounter.flags["magic:cleric"], undefined);
+  assert.equal(saved.length, writes, "nothing is saved for a refusal");
+  assert.equal(dm.count("update"), updates, "nothing is broadcast for a refusal");
 });

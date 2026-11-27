@@ -10,13 +10,15 @@ import { partyView, sightRule, unknown } from '../vision.js';
 import { SIZES } from '../content/sizes.js';
 import { barriers } from '../walls.js';
 import { attuneMax, attuneProblem, classesOf, derive, heldItems, itemName, levelOf, shieldEntry, validate } from '../derive.js';
-import { able, control, current, ent, fail, hostile, inFight, living, need, RuleError, up, walled } from './shared.js';
+import { able, control, current, ent, fail, hostile, hpOpts, inFight, living, need, ownerOf, RuleError, up, walled } from './shared.js';
 import { contentName, fitsOn, isPile, joinEncounter, lookAround, nearObject, objectName, objectOf, objectShown, openContents, pileAt, pileContents, pileId, PILE_MAX } from './world.js';
 import { cure } from './rolls.js';
 import { carryPlay, donned, landItem, makeEntity, newProblems, noteSpeed, putSpeed, refreshOne, remake, resheet, tellMissing } from './sheets.js';
 import { handHolds } from '../weapons.js';
 import { rollScore, rollScores, mayReroll, tableRule, topThree } from '../scores.js';
 import { cleanPurse, COINS } from '../market.js';
+import { isRolled, levelsOwed, levelOfEntry, lowRule, rollLevel, rollsFor, sameRolls, trimRolls } from '../hitpoints.js';
+import { mod } from '../derive.js';
 
 const COIN_MOST = 10_000_000;        // coins of one kind a purse holds (docs/specs/shops.md, Decision 4)
 
@@ -49,6 +51,56 @@ const sound = (x) => {
   return true;
 };
 const roller = (ctx) => ctx.role === 'dm' ? (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : 'dm') : (typeof ctx.userId === 'string' && ctx.userId ? ctx.userId : fail('Only someone at the table can roll ability scores.'));
+
+// ---------- rolled Hit Points (hitpoints.js, #638) ----------
+// The rolls on a sheet are written here and nowhere else. `rollInto` rolls the levels that `pick(classIndex, entryIndex, classLevel)` names and that have no roll
+// yet, from the game's seed, onto `sheet.hpRolls`, and returns what was rolled for the log. It changes `sheet` and the rng only.
+function rollInto(s, sheet, pick) {
+  const ks = classesOf(sheet), rule = lowRule(s.settings), done = [], con = mod(derive(sheet).record.abil.con);
+  ks.forEach((k, i) => {
+    const n = levelsOwed(k.level, i === 0), list = rollsFor(sheet, k.c.id, n);
+    for (let j = 0; j < n; j++) {
+      if (list[j] !== null || !pick(i, j, levelOfEntry(j, i === 0))) continue;
+      const r = rollLevel(s, k.c.hitDie, rule);
+      list[j] = r.value;
+      done.push({ class: k.c.id, className: k.c.name, level: levelOfEntry(j, i === 0), die: k.c.hitDie, dice: r.dice, value: r.value, hp: Math.max(1, r.value + con) });
+    }
+    if (list.some((v) => v !== null)) (sheet.hpRolls ??= {})[k.c.id] = list;
+  });
+  return { done, con };
+}
+// A sheet sent by a client keeps the rolls the character has, exactly: it may not add or change one. (A level the sheet no longer has loses its roll.)
+// A sheet that sends none keeps them. Returns the sheet with the character's own rolls.
+function keepRolls(e, sheet) {
+  const ks = classesOf(sheet), held = e?.sheet;
+  if (sheet.hpRolls !== undefined && !sameRolls(sheet, held ?? {}, ks)) fail('Hit Point rolls are made by the game at the table and cannot be changed by a sheet. Leave them as they are.');
+  const out = structuredClone(sheet);
+  delete out.hpRolls;
+  ks.forEach((k, i) => { const n = levelsOwed(k.level, i === 0), list = rollsFor(held, k.c?.id, n); if (list.some((v) => v !== null)) (out.hpRolls ??= {})[k.c.id] = list; });
+  return out;
+}
+// The sheet a client sent, with its rolls cut to the classes and levels it has (an edit that lowers a level or changes a class); values are never changed.
+const trimmed = (sheet) => { try { return sheet && typeof sheet === 'object' && !Array.isArray(sheet) && sheet.hpRolls !== undefined ? trimRolls(sheet, classesOf(sheet)) : sheet; } catch { return sheet; } };
+const hpEvent = (type, e, ctx, done, con, more = {}) => ({ type, id: e.id, name: e.name, by: ctx.userId ?? 'dm', con, levels: done, total: done.reduce((n, x) => n + x.hp, 0), ...more });
+
+// ---------- offering a character to the table, and the DM's answer (docs/specs/portable-characters.md, A4, A5, Decision 5) ----------
+// A player at a table offers a character sheet; it waits in `state.offers` (a list of `{ user, sheet }`, one for each player, the DM's alone: view-fields.js,
+// STATE_FIELDS) until the DM admits it or declines it. Nothing is admitted by itself, whatever the table rule `characters` says: the rule says whether offers
+// are taken at all (`new`: no) and whether the DM must tick a character whose history is not vouched for (`own-trusted`, the default). The engine can vouch for
+// no history (signed blocks are the server's: P1, P3, not built), so every offered character counts as self-reported and `own-trusted` asks for the tick.
+const OFFERS_MOST = 12;                                                  // offers held at once: one for each player, as many as characters a table holds
+const NOTE_MOST = 80;                                                    // letters of the DM's note with a refusal (Decision 5, flow 5)
+export const charactersRule = (s) => (isRec(s.settings) && ['new', 'own', 'own-trusted'].includes(s.settings.characters) ? s.settings.characters : 'own-trusted');
+// The level range the DM set (`{ min, max }`, 1 to 20), or null while there is none. A single number counts as `min = max`.
+export const levelRange = (v) => {
+  const n = (x) => Number.isInteger(x) && x >= 1 && x <= 20;
+  if (n(v)) return { min: v, max: v };
+  return isRec(v) && Object.keys(v).length === 2 && n(v.min) && n(v.max) && v.min <= v.max ? { min: v.min, max: v.max } : null;
+};
+// The offers as a clean list (a list that is not one, or an entry that is not whole, is read as nothing; never thrown on).
+const offersOf = (s) => (Array.isArray(s.offers) ? s.offers.filter((o) => isRec(o) && typeof o.user === 'string' && o.user && isRec(o.sheet)) : []);
+const hasCharacter = (s, user) => Object.values(s.entities).some((e) => e.kind === 'pc' && ownerOf(s, e) === user);
+
 export const handlers = {
   // Roll the six ability scores from the game's seed (docs/specs/ability-scores.md): four d6 each, the lowest die set aside. { type: 'rollAbilityScores' }
   // A member rolls once; the DM may roll a fresh set. What was rolled is kept in `scoreRolls` for the table rule's rerolls, and the event is told to the
@@ -87,6 +139,50 @@ export const handlers = {
     const old = rule.result === 'higher' && first > r.total;
     ev.push({ type: 'scoreRerolled', by: who, index: a.index, from: { dice: set.dice.map((value, i) => ({ sides: 6, value, ...(i === set.dice.indexOf(Math.min(...set.dice)) ? { drop: true } : {}) })), total: first },
       to: { dice: r.dice, total: r.total }, stands: old ? 'old' : 'new', total: old ? first : r.total, at: nextSeq(s) });
+  },
+  // Roll the Hit Points of a character's levels that have not been rolled (a table that began rolling after the character was made, an imported character).
+  // { type: 'rollHp', actor }: the DM for any character, a player for a character they run; at a rolled table, out of a fight. One tap rolls every level still
+  // to roll, with the game's seed; the event `hpRolled` is told to everyone, with each die.
+  rollHp(s, a, ctx, ev) {
+    const e = ent(s, a.actor);
+    e.kind === 'pc' || fail(`${e.name} is not a character.`);
+    control(s, e, ctx);
+    isRolled(s.settings) || fail('This table uses the fixed Hit Point value. The DM can change that in the table settings.');
+    e.sheet || fail(`${e.name} was typed in by hand: there is no sheet to keep rolls on.`);
+    !inFight(s, e.id) || fail(`${e.name} can't roll Hit Points in the middle of a fight.`);
+    !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
+    const sheet = structuredClone(e.sheet), rng0 = structuredClone(s.rng);
+    validate(sheet).length === 0 || fail(`${e.name}'s sheet can't be played as it is.`);
+    try {
+      const { done, con } = rollInto(s, sheet, () => true);
+      done.length || fail(`${e.name} has no Hit Point levels left to roll.`);
+      remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
+      ev.push(hpEvent('hpRolled', e, ctx, done, con, { why: 'pending' }));
+    } catch (err) { s.rng = rng0; throw err; }
+  },
+  // Roll one level's Hit Points again, as the DM's ruling. { type: 'rerollHp', actor, class, level } with the class id and the class level (2 or more in the
+  // first class). It replaces that level's roll under the table's rule; the log says from what to what.
+  rerollHp(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can have a Hit Point roll made again.');
+    const e = ent(s, a.actor);
+    e.kind === 'pc' || fail(`${e.name} is not a character.`);
+    isRolled(s.settings) || fail('This table uses the fixed Hit Point value.');
+    e.sheet || fail(`${e.name} was typed in by hand: there is no sheet to keep rolls on.`);
+    !inFight(s, e.id) || fail(`${e.name} can't roll Hit Points in the middle of a fight.`);
+    !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
+    const sheet = structuredClone(e.sheet), ks = classesOf(sheet), i = ks.findIndex((k) => k.c?.id === a.class);
+    i >= 0 || fail('Which class? Give its id.');
+    const j = a.level - (i === 0 ? 2 : 1), n = levelsOwed(ks[i].level, i === 0);
+    (Number.isInteger(a.level) && j >= 0 && j < n) || fail(`${ks[i].c.name} has levels ${i === 0 ? 2 : 1} to ${ks[i].level} that add Hit Points.`);
+    const was = rollsFor(sheet, a.class, n)[j];
+    was !== null || fail(`That level has not been rolled yet; roll it with rollHp.`);
+    const rng0 = structuredClone(s.rng);
+    try {
+      sheet.hpRolls[a.class][j] = null;
+      const { done, con } = rollInto(s, sheet, (x, y) => x === i && y === j);
+      remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
+      ev.push(hpEvent('hpRerolled', e, ctx, done, con, { from: was }));
+    } catch (err) { s.rng = rng0; throw err; }
   },
   // Give a creature a way of moving, or take it away. { type: 'setSpeed', actor, mode, feet, hover? }
   setSpeed(s, a, ctx, ev) {
@@ -153,17 +249,25 @@ export const handlers = {
   // kept on the creature, so it can be made again. A hand-typed record has no sheet and is untouched.
   setSheet(s, a, ctx, ev) {
     ctx.role === 'dm' || fail('Only the DM can change a character.');
-    const problems = validate(a.sheet);
+    const given = trimmed(a.sheet), problems = validate(given);
     problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
-    const { record } = derive(a.sheet), sheet = structuredClone(a.sheet);
     if (a.actor === undefined) {
-      handlers.addCharacter(s, { record, ...(a.at ? { at: a.at } : {}) }, ctx, ev);
-      const made = s.entities[ev.findLast((x) => x.type === 'spawned').id];
-      made.sheet = sheet;
-      tellMissing(ev, made, sheet);
+      // A new character: rolls that came with the sheet were not made at this table and are not kept. At a rolled table the game rolls every level after the first.
+      const sheet = structuredClone(given);
+      delete sheet.hpRolls;
+      const rng0 = structuredClone(s.rng);
+      try {
+        const rolled = isRolled(s.settings) ? rollInto(s, sheet, () => true) : { done: [], con: 0 };
+        handlers.addCharacter(s, { record: derive(sheet, hpOpts(s)).record, ...(a.at ? { at: a.at } : {}) }, ctx, ev);
+        const made = s.entities[ev.findLast((x) => x.type === 'spawned').id];
+        made.sheet = sheet;
+        if (rolled.done.length) ev.push(hpEvent('hpRolled', made, ctx, rolled.done, rolled.con, { why: 'built' }));
+        tellMissing(ev, made, sheet);
+      } catch (err) { s.rng = rng0; throw err; }
       return;
     }
-    remake(s, ent(s, a.actor), record, sheet, ev);
+    const e = ent(s, a.actor), sheet = keepRolls(e, given);
+    remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
   },
   // Make a character again from its own stored sheet, so one saved before a content change picks up what the content
   // gained (Wild Companion, Unarmed Strike, the pact forms...). Play state stays, as `setSheet` keeps it (`remake`).
@@ -208,10 +312,16 @@ export const handlers = {
       (more.every((n) => n >= 0) && more.reduce((x, y) => x + y, 0) === 1 && (now.length === was.length || now[now.length - 1].level === 1))
         || fail(`${e.name} gains one level: one more in one class, or level 1 in a new one.`);
     }
-    const problems = validate(a.sheet);
+    const given = trimmed(a.sheet), problems = validate(given);
     problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
-    remake(s, e, derive(a.sheet).record, structuredClone(a.sheet), ev);
-    ev.push({ type: 'std', id: e.id, action: `reached level ${levelOf(a.sheet)}` });
+    // The levels it has already keep their rolls; at a rolled table the game rolls the one it gains, with the table's seed.
+    const sheet = keepRolls(e, given), rng0 = structuredClone(s.rng);
+    try {
+      const rolled = isRolled(s.settings) ? rollInto(s, sheet, (i, j) => (now ? (now[i].level - (was[i]?.level ?? 0)) === 1 && j === levelsOwed(now[i].level, i === 0) - 1 : j === levelsOwed(sheet.level, true) - 1)) : { done: [], con: 0 };
+      remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
+      if (rolled.done.length) ev.push(hpEvent('hpRolled', e, ctx, rolled.done, rolled.con, { why: 'levelUp' }));
+    } catch (err) { s.rng = rng0; throw err; }
+    ev.push({ type: 'std', id: e.id, action: `reached level ${levelOf(sheet)}` });
   },
   // Change how big a creature is. { type: 'setSize', actor, size }
   setSize(s, a, ctx, ev) {
@@ -360,6 +470,59 @@ export const handlers = {
     problems.length === 0 || fail(problems[0]);
     e.sheet = sheet;
     ev.push({ type: 'attuning', id: e.id, ...(sheet.attuning ? { key: sheet.attuning.item, item: itemName(CONTENT.items[sheet.items.find((y) => y.id === sheet.attuning.item).item], sheet.items.find((y) => y.id === sheet.attuning.item)), ...(sheet.attuning.end ? { end: true } : {}) } : { cleared: true }) });
+  },
+  // A player offers a character: { type: 'offer', sheet }. The sheet must be one `setSheet` would play; it waits for the DM (`admit` or `decline`). Offering
+  // again replaces the player's earlier offer. Refused at a table whose `characters` rule is `new`, for the DM (who has `setSheet`), and for a player who
+  // already has a character (`claim` allows one). Only the DM is told of it (view.js: `offered` is not a type a player is sent).
+  offer(s, a, ctx, ev) {
+    ctx.role === 'player' && typeof ctx.userId === 'string' && ctx.userId || fail(ctx.role === 'dm' ? 'The DM adds characters with setSheet.' : 'Join the table first.');
+    charactersRule(s) !== 'new' || fail('This table does not take characters people bring. Ask the DM.');
+    !hasCharacter(s, ctx.userId) || fail('You already have a character.');
+    const sheet = trimmed(a.sheet), problems = validate(sheet);
+    problems.length === 0 || fail(`That character can't be offered. ${problems[0]}`);
+    const list = offersOf(s), had = list.some((o) => o.user === ctx.userId);
+    had || list.length < OFFERS_MOST || fail("The DM can't take an offer right now.");
+    s.offers = [...list.filter((o) => o.user !== ctx.userId), { user: ctx.userId, sheet: structuredClone(sheet) }];
+    const range = levelRange(s.settings.level);
+    ev.push({ type: 'offered', user: ctx.userId, name: sheet.name, level: levelOf(sheet), replaced: had, ...(range ? {} : { held: 'Set a level range before admitting characters.' }) });
+  },
+  // The DM lets an offered character in: { type: 'admit', user, userName?, ack?, at? }, or, as the server composes it where it holds the offer itself,
+  // { type: 'admit', sheet, user, ... }. It does what `setSheet` without an actor does, then gives the character to that player, who then has exactly one.
+  // `ack: true` is the DM's tick that this character's history is not vouched for: `own-trusted` needs it for every offered character at present. Every
+  // check is made before anything changes. A level above the range is refused (a fork is the official server's, Decision 8); one below is let in and the DM told.
+  admit(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can admit a character.');
+    const rule = charactersRule(s);
+    rule !== 'new' || fail('This table is set to new characters only. Change the setting `characters` first.');
+    typeof a.user === 'string' && a.user && a.user.length <= 64 || fail('Admit it for a player.');
+    const offer = offersOf(s).find((o) => o.user === a.user);
+    if (offer && a.sheet !== undefined && JSON.stringify(a.sheet) !== JSON.stringify(offer.sheet)) fail('That is not the character that was offered.');
+    const given = trimmed(offer ? offer.sheet : a.sheet);
+    given !== undefined || fail('Nothing has been offered by that player.');
+    !hasCharacter(s, a.user) || fail('That player already has a character.');
+    const problems = validate(given);
+    problems.length === 0 || fail(`That sheet can't be played yet. ${problems[0]}`);
+    const range = levelRange(s.settings.level) || fail('Set a level range before admitting characters.');
+    const level = levelOf(given);
+    level <= range.max || fail(`${given.name} is level ${level}, above this adventure's levels ${range.min} to ${range.max}. Raise the range or ask for a lower-level sheet.`);
+    rule === 'own' || a.ack === true || fail(`${given.name}'s history is not vouched for. Tick that you have looked at it to admit the character.`);
+    Object.values(s.entities).filter((e) => e.kind === 'pc').length < 12 || fail('A table holds twelve characters at most.');
+    handlers.setSheet(s, { sheet: given, ...(a.at ? { at: a.at } : {}) }, ctx, ev);
+    const id = ev.findLast((x) => x.type === 'spawned').id, e = s.entities[id];
+    e.owner = a.user; e.ownerName = typeof a.userName === 'string' && a.userName ? a.userName.slice(0, 40) : null;
+    s.offers = offersOf(s).filter((o) => o.user !== a.user);
+    ev.push({ type: 'claimed', id, userName: e.ownerName });
+    ev.push({ type: 'admitted', user: a.user, id, level, ...(level < range.min ? { below: range.min } : {}) });
+    if (level < range.min) ev.push({ type: 'manual', actor: null, name: given.name, partial: true, text: `${given.name} is level ${level}, below this adventure's levels ${range.min} to ${range.max}. It was let in as it is; raise it with levelUp if you want.` });
+  },
+  // The DM turns an offer down: { type: 'decline', user, note? }. The note (80 letters at most) is for that player.
+  decline(s, a, ctx, ev) {
+    ctx.role === 'dm' || fail('Only the DM can decline a character.');
+    typeof a.user === 'string' && a.user && offersOf(s).some((o) => o.user === a.user) || fail('Nothing has been offered by that player.');
+    a.note === undefined || typeof a.note === 'string' || fail('The note is a few words.');
+    const note = String(a.note ?? '').trim().slice(0, NOTE_MOST);
+    s.offers = offersOf(s).filter((o) => o.user !== a.user);
+    ev.push({ type: 'declined', user: a.user, ...(note ? { note } : {}) });
   },
 };
 

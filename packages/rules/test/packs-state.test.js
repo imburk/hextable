@@ -177,8 +177,8 @@ test("a version 23 state loads with packs: [] and is otherwise unchanged; migrat
   s.version = 23;
   const was = structuredClone(s);
   migrate(s);
-  assert.equal(VERSION, 28);
-  assert.equal(s.version, 28);
+  assert.equal(VERSION, 31);
+  assert.equal(s.version, 31);
   assert.deepEqual(s.packs, []);
   assert.equal(s.settings.strikeFirst, "casts");   // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
   const unstruck = (x) => { const { strikeFirst, ...settings } = x.settings; return settings; };
@@ -187,7 +187,7 @@ test("a version 23 state loads with packs: [] and is otherwise unchanged; migrat
   const old = newGame(5); delete old.packs; old.version = 23;
   migrate(old);
   assert.deepEqual(old.packs, []);
-  assert.equal(json({ ...old, packs: undefined, version: 28 }), json({ ...s, packs: undefined }));
+  assert.equal(json({ ...old, packs: undefined, version: 31 }), json({ ...s, packs: undefined }));
   const again = json(s);
   migrate(s);
   assert.equal(json(s), again);

@@ -6,8 +6,8 @@ import { lintRecord } from '../content/schema.js';
 import { tick } from '../durations.js';
 import { rewardActions } from '../rewards.js';
 import { attuneProblem, derive, itemName } from '../derive.js';
-import { ent, fail, featOf, mod } from './shared.js';
-import { heal } from './rolls.js';
+import { ent, fail, featOf, hpOpts, mod } from './shared.js';
+import { deathSavesOver, heal } from './rolls.js';
 import { newProblems, remake, tryLand } from './sheets.js';
 import { vanish } from './resolve.js';
 
@@ -62,9 +62,13 @@ export const handlers = {
       (Array.isArray(a.ids) && a.ids.length > 0 && a.ids.length <= 500) || fail('Name who rests.');
       who = [...new Set(a.ids)].map((id) => ent(s, id)).filter((x) => !x.dead);
     }
+    const wasUp = new Set(who.filter((x) => x.hp > 0).map((x) => x.id));  // a Long Rest needs 1 Hit Point at its start: only these get its benefits
+    deathSavesOver(s, 480, ev);                                          // the dying roll their saves through the eight hours (a 20 wakes one; the dead are out)
+    who = who.filter((x) => !x.dead);
     const rested = new Set();                                            // who finished the Long Rest
     for (const e of who) {
-      if (e.hp <= 0) {
+      if (!wasUp.has(e.id)) {                                              // it began the rest at 0 Hit Points: the saves are all it got
+        if (e.hp > 0) continue;                                            // woke on a 20 (1 Hit Point) during them: not rested
         if (e.cond.stable) heal(s, e, 1, ev);                               // a Stable creature regains 1 HP after 1d4 hours
         else ev.push({ type: 'manual', actor: e.id, name: 'Long Rest', text: `${e.name} is dying at 0 Hit Points and can't take a Long Rest. The DM settles its Death Saving Throws.` });
         continue;
@@ -153,6 +157,8 @@ export const handlers = {
       for (const l of new Set(levels)) levels.filter((x) => x === l).length <= (e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0) || fail(`${e.name} hasn't spent that many level ${l} slots.`);
       plans.push({ e, f, levels });
     }
+    deathSavesOver(s, 60, ev);                                           // the dying roll their saves through the hour (a 20 wakes one, still too late for this rest's dice)
+    who = who.filter((x) => !x.dead);
     for (const e of who) {
       if (e.hp <= 0) { ev.push({ type: 'manual', actor: e.id, name: 'Short Rest', text: `${e.name} is at 0 Hit Points and can't take a Short Rest.` }); continue; }
       for (let i = 0; i < (spend[e.id] ?? 0); i++) {
@@ -201,9 +207,9 @@ export const handlers = {
       const def = CONTENT.items[x.item], name = itemName(def, x);
       if (at.end) delete x.attuned; else x.attuned = true;
       const why = e.hp <= 0 ? `${e.name} is at 0 Hit Points.` : e.form ? `${e.name} is in a form.` : (at.end ? null : attuneProblem(sheet, def))
-        ?? newProblems(e.sheet, sheet)[0] ?? lintRecord(derive(sheet).record, { spells: SPELLS })[0] ?? null;
+        ?? newProblems(e.sheet, sheet)[0] ?? lintRecord(derive(sheet, hpOpts(s)).record, { spells: SPELLS })[0] ?? null;
       if (why) { delete e.sheet.attuning; ev.push({ type: 'attuned', id: e.id, key: x.id, item: name, ...(at.end ? { end: true } : {}), failed: why }); continue; }
-      remake(s, e, derive(sheet).record, sheet, ev);
+      remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
       ev.push({ type: 'attuned', id: e.id, key: x.id, item: name, ...(at.end ? { end: true } : {}) });
     }
     const from = s.clock;
@@ -217,6 +223,7 @@ export const handlers = {
     !s.encounter || fail('Time moves in rounds during a fight.');
     a.minutes > 0 || fail('Time only moves forward.');
     const from = s.clock;
+    deathSavesOver(s, a.minutes, ev);                                    // each creature dying in the party rolls a save per 6 seconds that pass, told before the time is
     s.clock += a.minutes;
     ev.push({ type: 'time', minutes: a.minutes });
     dawn(s, from, ev);

@@ -55,6 +55,8 @@ export const THEMES = {
       '--bg': '#1d2622', '--panel': '#26322dee', '--panel-2': '#31403a', '--ink': '#efe9d8', '--muted': '#a9b3a6',
       '--accent': '#d7a84a', '--accent-ink': '#1d2622', '--line': '#4a5a52', '--good': '#7fc48a', '--bad': '#e0685a',
       '--display': "'Vollkorn SC', Georgia, serif", '--body': "'Source Sans 3', 'Segoe UI', system-ui, sans-serif", '--radius': '6px',
+      '--die': '#c99a3e', '--die-ink': '#2a1d08', '--die-edge': '#f3d68a', '--scrim': 'rgba(10, 14, 12, .55)', '--panel-solid': '#26322d',
+      '--tk-shadow': 'drop-shadow(0 3px 6px #0007)', '--tk-join': 'round',
     },
     models: STARTER_MODELS,
     sky: rgb('#1d2622'), fog: [40, 34],
@@ -70,6 +72,8 @@ export const THEMES = {
       '--bg': '#8fd0e8', '--panel': '#fffdf4f2', '--panel-2': '#eef4dc', '--ink': '#23412f', '--muted': '#5f7a68',
       '--accent': '#2f9e6b', '--accent-ink': '#ffffff', '--line': '#c9dab5', '--good': '#2f9e6b', '--bad': '#d9483b',
       '--display': "'Baloo 2', 'Trebuchet MS', sans-serif", '--body': "'Nunito', 'Segoe UI', system-ui, sans-serif", '--radius': '14px',
+      '--die': '#2f9e6b', '--die-ink': '#ffffff', '--die-edge': '#ffffff', '--scrim': 'rgba(35, 65, 47, .35)', '--panel-solid': '#fffdf4',
+      '--tk-shadow': 'drop-shadow(0 3px 6px #0005)', '--tk-join': 'round',
     },
     models: STARTER_MODELS,
     sky: rgb('#8fd0e8'), fog: [44, 40],
@@ -85,6 +89,8 @@ export const THEMES = {
       '--bg': '#c7e8c1', '--panel': '#2b2d42f2', '--panel-2': '#3a3d5c', '--ink': '#f8f7ff', '--muted': '#b8b8d1',
       '--accent': '#ffd23f', '--accent-ink': '#2b2d42', '--line': '#545880', '--good': '#8be28b', '--bad': '#ff6b6b',
       '--display': "'Silkscreen', 'Courier New', monospace", '--body': "'Nunito', 'Segoe UI', system-ui, sans-serif", '--radius': '2px',
+      '--die': '#ffd23f', '--die-ink': '#2b2d42', '--die-edge': '#2b2d42', '--scrim': 'rgba(43, 45, 66, .45)', '--panel-solid': '#2b2d42',
+      '--tk-shadow': 'drop-shadow(3px 3px 0 #0008)', '--tk-join': 'miter',
     },
     models: STARTER_MODELS,
     sky: rgb('#c7e8c1'), fog: [46, 40],
@@ -96,6 +102,19 @@ export const THEMES = {
   },
 };
 export const hexColor = rgb;
+
+// Shading the reach by cost (docs/specs/fly-swim-control.md, C3): three tints of a theme's own move colour, for the nearest third of a
+// creature's reach, the middle third and the farthest. The same family, lighter to stronger: the nearest is paler and thinner, the
+// farthest deeper and more solid, so a walker's reach and a flyer's plane read alike. A theme may give its own three as `hl.cost`.
+export function costTints(move) {
+  const [r, g, b, a] = move, mix = (v, to, k) => v + (to - v) * k, cap = (v) => Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000;
+  return [
+    [cap(mix(r, 1, 0.35)), cap(mix(g, 1, 0.35)), cap(mix(b, 1, 0.35)), cap(a * 0.62)],
+    [cap(r), cap(g), cap(b), cap(a * 1.05)],
+    [cap(r * 0.86), cap(g * 0.7), cap(b * 0.55), cap(Math.min(0.78, a * 1.7))],
+  ];
+}
+for (const t of Object.values(THEMES)) t.hl.cost ??= costTints(t.hl.move);
 
 // Change one of the three looks on every theme (they all carry them); the caller then hands the theme to the renderer again.
 export function setLook(key, value) {

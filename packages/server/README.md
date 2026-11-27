@@ -10,6 +10,11 @@ npm start        # from the repo root: builds the site, then serves it on http:/
 |---|---|---|
 | `PORT` | `8080` | Port to listen on (`0`: any free port, printed at start) |
 | `DATA_DIR` | `./data` | Where tables are saved, one JSON file each |
+| `JOURNAL` / `JOURNAL_FILE_BYTES` / `JOURNAL_FILES` / `JOURNAL_TOTAL_BYTES` | on / `5242880` / `5` / `524288000` | The action journal (below): `JOURNAL=off` turns it off; a file (its snapshot counted in) is closed at this many bytes; this many files are kept per table; the cap on all journals on the server (500 MB) |
+| `IDLE_EVICT_MINUTES` | `30` | A table with nobody connected for this long is saved and dropped from memory; the next join or resume loads it from its save. `0`: never |
+| `ARCHIVE_DAYS` | `90` | A table untouched for this long moves, with its journals and files, to `DATA_DIR/archive/<code>/`; joining its code brings it back. `0`: never |
+| `BACKUP_DIR` | none | Where the nightly backup goes. Unset: no backups (see "Backups") |
+| `BACKUP_KEEP` / `BACKUP_HOUR` / `BACKUP_ARCHIVE` / `BACKUP_ARCHIVE_MAX_MB` | `7` / `3` / `auto` / `500` | Backups kept; the hour (UTC) after which tonight's is made; whether `archive/` is copied (`yes`, `no`, or `auto`: only if it is under the size given) |
 | `TIMELINE_CAP` | `5000` | Timeline entries a table keeps besides chronicle entries (see below) |
 | `TRUST_PROXY` | `0` | Proxies in front of the server that append to `x-forwarded-for`. `0`: use the socket's address and ignore the header (see Address below) |
 | `CLIENT_IP_HEADER` | none | A header the platform sets itself and overwrites, such as `x-real-ip`; read instead of `x-forwarded-for` when `TRUST_PROXY` is above 0 |
@@ -48,11 +53,139 @@ Pages), `/api/ping` fails and the game runs solo in the browser instead.
   creatures' standing instructions for reactions, `reactions`, and a reaction question, `prompt`): the party sees as
   one (`docs/specs/sight.md`). Under the `sight` table rules `los` and `light` a player's view also
   carries `sight: { rule, now, light? }`, the tiles the party sees now and the light on them.
+- `src/journal.js` — the per-table action journal (see "The action journal" below). Async, guarded, no dependencies; `scripts/replay.mjs` replays it.
+- `src/store.js` — the table saves as files: the index read at start (names and timestamps only), reading one save, and moving a table to `archive/` and back. No deletes.
+- `src/backup.js` — the dated folder copy of `DATA_DIR` and its rotation; `scripts/backup.mjs` runs it by hand.
 - `src/limits.js` — the per-address and per-connection limits, with an injectable clock.
 - `src/ws.js` — a minimal WebSocket implementation on Node's `http` and `crypto`.
 - `src/assets.js` — the store of table files on disk: type sniffing, ids, limits. No network code.
 - `src/assets-http.js` — the `/assets` routes: who may upload, fetch and delete.
-- `src/index.js` — HTTP, static files (html, js, css, json and svg gzipped with Node's `zlib` when the client accepts it, compressed once per file and kept until the file changes; uploads are never compressed), `/api/ping`, `/assets`, `/ws`, and saving to disk.
+- `src/index.js` — HTTP, static files (html, js, css, json and svg gzipped with Node's `zlib` when the client accepts it, compressed once per file and kept until the file changes; uploads are never compressed; every file carries a strong ETag, a hash of its bytes taken when the file is read (the server stats each file per request, so a changed file has a new tag at once, no restart), and `Cache-Control: no-cache`, and an `If-None-Match` that matches is answered `304` with no body; the gzipped form has its own tag ending `-gzip`; `/build.json` and `/api/*` stay `no-store`; #646), `/api/ping`, `/api/health`, `/assets`, `/ws`, and saving to disk.
+
+## The action journal (#659)
+
+Beside each table's save the server keeps a journal of the actions the table accepted, so that a game can be replayed through
+`apply()` and a feedback report reproduced (`docs/specs/feedback.md`). It is in `src/journal.js`; the rules package knows nothing of it.
+
+**Files**, in `DATA_DIR` (the Docker image's `/data`, so a volume that keeps the tables keeps these; nothing else in the image changes):
+`ABC123.journal.000007.snapshot.json` (the state the file begins from: `{journal, table, at, stateVersion, hash, state, packs, members}`) and
+`ABC123.journal.000007.jsonl`, one JSON object a line. A file starts with `{"k":"open", file, at, sv, d, h, cap, why?, snapshot}` (`cap` is the table's timeline cap, handed to the journal by `createTables`, the one place that owns it, and written in every header whichever path opens the file; replay applies after each action that can be undone, as the server does; `why` says what made this a new file: `undo`, `redo`, `rewind`, `packs`, `world`, `approve`, or `lost`); then one `{"k":"act", n, at, role, uid, action, d0, d1, sv, h}`
+for each accepted action: the action as the server applied it, the sender's role, the sender's opaque member id (random, made when they sat
+down: not a name, an address or the join token), the dice counter before and after (`d0`, `d1`), the state version (`sv`), the line's
+number (`n`) and a hash of the state after it (`h`: everything but the timeline in full, and of the timeline its length, its first entry and its last 20 entries, so a long timeline does not cost the whole of it on every action; what it does not see is a change in the middle of a long timeline that leaves those alone, and the engine only appends to it). The line is written after the timeline is cut to its cap, so `h` is the state the table then held. Refused actions are not journalled, nor is a ping that changed nothing. Undo,
+redo and rewind are not actions the engine can run again: each writes a `{"k":"undo"|"redo"|"rewind", ...}` line and closes the file.
+A pack or world loaded, or a player being let in (not a request waiting), writes a `{"k":"break"}` line and closes it too. The next action opens a new file whose
+snapshot is the state as it then is, so every file replays from its own start.
+
+**What is kept.** (Privacy, plainly: the snapshot is a copy of the table's save. It holds the dice key, the DM's notes and hidden information, any homebrew packs and the players' names, so the files are as private as the table saves, and a journal or snapshot is never to be attached to a public issue or sent to anyone but the owner. `scripts/replay.mjs` says so each time it runs.) The action and nothing added to it: no chat or text a player typed beyond what the action itself carries (a spoken line is
+an action, so its text is in it, as it is in the table's save). An action's `userName` (a claim, a spoken line, a ping) is replaced by
+`{"$member": id}`; the names are in the snapshot's `members`, which is a file of the same kind as the table's save. **The snapshot holds the whole
+state, the dice key and the DM's secrets included: keep the files as private as the table saves; never attach one to a public issue.**
+A feedback report is matched to a journal by the build, the time and the table's owner asking: the report carries no table code.
+
+**Rotation and retention.** A file is closed when it, its snapshot counted in, passes 5 MB (`JOURNAL_FILE_BYTES`; sizes are bytes; a state bigger than 2.5 MB gets room for as many lines as it is big, or every line would be a new file) and a new one starts at the next action; a new file also
+starts at the first action after the server starts (a table nobody touches writes nothing). The last 5 files of a table are kept
+(`JOURNAL_FILES`), each with its snapshot; older ones are deleted when a new file opens. All journals together are held to `JOURNAL_TOTAL_BYTES` (500 MB): when a new file opens and the total is over, the oldest closed files of any table go first (a file being written never does). There is no time limit; a table's journal stays until its files rotate out. At start the server removes the journals of tables whose save file no longer exists (a save that is there but cannot be read keeps its journal: that is the best evidence), a leftover `.snapshot.json.tmp` counts with its pair and goes with it, as it does their uploaded files.
+
+**A write never fails or slows an action.** Lines go to an in-memory queue that one worker writes in order with asynchronous file calls; the
+action does not wait for the disk (a synchronous append on a network volume could stall every table on the process). The two costs on the
+action's path are the hash of the state and, once a file, the snapshot's `JSON.stringify`, which the table's own save does as often. Measured here on a synthetic 1.56 MB state (a 5000-entry timeline of 1.08 MB, 12 parked places, and the 0.48 MB of everything else): hashing the whole state took 7.8 ms, this hash 2.9 ms, nearly all of it the 0.48 MB that is not the timeline; the starter valley (37 KB) takes 0.25 ms. A real table's number depends on how much else it holds; the write itself is off the action's path. Every error is caught: it is logged as one JSON line to stderr, `{"event":"journal-error","at","table","op","error"}`
+(at most one a minute a table), and the file is given up; nothing is tried again for 30 seconds, then a new file with a new snapshot is opened (its header says `why: "lost"`, which replay tells from an undo; the marker is kept in memory only, so a restart before the next file forgets it),
+so a full or missing disk costs one log line a minute and nothing else. A queue over 32 MB gives the file up the same way. On SIGTERM the write in flight is done again and the lines
+still queued are written synchronously before the process exits (a line that had landed is then written twice with the same `n`, which replay skips); a crash can lose the last lines or leave the last one cut short, which replay reports as a note and not a failure. A snapshot is written to a temporary name and renamed.
+
+**Replay.** `node scripts/replay.mjs <snapshot.json> <journal.jsonl> [<journal.jsonl> ...]` applies the lines through `apply()` (under the
+snapshot's homebrew packs) and checks the dice counter and the state hash after each. It prints `ok: N actions replayed` and exits 0, or
+names the first file and line that differs (a different state, different dice, or an action the engine now refuses) and exits 1. `--strict` also exits 1 when a file restarts from its own snapshot because lines were lost (`why: "lost"`). Given
+several files in order, it starts again from a file's own snapshot (found beside it) where that file follows an undo, a pack or a join.
+
+## Engine crashes and `/api/health`
+
+When the engine throws on an action (a malformed message, or a bug) the player still gets "The table couldn't make sense of that
+action." and the game is put back as it was. The server now also writes one JSON line to stderr (the container log) for each:
+`{"event":"engine-crash","at","table","action","role","stack"}`. `table` is the table code, never the join token; `action` is the
+action type (a name that is not plain letters and digits is logged as `?`); `role` is `dm` or `player`. The action's payload, chat
+text, names and anything else a player typed are never logged. The same applies to a throw while applying a pack list
+(`action: "setPacks"`) or a world pack (`"worldIndex"`).
+
+Per process, the server counts crashes and refusals in total and by action type (at most 200 types, then `other`).
+
+**Crash bundles, crash issues and browser errors (#689, `src/crashes.js`).** Each engine crash also writes a repro bundle,
+`DATA_DIR/crashes/<time>-<table code>.json`, and the `engine-crash` line names it (`bundle`). A bundle holds the action as the server applied it
+(player-typed text over 200 characters cut, the paths of the cuts listed in `cut`, a name an action carries as a member id), the sender's role and member id,
+the state version and the state's hash, the journal's position (`journal: { file, snapshot, line }`: the file the table's journal was writing, its
+snapshot, and the number of its last line queued (it may not have reached the disk when the server stopped; replay says so); the state between actions is the state after that line, and a crashed action is never journalled), the build,
+and the stack. The last 100 are kept; a crash that repeats (same action type, function and file of the top stack frame; the line is not part of it, so a deploy does not make a new kind) is written at most 5 times an hour, 200 in all.
+The folder is in the data directory, which the server never serves (it serves `dist/` only) and no route reads: a bundle holds a table's code and
+actions, so treat it like the table's save. To reproduce, copy the bundle and the journal files it names into one folder and run
+`node scripts/replay.mjs --crash <bundle> [--data <folder>]`: it replays the journal to the bundle's line, runs the action, and says whether it
+still throws (exit 1) or no longer does (exit 0); 3 means the point cannot be reached (the journal keeps five files a table, so an old bundle's may be gone).
+
+With `FEEDBACK_GITHUB_REPO` and `FEEDBACK_GITHUB_TOKEN` set (the feedback settings), the first time a kind of crash is seen one issue labelled `crash` is
+filed: the action type, the build, the error class, the stack frames and the bundle's time. Nothing a player typed, no table code, no name, no member id:
+the error's message is left out unless it is one of a few fixed shapes with the value removed, the action type is shown only if the engine knows it, and
+the table code in the bundle's file name is left out. Stack frames are read only after the error's message and only from the game's own code and Node's, so a message a player shaped to look like frames changes nothing. Repeats add a count comment on that issue at most once an hour; at most 10 issues are filed a
+UTC day (the rest are kept as bundles). Which kinds have an issue is kept in `DATA_DIR/crash-issues.json`, so a restart does not file them again.
+With no token nothing is filed and the log says so once.
+
+The browser reports its own errors (`window` `error` and `unhandledrejection`): `{ v, kind, message, stack, build, mode, screen, actions }`, with names already
+replaced as in feedback, the stack's addresses cut to file names, and the types (only) of the last five actions. Over the socket as `{"t":"clientError","report"}`
+(any connection, before or after joining; nothing is ever sent back, and the table is not touched), or, in a solo game with no socket, `POST /client-error`
+(JSON, at most 8 KB, CORS open like `/feedback`; answers 204, or 400/413/415/429). At most 5 a minute for a connection and 50 a day for a table; a report that
+fails the allow-list or the throttle is dropped. Each accepted one is logged as `{"event":"client-error",...}` and counted by kind (`error`, `rejection`).
+
+`GET /api/health` answers, with `cache-control: no-store`:
+
+```json
+{"ok":true,"uptime":3600,"tables":{"loaded":2,"saved":12,"archived":40,"active":3},"connections":5,"crashes":0,"crashesByType":{},"clientErrors":0,"clientErrorsByType":{},"build":"c1d5069",
+ "proxy":{"trustProxy":true,"hops":1,"clientIpHeader":null,"address":"203.0.113.9","socketAddress":"100.64.0.2","sawForwardedFor":true,"note":"TRUST_PROXY is on and the address below was read from the proxy's header. If it is your own public address, it is set right."}}
+```
+
+`uptime` is seconds since the process started; `tables` are the tables held in memory (`loaded`), all saved ones (`saved`, loaded or not),
+those in `archive/` and those active in the last 30 days;
+`proxy` is about the one request that asked (#662): `address` is the visitor address the server uses for this caller's limits, `socketAddress`
+the address of whatever connected to it (the proxy, behind one), `trustProxy` whether `TRUST_PROXY` is above 0, `sawForwardedFor` whether the request
+carried an `x-forwarded-for` header (its value is not shown), and `note` says in one sentence what it means. Nothing about any other caller;
+`connections` are open WebSockets; `crashesByType` is the ten most frequent action types; `clientErrors` are the browser reports accepted (by kind in `clientErrorsByType`); `build` is the commit of `/build.json`
+(or `null`). There is nothing per table or per person in it. It is limited to 30 reads a minute per address
+(`LIMIT_HEALTH_MINUTE`); over that it answers 429.
+
+## Idle tables, lazy loading and the archive (#662)
+
+- **Lazy load.** At start the server does not read the saves. It lists them (code and the file's time) and keeps only that. A table is read the
+  first time its code is used: a join, a resume, or a request for one of its files. Joining a code the server does not hold, or whose save
+  cannot be read, answers "No table has that code" and leaves the file alone. `MAX_TABLES` counts the index as well as the tables in memory.
+- **Eviction.** Once a minute a sweep looks at the tables in memory. One with no connection at all (a player waiting to be let in counts as
+  connected) and nothing done for `IDLE_EVICT_MINUTES` is saved, its undo history is written, its journal file is ended with a `break` line
+  (`why: "evict"`), and it is dropped. If the save cannot be written the table stays in memory and is tried again next minute; with no way to
+  write it nothing is evicted. The game is single-threaded and none of this waits, so no message is handled between the save and the drop:
+  a join that arrives after reads the file just written, and a loaded table is counted as used, so it is not evicted again before anyone has sat down.
+  The journal then opens a new file from a snapshot of the reloaded state.
+- **Archive.** A table that is not in memory and whose save is `ARCHIVE_DAYS` old is moved by renaming: its save, undo history, journal files
+  and the folder of its files go to `DATA_DIR/archive/<code>/`, the save last. Joining or resuming that code moves it all back. A code in the
+  archive is never given to a new table. At most five are moved per sweep. If a move fails it is put back; if the server stopped in the middle,
+  the next start finishes putting it back. Nothing is deleted, and where a name is already taken at the other end the file is left where it is.
+  The age is the save's file time, which the server rewrites whenever a table is evicted or changes, so a copied or restored data folder starts the count again.
+
+## Backups (#662)
+
+Set `BACKUP_DIR` and the server makes a dated copy of `DATA_DIR` once a night, in a folder named `hextable-backup-YYYYMMDD-HHMMSS` (UTC),
+and keeps the newest `BACKUP_KEEP` (7). Once an hour-of-day (`BACKUP_HOUR`, default 3 UTC) has passed and there is no backup for today yet, the next
+check (every ten minutes) makes one, so a server that was down at night makes it up when it is back. It copies file by file without
+waiting for anything and never blocks a table. Each file in a copy is whole (saves are written whole); the copy is not one instant, which the server
+tolerates. It is a folder copy, not a tar.gz: a tar needs a program or a dependency the image does not have. Temporary files are left out. `archive/` is
+copied unless `BACKUP_ARCHIVE=no`, or `auto` (the default) and it is over `BACKUP_ARCHIVE_MAX_MB`. A backup is written under a name ending
+`.partial` and renamed when whole; the only things ever removed are older backups past the kept number, and only folders named like ours. `BACKUP_DIR`
+must not be `DATA_DIR` or a folder that holds it; if it is inside `DATA_DIR` it is left out of the copy.
+
+A backup is refused (and says why in the log) when the source is missing or empty, when `BACKUP_DIR` (compared by real path, so a symlink does not hide it) is
+`DATA_DIR` or holds it, or when the disk has less than the copy's size plus a fifth free. Rotation never removes an old backup if that would leave fewer
+than `BACKUP_KEEP` non-empty ones. After a failed night the server waits one hour, then two, four, up to six, before trying again, and does not retry every ten minutes. Stray
+`.partial` folders over an hour old are cleaned up. While a backup runs, no table is moved to the archive (a restore still can be: the copy skips what vanishes).
+A `BACKUP_DIR` on the same disk as `DATA_DIR` is allowed and the log says at start that it does not protect against losing the disk.
+
+By hand: `node scripts/backup.mjs --to /backups` (defaults `DATA_DIR`, `BACKUP_DIR`, `BACKUP_KEEP`, `BACKUP_ARCHIVE`; flags `--data`, `--to`, `--keep`, `--archive yes|no|auto`).
+It is in the image. A scheduler outside the server (a Railway cron service) can run the same command instead of the built-in nightly one.
 
 ## Protocol
 
@@ -616,6 +749,59 @@ not need it: it starts as root, the entrypoint fixes the ownership and drops to 
 starts as root and drops the same way. Never mount the volume anywhere but `DATA_DIR`, or set
 `DATA_DIR` to the mount path. After a deploy, the log should show `Hextable table server at ...` and no
 `entrypoint:` warning.
+
+### Steps for the owner (Railway, no engineering needed)
+
+**1. Check that the visitor addresses are right (`TRUST_PROXY`).** The game limits how much one visitor can do, by address. If the setting is wrong,
+every visitor looks like the same one and they share the limits.
+1. In Railway open your project, click the Hextable service, then **Variables**. Look for `TRUST_PROXY`.
+2. Open `https://<your site>/api/health` in a browser (your site is the address you use to play).
+3. Find `"proxy"`. Its `note` line tells you what to do. `address` should be your own public address (search "what is my IP" to compare).
+4. If the note says to set `TRUST_PROXY`, add the variable `TRUST_PROXY` with the value `1` in **Variables**, let Railway redeploy, and look again.
+   If `address` is still not yours, tell whoever helps you with the game; the section "Address" above explains the other setting.
+
+**2. Turn on Railway's own volume backups (recommended).** Railway allows one volume per service, so the tables' volume cannot be given a
+second volume for backups. Railway backs the volume up itself ([Railway docs: Volume Backups](https://docs.railway.com/volumes/backups)):
+1. Click the Hextable service, then **Settings**, then the **Backups** tab.
+2. Pick a schedule. Railway offers Daily (a backup every 24 hours, kept 6 days), Weekly (every 7 days, kept 27 days) and Monthly (every 30 days,
+   kept 89 days), and you can switch on more than one. Daily plus weekly is a good start. (Wording from the docs as read on 2026-11-21; Railway may change it.)
+3. To go back to one: in the same tab find the backup by its date and start the restore. Railway mounts a copy of that backup as a new volume
+   and shows the change on the project canvas; press **Deploy** to apply it. The old volume stays in the project, unmounted, until you remove it.
+   Backups live with the volume: wiping the volume deletes its backups too, and a backup can only be restored inside the same project and environment.
+
+**3. The server's own backup folder (`BACKUP_DIR`, optional).** The server can also copy its tables into a folder every night (see "Backups" above).
+On Railway that folder is on the same volume as the tables (there is only one), so it protects you from a table that was damaged or changed by mistake,
+but **not from losing the volume**: the folder goes with it. Only Railway's backups (step 2) do that. If you want it anyway:
+1. Add the variable `BACKUP_DIR` with the value `/data/backups` (a folder inside the volume; the server leaves it out of its own copies). Railway redeploys.
+2. The next night, look in the service **Logs** for a line starting `backup hextable-backup-`, or `Backup failed` and the reason. At start the log also says if
+   `BACKUP_DIR` is on the same disk as the tables.
+3. To download one, install the Railway command line (railway.com/docs/cli), run `railway login` and `railway link`, and register an SSH key with Railway (the
+   first `railway ssh` offers to do it; [Railway docs: SSH](https://docs.railway.com/cli/ssh)). Then use `scp`, which Railway's SSH supports, as in its docs:
+   `scp myapp.up.railway.app@ssh.railway.com:/data/backups/<folder>/<file> ./` for a file, or add `-r` for a folder (add `-s` on an OpenSSH older than 9.0).
+   The part before the `@` is your service's domain (`myapp.up.railway.app` here is a stand-in for yours), or the service instance id if it has no domain.
+   The simpler route is `railway volume browse` (Railway docs: Volumes), which lets you look through the volume's files from the command line.
+   If a step does not match what you see, stop and ask.
+4. `RAILWAY_RUN_UID` stays unset (see above); the image handles the volume's ownership itself.
+
+**Restoring from a `BACKUP_DIR` copy** (ask for help; do not try it alone). You cannot `railway ssh` into a stopped service, so the work is done on the running one
+and the new tables must not be mixed with the current ones. Outline: with the game closed to players, move everything now in `/data` (except the `backups` folder) into
+a new folder such as `/data/before-restore` rather than copying over it, check that the volume has room for the backup as well (`df -h /data`), then copy the chosen
+backup folder's contents into `/data`, and redeploy. The `before-restore` folder keeps the old tables until you are sure. If you have to do it a second time, leave
+`before-restore` where it is and use a new name (`before-restore-2`); never move a `before-restore` folder into another.
+
+### How deploys are verified (review R1, #617)
+
+- **Before a merge.** The `Docker` workflow (`.github/workflows/docker.yml`) runs on every pull request and push to `main`. It builds the
+  image (with `--build-arg GITHUB_SHA=<head>` so `dist/build.json` names the commit), starts it with an empty data volume and runs
+  `scripts/ci/check-image.mjs`: `/api/ping`, `/build.json` (its commit must be the head sha), `/` and its script, and a WebSocket to `/ws`
+  that hosts a table and gets the answer to one action. It then requires a container log with no error and a table saved to the
+  volume after a clean stop. `packages/server/test/docker.test.js` also walks every relative import from `docker-entrypoint.mjs` and requires
+  the run-time stage to copy each file; a server that imports from a folder the stage leaves out fails there, not on Railway.
+- **After a merge.** The `Live check` workflow (`.github/workflows/live-check.yml`, every 30 minutes and on demand) reads the head of
+  `main` and `/build.json` on Railway (`https://hextable-production.up.railway.app`) and GitHub Pages (`https://imburk.github.io/hextable`).
+  When main's head is over 20 minutes old and a site reports another commit, it opens the issue **Live site is not the merged version**
+  (or comments on the open one) with both shas, and closes it when they match again. `DRY_RUN=1 node scripts/ci/live-check.mjs` shows
+  what it would do. It checks the commit only: not the volume on the live service (DEBT T3b, T15). `TRUST_PROXY` is checked by hand through `/api/health` (see the owner's steps above).
 
 ## Known limits
 

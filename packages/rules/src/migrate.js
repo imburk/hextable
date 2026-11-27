@@ -7,7 +7,7 @@ const SPELL_IDS = { fireBolt: 'fire-bolt', sacredFlame: 'sacred-flame', magicMis
 const MONSTER_IDS = { goblin: 'goblin-warrior' };
 
 import { migrateMap } from './map.js';
-import { MONSTERS, MONSTER_ACTIONS, PREGENS } from './content/index.js';
+import { MONSTERS, MONSTER_ACTIONS, PREGENS, PREGEN_SHEETS, SPELLS } from './content/index.js';
 import { validPending } from './reactions.js';
 import { leaveForm, validForm } from './forms.js';
 import { xpFor } from './rewards.js';
@@ -16,8 +16,9 @@ import { validFormation } from './engine/world.js';
 import { SIZES } from './content/sizes.js';
 import { copyPacks, packsProblem } from './content/packs.js';
 import { cleanPurse } from './market.js';
+import { derive } from './derive.js';
 
-export const VERSION = 28;
+export const VERSION = 31;
 
 export function migrate(state) {
   if (!state || typeof state !== 'object' || !state.entities) return state;
@@ -210,12 +211,63 @@ export function migrate(state) {
     const p = cleanPurse(e.coins);
     if (p && Object.keys(p).length) e.coins = p; else delete e.coins;
   }
+  // Version 29: players are not told how many shops or hidden creatures there are (issue #630; shopids.js). `fightSeq` is the number of
+  // the last fight, counted apart from `seq` (which counts every creature and lasting effect, hidden ones too); a table saved before
+  // has the highest number any fight in its state or record was given, so a fight begun now is numbered after it. `shopAlias` is the
+  // list of the shops shown to anyone, in the order they were first shown, from which a player's ids for shops are numbered: a table
+  // saved before gets those shops in the order of the list. A state already at 29 has neither until a fight or a showing makes it, and
+  // reading code takes an absent one as none; one that is not whole is put right.
+  if (!(state.version >= 29)) {
+    const nums = [state.encounter?.id, state.conclusion?.fight, state.conclusion?.id, ...(Array.isArray(state.timeline) ? state.timeline.map((x) => x?.fight) : [])].filter((n) => Number.isSafeInteger(n) && n > 0);
+    if (nums.length) state.fightSeq = Math.max(...nums);
+    const shown = (Array.isArray(state.shops) ? state.shops : []).filter((x) => x.shown === 'all' || (Array.isArray(x.shown) && x.shown.length)).map((x) => x.id);
+    if (shown.length) state.shopAlias = [...new Set(shown)];
+  }
+  if (state.fightSeq !== undefined && !(Number.isSafeInteger(state.fightSeq) && state.fightSeq >= 0)) delete state.fightSeq;
+  if (state.shopAlias !== undefined && !(Array.isArray(state.shopAlias) && state.shopAlias.every((x) => typeof x === 'string'))) delete state.shopAlias;
+  if (Array.isArray(state.shopAlias) && new Set(state.shopAlias).size !== state.shopAlias.length) state.shopAlias = [...new Set(state.shopAlias)];
+  // Version 30: Paladin's Smite's free cast (docs/specs/on-hit.md, Q8 as amended by #701). A paladin of level 2 or more built before #700 has the
+  // feature with no `freeCast` and no use of it, so it would smite with slots only and tell no one. Each such character that has a sheet gets
+  // what a new one gets: the feature's `freeCast` and `uses` as the sheet derives them now, and the one use unspent (it could not have been
+  // spent). Nothing else of the character is touched (a full remake would carry in every other change of the rules since). A multiclass paladin
+  // is read the same way. One with no sheet (typed in by hand) or a sheet that cannot be read is left as it was; the DM's own record stands.
+  if (!(state.version >= 30)) {
+    for (const e of Object.values(state.entities)) {
+      const mine = Array.isArray(e.feats) ? e.feats.filter((f) => isRec(f) && /(^|-)paladins-smite$/.test(f.id) && f.freeCast === undefined) : [];
+      if (!mine.length || !isRec(e.sheet)) continue;
+      let fresh;
+      try { fresh = derive(structuredClone(e.sheet)).record.feats ?? []; } catch { continue; }
+      for (const f of mine) {
+        const g = fresh.find((x) => x.id === f.id && x.freeCast && x.uses);
+        if (!g) continue;
+        f.freeCast = structuredClone(g.freeCast);
+        f.uses = structuredClone(g.uses);
+        if (!isRec(e.uses)) e.uses = {};
+        e.uses[f.id] = g.uses.max;
+      }
+    }
+  }
+  // Version 31: a spell's lasting effect keeps the level it was cast at (`level`; durations.js), which Dispel Magic reads (#726 job 5). The slot an
+  // effect from before was cast with is not known, so it gets the spell's own level; one whose spell the pack does not have (a table's homebrew)
+  // is left without, and is read at its spell's own level when it is asked (engine/rolls.js, dispel). Parked places are covered by the walk above.
+  if (!(state.version >= 31)) {
+    for (const fx of Array.isArray(state.effects) ? state.effects : []) {
+      if (isRec(fx) && typeof fx.spell === 'string' && fx.level === undefined && Object.hasOwn(SPELLS, fx.spell) && Number.isInteger(SPELLS[fx.spell].level)) fx.level = SPELLS[fx.spell].level;
+    }
+  }
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);
     if (MONSTER_IDS[e.tpl]) e.tpl = MONSTER_IDS[e.tpl];
   }
   for (const entry of state.timeline ?? []) if (SPELL_IDS[entry.spell]) entry.spell = SPELL_IDS[entry.spell];
+  // The four starter heroes are built from sheets now (#672), so they level up. A game saved before has them as hand-typed records:
+  // each one that is still exactly what the pack typed (the same name, class, level, scores, Hit Points and Armor Class) is given its sheet and
+  // nothing else, so no number changes today; the sheet is what Level up and Refresh from sheet then work from. One the DM changed by hand
+  // (a corrected score, a different level) is left typed, as it was. No version of its own: running it again finds nothing to do.
+  for (const e of Object.values(state.entities)) {
+    if (e.kind === 'pc' && !e.sheet && Object.hasOwn(PREGENS, e.id) && isPackStarter(e, PREGENS[e.id])) e.sheet = structuredClone(PREGEN_SHEETS[e.id]);
+  }
   // Version 10: a creature made from a pack monster plays from its actions (Multiattack, breath
   // weapons, saves), carried on the creature. One saved before then takes them from its template.
   for (const e of Object.values(state.entities)) if (!e.actions && MONSTER_ACTIONS[e.tpl]) e.actions = structuredClone(MONSTER_ACTIONS[e.tpl]);
@@ -226,6 +278,25 @@ export function migrate(state) {
   // Also version 11: a monster's Initiative modifier, from the template (only where the SRD gives one).
   for (const e of Object.values(state.entities)) if (e.initBonus === undefined && MONSTERS[e.tpl]?.initBonus !== undefined) e.initBonus = MONSTERS[e.tpl].initBonus;
   return state;
+}
+
+// Is this creature still the starter the pack typed, in everything the pack says (its numbers, attacks, skills, spells, saves, features), with nothing built
+// onto it? Gear is play state (loot, purchases; `levelUp` keeps it), and so is everything else a creature picks up in play (hiding, light, reactions, following,
+// riding, a bond, a Speed the DM set...), none of which is compared. Only the keys that a built character alone has count against it. The sheet derives the compared
+// fields again at the next Level up or Refresh, so a starter the DM edited in any of them is left typed: those edits would be lost.
+const BUILT_ONLY = ['feats', 'hitDie', 'armour', 'shield', 'untrained', 'critOn', 'bonusActs', 'pact', 'conditionImmune', 'classes', 'sheet'];
+const DERIVED_EMPTY = ['speeds', 'senses', 'saveBonus', 'skillBonus', 'resist', 'vuln', 'immune'];
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function isPackStarter(e, t) {
+  if (e.tpl !== undefined || e.maxHp !== t.hp || !same(e.slotsMax ?? {}, t.slots ?? {}) || (e.size ?? 'medium') !== 'medium') return false;
+  if (BUILT_ONLY.some((k) => e[k] !== undefined)) return false;
+  for (const k of Object.keys(t)) if (!['hp', 'slots', 'gear'].includes(k) && !same(e[k], t[k])) return false;
+  for (const k of ['skills', 'expertise', 'tools', 'spells']) if (t[k] === undefined && !same(e[k] ?? [], [])) return false;
+  if (t.features === undefined && !same(e.features ?? {}, {})) return false;
+  // A record field the pack never gives this hero, set on it all the same, is an edit too (schema.js RECORD_FIELDS).
+  for (const k of ['acBase', 'hover', 'hitDice', 'spellAbil', 'type', 'castAbil']) if (t[k] === undefined && e[k] !== undefined) return false;
+  for (const k of DERIVED_EMPTY) if (!same(e[k] ?? (['resist', 'vuln', 'immune'].includes(k) ? [] : {}), ['resist', 'vuln', 'immune'].includes(k) ? [] : {})) return false;
+  return true;
 }
 
 const isRec = (v) => !!v && typeof v === 'object' && !Array.isArray(v);

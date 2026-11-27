@@ -3,7 +3,9 @@
 // Every number is checked by lintRecord (the same check the engine runs), so nothing here decides a rule.
 import { ABILITIES, DAMAGE_TYPES, SIZES, SKILLS, lintRecord } from './shared/content/schema.js';
 import { SPELLS } from './shared/content/index.js';
+import { initSpellCards, markSpell } from './spellcard.js';
 import { initBuild } from './buildsheet.js';
+import { levelUpWhy } from './levelup.js';
 import { initImport } from './importfg.js';
 
 const ABIL_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
@@ -123,10 +125,12 @@ export function initQuickEntry({ act, toast, getState, getSelected, me = () => u
   const bBuild = el('button', { type: 'button', id: 'qb-add', text: 'Build from class' });
   const bLevel = el('button', { type: 'button', id: 'qb-levelup', text: 'Level up', disabled: true });
   const IM = initImport({ act, toast, getState, getSelected });      // a Fantasy Grounds character, read and shown before it is set up
-  host.append(el('h3', { text: 'Characters' }), el('div', { class: 'row' }, bAdd, bBuild, IM.button(), bEdit, bLevel, bRemove), sure);
+  const levelWhy = el('p', { class: 'note', id: 'qb-levelup-why', hidden: true });      // why Level up is off, on the page (a title is never shown on a phone)
+  host.append(el('h3', { text: 'Characters' }), el('div', { class: 'row' }, bAdd, bBuild, IM.button(), bEdit, bLevel, bRemove), levelWhy, sure);
   const B = initBuild({ act, toast, getState, getSelected, me, importButton: () => IM.button() });
   bBuild.onclick = () => B.open({ mode: 'add' });
-  bLevel.onclick = () => { const e = getState()?.entities[getSelected()]; if (e?.sheet) B.open({ mode: 'levelup', entity: e }); };
+  const levelUp = (id) => { const e = getState()?.entities[id]; if (e && !levelUpWhy(getState(), e, { dm: true })) B.open({ mode: 'levelup', entity: e }); };
+  bLevel.onclick = () => levelUp(getSelected());
 
   // The form, in a panel of its own.
   const panel = el('aside', { id: 'qe', class: 'panel qe', hidden: true, 'aria-label': 'Quick entry' });
@@ -144,10 +148,11 @@ export function initQuickEntry({ act, toast, getState, getSelected, me = () => u
     refs[id] = s;
     return el('label', { class: `qe-f ${cls}` }, el('span', { text: label }), s);
   }
-  function tick(label, checked, set, id) {
+  function tick(label, checked, set, id, spell = null) {
     const c = el('input', { type: 'checkbox', checked, id });
     c.onchange = () => { set(c.checked); changed(); };
-    return el('label', { class: 'check qe-tick' }, c, el('span', { text: label }));
+    if (spell) initSpellCards();          // a spell's tick opens the spell card (#787)
+    return markSpell(el('label', { class: 'check qe-tick' }, c, el('span', { text: label })), spell);
   }
   const toggle = (list, v, on) => { const i = list.indexOf(v); if (on && i < 0) list.push(v); if (!on && i >= 0) list.splice(i, 1); };
 
@@ -213,7 +218,7 @@ export function initQuickEntry({ act, toast, getState, getSelected, me = () => u
     for (const sp of Object.values(SPELLS)) (byLevel[sp.level] ??= []).push(sp);
     const sp = el('div', { class: 'qe-spells' });
     for (const lv of Object.keys(byLevel).map(Number).sort((a, b) => a - b)) {
-      sp.append(el('h4', { text: lv === 0 ? 'Cantrips' : `Level ${lv}` }), el('div', { class: 'qe-ticks' }, ...byLevel[lv].sort((a, b) => a.name.localeCompare(b.name)).map((s) => tick(s.name, m.spells.includes(s.id), (on) => toggle(m.spells, s.id, on), `qe-spell-${s.id}`))));
+      sp.append(el('h4', { text: lv === 0 ? 'Cantrips' : `Level ${lv}` }), el('div', { class: 'qe-ticks' }, ...byLevel[lv].sort((a, b) => a.name.localeCompare(b.name)).map((s) => tick(s.name, m.spells.includes(s.id), (on) => toggle(m.spells, s.id, on), `qe-spell-${s.id}`, s.id))));
     }
     const slots = el('div', { class: 'qe-slots' });
     for (let l = 1; l <= 9; l++) slots.append(field(`Level ${l}`, `slot-${l}`, `slot${l}`, { get: () => m.slots[l] ?? '', set: (v) => { if (v.trim() === '') delete m.slots[l]; else m.slots[l] = v; }, max: 1 }));
@@ -293,8 +298,9 @@ export function initQuickEntry({ act, toast, getState, getSelected, me = () => u
     sync(state, selId) {
       const e = state?.entities[selId];
       bEdit.disabled = !(e?.kind === 'pc' && e.abil); bRemove.disabled = !e;
-      bLevel.disabled = !(e?.kind === 'pc' && e.sheet && e.sheet.level < 20 && !(state.encounter?.order ?? []).some((o) => o.id === e.id));
-      bLevel.title = bLevel.disabled ? 'Select a built character outside a fight' : '';
+      const why = !e ? 'Select a character to level them up.' : e.kind !== 'pc' ? 'Only a character levels up.' : levelUpWhy(state, e, { dm: true });
+      bLevel.disabled = !!why; bLevel.title = why; levelWhy.textContent = why; levelWhy.hidden = !why;
+      if (why) bLevel.setAttribute('aria-describedby', 'qb-levelup-why'); else bLevel.removeAttribute('aria-describedby');
       bEdit.title = bEdit.disabled ? 'Select a character first' : ''; bRemove.title = bRemove.disabled ? 'Select a creature first' : '';
       if (!sure.hidden && !e) sure.hidden = true;
     },
@@ -309,6 +315,6 @@ export function initQuickEntry({ act, toast, getState, getSelected, me = () => u
     },
     refused: (msg) => { B.refused(msg); IM.refused(msg); },
     scoresChecked: () => B.scoresChecked(), fresh: () => B.fresh(),
-    open, recordOf, toRecord, fromRecord,
+    open, recordOf, toRecord, fromRecord, levelUp,
   };
 }

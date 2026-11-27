@@ -20,7 +20,7 @@ export const IMPORT_TAG = 'fg-import';
 // A sentence in the grid's words: "hex" and "hexes" become "square" and "squares" on a square map (the editor says the same).
 export const gridWords = (text, G) => (G.kind === 'hex' ? text : String(text).replace(/\bhexes\b/g, G.word.many).replace(/\bhex\b/g, G.word.one));
 // The aim bar's words once an area's aim is locked by a tap (before it, hover previews and the hint says "tap a hex to aim").
-export const aimedWords = (G) => gridWords('Aimed: tap another hex to move it, or Cast', G);
+export const aimedWords = (G) => gridWords('Aimed: tap another hex to move it, or tap the die', G);
 export const gridName = (map) => gridOf(map).word.many;
 
 // The words of the rolled-score rule's choices (engine/dm.js SETTINGS; the longer words are SETTING_TEXT). Short, so a phone's select shows the whole choice.
@@ -43,6 +43,10 @@ export const strikeFirstRule = (settings) => {
   const v = SETTINGS.strikeFirst.includes(settings?.strikeFirst) ? settings.strikeFirst : 'off';
   return { value: v, text: SETTING_TEXT.strikeFirst[v] };
 };
+
+// Turning on 'Spells and attacks' ('all') asks first (#649); turning it off, or choosing the other values, does not. Plain words on what changes in play.
+export const STRIKE_FIRST_WARNING = 'From now on, an attack, a hostile spell or a monster\'s action at the other side lands first, before anyone rolls Initiative, whether you or a player makes it. This is a table rule that is not in the SRD, and it changes who gets the first blow in every fight.';
+export const strikeFirstNeedsAsk = (from, to) => to === 'all' && strikeFirstRule({ strikeFirst: from }).value !== 'all';
 
 // The lobby's last choice of grid for the starter valley, kept on the device.
 export const GRID_KEY = 'hextable.valleyGrid';
@@ -93,7 +97,19 @@ export function initTableControls({ act, getState, isDM, toast }) {
   // Strike first (#585): after the engage checkbox (app.js keeps that one). The select is at least 44 px high, for touch.
   $('dm-engage').closest('label').insertAdjacentHTML('afterend', `<label class="assign">${esc(STRIKE_FIRST_ASK)} <select id="dm-strike-first" style="min-height:44px">${SETTINGS.strikeFirst.map((v) => `<option value="${esc(v)}">${esc(STRIKE_FIRST_NAMES[v] ?? v)}</option>`).join('')}</select></label>
     <p class="note" id="dm-strike-first-text"></p>`);
-  $('dm-strike-first').onchange = (ev) => act({ type: 'setting', key: 'strikeFirst', value: ev.target.value });
+  // Turning on 'Spells and attacks' asks first, in the page's own dialog; Cancel puts the choice back as the table has it.
+  const sfAsk = $('strike-first-ask'), sfSelect = $('dm-strike-first');
+  const sfClose = () => { sfAsk.hidden = true; sfSelect.value = strikeFirstRule(getState()?.settings).value; };
+  $('strike-first-msg').textContent = STRIKE_FIRST_WARNING;
+  $('strike-first-cancel').onclick = () => { sfClose(); sfSelect.focus(); };
+  $('strike-first-on').onclick = () => { sfAsk.hidden = true; act({ type: 'setting', key: 'strikeFirst', value: 'all' }); sfSelect.focus(); };
+  sfAsk.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); $('strike-first-cancel').click(); } });
+  sfSelect.onchange = (ev) => {
+    const to = ev.target.value;
+    if (!isDM()) { sfSelect.value = strikeFirstRule(getState()?.settings).value; return; }
+    if (strikeFirstNeedsAsk(getState()?.settings?.strikeFirst, to)) { sfAsk.hidden = false; $('strike-first-cancel').focus(); return; }
+    act({ type: 'setting', key: 'strikeFirst', value: to });
+  };
 
   // Rolled ability scores (docs/specs/ability-scores.md): may a score be rolled again, below what number, and which result stands. A section of its own after the one that
   // holds the XP choice (it is not a fight rule). Each choice is a label over a select the whole width and at least 44 px high (a thumb), as the square rules are (`#dm-scores` in style.css).
@@ -108,6 +124,18 @@ export function initTableControls({ act, getState, isDM, toast }) {
     $('dm-score-reroll').value = mode; $('dm-score-below').value = String(st.scoreRerollBelow ?? 10); $('dm-score-result').value = res;
     $('dm-score-below-label').hidden = mode !== 'below'; $('dm-score-result-label').hidden = mode === 'none';
     $('dm-score-text').textContent = `${SETTING_TEXT.scoreReroll[mode]}${mode === 'none' ? '' : ` ${SETTING_TEXT.scoreRerollResult[res]}`}`;
+  };
+  // Hit Points (#638): fixed (the SRD's default) or rolled at each level after the first, and what a low roll does. A section of its own after the scores, with the same full-width selects.
+  const HP_NAMES = { method: { fixed: 'Fixed (half the Hit Die plus 1)', rolled: 'Rolled by the game' }, low: { keep: 'The roll stands', reroll1: 'Roll a 1 again, once', fixedMin: 'Never below the fixed value' } };
+  $('dm-scores').insertAdjacentHTML('afterend', `<section id="dm-hp"><h3>Hit Points at each level</h3>
+    <label class="assign">Hit Points after level 1 <select id="dm-hp-method">${SETTINGS.hpMethod.map((v) => `<option value="${v}">${esc(HP_NAMES.method[v])}</option>`).join('')}</select></label>
+    <label class="assign" id="dm-hp-low-label">A low roll <select id="dm-hp-low">${SETTINGS.hpRollLow.map((v) => `<option value="${v}">${esc(HP_NAMES.low[v])}</option>`).join('')}</select></label>
+    <p class="note" id="dm-hp-text"></p></section>`);
+  for (const [id, key] of [['dm-hp-method', 'hpMethod'], ['dm-hp-low', 'hpRollLow']]) $(id).onchange = (ev) => act({ type: 'setting', key, value: ev.target.value });
+  const hpRule = (S) => {
+    const st = S?.settings ?? {}, m = st.hpMethod ?? 'fixed', low = st.hpRollLow ?? 'keep';
+    $('dm-hp-method').value = m; $('dm-hp-low').value = low; $('dm-hp-low-label').hidden = m !== 'rolled';
+    $('dm-hp-text').textContent = `${SETTING_TEXT.hpMethod[m]}${m === 'rolled' ? ` ${SETTING_TEXT.hpRollLow[low]}` : ''}`;
   };
   // Loading a map over the game in progress asks first: a second tap, which lapses after a few seconds.
   const btn = $('dm-stock-go');
@@ -139,7 +167,7 @@ export function initTableControls({ act, getState, isDM, toast }) {
       $('dm-pace').value = pace;
       $('dm-conclusion').value = S?.settings?.conclusion ?? 'dm'; $('dm-xpshare').value = S?.settings?.xpShare ?? 'split';
       $('dm-conclusion-note').hidden = $('dm-conclusion').value !== 'auto';
-      scoreRule(S);
+      scoreRule(S); hpRule(S);
       const sf = strikeFirstRule(S?.settings);
       $('dm-strike-first').value = sf.value; $('dm-strike-first-text').textContent = sf.text;
       $('pace-table').textContent = `The DM has set the table to: ${PACE_NAME[pace] ?? pace}. ${dm ? '' : 'Only the DM can change this.'}`;

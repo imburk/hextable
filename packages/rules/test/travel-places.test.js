@@ -243,7 +243,7 @@ test("undo of an arrival restores both places exactly; redo gives the same again
 });
 
 test("a valley table is unchanged by the migration but for the four new fields and its version (Done when 6)", () => {
-  assert.equal(VERSION, 28);
+  assert.equal(VERSION, 31);
   const old = newGame(5); old.version = 25;
   const was = structuredClone(old);
   migrate(old);
@@ -373,7 +373,9 @@ test("what players are sent: never a parked place, its creatures, the world's id
   const r = ok(apply(s, { type: "loadMap", node: "cave", map: structuredClone(cave), who: ["fighter", "rogue"] }, DM));
   assert.ok(s.parked.keep.entities[canary]);
   const sent = viewEvents(r.events, s, PAT);
-  assert.ok(!sent.some((e) => ["parked", "arrived", "cut", "relocated", "placeStale", "nodeAdded"].includes(e.type)));
+  assert.ok(!sent.some((e) => ["parked", "cut", "relocated", "placeStale", "nodeAdded"].includes(e.type)));
+  // The arrival is the one travel event a player is told (#650): by the id they were given, never the pack's, the entry or where from.
+  assert.deepEqual(sent.filter((e) => e.type === "arrived").map((e) => [Object.keys(e).sort(), e.node, e.ids.sort()]), [[["ids", "name", "node", "type"], "pl3", ["fighter", "rogue"]]]);
   assert.ok(sent.some((e) => e.type === "map"), "the new map is told, as loadMap tells it");
   const v = view(s, PAT), text = json(v);
   for (const k of ["Canary", canary, "Greywatch", '"keep"', "river-country", '"continent"', "parked", '"world":']) assert.ok(!text.includes(k), `no ${k} in a player's view`);
@@ -486,8 +488,8 @@ test("companions go with their master, a mount with its rider; a follower of one
 
 test("every field on a creature that names another creature is one a move between places looks after", () => {
   // Reads the engine for `x.<field> = ... y.id` (one creature's id put on another): each such field must be one listed in
-  // engine/travel.js (CREATURE_LINKS), or one known not to name a creature.
-  const NOT_CREATURES = ["tempFx", "fx", "option", "attuning", "subclass", "armour", "reform", "invest", "uninvested", "id", "imported"];
+  // engine/travel.js (CREATURE_LINKS), or one known not to name a creature (`melded` holds a lasting effect's id, Meld into Stone).
+  const NOT_CREATURES = ["tempFx", "fx", "melded", "option", "attuning", "subclass", "armour", "reform", "invest", "uninvested", "id", "imported"];
   const src = new URL("../src/", import.meta.url), files = [];
   const walk = (d) => { for (const f of readdirSync(d, { withFileTypes: true })) { if (f.isDirectory()) { if (f.name !== "content") walk(new URL(`${f.name}/`, d)); } else if (f.name.endsWith(".js")) files.push(new URL(f.name, d)); } };
   walk(src);

@@ -6,16 +6,18 @@ import { CONTENT, MONSTER_ACTIONS, MONSTERS, SPELLS } from '../content/index.js'
 import { ABILITIES, nearProblem, nearRun, rolledProblem, SKILLS } from '../content/schema.js';
 import { begin, scaleSteps, sharedRolls, walk as walkSteps } from '../effects.js';
 import { leaveForm, takeForm } from '../forms.js';
-import { breakConcentration, effectsOf, endEffect, startEffect, turnKey, useUp } from '../durations.js';
+import { breakConcentration, effectsOf, endEffect, startEffect, tick, turnKey, useUp } from '../durations.js';
 import { apart, FT, ground, overlapAt } from '../space.js';
 import { canSee, coverOf, hiddenFrom, sees } from '../sight.js';
 import { barriers, objectDef } from '../walls.js';
 import { conditionName, conditionPhrase, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
-import { able, actTime, castAbilOf, control, current, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
+import { able, actTime, castAbilOf, control, current, dying, ent, fail, featOf, fleetFree, hostile, inFight, living, mod, need, rollDice, RuleError, spellStats, up, walled } from './shared.js';
 import { instruction, reactionsOf } from '../reactions.js';
+import { unknown } from '../vision.js';
+import { dawn } from './rests.js';
 import { aimAction, findable, findDC, fitsOn, nearObject, objectName, objectOf, objectShown, SEARCH_FEET, seePiles, setObject, unhide } from './world.js';
-import { boundEffect, checkBonus, heal, passive, settle, tempHp } from './rolls.js';
-import { checkEnd, endHold, objectEffects, resolve } from './resolve.js';
+import { abilityCheck, boundEffect, checkBonus, checkSit, GRANTS, grantOf, deathSavesOver, heal, passive, settle, stabilise, tempHp } from './rolls.js';
+import { checkEnd, confusedOnly, endHold, objectEffects, resolve } from './resolve.js';
 import { classesOf, itemActive, itemName } from '../derive.js';
 import { resheet } from './sheets.js';
 import { castFromItem } from './casting.js';
@@ -116,33 +118,6 @@ function initiativeFeatures(s, ev) {
   }
 }
 
-// `dimToo` also works out the total with Disadvantage for Dim Light from the same dice, as `dimTotal`
-// (Search uses it for what it can see only dimly); it is not part of what is shown.
-// `what.escape`: a check made to escape a grapple (the tag `check.escape`). `dis` adds reasons for Disadvantage that are not modifiers.
-const checkSit = (e, what, ability, proficient) => ({ target: e, ability, proficient, escape: what.escape === true, ...(what.skill ? { skill: what.skill } : {}), ...(what.tool ? { tool: what.tool } : {}) });
-function abilityCheck(s, e, what, dimToo = false, dis = []) {
-  const ability = what.ability ?? SKILLS[what.skill];
-  // Whether the check uses one of its skill or tool proficiencies (Reliable Talent); a monster's listed skill bonus counts as one.
-  const proficient = !!((what.skill && (e.skills?.includes(what.skill) || e.skillBonus?.[what.skill] !== undefined)) || (what.tool && e.tools?.includes(what.tool)));
-  const m = modifiers(s, e, 'check', checkSit(e, what, ability, proficient), ''), bonus = checkBonus(e, what, m.lent) + m.add;
-  if (dis.length) m.disadvantage = [...m.disadvantage, ...dis];
-  if (m.autoFail) return { roll: 0, total: 0, bonus };
-  // SRD Tool Proficiency: proficient with the tool and in the skill used with it gives Advantage too.
-  const lends = (k, v) => m.lent.some((x) => x[k] === v);      // a proficiency lent for a time counts as one (addition C of docs/specs/homebrew-subclasses.md)
-  if (what.tool && what.skill && (e.tools?.includes(what.tool) || lends('tool', what.tool)) && (e.skills?.includes(what.skill) || lends('skill', what.skill))) m.advantage = [...m.advantage, 'tool and skill'];
-  const mode = m.advantage.length && !m.disadvantage.length ? 'adv' : m.disadvantage.length && !m.advantage.length ? 'dis' : 'normal';
-  const dimMode = !dimToo ? 'normal' : m.advantage.length ? 'normal' : 'dis';
-  // Reliable Talent: each d20 under its `floor` counts as it.
-  const lift = (d) => (d !== null && m.floor !== null ? Math.max(d, m.floor) : d), raw1 = die(s, 20), raw2 = mode === 'normal' && dimMode === 'normal' ? null : die(s, 20);
-  const r1 = lift(raw1), r2 = lift(raw2), floored = m.floor !== null && (raw1 < m.floor || (raw2 !== null && raw2 < m.floor));
-  const pickOf = (md) => (md === 'adv' ? Math.max(r1, r2) : md === 'dis' ? Math.min(r1, r2) : r1), r = pickOf(mode);
-  const more = rollDice(s, m.dice);
-  if (m.used.length) useUp(s, [], m.used);
-  // The dice are the faces rolled; `roll` is the d20 as it counts, and `floor.was` what it showed.
-  const shown = pickOf(mode) === r1 ? raw1 : raw2;
-  return { roll: r, total: r + bonus + more.total, bonus, dice: [...d20Faces(raw1, mode === 'normal' ? null : raw2, shown), ...more.dice], ...(floored ? { floor: { name: m.floorBy, value: m.floor, was: shown } } : {}), ...(mode === 'normal' ? {} : { rolls: [r1, r2], mode, why: mode === 'adv' ? m.advantage : m.disadvantage }), ...(more.extra.length ? { extra: more.extra } : {}),
-    ...(dimToo ? { dimTotal: pickOf(dimMode) + bonus + more.total } : {}) };
-}
 // Of Athletics and Acrobatics, the one `e` has the better chance with to escape `hold` (docs/specs/grapple-shove.md, Decision 5),
 // judged as abilityCheck judges a check, without rolling: no automatic failure first, then Advantage over neither over
 // Disadvantage, then the higher bonus, then Athletics.
@@ -187,12 +162,16 @@ export const handlers = {
   // (`pool`, `amount` from it). A feature with uses and no action of its own is spent, and its text
   // goes to the DM, who applies it. Costs: the action or Bonus Action, and a use of its own or of
   // another feature (`cost`).
-  feature(s, a, ctx, ev) {
+  // `via` is not from the action: the `attack` handler (attacks.js) passes `{ weapon }` when a feature with `withAttack` is used with the Attack action.
+  feature(s, a, ctx, ev, via = null) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    if (!via) confusedOnly(s, e, 'use a feature');        // a feature named on Confusion's one attack (`use`, `withAttack`) goes with that attack, which the attack handler has already held to the chosen creature
     const f = featOf(e, a.feature) || fail(`${e.name} has no such feature.`);
     // A screen that does not yet send the choice a feature needs (a mode, a form, a slot to make or
     // spend) still spends what it costs and hands the rest to the DM, as before these were built.
     if (f.exchange && (a.make !== undefined || a.spend !== undefined)) return exchange(s, e, f, a, ev);
+    // A feature that swaps one thing for another (Font of Inspiration, Wild Resurgence) is used by naming the swap.
+    if (f.swap) return swap(s, e, f, a, ev);
     // A feature that casts a spell (Divine Intervention) is used by casting: `cast` with `via`.
     (!f.freeCast || f.action) || fail(`${f.name} casts a spell: cast the spell through it (cast with via "${f.id}").`);
     // A feature used on rolling Initiative (Persistent Rage) is spent then, never by hand.
@@ -201,6 +180,9 @@ export const handlers = {
     act || fail(`${f.name} is always on; there is nothing to use.`);
     up(e) || fail(`${e.name} is down.`);
     able(e);
+    // `withAttack` (docs/specs/on-hit.md, Decision 8): used when its creature takes the Attack action, by naming it on the attack (`use`), never by itself.
+    !act.withAttack || via?.withAttack || fail(`${f.name} is used when ${e.name} takes the Attack action: name it on the attack (use: "${f.id}").`);
+    !via || act.withAttack || fail(`${f.name} is not used with the Attack action.`);
     act.time !== 'reaction' || fail(f.reaction ? `${f.name} is a Reaction, taken by ${e.name}'s standing instruction for it.` : `${f.name} is a Reaction. The engine does not take that reaction yet; the DM applies it.`);
     if (act.form && (a.form !== undefined || e.form)) return shapeShift(s, e, f, act, a, ev);
     const enc = s.encounter, fighting = !!enc && inFight(s, e.id), time = act.time === 'free' ? null : act.time;
@@ -458,7 +440,7 @@ export const handlers = {
     // save that ends what it did; a feature whose save has none uses the spell save DC.
     let own;
     walkSteps(steps, (x) => { if (own === undefined && 'save' in x && typeof x.dc === 'number') own = x.dc; });
-    const src = { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10) };
+    const src = { name: f.name, ...(st ? { dc: st.dc, attack: st.attack } : {}), ...(own !== undefined ? { dc: own } : {}), healMod: mod(e.abil[e.castAbil] ?? 10), ...(via?.weapon ? { weapon: via.weapon } : {}) };
     // The zone is made as a spell's is (zones.js startZone); unless it says `atCast`, nobody is affected as it appears.
     const hit = zoneDef && fx ? startZone(s, fx, { def: zoneDef, area: act.target.area, holder: e, hexes: aimed.hexes, origin: aimed.origin, spare: a.spare ?? [], steps, src }, targets) : targets;
     // A second creature near the first (`near`) takes the leading damage steps, rolled once for the two of them: the roll is made here and both read it (`shared`), so the
@@ -521,9 +503,39 @@ export const handlers = {
       ctx.role === 'dm' || fail('Only the DM sets a DC.');
       (Number.isInteger(a.dc) && a.dc > 0 && a.dc <= 40) || fail('A DC is a whole number from 1 to 40.');
     }
-    const r = abilityCheck(s, e, { ability, skill });
+    const grant = grantOf(a, ctx), r = abilityCheck(s, e, { ability, skill }, false, grant === 'disadvantage' ? [GRANTS.disadvantage] : [], grant === 'advantage' ? [GRANTS.advantage] : []);
     ev.push({ type: 'check', id: e.id, ability, ...(skill ? { skill } : {}), ...r, ...(a.dc !== undefined ? { dc: a.dc, success: r.total >= a.dc, secret: true } : {}) });
     if (skill === 'stealth') stealthGearNote(e, ev);
+  },
+  // Stabilizing a creature (SRD "Stabilizing a Character": "You can take the Help action to try to stabilize a creature with 0 Hit Points,
+  // which requires a successful DC 10 Wisdom (Medicine) check"): { type: 'stabilize', actor, target }. Within 5 feet and not behind a wall. In a fight it
+  // takes the actor's action on its turn; out of one it costs nothing. A success makes the target Stable (as Spare the Dying does); a failure changes nothing
+  // and may be tried again. Any creature may try, trained or not. A target that is not dying (up, Stable, dead) is refused before anything is rolled.
+  stabilize(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    const t = typeof a.target === 'string' && Object.hasOwn(s.entities, a.target) ? s.entities[a.target] : fail('No such creature.');
+    ctx.role === 'dm' || (!unknown(s, t) && canSee(s, e, t) !== 'no') || fail('No such creature.');
+    up(e) || fail(`${e.name} is down.`);
+    able(e);
+    t.id !== e.id || fail(`${e.name} can't stabilize itself.`);
+    if (t.dead) fail(`${t.name} is dead.`);
+    if (t.hp > 0) fail(`${t.name} is not at 0 Hit Points.`);
+    if (!dying(t)) fail(`${t.name} is Stable already.`);
+    walled(s, e, t);
+    apart(s, e, t) * FT <= 5 || fail(`${t.name} is out of reach: stabilizing is done within 5 feet.`);
+    if (s.encounter && inFight(s, e.id)) { need(s, e, 'action'); s.encounter.budget.action--; }
+    const r = abilityCheck(s, e, { skill: 'medicine' }), success = r.total >= 10;
+    ev.push({ type: 'check', id: e.id, ability: 'wis', skill: 'medicine', ...r, dc: 10, success, stabilize: t.id });
+    if (success) stabilise(s, t, ev, { actor: e.id, src: { name: 'Stabilize' } });
+    // Out of a fight an attempt takes a round (6 seconds) of game time, so a failure is not free: the other dying creatures (and the target, if it failed) roll a save.
+    if (!(s.encounter && inFight(s, e.id))) {
+      deathSavesOver(s, 0.1, ev);
+      const from = s.clock;
+      s.clock += 0.1;
+      ev.push({ type: 'time', minutes: 0.1 });
+      dawn(s, from, ev);
+      tick(s, ev);
+    }
   },
   // Escaping a grapple (SRD "Grappling", Ending a Grapple; docs/specs/grapple-shove.md, Decision 5):
   // { type: 'escape', actor, from?: grapplerId, skill?: 'athletics' | 'acrobatics' }. A Strength (Athletics) or Dexterity
@@ -563,6 +575,7 @@ export const handlers = {
   // is the DC; in Dim Light the check has Disadvantage). { type: 'search', actor }
   search(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'Search');
     up(e) || fail(`${e.name} is down.`);
     able(e);
     if (s.encounter && inFight(s, e.id)) { need(s, e, 'action'); s.encounter.budget.action--; }
@@ -579,6 +592,7 @@ export const handlers = {
   // A creature with Nimble Escape takes it as a Bonus Action. { type: 'hide', actor }
   hide(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'Hide');
     up(e) || fail(`${e.name} is down.`);
     able(e);
     const why = hideProblem(s, e);
@@ -622,6 +636,47 @@ function exchange(s, e, f, a, ev) {
     return ev.push({ type: 'std', id: e.id, action: `${f.name}: ${a.spend} point${a.spend === 1 ? '' : 's'} from a spell slot` });
   }
   fail(`Say whether ${f.name} makes a spell slot (make) or spends one (spend).`);
+}
+
+// A feature that gives one thing for another, with no action (Font of Inspiration, Wild Resurgence): `swap` is a list of
+// { id, give, get, onlyEmpty?, per? } (docs/specs/rules-expansion.md, "Font of Inspiration and Wild Resurgence"). `give` and
+// `get` are a spell slot ({ slot: true } to give, one of the creature's choosing by `slot: level`; { slot: level } to get) or
+// a pool ({ resource: feature id, n? }). `onlyEmpty`: only when the pool it gets has none left. `per: 'turn'`: once on each
+// of the creature's own turns; `per: 'use'`: for one use of the feature itself, which comes back as its `uses` say.
+// { type: 'feature', actor, feature, swap: id, slot?: level of the slot given }. Everything is checked before anything is paid.
+function swap(s, e, f, a, ev) {
+  up(e) || fail(`${e.name} is down.`);
+  able(e);
+  const list = f.swap, x = list.find((w) => w.id === a.swap) || fail(`Say which swap ${f.name} makes: ${list.map((w) => w.id).join(', ')}.`);
+  const pool = (r) => featOf(e, r.resource) || fail(`${e.name} has no ${r.resource} to swap.`);
+  const key = turnKey(s);
+  if (x.per === 'turn' && s.encounter && inFight(s, e.id)) current(s) === e.id || fail(`${f.name} is used on ${e.name}'s own turn.`);
+  if (x.per === 'turn' && key && e.swapped?.[f.id] === key) fail(`${e.name} has already used ${f.name} this turn.`);
+  if (x.per === 'use') (e.uses[f.id] ?? 0) > 0 || fail(`${e.name} has no uses of ${f.name} left; they come back on a Long Rest.`);
+  let level = null, n = 1;
+  if (x.give.slot) {
+    level = a.slot;
+    (Number.isInteger(level) && level >= 1 && (e.slots?.[level] ?? 0) > 0) || fail(`Name a spell slot ${e.name} has to give up (slot: its level).`);
+  } else {
+    const p = pool(x.give); n = x.give.n ?? 1;
+    (e.uses[p.id] ?? 0) >= n || fail(`${e.name} has no use of ${p.name} to give up.`);
+  }
+  if (x.get.resource !== undefined) {
+    const p = pool(x.get), got = x.get.n ?? 1;
+    if (x.onlyEmpty && (e.uses[p.id] ?? 0) > 0) fail(`${f.name}: ${e.name} still has uses of ${p.name}.`);
+    (e.uses[p.id] ?? 0) + got <= p.uses.max || fail(`${e.name} has all its uses of ${p.name}.`);
+  }
+  // Paid for: from here it happens.
+  if (x.per === 'use') e.uses[f.id]--;
+  if (x.per === 'turn' && key) (e.swapped ??= {})[f.id] = key;
+  if (level !== null) e.slots[level]--; else e.uses[featOf(e, x.give.resource).id] -= n;
+  if (x.get.resource !== undefined) e.uses[featOf(e, x.get.resource).id] += x.get.n ?? 1;
+  else e.slots[x.get.slot] = (e.slots[x.get.slot] ?? 0) + 1;
+  // Outside a fight there are no turns to count: the limit is the DM's to judge.
+  if (x.per === 'turn' && !key) ev.push({ type: 'manual', actor: e.id, name: f.name, partial: true, text: `${f.name} may be used once on each of ${e.name}'s turns. There is no turn outside a fight, so the engine cannot count them: the DM judges that limit here.` });
+  const gave = level !== null ? `a level ${level} spell slot` : `${n} use of ${featOf(e, x.give.resource).name}`;
+  const got = x.get.resource !== undefined ? `${x.get.n ?? 1} use of ${featOf(e, x.get.resource).name}` : `a level ${x.get.slot} spell slot`;
+  ev.push({ type: 'std', id: e.id, action: `${f.name}: ${gave} for ${got}` });
 }
 
 // A feature that lays a form over its creature (Wild Shape; forms.js): { type: 'feature', actor,

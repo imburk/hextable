@@ -141,6 +141,13 @@ test("rateKey: an IPv6 address is its /64, however it is written", async () => {
   assert.equal(rateKey("1.2.3.4"), "1.2.3.4");
 });
 
+test("rateKey: an IPv4-mapped address (::ffff:a.b.c.d, any case) is keyed as the IPv4 address, not a /64", async () => {
+  const { rateKey } = await import("../src/limits.js");
+  for (const a of ["::ffff:1.2.3.4", "::FFFF:1.2.3.4", "::Ffff:1.2.3.4"]) assert.equal(rateKey(a), "1.2.3.4", a);
+  assert.notEqual(rateKey("::ffff:1.2.3.4"), rateKey("::ffff:1.2.3.5"));
+  assert.notEqual(rateKey("::ffff:1.2.3.4"), rateKey("::1"));
+});
+
 test("the server as a whole files at most the hourly cap of issues; the rest are stored and not forwarded", async () => {
   const gh = await stub();
   const s = await startServer({ stderr: "pipe", env: { FEEDBACK_GITHUB_REPO: "owner/repo", FEEDBACK_GITHUB_TOKEN: TOKEN, FEEDBACK_GITHUB_API: `http://127.0.0.1:${gh.port}`, LIMIT_FEEDBACK_FORWARD_HOUR: "3", LIMIT_FEEDBACK_MINUTE: "100", LIMIT_FEEDBACK_HOUR: "100" } });

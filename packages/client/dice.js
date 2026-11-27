@@ -277,11 +277,11 @@ export function createDice(canvas, prefs, camera = () => ({ yaw: 0, pitch: 0.95 
   }
   // The camera now, clamped to what the cameras allow.
   const cam = () => { const c = camera() ?? {}; return { yaw: Number.isFinite(c.yaw) ? c.yaw : 0, pitch: Math.max(MIN_PITCH, Math.min(1.5, Number.isFinite(c.pitch) ? c.pitch : 0.95)) }; };
-  // The room the dice may use: below the turn order and the title, above the dock.
+  // The room the dice may use: below the title, above the dock (and so above the token's strip).
   function band(h, titleH) {
     const bottom = (id) => { const el = document.getElementById(id), r = el && !el.hidden ? el.getBoundingClientRect() : null; return r && r.height > 0 ? r : null; };
-    const strip = bottom('order'), head = bottom('top'), dock = bottom('dock');
-    const topEdge = Math.max(head ? head.bottom : 0, strip ? strip.bottom : 0) + 8 + titleH;
+    const dock = bottom('dock');
+    const topEdge = 8 + titleH;
     const botEdge = dock && dock.top > h * 0.3 ? dock.top - 10 : h - 10;
     return { top: topEdge, bottom: Math.max(topEdge + 60, botEdge) };
   }
@@ -325,7 +325,12 @@ export function createDice(canvas, prefs, camera = () => ({ yaw: 0, pitch: 0.95 
   function frame(now) {
     raf = 0;
     if (!current) return;
-    const { w, h } = fit(), c = current, t = (now - c.start) / 1000, T = c.times;
+    // `now` is the frame's own timestamp and can precede `start` (begin() ran later in the same frame, or the page was slow): a throw that has not started has t = 0, never less.
+    // A frame that throws ends the throw: left standing, the promise of play() never resolved and every update behind it waited for good.
+    try { return draw(now); } catch (err) { setTimeout(() => { throw err; }); return next(); }
+  }
+  function draw(now) {
+    const { w, h } = fit(), c = current, t = Math.max(0, now - c.start) / 1000, T = c.times;
     ctx.clearRect(0, 0, w, h);
     const end = T.fly + T.hold + T.fade;
     if (t >= end) return next();

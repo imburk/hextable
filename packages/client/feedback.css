@@ -1,12 +1,8 @@
-/* The feedback button and its panel (feedback.js, docs/specs/feedback.md). Colour, type and radius come from the theme tokens only.
-   The button sits at the left edge under the turn order and the hint line, clear of the dock (bottom), the camera buttons (right) and
-   the drawer (right unless the player put it left, when a modal drawer hides it). In the lobby it moves to the bottom-left corner. */
-#fb-btn { position: fixed; z-index: 13; left: calc(6px + var(--inset-l, 0px)); top: calc(max(10px, env(safe-area-inset-top)) + 150px); width: 40px; height: 40px; padding: 0; display: grid; place-items: center; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 50%; opacity: .85; cursor: pointer; }
-#fb-btn:hover, #fb-btn[aria-expanded="true"] { opacity: 1; }
-#fb-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; opacity: 1; }
-body:has(#lobby:not([hidden])) #fb-btn { top: auto; left: 6px; bottom: max(12px, env(safe-area-inset-bottom)); }
-body:has(#rp:not([hidden])) #fb-btn, body:has(#rp:not([hidden])) #fb-panel { display: none; }      /* never over a reaction question */
-body.drawer-modal[data-drawer="left"]:not(.drawer-pretable) #fb-btn { display: none; }
+/* The feedback panel (feedback.js, docs/specs/feedback.md). Colour, type and radius come from the theme tokens only.
+   M3 took the floating icon off the clean screen: the button is the menu row "Help and feedback", and the menu folds away when it opens the panel. */
+/* The button is a row of the menu's Table list (index.html: Help and feedback); it is styled as every menu row. */
+#fb-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+body:has(#rp:not([hidden])) #fb-panel { display: none; }      /* never over a reaction question */
 
 #fb-panel { position: fixed; z-index: 14; left: 12px; bottom: 12px; width: min(380px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; background: var(--panel-2, var(--panel)); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px 14px; box-shadow: 0 8px 30px #0007; display: grid; gap: 8px; }
 #fb-panel[hidden] { display: none; }

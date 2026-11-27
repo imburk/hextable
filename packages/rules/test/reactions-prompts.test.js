@@ -156,7 +156,7 @@ test("the Opportunity Attack set to 'ask' asks the player as the enemy walks awa
   assert.deepEqual(r.events.map((e) => e.type), ["reactionAsked"]);
   assert.equal(s.entities.m1.pos.q, 1, "it has not moved yet");
   const q = view(s, KIM).prompt;
-  assert.deepEqual([q.trigger, q.by, q.options.map((o) => o.reaction)], ["leave", "m1", ["opportunity-attack"]]);
+  assert.deepEqual([q.trigger, q.by, q.options.map((o) => o.reaction)], ["leave", "m1", ["opportunity-attack", "opportunity-attack-grapple"]]);       // a built hero also has the grapple Opportunity Attack of its Unarmed Strike
   assert.deepEqual(view(s, PAT).prompt, { waiting: true });
   const done = ok(react(s, { take: "opportunity-attack" }, KIM));
   assert.ok(done.events.some((e) => e.type === "attack" && e.actor === "fighter" && e.opportunity));

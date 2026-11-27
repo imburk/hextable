@@ -358,7 +358,7 @@ feet); the step `counter: "spell"`, only in a spell whose reaction is `cast`; a 
 action: monsters' Spellcasting is the DM's by hand, and reaction spells (Shield, Counterspell
 itself) are never offered to be countered. Monsters that cast Counterspell or Shield from their
 stat block (Protective Magic) keep it as text. The Deflect Attacks redirect, Dark One's Own Luck,
-Feather Fall (`fall`) and the Shield Guardian's and Stone Giant's reactions are still the DM's.
+Feather Fall (`fall`, built in wave 4 part 5) and the Shield Guardian's and Stone Giant's reactions are still the DM's.
 No client screen asks the question yet (a client job); with the default instructions nothing
 asks, so play is as before.
 
@@ -591,6 +591,32 @@ What the engine does with a spell today (task R2):
   a `when` it cannot judge, a spell marked `assist`, and a duration it
   cannot time each produce a note to the DM.
 
+### A spell's roll (amended 20 November 2026, #605)
+
+A spell has one optional field, `roll`, that says what it turns on, so a list can show it as plainly as the level:
+`"attack"` (the caster makes a spell attack roll), `"save:str"` to `"save:cha"` (the target makes that saving throw) or
+`"none"` (no attack roll and no saving throw). `SPELL_ROLLS` in `content/schema.js` is the list, `lintSpell` checks it, and the
+reader says it in words ("Its roll: the target makes a Dexterity saving throw").
+
+- **One value.** A spell with two rolls takes the one that decides whether it works: Ice Knife is `attack` (its Dexterity save
+  follows, hit or miss), Wall of Ice is `save:dex` (its Constitution save comes second). The spell's `text` names the other.
+  A spell whose rolls come only from options (Arcane Hand's Clenched Fist) takes the roll of its first option.
+- **Which roll the tag names.** The roll that decides, when the spell is cast, whether it works on its target. A save made only on
+  later turns, only to escape, or only by an unwilling creature is still named when it is the spell's only way to resist
+  (Levitate, Enlarge/Reduce: `save:con`). A save that applies only to one optional mode or a side case is `none`, and the text
+  names it: Forcecage and Magic Circle (a creature escaping), Power Word Stun (the save only ends it later), Heat Metal (the damage
+  is automatic; the save decides dropping the object), Wall of Stone, Control Water, Detect Thoughts (probing), Haste and Beacon of
+  Hope (Advantage on saves is not a save the target makes). Melee spell attacks the caster makes each turn count as `attack`
+  (Spiritual Weapon, Flame Blade, Conjure Fey).
+- **It may not contradict the steps.** An attack step makes it `attack`; otherwise a save step that runs when the spell is cast (a top-level one, not inside another step's branch and not a
+  zone's later turns) makes it one of those saves. A spell with no attack or save step (a `manual` one, or one that rolls nothing) may say any roll, since the steps do not
+  show it. `spell-roll.test.js` holds all 339 SRD spells to this, so the data cannot drift.
+- **Optional for homebrew.** When a spell does not say, `spellRoll(def)` (`effects.js`) reads the steps: an attack step, else the
+  first save step, else `none` for a spell with no manual step, else nothing (null; the list shows no tag). `SPELLS[id].roll`
+  and `spellRoll(id)` (`content/index.js`) give it for any spell, a table's homebrew included.
+- **The screen.** A tag the size of the level: "Attack", "DEX save" or "No roll", in words and with a shape of its own (a solid
+  outline, a double one, a dotted one), never colour alone, in every theme. Where it shows is in `docs/specs/spells-on-the-sheet.md`.
+
 ### A monster
 
 ```js
@@ -818,9 +844,12 @@ Settled while adding the general vocabulary the party-spells table in `docs/DEBT
   SRD Teleportation rules: no movement is spent, nothing provokes an Opportunity Attack, the creature
   arrives as one `moved` event with a one-hex `path` and `teleport: true` (the view filters it as any
   `moved`: under the line-of-sight rules a player is sent it only where the place is in view). If a
-  creature it could not know of stands there, it appears in the nearest unoccupied space instead
-  (the SRD lets it choose; the engine takes the first it finds on the nearest ring), unless the step
-  has `blocked`, whose steps then run on it and it stays (Dimension Door's 4d6 Force). Landing in a
+  creature it could not know of stands there, it arrives as intended and shares the space for now,
+  and the DM alone is told to settle it (amended by #786 wave 4 part 4: landing anywhere else, or not
+  moving, would tell the players something is there; a twin test casts Misty Step and Teleport onto a
+  hidden creature and onto a bare cell), unless the step has `blocked`, whose steps then run on it
+  and it stays (Dimension Door's 4d6 Force). If the space holds a creature it knew of (filled since
+  the cast was checked), it takes the nearest unoccupied space, the first found on the nearest ring. Landing in a
   zone sets the zone off as walking in does; a thing on the floor that goes off when stepped on is
   told to the DM instead (it is not run from inside a spell). Landing in the air: it falls, by the
   engine's gravity after the action. Landing in the arena from outside a fight joins it. A cast with
@@ -886,6 +915,493 @@ Settled while adding the general vocabulary the party-spells table in `docs/DEBT
   source. That is how the engine reads the SRD's undefined "if you or your allies are fighting it";
   a DM who reads it otherwise overrides by hand. Not built: a creature's attitude (Friendly), the
   Dominate spells' commands, and their longer Concentration from a higher slot.
+
+#### Build notes: Mage Armor, Spare the Dying and Light (amendment, #674)
+
+Three spells the engine used to hand to the DM, built to SRD 5.2.1 with the smallest additions to the vocabulary. Tests through
+`apply()` in `packages/rules/test/mage-armor-spare-light.test.js`.
+
+- **Op `baseAc`.** `{ on: 'ac', op: 'baseAc', value: { base, ability } }`, only in a modifier step (a trait, grant or aura is
+  refused: the engine holds the number only for a creature a spell touched). The creature's base Armor Class becomes `base` plus
+  that ability's modifier if that beats the base its own way of working it out gives; "you can benefit from only one" way
+  (SRD, Rules Glossary, Armor Class) is read as the better. `derive` records that base as `acBase` (the armour's, or 10 + Dexterity,
+  or the best Unarmored Defense, before a Shield and what features and items add); the spell replaces it and the rest still adds.
+  `acOf` does the sum. The modifier is put on only a built character with no armour and not in a form. Any other creature (a
+  monster, a hand-typed record, one in armour) gets a `manual` event and nothing is applied. Willingness is the table's.
+- **`ends: { on: 'armour' }`**, for a modifier step: the effect ends when its creature is made again wearing armour (`donned`,
+  `engine/sheets.js`, run by every route that remakes a character: `setSheet`, `equip`, `editCharacter`, `refresh`).
+- **Step `stabilize: true`.** A creature at 0 Hit Points that is not dead becomes Stable (the `stable` status, the Death Saving Throw
+  counts start again, a `cond` event). One that is up or already Stable is left, and a `note` says why: the cast still spends the
+  action (the engine does not refuse a cast at an unhurt creature). Dead is refused at the cast, as for every spell.
+- **`higher.range`.** The spell's range in feet by character level (Spare the Dying: 30, 60, 120), read by `rangeAt` in `effects.js` for
+  the cast, the list of who can be aimed at, and Distant Spell.
+- **Step `light: { bright, dim }`, with `replaces?: true`.** The creature it works on carries that light while the lasting effect
+  runs, and it goes out with it (a `light` part, `durations.js`). `replaces`: the same caster casting the spell again ends the earlier
+  casting. A creature carries one light in the engine: one already carried (`setLight`) is not replaced and the DM is told.
+  Not built, so the DM's: Light on an object that lies elsewhere or is in someone's hands (the engine keeps the light on the caster, as
+  if carried), its colour, covering it, the Large-or-smaller limit. SRD 5.2 has no saving throw for a hostile creature's object, so
+  none is asked.
+- **The Armor Class shown.** `ac` stays the creature's own number. The view adds `acNow` (the number that applies, from `acNow` in
+  `engine/rolls.js`) and `acWhy` (the names of what changed it: Mage Armor, Barkskin) for every party creature where they differ;
+  the DM works it out from the whole state (`acShown`). The sheet, the card and the attack log print it. A character saved before
+  `acBase` existed has it worked out again from its sheet (`acBaseOf`), so no state version changed. That is done with the content lent
+  at the moment (a table's homebrew, inside `using`) and trusted only when nothing is missing and the sheet gives the creature's own `ac`
+  and armour; otherwise Mage Armor goes to the DM. A legacy character with homebrew gear may need a refresh (`refresh` writes `acBase`).
+  A null or a failure is never kept; a kept answer is checked against `ac` and armour on every use, since `sheet.items` is emptied in
+  place for a creature that vanishes or goes to a pocket dimension (`engine/resolve.js`).
+
+#### Build notes: a creature-type limit on a target (amendment, #727)
+
+A spell aimed at creatures may say which creature types it works on. Tests through `apply()` in
+`packages/rules/test/target-types.test.js`.
+
+- **`target.creature.types`.** A list of creature types, for a spell only (an area's `types`, above, stays for any action). A creature's
+  type is its own `type`, else its stat block's, else Humanoid for a character (`creatureType`, `engine/world.js`); a creature in a form
+  keeps its own type, as the SRD's Wild Shape says.
+- **An invalid target** (SRD 5.2.1, Spells, "Invalid Targets"). The cast is not refused: the action, the slot and the components are
+  spent as aimed, a hostile cast starts the fight as any does, and the steps do not run on a creature of another type. Where the
+  spell's first step is a save with no half damage and nothing on a success, a `save` event is written for that creature with
+  `success: true` and `invalid: true` and no die is rolled; otherwise a `note` says the spell did nothing to it. `effectStart` names
+  the targets as aimed. A player who does not run the creature is sent the outcome alone, as for any save (`view.js`), so an invalid
+  target and a made save read the same; the DM and the creature's own player see the mark.
+- **A type the engine cannot tell** (a hand-typed creature with no `type` and no stat block): treated as valid, and a `manual`
+  event tells the DM.
+- **The monster AI** does not pick a spell with this limit (`castShape`, `ai.js`); the DM casts it for the monster.
+- **Entered with it:** Hold Person (now `auto`), Charm Person, Dominate Person (Humanoid), Animal Friendship, Dominate Beast (Beast).
+  Animal Friendship's charm also ends on damage from its caster's side (`ends: { on: 'damaged', by: 'source' }`, already in the
+  vocabulary). Not built: a limit that changes the roll and not the target (Blight's Plant, Shatter's constructs), and wards against
+  creature types (Protection from Evil and Good).
+- **Not checked, not built** (#736). Animal Friendship cast with a higher slot on several Beasts: the SRD's "the spell ends" ends it on
+  all of them when the caster's side damages one; the engine ends the charm on the damaged Beast alone (`ends` belongs to a part, and
+  no part can end its whole effect), the entry is `assist` and says so, and the DM ends the rest (DEBT W39). Dominate Beast and Dominate
+  Person are cast at a creature of the wrong type and of the right one in `target-types.test.js`.
+- **Homebrew** (fix round 1). The field is in the strict-mode guard tables of `schema.js`, as an area's `types` is: its type is a list of
+  text (`HOMEBREW_TYPES.creature`) and its length ceiling is the number of creature types, 14 (`HOMEBREW_LENGTHS['creature.types']`).
+  That shape is also a creature's action's, where the linter refuses the field; the reader says so of such an action as a problem
+  (`creatureAim`, `reader.js`), and the reader's golden monster "Flawed Reaver" has one.
+
+#### Build notes: Jack of All Trades (amendment, #732)
+
+Tests in `packages/rules/test/jack-of-all-trades.test.js`.
+
+- **Tag `check.unskilled`.** A check that names a skill and uses none of the creature's proficiencies: not its own in that skill, not a
+  monster's listed bonus, not a tool it is proficient with, not one a `proficient` modifier lends for a time. A check that names no
+  skill (a plain ability check, Initiative) is not one: the SRD's sentence asks for "a skill proficiency you lack". The maker of the
+  roll says whether a proficiency was used (`sit.proficient`: `abilityCheck` in `engine/features.js`, `passive` in `engine/rolls.js`);
+  where it does not, the tag is not known to hold and the modifier is not applied.
+- **Amount `{ prof: 0.5 }`.** Half the Proficiency Bonus, rounded down (`amount`, `derive.js`). No other fraction is taken.
+- **Jack of All Trades** is that modifier on `check`, and is `auto`. A passive score counts it.
+
+#### Build notes: Death Ward (amendment, #726 job 3)
+
+Tests in `packages/rules/test/death-ward.test.js`. SRD 5.2.1, Death Ward: "The first time the target would drop to 0 Hit Points before
+the spell ends, the target instead drops to 1 Hit Point, and the spell ends. If the spell is still in effect when the target is
+subjected to an effect that would kill it instantly without dealing damage, that effect is negated against the target, and the spell
+ends."
+
+- **Hook `hp.zero`.** Asked when damage would take a creature from above 0 Hit Points to 0 (`damage`, `engine/resolve.js`), and by a
+  `kill` step (`kill`, `engine/rolls.js`). It takes one shape, `{ on: "hp.zero", op: "min", value: 1, uses: 1 }`, and only as a
+  modifier step (a spell's, an action's): the linter refuses any other op or value, a `when`, a missing `uses`, and the hook in a
+  trait or a feat's grant, where nothing would use it up.
+- **On damage.** The creature is left at 1 Hit Point, however large the damage (no death from massive damage: it never reaches 0).
+  The `damage` events of that hit carry `hp: 1`, a `note` on the creature says "Death Ward: 1 Hit Point left instead of 0", and the
+  part is used up (`useUp`), which ends the spell (`effectEnd`, "it was used"). Then the hit goes on as for any creature still up:
+  the Concentration save, a reaction to the damage.
+- **On a `kill` step.** Nothing happens to the creature, a `note` says "Death Ward: not killed", and the part is used up.
+- **Not asked:** when the DM sets Hit Points (`setHp`: the DM's word); for a creature already at 0 Hit Points (it is not dropping to
+  0: the damage counts against its Death Saving Throws and the ward stays); when its Hit Point maximum is lowered.
+- **Before Relentless Rage.** A warded, raging barbarian is left at 1 by the ward; no Constitution save is made and no use counted.
+- **Several wards on one creature** (two casters) all answer the same drop and all end.
+- **Death Ward** is `assist`: the engine does all of the above, and a death the DM applies by hand from a `manual` entry (Power Word
+  Kill, a monster's text) is the DM's to undo, ending the spell with `endEffect`.
+- **The reader** has the hook's words; the golden spell "Many Blessings" and the golden monster "Cinderjaw Hound" (its Smoke Step) carry one.
+
+#### Build notes: Dispel Magic (amendment, #726 job 5)
+
+Tests in `packages/rules/test/dispel-magic.test.js`. SRD 5.2.1, Dispel Magic: "Choose one creature, object, or magical effect within
+range. Any ongoing spell of level 3 or lower on the target ends. For each ongoing spell of level 4 or higher on the target, make an
+ability check using your spellcasting ability (DC 10 plus that spell's level). On a successful check, the spell ends. Using a
+Higher-Level Spell Slot. You automatically end a spell on the target if the spell's level is equal to or less than the level of the
+spell slot you use."
+
+- **Step `dispel: level` with `dc`** (`{ "dispel": 3, "dc": 10 }`; `dispel`, `engine/rolls.js`). Run on a creature. Every ongoing
+  spell on it ends if its level is `dispel` or lower, or no higher than the slot the dispelling spell was cast with. For each higher
+  one the caster makes an ability check with its spellcasting ability (`castAbilOf`), with no Proficiency Bonus, against `dc` plus
+  that spell's level, through the same `abilityCheck` as any check (moved from `engine/features.js` to `engine/rolls.js` so the kit
+  can use it), so what changes a check with that ability applies. A `check` event is written (`what` is the dispelling spell's
+  name; a player is sent the roll and never the DC, as for every check), and on a success the spell ends. A `note` on the creature
+  says how many spells ended ("Dispel Magic: 2 spells end", "no spell ends"); each ending is an `effectEnd` with
+  `why: "it was dispelled"`.
+- **A lasting effect keeps the level it was cast at** (`level` on the record in `state.effects`; state version 31): the slot's level,
+  the spell's own where no higher slot was used, 0 for a cantrip, the level a magic item casts it at. The SRD's "Casting without
+  Slots" and "Using a Higher-Level Spell Slot" make the slot's level the spell's. An effect with no `level` (a bound effect of an
+  instant spell, corpses' control, one from before version 31 of a spell the pack does not have) counts at the spell's own level.
+  The migration gives every older spell effect its spell's own level: the slot it was cast with is not known.
+- **What "on the target" is.** A spell is on a creature if a live part of its effect is (a condition, a modifier, a light, Temporary
+  Hit Points, a form, the bond of a creature a spell made, a changed weapon). A spell whose steps the DM applies has no part on
+  anyone, so the effect also keeps whom it was aimed at (`aimed`, for a spell aimed at creatures or at its caster, less the targets
+  a creature-type limit made invalid): where no part is on any of those, the spell is taken to be on each of them. Where it took
+  hold on some and not on others (a made save), it is on those it holds only.
+- **The spell ends whole.** The SRD's words are "the spell ends", so Bless on three creatures ends on all three when one of them is
+  dispelled. (The other reading, ending it on the target alone, is one line: end the target's parts and let `spent` end the rest.)
+- **Not built** (the entry is `assist` and says so): an object or a magical effect as the target (a zone, changed ground, a spell
+  with nothing on a creature: the DM ends those with `endEffect`); magic that is not a spell cast through the engine (a feature's
+  effect, a creature's own action, a spell the DM applied by hand). A caster whose spellcasting ability the engine does not know (a
+  creature's action with the step) has each check handed to the DM in a `manual` event.
+- **Views.** `level` and `aimed` are not sent to players: `viewEffects` sends named fields only.
+- **The reader** has the step's sentence; the golden spell "Unravel" and the golden monster "Cinderjaw Hound" carry one.
+
+#### Build notes: Revivify (amendment, #726 job 6)
+
+Tests in `packages/rules/test/revivify.test.js`, and a `twin()` test in `packages/server/test/twin-worlds.test.js`. SRD 5.2.1, Revivify: "You
+touch a creature that has died within the last minute. That creature revives with 1 Hit Point. This spell can't revive a creature that has
+died of old age, nor does it restore any missing body parts." Components: V, S, M (a diamond worth 300+ GP, which the spell consumes).
+
+- **The time of death is on the body** (`diedAt`, a number: the game clock, `s.clock`, in minutes). `died(s, t)` (`engine/rolls.js`) sets it at
+  each of the places a creature dies (damage to a creature at 0 Hit Points or past its maximum, a third failed Death Saving Throw, a `kill`
+  step, an Instant Death from damage), beside the `died` event. A creature that vanished (`vanish`: gone, not killed) has none.
+  **One clock, in minutes, serves in and out of a fight**: in a fight the clock moves a round (0.1 minute) when the round turns, so ten rounds
+  are a minute and no second count of rounds is kept. The cost is that the minute is judged to the round, not to the turn (a death early in
+  round 3 and a cast late in round 13 count as a minute apart). Outside a fight it is the time the DM lets pass (`advanceTime`, rests).
+- **The shape.** `diedAt` is optional and is read only on a dead creature, so the state version stays 31 and there is no migration: a body
+  from a game saved before it was kept has no time of death, and none could be made up. Such a body is not revived: the cast is made and paid
+  for, and the DM is told (`manual`: "the engine does not know when it died") and brings it back by hand (`setHp`). A body the DM's `setHp`
+  raised has `diedAt` dropped there (`setHp` deletes it).
+- **Aimed at the dead: `target.creature.dead: true`**, for a spell only (the linter refuses it in a creature's action, in the reader too).
+  A spell without it refuses a dead target exactly as before ("... is dead."). With it the spell takes a body: the cast refuses, before
+  anything is spent and changing nothing, a creature that is up ("... has not" died), a body that vanished, one nothing is left of
+  (`remains`: dust or a statue, as Animate Dead says), a body under another creature that now stands there (the dead fill no space; as the
+  DM's `setHp` refuses), one out of reach (touch is 5 feet) or behind a wall, and a creature a player has not been told of ("No such
+  creature.", before the spell is looked at). `targetsFor` lists bodies for such a spell and the living for any other.
+- **Step `revive: hitPoints` with `within`** (`{ "revive": 1, "within": 1 }`; `revive`, `engine/rolls.js`). Only in a spell whose creature
+  target says `dead: true`, and that target needs the step: the linter holds each to the other, and holds the numbers (`revive` 1 to 100,
+  `within` 1 to 1440 minutes; a homebrew table's ceilings are 2 and 2, twice the SRD's). It works on a body:
+  - died `within` minutes ago or less (`s.clock - diedAt`, with the small allowance the clock's 0.1 steps need): the creature is no longer
+    dead, `diedAt` is dropped, it is at 0 Hit Points and then healed `revive` (at most its maximum) by the engine's own `heal`, so its Death
+    Saving Throw counts start again and Unconscious, Stable (and Prone outside a fight) end as for any healing, and a `heal` event and a `note`
+    ("Revivify: Brenna returns to life") are written. In a fight it is in the order still and takes its turn.
+  - died longer ago: an **invalid target** by the SRD's rule (a slot spent, nothing happens): a `note` says it died more than a minute ago.
+    The cast is not refused, because a refusal would tell a player when a creature died, and no player is sent `diedAt` (it is withheld). The note
+    itself does tell the caster that a body the party sees died more than a minute ago: a deliberate reveal about a body the party sees, not about
+    a hidden creature (the twin test plays it).
+- **What goes to the DM.** On every revival one `manual` event (`partial`) says that the engine cannot tell whether the creature died of old
+  age (which the spell cannot undo) or lacks body parts (which it does not restore), and that it does not take the diamond worth 300 GP or more
+  the spell consumes (the engine charges no component for any spell); the DM undoes the cast if the revival should not have worked, and takes the
+  diamond. The engine does not guess either. A body with no `diedAt` is handed over whole, as above. The entry is `assist`.
+- **Views.** `diedAt` is `withheld` in `view-fields.js`; the foe's record is built field by field and does not carry it. A hidden dead creature is
+  not sent, aimed at or told of ("No such creature." is the same with and without it): the twin test plays a player's Revivify of a seen body, an
+  aim at the id of a hidden body, and a second cast at the creature now up, in a world with a hidden dead creature and one without.
+- **The reader** has the step's sentence and the target's, and the golden spell "Wake the Fallen" and golden monster "Grave Robber" (a creature's
+  action aimed at the dead, refused) carry them.
+- **Not built:** Raise Dead, Resurrection, Reincarnate, Clone and True Resurrection (a longer `within`, a Hit Point maximum penalty, Constitution
+  checks, a body that is whole: none are in the vocabulary) and the client's picking a body to aim at.
+
+#### Build notes: Death Saving Throws outside a fight (amendment, #726 job 8; DEBT W10)
+
+Tests in `packages/rules/test/death-saves-outside-fight.test.js`. SRD 5.2.1, Dropping to 0 Hit Points: "Whenever you start your turn with 0 Hit Points,
+you must make a Death Saving Throw". Stabilizing a Character: "You can take the Help action to try to stabilize a creature with 0 Hit Points,
+which requires a successful DC 10 Wisdom (Medicine) check ... A Stable creature that isn't healed regains 1 Hit Point after 1d4 hours."
+
+- **The problem.** Outside a fight nobody has a turn, so the trigger the SRD names never comes, and a creature at 0 Hit Points sat dying for ever
+  (a Long Rest handed it to the DM). Three models were weighed. (1) *A fight starts for the dying creature*: invents a fight, an arena and an
+  Initiative the DM did not ask for, and the SRD does not say it. (2) *The DM is handed it* (the old behaviour for a Long Rest): keeps the
+  SRD but leaves the saves to the DM's memory and dice, which is the gap W10 names. (3) *The game clock moving rolls the saves*: the SRD's own
+  unit of time for a turn is 6 seconds (a round), so a creature that is dying while the DM lets time pass makes one save for each 6 seconds
+  that pass. **Model 3 is built**, because it needs no new state, keeps the SRD's counts and 1s and 20s, and uses the same `deathSave` as a fight.
+- **The rule.** `deathSavesOver(s, minutes, ev)` (`engine/rolls.js`), called by `advanceTime`, `shortRest` (60 minutes) and `rest` (480 minutes)
+  after they have validated and before the clock moves. For each creature that is dying (`dying`: at 0 Hit Points, not dead, not Stable) on the
+  party's side with a death record, in the table's order, it writes a `note` ("... makes a Death Saving Throw for each 6 seconds that pass") and
+  then rolls `floor(minutes x 10)` saves at most, one after another, stopping when the creature is Stable, dead or up (a 20). Five saves always
+  settle a creature, so a jump of half a minute or more settles every one and a longer jump rolls no more. Less than 6 seconds rolls nothing.
+  The seeded dice are the same as in a fight, so a game replays exactly; each save is a `deathSave` event with its roll, counts and result, sent to
+  the table as it is in a fight (the DM sees every roll, and the players see what a fight shows them). The clock is set to each save's moment while it
+  is rolled, so a death's `diedAt` (Revivify) is the moment of the failed save, then put back; the handler then moves it by the whole time.
+  **Nobody dies silently**: the rolls and the `died` result are in the events, and `advanceTime` is the DM's own action. The DM who does not
+  want the dice rolled stabilises or heals the creature first (below) or does not let the time pass.
+- **After the saves.** A creature that died is out of the rest (dead: `who` drops it). One made Stable at a Long Rest regains 1 Hit Point as before
+  (the Long Rest is longer than 1d4 hours); at an `advanceTime` or a Short Rest it stays Stable at 0, and the 1 Hit Point after 1d4 hours is still
+  only across a Long Rest (W10's remainder: a Stable creature's 1d4 hours is not tracked on the clock). One that rolled a 20 is up with 1 Hit Point and rests as any
+  creature does (not in the Short Rest it was dying through: its Hit Point Dice were not available when the rest began). A creature still dying
+  after fewer than five rounds (a pass of under half a minute) keeps its counts, and a Long Rest or Short Rest still says it cannot rest.
+- **Review fixes.** A Long Rest benefits only those who were up (1 Hit Point or more) when it began; one dying at its start gets the saves only (a 20 leaves it
+  at 1 Hit Point, a Stable one regains 1 as before). Out of a fight each `stabilize` attempt takes 6 seconds: after the check the clock moves 0.1 minute
+  through the same path (`deathSavesOver`, a `time` event, dawn, `tick`), so a failure costs the target a save and the other dying theirs. A player
+  may only stabilise a creature it can see ("No such creature." otherwise, as for an absent id).
+- **Foes and companions.** A foe at 0 Hit Points and a creature with no death record are not touched: the engine's own rule for them has not changed.
+- **Stabilizing by Medicine: the `stabilize` action** (`engine/features.js`), `{ type: 'stabilize', actor, target }`. The SRD has no Help action in
+  the engine, so this is the Help action's use: a DC 10 Wisdom (Medicine) check by a creature that is up and able, within 5 feet of the target and
+  with no wall between, on a creature that is dying. Any creature may try (the check uses its own Medicine bonus, trained or not). In a fight it
+  takes the actor's action on its turn (the engine's usual budget); out of one it costs nothing. A success is `stabilise` (the same as Spare the Dying: Stable,
+  both counts reset, a `cond` event); a failure changes nothing and may be tried again (in a fight each try is an action). The `check` event
+  carries `dc: 10`, `success` and `stabilize: <target id>`. Refused before anything is rolled, changing nothing: a target that is up, Stable or dead, the
+  helper itself, a target out of reach, a helper that is down, and a creature a player has not been told of ("No such creature."). A player
+  may stabilise anyone they can reach; control is the usual (`control`).
+- **The play note of 15 November** ("during the exploration phase you can stabilize your team mates") was checked. Spare the Dying (15 feet and
+  growing with level) and healing spells (Cure Wounds) already worked on a creature at 0 Hit Points outside a fight, with no fight needed
+  (tested here); what was missing was the Medicine check, now `stabilize`, and the saves themselves.
+- **Not built:** the 1d4 hours a Stable creature waits before it regains 1 Hit Point (only across a Long Rest, as before); a Help action in general
+  (Advantage to an ally's check or attack: `stabilize` is its Medicine use only); the client's button for `stabilize` (the client lane); travel
+  between places moves no clock, so it rolls nothing.
+
+#### Build notes: Font of Inspiration and Wild Resurgence (amendment, #726 job 7)
+
+Tests in `packages/rules/test/font-resurgence.test.js`. SRD 5.2.1, Bard level 5, Font of Inspiration: Bardic Inspiration comes back on a Short or
+Long Rest, and "you can expend a spell slot (no action required) to regain one expended use of Bardic Inspiration." Druid level 5, Wild Resurgence:
+"Once on each of your turns, if you have no uses of Wild Shape left, you can give yourself one use by expending a spell slot (no action required).
+In addition, you can expend one use of Wild Shape (no action required) to give yourself a level 1 spell slot, but you can't do so again until you
+finish a Long Rest." The Short Rest half of Font of Inspiration was already built (`uses.recharge` by level).
+
+- **A new grant, `swap`** (a list of 1 to 4): `{ id, give, get, onlyEmpty?, per? }`. `give` is `{ slot: true }` (a spell slot the creature chooses) or
+  `{ resource: feature id, n? }` (uses of a pool); `get` is `{ slot: level }` or `{ resource, n? }`. A slot is never given for a slot. `onlyEmpty:
+  true` (only for a pool it gets): only when that pool has none left. `per: 'turn'`: once on each of the creature's own turns; `per: 'use'`: for one
+  use of the feature itself (the feature then has `uses`, and they come back as `uses.recharge` says: Wild Resurgence's one use is "once until a Long
+  Rest", restored by the rest as every feature with uses is, so `engine/rests.js` did not change). The linter holds the shapes and that a `resource`
+  is a feature with uses of the class (`cost` references).
+  Reading: `reader.js` has the sentence; `derive.js` copies it to the feature record (`FEAT_FIELDS` has it); an item may not grant it.
+- **The action**: `{ type: 'feature', actor, feature, swap: id, slot?: level }`, by the creature's controller or the DM. No action, bonus action or
+  reaction is taken, in a fight or out of it. Everything is checked before anything is paid: the creature is up and able; the swap exists; a slot of
+  that level is there to give (`slot`); a pool given has the uses; a pool got is not already full (`uses.max`), and for `onlyEmpty` is at 0; `per:
+  'use'` has a use left; `per: 'turn'` has not been made on this turn, and in a fight is made on the creature's own turn. Outside a fight there are no
+  turns to count, so only the other limits hold and the DM is sent a `manual` note (partial) that the once-per-turn limit is theirs to judge (a swap needs a slot spent and a pool at 0, so it cannot run away). The turn is kept on the creature
+  as `swapped` (`{ feature id: turn key }`), `withheld` in `view-fields.js`. A feature with `swap` used with no `swap` named is refused ("Say which
+  swap"), so it can never spend its use by hand. A slot got is one more than the creature's maximum; it goes at the next Long Rest, which sets slots
+  to their maximum, as a Font of Magic slot does.
+- **Multiclass.** Features go by their own class's level: bard 5 / druid 5 has both; bard 4 / druid 5 only Wild Resurgence (tested).
+- **The two features are `auto`.** Nothing is left for the DM. Pact Magic slots count as spell slots (they are in `slots`).
+- **Homebrew swaps are refused for now**: `grants.swap` in a homebrew pack is refused by the strict shape check ("cannot swap a spell slot..."), as `invest` and `forgoAttack` are, because its limits are not in the homebrew tables. Tested through `loadPack`.
+- **Not built:** the client has no control for it (DEBT W41).
+
+#### Build notes: Flyby (amendment, #726 job 9)
+
+Tests in `packages/rules/test/flyby.test.js`. SRD 5.2.1, the trait Flyby (the Owl, Giant Owl, Hippogriff, Gargoyle, Flying Snake, Giant Wasp and Pteranodon, one
+text each): "doesn't provoke an Opportunity Attack when it flies out of an enemy's reach." DEBT W25.
+
+- **A new trait key**, `flyby: true` (a trait of a monster, beside `dragFree`; `schema.js` lints it and lists it in the trait keys and types the homebrew
+  tables read, `reader.js` says it in a sentence and counts the trait as run by the engine). It is a tag and nothing else, so a table's homebrew monster may carry it.
+  The seven SRD traits named Flyby have it and the test holds that no other trait does.
+- **The walk** (`engine/movement.js`, `walk`): a creature with the tag has no Opportunity Attack offered for any step it takes in a fight. The tag is read by
+  `flyby(e)` in `modifiers.js` from the creature's own pack monster (`tpl`: a monster, a familiar, a summon) and from the stat block of the form it has taken
+  (`form.block`: a druid's Wild Shape lays the beast's traits over it, as Pack Tactics is). A rider on a mount that has it is carried out of reach by it and
+  provokes nothing either (it is moved by the mount's movement). A foe's instruction (`ask`, `never`) is not reached at all, so no prompt and no `manual`.
+- **Walking or flying**: the SRD says "flies out". The engine keeps no movement mode, so a flyer walking on the ground still counts as flying; the tag counts only while the creature has a Speed to fly in its present shape (`speedOf` fly above 0). It is read for
+  every step. Left for later (DEBT W42).
+- **The brain** (`ai.js`, `guard`): a creature with the tag counts no foe as one that could make an Opportunity Attack on it, so a familiar owl steps away from harm
+  as a creature with no such foe beside it does.
+- **What a hidden creature tells.** A hidden mover that a party creature senses is found by the walk before the Opportunity Attack is made; with the tag there is no
+  Opportunity Attack, so nothing finds it there. What a player is sent for a hidden flyer is a subset of what it is sent for a hidden creature without the tag (the
+  `moved` event alone), and no scenario shows more with the tag than without, so no `twin()` test was added; the test holds that nothing but the move is sent.
+- **Not built:** see DEBT W42.
+
+#### Build notes: Heroism and Regenerate (amendment, #726 job 2)
+
+Tests in `packages/rules/test/turn-start.test.js`. SRD 5.2.1, Heroism: "A willing creature you touch is imbued with bravery. Until the spell ends, the creature is
+immune to the Frightened condition and gains Temporary Hit Points equal to your spellcasting ability modifier at the start of each of its turns. Using a
+Higher-Level Spell Slot. You can target one additional creature for each spell slot level above 1." Regenerate: "A creature you touch regains 4d8 + 15 Hit Points.
+For the duration, the target regains 1 Hit Point at the start of each of its turns, and any severed body parts regrow after 2 minutes." DEBT "a turn-start trigger
+outside a zone".
+
+- **Step `eachTurn: [steps]`** (`eachTurn`, `engine/rolls.js`; `turnSteps`, `effects.js`). Run on a creature, it puts a part `{ target, turn: { steps, src } }` on the
+  spell's lasting effect (`src` is the name, the spell and the caster's spellcasting modifier as the cast had them). At the start of each of the creature's turns in a
+  fight (`beginTurn`, `engine/resolve.js`, after what ends then and the zones that go off then; and for a controlled mount, with its rider's turn) the engine runs the
+  steps on it as the effect's source, on top of whatever is on the effect stack, as a reaction is. Inside the list only `heal`, `tempHp` and `manual` steps, one to four,
+  and none inside another (the linter, `lintSteps`); the step is for a spell that lasts, so that there is an effect to hang it on (`eachOk`). A cast with no lasting effect
+  to hold it (an instant spell's bound one) hands the step to the DM, with a `manual` event. `eachTurn` is also a branch name (`BRANCHES`), so every walker of steps (the
+  linter, the work estimate, the dice count, the reader) already reaches the steps inside; the homebrew list ceiling is 4 (`step.eachTurn`).
+- **When it runs.** At the start of each of the creature's turns in a fight, not at a turn's end and not outside a fight (there are no turns then: Regenerate's hour out of
+  a fight gives nothing, and the spell's text says so). A creature at 0 Hit Points gets its steps before its Death Saving Throw (`advanceTurn`): Regenerate's Hit Point
+  raises it to 1, so no save is made; Temporary Hit Points never wake it. A dead creature gets nothing. Ending it is as for any part: the effect ends (its time, Concentration,
+  Dispel Magic, the DM's `endEffect`) and nothing runs after. A creature that is set aside and takes its turn later the same round gets the steps once for the turn it
+  begins, as everything else at the start of a turn does.
+- **Temporary Hit Points a turn gives belong to the creature.** The steps are run without the effect's id, so the points are not taken back when the spell ends: the SRD's
+  Temporary Hit Points "last until they're depleted or you finish a Long Rest". (A `tempHp` step in the cast itself is still tied to its effect, as before.) They do not add up:
+  a creature keeps the larger of what it has and what it is given.
+- **Hook `condition`** (`HOOKS`): one shape, `{ on: "condition", op: "immune", scope: { condition } }`, as a modifier step only (the linter refuses it in a trait, a feat's grant
+  or an aura, which have `conditionImmune` and `aura.immune` already). While its part holds the creature is immune to that condition: `condition()` puts nothing on and says
+  "Immune to Frightened", the DM's `condition` action is refused (`immuneTo`, `modifiers.js`, now also reads the lasting effects), and a condition it already has has no effect
+  (its modifiers are not applied: `sources`, as for an Aura of Courage) and is not taken off, so it counts again when the spell ends. Frightened has no modifiers of its own
+  in the pack (its Disadvantage and "cannot move closer" are in its `also` text for the DM), so for Frightened the effect today is that it cannot be given.
+- **Heroism** is `auto`: a modifier step for the immunity and an `eachTurn` of `{ tempHp: "+0", addMod: true }` (equal to the modifier, with no dice of its own; a modifier of 0
+  or less gives nothing and a lower number never lowers what the creature has). Targets and slots are as before (`higher.slot.targets`). "Willing" is not judged: the engine
+  does not know whether the creature is.
+- **Regenerate** is `assist`: the 4d8 + 15 at the cast, `eachTurn: [{ heal: "+1" }]`, and a `manual` step for the severed body parts, which regrow after 2 minutes: the DM does
+  that, as it hands over every other restoration the engine cannot see.
+- **Views.** `turn` on a part is not sent to players (`viewEffects`, with `born`): it holds the caster's modifier. Nothing else new is sent; a part on a creature a player sees is
+  sent as before. No hidden state is added, so no `twin()` scenario was written: a hidden caster's effect on a party creature is visible by design, and the test holds that a
+  player's view has no `turn` and no `healMod`.
+- **The reader** says both: the hook's sentence and the step's, with what the steps do ("they stay after the spell ends"). The golden spell "Heroic Vigor" and the golden
+  monster "Cinderjaw Hound" (Smoke Step) carry them; the sample pack's Stone Hide has an `eachTurn` for the dry run's coverage (the step cannot stand in a creature's action).
+- **Not built:** steps at the *end* of a turn, other kinds of steps inside (damage at a turn's start is a zone's: Spirit Guardians), a number that grows with the turn, a
+  creature's own action or a feature with an `eachTurn` (the step is for a spell), and a turn outside a fight (DEBT W43).
+
+#### Build notes: wave 1 fight spells (amendment, #786)
+
+Tests in `packages/rules/test/wave1-spells.test.js` and one `twin()` scenario in `packages/server/test/twin-worlds.test.js`. The owner's list of the spells his
+table's party and the first module's NPCs use, in four waves; this is the first: Searing Smite, Spiritual Weapon, Guardian of Faith, Flame Blade, Heat Metal and
+Faerie Fire, all `manual` before. Every number was compared with `reference/srd52/srd52-flow.txt` (Searing Smite 30476, Spiritual Weapon 31049, Guardian of Faith
+27622, Flame Blade 27032, Heat Metal 27924, Faerie Fire 26686) and the entries keep `checked: true`. The wording of each entry's `text` is our own.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Searing Smite | manual | **auto** | nothing |
+| Faerie Fire | manual | assist | the objects in the cube (outlined, Dim Light, Advantage against them) |
+| Heat Metal | manual | assist | the object itself (the target is the creature holding or wearing it), other creatures in contact, the Bonus Action repeat, whether a creature that failed the save could drop it |
+| Guardian of Faith | manual | assist | keeps the guardian's space clear (it is invulnerable and occupies it) |
+| Spiritual Weapon | manual | assist | keeps the attack to a creature within 5 feet of the weapon; the choice of weapon |
+| Flame Blade | manual | assist | the free hand: letting go of the blade ends it, a new Bonus Action evokes it again |
+
+**What the vocabulary already said** (no change): Faerie Fire is an area save whose failure puts a modifier on `attack.received`, a modifier on the hook `condition`
+(`immune`, Invisible) and a `light` on the creature. Heat Metal is a damage step, a save, and two modifiers (`attack.roll`, `check` Disadvantage) that end at the start of the
+caster's next turn. Searing Smite is a hit spell (`hit: { with: "melee" }`, Divine Smite's path: the engine asks at the hit, or the attack names it in `onHit`).
+
+**What was added**, each as small as it could be:
+
+- **Tag `target.seen`** (`TAGS`, `modifiers.js` `judge`): the attacker can see the target. The opposite of `target.unseen`; Faerie Fire's Advantage is "if the attacker can see it". And
+  `sees` (`sight.js`) no longer says a creature is unseen for being Invisible while it is immune to the condition (`immuneTo`): "can't benefit from the Invisible condition" is the
+  hook `condition`, and until now it stopped the condition being put on and its modifiers, but not the sight rule, which read the condition itself.
+- **Tag `target.enemy`**: the target is on another side than the source (`hostile`). Guardian of Faith's "any enemy", in a fight or not (`target.fought` needs a fight).
+- **Inside `eachTurn`: `damage`, `save` and a new step `endSpell: true`** (STEPS; Searing Smite: "the target takes 1d6 Fire damage and then makes a Constitution saving throw. On a failed
+  save, the spell continues. On a successful save, the spell ends"). A `save` in the list has `onFail`/`onSuccess` steps that are `endSpell` or `manual` only; `endSpell` is refused anywhere but inside
+  an `eachTurn`. The turn's steps now run with the spell's save DC (`dc` on the part's `src`), the effect to end (`fxEnd`, put there by `turnSteps`, not stored) and `turn: true`: a step after one that killed
+  the creature does not run (no save for a dead creature). `endSpell` ends the whole lasting effect (`endSpell`, `engine/rolls.js`) with `why` "<name> made the save". A save inside an `eachTurn` is the creature's
+  own, so the linter's "a self-aimed spell has a save step" check (`lintSelfSave`) does not count it.
+- **A higher slot grows the damage inside an `eachTurn` as it grows the spell's first damage step** (`scaleSteps`): Searing Smite's "all the damage increases by 1d6 for each slot level above 1".
+  `higher.slot.damage` is one number for both; the first damage step is the one with the hit, and the turn's step gets the same dice. (No second key: nothing else needs them to differ.)
+- **`ends.keeps: true`** on a modifier or condition that ends at a turn boundary (Heat Metal: the Disadvantage "until the start of your next turn" ends, the spell goes on for the Bonus Action repeats):
+  durations.js `spent` no longer ends an effect all of whose parts have ended when one of them carried it. Without it the engine ended the spell, and the caster's Concentration, with the Disadvantage.
+- **`zone.budget: n`** (Guardian of Faith: "vanishes when it has dealt a total of 60 damage"): a spell's zone counts the damage its source dealt to the creatures it went off on (`fx.zone.spent`, after a save halves
+  it and a Resistance cuts it) and ends the effect when it reaches `n` (`zones.js` `fire`; the effect ends with `why` "it dealt 60 damage"). Never sent to players (`viewEffects` sends no zone). The zone is a sphere
+  15 feet from the chosen space, for a Large guardian that reaches 5 feet from its centre and "within 10 feet of the guardian"; it goes off on `["enter", "turnStart"]`, once a turn, and on no one as it appears.
+- **A zone that goes off on nobody as it appears (no `atCast`) no longer reveals a hidden creature standing in its area** (`casting.js`): the cast's `targets` are the creatures in the area, and each was revealed, though nothing
+  was done to it. The twin scenario found it: Pat was sent a `revealed` event only in the world with a hidden creature in the area. It applies to every such spell (Spirit Guardians and the other zones without `atCast`).
+- **`bond.first: "commanded"`** (a summon bond that takes commands): made in a fight, the creature's first turn is already commanded (`bond.commanded`, as the `command` action sets it), so its master's player plays it straight
+  after the cast, with no Bonus Action more. Spiritual Weapon: "you can immediately make one melee spell attack"; a weapon that acts straight after its caster (`turn: "after"`) is that attack, a turn later in the order
+  but with nobody between. Later turns: the `command` action, a Bonus Action, as the SRD says ("As a Bonus Action on your later turns, you can move the force up to 20 feet and repeat the attack").
+- **A summon block `spiritual-weapon`** (`content/srd52/summons.js`): Speed 20 (walk and fly), the caster's spell attack bonus, one action Force Strike for 1d8 plus the spellcasting modifier of Force damage, one more d8 for each slot level
+  above 2 (as the Animated Object's extra dice are written). The SRD has no stat block: it is "a floating, spectral force", so the block is immune to every damage type and every condition and holds 1 Hit Point nothing can take.
+- **Step `arm: { damage, type, addMod?, time? }`** (Flame Blade: "As a Magic action, you can make a melee spell attack with the fiery blade. On a hit, the target takes Fire damage equal to 3d6 plus your spellcasting ability modifier"):
+  the creature it works on gets one more action in `e.actions` for as long as the lasting effect holds, a melee spell attack (reach 5) with the caster's spell attack bonus as the cast had it, taken with
+  `{ type: "attack", attack: <the spell's id>, target }`. The part is `{ target, arm: id }` and `endPart` (durations.js) takes the action away with the effect (casting it again replaces it). It costs the Action (a Magic action:
+  Extra Attack does not apply to it), or the Bonus Action with `time: "bonus"`. A spell attack, so Improved Critical does not widen it. A character that is made again from its sheet (a level up) loses it: the DM casts again.
+  Needs a spell with a duration and a spell attack bonus; otherwise the step is handed to the DM. Flame Blade's `light` (10 and 10) and the new step are two steps of the same cast; the free hand is a `manual` step.
+- **Fixed on the way:** an `onHit: [{ spell: "searing-smite" }]` named on an attack without a `slot` spent no slot (`e.slots[undefined]--`: NaN): it takes the lowest slot that may pay, as a standing instruction does.
+
+**Per spell**
+
+- *Searing Smite* has no Concentration (the SRD gives none). The extra 1d6 is rolled with the hit's damage and doubled on a Critical Hit; the turn damage is not doubled. A creature that dies of the burning makes no save.
+  Like Divine Smite it is not offered on an Opportunity Attack. The burning runs only in a fight (no turns outside one: DEBT W43).
+- *Heat Metal* is aimed at the creature holding or wearing the object: damage 2d8 (+1d8 per slot level), then its Constitution save. A success puts the Disadvantage on it (the engine reads "if it doesn't drop the object"
+  as a success); a failure hands the drop to the DM, since a creature wearing armour cannot drop it and so has Disadvantage after all. The repeat on later turns is the DM's, in a `manual` step.
+- *Guardian of Faith* is the zone above with `save: dex, half, when: target.enemy` and a flat +20 radiant damage on a failure. The guardian does not appear on the map.
+- *Spiritual Weapon* lasts by Concentration; its `summon` makes a bonded creature `kind: "summon"`, `turn: "after"`, `orders: "command"` (range 500 feet), `at0: "vanish"`. The weapon appears in a space named in `summon: { at: [space] }`
+  within the spell's range. Ending the spell, or losing Concentration, takes it off the map. A creature may still attack it (it takes no damage).
+- *Flame Blade* gives the caster the action and the light; its Concentration ends both.
+- *Faerie Fire* puts the modifiers on each creature that fails the save; one that makes it is not outlined. The Invisible modifier is the hook `condition`: a creature already Invisible keeps the condition (it counts again when the spell ends).
+
+**Views.** `fx.zone.spent` and `fx.zone.budget` are in the zone, which no player is sent; `turn` and the new `arm` part carry the caster's numbers: a part's `arm` is the action's id, which a player who sees the creature is sent with the part.
+The new `twin()` scenario holds the zone: a player's cast of Guardian of Faith with a hidden creature in the area outside the arena is sent the same as with none.
+
+**Not built.** Heat Metal and Guardian of Faith do not track the object or the guardian as things on the map (DEBT W44); Spiritual Weapon's first attack is the weapon's turn straight after the cast, not inside it; Flame Blade does not look at
+the free hand; Faerie Fire outlines no object; the "willing" and "can drop it" questions are the DM's.
+
+#### Build notes: wave 2 areas and walls (amendment, #786)
+
+Tests in `packages/rules/test/wave2-spells.test.js` and one `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Second of the four waves: Spike Growth, Flaming Sphere, Wall of Fire, Wall of Thorns,
+Blade Barrier and Wall of Stone, all `manual` before. Every number was compared with `reference/srd52/srd52-flow.txt` (Spike Growth 31004, Flaming Sphere 27073, Wall of Fire 31989, Wall of Stone 32076, Wall of Thorns
+32112, Blade Barrier 24648) and the entries keep `checked: true`. The wording of each entry's `text` is our own, under 600 characters.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Spike Growth | manual | assist | judges a jump, and the Search action and check that spot the hazard |
+| Flaming Sphere | manual | assist | the barriers and pits it crosses, the objects it sets alight, its light |
+| Wall of Fire | manual | assist | the hot side's 10 feet (creatures that end a turn beside the wall) and the ringed form |
+| Wall of Thorns | manual | assist | the 4-feet-per-foot cost (the engine charges none: Difficult Terrain is a flat 2, so the cast hands it to the DM) and the circular form |
+| Blade Barrier | manual | assist | Three-Quarters Cover for attacks across it, from both sides, and the ringed form |
+| Wall of Stone | manual | **manual** | all of it: see "A wall that is an object" below |
+
+**What the vocabulary already said** (no change): the zone (`on`, `once`, `atCast`), `terrain` (`difficult`, `obscured: "heavy"` for sight blocked) and the `line` area with a `width`.
+
+**What was added**, each as small as it could be:
+
+- **Zone trigger `step`** (`zone.on`, `zones.js` `stepped`; called after each 5-foot step in `engine/movement.js` and each pushed or pulled step in `engine/resolve.js` `push`). Spike Growth: "When a creature moves into or within the area, it takes 2d4 Piercing damage
+  for every 5 feet it travels." A step that ends inside the zone is one dose, whatever it costs in movement (Difficult Terrain doubles the cost, not the feet travelled); the step that leaves it is none. Not once-a-turn.
+- **Placed lines** (`area.placed: true`, a Line with `height`; `engine/world.js` `layout` and `squareLayout`, `aimArea`'s `toward`; `effects.js` `aimable`): a wall put down within the spell's range, centred on the space chosen, `size` feet in all, `width` thick,
+  `height` high from the surface there. It runs across the line from the caster to the space unless `toward` (a space on its line) is named in the cast. Before this a Line with a range was a wall "of any shape" and handed to the DM. A zone's and a terrain's
+  vertical test (`zones.js` `holds`, `terrain.js` `inside`) reads `height`. Straight walls only: the ringed form of each spell stays the DM's (a `manual` line in the entry's text). A hex is 5 feet, so Wall of Fire's 1-foot thickness is one hex.
+- **`zone.effects`**: the steps a zone runs on later comers when they are not the cast's own. Wall of Fire: a Dexterity save for half as it appears, flat damage after ("takes the same damage", no save). Wall of Thorns: Piercing as it appears, Slashing after.
+  The higher slot grows both (`scaleSteps` run on each list).
+- **`zone.once: "enter"`**: only entering is held to once a turn. Wall of Fire "when it enters the wall for the first time on a turn or ends its turn there": ending a turn inside is its own go. (`once: "turn"` holds both together, as Moonbeam and Blade Barrier need.)
+- **`zone.move: n` and the action `moveZone { actor, to, effect? }`** (a sphere zone that rolls; `engine/casting.js`, `zones.js` `shiftZone`). A Bonus Action; the zone goes up to `n` feet toward `to`, one step at a time, and stops in the first space a creature stands in; that creature
+  makes the zone's save at once ("If you move the sphere into a creature's space, that creature makes the save against the sphere, and the sphere stops moving for the turn"), and is revealed if it was hidden. The cast puts the sphere in an unoccupied space.
+  The barriers and pits are not looked at. Event `zoneMoved`, not sent to players (they are never sent a zone).
+
+**The decisions the issue asked for**, each with a test:
+
+- *Spike Growth and flyers.* A creature that is flying (its height is on no surface of its column, `space.js` `ground`; asked in `zones.js` `stepped`) touches no ground: it takes nothing. A creature on the ground takes a dose for every 5-foot step it takes in the area, whether or not it has a Fly Speed (Isaac's default on the board question `spike-fly`; the text says the ground sprouts the spikes).
+- *Spike Growth and jumps.* The engine has no jump action; a jump is the DM's. The entry says so.
+- *Spike Growth and forced movement.* A push or pull is movement: a creature shoved 10 feet through the area takes two doses (tested with Thunderwave).
+- *Wall of Fire, leaving through the wall.* The text deals damage on entering for the first time on a turn and on ending a turn in it, and says nothing of leaving: leaving costs nothing. Crossing the wall costs one dose, on the way in; the walk stops there, as any walk into a zone does.
+- *Blade Barrier, cover.* The wall gives Three-Quarters Cover to attacks across it from either side. The engine's cover comes from walls and objects on the map, which a spell cannot put there (below), so the cover is the DM's: the entry's text and the cast's `manual` event say it, for both sides.
+- *Blade Barrier, the save.* "ends it turn there" (2024), not "starts" (2014): the zone goes off on `enter` and `turnEnd`, never `turnStart`, and a creature saves once a turn (`once: "turn"`, and the cast's own save counts for the turn it was made in).
+- *Flaming Sphere's school.* The SRD 5.2.1 header reads "Level 2 Conjuration (Druid, Sorcerer, Wizard)": the entry keeps conjuration. The evocation the community pass reports is not in the text this repository holds.
+
+**A wall that is an object (Wall of Stone, and the cover and sight of the others).** Wall of Stone is a nonmagical object with panels, Hit Points, AC and a shape the caster chooses, and the others need cover. `walls.js` reads walls and objects from the map document (`map.walls`, `map.objects`) and caches by their signature;
+a spell-made wall would have to put segments there and take them away when the effect ends, which touches the map's linter, its migration, what players are sent of the map and the undo history. That is a larger mechanism than this wave: Wall of Stone stays `manual` (its entry already hands the DM everything), Blade Barrier's cover is
+the DM's, and Wall of Thorns' sight block is Heavily Obscured in its area (`terrain.obscured`), the nearest thing the engine has. DEBT W45.
+
+**Views.** `fx.zone` (its hexes, origin, `move`) is never sent to a player, as for every zone; the new `zoneMoved` event is dropped for players (`viewEvents` names the types a player receives). The new `twin()` scenario holds the sphere: a player's cast with a hidden creature in its area, and the sphere rolled away, are sent
+the same as with none.
+
+**Not built.** See DEBT W45: the ring of Wall of Fire, Thorns and Blade Barrier, the hot side of Wall of Fire, 4-for-1 movement through Thorns, walls as map objects, light from the sphere and objects it ignites, the client's way to name a wall's direction and to roll a zone.
+
+#### Build notes: wave 3a wards and conditions (amendment, #786)
+
+Tests in `packages/rules/test/wave3a-spells.test.js`. Third wave, first part: Protection from Evil and Good and Command are built; Sanctuary, Silence, See Invisibility and Freedom of Movement are not yet (still `manual`; see the PR). Numbers compared with `reference/srd52/srd52-flow.txt` (Protection from Evil and Good 30005, Command 25027). The flow text drops Command's "Using a Higher-Level Spell Slot" paragraph at a page break; the layout file `reference/srd52/srd52.txt` (line 7085) has it ("one additional creature for each spell slot level above 1"), so the entry's `higher` is right.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Protection from Evil and Good | manual | assist | possession; whether the target is willing; a creature whose type the engine cannot tell |
+| Command | manual | assist | Approach and Flee movement, what a Drop lets go of, whether a creature that cannot understand the word follows it (the SRD text is silent) |
+
+**Added.**
+- **Modifier key `from: [creature types]`**: the modifier holds only against a creature of those types. On `attack.received` the attacker's type; on the `condition` hook (immunity) the creature giving the condition (`condition()` passes its source; a DM-applied condition has none, so a restricted immunity does not stop it); on a `save` with `scope.condition`, the source recorded on the condition the creature already has (`cond[id].source`). `modifiers.js` `fromHolds`, `typeOf`, `immuneTo(s, e, id, giver)`. Schema lint, reader words, HOMEBREW_TYPES and `modifier.from` length 14. A restricted immunity never hides a condition already on the creature.
+- **Step `command: <word>|'chosen'`, choice kind `command`** (`COMMANDS`): on a failed save a part is put on the lasting (bound) effect, carried out at the start of the creature's next turn (`resolve.js` `commandsOn`) and gone when that turn ends. Halt, Grovel and Drop set movement, action and Bonus Action to 0 (Reaction untouched); Grovel also puts Prone on (after the creature would have stood). Approach and Flee give a `manual` event to the DM. Spells only (`commandOk`).
+
+**Decisions.** Protection from Evil and Good: Advantage on a save about Charmed or Frightened applies when the creature's existing condition came from one of the six types (an over-approximation: a new, unrelated Charm during it also gets it). Command: a command cast during the target's own turn waits for its next turn; outside a fight it waits for the first turn of the next fight. The part ends with the next turn's end, and also when the fight ends (`fightOver` ends parts that have a turn ending), so a command never waits forever (tested). The cast's and the turn's lines about a command are `manual` events with `partial: true` (the DM's alone), not `note`s: view.js sends a `note` to every player with its creature's id, which would name a creature that went hidden or Invisible after it was commanded (tested through `viewEvents`). A `twin()` scenario was tried and cannot be built: a creature the DM hides is never in the fight, and one forced into the order shows as `someone` in the order and the turn by the table rule `unseenTurns`, by design.
+
+The Advantage-on-save modifier matches the recorded source of the condition (`cond[id].source`), as above. For `from`, a creature in a form keeps its own type (SRD 5.2.1: Wild Shape and Polymorph both retain the creature type), via `typeOf`; one with no known type matches nothing, and a player character reads Humanoid.
+
+#### Build notes: wave 3a part 2 (amendment, #786)
+
+Tests in `packages/rules/test/wave3a2-spells.test.js`. Sanctuary and Freedom of Movement are built (both `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (Sanctuary 30372, Freedom of Movement 27256). Silence and See Invisibility are still `manual`. The SRD 5.2.1 text of Freedom of Movement says nothing of attack penalties underwater (the 2014 text did): the entry gives a Swim Speed only, which the engine does not keep, so it is the DM's.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Sanctuary | manual | assist | letting an attacker that failed choose a new target instead of losing the attack (the engine takes the loss); whether a spell with several targets is lost whole (the engine drops only the warded target); damage the engine cannot attribute to the warded creature (a zone or effect from an earlier spell, damage the DM sets) |
+| Freedom of Movement | manual | assist | other magic than a spell (an item, a trap, a monster's own ability) reducing Speed or giving Paralyzed or Restrained; a condition a spell gave before this one; the Swim Speed; the 5 feet of movement to escape nonmagical restraints or a grapple |
+
+**Added.**
+- **Step `ward: <ability>`** (Sanctuary): a part `{ ward: { save, dc } }` on the lasting effect (`rolls.js` `ward`; needs a spell that lasts and a save DC, else the step goes to the DM). `resolve.js` `wardCheck`: a creature that targets the warded one with an attack roll (`resolveAttack`, and the `attack` step in `effects.js`, which runs a creature's action attack and a spell's attack roll) or with a spell that has an attack or damage step and an aim at creatures (`casting.js` `damaging`) first makes the saving throw against the spell's DC; on a failure the attack is not rolled, or the spell is left off that target (`src.blocked`, the list Shield uses), and the DM is told in a `partial` `manual` event. A `save` event is sent, no `note` (a note would name an attacker that went hidden). Area spells (`aim` not `creature`) are never checked. `durations.js` `endWards` ends the effect when the warded creature makes an attack roll (the same two places), casts a spell (`casting.js`, before the Counterspell window: a countered spell was still cast) or deals damage (`damage()`, where a damage part names `by`).
+- **Hook `terrain`, op `immune`** (Freedom of Movement): `{ on: 'terrain', op: 'immune' }`. `world.js` `moveOptions`: a step into a Difficult Terrain tile (forest), a rise above `STEP_FREE`, a hostile creature's space and ground a spell made difficult cost what open ground does. Water and rock stay impassable; climbing is not Difficult Terrain and is unchanged.
+- **Modifier key `magic: true`**, only on the `condition` hook (op `immune`) and on `speed` (op `immune`). On `condition`: the immunity holds only against a condition a spell gives (`condition()` in `rolls.js` passes `f.src.spell`; `immuneTo(..., magic)`); like `from`, it never hides a condition already on the creature, and a DM-applied condition is not stopped. On `speed`: `speedOf` leaves out what a spell's lasting effect (a part of an effect whose `spell` is set) takes off (`add` below 0, or `set`); a Speed cut by a condition that is on already, or by a feature's effect, still counts. Schema lint, reader words, HOMEBREW tables (`step.ward`, modifier key `magic`) and a lint test.
+
+**Decisions.** A failed Sanctuary save loses the attack or spell: the SRD gives the attacker the choice of a new target, which would need a prompt; the DM may allow it. `keepSpeed` leaves out every spell `set` on Speed, even one that would raise it (nothing in the SRD does). A failed Sanctuary save takes the target out of the spell whole: no attack roll, save or rider (`wardLost` in `casting.js`, not Shield's `blocked`); a trap (an object actor) never makes the save. A zone's conditions are not `magic` (a zone's `src` does not name its spell); Web and Entangle cast as a spell are. One save is made for each attack roll or spell aimed at the warded creature, as the SRD says "targets".
+
+#### Build notes: wave 3a part 3 (amendment, #786)
+
+Tests in `packages/rules/test/wave3a3-spells.test.js`, and a `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Silence and See Invisibility are built (both `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (See Invisibility 30517, Silence 30743).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Silence | manual | assist | the Deafened condition for a creature entirely inside; sound made within or passing through the sphere; objects' Immunity to Thunder damage |
+| See Invisibility | manual | assist | the Ethereal Plane (the engine keeps none) |
+
+**Added.**
+- **Terrain key `silence: true`** (Silence): `terrain: { silence: true }` on a lasting spell whose area is a sphere. `casting.js` puts `silence` on `fx.terrain`. `terrain.js` `silentAt(s, pos)` is whether a place is in a sphere; `silentAll(s, t)` whether every hex of a creature's space, at its feet and its head, is. `casting.js` refuses a cast with a Verbal component by a creature that stands in one (before anything is spent or changed; Subtle Spell is let through, as it drops the component), and `resolve.js` `hitWays` offers no spell cast after a hit with a Verbal component from there. `damage()` gives a creature entirely inside Immunity to Thunder damage. The Verbal gate sits in `rolls.js` `slotsFor`, beside the `noSpells` gate, so every way of casting passes it: a reaction spell with a Verbal component (Shield, Hellish Rebuke) is neither offered nor cast from inside the sphere, and a spell cast after a hit is not offered; Counterspell (Somatic only) is. A Multiattack that holds a spell-like action, and a feature that is only spoken, are not gated. Schema lint, reader words, HOMEBREW tables (`terrain.silence`) and a lint test.
+- **Hook `invisible`, op `immune`** (See Invisibility): `{ on: 'invisible', op: 'immune' }` as a modifier step. `sight.js` `sees`: a viewer that has it sees a target with the Invisible condition (and one hiding, which is the Invisible condition against its enemies) as if it were visible, at any distance, as it would with Truesight in range; the other checks (light, fog, walls, Blinded) still apply. `vision.js` `signature` includes whether each living party creature has the hook from any source (`modifiers()`: a spell, a trait, an aura, a form), so the party's view is built again when it is gained or lost. Schema lint, reader words (`HOOK_WORDS`, `HOLDER_HOOKS`) and a lint test.
+
+**What players are sent.** Nothing new for a table with no See Invisibility on it: an Invisible creature is still left out of every view, which the twin scenario pins (the same bytes with and without such a creature). While the spell lasts, the party's shared view (`partyView`: a creature is seen if any party member can see it, as with Truesight or Blindsight) holds the Invisible creature, so every player at the table is sent it, not only the caster's player. A per-player sight rule would be a bigger change (W49).
+
+**Decisions.** Silence is not a zone: it has no steps to run on a creature that enters, so the terrain machinery (a place, not an event) fits. "In the sphere" for casting is the caster's own hex. Deafened is left to the DM because a condition put on by a zone stays on after a creature leaves it.
 
 ### A class
 
@@ -1459,3 +1975,272 @@ depends on nothing and can start today.
 Suggested order for the strongest model: R1, R2, R3, R4, then R9 (space),
 because size and height change what "adjacent" and "in range" mean and are
 cheaper to add before hundreds of monsters are entered than after.
+
+#### Build notes: wave 3b part 1 (amendment, #786)
+
+Tests in `packages/rules/test/wave3b1-spells.test.js`, and a `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Globe of Invulnerability and Antilife Shell are built (both `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (Globe of Invulnerability 27505, Antilife Shell 24136: the 10-foot Emanation, Concentration, up to 1 minute and up to 1 hour, Constructs and Undead excepted, levels 6 and 5, "level 5 or lower", one level more for each slot level above 6).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Globe of Invulnerability | manual | assist | objects inside; spells the engine cannot aim; effects already running; the barrier's height |
+| Antilife Shell | manual | assist | touch spells, Opportunity Attacks, forced movement through it; a creature whose type is unknown; the whole aura when its caster is hidden from the party |
+
+**Added.**
+- **Terrain keys `globe: true` and `shell: true`**, each alone in its `terrain`, on a lasting spell whose area is an Emanation (until now an Emanation could carry no terrain, as it moves with its caster). Schema lint, reader words, HOMEBREW tables (`terrain.globe`, `terrain.shell`) and a lint test. `terrain.js`: `globesOf`, `shellsOf`, `inGlobe`, `inShell`. `casting.js` lays out a globe's columns (the caster's own space too) and its origin where it went off; a shell keeps `follows: caster` and no hexes.
+- **Globe**: in `cast`, a spell whose level is below the globe's (`fx.level`, the slot it was cast with, less one: 5 or lower from a level 6 slot; the level of the spell as cast counts: the SRD says a spell cast with a higher slot "takes on the higher level for that casting", so a level 1 spell cast with a level 6 slot is a level 6 spell and gets through) cast by a creature not inside that globe leaves out what is inside. Aimed at an area, the creatures inside are left out of its targets and the barrier's columns out of its hexes (so a zone or terrain it lays out leaves the inside bare). Aimed at creatures, one inside may be targeted and the cast is paid for, and the creature is treated as an invalid target (`warded`: a `note` "does nothing", never a faked save). Cast from inside, a spell is not looked at.
+- **Shell**: `world.js` `shellsFor`, `shelledStep`, `shelledReach`, `shellRefusal`. `moveOptions` leaves out a step that takes a bound creature from outside the aura into it (walking, climbing, flying and ladders), so the AI never plans it, and `move` names the aura when that is the only reason a place is refused (`opts.unshelled` asks the question). `attack` (a melee attack) and `aimAction` (an action with a reach) refuse a melee attack of 5 feet reach with one end inside and the other outside, before anything is spent. The SRD lets an affected creature attack "with Ranged or Reach weapons through the barrier", so an attack record or monster action whose reach is more than 5 feet (a glaive, an ogre's or violet fungus's 10-foot reach) is let through, and a 5-foot weapon or natural attack is stopped (the decision: the engine has no Reach property on a monster action, so reach beyond 5 feet stands for it); the monster brain (`ai.js`) skips such targets (`shelledReach` is exported from `engine.js`: the one change there). A creature already inside is not pushed and may move within and out. After each step of the caster (`movement.js` `shellCatch`) the spell ends if a Huge or smaller bound creature is inside the aura that was not before. Constructs and Undead are not bound; the caster is not bound by its own; allies are.
+
+**What players are sent.** A refused move or attack of a creature the party can see names the aura (`Antilife Shell keeps ... from passing into it`). A shell whose caster the party does not know of (hidden, hiding or unseen: `shellSeen`) binds nobody and ends for nobody, so a refusal, or a spell that ends, never tells a player that something stands in a place; the `manual` event at the cast is the DM's alone. The twin scenario holds a visible creature walking into a hidden caster's shell: the same bytes as on a bare cell. A globe judges by the caster's and the targets' places only, and a creature that is hidden inside is left out of an area by its hex, not by being there, so the cast event is the same with or without it.
+
+The aura moving over a creature the party does not know of ends nothing; the DM alone gets a `manual` event to judge it (tested). A second twin scenario holds a hidden creature inside a Globe with a spell cast from outside at the area, through the real `cast`.
+
+**Decisions.** The SRD's "Huge or smaller" ends the spell, so a Gargantuan creature the aura moves over does not. A creature whose type the engine cannot tell is bound (it cannot be shown to be a Construct or Undead). Opportunity Attacks and touch spells are not gated: they are reach, but go through other paths; the DM judges them (W51).
+
+#### Build notes: wave 3b part 2 (amendment, #786)
+
+Tests in `packages/rules/test/wave3b2-spells.test.js`, and a `twin()` scenario in `packages/server/test/twin-worlds.test.js`. Dispel Evil and Good, Confusion and Bestow Curse are built (all `assist`). Numbers compared with `reference/srd52/srd52-flow.txt` (Dispel Evil and Good 26077, Confusion 25161, Bestow Curse 24571: levels 5, 4 and 3; Concentration, up to 1 minute for each; the 10-foot-radius Sphere, range 90 feet, +5 feet of radius per slot level above 4; Wisdom saves for Confusion and Bestow Curse, Charisma for Dismissal; the four curses; the d10 table 1, 2 to 6, 7 to 8, 9 to 10 with 1d4 for the direction; Bestow Curse's levels 4, 5 to 6, 7 to 8 and 9).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Dispel Evil and Good | manual | assist | Break Enchantment and Dismissal (Magic actions of the spell, with the Charisma save and sending a creature home), and ending the spell with them |
+| Confusion | manual | assist | walking a creature that rolled 1; creatures the party does not know of that a 7 or 8 could pick; the later attacks of Extra Attack at the chosen creature on a 7 or 8; the Sphere's radius for a slot above 4 |
+| Bestow Curse | manual | assist | the Dodge action forced by the third curse (the engine rolls the save); the longer time and no Concentration from a higher slot |
+
+**Added.**
+- **Step `confuse: true`** (Confusion), with `ends` as a condition has (`ends: { on: 'save', save, at: 'turnEnd' }` only), in a spell that lasts. `rolls.js` `confuse`: a part `{ target, confuse: { had } }` on the lasting effect, with the repeated save the step gives (`durations.js` `boundary` rolls it, at the end of each of the creature's turns; a success ends it on that creature). While it holds, the creature's Reaction is marked spent (`reactionUsed`, which `canReact` reads), so no Reaction of any kind is offered or taken; `had` is what it was, and `endPart` gives it back when the last such part ends. `resolve.js` `confusedOn`, run at the end of `beginTurn`: no Bonus Action (`budget.bonus` 0), the Reaction marked again (the turn gave it back), and 1d10 rolled. 1: no movement and no action (the engine takes both) and a direction from 1d4 told to the DM, who walks the creature (it does not steer a creature on a compass heading). 2 to 6: no movement, no action. 7 or 8: no movement; the Attack action is left, the creature to attack is picked and the turn flags `confused:<id>` and `confusedFoe:<id>:<foe>` are set; `attacks.js` `attack` refuses another target (`confusedFoe`), and the brain (`ai.js` `confusedStep`) makes that one melee attack and ends its turn. 9 or 10: it chooses. All told to the DM alone, in `partial` `manual` events (a `note` would name a creature). `durations.js` `confusedNow` keeps the Reaction marked when a Confused creature joins a fight or one begins. Schema lint, reader words, HOMEBREW tables (`step.confuse`) and lint tests; the sample pack's Gloom Snare gained the step, so the pinned hashes in `homebrew-subclass.test.js` are re-measured.
+- **Choice kind `curse`, and step key `ifChoice: [values]`** (Bestow Curse). `CURSES`: `str` to `cha` (Disadvantage on checks and saves with that ability), `attacks`, `dodge` and `damage`. A spell whose choice is of a curse says in each step which values it is for; `casting.js` `chooseIn` leaves out of the cast the steps for another curse (in branches too) and fills the chosen ability into `scope.ability: 'chosen'`. A step with `ifChoice` needs `choice: { of: 'curse' }`, and the values must be the choice's (`from` may narrow them). Schema lint, reader words (`CURSE_WORDS`), HOMEBREW tables (`step.ifChoice`), the dry run's sample and lint tests.
+- **Modifier key `against: 'source'`**, on `attack.roll` only, in a modifier put on the target (no `to`): it holds only against the spell's caster (`rolls.js` `modifier` keeps `against: <caster>` on the part; `modifiers.js` already matched it to the creature rolled against). Without a caster the step goes to the DM. Schema lint, reader words and a lint test.
+
+**What players are sent.** Nothing new for a table with no Confusion on it. A confused creature's roll, its direction, its pick and its reach are in `partial` `manual` events: the DM's alone (tested through `viewEvents`). The pick leaves out every creature the party does not know of, and the die for it is drawn whatever the pool (`rand` is called once), so what a player is sent, and the dice that follow, do not depend on a hidden creature; the turn flags `confusedFoe:<id>:<foe>` already drop out of a player's flags when a creature they name is hidden (`view.js`). The refusal of an attack at another target names the chosen creature, which the party knows of. A `twin()` scenario holds a hidden creature on the map while a confused creature rolls a 7 or 8 and its turn is taken; one inside the confused creature's reach cannot be built (a creature the DM hides is never in the fight, and one forced into the order shows as `someone` by design), so that the pick skips an unknown creature is tested in the rules test, with a creature that is hiding. Bestow Curse and Dispel Evil and Good add no event.
+
+**Decisions.** Dispel Evil and Good's list has no Aberration (Protection from Evil and Good's does; the SRD text of this spell lists five types, tested against an Aboleth); the cast has no roll of its own, but the entry keeps `roll: "save:cha"` for the Dismissal save so the pinned counts by roll do not move. Break Enchantment and Dismissal are the DM's because a Magic action of a spell already cast has no hook (W52). Confusion: "within reach" is the longest melee reach of the creature (its attack records, or a monster action's `reach`), 5 feet at the least, through nothing that gives Total Cover; the creature itself is never in the pool; creatures at 0 Hit Points are. A 7 or 8 with nobody the party knows of in reach takes the creature's action (the SRD: no action; the DM makes the one attack by hand if it finds an unknown creature in reach); this depends only on creatures the party knows of, so it shows a player nothing about a hidden one. With a creature picked, only the one melee attack is allowed: Dodge, Dash, Disengage, Hide, Search, a feature, a spell and an `act` at another target are refused with the reason (`confusedOnly`). A party creature's player is sent a plain `note` with the roll and what it may do. Casting Confusion again on a creature it already holds keeps one part. Bestow Curse: "Disadvantage on ability checks and saving throws made with that ability" is two modifiers (`check`, `save`) with the one ability; the extra Necrotic damage is added to all damage the caster deals the creature through `damage.dealt` (an attack or a spell, as the SRD says), once for each damage roll. A curse cast with a higher slot keeps a minute of Concentration in the engine (W52).
+
+
+#### Build notes: wave 4 part 1 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p1-spells.test.js`. No engine change: Fly is made of a modifier the engine already has, and the two spells the engine cannot do stay `manual`. Numbers compared with `reference/srd52/srd52-flow.txt` (Fly 27146: level 3, Action, touch, Concentration up to 10 minutes, Fly Speed 60 feet, hover, one more creature per slot level above 3; Feather Fall 26756: level 1, Reaction, 60 feet, 1 minute, up to five falling creatures, 60 feet per round, no damage on landing; Jump 28399: level 1, Bonus Action, touch, 1 minute, 30 feet for 10 feet of movement once on each of its turns, one more creature per slot level above 1).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Fly | manual | assist | hovering (the engine lends the Fly Speed through `speed.fly`, not `hover`, so a flyer knocked Prone or Incapacitated falls); a creature that can stop its own fall |
+| Feather Fall | manual | manual | everything: the cast, the slowed descent and the landing without damage |
+| Jump | manual | manual | everything: the engine has no jump |
+
+**Added.** Nothing: no new step, hook or op.
+
+**Found.** A lent Fly Speed that ends while the creature is aloft already makes it fall: `gravity` in `engine.js` runs after every action (and so after `endEffect`, Concentration breaking and an effect running out), and `aloft` reads the modifier. The tests show a creature at 30 feet dropping to the ground with damage when Fly ends. Nothing was needed to close that gap.
+
+**What players are sent.** Nothing new. Fly adds a lasting effect and a `fell` event the engine already sends; a fall is shown to a player only for a creature they can see, as before.
+
+**Decisions.** Fly keeps its `manual` step for hovering, and says so. Feather Fall: the SRD trigger is "a creature you can see within 60 feet of you", so the falling creatures must be ones the caster can see; the text says so and a test pins it. It stays `manual` because the engine has no reaction trigger on a fall (`reactions.js` has none, and `cast` refuses a Reaction spell without a standing instruction): adding one means a prompt in the middle of `fall` and the gravity pass, and a slowed descent the fall rule does not have. Jump stays `manual`: movement has no jump, so there is nothing for a spell to lend (W53).
+
+#### Build notes: wave 4 part 2 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p2-spells.test.js` and two twin scenarios in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` (Find Traps 26926: level 2, Action, 120 feet, instantaneous, any trap in range and line of sight, its presence and general nature but not its location; Detect Magic 25933: level 1, Action or Ritual, Self, Concentration up to 10 minutes, 30 feet, a Magic action shows the aura and the school of a spell's magic, blocked by 1 foot of stone, dirt or wood, 1 inch of metal or a thin sheet of lead; Knock 28415: level 2, Action, 60 feet, V, one lock opened, Arcane Lock suppressed 10 minutes).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Find Traps | manual | assist | tells the player what the engine found; adds Alarm, Glyph of Warding and any trap the map does not hold as an object |
+| Detect Magic | manual | assist | tells the player; adds magic the engine does not track (stat blocks, areas), magic that arrives later, and judges the thickness of a wall; the Magic action's aura and school |
+| Knock | manual | manual | everything: a spell cannot be aimed at a map object (W54) |
+
+**Added.** One step, `{ sense: 'traps' | 'magic', feet }` (`schema.js` `STEPS`, its lint and its closed key lists, with a `step.feet` homebrew range of 5 to 240; `reader.js`; `effects.js`; `sense` in `engine/world.js`, lent through `KIT`). It changes no state. It works out what the caster would sense and sends it to the DM as a `manual` event with `partial: true`, which `view.js` never sends a player. Traps: a map object with a trigger that has effects and fires from the object's present state, in line of sight (`clear`) and within `feet`, described by the kinds of danger its effects hold (damage types, a fall, a condition, or "a danger of another kind" for a manual step). Each trap is one line, sorted by its words: no place, no distance and no map order. Magic: magic items on a creature's sheet or in a pile, and spells running on a creature (named with their school), within `feet` and not behind total cover, with the distance in feet.
+
+**Found.** `view.js` has `note` in `AS_IS`, so a `note` goes to every player: a caster-only line cannot be a note. There is no event only the caster's player may be sent, and adding one means a new case in `view.js` and a class for who the caster's side is. The DM-only `manual` event is what the engine already has, so the spell hands the finding to the DM, who tells the player ("The DM tells the player" was already the SRD-honest wording of the old entries).
+
+**What players are sent.** Nothing new. The cast is sent as any cast is, with the spell's own `manual` text (which names no trap and no item). The twin tests send the same cast with a hidden trap in range, with one behind a wall and with none, and with a hidden creature carrying a magic item within 30 feet and with none, and every byte a player receives is the same.
+
+**Decisions.** Knock stays `manual`: no spell target names an object, and aiming an effect at one needs a new target kind, a choice in `cast` of which object, and a state change for a lock that the objects' own `use` list has no name for (an unlock needs a key); it is a spec of its own (W54). Find Traps counts a trap only while it can still hurt (a sprung or wedged one is not sensed; a pit already open is). A trap behind total cover or farther than 120 feet is not sensed. A pressure plate is a trigger and not a danger of its own, so it is left to the DM. Detect Magic looks once at the cast; the engine does not watch the 10 minutes for magic that arrives, and the thickness of a wall is the DM's (the engine stops at total cover). Both spells keep a `manual` step that says what the engine leaves, and it is the spell's, so everyone sees it.
+
+#### Build notes: wave 4 part 3 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p3-spells.test.js` and one twin scenario in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` (True Seeing 31829: level 6, Action, touch, 1 hour, a willing creature has Truesight 120 feet; Heroes' Feast 27962: level 6, 10 minutes, Self, Instantaneous, a feast for up to twelve that takes 1 hour to eat, then for 24 hours Resistance to Poison damage, Immunity to Frightened and Poisoned, Hit Point maximum up 2d10 and as many Hit Points; Greater Restoration 27660: level 5, Action, touch, Instantaneous, one of: 1 Exhaustion level, Charmed or Petrified, a curse including Attunement to a cursed item, a reduction to an ability score, a reduction to the Hit Point maximum).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| True Seeing | manual | assist | the rest of Truesight: the Ethereal Plane, a shapechanger's true form, seeing through magical transformations and illusions; that the target is willing |
+| Heroes' Feast | manual | assist | applies the same to up to eleven other creatures (each rolls 2d10), lets the hour of eating pass before the benefits "set in" (the engine starts the 24 hours at the cast), ends them on anyone who did not finish |
+| Greater Restoration | manual | manual | everything (W56) |
+
+**Added.** (1) A modifier hook `senses`: a modifier step `{ on: 'senses', op: 'set', value: <5 to 240 feet>, scope: { sense } }` (`schema.js` `HOOKS`, `scope.sense`, its lint, a range of -120 to 120 like a speed's; `reader.js`), read by `sensesOf` in `modifiers.js`: a creature's own senses, and for each sense the longer of that and any lasting effect's. `sight.js` (`sees`) and `vision.js` (`seesPlace`, Blindsight past a curtain, and the cache signature) read senses through it, so Truesight lent for an hour acts as the creature's own Truesight does. (2) In `engine/rolls.js` `modifier`, an `hp.max` `add` whose value is dice is rolled once for the creature and the number is what the part keeps (so ending the effect takes back what was given).
+
+**Found.** `sees` already reads `viewer.senses`, so the only change to sight is where senses come from. The party shares what one member sees, as with any Truesight, so a player's table is sent an Invisible creature in range once any party member has the spell; a twin test pins that before the spell the bytes equal a bare cell's, and that after it the creature is described to the player exactly as it is when See Invisibility gives the sight.
+
+**What players are sent.** Nothing new: the cast and a lasting effect as for any spell, `maxHp` for Heroes' Feast, and, for True Seeing, what the existing sight rules give a Truesight creature (an Invisible creature in range, and sight in darkness).
+
+**Decisions.** Heroes' Feast: Range is Self, so the engine can aim it at the caster only (a spell's reach for creatures is its range; Self is 0); the other eleven are the DM's, in the spell's `manual` step. Its `duration` is "24 hours" though the SRD says Instantaneous, because the benefits are what lasts and a lasting effect is the only thing that holds a modifier. The hour of eating is the DM's: the engine has no way to start an effect later. Greater Restoration stays `manual`: a cast `choice` offers one value of one list, and `chooseIn` (`engine/casting.js`, not in this job's files) fills in a step for a `condition` or `curse` only. Charmed and Petrified could be ended by the `cure` step as Lesser Restoration does, but a choice limited to them would stop the caster using the spell on Exhaustion, a curse, an ability score or the Hit Point maximum, which the engine cannot end (an Exhaustion level is lowered only by rests; Bestow Curse's lasting effect has no step that ends it; the engine keeps no reduction to an ability score or Hit Point maximum other than lasting modifiers).
+
+#### Build notes: wave 4 part 4 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p4-spells.test.js` and one twin scenario in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` (Teleport 31433: level 7, Action, 10 feet, V, Instantaneous, the caster and up to eight willing creatures it can see within range, or one Large or smaller object, to a known destination on the same plane; the Teleportation Outcome table 31451: Very familiar 01-05 Mishap, 06-13 Similar Area, 14-24 Off Target, 25-00 On Target; Seen casually 01-33, 34-43, 44-53, 54-00; Viewed once or described 01-43, 44-53, 54-73, 74-00; False destination 01-50 Mishap, 51-00 Similar Area; a permanent circle and a linked object 01-00 On Target; a Mishap is 3d10 Force damage to each traveller and a reroll; Off Target is 2d12 miles away in a direction rolled on 1d8, 1 east through 8 northeast; Water Breathing 32172: level 3, Action or Ritual, 30 feet, 24 hours, up to ten willing creatures breathe underwater and keep their normal breathing; Water Walk 32185: level 3, Action or Ritual, 30 feet, 1 hour, up to ten willing creatures move across any liquid surface as if it were harmless solid ground, a Bonus Action to pass into the liquid and back).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Teleport | manual | assist | the other travellers (up to eight creatures, or an object): the engine moves the caster alone, and applies the Mishap damage to the caster alone; a Similar Area or Off Target arrival (the engine rolls the miles and the direction and tells the DM); any destination not on this map, and the familiarity itself (the caster says it) |
+| Water Walk | manual | assist | liquids that are not a water tile of the map (acid, mud, snow, quicksand, lava and the heat of lava); the Bonus Action to pass into the liquid and back; a creature left standing on water when the spell ends |
+| Water Breathing | manual | manual | everything (W57): the engine keeps no breath and no drowning |
+
+**Added.** (1) A modifier hook `surface`: a modifier step `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }` (`schema.js` `HOOKS`, its lint, `scope.surface`; `reader.js`), read by `walksOn` in `modifiers.js`. In `engine/world.js` `moveOptions` a creature that walks on water treats a water tile as ground of normal cost, to cross and to stop on (a Monk's Acrobatic Movement, which may cross but not stop, is unchanged). (2) A choice `familiarity` (`schema.js` `CHOICES`, the list `FAMILIARITY`: permanent circle, linked object, very familiar, seen casually, viewed once or described, false destination) and a field on the teleport step, `familiarity: 'chosen'` (`schema.js`, `reader.js`, `engine/casting.js` `chooseIn`). `effects.js` holds the SRD's table as `TELEPORT_TABLE` (the highest d100 roll that is a Mishap, a Similar Area and an Off Target outcome, for each familiarity). A teleport step with it rolls 1d100 for the caster: a Mishap puts a 3d10 Force damage step on the stack for the caster and rolls again (so many Mishaps, each its own damage); On Target moves the caster to the space the cast named, by the same teleport as Misty Step (`kit.teleport`); Similar Area and Off Target move nobody. With no space named, nothing is moved on any result. The roll and its outcome are one DM-only note (`manual` with `partial: true`).
+
+**Found.** The map has no water the engine lets a creature stand in: a water tile costs `Infinity`, and `moveOptions` has one exception, the Acrobatic Movement crossing. Water Walk reuses that exception and lets the walker stop, so the engine needs no swimming for it. The teleport step moves its target to a space on the same map within `step.teleport` feet (at most 1000, which is what the schema allows); the engine has no second map to send a creature to in a spell (`enter`, `leave` and `goTo` are the DM's and a party's travel). Teleport therefore reaches a place on the map in play, and any other place is the DM's.
+
+**What players are sent.** The cast and its own `manual` text as for any spell; on On Target the caster's `moved` event as for Misty Step; Mishap damage as any damage. The outcome note (the table row, the roll's result, the miles and the direction) is `partial` and never sent. On Mishap the caster's player is sent the damage (3d10 Force, once for each Mishap) and nothing else; on Similar Area and Off Target the caster stays where it is and the player is sent no event but the cast, so the DM's placing of the group is what the player then sees. A creature the party does not know of standing on the destination: as for every teleport (the amended teleport rule above, Misty Step included), the caster arrives as intended and shares the space; the DM alone is told and decides where each ends up. A player is sent exactly what a bare cell gives (twin tests for Teleport and Misty Step with the hidden creature on the landing; forcing the old nearest-free-space landing makes both fail). The twin tests cast Teleport with a hidden creature near the destination and with none, for a permanent circle (On Target) and a false destination (Similar Area), and every byte a player receives is the same in both worlds and holds no word of the outcome.
+
+**Decisions.** Teleport is `assist` and not `auto`: the engine moves and hurts the caster only. The other travellers are "up to eight willing creatures that you can see within range": the spell is aimed at its caster (the teleport step is for a spell aimed at its caster, `schema.js`) because moving several creatures to spaces around the destination, each by its own occupied-space rule, is a design of its own; the spell's `manual` step names them and says each takes the same Mishap damage. The caster names the familiarity because the engine has no memory of what the caster has seen (W57); the table is the SRD's. Water Walk lets the walker stop on water for the hour; when the effect ends the creature is in the water and the engine has nowhere to put it (the board's item "swimming" waits on the owner), so the DM places it (W57). Water Breathing stays `manual`: nothing in the engine keeps breath, holds a creature's breath underwater or drowns it, so a lasting effect that carried no modifier would be a label that does nothing. `checked: true` on all three after comparing every field with the text above.
+
+#### Build notes: wave 4 part 5 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p5-spells.test.js` and one twin scenario in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` (Feather Fall 26756: level 1, Reaction, which you take when you or a creature you can see within 60 feet of you falls, 60 feet, V and M, 1 minute, up to five falling creatures within range, rate of descent slows to 60 feet per round until the spell ends, a creature that lands before it ends takes no damage from the fall and can land on its feet, and the spell ends for it).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Feather Fall | manual | assist | a fall of more than 60 feet: the engine lands the creature at once (a fall is instant in it), so the DM plays out the rounds of the descent; "can land on its feet" is the engine's own result (no damage, not Prone) |
+
+**Added.** A reaction trigger `fall` (`schema.js` `REACTION_TRIGGERS`; `reader.js` `REACTION_WORDS`). A reaction spell with it may be aimed at up to five creatures (the lint's count limit is 5 for `fall`, 1 for `cast` and `damaged`). The engine's `fall()` (`engine/resolve.js`; every fall passes through it: pits, deep pits, the gravity pass, a mount's) calls `featherFall` just before it rolls the damage, for a fall of 10 feet or more by a creature that is not dead. `fall()` takes the place the fall began (`from`) so that range and sight are worked out from there, and not from the floor below that a deep pit has already put the creature on. `castReaction` no longer adds the spell's own tier note when its steps already handed the DM a `manual` note of that spell's name.
+
+**How it is set.** By standing instruction, like Shield, Counterspell and Hellish Rebuke (Decision 4, stage A): the reaction `feather-fall` on the caster, `never` (the default, because it spends a slot), `always`, or `ask` (a player is asked which slot; for the DM's creature the DM is told with a `manual` event and nothing waits). A caster qualifies if it is the faller or not hostile to it, has a Reaction (`canReact`), a slot (`slotsFor`: Silence, one slot a turn, Verbal), and the faller is within 60 feet and seen (`seesFor`: the sight code, and never a creature the party does not know of). The first caster in the order of the creatures that qualifies casts it.
+
+**What the engine does.** The Reaction and the lowest slot (or the chosen one) are spent; the spell's lasting effect is made and ended at once on the landing (`effectEnd`, why `landed`); the creature falls to where the fall would have put it, with no damage and not Prone (`fell` with `slowed: true`). One cast covers the other creatures that fall in the same action (a Fly that ends on two creatures, a pit under a group) until five are covered: the caster's `cast` event lists them in `targets`, and each is range- and sight-checked on its own. The spell's note tells the DM that a fall of more than 60 feet would take rounds.
+
+**What players are sent.** The `reaction`, `cast` and `fell` events as for any reaction and fall; `fell` is sent to players as it was (`AS_IS`), and the cast's `targets` are filtered of creatures the party does not know of. A creature the party does not know of is never seen by a party caster (`seesFor`), so it sets nothing off, and a hostile creature is never covered. A caster the party knows of (a foe in plain view, say) also never reacts for a faller the party does not know of, whoever its side: its `reaction` and `cast` would tell the players of it. Nor does a caster the party does not know of react for a faller it does know of: the fall doing no harm would tell the players something is there (lead, after the second review). So a caster reacts for another creature only when the party knows of both or of neither; a hidden caster may react for a hidden faller, and its events are sent to nobody. The twin scenarios (a floor taken away under a creature) are a visible foe caster with a hidden ally that falls, a hidden caster with a visible ally that falls, and a hidden caster with a hidden ally, each against a world without the hidden creature; dropping either half of the rule makes one of the first two fail.
+
+**Decisions.** Assist, not auto: the descent over 60 feet per round is not modelled. A creature that falls "far enough to be hurt" (10 feet) is the trigger, because nothing less is a fall the engine rolls. Only allies and the caster can be covered (the engine does not cast it on a foe's fall; the SRD allows any creature the caster can see). `checked: true` after comparing every field with the text above.
+
+**Range and sight.** `fall()` takes `from`, the place the fall began, and the pit branch, the surface branch and `drop()` pass it. The gravity pass in `engine.js` (a Fly Speed ending, a floor removed) calls `fall()` after moving the creature and does not (W58).
+
+#### Build notes: wave 4 part 6 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p6-spells.test.js` and one twin scenario in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` (Knock 28415: level 2 Transmutation, Bard, Sorcerer, Wizard, Action, 60 feet, V, instantaneous; an object the caster can see within range, such as a door, box, chest, manacles or padlock, "that contains a mundane or magical means that prevents access"; a target held shut by a mundane lock or that is stuck or barred becomes unlocked, unstuck or unbarred, and with several locks only one is unlocked; held by Arcane Lock, that spell is suppressed for 10 minutes; a loud knock audible up to 300 feet comes from the target).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Knock | manual | assist | the loud knock (who hears it); Arcane Lock (a spell the engine does not model) suppressed for 10 minutes; a stuck or barred object (the object definitions have no such state); which lock opens when an object has several (an object has one lock) |
+
+**Amendment: a spell target of a map object.** A spell's `target` may now be `{ object: {} }` (`schema.js` `lintTarget`, its closed key lists; a spell only, never a monster's action or a feature's). Its profile aim is `object` (`effects.js` `spellProfile`). `cast` takes the object's id in `object` (a string), and `aimObject` (`engine/world.js`) checks it before anything is spent, in this order: (1) `objectOf` with the sender's role: an id that names no object and one the party does not know of (an undiscovered secret door, an object in a place not yet shown or, under the `los` and `light` rules, out of the party's view and memory) are both refused with `No such object.`, so a refusal never tells a player a thing is there; the DM names any object; (2) the caster is not Blinded; (3) some hex of the object is within the spell's range (60 feet) of the caster, in feet, with the object's own words in the error; (4) the caster has a clear line to it (`clear`, the test `findable` uses; a door's own closed line does not hide the door from its near side); (5) the object can be locked at all: its definition has a use named `unlock`, so a lever or a torch is refused. The object's id goes on the `cast` event (`object`) and into the steps' `src.object`, where the existing `set` step already reads it for traps. The spell's steps run with the caster as the creature they are aimed through, as a spell aimed at its caster does, so no creature is revealed or touched.
+
+**Amendment: `from` on the `set` step.** `{ set: 'closed', of: 'self', from: 'locked' }`: the object is set only if it is in the state `from` (`schema.js`, key lists; `reader.js`; `engine/world.js` `objectStep`, which answers `'idle'` for an object in another state, and `effects.js`, which then tells the table `nothing is held shut that it can open`). An open door is not closed by Knock. The `set` step's own state must still be one the object has; every locked object of `objects.js` (the wooden and iron doors, the chest) goes from `locked` to `closed`, which is what its `unlock` use does without a key.
+
+**What the engine does.** A locked object in range and sight goes to `closed`, with the objects linked to it (`links`) set as `setObject` always does; the slot and the action are spent; the `object` event is sent to the players as any object event is. An object that is not locked is left as it is and the cast is still paid for (SRD "Invalid Targets": nothing happens, the slot is spent). The key, the pick and force DCs are not touched: Knock is none of those.
+
+**What players are sent.** The `cast` event as for any cast (the player view's `cast` fields leave out `object`, so the id is not sent in it), the `object` event as for any object the party knows of, and the note when nothing was held shut. The spell's own `manual` step (the knock, Arcane Lock, stuck and barred, several locks) is the spell's, so everyone sees it; it names nothing hidden. The twin test casts at an undiscovered secret door in one world and at nothing in the other (a secret door stands in a wall, so the other world has the wall): the refusal and everything a player is sent are the same, and a second cast at a known locked door in the same script is unlocked in both.
+
+**Decisions.** Assist, not auto: the engine has no sound (the knock and who hears it are the DM's), no Arcane Lock (the spell is `manual`; Knock's own text hands the suppression to the DM), no stuck or barred state, and one lock per object. Sight is geometry and Blindness; the engine does not judge darkness or an Invisible or hidden object here (W59). `checked: true` after comparing every field with the text above.
+
+#### Build notes: wave 4 part 7 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p7-spells.test.js`. No twin scenario: the spell adds no state a player might not see (a cure and a lasting effect that ends on a creature the party can touch; the same events as Lesser Restoration and a Bestow Curse that ends). Numbers compared with `reference/srd52/srd52-flow.txt` (Greater Restoration 27660 and the list at 27595: level 5 Abjuration, Bard, Cleric, Druid, Paladin, Ranger, Action, touch, V S M diamond dust worth 100+ GP which the spell consumes, Instantaneous; one of 1 Exhaustion level, the Charmed or Petrified condition, a curse including the target's Attunement to a cursed magic item, any reduction to one of the target's ability scores, any reduction to the target's Hit Point maximum).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Greater Restoration | manual | assist | any curse other than a Bestow Curse effect, and the Attunement to a cursed item; a reduction to an ability score and a reduction to the Hit Point maximum (the engine keeps neither); the diamond dust (the spell is `costly`, and no spell's Material cost is taken from a purse) |
+
+**Amendment: the `affliction` choice.** `CHOICES.affliction` (`schema.js` `AFFLICTIONS`): `exhaustion`, `charmed`, `petrified`, `curse`, `ability-score`, `hit-point-maximum`. The caster names one in `choice` when casting, checked before anything is spent (`engine/casting.js`; a refused cast changes nothing). `ifChoice` is now for a spell whose choice is of a curse or an affliction (`lintChoice`, `lintSteps`, `reader.js` `choiceOf`), and `chooseIn` removes the steps of the other values and strips the key for either (it did so for a curse alone). The reader says which affliction it ends. The client's cast menu already lists a choice from `CHOICES`, so it needs no change.
+
+**Amendment: two words for the `cure` step** (`schema.js` `CURE_WORDS`; `engine/rolls.js` `cure`). `exhaustionLevel` lowers the target's Exhaustion by one level, and ends the condition at level 1, as a Long Rest does (a creature with none is passed over). `curse` ends one lasting effect on the target whose spell has a choice of a curse (Bestow Curse with a part on the target, not ended; the oldest when two casters cursed it: the SRD says "a curse"), whole, with everything it put on anyone, as `endEffect` does; `endEffect` is the way a lasting effect ends elsewhere, so the caster's Concentration on it goes with it. Other `cure` steps are as before: a condition, or `chosen`; `exhaustion` as a condition is still refused by the linter, and `cure` called with it (a creature made immune to it) still ends it whole.
+
+**Decisions.** Assist, not auto: Exhaustion, Charmed, Petrified and a Bestow Curse effect are the engine's; a reduction to an ability score or the Hit Point maximum is not kept anywhere (only lasting modifiers are), and a curse the engine does not keep, or an Attunement to a cursed item, is the DM's, so those options are `manual` steps chosen by the same choice, and the curse option adds one `manual` step for what the engine cannot see. A step with no ending to run is never approximated. A lasting reduction made by a modifier (a hit point maximum or ability score that a spell's `modifier` lowers) is not ended by this spell: the DM ends that effect with `endEffect`. `checked: true` after comparing every field with the text above.
+
+#### Build notes: wave 4 part 8 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p8-spells.test.js`, and three twin scenarios at the end of `packages/server/test/twin-worlds.test.js` ("leap: ..."). Numbers compared with `reference/srd52/srd52-flow.txt` (Jump 28399: level 1 Transmutation, Druid Ranger Sorcerer Wizard, Bonus Action, Touch, V S M a grasshopper's hind leg, 1 minute, no Concentration, "once on each of its turns until the spell ends, that creature can jump up to 30 feet by spending 10 feet of movement", one more creature per slot level above 1; Long Jump 33774: up to Strength in feet with at least 10 feet of movement immediately before, half standing, each foot costs a foot, DC 10 Dexterity (Acrobatics) or Prone on landing in Difficult Terrain, the low-obstacle Athletics check at the GM's option).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Jump | manual | auto | the low obstacle check; a leap between levels, a High Jump |
+
+**The action `leap`** (`engine/movement.js` `leapOn`): `{ type: 'leap', id/actor, to: { q, r }, spell?: true }`. Named `leap` because `jump` is the travel action between pins (`engine/travel.js`, `known.js`). One leap is a one-step walk to the landing hex, so `walk`'s own pieces do the rest and are not copied: Opportunity Attacks for leaving a reach (Disengage prevents them; Flyby), the budget spend, noticing, a fight starting, what is on the landing hex (`trip`: traps, pits and their falls; `stepped` and `entered`: zones), the party following. The hexes between are only passed over: nothing on them fires, creatures on them do not block, nothing hidden on them is found. The history label is `{who} leaped`.
+
+**Distance.** Strength in feet with a running start, half that standing, both rounded down to whole 5 feet (Strength 15: 15 ft running, 7 standing so 5 ft; 14: 10 ft). In a fight a running start is 10 feet of the turn's movement used since its last leap (`flags['leapm:<id>']` holds the movement used after the last leap; the used feet are Speed times Dashes less what is left); outside a fight it is always, and no movement or flag is spent or kept. Each foot costs a foot of movement in a fight; a leap the movement left cannot pay for is refused in the words `move` uses (`Too far. X has N ft of movement left.`) before anything changes. A leap beyond what it could make says how far it can (`Too far: X can leap 5 ft from a standing start. With a running start ... 15 ft.`), which depends on nothing hidden.
+
+**The Jump spell** lends the hook `leap` (`{ on: 'leap', op: 'set', value: 30 }`, a modifier step; schema lint: `set`, a multiple of 5 from 5 to 40, no other key; `modifiers.js` `leapOf` reads the longest). While it lasts, once on each of the creature's turns (`flags['leaps:<id>']`, cleared with the turn's flags) a leap may go up to that far for 10 feet of movement, running start or not. The creature chooses with `spell: true` (the spell's leap: refused if there is none, or it is used this turn); without it the engine takes the **cheaper legal way** (the ordinary leap where its feet cost 10 or less, otherwise the spell's), and a tie goes to the ordinary leap so that the once-a-turn use is kept for a leap only it can make. Outside a fight the limit is the longer of the two and nothing is counted. The Ring of Jumping's activation (`{ spell: "jump", self: true }`) casts the same entry on its wearer and so lends the same hook (`item-use.test.js` now expects no manual step); its own `tier` and `text` in `magic-items.js` still say "the DM applies it" (DEBT W61).
+
+**The line and the landing.** A wall or a shut door across the straight line between the two hex centres refuses the leap with `A wall or a shut door is in the way.`; a secret door is a wall to everyone (`barriers`), so the same words are said whether or not the party knows of the door. The landing is on the same level and within a step of the creature's height (`A leap stays on one level`); no floor there is `There's nothing there to stand on.` as for a move. A creature the party knows of on the landing hex refuses the leap (`That hex is occupied.`) before anything is spent. One it does not know of (the DM's hidden creature outside a fight, a creature hiding, or one unseen under the los rules) is judged as `move` judges it: the leap is legal and costs as if it were not there, then stops in the last free hex of the line before it (cost and Opportunity Attacks of that shorter leap) and finds it; with no free hex short of it the creature does not leap and finds it. Landing in Difficult Terrain (a tile of cost 2, or ground a spell made difficult; not for a creature with Freedom of Movement) rolls DC 10 Dexterity (Acrobatics) with a `check` event, and a failure gives Prone. A mounted or ridden creature, a Prone one, one that holds another, a flyer and one with no Strength score are refused.
+
+**Decisions.** `leap` is not in `UNLOCKED` (shared.js): a command-locked creature only Dodges and moves to avoid harm, and a leap is a deliberate act beyond that. No new event kind: the walk's `moved` event and a `note` (the DM's creature's, a `manual`) say what happened. No state shape change (flags are the turn's own; state version stays 31). The hook is not in the sample pack: `dryrun.test.js` checks step kinds and the pinned hashes of `homebrew-subclass.test.js` are unchanged. Existing tests changed: `wave4p1-spells.test.js` (Jump's tier is `auto`) and `item-use.test.js` (Ring of Jumping: no manual step now, a Jump effect instead).
+
+**Twin tests.** A hidden creature, a hidden spiked pit and an undiscovered pit-trap on hexes a leap passes over: players are sent the same bytes as with a bare cell. Each was checked by opening the leak on purpose (a leap refused when any creature or object stood on the line): all three twins failed on the first leap (`update` against `error`); with the leak taken out again they pass.
+
+#### Build notes: wave 4 part 9 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p9-spells.test.js` and one twin scenario in `packages/server/test/twin-worlds.test.js` ("stone shape: ..."). Numbers compared with `reference/srd52/srd52-flow.txt` (Stone Shape: level 4 Transmutation, Cleric, Druid, Wizard, Action, touch, V S M, instantaneous; a stone object of Medium size or smaller or a section of stone no more than 5 feet in any dimension, formed into any shape, e.g. a weapon, statue, coffer, a small passage through a 5-foot-thick wall, or a door shaped shut; up to two hinges and a latch, nothing finer).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Stone Shape | manual | assist | any shape but a passage; whether the wall is stone (the engine keeps no wall material) |
+
+**Amendment: a spell target of a wall.** `target: { wall: {} }` (`schema.js` `lintTarget`; a spell only, with a `cut` step), profile aim `wall` (`effects.js`). I chose a **point in map feet**, not a hex edge: walls are free line segments (`walls.js`), so `cast` takes `wall: { level, x, y }`. `aimWall` (`engine/world.js`) checks before anything is spent, in this order: (1) a point within 1 foot of a wall segment on that level (the map's walls, and an undiscovered secret door, which every player is sent as a plain wall and so is a wall here too); a player must also have a sent tile within the hex corner reach of the point (the test `view.js` `clipWall` applies, so exactly the wall pieces a player is sent); no wall at all and an unknown wall both give `No such wall.`; the DM names any; (2) the caster is not Blinded; (3) touch: the point is within the spell's range (5 feet) of the caster's space, on the caster's level; (4) the segment's kind is `wall` (a window, rail or curtain is refused in its own words). A malformed pick (`Pick a point on a wall`) depends on nothing hidden. The point goes on the `cast` event (`wall`, which the player view leaves out) and `src.wall`.
+
+**Amendment: the `cut` step** (`{ cut: 5 }`, 5 or 10; `HOMEBREW_RANGES` `step.cut`). `cutWall` takes a window of that many feet along the aimed segment, centred on the point and moved to lie inside the segment (a cut near an end is still a whole 5 feet; a segment of 5 feet or less goes whole). Other `wall`-kind segments and undiscovered doors on the same line that overlap the window are cut with it; what is left of one is a wall of its own (the first piece keeps the id). The change is made by `editMap` (`engine/world.js`), the body of the DM's `mapEdit` moved out of `dm.js` so both call one path: a copy, `lintMap`, the nowhere-to-stand check, `lookAround`; the `mapEdit` event is sent as for a DM edit. `cutWall` is in the `KIT` literal of `resolve.js` (one line, allowed by the lead). Vision updates by the ordinary rules.
+
+**Amendment: `CHOICES.shape`** (`passage`, `other`; `ifChoice` now also for a shape choice; the reader has `SHAPE_WORDS`). `other` runs only a `manual` step for everyone and names no wall: the cast names none and none is aimed.
+
+**Hidden things.** An undiscovered secret door in the cut stretch is cut away with the wall (its uncut part becomes plain wall); the DM alone is told (a `partial` manual note, with the note that the engine does not know the wall's material and the DM undoes the cut if it is not stone). Players are sent the same as for a plain wall: the twin test casts at a secret door in one world and a wall of the same shape in the other, with a refusal first. A hidden creature beyond is seen through the gap only by the ordinary vision rules.
+
+**Dry run and the sample pack.** `dryrun.js` gives a `wall` spell a long wall beside the caster (through `mapEdit`) and the first shape. The sample pack gained Stone Door (a `cut` step), so the pack has 20 spells and `homebrew-subclass.test.js` was re-measured (player hash `dadf6727e9` to `9665481789`, whole-pack `e714081f2b` to `01489c0191`).
+
+**Existing tests changed:** `dryrun.test.js` (spell cap 19 to 20), `hb-cli.test.js` (20 spells), `homebrew-subclass.test.js` (hashes), `reader.test.js` (a `wall-gap` golden fixture and `reader-golden.txt`), `reader-kinds.test.js` (`cut` is spell-only), `apply-terrain.test.js` (the map-edit path is in `engine/world.js`).
+
+
+#### Build notes: wave 4 part 10 (amendment, #786)
+
+Tests in `packages/rules/test/wave4p10-spells.test.js` and the "meld into stone" scenarios in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` (Meld into Stone: level 3 Transmutation, Cleric, Druid, Ranger, Action or Ritual, touch, V S, 8 hours; no sight outside and Disadvantage on Wisdom (Perception) checks to hear; spells on itself; leaves with 5 feet of movement, which ends the spell; partial destruction or a change of shape expels it with 6d6 Force damage, complete destruction or transmutation with 50; expelled into the nearest unoccupied space, Prone).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Meld into Stone | manual | assist | whether the wall is stone and large enough; Truesight and other senses; the "to hear" limit of the Perception Disadvantage; any damage or destruction of the stone other than a Stone Shape cut (6d6 / 50 Force) |
+
+**The aim** is Stone Shape's: `target: { wall: {} }`, `aimWall` with the same refusals and words (casting.js lets a spell with a `cut` or a `meld` step aim at a wall). **The `meld` step** (`{ meld: true }`; schema, reader, `effects.js`; spell only, target a wall) calls `meldInto` (resolve.js, `KIT`): the caster gets `melded = { fx, level, x, y, at }` (the effect that holds it, the aimed point, the space it entered from; its `pos` stays at `at`), loses its `hiding`, stops following, and the effect gets a part `{ target, meld: true }`. The spell's data also holds a `modifier` step, Disadvantage on `check` with `scope.skill: perception`, and a `manual` note. The effect is an ordinary 8-hour one (no Concentration). `melded` is a new creature field, classified `sent` in `view-fields.js` (a creature of the party is known to its party; a foe's record is never sent). No state version bump (the field is optional).
+
+**Occupancy and being found.** `living(s)` (engine/shared.js) leaves a melded creature out, so every place that asks "who is there" (occupancy by `overlapAt`, placing, area and creature targets, Search, the AI's lists, cover, `lookAround`) does not see it; what must still reach it goes by `s.entities` (its turn, its effects, ending the spell). Also: `sees` (sight.js) says no in both directions; vision.js leaves it out of the party's eyes and of `partyView`, and `unknown` is true for a foe; `classify` (view.js) says `hidden`; `holds` (zones.js) puts it in no zone; `creatures()` names it with the words for an id that is no creature; `ai.js` never picks it and a melded creature's turn only passes; a creature merged with stone reacts to nothing (attacks.js). A fight's start leaves a melded foe out of the order (`startEncounter`), as it would a creature it does not know of: it would otherwise take dice the other table never rolled; a melded creature of the party takes its place.
+
+**One refusal.** `control` (shared.js) refuses every action but `cast`, `unmeld`, `endTurn`, `check`, `reactions`, `react` and `companion` from a melded creature with one message. `castSpell` refuses any spell not aimed at itself (`self`, or a `creature` spell whose every target is the caster) with another, before anything is spent; a mounted caster, or one with a rider, cannot cast Meld.
+
+**Leaving: a new action `unmeld`** (casting.js; history label `left the stone`), not `endEffect`: `endEffect` is the DM's and Concentration's way and has no movement to pay, so a player's `endEffect` on a Meld effect is refused (`use unmeld`), the DM's works and costs nothing. `unmeld` costs 5 feet of movement on the creature's turn in a fight (refused out of turn, or with less left, nothing changed) and nothing outside one. Every way the effect ends (leaving, time, Dispel Magic, the DM, the expel) runs `ON.meldEnd` (durations.js `endPart`, set by resolve.js): the creature comes out through `teleport`, so at `at` or the nearest unoccupied space by the rules of any arrival (a creature standing there that the creature's side does not know of is shared with, and told to the DM), not Prone, no damage. One a foe that the party does not know of comes out does not join the fight's order (that would reveal it); the DM is told.
+
+**Expelled.** `cutWall` now returns the stretch it took out; `effects.js` passes it to `expelMelded` (resolve.js, `KIT`): a creature merged at a point within 2.5 feet of that stretch is thrown out: the effect ends, it comes out as above, and it is made Prone and takes 6d6 Force damage (Prone first, so one the damage drops is Prone too). Any other damage or destruction of the stone is the DM's, said in the spell's manual note.
+
+**Twins.** (a) A foe the DM hid, merged beside the party, against no creature: the party walks onto its space, Searches, casts an area spell over it, and it leaves by the DM's `endEffect`: the same bytes in both worlds for both players. (b) The same with a foe the DM never hid (it is the merging alone that keeps it from them), and under the `los` and `light` sight rules. (c) A party member merged against one that stepped out of view is compared (rules test) only for what the other player is sent of creatures outside the party and the party's sight; the wizard's own record differs on purpose. Leaks forced open and confirmed to fail: `living` keeping the merged creature (twin fails), `classify` (twin fails), a melded foe taken into a fight's order (twin fails), the exit joining the fight (twin fails); in the rules test: eyes, `partyView`, `sees`, `creatures()`, `control`, zones and the AI. `unknown`'s melded clause is defence in depth: removing it alone fails nothing, because `classify` and `partyView` already say it.
+
+**Dry run and the sample pack.** The sample pack gained Stone Merge (a `meld` step), so it has 21 spells and `homebrew-subclass.test.js` was re-measured (player hash `9665481789` to `2813f27dcf`, whole-pack `01489c0191` to `66e4281a17`). `dryrun.js` needed no change (it already gives a wall spell a wall and a point).
+
+**Existing tests changed:** `dryrun.test.js` (spell cap 20 to 21), `hb-cli.test.js` (21 spells), `homebrew-subclass.test.js` (hashes), `reader.test.js` (a `stone-hide` golden fixture and `reader-golden.txt`), `reader-kinds.test.js` (`meld` is spell-only), `apply-terrain.test.js` (a script that merges and then `unmeld`s; the `gridOf` import), `wave4p9-spells.test.js` (the lint message now reads "has a `cut` step (or a `meld` step)"; the test itself is unchanged).
+
+**Files outside the issue's list, edited with a reason.** `engine/shared.js` (`living` and `control`: the one place each of the above is decided), `zones.js` (`holds`), `history.js` (the label), `engine/attacks.js` (one line). Not edited: `engine.js`, `tables.js`, the client.
+
+#### Build notes: wave 5 part 1 (amendment, #786)
+
+Tests in `packages/rules/test/wave5p1-spells.test.js` and two twin scenarios in `packages/server/test/twin-worlds.test.js` (Darkvision and Produce Flame). Numbers compared with `reference/srd52/srd52-flow.txt` (Darkvision 25808: level 2 Transmutation, Druid, Ranger, Sorcerer, Wizard, Action, touch, V S M a dried carrot, 8 hours, a willing creature has Darkvision with a range of 150 feet; Remove Curse 30214: level 3 Abjuration, Cleric, Paladin, Warlock, Wizard, Action, touch, all curses on a creature or object end, a cursed item keeps its curse but its owner's Attunement is broken; Produce Flame 29931: Conjuration cantrip, Druid, Bonus Action, Self, V S, 10 minutes, Bright Light 20 feet and Dim Light 20 feet more, ends if cast again, a Magic action to hurl fire at a creature or object within 60 feet, ranged spell attack, 1d8 Fire, +1d8 at levels 5, 11 and 17).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Darkvision | manual | **auto** | nothing (that the creature is willing is the caster's choice) |
+| Remove Curse | manual | assist | a curse the engine does not keep (only Bestow Curse is a lasting effect), and a cursed magic item's Attunement (the spell touches an object too) |
+| Produce Flame | manual | assist | the hurl at an object; a caster who already carries a light; the damage dice are set at the cast |
+
+**Darkvision.** One `senses` modifier, `{ on: 'senses', op: 'set', value: 150, scope: { sense: 'darkvision' } }`, as True Seeing's. `sensesOf` (modifiers.js) keeps the longer of the creature's own and the lent one, so a creature with Darkvision 200 keeps 200 and one with 60 gets 150. `sight.js` and `vision.js` already read it through `sensesOf`; nothing there changed. The lint cap for a `senses` value was 120 though its comment said 240: it is **240** (`lintModifier`), and `HOMEBREW_RANGES` has its own `senseModifier.value` of 5 to 240 (a speed's modifier stays at 120: `speedModifier` was shared with senses). The twin scenario: a creature in the dark 140 feet away is sent to the caster's player after the cast and to nobody before, and one at 155 feet, and one behind a wall, are sent as a bare cell is.
+
+**Remove Curse.** A `cure` word `curses` (`CURE_WORDS`, `engine/rolls.js` `cure`): every lasting effect of a spell whose choice is of a curse that has a part on the target, each ended whole with `endEffect` (the caster's Concentration on it goes with it), re-read after each so one ending cannot leave another. `curse` (Greater Restoration) still ends the one, the oldest. The spell's `manual` step is kept for the cursed item and curses the engine does not keep. No twin scenario: nothing new that a player might not see (the same events as Greater Restoration's curse).
+
+**Produce Flame.** The mechanism was there: Flame Blade's `arm` step (a lasting effect gives its caster one more action in `e.actions`, taken with `{ type: 'attack', attack: <spell id>, target }`, taken away with the effect). Two small extensions: `arm.range: <feet>` (5 to 120, a multiple of 5; `HOMEBREW_RANGES` `arm.range`) makes the action a ranged spell attack at a creature within that many feet instead of a melee one (`rolls.js` `arm`; schema, reader and the effects summary), and `scaleSteps` grows an `arm`'s damage by `higher.level` as a cantrip's damage (so 2d8 at character level 5, 3d8 at 11, 4d8 at 17, fixed at the cast). The light is the `light` step with `replaces: true`, which also ends the earlier casting ("the spell ends if you cast it again"), and so its hurl. **The hurl does not end the spell**: the issue said it does, but the SRD text has no such rule (the flame is hurled "until the spell ends", each Magic action), so the action stays for the 10 minutes. The Bonus Action is the cast; the hurl is the Action (Extra Attack does not apply to it), on the cast's turn or a later one. The twin scenario: the flame's 40 feet of light show a creature in the dark inside it to the caster's player, and one just past it is sent as a bare cell is.
+
+**Existing tests changed:** none (a `homebrew-values` B1 test for senses was added; `reader.test.js` golden for every SRD spell passes with the new reader line for `arm.range`).
+
+#### Build notes: wave 5 part 2 (amendment, #786)
+
+Tests in `packages/rules/test/wave5p2-spells.test.js` and twin scenarios in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` (Daylight 25820: level 3 Evocation, Cleric, Druid, Paladin, Ranger, Sorcerer, Action, 60 feet, V S, 1 hour, no Concentration, sunlight fills a 60-foot-radius Sphere from a point in range with Bright Light and sheds Dim Light 60 feet more; or cast on an unworn, uncarried object for a 60-foot Emanation, blocked by covering it; overlapping Darkness from a spell of level 3 or lower is dispelled).
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Daylight | manual | assist | the version cast on an object, and dispelling Darkness (a spell of level 3 or lower) the light overlaps |
+| Enlarge/Reduce | manual | assist | what the target wears and carries (a weapon's own size and damage), items dropped or thrown, an unwilling creature on the caster's side, an object target |
+
+**Daylight.** A new `terrain` key, `light: <feet>` (`terrain: { light: 60 }`, a lasting spell whose area is a sphere; `HOMEBREW_RANGES` `terrain.light` 5 to 120): the sphere is Bright Light, and the key is the Dim Light beyond it. `casting.js` keeps it in `fx.terrain` as for Silence; `sight.js` `lightSources` reads it as a light held at the sphere's origin (radius `area.size` bright, `light` dim), so `lightAt`, `canSee` and the party's view all see it, and it goes with the lasting effect. `vision.js`'s cache signature now counts a lit sphere as it counts fog (a file outside the issue's list: one line, otherwise the party's view would stay stale after the cast). **A DM-hidden caster:** the cast is not sent to the players (view.js drops events whose actor is hidden), so, as for a hidden creature's carried light (W66), the `party: true` build leaves its sphere out; the engine's own judgements keep it. **A hidden creature in the sphere** stays hidden: the area catches nobody (`casting.js`, `lightOnly`: a lit sphere with only a `manual` step skips the "caught in the area" reveal), so the cast sends the players the same bytes as with a bare cell. What the light rule shows: the lit cells, and any creature that is not DM-hidden by the usual sight rules. Forcing the reveal back on fails the twin (an extra `revealed` event).
+
+**Enlarge/Reduce** (SRD 26489: level 2 Transmutation, Bard, Druid, Sorcerer, Wizard, Action, 30 feet, V S M, Concentration up to 1 minute; Enlarge: one size category up, Advantage on Strength checks and saves, +1d4 weapon or Unarmed Strike damage on a hit; Reduce: one down, Disadvantage on them, 1d4 less, not below 1; an unwilling creature makes a Constitution save). Five small additions, each a vocabulary change the issue allowed:
+- **Choice `resize`** (`enlarge`, `reduce`; `CHOICES`, `RESIZES`), used with `ifChoice` as Bestow Curse's is.
+- **Step `resize: 'larger' | 'smaller'`** (`engine/world.js` `resize`, in the KIT): changes `e.size` one category and puts a part `{ target, size: { was, now } }` on the lasting effect; `durations.js` `endPart` calls `ON.sizeEnd` (`world.js` `sizeEnd`) to put it back if the creature is still the size the effect left. Reduce stops at Tiny, Enlarge at Gargantuan (a note to the table). One change at a time: a creature already changed is left alone and the DM told (the part list is the record). **Fitting ("the largest that fits")**: one category is all it can grow, so no room means no change (a public note) while the spell's other steps still apply. Room is judged on what the caster's side knows: whoever the caster is (a visible foe's growth is sent to the players too), a DM-hidden creature or one the party cannot know of (`unknown`) is not counted, and the DM alone is told (`partial` manual) if one is in the new space. A refusal or a smaller result would tell the players it is there. Going back up when a Reduce ends is not refused either: the DM is told if there is no room. The twin (hidden creatures on all six neighbours) fails when the hidden ones are counted.
+- **Tag `target.ally`** (`modifiers.js` `judge`): the target is on the source's side. The unwilling save is `{ save: 'con', when: ['target.enemy'] }`, and the same steps run with `when: ['target.ally']` and no save (a creature on the caster's side is taken to be willing: the caster's choice; an unwilling ally is the DM's). `spellProfile` and the reader no longer count a save guarded by `target.enemy` as harm, so buffing an ally outside a fight starts no fight (Reduce on a foe outside a fight therefore does not start one either).
+- **Modifier key `atLeast: 1`** on a `damage.dealt` add of `-NdM` (`rolls.js` `dealt`): after every add, the first part is at least 1 (or what it was, if less); a critical hit doubles the -1d4's dice like any damage dice. Reduce's `-1d4`; `when: ['attack.weaponOrUnarmed']` limits both sides to weapons and Unarmed Strikes.
+- Advantage or Disadvantage on Strength checks (`check` with `scope.ability: 'str'`) and Strength saves (`save.str`) are ordinary modifier steps.
+
+**Existing tests changed:** `reader-kinds.test.js` (a creature's action may not hold a `resize` step: added to the exclusions); `reader-when.test.js` (a `MAKE` entry that puts the target on the attacker's side, for the new tag); `reader.test.js` and `reader-golden.txt` (a golden spell for the new step, tag and key; the golden file only gains lines); `homebrew-subclass.test.js` (the two pinned sample-pack hashes: the sample pack's Stone Hide gained a `resize` step, as `dryrun.test.js` requires every step kind be used and the pack is at its 21-spell ceiling); `fixtures/sample-pack.json`. Files outside the issue's list that were touched: `vision.js` (one line, the cache signature) and `rolls.js` (`dealt`, the `atLeast` floor).

@@ -14,7 +14,7 @@ import { gridOf, col } from './grid.js';
 import { FT, concealed, gap, regionAt, shown } from './space.js';
 import { barriers, objectDef, objectHexes, objectSegment } from './walls.js';
 import { canSee, coverOf, inView, inViewOf, lightAt, lightSources } from './sight.js';
-import { has } from './modifiers.js';
+import { has, modifiers, sensesOf } from './modifiers.js';
 import { SIZES } from './content/sizes.js';
 
 export const SIGHT_RULES = ['rooms', 'los', 'light'];
@@ -28,7 +28,7 @@ const up = (e) => !e.dead && e.hp > 0;
 // own, so it sees, and is seen, from that high: its position raised by the mount's height (`riding.size`, kept in step
 // with the mount). Everything else about it is its own.
 export const raised = (e) => (e?.riding && SIZES[e.riding.size] ? { ...e, pos: { ...e.pos, z: (e.pos.z ?? 0) + SIZES[e.riding.size].height } } : e);
-const eyesOf = (s) => Object.values(s.entities).filter((e) => e.side === 'party' && up(e)).map(raised);
+const eyesOf = (s) => Object.values(s.entities).filter((e) => e.side === 'party' && up(e) && !e.melded).map(raised);      // a creature merged with stone (Meld into Stone) sees nothing: the party gets no sight from it
 const placeOf = (level, h) => { const t = level.tiles[col(h)]; return t ? { q: h.q, r: h.r, z: level.z + (t.h ?? 0) } : null; };
 
 // ---------- places in sight ----------
@@ -70,7 +70,7 @@ export function tilesInSight(map, eye) {
 // light and senses. Blindsight in range needs no light and no line past a curtain, only no total cover.
 export function seesPlace(s, v, pos, rule, sources) {
   if (rule !== 'light') return inViewOf(s.map, v, pos);
-  const d = gap(s, v.pos, pos) * FT, sn = v.senses ?? {};
+  const d = gap(s, v.pos, pos) * FT, sn = sensesOf(s, v);
   if ((sn.blindsight ?? 0) >= d && coverOf(s, v, { pos }) !== 'total') return true;
   if (has(v, 'blinded') || !inViewOf(s.map, v, pos)) return false;
   if ((sn.truesight ?? 0) >= d || (sn.darkvision ?? 0) >= d) return true;
@@ -82,10 +82,10 @@ export function seesPlace(s, v, pos, rule, sources) {
 function signature(s, rule) {
   const m = s.map, parts = [rule, barriers(m).sig, m.levels.map((l) => `${l.id}:${l.z}:${l.light ?? ''}:${Object.keys(l.tiles).length}`).join(),
     m.regions.map((r) => `${r.id}:${r.level}:${r.revealed ? 1 : 0}:${r.light ?? ''}:${r.hexes.length}`).join(), s.settings?.vertical ?? '',
-    (s.effects ?? []).filter((fx) => fx.terrain?.obscured).map((fx) => fx.id).join()];        // a spell's fog (terrain.js)
+    (s.effects ?? []).filter((fx) => fx.terrain?.obscured || fx.terrain?.light).map((fx) => fx.id).join()];        // a spell's fog or lit sphere (terrain.js)
   for (const e of Object.values(s.entities)) {
     const cond = Object.keys(e.cond ?? {}).filter((k) => e.cond[k]).sort().join('+');
-    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}:${cond}:${JSON.stringify(e.senses ?? {})}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}`);
+    parts.push(`${e.id}:${e.side}:${e.pos.q},${e.pos.r},${e.pos.z}:${e.size ?? ''}${e.riding ? `^${e.riding.size}` : ''}:${e.dead ? 1 : 0}${e.hp > 0 ? 1 : 0}${e.hidden ? 1 : 0}${e.hiding ? 1 : 0}${e.melded ? 1 : 0}:${cond}:${JSON.stringify(sensesOf(s, e))}:${e.light ? `${e.light.bright}/${e.light.dim}` : ''}${e.side === 'party' && !e.dead && modifiers(s, e, 'invisible').immune === true ? ':sees-invisible' : ''}`);       // a spell, a trait, an aura or a form that shows it the Invisible (sight.js)
   }
   return parts.join('|');
 }
@@ -100,10 +100,10 @@ export function partyView(s) {
   if (rule === 'rooms') return ROOMS;
   const sig = signature(s, rule), had = views.get(s);
   if (had && had.sig === sig && had.map === s.map) return had.pv;
-  const map = s.map, G = gridOf(map), eyes = eyesOf(s), sources = rule === 'light' ? lightSources(s) : null;
+  const map = s.map, G = gridOf(map), eyes = eyesOf(s), sources = rule === 'light' ? lightSources(s, { party: true }) : null;
   const creatures = new Set();
   for (const c of Object.values(s.entities)) {
-    if (c.side === 'party' || concealed(map, c)) continue;
+    if (c.side === 'party' || c.melded || concealed(map, c)) continue;      // merged with stone: seen by nobody
     const at = raised(c);
     if (eyes.some((v) => (rule === 'los' ? inViewOf(map, v, at) : canSee(s, v, at, { sources }) !== 'no'))) creatures.add(c.id);
   }
@@ -116,7 +116,7 @@ export function partyView(s) {
   }
   // Blindsight perceives places beside it that no line of sight reaches (past a curtain, in a cloud).
   if (rule === 'light') for (const v of eyes) {
-    const b = v.senses?.blindsight ?? 0;
+    const b = sensesOf(s, v).blindsight ?? 0;
     if (!b) continue;
     for (const h of G.range(v.pos, Math.floor(b / FT))) for (const l of map.levels) {
       const p = placeOf(l, h), k = `${l.id}|${col(h)}`;
@@ -136,7 +136,7 @@ export function partyView(s) {
 // The name players are told for a creature: one not of the party in a form (Wild Shape) is the Beast (view.js).
 export const seenName = (e) => (e.form && e.side !== 'party' ? e.form.name ?? e.name : e.name);
 
-export const unknown = (s, e) => !!e && e.side !== 'party' && (concealed(s.map, e) || (sightRule(s) !== 'rooms' && !partyView(s).creatures.has(e.id)));
+export const unknown = (s, e) => !!e && e.side !== 'party' && (!!e.melded || concealed(s.map, e) || (sightRule(s) !== 'rooms' && !partyView(s).creatures.has(e.id)));
 
 // ---------- memory ----------
 // map.seen = { tiles: { [level]: ["q,r", ...] }, objects: { [id]: state } }: the tiles the party has

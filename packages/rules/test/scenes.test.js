@@ -1,6 +1,7 @@
 // Scenes (task M11 of docs/specs/maps-and-objects.md): a mode of the table for conversation, with
 // NPCs whose notes only the DM sees, a transcript everyone hears, checks asked for and rolled
 // against a DC the DM keeps, and lines written to the chronicle.
+import { plain } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ACTION_TYPES, apply, recall } from "../src/engine.js";
@@ -17,7 +18,7 @@ const PAT = { role: "player", userId: "pat" }, SAM = { role: "player", userId: "
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const no = (r, re) => { assert.equal(r.ok, false); if (re) assert.match(r.error, re); return r; };
 const asset = (n) => `asset${String(n).padStart(4, "0")}xxxxxxxxxxxx`;
-const sent = (s, events, who) => JSON.stringify([view(s, who), viewEvents(events, s, who)]);
+const sent = (s, events, who) => plain([view(s, who), viewEvents(events, s, who)]);
 
 function table() {
   const s = newGame(3);
@@ -172,7 +173,7 @@ test("scene actions are the DM's, are checked, and a refused one changes nothing
 test("a fight ends the scene, whether the DM starts it or the party walks up to an enemy; a scene cannot start during one", () => {
   const s = table();
   ok(apply(s, { type: "scene", scene: { title: "Parley" } }, DM));
-  const fight = ok(apply(s, { type: "startEncounter", center: s.entities.m1.pos, radius: 6 }, DM));
+  const fight = ok(apply(s, { type: "startEncounter", center: s.entities.m1.pos, radius: 14 }, DM));   // wide enough to hold a hero (#771)
   assert.equal(s.scene, null);
   const types = fight.events.map((e) => e.type);
   assert.ok(types.indexOf("sceneEnd") >= 0 && types.indexOf("sceneEnd") < types.indexOf("encounterStart"), `${types}`);

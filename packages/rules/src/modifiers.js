@@ -70,8 +70,11 @@ export function judge(tag, sit, s) {
     case 'attack.spell': return sit.spell === undefined ? null : sit.spell;        // the attack roll of a spell (Innate Sorcery)
     case 'spell.cantrip': return sit.cantrip === undefined ? null : sit.cantrip;   // damage from a cantrip (Potent Spellcasting)
     case 'target.notFiend': return t ? (t.type ?? CONTENT.monsters[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null)) !== 'fiend' : null;   // Hurl Through Hell
+    case 'target.fiendOrUndead': return t ? ['fiend', 'undead'].includes(t.type ?? CONTENT.monsters[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null)) : null;   // Divine Smite's extra die
     case 'attack.opportunity': return sit.opportunity === undefined ? null : sit.opportunity;   // an Opportunity Attack (Escape the Horde)
     case 'check.proficient': return sit.proficient === undefined ? null : sit.proficient;   // a check with one of its skill or tool proficiencies (Reliable Talent)
+    // A check with a skill that uses none of its proficiencies (Jack of All Trades). A tool it is proficient with, or a proficiency lent for a time, uses the bonus already.
+    case 'check.unskilled': return sit.proficient === undefined ? null : sit.skill !== undefined && sit.proficient === false;
     case 'self.notIncapacitated': return sit.self ? !incapacitated(sit.self) : null; // whose modifier it is (Danger Sense)
     case 'target.unconscious': return t ? has(t, 'unconscious') : null;
     // Grapples (docs/specs/grapple-shove.md): who holds whom is on the held creature's `cond.grappled.holds`. A Grappled condition
@@ -84,6 +87,9 @@ export function judge(tag, sit, s) {
     // Who can see whom (sight.js). A thing on the map that attacks (a trap) has no eyes: it never
     // sees its target, and whether its target sees it changes nothing.
     case 'target.unseen': return a && t ? (a.object ? true : canSee(s, a, t) === 'no') : null;
+    case 'target.seen': return a && t ? (a.object ? false : canSee(s, a, t) !== 'no') : null;       // the attacker can see the target (Faerie Fire: "if the attacker can see it")
+    case 'target.ally': return a && t ? a.side === t.side : null;                                      // on the source's own side (Enlarge/Reduce: a willing creature takes no save)
+    case 'target.enemy': return a && t ? a.side !== t.side : null;                                    // hostile to the source: another side (Guardian of Faith)
     case 'attacker.unseen': return a && t ? (a.object ? false : canSee(s, t, a) === 'no') : null;
     // Engine-only tags, for the statuses above: not in the content vocabulary.
     case 'attacker.seen': return a && t ? (a.object ? true : canSee(s, t, a) !== 'no') : null;
@@ -91,7 +97,7 @@ export function judge(tag, sit, s) {
     case 'target.halfCover': return sit.cover === undefined ? null : sit.cover === 'half';
     case 'target.threeQuartersCover': return sit.cover === undefined ? null : sit.cover === 'threeQuarters';
     case 'ally.adjacentToTarget':
-      return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && o.side === a.side && apart(s, o, t) <= 1) : null;
+      return a && t ? Object.values(s.entities).some((o) => o.id !== a.id && upright(o) && !incapacitated(o) && o.side === a.side && apart(s, o, t) <= 1) : null;
     case 'enemy.adjacent':
       return a ? Object.values(s.entities).some((o) => upright(o) && o.side !== a.side && apart(s, o, a) <= 1) : null;
     default: return null;
@@ -119,29 +125,72 @@ export function aurasOn(s, e) {
   }
   return [...best.values()];
 }
-// Is a creature immune to a condition: its own immunity (a monster's), or an ally's aura (Aura of Courage)?
-export const immuneTo = (s, e, id) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id));
+// The conditions a lasting effect makes a creature immune to for a while (a modifier step `{ on: 'condition', op: 'immune', scope: { condition } }`: Heroism).
+// With `from` (Protection from Evil and Good: no Charmed or Frightened "from them") the immunity holds only against a condition a creature of one of those types gives: `giver` is that creature, and with none named (the DM puts it on, a
+// condition the engine cannot say the source of) the immunity does not apply, and does not hide a condition the creature already has (`sources`, which asks with no giver and `unrestricted`).
+const spellImmune = (s, e, giver = undefined, unrestricted = true, magic = false) => {
+  const out = [];
+  for (const fx of s?.effects ?? []) for (const p of fx.parts) {
+    if (p.ended || p.target !== e?.id || p.modifier?.on !== 'condition' || p.modifier.op !== 'immune' || typeof p.modifier.scope?.condition !== 'string') continue;
+    const m = p.modifier;
+    if (m.from === undefined && m.magic === undefined) out.push(m.scope.condition);
+    // `magic` (Freedom of Movement): only a condition a spell gave; `from`: only one a creature of those types gave. Both say what gives it, so neither hides a condition the creature has already.
+    else if (!unrestricted && (m.from === undefined || ofTypes(giver, m.from)) && (m.magic !== true || magic)) out.push(m.scope.condition);
+  }
+  return out;
+};
+// A creature's type, as far as the engine can tell (a pack monster's, its own, or Humanoid for a player character); null when it cannot say.
+// A form never changes it: SRD 5.2.1 Wild Shape and Polymorph both say the creature retains its creature type.
+export const typeOf = (t) => (t ? t.type ?? CONTENT.monsters[t.tpl]?.type ?? CONTENT.summons?.[t.tpl]?.type ?? (t.kind === 'pc' ? 'humanoid' : null) : null);
+const ofTypes = (t, types) => { const ty = typeOf(t); return ty !== null && types.includes(ty); };
+// Is a creature immune to a condition: its own immunity (a monster's), an ally's aura (Aura of Courage), or a spell on it (Heroism)? `giver`: the creature that would give it, for an immunity that is only against some creatures.
+// `magic`: a spell gives the condition (a modifier with `magic: true` holds only then).
+export const immuneTo = (s, e, id, giver = undefined, magic = false) => !!e.conditionImmune?.includes(id) || aurasOn(s, e).some((a) => a.immune.includes(id)) || spellImmune(s, e, giver, false, magic).includes(id);
 
+// What a built character wears without training (SRD "Armor Training": armour it lacks training with; a Shield without training only loses its Armor Class bonus), by name, as derive()
+// worked it out (`untrained` on the record). A creature in a form wears none (it melds into the form), as armourWorn says.
+export const untrainedGear = (e) => (e?.form || !Array.isArray(e?.untrained) ? [] : e.untrained);
+// ... and what that does: Disadvantage on every D20 Test that uses Strength or Dexterity (attack rolls, saving throws, ability checks, and
+// Initiative, which is a Dexterity check), as data for the modifiers below. The attack roll and the check say which ability they use
+// (`sit.ability`); a roll that does not say is not judged. Spellcasting is barred by the cast action (casting.js, slotsFor).
+const UNTRAINED = ['str', 'dex'].flatMap((ability) => [
+  { on: `save.${ability}`, op: 'disadvantage' }, { on: 'check', op: 'disadvantage', scope: { ability } }, { on: 'attack.roll', op: 'disadvantage', scope: { ability } },
+]).concat([{ on: 'initiative', op: 'disadvantage' }]);
+
+// `from` on a modifier: does the other creature in the roll have one of those types? The attacker, for an attack roll made against `e`; for a save about a condition, the creature that gave `e` the condition it already has
+// (its `cond[id].source`: a condition the engine cannot say the source of is not matched).
+function fromHolds(s, e, m, hook, sit) {
+  if (hook === 'attack.received') return ofTypes(sit.attacker, m.from);
+  if (hook === 'save' || hook.startsWith('save.')) return (sit.conditions ?? []).some((c) => e.cond?.[c] && ofTypes(s?.entities?.[e.cond[c].source], m.from));
+  return false;
+}
+const value_ = (m, src) => (typeof m.value === 'object' && m.value !== null ? m.value.perLevel * src.level : m.value);
 // Where a creature's modifiers come from, each with the name to show as the reason.
 function* sources(s, e) {
   for (const fx of s?.effects ?? []) {
     // `against`: the modifier holds only against that creature (Hex, Hunter's Mark: the marked target).
     // `except`: it does not hold for rolls that creature makes (Sundering Blow: "another creature").
-    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p };
+    for (const p of fx.parts) if (p.modifier && !p.ended && p.target === e.id) yield { name: fx.name, modifiers: [p.modifier], level: 1, key: fx.id, against: p.against, except: p.except, part: p, magic: !!fx.spell };
   }
-  const auras = aurasOn(s, e);
+  const auras = aurasOn(s, e), spelled = spellImmune(s, e);
   for (const [id, inst] of conditionsOf(e)) {
     const def = conditionDef(id);
-    // A condition an aura makes it immune to has no effect while it is in the aura (Aura of Courage).
-    if (def && !auras.some((a) => a.immune.includes(id))) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
+    // A condition an aura makes it immune to has no effect while it is in the aura (Aura of Courage); nor one a spell makes it immune to while the spell lasts (Heroism).
+    if (def && !auras.some((a) => a.immune.includes(id)) && !spelled.includes(id)) yield { name: def.name, modifiers: def.modifiers, level: inst.level ?? 1, condition: id };
   }
   for (const a of auras) if (a.modifiers.length) yield { name: a.name, modifiers: a.modifiers, level: 1 };
   for (const trait of CONTENT.monsters[e.tpl]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
+  for (const gear of untrainedGear(e)) yield { name: `${gear}, no training`, modifiers: UNTRAINED, level: 1 };
   // A form's stat block brings its traits (a wolf's Pack Tactics in Wild Shape; forms.js).
   for (const trait of CONTENT.monsters[e.form?.block]?.traits ?? []) yield { name: trait.name, modifiers: trait.modifiers, level: 1 };
   // A built character's features that are always on (Danger Sense, Feral Instinct), as derive() made them.
   for (const f of e.feats ?? []) if (f.modifiers) yield { name: f.name, modifiers: f.modifiers, level: 1 };
 }
+
+// Whether `e` has Flyby (a trait with `flyby: true`; SRD: "doesn't provoke an Opportunity Attack when it flies out of an enemy's reach"):
+// and only while it has a Speed to fly in its present shape (a flyer with no Fly Speed provokes); a flyer walking on the ground still counts, the engine keeping no movement mode (DEBT W42);
+// from its pack monster or summon block, or from the stat block of the form it has taken (Wild Shape lays a beast's traits over the druid).
+export const flyby = (s, e) => !!e && speedOf(s, e, 'fly') > 0 && [e.tpl, e.form?.block].some((id) => id !== undefined && [CONTENT.monsters[id], CONTENT.summons?.[id]].some((d) => d?.traits?.some((t) => t.flyby === true)));
 
 // Dice in a modifier's value: "1d4" (Bless) or "-1d4" (Bane). Rolled each time it applies, by the
 // caller that makes the roll; never here, so that asking what applies changes nothing.
@@ -182,6 +231,8 @@ export function armourWorn(e) {
 //     resist, vulnerable, immune,   (the last three: true for all damage, or a list of types)
 //     dice: [{ dice, name }],       dice to roll and add when the roll is made
 //     min, max,                     the least and the most the number may be (Barkskin: AC at least 17)
+//     baseAc, baseAcFrom            the best base Armor Class a `baseAc` modifier gives (Mage Armor: 13 + Dexterity), or null, and whose it is
+//     from                          on the ac hook, the names of the effects whose other modifiers applied
 //     dealt: [{ value, types, name }]   for damage.dealt: extra damage of those types, or added to the damage
 //     used: [parts]                 single-use modifiers that applied, for the roll's maker to use up
 //     floor, floorBy                a d20 lower than `floor` counts as it (Reliable Talent), and whose it is
@@ -193,7 +244,7 @@ export function armourWorn(e) {
 // ("target prone"). Pass '' where there are no sides, such as a saving throw ("Restrained").
 export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   const out = { add: 0, set: null, advantage: [], disadvantage: [], autoFail: false, autoSucceed: false, crit: false,
-    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [] };
+    resist: [], vulnerable: [], immune: [], dice: [], taken: [], dealt: [], min: null, max: null, used: [], rescue: [], floor: null, floorBy: null, lent: [], baseAc: null, from: [] };
   // Proficiency for a time (addition C): found first, so that a modifier that asks `check.proficient` (Reliable Talent) counts it, whichever comes first.
   if (hook === 'check') {
     for (const src of sources(s, e)) {
@@ -218,16 +269,22 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       if (m.on !== hook) continue;
       if (!(m.when ?? []).every((tag) => judge(tag, { ...sit, self: e }, s) === true)) continue;      // not known to hold: not applied
       if (m.spell !== undefined && sit.spellId !== m.spell) continue;                                 // only that spell's damage (Agonizing Blast)
+      if (m.from !== undefined && !fromHolds(s, e, m, hook, sit)) continue;                          // only against creatures of those types (Protection from Evil and Good)
       if (!inScope(m, sit)) continue;
+      // Freedom of Movement: a Speed the creature keeps against spells (`speedOf`) leaves out what a spell's lasting effect takes off it.
+      if (sit.keepSpeed && hook === 'speed' && src.magic && (m.op === 'set' || (m.op === 'add' && typeof value_(m, src) === 'number' && value_(m, src) < 0))) continue;
       // `stack: false`: of several of one name, the first applies and the rest wait (Sundering Blow).
       if (m.stack === false) { if (once.has(src.name)) continue; once.add(src.name); }
+      // `baseAc` (Mage Armor): the best base Armor Class any of them gives, from the creature's own score (acOf, engine/rolls.js, says whether it is better than its own).
+      if (m.op === 'baseAc') { const sc = e.abil?.[m.value?.ability]; if (Number.isInteger(sc)) { const n = m.value.base + Math.floor((sc - 10) / 2); if (out.baseAc === null || n > out.baseAc) { out.baseAc = n; out.baseAcFrom = src.name; } } continue; }
+      if (hook === 'ac') out.from.push(src.name);                  // what changed an Armor Class, for the sheet to name
       const value = typeof m.value === 'object' ? m.value.perLevel * src.level : m.value;
       const reason = src.condition && side ? `${side} ${src.condition}` : src.name;
       // `onFail`: dice added only after the roll failed (Bardic Inspiration, Peerless Skill); the
       // roll's maker decides (engine/rolls.js, rescue), so nothing is added or used up here.
       if (m.onFail) { out.rescue.push({ value, name: src.name, ...(src.part ? { part: src.part } : {}), ...(m.cost ? { cost: m.cost } : {}) }); continue; }
       if (m.uses && src.part) out.used.push(src.part);         // one use: the roll that takes it ends it (durations.useUp)
-      if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
+      if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.atLeast ? { atLeast: m.atLeast } : {}), ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
       else if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });
       else if (m.op === 'add' && typeof value === 'string') out.dice.push({ dice: value, name: src.name });
       else if (m.op === 'add') out.add += value;
@@ -248,6 +305,29 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
   return out;
 }
 
+// A creature's senses and what lasting effects lend it for a while (True Seeing: `{ on: 'senses', op: 'set', value: 120, scope: { sense: 'truesight' } }`): the longer range of each wins.
+export function sensesOf(s, e) {
+  const out = { ...(e.senses ?? {}) };
+  for (const src of sources(s, e)) for (const m of src.modifiers) {
+    if (m.on !== 'senses' || m.op !== 'set' || typeof m.scope?.sense !== 'string' || typeof m.value !== 'number') continue;
+    if (m.value > (out[m.scope.sense] ?? 0)) out[m.scope.sense] = m.value;
+  }
+  return out;
+}
+
+// The longest leap a lasting effect lends for 10 feet of movement once a turn (Jump: `{ on: 'leap', op: 'set', value: 30 }`), in feet, or 0.
+export function leapOf(s, e) {
+  let best = 0;
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'leap' && m.op === 'set' && Number.isInteger(m.value) && m.value > best) best = m.value;
+  return best;
+}
+
+// Does a lasting effect let the creature walk on this surface (Water Walk: `{ on: 'surface', op: 'immune', scope: { surface: 'water' } }`)? Only water is known so far.
+export function walksOn(s, e, surface = 'water') {
+  for (const src of sources(s, e)) for (const m of src.modifiers) if (m.on === 'surface' && m.op === 'immune' && m.scope?.surface === surface) return true;
+  return false;
+}
+
 // A number kept within what `min` and `max` modifiers allow.
 export const bounded = (m, n) => Math.min(m.max ?? Infinity, Math.max(m.min ?? -Infinity, n));
 
@@ -257,6 +337,8 @@ export function speedOf(s, e, mode = 'walk') {
   let base = mode === 'walk' ? e.speed ?? 0 : e.speeds?.[mode] ?? 0;
   // A Fly Speed something gives for a while (Dragon Wings: `speed.fly` set 60), if it is more than its own.
   if (mode === 'fly') { const f = modifiers(s, e, 'speed.fly'); if (f.set !== null) base = Math.max(base, f.set); }
-  const m = modifiers(s, e, 'speed');
+  let m = modifiers(s, e, 'speed');
+  // Freedom of Movement (`{ on: 'speed', op: 'immune', magic: true }`): what the lasting effect of a spell takes off the Speed is left out.
+  if (m.immune === true) m = modifiers(s, e, 'speed', { keepSpeed: true });
   return base > 0 ? Math.max(0, bounded(m, m.set !== null ? m.set : base + m.add)) : 0;
 }

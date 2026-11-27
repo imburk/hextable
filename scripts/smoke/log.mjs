@@ -1,4 +1,4 @@
-import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm } from './lib.mjs';
+import { sleep, scenario, wait, state, shown, waitShown, open, playSolo, closeMenu, openTab, calm, chipPick } from './lib.mjs';
 
 // ---------- log ----------
 // The log by combat (packages/client/logview.js, docs/specs/table-ui.md T7c). Solo at both sizes: a fight is one collapsed entry with its
@@ -98,7 +98,7 @@ async function table(browser, url) {
         await waitShown(phone, '#lobby', false);
         await wait(phone, () => window.hextable.state?.entities?.fighter);
         await closeMenu(host);
-        await phone.locator('#party button:has-text("Play as")').first().click();
+        await chipPick(phone, 'Play as', 'click');
       });
       await run.do('the DM wins and publishes; the phone log has one fight with its summary', async () => {
         await host.evaluate(win);
@@ -114,6 +114,26 @@ async function table(browser, url) {
         if (await phone.$('.lg-chip[data-kind="dm"]')) throw new Error('a player has the DM-only chip');
         if (!(await host.$('.lg-chip[data-kind="dm"]')) && !(await openTab(host, 'log'), await host.$('.lg-chip[data-kind="dm"]'))) throw new Error('the DM has no DM-only chip');
         await shot(phone, 'log-player-phone');
+        await closeMenu(phone); await closeMenu(host);
+      });
+      // M5 (docs/specs/one-token-menu.md): Log and chat has a Say box, the engine's `say`. A player speaks as their own character or out of character.
+      await run.do('a player says a line out of character from Log and chat, then one as their character; the DM\'s log has both', async () => {
+        await openTab(phone, 'log/talk'); await waitShown(phone, '#say-form');
+        const opts = await phone.$$eval('#say-as option', (o) => o.map((x) => [x.value, x.textContent]));
+        if (opts.length !== 2 || !/^Say as /.test(opts[0][1]) || opts[1][0] !== '' || opts[1][1] !== 'Out of character') throw new Error(`who a player may speak as: ${JSON.stringify(opts)}`);
+        const box = await phone.$eval('#say-form', (f) => { const r = f.getBoundingClientRect(), b = f.querySelector('button').getBoundingClientRect(); return { l: r.left, r: r.right, vw: innerWidth, h: b.height }; });
+        if (box.l < 0 || box.r > box.vw + 1 || box.h < 44) throw new Error(`the Say box does not fit a phone: ${JSON.stringify(box)}`);
+        await phone.selectOption('#say-as', ''); await phone.fill('#say-text', 'back in five minutes'); await phone.locator('#say-form button').tap();
+        await wait(phone, () => /\(Smoke Player, out of character\) back in five minutes/.test(document.getElementById('log-list').textContent));
+        if ((await phone.inputValue('#say-text')) !== '') throw new Error('the box kept the words after they were sent');
+        await phone.selectOption('#say-as', opts[0][0]); await phone.fill('#say-text', 'I listen at the door'); await phone.locator('#say-form button').tap();
+        await wait(phone, () => /: \u201cI listen at the door\u201d/.test(document.getElementById('log-list').textContent));
+        await openTab(host, 'log/talk');
+        await wait(host, () => { const t = document.getElementById('log-list').textContent; return /\(Smoke Player, out of character\) back in five minutes/.test(t) && /I listen at the door/.test(t); });
+        if (!/^It is Day \d+, \d\d:\d\d\.$/.test(await host.textContent('#log-clock'))) throw new Error(`the clock is not at the head of Log and chat: ${await host.textContent('#log-clock')}`);
+        const dmOpts = await host.$$eval('#say-as option', (o) => o.map((x) => x.textContent));
+        if (dmOpts[0] !== 'As the DM') throw new Error(`the DM's Say box: ${dmOpts}`);
+        await shot(phone, 'log-say-phone');
         await closeMenu(phone); await closeMenu(host);
       });
       await run.do('fifty more entries push the fight out of what a reload is sent', async () => {

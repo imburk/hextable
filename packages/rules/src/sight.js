@@ -3,7 +3,7 @@
 import { gridOf, col } from './grid.js';
 import { FT, WALL_HEIGHT, apart, footprint, gap, ground, regionAt, shapeOf, surfaces, under } from './space.js';
 import { barriers, objectBlocks, objectDef, objectSegment } from './walls.js';
-import { has } from './modifiers.js';
+import { has, immuneTo, modifiers, sensesOf } from './modifiers.js';
 import { obscuredAt, terrainsOf } from './terrain.js';
 import { SIZES } from './content/sizes.js';
 
@@ -128,7 +128,7 @@ export function coverOf(s, from, target, others = []) {
   if (rules.creatureCover !== 'off' && G.dist(best.o, best.t) > 1) {
     const p = G.center(best.o), q = G.center(best.t), len = Math.hypot(q[0] - p[0], q[1] - p[1]);
     for (const c of others) {
-      if (c === from || c === target || c.dead || (c.id && (c.id === from.id || c.id === target.id)) || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
+      if (c === from || c === target || c.dead || c.melded || (c.id && (c.id === from.id || c.id === target.id)) || Math.abs(c.pos.z - Math.min(best.o.z, best.t.z)) >= FT * 2) continue;
       for (const f of shapeOf(c, G).length === 1 ? [c.pos] : footprint(c, c.pos, G)) {
         const m = G.center(f), t = ((m[0] - p[0]) * (q[0] - p[0]) + (m[1] - p[1]) * (q[1] - p[1])) / (len * len);
         if (t > 0.05 && t < 0.95 && Math.hypot(m[0] - (p[0] + t * (q[0] - p[0])), m[1] - (p[1] + t * (q[1] - p[1]))) < 1.5) return 'half';
@@ -289,13 +289,18 @@ export function ambientAt(map, pos) {
   return regionAt(map, sf.level.id, pos)?.light ?? sf.level.light ?? 'bright';
 }
 // Everything giving light: things on the map in a state that is lit, and creatures carrying a light.
-export function lightSources(s) {
+// `party: true` builds what the party's view is lit by: the light of a creature the DM keeps hidden from the players (`hidden`, not of the party)
+// is left out, so a hidden foe's torch or Produce Flame lights nothing they are sent (review of #830); so is a lit sphere (Daylight) of such a creature. The engine's own judgements keep every light.
+export function lightSources(s, { party = false } = {}) {
   const out = [];
   for (const o of s.map.objects) {
     const l = objectDef(o)?.states[o.state]?.light, level = l && s.map.levels.find((x) => x.id === o.level);
     if (level) out.push({ pos: { q: o.at.q, r: o.at.r, z: level.z + (level.tiles[col(o.at)]?.h ?? 0) }, bright: l.bright, dim: l.dim, object: o.id });
   }
-  for (const e of Object.values(s.entities)) if (e.light && (e.light.bright > 0 || e.light.dim > 0)) out.push({ pos: e.pos, bright: e.light.bright, dim: e.light.dim, id: e.id });
+  for (const e of Object.values(s.entities)) if (e.light && (e.light.bright > 0 || e.light.dim > 0) && !(party && e.hidden && e.side !== 'party')) out.push({ pos: e.pos, bright: e.light.bright, dim: e.light.dim, id: e.id });
+  // A lasting spell's lit sphere (Daylight: terrain.js, `terrain.light`): Bright Light throughout the sphere, Dim Light that far beyond, held at the point it was laid out round.
+  // It is cast where everyone sees it, so the caster being hidden from the players does not leave it out (`party` leaves out only a hidden creature's own light).
+  for (const fx of terrainsOf(s)) if (fx.terrain.light && !(party && s.entities[fx.source]?.hidden && s.entities[fx.source].side !== 'party')) out.push({ pos: fx.terrain.origin, bright: fx.terrain.area.size, dim: fx.terrain.light, fx: fx.id });
   return out;
 }
 // What one source gives a place: 0, 1 (dim) or 2 (bright). Kept per source and position, and thrown
@@ -337,14 +342,19 @@ export function lightAt(s, pos, sources = lightSources(s)) {
 export const hiddenFrom = (target, viewer) => !!target.hiding && target.side !== viewer.side;
 export function sees(s, viewer, target, { sources, ignoreHiding = false } = {}) {
   if (viewer === target || (viewer.id && viewer.id === target.id)) return { see: 'yes' };
-  const senses = viewer.senses ?? {}, d = apart(s, viewer, target) * FT;
+  // Merged with stone (Meld into Stone): it sees nothing outside, and nothing of it is visible or otherwise detectable by nonmagical senses (Truesight is the DM's).
+  if (viewer.melded || target.melded) return { see: 'no', why: 'merged with stone' };
+  const senses = sensesOf(s, viewer), d = apart(s, viewer, target) * FT;
   if ((senses.blindsight ?? 0) >= d && coverOf(s, viewer, target) !== 'total') return { see: 'yes' };
   viewer = lift(s, viewer); target = lift(s, target);
   if (has(viewer, 'blinded')) return { see: 'no', why: 'blinded' };
   if (!inViewOf(s.map, viewer, target)) return { see: 'no', why: 'out of sight' };
+  // Truesight in range, or a spell that shows the Invisible (See Invisibility: `{ on: 'invisible', op: 'immune' }`, whatever the distance): the Invisible condition, and hiding, hide nothing.
   const truesight = (senses.truesight ?? 0) >= d;
-  if (!truesight && has(target, 'invisible')) return { see: 'no', why: 'invisible' };
-  if (!truesight && !ignoreHiding && hiddenFrom(target, viewer)) return { see: 'no', why: 'hidden' };
+  const piercing = truesight || ((has(target, 'invisible') || hiddenFrom(target, viewer)) && modifiers(s, viewer, 'invisible').immune === true);
+  // A creature that cannot benefit from Invisible (Faerie Fire's light: modifiers.js, immuneTo) is seen as if it were not.
+  if (!piercing && has(target, 'invisible') && !immuneTo(s, target, 'invisible')) return { see: 'no', why: 'invisible' };
+  if (!piercing && !ignoreHiding && hiddenFrom(target, viewer)) return { see: 'no', why: 'hidden' };
   // SRD: a creature trying to see something in a Heavily Obscured space has the Blinded condition;
   // in a Lightly Obscured one it sees as in Dim Light. The least obscured part of a big creature
   // counts. Truesight does not see through fog; Blindsight (above) does.

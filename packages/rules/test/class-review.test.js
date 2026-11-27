@@ -23,6 +23,7 @@ function field(sheet, more = {}) {
   s.settings.autoEngage = false;
   s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, ...more });
   ok(apply(s, { type: "claim", entity: "hero", user: "pat", userName: "Pat" }, PAT));
+  s.entities.hero.hitChoices = { "divine-smite": "never" };       // a paladin its player runs is asked at every hit by default (docs/specs/on-hit.md, Q2): these tests are not about the smite
   ok(apply(s, { type: "place", actor: "rogue", to: { q: -3, r: 0 } }, DM));
   ok(apply(s, { type: "place", actor: "m1", to: { q: 2, r: 0 } }, DM));
   s.entities.m1.hp = s.entities.m1.maxHp = 300;
@@ -271,6 +272,7 @@ test("Countercharm is not spent on a foe's failed save against the bard's own ch
   let failed = 0;
   for (let seed = 1; seed <= 20 && !failed; seed++) {
     const s = field(bard);
+    s.entities.m1.type = "humanoid";              // Charm Person works on Humanoids only (#727); the valley's first foe is none
     fight(s); turnOf(s, "hero");
     s.rng = seed * 7919;
     const r = ok(apply(s, { type: "cast", actor: "hero", spell: "charm-person", target: "m1" }, DM));

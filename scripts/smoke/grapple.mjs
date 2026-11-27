@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, tapGuarded, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, openTab, panelTab, settle, tapAt, onCanvas, placeBeside } from './lib.mjs';
+import { sleep, tapGuarded, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, openTab, panelTab, settle, tapAt, onCanvas, placeBeside, chip, openMenu } from './lib.mjs';
 
 // ---------- Grapple, Shove, Escape and Let go; the familiar's attacks and Investment; Refresh from sheet (issue #486, stage G7 of docs/specs/grapple-shove.md) ----------
 // Solo as the DM at 1280x800 and at 390x844 with touch. Part 1: on the fighter's turn the Unarmed Strike has Grapple, Shove away and Shove Prone rows; a tap arms
@@ -50,7 +50,7 @@ async function part1(browser, url, label, opts) {
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
         // A built character has an Unarmed Strike; the valley's hand-typed party has none (DEBT T61, C19), so one is added: a level 5 fighter, Strength 16.
         hero = await addFighter(page);
-        await closePanels(page); await page.click('#party button:has-text("Gru")');
+        await closePanels(page); await chip(page, 'Gru');
         foe = await spawnNear(page, 'goblin-warrior', { near: hero, min: 1, radius: 3 });
         await placeBeside(page, foe, hero);
         await send(page, { type: 'condition', actor: foe, condition: 'paralyzed', on: true });
@@ -88,11 +88,13 @@ async function part1(browser, url, label, opts) {
         await select(page, foe);
         const pill = await page.$$eval('#c-res .pill', (p) => p.map((x) => x.textContent.trim()));
         if (!pill.some((x) => /^Grappled by Gru \(escape DC \d+\)$/.test(x))) throw new Error(`the pill: ${pill}`);
+        await openMenu(page, 'sheet');                       // M3: the status block (conditions) is the top of the Character screen
         await page.click('#c-res .pill:has-text("Grappled")');
         await waitShown(page, '#ap-how');
         if (!/escape DC \d+/.test(await text(page, '#ap-how')) || /Until the DM removes it/.test(await text(page, '#ap-how'))) throw new Error(`the card: ${await text(page, '#ap-how')}`);
         await shot('held');
         await page.click('#ap-how [data-close]');
+        await closePanels(page);
       });
 
       await run.do('the line on the map: the overlay has a band between the two (a hold draws geometry the same overlay without it does not)', async () => {
@@ -105,8 +107,8 @@ async function part1(browser, url, label, opts) {
 
       await run.do('Gru\'s panel has "Let go of" the goblin; a tap frees it with no action spent', async () => {
         await select(page, hero);
-        await panelTab(page, 'attacks');
-        const row = `#ap-attacks [data-row="letgo:${foe}"]`;
+        await panelTab(page, 'move');                      // breaking free and letting go are rows of the Move group (M4: a held creature cannot walk)
+        const row = `#ap-move [data-row="letgo:${foe}"]`;
         await waitShown(page, row);
         const before = await state(page, (S) => S.encounter.budget.action);
         await tap(row);
@@ -162,12 +164,12 @@ async function part1(browser, url, label, opts) {
         await send(page, { type: 'condition', actor: foe, condition: 'paralyzed', on: false });
         await wait(page, (f) => !window.hextable.state.entities[f].cond.paralyzed && !!window.hextable.state.entities[f].cond.grappled?.holds, foe);
         await turnOf(page, foe); await select(page, foe);
-        await panelTab(page, 'attacks');
-        for (const skill of ['athletics', 'acrobatics']) await waitShown(page, `#ap-attacks [data-row="escape:${hero}:${skill}"]`);
-        const t = await text(page, `#ap-attacks [data-row="escape:${hero}:athletics"]`);
+        await panelTab(page, 'move');
+        for (const skill of ['athletics', 'acrobatics']) await waitShown(page, `#ap-move [data-row="escape:${hero}:${skill}"]`);
+        const t = await text(page, `#ap-move [data-row="escape:${hero}:athletics"]`);
         if (!/Escape \(Athletics\)/.test(t) || !/Strength check [+-]\d+ vs DC \d+/.test(t) || !/Action/.test(t)) throw new Error(`the Escape row: ${t}`);
         await shot('escape');
-        await tap(`#ap-attacks [data-row="escape:${hero}:athletics"]`);
+        await tap(`#ap-move [data-row="escape:${hero}:athletics"]`);
         await wait(page, (h) => window.hextable.state.timeline.some((e) => e.type === 'check' && e.escape === h), hero);
         await idle(page);
         if (!(await lines(page)).some((x) => /tries to break free of Gru/.test(x))) throw new Error(`the log: ${(await lines(page)).slice(-4)}`);
@@ -208,7 +210,7 @@ async function part3(browser, url, label, opts) {
         await wait(page, () => Object.values(window.hextable.state.entities).some((e) => e.name === 'Mor'));
         mor = await page.evaluate(() => Object.values(window.hextable.state.entities).find((e) => e.name === 'Mor').id);
         await closePanels(page); await page.evaluate((m) => { window.hextable.select(m); window.hextable.R.focus(m, true); }, mor);
-        await waitShown(page, '#card'); await idle(page);
+        await openMenu(page, 'sheet'); await waitShown(page, '#card'); await idle(page);
         // Find Familiar is cast through the invocation (a Magic action with no spell slot: a Pact slot is level 3, which the Spells tab's own level 1 check does not count).
         await panelTab(page, 'features');
         await tap('#ap-features [data-row="feat:eldritch-invocations-pact-of-the-chain"]');
@@ -260,12 +262,12 @@ async function part3(browser, url, label, opts) {
         if (!(await lines(page)).some((x) => /Pact of the Chain: Mor gives up an attack/.test(x))) throw new Error(`the log: ${(await lines(page)).slice(-5)}`);
       });
 
-      await run.do('Quick Attack is a Bonus tab row: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
-        await panelTab(page, 'bonus');
-        await waitShown(page, rowFor('bonus', 'investment-of-the-chain-master'));
-        const t = await text(page, rowFor('bonus', 'investment-of-the-chain-master'));
+      await run.do('Quick Attack is an Attack row marked Bonus: a tap and a tap on the goblin send it, and the Bonus Action is spent', async () => {
+        await panelTab(page, 'attacks');
+        await waitShown(page, rowFor('attacks', 'investment-of-the-chain-master'));
+        const t = await text(page, rowFor('attacks', 'investment-of-the-chain-master'));
         if (!/Quick Attack|Investment/.test(t) || !/Bonus/.test(t)) throw new Error(`the row says: ${t}`);
-        await tap(rowFor('bonus', 'investment-of-the-chain-master'));
+        await tap(rowFor('attacks', 'investment-of-the-chain-master'));
         await wait(page, () => window.hextable.mode.kind === 'famAttack');
         const n = await state(page, (S) => S.timeline.length);
         await tapHex(await state(page, (S, g) => S.entities[g].pos, gob), gob);
@@ -289,12 +291,21 @@ async function part4(browser, url, label, opts) {
       const shot = (n) => (process.env.SMOKE_SHOTS ? (mkdirSync(process.env.SMOKE_SHOTS, { recursive: true }), page.screenshot({ path: `${process.env.SMOKE_SHOTS}/grapple-${n}-${phone ? 'phone' : 'wide'}.png` }).catch(() => {})) : null);
       const toastNow = () => page.evaluate(() => { const t = document.getElementById('toast'); return t.hidden ? '' : t.textContent.replace(/\s+/g, ' ').trim(); });
       const toastHas = (re) => wait(page, (src) => { const t = document.getElementById('toast'); return !t.hidden && new RegExp(src).test(t.textContent); }, re.source, 8000);
-      const sheetOf = async (id) => { await closePanels(page); await page.evaluate((i) => window.hextable.select(i), id); await waitShown(page, '#card'); await page.click('#btn-sheet'); await waitShown(page, '#sheet-refresh'); };
+      const sheetOf = async (id) => { await closePanels(page); await page.evaluate((i) => window.hextable.select(i), id); await openMenu(page, 'sheet'); await waitShown(page, '#card'); await waitShown(page, '#sheet-refresh'); };
       let gru = null;
 
       await run.do('the DM panel\'s Refresh the party with nobody built from a sheet: the engine\'s refusal is shown, nothing changes', async () => {
         await open(page, url); await playSolo(page);
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
+        // The four starters are built from sheets now (#683), so the table is made the typed-in one this step and the next are about: the starters leave, and
+        // Brenna comes back as a record with no sheet behind it (addCharacter takes the finished record, derive's, and keeps no sheet).
+        await page.evaluate(async () => {
+          const D = await import('./shared/derive.js'), h = window.hextable;
+          for (const id of ['rogue', 'cleric', 'wizard', 'fighter']) h.act({ type: 'remove', actor: id });
+          const rec = D.derive({ name: 'Brenna', class: 'fighter', level: 3, subclass: 'champion', abilities: { str: 16, dex: 12, con: 14, int: 10, wis: 10, cha: 8 }, skills: ['athletics', 'perception'], choices: { 'fighting-style': 'defense' }, weapons: [] }).record;
+          h.act({ type: 'addCharacter', record: rec, at: { q: -6, r: 2, z: 0 } });
+        });
+        await wait(page, () => { const P = Object.values(window.hextable.state.entities).filter((e) => e.kind === 'pc'); return P.length === 1 && P[0].name === 'Brenna' && !P[0].sheet; });
         await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
         const was = await state(page, (S) => S.timeline.length);
         await tap('#dm-refresh-party');
