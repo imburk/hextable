@@ -272,3 +272,14 @@ test("the DM is sent the zone whole", () => {
   assert.ok(fx.zone.steps && fx.zone.src && fx.zone.last);
   void current;
 });
+
+test("a Magic Circle of a caster the party does not know of is not sent (the engine does not enforce it against them); one of a caster they know is, with its runes", () => {
+  const circle = () => ({ type: "cast", actor: "mage", spell: "magic-circle", slot: 3, hex: at(1, 2), choice: ["fiend"] });
+  const known = table({ fight: false, casters: { mage: { at: at(1, 2) } } });
+  ok(apply(known, circle(), DM));
+  assert.equal(zones(known).length, 1);
+  assert.deepEqual(zones(known)[0].zone.ward, { types: ["fiend"], reverse: false });
+  ok(apply(known, { type: "reveal", actor: "mage", hidden: true }, DM));
+  assert.equal(known.effects.length, 1);
+  assert.deepEqual(zones(known), [], "the caster hidden again: no circle");
+});

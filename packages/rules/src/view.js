@@ -567,7 +567,7 @@ function viewEffects(state) {
 // a Magic Circle. A player is sent its shape (view-fields.js, ZONE_FIELDS, says field by field) and not how it works. Which zones, and where:
 //  - only the cells of it that are sent of the map: a zone in a region not yet revealed is not sent until it is (the rule of an object there, and
 //    of the cells an event names); under los and light only the cells the party sees now, so one that appears or goes out of sight tells nothing;
-//  - one whose spell says it looks natural (`CAMOUFLAGED`: Spike Growth) only to the caster's side, the party;
+//  - one whose spell says it looks natural (`CAMOUFLAGED`: Spike Growth) only to the caster's side, the party; a Magic Circle (`ward`) only where its caster is one they know of;
 //  - a zone of a caster the party does not know of without `source`, `conc`, `lasts` and `until`, and with an id of its own (`z1`, `z2`...) in
 //    place of the effect's, which comes from the counter creatures share (DEBT T11);
 //  - an Emanation as the cells it covers now, never `follows`, and not at all while the creature it surrounds is one they do not know of: its
@@ -599,6 +599,9 @@ function zoneRecord(state, fx, seen) {
   const z = fx.zone;
   if (!z || !z.area) return null;
   if (CAMOUFLAGED.has(fx.spell) && state.entities[fx.source]?.side !== 'party') return null;
+  // A Magic Circle of a caster the party does not know of is not enforced against their creatures (engine/world.js, `circlesFor`: a refusal would tell them something stands
+  // there), so it is not drawn either: runes that bar nobody would be a lie. The DM holds it by hand (the cast told them so).
+  if (z.ward && classify(state, fx.source) === 'hidden') return null;
   let cells, origin;
   if (z.follows) {
     const c = state.entities[z.follows];

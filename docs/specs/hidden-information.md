@@ -120,6 +120,8 @@ an area's `range` or `types`. Which zones, and where:
   Under los and light, only the cells the party sees now, so a zone coming into or going out of sight tells nothing.
 - A zone whose spell says it looks natural (Spike Growth: "camouflaged to look natural") is sent only where its caster is of the party. The only SRD zone spell that
   says so; Zone of Truth says nothing of how it looks and is treated as the others. The list is `CAMOUFLAGED` in `view.js`.
+- A Magic Circle (`ward`) of a caster the party does not know of is not sent: the engine does not enforce it against their creatures (a refusal would tell them
+  something stands there; `circlesFor`), so runes drawn for it would be a lie. The DM holds it by hand. One of a known caster is sent, with its `ward`.
 - A zone of a caster the party does not know of is sent with no `source`, `conc: false`, no `lasts` or `until`, and an id of its own (`z1`, `z2`, in the order of such
   zones in the state) in place of the effect's, which comes from the counter creatures share (T11).
 - An Emanation (Spirit Guardians) is sent as the cells it covers now and never as `follows`; while the creature it surrounds is one the party does not know of it is
