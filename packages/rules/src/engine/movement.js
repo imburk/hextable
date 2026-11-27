@@ -637,8 +637,19 @@ function moveOn(s, a, ctx, ev, own) {
       if (apart(s, e, lurker) <= 1) return bumped(s, lurker, e, ev);   // already beside it: no move, but it is found
       const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && gridOf(s.map).dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
         .sort((x, y) => reach.get(x).cost - reach.get(y).cost)[0];
-      if (!beside) fail("Can't get there.");
-      tk = beside; node = reach.get(tk);
+      // No place beside it to stand on at its height (a ledge a climb reaches from below, with nothing else up there): the last free place of the route to it. The route is
+      // the mover's own, so the stop is the same with the creature there or not (#847): the foot of the climb, or where the mover already stands, and it is found from there.
+      let stop = beside;
+      if (!stop) {
+        const known = moveOptions(without(asItsTurn(s, e, bud), e, living(s).filter((o) => o.id !== e.id && unseen(o))), e, { through: true });
+        if (known.get(tk)) {
+          const way = route(known, tk).slice(0, -1).reverse().find((st) => reach.get(key(st.h))?.canStop);
+          if (!way) return bumped(s, lurker, e, ev);
+          stop = key(way.h);
+        }
+      }
+      if (!stop) fail("Can't get there.");
+      tk = stop; node = reach.get(tk);
     }
     if (!node || !node.canStop) {
       if (fighting && !s.encounter.arena[col(to)]) fail("The arena is locked until the fight ends.");
