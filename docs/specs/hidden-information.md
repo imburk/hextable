@@ -108,6 +108,27 @@ client; that is fine. What is hidden is this particular creature's state.
   without a null check.
 - `id`, `center`, `radius`, `arena`, `round`, `turn`, `flags`: as is.
 
+#### Lasting zones (#842)
+
+A zone that lasts (Moonbeam, Spirit Guardians, Flaming Sphere, Web, Magic Circle, a Conjure Animals pack) is a thing on the ground, so players are sent its
+shape as `zone` on its entry in `effects` (`view.js` `zoneRecord`; every field of a zone is classified in `view-fields.js`, `ZONE_FIELDS`): `area` (shape, size,
+height, width, `space`, `placed`), `hexes` (its cells), `body` (a pack's own cells), `origin`, `ward` (what the runes bar), `move` and `look` (the first kind of damage
+its steps deal, for the tint, or `neutral`). Never `steps`, `src`, `last`, `spare`, `budget`, `spent`, `movedOn`, `on`, `once`, `seen`, `foes`, `with`, `beside`, nor
+an area's `range` or `types`. Which zones, and where:
+
+- Only the cells that are sent of the map: a zone in a region not yet revealed is not sent until it is, and one that reaches into it is cut to the cells that are.
+  Under los and light, only the cells the party sees now, so a zone coming into or going out of sight tells nothing.
+- A zone whose spell says it looks natural (Spike Growth: "camouflaged to look natural") is sent only where its caster is of the party. The only SRD zone spell that
+  says so; Zone of Truth says nothing of how it looks and is treated as the others. The list is `CAMOUFLAGED` in `view.js`.
+- A zone of a caster the party does not know of is sent with no `source`, `conc: false`, no `lasts` or `until`, and an id of its own (`z1`, `z2`, in the order of such
+  zones in the state) in place of the effect's, which comes from the counter creatures share (T11).
+- An Emanation (Spirit Guardians) is sent as the cells it covers now and never as `follows`; while the creature it surrounds is one the party does not know of it is
+  not sent at all, as its cells would move with the creature.
+- `spare` is not sent, nor whether the reader's own creature is spared.
+- It moves through `patch.js` like any field of `effects`. The event `zoneMoved` is sent for a zone that is sent, with `from` and `to` where they are cells that are
+  sent, `by` only where the mover is known and `met` only where that creature is. The engine's `zone` event (it went off on a creature) is not in the table above and so
+  not sent; what it did to a creature the party knows is told by the `save` and `damage` events, which are filtered by that creature as ever.
+
 ### 3. What a player sees of events
 
 Events are what the log and floating numbers are drawn from. Rule of thumb:
@@ -124,6 +145,7 @@ a player sees what the DM would say out loud at a table.
 | `encounterStart`, `joined` | `init` and `dex` removed for Seen creatures |
 | `chronicle` | dropped unless the entry has `public: true` |
 | `cast` | as is, with any Hidden creature removed from `targets` |
+| `zoneMoved` | for a zone that is sent: `fx` (its id as `effects` names it), `name`, `from`, `to` where they are cells that are sent, `by` and `met` only where known |
 | `moved`, `turn`, `stood`, `cond`, `std`, `note`, `down`, `died`, `claimed`, `released`, `rest`, `time`, `encounterEnd`, `spawned`, `placed`, `revealed` | as is |
 | any event type not named in this table | dropped, so a new event type is private until it is listed |
 
