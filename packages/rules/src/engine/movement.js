@@ -615,7 +615,7 @@ function moveOn(s, a, ctx, ev, own) {
     // otherwise turn the refusal into a stop beside it, or into "Can't get there", and tell the players something is hidden there), and before the distance is judged. It depends on the place alone.
     const barred = circlesFor(s, e).find((fx) => warded(s, fx, e, e.pos, to));
     if (barred) fail(barred.zone.ward.reverse ? `${barred.name} keeps ${e.name} from leaving it.` : `${barred.name} keeps ${e.name} from passing into it.`);
-    let tk = key(to), node = reach.get(tk);
+    let tk = key(to), node = reach.get(tk), refusing = asItsTurn(s, e, bud);     // `refusing`: the game the refusals below are judged in
     // Walking onto a hex where something unseen is standing: stop beside it and find out what it
     // is. Refusing the move would tell the player something is there without saying what.
     // That is a creature the DM hid (never in a fight) or one hiding from it.
@@ -637,8 +637,21 @@ function moveOn(s, a, ctx, ev, own) {
       if (apart(s, e, lurker) <= 1) return bumped(s, lurker, e, ev);   // already beside it: no move, but it is found
       const beside = [...reach.keys()].filter((k) => reach.get(k).canStop && gridOf(s.map).dist(reach.get(k).h, to) === 1 && Math.abs(reach.get(k).h.z - to.z) <= STEP_MAX)
         .sort((x, y) => reach.get(x).cost - reach.get(y).cost)[0];
-      if (!beside) fail("Can't get there.");
-      tk = beside; node = reach.get(tk);
+      // No place beside it to stand on at its height (a ledge a climb reaches from below, with nothing else up there): the last free place of the route to it. The route is
+      // the mover's own, so the stop is the same with the creature there or not (#847): the foot of the climb, or where the mover already stands, and it is found from there.
+      let stop = beside;
+      if (!stop) {
+        const bare = without(asItsTurn(s, e, bud), e, living(s).filter((o) => o.id !== e.id && unseen(o)));
+        const known = moveOptions(bare, e, { through: true });
+        refusing = bare;                                                     // with no stop, every refusal is the plain world's: judged as if the creature were not there
+        if (known.get(tk)) {
+          const way = route(known, tk).slice(0, -1).reverse().find((st) => reach.get(key(st.h))?.canStop);
+          if (!way) return bumped(s, lurker, e, ev);
+          stop = key(way.h);
+        }
+      }
+      // With no stop at all it is refused as the plain world refuses it (below, judged in `refusing`: the locked arena, "occupied", a drag, "Too far"), never in words only a creature there would give.
+      if (stop) { tk = stop; node = reach.get(tk); refusing = asItsTurn(s, e, bud); } else node = moveOptions(refusing, e, { through: true }).get(tk);
     }
     if (!node || !node.canStop) {
       if (fighting && !s.encounter.arena[col(to)]) fail("The arena is locked until the fight ends.");
@@ -647,12 +660,12 @@ function moveOn(s, a, ctx, ev, own) {
       const dragging = draggedBy(s, e);
       if (dragging.length) {
         const names = dragging.map((d) => d.t.name).join(' and ');
-        if (moveOptions(asItsTurn(s, e, bud), e, { unchecked: true }).get(tk)?.canStop) fail(`${e.name} can't drag ${names} that way.`);
-        if (moveOptions(asItsTurn(s, e, bud), e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
+        if (moveOptions(refusing, e, { unchecked: true }).get(tk)?.canStop) fail(`${e.name} can't drag ${names} that way.`);
+        if (moveOptions(refusing, e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
       }
       // Antilife Shell: a place only the aura stands in the way of is refused as that (a hidden caster's shell is not in `moveOptions`: it would tell the player something is there).
       // Magic Circle likewise, for a circle the party can know of (`circlesFor`): the refusal names the creature that moves and the circle, never anything inside it.
-      if ((shellsFor(s, e).length || circlesFor(s, e).length) && moveOptions(asItsTurn(s, e, bud), e, { through: true, unshelled: true }).get(tk)?.canStop) {
+      if ((shellsFor(s, e).length || circlesFor(s, e).length) && moveOptions(refusing, e, { through: true, unshelled: true }).get(tk)?.canStop) {
         const circles = circlesFor(s, e), bar = circles.find((fx) => warded(s, fx, e, e.pos, to));
         if (bar) fail(bar.zone.ward.reverse ? `${bar.name} keeps ${e.name} from leaving it.` : `${bar.name} keeps ${e.name} from passing into it.`);
         if (shellsFor(s, e).length) fail(`Antilife Shell keeps ${e.name} from passing into it.`);

@@ -191,3 +191,27 @@ test("a floor is in the way of an attack or a spell; open air is not; areas have
   at("fighter", 0, 2);
   assert.equal(apply(s, { type: "attack", actor: "fighter", target: high, attack: "longsword" }, DM).error.includes("20 ft away"), true);
 });
+
+// A climb to a ledge where a creature the DM hid stands (#847): it stops at the last free place of its route and finds the creature, as walking does, with or
+// without a height in the tap. The ledge is one hex, so there is no place beside the creature at its height.
+for (const [label, z] of [["no height given", undefined], ["the ledge's height given", 10]]) for (const from of [{ q: 2, r: 0 }, { q: 1, r: 0 }]) test(`a climb to a ledge a hidden creature holds (${label}, from ${from.q},0) stops at the last free place and finds it`, () => {
+  const ground = Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: "stone" }]));
+  delete ground["3,0"];
+  const mk = (hidden) => {
+    const s = newGame(12);
+    ok(apply(s, { type: "loadMap", map: newMap({ id: "one", name: "One ledge", starts: [{ q: -1, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles: ground }, { id: "ledge", name: "Ledge", z: 10, tiles: { "3,0": { t: "stone" } } }] }) }, DM));
+    apply(s, { type: "setting", key: "autoEngage", value: false }, DM);
+    for (const id of Object.keys(s.entities)) if (id !== "fighter") delete s.entities[id];
+    s.entities.fighter.pos = { ...from, z: 0 };
+    if (hidden) { const id = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Lurker", hidden: true }, DM)).events.find((e) => e.type === "spawned").id; s.entities[id].pos = { q: 3, r: 0, z: 10 }; }
+    return s;
+  };
+  const to = z === undefined ? { q: 3, r: 0 } : { q: 3, r: 0, z };
+  const plain = mk(false), s = mk(true);
+  ok(apply(plain, { type: "move", actor: "fighter", to }, DM));
+  assert.deepEqual(plain.entities.fighter.pos, { q: 3, r: 0, z: 10 }, "with no creature there it climbs up");
+  const r = ok(apply(s, { type: "move", actor: "fighter", to }, DM));
+  assert.ok(types(r).includes("revealed"), "the creature is found");
+  assert.equal(s.entities[Object.keys(s.entities).find((k) => s.entities[k].name === "Lurker")].hidden, undefined);
+  assert.deepEqual(s.entities.fighter.pos, { q: 2, r: 0, z: 0 }, "and the climber stops at the foot of the ledge, the last free place");
+});
