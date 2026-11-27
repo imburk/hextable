@@ -15,7 +15,7 @@ import { able, ask, BOND_MAX, castAbilOf, control, current, ent, ownerOf, fail, 
 import { aimArea, aimObject, aimWall, areaHexes, below, feetLeft, creatureType, creatures, shellSeen, fitsOn, placeCreature, reveal, roomAt, showPlace, summonCaster, unhide } from './world.js';
 import { barriers } from '../walls.js';
 import { boundEffect, settle, slotsFor, spellOffer } from './rolls.js';
-import { castReaction, CORPSE, checkEnd, confusedOnly, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
+import { beastWhy, castReaction, CORPSE, checkEnd, confusedOnly, KIT, counterWindow, seesFor, damage, wardCheck, engage, oneOf, reactAgainst, resolve, startEncounter, strikesFirst, strikeStart, summonCount, summonMade, thenFight } from './resolve.js';
 import { roll } from '../rng.js';
 import { weaponsFor } from '../imbue.js';
 import { incapacitatedBy, speedOf, untrainedGear } from '../modifiers.js';
@@ -94,6 +94,7 @@ function chooseIn(steps, of, value) {
     if ('damage' in st && st.type === 'chosen' && of === 'damageType') st.type = value;
     if (Array.isArray(st.cure) && of === 'condition') st.cure = st.cure.map((c) => (c === 'chosen' ? value : c));
     if (st.command === 'chosen' && of === 'command') st.command = value;
+    if (st.polymorph === 'chosen' && of === 'beast') st.polymorph = value;
     if (st.familiarity === 'chosen' && of === 'familiarity') st.familiarity = value;
     for (const b of BRANCHES) if (st[b]) visit(st[b]);
   } };
@@ -606,7 +607,8 @@ function castSpell(s, a, ctx, ev, item) {
     if (sp.time === 'reaction') fail(sp.def.reaction
       ? `${sp.name} is cast as a Reaction, by ${e.name}'s standing instruction for it (set it with the reactions on the sheet).`
       : `${sp.name} is cast as a Reaction. The engine does not handle that yet; the DM applies it.`);
-    !e.form || fail(`${e.name} can't cast spells in the form of a ${e.form.name}.`);
+    // A whole form (Polymorph): "it can't speak or cast spells"; a spell with a Verbal component is speaking, and the form's gear does not work either (so a cast from an item is no different).
+    !e.form || fail(e.form.whole ? `${e.name} can't speak or cast spells in the form of a ${e.form.name}${(item ? item.comps : sp.def.components ?? []).includes('v') ? `, and ${sp.name} has a Verbal component` : ''}.` : `${e.name} can't cast spells in the form of a ${e.form.name}.`);
     // Merged with stone (Meld into Stone): "you can cast spells on yourself", and nothing else. One message for every other spell, whatever it is aimed at.
     if (e.melded) {
       const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
@@ -630,7 +632,7 @@ function castSpell(s, a, ctx, ev, item) {
       (Array.isArray(a.choice) && a.choice.length >= 1 && new Set(a.choice).size === a.choice.length && a.choice.every((x) => list.includes(x))) || fail(`Choose one or more kinds of creature for ${sp.name} (${list.join(', ')}), as a list.`);
       (a.reverse === undefined || typeof a.reverse === 'boolean') || fail('`reverse` is true or false.');
     } else a.reverse === undefined || fail(`${sp.name} has nothing to reverse.`);
-    if (pick && pick.of !== 'ward') (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : pick.of === 'shape' ? `a shape (${(pick.from ?? CHOICES.shape).join(', ')})` : pick.of === 'resize' ? `enlarge or reduce` : pick.of === 'affliction' ? `an affliction to end (${(pick.from ?? CHOICES.affliction).join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
+    if (pick && pick.of !== 'ward') (pick.from ?? CHOICES[pick.of]).includes(a.choice) || fail(`Choose ${pick.of === 'damageType' ? 'a damage type' : pick.of === 'command' ? `a command (${CHOICES.command.join(', ')})` : pick.of === 'shape' ? `a shape (${(pick.from ?? CHOICES.shape).join(', ')})` : pick.of === 'resize' ? `enlarge or reduce` : pick.of === 'beast' ? `a Beast of the SRD pack (its id, such as "wolf")` : pick.of === 'affliction' ? `an affliction to end (${(pick.from ?? CHOICES.affliction).join(', ')})` : `a${pick.of === 'ability' ? 'n' : ''} ${pick.of}`} for ${sp.name}.`);
     // A zone may spare creatures the caster names (Spirit Guardians): `a.spare`.
     const zoneDef = sp.def.zone;
     if (a.spare !== undefined) {
@@ -686,6 +688,9 @@ function castSpell(s, a, ctx, ev, item) {
     const warded = sp.aim === 'creature' && globes.length ? new Set(targets.filter(globed)) : new Set();      // Globe of Invulnerability
     const invalid = sp.aim === 'creature' ? [...new Set([...(sp.types ? targets.filter((t) => { const ty = creatureType(t); return ty !== null && !sp.types.includes(ty); }) : []), ...warded])] : [];
     const untyped = sp.aim === 'creature' && sp.types ? targets.filter((t) => creatureType(t) === null && !warded.has(t)) : [];
+    // Polymorph: the Beast's Challenge Rating must not be above the target's (its level, with none). Refused before anything is spent where the caster's side may know the number: the DM casting, or a target of the party. The rating of a creature
+    // that is not of the party is not told to its players: the cast goes ahead, and the step does nothing and tells the DM alone (resolve.js `polymorph`).
+    if (sp.aim === 'creature' && sp.def.effects.some((st) => 'polymorph' in st)) for (const t of targets) { const why = ctx.role === 'dm' || t.side === 'party' ? beastWhy(t, a.choice) : null; if (why) fail(why); }
     if (mm.has.careful) for (const id of a.careful) targets.some((t) => t.id === id) || fail('Careful Spell protects creatures the spell affects.');
     if (mm.has.heightened) targets.some((t) => t.id === a.heightened) || fail('Heightened Spell picks one target of the spell.');
     // A teleport goes where `a.hex` names (Misty Step), checked now, before anything is spent.

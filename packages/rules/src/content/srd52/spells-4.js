@@ -331,12 +331,14 @@ export const spells4 = [
     time: "action", range: 60, components: ["v","s","m"],
     duration: "1 hour", concentration: true, ritual: false,
     target: {"creature":{"count":1}},
-    effects: [{"manual":"Polymorph: a creature in range makes a Wisdom save or, for up to 1 hour, shape-shifts into a Beast of the caster's choice with a Challenge Rating no higher than its own (or its level). It takes the Beast's game statistics but keeps its alignment, personality, type, Hit Points and Hit Point Dice, and gains Temporary Hit Points equal to the Beast's Hit Points; the spell ends on it early when they are gone. It cannot speak or cast spells, and its gear melds into the form. The DM runs the new form."}],
+    choice: {"of":"beast"},
+    effects: [{"save":"wis","when":["target.enemy"],"onFail":[{"polymorph":"chosen"}]},{"polymorph":"chosen","when":["target.ally"]},{"manual":"Polymorph: the engine makes the target the Beast the caster chose (a Beast of a Challenge Rating no higher than the target's, or its level), laying the Beast's stat block over its own (Intelligence, Wisdom, Charisma, saves and skills too), keeping its Hit Points, Hit Point Dice, alignment, personality and creature type, giving it Temporary Hit Points equal to the Beast's Hit Points in place of any it had, and ending the spell on it when they are gone. It cannot speak or cast spells, and its gear gives it nothing. The Wisdom save is rolled for a creature on another side than the caster; one on the caster's side is taken to be willing and fails without a roll (the caster's choice). The DM applies the rest: what the new form's anatomy lets it do (a Beast with no hands cannot open a door), its gear's magic that the engine does not read from the gear (a worn item's own effects, class features), an unwilling creature on the caster's side, and a creature the caster cannot see. A Beast that is too strong for the target does nothing: the DM is told."}],
     kinds: ["control", "utility"],
     roll: "save:wis",
-    tier: "manual", checked: true,
-    text: "A creature makes a Wisdom save or becomes a Beast of the caster's choice for up to an hour, gaining the Beast's hit points as temporary hit points.",
+    tier: "assist", checked: true,
+    text: "A creature makes a Wisdom save or becomes a Beast of the caster's choice for up to an hour of Concentration, with a Challenge Rating no higher than its own. It takes the Beast's statistics and gains the Beast's hit points as temporary hit points; the form ends when they are gone. It cannot speak or cast spells. The engine does the form, the temporary hit points and the limits; the DM judges what its new anatomy can do.",
   },
+
   {
     id: "private-sanctum", name: "Private Sanctum", source: "SRD 5.2.1",
     level: 4, school: "abjuration", classes: ["wizard"],
