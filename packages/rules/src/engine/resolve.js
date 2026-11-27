@@ -19,10 +19,10 @@ import { barriers, distToSegment, objectDef } from '../walls.js';
 import { LIGHTS } from '../content/lights.js';
 import { SIZES } from '../content/sizes.js';
 import { canReact, instruction, reactionsOf } from '../reactions.js';
-import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedOf, untrainedGear } from '../modifiers.js';
+import { conditionName, incapacitated, incapacitatedBy, judge, modifiers, speedOf, untrainedGear, warded } from '../modifiers.js';
 import { fitsHit, freeHitCasts, hitChoicesOf, hitInstruction } from '../hitchoices.js';
 import { ARENA_RADIUS, ask, blocked, unblocked, castAbilOf, current, ownerOf, dying, fail, fighters, hostile, inFight, living, mod, mountOf, partyOf, pocketOf, riderOf, rollDice, rolledOf, RuleError, spellStats, steering, tellDM, together, turnBudget, up } from './shared.js';
-import { cutWall, resize, sizeEnd, aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, sense, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
+import { circlesFor, cutWall, resize, sizeEnd, aloft, below, creatureType, carry, forcedStep, forcedStride, holdsOf, catchUp, riderLanding, cornerFree, fightPlace, fitsOn, followMasters, initiativeSort, joinEncounter, joinLead, lookAround, sideOf, tieOf, nearestFree, objectActor, objectName, objectStep, objectZ, isPile, sense, ownCount, pileAt, pileId, reveal, rollInit, roomAt, showPlace, unfollow, unhide } from './world.js';
 import { acOf, passive, attackTypes, bestSave, boundEffect, condition, grip, cure, dealt, deathSave, heal, kill, modifier, eachTurn, endSpell, arm, ward, command, confuse, COMMAND_WORDS, imbue, bestType, recharge, renew, rerollSave, rescue, rollMode, savingThrow, settle, slotsFor, spellOffer, tempHp } from './rolls.js';
 import { died, dispel, revive, shine, stabilise } from './rolls.js';       // `stabilize`, `light` and `dispel` steps (KIT)
 import { makeEntity, tryLand } from './sheets.js';
@@ -188,14 +188,14 @@ function push(s, t, feet, dir, from, ev) {
 }
 // The effect step: `t` goes to `to` (from teleportSpot). Returns false if it could not go, which
 // runs the step's `blocked` steps instead when it has them.
-function teleport(s, t, step, to, ev) {
+function teleport(s, t, step, to, ev, own = true) {
   // One of a riding pair teleports alone, so the ride ends (stage C6b; teleportApart).
   if (mountOf(s, t) || riderOf(s, t)) {
     const body = mountOf(s, t) ? { ...t, riding: undefined } : t, G = gridOf(s.map);
     if (step.blocked && living(s).some((o) => o.id !== t.id && !paired(o, t) && overlapAt(o, o.pos, body, to, G))) return false;
   }
   const parted = teleportApart(s, t, ev);
-  if (parted) { const went = teleport(s, t, step, to, ev); parted(); return went; }
+  if (parted) { const went = teleport(s, t, step, to, ev, own); parted(); return went; }
   const G = gridOf(s.map), taken = (pos) => living(s).some((o) => o.id !== t.id && overlapAt(o, o.pos, t, pos, G));
   let at = to;
   if (taken(at)) {
@@ -217,6 +217,19 @@ function teleport(s, t, step, to, ev) {
       }
       if (!at) { ev.push({ type: 'manual', actor: t.id, name: 'Teleport', text: `${t.name} cannot arrive where it meant to, and the engine found no unoccupied space near it. The DM places it.` }); return true; }
     }
+  }
+  // Magic Circle: "If the creature tries to use teleportation ... to [enter], it must first succeed on a Charisma saving throw" (reversed, to leave). On a failure the teleportation does not happen: the spell, its slot
+  // and the action are spent as cast (the engine has no other failed-teleport rule, so the cost stands), and nothing else of the step runs (not its `blocked` steps, which are for a collision). Only a circle the party
+  // can know of is judged for a creature of the party (`circlesFor`).
+  // Only when the creature itself tries to teleport (its own spell or feature, `own`), not when another creature's effect moves it.
+  for (const fx of own ? circlesFor(s, t) : []) {
+    if (!warded(s, fx, t, t.pos, at)) continue;
+    const dc = fx.zone.src?.dc;
+    if (dc === undefined) { ev.push({ type: 'manual', actor: t.id, name: fx.name, partial: true, text: `${fx.name} calls for a Charisma save from ${t.name} to teleport ${fx.zone.ward.reverse ? 'out of' : 'into'} the circle, and no DC is known. The DM applies it.` }); continue; }
+    const { used, ...sv } = savingThrow(s, t, 'cha', dc, null, null, null, null, ev);
+    ev.push({ type: 'save', id: t.id, abil: 'cha', dc, ...sv });
+    useUp(s, ev, used ?? []);
+    if (!sv.success) { ev.push({ type: 'note', id: t.id, text: `${fx.name} stops ${t.name}'s teleportation: it stays where it is` }); return true; }
   }
   const zonesBefore = snapshot(s);
   t.pos = { ...at };
@@ -2452,5 +2465,8 @@ function whyNobody(src) {
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
 ON.sizeEnd = sizeEnd;
-export const KIT = { resize, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+// "A creature you can see" (Conjure Animals, zones.js `seen`): `c` sees `t` by the sight rules (sight.js), and `t` is not hiding from it; for a caster of the party, not a creature the DM hid or one the party does not
+// know of either (what the players could not be shown is not forced to save). Judged on what the caster's side knows, never on who is there.
+const seenBy = (s, c, t) => canSee(s, c, t) !== 'no' && !hiddenFrom(t, c) && !(c.side === 'party' && (t.hidden || unknown(s, t)));
+export const KIT = { seen: seenBy, resize, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

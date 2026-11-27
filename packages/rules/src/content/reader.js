@@ -19,7 +19,7 @@
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
-import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, AFFLICTIONS, STONE_SHAPES, RESIZES, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
+import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, AFFLICTIONS, STONE_SHAPES, RESIZES, WARDS, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
@@ -67,7 +67,7 @@ export const SUMMON_ONE_WORDS = {
 };
 export const CURSE_WORDS = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', attacks: 'Disadvantage on attack rolls against the caster', dodge: 'the forced Dodge action', damage: 'extra Necrotic damage' };
 export const AFFLICTION_WORDS = { exhaustion: 'one level of Exhaustion', charmed: 'the Charmed condition', petrified: 'the Petrified condition', curse: 'a curse', 'ability-score': 'a reduction to an ability score', 'hit-point-maximum': 'a reduction to the Hit Point maximum' };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce', ward: 'one or more kinds of creature to set it against' };
 export const RESIZE_WORDS = { enlarge: 'Enlarge (one size category larger)', reduce: 'Reduce (one size category smaller)' };
 export const SHAPE_WORDS = { passage: 'a 5-foot passage cut through a wall', other: 'any other shape (a weapon, a coffer, a statue, a door shaped shut)' };
 // A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
@@ -552,7 +552,7 @@ class Reading {
     if (t.creature) { if (!isObj(t.creature)) { this.bad('`target.creature` is not an object.'); t.creature = {}; } return 'creature'; }
     const a = t.area;
     if (!isObj(a) || !AREA_SHAPES.includes(a.shape) || !(typeof a.size === 'number' && a.size > 0)) { this.bad('The area has no shape the engine knows, or no size in feet.'); this.noneWhy = 'its shape or size is unreadable'; return 'none'; }
-    this.odd(a, ['shape', 'size', 'height', 'width', 'exceptCaster', 'types', 'choose', 'count', ...(this.mon ? ['range'] : ['placed'])], 'The area');
+    this.odd(a, ['shape', 'size', 'height', 'width', 'exceptCaster', 'types', 'choose', 'count', ...(this.mon ? ['range'] : ['placed', 'space'])], 'The area');
     const range = feetOf(this.def.range);
     // A spell's sphere is centred within its range, at least 1 foot; a creature's action goes off only where its own `range` says.
     const within = !this.mon && ['sphere', 'cylinder'].includes(a.shape) ? Math.max(1, typeof range === 'number' ? range : 0) : range;
@@ -608,10 +608,12 @@ class Reading {
       if (a.height !== undefined) { if ((a.shape === 'cylinder' || (a.shape === 'line' && a.placed === true)) && typeof a.height === 'number') this.num(`${this.pre}target.area.height`, a.height, 'feet'); else this.bad('`height` is for a cylinder or a placed line, in feet.'); }
       if (a.placed !== undefined && !(a.placed === true && a.shape === 'line')) this.bad('`placed` is true, on a line.');
       if (a.width !== undefined) { if (isInt(a.width)) this.num(`${this.pre}target.area.width`, a.width, 'feet'); else this.bad('`width` is not feet.'); }
+      if (a.space !== undefined && !(a.shape === 'sphere' && ['large', 'huge', 'gargantuan'].includes(a.space))) this.bad('`space` is large, huge or gargantuan, on a sphere.');
       const range = typeof d.range === 'number' ? d.range : 0;
       const bits = [`The ${a.shape} ${a.placed === true && a.shape === 'line' ? `is put down within ${range} feet` : AREA_PLACE[a.shape](range)}`];
       if (a.placed === true && a.shape === 'line') bits.push(`it is a wall centred on the space the caster picks, running toward a second space the caster may name (otherwise across the line from the caster to the first), ${a.width ?? 5} feet thick and ${isInt(a.height) ? a.height : 5} feet high`);
       bits.push(a.exceptCaster === true || (d.zone !== undefined && a.shape === 'emanation') ? 'it catches every creature in it except the caster' : 'it catches every creature in it, the caster too if the caster is in it');
+      if (typeof a.space === 'string') bits.push(`it is not a point's sphere: it is laid out from a ${a.space} space (the footprint of a ${a.space} creature, anchored on the space picked), and is that space and every space within ${a.size} feet of it (on hexes, the hexes within ${isInt(a.size) ? a.size / 5 : '?'} of any of its hexes; on squares, the table rule for areas rounds the squares out from the space's box)`);
       bits.push('a wall between the area\'s origin and a creature keeps that creature out');
       this.line(`${bits.join('; ')}.`);
       if (isInt(a.choose) && this.mon) {
@@ -676,20 +678,26 @@ class Reading {
     this.odd(c, ['of', 'from'], 'The choice');
     const from = Array.isArray(c.from) ? c.from.filter((x) => CHOICES[c.of].includes(x)) : null;
     const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : c.of === 'affliction' ? AFFLICTION_WORDS[x] : c.of === 'shape' ? SHAPE_WORDS[x] : c.of === 'resize' ? RESIZE_WORDS[x] : x);
-    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'shape' ? ` (${list(STONE_SHAPES.map((x) => SHAPE_WORDS[x]), 'or')})` : c.of === 'resize' ? ` (${list(RESIZES.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : '';
-    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' ? 'a step below that is for one of them is part of the cast only for the one chosen' : 'each step below that says "chosen" uses that choice'}.`);
+    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'shape' ? ` (${list(STONE_SHAPES.map((x) => SHAPE_WORDS[x]), 'or')})` : c.of === 'resize' ? ` (${list(RESIZES.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : c.of === 'ward' ? ` (${list((from ?? WARDS).map(word), 'and')})` : '';
+    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' ? 'a step below that is for one of them is part of the cast only for the one chosen' : c.of === 'ward' ? 'the kinds are the types of creature the circle works against, and the caster also says whether to reverse it' : 'each step below that says "chosen" uses that choice'}.`);
   }
 
   zone(aim) {
     const z = this.def.zone;
-    if (!isObj(z) || !Array.isArray(z.on)) return this.bad('The zone is not an object with a list `on`.');
-    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move'], 'The zone');
+    if (!isObj(z) || (z.ward !== true && !Array.isArray(z.on))) return this.bad('The zone is not an object with a list `on`.');
+    this.odd(z, ['on', 'once', 'atCast', 'spare', 'budget', 'effects', 'move', 'seen', 'foes', 'with', 'beside', 'ward'], 'The zone');
     if (z.move !== undefined && !isInt(z.move)) this.bad('The zone\'s `move` is not a whole number of feet.');
     if (z.budget !== undefined && !isInt(z.budget)) this.bad('The zone\'s `budget` is not a whole number.');
     const a = this.def.target?.area;
     if (aim !== 'area' || !isObj(a)) {
       this.line('The entry asks for an area that stays, but the engine cannot lay this area out, so no zone is made: the DM runs it.');
       return this.dm('The lasting area: the engine cannot lay it out.');
+    }
+    // A circle (Magic Circle, `ward`): a barrier that goes off on nobody (docs/specs/rules-expansion.md, "Build notes: wave 5 part 3").
+    if (z.ward === true) {
+      this.line(`${cap1(AREA_WORDS[a.shape](a))} stays where it was laid out for as long as the spell lasts. It is a barrier, not something that goes off: it affects nobody as it appears, and the steps below are the DM's.`);
+      this.line('Of the kinds of creature the caster chose, a creature cannot willingly walk, fly or climb into it (the move is refused; forced movement still takes it in), must succeed on a Charisma saving throw against the caster\'s spell save DC to teleport into it (on a failure it stays where it is, and what was spent on the casting stays spent), has Disadvantage on attack rolls against targets inside, and cannot give a target inside the Charmed or Frightened condition. If the caster reversed it, all of that holds the other way: such a creature cannot willingly leave, the save is for teleporting out, and targets outside are the ones protected. A creature whose type the engine cannot tell is not held by it. For a creature of the party, a circle whose caster the party does not know of holds nobody, as a refusal would tell the players something is there; the DM judges it.');
+      return;
     }
     const when = z.on.filter((x) => Object.hasOwn(ZONE_ON_WORDS, x)).map((x) => ZONE_ON_WORDS[x]);
     const moves = a.shape === 'emanation' ? 'It moves with the caster and never affects the caster.' : 'It stays where it was laid out.';
@@ -699,7 +707,15 @@ class Reading {
     this.line(`From then on, ${own ? 'the zone\'s own steps, listed next,' : 'the steps below'} run on a creature each time it ${list(when, 'or')}${z.once === 'turn' ? ', at most once a turn for each creature' : z.once === 'enter' ? ', entering at most once a turn for each creature (the end of a turn is its own)' : ''}.${this.damageOutside() ? ' Each creature rolls its own damage.' : ''}`);
     if (own) this.steps(z.effects, 'zone.effects', 0, 'that creature', { top: true });
     if (z.spare === true) this.line('When casting it, the caster may name creatures the area leaves alone.');
-    if (isInt(z.move)) { this.num('zone.move', z.move, 'feet'); this.line(`As a Bonus Action the caster may roll the area up to ${z.move} feet along the ground. It stops in the first space a creature stands in, and the steps run on that creature at once.`); }
+    if (z.foes === true) this.line('It never goes off on a creature on the caster\'s side (the caster would not force it), whether it was there when the spell was cast or came later; a creature that is not on the caster\'s side, newcomers included, is made to save unless the caster named it as spared.');
+    if (z.seen === true) this.line('It goes off only on a creature the caster can see: not one that is Invisible to the caster, hiding from it, out of its sight, or one the DM has hidden. Nothing is rolled, said or sent of a creature it leaves alone.');
+    if (isInt(z.move) && z.with === 'move') { this.num('zone.move', z.move, 'feet'); this.line(`The area is not rolled with an action: when the caster has moved at least 5 feet on its own turn, it may move the area up to ${z.move} feet, once that turn, to an unoccupied space it can see (outside a fight there is no turn: only the distance limits it). The area goes there at once. A creature newly inside it as it moves is made to save as one that entered it; one already inside is not made to save again by the move.`); }
+    else if (isInt(z.move)) { this.num('zone.move', z.move, 'feet'); this.line(`As a Bonus Action the caster may roll the area up to ${z.move} feet along the ground. It stops in the first space a creature stands in, and the steps run on that creature at once.`); }
+    if (z.beside !== undefined && isObj(z.beside)) {
+      const b = z.beside, m = isObj(b.modifier) ? b.modifier : {};
+      if (isInt(b.feet)) this.num('zone.beside.feet', b.feet, 'feet');
+      this.line(`While the caster is within ${isInt(b.feet) ? b.feet : '?'} feet of the area\'s own space it has ${Object.hasOwn(OP_WORDS, m.op) && Object.hasOwn(HOOK_WORDS, m.on) ? OP_WORDS[m.op]('', HOOK_WORDS[m.on]) : 'a modifier the reader has no words for'}.`);
+    }
     if (isInt(z.budget)) { this.num('zone.budget', z.budget, 'damage'); this.line(`The area goes when the damage it has dealt (what the creatures lose, after a save halves it or a Resistance cuts it) adds up to ${z.budget}. The spell ends then, whatever time it has left.`); }
   }
 
@@ -770,7 +786,7 @@ class Reading {
     if (h.slot !== undefined) {
       const s = h.slot;
       if (!isObj(s)) return this.bad('`higher.slot` is not an object.');
-      this.odd(s, ['damage', 'heal', 'tempHp', 'times', 'targets', 'value'], '`higher.slot`');
+      this.odd(s, ['damage', 'heal', 'tempHp', 'times', 'targets', 'value', 'hours'], '`higher.slot`');
       const above = isInt(lvl) ? (lvl === 0 ? 'above 0' : `above ${ordinal(lvl)}`) : 'above its own';
       const per = `for each level ${above}`;
       for (const key of ['damage', 'heal', 'tempHp']) {
@@ -788,6 +804,7 @@ class Reading {
         else { this.line(`Cast with a higher slot, the entry adds ${s[key]} per slot level to ${f.st[key]}, but those are different dice: the engine does not add them, the DM does.`); this.dm(`The extra ${s[key]} per slot level: different dice from ${f.st[key]}.`); }
       }
       if (s.times !== undefined) { if (isInt(s.times)) { this.num('higher.slot.times', s.times, 'rolls'); this.line(`Cast with a higher slot, the first damage step is rolled ${s.times} more time${s.times > 1 ? 's' : ''} ${per}.`); } else this.bad('`higher.slot.times` is not a whole number.'); }
+      if (s.hours !== undefined) { if (isInt(s.hours)) { this.num('higher.slot.hours', s.hours, 'hours'); this.line(`Cast with a higher slot, it lasts ${s.hours} more hour${s.hours > 1 ? 's' : ''} ${per}.`); } else this.bad('`higher.slot.hours` is not a whole number.'); }
       if (s.targets !== undefined) { if (isInt(s.targets)) { this.num('higher.slot.targets', s.targets, 'targets'); this.line(`Cast with a higher slot, ${s.targets} more target${s.targets > 1 ? 's' : ''} ${per}.`); } else this.bad('`higher.slot.targets` is not a whole number.'); }
       if (s.value !== undefined) {
         if (!isInt(s.value)) this.bad('`higher.slot.value` is not a whole number.');
@@ -1517,7 +1534,7 @@ export const MONSTER_FIELDS = {
 export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree', flyby: 'flyby' };
 export const ACTION_FIELDS = { id: 'skip', name: 'skip', text: 'skip', time: 'head', target: 'aim', effects: 'steps', uses: 'limits', recharge: 'limits', multiattack: 'multi' };
 export const CREATURE_FIELDS = ['count', 'repeat', 'within', 'reach', 'range', 'types', 'dead'];
-export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed'];
+export const AREA_FIELDS = ['shape', 'size', 'range', 'width', 'height', 'exceptCaster', 'types', 'choose', 'count', 'placed', 'space'];
 export const MONSTER_TIER_WORDS = {
   auto: 'Tier: auto. The engine runs every trait and action of this creature as listed above.',
   assist: 'Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.',

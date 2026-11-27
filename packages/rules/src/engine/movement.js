@@ -7,12 +7,12 @@ import { canSee, hiddenFrom } from '../sight.js';
 import { seenName, sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
 import { afterOpportunity, canReact, grappleInstead, instruction, OPPORTUNITY, OWED_MOVE, OPPORTUNITY_GRAPPLE, opportunityAttack, opportunityAttacks, reactionsOf } from '../reactions.js';
-import { flyby, incapacitated, incapacitatedBy, leapOf, modifiers, speedOf } from '../modifiers.js';
+import { flyby, incapacitated, incapacitatedBy, leapOf, modifiers, speedOf, warded } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { SIZES as SIZE_LIST } from '../content/schema.js';
 import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, spot, steering, turnBudget, unblocked, up } from './shared.js';
-import { shellSeen, shellsFor, creatureType, airspace, aloft, along, beyond, footingOf, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { circlesFor, shellSeen, shellsFor, creatureType, airspace, aloft, along, beyond, footingOf, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
 import { abilityCheck, condition, passive } from './rolls.js';
 import { difficultAt, inShell, shellsOf } from '../terrain.js';
 import { endEffect } from '../durations.js';
@@ -605,6 +605,10 @@ function moveOn(s, a, ctx, ev, own) {
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
     const to = column?.h ?? (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z));
     to || fail("There's nothing there to stand on.");
+    // Magic Circle: a place the circle bars the mover from is refused as that, whatever else is true of it: before a creature the mover does not know of is looked for there (a lurker inside a circle would
+    // otherwise turn the refusal into a stop beside it, or into "Can't get there", and tell the players something is hidden there), and before the distance is judged. It depends on the place alone.
+    const barred = circlesFor(s, e).find((fx) => warded(s, fx, e, e.pos, to));
+    if (barred) fail(barred.zone.ward.reverse ? `${barred.name} keeps ${e.name} from leaving it.` : `${barred.name} keeps ${e.name} from passing into it.`);
     let tk = key(to), node = reach.get(tk);
     // Walking onto a hex where something unseen is standing: stop beside it and find out what it
     // is. Refusing the move would tell the player something is there without saying what.
@@ -642,7 +646,13 @@ function moveOn(s, a, ctx, ev, own) {
         if (moveOptions(asItsTurn(s, e, bud), e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
       }
       // Antilife Shell: a place only the aura stands in the way of is refused as that (a hidden caster's shell is not in `moveOptions`: it would tell the player something is there).
-      if (shellsFor(s, e).length && moveOptions(asItsTurn(s, e, bud), e, { through: true, unshelled: true }).get(tk)?.canStop) fail(`Antilife Shell keeps ${e.name} from passing into it.`);
+      // Magic Circle likewise, for a circle the party can know of (`circlesFor`): the refusal names the creature that moves and the circle, never anything inside it.
+      if ((shellsFor(s, e).length || circlesFor(s, e).length) && moveOptions(asItsTurn(s, e, bud), e, { through: true, unshelled: true }).get(tk)?.canStop) {
+        const circles = circlesFor(s, e), bar = circles.find((fx) => warded(s, fx, e, e.pos, to));
+        if (bar) fail(bar.zone.ward.reverse ? `${bar.name} keeps ${e.name} from leaving it.` : `${bar.name} keeps ${e.name} from passing into it.`);
+        if (shellsFor(s, e).length) fail(`Antilife Shell keeps ${e.name} from passing into it.`);
+        fail(`${circles[0].name} bars the way.`);
+      }
       fail(fighting ? `Too far. ${e.name} has ${feetLeft(s, bud.move)} ft of movement left.` : "Can't get there.");
     }
     if (dragFirst(s, e, route(reach, tk), e.side === 'party' ? unseen : null, ev)) return;
@@ -696,6 +706,9 @@ function leapOn(s, a, ctx, ev) {
   here || fail(`${e.name} has nothing under it to leap from.`);
   const to = landing(s.map, a.to, e.pos.z);
   to || fail("There's nothing there to stand on.");
+  // Magic Circle: a leap is a willing, nonmagical move like a walk (the refusal depends on the place alone, as in `moveOn`).
+  const barred = circlesFor(s, e).find((fx) => warded(s, fx, e, e.pos, to));
+  if (barred) fail(barred.zone.ward.reverse ? `${barred.name} keeps ${e.name} from leaving it.` : `${barred.name} keeps ${e.name} from passing into it.`);
   const land = ground(s.map, to);
   if (!land || land.level !== here.level || Math.abs(to.z - e.pos.z) > STEP_MAX) fail('A leap stays on one level: a climb or a drop is not a leap.');
   if (fighting && !s.encounter.arena[col(to)]) fail('The arena is locked until the fight ends.');

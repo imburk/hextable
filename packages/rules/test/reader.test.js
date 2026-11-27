@@ -179,6 +179,12 @@ const FIXTURES = [
     effects: [{ cut: 5, ifChoice: ['passage'] }, { manual: 'Any other shape is the DM\'s.', ifChoice: ['other'] }] }),
   base('stone-hide', 'Stone Hide', { level: 3, school: 'transmutation', range: 'touch', duration: '8 hours', target: { wall: {} }, tier: 'assist', kinds: ['utility'],
     effects: [{ meld: true }, { modifier: { on: 'check', op: 'disadvantage', scope: { skill: 'perception' } } }, { manual: 'Whether the wall is stone is the DM\'s.' }] }),
+  // Wave 5 part 3: an area laid out from a space (`area.space`) with a zone that goes off on foes the caster sees, moves with its caster and gives it a modifier beside it; and a circle (`zone.ward`, a choice of `ward`, `higher.slot.hours`).
+  base('howling-pack', 'Howling Pack', { level: 3, school: 'conjuration', range: 60, duration: '10 minutes', concentration: true, tier: 'assist', kinds: ['damage'], roll: 'save:dex', target: { area: { shape: 'sphere', size: 10, space: 'large' } },
+    zone: { on: ['enter', 'turnEnd'], once: 'turn', spare: true, seen: true, foes: true, move: 30, with: 'move', beside: { feet: 5, modifier: { on: 'save.str', op: 'advantage' } } },
+    effects: [{ save: 'dex', onFail: [{ damage: '3d10', type: 'slashing' }] }], higher: { slot: { damage: '1d10' } } }),
+  base('warding-ring', 'Warding Ring', { level: 3, school: 'abjuration', range: 10, time: 'minute', components: ['v', 's', 'm'], costly: true, duration: '1 hour', tier: 'assist', kinds: ['control', 'utility'], roll: 'none', target: { area: { shape: 'cylinder', size: 10, height: 20 } },
+    choice: { of: 'ward' }, zone: { ward: true }, effects: [{ manual: 'What the engine does not judge is the DM\'s.' }], higher: { slot: { hours: 1 } } }),
 ];
 
 const readingOf = (e) => { const r = readEntry('spell', e); return [`== ${e.id}`, ...r.lines, ...r.doesNot.map((x) => `DM: ${x}`), ...r.problems.map((x) => `PROBLEM: ${x}`), ''].join('\n'); };

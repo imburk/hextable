@@ -15,7 +15,7 @@ import { holds, zonesOf } from '../zones.js';
 import { barriers, clipWall, distToSegment, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from '../walls.js';
 import { itemName } from '../derive.js';
 import { confusedNow, effectsOf, restamp } from '../durations.js';
-import { incapacitated, modifiers, speedOf, walksOn } from '../modifiers.js';
+import { incapacitated, modifiers, speedOf, walksOn, lendCasterSight, wardsBinding, warded } from '../modifiers.js';
 import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, mountOf, riderOf, RuleError, spellStats, steering, turnBudget, unblocked, up, walled } from './shared.js';
 
 // ---------- grapples ----------
@@ -336,7 +336,9 @@ export function moveOptions(s, e, opts = {}) {
   // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
   const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
   // Antilife Shell: it cannot be walked, climbed or flown into from outside (and ladders are no way round it).
-  const shells = opts.unshelled ? [] : shellsFor(s, e), shelled = shells.length ? (from, h) => shelledStep(s, e, from, h, shells) : () => false;
+  // Magic Circle: the same, for a creature of a type a circle is set against (into it, or out of it if reversed); ladders are no way round it either.
+  const shells = opts.unshelled ? [] : shellsFor(s, e), circles = opts.unshelled ? [] : circlesFor(s, e);
+  const shelled = shells.length || circles.length ? (from, h) => (shells.length > 0 && shelledStep(s, e, from, h, shells)) || circles.some((fx) => warded(s, fx, e, from, h)) : () => false;
   // Freedom of Movement (`{ on: 'terrain', op: 'immune' }`): Difficult Terrain costs it nothing extra (a tile of it, a rise, a creature's space, ground a spell made difficult).
   const easy = modifiers(s, e, 'terrain').immune === true;
   const big = shapeOf(e, G).length > 1, tall = sizeOf(e).height;
@@ -1444,9 +1446,16 @@ export const creatureType = (e) => e.type ?? CONTENT.monsters[e.tpl]?.type ?? (e
 // whose type the engine cannot tell is (the DM lets it through if it is one). The caster is not bound by its own. A shell whose caster the party does not know of (hidden,
 // hiding, or not seen) binds nobody: a refusal would tell the players something stands there, as a bare cell would not, so the DM judges it (the cast told the DM so).
 export const shellSeen = (s, c) => !c.hidden && !c.hiding && !unknown(s, c);
+lendCasterSight(shellSeen);
 export function shellsFor(s, e) {
   if (!shellsOf(s).length || ['construct', 'undead'].includes(creatureType(e))) return [];
   return shellsOf(s).filter((fx) => { const c = s.entities[fx.terrain.follows]; return c.id !== e.id && shellSeen(s, c); });
+}
+// Magic Circle (a zone with `ward`; docs/specs/rules-expansion.md, "Build notes: wave 5 part 3"): the circles that bar creature `e` from crossing. A creature of the party is barred only by a circle the party can know of: one whose caster
+// they know of (as a shell's, `shellSeen`) or whose caster is gone. A refusal, or a stop at the edge, by a circle the players were never shown would tell them something is there; the cast told the DM so, and the DM judges it.
+// A creature the DM plays is barred by every circle (a refusal goes to the DM alone).
+export function circlesFor(s, e) {
+  return wardsBinding(s, e);
 }
 // Would a step of `e` from `from` to `to` take it into a shell from outside (a creature already inside is not pushed out, and may move within it)?
 export const shelledStep = (s, e, from, to, shells = shellsFor(s, e)) => shells.some((fx) => !inShell(s, fx, e, from) && inShell(s, fx, e, to));

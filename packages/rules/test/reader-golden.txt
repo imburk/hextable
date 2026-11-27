@@ -1176,3 +1176,50 @@ Not checked against any rulebook.
 DM: Step effects.0: whether the wall is stone, large enough to hold the caster and its gear (the engine does not know), Truesight and any other sense that could find the caster, and any damage or destruction of the stone other than a Stone Shape cut (partial damage expels it with 6d6 Force damage, destruction with 50 Force damage).
 DM: "Whether the wall is stone is the DM's."
 DM: Whatever the description says beyond the steps above.
+
+== hb-test-howling-pack
+"Howling Pack" (level 3 conjuration, 60 feet, action, 10 minutes, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: damage.
+Its roll: the target makes a Dexterity saving throw.
+A 10-foot sphere stays for as long as the spell lasts. It stays where it was laid out.
+As it appears it affects nobody.
+From then on, the steps below run on a creature each time it enters the area (or the area reaches it) or ends its turn there, at most once a turn for each creature. Each creature rolls its own damage.
+When casting it, the caster may name creatures the area leaves alone.
+It never goes off on a creature on the caster's side (the caster would not force it), whether it was there when the spell was cast or came later; a creature that is not on the caster's side, newcomers included, is made to save unless the caster named it as spared.
+It goes off only on a creature the caster can see: not one that is Invisible to the caster, hiding from it, out of its sight, or one the DM has hidden. Nothing is rolled, said or sent of a creature it leaves alone.
+The area is not rolled with an action: when the caster has moved at least 5 feet on its own turn, it may move the area up to 30 feet, once that turn, to an unoccupied space it can see (outside a fight there is no turn: only the distance limits it). The area goes there at once. A creature newly inside it as it moves is made to save as one that entered it; one already inside is not made to save again by the move.
+While the caster is within 5 feet of the area's own space it has Advantage on Strength saving throws.
+That creature makes a Dexterity saving throw.
+On a failure:
+  It takes 3d10 slashing damage.
+The sphere is centred on a point the caster picks within 60 feet; it catches every creature in it, the caster too if the caster is in it; it is not a point's sphere: it is laid out from a large space (the footprint of a large creature, anchored on the space picked), and is that space and every space within 10 feet of it (on hexes, the hexes within 2 of any of its hexes; on squares, the table rule for areas rounds the squares out from the space's box); a wall between the area's origin and a creature keeps that creature out.
+Saving throws are against the caster's spell save DC.
+Cast with a higher slot, +1d10 for each level above 3rd.
+It lasts up to 10 minutes. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Whatever the description says beyond the steps above.
+
+== hb-test-warding-ring
+"Warding Ring" (level 3 abjuration, 10 feet, 1 minute, 1 hour).
+Components: Verbal, Somatic and Material (speaking it gives away a hidden caster); the Material component has a cost or is used up, so Subtle Spell cannot hide the casting.
+On the spell lists of: wizard.
+Sorted under: control and utility.
+Its roll: no attack roll and no saving throw.
+It takes 1 minute to cast, so it cannot be cast during a fight.
+When casting it, the caster chooses one or more kinds of creature to set it against (celestial, elemental, fey, fiend and undead); the kinds are the types of creature the circle works against, and the caster also says whether to reverse it.
+A cylinder 10 feet in radius and 20 feet high stays where it was laid out for as long as the spell lasts. It is a barrier, not something that goes off: it affects nobody as it appears, and the steps below are the DM's.
+Of the kinds of creature the caster chose, a creature cannot willingly walk, fly or climb into it (the move is refused; forced movement still takes it in), must succeed on a Charisma saving throw against the caster's spell save DC to teleport into it (on a failure it stays where it is, and what was spent on the casting stays spent), has Disadvantage on attack rolls against targets inside, and cannot give a target inside the Charmed or Frightened condition. If the caster reversed it, all of that holds the other way: such a creature cannot willingly leave, the save is for teleporting out, and targets outside are the ones protected. A creature whose type the engine cannot tell is not held by it. For a creature of the party, a circle whose caster the party does not know of holds nobody, as a refusal would tell the players something is there; the DM judges it.
+The engine does not do this; the DM does this: "What the engine does not judge is the DM's."
+The cylinder is centred on a point the caster picks within 10 feet; it catches every creature in it, the caster too if the caster is in it; a wall between the area's origin and a creature keeps that creature out.
+Cast with a higher slot, it lasts 1 more hour for each level above 3rd.
+It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: "What the engine does not judge is the DM's."
+DM: Whatever the description says beyond the steps above.
