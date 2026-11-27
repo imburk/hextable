@@ -471,7 +471,7 @@ function shownMap(state) {
   const G = gridOf(map), cols = new Set(), levels = [], centres = new Map();
   for (const l of map.levels) {
     const tiles = {}, cs = [];
-    for (const k in l.tiles) { const h = parse(k); if (tileSent(state, l.id, h, rule)) { tiles[k] = { ...l.tiles[k] }; cols.add(k); cs.push(G.center(h)); } }
+    for (const k in l.tiles) { const h = parse(k); if (tileSent(state, l.id, h, rule)) { { const { dry, ...shown } = l.tiles[k]; tiles[k] = shown; } cols.add(k); cs.push(G.center(h)); } }
     // A level with nothing shown is not mentioned, and neither is its background picture.
     if (cs.length) { levels.push({ id: l.id, name: l.name, z: l.z, tiles, ...(l.image && { image: { asset: l.image.asset, feet: [...l.image.feet], origin: [...l.image.origin] } }) }); centres.set(l.id, cs); }
   }

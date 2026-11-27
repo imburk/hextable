@@ -505,6 +505,37 @@ from the SRD: "Suffocation" (Hazards), "Underwater Combat", "Swimming", the spel
   tests: `packages/server/test/twin-worlds.test.js` (a hidden creature running out of breath, gaining Exhaustion, and surfacing, by time and by the rounds of a fight).
 - **Not built, with reasons:** DEBT T110.
 
+## Build notes (E3, #849)
+
+What was settled while building water that rises and falls (the Cliff Keep's sea cave; Control Water's Flood and Part Water use the same mechanism in E4).
+
+- **A water level is a change of tiles** (`tides.js`, pure). `setSurface(map, levelId, cells, surface, opts)` returns `{ tiles }` or `{ problem }`. A cell's floor is the top of its
+  *dry* tile (the tile as it was before any water change, kept on the tile as `dry`, a copy, the first time; a tile that has one keeps its first), or its bed if that was water
+  (`z - depth`). Surface above the floor: `{ t: 'water', h: surface - level.z, depth: surface - floor, dry }` (depth must be one `WATER_DEPTH` allows; the deepest is 200, and a
+  floor that is not a multiple of 5 refuses). Surface at or below it: the dry tile again with no `dry`, except a dry tile that was water, which becomes its bed
+  `{ t: opts.bed ?? 'stone', h: bed - level.z, dry }` (the Sluice Gallery drained). The linter accepts `dry` on any tile and checks it as a tile (a `dry` inside a `dry` is refused).
+  **No state version and no migration:** `dry` and `state.tides` are optional, an old save has neither, and a game that never changes water has the state it had.
+- **Never in place.** `waterChange` copies the level's tiles and puts a new `map` in whole (as `mapEdit` does), so the restore copy that holds the terrain by reference stays sound.
+  `water` is not in `TERRAIN_ACTIONS` (`engine.js` was not the issue's to change); `apply-terrain.test.js` lists it as copy-on-write: DEBT T111 (1).
+- **The action** `water` (DM only; `engine/dm.js`): `{ level, cells | region, surface | by, bed?, rise?: { by, to } }` or `{ tide, stop: true }`. `by` is relative to each cell's
+  current top (its surface where it is water, its floor where it is dry). `surface` with `rise` is where the tide starts; with `rise` alone it starts at the highest water on its cells,
+  or at their lowest floor if they have none. `by` with `rise` is refused. Everything is checked before anything changes; a change that changes no cell is refused ("already there").
+- **A tide** is `state.tides: [{ id, map, level, cells, by, to, at, bed? }]` (ids T1, T2...; at most 16): `at` is where its water stands, `map` the map it was set on. At the start of
+  each round of a fight (`engine/resolve.js`, after `newRound`) each tide moves `by` feet, not past `to`, and is removed when it gets there. Outside a fight nothing moves (DEBT T111 (2)).
+  A tide whose map is not the one in play waits, and `loadMap` without a node drops them. One that cannot go on (the water would be deeper than 200) stops, and the DM's `water`
+  event says why. The Cliff Keep shape (a causeway at 0, ledges at -5, a dais at +5, an inlet with its bed at -10, `rise: { by: 5, to: 5 }`): round 2 the inlet has water (-5, the
+  ledges at its edge), round 3 the ledges are under, round 4 the causeway is under and the tide ends; the dais stays dry (`tides.test.js`).
+- **Who is carried** (`tides.js` `carry`). Rising: a creature standing on a covered cell is lifted to the new surface; **a creature swimming at the old surface rises with it** (the issue did
+  not say; it is the same as the falling case); one under the old surface stays where it is, deeper. Falling: a creature at or under the old surface and now above the new one is at the new
+  surface (or the floor), with no fall damage. A creature that flies above the surface stays where it is. A big creature is judged by its whole footprint and goes to the highest new surface under it,
+  **only if its anchor cell is then held up** (the gravity pass would drop it from anywhere else, with a fall): otherwise it stays where it is (DEBT T111 (3)). A rider goes with its mount. Piles
+  and objects stay on the floor. Events: a `water` event (the DM's alone: the table's players are not told of it) and a `moved` event with `water: true` for each creature carried,
+  which `view.js` treats as any other `moved`: never sent for a creature a player may not know of.
+- **Players are sent** the tiles as any map edit sends them, **without `dry`** (`view.js` strips it: it is the DM's record of what the ground was, and a drained cell's `dry` would say how deep
+  water used to be, in a place that may be unseen when it was). Never `state.tides`: a player's view is an allow list and has no such field. Twin test (`twin-worlds.test.js`, "tides:"): a hidden
+  creature lifted by a tide and a tide in a region the party has not seen; it fails if the lift event names the creature, and passes as built.
+- **Not built, with reasons:** DEBT T111.
+
 ## Build notes (water depth in the client, #850)
 
 - **Editor** (`packages/client/editor.js`): with Paint on Water a Depth select (5 to 200 in 5s, default 10, kept while the editor is open) sets `depth` on what is painted ("Depth 10 ft (to the bed)"); painting water of another depth over water repaints it; painting another terrain over water drops the key. The Properties tool on a water tile (no object on it) shows its Depth and changes it with a `tile` op carrying the tile with its new `depth`. DEBT T109 (1).

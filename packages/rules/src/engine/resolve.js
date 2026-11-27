@@ -31,6 +31,7 @@ import { armed, weaponKey } from '../imbue.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 import { investIn } from '../summons.js';
 import { nextFight } from '../shopids.js';
+import { stepTides } from '../tides.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -432,7 +433,7 @@ export function advanceTurn(s, ev) {
   let auto = 0;
   for (let idle = 0; idle < enc.order.length * 2 + 2;) {
     enc.turn++;
-    if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += ROUND; newRound(s); roundStarted(s, ev); }
+    if (enc.turn >= enc.order.length) { enc.turn = 0; enc.round++; s.clock += ROUND; newRound(s); stepTides(s, ev); roundStarted(s, ev); }
     const e = s.entities[enc.order[enc.turn].id];
     if (e && !e.dead && e.riding) mountOwed(s, e);
     if (!e || e.dead) { idle++; continue; }

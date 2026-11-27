@@ -102,6 +102,19 @@ export function imageProblem(img, where) {
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const text = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
 
+// What is wrong with one tile (docs/specs/fly-swim-control.md, E3): `dry` is the tile as it was before the water changed, itself a tile, and has no `dry` of its own.
+function tileProblem(t, k, id, nested) {
+  if (!t || typeof t !== 'object' || !Object.hasOwn(TILES, t.t)) return `The tile at ${k} on "${id}" has unknown terrain "${t?.t}".`;
+  if ((t.h !== undefined && !num(t.h)) || (t.lift !== undefined && !num(t.lift))) return `The tile at ${k} on "${id}" has a height that is not a number.`;
+  if (t.t === 'water' ? !depthOk(t.depth) : t.depth !== undefined) return t.t === 'water' ? `The water at ${k} on "${id}" has a depth of ${JSON.stringify(t.depth)} feet; it must be a multiple of ${WATER_DEPTH.step} from ${WATER_DEPTH.min} to ${WATER_DEPTH.max}.` : `The tile at ${k} on "${id}" has a depth, and only water has one.`;
+  if (t.dry !== undefined) {
+    if (nested) return `The tile at ${k} on "${id}" keeps a dry tile inside a dry tile.`;
+    const w = tileProblem(t.dry, k, id, true);
+    if (w) return `The dry tile kept at ${k} on "${id}" is wrong: ${w}`;
+  }
+  return null;
+}
+
 // What is wrong with a map document, as a list of sentences. Empty means it can be played.
 // Later parts of the spec (walls, objects, regions) add their own checks through `extra`.
 export function lintMap(doc, extra = []) {
@@ -128,9 +141,8 @@ export function lintMap(doc, extra = []) {
     for (const [k, t] of Object.entries(l.tiles)) {
       count++;
       if (!COL.test(k)) { bad.push(`Level "${l.id}" has a tile at "${k}", which is not a ${G.word.one}.`); break; }
-      if (!t || !Object.hasOwn(TILES, t.t)) { bad.push(`The tile at ${k} on "${l.id}" has unknown terrain "${t?.t}".`); break; }
-      if ((t.h !== undefined && !num(t.h)) || (t.lift !== undefined && !num(t.lift))) { bad.push(`The tile at ${k} on "${l.id}" has a height that is not a number.`); break; }
-      if (t.t === 'water' ? !depthOk(t.depth) : t.depth !== undefined) { bad.push(t.t === 'water' ? `The water at ${k} on "${l.id}" has a depth of ${JSON.stringify(t.depth)} feet; it must be a multiple of ${WATER_DEPTH.step} from ${WATER_DEPTH.min} to ${WATER_DEPTH.max}.` : `The tile at ${k} on "${l.id}" has a depth, and only water has one.`); break; }
+      const why = tileProblem(t, k, l.id, false);
+      if (why) { bad.push(why); break; }
     }
   }
   if (count === 0) bad.push('It has no tiles.');
@@ -274,6 +286,7 @@ export const EDITS = {
     // A tile that stops being water drops its depth (a client that sends the old tile with a new type must not leave one on stone: the linter refuses it).
     if (tile) {
       const next = structuredClone(tile);
+      delete next.dry;                                  // the DM's paint is the new dry ground: a `dry` sent with it would bring the old one back (tides.js)
       if (next.t === 'water' && next.depth === undefined) next.depth = WATER_DEPTH.default;
       else if (next.t !== 'water') delete next.depth;
       l.tiles[col(at)] = next;
