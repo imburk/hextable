@@ -474,11 +474,17 @@
         },
         {
           "ward": "wis"
+        },
+        {
+          "polymorph": "chosen"
         }
       ],
       "tier": "auto",
       "checked": false,
-      "text": "The caster's skin hardens: +2 Armor Class, 1d4 temporary hit points and a 1d6 stone fist each turn, and a creature that targets it with an attack roll or damaging spell makes a Wisdom save or loses it. A Constitution save each turn may end the spell."
+      "text": "The caster's skin hardens: +2 Armor Class, 1d4 temporary hit points and a 1d6 stone fist each turn, and a creature that targets it with an attack roll or damaging spell makes a Wisdom save or loses it. A Constitution save each turn may end the spell.",
+      "choice": {
+        "of": "beast"
+      }
     },
     {
       "id": "hb-sample-spotters-eye",
