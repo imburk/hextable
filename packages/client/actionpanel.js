@@ -322,7 +322,7 @@ export function moveRows(S, e, { fly = null, mode = null } = {}) {
     rows.push(row({ id: 'leap', kind: 'arm', label: 'Leap', sub: L.sub, chip: 'Move', time: null, std: false, why: L.why, armed: lm && !mode.spell, arm: { kind: 'leap', id: e.id }, mode: { kind: 'leap', id: e.id, spell: false } }));
     if (L.spellFree && !L.why) rows.push(row({ id: 'leap-jump', kind: 'arm', label: 'Use Jump', sub: `Leap up to ${L.spell} ft${enc?.budget ? ' for 10 ft of movement' : ''}`, chip: 'Move', time: null, std: false, armed: lm && !!mode.spell, arm: { kind: 'leap', id: e.id }, mode: { kind: 'leap', id: e.id, spell: true } })); }
   // Conjure Animals' pack: moved when its caster moves, no action spent (docs/specs/rules-expansion.md, wave 5 part 3). Offered once the caster has moved this turn.
-  if (packReady(S, e)) for (const r of rollers(S, e)) if (r.pack) rows.push(row({ id: `roll:${r.id}`, kind: 'arm', label: 'Move the pack', sub: `${r.name} · up to ${r.feet} ft · tap the map`, chip: 'Move', time: null, std: false, armed: !!mode && mode.kind === 'roll' && mode.effect === r.id, mode: rollMode(r) }));
+  if (packReady(S, e)) for (const r of rollers(S, e)) if (r.pack) rows.push(row({ id: `roll:${r.id}`, kind: 'arm', pack: true, label: 'Move the pack', sub: `${r.name} · up to ${r.feet} ft · tap the map`, chip: 'Move', time: null, std: false, armed: !!mode && mode.kind === 'roll' && mode.effect === r.id, mode: rollMode(r) }));
   rows.push(hideRow(S, e, row));
   rows.push(row({ id: 'search', kind: 'send', label: 'Search', sub: `Perception ${signed(skillBonus(S, e, 'perception'))} · secret doors, traps, things hiding · 15 ft`, chip: CHIP.action, time: 'action',
     why: blocked(S, e, 'action'), send: { type: 'search', actor: e.id } }));
@@ -583,7 +583,7 @@ export function groupRows(S, e, id, { mode = null, fly = null, dm = false, found
     case 'attacks': return [...attackRows(S, e, { mode }), ...cr.attacks, ...spellRows(S, e, { mode }).filter((r) => r.roll === 'attack')];
     case 'spells': return spellRows(S, e, { mode });
     case 'heal': return [...stabilizeRows(S, e), ...spellRows(S, e, { mode }).filter(healsRow), ...featureRows(S, e, { mode }).filter(healsRow), ...items().uses.filter(healsRow)];
-    case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'leap', 'leap-jump', 'fly-up', 'fly-down', 'fly-to'), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
+    case 'move': { const h = holdRows(S, e); return [...std('fly'), ...h.escape, ...std('dash', 'disengage', 'leap', 'leap-jump', 'fly-up', 'fly-down', 'fly-to'), ...moveRows(S, e, { fly, mode }).filter((r) => r.pack), ...bonusStd('dash-bonus', 'disengage-bonus'), ...h.letGo]; }
     case 'defend': return [...std('dodge', 'hide', 'search', 'shield'), ...bonusStd('hide-bonus')];
     case 'use': return [...moveRows(S, e, { fly }).filter((r) => r.id.startsWith('use:')), ...items().uses.filter((r) => !healsRow(r))];
     case 'features': return featureRows(S, e, { mode }).filter((r) => !healsRow(r));

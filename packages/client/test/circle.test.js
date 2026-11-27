@@ -110,3 +110,14 @@ test("in a fight the pack is offered only after its caster has moved 5 ft this t
 test('the pack\'s move has its own log kind', () => {
   assert.equal(LINE_KINDS.zoneMoved, 'engine');
 });
+
+test('the Move group lists the pack row (the panel draws groups from groupRows)', async () => {
+  const { groupRows } = await imp('actionpanel.js');
+  const s = field(); clericTurn(s);
+  ok(apply(s, { type: 'cast', actor: 'cleric', spell: 'conjure-animals', hex: { q: 4, r: 0 }, slot: 3 }, DM));
+  const e = s.entities.cleric;
+  assert.ok(!groupRows(s, e, 'move').some((r) => r.label === 'Move the pack'));
+  ok(apply(s, { type: 'move', actor: 'cleric', to: { q: 1, r: 0 } }, DM));
+  assert.equal(groupRows(s, e, 'move').filter((r) => r.label === 'Move the pack').length, 1);
+  assert.ok(!groupRows(s, e, 'bonus').some((r) => r.label === 'Move the pack'));
+});
