@@ -67,7 +67,7 @@ export const SUMMON_ONE_WORDS = {
 };
 export const CURSE_WORDS = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', attacks: 'Disadvantage on attack rolls against the caster', dodge: 'the forced Dodge action', damage: 'extra Necrotic damage' };
 export const AFFLICTION_WORDS = { exhaustion: 'one level of Exhaustion', charmed: 'the Charmed condition', petrified: 'the Petrified condition', curse: 'a curse', 'ability-score': 'a reduction to an ability score', 'hit-point-maximum': 'a reduction to the Hit Point maximum' };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce', ward: 'one or more kinds of creature to set it against' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce', ward: 'one or more kinds of creature to set it against', beast: 'a Beast to take the form of' };
 export const RESIZE_WORDS = { enlarge: 'Enlarge (one size category larger)', reduce: 'Reduce (one size category smaller)' };
 export const SHAPE_WORDS = { passage: 'a 5-foot passage cut through a wall', other: 'any other shape (a weapon, a coffer, a statue, a door shaped shut)' };
 // A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
@@ -275,7 +275,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], resize: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast'];
 
@@ -678,8 +678,8 @@ class Reading {
     this.odd(c, ['of', 'from'], 'The choice');
     const from = Array.isArray(c.from) ? c.from.filter((x) => CHOICES[c.of].includes(x)) : null;
     const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : c.of === 'affliction' ? AFFLICTION_WORDS[x] : c.of === 'shape' ? SHAPE_WORDS[x] : c.of === 'resize' ? RESIZE_WORDS[x] : x);
-    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'shape' ? ` (${list(STONE_SHAPES.map((x) => SHAPE_WORDS[x]), 'or')})` : c.of === 'resize' ? ` (${list(RESIZES.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : c.of === 'ward' ? ` (${list((from ?? WARDS).map(word), 'and')})` : '';
-    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' ? 'a step below that is for one of them is part of the cast only for the one chosen' : c.of === 'ward' ? 'the kinds are the types of creature the circle works against, and the caster also says whether to reverse it' : 'each step below that says "chosen" uses that choice'}.`);
+    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'shape' ? ` (${list(STONE_SHAPES.map((x) => SHAPE_WORDS[x]), 'or')})` : c.of === 'resize' ? ` (${list(RESIZES.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : c.of === 'ward' ? ` (${list((from ?? WARDS).map(word), 'and')})` : c.of === 'beast' && !from ? ' (any Beast the game has)' : '';
+    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' ? 'a step below that is for one of them is part of the cast only for the one chosen' : c.of === 'ward' ? 'the kinds are the types of creature the circle works against, and the caster also says whether to reverse it' : c.of === 'beast' ? 'a step below that says "chosen" uses that Beast' : 'each step below that says "chosen" uses that choice'}.`);
   }
 
   zone(aim) {
@@ -1287,6 +1287,17 @@ export const STEP_SENTENCES = {
       return this.dm(`The size change of step ${at}: ${this.obj ? 'a thing on the map keeps no lasting effect' : 'the spell does not last'}.`);
     }
     this.line('The size goes back when the spell ends (a creature that is bigger again with no room where it stands is left there, and the engine tells the DM). Only one change of size at a time: a creature already changed is left as it is, and the DM is told.');
+  },
+  // engine/resolve.js `polymorph`: the creature the step works on takes the Beast the caster chose, for as long as the lasting effect runs.
+  polymorph({ st, at, Who, say }) {
+    if (st.polymorph !== 'chosen') return this.bad(`Step ${at}: \`polymorph\` is "chosen".`);
+    if (!this.def.choice || this.def.choice.of !== 'beast') return this.bad(`Step ${at}: \`polymorph\` needs a spell with \`choice: { of: "beast" }\`.`);
+    say(`${Who} takes the form of the Beast the caster chose, if that Beast's Challenge Rating is no higher than its own (or its level, if it has none; one that is too high does nothing, and a player's cast is refused when the target is on the caster's side). The Beast's stat block replaces its game statistics, its Intelligence, Wisdom, Charisma, saves and skills too; it keeps its alignment, personality, creature type, Hit Points and Hit Point Dice. It gains Temporary Hit Points equal to the Beast's Hit Points, in place of any it had, and the form ends on it as soon as it has none left (what is left of the damage goes on to its real Hit Points). It cannot speak or cast spells, and its gear gives it nothing.`);
+    if (!this.fx || this.fx === 'bound' || this.obj) {
+      this.line('The spell does not last, so the engine has nothing to hang the form on: the DM applies it and puts it back.');
+      return this.dm(`The form of step ${at}: the spell does not last.`);
+    }
+    this.line('The form goes when the spell ends (the caster\'s Concentration breaking, or the effect ended), and the creature has its own statistics and the Hit Points it has. A room that is too small for the Beast gives it the largest size that fits, as far as the caster\'s side knows: the engine tells the DM alone if a creature the party does not know of is in its space.');
   },
   stabilize({ Who, say }) { say(`${Who} becomes Stable if it has 0 Hit Points and is not dead (its Death Saving Throw counts start again). Any other creature is left as it is, and the table is told.`); },
   // engine/rolls.js `shine`: the light is carried by the creature the step works on, for as long as the lasting effect runs.

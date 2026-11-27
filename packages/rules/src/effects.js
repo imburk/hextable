@@ -147,6 +147,7 @@ function summarise(def) {
   if (kind === 'meld') return { short: 'meld into stone', long: 'The caster steps into the wall it aimed at and is held there: unseen, out of every space, sensing nothing, until it leaves (5 feet of movement), the spell ends, or a cut of the wall expels it' };
   if (kind === 'cut') return { short: `cut ${step.cut} ft`, long: `Takes ${step.cut} feet out of the wall it is aimed at (the DM is told, and undoes it if the wall is not stone)` };
   if (kind === 'sense') return { short: `sense ${step.sense}`, long: `Senses ${step.sense === 'traps' ? 'traps' : 'magic'} within ${step.feet} feet (the DM is told, and tells the player)` };
+  if (kind === 'polymorph') return { short: 'becomes a Beast', long: `The target takes the form of a Beast the caster chooses, of a Challenge Rating no higher than its own, for ${def.duration}${def.concentration ? ' (Concentration)' : ''}: the Beast's stat block replaces its statistics (it keeps its Hit Points), the Beast's Hit Points are its Temporary Hit Points and the spell ends on it when they are gone; it cannot speak or cast spells` };
   if (kind === 'resize') return { short: step.resize === 'larger' ? 'one size larger' : 'one size smaller', long: `The target is one size category ${step.resize} for ${def.duration}${def.concentration ? ' (Concentration)' : ''}, as far as there is room; its size goes back when the spell ends` };
   if (kind === 'stabilize') return { short: 'stabilise', long: 'A creature at 0 Hit Points becomes Stable' };
   if (kind === 'revive') return { short: 'revive', long: `Brings a creature that died within the last ${step.within === 1 ? 'minute' : `${step.within} minutes`} back to life with ${step.revive} Hit Point${step.revive === 1 ? '' : 's'}` };
@@ -603,6 +604,7 @@ function exec(s, ev, kit, f, step, at) {
   }
   if (kind === 'cure') return kit.cure(s, t, step.cure, ev);
   if (kind === 'stabilize') return kit.stabilise(s, t, ev, f);
+  if (kind === 'polymorph') return kit.polymorph(s, t, step, f, ev) || handOver(`${f.src.name} changes ${t.name} into a Beast, which the engine has no lasting effect or Beast to hang on. The DM applies it: the Beast's statistics over its own, its Hit Points as Temporary Hit Points, no speech or spells, and its gear melded in; the form ends when the temporary Hit Points do.`);
   if (kind === 'resize') return kit.resize(s, t, step, ev, f) || handOver(`${f.src.name} changes ${t.name}'s size, which the engine has no lasting effect to hang on. The DM applies it with setSize and puts it back.`);
   if (kind === 'cut') { const cut = kit.cutWall(s, f.src.wall, step.cut, f, ev); if (cut) kit.expelMelded(s, cut, f, ev); return; }      // a creature merged with stone near the cut is thrown out of it
   if (kind === 'meld') return kit.meldInto(s, t, f, ev) || handOver(`${f.src.name} merges the caster with the stone, which the engine has no lasting effect or wall to hang on. The DM applies it: the caster is out of sight and out of every space until it leaves.`);

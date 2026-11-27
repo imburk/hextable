@@ -45,6 +45,10 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `resize: 'larger' | 'smaller'` (Enlarge/Reduce): the creature it works on is one size category larger or smaller for as long as the lasting effect it is part of runs (its size goes back
   // when the effect ends). Larger only as far as there is room (the engine judges what the caster's side knows), smaller down to Tiny. docs/specs/rules-expansion.md, "Build notes: wave 5 part 2".
   'resize',
+  // `polymorph: 'chosen'` (Polymorph): the creature it works on takes the form of the Beast the caster chose (the spell's `choice: { of: 'beast' }`) for as long as the lasting effect it is part of runs,
+  // with the Beast's whole stat block over its own (forms.js, `takeForm` with `whole`), the Beast's Hit Points as Temporary Hit Points that hold the effect (it ends on the creature when they are gone), no speech
+  // and no spellcasting. A spell that lasts only. docs/specs/rules-expansion.md, "Build notes: wave 5 part 4".
+  'polymorph',
   // `dispel: level, dc` (Dispel Magic): every ongoing spell on the creature it works on ends if its level is `dispel` or lower, or no higher than the slot the
   // dispelling spell was cast with; for each higher one its caster makes an ability check with its spellcasting ability against `dc` plus that spell's level, and
   // on a success the spell ends. docs/specs/rules-expansion.md, "Build notes: Dispel Magic".
@@ -209,7 +213,9 @@ export const CURE_WORDS = ['exhaustionLevel', 'curse', 'curses'];
 export const RESIZES = ['enlarge', 'reduce'];
 // `ward` (Magic Circle): the kinds of creature a circle may be set against, one or more of them (the cast's `choice` is a list of these; `reverse: true` turns the circle round).
 export const WARDS = ['celestial', 'elemental', 'fey', 'fiend', 'undead'];
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES, resize: RESIZES, ward: WARDS };
+// `beast` (Polymorph): the id of an SRD Beast stat block the caster may turn the target into (every Beast of the SRD pack; a test holds the list to the pack). Whether its Challenge Rating suits the target is the engine's, at the cast.
+export const BEASTS = ["allosaurus","ankylosaurus","ape","archelon","baboon","badger","bat","black-bear","blood-hawk","boar","brown-bear","camel","cat","constrictor-snake","crab","crocodile","deer","dire-wolf","draft-horse","eagle","elephant","elk","frog","giant-ape","giant-badger","giant-bat","giant-boar","giant-centipede","giant-constrictor-snake","giant-crab","giant-crocodile","giant-fire-beetle","giant-frog","giant-goat","giant-hyena","giant-lizard","giant-octopus","giant-rat","giant-scorpion","giant-seahorse","giant-shark","giant-spider","giant-toad","giant-venomous-snake","giant-wasp","giant-weasel","giant-wolf-spider","goat","hawk","hippopotamus","hunter-shark","hyena","jackal","killer-whale","lion","lizard","mammoth","mastiff","mule","owl","panther","piranha","plesiosaurus","polar-bear","pony","pteranodon","rat","raven","reef-shark","rhinoceros","riding-horse","saber-toothed-tiger","scorpion","seahorse","spider","tiger","triceratops","tyrannosaurus-rex","venomous-snake","vulture","warhorse","weasel","wolf"];
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES, resize: RESIZES, ward: WARDS, beast: BEASTS };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -392,7 +398,7 @@ function lintChoice(e, say) {
     if (m.scope?.ability === 'chosen') used.add(c?.of === 'curse' ? 'curse' : 'ability');
     if (m.types?.includes('chosen')) used.add('damageType');
   });
-  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); if (st.familiarity === 'chosen') used.add('familiarity'); });
+  walkSteps(e.effects, (st) => { if ('damage' in st && st.type === 'chosen') used.add('damageType'); if (Array.isArray(st.cure) && st.cure.includes('chosen')) used.add('condition'); if (st.command === 'chosen') used.add('command'); if (st.polymorph === 'chosen') used.add('beast'); if (st.familiarity === 'chosen') used.add('familiarity'); });
   if (e.zone?.ward === true) used.add('ward');
   if (c !== undefined) {
     if (!c || !Object.hasOwn(CHOICES, c.of)) return say(`\`choice.of\` is one of ${Object.keys(CHOICES).join(', ')}`);
@@ -595,6 +601,9 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     // `command` (Command): one of the five words, or `chosen` (the spell's `choice: { of: 'command' }`).
     if (kind === 'command' && !seen.commandOk) say('a `command` step is for a spell: it is carried out on a creature\'s next turn');
     if (kind === 'command' && !(COMMANDS.includes(step.command) || step.command === 'chosen')) say(`\`command\` is one of ${COMMANDS.join(', ')} or "chosen"`);
+    // `polymorph` (Polymorph): "chosen" (the spell's `choice: { of: 'beast' }`), in a spell that lasts: the form goes when the spell ends.
+    if (kind === 'polymorph' && step.polymorph !== 'chosen') say('`polymorph` is "chosen" (the Beast the caster picks)');
+    if (kind === 'polymorph' && !seen.eachOk) say('a `polymorph` step is for a spell that lasts: the form goes when it ends');
     // `ward` (Sanctuary): an ability, in a spell that lasts: the lasting effect holds the ward, and it ends the effect.
     if (kind === 'ward') { if (!ABILITIES.includes(step.ward)) say('`ward` is an ability (the one the attacker saves with)'); if (!seen.eachOk) say('a `ward` step is for a spell that lasts: the ward goes when the spell ends'); }
     // `confuse` (Confusion): true, in a spell that lasts; its `ends` is a repeated save at the end of the creature's turn, as a condition's.
@@ -3128,7 +3137,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3687,7 +3696,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
