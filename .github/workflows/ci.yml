@@ -11,7 +11,10 @@ name: CI
 on:
   push:
     branches: [main]
+  # Only pull requests into main run (Isaac, 26 Nov): the lower layers of a stack target the layer below and start no runs; the train's
+  # top is retargeted to main and then pushed (main merged in), which starts its run.
   pull_request:
+    branches: [main]
 
 # A newer push to a pull request cancels that pull request's older run. A run on main is never cancelled.
 concurrency:
