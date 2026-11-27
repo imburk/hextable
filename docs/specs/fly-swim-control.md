@@ -440,13 +440,13 @@ What was settled while building the swimming engine (the owner said yes to quest
   (`map.js`); `migrateMap` gives every water tile of a format 1 or 2 map 10 feet, without writing to the document it is given. The linter wants a depth on every water
   tile (and on no other). A save needs no new state version: `migrate.js` already runs `migrateMap` on the table's map and on each parked place's on every load. A water
   tile with no depth (a hand-built map in a test; the linter refuses it) is read as before swimming: a surface, and no one enters it. A `mapEdit` that paints water with no
-  depth gives it 10 feet (the editor's Depth field is a client follow-up, DEBT T108).
+  depth gives it 10 feet (the editor's Depth field is a client follow-up, DEBT T109).
 - **In the water** (`space.js`). `waterAt(map, pos)` is the water volume a position is in: over a water tile with a depth, at or below its surface and at or above its bed. The
   nearest surface at or above the position decides, so a floor of another level between it and the water is not water. `submerged(s, e)` is true below the surface (false at
   it; E2 reads it for breath), `inWater(s, e)` at or below it. `ground()` returns the water's own record for a position in the water below its surface, so the water holds a
   creature up whatever its speeds (`gravity` and `drop` look at `ground` first); `under()` returns it too, so a creature under the water is in the water's level: its region
   (and what players are sent of it), its light.
-- **Falling into water** stops at the surface, as it always did (the surface is a surface); the fall's damage is the engine's as before (DEBT T108 (3)).
+- **Falling into water** stops at the surface, as it always did (the surface is a surface); the fall's damage is the engine's as before (DEBT T109 (3)).
 - **Moving** (`engine/world.js`, `moveOptions`). From the shore it steps onto the water's surface (a rise or drop up to 5 feet), as from any water position it steps in the grid's
   directions level, up or down 5 feet, or straight up or down, between the bed and the surface (the same shape as the flying steps). It leaves the water onto a shore from the
   surface by a walking step; from under the surface there is no walking out (it swims up first). Cost: with a Swim Speed 5 feet a step from that Speed; without it, 10 feet a
@@ -457,10 +457,10 @@ What was settled while building the swimming engine (the owner said yes to quest
   where its whole footprint is in water. The monster brain swims by the same costs but does not choose to end a turn under the water with no Swim Speed.
 - **Squares.** A diagonal step in the water is open to a swimmer past a corner of water (`cornerFree`'s `swim`); the true length (5 x root 2) doubled is the cost, as on land.
 - **Water Walk** works as before; when it ends on a creature standing on water, the creature is in the water at the surface and swims (the spell's text says so).
-- **Acrobatic Movement** is as before (it crosses water and may not stop in it); it does not swim in from the shore (DEBT T108 (5)).
+- **Acrobatic Movement** is as before (it crosses water and may not stop in it); it does not swim in from the shore (DEBT T109 (5)).
 - **A hidden creature under the water** is sent to no player: `under()` gives a submerged creature its level, so a creature under the water in a region the party has not seen is
   concealed as on land. A party mover that names a column of water without a height chooses its place among those the party knows (`move`), so a creature the party does not
   know of, in the nearest place, does not send the mover to another place of the column. Twin tests: `packages/server/test/twin-worlds.test.js`.
 - **Reader.** `MOVE_ENGINE.swim` is true: a swim speed is no longer handed to the DM, and a monster's reading says how it swims; the goldens moved.
-- **Not built, with reasons:** DEBT T108.
+- **Not built, with reasons:** DEBT T109.
 
