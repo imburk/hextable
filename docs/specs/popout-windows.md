@@ -1,6 +1,8 @@
 # Spec: pop-out windows
 
-Issue #626. Status: **draft by an agent, for the owner to review.** Nothing here is built. The owner, 20 November: split
+Status: agreed design (the owner's answers of 21 November, and "merge the design", 26 November); not built.
+
+Issue #626. Nothing here is built. The owner, 20 November: split
 the game across windows (map in one, character sheet in another, log, dice and turn order in others) and Alt-Tab between
 them. Decided by the owner and not reopened here: one window holds the connection; pop-outs are `window.open` of the same
 origin and talk over a `BroadcastChannel`; they send actions back through the main window; they get the same player view and
