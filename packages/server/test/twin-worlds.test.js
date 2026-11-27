@@ -1656,3 +1656,33 @@ test("magic circle: a party creature of a chosen type giving Charmed to a target
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "no refusal told");
 });
+
+// ---- Polymorph (#786 wave 5 part 4, #835): the form is the target's, so a player is told of it; who cast it and where from are not told unless the caster is known ----
+// Decided: a creature of the party that is polymorphed is sent the change (form, size, Temporary Hit Points, the effect's start and end), whoever cast it; the cast itself, the caster's name and position, and any note that
+// names the caster as its actor (the DM-only hand-over, the "no room" note) go only where the caster is known to the party. Two worlds that differ in WHO the hidden caster is (name and place) must be sent the same bytes.
+const polySetup = (w) => {
+  seeInvisibleSetup(w);
+  w.must({ type: "place", actor: "fighter", to: { q: 0, r: 0 } });
+  w.must({ type: "place", actor: "wizard", to: { q: -3, r: 0 } });
+  w.state.entities.fighter.saveBonus = { ...w.state.entities.fighter.saveBonus, wis: -100 };      // a foe's cast: it saves, and fails
+};
+const hiddenCaster = (name, at) => (w) => {
+  w.must({ type: "spawn", monster: "goblin-warrior", at, name, hidden: true });
+  Object.assign(byName(w, name), { hp: 500, maxHp: 500, spells: ["polymorph"], slots: { 4: 3 }, slotsMax: { 4: 3 } });
+  w.must({ type: "cast", actor: byName(w, name).id, spell: "polymorph", target: "fighter", choice: "wolf", slot: 4 });
+};
+test("polymorph: a DM-hidden caster polymorphing a party member: the players are sent the form and not the caster, the same whoever (and wherever) the hidden caster is", () => {
+  const script = { players: ["Pat", "Sam"], setup: polySetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "dm", act: { type: "harm", actor: "fighter", amount: 3 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Woof." } },
+    { by: "dm", act: { type: "harm", actor: "fighter", amount: 30 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Back." } }] };
+  const r = twin(script, { hide: hiddenCaster("Mage", { q: 6, r: 0 }), plain: hiddenCaster("Witch", { q: 9, r: 2 }) });
+  for (const who of ["Pat", "Sam"]) { const raw = JSON.stringify(r.hidden.raw[who]); assert.ok(!raw.includes("Mage") && !raw.includes("Witch"), `${who} is not told who cast it`); }
+  { const raw = JSON.stringify(r.hidden.raw.Pat); assert.ok(raw.includes("\"type\":\"form\"") && raw.includes('"form":"wolf"') && raw.includes('"name":"Polymorph"'), "the party member's form and the effect on it are sent (the record)"); }
+});
+test("polymorph: a party member polymorphed beside hidden creatures that a Large Beast would overlap is sent the same as with bare cells (not refused, not made smaller, no note)", () => {
+  const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+  const setup = (w) => { polySetup(w); Object.assign(w.state.entities.wizard, { slots: { 4: 3 }, slotsMax: { 4: 3 } }); w.state.entities.wizard.spells.push("polymorph"); };
+  const script = { players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "polymorph", target: "fighter", choice: "brown-bear", slot: 4 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Grr." } }] };
+  const r = twin(script, { hide: (w) => ring.forEach(([dq, dr], i) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: dq, r: dr }, name: `Lurker${i}`, hidden: true })), plain: (w) => ring.forEach(([dq, dr]) => burn(w, { q: dq + 8, r: dr - 6 })) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it became a Large Beast");
+});
