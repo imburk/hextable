@@ -5,6 +5,7 @@ import { MONSTERS, PREGEN_SHEETS } from './content/index.js';
 import { derive, validate } from './derive.js';
 import { VERSION } from './migrate.js';
 import { newMap } from './map.js';
+import { WATER_DEPTH } from './content/terrain.js';
 import { HEX, SQUARE } from './grid.js';
 
 const hash = (q, r, seed) => {
@@ -62,7 +63,7 @@ function valley(seed, opts) {
     let t = n > 0.56 ? 'forest' : j > 0.965 ? 'rock' : 'grass';
     tiles[H.key(h)] = { t, lift: 0.45 + n * 0.7 + (t === 'rock' ? 0.8 : 0) };   // `lift` is for looks only; the valley is flat by the rules
   }
-  const set = (hexes, t, lift) => { for (const x of hexes) if (tiles[H.key(x)]) tiles[H.key(x)] = { t, lift }; };
+  const set = (hexes, t, lift) => { for (const x of hexes) if (tiles[H.key(x)]) tiles[H.key(x)] = { t, lift, ...(t === 'water' ? { depth: WATER_DEPTH.default } : {}) }; };
   set(H.range({ q: -3, r: 7 }, 2), 'water', 0.25);
   set(H.range({ q: 0, r: -9 }, 2), 'stone', 0.9);
   set([{ q: -1, r: -8 }, { q: 2, r: -10 }, { q: 1, r: -11 }], 'rock', 1.9);
@@ -104,7 +105,7 @@ function squareValley(hexGame) {
   const R = 14;                                                 // the valley is 13 hexes (65 ft) from its middle
   for (let q = -R; q <= R; q++) for (let r = -R; r <= R; r++) {
     const [x, y] = SQUARE.center({ q, r }), t = hexTiles[H.col(HEX.cell(x, y))];
-    if (t) tiles[`${q},${r}`] = { t: t.t, lift: t.lift };
+    if (t) tiles[`${q},${r}`] = { t: t.t, lift: t.lift, ...(t.depth !== undefined ? { depth: t.depth } : {}) };
   }
   const taken = new Set();
   const squareOf = (pos) => {

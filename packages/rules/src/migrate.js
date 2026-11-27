@@ -255,6 +255,9 @@ export function migrate(state) {
       if (isRec(fx) && typeof fx.spell === 'string' && fx.level === undefined && Object.hasOwn(SPELLS, fx.spell) && Number.isInteger(SPELLS[fx.spell].level)) fx.level = SPELLS[fx.spell].level;
     }
   }
+  // Map format 3 (docs/specs/fly-swim-control.md, stage E1, #836) needs no new state version: a water tile's `depth` is added by `migrateMap`, which runs on
+  // every load (above) on the table's map and on each parked place's, whatever version the save was. Every water tile of an older map gets 10 feet and nothing
+  // else changes; a creature on a water tile (placed there by the DM) is at its surface, which is in the water.
   if (!(state.version >= VERSION)) state.version = VERSION;
   for (const e of Object.values(state.entities)) {
     if (Array.isArray(e.spells)) e.spells = e.spells.map((id) => SPELL_IDS[id] ?? id);

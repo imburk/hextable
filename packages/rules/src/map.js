@@ -1,7 +1,7 @@
 // The map document: one self-contained JSON description of a place. A table's game state holds
 // its own copy. Design: docs/specs/maps-and-objects.md
 import { col, gridOf } from './grid.js';
-import { TILES } from './content/terrain.js';
+import { TILES, WATER_DEPTH, depthOk } from './content/terrain.js';
 import { CONTENT } from './content/index.js';
 import { WALL_KINDS } from './walls.js';
 import { AMBIENT } from './content/lights.js';
@@ -9,7 +9,11 @@ import { AMBIENT } from './content/lights.js';
 // Format 2 (docs/specs/square-grid.md, Decision 3): the map says which grid it is drawn on, `grid`
 // 'hex' or 'square', and how many feet a cell is, `cellFeet` (format 1 called it `hexFeet`). A build
 // that reads format 1 refuses a format 2 document rather than reading a square map as hexes.
-export const MAP_FORMAT = 2;
+//
+// Format 3 (docs/specs/fly-swim-control.md, stage E1): a water tile has a `depth`, the feet from its surface to the bed, a multiple of 5
+// from 5 to 200 (`WATER_DEPTH`). A format 2 map comes up to 3 with 10 feet on every water tile. A build that reads format 2 refuses a format 3
+// document, as format 1 builds did a format 2 one.
+export const MAP_FORMAT = 3;
 export const GRIDS = ['hex', 'square'];
 export const MAP_LIMITS = { levels: 40, tiles: 20000, walls: 5000, objects: 2000, regions: 500, entries: 100, areas: 200 };
 // What an entry is (docs/specs/travel.md, Decision 3): a named group of starts where a party arrives.
@@ -48,7 +52,7 @@ export function migrateMap(doc) {
   if (!doc.levels && doc.tiles) {                       // before format 1: one sheet, heights for looks only
     const tiles = {};
     for (const [k, t] of Object.entries(doc.tiles)) tiles[k] = { t: t.t, ...(typeof t.h === 'number' ? { lift: t.h } : {}) };
-    doc = { ...newMap({ id: 'valley', name: 'The valley' }), levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }] };
+    doc = { ...newMap({ id: 'valley', name: 'The valley', format: 2 }), levels: [{ id: 'ground', name: 'Ground', z: 0, tiles }] };
   }
   for (const k of ['walls', 'objects', 'regions', 'starts']) if (!Array.isArray(doc[k])) doc[k] = [];
   // A start's `level` that names no level of the map is dropped, so the start is found by its cell as
@@ -58,13 +62,26 @@ export function migrateMap(doc) {
     const levels = new Set(doc.levels.map((l) => l?.id));
     for (const st of doc.starts) if (st && typeof st === 'object' && st.level !== undefined && !levels.has(st.level)) delete st.level;
   }
-  // Format 1 to 2: every format 1 map is on hexes; `hexFeet` becomes `cellFeet` (the linter still
+  // Format 1 to 2 (run first, then 2 to 3 below): every format 1 map is on hexes; `hexFeet` becomes `cellFeet` (the linter still
   // insists on 5). The header keeps its order: format, id, name, grid, cellFeet, then the rest.
   // A format 1 document's own `grid` or `cellFeet`, if it had any, meant nothing to the build that
   // played it, so they are not read.
-  if (doc.format !== MAP_FORMAT) {
+  if (doc.format !== 2 && doc.format !== MAP_FORMAT) {
     const { format, id, name, hexFeet, grid, cellFeet, ...rest } = doc;
-    doc = { format: MAP_FORMAT, ...(id !== undefined && { id }), ...(name !== undefined && { name }), grid: 'hex', ...(hexFeet !== undefined && { cellFeet: hexFeet }), ...rest };
+    doc = { format: 2, ...(id !== undefined && { id }), ...(name !== undefined && { name }), grid: 'hex', ...(hexFeet !== undefined && { cellFeet: hexFeet }), ...rest };
+  }
+  // Format 2 to 3: every water tile gets the default depth. Tiles are replaced, not edited, so a map held frozen or shared is not written to.
+  if (doc.format === 2) {
+    const levels = Array.isArray(doc.levels) ? doc.levels.map((l) => {
+      if (!l || typeof l !== 'object' || !l.tiles || typeof l.tiles !== 'object' || Array.isArray(l.tiles)) return l;
+      let tiles = l.tiles;
+      for (const k of Object.keys(l.tiles)) {
+        const t = l.tiles[k];
+        if (t && typeof t === 'object' && t.t === 'water' && t.depth === undefined) { if (tiles === l.tiles) tiles = { ...l.tiles }; tiles[k] = { ...t, depth: WATER_DEPTH.default }; }
+      }
+      return tiles === l.tiles ? l : { ...l, tiles };
+    }) : doc.levels;
+    doc = { ...doc, format: MAP_FORMAT, ...(levels !== doc.levels ? { levels } : {}) };
   }
   return doc;
 }
@@ -113,6 +130,7 @@ export function lintMap(doc, extra = []) {
       if (!COL.test(k)) { bad.push(`Level "${l.id}" has a tile at "${k}", which is not a ${G.word.one}.`); break; }
       if (!t || !Object.hasOwn(TILES, t.t)) { bad.push(`The tile at ${k} on "${l.id}" has unknown terrain "${t?.t}".`); break; }
       if ((t.h !== undefined && !num(t.h)) || (t.lift !== undefined && !num(t.lift))) { bad.push(`The tile at ${k} on "${l.id}" has a height that is not a number.`); break; }
+      if (t.t === 'water' ? !depthOk(t.depth) : t.depth !== undefined) { bad.push(t.t === 'water' ? `The water at ${k} on "${l.id}" has a depth of ${JSON.stringify(t.depth)} feet; it must be a multiple of ${WATER_DEPTH.step} from ${WATER_DEPTH.min} to ${WATER_DEPTH.max}.` : `The tile at ${k} on "${l.id}" has a depth, and only water has one.`); break; }
     }
   }
   if (count === 0) bad.push('It has no tiles.');
@@ -252,7 +270,8 @@ export const EDITS = {
   tile(map, { level, at, tile }) {
     const l = map.levels.find((x) => x.id === level);
     if (!l || !at) return `A tile needs a level and a ${gridOf(map).word.one}.`;
-    if (tile) l.tiles[col(at)] = structuredClone(tile);
+    // Water painted without a depth (the editor has no field for it yet, DEBT) is as deep as the migration makes old water: 10 feet.
+    if (tile) l.tiles[col(at)] = tile.t === 'water' && tile.depth === undefined ? { ...structuredClone(tile), depth: WATER_DEPTH.default } : structuredClone(tile);
     else {
       delete l.tiles[col(at)];
       for (const r of map.regions) if (r.level === level) r.hexes = r.hexes.filter((k) => k !== col(at));

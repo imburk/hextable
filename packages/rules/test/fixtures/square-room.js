@@ -32,7 +32,7 @@ const walls = [
 ];
 
 export const squareRoom = () => structuredClone({
-  format: 2, id: "square-room", name: "Square room", grid: "square", cellFeet: 5,
+  format: 3, id: "square-room", name: "Square room", grid: "square", cellFeet: 5,
   levels: [{ id: "ground", name: "Ground", z: 0, light: "bright", tiles }],
   walls,
   objects: [

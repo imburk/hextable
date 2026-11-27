@@ -1,7 +1,7 @@
 // Movement actions (engine.js): move, dash, stand, disengage, and walking together (follow,
 // marchingOrder, partyFollow). Walking itself: Opportunity Attacks, noticing, traps, engaging.
 import { gridOf, col, key } from '../grid.js';
-import { apart, apartAt, concealed, footprint, FT, ground, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
+import { apart, apartAt, concealed, footprint, FT, ground, inWater, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
 import { entered, holds, snapshot, stepped, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { seenName, sightRule, unknown } from '../vision.js';
@@ -241,7 +241,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
         // Left with no Speed by it (a Grapple: Grappled has Speed 0; a monster's attack that grapples likewise), the mover goes no further:
         // the step it was taking is not taken (docs/specs/grapple-shove.md, Decision 10; DEBT T74). The rest of the foes' Opportunity
         // Attacks were for that step, so none is made.
-        if (speedOf(s, e) <= 0 && !aloft(s, e)) { rooted = true; break; }
+        if (speedOf(s, e) <= 0 && !aloft(s, e) && !(speedOf(s, e, 'swim') > 0 && inWater(s, e))) { rooted = true; break; }
       }
       if (!up(e)) break;
       if (rooted) {
@@ -592,7 +592,7 @@ function moveOn(s, a, ctx, ev, own) {
     const e = steed ?? actor;
     up(actor) || fail(`${actor.name} can't move.`);
     up(e) || fail(`${e.name} can't move.`);
-    (speedOf(s, e) > 0 || aloft(s, e)) || fail(`${e.name} can't move: its Speed is 0.`);
+    (speedOf(s, e) > 0 || aloft(s, e) || (speedOf(s, e, 'swim') > 0 && inWater(s, e))) || fail(`${e.name} can't move: its Speed is 0.`);
     const fighting = inFight(s, e.id);
     let bud = fighting ? turnBudget(s, e) : null;
     // Out of its turn, only the movement an Opportunity Attack's rider gave (`triggers.opportunityHit`, kept as `rmove:<creature>`) lets it move, from that alone and
@@ -600,8 +600,13 @@ function moveOn(s, a, ctx, ev, own) {
     if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, diagonals: owedDiag(s, e), free: true };
     if (fighting && !bud) fail(steering(s, e) ? `${e.name} moves on ${steering(s, e).name}'s turn.` : `It isn't ${e.name}'s turn.`);
     const reach = moveOptions(asItsTurn(s, e, bud), e, { through: true });
-    // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
-    const column = [...reach.values()].filter((n) => col(n.h) === col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
+    // A tap names a hex; if it gives no height, the nearest surface this creature can stop on. A party mover chooses among the places the party
+    // knows of (a creature it does not know of is not there): a column of water has many places to stop at, and a hidden creature in the one
+    // nearest would otherwise send the mover to another, which tells the players something is there (stage E1).
+    const unseen = (o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e);
+    const hidden0 = e.side === 'party' && a.to.z === undefined && living(s).some((o) => o.id !== e.id && unseen(o));
+    const choose = hidden0 ? moveOptions(without(asItsTurn(s, e, bud), e, living(s).filter((o) => o.id !== e.id && unseen(o))), e, { through: true }) : reach;
+    const column = [...choose.values()].filter((n) => col(n.h) === col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
     const to = column?.h ?? (a.to.z !== undefined && airspace(s.map, a.to) ? { q: a.to.q, r: a.to.r, z: a.to.z } : landing(s.map, a.to, e.pos.z));
     to || fail("There's nothing there to stand on.");
@@ -614,7 +619,6 @@ function moveOn(s, a, ctx, ev, own) {
     // is. Refusing the move would tell the player something is there without saying what.
     // That is a creature the DM hid (never in a fight) or one hiding from it.
     // Under the los and light rules, for a party member, also one the party cannot see.
-    const unseen = (o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e);
     const lurker = living(s).find((o) => unseen(o) && key(o.pos) === tk);
     // On the way there (stage C7, review of #368, M2): a party mover's route is the one the party can see, laid out as if
     // a creature it does not know of were not there. Where that route runs into one, the move stops on the last place

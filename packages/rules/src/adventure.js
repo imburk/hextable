@@ -247,7 +247,7 @@ function placeAt(P, map, level, h, body, taken) {
 // a map cannot carry what no map has (hostile case 11), and heights and points within a range a map can stand in.
 const MAP_KEYS = {
   map: ['format', 'id', 'name', 'grid', 'cellFeet', 'levels', 'walls', 'objects', 'regions', 'starts', 'entries', 'areas', 'seen', 'holding'],
-  level: ['id', 'name', 'z', 'tiles', 'image', 'light'], tile: ['t', 'h', 'lift'],
+  level: ['id', 'name', 'z', 'tiles', 'image', 'light'], tile: ['t', 'h', 'lift', 'depth'],
   wall: ['id', 'level', 'a', 'b', 'kind'],
   // `contents` is a pile's loot (a pile the DM placed); `by` and `left` are a pile's play record, which a module never holds.
   object: ['id', 'def', 'level', 'at', 'state', 'edge', 'seg', 'key', 'name', 'links', 'to', 'dc', 'contents'], link: ['object', 'when', 'sets'],
