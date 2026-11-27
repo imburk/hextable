@@ -318,3 +318,34 @@ test("a table that never swims is untouched: no `breathAt`, no `breath` anywhere
   assert.equal(Object.hasOwn(s, "breathAt"), false);
   assert.ok(Object.values(s.entities).every((e) => e.breath === undefined));
 });
+
+test("Hold Breath is the time the trait states: the hippopotamus 10 minutes, the killer whale 30, the rest an hour", () => {
+  const s = pool();
+  const hold = (tpl) => breathOf(s, { id: "x", tpl, abil: { con: 10 }, cond: {} }).hold;
+  assert.equal(hold("hippopotamus"), 600);
+  assert.equal(hold("killer-whale"), 1800);
+  const all = Object.entries(CONTENT.monsters).filter(([, m]) => m.traits?.some((t) => t.id === "hold-breath"));
+  assert.ok(all.length >= 5);
+  for (const [id, m] of all) assert.equal(hold(id), id === "hippopotamus" ? 600 : id === "killer-whale" ? 1800 : 3600, `${id}: ${m.traits.find((t) => t.id === "hold-breath").text}`);
+  // At 11 minutes the hippo has run out; at 31 the whale has.
+  for (const [tpl, mins] of [["hippopotamus", 11], ["killer-whale", 31]]) {
+    const t = pool();
+    const id = ok(apply(t, { type: "spawn", monster: tpl, at: { q: -3, r: 0 } }, DM)).events.find((e) => e.type === "spawned").id;
+    const c = t.entities[id]; c.hp = c.maxHp = 5000; c.pos = { q: 2, r: 0, z: -10 };
+    wait(t, mins - 1.2); assert.equal(exh(c), 0, `${tpl} still holds at ${mins - 1.2}`);
+    wait(t, 1.2); assert.ok(exh(c) >= 1, `${tpl} at ${mins}`);
+  }
+});
+
+test("Exhaustion lowered by something else while under water is not taken off again at the surface", () => {
+  const s = pool(), f = s.entities.fighter;
+  f.cond.exhaustion = { level: 2 };
+  dive(s); wait(s, 3.1);                                          // suffocation: level 3
+  assert.equal(exh(f), 3);
+  f.cond.exhaustion.level = 2;                                    // a rest, or Greater Restoration, took one off
+  wait(s, 0.1);                                                   // still under: a level more for the next 6 seconds
+  assert.equal(exh(f), 3);
+  assert.equal(f.breath.gave, 1, "the one the rest took was suffocation's");
+  dive(s, "fighter", 0); wait(s, 0.1);
+  assert.equal(exh(f), 2, "only what suffocation still holds comes off");
+});

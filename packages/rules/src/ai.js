@@ -48,7 +48,7 @@ export function aiStep(s, id, opts) {
   // with the creatures the party is not told of left out. A foe reads the true state, as it always has (`knownTo` returns `s`).
   const k = knownTo(s, e);
   // About to run out of breath under the surface: it comes up first.
-  const air = surfacing(s, e);
+  const air = surfacing(s, e, k);
   if (air) return air;
   // It does not act on creatures it has not found.
   const foes = Object.values(k.entities).filter((o) => up(o) && !o.melded && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));      // a creature merged with stone is never picked
@@ -102,9 +102,9 @@ function breathLeft(s, e) {
   const air = breathOf(s, e);
   return air.judged && !air.water ? air.hold - (submerged(s, e) ? e.breath?.held ?? 0 : 0) : Infinity;
 }
-function surfacing(s, e) {
+function surfacing(s, e, k = s) {
   if (!e.pos || !submerged(s, e) || breathLeft(s, e) > SURFACE_AT) return null;
-  const reach = [...ways(s, e).values()].filter((v) => v.canStop);
+  const reach = [...ways(k, k.entities[e.id] ?? e).values()].filter((v) => v.canStop);
   const dry = reach.filter((v) => !wet(s, v.h)).sort((a, b) => a.cost - b.cost);
   if (dry.length) return { type: 'move', actor: e.id, to: dry[0].h };
   const best = reach.filter((v) => (v.h.z ?? 0) > (e.pos.z ?? 0)).sort((a, b) => (b.h.z ?? 0) - (a.h.z ?? 0) || a.cost - b.cost)[0];

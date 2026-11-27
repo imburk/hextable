@@ -81,9 +81,18 @@ export function cure(s, t, list, ev) {
 // Nothing here is sent to a player of a creature that is not the party's: the events carry its id (view.js drops what names a hidden creature), a creature that is not
 // the party's is never told in words but to the DM (a `manual` that is `partial`), and `breath` is a field the party's own creatures send (view-fields.js).
 const ROUND_SECONDS = 6;
+// Exhaustion that something else lowered meanwhile (a rest, Greater Restoration) took suffocation's levels first: `seen` is the level at the last look.
+function sync(e) {
+  const b = e.breath;
+  if (!b?.gave) return;
+  const lvl = e.cond?.exhaustion ? e.cond.exhaustion.level ?? 1 : 0;
+  if (b.seen !== undefined && lvl < b.seen) b.gave = Math.max(0, b.gave - (b.seen - lvl));
+  b.seen = lvl;
+}
 function breathless(s, ev, e) {
   const b = e.breath;
   if (!b) return;
+  sync(e);
   const ex = e.cond?.exhaustion;
   if (b.gave > 0 && ex) {
     const was = ex.level ?? 1, now = Math.max(0, was - b.gave);
@@ -97,12 +106,14 @@ function suffocate(s, ev, e, b) {
   if (immuneTo(s, e, 'exhaustion')) return;
   const ex = e.cond.exhaustion;
   if (ex) ex.level = (ex.level ?? 1) + 1; else e.cond.exhaustion = { level: 1 };
-  b.gave++;
+  b.gave++; b.paid = (b.paid ?? 0) + 1;                       // `paid`: levels charged for the time over (never lowered); `gave`: what is still on it from suffocation
+  b.seen = e.cond.exhaustion.level;
   ev.push({ type: 'cond', id: e.id, cond: 'exhaustion', level: e.cond.exhaustion.level, why: 'suffocation' });
   if (e.cond.exhaustion.level >= 6) kill(s, e, ev);        // Exhaustion level 6: death
 }
 export function breathe(s, ev, e, secs = 0, turnEnd = false) {
   if (!e || e.dead || e.melded || !e.pos) return;
+  sync(e);
   const wet = submerged(s, e), air = wet ? breathOf(s, e) : null;
   if (!wet || air.water) return breathless(s, ev, e);
   if (!air.judged) {
@@ -119,7 +130,7 @@ export function breathe(s, ev, e, secs = 0, turnEnd = false) {
     b.out = true;
     if (e.side === 'party') ev.push({ type: 'note', id: e.id, text: `${e.name} is out of breath` });
   }
-  const owed = fight ? (turnEnd ? 1 : 0) : Math.max(0, Math.floor((b.held - air.hold) / ROUND_SECONDS) - b.gave);
+  const owed = fight ? (turnEnd ? 1 : 0) : Math.max(0, Math.floor((b.held - air.hold) / ROUND_SECONDS) - (b.paid ?? 0));
   for (let n = 0; n < owed && !e.dead; n++) suffocate(s, ev, e, b);
 }
 // The clock moved `secs` seconds: everyone under water holds its breath through it.

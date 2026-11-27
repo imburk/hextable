@@ -379,7 +379,10 @@ export function breathOf(s, e) {
   const kind = typeOf(e);                          // a form never changes the creature's type (SRD Wild Shape)
   const judged = e.kind === 'pc' || (typeof kind === 'string' && LIVING.includes(kind));
   const con = Math.floor(((e.abil?.con ?? 10) - 10) / 2);
-  return { water, judged, hold: traits.some((t) => t.id === 'hold-breath') ? 3600 : Math.max(30, (1 + con) * 60) };
+  // A Hold Breath trait states its time in its text ("for 10 minutes", "for 1 hour": the SRD's hippopotamus, whale and the rest); the longest, in seconds.
+  let held = 0;
+  for (const t of traits) if (t.id === 'hold-breath') { const m = /(\d+) (hour|minute)/.exec(t.text ?? ''); held = Math.max(held, m ? +m[1] * (m[2] === 'hour' ? 3600 : 60) : 3600); }
+  return { water, judged, hold: held ? Math.max(30, held) : Math.max(30, (1 + con) * 60) };
 }
 
 // A number kept within what `min` and `max` modifiers allow.
