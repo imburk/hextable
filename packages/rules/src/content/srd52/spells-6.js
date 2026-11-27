@@ -51,7 +51,7 @@ export const spells6 = [
     kinds: ["damage", "control"],
     roll: "attack",
     tier: "assist", checked: true,
-    text: "A Medium spirit from the Feywild appears within 60 feet for up to 10 minutes of Concentration. Cast in a fight, it acts straight after the caster and the caster's player plays that turn, as with Spiritual Weapon: a melee spell attack against a creature within 5 feet of it, for 3d12 plus the spellcasting modifier Psychic damage (1d12 more per slot level above 6), and a creature hit is Frightened (the engine ends it when the spirit's next turn starts, which follows the caster's straight away). On later turns a Bonus Action commands it again. The engine runs the spirit as a bonded creature nothing can hurt; the DM keeps the teleport (up to 30 feet from where it was) and the target within 5 feet of it.",
+    text: "A Medium Feywild spirit appears within 60 feet for up to 10 minutes of Concentration. Cast in a fight, it acts straight after the caster and the caster's player plays that turn: a melee spell attack for 3d12 plus the spellcasting modifier Psychic damage (1d12 more per slot level above 6), and a creature hit is Frightened until the spirit's next turn starts. A Bonus Action commands it on later turns. The DM keeps the teleport and the target within 5 feet.",
   },
   {
     id: "contingency", name: "Contingency", source: "SRD 5.2.1",
