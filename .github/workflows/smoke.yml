@@ -7,7 +7,10 @@ name: Smoke
 on:
   push:
     branches: [main]
+  # Only pull requests into main run (Isaac, 26 Nov): the lower layers of a stack target the layer below and start no runs; the train's
+  # top is retargeted to main and then pushed (main merged in), which starts its run.
   pull_request:
+    branches: [main]
     paths:
       - 'packages/client/**'
       - 'packages/rules/src/**'
