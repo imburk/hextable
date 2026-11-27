@@ -602,9 +602,10 @@ function moveOn(s, a, ctx, ev, own) {
     const reach = moveOptions(asItsTurn(s, e, bud), e, { through: true });
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on. A party mover chooses among the places the party
     // knows of (a creature it does not know of is not there): a column of water has many places to stop at, and a hidden creature in the one
-    // nearest would otherwise send the mover to another, which tells the players something is there (stage E1).
+    // nearest would otherwise send the mover to another, which tells the players something is there (stage E1). Likewise a place asked for by its height: with a
+    // creature it does not know of standing in it, the place is still the one asked for (the creature is then found, below), never the surface above it.
     const unseen = (o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e);
-    const hidden0 = e.side === 'party' && a.to.z === undefined && living(s).some((o) => o.id !== e.id && unseen(o));
+    const hidden0 = e.side === 'party' && living(s).some((o) => o.id !== e.id && unseen(o));
     const choose = hidden0 ? moveOptions(without(asItsTurn(s, e, bud), e, living(s).filter((o) => o.id !== e.id && unseen(o))), e, { through: true }) : reach;
     const column = [...choose.values()].filter((n) => col(n.h) === col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];

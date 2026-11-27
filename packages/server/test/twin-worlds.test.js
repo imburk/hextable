@@ -1838,3 +1838,15 @@ for (const hidden of [false, true]) test(`swimming: a creature ${hidden ? "the D
   assert.deepEqual(r.hidden.w.state.entities.fighter.pos, { q: 3, r: 0, z: -10 }, "the swimmer went where it was sent");
   assert.equal(r.hidden.w.state.map.regions[0].revealed, false, "and the far water stayed unseen");
 });
+// A hidden creature in the water column the party swims to, above or below the place asked for: nothing is sent of it, and the swimmer goes where it was sent
+// (a creature in the very place asked for is found by the bump, by design: swim.test.js).
+for (const [label, z] of [["a hand's breadth under the surface", -5], ["at the bed, under a surface target", -15]]) test(`swimming: a hidden creature ${label} of the place a swimmer is sent to is sent to no player; the worlds with and without it are the same`, () => {
+  const put = (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Lurker", hidden: true }); Object.assign(byName(w, "Lurker"), { pos: { q: 3, r: 0, z }, hp: 500, maxHp: 500 }); };
+  const r = twin({ players: ["Pat", "Sam"], setup: lakeScene, steps: [
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 2, r: 0, z: 0 } } },
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 3, r: 0, z: 0 } } },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "Anything down there?" } },
+  ] }, { hide: put, plain: (w) => burn(w, { q: -4, r: 0 }) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
+  assert.deepEqual(r.hidden.w.state.entities.fighter.pos, { q: 3, r: 0, z: 0 }, "the swimmer went where it was sent");
+});

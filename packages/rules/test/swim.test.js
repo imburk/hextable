@@ -317,3 +317,28 @@ test("a grappler may swim with what it holds: each foot costs one more, and it i
   assert.ok(r.size > 1, "it is not stuck");
   assert.equal(at(r, 2, 0, -1)?.cost, 10, "a swimming step is 5 feet and the hold adds 5");
 });
+
+// A party swimmer asks for a place a creature it does not know of holds (#836 review): it stops beside it and finds it, as on land, and is never quietly
+// sent to another height of the column.
+test("a swimmer sent to a place a hidden creature holds stops beside it and finds it, never one level higher; with no height asked it picks the same height either way", () => {
+  const build = (hide) => {
+    const s = pool({ depth: 20 });
+    s.entities.fighter.speeds = { swim: 30 };
+    s.entities.fighter.pos = { q: 2, r: 0, z: 0 };
+    const g = ok(apply(s, { type: "spawn", monster: "goblin-warrior", at: { q: 0, r: 1 }, hidden: true }, DM)).events.find((e) => e.type === "spawned").id;
+    s.entities[g].pos = { q: 3, r: 0, z: -5 };
+    if (!hide) delete s.entities[g];
+    return [s, g];
+  };
+  const [plain] = build(false), [s, g] = build(true);
+  ok(apply(plain, { type: "move", actor: "fighter", to: { q: 3, r: 0, z: -5 } }, DM));
+  assert.deepEqual(plain.entities.fighter.pos, { q: 3, r: 0, z: -5 }, "with nothing there it goes there");
+  ok(apply(s, { type: "move", actor: "fighter", to: { q: 3, r: 0, z: -5 } }, DM));
+  const f = s.entities.fighter;
+  assert.notDeepEqual(f.pos, { q: 3, r: 0, z: 0 }, "not a stop one level higher");
+  assert.ok(f.pos.z <= 0 && Math.abs(f.pos.q - 3) <= 1 && !s.entities[g].hidden, "it stopped beside the goblin and found it");
+  // No height asked: the same height in both worlds (the hidden creature does not move the choice).
+  const [p2] = build(false), [h2] = build(true);
+  for (const w of [p2, h2]) ok(apply(w, { type: "move", actor: "fighter", to: { q: 3, r: 0 } }, DM));
+  assert.deepEqual(h2.entities.fighter.pos, p2.entities.fighter.pos);
+});
