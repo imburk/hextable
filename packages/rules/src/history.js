@@ -292,6 +292,7 @@ export function describeStep(action, events, before, after) {
     case 'setObject': label = 'Something on the map was changed'; break;
     case 'refresh': label = 'Refreshed from sheet'; break;
     case 'mapEdit': label = 'The map was edited'; break;
+    case 'water': label = a.stop ? 'A tide was stopped' : a.rise ? 'A tide was set' : 'The water changed'; break;
     case 'loadMap': label = a.node === undefined ? 'A new map was loaded' : { label: `${names(ev('arrived')?.ids, name)} went to ${place(ev('arrived'))}`, shown: told(names(ev('arrived')?.ids, name, true), 'moved on') }; break;
     // Places of a world (docs/specs/travel.md, W2). A place is named for the DM only: players are told who went, never where.
     case 'enter': label = { label: `${names(ev('arrived')?.ids, name)} went into ${place(ev('arrived'))}`, shown: told(names(ev('arrived')?.ids, name, true), 'went in') }; break;

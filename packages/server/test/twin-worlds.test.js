@@ -1891,3 +1891,46 @@ test("swimming: a hidden creature under the far water through the rounds of a fi
   ] }, { hide: sink, plain: (w) => burn(w, { q: -4, r: 0 }) });
   for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
 });
+
+// ---- swimming (#849, E3): a tide lifts a hidden creature, and a tide runs in a region the party has not seen ----
+// A stone floor from q = -4 east, the part from q = 5 on a region the party has not seen. A tide of 5 feet a round runs over the near cells (q 1 to 3, in view) and
+// another over the far region. A creature the DM hid stands on a flooded near cell and is lifted by the water (the move is its own record only); another hidden one
+// stands in the far region. The party's fighter swims by the tide too. Nothing of what the water did to them is sent: the worlds with and without them are the same.
+const tideScene = (w) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  const tiles = {};
+  for (let q = -4; q <= 8; q++) for (let r = -3; r <= 3; r++) tiles[H.col({ q, r })] = { t: "stone" };
+  const far = Object.keys(tiles).filter((k) => Number(k.split(",")[0]) >= 5);
+  w.must({ type: "loadMap", map: newMap({ id: "cave", name: "Cave", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles }], regions: [{ id: "deep", name: "Far cave", level: "ground", hexes: far, revealed: false }] }) });
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", 0, 0], ["rogue", -3, 0], ["cleric", -3, 1], ["wizard", -3, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(w.state.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+  w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -1, r: 0 }, name: "Watcher" });
+  Object.assign(byName(w, "Watcher"), { hp: 5000, maxHp: 5000 });
+};
+const tideNear = Object.keys({ "1,0": 1, "2,0": 1, "3,0": 1, "0,0": 1 });
+const tideFar = [5, 6, 7].map((q) => `${q},0`);
+const tideLurk = (w) => {
+  for (const [name, q, hidden] of [["Lurker", 2, true], ["Deep", 6, true]]) {
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name, hidden });
+    Object.assign(byName(w, name), { pos: { q, r: 0, z: 0 }, hp: 500, maxHp: 500 });
+  }
+};
+const tideSteps = (round) => [
+  { by: "dm", act: { type: "water", level: "ground", cells: tideNear, surface: -5, rise: { by: 5, to: 10 } } },
+  { by: "dm", act: { type: "water", level: "ground", cells: tideFar, surface: -5, rise: { by: 5, to: 10 } } },
+  { by: "dm", act: { type: "startEncounter", center: { q: 0, r: 0 }, radius: 1 } },
+  (w) => { while (w.state.encounter.round < round) w.must({ type: "endTurn", actor: current(w.state) }); },
+  { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 0, r: 0, z: round * 5 - 5 } }, allowError: true },
+  { by: "Sam", act: { type: "say", as: "wizard", text: "The water is rising." } },
+];
+test("tides: a hidden creature lifted by a rising tide, and a tide in a region the party has not seen, are sent to no player; the worlds with and without them are the same", () => {
+  const r = twin({ players: ["Pat", "Sam"], setup: tideScene, steps: tideSteps(5) }, { hide: tideLurk, plain: (w) => { burn(w, { q: -4, r: 0 }); burn(w, { q: -4, r: 0 }); } });
+  for (const who of ["Pat", "Sam"]) { const raw = JSON.stringify(r.hidden.raw[who]); assert.ok(!raw.includes("Lurker") && !raw.includes("Deep"), `${who} is told of nothing`); }
+  assert.ok(JSON.stringify(r.hidden.raw.dm).includes("Lurker"), "the DM is told of the one the water lifted");
+  assert.equal(byName(r.hidden.w, "Lurker").pos.z, 10, "the hidden creature was lifted by the tide");
+  assert.equal(byName(r.hidden.w, "Deep").pos.z, 10, "and the one in the far region");
+  assert.equal(r.hidden.w.state.map.regions[0].revealed, false);
+  assert.equal(r.hidden.w.state.tides, undefined, "both tides ran their course");
+});
