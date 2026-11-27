@@ -744,7 +744,7 @@ function castSpell(s, a, ctx, ev, item) {
       if (sp.aim === 'creature' || sp.aim === 'self') fx.aimed = [...new Set(targets.filter((t) => !invalid.includes(t) && !wardLost.has(t.id)).map((t) => t.id))];
       // Extended Spell: Advantage on saves to keep Concentration on it, for as long as it lasts.
       if (mm.has.extended && sp.def.concentration) fx.parts.push({ target: e.id, modifier: { on: 'concentration', op: 'advantage' } });
-      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
+      ev.push({ type: 'effectStart', fx: fx.id, name: fx.name, source: e.id, conc: fx.conc, lasts: fx.lasts, targets: lightOnly ? [] : [...new Set(targets.map((t) => t.id))] });   // as aimed: an invalid target is named like one that made its save
     } else if (!allLost) fx = boundEffect(s, sp.name, e.id, steps, a.spell);
     // A zone stays where it was laid out (or moves with its caster) and works on whoever comes
     // into it later (zones.js). Unless it says `atCast`, nobody is affected as it appears.
