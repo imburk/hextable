@@ -84,7 +84,11 @@ export const STEPS = ['attack', 'save', 'damage', 'heal', 'tempHp', 'condition',
   // `cut: feet` (Stone Shape): 5 feet of the wall the cast aimed at (`target.wall`) is taken out, centred on the aimed point, through the DM's own map edit. A spell aimed at a wall only.
   'cut',
   // `meld: true` (Meld into Stone): the caster steps into the wall the cast aimed at (`target.wall`) and is held there for the spell's duration: it fills no space, cannot be seen, targeted or found, sees nothing, and leaves with `unmeld`. A spell aimed at a wall only.
-  'meld'];
+  'meld',
+  // `water: { mode: 'flood', by: 5..20, size }` or `{ mode: 'part', size }` (Control Water): the water in the spell's area (a cube, `size` feet a side, the spell's own) is raised by `by` feet (a multiple of 5, default 20), or parted down to its bed, for as long as the
+  // lasting effect holds, and put back when it ends (tides.js `controlWater`, `endWater`). It acts once for the cast, on the cells, not on a creature. A spell with a duration and an area only.
+  // docs/specs/fly-swim-control.md, "Build notes (E4, #853)".
+  'water'];
 // Lists of steps inside a step, run when something about it comes out a certain way.
 // `blocked`: a teleport that cannot arrive (Dimension Door). On a damage step, `onZero`: the damage
 // took its target from above 0 Hit Points to 0 (Disintegrate); `onKill`: it killed it (Cone of Cold).
@@ -214,11 +218,13 @@ export const AFFLICTIONS = ['exhaustion', 'charmed', 'petrified', 'curse', 'abil
 export const CURE_WORDS = ['exhaustionLevel', 'curse', 'curses'];
 // `resize` (Enlarge/Reduce): `enlarge` or `reduce`. A step with `ifChoice` is part of the cast only for the values it lists.
 export const RESIZES = ['enlarge', 'reduce'];
+// `water` (Control Water): the four effects of the spell. A step with `ifChoice` is part of the cast only for the values it lists (effects.js reads the choice from the cast).
+export const WATERS = ['flood', 'part', 'redirect', 'whirlpool'];
 // `ward` (Magic Circle): the kinds of creature a circle may be set against, one or more of them (the cast's `choice` is a list of these; `reverse: true` turns the circle round).
 export const WARDS = ['celestial', 'elemental', 'fey', 'fiend', 'undead'];
 // `beast` (Polymorph): the id of an SRD Beast stat block the caster may turn the target into (every Beast of the SRD pack; a test holds the list to the pack). Whether its Challenge Rating suits the target is the engine's, at the cast.
 export const BEASTS = ["allosaurus","ankylosaurus","ape","archelon","baboon","badger","bat","black-bear","blood-hawk","boar","brown-bear","camel","cat","constrictor-snake","crab","crocodile","deer","dire-wolf","draft-horse","eagle","elephant","elk","frog","giant-ape","giant-badger","giant-bat","giant-boar","giant-centipede","giant-constrictor-snake","giant-crab","giant-crocodile","giant-fire-beetle","giant-frog","giant-goat","giant-hyena","giant-lizard","giant-octopus","giant-rat","giant-scorpion","giant-seahorse","giant-shark","giant-spider","giant-toad","giant-venomous-snake","giant-wasp","giant-weasel","giant-wolf-spider","goat","hawk","hippopotamus","hunter-shark","hyena","jackal","killer-whale","lion","lizard","mammoth","mastiff","mule","owl","panther","piranha","plesiosaurus","polar-bear","pony","pteranodon","rat","raven","reef-shark","rhinoceros","riding-horse","saber-toothed-tiger","scorpion","seahorse","spider","tiger","triceratops","tyrannosaurus-rex","venomous-snake","vulture","warhorse","weasel","wolf"];
-export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES, resize: RESIZES, ward: WARDS, beast: BEASTS };
+export const CHOICES = { skill: Object.keys(SKILLS), ability: ABILITIES, damageType: DAMAGE_TYPES, condition: CONDITIONS.filter((c) => c !== 'exhaustion'), command: COMMANDS, curse: CURSES, familiarity: FAMILIARITY, affliction: AFFLICTIONS, shape: STONE_SHAPES, resize: RESIZES, water: WATERS, ward: WARDS, beast: BEASTS };
 function lintModifier(m, say, rolledOk = false, stepOk = false) {      // `rolledOk`: the modifier is a step of a subclass feature's action (`{ rolled: true }`, `proficient`)
   if (!HOOKS.includes(m.on)) say(`modifier on unknown hook "${m.on}"`);
   if (!OPS.includes(m.op)) say(`modifier with unknown op "${m.op}"`);
@@ -396,7 +402,7 @@ function lintTerrain(e, say) {
 function lintChoice(e, say) {
   const used = new Set(), c = e.choice;
   walkSteps(e.effects, (st) => {
-    if (st.ifChoice !== undefined) used.add(c?.of === 'affliction' ? 'affliction' : c?.of === 'shape' ? 'shape' : c?.of === 'resize' ? 'resize' : 'curse');
+    if (st.ifChoice !== undefined) used.add(c?.of === 'affliction' ? 'affliction' : c?.of === 'shape' ? 'shape' : c?.of === 'resize' ? 'resize' : c?.of === 'water' ? 'water' : 'curse');
     const m = st.modifier;
     if (!m) return;
     if (m.scope?.skill === 'chosen') used.add('skill');
@@ -416,7 +422,7 @@ function lintChoice(e, say) {
     if (st.ifChoice === undefined) return;
     const list = c?.from ?? (c ? CHOICES[c.of] : []);
     if (!(Array.isArray(st.ifChoice) && st.ifChoice.length >= 1 && st.ifChoice.length <= 9 && new Set(st.ifChoice).size === st.ifChoice.length && st.ifChoice.every((x) => list.includes(x)))) say('`ifChoice` lists one or more different values of the spell\'s choice');
-    if (c?.of !== 'curse' && c?.of !== 'affliction' && c?.of !== 'shape' && c?.of !== 'resize') say('`ifChoice` is for a spell whose choice is of a curse, an affliction, a shape or a resize');
+    if (c?.of !== 'curse' && c?.of !== 'affliction' && c?.of !== 'shape' && c?.of !== 'resize' && c?.of !== 'water') say('`ifChoice` is for a spell whose choice is of a curse, an affliction, a shape, a resize or a water effect');
   });
 }
 const seenCounter = (actions) => { let n = false; for (const a of actions ?? []) walkSteps(a.effects, (st) => { if (st && 'counter' in st) n = true; }); return n; };
@@ -529,7 +535,7 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
     if (kinds.length !== 1) { say(`each effect step needs exactly one of: ${STEPS.join(', ')} (found ${kinds.length ? kinds.join(' and ') : 'none'})`); continue; }
     const kind = kinds[0];
     lintWhen(step.when, say);
-    if (step.ifChoice !== undefined && !seen.choiceOk) say('`ifChoice` is for a step of a spell whose choice is of a curse, an affliction, a shape or a resize');
+    if (step.ifChoice !== undefined && !seen.choiceOk) say('`ifChoice` is for a step of a spell whose choice is of a curse, an affliction, a shape, a resize or a water effect');
     if (kind === 'attack') {
       if (!['melee', 'ranged'].includes(step.attack)) say('attack must be "melee" or "ranged"');
       if (!['weapon', 'spell'].includes(step.kind)) say('an attack step needs kind "weapon" or "spell"');
@@ -625,6 +631,14 @@ function lintSteps(steps, say, seen = { manual: false }, under = false, inMonste
       if (!(l && typeof l === 'object' && !Array.isArray(l) && Object.keys(l).length === 2 && feet(l.bright) && feet(l.dim) && l.bright + l.dim > 0)) say('`light` is { bright, dim }: feet of Bright and Dim Light, multiples of 5');
       if (step.replaces !== undefined && step.replaces !== true) say('`replaces` is true or left out');
     } else if (step.replaces !== undefined) say('`replaces` is for a light step');
+    // `water: { mode: 'flood', by? }` or `{ mode: 'part' }` (Control Water): in a spell that lasts and is aimed at an area; `by` is 5 to 20 feet, a multiple of 5 (default 20), and only a flood has one.
+    if (kind === 'water') {
+      const w = step.water;
+      if (!(w && typeof w === 'object' && !Array.isArray(w) && Object.keys(w).every((k) => k === 'mode' || k === 'by' || k === 'size') && (w.mode === 'flood' || w.mode === 'part') && isInt(w.size) && w.size >= 5 && w.size <= 1000 && w.size % 5 === 0)) say('`water` is { mode: "flood", by?, size } or { mode: "part", size }, `size` the feet a side of the spell\'s cube (the engine does not know the spell\'s area when it runs the step)');
+      else if (w.by !== undefined && !(w.mode === 'flood' && isInt(w.by) && w.by >= 5 && w.by <= 20 && w.by % 5 === 0)) say('`water.by` is the feet a flood raises the water, 5 to 20 in fives (a Part Water has none)');
+      if (!seen.eachOk) say('a `water` step is for a spell that lasts: the water goes back when it ends');
+      seen.water = true;
+    }
     if (kind === 'modifier') {
       lintModifier(step.modifier ?? {}, say, seen.rolledOk === true, true);
       if (seen.inAttack && isRolled(step.modifier?.value)) say(ROLLED_IN_ATTACK);
@@ -971,9 +985,12 @@ function lintSpell(e, say) {
       else if (!attack && saves.size && !saves.has(e.roll)) say(`its steps make ${words.join(' and ')} when it is cast, so \`roll\` is ${[...saves].map((x) => `"${x}"`).join(' or ')}`);
     }
   }
-  const seen = lintSteps(e.effects, say, { manual: false, choiceOk: e.choice?.of === 'curse' || e.choice?.of === 'affliction' || e.choice?.of === 'shape' || e.choice?.of === 'resize', hitOk: e.hit !== undefined, reviveOk: true, cutOk: e.target?.wall !== undefined, commandOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
+  const seen = lintSteps(e.effects, say, { manual: false, choiceOk: e.choice?.of === 'curse' || e.choice?.of === 'affliction' || e.choice?.of === 'shape' || e.choice?.of === 'resize' || e.choice?.of === 'water', hitOk: e.hit !== undefined, reviveOk: true, cutOk: e.target?.wall !== undefined, commandOk: true, eachOk: isDuration(e.duration) && e.duration !== 'instant' });
   lintHit(e, say);
   if (seen.counter && e.reaction?.on !== 'cast') say('a `counter` step is for a spell cast as a Reaction to a spell being cast');
+  // A `water` step works on the cells of a cube laid out from a point within range: the spell is aimed at a cube, with a range.
+  if (seen.water && !(e.target?.area?.shape === 'cube' && Number.isInteger(e.range) && e.range > 0)) say('a `water` step is for a spell whose target is a cube aimed at a point within its range');
+  else if (seen.water) walkSteps(e.effects, (st) => { if (st.water && st.water.size !== e.target.area.size) say('`water.size` is the spell\'s own cube: the same feet a side as `target.area.size`'); });
   // A spell aimed at the dead has a revive step, and a revive step is for a spell aimed at the dead (a creature that is up has nothing to revive).
   if (e.target?.creature?.dead === true && !seen.revive) say('a spell aimed at a dead creature (`target.creature.dead`) needs a `revive` step');
   if (seen.revive && e.target?.creature?.dead !== true) say('a `revive` step is for a spell whose creature target says `dead: true`');
@@ -3142,7 +3159,7 @@ export function budgetTable(packs, limits = HOMEBREW_LIMITS) {
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf', 'onHit', 'onMiss'], save: ['dc', 'half', 'advantageIf', 'onFail', 'onSuccess'], damage: ['type', 'times', 'onZero', 'onKill', 'withHit'],
   heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', ...HOLD_KEYS], modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'],
-  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [],
+  reveal: [], resource: [], counter: [], teleport: ['see', 'blocked', 'familiarity'], cure: [], kill: [], remains: [], endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], endSpell: [], command: [], ward: [], sense: ['feet'], cut: [], water: [],
   summon: SUMMON_STEP_KEYS.filter((k) => k !== 'summon'), manual: [],
 };
 // Why a key a reader might expect is not one (the sentence follows "is not something ... has").
@@ -3203,6 +3220,7 @@ const SHAPES = {
   activate: { what: 'an item use', keys: ['name', 'time', 'cost', 'consumed', 'spell', 'level', 'upTo', 'self', 'dc', 'effects'] },
   attune: { what: 'attunement', keys: ['by', 'spellcaster'] },
   arm: { what: 'an arm step', keys: ['damage', 'type', 'addMod', 'time', 'range'] },
+  water: { what: 'a water step', keys: ['mode', 'by', 'size'] },
   imbue: { what: 'an imbue step', keys: ['weapons', 'melee', 'nonmagical', 'abil', 'die', 'plus', 'attackAdd', 'types'] },
   base: { what: 'a base item', keys: ['weapon', 'armour'] },
   charges: { what: 'charges', keys: ['max', 'regain'] },
@@ -3280,7 +3298,7 @@ export function lintKeys(kind, entry, say, visit) {
           if (!allowed.includes(k)) { say(`${p}: "${k}" is not something a ${kinds[0]} step has`); continue; }
           visit?.(`step.${kinds[0]}`, k, st[k], `${p}.${k}`, st);
           const child = BRANCHES.includes(k) ? 'steps' : kinds[0] === 'summon' ? { bond: 'bond', count: 'count', reassert: 'count', over: 'over', forms: Array.isArray(st.forms) ? 'open' : 'forms' }[k] ?? 'open'
-            : k === 'modifier' ? 'modifier' : k === 'imbue' ? 'imbue' : k === 'arm' ? 'arm' : k === 'ends' ? 'ends' : 'open';
+            : k === 'modifier' ? 'modifier' : k === 'imbue' ? 'imbue' : k === 'arm' ? 'arm' : k === 'water' ? 'water' : k === 'ends' ? 'ends' : 'open';
           stack.push([st[k], child, `${p}.${k}`]);
         }
       });
@@ -3346,7 +3364,7 @@ export const HOMEBREW_RANGES = Object.freeze({
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
   'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
-  'terrain.light': [5, 120], 'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
+  'terrain.light': [5, 120], 'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'water.by': [5, 20], 'water.size': [5, 1000], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
   'targets.#': [1, 20], 'range.#': [5, 240], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
   'bond.range': [5, 1000], 'bond.leash': [5, 1000], 'freeCast.maxLevel': [1, 9],
@@ -3701,8 +3719,9 @@ export const HOMEBREW_TYPES = Object.freeze({
   'step.move': { move: 'i', dir: 's', largest: 's' }, 'step.fall': { fall: 'i|s' }, 'step.set': { set: 's', of: 's', from: 's' }, 'step.reveal': { reveal: 's' }, 'step.resource': { resource: 's' },
   'step.counter': { counter: 's' }, 'step.teleport': { teleport: 'i', see: 'b', blocked: 'a', familiarity: 's' }, 'step.cure': { cure: 's[]' }, 'step.kill': { kill: 'b' }, 'step.remains': { remains: 's' },
   'step[]': { '*': 'o' },
-  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
+  'step.endConcentration': { endConcentration: 'b' }, 'step.imbue': { imbue: 'o' }, 'step.stabilize': { stabilize: 'b' }, 'step.resize': { resize: 's' }, 'step.polymorph': { polymorph: 's' }, 'step.light': { light: 'o', replaces: 'b' }, 'step.dispel': { dispel: 'i', dc: 'i' }, 'step.revive': { revive: 'i', within: 'i' }, 'step.eachTurn': { eachTurn: 'a' }, 'step.endSpell': { endSpell: 'b' }, 'step.arm': { arm: 'o' }, 'step.command': { command: 's' }, 'step.ward': { ward: 's' }, 'step.sense': { sense: 's', feet: 'i' }, 'step.cut': { cut: 'i' }, 'step.meld': { meld: 'b' }, 'step.water': { water: 'o' }, 'step.confuse': { confuse: 'b', ends: 'o' }, 'step.manual': { manual: 's' },
   arm: { damage: 's', type: 's', addMod: 'b', time: 's', range: 'i' },
+  water: { mode: 's', by: 'i', size: 'i' },
   imbue: { weapons: 'id[]', melee: 'b', nonmagical: 'b', abil: 's', die: 's|o', plus: 'i|o', attackAdd: 'i|o', types: 's[]' },
   'step.summon': { summon: 's', forms: 'o|s[]', types: 's[]', variants: 's[]', count: 'i|o', reassert: 'o', on: 's', over: 'o', one: 's', bond: 'o' },
 });

@@ -19,7 +19,7 @@
 // Pure and bounded: no I/O, no clock, no randomness; a hostile entry (huge, deep, odd keys, wrong types, a getter that
 // throws) gets a short plain answer and never a throw. Every kind of entry a pack can hold is read: spells, monsters, items, feats,
 // weapons, armour, objects and subclasses (task B13, three parts; docs/specs/homebrew-subclasses.md, stage B3).
-import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, AFFLICTIONS, STONE_SHAPES, RESIZES, WARDS, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
+import { SPELL_HIT_WITH, ABILITIES, ACTION_TIMES, AREA_SHAPES, ARMOUR_CATEGORIES, BONUS_ACTS, BRANCHES, CAST_TIMES, CHOICES, CONDITIONS, CREATURE_TYPES, AFFLICTIONS, STONE_SHAPES, RESIZES, WATERS, WARDS, COMMANDS, CURSES, DAMAGE_TYPES, FEAT_CATEGORIES, FEAT_FEATURES,
   GRANTS, HOOKS, ITEM_CATEGORIES, ITEM_VARIANTS, OPS, RARITIES, REACTION_TRIGGERS, REMAINS, SCHOOLS, SKILLS, SPELL_KINDS, SPELL_ROLLS, STEPS, SUMMON_ENDS, SUMMON_KINDS, SUMMON_ONE, SUMMON_TURNS, TAGS,
   TIERS, WEAPON_PROPERTIES, WEAR, WEAR_ONE, MASTERIES, OBJECT_BLOCKS, OBJECT_KINDS, TRIGGERS, USE_TIMES, isDuration, lintEntry } from './schema.js';
 // index.js first: it loads effects.js whole (effects.js reached first would meet a cycle through durations.js).
@@ -67,8 +67,9 @@ export const SUMMON_ONE_WORDS = {
 };
 export const CURSE_WORDS = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', attacks: 'Disadvantage on attack rolls against the caster', dodge: 'the forced Dodge action', damage: 'extra Necrotic damage' };
 export const AFFLICTION_WORDS = { exhaustion: 'one level of Exhaustion', charmed: 'the Charmed condition', petrified: 'the Petrified condition', curse: 'a curse', 'ability-score': 'a reduction to an ability score', 'hit-point-maximum': 'a reduction to the Hit Point maximum' };
-export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce', ward: 'one or more kinds of creature to set it against', beast: 'a Beast to take the form of' };
+export const CHOICE_WORDS = { skill: 'a skill', ability: 'an ability', damageType: 'a damage type', condition: 'a condition', command: 'a one-word command', curse: 'a curse', familiarity: 'how familiar the destination is', affliction: 'which affliction it ends', shape: 'what to shape the stone into', resize: 'whether to enlarge or reduce', water: 'which effect on the water', ward: 'one or more kinds of creature to set it against', beast: 'a Beast to take the form of' };
 export const RESIZE_WORDS = { enlarge: 'Enlarge (one size category larger)', reduce: 'Reduce (one size category smaller)' };
+export const WATER_WORDS = { flood: 'Flood (the standing water rises)', part: 'Part Water (a trench opens)', redirect: 'Redirect Flow (the DM runs it)', whirlpool: 'Whirlpool (the DM runs it)' };
 export const SHAPE_WORDS = { passage: 'a 5-foot passage cut through a wall', other: 'any other shape (a weapon, a coffer, a statue, a door shaped shut)' };
 // A spell's roll in plain words (`roll`: 'attack', 'save:<ability>' or 'none').
 export const ROLL_WORDS = (r) => (r === 'attack' ? 'the caster makes a spell attack roll' : r === 'none' ? 'no attack roll and no saving throw' : `the target makes a ${ABILITY_WORDS[r.slice(5)] ?? r.slice(5)} saving throw`);
@@ -275,7 +276,7 @@ const SPELL_KEYS = ['id', 'name', 'source', 'level', 'school', 'classes', 'time'
 const STEP_KEYS = {
   attack: ['kind', 'bonus', 'advantageIf'], save: ['half', 'dc', 'advantageIf'], damage: ['type', 'times', 'withHit'], heal: ['addMod', 'atLeast'], tempHp: ['addMod', 'atLeast'], condition: ['ends', 'escape', 'largest', 'holds', 'escapeDis', 'whileHeld'],
   modifier: ['ends', 'to'], confuse: ['ends'], move: ['dir', 'largest'], fall: [], set: ['of', 'from'], reveal: [], resource: [], counter: [], teleport: ['see', 'familiarity'], cure: [], kill: [], remains: [],
-  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
+  endConcentration: [], imbue: [], stabilize: [], resize: [], polymorph: [], meld: [], light: ['replaces'], dispel: ['dc'], revive: ['within'], eachTurn: [], endSpell: [], arm: [], command: [], ward: [], sense: ['feet'], cut: [], water: [], manual: [], summon: ['forms', 'types', 'variants', 'count', 'reassert', 'on', 'over', 'one', 'bond'],
 };
 const MOD_KEYS = ['on', 'op', 'value', 'types', 'scope', 'against', 'uses', 'once', 'onFail', 'cost', 'except', 'stack', 'spell', 'from', 'magic', 'when', 'atLeast'];
 
@@ -677,9 +678,9 @@ class Reading {
     if (!isObj(c) || !Object.hasOwn(CHOICES, c.of)) return this.bad('The choice is not of a skill, an ability, a damage type, a condition, a command or a curse.');
     this.odd(c, ['of', 'from'], 'The choice');
     const from = Array.isArray(c.from) ? c.from.filter((x) => CHOICES[c.of].includes(x)) : null;
-    const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : c.of === 'affliction' ? AFFLICTION_WORDS[x] : c.of === 'shape' ? SHAPE_WORDS[x] : c.of === 'resize' ? RESIZE_WORDS[x] : x);
-    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'shape' ? ` (${list(STONE_SHAPES.map((x) => SHAPE_WORDS[x]), 'or')})` : c.of === 'resize' ? ` (${list(RESIZES.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : c.of === 'ward' ? ` (${list((from ?? WARDS).map(word), 'and')})` : c.of === 'beast' && !from ? ' (any Beast the game has)' : '';
-    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' ? 'a step below that is for one of them is part of the cast only for the one chosen' : c.of === 'ward' ? 'the kinds are the types of creature the circle works against, and the caster also says whether to reverse it' : c.of === 'beast' ? 'a step below that says "chosen" uses that Beast' : 'each step below that says "chosen" uses that choice'}.`);
+    const word = (x) => (c.of === 'ability' ? ABILITY_WORDS[x] : c.of === 'condition' ? cond(x) : c.of === 'skill' ? x.replace(/-/g, ' ') : c.of === 'curse' ? (ABILITIES.includes(x) ? `${ABILITY_WORDS[x]} checks and saves` : CURSE_WORDS[x]) : c.of === 'affliction' ? AFFLICTION_WORDS[x] : c.of === 'shape' ? SHAPE_WORDS[x] : c.of === 'resize' ? RESIZE_WORDS[x] : c.of === 'water' ? WATER_WORDS[x] : x);
+    const opts = from ? ` (${list(from.map(word), 'or')})` : c.of === 'shape' ? ` (${list(STONE_SHAPES.map((x) => SHAPE_WORDS[x]), 'or')})` : c.of === 'resize' ? ` (${list(RESIZES.map(word), 'or')})` : c.of === 'water' ? ` (${list(WATERS.map(word), 'or')})` : c.of === 'curse' ? ` (${list(CURSES.map(word), 'or')})` : c.of === 'affliction' ? ` (${list(AFFLICTIONS.map(word), 'or')})` : c.of === 'ward' ? ` (${list((from ?? WARDS).map(word), 'and')})` : c.of === 'beast' && !from ? ' (any Beast the game has)' : '';
+    this.line(`When casting it, the caster chooses ${CHOICE_WORDS[c.of]}${opts}; ${c.of === 'curse' ? 'a step below that names a curse is part of the cast only for the one chosen, and each that says "chosen" uses it' : c.of === 'affliction' ? 'a step below that names an affliction is part of the cast only for the one chosen' : c.of === 'shape' ? 'a step below that names a shape is part of the cast only for the one chosen' : c.of === 'resize' || c.of === 'water' ? 'a step below that is for one of them is part of the cast only for the one chosen' : c.of === 'ward' ? 'the kinds are the types of creature the circle works against, and the caster also says whether to reverse it' : c.of === 'beast' ? 'a step below that says "chosen" uses that Beast' : 'each step below that says "chosen" uses that choice'}.`);
   }
 
   zone(aim) {
@@ -877,8 +878,8 @@ class Reading {
   choiceOf(v, at) {
     if (v === undefined) return '';
     const c = this.def?.choice;
-    const words = isObj(c) && c.of === 'affliction' ? AFFLICTION_WORDS : isObj(c) && c.of === 'shape' ? SHAPE_WORDS : isObj(c) && c.of === 'resize' ? RESIZE_WORDS : CURSE_WORDS;
-    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !Object.hasOwn(words, x)) || new Set(v).size !== v.length || !isObj(c) || (c.of !== 'curse' && c.of !== 'affliction' && c.of !== 'shape' && c.of !== 'resize')) { this.bad(`Step ${at}: \`ifChoice\` lists values of a curse, affliction or shape choice, in a spell that has one.`); return ' (with an unreadable choice)'; }
+    const words = isObj(c) && c.of === 'affliction' ? AFFLICTION_WORDS : isObj(c) && c.of === 'shape' ? SHAPE_WORDS : isObj(c) && c.of === 'resize' ? RESIZE_WORDS : isObj(c) && c.of === 'water' ? WATER_WORDS : CURSE_WORDS;
+    if (!Array.isArray(v) || !v.length || v.some((x) => typeof x !== 'string' || !Object.hasOwn(words, x)) || new Set(v).size !== v.length || !isObj(c) || (c.of !== 'curse' && c.of !== 'affliction' && c.of !== 'shape' && c.of !== 'resize' && c.of !== 'water')) { this.bad(`Step ${at}: \`ifChoice\` lists values of a curse, affliction, shape, resize or water choice, in a spell that has one.`); return ' (with an unreadable choice)'; }
     return ` This is part of the cast only if the caster chose ${list(v.map((x) => words[x]), 'or')}.`;
   }
   // A step's `when` (effects.js exec): every tag must hold, or the step is skipped; one the engine cannot judge hands the step to the DM.
@@ -1261,6 +1262,27 @@ export const STEP_SENTENCES = {
     if (isInt(st.cut)) this.num(`${at}.cut`, st.cut, 'feet'); else this.bad(`Step ${at}: the cut step has no whole number of feet.`);
     say(`${st.cut} feet of the wall the cast aimed at are taken out, centred on the point named (moved to lie inside the wall when the point is near its end; a wall of that length or less goes whole), as the DM's own map edit does: the views, what the party remembers and the patches update as for a DM edit. Anything standing along the same line in those feet (another wall, an undiscovered secret door) goes with it. A creature now seen through the gap is seen by the ordinary rules.`);
     return this.dm(`Step ${at}: whether the wall is stone (the engine does not know what a wall is made of: if it is not, undo the cut), and a secret door cut away with it.`);
+  },
+  // tides.js `controlWater`, `endWater`: the water of the cube's cells, once for the cast; put back when the effect ends.
+  water({ st, at, say }) {
+    const w = st.water;
+    if (!isObj(w) || (w.mode !== 'flood' && w.mode !== 'part')) return this.bad(`Step ${at}: \`water\` is { mode: "flood", by?, size } or { mode: "part", size }.`);
+    this.odd(w, ['mode', 'by', 'size'], `Step ${at} (water)`);
+    if (w.mode === 'flood') {
+      const by = w.by ?? 20;
+      this.num(`${at}.water.by`, by, 'feet');
+      this.num(`${at}.water.size`, w.size, 'feet');
+      say(`Once for the cast, the surface of every cell of standing water in the area (the cube's cells on the level it lies on, whose water lies within its height) rises by ${by} feet, as the DM's own water change does, keeping what each cell was; a creature in the water or on its surface rises with it, with no fall damage. Where the rise would make the water deeper than the deepest there is, the cast does nothing there and the DM is told.`);
+    } else {
+      this.num(`${at}.water.size`, w.size, 'feet');
+      say('Once for the cast, the water of every cell in the area is lowered to its bed and the cells become the bed (a trench), as the DM\'s own water change does, keeping what each cell was; a creature that was in the water comes down to the bed with no fall damage.');
+    }
+    if (!this.fx || this.fx === 'bound' || this.obj) {
+      this.line('The spell does not last, so the engine has nothing to hang the change on: the DM puts the water back.');
+      return this.dm(`The water of step ${at}: the spell does not last.`);
+    }
+    this.line(w.mode === 'flood' ? 'When the spell ends the water comes down by what it rose (a cell a tide has changed since keeps the tide\'s change; one the water has left is not touched).' : 'When the spell ends the trench fills in: at the start of the next round in a fight, at once outside one.');
+    return this.dm(`Step ${at}: a large body of water (the wave instead of a flood), flowing water, and a big creature the water could not carry (it stays where it was).`);
   },
   // engine/world.js `meld`, resolve.js `meldInto`: a lasting state held on the creature (`melded`), a part of the cast's effect.
   meld({ st, at, say }) {
