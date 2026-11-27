@@ -59,6 +59,42 @@ export const SETTING_FIELDS = {
   characters: 'sent', level: 'sent',     // that a table takes characters people bring, and the adventure's levels, are no secret (portable-characters.md, Decision 5)
 };
 
+// ---------- a lasting zone (`fx.zone`, zones.js) ----------
+// What a player is sent of an area that lasts (Moonbeam, Spirit Guardians, Flaming Sphere, Magic Circle, a Conjure Animals pack): the zone's shape,
+// as anyone looking at it would see it, and nothing of how it works or whose numbers it runs on (#842; docs/specs/hidden-information.md). view.js
+// (`zoneView`) builds the record from this table: a field not listed is not sent. `test/view-fields.test.js` fails when a zone has a field that
+// this table does not classify.
+//   'sent'      the cells and the shape: only the cells that are sent of the map (an unexplored region, or under los and light a place not in
+//               view, shows no cell of it), and for the cells a derived tint `look` that is added beside (the damage type its steps deal).
+//   'scrubbed'  sent in another form: `follows` is never sent (it would let players track a creature as it moves): an Emanation is sent as the
+//               cells it covers now, and not at all while the creature it surrounds is one the party does not know of; `origin` is sent whole only
+//               where its cell is one that is sent, else its height alone; `area` and `ward` are cut to the fields below.
+//   'withheld'  not sent: how the zone works, and anything that names a creature or holds the caster's numbers.
+export const ZONE_FIELDS = {
+  area: 'scrubbed',            // shape, space, placed, and size, height, width only when every cell of the zone is sent; never `range`, `types`, `exceptCaster` (how it was aimed, or whom it works on)
+  hexes: 'sent',               // the laid-out cells, only those sent of the map
+  body: 'sent',                // a pack's own cells (`area.space`), likewise
+  origin: 'scrubbed',          // the place and height it was laid out at, where its cell is sent; else the height of the lowest surface of a sent cell
+  follows: 'scrubbed',         // who an Emanation moves with: never sent, the cells it covers now are
+  ward: 'sent',                // Magic Circle: the types it bars and whether reversed; the runes glow on the floor
+  move: 'sent',                // how far it can be rolled (Flaming Sphere): the caster's player is offered the roll
+  on: 'withheld',              // when it goes off: found out by playing, not told
+  once: 'withheld',            // how often it goes off
+  seen: 'withheld',            // whom its caster can make it work on
+  foes: 'withheld',            // likewise
+  with: 'withheld',            // whether it moves with its caster's move
+  beside: 'withheld',          // a modifier its caster has near it
+  spare: 'withheld',           // the creatures its caster spares: ids that may name creatures the party does not know of
+  steps: 'withheld',           // the spell's effect steps, its numbers and its caster's choices
+  src: 'withheld',             // its caster's Spell Save DC, attack and the like
+  last: 'withheld',            // which creatures it went off on, and when
+  budget: 'withheld',          // Guardian of Faith: how much damage it has in it
+  spent: 'withheld',           // and how much it has dealt
+  movedOn: 'withheld',         // the turn it was last rolled on
+};
+// What the zone's steps look like, for a tint: the first kind of damage they deal, or nothing.
+export const ZONE_AREA_FIELDS = ['shape', 'size', 'height', 'width', 'space', 'placed'];
+
 // ---------- what the state holds beside the creatures and the settings ----------
 // A field of the state that only the DM is sent. `playerView` (view.js) is built from named parts, so a field not named there is not sent anyway; this
 // says so in one place, and `test/portable-admit.test.js` fails if it is sent.

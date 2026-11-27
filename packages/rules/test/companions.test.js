@@ -526,7 +526,8 @@ test("the end of a lasting effect whose caster players do not know of names neit
   const { s, wolf } = table();
   ok(apply(s, { type: "reveal", actor: wolf, hidden: true }, DM));
   const ev = [{ type: "effectEnd", fx: "fx9", name: "Blindness", source: wolf, targets: ["fighter"], why: "Greyjaw went down", conc: true }];
-  assert.deepEqual(viewEvents(ev, s, U1), [{ type: "effectEnd", fx: "fx9", name: "Blindness", conc: true, targets: ["fighter"], why: "it ended" }]);
+  // No `fx` either (#843): the effect of a caster players do not know of goes to them under an id of its own (`z1`...), never the shared counter's.
+  assert.deepEqual(viewEvents(ev, s, U1), [{ type: "effectEnd", name: "Blindness", conc: true, targets: ["fighter"], why: "it ended" }]);
   // Words that name nobody are kept.
   assert.equal(viewEvents([{ ...ev[0], why: "its time ran out" }], s, U1)[0].why, "its time ran out");
   const mine = [{ ...ev[0], source: "cleric", why: "Odessa ended it" }];

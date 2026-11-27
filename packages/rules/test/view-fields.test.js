@@ -10,7 +10,7 @@ import { apply, makeEntity, SETTINGS } from "../src/engine.js";
 import { CONTENT, MONSTERS, PREGENS } from "../src/content/index.js";
 import { derive } from "../src/derive.js";
 import { newGame } from "../src/scenario.js";
-import { PARTY_FIELDS, SETTING_FIELDS, partyFields, sentFields } from "../src/view-fields.js";
+import { PARTY_FIELDS, SETTING_FIELDS, ZONE_AREA_FIELDS, ZONE_FIELDS, partyFields, sentFields } from "../src/view-fields.js";
 import { view } from "../src/view.js";
 
 const DM = { role: "dm", userId: "dm" }, PAT = { role: "player", userId: "pat" };
@@ -157,4 +157,21 @@ test("sentFields and partyFields leave the record they are given as it was", () 
   out.abil.str = 99;
   assert.notEqual(rec.abil.str, 99, "a copy");
   assert.deepEqual(sentFields({ sight: "los", nope: 1 }, SETTING_FIELDS), { sight: "los" });
+});
+
+// ---------- a lasting zone (#842) ----------
+test("every field the engine reads or writes on a zone is classified in ZONE_FIELDS, with a reason, as sent, scrubbed or withheld", () => {
+  for (const [k, c] of Object.entries(ZONE_FIELDS)) assert.ok(CLASSES.includes(c), `${k}: ${c}`);
+  const found = new Map();
+  for (const f of ["zones.js", "engine/casting.js", "engine/world.js", "engine/features.js", "engine/resolve.js", "modifiers.js"]) {
+    const text = rules(f);
+    for (const m of text.matchAll(["zones.js", "engine/casting.js"].includes(f) ? /\b(?:fx\.zone|\bz)\.([a-zA-Z]+)/g : /\bfx\.zone\.([a-zA-Z]+)/g)) if (!found.has(m[1])) found.set(m[1], `${f}: ${m[0]}`);
+  }
+  // The literal the zone is made as (zones.js startZone, engine/casting.js): its keys.
+  for (const f of ["zones.js", "engine/casting.js"]) for (const m of rules(f).matchAll(/fx\.zone = \{([\s\S]*?)\bsrc: \{ name/g)) for (const k of m[1].matchAll(/(?:^|[\s,{])(area|on|once|seen|foes|with|beside|body|ward|follows|hexes|origin|spare|budget|spent|move|steps|src|last):/g)) if (!found.has(k[1])) found.set(k[1], `${f}: the zone literal`);
+  assert.ok(found.size >= 12, `read ${found.size} fields`);
+  for (const [k, why] of found) assert.ok(Object.hasOwn(ZONE_FIELDS, k), `${k} (${why}) is a field of a zone and ZONE_FIELDS does not classify it`);
+  // What names creatures is never sent: the ids a zone holds are never in a record a player is sent.
+  for (const k of ["spare", "last", "src", "steps", "follows"]) assert.notEqual(ZONE_FIELDS[k] === "sent", true, k);
+  assert.deepEqual(ZONE_AREA_FIELDS.filter((f) => ["range", "types", "exceptCaster", "count", "choose"].includes(f)), [], "how a zone was aimed, or whom it works on, is not part of its shape");
 });
