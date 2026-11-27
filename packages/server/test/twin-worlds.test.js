@@ -2054,3 +2054,34 @@ for (const from of [{ q: 0, r: 0 }, { q: -2, r: 0 }]) test(`climbing: in a fight
   assert.ok(JSON.stringify(r.hidden.raw.Pat).includes("Too far"), "the refusal is Too far");
   for (const d of r.diffs) assert.fail(describe([d]));
 });
+
+// ---- legendary actions, L1b: a window open between two turns (docs/specs/legendary.md, Decision 9) ----
+// Worlds that differ only in how many legendary actions the dragon has spent (1 or 0, both under the 3 it has): the table waits for it the same way,
+// the players are sent `between: true` and the same refusals, and the DM's skip, undo and redo send them the same bytes.
+test("legendary: a window open for a dragon is sent the same whatever it has spent (uses left, both above 0), with undo and redo", () => {
+  const setup = (w) => {
+    for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: -3, r: 2 }, name: "Verdigris" });
+    w.must({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 8 });
+  };
+  const open = (w) => { for (let i = 0; i < 12 && !w.state.encounter.between; i++) w.must({ type: "endTurn", actor: current(w.state) }); };
+  const set = (acts) => (w) => w.must({ type: "legendarySet", actor: byName(w, "Verdigris").id, set: { acts } });
+  const r = twinRun({
+    setup,
+    steps: [
+      open,
+      { by: "Pat", act: { type: "endTurn", actor: "fighter" }, allowError: true },
+      { by: "Sam", act: { type: "say", as: "cleric", text: "Waiting." } },
+      { by: "dm", act: (w) => ({ type: "legendary", actor: byName(w, "Verdigris").id, skip: true }) },
+      { by: "dm", send: { t: "undo" } }, { by: "dm", send: { t: "redo" } }, { by: "dm", send: { t: "undo" } },
+      open,
+      { by: "dm", act: { type: "legendary", done: true } },
+      { by: "Pat", send: { t: "history", limit: 200 } },
+    ],
+  }, { hide: set(1), plain: set(0) });
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"between":true'), "the players were sent that the table waits");
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("offered"), "and never for whom");
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes("deciding on legendary actions"), "the refusal is the same sentence");
+  for (const d of r.diffs) assert.fail(describe([d]));
+});
