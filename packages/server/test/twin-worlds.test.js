@@ -1526,3 +1526,21 @@ test("daylight: a DM-hidden creature standing in the lit sphere (or just past it
     for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing (q ${q})`);
   }
 });
+
+// ---- Enlarge/Reduce (#786 wave 5 part 2): growth is judged on what the caster's side knows, so a DM-hidden creature in the new space neither stops it nor is told of ----
+test("enlarge: a Large fighter growing into the spaces of hidden creatures (all six neighbours) is sent the same as with a bare cell: the growth is not refused or shoved", () => {
+  const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+  const setup = (w) => {
+    seeInvisibleSetup(w);
+    const s = w.state;
+    w.must({ type: "place", actor: "fighter", to: { q: 0, r: 0 } });
+    w.must({ type: "place", actor: "wizard", to: { q: -3, r: 0 } });
+    Object.assign(s.entities.wizard, { slots: { 2: 3 }, slotsMax: { 2: 3 } });
+    s.entities.wizard.spells.push("enlarge-reduce");
+  };
+  const script = { players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "enlarge-reduce", target: "fighter", choice: "enlarge", slot: 2 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Bigger." } }] };
+  const sit = (w) => ring.forEach(([dq, dr], i) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: dq, r: dr }, name: `Lurker${i}`, hidden: true }); });
+  const r = twin(script, { hide: sit, plain: (w) => ring.forEach(([dq, dr]) => burn(w, { q: dq + 8, r: dr - 6 })) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it grew (the players are sent the new size)");
+});

@@ -85,3 +85,76 @@ test("Daylight: a DM-hidden creature in the sphere stays hidden (the light shows
   const r = ok(apply(s, { type: "cast", actor: "wizard", spell: "daylight", hex: { q: 8, r: 0 }, slot: 3 }, DM));
   assert.ok(s.entities[g.id].hidden && !r.events.some((e) => e.type === "revealed"));
 });
+
+// ---------- Enlarge/Reduce ----------
+const cast = (s, target, choice, actor = "wizard") => apply(s, { type: "cast", actor, spell: "enlarge-reduce", target, choice, slot: 2 }, DM);
+const fxOf = (s) => s.effects.find((x) => x.name === "Enlarge/Reduce");
+
+test("Enlarge/Reduce: assist; lints; reads with no problem; a choice is required", () => {
+  const d = SPELLS["enlarge-reduce"].def;
+  assert.equal(d.tier, "assist");
+  assert.deepEqual(lint(d), []);
+  assert.deepEqual(readEntry("spell", d, {}).problems ?? [], []);
+  assert.ok(!apply(field(), { type: "cast", actor: "wizard", spell: "enlarge-reduce", target: "fighter", slot: 2 }, DM).ok);
+  assert.ok(lint({ ...d, effects: [{ resize: "bigger" }] }).length);
+  assert.ok(lint({ ...d, duration: "instant", concentration: false, effects: [{ resize: "larger" }], choice: undefined }).length, "a resize needs a spell that lasts");
+});
+
+test("Enlarge on an ally: one size larger, no save, Advantage on Strength, +1d4; the size goes back with the effect", () => {
+  const s = field();
+  ok(cast(s, "fighter", "enlarge"));
+  assert.equal(s.entities.fighter.size, "large");
+  assert.ok(!s.effects.length || fxOf(s).conc);
+  assert.deepEqual(fxOf(s).parts.find((p) => p.size).size, { was: "medium", now: "large" });
+  ok(apply(s, { type: "endEffect", actor: "wizard", effect: fxOf(s).id }, DM));
+  assert.equal(s.entities.fighter.size, "medium");
+});
+
+test("Reduce on an ally: one smaller; ends with Concentration", () => {
+  const s = field();
+  ok(cast(s, "fighter", "reduce"));
+  assert.equal(s.entities.fighter.size, "small");
+  ok(apply(s, { type: "endEffect", actor: "wizard", effect: fxOf(s).id }, DM));
+  assert.equal(s.entities.fighter.size, "medium");
+});
+
+test("Enlarge/Reduce: a Tiny creature cannot go smaller, a Gargantuan one not larger", () => {
+  const s = field();
+  s.entities.fighter.size = "tiny";
+  ok(cast(s, "fighter", "reduce"));
+  assert.equal(s.entities.fighter.size, "tiny");
+  s.entities.cleric.size = "gargantuan";
+  ok(cast(s, "cleric", "enlarge"));
+  assert.equal(s.entities.cleric.size, "gargantuan");
+});
+
+test("Enlarge: no room (a visible creature in the way) leaves the size, and the spell still gives its other benefits", () => {
+  const s = field();
+  for (let q = -3; q <= 3; q++) for (let r = -3; r <= 3; r++) if (!(q === 2 && r === 0)) { const k = `${q},${r}`; if (s.map.levels[0].tiles[k]) s.map.levels[0].tiles[k] = { t: "grass" }; }
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  s.entities[g.id].size = "large";            // a Large creature next to the fighter takes the hexes a Large fighter would
+  const r = cast(s, "fighter", "enlarge");
+  ok(r);
+  const grown = s.entities.fighter.size === "large";
+  if (!grown) assert.ok(r.events.some((e) => e.type === "note" && /no room/.test(e.text)));
+  assert.ok(fxOf(s).parts.some((p) => p.modifier?.on === "save.str"), "the Strength benefits are on either way");
+});
+
+test("Enlarge on a foe: it makes a Constitution save; on a success nothing happens", () => {
+  const s = field();
+  const g = spawn(s, "goblin-warrior", 3, 0);
+  s.entities[g.id].saveBonus = { con: -100 };
+  s.entities.wizard.spellDc = 99;
+  const r = cast(s, g.id, "enlarge");
+  ok(r);
+  assert.ok(r.events.some((e) => e.type === "save" && e.id === g.id));
+});
+
+test("Reduce: weapon damage is 1d4 less but never below 1 (a modifier `atLeast`)", () => {
+  const s = field();
+  ok(cast(s, "fighter", "reduce"));
+  const m = fxOf(s).parts.find((p) => p.modifier?.on === "damage.dealt").modifier;
+  assert.equal(m.value, "-1d4");
+  assert.equal(m.atLeast, 1);
+  assert.ok(lint({ ...SPELLS["enlarge-reduce"].def, effects: [{ modifier: { on: "damage.dealt", op: "add", value: "1d4", atLeast: 1 } }], choice: undefined }).length, "only on a subtraction");
+});

@@ -581,7 +581,7 @@ export function dealt(s, e, t, parts, sit, crit) {
     if (x.types) out.push({ amount: Math.max(0, n), type: x.types.length > 1 ? bestType(s, t, x.types) : x.types[0], from: x.name, dice, bonus, by: e.id });
     else if (out.length) {
       const p = out[0];
-      p.amount = Math.max(0, p.amount + n);
+      p.amount = Math.max(Math.min(x.atLeast ?? 0, p.amount), p.amount + n);        // `atLeast` (Reduce): a part is brought down to 1, not to nothing
       if (p.dice) { p.dice = [...p.dice, ...dice]; p.bonus = (p.bonus ?? 0) + bonus; }
     }
   }

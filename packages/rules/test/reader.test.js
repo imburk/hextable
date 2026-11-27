@@ -81,6 +81,10 @@ const FIXTURES = [
   base('leaping', 'Leaping', { level: 1, range: 'touch', duration: '1 minute', target: { creature: { count: 1 } }, tier: 'auto', effects: [{ modifier: { on: 'leap', op: 'set', value: 30 } }] }),
   base('far-step', 'Far Step', { level: 7, range: 10, target: { self: true }, tier: 'assist', choice: { of: 'familiarity' }, effects: [{ teleport: 1000, familiarity: 'chosen' }] }),
   base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
+  base('giants-draught', 'Giant\'s Draught', { level: 2, school: 'transmutation', range: 30, duration: '1 minute', concentration: true, target: { creature: { count: 1 } }, tier: 'assist', choice: { of: 'resize' },
+    effects: [{ save: 'con', when: ['target.enemy'], onFail: [{ resize: 'larger', ifChoice: ['enlarge'] }, { resize: 'smaller', ifChoice: ['reduce'] }] },
+      { resize: 'larger', ifChoice: ['enlarge'], when: ['target.ally'] }, { resize: 'smaller', ifChoice: ['reduce'], when: ['target.ally'] },
+      { modifier: { on: 'damage.dealt', op: 'add', value: '-1d4', atLeast: 1, when: ['attack.weaponOrUnarmed'] }, ifChoice: ['reduce'] }] }),
   base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
   // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
   base('honed-edge', 'Honed Edge', { level: 2, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',

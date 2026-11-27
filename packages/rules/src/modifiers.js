@@ -88,6 +88,7 @@ export function judge(tag, sit, s) {
     // sees its target, and whether its target sees it changes nothing.
     case 'target.unseen': return a && t ? (a.object ? true : canSee(s, a, t) === 'no') : null;
     case 'target.seen': return a && t ? (a.object ? false : canSee(s, a, t) !== 'no') : null;       // the attacker can see the target (Faerie Fire: "if the attacker can see it")
+    case 'target.ally': return a && t ? a.side === t.side : null;                                      // on the source's own side (Enlarge/Reduce: a willing creature takes no save)
     case 'target.enemy': return a && t ? a.side !== t.side : null;                                    // hostile to the source: another side (Guardian of Faith)
     case 'attacker.unseen': return a && t ? (a.object ? false : canSee(s, t, a) === 'no') : null;
     // Engine-only tags, for the statuses above: not in the content vocabulary.
@@ -283,7 +284,7 @@ export function modifiers(s, e, hook, sit = {}, side = 'attacker') {
       // roll's maker decides (engine/rolls.js, rescue), so nothing is added or used up here.
       if (m.onFail) { out.rescue.push({ value, name: src.name, ...(src.part ? { part: src.part } : {}), ...(m.cost ? { cost: m.cost } : {}) }); continue; }
       if (m.uses && src.part) out.used.push(src.part);         // one use: the roll that takes it ends it (durations.useUp)
-      if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
+      if (m.op === 'add' && hook === 'damage.dealt') out.dealt.push({ value, types: m.types ?? null, name: src.name, ...(m.atLeast ? { atLeast: m.atLeast } : {}), ...(m.once === 'turn' ? { once: true, key: `${src.name}:${e.id}` } : {}) });
       else if (m.op === 'add' && hook === 'damage.taken') out.taken.push({ value, types: m.types ?? null, name: src.name, once: m.once === 'turn', key: `${src.key ?? src.name}:${e.id}` });
       else if (m.op === 'add' && typeof value === 'string') out.dice.push({ dice: value, name: src.name });
       else if (m.op === 'add') out.add += value;

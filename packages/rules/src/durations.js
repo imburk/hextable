@@ -13,7 +13,7 @@
 //          { target, confuse: { had } } (a `confuse` step: Confusion; `had` is what its Reaction was before),
 //          { target, turn: { steps, src } } (an `eachTurn` step: what the effect runs on the creature at the start of each of its turns, effects.js `turnSteps`;
 //          never sent to players), { target, meld: true } (a `meld` step: Meld into Stone; the creature's `melded` mark names this effect, and ending the effect
-//          brings it out of the stone: see `ON.meldEnd`), { target, light: true } (a light it gave to carry), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
+//          brings it out of the stone: see `ON.meldEnd`), { target, light: true } (a light it gave to carry), { target, size: { was, now } } (a size it gave: Enlarge/Reduce), or { target, temp: true }, or { target, summon: true }, or { target, bond: true } (stage C5b: what keeps a
 //          raised creature under control). `born` names the turn it was made in (turnKey).
 // A `summon` part is the creature a spell made (docs/specs/companions.md, Decision 4): its bond names the
 // effect (`bond.fx`), and once the part has ended, or the effect has, the creature vanishes ('ended'). Ending
@@ -63,7 +63,7 @@ export function startEffect(s, { name, spell, source, conc, duration, level }) {
 
 // Things this module cannot do itself because they need the engine's placing and zones (engine/resolve.js sets them when it loads): a creature merged
 // with stone comes out of it (`meldEnd(s, ev, creature, melded)`), at the place it went in or the nearest one free.
-export const ON = { meldEnd: null };
+export const ON = { meldEnd: null, sizeEnd: null };
 
 function endPart(s, ev, fx, p) {
   if (p.ended) return;
@@ -78,6 +78,8 @@ function endPart(s, ev, fx, p) {
   if (p.confuse && t && !t.dead && !effectsOf(s).some((x) => x.parts.some((q) => q !== p && q.confuse && !q.ended && q.target === t.id))) t.reactionUsed = !!p.confuse.had;
   // The stone lets go of a creature merged with it (a `meld` step: Meld into Stone): its mark goes, and it comes out where it went in.
   if (p.meld && t?.melded?.fx === fx.id) { const m = t.melded; delete t.melded; if (!t.dead) ON.meldEnd?.(s, ev, t, m); }
+  // A size it gave goes back (a `resize` step: Enlarge/Reduce): what it was, if the creature is still the size the effect left it; engine/world.js `sizeEnd` says whether there is room.
+  if (p.size && t) ON.sizeEnd?.(s, ev, t, p.size.was, p.size.now, fx.name);
   // A light it gave goes out (a `light` step: Light).
   if (p.light && t?.light?.fx === fx.id) { delete t.light; ev.push({ type: 'light', id: t.id, bright: 0, dim: 0 }); }
   // An action a spell gave it goes (an `arm` step: Flame Blade).

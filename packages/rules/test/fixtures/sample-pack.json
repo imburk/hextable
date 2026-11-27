@@ -435,6 +435,9 @@
       },
       "effects": [
         {
+          "resize": "larger"
+        },
+        {
           "modifier": {
             "on": "ac",
             "op": "add",
