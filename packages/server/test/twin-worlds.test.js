@@ -2008,3 +2008,49 @@ for (const kind of ["flood", "part"]) {
     for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes('"water":{'), `${who} is sent none of the water record`);
   });
 }
+
+// ---- climbing (#847): a climb to a ledge a DM-hidden creature holds stops at the last free place and finds it, as walking does ----
+// One ledge hex at 3,0, 10 feet up, with nothing beside it up there. In the plain world the fighter climbs onto it; where the DM hid a creature on it the fighter stops
+// at the foot and finds it (a bump, as walking onto a hex with something unseen on it: the reveal is the one thing the players are sent that differs, and only from the climb on).
+// Before the climb the two worlds are sent the same bytes; the refusal ("Can't get there") that told a player something was there is gone.
+const ledgeScene = (w) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  const ground = {};
+  for (let q = -4; q <= 6; q++) for (let r = -3; r <= 3; r++) ground[H.col({ q, r })] = { t: "stone" };
+  delete ground["3,0"];
+  w.must({ type: "loadMap", map: newMap({ id: "ledge", name: "Ledge", starts: [{ q: 0, r: 0 }], levels: [{ id: "ground", name: "Ground", z: 0, tiles: ground }, { id: "ledge", name: "Ledge", z: 10, tiles: { "3,0": { t: "stone" } } }] }) });
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", 1, 0], ["rogue", -3, 0], ["cleric", -3, 1], ["wizard", -3, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+};
+const onLedge = (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Lurker", hidden: true }); Object.assign(byName(w, "Lurker"), { pos: { q: 3, r: 0, z: 10 }, hp: 500, maxHp: 500 }); };
+for (const [label, to] of [["no height given", { q: 3, r: 0 }], ["the ledge's height given", { q: 3, r: 0, z: 10 }]]) test(`climbing: a climb to a ledge a hidden creature holds (${label}) stops at the foot and finds it; nothing differs before the climb`, () => {
+  const steps = [
+    { by: "Pat", act: { type: "say", as: "fighter", text: "A ledge." } },
+    { by: "Pat", act: { type: "move", actor: "fighter", to } },
+    { by: "Pat", act: { type: "say", as: "fighter", text: "Well." } },
+  ];
+  const r = twinRun({ players: ["Pat", "Sam"], setup: ledgeScene, steps }, { hide: onLedge, plain: (w) => burn(w, { q: -4, r: 0 }) });
+  assert.deepEqual(r.plain.w.state.entities.fighter.pos, { q: 3, r: 0, z: 10 }, "with no creature the fighter climbs onto the ledge");
+  assert.deepEqual(r.hidden.w.state.entities.fighter.pos, { q: 2, r: 0, z: 0 }, "with one it stops at the foot of the ledge, the last free place of its route, and does not end at its start");
+  assert.equal(byName(r.hidden.w, "Lurker").hidden, undefined, "and the creature is found");
+  assert.ok(r.diffs.length > 0, "the players are told what was found");
+  for (const d of r.diffs) assert.match(d.step, /move/, `${d.who}: nothing differs before the climb (${d.step})`);
+  assert.ok(!JSON.stringify(r.hidden.raw.Sam).includes("Can't get there"), "no refusal is sent");
+});
+
+// The same in a fight, the ledge out of the climber's movement: both worlds are refused in the same words ("Too far"), so the refusal does not tell a creature is there.
+for (const from of [{ q: 0, r: 0 }, { q: -2, r: 0 }]) test(`climbing: in a fight, a ledge a hidden creature holds, too far for the climber (from ${from.q},0), is refused in the same words as with no creature`, () => {
+  // A creature hiding joins the fight in both worlds (it takes a place in the order, which players are sent as "someone"): in the plain one it hides far from the ledge.
+  const put = (at) => (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Lurker", hidden: true }); Object.assign(byName(w, "Lurker"), { pos: at, hp: 500, maxHp: 500, hiding: true }); delete byName(w, "Lurker").hidden; };
+  const setup = (w) => {
+    ledgeScene(w);
+    w.must({ type: "place", actor: "fighter", to: from });
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -3, r: 3 }, name: "Foe" });
+  };
+  const steps = [{ by: "dm", act: { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 } }, (w) => turnOf(w, "fighter"), { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 3, r: 0 } }, allowError: true }, { by: "Pat", act: { type: "say", as: "fighter", text: "Hm." } }];
+  const r = twinRun({ players: ["Pat", "Sam"], setup, steps }, { hide: put({ q: 3, r: 0, z: 10 }), plain: put({ q: 5, r: 3, z: 0 }) });
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes("Too far"), "the refusal is Too far");
+  for (const d of r.diffs) assert.fail(describe([d]));
+});
