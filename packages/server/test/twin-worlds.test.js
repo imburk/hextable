@@ -1740,7 +1740,7 @@ test("zones: a Moonbeam cast by a hidden caster is sent the same whichever hidde
     steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: -5, r: 1 } } }, ...walk("Ghost", { q: 7, r: 0 })],
   }, {
     hide: (w) => { moonbeam(w, hideOne(w, { q: 6, r: 0 })); },
-    plain: (w) => { moonbeam(w, hideOne(w, { q: 5, r: 3 }, "Other", "owl")); },
+    plain: (w) => { burn(w, { q: 9, r: -4 }); moonbeam(w, hideOne(w, { q: 5, r: 3 }, "Other", "owl")); },      // the other caster has another id, and the effect another number
   });
   const text = JSON.stringify(r.hidden.raw.Pat);
   assert.ok(text.includes('"Moonbeam"') && text.includes('"zone"'), "the zone itself is sent, in both worlds");
@@ -1756,7 +1756,7 @@ test("zones: a rolled zone of a hidden caster tells players the zone moved, and 
     steps: [roll("Ghost", { q: 3, r: 3 }), roll("Ghost", { q: 5, r: 3 })],
   }, {
     hide: (w) => { sphere(w, hideOne(w, { q: 6, r: 0 })); },
-    plain: (w) => { sphere(w, hideOne(w, { q: 8, r: -3 }, "Other", "owl")); },
+    plain: (w) => { burn(w, { q: 9, r: -4 }); sphere(w, hideOne(w, { q: 8, r: -3 }, "Other", "owl")); },
   });
   const moved = r.hidden.raw.Pat.flatMap((m) => JSON.stringify(m).match(/"type":"zoneMoved"[^}]*}[^}]*}/g) ?? []);
   assert.ok(moved.length >= 1, "the players were told the zone moved");
