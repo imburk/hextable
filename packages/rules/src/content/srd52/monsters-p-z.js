@@ -911,6 +911,8 @@ export const monsters = [
         text: "Casts Fireball twice, or swaps one for Hold Monster or Wall of Fire; Recharge 4-6."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: { resistance: { day: 4 } },
     tier: "assist",
     checked: true,
     text: "A huge devil general of the Nine Hells."
@@ -6133,6 +6135,20 @@ export const monsters = [
         text: "Casts unicorn spells."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "charging-horn", name: "Charging Horn", move: { speed: "half", provokes: false }, use: ["radiant-horn"],
+            text: "Moves up to half its Speed without provoking Opportunity Attacks, then makes one Radiant Horn attack." },
+          { id: "shimmering-shield", name: "Shimmering Shield",
+            manual: "Targets itself or one creature it can see within 60 feet. The target gains 10 (3d6) Temporary Hit Points and +2 AC until the end of the unicorn's next turn.",
+            text: "Gives itself or a creature it sees within 60 feet 10 (3d6) Temporary Hit Points and +2 AC until the end of its next turn." },
+        ],
+      },
+      resistance: { day: 3 },
+    },
     tier: "assist",
     checked: true,
     text: "A radiant horned guardian of the wild."
@@ -6582,6 +6598,21 @@ export const monsters = [
         text: "A bite on a willing or helpless creature within 5 feet: Constitution save (DC 17) or it takes piercing and necrotic damage and loses maximum Hit Points.Bat or Vampire Form Only"
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "beguile", name: "Beguile", again: "nextTurn",
+            manual: "Casts Command (Charisma, spell save DC 17, no components).",
+            text: "Casts Command, with no components. Not again before its next turn." },
+          { id: "deathless-strike", name: "Deathless Strike", move: { speed: "half" }, use: ["grave-strike"],
+            text: "Moves up to half its Speed, then makes one Grave Strike attack." },
+        ],
+      },
+      resistance: { day: 3 },
+      lair: { uses: 4, resistance: 4, xp: 11500 },
+    },
     tier: "assist",
     checked: true,
     text: "An undead noble who drains blood and charms."

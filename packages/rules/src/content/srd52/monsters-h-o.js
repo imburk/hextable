@@ -3128,6 +3128,26 @@ export const monsters = [
         text: "A touch that Paralyzes the target until the start of the lich's next turn."
       }
     ],
+    // Legendary Resistance / Legendary Actions: the numbers are SRD 5.2.1's; the two traits above stay until the window lands (docs/specs/legendary.md, L1b).
+    legendary: {
+      actions: {
+        uses: 3,
+        options: [
+          { id: "deathly-teleport", name: "Deathly Teleport",
+            manual: "Teleports up to 60 feet to an unoccupied space it can see. Each creature within 10 feet of the space it left takes 11 (2d10) Necrotic damage.",
+            text: "Teleports up to 60 feet to a free space it sees; each creature within 10 feet of where it was takes necrotic damage." },
+          { id: "disrupt-life", name: "Disrupt Life", again: "nextTurn",
+            target: { area: { shape: "emanation", size: 20, types: ["aberration", "beast", "celestial", "construct", "dragon", "elemental", "fey", "fiend", "giant", "humanoid", "monstrosity", "ooze", "plant"] } },
+            effects: [{ save: "con", dc: 20, half: true, onFail: [{ damage: "9d6", type: "necrotic" }] }],
+            text: "Each creature that is not Undead in a 20-foot emanation from it makes a Constitution save or takes necrotic damage, half on a success. Not again before its next turn." },
+          { id: "frightening-gaze", name: "Frightening Gaze", again: "nextTurn",
+            manual: "Casts Fear, using the same spellcasting ability as its Spellcasting.",
+            text: "Casts Fear. Not again before its next turn." },
+        ],
+      },
+      resistance: { day: 4 },
+      lair: { uses: 4, resistance: 5, xp: 41000 },
+    },
     tier: "assist",
     checked: true,
     text: "An undead archmage who has bound its soul to a vessel."

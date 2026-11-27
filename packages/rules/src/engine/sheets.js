@@ -32,6 +32,8 @@ export function makeEntity(tpl, over = {}) {
     maxHp: t.hp, slotsMax: { ...(t.slots || {}) }, uses: { secondWind: t.features?.secondWind || 0, ...featureUses(t) },
     ...(t.hitDie ? { hd: t.level } : {}),
     ...(t.hitDice ? { hdBy: { ...t.hitDice } } : {}),                 // Hit Dice of several sizes, left of each (several classes)
+    // A creature with a legendary block (docs/specs/legendary.md, Decision 2) starts with everything: nothing spent, not in its lair, its uses not shown.
+    ...(t.legendary ? { legend: freshLegend() } : {}),
     cond: {}, death: { s: 0, f: 0 }, dead: false, reactionUsed: false, ...over,
     // A party character's Experience Points: the total its level starts at, unless it has its own.
     ...((over.kind ?? t.kind) === 'pc' ? { xp: Number.isInteger(over.xp ?? t.xp) ? (over.xp ?? t.xp) : xpFor(over.level ?? t.level ?? 1) } : {}),
@@ -39,6 +41,9 @@ export function makeEntity(tpl, over = {}) {
 }
 // A built character's features with uses (Rage, Second Wind, Channel Divinity) start full. Kept in
 // `uses` by feature id, beside the hand-typed record's `secondWind`.
+// What a creature has spent of its legendary block (`e.legendary`): uses since its last turn began, Legendary Resistance since its last Long Rest,
+// the options that cannot be taken again until its next turn, the DM's marks. Spent, not left, so that a lair mark moves nothing that was spent.
+export const freshLegend = () => ({ acts: 0, resisted: 0, again: {}, lair: false, show: false });
 const featureUses = (t) => Object.fromEntries((t.feats ?? []).filter((f) => f.uses).map((f) => [f.id, f.uses.max]));
 
 // Make a character again from a new record, carrying over what play has done to it. Validates

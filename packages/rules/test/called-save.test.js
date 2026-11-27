@@ -314,6 +314,24 @@ test("Legendary Resistance on a homebrew-pack monster is found too", () => {
   });
 });
 
+test("Legendary Resistance is read from the creature's legendary block: a monster with the block and no trait of that name is put to the DM too (L1a)", () => {
+  const lich = { ...structuredClone(CONTENT.monsters.lich), id: "hb-ember-folk-warden", name: "Ember Warden", source: "homebrew:ember-folk", checked: false, text: "An ember warden." };
+  lich.traits = lich.traits.filter((t) => t.id !== "legendary-resistance" && t.id !== "legendary-actions");
+  const loaded = loadPack({ format: "hextable-pack", v: 1, pack: { id: "ember-folk", name: "ember-folk", version: 1, license: "CC0, by the author", attribution: "Written for a test." }, monsters: [lich] });
+  assert.ok(loaded.ok, loaded.problems?.join("; "));
+  using(overlayOf([loaded.pack]), () => {
+    const s = game();
+    ok(apply(s, { type: "spawn", monster: "hb-ember-folk-warden", at: { q: 3, r: 3 } }, DM));
+    const id = Object.keys(s.entities).find((k) => s.entities[k].tpl === "hb-ember-folk-warden");
+    assert.deepEqual(s.entities[id].legendary.resistance, { day: 4 });
+    const r = ok(call(s, { who: id, ability: "wis", dc: 40 }));
+    assert.ok(r.events.some((e) => e.type === "manual" && e.name === "Legendary Resistance" && e.actor === id));
+    // Without the block (and with no trait) there is nothing to say.
+    delete s.entities[id].legendary;
+    assert.equal(ok(call(s, { who: id, ability: "wis", dc: 40 })).events.some((e) => e.type === "manual" && e.name === "Legendary Resistance"), false);
+  });
+});
+
 test("a real rescue under a secret save is hushed: a Bardic Inspiration die spent to turn it", () => {
   const A = { str: 10, dex: 14, con: 12, int: 10, wis: 12, cha: 16 };
   let found = null;

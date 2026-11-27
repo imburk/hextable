@@ -1146,6 +1146,93 @@ function lintMonster(e, say, baked = false) {
     if (e.tier === 'auto' && seen.manual) sub('the monster is marked auto but this action has a manual step');
     if (seen.summons) sub('a summon step is for a spell (a creature\'s action that summons is the DM\'s for now)');
   }
+  lintLegendary(e, say);
+}
+// ----- legendary actions and Legendary Resistance (docs/specs/legendary.md, Decision 1) -----
+// One optional key on a monster: `legendary: { actions?: { uses, options }, resistance?: { day }, lair?: { uses?, resistance?, xp? } }`.
+// `again: 'nextTurn'` is "can't take this action again until the start of its next turn"; `move.speed` is how much of its Speed a
+// move takes. `cost` is for a homebrew pack's older blocks ("Costs 2 Actions"); SRD 5.2.1 never needs it.
+export const LEGENDARY_AGAIN = ['nextTurn'];
+export const LEGENDARY_SPEEDS = ['half', 'full'];
+export const LEGENDARY_LIMITS = Object.freeze({ uses: 5, options: 8, cost: 3, use: 3, resistance: 10, text: 400 });
+export const LEGENDARY_KEYS = ['actions', 'resistance', 'lair'];
+export const LEGENDARY_OPTION_KEYS = ['id', 'name', 'text', 'cost', 'move', 'use', 'target', 'effects', 'again', 'manual'];
+export const LEGENDARY_MOVE_KEYS = ['speed', 'mode', 'provokes', 'after'];
+// Until L1b (the window) lands, the seven monsters that carry a block still carry their "Legendary Actions" and "Legendary Resistance"
+// traits too, so the DM's "You run" card keeps telling the DM about them: nothing here objects to a monster holding both. L1b takes the traits out.
+function lintLegendary(e, say) {
+  const L = e.legendary;
+  if (L === undefined) return;
+  const sub = (m) => say(`legendary: ${m}`);
+  if (!isObj(L) || !Object.keys(L).length || !Object.keys(L).every((k) => LEGENDARY_KEYS.includes(k))) return sub(`is { ${LEGENDARY_KEYS.map((k) => `${k}?`).join(', ')} }, with at least one`);
+  const lim = LEGENDARY_LIMITS, A = L.actions;
+  if (A !== undefined) {
+    const act = (m) => say(`legendary actions: ${m}`);
+    if (!isObj(A) || !Object.keys(A).every((k) => ['uses', 'options'].includes(k))) act('is { uses, options }');
+    else {
+      if (!(isInt(A.uses) && A.uses >= 1 && A.uses <= lim.uses)) act(`uses is a whole number from 1 to ${lim.uses}`);
+      if (!(Array.isArray(A.options) && A.options.length >= 1 && A.options.length <= lim.options)) act(`options is a list of 1 to ${lim.options}`);
+      else {
+        const seen = new Set(), own = new Map((e.actions ?? []).filter((a) => a && typeof a.id === 'string').map((a) => [a.id, a]));
+        for (const o of A.options) {
+          const so = (m) => say(`legendary option ${isObj(o) && typeof o.id === 'string' ? o.id : '?'}: ${m}`);
+          if (!isObj(o)) { so('is not an object'); continue; }
+          const bad = Object.keys(o).filter((k) => !LEGENDARY_OPTION_KEYS.includes(k));
+          if (bad.length) so(`"${bad[0]}" is not something an option has`);
+          if (!ID.test(o.id ?? '')) so('id must be kebab-case');
+          else if (seen.has(o.id)) so('duplicate option id');
+          seen.add(o.id);
+          if (!isText(o.name)) so('needs a name');
+          if (!isText(o.text) || o.text.length > lim.text) so(`needs text, in our own words, of at most ${lim.text} letters`);
+          if (o.cost !== undefined && !(isInt(o.cost) && o.cost >= 1 && o.cost <= lim.cost && (!isInt(A.uses) || o.cost <= A.uses))) so(`cost is a whole number from 1 to ${lim.cost}, and no more than the uses`);
+          if (o.again !== undefined && !LEGENDARY_AGAIN.includes(o.again)) so(`again is ${LEGENDARY_AGAIN.map((x) => `"${x}"`).join(', ')}`);
+          if (o.manual !== undefined && !isText(o.manual)) so('manual is text for the DM');
+          if (o.move !== undefined) {
+            const m = o.move;
+            if (!isObj(m) || !Object.keys(m).every((k) => LEGENDARY_MOVE_KEYS.includes(k))) so('move is { speed, mode?, provokes?, after? }');
+            else {
+              if (!LEGENDARY_SPEEDS.includes(m.speed)) so(`move.speed is ${LEGENDARY_SPEEDS.map((x) => `"${x}"`).join(' or ')}`);
+              if (m.mode !== undefined && !(MOVE_MODES.includes(m.mode) && e.speed && e.speed[m.mode] > 0)) so('move.mode is a way of moving the monster has');
+              if (m.provokes !== undefined && m.provokes !== false) so('move.provokes is false (without provoking Opportunity Attacks) or left out');
+              if (m.after !== undefined && m.after !== true) so('move.after is true (it moves after the rest) or left out');
+            }
+          }
+          if (o.use !== undefined) {
+            if (!Array.isArray(o.use) || !o.use.length || o.use.length > lim.use || new Set(o.use).size !== o.use.length) so(`use is a list of 1 to ${lim.use} different ids of the monster's own actions`);
+            else for (const id of o.use) {
+              if (!own.has(id)) so(`use names "${id}", which is not an action of this monster`);
+              else if (own.get(id).multiattack !== undefined) so(`use names "${id}", a Multiattack: an option makes one attack, never a Multiattack`);
+            }
+            if (o.target !== undefined || o.effects !== undefined) so('an option that uses an action of its own has no target or effects (use or effects, not both)');
+          }
+          if (o.target !== undefined || o.effects !== undefined) {
+            if (o.use === undefined) {
+              lintTarget(o.target, so);
+              if (o.target?.creature && typeof o.target.creature === 'object' && o.target.creature.reach === undefined && o.target.creature.range === undefined) so('a creature target needs `reach` (feet, for a melee attack) or `range` ([normal, long] feet)');
+              const sn = lintSteps(o.effects, so, undefined, false, true);
+              if (Array.isArray(o.effects)) walkSteps(o.effects, (st) => { if (st && 'attack' in st && st.kind === 'spell') so('an option has no spell attack bonus: make it a weapon attack with the bonus the stat block gives'); });
+              if (e.tier === 'auto' && sn.manual) so('the monster is marked auto but this option has a manual step');
+              if (sn.summons) so('a summon step is for a spell');
+            }
+          }
+          if (o.manual !== undefined && e.tier === 'auto') so('the monster is marked auto but this option is the DM\'s (manual)');
+          if (o.use === undefined && o.effects === undefined && o.manual === undefined) so('does nothing: it needs `use`, `effects` or `manual`' + (o.move !== undefined ? ' beside its move' : ''));
+        }
+      }
+    }
+  }
+  const R = L.resistance;
+  if (R !== undefined && !(isObj(R) && Object.keys(R).length === 1 && isInt(R.day) && R.day >= 1 && R.day <= lim.resistance)) sub(`resistance is { day }, a whole number from 1 to ${lim.resistance}`);
+  const Lair = L.lair;
+  if (Lair !== undefined) {
+    if (!isObj(Lair) || !Object.keys(Lair).length || !Object.keys(Lair).every((k) => ['uses', 'resistance', 'xp'].includes(k))) sub('lair is { uses?, resistance?, xp? }, with at least one');
+    else {
+      const lair = (m) => sub(`lair ${m}`);
+      if (Lair.uses !== undefined && !(isInt(Lair.uses) && isObj(A) && isInt(A.uses) && Lair.uses >= A.uses && Lair.uses <= lim.uses)) lair(`uses is a whole number, at least its legendary action uses and at most ${lim.uses}`);
+      if (Lair.resistance !== undefined && !(isInt(Lair.resistance) && isObj(R) && isInt(R.day) && Lair.resistance >= R.day && Lair.resistance <= lim.resistance)) lair(`resistance is a whole number, at least its Legendary Resistance a day and at most ${lim.resistance}`);
+      if (Lair.xp !== undefined && !(isInt(Lair.xp) && isInt(e.xp) && Lair.xp >= e.xp)) lair('xp is a whole number, at least its plain xp');
+    }
+  }
 }
 // How often an action can be used: `recharge: [min, 6]` (rolled at the start of each of its turns
 // once spent) or `uses: { per: 'day', n }`. `time: 'bonus'` makes it a Bonus Action.
@@ -3172,7 +3259,7 @@ const NOT_HERE = {
 const AMOUNT_KEYS = ['perLevel', 'column', 'mod', 'min', 'die', 'byLevel', 'prof'];
 const SHAPES = {
   spells: { what: 'a spell', keys: ['id', 'name', 'source', 'level', 'school', 'classes', 'time', 'range', 'components', 'duration', 'concentration', 'ritual', 'target', 'effects', 'higher', 'tier', 'checked', 'text', 'kinds', 'roll', 'choice', 'costly', 'terrain', 'zone', 'reaction', 'hit'] },
-  monsters: { what: 'a monster', keys: ['id', 'name', 'source', 'size', 'type', 'cr', 'xp', 'pb', 'ac', 'hp', 'speed', 'senses', 'abilities', 'initiative', 'languages', 'skills', 'resist', 'vulnerable', 'immune', 'conditionImmune', 'saves', 'hover', 'mount', 'traits', 'actions', 'tier', 'checked', 'text'] },
+  monsters: { what: 'a monster', keys: ['id', 'name', 'source', 'size', 'type', 'cr', 'xp', 'pb', 'ac', 'hp', 'speed', 'senses', 'abilities', 'initiative', 'languages', 'skills', 'resist', 'vulnerable', 'immune', 'conditionImmune', 'saves', 'hover', 'mount', 'traits', 'actions', 'legendary', 'tier', 'checked', 'text'] },
   items: { what: 'an item', keys: ['id', 'name', 'category', 'rarity', 'attune', 'wear', 'base', 'bonus', 'damageType', 'properties', 'trained', 'mithral', 'grants', 'variant', 'charges', 'activate', 'tier', 'source', 'checked', 'text'] },
   feats: { what: 'a feat', keys: ['id', 'name', 'category', 'prerequisite', 'repeatable', 'tier', 'source', 'checked', 'text', 'increase', 'proficiencies', 'spellPick', 'grants'] },
   objects: { what: 'an object', keys: ['id', 'name', 'kind', 'source', 'tier', 'checked', 'text', 'states', 'initial', 'use', 'triggers', 'find', 'dc', 'connects'] },
@@ -3204,6 +3291,12 @@ const SHAPES = {
   count: { what: 'a summon count', keys: ['slot', 'base', 'above'] },
   over: { what: 'what a summon replaces', keys: ['speed'] },
   forms: { what: 'summon forms', keys: ['type', 'cr'] },
+  legendary: { what: 'a legendary block', keys: LEGENDARY_KEYS },
+  legendaryActions: { what: 'legendary actions', keys: ['uses', 'options'] },
+  legendaryOption: { what: 'a legendary action', keys: LEGENDARY_OPTION_KEYS },
+  legendaryMove: { what: 'a legendary move', keys: LEGENDARY_MOVE_KEYS },
+  legendaryResistance: { what: 'Legendary Resistance', keys: ['day'] },
+  legendaryLair: { what: 'the lair numbers', keys: ['uses', 'resistance', 'xp'] },
   trait: { what: 'a trait', keys: ['id', 'name', 'text', 'modifiers', 'reaction', 'dragFree', 'flyby'] },
   action: { what: 'an action', keys: ['id', 'name', 'text', 'time', 'target', 'effects', 'uses', 'recharge', 'multiattack'] },
   uses: { what: 'uses', keys: ['per', 'n'] },
@@ -3248,7 +3341,10 @@ const CHILD = {
   spells: { target: 'target', effects: 'steps', higher: 'higher', choice: 'choice', zone: 'zone', terrain: 'terrain', reaction: 'reaction', hit: 'hitRider' },
   zone: { effects: 'steps', beside: 'beside' },
   beside: { modifier: 'modifier' },
-  monsters: { speed: 'speedMap', senses: 'senseMap', skills: 'skillMap', saves: 'saveMap', abilities: 'abilities', traits: 'trait[]', actions: 'action[]' },
+  monsters: { speed: 'speedMap', senses: 'senseMap', skills: 'skillMap', saves: 'saveMap', abilities: 'abilities', traits: 'trait[]', actions: 'action[]', legendary: 'legendary' },
+  legendary: { actions: 'legendaryActions', resistance: 'legendaryResistance', lair: 'legendaryLair' },
+  legendaryActions: { options: 'legendaryOption[]' },
+  legendaryOption: { target: 'target', effects: 'steps', move: 'legendaryMove' },
   items: { attune: 'attune', base: 'base', charges: 'charges', grants: 'grants', activate: 'activate[]' },
   feats: { prerequisite: 'prerequisite', increase: 'increase', proficiencies: 'proficiencies', spellPick: 'spellPick', grants: 'grants' },
   objects: { states: 'states', find: 'find', dc: 'objectDc', triggers: 'trigger[]', use: 'use[]' },
@@ -3333,7 +3429,7 @@ function lintUnchecked(kind, e, say) {
   if (kind === 'weapons' && e.ammo !== undefined && !ID.test(e.ammo)) say('ammo names a kind of ammunition, in kebab-case');
   if (kind === 'weapons' && e.twoHandedUnlessMounted !== undefined && e.twoHandedUnlessMounted !== true) say('twoHandedUnlessMounted is true or left out');
   const steps = [];
-  const lists = kind === 'spells' ? [e.effects] : kind === 'monsters' ? (e.actions ?? []).map((a) => a?.effects)
+  const lists = kind === 'spells' ? [e.effects] : kind === 'monsters' ? [...(e.actions ?? []), ...(Array.isArray(e.legendary?.actions?.options) ? e.legendary.actions.options : [])].map((a) => a?.effects)
     : kind === 'objects' ? [...(e.use ?? []), ...(e.triggers ?? [])].map((u) => u?.effects) : kind === 'items' ? (e.activate ?? []).map((u) => u?.effects)
     : kind === 'subclasses' ? grantsOf(Array.isArray(e.features) ? e.features : []).flatMap((g) => [g.action?.effects, ...(Array.isArray(g.action?.modes) ? g.action.modes.map((m) => m?.effects) : [])]) : [];
   for (const l of lists) walkSteps(l, (st) => { if (st && typeof st === 'object') steps.push(st); });
@@ -3341,7 +3437,7 @@ function lintUnchecked(kind, e, say) {
     if (st.half !== undefined && typeof st.half !== 'boolean') say('a save step\'s `half` is true or false');
     if (st.largest !== undefined && !SIZES.includes(st.largest)) say(`a move or condition step's \`largest\` is one of ${SIZES.join(', ')}`);
   }
-  const area = kind === 'spells' ? [e.target?.area] : kind === 'monsters' ? (e.actions ?? []).map((a) => a?.target?.area) : [];
+  const area = kind === 'spells' ? [e.target?.area] : kind === 'monsters' ? [...(e.actions ?? []), ...(Array.isArray(e.legendary?.actions?.options) ? e.legendary.actions.options : [])].map((a) => a?.target?.area) : [];
   for (const a of area) if (a?.height !== undefined && !(isInt(a.height) && a.height > 0 && a.height % 5 === 0)) say('an area\'s height is feet, a multiple of 5');
 }
 
@@ -3359,11 +3455,14 @@ export const HOMEBREW_RANGES = Object.freeze({
   'saves.*': [-10, 30], 'skills.*': [-10, 40], 'senses.*': [0, 300], 'senseRange.*': [0, 150], 'speed.*': [0, 300], 'speeds.*': [0, 100],
   'action.recharge': [2, 6], 'uses.n': [1, 10], 'multiattack.times': [1, 10], 'or.times': [1, 10], 'reaction.ac': [1, 10],
   'forms.cr': [0, 60, 8],
+  // legendary actions (docs/specs/legendary.md, Decision 1); `lair.xp` is about twice the SRD's largest (41,000)
+  'legendary.uses': [1, 5], 'options.cost': [1, 3], 'resistance.day': [1, 10], 'lair.uses': [1, 5], 'lair.resistance': [1, 10], 'lair.xp': [0, 100000],
   // an imbue step (docs/specs/on-hit.md, Decision 8): a magic bonus, a bonus to attack rolls, and the levels and slot levels they are given by
   'imbue.plus': [1, 3], 'imbue.attackAdd': [-5, 10], 'imbue.min': [-5, 10], 'attackAdd.min': [-5, 10], 'bySlot.*': [1, 3],
   // spells
   'spells.level': [0, 9], 'spells.range': [1, 10560000],
-  'area.size': FEET, 'area.range': FEET, 'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
+  'area.size': FEET, 'area.range': [5, 225],        // a monster's sphere or cylinder centred up to so far away (90 feet is the SRD's largest, the Adult Green Dragon's Noxious Miasma)
+  'area.height': [5, 100], 'area.width': [5, 100], 'area.choose': [2, 20], 'area.count': [2, 20],
   'terrain.light': [5, 120], 'creature.count': [1, 20], 'creature.range': [5, 1200], 'arm.range': [5, 120], 'water.by': [5, 20], 'water.size': [5, 200], 'creature.reach': [0, 120], 'creature.within': [5, 100], 'target.near': [5, 60],
   'targets.#': [1, 20], 'range.#': [5, 240], 'slot.targets': [1, 20], 'slot.times': [1, 10], 'slot.value': [1, 40],
   'count.slot': [1, 9], 'count.base': [0, 30], 'count.above': [0, 30], 'reassert.slot': [1, 9], 'reassert.base': [0, 30], 'reassert.above': [0, 30],
@@ -3406,7 +3505,7 @@ const COIN_GP = { CP: 0.01, SP: 0.1, EP: 0.5, GP: 1, PP: 10 };
 // The length a list may have, by the name of the object that holds it and its key (`*.step` for any owner). About twice the
 // SRD's longest (and never under 8 for a short list); a list with no ceiling is refused. Lists in a feature's grants take GRANTS_LEN.
 export const HOMEBREW_LENGTHS = Object.freeze({
-  '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'creature.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
+  '*.step': 20, 'imbue.weapons': 20, 'imbue.types': 14, '*.blocks': 2, 'area.types': 14, 'creature.types': 14, 'freeCast.forms': 20, 'formOf.forms': 20, 'freeCast.spells': 30, 'freeCast.types': 14, 'freeCast.ends': 2, 'monsters.action': 10, 'monsters.trait': 20, 'monsters.reaction': 4, 'legendary.options': 8, 'options.use': 3, 'action.multiattack': 6, 'multiattack.or': 6, 'multiattack.action': 8, 'or.action': 8,
   'abilities.any': 6, 'action.recharge': 2, 'attune.by': 8, 'aura.modifier': 8, 'base.armour': 20, 'base.weapon': 20, 'bond.ends': 2, 'choice.from': 24, 'creature.range': 2,
   'grants.conditionImmune': 14, 'grants.modifier': 8, 'grants.resist': 13, 'grants.speeds': 3, 'increase.from': 6, 'items.activate': 10, 'items.properties': 9, 'modifier.types': 14,
   'modifier.when': 8, 'modifier.from': 14, 'monsters.conditionImmune': 14, 'monsters.immune': 13, 'monsters.languages': 10, 'monsters.resist': 13, 'monsters.vulnerable': 13, 'objects.trigger': 6,
@@ -3427,6 +3526,8 @@ const GRANTS_LEN = 30;
 export const HOMEBREW_WORK = Object.freeze({ steps: 600, creatures: 30, attacks: 14, dice: 900 });
 const NAME_ALIAS = { modifiers: 'modifier', traits: 'trait', actions: 'action', triggers: 'trigger' };
 const nameOf = (k) => (STEP_LISTS.includes(k) ? 'step' : /^\d+$/.test(k) ? '#' : NAME_ALIAS[k] ?? k);
+// What owns the fields inside an object: its key's name, except that the legendary block's `actions` (uses, options) is not a creature's actions: its fields are the legendary block's ("legendary.uses", "legendary.options").
+const ownerOf = (owner, key) => (owner === 'legendary' && key === 'actions' ? 'legendary' : nameOf(key));
 const rangeOf = (owner, key, inGrants) => HOMEBREW_RANGES[`${owner}.${key}`] ?? HOMEBREW_RANGES[`${owner}.*`] ?? (owner === 'speedModifier' || owner === 'senseModifier' ? rangeOf('modifier', key, inGrants) : inGrants ? GRANTS_ANY : undefined);
 // The numbers of an entry with the name that finds their range: [context, value, path, inGrants].
 export function numbersOf(kind, entry) {
@@ -3437,7 +3538,7 @@ export function numbersOf(kind, entry) {
     if (typeof v === 'number') out.push([`${owner}.${nameOf(key)}`, v, path, g, owner, nameOf(key)]);
     else if (Array.isArray(v)) v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g]));
     // A modifier on a speed (Fly's Fly Speed of 60) is held to the speeds' range, not the 40 of every other modifier.
-    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && SPEED_HOOKS.includes(v.on) ? 'speedModifier' : nameOf(key) === 'modifier' && v.on === 'senses' ? 'senseModifier' : nameOf(key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
+    else if (v && typeof v === 'object') { const own = nameOf(key) === 'modifier' && SPEED_HOOKS.includes(v.on) ? 'speedModifier' : nameOf(key) === 'modifier' && v.on === 'senses' ? 'senseModifier' : ownerOf(owner, key); for (const k of Object.keys(v)) stack.push([v[k], own, k, `${path}.${k}`, g || key === 'grants']); }
   }
   return out;
 }
@@ -3448,7 +3549,7 @@ export function arraysOf(kind, entry) {
   while (stack.length) {
     const [v, owner, key, path, g] = stack.pop();
     if (Array.isArray(v)) { out.push([`${owner}.${nameOf(key)}`, v.length, path, g, owner, nameOf(key)]); v.forEach((x, i) => stack.push([x, owner, key, `${path}[${i}]`, g])); }
-    else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push([v[k], nameOf(key), k, `${path}.${k}`, g || key === 'grants']);
+    else if (v && typeof v === 'object') for (const k of Object.keys(v)) stack.push([v[k], ownerOf(owner, key), k, `${path}.${k}`, g || key === 'grants']);
   }
   return out;
 }
@@ -3518,6 +3619,12 @@ export function workOf(kind, e) {
       // Each attack of a Multiattack is an action of its own to the engine, so it is the dearest attack that counts.
       if (!a.multiattack) takeDice(diceFor(a.effects, targetsOf(a.target), !!a.target?.area), `action "${a.id}"`);
       if (a.multiattack) { const [n, w] = multiWork(a.multiattack, byId); attacks = Math.max(attacks, n); take(w, `Multiattack "${a.id}"`); }
+    }
+    // A legendary option with effects of its own runs like an action (one use at a time).
+    for (const o of Array.isArray(e.legendary?.actions?.options) ? e.legendary.actions.options : []) {
+      if (!o || typeof o !== 'object') continue;
+      take(actionWork(o), `legendary action "${o.id}"`);
+      takeDice(diceFor(o.effects, targetsOf(o.target), !!o.target?.area), `legendary action "${o.id}"`);
     }
   } else if (kind === 'objects') for (const u of [...(Array.isArray(e.use) ? e.use : []), ...(Array.isArray(e.triggers) ? e.triggers : [])]) {
     take((u?.area ? HOMEBREW_WORK.creatures : 1) * listWork(u?.effects), 'use');
@@ -3649,7 +3756,7 @@ const fits = (spec, v) => spec.split('|').some((t) => (t === 'id' ? isId(v) : t 
 const describe = (spec) => spec.split('|').map((t) => WORDS[t] ?? t).join(' or ');
 export const HOMEBREW_TYPES = Object.freeze({
   spells: { id: 's', name: 's', source: 's', level: 'i', school: 's', classes: 'id[]', time: 's', range: 'i|s', components: 'id[]', duration: 's', concentration: 'b', ritual: 'b', target: 'o', effects: 'a', higher: 'o', tier: 's', checked: 'b', text: 's', kinds: 's[]', choice: 'o', costly: 'b', terrain: 'o', zone: 'o', reaction: 'o', roll: 's', hit: 'o' },
-  monsters: { id: 's', name: 's', source: 's', size: 's', type: 's', cr: 'n', xp: 'i', pb: 'i', ac: 'i', hp: 'i', speed: 'o', senses: 'o', abilities: 'o', initiative: 'i', languages: 's[]', skills: 'o', resist: 's[]', vulnerable: 's[]', immune: 's[]', conditionImmune: 's[]', saves: 'o', hover: '?', mount: 's', traits: 'a', actions: 'a', tier: 's', checked: 'b', text: 's' },
+  monsters: { id: 's', name: 's', source: 's', size: 's', type: 's', cr: 'n', xp: 'i', pb: 'i', ac: 'i', hp: 'i', speed: 'o', senses: 'o', abilities: 'o', initiative: 'i', languages: 's[]', skills: 'o', resist: 's[]', vulnerable: 's[]', immune: 's[]', conditionImmune: 's[]', saves: 'o', hover: '?', mount: 's', traits: 'a', actions: 'a', legendary: 'o', tier: 's', checked: 'b', text: 's' },
   items: { id: 's', name: 's', category: 's', rarity: 's', attune: 'b|o', wear: 's', base: 'o', bonus: 'i', damageType: 's', properties: 's[]', trained: 'b', mithral: 'b', grants: 'o', variant: 's', charges: 'o', activate: 'a', tier: 's', source: 's', checked: 'b', text: 's' },
   feats: { id: 's', name: 's', category: 's', prerequisite: 'o', repeatable: 's|b', tier: 's', source: 's', checked: 'b', text: 's', increase: 'o', proficiencies: 'o', spellPick: 'o', grants: 'o' },
   objects: { id: 's', name: 's', kind: 's', source: 's', tier: 's', checked: 'b', text: 's', states: 'o', initial: 's', use: 'a', triggers: 'a', find: 'o', dc: 'o', connects: 'b' },
@@ -3680,6 +3787,12 @@ export const HOMEBREW_TYPES = Object.freeze({
   count: { slot: 'i', base: 'i', above: 'i' },
   over: { speed: 'o' },
   forms: { type: 's', cr: 'n' },
+  legendary: { actions: 'o', resistance: 'o', lair: 'o' },
+  legendaryActions: { uses: 'i', options: 'a' },
+  legendaryOption: { id: 'id', name: 's', text: 's', cost: 'i', move: 'o', use: 'id[]', target: 'o', effects: 'a', again: 's', manual: 's' },
+  legendaryMove: { speed: 's', mode: 's', provokes: 'b', after: 'b' },
+  legendaryResistance: { day: 'i' },
+  legendaryLair: { uses: 'i', resistance: 'i', xp: 'i' },
   trait: { id: 'id', name: 's', text: 's', modifiers: 'a', reaction: 'o', dragFree: 'b', flyby: 'b' },
   action: { id: 'id', name: 's', text: 's', time: 's', target: 'o', effects: 'a', uses: 'o', recharge: 'i[]', multiattack: 'a|o' },
   uses: { per: 's', n: 'i' },
@@ -3710,7 +3823,7 @@ export const HOMEBREW_TYPES = Object.freeze({
   grants: { modifiers: 'a', aura: 'o', abilityBonus: 'o', setAbility: 'o', senses: 'o', senseRange: 'o', speeds: 'o|s[]', resist: 's[]', conditionImmune: 's[]', armouredAc: 'i', bareAc: 'i', rangedAttack: 'i', spells: 's[]', bonusActs: 's[]', saves: 's|s[]' },
   aura: { range: 'i|o', modifiers: 'a', immune: 's[]' },
   speedMap: { '*': 'i' }, senseMap: { '*': 'i' }, skillMap: { '*': 'i' }, saveMap: { '*': 'i' }, abilityMap: { '*': 'i' }, levelMap: { '*': 'i|d' },
-  states: { '*': 'o' }, 'trait[]': { '*': 'o' }, 'action[]': { '*': 'o' }, 'modifier[]': { '*': 'o' }, 'trigger[]': { '*': 'o' }, 'use[]': { '*': 'o' }, 'activate[]': { '*': 'o' }, 'attackEntry[]': { '*': 'o' }, 'feature[]': { '*': 'o' }, 'option[]': { '*': 'o' },
+  states: { '*': 'o' }, 'trait[]': { '*': 'o' }, 'legendaryOption[]': { '*': 'o' }, 'action[]': { '*': 'o' }, 'modifier[]': { '*': 'o' }, 'trigger[]': { '*': 'o' }, 'use[]': { '*': 'o' }, 'activate[]': { '*': 'o' }, 'attackEntry[]': { '*': 'o' }, 'feature[]': { '*': 'o' }, 'option[]': { '*': 'o' },
   'step.attack': { attack: 's', kind: 's', bonus: 'i', advantageIf: 's[]', onHit: 'a', onMiss: 'a' },
   'step.save': { save: 's', dc: 'i', half: 'b', advantageIf: 's[]', onFail: 'a', onSuccess: 'a' },
   'step.damage': { damage: 'd', type: 's', times: 'i', onZero: 'a', onKill: 'a', withHit: 'b' },

@@ -25,7 +25,7 @@ const isHexHeader = (map) => {
 
 test("a new map, the valley and every stock map are hex maps of 5-foot cells, in the current format (3 since #836)", () => {
   assert.equal(MAP_FORMAT, 3);
-  assert.equal(VERSION, 31);
+  assert.equal(VERSION, 32);
   for (const map of [newMap(), newGame(1).map, ...STOCK_MAPS.map((m) => m.map).filter((x) => x.grid === "hex")]) {
     isHexHeader(map);
     assert.deepEqual(lintMap(map), map.id === "map" ? ["It has no tiles."] : [], map.id);

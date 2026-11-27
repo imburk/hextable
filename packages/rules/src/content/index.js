@@ -105,6 +105,8 @@ function legacyMonster(m) {
     ...(m.immune.length ? { immune: [...m.immune] } : {}),
     ...(m.resist.length ? { resist: [...m.resist] } : {}),
     ...(m.conditionImmune ? { conditionImmune: [...m.conditionImmune] } : {}),
+    // The legendary block (docs/specs/legendary.md): `makeEntity` copies it onto a creature as `e.legendary` and adds the counters `e.legend`.
+    ...(m.legendary ? { legendary: structuredClone(m.legendary) } : {}),
     ...(m.skills ? { skillBonus: { ...m.skills } } : {}),
     attacks: m.actions.filter(playableAction).map(legacyAttack),
   };

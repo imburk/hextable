@@ -47,7 +47,7 @@ for (const sf of ["off", "casts"]) for (const sc of scenarios(kit(M), sf)) {
     // Recorded at state version 23; the version has moved since (24, #390; 25, #557; 26, #579; 27, #585; 31, #726 job 5) and nothing else in the state: the version is read back as it was, and `packs: []` and `scoreRolls: {}` (also new) are left out (a new game holds none of the places of a world, #579).
     // #523 (addition F of homebrew-subclasses.md) adds `whit:<attacker>:<target>` to a fight's flags after a weapon hit: only those keys are taken out, so the pin still checks everything else is as on main.
     // #836 (swimming): the map is format 3 and each water tile has `"depth":10`; both are put back as they were (format 2, no depth) before hashing.
-    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":31,/, '{"version":23,').replace(/,"depth":10/g, '').replace(/"format":3/g, '"format":2').replace(',"scoreRolls":{}', '').replace(',"packs":[]', '').replace(/"whit:[^"]*":true,?/g, '').replace(',"strikeFirst":"casts"', '').replace(/,"fightSeq":\d+/, '').replace(/,\}/g, '}')));
+    const got = run(M, sc).map((x) => sha(x.replace(/^\{"version":32,/, '{"version":23,').replace(/,"depth":10/g, '').replace(/"format":3/g, '"format":2').replace(',"scoreRolls":{}', '').replace(',"packs":[]', '').replace(/"whit:[^"]*":true,?/g, '').replace(',"strikeFirst":"casts"', '').replace(/,"fightSeq":\d+/, '').replace(/,\}/g, '}')));
     assert.equal(got.length, REC[sc.name].length, "as many results");
     got.forEach((h, i) => assert.equal(h, REC[sc.name][i], `result ${i} of ${got.length} (the last is the state)`));
   });
