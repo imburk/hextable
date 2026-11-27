@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { martial } from './paneltabs.mjs';
-import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab } from './lib.mjs';
+import { tapGuarded, placeBeside, scenario, sleep, wait, state, shown, waitShown, open, playSolo, settle, tapAt, onCanvas, closePanels, openTab, panelTab, openSec, chip, openMenu, tapDie, waitDie } from './lib.mjs';
 
 // ---------- class features that need a choice (#170) ----------
 // A cleric uses Divine Spark in each of its three modes, a druid takes a form and leaves it, a sorcerer
@@ -22,9 +22,10 @@ async function classes(browser, url, label, opts) {
           choices: { metamagic: ['careful', 'quickened'], 'metamagic-10': ['heightened', 'transmuted'], 'elemental-affinity': 'fire' }, spells: ['fire-bolt', 'fireball', 'hold-person', 'haste', 'burning-hands'] },
       };
       const uses = (n, f) => state(page, (S, a) => S.entities[a[0]].uses[a[1]], [ids[n], f]);
-      const pick = async (n) => { await closePanels(page); await tap(page, `#party button:has-text("${n}")`); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
+      const pick = async (n) => { await closePanels(page); await chip(page, n); await wait(page, (i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n]); };
       // The Features tab holds a row for each class feature; the spells and Metamagic are rows of the Spells tab.
-      const feat = async (name) => { await panelTab(page, 'features'); await tap(page, `#ap-features [data-row]:has-text("${name}")`); };
+      // Lay On Hands and Second Wind are rows of the Heal group, not Features (M4: what gives Hit Points back is found in one place).
+      const feat = async (name) => { const g = /^(Lay On Hands|Second Wind)$/.test(name) ? 'heal' : 'features'; await panelTab(page, g); await tap(page, `#ap-${g} [data-row]:has-text("${name}")`); };
       const spellsTab = async () => { await panelTab(page, 'spells'); };
       const tapCreature = (target) => tapGuarded(page, touch, target);
       const newest = (since) => state(page, (S, n) => S.timeline.slice(n).map((e) => e.type), since);
@@ -86,7 +87,7 @@ async function classes(browser, url, label, opts) {
         const form = await state(page, (S, i) => S.entities[i].form, ids.Dru);
         if ((form.block ?? form) !== 'wolf') throw new Error(`form: ${JSON.stringify(form)}`);
         if (!/Wolf form/.test(await page.$eval('#c-res', (x) => x.textContent))) throw new Error('the card does not say the druid is a wolf');
-        await closePanels(page); await tap(page, '#btn-sheet'); await waitShown(page, '#sheet-form');
+        await closePanels(page); await openMenu(page, 'sheet'); await waitShown(page, '#sheet-form');
         if (!/form of a Wolf/.test(await page.$eval('#sheet-form', (x) => x.textContent))) throw new Error('the sheet banner');
         await tap(page, '#sheet [data-leave-form]');
         await wait(page, (i) => !window.hextable.state.entities[i].form, ids.Dru);
@@ -143,7 +144,7 @@ async function classes(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind === 'spell');
         if (!/Quickened: 2 SP/.test(await page.$eval('#hint-text', (x) => x.textContent))) throw new Error('the hint does not carry the Metamagic');
         const tl = await state(page, (S) => S.timeline.length);
-        await tapCreature(foe);
+        await tapCreature(foe); await tapDie(page, touch);
         try { await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['font-of-magic'] === b - 2, [ids.Sorsha, before], 25000); }
         catch { throw new Error(`the cast did not go through; ${await page.evaluate(([f, c]) => { const h = window.hextable, S = h.state; return JSON.stringify([S.entities[f].pos, S.entities[f].hp, S.entities[c].pos, S.encounter?.order[S.encounter.turn]?.id === c, h.R.screenOf(S.entities[f].pos)]); }, [foe, ids.Sorsha])} toast: "${await page.$eval('#toast', (x) => x.hidden ? '' : x.textContent)}", points ${await uses('Sorsha', 'font-of-magic')} of ${before}, mode ${await page.evaluate(() => window.hextable.mode.kind)}`); }
         const types = await newest(tl);
@@ -200,6 +201,7 @@ async function classes(browser, url, label, opts) {
       });
 
       await run.do('Divine Intervention: the cleric picks a spell from the list and casts it with no slot', async () => {
+        await placeBeside(page, ids.Pala, ids.Cleo);       // Cure Wounds is a touch spell: where Pala spawned varies, so stand her next to the cleric (#547)
         await pick('Cleo');
         await feat('Divine Intervention');
         await waitShown(page, '#cp .cp-card');
@@ -209,7 +211,10 @@ async function classes(browser, url, label, opts) {
         await tap(page, '#cp-use');
         await wait(page, () => window.hextable.mode.kind === 'spell' && /no spell slot/.test(document.getElementById('hint-text').textContent));
         const before = await uses('Cleo', 'divine-intervention'), slots = await state(page, (S, i) => JSON.stringify(S.entities[i].slots), ids.Cleo);
-        await tapCreature(ids.Pala);
+        // Cure Wounds has a level to choose (#750 part 2: on the sheet), so the sheet opens (350 ms after it is armed): let it, then close it, as the first tap on the map would
+        await wait(page, () => !document.getElementById('drawer').hidden && !!document.querySelector('#ap-choices:not([hidden])'), null, 5000).catch(() => {});
+        await closePanels(page);
+        await tapCreature(ids.Pala); await tapDie(page, touch);
         await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['divine-intervention'] === b - 1, [ids.Cleo, before], 25000).catch(async (e) => { throw new Error(`${e.message} DIAG ${await page.evaluate(() => { const S = window.hextable.state; return JSON.stringify({ enc: S.encounter && { cur: S.encounter.order[S.encounter.turn].id, order: S.encounter.order.map((o) => o.id) }, mode: window.hextable.mode, toast: document.getElementById('toast').textContent, hint: document.getElementById('hint-text')?.textContent, waiting: window.hextable.waiting, tl: S.timeline.slice(-4).map((t) => t.type) }); })}`); });
         if ((await state(page, (S, i) => JSON.stringify(S.entities[i].slots), ids.Cleo)) !== slots) throw new Error('a spell slot was spent');
       });
@@ -217,11 +222,11 @@ async function classes(browser, url, label, opts) {
       await run.do('Bardic Inspiration: arm it and tap an ally', async () => {
         await pick('Bardo');
         const before = await uses('Bardo', 'bardic-inspiration');
-        await feat('Bardic Inspiration');
+        await panelTab(page, 'features'); await tap(page, '#ap-features [data-row="feat:bardic-inspiration"]');
         await wait(page, () => window.hextable.mode.kind === 'feature');
         await tapCreature(ids.Pala);
         await wait(page, ([i, b]) => window.hextable.state.entities[i].uses['bardic-inspiration'] === b - 1, [ids.Bardo, before], 25000);
-        await pick('Bardo'); await tap(page, '#btn-sheet'); await waitShown(page, '#sheet-reactions');
+        await pick('Bardo'); await openMenu(page, 'sheet'); await waitShown(page, '#sheet-reactions');
         const rx = await page.$$eval('#sheet-reactions [data-rx-set]', (e) => e.map((x) => x.dataset.rxSet));
         if (!rx.includes('countercharm')) throw new Error(`reactions on the bard's sheet: ${rx}`);
       });
@@ -276,7 +281,7 @@ export async function casters(browser, url, label, opts) {
         await page.screenshot({ path: `/tmp/caster-screens/${size}-failed.png` });
         throw new Error(`${sel} stayed covered`);
       };
-      const pick = async (n) => { await closePanels(page); await onTop(`#party button:has-text("${n}")`); await tap(page, `#party button:has-text("${n}")`); await waiting((i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n], 8000); };
+      const pick = async (n) => { await closePanels(page); await chip(page, n); await waiting((i) => window.hextable.state.entities[i] && !document.querySelector('#card').hidden, ids[n], 8000); };
       const feat = async (name) => { await panelTab(page, 'features'); for (let k = 0; k < 4; k++) { await onTop(`#ap-features [data-row]:has-text("${name}")`); await tap(page, `#ap-features [data-row]:has-text("${name}")`); if (await waitShown(page, '#cp .cp-card', true, 2500).then(() => true, () => false)) return; }   // a tap while the list is still scrolling can miss
         await waitShown(page, '#cp .cp-card'); };
       const card = async (why) => {                                        // the card is open, whole on screen, and its buttons are large enough to touch
@@ -377,8 +382,7 @@ export async function casters(browser, url, label, opts) {
         if (!/Overchannel/.test(hint)) throw new Error(`the hint does not say it: ${hint}`);
         const n = await tl();
         await tapCreature(g);
-        await waitShown(page, '#hint-go');                                   // an area: the tap aims it, Cast sends it
-        await tap(page, '#hint-go');
+        await tapDie(page, touch);                                   // an area: the tap aims it, the die sends it
         await waiting((i) => window.hextable.state.entities[i].uses?.overchannel === 1, ids.Wyn);
         const evs = await since(n), notes = evs.filter((e) => e.type === 'note').map((e) => e.text).join(' | ');
         if (!/Overchannel: Fireball deals its maximum damage/.test(notes)) throw new Error(`notes: ${notes}`);
@@ -434,8 +438,8 @@ export async function casters(browser, url, label, opts) {
         if (!/Repelling Blast.*: 5 ft/.test(hint)) throw new Error(`hint: ${hint}`);
         const n = await tl();
         await tapCreature(ids.g4);
-        await waitShown(page, '#hint-go', true, 4000).catch(() => {});       // several beams: Cast sends them at the creatures tapped
-        if (await shown(page, '#hint-go')) await tap(page, '#hint-go');
+        await waitDie(page, true, 4000).catch(() => {});       // several beams: the die sends them at the creatures tapped
+        if (await page.evaluate(() => document.getElementById('btn-menu').classList.contains('waiting'))) await tapDie(page, touch);
         await waiting((k) => window.hextable.state.timeline.slice(k).some((e) => e.type === 'cast' && e.spell === 'eldritch-blast'), n);
       });
 
@@ -512,12 +516,12 @@ export async function casters(browser, url, label, opts) {
         await closePanels(page); await openTab(page, 'dm'); await waitShown(page, '#dm');
         await tap(page, '#qb-add'); await waitShown(page, '#qb');
         await page.selectOption('#qb-class', 'warlock');
-        await page.selectOption('#qb-levelsel', '5');
+        await page.selectOption('#qb-levelsel', '5'); await openSec(page, 'choices');
         const count5 = await text('#count-eldritch-invocations');
         if (count5 !== '0 of 5 chosen') throw new Error(`level 5: ${count5}`);
         const gated = await page.$$eval('#choice-eldritch-invocations [data-option]', (l) => l.filter((x) => /Needs Warlock level/.test(x.textContent)).map((x) => [x.dataset.option, x.querySelector('input').disabled]));
         if (!gated.length || gated.some(([, off]) => !off)) throw new Error(`prerequisites: ${JSON.stringify(gated)}`);
-        await page.selectOption('#qb-levelsel', '15');
+        await openSec(page, 'who'); await page.selectOption('#qb-levelsel', '15'); await openSec(page, 'choices');
         const count15 = await text('#count-eldritch-invocations');
         if (count15 !== '0 of 9 chosen') throw new Error(`level 15: ${count15}`);
         const free = await page.$$eval('#choice-eldritch-invocations input:not(:disabled)', (b) => b.map((x) => x.id));
@@ -525,19 +529,20 @@ export async function casters(browser, url, label, opts) {
         const full = await text('#count-eldritch-invocations');
         const left = await page.$$eval('#choice-eldritch-invocations input:not(:disabled):not(:checked)', (b) => b.length);
         if (full !== '9 of 9 chosen' || left) throw new Error(`at the limit: ${full}, ${left} still open`);
-        await page.fill('#qb-name', 'Builder');
+        await openSec(page, 'who'); await page.fill('#qb-name', 'Builder');
         await shot('build-invocations');
         const box = await page.$eval('#qb', (x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, innerWidth]; });
         if (box[0] < -1 || box[1] > box[2] + 1) throw new Error(`the build screen does not fit: ${box}`);
       });
 
       await step('the build screen: a feat is chosen for each place, and its ability points are placed', async () => {
+        await openSec(page, 'feats');
         const places = await page.$$eval('#qb-feats-pick [data-at]', (b) => b.map((x) => x.dataset.at));
         if (!places.includes('ability-score-improvement-4') || !places.includes('background')) throw new Error(`places: ${places}`);
-        await page.selectOption('#feat-ability-score-improvement-4-id', 'ability-score-improvement');
-        await page.selectOption('#feat-ability-score-improvement-4-a1', 'cha');
-        await page.selectOption('#feat-ability-score-improvement-4-a2', 'con');
-        await page.selectOption('#feat-background-id', 'skilled');
+        await page.check('#feat-ability-score-improvement-4-opt-ability-score-improvement');
+        await page.check('#feat-ability-score-improvement-4-a1-o-cha');
+        await page.check('#feat-ability-score-improvement-4-a2-o-con');
+        await page.check('#feat-background-opt-skilled');
         await wait(page, () => !!document.querySelector('#feat-background input[id*="-skill-"]'), null, 5000);
         await shot('build-feats');
         const probs = await page.$$eval('#qb-problems li', (l) => l.map((x) => x.textContent));

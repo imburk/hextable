@@ -65,6 +65,11 @@ export const CONTENT = { spells: byId(spells), monsters: byId(monsters), summons
 
 // Spells: what the engine and the UI need to know about each, worked out from its data.
 export const SPELLS = Object.fromEntries(spells.map((def) => [def.id, spellProfile(def)]));
+// The roll a spell turns on, by id: 'attack', 'save:str' to 'save:cha', 'none', or null when nothing says (a homebrew spell with no `roll` and a
+// manual step). A table's homebrew spells answer too, while `using` lends them.
+export const spellRoll = (id) => SPELLS[id]?.roll ?? null;
+// The words a list shows for a roll, as short as a level: "Attack", "DEX save", "No roll"; '' when the roll is not known.
+export const rollLabel = (roll) => (roll === 'attack' ? 'Attack' : roll === 'none' ? 'No roll' : /^save:(str|dex|con|int|wis|cha)$/.test(roll ?? '') ? `${roll.slice(5).toUpperCase()} save` : '');
 
 // ---------- bridge to the engine's current shape, for monsters and pregens ----------
 // A monster plays from its actions, as data: each one's effect steps run through the effect
@@ -104,13 +109,15 @@ function legacyMonster(m) {
     attacks: m.actions.filter(playableAction).map(legacyAttack),
   };
 }
-const legacyPregen = ({ id, ...record }) => structuredClone(record);
+const legacyPregen = ({ id, sheet, ...record }) => structuredClone(record);
 // What a creature carries of each action: everything but the text, which stays in the pack.
 const runtimeAction = ({ text, ...a }) => structuredClone(a);
 
 const table = (list, make) => Object.fromEntries(list.map((e) => [e.id, make(e)]));
 export const MONSTERS = table(monsters, legacyMonster);
 export const PREGENS = table(pregens, legacyPregen);
+// The build sheet each starter hero is made from (derive.js); a new game keeps a copy on the hero.
+export const PREGEN_SHEETS = table(pregens, (p) => structuredClone(p.sheet));
 export const MONSTER_ACTIONS = table(monsters, (m) => m.actions.map(runtimeAction));
 
 // ---------- what one entry adds to the lookups above (content/registry.js) ----------

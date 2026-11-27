@@ -3,18 +3,21 @@
 import { actionProfile, loadOf, stepKind, walk, WORK } from '../effects.js';
 import { effectsOf, startEffect } from '../durations.js';
 import { apart, FT } from '../space.js';
+import { checkHitChoices } from '../hitchoices.js';
 import { canReact, checkInstructions, instruction, reactionsOf, underEffect } from '../reactions.js';
 import { able, ask, control, current, ent, fail, featOf, ft, hostile, inFight, need, steering, tellDM, unblocked, up, walled } from './shared.js';
-import { rollMode } from './rolls.js';
-import { aimAction, holdsOf, showPlace } from './world.js';
+import { grantOf, rollMode, withGrant } from './rolls.js';
+import { aimAction, holdsOf, shellRefusal, showPlace } from './world.js';
 import { SIZES } from '../content/schema.js';
-import { SPELLS } from '../content/index.js';
+import { CONTENT, SPELLS } from '../content/index.js';
 import { attackRefusal, freshAction, handsFull, isLoading, isUnarmed, steadiest } from '../weapons.js';
 import { canSee } from '../sight.js';
 import { conditionName, speedOf } from '../modifiers.js';
-import { advanceTurn, checkEnd, damage, engage, findFor, finishTurn, heavyWeak, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, unfind } from './resolve.js';
+import { advanceTurn, checkEnd, confusedFoe, confusedOnly, damage, engage, findFor, finishTurn, heavyWeak, hitNamed, mountAct, resolveAttack, runAction, seesFor, sensesFor, startEncounter, strikeOption, strikesFirst, strikeStart, thenFight, unfind } from './resolve.js';
 import { unknown } from '../vision.js';
 import { roll } from '../rng.js';
+import { handlers as featureHandlers } from './features.js';
+import { isWeapon, weaponKey } from '../imbue.js';
 
 function checkRange(s, e, t, atk) {
   const d = apart(s, e, t);
@@ -78,13 +81,13 @@ function partFull(s, e, def, targets) {
 function reactToAttacker(s, e, ev) {
   if (!s.encounter || e.object || !up(e) || !inFight(s, e.id)) return true;
   for (const t of Object.values(s.entities)) {
-    if (t.id === e.id || t.object || t.actions || !hostile(t, e) || !canReact(t) || !inFight(s, t.id)) continue;
+    if (t.id === e.id || t.object || t.actions || t.melded || !hostile(t, e) || !canReact(t) || !inFight(s, t.id)) continue;      // a creature merged with stone reacts to nothing
     for (const r of reactionsOf(t)) {
       if (r.kind !== 'feature' || r.on !== 'attacks' || !underEffect(s, t, r.reaction.of, e)) continue;
       const w = instruction(t, r, s);
       if (w === 'never') continue;
       const d = apart(s, t, e) * FT;
-      const atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !a.spell && !isUnarmed(a) && !handsFull(s, t, a) && d <= (a.reach ?? 5)));
+      const atk = steadiest(t, (t.attacks ?? []).filter((a) => a.type === 'melee' && !a.spell && !isUnarmed(a) && !handsFull(s, t, a) && d <= (a.reach ?? 5)), s);
       if (!atk || !unblocked(s, t, e) || !sensesFor(s, t, e)) continue;
       if (w === 'ask') {
         // An attacker the party is not told of is not named in the question.
@@ -113,10 +116,18 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   const { targets, hexes, origin } = aimAction(s, e, def, a, false, ctx);
   partFull(s, e, def, def.target.creature ? targets : null);
   const p = actionProfile(def);
-  if (!s.encounter && p.harmful && targets !== null && !def.target.self) {          // roll initiative first
+  // Outside a fight a harmful action at others starts the fight and is not taken (the SRD's way): it is taken on the
+  // creature's turn. With the table rule `strikeFirst` at 'all', one at a creature of another side lands first, then the
+  // fight starts (resolve.js, strikesFirst and thenFight; E23 as amended by #585).
+  let lands = null;
+  if (!s.encounter && p.harmful && targets !== null && !def.target.self) {
+    // Where the actor and its target stand is shown first, either way (review of #594, M2): so a creature in a place
+    // the party has not seen is in the fight it starts. These reveals come before the act's events (outside what
+    // thenFight marks unseen), as with the rule off and for a weapon attack.
     showPlace(s, e, ev);
     if (def.target.creature) showPlace(s, targets[0], ev);
-    return def.target.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);
+    if (!strikesFirst(s, e, targets, 'act', ctx)) return def.target.area ? startEncounter(s, e.pos, ev) : engage(s, e, targets[0], ev);   // roll initiative first
+    lands = strikeStart(s, ev);
   }
   if (s.encounter) {
     const b = s.encounter.budget, time = def.time ?? 'action', pooled = time === 'action' && fromPool(b, def.id);
@@ -128,6 +139,7 @@ function takeAction(s, e, def, a, ev, ctx = null) {
   if (def.uses) (e.charges ??= {})[def.id] = (e.charges[def.id] ?? def.uses.n) - 1;
   if (s.encounter && isAttack(def) && !reactToAttacker(s, e, ev)) return checkEnd(s, ev);        // addition I: a creature under an effect of a foe's attacks
   runAction(s, e, def, targets, hexes, origin, ev);
+  if (lands) thenFight(s, e, ev, lands, { area: !!def.target.area, target: targets[0] });
   checkEnd(s, ev);
 }
 
@@ -260,7 +272,7 @@ function familiarAttack(s, a, ctx, ev) {
   f.bond?.to === m.id || fail(`${f.name} is not bonded to ${m.name}.`);
   const spell = (forgo ?? quick).spell;
   (f.bond.kind === 'familiar' && f.bond.source === spell) || fail(`${f.name} is bonded to ${m.name}, but is not a familiar from ${SPELLS[spell]?.name ?? spell}, which ${via.name} needs.`);
-  (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey are not for a familiar's attack.`);
+  (a.brutal === undefined && a.cunning === undefined && a.prey === undefined && a.onHit === undefined) || fail(`Brutal Strike, Cunning Strike, Superior Hunter's Prey and choices after a hit are not for a familiar's attack.`);
   noStrikeFields(a);                                                // its attacks are a pack monster's actions
   s.encounter || fail(`${via.name} works in a fight. Start one first.`);
   need(s, m, quick ? 'bonus' : null);
@@ -296,6 +308,20 @@ function familiarAttack(s, a, ctx, ev) {
 }
 
 // Fields only the Unarmed Strike reads: a pack monster's action has none of them (its stat block says how it grapples).
+// `use: <feature id>` on an attack (docs/specs/on-hit.md, Decision 8): a feature whose action has `withAttack` (Sacred Weapon), used when its creature takes the
+// Attack action, on the attack that takes it: in a fight, a weapon's own attack (not an Unarmed Strike or a pooled, Bonus Action or Flurry attack), the Damage
+// option. The feature's own price and the weapon's fit are checked when it is used (a refusal then puts the whole attack back). Returns the feature's id.
+function useWithAttack(s, e, a, atk, option, flurry, bonusTime, pooled) {
+  const f = typeof a.use === 'string' ? featOf(e, a.use) : null;
+  (f?.action?.withAttack) || fail(`${e.name} has no feature that is used with the Attack action by that name.`);
+  isWeapon(atk) || fail(`${f.name} changes a weapon: attack with a weapon.`);
+  option === 'damage' || fail(`${f.name} goes with a weapon attack that does damage.`);
+  !(flurry || bonusTime || pooled) || fail(`${f.name} is used when ${e.name} takes the Attack action: it goes with the attack that takes the action, not a later one, a Bonus Action one or a Flurry of Blows one.`);
+  const melee = (f.action.effects ?? []).find((st) => st.imbue)?.imbue;
+  if (melee?.melee && CONTENT.weapons[atk.weapon]?.kind !== 'melee') fail(`${f.name} changes a Melee weapon; ${atk.name} is not one.`);
+  return f.id;
+}
+
 function noStrikeFields(a) {
   ((a.option ?? 'damage') === 'damage' && a.shove === undefined && !a.grab) || fail('Grapple and Shove are options of the Unarmed Strike, and Punch and Grab goes with it.');
 }
@@ -338,7 +364,7 @@ function grabFor(s, e, pooled, flurry, bonusTime) {
   return true;
 }
 
-export const handlers = {
+const base = {
 
   // { type: 'attack', actor, target, attack }. A creature with actions (made from a pack
   // monster) attacks with the action of that id; others with their flat attack records.
@@ -347,9 +373,13 @@ export const handlers = {
     if (a.familiar !== undefined) return familiarAttack(s, a, ctx, ev);
     const e = ent(s, a.actor), t = ent(s, a.target); control(s, e, ctx);
     !e.bond?.noAttack || fail(`${e.name} can't attack.`);          // a familiar (docs/specs/companions.md, Decision 1)
+    const foe = confusedFoe(s, e);                                    // Confusion (resolve.js `confusedOn`): on this turn its one attack is at the creature the dice chose
+    foe === null || foe === t.id || fail(`${e.name} is Confused: its attack this turn is at ${s.entities[foe]?.name ?? 'the creature the dice chose'}.`);
     const def = e.actions?.find((x) => x.id === a.attack && !x.multiattack);
     if (def) {
       noStrikeFields(a);
+      a.use === undefined || fail('A feature used with the Attack action goes with a weapon attack.');
+      a.onHit === undefined || fail('A choice after a hit goes with a weapon or an Unarmed Strike attack.');
       (a.brutal === undefined && a.cunning === undefined && a.prey === undefined) || fail(`Brutal Strike, Cunning Strike and Superior Hunter's Prey go with a weapon or an Unarmed Strike.`);
       up(e) || fail(`${e.name} is down.`);
       able(e);
@@ -364,9 +394,24 @@ export const handlers = {
     e.id !== t.id || fail("A creature can't attack itself.");
     checkRange(s, e, t, atk);
     walled(s, e, t);
+    if (atk.type === 'melee') { const why = shellRefusal(s, e, t, atk.reach); if (why) fail(why); }          // Antilife Shell: no reaching through it
     const option = optionOf(s, e, t, atk, a);
+    a.use === undefined || s.encounter || fail('A feature used with the Attack action is used on a turn in a fight.');
+    a.onHit === undefined || (s.encounter && option === 'damage') || fail('A choice named for a hit goes with a damaging attack on a turn in a fight.');
+    // Outside a fight the attack starts the fight and is not made (the SRD's way): it is made on the attacker's turn. With
+    // the table rule `strikeFirst` at 'all', an attack at a creature of another side is made first, a plain one (what needs a
+    // turn in a fight is refused before anything changes), then the fight starts (resolve.js, thenFight; #585).
+    const first = !s.encounter && strikesFirst(s, e, [t], 'attack', ctx);
+    if (first) (a.brutal === undefined && a.cunning === undefined && a.prey === undefined && !a.grab) || fail('Brutal Strike, Cunning Strike, Superior Hunter\'s Prey and Punch and Grab go with an attack on a turn in a fight. An attack made before the fight starts is a plain one.');
     showPlace(s, e, ev); showPlace(s, t, ev);
-    if (!s.encounter) return engage(s, e, t, ev);                 // roll initiative first
+    if (!s.encounter && !first) return engage(s, e, t, ev);       // roll initiative first
+    if (first) {
+      const lands = strikeStart(s, ev);
+      if (option !== 'damage') strikeOption(s, e, t, atk, option, a.shove, ev);
+      else resolveAttack(s, e, t, atk, ev);
+      thenFight(s, e, ev, lands, { target: t });
+      return checkEnd(s, ev);
+    }
     const b = s.encounter.budget;
     // Attacks a feature gave this turn (Flurry of Blows) come first; then a Bonus Action attack
     // (the Monk's Unarmed Strike); then those Extra Attack left; then the Attack action.
@@ -381,6 +426,8 @@ export const handlers = {
     const slot = flurry || bonusTime ? 'bonus' : 'action';
     need(s, e, flurry || pooled ? null : bonusTime ? 'bonus' : 'action');
     inFight(s, t.id) || fail(`${t.name} is outside the battle.`);
+    const using = a.use === undefined ? null : useWithAttack(s, e, a, atk, option, flurry, bonusTime, pooled);
+    const named = hitNamed(s, e, atk, a.onHit, bonusTime ? 1 : 0);      // what to do if it hits (on-hit.md, Decision 1): checked before anything is spent
     const brutal = a.brutal === undefined ? null : brutalFor(s, e, t, atk, a.brutal);
     const cunning = a.cunning === undefined ? null : cunningFor(s, e, t, atk, a.cunning);
     const prey = a.prey === undefined ? null : preyFor(s, e, t, a.prey);
@@ -395,13 +442,15 @@ export const handlers = {
       if (e.features.extraAttack) b.attacks = [[{ action: null, left: e.features.extraAttack + (surged ? b.attacks[0][0].left : 0) }]];
       attackActionTaken(s, e, ev);
     }
+    // Sacred Weapon and the like: "When you take the Attack action", paid and imbued before the roll, so this first attack has it.
+    if (using) { featureHandlers.feature(s, { type: 'feature', actor: e.id, feature: using }, ctx, ev, { withAttack: true, weapon: weaponKey(atk) }); }
     if (isLoading(atk)) (b.loaded ??= []).push(`${slot}:${atk.id}`);
     if (brutal) s.encounter.flags[`brutal:${e.id}`] = true;
     if (option === 'damage' && !reactToAttacker(s, e, ev)) return checkEnd(s, ev);              // addition I: a creature under an effect of a foe's attacks
     const from = ev.length;
     if (option !== 'damage') strikeOption(s, e, t, atk, option, a.shove, ev);
     else {
-      resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning });
+      resolveAttack(s, e, t, atk, ev, {}, { brutal, cunning, onHit: named });
       // Punch and Grab: the Grapple option too, only if the Damage hit, and only then is it used for the turn.
       const last = ev.slice(from).findLast((x) => x.type === 'attack' && x.actor === e.id && x.target === t.id);
       if (grab && last?.hit) {
@@ -425,6 +474,7 @@ export const handlers = {
   act(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     const def = e.actions?.find((x) => x.id === a.action) || fail(`${e.name} has no such action.`);
+    { const foe = confusedFoe(s, e); if (s.encounter?.flags?.[`confused:${e.id}`] && current(s) === e.id && !(foe !== null && foe === a.target && isAttack(def))) confusedOnly(s, e, 'take that action'); }
     noStrikeFields(a);
     !e.bond?.noAttack || !isAttack(def) || fail(`${e.name} can't attack.`);
     up(e) || fail(`${e.name} is down.`);
@@ -456,6 +506,7 @@ export const handlers = {
   },
   dodge(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
+    confusedOnly(s, e, 'Dodge');
     s.encounter || fail('Dodge only matters in a fight.');
     if (steering(s, e)) return mountAct(s, e, a, 'Dodge', ev);          // a controlled mount: from its own action, on its rider's turn (C6a)
     need(s, e, 'action');
@@ -476,6 +527,17 @@ export const handlers = {
     if (Object.keys(out).length) e.reactions = out; else delete e.reactions;
     ev.push({ type: 'reactionsSet', id: e.id, set: { ...a.set } });
   },
+  // { type: 'hitChoices', actor, set: { [choice id]: when } }: standing instructions for what a creature may do after its attack hits (hitchoices.js; docs/specs/on-hit.md,
+  // Decision 5): ask, crit, always or never. Set by whoever controls it at any time. Private to its controller and the DM (view.js).
+  hitChoices(s, a, ctx, ev) {
+    const e = ent(s, a.actor); control(s, e, ctx);
+    const bad = checkHitChoices(e, a.set);
+    if (bad) fail(bad);
+    const out = { ...(e.hitChoices ?? {}) };
+    for (const [k, w] of Object.entries(a.set)) out[k] = w;      // kept whatever it is, so a claim or a release does not turn a choice into the other default
+    if (Object.keys(out).length) e.hitChoices = out; else delete e.hitChoices;
+    ev.push({ type: 'hitChoicesSet', id: e.id, set: { ...a.set } });
+  },
   endTurn(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     (s.encounter && current(s) === e.id) || fail(`It isn't ${e.name}'s turn.`);
@@ -490,3 +552,12 @@ export const handlers = {
   },
 };
 
+// `attack` and `act` take the DM's `adv` ('advantage' | 'disadvantage'): a source of Advantage or Disadvantage on the attack rolls the actor
+// makes in the action, combined with the others by the SRD's rule (rolls.js, withGrant). A player sending it is refused, changing nothing.
+const granted = (fn) => (s, a, ctx, ev) => {
+  const mode = grantOf(a, ctx);
+  if (!mode) return fn(s, a, ctx, ev);
+  a.familiar === undefined || fail("A familiar's attack takes no Advantage or Disadvantage from the DM.");
+  return withGrant(s, ent(s, a.actor), mode, ev, () => fn(s, a, ctx, ev));
+};
+export const handlers = { ...base, attack: granted(base.attack), act: granted(base.act) };

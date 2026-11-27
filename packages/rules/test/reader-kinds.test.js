@@ -33,7 +33,11 @@ const EXTRA_MONSTERS = [
   // What strict mode refused from #421 on (DEBT T54): a spell attack, healing that adds a modifier, and a creature target with no reach or range, in a creature's action.
   { id: 'hb-rk-flawed', name: 'Flawed Reaver', source: 'homebrew:rk', size: 'medium', type: 'fiend', cr: 3, xp: 700, pb: 2, ac: 14, hp: 50, speed: { walk: 30 }, abilities: { str: 14, dex: 12, con: 12, int: 10, wis: 10, cha: 10 },
     resist: [], vulnerable: [], immune: [], traits: [], tier: 'assist', checked: false, text: 'Invented for the reader tests: actions the engine cannot run as written.',
-    actions: [{"id": "spell-lash", "name": "Spell Lash", "text": "Flawed: a spell attack.", "target": {"creature": {"reach": 10}}, "effects": [{"attack": "melee", "kind": "spell", "onHit": [{"damage": "2d8", "type": "force"}]}]}, {"id": "siphon", "name": "Siphon", "text": "Flawed: heals with a modifier.", "target": {"self": true}, "effects": [{"heal": "1d8", "addMod": true}, {"tempHp": "1d6", "addMod": true}]}, {"id": "blind-grip", "name": "Blind Grip", "text": "Flawed: no reach or range.", "target": {"creature": {}}, "effects": [{"save": "str", "dc": 17, "onFail": [{"damage": "3d8+5", "type": "bludgeoning"}, {"condition": "grappled"}]}]}] },
+    actions: [{"id": "spell-lash", "name": "Spell Lash", "text": "Flawed: a spell attack.", "target": {"creature": {"reach": 10}}, "effects": [{"attack": "melee", "kind": "spell", "onHit": [{"damage": "2d8", "type": "force"}]}]}, {"id": "siphon", "name": "Siphon", "text": "Flawed: heals with a modifier.", "target": {"self": true}, "effects": [{"heal": "1d8", "addMod": true}, {"tempHp": "1d6", "addMod": true}]}, {"id": "blind-grip", "name": "Blind Grip", "text": "Flawed: no reach or range.", "target": {"creature": {}}, "effects": [{"save": "str", "dc": 17, "onFail": [{"damage": "3d8+5", "type": "bludgeoning"}, {"condition": "grappled"}]}]},
+      // A creature-type limit on a creature target is a spell's (#727): the linter refuses it in a creature's action, and the reader says so.
+      {"id": "man-catcher", "name": "Man Catcher", "text": "Flawed: a creature-type limit, which is a spell's.", "target": {"creature": {"reach": 5, "types": ["humanoid"]}}, "effects": [{"save": "str", "dc": 13, "onFail": [{"condition": "grappled"}]}]},
+      // Aiming at a dead creature is a spell's too (#726 job 6).
+      {"id": "grave-robber", "name": "Grave Robber", "text": "Flawed: aimed at the dead, which is a spell's.", "target": {"creature": {"reach": 5, "dead": true}}, "effects": [{"save": "str", "dc": 13, "onFail": [{"condition": "grappled"}]}]}] },
 ];
 const monsters = () => [...PACK.monsters, ...EXTRA_MONSTERS];
 const readingOf = (kind, e) => { const r = readEntry(kind, e); return [`== ${kind} ${e.id}`, ...r.lines, ...r.doesNot.map((x) => `DM: ${x}`), ...r.problems.map((x) => `PROBLEM: ${x}`), ''].join('\n'); };
@@ -110,11 +114,12 @@ test('the golden monsters use every field, shape, step, hook and op the strict l
   assert.deepEqual([...traitKeys].sort(), keysOf(HOMEBREW_TYPES.trait));
   assert.deepEqual([...actionKeys].sort(), keysOf(HOMEBREW_TYPES.action));
   assert.deepEqual([...creatureKeys].sort(), keysOf(HOMEBREW_TYPES.creature));
-  assert.deepEqual([...areaKeys].sort(), keysOf(HOMEBREW_TYPES.area));
+  assert.deepEqual([...areaKeys].sort(), keysOf(HOMEBREW_TYPES.area).filter((k) => k !== 'placed'), '`placed` (a wall) is for a spell: no monster action has one');
   assert.deepEqual([...shapes].sort(), ['cone', 'cube', 'cylinder', 'emanation', 'line', 'sphere']);
-  assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter').sort(), 'a creature\'s action cannot hold a summon or a counter step');
-  assert.deepEqual([...branches].sort(), [...BRANCHES].sort());
-  assert.deepEqual([...hooks].sort(), [...HOOKS].sort());
+  assert.deepEqual([...steps].sort(), STEPS.filter((s) => s !== 'summon' && s !== 'counter' && s !== 'imbue' && s !== 'revive' && s !== 'eachTurn' && s !== 'endSpell' && s !== 'arm' && s !== 'command' && s !== 'ward' && s !== 'confuse' && s !== 'sense' && s !== 'cut' && s !== 'meld' && s !== 'resize').sort(), 'a creature\'s action cannot hold a summon, a counter, an imbue, a revive, an eachTurn, an endSpell, an arm, a command, a ward, a confuse, a sense, a cut, a meld or a resize step');
+  assert.deepEqual([...branches].sort(), BRANCHES.filter((b) => b !== 'eachTurn').sort());
+  // `senses` (True Seeing) is a modifier step of a spell: the linter refuses it in a monster's trait (an action's modifier step is not refused), and no golden monster action uses it (reader.test.js reads it in a spell). `surface` (Water Walk) and `leap` (Jump) likewise.
+  assert.deepEqual([...hooks].sort(), HOOKS.filter((h) => h !== 'senses' && h !== 'surface' && h !== 'leap').sort());
   // `proficient` (addition C of docs/specs/homebrew-subclasses.md) is for a modifier step of a subclass feature's action: the linter refuses it in a monster's trait or action, so no golden monster uses it.
   assert.deepEqual([...ops].sort(), OPS.filter((o) => o !== 'proficient').sort());
   assert.deepEqual([...moves].sort(), [...MOVE_MODES].sort());

@@ -16,7 +16,7 @@ the combat tracker, the context action panel, what happens when a fight is
 lost or won, the log, and where preferences and table settings live. It says
 what the engine already gives, what it must add, and the order to build in.
 
-Built (as of 16 November): T1, T2, T3, T4a, T4b, T4e, T4f (for casts only), T5e, T5c, T6e, T6c, T6g, T7e and T7c. T3b (the lead rule) is built in part: the engine and the formation popup let a player lead, but the Explore tab's always-shown row and the lead mark were not checked.
+Built (as of 16 November): T1, T2, T3, T4a, T4b, T4e, T4f (for casts only; since #585 a table rule: off, casts, or casts, attacks and `act`), T5e, T5c, T6e, T6c, T6g, T7e and T7c. T3b (the lead rule) is built in part: the engine and the formation popup let a player lead, but the Explore tab's always-shown row and the lead mark were not checked.
 
 Nothing here changes a rule except one: when a fight is lost (Decision 1). It
 is marked there. Everything else is presentation, or new records the engine
@@ -250,7 +250,7 @@ makes two.
 
 | Today (`index.html`) | Goes to |
 |---|---|
-| `#btn-undo` | Stays in the top bar for the DM: undoing must be one tap. |
+| `#btn-undo`, `#btn-redo` | Both stay in the top bar for the DM (#654): undoing must be one tap. Arrows only on a phone, words on a computer; each disabled when there is nothing to take back or put back. What a press would do ("Undo takes back: ...") shows only on a long hover or a 0.5 s press-hold (`undobar.js`, the scroll card of `scrolltip.js`); a hold does not also undo. Players never see them. The pop-outs (#626) keep Undo in the main window only. |
 | `#btn-tracker`, `#tracker` | Tab Turns / Party. The button is removed; `createTracker` gets the drawer section as its `root`. |
 | `#btn-log`, `#log` (`#log-list`, `#note-form`) | Tab Log. `#note-form` stays with it. |
 | In `#log`: `.dice-prefs`: `#dice-show`, `#pace-pick`, `#dice-auto-mine`, `#pace-table` | Tab Settings. They are device preferences. |
@@ -1015,7 +1015,7 @@ in the next section.
 | E18 | Items that do things (potions, scrolls, wands with charges): an `items` content kind reusing the effect steps, and an `item` action. | content, action | controller, DM | — | — | later | not scheduled |
 | E19 | The monster AI may attack a creature at 0 Hit Points (SRD: within 5 ft, a critical hit that adds failures). Only if the owner says so (question 1). | AI | engine | — | — | no | after 5 |
 | E20 | Stepping away (#300, the owner's first comment on #246): `stepAway { actor, how? }`, `stepBack { actor }`, settings `away` and `breaks`. Built; see the build notes, "E20: stepping away". | actions, settings | controller (as `breaks` allows), DM | everything | their party's `away` field and events only | 22 (turn stamps) | the tracker control, the break button |
-| E23 | **A hostile cast at a party member lands, then the fight starts** (the owner, 15 November 2026, body item 8 of #193; it was dropped, DEBT T7). With `autoEngage` on and no fight, the DM's `cast` of a harmful spell at a party member runs its steps (slot spent, saves, damage, conditions) and **then** starts the fight; before #372 `casting.js` returned into `startEncounter` or `engage` before anything resolved, so the cast was lost. **Built for casts only (#372; see the build note "E23: a hostile cast lands, then the fight starts").** The DM's `attack` and a monster's `act` are not built: the proposal below that they land too is unconfirmed (DEBT W30), and so is the round-1 action (`CAST_TAKES_FIRST_ACTION`, `false`). Proposals for the details (design choice, lead's proposal): the fight starts after the cast has resolved and the events are kept in order (`castEnd`, then `encounterStart`); initiative is rolled as it is today; the caster's Action for round 1 counts as used, the slot is spent once and not again; a spell that kills or drops the whole party can end the fight the moment it starts (the defeat rules of Decision 1 apply). The same drop exists for `attack` and monster `act` (`attacks.js`, the `autoEngage` branch before `engage`); to be consistent the lead proposes they land too, which the owner has not said and is to confirm. A rejected cast still changes nothing. | action, `casting.js`, `attacks.js` | DM (and a player's cast, if the owner confirms the proposal) | everything | the events as for any cast, then the fight's events | no | none |
+| E23 | **Amended by #585 (the owner, 20 November 2026, 06:50 ET): the SRD by default, landing first a table rule, `strikeFirst`.** Off (the default for a new table): an attack, a hostile cast or a monster's action outside a fight starts the fight and is not made; everyone rolls Initiative, and the creature makes it on its turn (Surprise, Disadvantage on Initiative for a surprised creature, is not built: DEBT W31). The DM chooses in the Fight section ("Strike first": Off (SRD) / Spells only / Spells and attacks). 'casts' (Spells only) is the rule #372 built, unchanged: the DM's hostile cast at a party member lands first, only while "Start a fight when the party comes near enemies" (`autoEngage`) is on. 'all' (Spells and attacks): a hostile cast, a character's attack and a monster's `act` at a creature of another side, by the DM or a player, land first, then the fight starts, with the guarantees below; `autoEngage` plays no part. A table saved before state version 27 gets 'casts' where `autoEngage` was on, else 'off', and plays exactly as it did. See the build note "Strike first (#585)". What follows is the row as #372 had it. **A hostile cast at a party member lands, then the fight starts** (the owner, 15 November 2026, body item 8 of #193; it was dropped, DEBT T7). With `autoEngage` on and no fight, the DM's `cast` of a harmful spell at a party member runs its steps (slot spent, saves, damage, conditions) and **then** starts the fight; before #372 `casting.js` returned into `startEncounter` or `engage` before anything resolved, so the cast was lost. **Built for casts only (#372; see the build note "E23: a hostile cast lands, then the fight starts").** The DM's `attack` and a monster's `act` are not built: the proposal below that they land too is unconfirmed (DEBT W30), and so is the round-1 action (`CAST_TAKES_FIRST_ACTION`, `false`). Proposals for the details (design choice, lead's proposal): the fight starts after the cast has resolved and the events are kept in order (`castEnd`, then `encounterStart`); initiative is rolled as it is today; the caster's Action for round 1 counts as used, the slot is spent once and not again; a spell that kills or drops the whole party can end the fight the moment it starts (the defeat rules of Decision 1 apply). The same drop exists for `attack` and monster `act` (`attacks.js`, the `autoEngage` branch before `engage`); to be consistent the lead proposes they land too, which the owner has not said and is to confirm. A rejected cast still changes nothing. | action, `casting.js`, `attacks.js` | DM (and a player's cast, if the owner confirms the proposal) | everything | the events as for any cast, then the fight's events | no | none |
 
 Nothing in E1 to E20 lets a client send what the engine should compute: the
 client sends `conclusion`, `pass`, `rewind` and the existing actions, and
@@ -1037,7 +1037,7 @@ checked at 390 x 844 with touch and at 1280 x 800 (`npm run smoke` by hand).
 | T3 | **The action panel shell.** `actionpanel.js`: the head, status line with how-it-ends cards, and tabs by `panelContext`; the **Explore** and **Reactions** tabs from what exists (`usesFor`, Follow, Search, Hide, `reactionsHtml`); one temporary tab, "All", holding today's `#actions` bar unchanged so nothing is lost before T4; compact and raised heights; the `panelTab` preference. E15 and E16 optional beside it. | client agent (engine lane for E15, E16) | `packages/client/index.html`, `style.css`, `app.js`, `actionpanel.js` (new), `reactionsheet.js`, `features.js` (export only) | Exploring shows Explore first with the ranking of Decision 6, the DM's rest buttons, no Lead the party for a player; on another's turn Reactions is greyed with a reason or, with a pending prompt, active and pulsing while `#rp` still answers; the map stays tappable at both sizes; `panelContext` and `rankExplore` have tests. |
 | T3b | **The lead rule.** Decision 6's "The lead": Lead the party always shown in the Explore tab (greyed with its reason, never hidden), the lead mark on the leader's chip and pawn, the log line and the toast to the previous leader, Give the lead on each row of the DM's marching order. The engine needs no change: one test pins that a second `partyFollow` by another controller takes the lead and puts the old leader behind, that the DM may give it to any party character outside a fight, and that a fight refuses it. After E22 (built). | client agent (the test: engine lane reviews) | `packages/client/actionpanel.js`, `app.js` (`describe`, the toast, the lead mark), `tracker.js`, `formation.js` (the DM's row), `packages/client/test/`, `packages/rules/test/` (the pinning test only), `scripts/smoke/formation.mjs` | at both sizes, two players and the DM: both see Lead the party at all times; each tap takes the lead and the log says who; the previous leader is told; the DM gives it to a third character; in a fight the row is greyed with the engine's sentence; no page errors |
 | T4e | **Spell kinds.** E12 (and E14 `stand` if taken). **Amended 15 November 2026:** the optional spell field `kinds` (schema amendment), `spellKinds` preferring it, and every spell tagged by hand. | engine lane | `packages/rules/src/effects.js`, `content/schema.js`, `content/srd52/spells*.js`, `engine.js` (only if E14), `tests/` | `spellKinds` returns kinds for every spell; the test prints the split and fails on an untagged manual spell; a tag outside `SPELL_KINDS` or a repeat is refused by `lintPack`; the derived kinds are unchanged for an untagged spell. |
-| T4f | **A hostile cast lands, then the fight starts.** E23. *Built for casts (#372); `attacks.js` not touched: attacks and a monster's `act` wait for the owner (DEBT W30).* | engine lane | `packages/rules/src/engine/casting.js`, `attacks.js` (if confirmed), `docs/DEBT.md` (strike the T7 note), `tests/` | With `autoEngage` on and no fight, a DM's harmful cast at a party member deals its damage or applies its condition, spends the slot once, and then the fight starts with the events in that order; with `autoEngage` off nothing changes; a rejected cast changes nothing; the same replays from the seed. |
+| T4f | **A hostile cast lands, then the fight starts.** E23. *Built for casts (#372); since #585 a table rule, `strikeFirst` ('off' by default; 'casts' as #372 built it; 'all' adds attacks and a monster's `act`; DEBT W30 decided by the owner).* | engine lane | `packages/rules/src/engine/casting.js`, `attacks.js` (if confirmed), `docs/DEBT.md` (strike the T7 note), `tests/` | With `autoEngage` on and no fight, a DM's harmful cast at a party member deals its damage or applies its condition, spends the slot once, and then the fight starts with the events in that order; with `autoEngage` off nothing changes; a rejected cast changes nothing; the same replays from the seed. |
 | T4a | **Attacks, Bonus, Move, Features tabs.** Rows with visible reasons; Bonus built as the filter described; Move with the budget, standard actions, objects in reach, fly; Features with pips and recharge text; "All" removed once these cover what it held. | client agent | `actionpanel.js`, `app.js` (the `refresh()` bar code is removed), `features.js`, `classes.js` (only where it returns buttons), `style.css`, `tests/` | Every button the old bar built has a row; a greyed row names its reason on screen; Second Wind, Dash, Disengage, Hide, Search, objects and fly rows behave as before; the choosers still open; monsters' `actions` list under Attacks. |
 | T4b | **Spells and Items tabs.** The slot strip, sort, filters, the Kind chip from `sp.kinds`, Cantrips and Prepared, Can cast now, the Class chip hidden until #175, Metamagic entry, Items as gear and light. | client agent | `actionpanel.js`, `style.css`, `tests/` | The slot strip is visible whatever the sort; sort and each filter work and combine; a spell greyed shows its reason, including "Nobody within N ft"; a spell armed collapses the panel on a phone and cancelling restores it; sort order is remembered. |
 | T5e | **Defeat, engine.** E1, E2, E3. | engine lane | `packages/rules/src/engine.js`, `history.js`, `packages/server/src/tables.js`, `packages/client/transport.js` (`rewind`, pins), `packages/server/README.md`, `docs/DEBT.md` (strike W10 where fixed), `tests/` | A party all at 0 keeps fighting until saves resolve; a 20 revives; all-Stable or all-dead ends in `defeat`; `rewind` restores the fight start with new dice and Undo takes it back; a pin survives a server restart and is dropped by `loadMap`; players cannot send `rewind`. |
@@ -1816,7 +1816,7 @@ following, which stays as it was.
   one dead or gone, or no longer following, is dropped from `slots` when the leader next walks.
 - **Accepted (review of #310).** A party-side creature the DM hid that stands on a slot's place changes the shape
   without a word (the follower takes another place), as a plain `move` onto that cell says "occupied".
-- **Fight start.** Unchanged: `catchUp` brings everyone up as before (followers are set down, not walked).
+- **Fight start.** `catchUp` brings everyone up (followers are set down, not walked). Amended by E-P4 (#615): see the build notes of `docs/specs/player-screen.md`.
 - **Also in this PR.** `joinEncounter` (world.js) renames stamps still in the old index form before it re-sorts the
   order, as `settleOrder` does (review of #306); a test in `step-away.test.js`.
 - **Left** (DEBT P28): no narrowing from four across to two abreast, the whole shape falls to the column; a
@@ -1956,6 +1956,69 @@ is marked **new rule**.
   from main, `fixtures/e23-main-saves.json`; the constant both ways), `e23-hidden-caster.test.js`, `e23-replay.test.js`
   (`fixtures/e23-main-replay.json`, made by `fixtures/e23-record.mjs` from main's rules); on hexes and the square room.
 
+### Strike first (#585): the SRD by default, landing first a table rule
+
+The owner, 20 November 2026, 06:50 ET: follow the SRD by default, and offer landing first as a house rule. Review of
+#594: three values, so a table saved before keeps exactly what it had (the owner's default). What goes beyond the SRD
+is marked **new rule**.
+
+- **The setting.** `strikeFirst`, `['off', 'casts', 'all']` (engine/dm.js `SETTINGS`), the DM's to switch with
+  `setting`. Absent means 'off': `newGame` does not set it, so a new table plays by the SRD. Words for each value in
+  `SETTING_TEXT`. The decision is resolve.js `strikesFirst(s, e, targets, kind, ctx)`.
+- **'off' (the SRD).** A harmful cast aimed at others, an `attack` (a weapon attack or a monster's action) and a harmful
+  `act` aimed at others, outside a fight, start the fight (`startEncounter` round the actor for an area, `engage` round
+  the actor and the first creature aimed at) and are not made; nothing is spent. Everyone rolls Initiative as for any
+  fight (`rollInit`). Surprise (Disadvantage on Initiative for a surprised creature) is not built (DEBT W31): the DM
+  gives it. The creature makes it on its turn: the engine does not keep it for that turn, and nothing yet tells the
+  sender to send it again (DEBT W38). This is what a cast did before #372, and what an attack and `act` always did.
+  With `autoEngage` on or off alike.
+- **'casts' (new rule as #372 built it, kept byte for byte).** Only while "Start a fight when the party comes near
+  enemies" (`autoEngage`) is on; with it off nothing lands first, and the DM's words for the choice say so. The DM's
+  harmful cast, aimed at creatures or an area, by a creature not of the party, aimed at or catching a party member
+  (`landsFirst` before #585). Every
+  attack and `act`, a player's cast, the DM casting a party member's spell: as 'off'. `e23-replay.test.js` plays main's
+  pre-#372 scripts under 'off' and under 'casts' and gets main's events and states; the E23 tests run under 'casts'.
+- **'all' (new rule, a house rule).** The same acts, at or catching at least one creature of another side than the actor
+  (`hostile`: the DM's creature at the party, a party member at a foe), by the DM or a player, land first, then the
+  fight starts in the same action; `autoEngage` plays no part. One at nobody of another side (a foe at a foe) starts
+  the fight and is not made.
+- **The guarantees** (both landing values; resolve.js `strikeStart`, `thenFight`; casting.js `landThenFight`; attacks.js
+  `takeAction` and `attack`): the cost is paid once (a slot or charge; a recharge or a use of a monster's action); the
+  reactions it allows are asked by the rules outside a fight, and a player asked makes the whole act wait in `pending`
+  with nothing started; whoever took a Reaction during it keeps it spent until its first turn in the fight; `checkEnd`
+  after the fight starts; a refusal of the fight is caught (no fight). The actor's first turn is a whole turn (for a
+  cast, `CAST_TAKES_FIRST_ACTION` stays `false`).
+  - *An attack made first is a plain one.* With no fight there is no turn and no budget: one attack (the Attack
+    action's first; Extra Attack's others are not made), with the Damage, Grapple or Shove option. Brutal Strike,
+    Cunning Strike, Superior Hunter's Prey and Punch and Grab need a turn in a fight and are refused before anything
+    changes. A Multiattack is refused outside a fight, as before ("Make one of its attacks to start one").
+- **Hidden information.** The creatures the party does not know of are taken when the act begins (`strikeStart`, review
+  of #594 M1), before an attack roll or a Verbal component gives a hiding creature away. Each event of the act naming a
+  creature unknown then, and not yet told of in the act, or still unknown at its end, is marked `unseen` with it (and
+  every such event with the actor, while it is one), before the fight starts. Told of in the act means found by a party
+  creature's senses (`unhidden`, `why: 'found'`, as when the wizard's Blindsight finds a hiding mage and it takes Hellish
+  Rebuke) or, for a creature other than the actor, revealed by being caught in it (`revealed`); giving itself away by its
+  own attack roll or spell (`unhidden`, `why: 'attack'` or `'spell'`) is not, and nor is the actor being caught in its
+  own area (a hidden mage in its own Fireball: re-review of #594, tested). So `viewEvents`, live and from the record, sends its `attack` and `cast` events to
+  nobody, and its damage carries no `by`; then `revealed` and `encounterStart` (the order entry of such a creature is
+  its `{ id }` alone). This is the E23 rule, which marked only what was unknown at the end, so a hiding caster's spell
+  was told by name; now it is not. With 'off' nothing new is sent. Twin runs (`strike-first.test.js`): a goblin the DM hid, a goblin hiding, and the mage hiding (a cast under
+  'casts' and 'all'), named differently in two worlds; every player gets the same events up to the fight's start, live
+  and from the record, and none names it.
+- **Where they stand** (review of #594, M2). For `act` and `attack` the actor's and the first target's places are shown
+  (`showPlace`) before the act and before what is marked unseen, landing or not, so a monster in a place the party has
+  not seen is in the fight it starts; the `region` events come first in the batch. A cast shows its caster's place where
+  every cast does (after its cost, inside the act), as E23 had it.
+- **State version 27** (migrate.js). A table saved before gets 'casts' where its `autoEngage` was on or unset (as
+  settings.js shows an unset one), else 'off'. 'casts' still asks for `autoEngage` to be `true`, so a table whose
+  `autoEngage` was unset lands nothing, as before. A state at 27 is left as it is.
+- **DM panel.** A choice "Strike first: what lands before the fight it starts" (Off (SRD) / Spells only / Spells and
+  attacks), under "Start a fight when the party comes near enemies", with the words of the chosen value under it
+  (tablecontrols.js); the select is 44 px high for touch.
+- **Undo.** The act and the fight are one action: one undo takes back both.
+- **Tests.** `strike-first.test.js` (new); the E23 tests (e23-kit.js builds 'casts' unless told); `e23-replay.test.js`
+  under 'off' and 'casts'; every version pin at 27.
+
 ### E12 amended: spell kinds by hand, and the re-review of #373 (PR for #374)
 
 - **The field.** `kinds`, an optional spell field: one to four of `SPELL_KINDS` (`damage`, `healing`, `control`,
@@ -1998,3 +2061,40 @@ is marked **new rule**.
 - **Part C.** W24 (the monster AI ends the turn of a steered mount on a turn of its own and of a creature at 0 in its own
   turn), W26 (a rider grown past its mount is set down), W27 (a rider in the way gives cover at its raised height) are
   fixed (W26 also sets a Large rider down on a nearer cell than before); W25 (Flyby) is left: seven SRD creatures have it, and it needs the walk to know a creature flies out.
+
+### Ping (#599)
+
+Press and hold a cell of the map for one second, and everyone at the table sees a short animated ping on that cell, in the pinger's colour with their name, for about three seconds. It is a way to say "look here" without a word.
+
+**The gesture.** On the map (the canvas), a press of the main mouse button, one finger, or a pen starts a hold. A ring (64 px, centred on the press) fills during the second, so the person sees it coming. The hold fires when the pointer has stayed one second within 8 px of where it went down (the slop the map's own tap already allows). It is cancelled by a move past 8 px, a camera that moves under the press so that another cell is there when the second ends (the cell is read at the press and again at the end, and a ping is sent only if they are the same), a release or `pointercancel` before the second, a second finger (a pinch), the wheel, or a right or middle mouse button. Nothing else about the press changes: a press shorter than 600 ms is still the map's tap, and the camera still pans on a drag.
+
+**No clash with a long press.** None exists on the map today. `render-three.js` (`#input`) treats a press under 600 ms that moved under 8 px as a tap; a longer press that stays still does nothing, and `contextmenu` is suppressed, so no browser menu opens on a touch hold. The only other owner of the pointer on the map is the map editor, which sets `R.onPoint` and `R.onDrag` while it is open (painting, tracing); the hold is **not started while either is set**. `scrolltip.js` has a long press, but on panel tooltips, not on the map. A hold that fires ends there; the release after it is not a tap (it lasted over 600 ms), so a ping selects and moves nothing.
+
+**Which cell.** `ping.js` `cellAtPoint` asks the renderer's `planeHex(x, y, feet)` for each floor height of the map, highest first, and takes the first cell whose surface is at that height. So a press on an upper floor is that floor's cell, and a point on no cell of the map pings nothing (the engine would refuse it too).
+
+**How it travels.** An engine action `ping { at: { q, r } }` (handler in `engine/dm.js`). It changes no state of its own (the passes that follow every action still run, as for `say`, and a reaction that is waiting is left as it was); it pushes one event `{ type: 'ping', from, name, at: { q, r, z } }`, where `z` is the surface found there. `view.js` sends it to everyone, DM and players alike, as exactly those four fields. Chosen over a side channel in the server because everything goes through `apply()`, the server is already the authority on who is who, and a solo table (no server) pings itself through the same code.
+
+- *Not an undo step.* `history.js` puts `ping` among the actions that are never undone (with `claim` and `release`); its label, should one be asked for, is "A spot was pointed out". Taking back a ping would change nothing.
+- *Not on the timeline.* `say` is kept on the timeline because a transcript is wanted later. A ping is not: it has no meaning once the three seconds are over, one a second would crowd out the record, and the AI DM's `recall` has no use for it. So `record()` in `engine.js` skips it, as it already skips `moved`. The client draws it on arrival and writes no log line.
+- *While a reaction is awaited* a ping is allowed (`ping` is in `WHILE_WAITING`, like `say`): it cannot change how the waiting action comes out.
+- *Signed by the server.* As for `say`, `tables.js` overwrites `userName` with the name the member joined by (and drops it from the DM's, who is "DM"); the engine cuts it to 40 characters.
+- *Rate-limited.* `tables.js` refuses a ping from a member less than `PING_GAP_MS` (1000 ms) after their last one, "You are pinging too fast." Each member is counted apart, as for `say`. Refused pings are counted too. A ping does not touch the table's idle clock and nothing is saved for it. Solo play has one person and no limit.
+
+**What it may point at.** A player may ping any cell of the map in play, but never a cell outside it. A ping reveals nothing hidden: it names a cell the sender chose and who sent it, not a creature, an object, or what is on the cell. A player's cell must be one the view would send them: the engine asks `tileSent` (vision.js), the very call `view.js` makes, under whatever sight rule is in force, so a region not revealed, or under the `light` rule a tile the party has not yet made out, is refused in the same words as a cell off the map ("Pick a spot on the map."), and a player cannot probe the grid to learn where the hidden map is. The event's height `z` is taken only from surfaces that pass that check, so a hidden floor above or below is never measured. The DM may ping anywhere; a DM's ping on a cell players are not sent still draws its mark for them (a mark on a cell they cannot see, with no more than the cell's place), which is the DM's choice. Bad input (no `at`, non-integer or non-number coordinates, no user) is refused and changes nothing.
+
+**Drawing.** Not in the renderer's own overlay (`three-build.js` `buildOverlay`, which is rebuilt from the state), but as DOM marks in a layer over the canvas (`#pings`, `pointer-events: none`), placed with the renderer's `screenOf(cell)` on every frame for the three seconds, so they follow the camera. This keeps the drawing the same on every renderer and on both grids (a ping is a cell, whichever its shape) without a new renderer member, and keeps an event that is not state out of the state-driven overlay. The renderer that draws nothing (`?renderer=none`) answers `screenOf` with `null`, and then a ping is simply not drawn. The colour is the pinger's character's colour (`look.color`), gold for the DM, or a steady hue worked out from the player's id; the name is in the mark, so colour is never the only sign. A mark is taken off by a timer as well as by the frame loop, since frames do not run in a hidden tab. With reduced motion the animations are off and the mark is still; the ring is then dashed and says "Keep holding", so the hold still shows. The ring and the hold are in `hold.js` (pure; the clock and timers are passed in), the marks and the colour in `ping.js`.
+
+**Checks.** `packages/rules/test/ping.test.js` (no change to state, timeline or undo; refused input; unrevealed region; the view), `packages/server/test/tables.test.js` (everyone is told, signed with the joined name, rate limit, nothing recorded), `packages/client/test/hold.test.js` (the timing), `packages/client/test/ping.test.js` (colour, cell, marks), and the smoke pass `ping` at 1280x800 with a mouse and at 390x844 with touch, and a phone pinging to a desktop DM.
+
+### Aiming a wall and rolling a sphere (#795, W46)
+
+- **A wall's direction.** A spell whose area is a placed Line (`area.placed`: Wall of Fire, Wall of Thorns, Blade Barrier) is aimed in two taps. The first puts the wall down (a mouse previews it as it hovers); the cells shown are `areaHexes(S, e, sp, aim, toward)`, the engine's own layout, with the default direction (across the line from the caster). A tap on another space names the way the wall runs: the preview turns and the `cast` carries `toward: {q, r}`; a mouse previews the direction under it before the tap. Skip: tap the wall's own spot (the direction is dropped); the same spot again, or the die, casts. Cancel in the hint bar puts it all down. Another space after a direction was named turns the wall again. The logic is the pure `packages/client/wallaim.js`, tested in `packages/client/test/wallaim.test.js`.
+- **Rolling Flaming Sphere.** A creature with a lasting effect of its own whose spell has `zone.move` (the view sends the effect and its spell, not the zone's shape) gets a row in the Bonus Action screen: Roll Flaming Sphere. One tap arms it (the hint says how far), one tap on the map sends `{ type: 'moveZone', actor, to, effect }`. The engine's own words are shown if the space is too far or the Bonus Action is spent. No other player is shown where a zone is (W45 (6)).
+- **Checks.** `wallaim.test.js`; the smoke pass `walls` at 1280x800 and at 390x844 with touch.
+
+### Aiming a spell at an object (#811, W59 (1))
+
+- **What the player does.** A spell whose aim is `object` (Knock) is armed from the Spells tab like any other. The objects it may be aimed at are lit on the map (the shaded cells), and listed on the character sheet under "Which object does Knock work on?" (the sure way on a phone, where the sheet may cover the map). A tap on a lit object, or on a hex beside it, chooses it; another tap swaps it; a second tap on the chosen one, or the die, casts. A tap elsewhere only says it needs a lit object. The cast sent is `{ type: 'cast', actor, spell, slot, object: id }`; a refusal shows the engine's own text in the aim note, as every refusal does, and the aim stays up.
+- **What is offered, and from what.** Only `S.map.objects`, the objects the table sent this player (nothing hidden is in it), whose definition has an `unlock` use, within the spell's range of the caster's nearest hex, in a clear line, and the caster not Blinded: the engine's own checks in `aimObject`, repeated only to choose what to light. The engine still refuses what it should. The logic is the pure `packages/client/objectaim.js`, tested in `packages/client/test/objectaim.test.js`. A spell row says "Nothing within 60 ft that it works on." when nothing is offered.
+- **Not built.** A spell cast from an item (the Items tab's `use` already uses `object` for something else).
+- **Checks.** `objectaim.test.js`; the smoke pass `objectaim` at 1280x800 (taps) and at 390x844 with touch (the sheet's list, then the die).

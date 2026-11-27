@@ -21,10 +21,14 @@ import { squareRoom } from "./fixtures/square-room.js";
 const DM = { role: "dm", userId: "dm" };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 const json = (x) => JSON.stringify(x);
+// HEXTABLE_STRESS_PART=i/n runs part i of n (1-based): its share of the rounds, from its own seed. Part 1 keeps the base seed; unset runs the whole.
+export const PART = (() => { const m = /^(\d+)\/(\d+)$/.exec(process.env.HEXTABLE_STRESS_PART ?? ""); if (!m) return { i: 1, n: 1 }; const i = +m[1], n = +m[2]; if (i < 1 || i > n) throw new Error(`HEXTABLE_STRESS_PART ${process.env.HEXTABLE_STRESS_PART}: want i/n with 1 <= i <= n`); return { i, n }; })();
+const share = (total) => Math.floor(total / PART.n) + (PART.i <= total % PART.n ? 1 : 0);
+const seedOf = (base) => base + (PART.i - 1) * 100003;
 // A short seeded run by default (the same assertions); 2,400 rounds a grid with HEXTABLE_STRESS=full (the name the riding
 // stress uses too). C7_ROUNDS overrides both, for debugging.
 export const FULL = process.env.HEXTABLE_STRESS === "full";
-export const ROUNDS = Number(process.env.C7_ROUNDS ?? (FULL ? 2400 : 200));
+export const ROUNDS = share(Number(process.env.C7_ROUNDS ?? (FULL ? 2400 : 200)));    // this part's share (all of them when no part is set)
 // Hard bounds, so that a harness or an engine fault shows as a failure, never as a run that does not end: brain steps in
 // one turn, turns in one round (every creature in the order a few times over), actions in the whole run.
 const STEPS_MOST = 25, TURNS_A_ROUND = 4, ACTIONS_MOST = 120;
@@ -102,7 +106,7 @@ export function stress(grid, rounds) {
     const g = idOf(ok(apply(s, { type: "spawn", monster: "goblin-warrior", at }, DM))); s.entities[g].hp = s.entities[g].maxHp = 400;
   };
   tough();
-  let x = 4243;
+  let x = seedOf(4243);
   const rnd = (n) => { x = (x * 1103515245 + 12345) % 2147483648; return Math.floor(x / 65536) % n; };
   const worth = new Map(), present = new Map();
   let lastKey = null, budgetSeen = null, done = 0;
@@ -126,7 +130,8 @@ export function stress(grid, rounds) {
       lastKey = k; present.set(k, upNow());
     } else { const now = upNow(), p = present.get(k); for (const id of [...p]) if (!now.has(id)) p.delete(id); }
   };
-  const act = (a) => { const r = apply(s, a, DM); if (r.ok) after(r); else stats.refused++; return r; };
+  // Invariant: a refused action leaves the game exactly as it was (review R3, #617).
+  const act = (a) => { const was = json(s), r = apply(s, a, DM); if (r.ok) after(r); else { stats.refused++; assert.equal(json(s), was, `refused ${json(a)} changed the game`); } return r; };
   // Players who are offline now (the client's lobby): they go and come back, also in the middle of a round.
   const away = new Set(), OPTS = { offline: (u) => away.has(u) };
   let turnsThisRound = 0, roundSeen = null;

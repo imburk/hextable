@@ -1191,13 +1191,37 @@ was settled while building:
 - **The party.** `newGame(seed, { party })` in `scenario.js` takes 1 to 6 entries, `{ pregen: id }` (a starter, once at most) or `{ sheet }`
   (`validate` must pass; a bad party throws and nothing is made). Built heroes are `pc1`..`pc6` and keep their sheet (as `setSheet` keeps it);
   the starters keep their ids. This was less engine change than a `setSheet` per hero after `newGame`, which could not take the four starters
-  away. Hex and square valleys both place up to six. Without the option the valley is exactly what it was. The lobby remembers the last party
+  away. Hex and square valleys both place up to six. Without the option the valley has the four starters, built from their sheets (#672: `PREGEN_SHEETS` in `content/srd52/pregens.js`, through `derive`; the typed record beside each sheet is kept for the starter lists and tests, and `derive.test.js` fails if they drift). The lobby remembers the last party
   (`hextable.party`, `{ count, picks }`) and **Continue** keeps the saved game as it is; **New game** (two taps, in the lobby or in the menu) starts with the remembered party.
 - **Not built, as the issue says:** keys, blocks, servers, the level meter (P7), Import from Fantasy Grounds with no table, species and
   background (a sheet has no field for them), a multiclass sheet in the build screen (`fromSheet` reads one class: such a character can be listed,
   exported, imported and played, but its Edit button says it cannot be opened yet).
 - **For a player joining a table later (P8, not built):** the lobby's Join would need a chosen entry from this list sent as an offer; the file is
   already the shape P5 expects, and `LIMITS` and `pickProblem` can be reused for what a table admits. The server has no `admit` yet (P4).
+
+## Build notes: offering and admitting in the engine (#757 part 1)
+
+P4 built, with the offer kept in the game state rather than only on the server (the server's `offer` message, P5, is not built and `tables.js` is not
+touched). What was settled where the spec was silent, each time by the reading that keeps the DM in control:
+
+- **Actions.** `offer { sheet }` (a player; the DM has `setSheet`), `admit { user, userName?, ack?, at? }` and `decline { user, note? }` (DM only), in
+  `engine/characters.js`. `admit` also takes `sheet` in the spec's form for a server that holds the offer itself; if an offer from that player is in the
+  state the two must be the same sheet, else it is refused. A player cannot send `admit`. All checks come before any change, so a refusal changes nothing.
+- **Where the offer lives.** `state.offers`, a list of `{ user, sheet }`, one for each player (offering again replaces it, as flow 6 says), at most 12.
+  It is classed `withheld` in `STATE_FIELDS` (`view-fields.js`); the events `offered`, `declined` and `admitted` are told to the DM only. No state
+  version change: an absent list means no offers, and a bad one is read as none. `offer` and `decline` are never undone (they are lobby changes);
+  `admit` can be, and the offer comes back with it.
+- **Nothing is admitted by itself.** The spec has the DM review each offer, so under every value of `characters` the DM sends `admit`. `characters`
+  (default `own-trusted`; absent means it) decides only: `new`, offers and admits are refused; `own-trusted`, the DM's `ack: true` (the tick that the
+  history is not vouched for) is required; `own`, no tick. The engine cannot vouch for a history (signed blocks, P1 and P3, are not built), so every
+  offered character counts as self-reported and `own-trusted` asks for the tick every time. A verdict the player sends is never read.
+- **The level range.** `level` is a setting (`setting level` takes a level or `{ min, max }` and keeps `{ min, max }`), required for `admit`: with
+  none set an offer is held (the DM's `offered` event says so) and `admit` says "Set a level range before admitting characters". A character above
+  `max` is refused (the fork is Decision 8's, not built); one below `min` is let in as it is, with a `manual` note to the DM (question 14's "raise"
+  is the DM's `levelUp`, which records itself; nothing here raises it).
+- **The name.** The server does not put the player's name into an offer, so `admit` takes `userName` from the DM's action, cut to 40 letters.
+- **Not built here:** `takeaway` (P9), the coins part of `admit` (needs the purse, shops P3), stand-ins and compat (P2), and telling the offering
+  player the outcome (it needs a field or event only that player is sent; part 2 with the server and client).
 
 ## Adventure modules
 

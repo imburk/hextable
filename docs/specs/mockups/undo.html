@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup: finding Undo and Redo (#654)</title>
+<!-- A picture to react to. Nothing here runs the game: every name and number is made up and the buttons only
+     show what they would do. Self-contained: no network. Colours are the game's default theme (packages/client/style.css).
+     Today: a small "Undo" in the top bar (DM only, a bare arrow on phones) and, on the DM tab, a "Take back" box with
+     Undo and Redo and a line under each saying what it would take back (packages/client/app.js, showUndo).
+     The address can pick one picture, for screenshots:  #opt=a|b|c  frame=desktop|phone  state=idle|undone|tray
+     Touch targets on the phone frames are at least 44px. -->
+<style>
+* { box-sizing: border-box; }
+:root { --bg:#1d2622; --panel:#26322dee; --panel-solid:#26322d; --panel-2:#31403a; --ink:#efe9d8; --muted:#a9b3a6; --accent:#d7a84a; --accent-ink:#1d2622; --line:#4a5a52; --good:#7fc48a; --bad:#e0685a;
+  --display:'Vollkorn SC',Georgia,serif; --body:'Source Sans 3','Segoe UI',system-ui,sans-serif; --radius:6px; }
+html, body { margin:0; background:#0d100f; color:#ddd; font:15px/1.4 var(--body); }
+[hidden] { display:none !important; }
+main { max-width:1400px; margin:0 auto; padding:20px; }
+h1 { font:600 22px var(--display); margin:0 0 4px; color:var(--ink); }
+.lede { color:var(--muted); margin:0 0 18px; max-width:70ch; }
+section.opt { border-top:1px solid var(--line); padding:18px 0 26px; }
+section.opt h2 { font:600 19px var(--display); color:var(--accent); margin:0 0 6px; }
+section.opt h2 small { font:600 12px var(--body); background:var(--accent); color:var(--accent-ink); border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; }
+.trade { max-width:80ch; margin:0 0 14px; color:var(--ink); }
+.trade b { color:var(--good); } .trade i { color:var(--bad); font-style:normal; font-weight:700; }
+.pair { display:flex; gap:22px; align-items:flex-start; flex-wrap:wrap; }
+.cap { font-size:12px; color:var(--muted); margin:0 0 4px; }
+.rec { background:#26322d; border:1px solid var(--accent); border-radius:8px; padding:12px 16px; max-width:80ch; margin-bottom:20px; }
+.rec b { color:var(--accent); }
+
+/* ---------- a game frame ---------- */
+.frame { position:relative; overflow:hidden; background:var(--bg); color:var(--ink); font:15px/1.35 var(--body); flex:none; }
+.frame.phone { width:390px; height:844px; } .frame.desktop { width:1280px; height:800px; }
+.frame button { font:inherit; color:inherit; cursor:pointer; }
+.map { position:absolute; inset:0; } .map svg { width:100%; height:100%; display:block; }
+.map text { font:700 13px var(--body); fill:#fff; paint-order:stroke; stroke:#000a; stroke-width:3px; text-anchor:middle; }
+
+.top { position:absolute; z-index:10; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:10px 12px 0; }
+.status { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:8px 12px; display:flex; gap:10px; align-items:baseline; min-height:40px; }
+.status strong { font:600 15px var(--display); } .status span { color:var(--muted); font-size:13px; }
+.tools { display:flex; gap:6px; align-items:flex-start; }
+.tb { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:8px 12px; min-height:40px; display:inline-flex; align-items:center; gap:6px; }
+.phone .tb { min-height:44px; min-width:44px; justify-content:center; }
+.tb:disabled { opacity:.45; cursor:default; }
+.tb .ic { font-size:18px; line-height:1; }
+.tb.pri { border-color:var(--accent); }
+.burger { display:inline-grid; gap:3px; } .burger i { display:block; width:18px; height:2px; background:var(--ink); }
+.badge { position:absolute; top:-6px; right:-6px; min-width:20px; height:20px; border-radius:10px; background:var(--accent); color:var(--accent-ink); font:700 12px/20px var(--body); text-align:center; padding:0 5px; }
+.tb { position:relative; }
+
+/* the one-line hint (option A) */
+.hintline { position:absolute; z-index:9; top:56px; right:12px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:4px 10px; font-size:13px; color:var(--muted); max-width:calc(100% - 24px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hintline b { color:var(--ink); font-weight:600; }
+.phone .hintline { left:12px; text-align:right; }
+.hintline.two { display:flex; gap:14px; justify-content:flex-end; }
+
+/* turn order / tracker stand-ins */
+.order { position:absolute; z-index:5; left:12px; top:64px; display:flex; flex-direction:column; gap:4px; }
+.phone .order { display:none; }
+.order div { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:4px 10px; font-size:13px; }
+.order div.now { border-color:var(--accent); }
+
+/* dock */
+.dock { position:absolute; z-index:10; left:0; right:0; bottom:0; padding:0 12px 10px; display:flex; flex-direction:column; gap:6px; max-width:760px; margin:0 auto; }
+.party { display:flex; gap:6px; }
+.chip { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:6px 10px; font-size:13px; min-height:36px; }
+.phone .chip { min-height:44px; display:inline-flex; align-items:center; }
+.chip.on { border-color:var(--accent); }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:8px 10px; display:grid; gap:6px; }
+.card h4 { margin:0; font:600 15px var(--display); display:flex; justify-content:space-between; }
+.card h4 span { font:400 13px var(--body); color:var(--good); }
+.actions { display:flex; gap:6px; flex-wrap:wrap; }
+.actions button { background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius); padding:8px 12px; min-height:40px; }
+.phone .actions button { min-height:44px; flex:1 1 28%; }
+.actions .end { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:700; }
+
+/* option B: floating chip */
+.float { position:absolute; z-index:12; left:50%; transform:translateX(-50%); display:flex; align-items:stretch; gap:0; background:var(--panel-solid); border:1px solid var(--accent); border-radius:999px; box-shadow:0 3px 12px #0008; overflow:hidden; max-width:calc(100% - 24px); }
+.float button { background:none; border:0; padding:0 16px; min-height:44px; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+.float .go { font-weight:700; }
+.float .go small { font-weight:400; color:var(--muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; }
+.float .x { border-left:1px solid var(--line); padding:0 16px; min-width:46px; color:var(--muted); }
+.float .timer { position:absolute; left:0; bottom:0; height:3px; background:var(--accent); width:62%; }
+.float.redo { border-color:var(--good); } .float.redo .timer { background:var(--good); }
+.float.redo .go + .go { border-left:1px solid var(--line); }
+
+/* option C: the tray */
+.tray { position:absolute; z-index:14; background:var(--panel-solid); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 6px 20px #000a; padding:12px; display:grid; gap:8px; }
+.desktop .tray { top:56px; right:12px; width:340px; }
+.phone .tray { left:8px; right:8px; top:62px; }
+.tray h3 { margin:0; font:600 15px var(--display); color:var(--accent); }
+.tray ol { margin:0; padding:0; list-style:none; display:grid; gap:2px; }
+.tray li { display:flex; justify-content:space-between; gap:8px; padding:8px 10px; border-radius:var(--radius); font-size:14px; min-height:36px; align-items:center; }
+.phone .tray li { min-height:44px; }
+.tray li.next { background:var(--panel-2); border:1px solid var(--accent); }
+.tray li.next::after { content:"next to undo"; font-size:11px; color:var(--accent); text-transform:uppercase; letter-spacing:.04em; }
+.tray li.later { color:var(--muted); }
+.tray li.redo { color:var(--good); }
+.tray li.redo::after { content:"can redo"; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+.tray .row { display:flex; gap:8px; }
+.tray .row button { flex:1; min-height:44px; border-radius:var(--radius); background:var(--panel-2); border:1px solid var(--line); font-weight:600; }
+.tray .row button.pri { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.tray .row button:disabled { opacity:.45; }
+.tray p { margin:0; font-size:12px; color:var(--muted); }
+.scrim { position:absolute; inset:0; z-index:13; background:rgba(10,14,12,.35); }
+</style>
+</head>
+<body>
+<main>
+<h1>Finding Undo and Redo (#654)</h1>
+<p class="lede">The DM's view of the table, three ways to put Undo and Redo where they can be found without searching. Each is shown on a computer and on a phone. Names and numbers are made up. Nothing here is live; it is a picture to pick from. The phone buttons are all at least 44px tall.</p>
+
+<div class="rec"><b>Recommended: A.</b> It is the smallest change from what the game does now and it always shows both buttons and what they would take back, so there is nothing to find and nothing to time. B is nice as an extra but it disappears; C hides what Undo will do behind a second tap.</div>
+
+<div id="opts"></div>
+</main>
+
+<script>
+const OPTS = {
+  a: { title: 'A. Undo and Redo always in the top bar', rec: true,
+    trade: '<b>Good:</b> always there, always the same place, and a small line says what Undo would take back (“Brenna moves”) and what Redo would put back. One tap. <i>Costs:</i> two more buttons in the top bar, which is already busy on a phone; the phone bar shows arrows only and the line sits just under it.' },
+  b: { title: 'B. A floating Undo chip that shows after each action',
+    trade: '<b>Good:</b> it appears right where the DM is looking, with a plain label, and goes away by itself so the screen stays clean. <i>Costs:</i> it vanishes after a few seconds, so a DM who realises a minute later still has to dig for Undo; Redo needs its own chip. Needs the menu’s Take back box as a fallback.' },
+  c: { title: 'C. One “Take back” button that opens a short list',
+    trade: '<b>Good:</b> only one button in the bar, and the list shows the last few things so the DM can see how far back it will go, with Undo and Redo as big buttons. <i>Costs:</i> two taps instead of one, which is slower when something has just gone wrong at the table.' }
+};
+const MAP = `<svg viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid slice"><rect width="1280" height="800" fill="#5b7d48"/>
+ <g fill="#6f8f55" stroke="#4f7446" stroke-width="2"><polygon points="520,300 580,266 640,300 640,368 580,402 520,368"/><polygon points="640,300 700,266 760,300 760,368 700,402 640,368"/><polygon points="580,402 640,368 700,402 700,470 640,504 580,470"/><polygon points="460,402 520,368 580,402 580,470 520,504 460,470"/></g>
+ <circle cx="580" cy="334" r="16" fill="#e6dcc0" stroke="#000" opacity=".9"/><circle cx="700" cy="334" r="16" fill="#8c2f2a"/><circle cx="640" cy="436" r="16" fill="#8c2f2a"/>
+ <text x="580" y="312">Brenna</text><text x="700" y="312">Goblin</text><text x="640" y="470">Goblin</text><ellipse cx="900" cy="250" rx="40" ry="46" fill="#2f5a35"/><ellipse cx="300" cy="500" rx="34" ry="40" fill="#2f5a35"/></svg>`;
+
+function dock(){ return `<div class="dock"><div class="party"><span class="chip on">Brenna</span><span class="chip">Tor</span><span class="chip">Wren</span></div>
+ <div class="card"><h4>Brenna <span>HP 22 / 28</span></h4><div class="actions"><button>Attack</button><button>Spell</button><button>Dash</button><button class="end">End turn</button></div></div></div>`; }
+function status(){ return `<div class="status"><strong>Combat</strong><span>Round 2</span></div>`; }
+function order(){ return `<div class="order"><div class="now">Brenna 17</div><div>Goblin 14</div><div>Tor 12</div><div>Wren 9</div></div>`; }
+
+function bar(o, phone, st){
+  const menu = `<button class="tb" aria-label="Menu"><span class="burger"><i></i><i></i><i></i></span></button>`;
+  const undone = st === 'undone';
+  if (o === 'a') {
+    const u = `<button class="tb pri" aria-label="Undo: Brenna moves"><span class="ic">↶</span>${phone ? '' : '<span>Undo</span>'}</button>`;
+    const r = `<button class="tb" ${undone ? '' : 'disabled'} aria-label="Redo"><span class="ic">↷</span>${phone ? '' : '<span>Redo</span>'}</button>`;
+    return `<div class="top">${status()}<div class="tools">${u}${r}${menu}</div></div>
+      <div class="hintline">${undone ? '<b>Redo</b> puts back: Brenna moves' : '<b>Undo</b> takes back: Brenna moves'}${undone ? '' : phone ? '' : ' &nbsp;·&nbsp; <b>Redo</b>: nothing to put back'}</div>`;
+  }
+  if (o === 'b') return `<div class="top">${status()}<div class="tools">${menu}</div></div>`;
+  return `<div class="top">${status()}<div class="tools"><button class="tb pri" aria-label="Take back"><span class="ic">↶</span><span>${phone ? '' : 'Take back'}</span><span class="badge">4</span></button>${menu}</div></div>`;
+}
+function extra(o, phone, st){
+  if (o === 'b') {
+    const bottom = phone ? 190 : 170;
+    if (st === 'undone') return `<div class="float redo" style="bottom:${bottom}px"><button class="go"><span>↷ Redo</span><small>Brenna moves</small></button><button class="x" aria-label="Close">✕</button><i class="timer"></i></div>`;
+    return `<div class="float" style="bottom:${bottom}px"><button class="go"><span>↶ Undo</span><small>Brenna moves</small></button><button class="x" aria-label="Close">✕</button><i class="timer"></i></div>`;
+  }
+  if (o === 'c' && st === 'tray') return `<div class="scrim"></div><div class="tray"><h3>Take back</h3>
+    <ol><li class="next"><span>Brenna moves</span></li><li class="later"><span>Goblin attacks Tor</span></li><li class="later"><span>Goblin moves</span></li><li class="redo"><span>Tor hits the goblin</span></li></ol>
+    <div class="row"><button class="pri">↶ Undo</button><button>↷ Redo</button></div><p>Puts the whole game back as it was, dice included: redo gives the same rolls.</p></div>`;
+  return '';
+}
+function frame(o, kind, st){
+  const phone = kind === 'phone';
+  return `<div class="frame ${kind}" data-opt="${o}" data-kind="${kind}"><div class="map">${MAP}</div>${order()}${bar(o, phone, st)}${dock()}${extra(o, phone, st)}</div>`;
+}
+const q = new URLSearchParams(location.hash.slice(1));
+const only = q.get('opt'), onlyKind = q.get('frame'), st = q.get('state');
+let html = '';
+for (const [k, v] of Object.entries(OPTS)) {
+  if (only && only !== k) continue;
+  const stDesk = st || (k === 'c' ? 'tray' : 'idle'), stPh = st || (k === 'c' ? 'tray' : 'idle');
+  html += `<section class="opt" id="opt-${k}"><h2>${v.title}${v.rec ? '<small>recommended</small>' : ''}</h2><p class="trade">${v.trade}</p><div class="pair">`;
+  if (onlyKind !== 'phone') html += `<div><p class="cap">Computer, 1280 × 800${k==='b'?' (just after an action)':k==='c'?' (tray open)':''}</p>${frame(k,'desktop',stDesk)}</div>`;
+  if (onlyKind !== 'desktop') html += `<div><p class="cap">Phone, 390 × 844${k==='b'?' (just after an action)':k==='c'?' (tray open)':''}</p>${frame(k,'phone',stPh)}</div>`;
+  if (!only && (k === 'a' || k === 'b')) {
+    const s2 = 'undone';
+    html += `<div><p class="cap">Phone, right after tapping ${k==='a'?'Undo: Redo is now the one that lights up':'Undo: the chip turns into Redo'}</p>${frame(k,'phone',s2)}</div>`;
+  }
+  html += `</div></section>`;
+}
+document.getElementById('opts').innerHTML = html;
+</script>
+</body>
+</html>

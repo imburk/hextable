@@ -2,6 +2,7 @@
 // effect steps on the drinker, charges are spent, a consumed item leaves the sheet, a Spell Scroll checks its
 // reader, and a spell cast from an item goes through the cast path (#284), as do Spell Scrolls; charges come back
 // at dawn (rests.js).
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, current, dawnsBetween, itemUsesFor, makeEntity, scrollStats } from "../src/engine.js";
@@ -28,6 +29,7 @@ const cleric = (items) => ({ name: "Mara", class: "cleric", level: 5, subclass: 
 function field(sheet, seed = 7) {
   const s = newGame(seed);
   for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
+  typed(s, "rogue");                                         // the rogue stays a hand-typed character (no sheet), for the tests of what that cannot do
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
   s.entities.hero = makeEntity(derive(sheet).record, { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: "pat", ownerName: "Pat" });
@@ -259,7 +261,8 @@ test("Ring of Jumping: Jump on its wearer only; a spell from an item still can't
   no(apply(s, { type: "use", actor: "hero", item: "j", target: "rogue" }, PAT), /targets Tavin only/);
   const r = ok(apply(s, { type: "use", actor: "hero", item: "j", target: "hero" }, PAT));
   assert.ok(r.events.some((e) => e.type === "cast" && e.spell === "jump"));
-  assert.ok(r.events.some((e) => e.type === "manual" && e.actor === "hero"), "Jump itself is the DM's (a manual spell)");
+  assert.ok(!r.events.some((e) => e.type === "manual" && e.actor === "hero"), "Jump is auto now (wave 4 part 8): no manual step for the DM");
+  assert.ok(s.effects.some((fx) => fx.name === "Jump" && fx.parts?.length), "its lasting effect lends the leap");
   fight(s);
   no(apply(s, { type: "use", actor: "hero", item: "w", target: "m1", metamagic: ["quickened"] }, PAT), /"metamagic" is not for a spell cast from/);
   no(apply(s, { type: "use", actor: "hero", item: "w", target: "m1", slot: 2 }, PAT), /"slot" is not for/);

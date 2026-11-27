@@ -3,9 +3,11 @@
 !package.json
 !docker-entrypoint.mjs
 !scripts/build.mjs
+!scripts/backup.mjs
 !packages/client
 !packages/rules/src
 !packages/server/src
+!assets/models
 # Tests and notes that sit inside the folders let in above
 **/test
 **/*.test.js

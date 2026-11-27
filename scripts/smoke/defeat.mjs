@@ -49,6 +49,7 @@ async function defeat(browser, url, label, opts) {
         await closeMenu(page);
       });
       await run.do('the card comes only when the last one has died', async () => {
+        await openTab(page, 'log');          // M2: the menu is open when the card comes; the next step looks at what became of it
         for (let k = 0; k < pcs.length; k++) {
           const id = pcs[k];
           for (let n = 0; n < 8; n++) {
@@ -67,6 +68,27 @@ async function defeat(browser, url, label, opts) {
         if (/!/.test(await page.textContent('#df'))) throw new Error('an exclamation mark on the card');
         await shot('defeat-card');
       });
+      await run.do('the card folded the menu; put aside, the screen is clean and one tap on the die returns to the same screen', async () => {
+        const menu = () => page.evaluate(() => { const d = document.getElementById('drawer'); return { open: window.hextable.drawer.isOpen, cls: document.body.classList.contains('drawer-open'), shown: !d.hidden && d.getClientRects().length > 0, scrim: !document.getElementById('drawer-scrim').hidden, path: d.dataset.path }; });
+        const gone = (m) => !m.open && !m.cls && !m.shown && !m.scrim;
+        await waitShown(page, '#drawer', false);                                // it slides away, then it is hidden
+        let m = await menu();
+        if (!gone(m)) throw new Error(`the card came and the menu stayed up: ${JSON.stringify(m)}`);
+        await tap(page, '#df .df-x');
+        await waitShown(page, '#df', false); await waitShown(page, '#df-chip');
+        await sleep(700);                                                       // it must not come back by itself
+        m = await menu();
+        if (!gone(m)) throw new Error(`the menu came back by itself: ${JSON.stringify(m)}`);
+        await tap(page, '#btn-menu');
+        await waitShown(page, '#drawer');
+        m = await menu();
+        if (m.path.split('/')[0] !== 'log') throw new Error(`one tap on the die did not return to the same screen: ${JSON.stringify(m)}`);
+        await closeMenu(page);
+        await tap(page, '#df-chip');
+        await waitShown(page, '#df');
+        // The card slides in again (df-in): measure it once that has finished, or a button reads a fraction under its 44 px.
+        await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'), null, { timeout: 5000 });
+      });
       await run.do('the card fits the screen, its buttons are big enough, and the map around it is still the map', async () => {
         const m = await page.evaluate(() => {
           const c = document.querySelector('.df-card').getBoundingClientRect();
@@ -82,9 +104,10 @@ async function defeat(browser, url, label, opts) {
         if (!/No rest to go back to/.test(await page.textContent('#df .df-choice.off p'))) throw new Error('the greyed choice does not say why');
       });
       await run.do('with another theme and the menu open, closed or pinned the card and the menu do not fight', async () => {
-        await openTab(page, 'settings');
+        await openTab(page, 'settings/display');
         await page.selectOption('#set-theme', 'sunlit');
-        const front = () => page.evaluate(() => { const c = document.querySelector('.df-card').getBoundingClientRect(); return { inside: !!document.elementFromPoint(c.left + c.width / 2, c.top + 30)?.closest('#df'), r: c.right, l: c.left, w: innerWidth, dr: document.getElementById('drawer').getBoundingClientRect().left, dl: document.getElementById('drawer').getBoundingClientRect().right }; });
+        // dr/dl are the drawer's left and right edges; the pinned menu sits on either side, so the card must clear whichever it is on
+        const front = () => page.evaluate(() => { const c = document.querySelector('.df-card').getBoundingClientRect(); return { inside: !!document.elementFromPoint(c.left + c.width / 2, c.top + 30)?.closest('#df'), r: c.right, l: c.left, w: innerWidth, dr: document.getElementById("drawer").getBoundingClientRect().left, dl: document.getElementById('drawer').getBoundingClientRect().right }; });
         let f = await front();
         if (touch && f.inside) throw new Error('the card is in front of the open menu, which the person asked for');
         await closeMenu(page);
@@ -94,7 +117,7 @@ async function defeat(browser, url, label, opts) {
           await page.evaluate(() => window.hextable.drawer.setPin(true));
           await sleep(500);
           f = await front();
-          if (f.r > f.dr + 1) throw new Error(`the card runs under the pinned menu: ${JSON.stringify(f)}`);
+          if (f.l < f.dl - 1 && f.r > f.dr + 1) throw new Error(`the card runs under the pinned menu: ${JSON.stringify(f)}`);
           await shot('defeat-pinned');
           await page.evaluate(() => window.hextable.drawer.setPin(false));
           await closeMenu(page);

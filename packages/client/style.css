@@ -4,6 +4,7 @@
   --bg: #1d2622; --panel: #26322dee; --panel-2: #31403a; --ink: #efe9d8; --muted: #a9b3a6;
   --accent: #d7a84a; --accent-ink: #1d2622; --line: #4a5a52; --good: #7fc48a; --bad: #e0685a;
   --display: 'Vollkorn SC', Georgia, serif; --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif; --radius: 6px;
+  --panel-solid: #26322d; --die: #c99a3e; --die-ink: #2a1d08; --die-edge: #f3d68a; --scrim: rgba(10, 14, 12, .55);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -40,7 +41,8 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 .label .marks b { font: 700 10px/1 var(--body); padding: 2px 5px; border-radius: 8px; border: 1px solid #0007; text-shadow: none; color: #1d2622; background: #e9c46a; }
 .label .marks b.dodging { background: #8fd0e8; } .label .marks b.dying { background: #e0685a; color: #fff; animation: pulse 1s ease-in-out infinite alternate; }
 @keyframes pulse { to { opacity: .6; } } @media (prefers-reduced-motion: reduce) { .label .marks b.dying { animation: none; } }
-.label .bar { width: 44px; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
+.label .bar { width: 44px; position: relative; }
+.bar.notch::after { content: ''; position: absolute; left: calc(50% - 1px); top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px #000a; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
 .label.down span::after { content: ' (down)'; font-weight: 400; }
 .bar { height: 6px; background: #0008; border-radius: 3px; overflow: hidden; border: 1px solid #0006; }
 .bar i { display: block; height: 100%; background: var(--good); transition: width .3s; }
@@ -49,42 +51,39 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 .floater.dmg { color: #ff8474; font-size: 26px; } .floater.heal { color: #9df0a6; font-size: 24px; } .floater.crit { color: #ffd23f; font-size: 28px; }
 .floater.miss { color: #d5d5d5; }
 
-/* top bar */
-#top { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: max(10px, env(safe-area-inset-top)) 12px 0; pointer-events: none; }
-#top > * { pointer-events: auto; }
-#status { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 12px; display: flex; flex-direction: column; }
-#status strong { font-size: 17px; } #clock { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-body.fight #status { border-color: var(--accent); }
-#tools { display: flex; gap: 6px; } #tools button { background: var(--panel); position: relative; }
-
-#order { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 62px); left: 12px; right: 12px; margin: 0; padding: 0; list-style: none; display: flex; gap: 6px; overflow-x: auto; pointer-events: none; scrollbar-width: none; }
-#order li { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 9px; font-size: 13px; white-space: nowrap; border-left: 4px solid var(--good); }
-#order li[data-side="foe"] { border-left-color: var(--bad); } #order li.out { opacity: .4; text-decoration: line-through; }
-#order li[data-side="unseen"] { border-left-color: var(--muted, #888); font-style: italic; }
-#order li.now { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
-
-#hint { position: fixed; left: 50%; transform: translateX(-50%); width: max-content; top: calc(max(10px, env(safe-area-inset-top)) + 104px); max-width: calc(100% - 24px); background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); padding: 6px 6px 6px 12px; display: flex; gap: 8px; align-items: center; font-weight: 600; }
-#hint button { min-height: 32px; padding: 4px 10px; background: #0003; border-color: #0004; color: inherit; }
+#hint, #join { position: fixed; left: 50%; transform: translateX(-50%); width: max-content; top: calc(max(10px, env(safe-area-inset-top)) + 10px); max-width: calc(100% - 24px); background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); padding: 6px 6px 6px 12px; display: flex; gap: 8px; align-items: center; font-weight: 600; }
+#hint button, #join button { min-height: 32px; padding: 4px 10px; background: #0003; border-color: #0004; color: inherit; }
 #hint select { min-height: 32px; max-width: 40vw; padding: 2px 6px; background: #0003; border: 1px solid #0004; border-radius: 6px; color: inherit; font: inherit; }
 
 #cam { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); display: grid; gap: 6px; }
 #cam button { width: 40px; padding: 0; background: var(--panel); font-size: 18px; }
+/* A flyer's way to the column of heights (docs/specs/fly-swim-control.md): shown only for a creature with a Fly Speed. */
+#cam-fly { position: fixed; right: calc(12px + var(--inset-r, 0px)); top: calc(50% - 152px); min-height: 44px; min-width: 44px; padding: 0 10px; background: var(--panel); border-color: var(--accent); font-weight: 700; }
+body.editing #cam-fly, body.in-scene #cam-fly { display: none; }
+@media (max-width: 480px) { #cam-fly { top: calc(38% - 152px); } } #cam-fly[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); } #cam-fly.off { opacity: .55; }
+/* The stepper of a flyer's height in the aim bar (fly-swim-control.md, "Picking a block"): 48 px, the sure way on a phone; and the list of places for those who do not use the picture. */
+#hint-step { display: inline-flex; align-items: center; gap: 4px; } #hint-step[hidden] { display: none; }
+#hint #hint-step button { width: 48px; min-height: 48px; padding: 0; font-size: 18px; } #hint-step button:disabled { opacity: .4; }
+#hint-ft { min-width: 5ch; text-align: center; font-variant-numeric: tabular-nums; }
+#hint #hint-fly { max-width: min(40vw, 16em); min-height: 44px; }
+/* The height under a finger that drags along the column, lifted clear of the finger. */
+#fly-tip { position: fixed; z-index: 4; left: 0; top: 0; pointer-events: none; padding: 6px 12px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 700; box-shadow: 0 4px 14px #0007; transform: translate(-50%, -100%); }
+/* The height tag of a creature off the ground: small to read, a thumb to tap (the area round it is its own). */
+.label .alt { pointer-events: auto; position: relative; min-height: 0; padding: 1px 7px; border-radius: 9px; border: 1px solid #0007; background: #1d2622d9; color: #fff; font: 700 11px/1.3 var(--body); text-shadow: none; cursor: pointer; }
+.label .alt::after { content: ''; position: absolute; inset: -12px -10px; }
+.label .alt[hidden] { display: none; }
+.label.col-label { font-size: 11px; font-weight: 700; opacity: .85; padding: 1px 5px; border-radius: 8px; background: #0006; text-shadow: none; }
+.label.col-label.picked { opacity: 1; font-size: 13px; background: var(--accent); color: var(--accent-ink); }
 
-/* dock */
-#dock { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 6px; padding: 0 12px max(10px, env(safe-area-inset-bottom)); pointer-events: none; max-width: 760px; margin: 0 auto; }
-#dock > * { pointer-events: auto; }
-#party { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
-#party button { background: var(--panel); display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 4px 10px; min-height: 36px; }
-#party button i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-#party button.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-#party button.now::after { content: 'turn'; font-size: 11px; background: var(--accent); color: var(--accent-ink); border-radius: 3px; padding: 0 4px; }
-#card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; }
+/* the dock is gone (M4): `--dock-h` is the strip the token owns at the bottom of the screen; the turn line, the dice tray and the join bar sit above it */
+:root { --dock-h: calc(max(16px, env(safe-area-inset-bottom)) + 64px + 12px); }
 #card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 #c-name { font-size: 18px; margin-right: 8px; } #c-sub { color: var(--muted); font-size: 13px; }
 #card-head .row { margin: 0; flex-wrap: nowrap; } #btn-sheet, #btn-end { min-height: 34px; padding: 4px 12px; white-space: nowrap; }
 #btn-end { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #c-hp { display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; } #c-hp .bar { flex: 1; height: 10px; }
 #c-res { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+#c-res > * { flex: none; white-space: nowrap; max-width: 100%; }
 #c-res span { border: 1px solid var(--line); border-radius: 20px; padding: 1px 8px; } #c-res span.spent { opacity: .4; text-decoration: line-through; }
 #c-res span.have { border-color: var(--accent); }
 
@@ -114,6 +113,17 @@ body.fight #status { border-color: var(--accent); }
 .facts { display: flex; gap: 6px; flex-wrap: wrap; } .facts span { border: 1px solid var(--line); border-radius: 20px; padding: 2px 10px; font-size: 13px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); } th { color: var(--muted); font-weight: 400; font-size: 12px; }
 #dm-table .req { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; }
+/* An offered character (#757): a column, the phone as well as the wide screen. */
+#dm-table .req.offer { flex-direction: column; align-items: stretch; border-top: 1px solid var(--line, #3a3a3a); }
+#dm-table .offer .row, .levelset { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#dm-table .offer button, .levelset button, .levelset select { min-height: 44px; }
+#dm-table .offer-sheet summary { min-height: 44px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid var(--line); border-radius: var(--radius); margin: 4px 0; }
+#dm-table .offer-sheet[open] summary::after { content: ' (open)'; color: var(--muted); }
+#dm-table .offer-sheet dl { margin: 0 0 6px; font-size: 13px; }
+#dm-table .offer-sheet dt { font-weight: 600; margin-top: 4px; }
+#dm-table .offer-sheet dd { margin: 0; overflow-wrap: anywhere; }
+#dm-table .offer input[type="text"] { min-height: 44px; width: 100%; }
+#dm-table .offer .check { min-height: 44px; display: flex; align-items: center; gap: 8px; }
 #dm-table code { font-size: 22px; letter-spacing: .15em; color: var(--accent); }
 
 #lobby { position: fixed; inset: 0; display: grid; place-items: center; background: #000a; z-index: 10; padding: 16px; }
@@ -131,7 +141,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text
 #lobby-code { text-transform: uppercase; letter-spacing: .15em; } #lobby-msg:empty { display: none; } #lobby-msg { color: var(--ink); }
 button.quiet { background: transparent; }
 #toast { position: fixed; left: 50%; bottom: 46%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; max-width: calc(100% - 32px); text-align: center; z-index: 20; box-shadow: 0 4px 20px #0006; }
-@media (max-width: 480px) { #cam { top: 38%; } #order { top: calc(max(10px, env(safe-area-inset-top)) + 58px); } }
+@media (max-width: 480px) { #cam { top: 38%; } }
 @media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 #toast.info { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); bottom: auto; top: 30%; }
 
@@ -141,6 +151,8 @@ button.quiet { background: transparent; }
 /* The square rules have long choices: the question above, the list under it, the full width. */
 #dm-square-rules .assign { flex-direction: column; align-items: stretch; gap: 4px; }
 #dm-square-rules .assign select { width: 100%; }
+#dm-scores .assign, #dm-hp .assign { flex-direction: column; align-items: stretch; gap: 4px; }
+#dm-scores .assign select, #dm-hp .assign select { width: 100%; min-height: 44px; }
 #dm-square-rules .note { margin-top: 0; }
 button.leave.sure { outline: 2px solid currentColor; }
 
@@ -158,8 +170,8 @@ button.leave.sure { outline: 2px solid currentColor; }
 .facts .skill { font: inherit; text-transform: capitalize; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line, #3a4a44); background: transparent; color: inherit; cursor: pointer; min-height: 32px; }
 .facts .skill.prof { font-weight: 700; border-color: currentColor; }
 
-/* DM: the map editor. It takes the place of the dock while it is open. */
-body.editing #dock, body.editing #hint { display: none !important; }
+/* DM: the map editor. */
+body.editing #hint { display: none !important; }
 #editor { position: fixed; left: 0; right: 0; bottom: 0; max-width: 760px; margin: 0 auto; background: var(--panel); border: 1px solid var(--line); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); display: grid; gap: 6px; z-index: 4; max-height: 55vh; overflow-y: auto; }
 #editor .ed-head { display: flex; gap: 8px; align-items: center; } #editor .ed-head strong { font-family: var(--display); white-space: nowrap; }
 #editor .ed-head select { flex: 1; min-width: 0; }
@@ -181,6 +193,7 @@ body.editing #dock, body.editing #hint { display: none !important; }
 #editor .ed-form .ed-dcs input { flex: 0 0 4.5em; }
 #editor .ed-form .ed-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 #editor .ed-form .ed-line > span { flex: 1 1 8em; }
+#editor .ed-form .ed-note { margin: 0; color: var(--danger, #e57373); font-size: 13px; }
 #editor .ed-form button { min-height: 44px; padding: 6px 10px; }
 #editor .ed-form button.sel, #editor .ed-form button.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 #editor .ed-form ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
@@ -200,13 +213,12 @@ body.editing #dock, body.editing #hint { display: none !important; }
 .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid #0006; }
 .sw-grass { background: #6f8f55; } .sw-forest { background: #4f7446; } .sw-stone { background: #9a978c; } .sw-water { background: #3f6f8c; } .sw-rock { background: #77736a; }
 /* the combat tracker lives in the drawer: see drawer.css and the tracker block at the end of this file */
-@media (max-width: 480px) { #tools { gap: 4px; } #tools button { padding: 8px 8px; } }
 
-/* Undo: the DM's top-bar button and the pair in the DM panel */
-#btn-undo:disabled, button.undo:disabled { opacity: .45; }
+/* Undo and Redo: the DM's two chips beside the token (symbols, not words) and the pair in the DM panel */
+#btn-undo:disabled, #btn-redo:disabled, button.undo:disabled { opacity: .45; }
 button.undo { display: inline-flex; flex-direction: column; align-items: flex-start; flex: 1 1 10em; min-width: 0; }
 button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-@media (max-width: 480px) { #btn-undo { font-size: 0; min-width: 40px; } #btn-undo::before { content: "\21B6"; font-size: 18px; line-height: 1; } }
+#btn-undo, #btn-redo { -webkit-touch-callout: none; user-select: none; }       /* a press-hold shows the line, not the browser's menu */
 
 /* the DM's marching order */
 #dm-march { list-style: none; margin: 0; padding: 0; }
@@ -247,7 +259,7 @@ button.undo small { font-size: .78em; opacity: .8; overflow: hidden; text-overfl
 #sheet-reactions .rx select { min-height: 44px; flex: 0 1 13em; min-width: 8em; max-width: 55%; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2, #222); color: inherit; font: inherit; }
 
 /* The timeline (docs/specs/renderer.md, decision 3): while beats play in `wait`, a quiet "…" and the controls dimmed. A tap skips. */
-#pace-wait { position: absolute; right: 12px; top: -38px; min-width: 44px; min-height: 32px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
+#pace-wait { min-width: 44px; min-height: 44px; padding: 0 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 1.1rem; letter-spacing: 0.15em; cursor: pointer; }
 #pace-wait[hidden] { display: none; }
 body.playing #btn-end { opacity: 0.5; }
 
@@ -324,3 +336,52 @@ li.tr-ghost .tr-main { min-height: 44px; align-content: center; }
 .qb-more-btn { min-width: 64px; min-height: 44px; padding: 0 12px; }
 .qb-more { display: grid; gap: 4px; margin-top: 8px; } .qb-more[hidden] { display: none; } .qb-more label { font-size: 12px; color: var(--muted); }
 .qb-colour-note { margin: 0; color: var(--bad); font-size: 13px; } .qb-colour-note:empty { display: none; }
+
+/* A ping (#599): the ring that fills while a press on the map is held, and the mark the table sees for three seconds. Marks take no pointer. */
+#pings { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
+.hold-ring { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; border: 3px solid var(--accent); box-sizing: border-box; opacity: 0.9; animation: hold-fill var(--hold-ms, 1000ms) linear forwards; }
+@keyframes hold-fill { from { transform: scale(1.6); opacity: 0.2; } to { transform: scale(0.8); opacity: 1; border-width: 6px; } }
+.ping { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.ping i { position: absolute; left: -28px; top: -28px; width: 56px; height: 56px; border-radius: 50%; border: 4px solid var(--ping-color); box-shadow: 0 0 10px var(--ping-color), inset 0 0 8px var(--ping-color); animation: ping-ring 1s ease-out 3 both; }
+.ping i::after { content: ''; position: absolute; left: 50%; top: 50%; width: 12px; height: 12px; margin: -6px; border-radius: 50%; background: var(--ping-color); }
+.ping-name { position: absolute; left: 0; top: -44px; transform: translateX(-50%); white-space: nowrap; padding: 1px 8px; border-radius: 10px; background: #000b; color: #fff; border: 2px solid var(--ping-color); font-weight: 700; font-size: 13px; animation: ping-fade var(--ping-ms, 3000ms) linear both; }
+@keyframes ping-ring { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.4); opacity: 0.25; } }
+@keyframes ping-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .hold-ring { animation: none; border-style: dashed; } .ping i { animation: none; } .ping-name { animation: none; }
+  .hold-ring::after { content: 'Keep holding'; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 4px; white-space: nowrap; font-size: 12px; font-weight: 700; color: #fff; background: #000b; padding: 1px 6px; border-radius: 8px; } }
+
+/* The aim bar may wrap its buttons under the words on a narrow screen. (The slot a spell is cast with, #604, and its other choices are on the character's sheet now: #750 part 2.) */
+#hint, #join { flex-wrap: wrap; }
+#aim-note { flex: 1 0 100%; font-size: 14px; font-weight: 700; } #aim-note[hidden] { display: none; }       /* #750: the count of the choice, at the top with the aim bar */
+#join { top: auto; bottom: calc(var(--dock-h, 0px) + 6px + var(--turn-h, 52px) + 6px); z-index: 5; }      /* above the turn line, which is above the dock; `--turn-h` is the turn line's measured height (app.js): with quick actions it wraps to two rows on a phone */
+#join[hidden] { display: none; }
+@media (pointer: coarse) { #join button { min-height: 44px; padding: 6px 14px; } }
+/* One writer to a solo save (#625): the offer to a second window, and the bar of a read-only one. */
+#strike-first-ask { position: fixed; inset: 0; z-index: 41; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; background: #0009; } #strike-first-ask[hidden] { display: none; }
+#strike-first-card { width: min(420px, 100%); box-sizing: border-box; display: grid; gap: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; }
+#strike-first-card h2 { margin: 0; font-size: 1.1em; } #strike-first-card p { margin: 0; } #strike-first-card .row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; } #strike-first-card button { min-width: 44px; min-height: 44px; }
+#solo-busy { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 40; width: min(420px, calc(100% - 32px)); box-sizing: border-box; display: grid; gap: 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; box-shadow: 0 8px 40px #000a; } #solo-busy[hidden] { display: none; }
+#solo-busy h2 { margin: 0; font-size: 1.1em; } #solo-busy p { margin: 0; } #solo-busy .row { display: flex; flex-wrap: wrap; gap: 8px; } #solo-busy button { min-height: 44px; }
+/* A read-only window (#625): a frame on all four edges that taps pass through (--bad is the theme's warning colour, in every theme; the inner ring in the ink colour keeps it visible against any map), and a label above every panel. */
+#readonly-frame { position: fixed; inset: 0; z-index: 60; pointer-events: none; box-shadow: inset 0 0 0 6px var(--bad), inset 0 0 0 8px var(--ink); } #readonly-frame[hidden] { display: none; }
+#readonly-bar { position: fixed; left: 50%; top: 12px; transform: translateX(-50%); z-index: 61; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: calc(100% - 40px); box-sizing: border-box; padding: 6px 12px; background: var(--bad); color: #fff; border: 2px solid var(--ink); border-radius: var(--radius); font-weight: 700; font-size: 13px; text-align: center; } #readonly-bar[hidden] { display: none; }
+#readonly-bar button { min-height: 36px; background: var(--panel); color: var(--ink); border: 1px solid var(--ink); }
+/* Controls that change the game are out of a read-only window, not only refused when used. */
+body.readonly #tab-dm, body.readonly #dm, body.readonly #btn-undo, body.readonly #btn-redo, body.readonly #c-end, body.readonly #menu-new, body.readonly #dm-new, body.readonly #btn-end, body.readonly #card, body.readonly #ap-how { display: none !important; }
+body.readonly #sheet button, body.readonly #sheet input, body.readonly #sheet select, body.readonly #sheet textarea { pointer-events: none; opacity: .5; }
+
+/* words for a screen reader only (the menu's live region, a slot count): they were used and never defined, so the turn announcement showed in a corner */
+.sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* The sheet's four sections (one-token-menu.md, M5): a bar a thumb can hit opens and shuts each in place; the open state is kept on the device. */
+.sh-sec { border-top: 1px solid var(--line); margin-top: 10px; }
+.sh-sec:first-of-type { border-top: 0; margin-top: 0; }
+.sh-h { margin: 8px 0 4px; font-size: 16px; }
+.sh-in { padding-bottom: 8px; overflow-x: auto; }
+.sh-in > section { margin-top: 10px; }
+/* Log and chat: the Say box sits above the private note, both at the foot of the log */
+#log-clock { margin: 0 0 6px; }
+#say-form { margin-top: 12px; padding: 8px 0 0; flex-wrap: nowrap; gap: 6px; }
+#say-form select { min-height: 44px; max-width: 9.5em; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; }
+#say-form input { flex: 1; min-width: 0; min-height: 44px; }
+#say-form button { min-height: 44px; }

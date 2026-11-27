@@ -4,16 +4,18 @@
 import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong, squareAround, squareBlock, squareCone, squareDisc, squareStrip } from '../grid.js';
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
-import { actionProfile, CUBE_AIM_MAX, loadOf, scaleSteps, targetCount, WORK } from '../effects.js';
-import { apart, apartAt, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
+import { actionProfile, CUBE_AIM_MAX, loadOf, rangeAt, scaleSteps, targetCount, WORK } from '../effects.js';
+import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
 import { SIZES } from '../content/sizes.js';
-import { difficultAt, terrainsOf } from '../terrain.js';
-import { objectKnown, regionsInSight, sightRule, unknown } from '../vision.js';
+import { difficultAt, inShell, shellsOf, terrainsOf } from '../terrain.js';
+import { objectKnown, regionsInSight, sightRule, tileSent, unknown } from '../vision.js';
+import { EDITS, lintMap } from '../map.js';
 import { hiddenFrom } from '../sight.js';
-import { barriers, distToSegment, objectDef, objectHexes, objectSegment } from '../walls.js';
+import { holds, zonesOf } from '../zones.js';
+import { barriers, clipWall, distToSegment, objectDef, objectHexes, objectSegment, reachOf, SQUARE_CLIP } from '../walls.js';
 import { itemName } from '../derive.js';
-import { effectsOf, restamp } from '../durations.js';
-import { incapacitated, modifiers, speedOf } from '../modifiers.js';
+import { confusedNow, effectsOf, restamp } from '../durations.js';
+import { incapacitated, modifiers, speedOf, walksOn } from '../modifiers.js';
 import { castAbilOf, clear, current, ent, EXPLORE_BUDGET, fail, FLY_CEILING, ft, hostile, inFight, less, living, mod, mountOf, riderOf, RuleError, spellStats, steering, turnBudget, unblocked, up, walled } from './shared.js';
 
 // ---------- grapples ----------
@@ -296,6 +298,13 @@ export function route(reach, k) {
 // and stops where one cannot be dragged.
 // `opts.aerial`: lay out flying, climbing and ladder ways too, so `move` can tell a place only they reach from one too far.
 // `opts.unchecked`: do not ask whether the held creatures could follow (so `move` can tell that from "too far").
+// Those who follow `e`, or follow one who does (party creatures that could walk off: not held, restrained, Paralysed or at Speed 0).
+export function followingChain(s, e) {
+  const out = new Set();
+  if (e.side !== 'party') return out;
+  for (let grew = true; grew;) { grew = false; for (const x of living(s)) if (x.follow && x.side === 'party' && !out.has(x.id) && x.id !== e.id && (x.follow === e.id || out.has(x.follow)) && !draggedBy(s, x).length && up(x) && moveOptions(s, x).size > 0) { out.add(x.id); grew = true; } }
+  return out;
+}
 export function moveOptions(s, e, opts = {}) {
   // A rider goes where its mount goes (stage C6a): its ways are the mount's, and `move` sent for it moves the mount.
   const steed = mountOf(s, e);
@@ -310,7 +319,10 @@ export function moveOptions(s, e, opts = {}) {
   const bud = fighting ? turnBudget(s, e) : null;
   if (fighting && !bud) return new Map();
   const pair = partnerOf(s, e);
-  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id && o !== pair);
+  // `opts.through`: outside a fight, a party creature may step into the place of one that follows it, directly or down the chain
+  // (those walk after it and make room: `march`).
+  const giving = opts.through && !fighting ? followingChain(s, e) : null;
+  const map = s.map, G = gridOf(map), B = barriers(map), others = living(s).filter((o) => o.id !== e.id && o !== pair && !giving?.has(o.id));
   // The surfaces of each column are looked up many times over; keep them for the length of this search.
   const columns = new Map(), columnOf = (h) => { const k = h.q * 100003 + h.r; let c = columns.get(k); if (!c) columns.set(k, c = surfaces(map, h)); return c; };
   const walled_ = map.walls.length > 0 || map.objects.length > 0, tiers = map.levels.map((l) => l.z);
@@ -323,6 +335,10 @@ export function moveOptions(s, e, opts = {}) {
   const blocks = (h) => inWay(h, (o) => !passable(o)), crowded = (h) => inWay(h, (o) => hostile(o, e) && o.size !== 'tiny');
   // Ground a spell made Difficult Terrain (terrain.js: Ice Storm, Grease). Walking only: a flyer is not on the ground.
   const spelled = terrainsOf(s).length ? (h) => difficultAt(s, h) : () => false;
+  // Antilife Shell: it cannot be walked, climbed or flown into from outside (and ladders are no way round it).
+  const shells = opts.unshelled ? [] : shellsFor(s, e), shelled = shells.length ? (from, h) => shelledStep(s, e, from, h, shells) : () => false;
+  // Freedom of Movement (`{ on: 'terrain', op: 'immune' }`): Difficult Terrain costs it nothing extra (a tile of it, a rise, a creature's space, ground a spell made difficult).
+  const easy = modifiers(s, e, 'terrain').immune === true;
   const big = shapeOf(e, G).length > 1, tall = sizeOf(e).height;
   // A big creature moves as one: every part of it must have somewhere to go and no wall to cross.
   const bodyFits = (from, h, levelId) => !big || (fitsOn(map, e, h, B) && footprint(e, from, G).every((f, i) => i === 0 || !B.blocked(levelId, f, footprint(e, h, G)[i])));
@@ -335,7 +351,10 @@ export function moveOptions(s, e, opts = {}) {
   // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
   // climbed as anyone climbs (the maps have heights, not wall faces).
   const acrobat = !!e.feats?.some((f) => f.surfaces) && (e.armour ?? 'none') === 'none' && !e.shield, wet = new Set();
-  const climbSpeed = speedOf(s, e, 'climb'), climbs = s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
+  // Water Walk (a `surface` modifier): water is solid ground for it, to cross and to stop on. When the effect ends the creature is in the water, which the engine cannot show (no swimming yet): the DM places it (docs/DEBT.md W57).
+  const walker = walksOn(s, e, 'water');
+  // `opts.footing`: only where it gets on foot with no climb: no face climbed up or down, no ladder or rope (what shares its footing: a formation's places, #728).
+  const climbSpeed = speedOf(s, e, 'climb'), climbs = !opts.footing && s.settings.climbing !== 'off' && (walk > 0 || climbSpeed > 0);
   // What each way of moving has left this turn. A creature that changes from one to another has
   // already used, of the new one, whatever it has moved so far.
   const left = (speed) => (fighting ? bud.move + (speed - walk) * (1 + (bud.dashes | 0)) : EXPLORE_BUDGET);
@@ -359,18 +378,18 @@ export function moveOptions(s, e, opts = {}) {
         if (fighting && !enc.arena[col(n)]) continue;                     // the arena is locked
         const column = columnOf(n);
         for (const sf of column) {
-          const dz = sf.z - from.z, up_ = Math.abs(dz), water = acrobat && sf.tile.t === 'water', terrain = water ? 1 : TILES[sf.tile.t].cost;
+          const dz = sf.z - from.z, up_ = Math.abs(dz), water = (acrobat || walker) && sf.tile.t === 'water', terrain = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
           const h = { q: n.q, r: n.r, z: sf.z };
-          if (water) wet.add(key(h));
+          if (water && !walker) wet.add(key(h));
           if (e.side !== 'party' && onHazard(sf.level.id, h)) continue;                      // a lair's own never step on its traps
           if (!bodyFits(from, h, here.id)) continue;
-          if (blocks(h)) continue;
+          if (blocks(h) || shelled(from, h)) continue;
           const diag = diagonal(from, n);
           if (diag && !cornersFree(from, h)) continue;
           if (up_ <= STEP_MAX) {                                             // walking: level going, a step, or stairs
             if (B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;   // a wall or a shut door
-            const flat = Math.max(terrain, up_ > STEP_FREE || crowded(h) || spelled(h) ? 2 : 1) + toll;               // Difficult Terrain does not stack; dragging adds to it
+            const flat = Math.max(terrain, !easy && (up_ > STEP_FREE || crowded(h) || spelled(h)) ? 2 : 1) + toll;               // Difficult Terrain does not stack; dragging adds to it
             let next = null;
             if (checked) { const d = dragStep(there ?? s, e, h); if (d.blocked) continue; next = d.next; }                       // what it holds could not follow
             out.push({ h, cost: flat * FT, max: limit.walk, flat, extra: 0, diag, level: up_ <= STEP_FREE });     // a rise the cost does not count
@@ -389,10 +408,10 @@ export function moveOptions(s, e, opts = {}) {
       }
       // A ladder, a rope, a climbable tree: something that joins this place to another.
       for (const o of map.objects) {
-        if (grounded || !o.to || !objectDef(o).connects) continue;
+        if (grounded || opts.footing || !o.to || !objectDef(o).connects) continue;
         const a = { q: o.at.q, r: o.at.r, z: objectZ(s, o) }, b = landing(map, o.to, o.to.z ?? 0);
         const h = key(a) === key(from) ? b : b && key(b) === key(from) ? a : null;
-        if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || !fitsOn(map, e, h, B)) continue;
+        if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || shelled(from, h) || !fitsOn(map, e, h, B)) continue;
         const cost = Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2);
         out.push({ h, cost, max: limit.climb, flat: 0, extra: cost, diag: false });
       }
@@ -410,7 +429,7 @@ export function moveOptions(s, e, opts = {}) {
         if (dz < 0 && column.some((sf) => sf.z > h.z && sf.z <= from.z)) continue;
         if (room.landed && (B.solid(room.landed.level.id, n) || (e.side !== 'party' && hazards.has(`${room.landed.level.id}|${col(n)}`)))) continue;
         if (walled_ && n !== from && [from.z, h.z].some((z) => wallsAt(map, z).some((l) => B.blocked(l.id, from, n, z - l.z >= FT ? 'tall' : 'move')))) continue;
-        if (blocks(h)) continue;
+        if (blocks(h) || shelled(from, h)) continue;
         const diag = diagonal(from, n);
         if (diag && !cornersFree(from, h)) continue;
         const flat = crowded(h) ? 2 : 1;
@@ -510,13 +529,14 @@ export function objectActor(s, id) {
     cond: {}, features: {}, attacks: [], gear: [], abil: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, prof: 0, resist: [], vuln: [], immune: [] } : null;
 }
 // A `set` or `reveal` step: work the thing itself or what it is linked to. False if there is nothing to work.
-export function objectStep(s, id, of, state, ev) {
+export function objectStep(s, id, of, state, ev, from = undefined) {
   const self = s.map.objects.find((x) => x.id === id);
   const all = of === 'link' ? (self?.links ?? []).map((l) => s.map.objects.find((x) => x.id === l.object)).filter(Boolean) : [self].filter(Boolean);
   let did = false;
   for (const o of all) {
     const def = objectDef(o), to = state ?? (def.states[o.state].hidden ? def.find?.to : null);
     if (!to || !Object.hasOwn(def.states, to)) continue;
+    if (from !== undefined && o.state !== from) { did ||= 'idle'; continue; }       // `from` (Knock): only an object in that state; any other is left as it is
     did = true;
     if (o.state !== to) setObject(s, o, to, ev);
   }
@@ -653,6 +673,60 @@ export function roomAt(s, e, to) {
   return '';
 }
 
+
+
+// ---------- size changes (a `resize` step: Enlarge/Reduce) ----------
+// What stands in the way of a creature at a size (`body`) where it is: the first of the others whose space it would be in, judged on what the caster's side knows. A creature the DM keeps
+// hidden, or one the party has no way to know of, is never counted, whoever casts (a visible foe's growth is sent to the players too), so that neither a refusal nor a smaller result tells the players it is there; the DM is told
+// of it instead (`told`). 
+function inTheWay(s, t, body, caster) {
+  const G = gridOf(s.map), told = [];
+  let found = null;
+  for (const o of living(s)) {
+    if (o.id === t.id || !o.pos || !overlapAt(o, o.pos, body, t.pos, G)) continue;
+    if (o.side !== 'party' && (o.hidden || unknown(s, o))) { told.push(o); continue; }
+    found ??= o;
+  }
+  return { found, told };
+}
+const roomFor = (s, t, body) => !ground(s.map, t.pos) || fitsOn(s.map, body, t.pos, barriers(s.map));
+// Put `t` at `size` (a `resize` step, and the size going back when the effect ends). Returns false where it is not there.
+// `resize`: the creature is one size category larger or smaller for as long as the lasting effect runs; the part remembers the size it had (`size: { was, now }`), and durations.js puts it back.
+// Larger only as far as there is room ("the maximum size possible in the space available": one category is all it can grow, so no room means no change); smaller stops at Tiny. One change at a time:
+// a creature already changed by a lasting effect is left as it is and the DM is told. The benefits of the spell (its other steps) apply whether or not the size changed.
+export function resize(s, t, step, ev, f) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound) return false;
+  if (t.dead || t.object || !t.pos) return true;
+  const name = f.src.name, caster = s.entities[f.actor] ?? null, now = SIZES[t.size] ? t.size : 'medium', at = SIZE_ORDER.indexOf(now);
+  const dm = (text) => ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text });
+  if (effectsOf(s).some((x) => x.parts.some((p) => p.size && !p.ended && p.target === t.id))) {
+    dm(`${t.name} is already larger or smaller by a lasting effect, and the engine keeps one change of size for a creature. It did not change ${name}'s: the DM decides the size.`);
+    return true;
+  }
+  const to = SIZE_ORDER[at + (step.resize === 'larger' ? 1 : -1)];
+  if (!to) { ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: ${t.name} is already ${now}, so it does not get ${step.resize}` }); return true; }
+  if (step.resize === 'larger') {
+    const body = { ...t, size: to }, { found, told } = inTheWay(s, t, body, caster);
+    if (found || !roomFor(s, t, body)) { ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: there is no room for ${t.name} to grow, so it stays ${now}` }); return true; }
+    if (told.length) dm(`${t.name} grew in ${name}, and ${told.map((o) => o.name).join(', ')} (which the party does not know of) is in its new space. The engine did not count ${told.length === 1 ? 'it' : 'them'}, so as not to tell the players: the DM moves whoever should not be there.`);
+  }
+  t.size = to;
+  fx.parts.push({ target: t.id, size: { was: now, now: to } });
+  ev.push({ type: 'size', id: t.id, size: to });
+  return true;
+}
+// The size a lasting effect gave goes back when it ends (durations.js `ON.sizeEnd`): only if the creature is still the size the effect left it, and there is no change of the effect's own
+// to undo for one that was shrunk back (a creature that cannot have the room is left where it stands and the DM told, alone: a refusal would tell the players what hides there).
+export function sizeEnd(s, ev, t, was, now, name) {
+  if (t.dead || (SIZES[t.size] ? t.size : 'medium') !== now) return;
+  t.size = was;
+  ev.push({ type: 'size', id: t.id, size: was });
+  if (t.pos && SIZE_ORDER.indexOf(was) > SIZE_ORDER.indexOf(now)) {
+    const body = { ...t }, { found, told } = inTheWay(s, t, body, null);
+    if (found || told.length || !roomFor(s, t, body)) ev.push({ type: 'manual', actor: t.id, name, partial: true, text: `${t.name} is ${was} again, and there is not room for it where it stands (something is in its space). The DM moves it or whatever is in the way.` });
+  }
+}
 
 // ---------- hidden creatures ----------
 // `hidden` is a DM switch: players are not told the creature exists (see view.js). The engine's
@@ -814,7 +888,7 @@ export function rollInit(s, e, faces = null) {
 export function joinEncounter(s, e, ev) {
   const enc = s.encounter, cur = current(s);
   reveal(s, e, ev);
-  e.reactionUsed = false;
+  e.reactionUsed = confusedNow(s, e);
   // A stamp from before state version 22 names a place in the order (durations.js, thisTurn): name it by
   // its creature before the order is sorted again, as settleOrder (resolve.js) does before a place moves.
   for (const fx of effectsOf(s)) {
@@ -864,6 +938,188 @@ export function findable(s, e, o, feet) {
 }
 export const findDC = (o) => o.dc?.find ?? objectDef(o).dc.find;
 
+// A spell aimed at a map object (`target.object`, Knock; docs/specs/rules-expansion.md, "Build notes: wave 4 part 6"): the cast names it (`object`, an id).
+// Checked before anything is spent, in this order, and the first two give one answer: an id that names no object and one a player's party does not know of
+// (an undiscovered secret door, a place not yet shown) are both 'No such object.', so a refusal never tells a player a thing is there. Then it must be seen:
+// the caster not Blinded, some hex of the object within `range` feet and in the clear line from the caster (`clear`, as `findable` judges a hidden thing).
+// Last, that it is a thing that can be locked (a use named `unlock`), so Knock is not cast at a lever or a torch. Returns the object.
+export function aimObject(s, e, name, range, id, ctx) {
+  typeof id === 'string' || fail(`Pick an object for ${name}.`);
+  const o = objectOf(s, id, ctx);
+  !e.cond?.blinded || fail(`${e.name} is Blinded and can't see the ${objectName(o).toLowerCase()}.`);
+  const level = s.map.levels.find((l) => l.id === o.level), G = gridOf(s.map), m = measure(s, G);
+  const near = level ? objectHexes(o, G).filter((h) => level.tiles[col(h)]).sort((x, y) => m(x, e.pos) - m(y, e.pos))[0] : null;
+  near || fail('No such object.');
+  const d = m(near, e.pos) * FT;
+  d <= range || fail(`The ${objectName(o).toLowerCase()} is ${d} ft away. ${name} reaches ${range} ft.`);
+  clear(s, e.pos, { q: near.q, r: near.r, z: level.z + (level.tiles[col(near)].h ?? 0) }) || fail(`${e.name} can't see the ${objectName(o).toLowerCase()} from here.`);
+  objectDef(o).use?.some((u) => u.id === 'unlock') || fail(`${name} opens a lock, and the ${objectName(o).toLowerCase()} has none.`);
+  return o;
+}
+
+// The DM's map edit (`mapEdit`, engine/dm.js) and a spell's (`cut`, below) are one path: the changes are made to a copy of the map, the copy is
+// checked whole, nobody may be left with nowhere to stand, and only then is the copy put in, as the map in play, with the party looking around
+// again (so views, vision memory and patches update as for a DM edit). `ops` is a list of `EDITS` of map.js. A refusal is a RuleError and changes nothing.
+export function editMap(s, ops, ev, { footing = true } = {}) {
+  const map = structuredClone(s.map);
+  for (const op of ops) {
+    const edit = (op && Object.hasOwn(EDITS, op.op) && EDITS[op.op]) || fail(`Unknown map change: ${op?.op}`);
+    const problem = edit(map, op);
+    if (problem) fail(problem);
+  }
+  const problems = lintMap(map);
+  problems.length === 0 || fail(footing ? `That change can't be made. ${problems[0]}` : "That wall can't be cut.");      // a spell's refusal names nothing of the map
+  const B = barriers(map);
+  if (footing) for (const e of living(s)) {                         // a floor may give way under someone, but there must be something to land on
+    const sf = under(map, e.pos);
+    (sf && !(sf.z === e.pos.z && B.solid(sf.level.id, e.pos))) || fail(`${e.name} would be left with nowhere to stand.`);
+  }
+  s.map = map;
+  ev.push({ type: 'mapEdit', count: ops.length });
+  lookAround(s, ev);
+}
+
+// A spell aimed at a wall (`target.wall`, Stone Shape; docs/specs/rules-expansion.md, "Build notes: wave 4 part 9"): the cast names a point in map feet,
+// `wall: { level, x, y }`, on a wall of the map (a point rather than a hex edge: a wall is a line segment of any length and place, walls.js).
+// Checked before anything is spent, in this order, and the first gives one answer: a point on no wall and a point on a wall the party does not know
+// of (a stretch of wall no hex the players are sent is near, `view.js` `clipWall`) are both 'No such wall.', so a refusal never tells a player a wall is
+// there. An undiscovered secret door stands as the wall it passes for (it is sent to players as one): it is a wall here too, so it is not refused.
+// Then the caster must not be Blinded, the point must be within `range` feet of the caster's space (touch is 5), and the wall's kind must be `wall`
+// (a window, a rail or a curtain is refused). The DM names any wall. Returns the aimed point and what is there to cut.
+export const WALL_ON = 1, CUT_FEET = 5;
+// Every segment a creature could take for a wall on a level: the map's walls and the undiscovered doors (kind wall, `door` the object's id).
+export function wallSegments(s, levelId) {
+  const G = gridOf(s.map), out = [];
+  for (const w of s.map.walls) if (w.level === levelId) out.push({ id: w.id, kind: w.kind, a: w.a, b: w.b });
+  for (const o of s.map.objects) {
+    const seg = o.level === levelId && objectSegment(o, G), st = objectDef(o)?.states[o.state];
+    if (seg && st?.hidden && st.blocks.includes('move') && st.blocks.includes('sight')) out.push({ id: o.id, door: true, kind: 'wall', a: seg[0], b: seg[1] });
+  }
+  return out;
+}
+export function aimWall(s, e, name, range, w, ctx) {
+  (w && typeof w === 'object' && !Array.isArray(w) && typeof w.level === 'string' && Number.isFinite(w.x) && Number.isFinite(w.y)) || fail(`Pick a point on a wall for ${name}.`);
+  const none = () => fail('No such wall.');
+  s.map.holding && none();
+  const level = s.map.levels.find((l) => l.id === w.level) || none(), G = gridOf(s.map), P = [w.x, w.y];
+  let near = wallSegments(s, level.id).filter((x) => distToSegment(P, [x.a, x.b]) <= WALL_ON).sort((x, y) => distToSegment(P, [x.a, x.b]) - distToSegment(P, [y.a, y.b]));
+  if (ctx?.role !== 'dm') {
+    // A player knows a segment only as far as it is sent (view.js: each wall clipped to the sent hexes): one piece of it within WALL_ON of the point.
+    const rule = sightRule(s), centres = G.range(G.cell(P[0], P[1]), 3).filter((h) => level.tiles[col(h)] && tileSent(s, level.id, h, rule)).map((h) => G.center(h));
+    near = near.filter((x) => clipWall(x, centres, reachOf(G), G.kind === 'square' ? SQUARE_CLIP : 0).some((piece) => distToSegment(P, [piece.a, piece.b]) <= WALL_ON));
+  }
+  near.length || none();
+  !e.cond?.blinded || fail(`${e.name} is Blinded and can't see the wall.`);
+  const mine = under(s.map, e.pos);
+  const d = mine?.level.id === level.id ? Math.min(...footprint(e, e.pos, G).map((h) => Math.hypot(G.center(h)[0] - P[0], G.center(h)[1] - P[1]) - FT / 2)) : Infinity;
+  d <= range + 1e-9 || fail(`That wall is out of the caster's reach. ${name} reaches ${range} ft.`);
+  const target = near.find((x) => x.kind === 'wall') || fail(`${name} cuts a wall, and this is a ${near[0].kind}.`);
+  return { level: level.id, x: P[0], y: P[1], target: target.id };
+}
+
+// A `cut` step (Stone Shape): five feet of the wall at the point the cast named come out, through `editMap`. The window is `CUT_FEET` along the wall,
+// centred on the point and moved to lie inside the segment (so a cut near an end is still a whole five feet); a segment of five feet or less goes
+// whole. Every other `wall`-kind segment or undiscovered door lying along the same line and overlapping the window is cut by it too (what is left of
+// one is a wall of its own), so the gap is open whatever it was drawn as: players see the same walls either way. The DM alone is told (what the engine
+// cannot tell: the wall's material; a secret door that went with it). Returns false if nothing was there to cut, else the stretch taken out.
+export function cutWall(s, src, feet, f, ev) {
+  const G = gridOf(s.map), P = [src.x, src.y], tell = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, partial: true, text });
+  const segs = wallSegments(s, src.level), T = segs.find((x) => x.id === src.target && x.kind === 'wall');
+  if (!T) { tell(`${f.src.name}: there was no wall left at the point named, so nothing was cut.`); return false; }
+  const [A, B] = [T.a, T.b], L = Math.hypot(B[0] - A[0], B[1] - A[1]), u = L ? [(B[0] - A[0]) / L, (B[1] - A[1]) / L] : [1, 0];
+  const along = (p) => (p[0] - A[0]) * u[0] + (p[1] - A[1]) * u[1], off = (p) => Math.abs((p[0] - A[0]) * u[1] - (p[1] - A[1]) * u[0]);
+  const t = Math.max(0, Math.min(L, along(P)));
+  const lo = L <= feet + 1e-9 ? 0 : Math.max(0, Math.min(L - feet, t - feet / 2)), hi = L <= feet + 1e-9 ? L : lo + feet;
+  const ops = [], doors = [];
+  for (const x of segs) {
+    if (x.kind !== 'wall' || off(x.a) > 0.05 || off(x.b) > 0.05) continue;
+    const sa = along(x.a), sb = along(x.b), s0 = Math.min(sa, sb), s1 = Math.max(sa, sb);
+    if (Math.min(s1, hi) - Math.max(s0, lo) <= 1e-6) continue;
+    const point = (v) => (Math.abs(v - sa) < 1e-9 ? x.a : Math.abs(v - sb) < 1e-9 ? x.b : [A[0] + u[0] * v, A[1] + u[1] * v]);
+    const pieces = [];
+    if (lo - s0 > 1e-6) pieces.push([s0, lo]);
+    if (s1 - hi > 1e-6) pieces.push([hi, s1]);
+    const base = x.door ? { kind: 'wall', level: src.level } : structuredClone(s.map.walls.find((w) => w.id === x.id));
+    const rec = (r, id) => { const wall = { ...base, a: sa <= sb ? point(r[0]) : point(r[1]), b: sa <= sb ? point(r[1]) : point(r[0]) }; if (id) wall.id = id; else delete wall.id; return { op: 'wall', wall }; };
+    if (x.door) { doors.push(x.id); ops.push({ op: 'unobject', id: x.id }); for (const r of pieces) ops.push(rec(r)); }
+    else if (!pieces.length) ops.push({ op: 'unwall', id: x.id });
+    else { ops.push(rec(pieces[0], x.id)); for (const r of pieces.slice(1)) ops.push(rec(r)); }
+  }
+  // A lever or plate linked to a secret door that was cut away loses that link, as if the door had never been (a link to an object that is not
+  // on the map is a lint refusal, and that refusal would tell a player there had been a door: review of #820).
+  if (doors.length) for (const o of s.map.objects) {
+    if (!Array.isArray(o.links) || !o.links.some((l) => doors.includes(l?.object))) continue;
+    const kept = structuredClone(o); kept.links = kept.links.filter((l) => !doors.includes(l?.object));
+    if (!kept.links.length) delete kept.links;
+    ops.push({ op: 'object', object: kept });
+  }
+  editMap(s, ops, ev, { footing: false });      // a cut of wall never changes what anyone stands on, and a refusal here must not name a creature
+  tell(`${f.src.name} took out ${Math.min(feet, L)} feet of the wall at that point, as if shaped from stone. The engine does not know what a wall is made of: if it is not stone, undo this.${doors.length ? ` An undiscovered secret door stood in the stretch (${doors.join(', ')}) and was cut away with it; the players were told nothing of it.` : ''}`);
+  return { level: src.level, a: [A[0] + u[0] * lo, A[1] + u[1] * lo], b: [A[0] + u[0] * hi, A[1] + u[1] * hi] };      // the stretch taken out (a creature merged with the stone near it is expelled: resolve.js, expelMelded)
+}
+
+// A `sense` step (Find Traps, Detect Magic; docs/specs/rules-expansion.md, "Build notes: wave 4 part 2"): what the caster `e` would sense within
+// `step.feet` feet, worked out from the whole state and told to the DM ALONE (a `manual` event with `partial`, which no player is sent): the DM
+// tells the player. Nothing here changes the state, and the order of the lines gives nothing away (they are sorted by their words, for traps).
+// Traps: a map object with a trigger that has effects and fires from the state it is in (a covered pit, a spotted dart trap, a pit already open;
+// not one sprung or disarmed), in line of sight, with the general nature of its danger (damage types, a fall, a condition) and not where it is.
+// Magic: the magic items on creatures' sheets and in piles, and the spells running on creatures, in range and not behind total cover.
+const dangers = (steps, out = new Set()) => {
+  for (const x of steps ?? []) {
+    if (!x || typeof x !== 'object') continue;
+    if ('damage' in x) out.add(`${x.type} damage`);
+    else if ('fall' in x) out.add('a fall');
+    else if ('condition' in x) out.add(`the ${x.condition} condition`);
+    else if ('manual' in x) out.add('a danger of another kind');
+    for (const b of ['onFail', 'onSuccess', 'onHit', 'onMiss']) dangers(x[b], out);
+  }
+  return out;
+};
+export function sense(s, e, step, f, ev) {
+  const G = gridOf(s.map), m = measure(s, G), within = step.feet, far = (h) => m(h, e.pos) * FT;
+  // The nearest hex of an object that the caster could see along a clear line, with its distance in feet; null if none is in range.
+  const reach = (o) => {
+    const level = s.map.levels.find((l) => l.id === o.level);
+    const hexes = level ? objectHexes(o, G).filter((h) => level.tiles[col(h)]).sort((a, b) => far(a) - far(b)) : [];
+    const near = hexes[0];
+    return near && far(near) <= within && clear(s, e.pos, { q: near.q, r: near.r, z: objectZ(s, o) }) ? far(near) : null;
+  };
+  const lines = [];
+  if (step.sense === 'traps') {
+    for (const o of s.map.objects) {
+      const def = objectDef(o);
+      if (!def || objectSegment(o, G) || reach(o) === null) continue;
+      const live = (def.triggers ?? []).filter((tr) => tr.effects?.length && tr.from?.includes(o.state));
+      if (!live.length) continue;
+      const what = [...live.reduce((set, tr) => dangers(tr.effects, set), new Set())].sort();
+      lines.push(`a trap that poses ${what.length ? what.join(', ') : 'a danger the engine cannot name'}`);
+    }
+    lines.sort();
+  } else {
+    const found = [];
+    for (const c of living(s)) {
+      if (far(c.pos) > within || (c.id !== e.id && !unblocked(s, e, c))) continue;
+      const things = [];
+      for (const x of c.sheet?.items ?? []) if (x?.item && CONTENT.items[x.item]) things.push(itemName(CONTENT.items[x.item], x));
+      for (const fx of effectsOf(s)) if (fx.parts?.some((p) => p.target === c.id && !p.ended)) things.push(SPELLS[fx.spell] ? `${SPELLS[fx.spell].def.name}, ${SPELLS[fx.spell].def.school}` : `${fx.name ?? 'a lasting effect'}`);
+      if (things.length) found.push([far(c.pos), `${c.name}${c.id === e.id ? ' (the caster)' : ''}: ${things.join('; ')}`]);
+    }
+    for (const o of s.map.objects) {
+      if (!isPile(o)) continue;
+      const d = reach(o), things = (o.contents ?? []).filter((x) => wellFormed(x) && x.item).map((x) => itemName(CONTENT.items[x.item], x));
+      if (d !== null && things.length) found.push([d, `${objectName(o)}: ${things.join('; ')}`]);
+    }
+    found.sort((a, b) => a[0] - b[0] || (a[1] < b[1] ? -1 : 1));
+    for (const [d, text] of found) lines.push(`${text} (${d} ft)`);
+  }
+  const name = f.src.name;
+  const text = step.sense === 'traps'
+    ? `${name} (for the DM alone; tell ${e.name}): ${lines.length ? `${e.name} senses ${lines.length} trap${lines.length === 1 ? '' : 's'} within ${within} ft in line of sight, without where: ${lines.join('; ')}.` : `the engine found no trap on the map within ${within} ft in ${e.name}'s line of sight.`} Alarm, Glyph of Warding and any trap the map does not hold as an object are the DM's to add; a natural weakness in the floor is no trap.`
+    : `${name} (for the DM alone; tell ${e.name}): ${lines.length ? `magic the engine keeps track of within ${within} ft: ${lines.join('; ')}.` : `the engine knows of no magic within ${within} ft.`} It keeps no track of magic in a monster's stat block, of areas, or of how thick a wall is (1 foot of stone, dirt or wood, 1 inch of metal or a thin sheet of lead blocks the spell): the DM adds and judges those. With a Magic action ${e.name} sees the aura on a visible creature or object that bears magic and learns the school of a spell's magic.`;
+  ev.push({ type: 'manual', actor: f.actor, name, partial: true, text });
+  return true;
+}
+
 // How an area is laid out on the hexes when `e` aims it at `aim`: { hexes, origin, high }.
 // `range` is the spell's range in feet (0 for Self), or an action's `area.range`.
 //   cone      opens from `e` toward `aim`.
@@ -907,9 +1163,16 @@ function mapReachBox(map, box, n) {
   return b ? Math.max(b.q1 - box.q0, box.q1 - b.q0, b.r1 - box.r0, box.r1 - b.r0) : 0;
 }
 
-function layout(s, e, area, range, aim) {
+// Which way a wall runs when its caster named only where it goes: across the line from the caster to that space, as a wall put up in front of oneself.
+function across(G, from, aim) {
+  const dq = aim.q - from.q, dr = aim.r - from.r;
+  if (G.kind === 'square') return dq || dr ? { q: aim.q - dr, r: aim.r + dq } : { q: aim.q + 1, r: aim.r };
+  const a = G.toWorld(from), b = G.toWorld(aim), dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+  return len ? G.fromWorld(b.x - dz / len * 12, b.z + dx / len * 12) : { q: aim.q + 1, r: aim.r };
+}
+function layout(s, e, area, range, aim, toward) {
   const n = area.size / FT, shape = area.shape, G = gridOf(s.map);
-  if (G.kind === 'square') return squareLayout(s, e, area, range, aim);
+  if (G.kind === 'square') return squareLayout(s, e, area, range, aim, toward);
   if (shape === 'emanation') return { hexes: G.range(e.pos, Math.min(n, mapReach(s.map, G, e.pos, n))).filter((h) => key(h) !== key(e.pos)), origin: e.pos, high: (t) => gap(s, e.pos, t.pos) <= n };
   if (!aim) return null;
   const aimZ = aim.z ?? landing(s.map, aim, e.pos.z)?.z ?? e.pos.z;
@@ -918,6 +1181,13 @@ function layout(s, e, area, range, aim) {
     const origin = { q: aim.q, r: aim.r, z: aimZ }, tall = area.height ?? area.size;
     const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : (t) => gap(s, origin, t.pos) <= n;
     return { hexes: G.range(aim, Math.min(n, mapReach(s.map, G, aim, n))), origin, high };
+  }
+  // A placed Line (a wall): centred on the space aimed at, running toward `toward` and away from it, `size` feet in all, `width` thick, `height` high from the surface there.
+  if (shape === 'line' && area.placed) {
+    const dir = toward ?? across(G, e.pos, aim), cells = area.size / FT, ahead = Math.ceil((cells - 1) / 2), behind = cells - 1 - ahead, tall = area.height ?? FT;
+    if (G.dist(aim, dir) === 0) return null;
+    const hexes = G.band(aim, dir, -(behind + 0.5) * FT, (ahead + 0.5) * FT, (area.width ?? FT) / 2), origin = { q: aim.q, r: aim.r, z: aimZ };
+    return { hexes, origin, high: (t) => t.pos.z < aimZ + tall && t.pos.z + sizeOf(t).height > aimZ };
   }
   const front = Math.max(...footprint(e, e.pos, G).map((f) => G.along(e.pos, aim, f))) + FT / 2;      // the edge of its own space
   if (shape === 'line') {
@@ -961,7 +1231,7 @@ function layout(s, e, area, range, aim) {
 // the square `f` of `t` that is in the area, so a big creature counts by the part that is in it;
 // `from` are the squares a wall must not stand between: the caster's own for what starts from it.
 export const AREA_FILLS = ['round', 'grid'];
-function squareLayout(s, e, area, range, aim) {
+function squareLayout(s, e, area, range, aim, toward) {
   const n = area.size / FT, shape = area.shape, fill = s.settings?.areaFill ?? 'round', G = gridOf(s.map);
   const own = footprint(e, e.pos, G), box = boxOf(own), mid = boxMiddle(box);
   const within = (o) => (t) => rise(t.pos.z - o.z) <= n;
@@ -978,6 +1248,13 @@ function squareLayout(s, e, area, range, aim) {
     const origin = { q: aim.q, r: aim.r, z: aimZ }, tall = area.height ?? area.size;
     const high = shape === 'cylinder' ? (t) => t.pos.z > origin.z - FT / 2 && t.pos.z <= origin.z + tall : within(origin);
     return { hexes: squareDisc(aim, Math.min(n, cut(mapReach(s.map, G, aim, n))), fill), origin, high, from: [origin] };
+  }
+  if (shape === 'line' && area.placed) {
+    const dir = toward ?? across(G, e.pos, aim), cells = area.size / FT, ahead = Math.ceil((cells - 1) / 2), behind = cells - 1 - ahead, tall = area.height ?? FT, half = (area.width ?? FT) / 2;
+    if (dir.q === aim.q && dir.r === aim.r) return null;
+    const here = [2 * aim.q, 2 * aim.r], cell = { q0: aim.q, q1: aim.q, r0: aim.r, r1: aim.r }, back = { q: 2 * aim.q - dir.q, r: 2 * aim.r - dir.r }, origin = { q: aim.q, r: aim.r, z: aimZ };
+    const hexes = [{ q: aim.q, r: aim.r }, ...squareStrip(here, dir, cell, ahead * FT, half), ...squareStrip(here, back, cell, behind * FT, half)];
+    return { hexes, origin, high: (t) => t.pos.z < aimZ + tall && t.pos.z + sizeOf(t).height > aimZ, from: [origin] };
   }
   if (shape === 'line') {
     if (range > 0 || !aimed) return null;
@@ -1011,9 +1288,9 @@ const areaRange = (sp) => (typeof sp.range === 'number' ? sp.range : sp.area?.ra
 
 // Hexes an area would cover if aimed at `aim` (for the UI's highlight and the AI).
 // `sp` is a spell profile or { area, range? }.
-export function areaHexes(s, e, sp, aim) {
+export function areaHexes(s, e, sp, aim, toward) {
   if (!sp.area) return [];
-  const l = layout(s, e, sp.area, areaRange(sp), aim);
+  const l = layout(s, e, sp.area, areaRange(sp), aim, toward);
   return l ? l.hexes.filter((h) => hasColumn(s.map, h)) : [];
 }
 
@@ -1051,8 +1328,8 @@ export function mayBeHeavy(s, a) {
 
 // Who an area catches when `e` aims it at `hex`: { targets, hexes, origin }. See layout().
 // `origin` is null when the area starts from `e` itself.
-export function aimArea(s, e, name, area, range, hex) {
-  const shape = area.shape, fromSelf = shape === 'cone' || shape === 'line' || (shape === 'cube' && !(range > 0));
+export function aimArea(s, e, name, area, range, hex, toward) {
+  const shape = area.shape, fromSelf = shape === 'cone' || (shape === 'line' && !area.placed) || (shape === 'cube' && !(range > 0));
   if (fromSelf) (hex && gridOf(s.map).dist(hex, e.pos) > 0) || fail(`Pick a direction for ${name}.`);
   else if (shape !== 'emanation') {
     hex || fail(`Pick where ${name} goes off.`);
@@ -1061,7 +1338,7 @@ export function aimArea(s, e, name, area, range, hex) {
     const d = G.kind === 'square' ? Math.min(...footprint(e, e.pos, G).map((f) => gap(s, at, f))) : gap(s, at, e.pos);
     if (d * FT > range) fail(`That is ${ft(d)} away. ${name} reaches ${range} ft.`);
   }
-  const l = layout(s, e, area, range, hex) || fail(`The engine cannot lay out ${name} there.`);
+  const l = layout(s, e, area, range, hex, toward) || fail(`The engine cannot lay out ${name} there.`);
   const hexes = l.hexes.filter((h) => hasColumn(s.map, h)), keys = new Set(hexes.map(key)), origin = l.origin, G = gridOf(s.map);
   const targets = G.kind === 'square'
     ? living(s).filter((t) => (!area.exceptCaster || t.id !== e.id) && footprint(t, t.pos, G).some((f) => keys.has(col(f)) && l.high(t, f)) && footprint(t, t.pos, G).some((f) => l.from.some((o) => clear(s, o, f))))
@@ -1074,14 +1351,16 @@ export function aimArea(s, e, name, area, range, hex) {
 // `a.target` (one). At most `most`; one creature more than once only for rays, darts and beams
 // (`repeat`); each within `range` feet with nothing solid between; a harmful one not at its own
 // user; with `within`, each after the first that near the first (Chain Lightning).
-export function creatures(s, e, name, { range, harmful, repeat, within, most, spell = false }, a) {
+export function creatures(s, e, name, { range, harmful, repeat, within, most, spell = false, dead = false }, a) {
   const ids = a.targets !== undefined ? a.targets : a.target !== undefined ? [a.target] : [];
   (Array.isArray(ids) && ids.length > 0) || fail(`Pick a target for ${name}.`);
   ids.length <= most || fail(`${name} has ${most === 1 ? 'one target' : `${most} targets`}.`);
   if (!repeat && new Set(ids).size !== ids.length) fail(`${name} can't target the same creature twice.`);
   const out = ids.map((id) => ent(s, id));
   for (const t of out) {
-    !t.dead || fail(`${t.name} is dead.`);
+    t.melded && t.id !== e.id && fail('No such creature.');      // merged with stone (Meld into Stone): nothing is there to name, and the refusal says what it says for an id that is no creature
+    if (dead) bodyFor(s, t, name);
+    else !t.dead || fail(`${t.name} is dead.`);
     if (harmful && t.id === e.id) fail(`${name} needs another target.`);
     const d = apart(s, e, t);
     if (d * FT > range) fail(`${t.name} is ${ft(d)} away. ${name} reaches ${spell && range === 5 ? 'touch (5 ft)' : range + ' ft'}.`);
@@ -1091,13 +1370,25 @@ export function creatures(s, e, name, { range, harmful, repeat, within, most, sp
   return out;
 }
 
+// A spell aimed at the dead (`target.creature.dead`, Revivify) takes a creature that is dead and has a body: not one that is up, not one that vanished
+// (the DM's hidden switch), not one nothing is left of (`remains`: dust or a statue). A body lies under whoever stands over it (the dead fill no space):
+// brought back there, two creatures would fill one space, so it is refused as the DM's `setHp` refuses it. Nothing is changed by a refusal.
+export function bodyFor(s, t, name) {
+  t.dead || fail(`${name} is aimed at a creature that has died, and ${t.name} has not.`);
+  !t.vanished || fail(`${t.name} is gone: there is no body.`);
+  !t.remains || fail(`Nothing is left of ${t.name} but ${t.remains === 'dust' ? 'dust' : 'a frozen statue'}: there is no body to bring back.`);
+  const G = gridOf(s.map), over = living(s).find((o) => o.id !== t.id && overlapAt(o, o.pos, t, t.pos, G));
+  !over || fail(`${over.name} stands where ${t.name}'s body lies: move one of them first.`);
+}
+
 // Creature ids a given attack or spell could legally target right now (range only).
 export function targetsFor(s, e, { attack, spell, action }) {
   const out = [];
   const def = action ?? (attack && e.actions?.find((x) => x.id === attack && !x.multiattack)?.id);
   let far = null;
   if (def) { try { far = actionProfile(e.actions.find((x) => x.id === def)).far; } catch (err) { if (!(err instanceof TypeError)) throw err; } }      // an action with neither reach nor range reaches no one (#421)
-  for (const t of living(s)) {
+  const bodies = !def && !attack && spell && SPELLS[spell]?.dead;       // a spell aimed at the dead: bodies, not the living
+  for (const t of bodies ? Object.values(s.entities).filter((x) => x.dead && !x.vanished && !x.remains) : living(s)) {
     if (!unblocked(s, e, t)) continue;
     const d = apart(s, e, t) * FT;
     if (def) { if (far !== undefined && far !== null && t.id !== e.id && d <= far) out.push(t.id); }
@@ -1107,7 +1398,8 @@ export function targetsFor(s, e, { attack, spell, action }) {
     } else {
       const sp = SPELLS[spell];
       if (sp.aim !== 'creature') continue;
-      if (sp.harmful ? t.id !== e.id && d <= sp.range : d <= sp.range) out.push(t.id);
+      const reach = rangeAt(sp.def, e.level);       // grown by character level, where the spell says so (Spare the Dying)
+      if (sp.harmful ? t.id !== e.id && d <= reach : d <= reach) out.push(t.id);
     }
   }
   return out;
@@ -1125,6 +1417,7 @@ export function aimAction(s, e, def, a, all = false, ctx = null) {
     if (!(far > 0)) fail(`${e.name}'s ${def.name} says neither how far it reaches nor how far it shoots, so it cannot be aimed at anyone. The DM can apply it by hand.`);
     for (const id of a.targets ?? [a.target]) { const x = ent(s, id); !x.dead || fail(`${x.name} is already dead.`); }
     const targets = creatures(s, e, def.name, { range: far, harmful: true, repeat: c.repeat, within: c.within, most: c.count ?? 1 }, a);
+    if (c.reach !== undefined) for (const x of targets) { const why = shellRefusal(s, e, x, c.reach); if (why) fail(why); }      // Antilife Shell: no 5-foot reaching through it
     return { targets, hexes: null, origin: null };
   }
   if (actionProfile(def).aim !== 'area') return { targets: null, hexes: null, origin: null };
@@ -1147,6 +1440,21 @@ function pickCaught(e, name, caught, ids, most) {
 // A creature's type: a pack monster's, else a character's (Humanoid). Null for one the engine cannot tell.
 export const creatureType = (e) => e.type ?? CONTENT.monsters[e.tpl]?.type ?? (e.kind === 'pc' ? 'humanoid' : null);
 
+// Antilife Shell (terrain `shell`; docs/specs/rules-expansion.md, "Build notes: wave 3b part 1"): the shells that bind creature `e`. Constructs and Undead are not bound; a creature
+// whose type the engine cannot tell is (the DM lets it through if it is one). The caster is not bound by its own. A shell whose caster the party does not know of (hidden,
+// hiding, or not seen) binds nobody: a refusal would tell the players something stands there, as a bare cell would not, so the DM judges it (the cast told the DM so).
+export const shellSeen = (s, c) => !c.hidden && !c.hiding && !unknown(s, c);
+export function shellsFor(s, e) {
+  if (!shellsOf(s).length || ['construct', 'undead'].includes(creatureType(e))) return [];
+  return shellsOf(s).filter((fx) => { const c = s.entities[fx.terrain.follows]; return c.id !== e.id && shellSeen(s, c); });
+}
+// Would a step of `e` from `from` to `to` take it into a shell from outside (a creature already inside is not pushed out, and may move within it)?
+export const shelledStep = (s, e, from, to, shells = shellsFor(s, e)) => shells.some((fx) => !inShell(s, fx, e, from) && inShell(s, fx, e, to));
+// Is a melee attack of `reach` feet from `a` at `t` through a shell: one of them inside it, the other outside? The SRD lets an affected creature attack "with Ranged or Reach weapons through the barrier":
+// a weapon with reach beyond 5 feet (a Reach weapon, an ogre's or troll's long reach) is let through; a 5-foot melee attack (a natural attack, or a weapon without Reach) is stopped.
+export const shelledReach = (s, a, t, reach = 5) => reach <= 5 && shellsFor(s, a).some((fx) => inShell(s, fx, a) !== inShell(s, fx, t));
+export const shellRefusal = (s, a, t, reach = 5) => shelledReach(s, a, t, reach) ? `${t.name} is out of reach: Antilife Shell keeps ${a.name} from reaching through it.` : null;
+
 // Who an area action would catch if aimed at `hex`, or null if it cannot be aimed there. For the AI and the UI.
 export function areaTargets(s, e, def, hex) {
   try { return aimAction(s, e, def, { hex }, true).targets; } catch (err) { if (err instanceof RuleError) return null; throw err; }
@@ -1157,8 +1465,27 @@ export function areaTargets(s, e, def, hex) {
 // fight, those behind walk after it in marching order (`march`, lowest first), each by its own
 // way of moving, to the free place nearest behind the leader's path. When a fight breaks out,
 // those who were following are brought up behind their leader before initiative is rolled.
+export const KEEP_UP = 2;                   // cells: a follower stays this close to the one in front where the ground allows
 export const CATCH_UP = 60;          // feet: the furthest from its leader a follower is brought up to when a fight starts
 export const byMarch = (a, b) => (a.march ?? Infinity) - (b.march ?? Infinity);
+
+// Is a place on `e`'s footing (#728)? For those who walk with it (a formation's places, keeping up in the column). It is when `e` could get
+// there on foot with no climb (no face climbed up or down, no ladder or rope), not much further than it is, and it lies no steeper
+// from `e` than stairs run (2.5 feet a cell). The foot of a ledge `e` has climbed, the ground under the balcony it stands on and the
+// far side of a thin wall are close on the map and are not with it. Returns the test, for places given with their height.
+export function footingOf(s, e) {
+  const G = gridOf(s.map), flying = !ground(s.map, e.pos), reach = moveOptions(s, e, flying ? {} : { footing: true });
+  // One in the air has no footing: as before #728, wherever it could get to counts, by column (those walking under it keep their places).
+  const cost = new Map([[flying ? col(e.pos) : key(e.pos), 0]]), name = flying ? (h) => col(h) : key;
+  for (const v of reach.values()) { const k = name(v.h), was = cost.get(k); if (was === undefined || v.cost < was) cost.set(k, v.cost); }
+  const test = (h, more = null) => {
+    // A place in the air (a follower that flies) is judged by the ground under it.
+    const sf = flying || ground(s.map, h) ? null : under(s.map, h), at = sf ? { q: h.q, r: h.r, z: sf.z } : h;
+    const d = G.dist(e.pos, at), c = Math.min(cost.get(name(at)) ?? Infinity, more ?? Infinity);
+    return c <= 2 * FT * (d + KEEP_UP) && (flying || Math.abs(at.z - e.pos.z) <= STEP_FREE * Math.max(1, d));
+  };
+  return Object.assign(test, { reach });
+}
 
 export function unfollow(s, e, ev, why = null) {
   const leader = e.follow;
@@ -1292,6 +1619,76 @@ export function slotsFor(leader, followers) {
   return slots;
 }
 
+// Would a careful walker stop here? Not on a trap the party knows of that goes off on stepping there or
+// coming near (as moveOptions keeps every way off a spotted trap), nor where a lasting zone the party
+// knows of (its maker is not hidden from them) would take it in: Web, Spirit Guardians, Moonbeam. A
+// trap or zone the party does not know of plays no part: it springs on a walk as on any walk.
+export function peril(s, f, h) {
+  const G = gridOf(s.map), far = measure(s, G), parts = footprint(f, h, G);
+  for (const o of s.map.objects) {
+    const def = objectDef(o);
+    if (!def.triggers?.length || def.states[o.state]?.hidden || Math.abs(objectZ(s, o) - h.z) > STEP_MAX) continue;
+    const near = Math.min(...parts.map((x) => far(x, o.at)));
+    if (def.triggers.some((t) => t.effects && t.from.includes(o.state) && (t.who !== 'party' || f.side === 'party') && (t.on === 'enter' ? near === 0 : t.on !== 'leave' && near * FT <= t.feet))) return true;
+  }
+  const there = { ...f, pos: h };
+  const known = (o) => !!o && (o.side === 'party' || (!concealed(s.map, o) && (sightRule(s) === 'rooms' || !unknown(s, o))));       // as view.js classifies it
+  return zonesOf(s).some((fx) => known(s.entities[fx.source]) && (fx.zone.on ?? []).length > 0 && holds(s, fx, there) && !holds(s, fx, f));
+}
+// E-P4: where `f` would stand in its leader's formation when a fight starts: the place nearest its slot's point (in the frame
+// of the way the leader last faced), if it is one `catchUp` could use anyway (standable, in the arena, within CATCH_UP feet of
+// the leader's walking), not ahead of the leader by more than half a cell, and free. It asks `moveOptions`, which knows every
+// creature that stands, seen or not, so a place held by one the party cannot see is simply not free, as for any other
+// occupant, and nothing is said. Null (today's trail) for no formation, no slot, no facing yet, a mount or its rider,
+// or a follower that cannot walk (Grappled, Speed 0).
+function formationPlace(s, f, leader, mine, theirs, arena) {
+  const fm = leader.formation;
+  if (!fm || fm.shape === 'column' || fm.face === undefined || mountOf(s, f) || riderOf(s, f) || f.cond?.grappled) return null;
+  const members = living(s).filter((x) => x.side === 'party' && x.follow === leader.id && !draggedBy(s, x).length).sort(byMarch);
+  const sl = slotsFor(leader, members)?.[f.id];
+  if (!sl) return null;
+  const G = gridOf(s.map), F = frameOf(G, leader.pos, fm.face), uu = F.u.x ** 2 + F.u.z ** 2, T = slotPoint(F, sl);
+  const o0 = G.toWorld(ORIGIN), cell = Math.min(...G.neighbors(ORIGIN).map((n) => Math.hypot(G.toWorld(n).x - o0.x, G.toWorld(n).z - o0.z)));
+  let best = null, bestKey = null;
+  for (const [k, v] of mine) {
+    if (!v.canStop || !arena[col(v.h)]) continue;
+    const lc = theirs.get(k)?.cost;
+    if (lc === undefined || lc > CATCH_UP || unseenAt(s.map, v.h)) continue;           // a place the party has not seen is no place for the shape: the trail, as if it were blocked
+    if (lc > 2 * FT * (G.dist(leader.pos, v.h) + KEEP_UP) || peril(s, f, v.h)) continue;   // joined to the leader (no thin wall between) and no known trap or zone, as the walking layout asks
+    const w = G.toWorld(v.h), d = Math.hypot(w.x - T.x, w.z - T.z) / cell, fwd = ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu;
+    if (d > 0.75 + 1e-9 || fwd > 0.5 + 1e-9) continue;
+    const rank = [d, fwd, Math.abs(v.h.z - f.pos.z), v.cost];
+    if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
+  }
+  return best;
+}
+
+// The place nearest behind `leader` that `f` could have walked to inside `arena`: its place in the leader's formation when that is
+// free (E-P4), else the nearest along the leader's trail. { best, mine } (`best` null when there is none; `mine` is f's walking options).
+// `afoot`: the leader is in a fight that is running, where its options are the rest of its turn's movement (none off its turn): its walking is
+// then measured as it would be outside combat, which is what "could have walked to" means for a hero joining a fight in progress. The joiner's
+// own walk is capped at CATCH_UP feet too (its options are an exploring creature's, EXPLORE_BUDGET, and the walk spends nothing of any turn).
+function placeBehind(s, f, leader, arena, walked, foes, G, afoot = false) {
+  const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
+  const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
+  const mine = moveOptions(s, f);
+  let theirs;
+  if (afoot && s.encounter) { const enc = s.encounter; s.encounter = null; try { theirs = moveOptions(s, leader); } finally { s.encounter = enc; } } else theirs = moveOptions(s, leader);
+  let best = null, bestKey = null;
+  let slot = formationPlace(s, f, leader, mine, theirs, arena);       // E-P4: its place in the party's shape, when that is free
+  if (slot && afoot && slot.v.cost > CATCH_UP) slot = null;
+  if (slot) { best = slot; bestKey = null; }
+  else for (const [k, v] of mine) {
+    if (!v.canStop || !arena[col(v.h)] || peril(s, f, v.h)) continue;      // no known trap or lasting zone (Web, Moonbeam), as the formation's places
+    if (afoot && v.cost > CATCH_UP) continue;                               // a hero joining a fight in progress walks at most CATCH_UP feet itself
+    const lc = theirs.get(k)?.cost;
+    if (lc === undefined || lc > CATCH_UP) continue;
+    const at = along(trail, v.h, G), rank = [at.d, at.i, lc, v.cost];
+    if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
+  }
+  return { best, mine };
+}
+
 // A fight is starting in `arena`. Everyone who was following a party member in it, and is not in
 // it already, is brought up to the nearest free place behind its leader that it could have walked
 // to (a path exists, and the place is at most CATCH_UP feet of walking from the leader).
@@ -1301,23 +1698,13 @@ export function catchUp(s, arena, walked, ev) {
   const inArena = (e) => !!arena[col(e.pos)];
   const party = new Set(living(s).filter((e) => e.side === 'party' && inArena(e)).map((e) => e.id));
   const pending = living(s).filter((e) => e.follow && e.side === 'party' && !inArena(e) && !draggedBy(s, e).length).sort(byMarch);      // one that holds a creature does not follow or keep a place (Decision 6; march says so)
-  const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !unseenAt(s.map, o.pos));
+  const foes = living(s).filter((o) => o.side !== 'party' && inArena(o) && !o.hiding && !unseenAt(s.map, o.pos));       // a creature that took the Hide action stays hidden through the fight start and sets no trail; one the DM hid is revealed as the fight starts, straight after, and is a visible blocker here
   for (;;) {
     const f = pending.find((x) => party.has(x.follow));
     if (!f) return;
     pending.splice(pending.indexOf(f), 1);
     const leader = s.entities[f.follow];
-    const foe = foes.slice().sort((a, b) => G.dist(a.pos, leader.pos) - G.dist(b.pos, leader.pos))[0];
-    const trail = trailOf(walked?.id === leader.id ? walked.path : [leader.pos], foe?.pos ?? null, G);
-    const mine = moveOptions(s, f), theirs = moveOptions(s, leader);
-    let best = null, bestKey = null;
-    for (const [k, v] of mine) {
-      if (!v.canStop || !arena[col(v.h)]) continue;
-      const lc = theirs.get(k)?.cost;
-      if (lc === undefined || lc > CATCH_UP) continue;
-      const at = along(trail, v.h, G), rank = [at.d, at.i, lc, v.cost];
-      if (!best || less(rank, bestKey)) { best = { k, v }; bestKey = rank; }
-    }
+    const { best, mine } = placeBehind(s, f, leader, arena, walked, foes, G);
     if (!best || !up(f)) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     f.pos = best.v.h;
     ev.push({ type: 'moved', id: f.id, path: route(mine, best.k).map((x) => x.h), caughtUp: true });
@@ -1326,5 +1713,30 @@ export function catchUp(s, arena, walked, ev) {
     lookAround(s, ev, r ? [f, r] : [f]);
     party.add(f.id);
   }
+}
+
+// A fight is running and these party members stand outside it (`ids`, or all of them): each walks in to the nearest free place behind the
+// party member in the fight that is closest to it, if it could have got there (as `catchUp`: a path, and at most CATCH_UP feet from that
+// member, and at most CATCH_UP feet of its own walking), then joins and rolls Initiative as any creature arriving does (`joinEncounter`).
+// One that cannot get in stays out and is told so. Returns { joined, refused }: the ids of each.
+export function bringIn(s, ids, ev) {
+  const arena = s.encounter.arena, G = gridOf(s.map), joined = [], refused = [];
+  const foes = living(s).filter((o) => o.side !== 'party' && inFight(s, o.id) && !o.hidden && !o.hiding && !unseenAt(s.map, o.pos));
+  const out = living(s).filter((e) => e.side === 'party' && !inFight(s, e.id) && !e.riding && !draggedBy(s, e).length && (ids ? ids.includes(e.id) : up(e))).sort(byMarch);      // one named that cannot act is told so; unnamed, the fallen are left be
+  for (const f of out) {
+    const near = living(s).filter((e) => e.side === 'party' && inFight(s, e.id)).sort((a, b) => G.dist(a.pos, f.pos) - G.dist(b.pos, f.pos));
+    const leader = near[0];
+    const { best, mine } = leader && up(f) ? placeBehind(s, f, leader, arena, null, foes, G, true) : { best: null };
+    if (!best) { ev.push({ type: 'note', id: f.id, why: 'joinFight', text: `${f.name} can't get to the fight.` }); refused.push(f.id); continue; }
+    f.pos = best.v.h;
+    const path = route(mine, best.k).map((x) => x.h);
+    ev.push({ type: 'moved', id: f.id, path, caughtUp: true });
+    const r = carry(s, f);
+    if (r) ev.push({ type: 'moved', id: r.id, path, caughtUp: true });
+    lookAround(s, ev, r ? [f, r] : [f]);
+    joinEncounter(s, f, ev); joined.push(f.id);
+    if (r && !inFight(s, r.id)) { joinEncounter(s, r, ev); joined.push(r.id); }
+  }
+  return { joined, refused };
 }
 

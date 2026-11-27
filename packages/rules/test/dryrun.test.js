@@ -14,10 +14,10 @@ const TARGETS = [...new Set(Object.values(HOMEBREW_LOOKUPS).flatMap((l) => l.map
 const picture = () => TARGETS.map((t) => Object.keys(t).join("\n"));
 
 // ---------- the sample pack ----------
-test("the sample pack passes strict lint through loadPack and holds 12 to 17 spells", () => {
+test("the sample pack passes strict lint through loadPack and holds 12 to 21 spells", () => {
   const r = loadPack(JSON.stringify(PACK));
   assert.ok(r.ok, r.problems?.join("; "));
-  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 17, `${PACK.spells.length} spells`);
+  assert.ok(PACK.spells.length >= 12 && PACK.spells.length <= 21, `${PACK.spells.length} spells`);
   assert.equal(PACK.spells.length, r.pack.ids.length);
   for (const s of PACK.spells) assert.ok(s.text.length > 20 && s.text.length < 300 && (s.text.match(/\./g) ?? []).length <= 2, `${s.id}: text is one or two plain sentences`);
 });
@@ -42,7 +42,9 @@ test("the sample pack covers every step kind, every branch it can, every area sh
     if (sp.higher?.slot) slot = true;
     if (sp.higher?.level) { level = true; if (sp.level === 0) cantrip = true; }
   }
-  assert.deepEqual([...STEPS].filter((k) => !steps.has(k)), [], "a step kind no sample spell uses");
+  // `imbue` is exempt from this coverage check on purpose: a dry run casts in a throw-away game whose caster carries no weapon for it to change,
+  // so no sample spell can use it and the dry run only says so; imbue.test.js casts it for real (docs/specs/on-hit.md, O4 build notes).
+  assert.deepEqual([...STEPS].filter((k) => k !== "imbue" && !steps.has(k)), [], "a step kind no sample spell uses");
   assert.deepEqual([...AREA_SHAPES].filter((k) => !shapes.has(k)), [], "an area shape no sample spell uses");
   for (const b of ["onHit", "onFail", "onZero", "onKill", "blocked"]) assert.ok(branches.has(b), `branch ${b}`);
   assert.deepEqual({ half, attack, ends, zone, push, heal, slot, level, cantrip, manual: manual === 1 }, { half: true, attack: true, ends: true, zone: true, push: true, heal: true, slot: true, level: true, cantrip: true, manual: true });
@@ -175,4 +177,13 @@ test("dryRunPack tries every spell of a pack in order, and a refused pack runs n
 test("dryrun.js is pure: no I/O, clock or Math.random", () => {
   const src = readFileSync(new URL("../src/content/dryrun.js", import.meta.url), "utf8").replace(/^\s*\/\/.*$/gm, "");
   for (const bad of [/node:/, /Math\.random/, /Date\b/, /performance\./, /process\./, /\bfetch\b/, /setTimeout|setInterval/]) assert.doesNotMatch(src, bad);
+});
+
+test("a homebrew spell aimed at an object (a copy of Knock) is tried on a locked chest, and unlocks it", () => {
+  const k = structuredClone(SPELLS.knock.def ?? SPELLS.knock);
+  Object.assign(k, { id: "hb-t-knock", name: "Zz Knock", source: "homebrew:t", checked: false });
+  const r = dryRun("spells", k);
+  assert.ok(r.ok, JSON.stringify(r.problems));
+  assert.ok(r.events.some((e) => e.type === "cast" && e.object === "dryrun-chest"));
+  assert.ok(r.events.some((e) => e.type === "object" && e.object === "dryrun-chest" && e.state === "closed"), "unlocked: locked to closed");
 });

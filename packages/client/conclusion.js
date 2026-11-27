@@ -11,6 +11,7 @@
 // The client decides nothing: totals, shares, who counts and the refusals are the engine's. A number typed in the form is sent as typed;
 // the engine says whether it is a whole number of XP. What is not a rule here (grouping "Goblin x3", thousands commas) is presentation.
 import { xpFor, levelForXp } from './shared/rewards.js';
+import { levelUpHtml, levelReady } from './levelup.js';
 import { CONTENT } from './shared/content/index.js';
 
 const $ = (id) => document.getElementById(id);
@@ -46,9 +47,9 @@ export function xpFact(e) {
   if (e?.kind !== 'pc' || typeof e.xp !== 'number') return '';
   return `<span>XP ${num(e.xp)}${e.level < 20 ? ` / ${num(xpFor(e.level + 1))}` : ''}</span>`;
 }
-export const xpToLevel = (e) => (typeof e?.xp !== 'number' ? '' : e.level < 20 ? `${num(e.xp)} / ${num(xpFor(e.level + 1))} to level ${e.level + 1}` : `${num(e.xp)} XP`);
+export const xpToLevel = (e) => (typeof e?.xp !== 'number' ? '' : e.level < 20 ? `${num(e.xp)} of ${num(xpFor(e.level + 1))} XP for level ${e.level + 1}` : `${num(e.xp)} XP`);
 // The engine's own helper says whether the XP has reached a level above the character's.
-export const readyToLevel = (e) => e?.kind === 'pc' && typeof e.xp === 'number' && levelForXp(e.xp) > (e.level ?? 1);
+export const readyToLevel = levelReady;
 
 const SHARE_NOTE = { split: 'Shared equally among the characters who took part and are alive.', full: 'Each character gets the whole amount.' };
 const cleaned = (v) => (/^-?\d+$/.test(String(v).trim()) ? Number(v) : v);      // a whole number goes as a number; anything else goes as typed, for the engine to refuse
@@ -108,7 +109,7 @@ export function initConclusion(ctx) {
     const bonus = c.xp.bonus.map((b) => `<li><b>+${num(b.amount)}</b> ${esc(b.reason)}</li>`).join('');
     const xpHead = !s.rows.length ? '' : s.each !== null ? `+${num(s.each)} each` : '';
     const rows = s.each === null ? s.rows.map((r) => `<li class="cc-line"><span>${esc(r.name)}</span><b>+${num(r.n)}</b></li>`).join('') : '';
-    const progress = c.party.map((id) => st.entities[id]).filter(Boolean).map((e) => `<li class="cc-line"><span>${esc(e.name)}</span><span>${esc(xpToLevel(e))}</span></li>${readyToLevel(e) ? `<li class="cc-ready">${esc(e.name)}: Ready to level up${ctx.isDM() ? '' : ': ask your DM'}</li>` : ''}`).join('');
+    const progress = c.party.map((id) => st.entities[id]).filter(Boolean).map((e) => `<li class="cc-line"><span>${esc(e.name)}</span><span>${esc(xpToLevel(e))}</span></li>${readyToLevel(e) ? `<li class="cc-ready">${levelUpHtml(st, e, { dm: ctx.isDM(), tag: 'cc' })}</li>` : ''}`).join('');
     const loot = c.loot.map((l) => `<li class="cc-line"><span>${esc(lootText(l))}</span><span>${l.to ? esc(nameOf(l.to)) : 'the party'}</span></li>`).join('');
     return `<div class="cc-card" role="dialog" aria-modal="false" aria-labelledby="cc-title">
       <div class="cc-head"><h2 id="cc-title" tabindex="-1">${resultLine(c)}</h2><span class="cc-rounds">${c.rounds} round${c.rounds === 1 ? '' : 's'}</span></div>
@@ -174,6 +175,7 @@ export function initConclusion(ctx) {
     const c = S()?.conclusion; if (!c) return;
     const d = b.dataset;
     if (d.cc === 'continue') { markSeen(c); redraw(); return; }
+    if (d.levelup) { markSeen(c); redraw(); ctx.levelUp?.(d.levelup); return; }          // the card steps aside for the build screen; Log brings it back
     if (c.published !== false) return;
     if (d.cc === 'later') { later = c.fight; error = ''; redraw(); chip.focus({ preventScroll: true }); }
     else if (d.cc === 'publish') { error = ''; if (ctx.solo()) doneSolo = c.fight; ctx.act({ type: 'conclusion', publish: true }); }

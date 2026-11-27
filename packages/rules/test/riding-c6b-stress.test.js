@@ -80,8 +80,11 @@ function stress(grid, rounds) {
       lastKey = k; present.set(k, upNow());
     } else { const now = upNow(), p = present.get(k); for (const id of [...p]) if (!now.has(id)) p.delete(id); }
   };
-  const act = (a) => { const r = apply(s, a, DM); if (r.ok) after(r); else stats.refused++; return r; };
-  const start = () => { budgetSeen = null; ok(act({ type: "startEncounter", center: CENTER[grid], radius: 7 })); lastKey = key(); present.set(lastKey, upNow()); };
+  // Invariant: a refused action leaves the game exactly as it was (review R3, #617).
+  const act = (a) => { const was = JSON.stringify(s), r = apply(s, a, DM); if (r.ok) after(r); else { stats.refused++; assert.equal(JSON.stringify(s), was, `refused ${JSON.stringify(a)} changed the game`); } return r; };
+  // By the time a fight is called again the riders may all have been pushed, teleported or stepped away from the centre; a fight with no party creature in range is refused (#771), so
+  // the same fight is then called wide enough to hold them.
+  const start = () => { budgetSeen = null; let r = act({ type: "startEncounter", center: CENTER[grid], radius: 7 }); if (!r.ok && /No party creature is in range/.test(r.error)) r = act({ type: "startEncounter", center: CENTER[grid], radius: 60 }); ok(r); lastKey = key(); present.set(lastKey, upNow()); };
   start();
   while (done < rounds) {
     if (!s.encounter) {

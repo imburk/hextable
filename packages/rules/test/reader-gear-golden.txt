@@ -1,7 +1,7 @@
 == weapon hb-rk-gale-spear
 "Gale Spear" (a martial melee weapon).
 A hit deals 1d8 piercing damage, plus the holder's Strength modifier. A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 It attacks a creature up to 10 feet away in melee, and the engine refuses a farther target.
 Used in two hands it deals 1d10 instead (plus the same modifier): the engine offers it as a second attack of the same name, "(two hands)", but only while the sheet carries no Shield.
 Reach: it reaches 10 feet instead of 5.
@@ -18,7 +18,7 @@ DM: Applying its mastery property, Topple.
 == weapon hb-rk-rook-hammer
 "Rook Hammer" (a martial melee weapon).
 A hit deals 2d6 bludgeoning damage, plus the holder's Strength modifier. A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 It attacks a creature up to 5 feet away, and the engine refuses a farther target.
 Heavy: a built character has Disadvantage on attack rolls with it while its Strength is under 13 (it is a Melee weapon). A monster's own stat-block attack is not held to it.
 Two-handed: a built character whose sheet carries a Shield is refused the attack, as it needs both hands. The sheet does not say what each hand holds, so another weapon in hand is not checked.
@@ -36,7 +36,7 @@ DM: Applying its mastery property, Push.
 == weapon hb-rk-marsh-crossbow
 "Marsh Crossbow" (a simple ranged weapon).
 A hit deals 1d6 piercing damage, plus the holder's Dexterity modifier. A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in simple weapons. A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in simple weapons. A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 As a ranged weapon: an attack up to 60 feet away is rolled normally, one from 61 to 240 feet has Disadvantage (long range), and the engine refuses a target beyond 240 feet. An enemy within 5 feet who can see the attacker also gives Disadvantage.
 A holder who gets a bonus to ranged weapon attacks (a fighting style) adds it.
 Ammunition ("dart"): the engine neither requires nor spends ammunition: every attack is allowed, however many it makes.
@@ -57,7 +57,7 @@ DM: Applying its mastery property, Slow.
 == weapon hb-rk-needle-fang
 "Needle Fang" (a martial melee weapon).
 A hit deals 2 piercing damage (a fixed number: no dice are rolled), plus the better of the holder's Strength and Dexterity modifiers (Strength on a tie). A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 It attacks a creature up to 5 feet away, and the engine refuses a farther target.
 Finesse: the wielder uses the better of Strength and Dexterity (Strength on a tie) for the attack roll and the damage roll. A Sneak Attack may be made with it.
 Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it. A Monk with Martial Arts, wearing no armor and carrying no Shield, treats a melee weapon that is simple or Light as a monk weapon: the better of Strength and Dexterity, and the Martial Arts die when that is larger.
@@ -72,7 +72,7 @@ DM: Applying its mastery property, Nick.
 == weapon hb-rk-sky-chakram
 "Sky Chakram" (a martial ranged weapon).
 A hit deals 1d6 slashing damage, plus the better of the holder's Strength and Dexterity modifiers (Strength on a tie). A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 As a ranged weapon: an attack up to 30 feet away is rolled normally, one from 31 to 90 feet has Disadvantage (long range), and the engine refuses a target beyond 90 feet. An enemy within 5 feet who can see the attacker also gives Disadvantage.
 A holder who gets a bonus to ranged weapon attacks (a fighting style) adds it.
 Finesse: the wielder uses the better of Strength and Dexterity (Strength on a tie) for the attack roll and the damage roll. A Sneak Attack may be made with it.
@@ -88,7 +88,7 @@ DM: Applying its mastery property, Graze.
 == weapon hb-rk-burl-club
 "Burl Club" (a simple melee weapon).
 A hit deals 1d6 bludgeoning damage, plus the holder's Strength modifier. A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in simple weapons. A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in simple weapons. A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 It attacks a creature up to 5 feet away, and the engine refuses a farther target.
 It has no weapon properties.
 Its mastery property is Sap: a hit gives the target Disadvantage on its next attack roll. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
@@ -102,7 +102,7 @@ DM: Applying its mastery property, Sap.
 == weapon hb-rk-fen-axe
 "Fen Axe" (a martial melee weapon).
 A hit deals 1d10 slashing damage, plus the holder's Strength modifier. A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 It attacks a creature up to 5 feet away, and the engine refuses a farther target.
 Heavy: a built character has Disadvantage on attack rolls with it while its Strength is under 13 (it is a Melee weapon). A monster's own stat-block attack is not held to it.
 Two-handed: a built character whose sheet carries a Shield is refused the attack, as it needs both hands. The sheet does not say what each hand holds, so another weapon in hand is not checked.
@@ -119,7 +119,7 @@ DM: Applying its mastery property, Cleave.
 == weapon hb-rk-quill-lance
 "Quill Lance" (a martial melee weapon).
 A hit deals 1d6 piercing damage, plus the holder's Strength modifier. A critical hit doubles the dice.
-The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A sheet that lists it for a character who is not trained is refused by the engine.
+The attack roll is a d20 plus the same modifier, plus the Proficiency Bonus if the holder's class is trained in martial weapons (some classes are trained only in martial weapons that have Light, or Finesse or Light). A character who is not trained with it may carry it: the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property.
 It attacks a creature up to 5 feet away, and the engine refuses a farther target.
 Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it. A Monk with Martial Arts, wearing no armor and carrying no Shield, treats a melee weapon that is simple or Light as a monk weapon: the better of Strength and Dexterity, and the Martial Arts die when that is larger.
 Its mastery property is Vex: a hit gives the wielder Advantage on its next attack roll against that target. The engine applies no mastery property to any weapon: a holder with the Weapon Mastery feature uses it by hand.
@@ -132,7 +132,7 @@ DM: Applying its mastery property, Vex.
 
 == armour hb-rk-thornweave-vest
 "Thornweave Vest" (light armor).
-A sheet that has a wearer in it who is not trained in light armor is refused by the engine.
+A wearer who is not trained in light armor may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.
 Worn, it sets the Armor Class to 12, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
 The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
 The wearer's whole Dexterity modifier is added to the Armor Class, and a negative modifier lowers it.
@@ -145,7 +145,7 @@ Tier: none. Armor has no tier: the engine works out the Armor Class and the Spee
 
 == armour hb-rk-barkplate
 "Barkplate" (medium armor).
-A sheet that has a wearer in it who is not trained in medium armor is refused by the engine.
+A wearer who is not trained in medium armor may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.
 Worn, it sets the Armor Class to 14, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
 The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
 The wearer's Dexterity modifier is added to the Armor Class, but at most +2; a modifier below that, a negative one too, is added as it is.
@@ -159,7 +159,7 @@ DM: Whether a character with no sheet, whose gear lists this armor, wears it (Di
 
 == armour hb-rk-cairn-harness
 "Cairn Harness" (heavy armor).
-A sheet that has a wearer in it who is not trained in heavy armor is refused by the engine.
+A wearer who is not trained in heavy armor may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.
 Worn, it sets the Armor Class to 17, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
 The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
 Dexterity adds nothing to the Armor Class: the modifier is not used, whatever it is.
@@ -173,7 +173,7 @@ DM: Whether a character with no sheet, whose gear lists this armor, wears it (Di
 
 == armour hb-rk-stiff-cuirass
 "Stiff Cuirass" (medium armor).
-A sheet that has a wearer in it who is not trained in medium armor is refused by the engine.
+A wearer who is not trained in medium armor may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.
 Worn, it sets the Armor Class to 13, in place of 10, before the Dexterity modifier below. A formula that gives Armor Class to a creature with no armor does not apply while it is worn. A Shield adds +2 to a wearer trained with Shields, and a fighting style that adds to armored Armor Class adds to this.
 The category also becomes the wearer's armor category on the table, which features that ask about heavy armor read.
 The wearer's Dexterity modifier is added to the Armor Class, but at most +0; a modifier below that, a negative one too, is added as it is.
@@ -186,7 +186,7 @@ Tier: none. Armor has no tier: the engine works out the Armor Class and the Spee
 
 == armour hb-rk-lantern-shield
 "Lantern Shield" (a Shield).
-A sheet that has a wearer in it who is not trained in Shields is refused by the engine.
+A wearer who is not trained in Shields may still hold it, but it gives no Armor Class.
 It adds 3 Armor Class to a wearer trained with Shields, when the sheet names it in its Shield field (a sheet's Shield field holds this entry's id). The plain Shield, written as true in that field, is a different entry with its own number, and the engine refuses a sheet that names a Shield as body armor.
 It asks for no Strength: a weak wearer loses nothing.
 It puts no penalty on Stealth.

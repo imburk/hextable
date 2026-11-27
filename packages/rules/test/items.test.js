@@ -1,6 +1,7 @@
 // Magic items (SRD 5.2.1 "Magic Items", #189): the pack's items, items on a sheet, what they change through
 // derive() and modifiers.js, wearing and Attunement by the SRD's rules, giving them, loot, views and the
 // state version.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -32,6 +33,7 @@ const problems = (sheet) => validate(sheet).join("\n");
 function field(sheet) {
   const s = newGame(7);
   for (const id of Object.keys(s.entities)) if (!["m1", "rogue"].includes(id)) delete s.entities[id];
+  typed(s, "rogue");                                         // the rogue stays a hand-typed character (no sheet), for the tests of what that cannot do
   for (const t of Object.values(s.map.levels[0].tiles)) t.t = "grass";
   s.settings.autoEngage = false;
   s.entities.hero = makeEntity(rec(sheet), { id: "hero", kind: "pc", side: "party", pos: { q: 0, r: 0, z: 0 }, owner: "pat", ownerName: "Pat" });
@@ -110,7 +112,9 @@ test("Armor Class, scores, speeds and senses from items flow into the record", (
   assert.equal(rec(fighter([{ id: "i1", item: "bracers-of-defense", equipped: true, attuned: true }], { armour: "chain-mail" })).ac, rec(fighter(undefined, { armour: "chain-mail" })).ac);
   // Elven Chain: a wizard is trained with it.
   assert.equal(problems(wizard([{ id: "i1", item: "elven-chain", base: "chain-shirt", equipped: true }])), "");
-  assert.match(problems(wizard([{ id: "i1", item: "armor-plus-1", base: "chain-shirt", equipped: true }])), /no training with medium armour/);
+  assert.equal(problems(wizard([{ id: "i1", item: "armor-plus-1", base: "chain-shirt", equipped: true }])), "");       // allowed, but worn untrained
+  assert.deepEqual(derive(wizard([{ id: "i1", item: "armor-plus-1", base: "chain-shirt", equipped: true }])).record.untrained, ["Chain Shirt"]);
+  assert.equal(derive(wizard([{ id: "i1", item: "elven-chain", base: "chain-shirt", equipped: true }])).record.untrained, undefined);
 });
 
 test("worn items work through apply(): resistance of the ring's type, cold cut, immunity, saves and checks", () => {
@@ -146,7 +150,7 @@ test("wearing and Attunement by the SRD: one of a kind, three attuned, one copy,
   assert.match(problems(fighter([{ id: "i1", item: "dwarven-plate", base: "chain-mail" }])), /can't be made from "chain-mail"/);
   assert.match(problems(fighter([{ id: "i1", item: "ring-of-resistance" }])), /Choose the damage type of Ring of Resistance/);
   assert.match(problems(fighter([{ id: "i1", item: "spell-scroll" }])), /Name the spell on the Spell Scroll/);
-  assert.match(problems(wizard([{ id: "i1", item: "weapon-plus-1", base: "greatsword", equipped: true }])), /not proficient with the Greatsword/);
+  assert.equal(problems(wizard([{ id: "i1", item: "weapon-plus-1", base: "greatsword", equipped: true }])), "");
   assert.match(problems(fighter([{ id: "i1", item: "no-such-thing" }])), /no magic item "no-such-thing"/);
   assert.match(problems(fighter([{ id: "i1", item: "chime-of-opening", charges: 11 }])), /0 to 10 charges/);
 });
@@ -249,7 +253,8 @@ test("migration 19 to 20: a saved table loads unchanged; an attuning naming no i
   s.version = 19;
   const before = structuredClone(s.entities);
   migrate(s);
-  assert.equal(s.version, VERSION); assert.equal(VERSION, 26);
+  assert.equal(s.version, VERSION); assert.equal(VERSION, 31);
+  assert.ok(s.entities.rogue.sheet, "the one change: a starter still as the pack typed it is given its sheet (#672)"); delete s.entities.rogue.sheet;
   assert.deepEqual(s.entities, before);
   s.entities.hero.sheet.attuning = { item: "i9" };
   s.version = 19;

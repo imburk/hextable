@@ -32,7 +32,7 @@ function refused(s, action, ctx, words) {
   return r;
 }
 const ABIL = { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 16 };
-const sheet = (cls, spells, name = "Ven") => ({ name, class: cls, level: 17, abilities: ABIL, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells });
+const sheet = (cls, spells, name = "Ven") => ({ name, class: cls, level: 17, abilities: ABIL, skills: [], ...(cls === "wizard" ? {} : { armour: "leather-armor" }), weapons: ["quarterstaff"], spells });
 // Free cells near `near`, where a creature of that size could be put.
 function spots(s, near, r = 3, monster = "wolf") {
   const G = gridOf(s.map), out = [];

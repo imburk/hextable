@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAssets } from "../src/assets.js";
 import { VERSION } from "../../rules/src/migrate.js";
-import { createTables, IDLE_MS, MAP_ACTIONS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES } from "../src/tables.js";
+import { createTables, IDLE_MS, MAP_ACTIONS, MAX_ACTION_BYTES, MAX_MAP_ACTION_BYTES, MAX_SAYS_PER_MINUTE, MAX_TABLES, PING_GAP_MS } from "../src/tables.js";
 
 // A fake connection that records what the server told it.
 // It runs the same receiver the browser does, so `got` holds what the client ends up knowing:
@@ -499,8 +499,8 @@ test("an ordinary move is a small message, and patches leak nothing a full view 
   const mine = JSON.stringify(player.raw.at(-1)), theirs = JSON.stringify(dm.raw.at(-1));
   assert.ok(player.raw.at(-1).patch);
   assert.ok(fullSize > 20000);
-  assert.ok(mine.length < 1500, `a move cost the player ${mine.length} bytes`);
-  assert.ok(theirs.length < 1500, `a move cost the DM ${theirs.length} bytes`);
+  assert.ok(mine.length < 2800, `a move cost the player ${mine.length} bytes`);       // a patch carries the whole record of whoever moved: a hero built from a sheet is about 2.5 KB (#672)
+  assert.ok(theirs.length < 2800, `a move cost the DM ${theirs.length} bytes`);
 
   // A monster moves: the player's patch carries its public record only.
   dm.say({ t: "act", action: { type: "move", actor: "m1", to: freeHex(state, "m1") } });
@@ -595,7 +595,8 @@ test("export: the DM gets the whole table, a player is refused, and no member or
 
   dm.say({ t: "export" });
   const reply = dm.last("export");
-  assert.deepEqual(Object.keys(reply.table).sort(), ["assetLimit", "assets", "assetsSkipped", "code", "exportedAt", "packs", "state"]);
+  assert.deepEqual(Object.keys(reply.table).sort(), ["assetLimit", "assets", "assetsSkipped", "code", "exportedAt", "packs", "state", "world"]);
+  assert.equal(reply.table.world, null, "a table with no world exports none");
   assert.deepEqual(reply.table.packs, []);
   assert.deepEqual(reply.table.assets, []);
   assert.equal(reply.table.code, code);
@@ -860,7 +861,7 @@ test("the undo history is never sent to players or put in an export", () => {
   d.flush(tables, code);
   const pl = sitDM(tables, code, player.last("welcome").token);
   assert.equal(pl.count("undoable"), 0);
-  assert.ok(!JSON.stringify(pl.raw).includes("ops"));
+  assert.ok(!/"ops"/.test(JSON.stringify(pl.raw)));                       // the key of a step's changes (not the "ops" in "shops")
   dm.say({ t: "export" });
   assert.equal(dm.last("export").table.undos, undefined);
 });
@@ -1047,6 +1048,46 @@ test("scenes: a player speaks only as their own character, and only so fast", ()
   assert.ok(!say(player, { as: "rogue", text: "a minute later" }).some((m) => m.t === "error"));
 });
 
+test("a ping reaches everyone, signed with the joined name, at most one a second each, and is kept nowhere", () => {
+  let t = 1_000_000;
+  const tables = createTables({ seed: () => 5, now: () => t });
+  const { dm, player, code } = seated(tables);
+  const kim = client(tables);
+  kim.say({ t: "join", code, name: "Kim" });
+  dm.say({ t: "approve", userId: kim.last("welcome").userId, ok: true });
+  const at = (() => { const k = Object.keys(dm.last("update").state.map.levels[0].tiles)[0].split(",").map(Number); return { q: k[0], r: k[1] }; })();
+  const ping = (c, action = {}) => { const n = c.raw.length; c.say({ t: "act", action: { type: "ping", at, ...action } }); return c.raw.slice(n); };
+  const tl = () => tables.get(code).state.timeline.length, n = tl();
+  const first = ping(player, { userName: "DM" });
+  assert.ok(!first.some((m) => m.t === "error"));
+  for (const c of [dm, player, kim]) {
+    const evs = c.raw.filter((m) => m.t === "update").flatMap((m) => m.events ?? []).filter((e) => e.type === "ping");
+    assert.deepEqual(evs.map((e) => [e.name, e.from, e.at.q, e.at.r]), [["Pat", player.last("welcome").userId, at.q, at.r]]);
+  }
+  assert.equal(tl(), n, "nothing on the timeline");
+  assert.ok(!player.raw.some((m) => m.t === "undoable") && !dm.raw.slice(-3).some((m) => m.t === "undoable" && m.undo.length), "not an undo step");
+  assert.match(ping(player).find((m) => m.t === "error").error, /too fast/);
+  assert.ok(!ping(dm).some((m) => m.t === "error"), "the DM is counted apart");
+  assert.ok(!ping(kim).some((m) => m.t === "error"), "and each player");
+  t += PING_GAP_MS;
+  assert.ok(!ping(player).some((m) => m.t === "error"));
+  t += PING_GAP_MS;
+  assert.match(ping(player, { at: { q: 9999, r: 9999 } }).find((m) => m.t === "error").error, /spot on the map/);
+});
+
+test("a ping is saved only when the passes after it changed the game", () => {
+  let saves = 0;
+  const tables = createTables({ seed: () => 5, save: () => { saves++; } });
+  const { dm, code } = seated(tables);
+  dm.say({ t: "act", action: { type: "setting", key: "sight", value: "light" } });
+  const s = tables.get(code).state, at = (() => { const k = Object.keys(s.map.levels[0].tiles)[0].split(",").map(Number); return { q: k[0], r: k[1] }; })();
+  const ping = () => { const n = saves; dm.say({ t: "act", action: { type: "ping", at } }); return saves - n; };
+  // Nothing is made out yet: the passes after the ping make out what the party sees, which is a change to be kept.
+  s.map.seen = { tiles: { [s.map.levels[0].id]: [] }, objects: {} };
+  assert.ok(ping() > 0, "a change the ping's passes made is saved");
+  assert.equal(ping(), 0, "a ping that changed nothing is not");
+});
+
 test("standing instructions for reactions go to their player and the DM, and to no other player", () => {
   const tables = createTables({ seed: () => 5 });
   const { dm, player: pat, code } = seated(tables);
@@ -1225,7 +1266,7 @@ test("a saved table with a 32-bit seed is given a key when loaded, and its undo 
   assert.deepEqual(t.state.rng, { key: "c3".repeat(32), n: 0 });
   const dm2 = sitDM(second, code, dm.last("welcome").token);
   assert.deepEqual(dm2.last("undoable").undo, []);
-  dm2.say({ t: "act", action: { type: "attack", actor: "fighter", target: "m1", attack: "javelin" } });
+  dm2.say({ t: "act", action: { type: "attack", actor: "fighter", target: "m1", attack: "javelin-thrown" } });
   assert.ok(t.state.rng.n > 0 || t.state.encounter, "it plays on, from the key");
 });
 
@@ -1258,7 +1299,7 @@ function cryptWithWolf(dm, state) {
 }
 const fightHere = (dm, state) => dm.say({ t: "act", action: { type: "startEncounter", center: state.entities.m1.pos, radius: 30 } });
 const turns = (dm, state, n) => { for (let i = 0; i < n && state.encounter; i++) dm.say({ t: "act", action: aiStep(state, current(state)) ?? { type: "endTurn", actor: current(state) } }); };
-const withoutDice = (state) => JSON.stringify({ ...state, rng: null, seq: null, timeline: null });
+const withoutDice = (state) => JSON.stringify({ ...state, rng: null, seq: null, fightSeq: null, timeline: null });
 
 test("rewind: the DM takes the table back to the start of the fight, with new dice; undo brings the lost fight back", () => {
   const tables = createTables({ seed: () => 5 });
@@ -1474,4 +1515,31 @@ test("an action type every object has is refused like any unknown action; the ta
   }
   dm.say({ t: "act", action: { type: "rest" } });
   assert.equal(dm.last("update").events[0].type, "rest");
+});
+
+// Review R3 (#617): after a refusal the table's own state is exactly what it was, and so is what was last saved and sent. The engine puts
+// the game back itself (a refused cast once set a flag first and the server kept it); the server's own copy (`mark`) is now a second one (DEBT T55).
+test("a refused action leaves the table's state, its saved copy and the broadcast count unchanged", () => {
+  const saved = [];
+  const tables = createTables({ seed: () => 5, save: (t) => saved.push(JSON.stringify(t.state)) });
+  const { dm, code } = seated(tables);
+  const act = (action) => dm.say({ t: "act", action });
+  const state = () => tables.get(code).state;
+  const spawn = (monster, dq) => { const p = state().entities.cleric.pos; act({ type: "spawn", monster, at: { q: p.q + dq, r: p.r } }); return Object.keys(state().entities).findLast((id) => state().entities[id].name.toLowerCase().includes(monster.split("-")[0])); };
+  act({ type: "setting", key: "autoEngage", value: false });
+  for (const id of Object.keys(state().entities)) if (state().entities[id].side !== "party") act({ type: "remove", actor: id });
+  const near = spawn("goblin-warrior", 2), p = state().entities.cleric.pos;
+  act({ type: "startEncounter", center: { q: p.q, r: p.r }, radius: 3 });
+  const far = spawn("skeleton", 6);          // added after the fight began: outside it
+  for (let i = 0; i < 30 && current(state()) !== "cleric"; i++) act({ type: "endTurn", actor: current(state()) });
+  assert.equal(current(state()), "cleric");
+  assert.ok(near && far && near !== far);
+  const before = JSON.stringify(state()), writes = saved.length, updates = dm.count("update"), errors = dm.count("error");
+  act({ type: "cast", actor: "cleric", spell: "sacred-flame", target: far });
+  assert.equal(dm.count("error"), errors + 1, "the cast is refused");
+  assert.match(dm.last("error").error, /outside the battle/);
+  assert.equal(JSON.stringify(state()), before, "the table's state is unchanged");
+  assert.equal(state().encounter.flags["magic:cleric"], undefined);
+  assert.equal(saved.length, writes, "nothing is saved for a refusal");
+  assert.equal(dm.count("update"), updates, "nothing is broadcast for a refusal");
 });

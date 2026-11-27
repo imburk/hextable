@@ -1,5 +1,5 @@
 
-import { sleep, scenario, wait, state, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, closePanels, openTab, selectAndMove, diceDuel } from './lib.mjs';
+import { sleep, scenario, wait, state, waitShown, open, playSolo, tapAt, onCanvas, closeMenu, closePanels, openTab, selectAndMove, diceDuel, chip, openMenu } from './lib.mjs';
 
 // ---------- solo ----------
 async function solo(browser, url, label, opts) {
@@ -45,8 +45,8 @@ async function solo(browser, url, label, opts) {
       // so rolling after it would depend on the dice. Here the party is whole, whatever the seed.
       await run.do('open the character sheet and roll a skill', async () => {
         await closePanels(page);
-        await page.click('#party button:has-text("Brenna")');
-        await page.click('#btn-sheet');
+        await chip(page, 'Brenna');
+        await openMenu(page, 'sheet');
         await waitShown(page, '#sheet');
         const n = await state(page, (S) => S.timeline.length);
         await page.click('#sheet-body [data-skill="athletics"]');
@@ -87,7 +87,7 @@ async function solo(browser, url, label, opts) {
           if (key !== last) { last = key; if (s.kind === 'npc') monsterTurns++; }
           if (s.kind === 'pc') {
             await closePanels(page);
-            await page.click(`#party button:has-text("${s.name}")`);
+            await chip(page, `${s.name}`);
             await waitShown(page, '#btn-end');
             await page.click('#btn-end');
           }
@@ -121,7 +121,7 @@ async function solo(browser, url, label, opts) {
           const w = R.canvas.clientWidth, h = R.canvas.clientHeight;
           for (let y = h * 0.2; y < h * 0.9; y += 24) for (let x = w * 0.15; x < w * 0.85; x += 24) {
             if (document.elementFromPoint(x, y)?.id !== 'gl') continue;
-            const hex = R.planeHex(x, y, lv.z), tile = hex && lv.tiles[H.col(hex)];
+            const hex = R.tileHex ? R.tileHex(x, y, lv) : R.planeHex(x, y, lv.z), tile = hex && lv.tiles[H.col(hex)];   // the editor paints the tile whose drawn top is under the pointer (#738)
             if (tile) return { x, y, col: H.col(hex), level: lv.id, was: tile.t, terrain: terrains.find((t) => t !== tile.t) };
           }
           return null;

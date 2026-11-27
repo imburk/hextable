@@ -42,7 +42,7 @@ DM: Whatever the description says beyond the lines above.
 "Hearthguard Mail" (rare armor).
 It is worn as armor. It works only while the holder's sheet marks it as equipped, and gives nothing before. A sheet that wears two for that place is refused.
 It needs attunement: only a Fighter or Paladin can attune to it. The holder asks for it, never in a fight, and it is done on its next Short Rest; ending it works the same way. A creature is attuned to three items at most, and to one copy of an item. Until the holder is attuned it works as the plain base item at most: no bonus and nothing from its grants.
-It is armor made from any one the sheet picks, and the sheet says which. The holder must be trained in that kind of armor to wear it, or the sheet is refused (this item says it is worn as if trained).
+It is armor made from any one the sheet picks, and the sheet says which. A holder who is not trained in that kind of armor may wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting (this item says it is worn as if trained).
 +2 Armor Class, while it is active, on top of what the armor or Shield gives.
 Its wearer counts as trained in the category of its armor while it is worn.
 It is mithral: while the suit is worn, it has no Disadvantage on Dexterity (Stealth) checks and no Strength requirement, whatever its base armor has.

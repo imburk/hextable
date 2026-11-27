@@ -47,6 +47,48 @@ const FIXTURES = [
     onSuccess: [{ modifier: { on: 'attack.roll', op: 'disadvantage' }, ends: { on: 'turnEnd', of: 'source' } }] }],
     higher: { slot: { targets: 1 } } }),
   base('quick-curse', 'Quick Curse', { target: { creature: {} }, effects: [{ condition: 'poisoned' }, { modifier: { on: 'ac', op: 'add', value: -2 } }, { condition: 'deafened', ends: { on: 'damaged' } }] }),
+  // Mage Armor's, Spare the Dying's and Light's words: a base Armor Class, an ending on donning armour, a range that grows, a stabilising and a light.
+  base('quiet-ward', 'Quiet Ward', { range: 'touch', duration: '8 hours', target: { creature: { count: 1 } }, tier: 'assist',
+    effects: [{ modifier: { on: 'ac', op: 'baseAc', value: { base: 13, ability: 'dex' } }, ends: { on: 'armour' } }] }),
+  base('mercy-touch', 'Mercy Touch', { level: 0, range: 15, target: { creature: { count: 1 } }, effects: [{ stabilize: true }], higher: { range: { 5: 30, 11: 60, 17: 120 } } }),
+  base('unravel', 'Unravel', { level: 3, school: 'abjuration', range: 120, target: { creature: { count: 1 } }, tier: 'assist', effects: [{ dispel: 3, dc: 10 }] }),
+  base('heroic-vigor', 'Heroic Vigor', { level: 2, school: 'enchantment', range: 'touch', duration: '1 minute', concentration: true, target: { creature: { count: 1 } }, tier: 'assist',
+    effects: [{ modifier: { on: 'condition', op: 'immune', scope: { condition: 'frightened' } } }, { eachTurn: [{ tempHp: '+0', addMod: true }, { heal: '1d4+1' }, { manual: 'Its wounds close a little more.' }] }] }),
+  base('slow-burn', 'Slow Burn', { level: 1, range: 30, duration: '1 minute', target: { creature: { count: 1 } }, tier: 'auto',
+    effects: [{ eachTurn: [{ damage: '1d4', type: 'fire' }, { save: 'con', onSuccess: [{ endSpell: true }] }] }] }),
+  base('fire-fist', 'Fire Fist', { level: 2, range: 'self', duration: '1 minute', concentration: true, target: { self: true }, tier: 'auto',
+    effects: [{ arm: { damage: '2d6', type: 'fire', addMod: true } }] }),
+  base('stern-word', 'Stern Word', { level: 1, range: 60, components: ['v'], target: { creature: { count: 1 } }, tier: 'assist', choice: { of: 'command' },
+    effects: [{ save: 'wis', onFail: [{ command: 'chosen' }] }, { command: 'halt' }] }),
+  base('trap-sense', 'Trap Sense', { level: 2, range: 120, duration: 'instant', target: { self: true }, tier: 'assist',
+    effects: [{ sense: 'traps', feet: 120 }, { manual: 'Alarm, Glyph of Warding and traps the map does not hold.' }] }),
+  base('magic-sense', 'Magic Sense', { level: 1, range: 'self', duration: '10 minutes', concentration: true, target: { self: true }, tier: 'assist',
+    effects: [{ sense: 'magic', feet: 30 }, { manual: 'Walls and areas.' }] }),
+  base('hush-ward', 'Hush Ward', { level: 1, range: 30, duration: '1 minute', target: { creature: { count: 1 } }, tier: 'assist',
+    effects: [{ ward: 'wis' }, { manual: 'Whether a creature that failed may pick a new target.' }] }),
+  base('dizzy-spell', 'Dizzy Spell', { level: 4, range: 90, duration: '1 minute', concentration: true, target: { area: { shape: 'sphere', size: 10 } }, tier: 'assist',
+    effects: [{ save: 'wis', onFail: [{ confuse: true, ends: { on: 'save', save: 'wis', at: 'turnEnd' } }] }, { manual: 'The walk on a roll of 1.' }] }),
+  base('mean-word', 'Mean Word', { level: 3, range: 'touch', duration: '1 minute', concentration: true, target: { creature: { count: 1 } }, tier: 'assist', choice: { of: 'curse' },
+    effects: [{ save: 'wis', onFail: [{ modifier: { on: 'check', op: 'disadvantage', scope: { ability: 'chosen' } }, ifChoice: ['str', 'dex'] },
+      { modifier: { on: 'attack.roll', op: 'disadvantage', against: 'source' }, ifChoice: ['attacks'] }] }, { manual: 'The rest.' }] }),
+  base('free-stride', 'Free Stride', { level: 4, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',
+    effects: [{ modifier: { on: 'terrain', op: 'immune' } }, { modifier: { on: 'speed', op: 'immune', magic: true } }, { modifier: { on: 'condition', op: 'immune', scope: { condition: 'restrained' }, magic: true } }] }),
+  base('quiet-ground', 'Quiet Ground', { level: 2, range: 120, duration: '10 minutes', concentration: true, target: { area: { shape: 'sphere', size: 20 } }, terrain: { silence: true }, tier: 'assist',
+    effects: [{ manual: 'Sound made within or through the sphere.' }] }),
+  base('clear-eyes', 'Clear Eyes', { level: 2, range: 'self', duration: '1 hour', target: { self: true }, tier: 'auto', effects: [{ modifier: { on: 'invisible', op: 'immune' } }] }),
+  base('far-eyes', 'Far Eyes', { level: 6, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto', effects: [{ modifier: { on: 'senses', op: 'set', value: 120, scope: { sense: 'truesight' } } }] }),
+  base('dry-feet', 'Dry Feet', { level: 3, range: 30, duration: '1 hour', target: { creature: { count: 10 } }, tier: 'assist', effects: [{ modifier: { on: 'surface', op: 'immune', scope: { surface: 'water' } } }] }),
+  base('leaping', 'Leaping', { level: 1, range: 'touch', duration: '1 minute', target: { creature: { count: 1 } }, tier: 'auto', effects: [{ modifier: { on: 'leap', op: 'set', value: 30 } }] }),
+  base('far-step', 'Far Step', { level: 7, range: 10, target: { self: true }, tier: 'assist', choice: { of: 'familiarity' }, effects: [{ teleport: 1000, familiarity: 'chosen' }] }),
+  base('wake-the-fallen', 'Wake the Fallen', { level: 3, school: 'necromancy', range: 'touch', target: { creature: { count: 1, dead: true } }, tier: 'assist', effects: [{ revive: 1, within: 1 }] }),
+  base('giants-draught', 'Giant\'s Draught', { level: 2, school: 'transmutation', range: 30, duration: '1 minute', concentration: true, target: { creature: { count: 1 } }, tier: 'assist', choice: { of: 'resize' },
+    effects: [{ save: 'con', when: ['target.enemy'], onFail: [{ resize: 'larger', ifChoice: ['enlarge'] }, { resize: 'smaller', ifChoice: ['reduce'] }] },
+      { resize: 'larger', ifChoice: ['enlarge'], when: ['target.ally'] }, { resize: 'smaller', ifChoice: ['reduce'], when: ['target.ally'] },
+      { modifier: { on: 'damage.dealt', op: 'add', value: '-1d4', atLeast: 1, when: ['attack.weaponOrUnarmed'] }, ifChoice: ['reduce'] }] }),
+  base('glow-pebble', 'Glow Pebble', { level: 0, range: 'touch', duration: '1 hour', target: { self: true }, tier: 'assist', effects: [{ light: { bright: 20, dim: 20 }, replaces: true }] }),
+  // A weapon that changes (O4, #666): a die and a bonus that depend on the caster, a type, an ability.
+  base('honed-edge', 'Honed Edge', { level: 2, range: 'touch', duration: '1 hour', target: { creature: { count: 1 } }, tier: 'auto',
+    effects: [{ imbue: { weapons: ['club', 'quarterstaff'], melee: true, nonmagical: true, abil: 'spell', die: { byLevel: { 1: '1d8', 5: '1d10' } }, plus: { bySlot: { 2: 1, 3: 2 } }, attackAdd: { mod: 'cha', min: 1 }, types: ['force'] } }] }),
   base('dull-curse', 'Dull Curse', { target: { creature: {} }, effects: [{ modifier: { on: 'ac', op: 'add', value: -1 } }, { condition: 'deafened' }] }),
   base('stinging-mark', 'Stinging Mark', { target: { creature: {} },
     effects: [{ condition: 'grappled', ends: { on: 'turnEnd' } }, { condition: 'stunned' }, { modifier: { on: 'speed', op: 'set', value: 0 } }] }),
@@ -59,6 +101,7 @@ const FIXTURES = [
       // The reader reads the whole vocabulary: a spell may not carry `proficient` (only a modifier step of a subclass feature's action may; homebrew-subclass-proficient.test.js), but its reading is held here.
       { modifier: { on: 'check', op: 'proficient', scope: { skill: 'chosen' } } }, { modifier: { on: 'check', op: 'proficient', scope: { tool: 'thieves-tools' } } },
       { modifier: { on: 'check', op: 'advantage', when: ['check.escape'] } },
+      { modifier: { on: 'check', op: 'add', value: 1, when: ['check.unskilled'] } },
       { modifier: { on: 'attack.roll', op: 'disadvantage', when: ['target.notGrappler'] } }, { modifier: { on: 'attack.roll', op: 'advantage', when: ['target.grappledBySelf'] } },
       { modifier: { on: 'save', op: 'add', value: 1, scope: { ability: 'wis' } } },
       { modifier: { on: 'save', op: 'advantage', scope: { condition: 'poisoned' } } },
@@ -82,7 +125,8 @@ const FIXTURES = [
       { modifier: { on: 'carry', op: 'set', value: 2 } }, { modifier: { on: 'speed.fly', op: 'set', value: 30 } },
       { modifier: { on: 'd20', op: 'add', value: '1d6', onFail: true, cost: 'bardic-inspiration' } },
       { modifier: { on: 'opportunity', op: 'autoFail' } },
-      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend'] } },
+      { modifier: { on: 'hp.zero', op: 'min', value: 1, uses: 1 } },
+      { modifier: { on: 'attack.received', op: 'advantage', except: 'source', when: ['attack.advantage', 'attack.disadvantage', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.seesSource', 'attack.opportunity', 'target.notFiend', 'target.fiendOrUndead'] } },
     ] }),
   base('hunters-sting', 'Hunter\'s Sting', { level: 1, school: 'divination', duration: '1 hour', concentration: true, time: 'bonus', range: 90, target: { creature: {} },
     effects: [{ modifier: { on: 'damage.dealt', op: 'add', value: '1d6', types: ['chosen'], against: 'target' }, to: 'caster' }, { reveal: 'target' }],
@@ -108,6 +152,9 @@ const FIXTURES = [
     zone: { on: ['enter'] }, effects: [{ save: 'wis', onFail: [{ damage: '2d8', type: 'radiant' }] }] }),
   base('mire', 'Mire', { level: 2, range: 120, duration: '1 hour', target: { area: { shape: 'sphere', size: 15 } }, zone: { on: ['turnEnd'] }, terrain: { obscured: 'light' },
     effects: [{ save: 'str', half: true, onFail: [{ damage: '1d6', type: 'acid' }, { condition: 'restrained' }], onSuccess: [{ condition: 'prone' }] }] }),
+  base('thorn-fence', 'Thorn Fence', { level: 4, range: 90, duration: '1 minute', concentration: true, target: { area: { shape: 'line', size: 40, width: 5, height: 10, placed: true } },
+    zone: { on: ['enter', 'step', 'turnEnd'], atCast: true, once: 'enter', effects: [{ damage: '3d6', type: 'piercing' }] }, terrain: { difficult: true },
+    effects: [{ save: 'dex', half: true, onFail: [{ damage: '3d6', type: 'slashing' }] }] }),
   base('hardy-shield', 'Hardy Shield', { time: 'reaction', range: 'self', duration: '1 round', target: { self: true }, reaction: { on: 'hit', blocks: ['magic-missile', 'hb-test-unknown'] },
     effects: [{ modifier: { on: 'ac', op: 'add', value: 5 }, ends: { on: 'turnStart' } }] }),
   base('rebuke', 'Rebuke', { time: 'reaction', target: { creature: {} }, reaction: { on: 'damaged' }, effects: [{ save: 'dex', half: true, onFail: [{ damage: '2d10', type: 'fire' }] }, { condition: 'invisible' }] }),
@@ -128,6 +175,10 @@ const FIXTURES = [
     effects: [{ damage: '4d4', type: 'slashing', onZero: [{ remains: 'frozen-statue' }] }, { damage: '+2', type: 'piercing' }], higher: { targets: { 5: 4, 11: 5 } } }),
   base('stray-hour', 'Stray Hour', { time: 'hour', duration: '12 hours', target: { self: true }, effects: [{ tempHp: '10' }] }),
   base('long-casts', 'Long Casts', { time: '12 hours', duration: '7 days', target: { self: true }, effects: [{ heal: '1d4' }] }),
+  base('wall-gap', 'Wall Gap', { level: 4, school: 'transmutation', range: 'touch', target: { wall: {} }, tier: 'assist', choice: { of: 'shape' }, kinds: ['utility'],
+    effects: [{ cut: 5, ifChoice: ['passage'] }, { manual: 'Any other shape is the DM\'s.', ifChoice: ['other'] }] }),
+  base('stone-hide', 'Stone Hide', { level: 3, school: 'transmutation', range: 'touch', duration: '8 hours', target: { wall: {} }, tier: 'assist', kinds: ['utility'],
+    effects: [{ meld: true }, { modifier: { on: 'check', op: 'disadvantage', scope: { skill: 'perception' } } }, { manual: 'Whether the wall is stone is the DM\'s.' }] }),
 ];
 
 const readingOf = (e) => { const r = readEntry('spell', e); return [`== ${e.id}`, ...r.lines, ...r.doesNot.map((x) => `DM: ${x}`), ...r.problems.map((x) => `PROBLEM: ${x}`), ''].join('\n'); };
@@ -163,6 +214,11 @@ test('each branch is read under exactly the step kinds that run it (effects.js e
   const src = readFileSync(new URL('../src/effects.js', import.meta.url), 'utf8');
   for (const b of BRANCHES) assert.ok(src.includes(`'${b}'`), `effects.js runs ${b}`);
   for (const b of BRANCHES) {
+    if (b === 'eachTurn') {
+      const r = readEntry('spell', base('branch', 'Branch', { duration: '1 minute', target: { creature: {} }, effects: [{ eachTurn: [{ heal: '1d4' }] }] }));
+      assert.ok(r.lines.some((l) => /^ {2}It regains 1d4 Hit Points/.test(l)), `branch ${b} is read: ${r.lines.join(' | ')}`);
+      continue;
+    }
     const e = base('branch', 'Branch', { target: { creature: {} }, effects: [{ [b === 'onHit' || b === 'onMiss' ? 'attack' : b === 'onFail' || b === 'onSuccess' ? 'save' : b === 'blocked' ? 'teleport' : 'damage']: b === 'onHit' || b === 'onMiss' ? 'melee' : b === 'onFail' || b === 'onSuccess' ? 'dex' : b === 'blocked' ? 30 : '1d6', kind: 'spell', type: 'fire', [b]: [{ damage: '1d4', type: 'cold' }] }] });
     const r = readEntry('spell', e);
     assert.ok(r.lines.some((l) => /^ {2}It takes 1d4 cold damage/.test(l) || /^ {2}The caster takes 1d4 cold damage/.test(l)), `branch ${b} is read: ${r.lines.join(' | ')}`);
@@ -247,7 +303,7 @@ function numbersIn(v, path, out) {
   else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) {
     if (NOT_NUMBERS.includes(k)) continue;
     const at = path ? `${path}.${k}` : k;
-    if (/^higher\.(level|targets)$/.test(path)) out.push(`${at}:key=${+k}`);
+    if (/^higher\.(level|targets|range)$/.test(path)) out.push(`${at}:key=${+k}`);
     numbersIn(x, at, out);
   }
   return out;

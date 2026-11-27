@@ -219,7 +219,7 @@ test("cover in play: +2 and +5 to Armor Class and to Dexterity saves; Total refu
   f.pos = at(5, 7);
   ok(apply(s, { type: "startEncounter", center: { q: 7, r: 7 }, radius: 6 }, DM));
   turnOf(s, "fighter");
-  const atk = ok(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin" }, PAT)).events.find((e) => e.type === "attack");
+  const atk = ok(apply(s, { type: "attack", actor: "fighter", target: gob.id, attack: "javelin-thrown" }, PAT)).events.find((e) => e.type === "attack");
   assert.equal(atk.cover, "threeQuarters");
   assert.equal(atk.ac, 15 + 5);
   // Half: a short rail in front of part of it.
@@ -227,7 +227,7 @@ test("cover in play: +2 and +5 to Armor Class and to Dexterity saves; Total refu
   h.entities.fighter.pos = at(5, 7);
   ok(apply(h, { type: "startEncounter", center: { q: 7, r: 7 }, radius: 6 }, DM));
   turnOf(h, "fighter");
-  const a2 = ok(apply(h, { type: "attack", actor: "fighter", target: g2.id, attack: "javelin" }, PAT)).events.find((e) => e.type === "attack");
+  const a2 = ok(apply(h, { type: "attack", actor: "fighter", target: g2.id, attack: "javelin-thrown" }, PAT)).events.find((e) => e.type === "attack");
   assert.equal(a2.cover, "half");
   assert.equal(a2.ac, 15 + 2);
   // A Dexterity save against a spell from behind the window: +5.
@@ -243,7 +243,7 @@ test("cover in play: +2 and +5 to Armor Class and to Dexterity saves; Total refu
   const t = room(), hid = spawn(t, 4, 7);
   t.entities.fighter.pos = at(0, 6);
   const before = JSON.stringify(t);
-  assert.equal(apply(t, { type: "attack", actor: "fighter", target: hid.id, attack: "javelin" }, PAT).error, `There is a wall between Brenna and ${hid.name}.`);
+  assert.equal(apply(t, { type: "attack", actor: "fighter", target: hid.id, attack: "javelin-thrown" }, PAT).error, `There is a wall between Brenna and ${hid.name}.`);
   assert.equal(JSON.stringify(t), before);
   // cover off: what the DM sets by hand. Only Total is left.
   ok(apply(s, { type: "setting", key: "cover", value: "off" }, DM));
@@ -888,7 +888,7 @@ function randomAction(s, pick) {
   if (roll < 87 && monsters.length < 4) return [{ type: "spawn", monster: any(["goblin-warrior", "goblin-warrior", "ogre"]), at: any(CRYPT), name: uniqueName(s), hidden: pick(4) === 0 }, DM];
   if (roll < 89 && !s.encounter) return [{ type: "startEncounter", center: s.entities.fighter.pos, radius: 8 }, DM];
   if (roll < 91 && s.encounter) return [{ type: "endEncounter" }, DM];
-  if (roll < 94 && monsters.length) return [{ type: "attack", actor: "fighter", target: any(monsters).id, attack: "javelin" }, PAT];
+  if (roll < 94 && monsters.length) return [{ type: "attack", actor: "fighter", target: any(monsters).id, attack: "javelin-thrown" }, PAT];
   if (roll < 96) return [{ type: "revealRegion", region: "vault" }, DM];
   if (roll < 97) return [{ type: "mapEdit", ops: [{ op: "forget" }] }, DM];
   return [{ type: "advanceTime", minutes: 1 }, DM];
@@ -929,7 +929,7 @@ function playChecked(seed, steps, startRule) {
     // A guessed id: the same answer as one that does not exist, and nothing changes.
     if (unseen.length && checked % 3 === 0) {
       const e = unseen[checked % unseen.length], before = JSON.stringify(s);
-      for (const [type, extra] of [["attack", { attack: "javelin" }], ["move", { to: at(0, 0) }]]) {
+      for (const [type, extra] of [["attack", { attack: "javelin-thrown" }], ["move", { to: at(0, 0) }]]) {
         const key = type === "attack" ? "target" : "actor";
         assert.deepEqual(apply(s, { type, actor: "fighter", ...extra, [key]: e.id }, PAT), apply(s, { type, actor: "fighter", ...extra, [key]: "m9999" }, PAT), `seed ${seed}: guessing ${e.id} gave something away`);
       }

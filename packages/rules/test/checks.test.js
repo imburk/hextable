@@ -1,4 +1,5 @@
 // Ability checks, the Search action and noticing things in passing (task M5 of docs/specs/maps-and-objects.md).
+import { plain } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -87,7 +88,7 @@ test("searching finds what is hidden nearby if the roll meets its DC, and not ot
   assert.deepEqual(none.r.events.map((e) => e.type), ["check"]);
   assert.equal(none.r.events[0].found, 0);
   // What players are sent: their roll and how many things turned up. Never a DC, and nothing of what stayed hidden.
-  const sent = JSON.stringify([viewEvents(some.r.events, some.s, PAT), view(some.s, PAT)]);
+  const sent = plain([viewEvents(some.r.events, some.s, PAT), view(some.s, PAT)]);
   for (const word of ['"dc"', "pit", "Pit trap"]) assert.equal(sent.includes(word), false, word);
 });
 

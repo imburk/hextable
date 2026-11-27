@@ -1,5 +1,6 @@
 // `refresh` (DEBT C17, #476): a character made again from its own stored sheet, so one saved before a content change picks up
 // what the content gained; and the one keep-list (sheets.js `carryPlay`) every remake, `editCharacter` included, uses.
+import { typed } from "./fixtures/typed.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apply, ACTION_TYPES } from "../src/engine.js";
@@ -69,7 +70,7 @@ test("refresh is allowed in a fight", () => {
 });
 
 test("a hand-typed character has no sheet: refused with a sentence, nothing changes", () => {
-  const s = newGame(5), before = json(s);
+  const s = newGame(5); typed(s, "rogue"); const before = json(s);
   const r = apply(s, { type: "refresh", actor: "rogue" }, DM);
   assert.match(r.error, /typed in by hand and has no sheet/);
   assert.equal(json(s), before);
@@ -103,6 +104,7 @@ test("refresh-all: a bad sheet is skipped with one note, none of it changes, the
   s.entities.pc1.feats = s.entities.pc1.feats.filter((f) => f.id !== "wild-companion");
   s.entities.pc2.sheet.weapons = ["no-such-weapon"];
   s.entities.pc2.hp -= 2;
+  typed(s, "rogue");
   const bad = json(s.entities.pc2), rogue = json(s.entities.rogue);
   const r = ok(apply(s, { type: "refresh" }, DM));
   assert.ok(has(s.entities.pc1, "wild-companion"), "the good sheet is refreshed");
@@ -120,7 +122,9 @@ test("refresh-all: a bad sheet is skipped with one note, none of it changes, the
 });
 
 test("refresh-all with no party character that has a sheet is refused, and so is an actor that is not a name", () => {
-  const s = newGame(5), before = json(s);
+  const s = newGame(5);
+  for (const id of ["fighter", "rogue", "cleric", "wizard"]) typed(s, id);          // the starters have sheets now; these four are hand-typed
+  const before = json(s);
   assert.equal(apply(s, { type: "refresh" }, DM).error, "No party character has a sheet to refresh from.");
   assert.match(apply(s, { type: "refresh", actor: ["fighter"] }, DM).error, /Name the character/);
   assert.match(apply(s, { type: "refresh", actor: null }, DM).error, /Name the character/);

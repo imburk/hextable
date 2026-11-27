@@ -19,6 +19,8 @@ async function models(browser, url, label, opts) {
     try {
       const page = await ctx.newPage();
       run.watch(page);
+      // SMOKE_THROTTLE=<n> slows the page's CPU n times: a slow runner on demand (as in allowance.mjs; how the 25 Nov flakes of this pass were reproduced).
+      if (process.env.SMOKE_THROTTLE) await (await ctx.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: +process.env.SMOKE_THROTTLE });
       const urls = asked(page);
       const shot = async (n) => { if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/models-${touch ? 'phone' : 'desktop'}-${n}.png` }); };
       await run.do('the lobby fetches no model and no glTF loader', async () => {
@@ -48,6 +50,8 @@ async function models(browser, url, label, opts) {
         if (feet.goblin.w > 5.05 || feet.goblin.h > 5.05) throw new Error(`a goblin is ${JSON.stringify(feet.goblin)} ft`);
       });
       await run.do('a walk plays the run clip and ends in idle', async () => {
+        // Start from a table at rest, so no earlier walk or clip is read as this one.
+        await calm(page, 30000);
         const seen = await page.evaluate(async () => {
           const h = window.hextable, R1 = window.__R(), a = R1.actors.get('cleric'), from = h.state.entities.cleric.pos;
           // The first goal that the engine takes (a hex may be held for a moment by something else): try a few.
@@ -56,8 +60,16 @@ async function models(browser, url, label, opts) {
             const now = h.state.entities.cleric.pos;
             if (now.q !== from.q || now.r !== from.r) break;
           }
+          // Judge "ended in idle" only when the walk is over: it has run, its path is spent, the timeline is idle and the clip is idle. The cap is far off (a slow
+          // machine plays the same walk later, not differently); a walk that never ends is what the cap reports.
           const clips = [], t0 = performance.now();
-          while (performance.now() - t0 < 4000) { if (clips.at(-1) !== a.pup.curKey) clips.push(a.pup.curKey); if (a.pup.base === 'idle' && !a.way.length && performance.now() - t0 > 300) break; await new Promise((x) => setTimeout(x, 40)); }
+          let ran = false;
+          while (performance.now() - t0 < 30000) {
+            if (clips.at(-1) !== a.pup.curKey) clips.push(a.pup.curKey);
+            if (a.pup.curKey === 'run') ran = true;
+            if (ran && a.pup.base === 'idle' && a.pup.curKey === 'idle' && !a.way.length && !h.timeline.busy() && h.waiting === 0) break;
+            await new Promise((x) => setTimeout(x, 40));
+          }
           return { clips, moved: h.state.entities.cleric.pos.q !== from.q || h.state.entities.cleric.pos.r !== from.r };
         });
         if (!seen.moved) throw new Error('the cleric did not move');
@@ -66,9 +78,12 @@ async function models(browser, url, label, opts) {
       });
       await run.do('a strike: the hero plays its attack clip, turns to the goblin, and goes back to idle', async () => {
         await placeBeside(page, 'fighter', 'm1');
+        // The strike turns the hero only when its pawn is not walking (render-three.js #strike), so let every pawn arrive and the timeline run out first: the
+        // table's other three heroes follow the first one now (#671) and walk after a place, which on a slow machine had not finished when the swing began.
+        await wait(page, () => { const R1 = window.__R(), h = window.hextable; return h.waiting === 0 && !h.timeline.busy() && [...R1.actors.values()].every((a) => !a.way.length); }, null, 20000);
         // The first blow of a table at peace starts the fight, and then the fighter must have the turn: swing whenever it is the fighter's (or nobody's), end the
         // party's other turns, and let the goblins' play. The clip is looked for as it plays.
-        await page.evaluate(() => { const p = window.__R().actors.get('fighter').pup, once = p.once.bind(p); window.__beats = []; const A = window.__R().actors.get('fighter'), T = window.__R().actors.get('m1'); p.once = (b) => { window.__beats.push(b); if (b === 'attack') window.__aim = { face: A.face, want: Math.atan2(T.x - A.x, T.z - A.z) }; return once(b); }; });      // every clip asked of it is written down: a frame can miss a short one
+        await page.evaluate(() => { const p = window.__R().actors.get('fighter').pup, once = p.once.bind(p); window.__beats = []; const A = window.__R().actors.get('fighter'), T = window.__R().actors.get('m1'); p.once = (b) => { window.__beats.push(b); if (b === 'attack') { const at = [...(window.hextable.state.timeline ?? [])].reverse().find((e) => e.type === 'attack' && e.actor === 'fighter'), G = window.__R().actors.get(at?.target) ?? T; window.__aim = { face: A.face, want: Math.atan2(G.x - A.x, G.z - A.z), target: at?.target }; } return once(b); }; });      // every clip asked of it is written down: a frame can miss a short one. The swing it turns for is whichever attack the fighter makes (an Opportunity Attack on a goblin walking away is one too), at the target that attack names
         try {
           await wait(page, () => {
             const h = window.hextable, S = h.state, cur = S.encounter?.order[S.encounter.turn]?.id, now = performance.now();
@@ -97,7 +112,8 @@ async function models(browser, url, label, opts) {
         await calm(page);
         await page.evaluate(() => { const p = window.__R().actors.get('m1').pup, go = p.go.bind(p); window.__goes = []; p.go = (b, o) => { window.__goes.push(b); return go(b, o); }; });
         const r = await page.evaluate(() => { const h = window.hextable, R1 = window.__R(); h.act({ type: 'setHp', actor: 'm1', hp: 0 }); h.act({ type: 'harm', actor: 'm1', amount: 1 }); const p = R1.actors.get('m1').pup; return { base: p.base, cur: p.curKey, hp: h.state.entities.m1.hp, dead: h.state.entities.m1.dead }; });
-        if (r.base !== 'die' && !(await page.evaluate(() => window.__R().actors.get('m1').pup.base === 'die'))) throw new Error(`it did not fall: ${JSON.stringify(r)}`);
+        // The renderer shows the blow when the timeline plays it (the hit clip first), so the fall begins a moment after the state says dead: wait for it, do not look once.
+        await wait(page, () => window.__R().actors.get('m1').pup.base === 'die', null, 8000).catch(async () => { throw new Error(`it did not fall: ${JSON.stringify(r)} ${await page.evaluate(() => { const p = window.__R().actors.get('m1').pup; return JSON.stringify({ base: p.base, cur: p.curKey, goes: window.__goes }); })}`); });
         await sleep(900);
         const held = await page.evaluate(() => { const p = window.__R().actors.get('m1').pup; return { base: p.base, cur: p.curKey, goes: window.__goes }; });
         if (held.base !== 'die' || held.cur !== 'die' || !held.goes.includes('die')) throw new Error(`the fall did not play and hold: ${JSON.stringify(held)}`);
@@ -122,13 +138,30 @@ async function models(browser, url, label, opts) {
       });
       await run.do('a tap on a hero\'s model picks that hero', async () => {
         await closePanels(page);
+        // The strike above began a fight, and the camera follows each turn of it (app.js, the `turn` event): a goblin's turn moves the view between the
+        // pawn's place being read and the finger landing. So end the fight and let the table rest first (the precondition of a tap on a hero is a table at peace).
+        await page.evaluate(() => { const h = window.hextable; if (h.state.encounter) h.act({ type: 'endEncounter' }); });
+        await calm(page, 30000);
         await page.evaluate(() => { const R1 = window.__R(); R1.focus('rogue', true); R1.zoom(0.6); });
-        await calm(page); await sleep(1200);
+        await calm(page, 30000);
+        // Wait for the camera to hold still (the same place for several frames) instead of a fixed pause, then read the place at once.
+        await page.evaluate(() => new Promise((ok, no) => {
+          let last = null, n = 0; const t0 = performance.now();
+          const tick = () => {
+            const q = window.__R().screenOfPawn('rogue', 0.8);
+            if (q && last && Math.hypot(q.x - last.x, q.y - last.y) < 0.5) n++; else n = 0;
+            last = q;
+            if (n >= 8) return ok();
+            if (performance.now() - t0 > 30000) return no(new Error('the view did not hold still'));
+            requestAnimationFrame(tick);
+          };
+          tick();
+        }));
         const p = await page.evaluate(() => window.__R().screenOfPawn('rogue', 0.8));
         if (!p) throw new Error('the rogue is not on screen');
         await page.evaluate(() => { window.__tapped = null; const R1 = window.__R(), orig = R1.onTap; R1.onTap = (h) => { window.__tapped = h?.id ?? null; orig(h); }; });
         await tapAt(page, touch, p.x, p.y);
-        await wait(page, () => window.__tapped !== null, null, 3000);
+        await wait(page, () => window.__tapped !== null, null, 10000);
         const got = await page.evaluate(() => window.__tapped);
         if (got !== 'rogue') throw new Error(`a tap on the rogue's model picked ${got}`);
       });

@@ -7,13 +7,16 @@ import { ground, overlapAt } from '../space.js';
 import { xpFor } from '../rewards.js';
 import { barriers } from '../walls.js';
 import { classesOf, derive, missingOf, missingSpeciesOf, validate } from '../derive.js';
-import { fail, featOf, living, RuleError } from './shared.js';
+import { fail, featOf, hpOpts, living, RuleError } from './shared.js';
 import { fitsOn } from './world.js';
 import { effectsOf, endEffect } from '../durations.js';
 
 // A creature now in Heavy armor (its sheet or record changed) ends what it can't keep up in it: a
 // feature's lasting effect whose action is `unless: 'heavy'` (Rage: "it ends early if you don Heavy armor").
 export function donned(s, e, ev) {
+  // A modifier that says `ends: { on: 'armour' }` (Mage Armor: "The spell ends early if the target dons armor") ends with the effect it is part of as soon as the
+  // creature is made again wearing any armour: it cannot have been put on over armour, so armour found on it is armour donned.
+  if (e.armour && e.armour !== 'none') for (const fx of [...effectsOf(s)]) if (fx.parts.some((p) => !p.ended && p.target === e.id && p.ends?.on === 'armour')) endEffect(s, ev, fx, `${e.name} donned armor`);
   if (e.armour !== 'heavy') return;
   for (const fx of [...effectsOf(s)]) if (fx.source === e.id && fx.feature && featOf(e, fx.feature)?.action?.unless === 'heavy') endEffect(s, ev, fx, `${e.name} donned Heavy armor`);
 }
@@ -48,7 +51,7 @@ export const newProblems = (before, sheet) => { const had = new Set(before ? val
 export function resheet(s, e, sheet, ev) {
   const problems = newProblems(e.sheet, sheet);
   problems.length === 0 || fail(`That can't be done. ${problems[0]}`);
-  remake(s, e, derive(sheet).record, sheet, ev);
+  remake(s, e, derive(sheet, hpOpts(s)).record, sheet, ev);
 }
 // A character made again from the sheet it already has (`refresh`): the sheet is checked whole, and a problem it has is named.
 // Unlike `resheet`, a problem the sheet had all along is not let through: the point is a sheet that plays as it is now.
@@ -58,7 +61,7 @@ export function refreshOne(s, e, ev) {
   !e.form || fail(`${e.name} is in the form of a ${e.form.name}. Leave the form first.`);
   // A stored sheet is old data and may be malformed in ways `validate` does not expect: any throw is a problem with the sheet.
   let sheet, problems, record;
-  try { sheet = structuredClone(e.sheet); problems = validate(sheet); if (problems.length === 0) record = derive(sheet).record; }
+  try { sheet = structuredClone(e.sheet); problems = validate(sheet); if (problems.length === 0) record = derive(sheet, hpOpts(s)).record; }
   catch (err) { fail(`Its sheet could not be read: ${err instanceof Error ? err.message : String(err)}`); }
   problems.length === 0 || fail(`${e.name}'s sheet can't be played as it is. ${problems[0]}`);
   remake(s, e, record, sheet, ev);
@@ -163,8 +166,9 @@ export function carryPlay(e, fresh, record, sheet) {
   // its damage, and at least 1.
   const lost = e.maxHp - e.hp;
   fresh.hp = e.hp > 0 && !e.dead ? Math.max(1, fresh.maxHp - lost) : 0;
-  // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13).
-  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
+  // `riding` and `rider` (companions.md, Decision 8): a creature remade on its mount (or under its rider) rides on (DEBT W13). `coins`, the purse
+  // (docs/specs/shops.md, Decision 5), is kept as `xp` is.
+  for (const k of ['cond', 'death', 'dead', 'reactionUsed', 'reactions', 'hitChoices', 'tempHp', 'tempFx', 'follow', 'march', 'light', 'hiding', 'hidden', 'look', 'riding', 'rider', 'stealthNoted', 'away', 'vanished', 'coins']) if (e[k] !== undefined && (k !== 'look' || !record.look)) fresh[k] = e[k];
   for (const [l, n] of Object.entries(fresh.slots)) fresh.slots[l] = Math.min(n, Math.max(0, n - ((e.slotsMax?.[l] ?? 0) - (e.slots?.[l] ?? 0))));      // slots spent stay spent
   for (const f of fresh.feats ?? []) {                                    // so do uses of features
     const was = featOf(e, f.id);

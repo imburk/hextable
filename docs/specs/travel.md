@@ -1021,6 +1021,49 @@ the light (W6b) comes with the journeys (W6): both are the owner's answers of 15
 pin and goes between pins and places, never by cells, and every walk there is refused in the same words, so the answer never
 depends on a creature the player cannot see.
 
+**Build notes, W3 (#595, #597).** `WORLD_LIMITS` (`worldpack.js`) holds the spec's limits and these of the build's own
+**(design choice)**: other strings 200 letters (a map's own strings are at most 200, as `lintMap` has them), 50 pictures, JSON
+nesting 24, 20 foes a row, 20 battle maps bound to a place or pin and 20 wayside maps a route; a picture or a battle map that
+nothing names is refused ("leave it out"). A seated DM's WebSocket frame is 4 MB and 64 KB, for the `world` message; an action
+is still held to 1 MiB. The table keeps the pack beside the state without its pictures' bytes (they are in its file store, by
+the store's ids), a picture the last world had is used again byte for byte, and one nothing shows any more is deleted when a
+world replaces it; the DM cannot delete a picture the world uses, and a table export takes the world's pictures first. **The
+fill** runs after the size check and before `apply()`: in `enter`, `leave`, `loadMap { node }`, `goTo { stale: 'reset' }` and
+`resetPlace` a client's `map` is dropped and the pack's put in when the place is not in play or kept (a place made at the table
+keeps the DM's map); W6 adds `journey` and W8 a Teleport `cast` to `FILLED`, and W4 must translate a player's `pl` ids before
+the fill. **Loading a world clears the DM's undo history**, as removing a homebrew pack does: no undo step crosses into another
+world. The world budget is its own iterative walk with the homebrew budget's rules (prototype keys, control characters, plain
+data), not the homebrew scanner itself, which `content/schema.js` does not export: **sharing the code is an open question**.
+
+**Build notes, W4.** What players are sent is built in `view.js` and the lists of what they know are `s.known` (`known.js`): an
+absent field read as empty, so no state version changed. The players' view gains, only for a table with a world and only once a place
+is known, `atlas` (`{ name, here, nodes, routes, markers }`, ids `pl1`, `pin1`, `ent1`, `rt1` given in the order first known); to a
+player whose characters are all parked, `watching: { mode, at }`; and to every player `away` (the party members kept in parked places,
+as `{ node, record }`, a record scrubbed of every creature not of the party). The shared view is still one: the place in play's. Under
+`watching: 'off'` a watcher gets the band, their `away` sheets and the out-of-character talk; no map, creatures, fight or events of the
+place. A player's `enter`, `jump`, `cast`, `goTo` and the like have their `node`, `pin`, `entry` and `route` turned from player ids in
+`dispatch` (`known.js`, `translate`); any id they were not given, a pack's own included, is answered `There is no such place.` before
+anything else is looked at. `say` carries `node` (the place it was said at); a parked group's in-character line is `far`, with `to` (who
+was there), and is sent only to those players and the DM. Not built here, because no row owns it and each needs a history label and a
+test case: the DM's `showPlace` and `showRoute` actions (`known.js` has the working parts, `showPlace` and `showRoute`, tested); a route
+is also "known" once travelled, which is W6's.
+
+Review notes on W4. What players are sent includes the world's name and the name of every known place and of each place above one
+(Decision 12), so a DM should put no spoiler in those names. `s.known` is reset when the world's hash changes, so a new version of
+the same world never maps an old player id onto new content. A parked group's in-character lines count against a cap of their own,
+kept on its record (`said`, as a scene's). Undo can give back a table whose `known` list is shorter, so a later place may be issued
+an id that an undone one had; the whole view is resent after an undo and nothing from the undone future is kept, so this leaks
+nothing.
+
+**Build notes, arrival line (#650).** The owner's answer of 21 November: besides the atlas marker moving, a group that arrives at a place
+is told in the log, "Tor and Mira arrive at The Keep." It is the engine's `arrived` event (`arrive()`, so `loadMap { node }`, `enter` and
+`leave`, and the arrivals W6 and W8 will make through it), which the DM has always been sent whole. A player is sent it, by allow list
+(`view.js`), only as `{ node, name, ids }`: `node` is the id they were given (`known.js`, `playerNode`) and `name` the name the atlas gives
+it, `ids` only the party's creatures (those in play or kept in a parked place). With no id they may know of, or a place they were not given,
+the player is sent no event at all. The entry and pin it came by and the place it came from are never sent. A player whose group is
+parked under `watching: 'off'` is sent nothing of the place in play, as before. `goTo` (a cut) and `place` (`relocated`) have no line.
+Tests: `rules/test/travel-view.test.js` and, through the table server, `server/test/twin-worlds.test.js`.
+
 ## What stays manual
 
 - Getting lost, foraging and what a Search finds on the road: the DM, with the terrain's DC offered.

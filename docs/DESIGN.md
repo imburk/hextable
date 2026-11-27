@@ -1,5 +1,7 @@
 # Hextable design
 
+Last checked against the code: 2026-11-20 (the counts below are tested by `packages/rules/test/guides.test.js`). What is built, and what is next: [ROADMAP](ROADMAP.md); what is missing: [DEBT](DEBT.md); the detail of each part: [specs](specs/README.md).
+
 ## Goals
 
 1. Free roaming in a 3D world until a battle starts; then hexes lock and play
@@ -25,27 +27,20 @@
 
 ## Stack
 
-The first playable version was prototyped before this repo existed and has been
-brought in as the codebase. It set the stack:
+The first playable version was prototyped before this repo existed and set the stack:
 
 | Topic | Choice | Reason |
 |---|---|---|
 | Platform | Web app | One codebase covers PC, phone and tablet with no app-store step |
 | Language | Plain JavaScript ES modules | The working prototype is written in it; no build step, runs straight from static hosting |
-| 3D | **Three.js** (vendored, pinned to r187), accepted by the owner on 13 November, 2026, and since R14 (15 November; built in #348 and #355) the only renderer: the prototype's own WebGL renderer was removed | Models and animation (glTF loading, skinned meshes, blended clips, materials, real shadows, many lights, instancing) are a large body of general GPU code that Three.js already has, tested by a great many users; written here it would be written and debugged without tests. The cost is a download of about 458 KB gzipped, once, which every player now pays (the owner accepted it on 15 November), a vendoring step, and a pinned version to keep. It is the one runtime dependency, and it is not installed: its files are copied into `packages/client/vendor/`, with the exact release, upstream commit and SHA-256 of each file in the `README` there. Upgrades are deliberate, with that README's steps. Everything specific to Hextable (rooms, timeline, sight, picking) stays our own code in plain modules, and the renderer sits behind the interface of `renderer.js`, which kept the hand-written renderer in place until the Three one passed the same checks (it did, and the old one is gone); the interface stays, so another renderer, or none (`?renderer=none`), can still be put behind it. Full reasoning: `docs/specs/renderer.md`, Decision 8 |
+| 3D | **Three.js**, vendored and pinned (r187), the only renderer since R14 (#348, #355) | Models, animation, materials and shadows are a large body of general GPU code that is better borrowed than written untested. Costs about 458 KB gzipped, once per player. It is copied into `packages/client/vendor/` (release, commit and SHA-256 in the `README` there), not installed. Our own code (rooms, timeline, sight, picking) stays behind the interface of `renderer.js`, so another renderer, or none (`?renderer=none`), can still go behind it. Reasoning: `docs/specs/renderer.md`, Decision 8 |
+| Zip | **zip.js**, vendored and pinned (v2.25.0, BSD-3-Clause), approved 20 November 2026 (#572, #582) | An adventure module is a zip (`docs/specs/adventure-module.md`, Decision 1). It only inflates and writes; every safety check of the zip is our own, in `packages/client/modulezip.js`, done before the library loads. About 107 KB gzipped, fetched only when a module is opened. Same vendoring rules as Three.js |
 | Server | Node.js, WebSockets written on the built-in `http` module | Same language as the rules; nothing to install |
 | Storage | Browser storage for solo play; one JSON file per table on the server | A table is one JSON document; move to a database when a persistent world needs queries |
 | Licence | AGPL-3.0-or-later | Changed from MIT on 13 November 2026: anyone who runs a modified table server must offer its source |
 | Hex layout | Pointy-top hexes, 5 ft each, axial coordinates, per-hex height | Matches SRD distances |
 
-One earlier proposal is deferred, not dropped:
-
-- **TypeScript.** Worth adding when the rules engine grows past what tests alone
-  keep safe. Convert module by module; do not rewrite.
-
-The other, Three.js, is accepted: see the 3D row. It is brought in as vendored,
-pinned files, not as a package, because the project installs nothing from the
-network and has no bundler.
+Deferred, not dropped: **TypeScript**, to be added module by module when tests alone no longer keep the rules engine safe. Nothing is installed from the network; vendored libraries are copied in with their release and hashes recorded.
 
 ## Architecture
 
@@ -91,37 +86,35 @@ Fight ──(one side is down, or the DM ends it)──▶ Exploring
 
 ### Rules engine (`packages/rules`)
 
-`engine.js` holds `apply()` and nothing else of substance: the order in
-which an action is checked (hidden creature ids first, then the handler, then
-whether a reaction is awaited), the snapshot and pause for reaction prompts,
-what runs after every action (gravity, watching for hidden creatures, what
-the party sees) and the timeline. The handlers are split by domain under
-`engine/` (movement, attacks, casting, features, characters, rests, DM
-tools), above layered helper modules (`shared`, `world`, `rolls`, `sheets`,
-`resolve`) that import only downwards, so the split has no import cycles.
-CLAUDE.md lists which module holds what. Everything is still imported from
-`engine.js`, which re-exports it.
+`engine.js` holds `apply()`: the order in which an action is checked, the
+pause for reaction prompts, what runs after every action, and the timeline.
+Handlers are split by domain under `engine/`, above layered helpers that
+import only downwards, so there are no import cycles. AGENTS.md says which
+module holds what, and a test keeps that list complete.
 
-Built so far:
+What it enforces (the specs say how; `npm run content` says how much):
 
-- Movement with terrain cost, difficult terrain, occupied hexes
-- Initiative, turn order, action / bonus action / movement budgets
-- Attack rolls with advantage and disadvantage from the situation, critical hits
-- Opportunity attacks, Dash, Disengage, Dodge, prone
-- Damage types with resistance, vulnerability and immunity
-- Death saving throws, instant death from massive damage, healing
-- Spell slots; attack, saving-throw, automatic and healing spells; cone areas
-- Class features in the starter set: Second Wind, Sneak Attack, Pack Tactics,
-  Nimble Escape
-- Long rest, the world clock, the chronicle and timeline
-- DM tools: spawn, place, set HP, start and end fights, settings
-- A monster AI that plays creatures through the same `apply()` call
+- Movement, initiative, turn budgets, attacks, opportunity and other reactions,
+  damage types, conditions, death saves, healing, Concentration, lasting
+  effects and zones, Temporary Hit Points, grappling.
+- Spells and monster actions as data run by effect steps; Multiattack and recharge.
+- Twelve classes to level 20 (build from class and level, levelling, multiclassing,
+  feats, magic items with attunement, Wild Shape), species as data, ability scores.
+- Maps with levels, height, walls, doors, objects, size and footprints; hexes
+  or squares; line of sight, cover, light, hiding and finding.
+- Companions, summons and riding; shops, an atlas of places and travel (stages built
+  so far are in each spec's status line).
+- Rests, the world clock, the chronicle and timeline, DM tools, undo and redo.
+- A monster AI, and a stand-in for a creature nobody commands, that play through `apply()`.
 
-Content so far: 6 spells, 3 monsters, 4 level 1 pregenerated characters.
-
-Not built yet: character creation and levelling, conditions beyond prone and
-unconscious, concentration, reactions other than opportunity attacks, most
-spells and monsters, equipment as rules objects, visibility.
+Content entered today (SRD 5.2.1, from the packs):
+<!-- count:spells -->339<!-- /count --> spells,
+<!-- count:monsters -->329<!-- /count --> monsters,
+<!-- count:items -->76<!-- /count --> magic items,
+<!-- count:feats -->17<!-- /count --> feats,
+<!-- count:objects -->25<!-- /count --> map objects,
+<!-- count:species -->9<!-- /count --> species; each at an honest tier (`auto`, `assist`,
+`manual`). What the engine hands to the DM instead is listed in DEBT.md.
 
 ### Client (`packages/client`)
 
@@ -150,7 +143,8 @@ spells and monsters, equipment as rules objects, visibility.
 - The DM can add creatures hidden from the players; the engine reveals one
   when the party comes close, walks into it, or a fight starts around it.
 - After the first full view, each update carries only what changed.
-- Not yet: line of sight, accounts.
+- Players see only what their characters can see (line of sight, light).
+- Not built: accounts, a persistent world across sessions.
 
 ## Later, and what keeps the door open
 

@@ -1,8 +1,10 @@
 import { mkdirSync } from 'node:fs';
-import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, settle, tapAt, onCanvas } from './lib.mjs';
+import { sleep, spawnNear, spotsFor, scenario, wait, state, shown, waitShown, open, playSolo, closePanels, panelTab, paneOf, openMenu, openChar, settle, tapAt, onCanvas, chip } from './lib.mjs';
 
-// ---------- the action panel's Attacks, Bonus, Move and Features tabs (docs/specs/table-ui.md, Decision 6, task T4a) ----------
-// Solo as the DM at 1280x800 and at 390x844 with touch. Exploring: a healing shortcut goes to the Features row. In a fight: the fighter's
+// ---------- the action groups: Attack, Heal, Move, Defend, Features and the turn bar's Bonus Action (docs/specs/table-ui.md, Decision 6, task T4a; M4 of docs/specs/one-token-menu.md) ----------
+// In a fight only what can be used now is shown (R29): a greyed row is not drawn, so where this pass used to read a greyed row's reason it now checks the row is gone (and, out of a fight,
+// the other pass, actionpanel, keeps the greyed rows with their reasons).
+// Solo as the DM at 1280x800 and at 390x844 with touch. Exploring: Second Wind is in Heal. In a fight: the fighter's
 // Attacks (a row arms, Cancel puts it down), Move (the speed left, Dash spends it, a greyed row writes its reason on screen and a tap on it only
 // shows the toast), Bonus (Second Wind, then the reason there is no Bonus Action left), Features (pips); a rogue with no Bonus Action to
 // offer; a cleric's Bonus spell and the spell tab; another's turn (greyed with the reason); a monster's `actions` and a flyer's Higher/Lower, selected by the DM.
@@ -14,14 +16,21 @@ const turnOf = async (page, id) => {
   if ((await cur(page)) !== id) throw new Error(`it never became ${id}'s turn`);
 };
 const select = async (page, id) => { await page.evaluate((i) => window.hextable.select(i), id); await wait(page, (i) => !document.querySelector('#card').hidden && document.querySelector('#c-name').textContent === window.hextable.state.entities[i].name, id, 20000); };
-// No row of the open pane is cut through the middle by the pane's bottom edge (or its top, scrolled to the start: nothing there).
+// No row of the open pane is cut through the middle by the pane's bottom edge with no way to bring it into view. M10: the open section's pane scrolls between the
+// pinned bars, so a row at its fold may be cut; then the pane must be one that scrolls far enough to show that row whole.
 const whole = async (page, pane) => {
-  const cut = await page.$eval(pane, (el) => { const b = el.getBoundingClientRect(); return [...el.querySelectorAll('.ap-row')].filter((r) => { const q = r.getBoundingClientRect(); return q.height && q.top < b.bottom - 1 && q.bottom > b.bottom + 1; }).map((r) => r.dataset.row); });
-  if (cut.length) throw new Error(`rows cut through the middle at the bottom of ${pane}: ${cut}`);
+  const cut = await page.$eval(pane, (el) => { const b = el.getBoundingClientRect(), scrolls = /auto|scroll/.test(getComputedStyle(el).overflowY), room = el.scrollHeight - el.clientHeight - el.scrollTop;
+    return [...el.querySelectorAll('.ap-row')].filter((r) => { const q = r.getBoundingClientRect(); return q.height && q.top < b.bottom - 1 && q.bottom > b.bottom + 1 && !(scrolls && room >= q.bottom - b.bottom - 1); }).map((r) => r.dataset.row); });
+  if (cut.length) throw new Error(`rows cut through the middle at the bottom of ${pane}, out of reach: ${cut}`);
 };
 // Every greyed row of the pane writes its reason on screen, where it can be read (not only in a title).
 const reasons = (page, pane) => page.$$eval(`${pane} [aria-disabled="true"]`, (rows) => rows.map((r) => { const w = r.querySelector('.ap-why'); const q = w?.getBoundingClientRect(); return { row: r.dataset.row, why: w?.textContent.trim() ?? '', seen: !!q && q.width > 0 && q.height > 0 }; }));
-const visit = async (page, tab) => { await panelTab(page, tab); await whole(page, `#ap-${tab}`); };
+const visit = async (page, tab) => { await panelTab(page, tab); await whole(page, paneOf(tab)); };
+const sec = (page, id) => wait(page, (t) => document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec === t, id, 20000).catch(async (err) => {
+  const at = await page.evaluate(() => ({ sel: document.getElementById('c-name')?.textContent, open: document.querySelector('#ap-body .ap-bar[aria-expanded="true"]')?.dataset.sec ?? null, bars: [...document.querySelectorAll('#ap-body .ap-sec:not([hidden])')].map((x) => `${x.dataset.sec}:${x.querySelector('.ap-tip').textContent}`), empty: document.getElementById('ap-empty')?.textContent, path: document.getElementById('drawer').dataset.path }));
+  throw new Error(`${err.message.split('\n')[0]} (the page: ${JSON.stringify(at)})`);
+});
+const gone = async (page, row) => { if (await page.$(`#ap-body .ap-sec:not([hidden]) [data-row="${row}"]`)) throw new Error(`${row} is still offered`); };
 const text = (page, sel) => page.$eval(sel, (e) => e.textContent.replace(/\s+/g, ' ').trim());
 
 async function tabs(browser, url, label, opts) {
@@ -34,111 +43,153 @@ async function tabs(browser, url, label, opts) {
       const tap = (sel) => (touch ? page.locator(sel).tap() : page.click(sel));
       let fly = null;
 
-      await run.do('exploring, a hurt fighter is offered Second Wind, and the shortcut lands on its Features row', async () => {
+      await run.do('exploring, a hurt fighter has Second Wind in Heal, live; at full Hit Points it is greyed with the reason', async () => {
         await open(page, url); await playSolo(page);
         await page.evaluate(() => { document.getElementById('dm-auto').checked = false; });
-        await closePanels(page); await page.click('#party button:has-text("Brenna")');
+        await closePanels(page); await chip(page, 'Brenna');
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 3 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 3);
-        await panelTab(page, 'explore');
-        await waitShown(page, '#ap-explore [data-row="heal:secondWind"]');
-        await tap('#ap-explore [data-row="heal:secondWind"]');
-        await wait(page, () => document.querySelector('#ap-tab-features')?.getAttribute('aria-selected') === 'true' && document.activeElement?.dataset.row === 'feat:secondWind');
+        await panelTab(page, 'heal');
+        await waitShown(page, '#ap-heal [data-row="feat:second-wind"]');
+        if ((await page.getAttribute('#ap-heal [data-row="feat:second-wind"]', 'aria-disabled')) !== 'false') throw new Error('Second Wind is greyed with hit points missing');
+        if (await shown(page, '#ap-explore [data-row="heal:second-wind"]')) throw new Error('the old shortcut is still in Explore');
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 12 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 12);
+        await wait(page, () => /full Hit Points/.test(document.querySelector('#ap-heal [data-row="feat:second-wind"]')?.textContent ?? ''));
       });
 
-      await run.do('a fight, the fighter\'s turn: Attacks opens first with her longsword as a row, rows whole in the compact height', async () => {
+      await run.do('a fight, the fighter\'s turn: Attack opens first with her longsword as a row, and no row is greyed', async () => {
         // The flying sword goes on a hex the engine takes it on, near (2, -2) and inside the arena: the map is random per game, and a tree or water there refuses the spawn
         // ("A creature can't stand there."), which left no sword and this step waiting for it (#418). The sword must exist, or the step fails with the game's words.
         fly = await spawnNear(page, 'animated-flying-sword', { near: { q: 2, r: -2 }, min: 0, radius: 4, within: { center: { q: 0, r: 0 }, radius: 8 } });
         await page.evaluate(() => window.hextable.act({ type: 'startEncounter', center: { q: 0, r: 0 }, radius: 8 }));
         await wait(page, () => !!window.hextable.state.encounter, null, 20000); await idle(page);
         await turnOf(page, 'fighter'); await select(page, 'fighter');
-        await wait(page, () => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab === 'attacks', null, 20000);
+        await openChar(page); await sec(page, 'attacks');
         await waitShown(page, '#ap-attacks', true, 15000);
         const t = await text(page, '#ap-attacks [data-row="atk:longsword"]');
         if (!/Longsword/.test(t) || !/to hit/.test(t) || !/reach 5 ft/.test(t) || !/Action/.test(t)) throw new Error(`the attack row says too little: ${t}`);
         if (await shown(page, '#ap-spells')) throw new Error('the Spells tab is showing in front of the Attacks');
         await whole(page, '#ap-attacks');
+        const grey = await page.$$eval('#ap-body .ap-sec:not([hidden]) [aria-disabled="true"]', (b) => b.map((x) => x.dataset.row));
+        if (grey.length) throw new Error(`in a fight the page shows rows that cannot be used: ${grey}`);
       });
 
-      await run.do('tapping an attack row arms it, the hint says so (the panel steps aside on a phone), Cancel puts it down', async () => {
+      await run.do('tapping an attack row arms it and the menu folds for the map (both sizes), the hint says so, the row is armed when the menu is opened again, Cancel puts it down', async () => {
         await tap('#ap-attacks [data-row="atk:longsword"]');
         await wait(page, () => window.hextable.mode.kind === 'attack' && window.hextable.mode.id === 'longsword');
+        await waitShown(page, '#drawer', false);
         await waitShown(page, '#hint');
         if (!/Longsword: /.test(await text(page, '#hint-text'))) throw new Error('no hint');
+        await openChar(page);
         if (!(await page.$eval('#ap-attacks [data-row="atk:longsword"]', (b) => b.classList.contains('armed')))) throw new Error('the row does not show as armed');
+        await closePanels(page);
         await page.click('#hint-cancel');
-        await wait(page, () => window.hextable.mode.kind === 'move' && !document.querySelector('#card').hasAttribute('data-collapsed'));
+        await wait(page, () => window.hextable.mode.kind === 'move');
+        if (await shown(page, '#drawer')) throw new Error('the menu reopened by itself');
+        await openChar(page);
         if (await page.$eval('#ap-attacks [data-row="atk:longsword"]', (b) => b.classList.contains('armed'))) throw new Error('the row still shows as armed');
       });
 
-      await run.do('Move: the speed left, Dash spends the action, the greyed rows say why on screen and a tap on one sends nothing', async () => {
+      // #717 (docs/specs/one-token-menu.md, "#717 build notes"): a fight action in two taps. On my turn the turn line carries up to three quick actions, the panel's own rows.
+      await run.do('quick actions: on her turn the turn line offers the longsword first; one tap arms it with the menu left closed, a second puts it down; Setup turns them off', async () => {
+        await closePanels(page);
+        await waitShown(page, '#turn-quick');
+        const look = () => page.evaluate(() => { const tk = document.getElementById('btn-menu').getBoundingClientRect(), tl = document.getElementById('turnline').getBoundingClientRect();
+          return { rows: [...document.querySelectorAll('#turn-quick .tq')].map((b) => { const r = b.getBoundingClientRect(); return { id: b.dataset.quick, name: b.getAttribute('aria-label'), on: b.getAttribute('aria-pressed'), h: r.height, l: r.left, r: r.right }; }), vw: innerWidth, overToken: tl.bottom > tk.top + 1, end: !document.getElementById('btn-end').hidden }; });
+        const q = await look();
+        if (q.rows.length < 1 || q.rows.length > 3 || q.rows[0].id !== 'atk:longsword' || !/^Longsword, /.test(q.rows[0].name)) throw new Error(`the quick actions: ${JSON.stringify(q.rows)}`);
+        if (q.rows.some((r) => r.h < 44 || r.l < 0 || r.r > q.vw) || q.overToken || !q.end) throw new Error(`they do not fit, cover the token, or End turn is gone: ${JSON.stringify(q)}`);
+        await tap('#turn-quick [data-quick="atk:longsword"]');
+        await wait(page, () => window.hextable.mode.kind === 'attack' && window.hextable.mode.id === 'longsword');
+        if (await shown(page, '#drawer')) throw new Error('the menu opened');
+        if (!/Longsword: /.test(await text(page, '#hint-text'))) throw new Error('no hint for the armed attack');
+        const armed = await look();
+        if (armed.rows[0].id !== 'atk:longsword' || armed.rows[0].on !== 'true' || armed.rows.map((r) => r.id).join() !== q.rows.map((r) => r.id).join()) throw new Error(`armed, the row moved or is not marked: ${JSON.stringify(armed.rows)}`);
+        await tap('#turn-quick [data-quick="atk:longsword"]');
+        await wait(page, () => window.hextable.mode.kind === 'move');
+        await openMenu(page, 'settings/menu'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.uncheck('#set-quick'); await closePanels(page);
+        if (await shown(page, '#turn-quick')) throw new Error('turned off in Setup, the quick actions still show');
+        if (!(await shown(page, '#btn-end'))) throw new Error('End turn went with them');
+        await openMenu(page, 'settings/menu'); await page.locator('#set-quick').scrollIntoViewIfNeeded(); await page.check('#set-quick'); await closePanels(page);
+        await waitShown(page, '#turn-quick');
+      });
+
+      await run.do('Move and Defend: the speed left is on the turn bar, Dash spends the action, and then what needs the action is not shown at all', async () => {
         await visit(page, 'move');
+        for (const id of ['dash', 'disengage']) if (!(await page.$(`#ap-move [data-row="${id}"]`))) throw new Error(`no ${id} row in Move`);
         if (!/Speed left 30 ft/.test(await text(page, '#ap-move .ap-speed'))) throw new Error(`no speed meter: ${await text(page, '#ap-move')}`);
-        for (const id of ['dash', 'disengage', 'dodge', 'hide', 'search']) if (!(await page.$(`#ap-move [data-row="${id}"]`))) throw new Error(`no ${id} row`);
+        await visit(page, 'defend');
+        for (const id of ['dodge', 'search']) if (!(await page.$(`#ap-defend [data-row="${id}"]`))) throw new Error(`no ${id} row in Defend and hide`);
+        await panelTab(page, 'move');
         await tap('#ap-move [data-row="dash"]');
         await wait(page, () => window.hextable.state.encounter.budget.dashes === 1 && window.hextable.state.encounter.budget.action === 0); await idle(page);
-        await wait(page, () => /Speed left 60 ft/.test(document.querySelector('#ap-move .ap-speed')?.textContent ?? ''));
-        const r = await reasons(page, '#ap-move');
-        const dodge = r.find((x) => x.row === 'dodge');
-        if (!dodge || !dodge.seen || !/already used an action/.test(dodge.why)) throw new Error(`Dodge does not say why on screen: ${JSON.stringify(r)}`);
-        if (r.some((x) => !x.seen || !x.why)) throw new Error(`a greyed row has no reason on screen: ${JSON.stringify(r.filter((x) => !x.seen || !x.why))}`);
+        await wait(page, () => /Move 60 ft/.test(document.querySelector('#c-res')?.textContent ?? ''));
+        for (const g of ['attacks', 'defend']) if (await page.$(`#ap-body .ap-sec:not([hidden]) #ap-bar-${g}`)) throw new Error(`${g} is shown with the action spent`);
+        // Move may stay for a leap (#813, #821): it needs movement, not the action; nothing else is left in it.
+        const left = await page.$$eval('#ap-body .ap-sec:not([hidden]) [data-row]', (l) => l.map((x) => x.dataset.row).filter((id) => ['dash', 'disengage', 'leap', 'leap-jump', 'fly', 'fly-up', 'fly-down', 'fly-to'].includes(id)));
+        if (left.some((id) => id !== 'leap' && id !== 'leap-jump')) throw new Error(`move rows with the action spent: ${left.join(', ')}`);
+        for (const row of ['dodge', 'dash', 'disengage', 'hide', 'search']) await gone(page, row);
+        // a tap on a greyed row cannot happen, but the engine still refuses the action if it is sent
         const n = await state(page, (S) => S.timeline.length);
-        await page.evaluate(() => { document.querySelector('#ap-move [data-row="dodge"]').click(); });
+        await page.evaluate(() => window.hextable.act({ type: 'dodge', actor: 'fighter' }));
         await waitShown(page, '#toast');
-        if (!/already used an action/.test(await text(page, '#toast'))) throw new Error('the tap on a greyed row did not show its reason');
+        if (!/already used an action/.test(await text(page, '#toast'))) throw new Error('the engine did not refuse Dodge with its reason');
         await sleep(300);
-        if ((await state(page, (S) => S.timeline.length)) !== n) throw new Error('a greyed row sent something');
-        await whole(page, '#ap-move');
+        if ((await state(page, (S) => S.timeline.length)) !== n) throw new Error('a refused action sent something');
       });
 
-      await run.do('Bonus: Second Wind is there, tapping it heals; then no Bonus Action is left and the tab says why', async () => {
+      await run.do('Bonus Action (the turn bar): Second Wind is there with its pips, tapping it heals; then no Bonus Action is left and the screen says why', async () => {
         await page.evaluate(() => window.hextable.act({ type: 'setHp', actor: 'fighter', hp: 4 }));
         await wait(page, () => window.hextable.state.entities.fighter.hp === 4);
+        await openChar(page);
+        if (await shown(page, '#ap-bar-features')) throw new Error('Second Wind is in Features as well as Heal');
+        await visit(page, 'heal');
+        const t = await text(page, '#ap-heal [data-row="feat:second-wind"]');
+        if (!/2 \/ 2/.test(t) || !/Back on a Long Rest \(1 back on a Short Rest\)/.test(t) || !/Bonus/.test(t)) throw new Error(`pips or recharge text missing: ${t}`);
         await visit(page, 'bonus');
-        await waitShown(page, '#ap-bonus [data-row="feat:secondWind"]');
-        if ((await page.getAttribute('#ap-bonus [data-row="feat:secondWind"]', 'aria-disabled')) !== 'false') throw new Error('Second Wind is greyed with hit points missing and a Bonus Action to spend');
-        const left = await state(page, (S) => S.entities.fighter.uses.secondWind);
-        await tap('#ap-bonus [data-row="feat:secondWind"]');
-        await wait(page, (n) => window.hextable.state.entities.fighter.uses.secondWind === n - 1 && window.hextable.state.entities.fighter.hp > 4, left); await idle(page);
-        await wait(page, () => /No Bonus Action/.test(document.querySelector('#ap-bonus')?.textContent ?? ''));
-        const r = await reasons(page, '#ap-bonus');
-        if (!r.length || r.some((x) => !x.seen || !/Bonus Action/.test(x.why))) throw new Error(`rows are not greyed with the reason: ${JSON.stringify(r)}`);
-        await whole(page, '#ap-bonus');
+        await waitShown(page, '#ap-cost [data-row="feat:second-wind"]');
+        if ((await page.getAttribute('#ap-cost [data-row="feat:second-wind"]', 'aria-disabled')) !== 'false') throw new Error('Second Wind is greyed with hit points missing and a Bonus Action to spend');
+        if (!/Costs your Bonus Action/.test(await text(page, '#ap-bar-cost'))) throw new Error('the screen does not say what it holds');
+        const left = await state(page, (S) => S.entities.fighter.uses['second-wind']);
+        await tap('#ap-cost [data-row="feat:second-wind"]');
+        await wait(page, (n) => window.hextable.state.entities.fighter.uses['second-wind'] === n - 1 && window.hextable.state.entities.fighter.hp > 4, left); await idle(page);
+        await wait(page, () => /No Bonus Action/.test(document.querySelector('#ap-cost')?.textContent ?? ''));
+        if (await page.$('#ap-cost [data-row]')) throw new Error('rows that cannot be used are shown on the Bonus Action screen');
+        await gone(page, 'feat:second-wind');
+        await wait(page, () => document.querySelector('#c-res [data-cost="bonus"]')?.classList.contains('spent'));
+        await whole(page, '#ap-cost');
       });
 
-      await run.do('Features: Second Wind shows its pips and how it comes back', async () => {
-        await visit(page, 'features');
-        const t = await text(page, '#ap-features [data-row="feat:secondWind"]');
-        if (!/1 \/ 2/.test(t) || !/Back on a Short Rest/.test(t) || !/Bonus/.test(t)) throw new Error(`pips or recharge text missing: ${t}`);
-      });
-
-      await run.do('a rogue with nothing that costs a Bonus Action: the Bonus tab says so', async () => {
+      await run.do('a rogue with nothing that costs a Bonus Action: the Bonus Action screen says so', async () => {
         await turnOf(page, 'rogue'); await select(page, 'rogue');
         await visit(page, 'bonus');
-        if (!/Nothing this creature has costs a Bonus Action/.test(await text(page, '#ap-bonus'))) throw new Error(`the tab says: ${await text(page, '#ap-bonus')}`);
+        if (!/Nothing you can do now costs your Bonus Action/.test(await text(page, '#ap-cost'))) throw new Error(`the screen says: ${await text(page, '#ap-cost')}`);
         await visit(page, 'move'); await visit(page, 'attacks');
       });
 
-      await run.do('a cleric: Healing Word is on Bonus, the spell tab holds her spells, arming a spell works from either', async () => {
+      await run.do('a cleric: Healing Word is on the Bonus Action screen and in Heal, Cast holds her spells, arming a spell works from any', async () => {
         await turnOf(page, 'cleric'); await select(page, 'cleric');
         await visit(page, 'bonus');
-        await waitShown(page, '#ap-bonus [data-row="spell:healing-word"]');
-        await tap('#ap-bonus [data-row="spell:healing-word"]');
+        await waitShown(page, '#ap-cost [data-row="spell:healing-word"]');
+        await tap('#ap-cost [data-row="spell:healing-word"]');
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'healing-word');
         await waitShown(page, '#hint'); await page.click('#hint-cancel');
-        await wait(page, () => window.hextable.mode.kind === 'move' && !document.querySelector('#card').hasAttribute('data-collapsed'));
+        await wait(page, () => window.hextable.mode.kind === 'move');
+        await visit(page, 'heal'); await waitShown(page, '#ap-heal [data-row="spell:healing-word"]');
         await panelTab(page, 'spells');
         if (!/Sacred Flame/.test(await text(page, '#ap-spells'))) throw new Error('the spell tab does not list her spells');
-        if (!/^Spells$/.test(await text(page, '#ap-tab-spells'))) throw new Error('the spell tab is not labelled Spells');
-        if (await page.$('#ap-tab-all, #ap-all, #actions')) throw new Error('the old tab or bar is still in the page');
+        if (!/^Cast/.test(await text(page, '#ap-bar-spells'))) throw new Error('the spells group is not labelled Cast');
+        if (await page.$('#ap-tabs, #ap-all, #actions, #dock')) throw new Error('the old tabs or the dock are still in the page');
       });
 
-      await run.do('the Spells tab: the slot strip stays whatever the sort, the sort is remembered, the filters combine', async () => {
+      await run.do('Cast: the slot strip stays whatever the sort, the sort is remembered, the filters combine (in a fight only the spells that can be cast now are in the list)', async () => {
         await visit(page, 'spells');
         const rows = () => page.$$eval('#ap-spells [data-row]', (b) => b.map((x) => x.dataset.row.replace(/^spell:/, '')));
+        const all = await rows();          // what can be cast now: the rest is not drawn
+        if (all.length < 2 || !all.includes('healing-word')) throw new Error(`the cleric's castable spells: ${all}`);
+        const CANTRIP = ['sacred-flame'], HEALING = ['cure-wounds', 'healing-word'], BONUS = ['healing-word'];
+        const want = (f) => all.filter(f);
         const strip = async (why) => {
           const r = await page.$eval('#ap-spells .ap-slots', (el) => { const q = el.getBoundingClientRect(), p = el.closest("#ap-spells").getBoundingClientRect(); return { txt: el.textContent.replace(/\s+/g, ' ').trim(), inside: q.height > 0 && q.top >= p.top - 1 && q.bottom <= p.bottom + 1 }; });
           if (!/Level 1/.test(r.txt) || !/2 of 2/.test(r.txt) || !r.inside) throw new Error(`the slot strip (${why}): ${JSON.stringify(r)}`);
@@ -147,72 +198,78 @@ async function tabs(browser, url, label, opts) {
         for (const sort of ['name', 'school', 'time', 'level']) { await page.selectOption('#ap-spells [data-sort]', sort); await wait(page, (v) => document.querySelector('#ap-spells [data-sort]')?.value === v, sort); await strip(`${sort} sort`); }
         await page.selectOption('#ap-spells [data-sort]', 'name');
         await wait(page, () => localStorage.getItem('hextable.spellSort') === '"name"');
-        if ((await rows()).join() !== 'cure-wounds,healing-word,sacred-flame,shield-of-faith') throw new Error(`by name: ${await rows()}`);
+        if ((await rows()).join() !== [...all].sort().join()) throw new Error(`by name: ${await rows()}`);
         await visit(page, 'move'); await visit(page, 'spells');
         if ((await page.$eval('#ap-spells [data-sort]', (x) => x.value)) !== 'name') throw new Error('the sort was not kept');
         await page.selectOption('#ap-spells [data-sort]', 'level');
         await tap('#ap-spells [data-filters]'); await waitShown(page, '#ap-spells .ap-filters');
-        await tap('#ap-spells [data-f="level:cantrip"]'); await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 1);
-        if ((await rows()).join() !== 'sacred-flame') throw new Error(`Cantrips: ${await rows()}`);
+        const nC = want((r) => CANTRIP.includes(r)).length;
+        await tap('#ap-spells [data-f="level:cantrip"]'); await wait(page, (n) => document.querySelectorAll('#ap-spells [data-row]').length === n, nC);
+        if ((await rows()).join() !== want((r) => CANTRIP.includes(r)).join()) throw new Error(`Cantrips: ${await rows()}`);
         await tap('#ap-spells [data-f="level:cantrip"]'); await tap('#ap-spells [data-f="level:prepared"]');
-        await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 3);
+        await wait(page, (n) => document.querySelectorAll('#ap-spells [data-row]').length === n, want((r) => !CANTRIP.includes(r)).length);
         await tap('#ap-spells [data-f="kind:healing"]');
-        await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 2);
-        if ((await rows()).sort().join() !== 'cure-wounds,healing-word') throw new Error(`Prepared and Healing: ${await rows()}`);
-        await tap('#ap-spells [data-f="cast:Bonus"]'); await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 1);
-        if ((await rows()).join() !== 'healing-word') throw new Error(`Prepared, Healing and Bonus: ${await rows()}`);
+        await wait(page, (n) => document.querySelectorAll('#ap-spells [data-row]').length === n, want((r) => HEALING.includes(r)).length);
+        if ((await rows()).sort().join() !== want((r) => HEALING.includes(r)).sort().join()) throw new Error(`Prepared and Healing: ${await rows()}`);
+        await tap('#ap-spells [data-f="cast:Bonus"]'); await wait(page, (n) => document.querySelectorAll('#ap-spells [data-row]').length === n, want((r) => BONUS.includes(r)).length);
+        if ((await rows()).join() !== want((r) => BONUS.includes(r)).join()) throw new Error(`Prepared, Healing and Bonus: ${await rows()}`);
         await tap('#ap-spells [data-f="can"]');
         await wait(page, () => /Filters \(4\)/.test(document.querySelector('#ap-spells [data-filters]').textContent));
-        await tap('#ap-spells [data-clear]'); await wait(page, () => document.querySelectorAll('#ap-spells [data-row]').length === 4);
+        await tap('#ap-spells [data-clear]'); await wait(page, (n) => document.querySelectorAll('#ap-spells [data-row]').length === n, all.length);
         await tap('#ap-spells [data-filters]'); await wait(page, () => !document.querySelector('#ap-spells .ap-filters'));
         await whole(page, '#ap-spells');
       });
 
-      await run.do('a spell armed from the Spells tab collapses the panel on a phone, and Cancel brings it back', async () => {
-        const narrow = await page.evaluate(() => matchMedia('(max-width: 600px)').matches);
+      await run.do('a spell armed from Cast folds the menu on both sizes, and Cancel puts it down with the menu left closed', async () => {
         await visit(page, 'spells');
         await tap('#ap-spells [data-row="spell:sacred-flame"]');
         await wait(page, () => window.hextable.mode.kind === 'spell' && window.hextable.mode.id === 'sacred-flame');
-        await wait(page, (n) => document.querySelector('#card').hasAttribute('data-collapsed') === n, narrow);
+        await waitShown(page, '#drawer', false);
         await waitShown(page, '#hint'); await page.click('#hint-cancel');
-        await wait(page, () => window.hextable.mode.kind === 'move' && !document.querySelector('#card').hasAttribute('data-collapsed'));
-        await waitShown(page, '#ap-spells [data-row="spell:sacred-flame"]');
+        await wait(page, () => window.hextable.mode.kind === 'move');
+        if (await shown(page, '#drawer')) throw new Error('the menu reopened by itself');
+        await visit(page, 'spells'); await waitShown(page, '#ap-spells [data-row="spell:sacred-flame"]');
         await page.screenshot({ path: `/tmp/t4b/spells-${touch ? 'phone' : 'desktop'}.png` });
       });
 
-      await run.do('on another\'s turn every Features row is greyed with the reason written on screen', async () => {
+      await run.do('on another\'s turn nothing that needs your turn is shown: no Features, Attack or Move, and Reactions comes first', async () => {
         await select(page, 'fighter');
-        await wait(page, () => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab === 'reactions');
-        await visit(page, 'features');
-        const r = await reasons(page, '#ap-features');
-        if (!r.length || r.some((x) => !x.seen || !/isn't .+ turn/.test(x.why))) throw new Error(`reasons: ${JSON.stringify(r)}`);
+        await openChar(page);
+        await wait(page, () => !document.querySelector('#ap-body .ap-sec:not([hidden]) #ap-bar-attacks') && !document.querySelector('#ap-body .ap-sec:not([hidden]) #ap-bar-features'));
+        for (const g of ['attacks', 'move', 'defend', 'features', 'heal', 'spells']) if (await shown(page, `#ap-bar-${g}`)) throw new Error(`${g} is shown on another's turn`);
+        const first = await page.$$eval('#ap-body .ap-sec:not([hidden])', (l) => l.sort((a, b) => a.style.order - b.style.order).map((x) => x.dataset.sec));
+        if (first.length && first[0] !== 'reactions' && first[0] !== 'items') throw new Error(`the groups on another's turn: ${first}`);
+        if (!first.length && !/\S/.test(await page.$eval('#ap-empty', (e) => e.textContent))) throw new Error('an empty page does not say why');
       });
 
       await run.do('the DM selects a monster on its turn: its actions are under Attacks, and a tap arms or sends', async () => {
         const foe = await state(page, (S) => S.encounter.order.map((o) => o.id).find((i) => S.entities[i].side === 'foe' && S.entities[i].actions?.length && S.entities[i].tpl !== 'animated-flying-sword'));
         await turnOf(page, foe); await select(page, foe);
-        await wait(page, () => document.querySelector('#ap-tabs [aria-selected="true"]')?.dataset.tab === 'attacks');
+        await openChar(page); await sec(page, 'attacks');
         await waitShown(page, '#ap-attacks');
         const names = await state(page, (S, i) => S.entities[i].actions.map((a) => a.id), foe);
         const have = await page.$$eval('#ap-attacks [data-row]', (b) => b.map((x) => x.dataset.row));
-        if (names.join() !== have.map((x) => x.replace(/^act:/, '')).join()) throw new Error(`the actions ${names} are not the rows ${have}`);
+        // the actions that can be used now, in the monster's own order (one that is spent or recharging is not drawn)
+        if (!have.length || have.some((x) => !names.includes(x.replace(/^act:/, ''))) || have.map((x) => names.indexOf(x.replace(/^act:/, ''))).some((v, k, a) => k && v < a[k - 1])) throw new Error(`the actions ${names} are not the rows ${have}`);
         await whole(page, '#ap-attacks');
         const first = have.find((x) => !/multiattack/i.test(x));
         await tap(`#ap-attacks [data-row="${first}"]`);
         await wait(page, () => ['action'].includes(window.hextable.mode.kind) || window.hextable.mode.kind === 'move');
         if ((await state(page, () => window.hextable.mode.kind)) === 'action') { await waitShown(page, '#hint'); await page.click('#hint-cancel'); await wait(page, () => window.hextable.mode.kind === 'move'); }
+        await closePanels(page);
       });
 
-      await run.do('a flyer: Higher and Lower on the Move tab change the height the next move ends at', async () => {
+      await run.do('a flyer: Higher and Lower in Move change the height the next move ends at (Lower is not drawn while it is on the ground)', async () => {
         await turnOf(page, fly); await select(page, fly);
         await visit(page, 'move');
         await waitShown(page, '#ap-move [data-row="fly-up"]');
+        if (await page.$('#ap-move [data-row="fly-down"]')) throw new Error('Lower is offered on the ground');
         const before = await text(page, '#ap-move [data-row="fly-up"]');
         await tap('#ap-move [data-row="fly-up"]');
         await wait(page, (b) => document.querySelector('#ap-move [data-row="fly-up"]')?.textContent.replace(/\s+/g, ' ').trim() !== b, before);
         if (!/Fly at 10 ft/.test(await text(page, '#ap-move [data-row="fly-up"]')) || !/Lower/.test(await text(page, '#ap-move [data-row="fly-down"]'))) throw new Error(`fly rows: ${await text(page, '#ap-move')}`);
         await tap('#ap-move [data-row="fly-down"]');
-        await wait(page, () => /On the ground/.test(document.querySelector('#ap-move [data-row="fly-down"]')?.textContent ?? ''));
+        await wait(page, () => !document.querySelector('#ap-move [data-row="fly-down"]'));
       });
 
       // The Shield button (#453). Brenna is made again from a sheet (a Shield and a Greatsword), so the engine has the action to offer.
@@ -232,8 +289,8 @@ async function tabs(browser, url, label, opts) {
         const swing = () => page.evaluate((f) => window.hextable.act({ type: 'attack', actor: 'fighter', target: f, attack: 'greatsword' }), foe);
         await swing(); await waitShown(page, '#toast');
         if (!/Two-Handed/.test(await text(page, '#toast'))) throw new Error(`the Greatsword with a Shield in hand was not refused with the engine's words: ${await text(page, '#toast')}`);
-        await panelTab(page, 'move');
-        const row = '#ap-move [data-row="shield"]';
+        await panelTab(page, 'defend');
+        const row = '#ap-defend [data-row="shield"]';
         await waitShown(page, row);
         if (!/Put Shield away/.test(await text(page, row)) || !/Action/.test(await text(page, row))) throw new Error(`the Shield row says: ${await text(page, row)}`);
         const small = await page.$eval(row, (b) => b.getBoundingClientRect().height);
@@ -245,8 +302,7 @@ async function tabs(browser, url, label, opts) {
         if (ac1 !== ac0 - 2) throw new Error(`AC ${ac0} before, ${ac1} with the Shield away`);
         await wait(page, (n) => document.querySelector('#c-ac')?.textContent === `AC ${n}`, ac1);
         if ((await page.evaluate(() => window.hextable.describe({ type: 'shield', id: 'fighter', on: false }))) !== 'Brenna puts away their Shield.') throw new Error('the log has no plain line for putting the Shield away');
-        await wait(page, () => /Take up Shield/.test(document.querySelector('#ap-move [data-row="shield"]')?.textContent ?? ''));
-        if (!/already used an action/.test(await text(page, `${row} .ap-why`))) throw new Error(`the greyed row does not say why: ${await text(page, row)}`);
+        await wait(page, () => !document.querySelector('#ap-defend [data-row="shield"]'));          // the action is spent: the row is not drawn
         await shot('away');
         await page.evaluate(() => window.hextable.act({ type: 'endTurn', actor: 'fighter' })); await idle(page);
         await turnOf(page, 'fighter'); await select(page, 'fighter');
@@ -256,7 +312,7 @@ async function tabs(browser, url, label, opts) {
         await page.evaluate(() => window.hextable.act({ type: 'endTurn', actor: 'fighter' })); await idle(page);
         await turnOf(page, 'fighter'); await select(page, 'fighter');
         await waitShown(page, '#toast', false, 10000);
-        await panelTab(page, 'move'); await page.locator(row).scrollIntoViewIfNeeded({ timeout: 4000 }).catch(async (e) => { throw new Error(`no row: ${e.message.split('\\n').slice(0, 6).join(' / ')}; tabs ${JSON.stringify(await page.evaluate(() => [document.querySelector('#ap-move')?.hidden, document.querySelector('#ap-move')?.textContent.slice(0, 200)]))}`); }); await tap(row).catch((e) => { throw new Error(e.message.split('\n').slice(0, 12).join(' / ')); });
+        await panelTab(page, 'defend'); await page.locator(row).scrollIntoViewIfNeeded({ timeout: 4000 }).catch(async (e) => { throw new Error(`no row: ${e.message.split('\\n').slice(0, 6).join(' / ')}; tabs ${JSON.stringify(await page.evaluate(() => [document.querySelector('#ap-move')?.hidden, document.querySelector('#ap-move')?.textContent.slice(0, 200)]))}`); }); await tap(row).catch((e) => { throw new Error(e.message.split('\n').slice(0, 12).join(' / ')); });
         await wait(page, () => window.hextable.state.entities.fighter.sheet.shieldStowed === undefined); await idle(page);
         if ((await state(page, (S) => S.entities.fighter.ac)) !== ac0) throw new Error('the Shield is up and the AC is not back');
         if ((await page.evaluate(() => window.hextable.describe({ type: 'shield', id: 'fighter', on: true }))) !== 'Brenna takes up their Shield.') throw new Error('the log has no plain line for taking the Shield up');
@@ -383,19 +439,19 @@ export async function martial(browser, url, label, opts) {
         for (const n of Object.keys(ids)) if (!(await isIn(ids[n]))) throw new Error(`${n} is not in the fight`);
       });
 
-      await run.do('Brutal Strike: its row is greyed until Reckless Attack, and says so on screen', async () => {
+      await run.do('Brutal Strike: its row is not shown until Reckless Attack (R29: a row that cannot be used is not drawn), and the engine still refuses it', async () => {
         await turnOf(page, ids.Ur); await select(page, ids.Ur);
         await visit(page, 'attacks');
         const rows = await page.$$eval('#ap-attacks [data-row]', (b) => b.map((x) => x.dataset.row));
-        if (rows.join() !== 'atk:greataxe,strike:greataxe,atk:shortbow,atk:unarmed-strike,strike:unarmed-strike,strike:unarmed-strike:grapple,strike:unarmed-strike:push,strike:unarmed-strike:prone') throw new Error(`attack rows: ${rows}`);
-        const r = (await reasons(page, '#ap-attacks')).find((x) => x.row === 'strike:greataxe');
-        if (!r || !r.seen || !/needs Reckless Attack this turn/.test(r.why)) throw new Error(`no reason on screen: ${JSON.stringify(r)}`);
-        await shot('1-brutal-greyed');
+        if (rows.includes('strike:greataxe') || !rows.includes('atk:greataxe') || !rows.includes('atk:shortbow')) throw new Error(`attack rows: ${rows}`);
+        const grey = await page.$$eval('#ap-attacks [aria-disabled="true"]', (b) => b.map((x) => x.dataset.row));
+        if (grey.length) throw new Error(`greyed rows are drawn in a fight: ${grey}`);
+        await shot('1-brutal-hidden');
         const n = await sinceTl();
-        await page.evaluate(() => { document.querySelector('#ap-attacks [data-row="strike:greataxe"]').click(); });
-        await waitShown(page, '#toast');
-        await sleep(200);
-        if ((await sinceTl()) !== n || (await shown(page, '#cp .cp-card'))) throw new Error('a greyed row opened a card or sent something');
+        await closePanels(page);
+        await ev((u) => window.hextable.act({ type: 'attack', actor: u, target: u, attack: 'greataxe', brutal: 'hamstring-blow' }), ids.Ur);
+        await sleep(300);
+        if ((await sinceTl()) !== n || (await shown(page, '#cp .cp-card'))) throw new Error('a refused action opened a card or sent something');
       });
 
       await run.do('Brutal Strike: after Reckless Attack the card offers the four options, the attack is armed with the one chosen and sent with it', async () => {
@@ -413,8 +469,7 @@ export async function martial(browser, url, label, opts) {
         await wait(page, () => window.hextable.mode.kind === 'attack' && window.hextable.mode.extra?.brutal === 'hamstring-blow');
         await waitShown(page, '#hint');
         if (!/with Hamstring Blow/.test(await text(page, '#hint'))) throw new Error(`the hint: ${await text(page, '#hint')}`);
-        const collapsed = await page.evaluate(() => matchMedia('(max-width: 600px)').matches);
-        await wait(page, (c) => document.querySelector('#card').hasAttribute('data-collapsed') === c, collapsed);
+        await waitShown(page, '#drawer', false);          // the attack is aimed on the map: the menu is folded
         await shot('3-brutal-armed');
         const n = await sinceTl();
         await tapCreature(foe);
@@ -474,6 +529,7 @@ export async function martial(browser, url, label, opts) {
           await wait(page, ([u, k]) => window.hextable.state.entities[u].cond[k], [ids.Lo, c]);
         }
         const n = await sinceTl();
+        await closePanels(page);
         await tap('#btn-end'); await card('Self-Restoration');
         const conds = await page.$$eval('#cp [data-cure]', (b) => b.map((x) => x.dataset.cure));
         if (!conds.includes('charmed') || !conds.includes('frightened') || conds.some((c) => !['charmed', 'frightened', 'poisoned'].includes(c))) throw new Error(`conditions offered: ${conds}`);

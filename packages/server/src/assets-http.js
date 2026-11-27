@@ -3,7 +3,7 @@
 //   POST   /assets/<code>        upload; the DM only. Body: the raw bytes. -> 201 { asset: record }
 //   GET    /assets/<code>        the table's files; the DM only.           -> 200 { assets: [record] }
 //   GET    /assets/<code>/<id>   one file, to a member allowed to see it.  -> 200 the bytes
-//   DELETE /assets/<code>/<id>   the DM only.                              -> 204
+//   DELETE /assets/<code>/<id>   the DM only.                              -> 204 (409: a picture the table's world uses)
 //
 // Who is asking is the session token from the socket's welcome, in the X-Hextable-Token header. It
 // never goes in a URL. A browser fetches a picture with that header and shows it from a blob: URL.
@@ -96,6 +96,9 @@ export function handleAssets(req, res, route, { assets, tables, limits, addr, on
 
   if (req.method === "DELETE") {
     if (!route.id) return notFound();
+    // A picture the table's world uses stays (docs/specs/travel.md, W3): a place or a map of the pack would lose it.
+    const kept = typeof tables.keepsAsset === "function" ? tables.keepsAsset(route.code, route.id) : null;
+    if (kept) return send(res, 409, kept);
     return assets.remove(route.code, route.id) ? res.writeHead(204, { "cache-control": "no-store" }).end() : notFound();
   }
   if (route.id !== undefined) return notFound();

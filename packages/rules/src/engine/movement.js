@@ -2,20 +2,22 @@
 // marchingOrder, partyFollow). Walking itself: Opportunity Attacks, noticing, traps, engaging.
 import { gridOf, col, key } from '../grid.js';
 import { apart, apartAt, concealed, footprint, FT, ground, landing, measure, overlapAt, STEP_MAX, unseenAt } from '../space.js';
-import { entered, holds, snapshot, zonesOf } from '../zones.js';
+import { entered, holds, snapshot, stepped, zonesOf } from '../zones.js';
 import { canSee, hiddenFrom } from '../sight.js';
 import { seenName, sightRule, unknown } from '../vision.js';
 import { barriers, objectDef } from '../walls.js';
 import { afterOpportunity, canReact, grappleInstead, instruction, OPPORTUNITY, OWED_MOVE, OPPORTUNITY_GRAPPLE, opportunityAttack, opportunityAttacks, reactionsOf } from '../reactions.js';
-import { incapacitated, incapacitatedBy, modifiers, speedOf } from '../modifiers.js';
+import { flyby, incapacitated, incapacitatedBy, leapOf, modifiers, speedOf } from '../modifiers.js';
 import { CONTENT, TILES } from '../content/index.js';
 import { SIZES } from '../content/sizes.js';
 import { SIZES as SIZE_LIST } from '../content/schema.js';
-import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, steering, turnBudget, unblocked, up } from './shared.js';
-import { airspace, aloft, along, beyond, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
-import { passive } from './rolls.js';
+import { actTime, ARENA_RADIUS, ask, clear, control, current, ent, fail, fighters, fleetFree, fleetOf, hostile, inFight, less, living, mountOf, need, riderOf, spot, steering, turnBudget, unblocked, up } from './shared.js';
+import { shellSeen, shellsFor, creatureType, airspace, aloft, along, beyond, footingOf, dragBlocked, draggedBy, landingFits, pullFeet, riderLanding, below, carry, fitsOn, partnerOf, byMarch, KEEP_UP, peril, captureSlots, frameOf, presetSlots, SHAPES, slotPoint, slotsFor, validSlot, walkFace, feetLeft, findable, findDC, joinEncounter, lookAround, moveOptions, NOTICE_FEET, objectName, objectZ, reveal, route, setObject, trailOf, unfollow, unhide } from './world.js';
+import { abilityCheck, condition, passive } from './rolls.js';
+import { difficultAt, inShell, shellsOf } from '../terrain.js';
+import { endEffect } from '../durations.js';
 import { partRefusal } from './attacks.js';
-import { checkEnd, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
+import { checkEnd, confusedOnly, dismountOrder, engage, findFor, KIT, seesFor, sensesFor, unfind, mountAct, mountHadTurn, mountTurnBudget, objectEffects, resolveAttack, runAction, settleRide, startEncounter, strikeOption } from './resolve.js';
 
 export const ENGAGE_RANGE = 2;
 // The answer to an Opportunity Attack prompt that makes it against the rider of the mount that provoked it (stage C6b).
@@ -183,7 +185,7 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
     if (stuck) { stopsDragging(s, e, stuck, ev); break; }
     // A creature it holds that this step pulls along stays within its reach: the grappler leaves no reach it does not take with it.
     const comes = new Set(draggedBy(s, e).filter(({ g, t, hold }) => (!!g && !t.dead && apartAt(s, g, step, t, t.pos) * FT > hold.range)).map((x) => x.t.id));
-    if (fighting && s.encounter && !e.cond.disengaged && !bud?.free) {         // `bud.free`: movement an Opportunity Attack's rider gave (below): it provokes nothing
+    if (fighting && s.encounter && !e.cond.disengaged && !bud?.free && !flyby(s, e)) {         // `bud.free`: movement an Opportunity Attack's rider gave (below): it provokes nothing; Flyby: nor does a creature with that trait
       for (const o of threatsAt(s, e, prev, true)) {
         if (apartAt(s, o, o.pos, e, step) <= 1 || comes.has(o.id)) continue;
         // Its standing instruction for the Opportunity Attack (reactions.js). `never`: nothing
@@ -262,8 +264,11 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
       if (p !== undefined) b.diagonals = p;                              // 'alternate': is the next diagonal a second one?
     }
     spent = cost;
+    shellCatch(s, ev, e, was, flush);
     lookAround(s, ev, rider ? [e, rider] : [e], flush);
     if (trip(s, e, was, ev, flush) || !up(e)) break;                    // a trap ends the walk where it was sprung
+    // Each 5 feet walked within a zone that works on steps (Spike Growth) costs what it says; a creature that is off the ground touches none (a walker with a Fly Speed does: zones.js `stepped`).
+    stepped(s, ev, KIT, e, flush);
     // So does a zone it walks into (Web, Moonbeam), for it or its rider; one that moves with it may catch others.
     if (entered(s, ev, KIT, zonesBefore, flush).some((id) => id === e.id || id === rider?.id) || !up(e)) { checkEnd(s, ev); break; }
     if (notice(s, e, ev, flush)) break;                                  // and so does spotting something
@@ -287,6 +292,17 @@ function walk(s, e, reach, tk, ev, fighting, bud = s.encounter?.budget, unseen =
   for (const f of found) unfind(s, f);
   return walked;
 }
+// Antilife Shell: "If you move so that an affected creature is forced to pass through the barrier, the spell ends." The caster has just taken a step from `was`: a creature the
+// aura binds (not a Construct or Undead; Huge or smaller) that stands in it now and did not before is one the aura has moved over, so the spell ends. A creature it already held
+// is not pushed, and a Gargantuan one is not "forced" (the SRD says Huge or smaller). One the caster does not know of (hidden) does not end it: that would tell the player it was there; the DM judges it. The DM is told in the spell's ending (`effectEnd`), which names no creature.
+function shellCatch(s, ev, e, was, flush) {
+  for (const fx of shellsOf(s)) {
+    if (fx.terrain.follows !== e.id || !shellSeen(s, e)) continue;
+    const over = (t) => t.id !== e.id && !['construct', 'undead'].includes(creatureType(t)) && SIZE_LIST.indexOf(t.size ?? 'medium') <= SIZE_LIST.indexOf('huge') && !inShell(s, fx, t, t.pos, was) && inShell(s, fx, t);
+    if (living(s).some((t) => shellSeen(s, t) && over(t))) { flush(); endEffect(s, ev, fx, 'the caster moved so that a creature the aura holds back was forced through it'); }
+    else for (const t of living(s)) if (over(t)) ev.push({ type: 'manual', actor: e.id, name: fx.name, partial: true, text: `${fx.name}: the aura has moved over ${t.name}, which the party does not know of. The DM judges whether it is forced through the barrier, which ends the spell.` });
+  }
+}
 // The rider a mount carries out of a foe's reach, if the foe may make its Opportunity Attack against it instead (stage
 // C6b; Decision 8: "a foe still has one Reaction and chooses which"): hostile to it, within its reach where the pair
 // stood, a clear line, and a rider it can see (and, for a party attacker, one the party knows of, so a prompt never
@@ -297,7 +313,6 @@ function riderTarget(s, o, r, prev) {
   if (o.side === 'party' && unknown(s, r)) return null;
   return apartAt(s, o, o.pos, r, prev) <= 1 && clear(s, o.pos, prev) && canSee(s, o, r) !== 'no' ? r : null;
 }
-const KEEP_UP = 2;                   // cells: a follower stays this close to the one in front where the ground allows
 const nextMarch = (s) => Math.max(-1, ...Object.values(s.entities).map((x) => x.march ?? -1)) + 1;
 
 // The leader has walked `walked` (from where it set off). Everyone following it, and everyone
@@ -320,6 +335,15 @@ function march(s, leader, walked, ev) {
     const text = `${x.name} is holding ${draggedBy(s, x).map((d) => d.t.name).join(' and ')}, so it stays where it is while the party walks on.`;
     ev.push(x.side === 'party' ? { type: 'note', id: x.id, text } : { type: 'manual', actor: x.id, name: 'Grapple', partial: true, text });
   }
+  // The footing of the one in front, worked out once for each front and each set of creatures the follower does not know of (nearly
+  // always none, so once a front: #736 item 2), on the game as the follower knows it (`without`): a creature it does not know of
+  // bars no way, so where the follower stops never tells of one (#736 item 1; formation's places are judged the same way).
+  const footings = new Map();
+  const footingFor = (front, lurkers) => {
+    const k = `${front.id}|${lurkers.map((o) => o.id).join(',')}`;
+    if (!footings.has(k)) footings.set(k, footingOf(lurkers.length ? without(s, front, lurkers) : s, front));
+    return footings.get(k);
+  };
   const fell = formation(s, leader, walked, pending, ev);
   if (fell === 'fight') return;                          // it walked into a fight: the rest were brought up when it started
   for (const f of fell) { pending.splice(pending.indexOf(f), 1); moved.add(f.id); front = f; }
@@ -334,15 +358,20 @@ function march(s, leader, walked, ev) {
     const reach = lurkers.length ? knownWays(s, f, lurkers) : moveOptions(s, f);
     const frontI = along(trail, front.pos, G).i;
     // The places it could stop, and where it stands now (staying put costs nothing).
-    const spots = [{ k: key(f.pos), h: f.pos, cost: 0 }, ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
+    const crowded = living(s).some((o) => o.id !== f.id && !unseenBy(s, o, f) && overlapAt(o, o.pos, f, f.pos, gridOf(s.map)));   // it stands where the one in front now does: it must move off
+    const spots = [...(crowded ? [] : [{ k: key(f.pos), h: f.pos, cost: 0 }]), ...[...reach].filter(([, v]) => v.canStop).map(([k, v]) => ({ k, h: v.h, cost: v.cost }))];
+    // Kept up: close to the one in front and on its footing (#728; `footingOf`, world.js). The foot of a ledge the one in front has climbed,
+    // or of its ladder, is close on the map and is not with it: from there the follower goes on up, as far along the trail as it gets.
+    const withFront = footingFor(front, lurkers);
     let best = null, bestKey = null;
     for (const sp of spots) {
       const near = apartAt(s, front, front.pos, f, sp.h), at = along(trail, sp.h, G);
-      const rank = [near <= KEEP_UP ? 0 : 1, at.i > frontI ? 0 : 1, at.d, at.i, near, sp.cost];
+      const rank = [near <= KEEP_UP && withFront(sp.h) ? 0 : 1, at.i > frontI ? 0 : 1, at.d, at.i, near, sp.cost];
       if (!best || less(rank, bestKey)) { best = sp; bestKey = rank; }
     }
     // It can get through if some way it could walk comes up beside the one in front (others in the party do not bar the way).
     const through = [...reach.values()].some((v) => apartAt(s, front, front.pos, f, v.h) <= 1);
+    if (crowded && (!up(f) || !best || !through)) fail(`${f.name} cannot make room.`);   // the move is refused whole (apply restores the game): nobody shares a place
     if (!up(f) || !best || !through) { unfollow(s, f, ev, "couldn't keep up"); continue; }
     if (best.k !== key(f.pos)) {
       const had = !!s.encounter;
@@ -394,16 +423,22 @@ function formation(s, leader, walked, pending, ev) {
     }
     return out;
   };
-  // How far the leader would walk to each column.
-  const theirs = new Map([[col(leader.pos), 0]]);
-  const lr = moveOptions(s, leader);
-  for (const v of [...lr.values(), ...besideLurk(lr)]) { const c = col(v.h), was = theirs.get(c); if (was === undefined || v.cost < was) theirs.set(c, v.cost); }
-  const joined = (h) => (theirs.get(col(h)) ?? Infinity) <= 2 * FT * (G.dist(leader.pos, h) + KEEP_UP);
+  // Its places share the leader's footing (#728; `footingOf`, world.js). A place at the foot of the ledge the leader stands on, or under its
+  // balcony, is beside it on the map and not with it: the followers would stop below, the party split and nothing said. With no such
+  // place for one of them the column takes them all, up the leader's own trail. Beside a creature the party does not know of counts as
+  // reached, one step further (besideLurk), so the shape gives nothing away; and the footing itself is worked out on the game as the
+  // party knows it (`without`), so a creature it does not know of on the only way between the leader and a place bars nothing (#736).
+  const footing = footingOf(lurkers.length ? without(s, leader, lurkers) : s, leader), lurkCost = new Map(besideLurk(footing.reach).map((v) => [key(v.h), v.cost]));
+  const joined = (h) => footing(h, lurkCost.get(key(h)));
   const ahead = (h) => { const w = G.toWorld(h); return ((w.x - F.x) * F.u.x + (w.z - F.z) * F.u.z) / uu; };
   const water = (h) => ground(s.map, h)?.tile.t === 'water';
   // One who is down, cannot move or cannot get up beside the leader is left to the column after the
   // others (whose rules drop it as not keeping up); the rest keep their places.
-  const reaches = new Map(members.map((x) => [x.id, moveOptions(s, x)]));
+  // Each one's ways are laid out on the game as it knows it (`waysOf`): a creature it does not know of bars none, so who is in a slot, and so
+  // whether the party is laid out at all, never tells of one (#741; the column does the same, in march).
+  const lurkersOf = (x) => living(s).filter((o) => o.id !== x.id && unseenBy(s, o, x) && hostile(o, x));
+  const waysOf = (x) => { const lk = lurkersOf(x); return lk.length ? knownWays(s, x, lk) : moveOptions(s, x); };
+  const reaches = new Map(members.map((x) => [x.id, waysOf(x)]));
   const walks = (x) => up(x) && [...reaches.get(x.id).values()].some((v) => apartAt(s, leader, leader.pos, x, v.h) <= 1);
   const inSlot = members.filter((x) => slots[x.id] && walks(x));
   const movers = new Set(pending.map((x) => x.id));
@@ -443,7 +478,7 @@ function formation(s, leader, walked, pending, ev) {
     movers.delete(f.id);
     // Places the others still to walk are going to are left for them.
     const theirsToGo = (h) => plan.some((p) => overlapAt(p.f, p.h, f, h, G));
-    const reach = moveOptions(s, f), now = (sp) => sp.here || (sp.canStop && !theirsToGo(sp.h));
+    const lk = lurkersOf(f), reach = lk.length ? knownWays(s, f, lk) : moveOptions(s, f), now = (sp) => sp.here || (sp.canStop && !theirsToGo(sp.h));
     let to = i < 0 ? placeFor(f, spotsOf(f, reach), now)?.h ?? f.pos : h;
     const lurker = holders(f, to).find((o) => unseenBy(s, o, f) && hostile(o, f));
     if (lurker) {
@@ -453,31 +488,14 @@ function formation(s, leader, walked, pending, ev) {
     if (key(to) !== key(f.pos)) {
       const had = !!s.encounter;
       // Its way there laid out on what the party knows, as the column's and the leader's are (#372; walkKnown).
-      const lk = living(s).filter((o) => o.id !== f.id && unseenBy(s, o, f) && hostile(o, f)), kr = lk.length ? knownWays(s, f, lk) : null;
-      if (kr?.get(key(to))?.canStop) walkKnown(s, f, key(to), ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), kr, lk, true);
-      else walk(s, f, reach, key(to), ev, false);
+      if (lk.length && reach.get(key(to))?.canStop) walkKnown(s, f, key(to), ev, false, null, (o) => unseenBy(s, o, f) && hostile(o, f), reach, lk, true);
+      else walk(s, f, lk.length ? moveOptions(s, f) : reach, key(to), ev, false);   // a place the known ways do not reach is walked on the true ways, as before (#741)
       if (!had && s.encounter) return 'fight';
     }
     if (lurker && !lurker.dead && apart(s, f, lurker) <= 1 && unseenBy(s, lurker, f)) bumped(s, lurker, f, ev);
     done.push(f);
   }
   return done;
-}
-// Would a careful walker stop here? Not on a trap the party knows of that goes off on stepping there or
-// coming near (as moveOptions keeps every way off a spotted trap), nor where a lasting zone the party
-// knows of (its maker is not hidden from them) would take it in: Web, Spirit Guardians, Moonbeam. A
-// trap or zone the party does not know of plays no part: it springs on a walk as on any walk.
-function peril(s, f, h) {
-  const G = gridOf(s.map), far = measure(s, G), parts = footprint(f, h, G);
-  for (const o of s.map.objects) {
-    const def = objectDef(o);
-    if (!def.triggers?.length || def.states[o.state]?.hidden || Math.abs(objectZ(s, o) - h.z) > STEP_MAX) continue;
-    const near = Math.min(...parts.map((x) => far(x, o.at)));
-    if (def.triggers.some((t) => t.effects && t.from.includes(o.state) && (t.who !== 'party' || f.side === 'party') && (t.on === 'enter' ? near === 0 : t.on !== 'leave' && near * FT <= t.feet))) return true;
-  }
-  const there = { ...f, pos: h };
-  const known = (o) => !!o && (o.side === 'party' || (!concealed(s.map, o) && (sightRule(s) === 'rooms' || !unknown(s, o))));       // as view.js classifies it
-  return zonesOf(s).some((fx) => known(s.entities[fx.source]) && (fx.zone.on ?? []).length > 0 && holds(s, fx, there) && !holds(s, fx, f));
 }
 // A held or custom formation forgets the places of those no longer following its leader, or gone.
 function pruneSlots(s, leader) {
@@ -565,6 +583,7 @@ function besideIt(s, e, o, known, lurkers, G) {
 // `move`, below. `own` is told what it spends when it is the movement an Opportunity Attack's rider gave (`own.bud`), so the caller can keep what is left.
 function moveOn(s, a, ctx, ev, own) {
     const actor = ent(s, a.actor); control(s, actor, ctx);
+    spot(a.to, 'where to move');
     // A rider moves by moving its mount (stage C6a): a controlled one as it directs, from the mount's movement on the
     // rider's turn (its own movement is left for dismounting); an independent one moves as it likes, on its own turn.
     const steed = mountOf(s, actor);
@@ -580,7 +599,7 @@ function moveOn(s, a, ctx, ev, own) {
     // provoking nothing (`free`). It is a move and nothing more: no other action reads it, and a creature that rides or is ridden never has any (opportunityRider).
     if (fighting && !bud && !steering(s, e) && !steed && current(s) !== e.id && owedFeet(s, e) > 0) bud = own.bud = { move: owedFeet(s, e), dashes: 0, diagonals: owedDiag(s, e), free: true };
     if (fighting && !bud) fail(steering(s, e) ? `${e.name} moves on ${steering(s, e).name}'s turn.` : `It isn't ${e.name}'s turn.`);
-    const reach = moveOptions(asItsTurn(s, e, bud), e);
+    const reach = moveOptions(asItsTurn(s, e, bud), e, { through: true });
     // A tap names a hex; if it gives no height, the nearest surface this creature can stop on.
     const column = [...reach.values()].filter((n) => col(n.h) === col(a.to) && (a.to.z === undefined || n.h.z === a.to.z))
       .sort((x, y) => (y.canStop - x.canStop) || Math.abs(x.h.z - e.pos.z) - Math.abs(y.h.z - e.pos.z))[0];
@@ -622,6 +641,8 @@ function moveOn(s, a, ctx, ev, own) {
         if (moveOptions(asItsTurn(s, e, bud), e, { unchecked: true }).get(tk)?.canStop) fail(`${e.name} can't drag ${names} that way.`);
         if (moveOptions(asItsTurn(s, e, bud), e, { aerial: true, unchecked: true }).get(tk)?.canStop) fail(`The engine drags along the ground only. Release ${names} first, or the DM moves both.`);
       }
+      // Antilife Shell: a place only the aura stands in the way of is refused as that (a hidden caster's shell is not in `moveOptions`: it would tell the player something is there).
+      if (shellsFor(s, e).length && moveOptions(asItsTurn(s, e, bud), e, { through: true, unshelled: true }).get(tk)?.canStop) fail(`Antilife Shell keeps ${e.name} from passing into it.`);
       fail(fighting ? `Too far. ${e.name} has ${feetLeft(s, bud.move)} ft of movement left.` : "Can't get there.");
     }
     if (dragFirst(s, e, route(reach, tk), e.side === 'party' ? unseen : null, ev)) return;
@@ -636,7 +657,119 @@ function moveOn(s, a, ctx, ev, own) {
     checkEnd(s, ev);
 }
 
+// ---------- leaping (SRD "Long Jump"; the Jump spell lends `leap`) ----------
+// The hexes a leap passes over, from the one after `from` to `to`, on the straight line between their centres.
+function lineOver(G, from, to) {
+  const n = G.dist(from, to), a = G.center(from), b = G.center(to), out = [];
+  for (let i = 1; i <= n; i++) out.push(G.cell(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n));
+  return out;
+}
+// What a leap of `feet` costs `e` and how it is made, or null if it can't be made. `ord`: the Long Jump's distance (Strength, or half of it
+// standing, in whole 5 ft); `spell`: what a lasting effect lends for 10 feet of movement (0 if none, or already used this turn). Of the legal ways
+// the cheaper is taken (a tie goes to the ordinary leap, which leaves the spell's once-a-turn use); `wantSpell` insists on the spell's.
+function leapWay(feet, ord, spell, wantSpell) {
+  const ways = [];
+  if (!wantSpell && feet <= ord) ways.push({ cost: feet, spell: false });
+  if (spell > 0 && feet <= spell) ways.push({ cost: Math.min(feet, 10), spell: true });
+  return ways.sort((x, y) => x.cost - y.cost || (x.spell ? 1 : 0) - (y.spell ? 1 : 0))[0] ?? null;
+}
+const LEAP_RUN = 10;                     // feet walked immediately before a Long Jump for a running start
+// Feet of movement this creature has used this turn (what its Speed and Dashes gave, less what is left): a running start is walking since the last leap.
+const usedFeet = (s, e, bud) => speedOf(s, e) * (1 + (bud.dashes | 0)) - bud.move;
+
+function leapOn(s, a, ctx, ev) {
+  const e = ent(s, a.actor); control(s, e, ctx);
+  spot(a.to, 'where to leap');
+  if (a.spell !== undefined && typeof a.spell !== 'boolean') fail('`spell` is true or left out.');
+  if (mountOf(s, e) || riderOf(s, e)) fail(`${e.name} can't leap while it rides or is ridden.`);
+  up(e) || fail(`${e.name} can't move.`);
+  (speedOf(s, e) > 0) || fail(`${e.name} can't move: its Speed is 0.`);
+  aloft(s, e) && fail(`${e.name} is flying: it moves, it does not leap.`);
+  e.cond.prone && fail(`${e.name} is Prone: stand up first.`);
+  draggedBy(s, e).length && fail(`${e.name} can't leap while it holds a creature.`);
+  const str = e.abil?.str;
+  Number.isInteger(str) || fail(`${e.name} has no Strength score, so the engine can't work out its leap.`);
+  const fighting = inFight(s, e.id), bud = fighting ? turnBudget(s, e) : null;
+  if (fighting && !bud) fail(`It isn't ${e.name}'s turn.`);
+  const G = gridOf(s.map), B = barriers(s.map), flags = s.encounter?.flags;
+  const here = ground(s.map, e.pos);
+  here || fail(`${e.name} has nothing under it to leap from.`);
+  const to = landing(s.map, a.to, e.pos.z);
+  to || fail("There's nothing there to stand on.");
+  const land = ground(s.map, to);
+  if (!land || land.level !== here.level || Math.abs(to.z - e.pos.z) > STEP_MAX) fail('A leap stays on one level: a climb or a drop is not a leap.');
+  if (fighting && !s.encounter.arena[col(to)]) fail('The arena is locked until the fight ends.');
+  const feet = G.dist(e.pos, to) * FT;
+  feet > 0 || fail(`${e.name} is already there.`);
+  // The distance: Strength with a running start (10 feet walked since its last leap, in a fight; always outside one), half standing, in whole 5 feet.
+  const mark = fighting ? flags[`leapm:${e.id}`] ?? 0 : 0;
+  const running = !fighting || usedFeet(s, e, bud) - mark >= LEAP_RUN;
+  const ord = Math.floor((running ? str : Math.floor(str / 2)) / FT) * FT;
+  const lent = leapOf(s, e), spellFree = lent > 0 && !(fighting && flags[`leaps:${e.id}`]);
+  if (a.spell === true && !lent) fail(`${e.name} has no spell that lends it a leap.`);
+  if (a.spell === true && !spellFree) fail(`${e.name} has already made its spell's leap this turn.`);
+  // Outside a fight no movement is spent and the spell's use is not counted: the limit is all there is.
+  const way = leapWay(feet, ord, spellFree ? lent : 0, a.spell === true);
+  way || fail(`Too far: ${e.name} can leap ${a.spell === true ? lent : Math.max(ord, spellFree ? lent : 0)} ft${a.spell === true || running ? '' : ' from a standing start'}.${a.spell === true || running || !fighting ? '' : ` With a running start (walk ${LEAP_RUN} ft first) it can leap ${Math.floor(str / FT) * FT} ft.`}`);
+  if (fighting && way.cost > bud.move) fail(`Too far. ${e.name} has ${feetLeft(s, bud.move)} ft of movement left.`);
+  // A wall or a shut door across the line stops it (as walking is stopped); what is only passed over does not.
+  B.blocked(here.level.id, e.pos, to) && fail('A wall or a shut door is in the way.');
+  if (B.solid(land.level.id, to) || TILES[land.tile.t].cost === Infinity || !fitsOn(s.map, e, to, B)) fail("Can't get there.");
+  // Where it comes down: a creature it knows of there refuses the leap; one it does not know of is found, and the leap stops short of it.
+  const unseen = (o) => ((!fighting && o.hidden) || hiddenFrom(o, e) || (e.side === 'party' && sightRule(s) !== 'rooms' && unknown(s, o))) && hostile(o, e);
+  const at = (h) => living(s).filter((o) => o.id !== e.id && overlapAt(o, o.pos, e, h, G));
+  const holders = at(to);
+  if (holders.some((o) => !unseen(o))) fail(`That ${G.word.one} is occupied.`);
+  let lurker = holders[0] ?? null, stop = to, short = feet, cost = way, spent = way.cost;
+  if (lurker) {
+    const over = lineOver(G, e.pos, to).slice(0, -1);
+    let i = over.length - 1;
+    for (; i >= 0; i--) {
+      const sf = landing(s.map, over[i], e.pos.z), g = sf && ground(s.map, sf);
+      if (!(g && g.level === here.level && Math.abs(sf.z - e.pos.z) <= STEP_MAX && !B.solid(g.level.id, sf) && TILES[g.tile.t].cost !== Infinity && fitsOn(s.map, e, sf, B))) continue;
+      // Judged on what the leaper's side knows (as walk's known routes are): a hex a known creature holds is passed by; one an unseen creature
+      // holds is where it comes down short of instead, and that creature is the one it finds (a reveal by bumping, never a stop that betrays it).
+      const there = at(sf);
+      if (there.some((o) => !unseen(o))) continue;
+      if (there.length) { lurker = there[0]; continue; }
+      stop = sf; break;
+    }
+    if (i < 0) return void bumped(s, lurker, e, ev);                 // nowhere to come down short of it: it does not leap, and finds it
+    short = G.dist(e.pos, stop) * FT;
+    cost = leapWay(short, ord, spellFree ? lent : 0, a.spell === true) ?? way;
+    spent = cost.cost;
+  }
+  if (!fighting && e.follow) unfollow(s, e, ev);
+  // The leap is one step of a walk to the landing: Opportunity Attacks for leaving a reach, what is on the landing hex, noticing, the fight beginning;
+  // the hexes between are not entered. Its cost is what the leap costs.
+  const reach = new Map([[key(e.pos), { cost: 0, prev: null, h: e.pos, canStop: false }], [key(stop), { cost: spent, prev: key(e.pos), h: stop, canStop: true }]]);
+  const had = !!s.encounter;
+  const walked = walk(s, e, reach, key(stop), ev, fighting, bud ?? undefined, e.side === 'party' ? unseen : null);
+  if (!walked) return;                                                // something caught the eye before it set off
+  const landed = key(e.pos) === key(stop);
+  if (landed && fighting && bud) {
+    flags[`leapm:${e.id}`] = usedFeet(s, e, bud);                      // the walking before the next leap counts from here
+    if (cost.spell) flags[`leaps:${e.id}`] = true;
+  }
+  if (landed && up(e)) {
+    const text = `${e.name} leaps ${short} ft${cost.spell ? ' (Jump)' : ''}.`;
+    ev.push(e.side === 'party' ? { type: 'note', id: e.id, text } : { type: 'manual', actor: e.id, name: 'Leap', partial: true, text });
+    // SRD "Long Jump": landing in Difficult Terrain takes a DC 10 Dexterity (Acrobatics) check, or the creature is Prone.
+    const hard = modifiers(s, e, 'terrain').immune !== true && (TILES[land.tile.t].cost > 1 || difficultAt(s, e.pos));
+    if (hard) {
+      const r = abilityCheck(s, e, { skill: 'acrobatics' }), good = r.total >= 10;
+      ev.push({ type: 'check', id: e.id, ability: 'dex', skill: 'acrobatics', ...r, dc: 10, success: good, what: 'Landing in Difficult Terrain' });
+      if (!good) condition(s, e, 'prone', ev);
+    }
+  }
+  if (landed && lurker && !lurker.dead) bumped(s, lurker, e, ev);
+  if (!fighting && (had || !s.encounter) && walked.length > 1) { march(s, e, walked, ev); }
+  checkEnd(s, ev);
+}
+
 export const handlers = {
+  leap(s, a, ctx, ev) { leapOn(s, a, ctx, ev); },
+
   move(s, a, ctx, ev) {
     const own = {};
     moveOn(s, a, ctx, ev, own);
@@ -662,6 +795,7 @@ export const handlers = {
   dash(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Dash only matters in a fight. Just move.');
+    confusedOnly(s, e, 'Dash');
     if (steering(s, e)) return mountAct(s, e, a, 'Dash', ev);
     const time = actTime(e, 'dash', a);
     // A monk's Dash as a Bonus Action is Step of the Wind; with Fleet Step it may follow another Bonus Action.
@@ -701,6 +835,7 @@ export const handlers = {
   disengage(s, a, ctx, ev) {
     const e = ent(s, a.actor); control(s, e, ctx);
     s.encounter || fail('Disengage only matters in a fight.');
+    confusedOnly(s, e, 'Disengage');
     if (steering(s, e)) return mountAct(s, e, a, 'Disengage', ev);
     const time = actTime(e, 'disengage', a);
     need(s, e, time);

@@ -34,7 +34,7 @@ const turnOf = (s, id) => { for (let i = 0; i < 40 && current(s) !== id; i++) ap
 let n = 0;
 // An invented spell, installed where the engine looks spells up (the way durations.test.js does).
 function learn(s, who, over) {
-  const def = { ...structuredClone(CONTENT.spells['fire-bolt']), id: `hb-when-${++n}`, name: `Probe ${n}`, higher: undefined, level: 1, range: 60, ...over };
+  const def = { ...structuredClone(CONTENT.spells['fire-bolt']), id: `hb-when-${++n}`, name: `Probe ${n}`, higher: undefined, roll: undefined, level: 1, range: 60, ...over };
   SPELLS[def.id] = spellProfile(def);
   s.entities[who].spells.push(def.id);
   return def;
@@ -82,11 +82,13 @@ const wear = (e, m) => { e.feats = [...(e.feats ?? []), { name: 'Probe', modifie
 const MAKE = {
   'target.prone': (c) => { c.tgt.cond.prone = {}; },
   'target.unconscious': (c) => { c.tgt.cond.unconscious = {}; },
+  'target.fiendOrUndead': (c) => { c.tgt.type = 'fiend'; },
   'attacker.unseen': (c) => { c.tgt.cond.blinded = {}; },              // the target cannot see the attacker
   'target.unseen': (c) => { c.atk.cond.blinded = {}; },                // the attacker cannot see the target
   'attack.advantage': (c) => { c.tgt.cond.prone = {}; },
   'attack.disadvantage': (c) => { c.atk.cond.poisoned = {}; },
   'ally.adjacentToTarget': (c) => c.ally(),
+  'target.ally': (c) => { c.tgt.side = c.atk.side; },                  // the target on the attacker's own side (the default scene has them on two)
   // The target held by the attacker (docs/specs/grapple-shove.md, Decision 2), with a range the scene's gaps never pass.
   'target.grappledBySelf': (c) => { c.tgt.cond.grappled = { source: c.atk.id, holds: [{ by: c.atk.id, with: 'hand', escape: 10, range: 60 }] }; },
 };
@@ -126,6 +128,7 @@ function play(hook, tag, withMod, how = {}) {
   } };
   void R;
   if (tag === 'check.proficient') F.skills = ['perception'];
+  if (tag === 'check.unskilled') { F.skills = (F.skills ?? []).filter((k) => k !== 'perception'); if (F.skillBonus) delete F.skillBonus.perception; }   // #732: the check below is Perception
   if (how.abil) F.attacks[0].abil = how.abil;
   const put = () => { if (withMod) wear(holder, { on: hook, op: hook === 'damage.taken' ? 'immune' : hook === 'opportunity' ? 'autoFail' : 'add', ...(hook === 'damage.taken' || hook === 'opportunity' ? {} : { value: how.onFail ? '1d20' : BONUS }), ...(how.onFail ? { onFail: true } : {}), when: [tag] }); };
   const setUp = () => { MAKE[tag]?.(ctx); put(); };
@@ -162,7 +165,7 @@ function play(hook, tag, withMod, how = {}) {
     return r.events.find((e) => e.type === 'concentration')?.bonus ?? 'no concentration save';
   }
   if (attackHook) {
-    if (path === 'sheet') { turnOf(s, 'fighter'); setUp(); const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: how.ranged ? 'javelin' : 'longsword' }, DM);
+    if (path === 'sheet') { turnOf(s, 'fighter'); setUp(); const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: how.ranged ? 'javelin-thrown' : 'longsword' }, DM);
       return hook === 'damage.dealt' ? (assert.ok(r.ok, r.error), r.events.find((e) => e.type === 'damage')?.amount) : bonusOf(r); }
     if (path === 'steps') {
       turnOf(s, M.id); setUp();
@@ -261,6 +264,7 @@ test('the other hooks: the Fly Speed, a roll that failed, the Hit Point maximum,
       if (withMod) wear(F, { on: 'attack.roll', op: 'add', value: '1d20', onFail: true, when: [tag] });
       fight(s); turnOf(s, 'fighter');
       if (tag === 'target.prone') F.cond.prone = {};
+      if (tag === 'target.fiendOrUndead') F.type = 'fiend';
       const r = apply(s, { type: 'attack', actor: 'fighter', target: M.id, attack: 'longsword' }, DM);
       assert.ok(r.ok, r.error);
       const a = r.events.find((e) => e.type === 'attack');

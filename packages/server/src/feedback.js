@@ -76,6 +76,9 @@ const args = (v) => {
   return null;
 };
 
+// The same checks, for crashes.js (#689): the browser's error reports are held to an allow-list of the same kind.
+export { str, oneOf, int, list, shape };
+
 export const REPORT = shape({
   v: oneOf([1]),
   kind: oneOf(KINDS),

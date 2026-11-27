@@ -33,7 +33,9 @@ export function kit(M) {
   };
   // `autoEngage` (default on, as a new game has it), `hidden`: the mage hidden by the DM, `ward`: the party wizard made
   // a Shield and Counterspell caster (`reactions` its standing instructions).
-  function table(grid, { seed = 5, autoEngage = true, hidden = false, ward = null } = {}) {
+  // `strikeFirst` (#585; a new game has it 'off'): the table rule under which a hostile cast lands first. These tables have
+  // 'casts' unless told (the rule as #372 built it, which a table saved before #585 gets), so they play as before #585.
+  function table(grid, { seed = 5, autoEngage = true, hidden = false, ward = null, strikeFirst = "casts" } = {}) {
     const s = newGame(seed);
     if (grid === "square") ok(apply(s, { type: "loadMap", map: squareRoom() }, DM));
     for (const id of Object.keys(s.entities)) if (/^m\d+$/.test(id)) ok(apply(s, { type: "remove", actor: id }, DM));
@@ -52,6 +54,7 @@ export function kit(M) {
     caster(s, "priest", PRIEST, SPOTS[grid].priest);
     if (hidden) ok(apply(s, { type: "reveal", actor: "mage", hidden: true }, DM));
     if (!autoEngage) ok(apply(s, { type: "setting", key: "autoEngage", value: false }, DM));
+    if (strikeFirst !== (s.settings.strikeFirst ?? "off")) ok(apply(s, { type: "setting", key: "strikeFirst", value: strikeFirst }, DM));
     return s;
   }
   // The hostile casts the tests use, by name.

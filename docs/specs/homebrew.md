@@ -106,6 +106,7 @@ assist spells):**
 - Targets: `self`, one or more creatures (`count`, `repeat`, `within`), or an
   area of one of six shapes (`cone sphere line cube cylinder emanation`) with
   `choose`, `count`, `exceptCaster` and creature-type filters.
+- A spell cast right after its caster hits (`hit: { with }`, a Bonus Action aimed at the caster) with damage steps marked `withHit: true`, rolled with the hit's damage and doubled on a Critical Hit; the tag `target.fiendOrUndead` (on-hit.md, stage O1).
 - Steps: `attack` (spell or weapon, melee or ranged) with `onHit` and `onMiss`;
   `save` with `onFail` and `onSuccess` (a half-damage save is `half`);
   `damage` (dice plus a flat number, one of 13 types or the caster's `chosen`

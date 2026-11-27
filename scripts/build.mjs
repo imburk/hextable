@@ -10,9 +10,13 @@ cpSync("packages/rules/src", "dist/shared", { recursive: true });
 // The script that made them is not part of the game.
 cpSync("assets/models", "dist/models", { recursive: true, filter: (src) => !src.endsWith("pack-models.mjs") });
 // packages/client/vendor/ (pinned third-party code, see its README) arrives in dist/vendor/ with the rest of the client.
-// Nothing imports it by default; only the Three.js renderer and the load check do. Fail the build if it did not arrive.
+// Nothing imports it by default; only the Three.js renderer and the load check do, and zip.js only through modulezip.js
+// when a module is opened. Fail the build if it did not arrive.
 for (const f of ["three.module.js", "three.core.js", "GLTFLoader.js", "BufferGeometryUtils.js", "SkeletonUtils.js", "LICENSE"])
   if (!existsSync(`dist/vendor/three/${f}`)) throw new Error(`dist/vendor/three/${f} is missing: the vendored Three.js did not build in`);
+for (const f of ["zip-core.js", "core/zip-reader.js", "core/zip-writer.js", "core/streams/zip-entry-stream.js", "LICENSE"])
+  if (!existsSync(`dist/vendor/zip.js/${f}`)) throw new Error(`dist/vendor/zip.js/${f} is missing: the vendored zip.js did not build in`);
+if (!existsSync("dist/modulezip.js")) throw new Error("dist/modulezip.js is missing: the module-zip wrapper did not build in");
 for (const f of ["kaykit-adventurers/Knight.glb", "kaykit-rig-medium/Rig_Medium.glb", "quaternius-monsters/Big_Orc.glb", "CREDITS.md"])
   if (!existsSync(`dist/models/${f}`)) throw new Error(`dist/models/${f} is missing: the creature models did not build in`);
 console.log("Built dist/");
@@ -33,6 +37,13 @@ const stamp = {
 };
 writeFileSync("dist/build.json", JSON.stringify(stamp) + "\n");
 console.log(`Build stamp: ${JSON.stringify(stamp)}`);
+// The build this page is, in the page itself (#646): <meta name="hextable-build" content="<commit>|<when>">, read by newversion.js, which asks the
+// server later whether it is still this build. A page served by a table server is the one the server's files were built as, whatever the server's env says.
+{
+  const html = readFileSync("dist/index.html", "utf8");
+  if (!html.includes('<meta charset="utf-8">')) throw new Error("dist/index.html has no meta charset to put the build stamp after");
+  writeFileSync("dist/index.html", html.replace('<meta charset="utf-8">', () => `<meta charset="utf-8">\n<meta name="hextable-build" content="${stamp.commit ?? ""}|${stamp.when}">`));
+}
 
 // HEXTABLE_FEEDBACK_URL: the table server the feedback button posts to when this build is not served by one (the solo game on GitHub Pages).
 // Only an http(s) address is taken, reduced to its origin; the page gets <meta name="hextable-feedback-url" content="<origin>/feedback">.

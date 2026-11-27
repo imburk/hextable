@@ -120,7 +120,8 @@
           "name": "Strong Grip",
           "text": "Drags what it holds without slowing.",
           "modifiers": [],
-          "dragFree": true
+          "dragFree": true,
+          "flyby": true
         }
       ],
       "actions": [
@@ -286,6 +287,33 @@
               "ends": {
                 "on": "turnStart"
               }
+            },
+            {
+              "modifier": {
+                "on": "hp.zero",
+                "op": "min",
+                "value": 1,
+                "uses": 1
+              },
+              "ends": {
+                "on": "turnStart"
+              }
+            },
+            {
+              "modifier": {
+                "on": "condition",
+                "op": "immune",
+                "scope": {
+                  "condition": "frightened"
+                }
+              },
+              "ends": {
+                "on": "turnStart"
+              }
+            },
+            {
+              "dispel": 3,
+              "dc": 10
             },
             {
               "modifier": {
@@ -536,6 +564,14 @@
               "on": "spell.attack",
               "op": "add",
               "value": 1
+            },
+            {
+              "on": "terrain",
+              "op": "immune"
+            },
+            {
+              "on": "invisible",
+              "op": "immune"
             }
           ]
         },
@@ -1004,6 +1040,44 @@
           "effects": [
             {
               "manual": "Whispers a rumour into the mind of one creature within 60 feet; the DM chooses the rumour."
+            }
+          ]
+        },
+        {
+          "id": "rite",
+          "name": "Mercy Rite",
+          "text": "Steadies a fallen creature and wards it.",
+          "target": {
+            "creature": {
+              "range": [
+                30,
+                30
+              ]
+            }
+          },
+          "effects": [
+            {
+              "stabilize": true
+            },
+            {
+              "modifier": {
+                "on": "ac",
+                "op": "baseAc",
+                "value": {
+                  "base": 13,
+                  "ability": "dex"
+                }
+              },
+              "ends": {
+                "on": "armour"
+              }
+            },
+            {
+              "light": {
+                "bright": 10,
+                "dim": 10
+              },
+              "replaces": true
             }
           ]
         }

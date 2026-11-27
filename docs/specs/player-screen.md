@@ -1,5 +1,7 @@
 # Spec: the player's screen at the table
 
+Status: draft by an agent, to be reviewed by the design owner; superseded in part by `one-token-menu.md`.
+
 > **Superseded in part by [`one-token-menu.md`](one-token-menu.md) (#527).** The owner's
 > direction of 19 November 2026: a clean screen, one token that opens one menu, one overlay
 > at a time. Where the two differ, `one-token-menu.md` wins: the action panel at the foot of
@@ -749,3 +751,45 @@ Each has a default; the build follows the default unless the owner says otherwis
 8. **Stabilising with Medicine (E-P3) and starting a fight in formation (E-P4): build
    now?** *Default: after the client stages; until then the screen says "Not in the game
    yet: ask the DM."*
+
+
+## Build notes: E-P4, a fight starts in formation (#615)
+
+- `catchUp` (`engine/world.js`) asks `formationPlace` first for each follower it brings up. The place is the one nearest
+  the follower's slot point (E21's frame: the leader's `formation.face`, the way it last walked; `slotsFor` deals presets
+  and reads held and custom slots). It must be a place `catchUp` could use anyway (standable, in the arena, within
+  `CATCH_UP` feet of the leader's walking) and also meet the walking layout's rules: within 0.75 cell of the slot point,
+  not more than half a cell ahead of the leader, joined to the leader (its walking cost at most twice 5 ft times the
+  distance plus `KEEP_UP`, so nobody is set behind a thin wall), and no known trap or zone (`peril`). `peril` and
+  `KEEP_UP` moved from `movement.js` to `world.js` for this and are imported back. Ties rank as the walking layout
+  ranks them: distance to the point, how far ahead, the follower's own level, cost. Else the trail picks the place.
+- Today's behaviour is kept for: no formation, the column, a held shape in single file (`slotsFor` is null), a leader
+  with no facing yet, a follower with no slot, a mount or a rider, a Grappled follower, and one holding a creature
+  (never brought up). Followers already inside the arena are not moved, as before.
+- Hidden information: a cell in a region the party has not seen (`unseenAt`) is never a slot, so whether a slot is used
+  never rests on a creature in a place the party cannot see; the follower takes the trail's place as for a blocked cell.
+  A creature hidden in a seen cell holds its place (`moveOptions` knows every creature that stands), so the follower
+  falls back with no event of its own; the fight start then reveals everyone in the arena whose place the party has seen
+  (`startEncounter`), that creature included, and one in an unseen place stays out of the fight. A follower arriving
+  looks around, which can show a region, so the places chosen after that see what it showed.
+- Not covered: a fight start that fails after `catchUp` cannot be made to happen (`startEncounter` refuses before it, on a
+  holding map, and the arena always holds the leader); the test checks the refusal leaves the game as it was.
+- Tests: `packages/rules/test/formation-fight.test.js`.
+
+
+## Build notes: Level up where the player looks (#672, PB-3 of the playability review)
+
+- **The starters are built from sheets.** `content/srd52/pregens.js` carries a `sheet` for each of the four; `newGame` makes the hero with
+  `derive(sheet).record` and keeps the sheet on it, so `levelUp`, `refresh` and the item actions work for them. Their name, class, level, scores,
+  Hit Points, Armor Class, gear and colour are as before. What changes is what `derive` gives any built hero: Brenna's Javelin is two attacks (`javelin`
+  in melee, `javelin-thrown` at range), every hero has an Unarmed Strike with its grapple, push and prone rows, a Fighter's Second Wind is the feature
+  `second-wind` (used with `feature`, not the old `secondWind` action), and a built hero's patch to a player is larger (the whole record, about 2.5 KB).
+- **Saved games.** `migrate.js` gives a starter its sheet when the save has it still exactly as the pack typed it (same name, class, level, scores,
+  Hit Points and Armor Class) and no sheet. Nothing else about it changes, so no number moves; the sheet is what Level up and Refresh then work from.
+  A starter the DM corrected or levelled by hand is left as typed. No version number of its own: loading again finds nothing to do.
+- **Where the button is.** `levelup.js` (client): `levelReady` (the XP reaches a level more than the character has), `levelUpWhy` (words, or '' when
+  it can be done), `levelUpHtml` (the line "Wren can reach level 2." and the button, on the rewards card and on the sheet) and `levelUpChip` (one short
+  line and a 44 px button on the character card; not drawn in a fight). The DM (and solo) get a live **Level up Wren** that opens the build screen in
+  `levelup` mode; the rewards card steps aside (Log brings it back). A player sees the line and an off button with the reason as text on the page:
+  "Only the DM levels a character up at this table. Ask your DM." (the engine's `levelUp` stays the DM's: E-P2 and the "Ask the DM" note are not built).
+  The DM tab's Level up button now says in a line under it why it is off. Smoke pass: `levelup`.

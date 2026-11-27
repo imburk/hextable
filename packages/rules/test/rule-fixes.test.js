@@ -36,13 +36,13 @@ const dying = (e, death = { s: 0, f: 0 }) => Object.assign(e, { hp: 0, cond: { u
 
 test("W1: a Long Rest restores Hit Points, slots and features, and lowers Exhaustion by one level", () => {
   const s = newGame(3), { fighter, wizard } = s.entities;
-  fighter.hp = 3; fighter.uses.secondWind = 0;
+  fighter.hp = 3; fighter.uses["second-wind"] = 0;        // a built Fighter keeps its uses under the feature's id
   wizard.slots[1] = 0;
   ok(apply(s, { type: "condition", actor: "fighter", condition: "exhaustion", level: 3 }, DM));
   ok(apply(s, { type: "condition", actor: "wizard", condition: "exhaustion", level: 1 }, DM));
   ok(apply(s, { type: "rest" }, DM));
   assert.equal(fighter.hp, fighter.maxHp);
-  assert.equal(fighter.uses.secondWind, fighter.features.secondWind);
+  assert.equal(fighter.uses["second-wind"], fighter.feats.find((f) => f.id === "second-wind").uses.max);
   assert.deepEqual(wizard.slots, wizard.slotsMax);
   assert.equal(fighter.cond.exhaustion.level, 2);
   assert.equal(wizard.cond.exhaustion, undefined);
@@ -65,9 +65,11 @@ test("W1: the dead stay dead, and a creature at 0 Hit Points can't take a Long R
   assert.equal(fighter.dead, true);
   assert.equal(fighter.hp, 0);
   assert.equal(rogue.hp, 1);                                    // Stable: 1 Hit Point after 1d4 hours, nothing more
-  assert.equal(cleric.hp, 0);                                   // dying: left to the DM
+  // Dying at the start: it rolls its Death Saving Throws as the hours pass (#767, W10) and gets nothing from the rest, whatever they come to.
+  assert.ok(r.events.some((e) => e.type === "note" && e.id === "cleric" && /Death Saving Throw/.test(e.text)));
+  assert.ok(cleric.dead || cleric.cond?.stable || cleric.hp === 1, "the saves settle it: dead, Stable, or up on a 20");
+  assert.ok(cleric.hp <= 1);
   assert.equal(cleric.slots[1], 0);
-  assert.ok(r.events.some((e) => e.type === "manual" && e.actor === "cleric"));
 });
 
 // ---------- W2: death ----------

@@ -63,10 +63,28 @@ export function lightAt(clock) {
   return { light: c0.map((v, j) => v + (c1[j] - v) * k), sky: s0 + (s1 - s0) * k };
 }
 // How full to draw a health bar. Players are not sent a monster's numbers, only a
-// word for how it looks, so a record without maxHp is drawn from that word.
+// word for how it looks, so a record without maxHp is drawn from that word. Bloodied is half, drawn
+// with a notch by barFor so it does not read as a number (docs/specs/one-token-menu.md, Decision 7a).
 export function hpFraction(e) {
   if (e.maxHp > 0) return Math.max(0, Math.min(1, e.hp / e.maxHp));
-  return { healthy: 1, bloodied: 0.45, down: 0, dead: 0 }[e.health] ?? (e.hp > 0 ? 1 : 0);
+  return { healthy: 1, bloodied: 0.5, down: 0, dead: 0 }[e.health] ?? (e.hp > 0 ? 1 : 0);
+}
+
+// What the bar over a creature shows: { show, frac, notch }. Pure, so it is tested alone.
+//   pref       this device's `hextable.bars`: 'always' (the default), 'fight' (only while a fight runs), 'never'.
+//   dm         the viewer is the DM: every bar is exact.
+//   foeHealth  the table's rule `settings.foeHealth`: 'rough' (the default) or 'hidden'. It binds players only.
+//   fight      a fight is running.
+// The party's bars are exact. A foe's bar, for a player under 'rough', is read from the word the view sends (`health`):
+// full, half with a notch (bloodied), or empty (down, dead). Under 'hidden' a player sees no bar over a foe.
+export function barFor(e, { dm = false, pref = 'always', foeHealth = 'rough', fight = false } = {}) {
+  const none = { show: false, frac: 0, notch: false };
+  if (pref === 'never' || (pref === 'fight' && !fight)) return none;
+  if (dm || e.side === 'party') return { show: true, frac: hpFraction(e), notch: false };
+  if (foeHealth === 'hidden') return none;
+  const word = e.health ?? (e.dead ? 'dead' : e.maxHp > 0 ? (e.hp <= 0 ? 'down' : e.hp <= e.maxHp / 2 ? 'bloodied' : 'healthy') : e.hp > 0 ? 'healthy' : 'down');
+  const frac = { healthy: 1, bloodied: 0.5, down: 0, dead: 0 }[word] ?? 1;
+  return { show: true, frac, notch: word === 'bloodied' };
 }
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -416,9 +434,74 @@ export function grapplePairs(s) {
   return out;
 }
 
+const BAD_TINT = [0.85, 0.15, 0.15, 0.4];
 // Highlights, lasting zones, the marks under fliers, rings, the editor's pins and the bars across steps a wall stops.
+// ---- The column and the plane of a flyer (docs/specs/fly-swim-control.md, C2) ----
+// How much of a cell a block of the column fills, and how tall it is drawn (5 ft, less a seam so the blocks read as separate).
+export const BLOCK = { r: 0.6, tall: 5 * UNIT - 0.07 };
+// A thumb needs 44 px. A block drawn smaller than that is picked over an area 1.5 times as tall as it is drawn ("Picking a block"); the renderer's pick and the
+// app's drag (heights.js) grow by the same rule.
+export const THUMB = 44, GROW = 1.5;
+export const growFor = (px) => (px < THUMB ? GROW : 1);
+// Where a block is drawn: its centre on the board and its bottom and top, in drawing units. The renderer picks with the same numbers.
+export function blockBox(map, at, z) { const w = gridOf(map).toWorld(at), y0 = surfY(z) + 0.03; return { x: w.x, z: w.z, y0, y1: y0 + BLOCK.tall }; }
+// The height the plane hangs at, in drawing units.
+export const planeY = (z) => surfY(z) + 0.035;
+const withA = (c, a) => [c[0], c[1], c[2], a];
+// An upright wall of a prism between two rings, seen from both sides.
+function prismSides(b, lo, hi, col) { const n = lo.length; for (let k = 0; k < n; k++) { const j = (k + 1) % n; b.quad(hi[k], hi[j], lo[j], lo[k], col); b.quad(lo[k], lo[j], hi[j], hi[k], col); } }
+// Dashes along a cell's edge: the sign of a place in the air (never colour alone).
+function dashes(b, cx, cz, y, r0, r1, col) {
+  const o = b.cellRing(cx, cz, r1, y), i = b.cellRing(cx, cz, r0, y), n = o.length, at = (a, c2, t) => [a[0] + (c2[0] - a[0]) * t, y, a[2] + (c2[2] - a[2]) * t];
+  for (let k = 0; k < n; k++) { const j = (k + 1) % n; for (const [t0, t1] of [[0.12, 0.42], [0.58, 0.88]]) b.quad(at(o[k], o[j], t1), at(o[k], o[j], t0), at(i[k], i[j], t0), at(i[k], i[j], t1), col); }
+}
+// The tint of a place by the third of the reach its cost falls in (C3): the theme's three, or its one move colour.
+export const moveTint = (th, band) => (band == null ? th.hl.move : th.hl.cost?.[band] ?? th.hl.move);
+function drawFly(b, x, s, G, hl, th) {
+  const c = th.hl, col = hl.column, pl = hl.plane;
+  if (pl) {
+    const k = pl.faint ? 0.45 : 1;
+    for (const cell of pl.cells) {
+      const w = G.toWorld(cell.h), tint = moveTint(th, cell.band);
+      if (cell.floor) { const y = stand(s.map, cell.h).y + 0.03; b.flatHex(w.x, w.z, y, 0, 0.78, withA(tint, tint[3] * k)); b.flatHex(w.x, w.z, y + 0.004, 0.78, 0.86, withA(tint, Math.min(1, tint[3] * 1.6) * k)); x.flatHex(w.x, w.z, y, 0.78, 0.84, withA(tint, 0.16 * k)); }
+      else { const y = planeY(cell.h.z ?? 0); b.flatHex(w.x, w.z, y, 0, 0.78, withA(tint, tint[3] * 0.55 * k)); dashes(b, w.x, w.z, y + 0.004, 0.78, 0.88, withA(tint, Math.min(1, tint[3] * 2) * k)); dashes(x, w.x, w.z, y, 0.8, 0.86, withA(tint, 0.2 * k)); }
+    }
+    if (pl.point) {
+      // A line straight down from the place pointed at to the floor under it, and a ring there: what is below if the flight ends.
+      const h = pl.point.h, w = G.toWorld(h), y1 = planeY(h.z ?? 0), y0 = pl.point.z === null ? surfY(Math.min(...s.map.levels.map((l) => l.z))) : stand(s.map, { q: h.q, r: h.r, z: pl.point.z }).y + 0.04;
+      const line = pl.point.bad ? c.bad ? withA(c.bad, 0.95) : [0.8, 0.15, 0.15, 0.95] : c.select, t = 0.035;
+      b.flatHex(w.x, w.z, y1 + 0.008, 0.6, 0.9, line);
+      if (y1 - y0 > 0.1) {
+        for (const [dx, dz] of [[t, 0], [0, t]]) { b.quad([w.x - dx, y1, w.z - dz], [w.x + dx, y1, w.z + dz], [w.x + dx, y0, w.z + dz], [w.x - dx, y0, w.z - dz], line); b.quad([w.x - dx, y0, w.z - dz], [w.x + dx, y0, w.z + dz], [w.x + dx, y1, w.z + dz], [w.x - dx, y1, w.z - dz], line); }
+        if (pl.point.z !== null) { b.flatHex(w.x, w.z, y0, 0.3, 0.46, line); x.flatHex(w.x, w.z, y0, 0.3, 0.46, withA(line, 0.3)); }
+      }
+    }
+  }
+  if (col) {
+    const own = col.color ? hexToRgb(col.color) : c.select, w = G.toWorld(col.at), R = BLOCK.r;
+    const ring = (y, r0, r1, colr, into = b) => into.flatHex(w.x, w.z, y, r0, r1, colr);
+    for (const g of col.gaps) { const bx = blockBox(s.map, col.at, g.z); ring(bx.y0, R - 0.05, R, withA(c.select, 0.22)); ring(bx.y1, R - 0.05, R, withA(c.select, 0.22)); }
+    for (const k of col.blocks) {
+      const bx = blockBox(s.map, col.at, k.z), lit = k.picked ? 0.34 : k.hover ? 0.24 : 0.11, base = withA(c.move, lit * (k.empty ? 0.5 : 1));
+      prismSides(b, b.cellRing(w.x, w.z, R, bx.y0), b.cellRing(w.x, w.z, R, bx.y1), base);
+      const edge = k.picked ? withA(c.select, 0.95) : withA(c.move, k.hover ? 0.8 : 0.5), wide = k.picked ? 0.14 : 0.05;
+      ring(bx.y0, R - wide, R + (k.picked ? 0.06 : 0), edge); ring(bx.y1, R - wide, R + (k.picked ? 0.06 : 0), edge);
+      if (k.picked) { ring(bx.y1, 0, R - wide, withA(c.move, 0.3)); ring(bx.y1, R - 0.05, R + 0.06, withA(c.select, 0.35), x); }
+      else ring(bx.y1, R - 0.04, R, withA(c.move, 0.16), x);
+      // "You are here": a band in the creature's own colour round the foot of the block it is at.
+      if (k.here) { ring(bx.y0 + 0.01, R + 0.08, R + 0.2, withA(own, 0.95)); ring(bx.y0 + 0.01, R + 0.08, R + 0.2, withA(own, 0.3), x); }
+      // A floor at this height (a roof, a ledge): a small shelf on the block's side, so it reads as a place to stand.
+      if (k.stand) { const y = bx.y0 + 0.02, a = [w.x + R, y, w.z - 0.22], d = [w.x + R, y, w.z + 0.22], e2 = [w.x + R + 0.42, y, w.z + 0.22], f = [w.x + R + 0.42, y, w.z - 0.22], shelf = withA(c.select, 0.85); b.quad(a, d, e2, f, shelf); b.quad(f, e2, d, a, shelf); }
+    }
+  }
+}
+
+// The overlay: what is marked on the board. The Builder returned carries `through`, a second Builder of the faint outlines that are
+// drawn through walls and floors (a plane cell behind a wall is not lost); it is empty unless a column or a plane is up.
 export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bars = [], barZ = 0 }) {
   const G = gridOf(s.map), b = new Builder(G), c = th.hl;
+  b.through = new Builder(G);
+  if (hl.column || hl.plane) drawFly(b, b.through, s, G, hl, th);
   const top = (k) => stand(s.map, cellParse(k)).y + 0.03;
   const at = (k) => G.toWorld(cellParse(k));
   for (const fx of s.effects ?? []) {
@@ -430,8 +513,12 @@ export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bar
       if (rim) b.flatHex(w.x, w.z, y, 0.8, 0.98, [...rgb, 0.12]);
     }
   }
-  for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, c.move); }
-  for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, c.area); }
+  // The reach, shaded by the third of it each place's cost falls in when the app says so (`moveBand`, C3); with no word about a place it is the theme's one move colour.
+  for (const k of hl.move) { const w = at(k); b.flatHex(w.x, w.z, top(k), 0, 0.78, moveTint(th, hl.moveBand?.[k])); }
+  // The edge of a spell's reach while it is aimed (issue #600) as a thin band; a theme without its own colour gets one made from its area colour.
+  for (const k of hl.range ?? []) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.005, 0.5, 0.98, c.range ?? [c.area[0], c.area[1], c.area[2], 0.4]); }
+  // An area aimed beyond the reach is drawn in the theme's "no" colour (red), so it reads as dimmed and refused whatever the theme's area colour is.
+  for (const k of hl.area) { const w = at(k); b.flatHex(w.x, w.z, top(k) + 0.01, 0, 0.92, hl.areaBad ? c.bad ?? BAD_TINT : c.area); }
   for (const e of Object.values(s.entities)) { const sf = !e.dead && !ground(s.map, e.pos) ? under(s.map, e.pos) : null; if (sf) { const w = G.toWorld(e.pos); b.flatHex(w.x, w.z, stand(s.map, { q: e.pos.q, r: e.pos.r, z: sf.z }).y + 0.02, 0.2, 0.42, [0, 0, 0, 0.45]); } }
   const ringOn = (id, col, r0 = 0.66, r1 = 0.94) => {
     const e = s.entities[id]; if (!e) return;

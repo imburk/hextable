@@ -276,9 +276,23 @@ list of user ids, and only the DM changes it (`showShop`). A new shop starts at
   here?: [ creatureIds ] }                                                 // party characters standing in the area now (a store with an area, a map in play)
 ```
 
+
+**Amendment (issue #630): the id a player is given.** A shop's own id, `s<n>`, comes from one counter shared by every
+shop the DM opened, so a player shown the second would learn from `s2` that another exists. A player is never sent that
+id. They are sent `sh1`, `sh2`, ... numbered in the order shops were first shown to anyone (`state.shopAlias`, a list of
+the shops' own ids that only grows; a closed shop keeps its number; `shopids.js`, as places are `pl1`, `pl2` in `known.js`).
+It is in `shops[].id` and in every trade event that names a shop (`shopShown`, `shopHidden`, `shopChanged`, `shopClosed`,
+`goodsRevealed`, `quoted`, `bought`, `sold`, `took`, `jointOpened`, `pledged`, `jointEnded`) and in the `about.shop` of a
+`checkAsked`. A player's action is turned back at the top of `dispatch`, before anything else is looked at: a number never
+given, a guessed one, a shop's own id and a malformed value are all "No such shop.". The DM sends and is sent the own ids. The
+numbering is per table, not per player, so a player shown a shop that was shown before to someone else can see that its number
+is not 1; that is the one gap left (docs/DEBT.md, T11). A player's `showShop`, `shopEdit`, `closeShop`, `revealGoods` or `quote` is
+refused with one sentence for the action, whatever the id; every other shop action names only a shop shown to that player. Undo takes
+an alias back together with the showing it undoes; a rewind to the start of a fight or a rest keeps the list (and `shopSeq`), so a
+number never comes to mean another shop, and numbers the shops shown in a pin saved before version 29.
 | A player is sent | Never sent |
 |---|---|
-| shops shown to them, as above | a shop not shown to them: not its id, not that it exists |
+| shops shown to them, as above, each by a number `sh1`, `sh2`, ... in the order shops were first shown (amendment of #630, below) | a shop not shown to them: not its id, not that it exists; and never a shop's own id (`s<n>`), whose gaps would count the shops not shown |
 | revealed specials with their price and how many are left | a hidden special: not its id, its name, its price, or how many hidden lines there are |
 | quotes for party characters, and the purchases being paid together | `haggle` (step, DC, bonus), `roleplay`, `notes`, `from`, `waits`, `keeper`, `at` |
 | the outline of a shown store's shop area, and which of the party stand in it | the area of a shop not shown to them (it is not drawn on their map and not sent), and cells of an area in tiles they are not sent |
@@ -829,6 +843,61 @@ together: `haggle`, `settle`. The document: `lintMarket`, `migrateMarket`, `MARK
 it is a weapon or armour of the table, and `landItem` checks the rest when the item lands. The pack `hash`, the asset move, and the sniffing of picture
 bytes are the import action's. Sharing coins out of a loot package (Decision 7) is `take`'s, not X2's. `CLAUDE.md`'s layout paragraph does not list
 `market.js` yet; P3 adds it with `engine/trade.js`.
+
+## Build notes: P3 (purses and shops, engine; #596)
+
+Built in `packages/rules/src/engine/trade.js` (new; the eleven actions, the place rule `placeProblem`, the content lookups `marketEnv`, and
+`settleShops`), with `give { coins }` in `engine/characters.js`, `coins` kept by `carryPlay` in `engine/sheets.js`, `askCheck { about }` in
+`scenes.js`, `viewShops` and the trade events in `view.js`, the labels in `history.js`, and state version 28 in `migrate.js` (after #594's 27).
+`view()` and the table server's per-player view (`packages/server/src/tables.js`, `stateFor`) both carry `shops`, so a networked player sees
+the stores shown to them now, not at P4; P4 keeps `market` joining `MAP_ACTIONS` and the README. Tests: `packages/rules/test/shops.test.js`,
+`packages/server/test/shops.test.js`.
+
+**Settled here (each a reading of the spec; change it here and in the code together).**
+
+- **The audience of an event.** Every trade event carries the shop's `shown` when it happened (`to`, and `except` for "everyone but"), and
+  `viewEvents` passes it only to a player in it, live or from the record; the audience is never sent. `shopShown` goes to those newly shown,
+  `shopHidden` to those it is taken from.
+- **Pictures of a market (`assets`) are dropped on import**; `art` ids stay. Moving the bytes into the table's assets is the server's (P4, X7).
+  `hash` is FNV-1a of what is kept.
+- **A joint purchase's id is in `joint`, not `id`**, in `jointOpened`, `pledged`, `jointEnded` and a joint `bought`: `id` names creatures in the
+  view's filter, and a `j1` there would be read as a creature the party does not know of.
+- **Any fight ends open joint purchases** (`settleShops`, after every action), not only one its buyer is in, since players may not shop while
+  any fight goes on. A purchase also ends when its buyer is down, its line is off the shelf or short, its buyer's player is no longer shown
+  the store, or the buyer (a player's character, with a map in play) has left the shop area.
+- **A magic item whose `base` names exactly one item** (a Sun Blade is a longsword) needs no `base` on a line, and its value does not add that
+  item's cost (only a line's own `base` adds it). A table that wants the 15 GP gives the line its own `price`.
+- **The haggle's roll** is the engine's `check` action (`features.js`; `abilityCheck` is not exported from `engine/rolls.js` as the spec
+  supposed), run for the quoted character with no DC, so it is an ordinary open `check` event: players see the dice and total, never the DC.
+  A quote keeps its `steps` and `roleplay`, so the bonus can be pressed before or after the roll and applies once; a failed roll sets the
+  24-hour wait in world minutes (`waits`), which only a price set by hand gets round.
+- **Selling** pays in the largest coins first (`change`), so 35 GP is 3 PP 5 GP. A name in `gear` that is a pack item's own name (a weapon,
+  armour, or a magic item with no variant or base) sells as that item. A quote set for a name sells that name at that price.
+- **Shop ids** count up in `state.shopSeq` (`s1, s2, ...`), so a closed shop's id is never used again.
+- **Markets are held by reference** (review of #598, M3). Twenty packs at the 128 KB limit are 2.5 MB of JSON; copied before every action
+  (apply()'s snapshot and the undo mark) they cost about 12 ms each, 25 ms an action, and the server's patch snapshot for the DM another 7.
+  No action changes a market in place (`market` puts a new list in whole), so `freeze` in `engine.js` and `mark` in `history.js` hold the list
+  by reference, and the table server keeps its JSON per list (`snapDM`). Measured after: an action and a mark cost what they cost without
+  markets (under 0.5 ms each). `shops.test.js` holds the bound (under 3 ms more per action and per mark, markets deep-frozen). A future
+  action that edits a market in place breaks this, and the frozen test catches it. For the same reason `history.js` treats `markets` as an
+  atom: `changes()` puts the list back whole (`{ p: ['markets'], v }`) rather than item by item, and a rewind takes the pinned list as it
+  is, so undo, redo and rewind swap lists and never edit one (and the server's per-list JSON stays true). Tested: import v1, v2, undo, redo,
+  undo, a rewind across an import, and the DM's patched view through the same.
+- **The fix round of the review of #598.** `take` reads a line's overrides as the view does (taken off: "No such item."; none left: "Sold
+  out."; stock off the override; at none left the line and its override go). A `jointEnded` for `hidden` is told to players as `ended`. A
+  pledge is taken back from anywhere (`share: 0`: no place, fight or up check); a joint purchase ends (`pledger`) when a pledger leaves the
+  table or dies. A purse that is not a purse (a kind past 10,000,000, a coin not whole) is refused, not read as empty, and no buy, sell, take
+  or settle may take a kind past the ceiling. A re-haggle that comes out worse than the standing quote leaves that quote; a failed roll still
+  sets the Influence wait on that character and line, kept quote or not. `revealGoods`
+  refuses a special taken off the shelf; `shopEdit { set: { lists } }` refuses lists whose lines share an id with the shop's own.
+- **Known and left as they are** (review of #598, L2, L4, L8):
+  - *A joint purchase's price is frozen when it opens* (L2). A later price override, markup change or withdrawn quote does not change it:
+    the party pays the price it opened at. The DM who wants another price cancels it and the buyer opens it again.
+  - *A magic item's sell price ignores the line's own price and markup* (L4): by Decision 5 it is 70 percent of the SRD value, so a special
+    priced under 70 percent of its value can be bought and sold back at a profit. The DM should know this when pricing specials. A haggled
+    sell offer is capped at the value; a sell price the DM sets by hand is not.
+  - *Haggling at a shop not shown to a player still makes an open `check` event* for the character (L8), so players the shop is not shown
+    to see that the character rolled Persuasion (never where, nor for what).
 
 ## Security and hidden-information review points
 

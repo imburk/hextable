@@ -171,9 +171,10 @@ test("Empowered Evocation is not added unasked when the roll also hits a creatur
 
 test("Empowered Evocation on an Evocation spell whose damage the engine does not roll: the DM is told", () => {
   const s = field(10);
-  s.entities.hero.spells.push("wall-of-fire");
-  const r = ok(cast(s, { spell: "wall-of-fire" }));
+  s.entities.hero.spells.push("wall-of-ice");                  // still `manual` tier (Wall of Fire, rolled since #786, no longer is one)
+  s.entities.hero.slots[6] = 1;
+  const r = ok(cast(s, { spell: "wall-of-ice" }));
   assert.ok(manuals(r).some((t) => /Empowered Evocation: .*does not roll/.test(t)));
-  s.entities.hero.slots[4] = 3;
-  assert.ok(!manuals(ok(cast(s, { spell: "wall-of-fire", empower: false }))).some((t) => /Empowered Evocation/.test(t)), "declined: nothing said");
+  s.entities.hero.slots[6] = 3;
+  assert.ok(!manuals(ok(cast(s, { spell: "wall-of-ice", empower: false }))).some((t) => /Empowered Evocation/.test(t)), "declined: nothing said");
 });

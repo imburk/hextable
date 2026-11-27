@@ -34,3 +34,6 @@
 .cp-rest-row { display: grid; grid-template-columns: 1fr 44px 2ch 44px; align-items: center; gap: 6px; margin: 4px 0; }
 .cp-rest-row button { min-height: 44px; }
 .cp-rest-row output { text-align: center; }
+/* A swap (Font of Inspiration, Wild Resurgence): a greyed option says why under its words and can still be tapped to read it. */
+.cp-levels button.off { opacity: .6; }
+.cp-levels button .cp-why { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; }

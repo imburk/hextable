@@ -323,13 +323,22 @@ export const paladin = {
       "id": "paladins-smite",
       "name": "Paladin's Smite",
       "level": 2,
-      "tier": "assist",
+      "tier": "auto",
       "checked": true,
-      "text": "Divine Smite is always prepared (applied); casting it once without a slot per Long Rest is the DM's.",
+      "text": "Divine Smite is always prepared, and you can cast it once without a spell slot at its own level (a hit choice taken with via paladins-smite); the use comes back on a Long Rest.",
+      "uses": {
+        "max": 1,
+        "recharge": "long"
+      },
       "grants": {
         "spells": [
           "divine-smite"
-        ]
+        ],
+        "freeCast": {
+          "spells": [
+            "divine-smite"
+          ]
+        }
       }
     },
     {
@@ -631,12 +640,14 @@ export const paladin = {
         "id": "sacred-weapon",
         "name": "Sacred Weapon",
         "level": 3,
-        "tier": "manual",
+        "tier": "assist",
         "checked": true,
         "text": "When you take the Attack action, spend Channel Divinity: for 10 minutes add your Charisma modifier (at least +1) to attack rolls with a Melee weapon you hold, which may deal Radiant damage and sheds light.",
         "grants": {
           "action": {
             "time": "free",
+            "duration": "10 minutes",
+            "withAttack": true,
             "cost": {
               "resource": "channel-divinity"
             },
@@ -645,7 +656,19 @@ export const paladin = {
             },
             "effects": [
               {
-                "manual": "Sacred Weapon: for 10 minutes, add Charisma modifier (at least +1) to attack rolls with the held Melee weapon; its hits can deal Radiant damage; it sheds Bright Light 20 feet and Dim Light 20 feet beyond."
+                "imbue": {
+                  "melee": true,
+                  "attackAdd": {
+                    "mod": "cha",
+                    "min": 1
+                  },
+                  "types": [
+                    "radiant"
+                  ]
+                }
+              },
+              {
+                "manual": "Sacred Weapon: the weapon sheds Bright Light in a 20-foot radius and Dim Light 20 feet beyond that. The DM applies the light."
               }
             ]
           }

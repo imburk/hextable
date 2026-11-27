@@ -243,7 +243,8 @@ test("what players are sent: the pack's copy carries the data; the view, the eve
     const flagsAfter = Object.keys(view(s, PAT).encounter.flags);
     assert.deepEqual(flagsAfter.filter((k) => !flagsBefore.includes(k)), [`after:${ID("fan-flourish")}:hero`], "the one mark a use of `after` always makes, and no flag that names the second creature");
     assert.ok(!flagsAfter.some((k) => k.includes(s.bo)), "no flag for the second creature");
-    assert.deepEqual(Object.keys(view(s, PAT).entities.hero).sort(), Object.keys(view(field({ ...bard(), subclass: "lore", skills: ["performance", "persuasion", "insight", "history", "arcana", "deception"] }), PAT).entities.hero).sort(), "the hero is sent the same fields as one of an SRD subclass");
+    const sent = (v) => Object.keys(v).filter((k) => k !== 'acNow' && k !== 'acWhy').sort(); // sent only while something changes the AC (#674)
+    assert.deepEqual(sent(view(s, PAT).entities.hero), sent(view(field({ ...bard(), subclass: "lore", skills: ["performance", "persuasion", "insight", "history", "arcana", "deception"] }), PAT).entities.hero), "the hero is sent the same fields as one of an SRD subclass");
   });
 });
 

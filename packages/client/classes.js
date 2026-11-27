@@ -7,13 +7,15 @@
 // content offer (`feats`, `e.uses`, the pack's monsters), lets the player choose, and sends the
 // documented action. A refusal is shown in the panel in the engine's words and the choice is kept.
 // It shows only what the view gives; a creature's controller and the DM see these controls.
-import { CONTENT, SPELLS } from './shared/content/index.js';
+import { CONTENT, SPELLS, rollLabel } from './shared/content/index.js';
 import { targetCount } from './shared/effects.js';
-import { blocked, current, FT, checkBonus } from './shared/engine.js';
+import { blocked, current, FT, checkBonus, inFight } from './shared/engine.js';
 import { SKILLS, CHOICES } from './shared/content/schema.js';
 import { gridOf } from './shared/grid.js';
 import { conditionName, modifiers } from './shared/modifiers.js';
 import { mod } from './shared/derive.js';
+import { armed } from './shared/imbue.js';
+import { turnKey } from './shared/durations.js';
 
 const TIME = { action: 'Action', bonus: 'Bonus Action', reaction: 'Reaction', free: 'No action' };
 export const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[cr] ?? String(cr);
@@ -36,7 +38,7 @@ function h(tag, attrs = {}, ...kids) {
 // ---------- what a feature needs, by what its record says ----------
 export const formOf = (e) => (typeof e.form === 'string' ? e.form : e.form?.block) ?? null;
 export const formName = (e) => { const id = formOf(e); return id ? CONTENT.monsters[id]?.name ?? nice(id) : ''; };
-// Which chooser a feature has: 'modes', 'choice' (a skill or a tool to name, DEBT T96), 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'free' (casts through it),
+// Which chooser a feature has: 'modes', 'choice' (a skill or a tool to name, DEBT T96), 'form', 'pool', 'targets' (a list of creatures, Intimidating Presence), 'exchange', 'swap' (Font of Inspiration, Wild Resurgence), 'free' (casts through it),
 // 'evoker', 'repel' (with a cast), 'prey' (with an attack), 'hurl' (a slot may pay), 'slot' (a spell slot is part of its price), or null.
 const manyTargets = (f) => typeof f.action?.target?.creature?.count === 'number' && f.action.target.creature.count > 1;
 export function kindOf(f) {
@@ -51,6 +53,7 @@ export function kindOf(f) {
   if (f.action?.choice) return 'choice';                        // `choice: { of: 'skill' | 'tool', from? }`: proficiency for a time with the one the holder names (addition C)
   if (manyTargets(f) && !f.action.gain) return 'targets';
   if (f.exchange) return 'exchange';
+  if (f.swap) return 'swap';                                    // `grants.swap`: one thing for another, no action (W41)
   if (f.freeCast) return 'free';
   return null;
 }
@@ -118,6 +121,29 @@ export function slotWhy(e, f) {
   return slotLevels(e, a.cost.slot).length ? '' : `${e.name} has no spell slot of level ${a.cost.slot} or higher left for ${f.name}.`;
 }
 
+
+// ---------- a feature that swaps one thing for another (`swap`: Font of Inspiration, Wild Resurgence; DEBT W41) ----------
+// The words of one side of a swap, and why one swap cannot be made now ('' if it can), in the engine's words (engine/features.js `swap`). The engine checks it all again when the
+// action is sent and its answer is what the player sees; this only greys an option and says why, as the other choosers do.
+const poolOf = (e, r) => (e.feats ?? []).find((x) => x.id === r.resource);
+const sideText = (e, r) => (r.slot === true ? 'a spell slot of your choice' : r.slot ? `a level ${r.slot} spell slot` : `${r.n ?? 1} use of ${poolOf(e, r)?.name ?? nice(r.resource)}`);
+export const swapText = (e, x) => `${sideText(e, x.give)} for ${sideText(e, x.get)}`;
+export function swapWhy(S, e, f, x) {
+  if (e.dead || e.hp <= 0) return `${e.name} is down.`;
+  if (x.per === 'turn' && S.encounter && inFight(S, e.id) && current(S) !== e.id) return `${f.name} is used on ${e.name}'s own turn.`;
+  if (x.per === 'turn' && turnKey(S) && e.swapped?.[f.id] === turnKey(S)) return `${e.name} has already used ${f.name} this turn.`;
+  if (x.per === 'use' && (e.uses?.[f.id] ?? 0) < 1) return `${e.name} has no uses of ${f.name} left; they come back on a Long Rest.`;
+  if (x.give.slot) { if (!slotLevels(e).length) return `${e.name} has no spell slot to give up.`; }
+  else { const p = poolOf(e, x.give), n = x.give.n ?? 1; if (!p) return `${e.name} has no ${nice(x.give.resource)} to swap.`; if ((e.uses?.[p.id] ?? 0) < n) return `${e.name} has no use of ${p.name} to give up.`; }
+  if (x.get.resource !== undefined) {
+    const p = poolOf(e, x.get);
+    if (!p) return `${e.name} has no ${nice(x.get.resource)} to swap.`;
+    if (x.onlyEmpty && (e.uses?.[p.id] ?? 0) > 0) return `${e.name} still has uses of ${p.name}: ${f.name} is for when none are left.`;
+    if ((e.uses?.[p.id] ?? 0) + (x.get.n ?? 1) > p.uses.max) return `${e.name} has all its uses of ${p.name}.`;
+  }
+  return '';
+}
+
 // The features that open a chooser first, as the buttons the panel lists (pure: no page). `st`: the state. Each: { label, sub, cls, why, feature, kind, time, f }.
 // `kind` is the chooser (kindOf); `time` the action it costs ('action', 'bonus', 'reaction', 'free', or null for none).
 export function chooserButtons(st, e) {
@@ -141,6 +167,12 @@ export function chooserButtons(st, e) {
       out.push({ label, sub, cls, why, feature: f.id, kind, time: a.time, f });
       continue;
     }
+    else if (kind === 'swap') {
+      const all = f.swap.map((x) => swapWhy(st, e, f, x));
+      sub = ['No action', f.uses ? `${left} of ${f.uses.max} left` : `${f.swap.length} swap${f.swap.length === 1 ? '' : 's'}`].join(' · ');
+      out.push({ label, sub, cls: 'bonus', why: all.every(Boolean) ? [...new Set(all)].join(' ') : '', feature: f.id, kind, time: null, f });
+      continue;
+    }
     else if (kind === 'exchange') { sub = `${left} of ${f.uses.max} points`; cls = ''; }
     else if (kind === 'free') sub = freeSub(f, left);
     else if (kind === 'slot') sub = slotSub(e, f);
@@ -155,7 +187,7 @@ export function chooserButtons(st, e) {
   }
   return out;
 }
-const NO_ACTION = ['exchange', 'free', 'evoker', 'repel', 'prey'];      // choosers of a feature that has no `action` of its own
+const NO_ACTION = ['exchange', 'swap', 'free', 'evoker', 'repel', 'prey'];      // choosers of a feature that has no `action` of its own
 const spellName = (id) => SPELLS[id]?.name ?? nice(id);
 // A feature that casts for free (`freeCast`): what it costs, in words.
 export const freeSub = (f, left) => (f.freeCast?.atWill ? 'Cast free, as often as you like' : `Cast free · ${left ?? 0} left`) + (f.freeCast?.self ? ' · on yourself' : '') + (f.freeCast?.dark ? ' · in dim light or darkness' : '');
@@ -283,7 +315,15 @@ export function strikeChoices(st, e, a) {
     out.cunning = { name: C.name, options: C.options, max: C.max, dice,
       why: !dice ? `${e.name} has no Sneak Attack.` : dice < 2 ? `${e.name}'s Sneak Attack is one die: none is left to spend.` : flags[`sneak:${e.id}`] ? `${e.name} has already dealt Sneak Attack this turn.` : '' };
   }
-  return out.brutal || out.cunning ? out : null;
+  // A feature used with the Attack action (`withAttack`: Sacred Weapon; imbue.js) is chosen with the attack that takes the action.
+  const W = (e.feats ?? []).find((f) => f.action?.withAttack);
+  // Offered only where it can be used: on the attack that takes the Attack action (the first), on its creature's own turn.
+  const b = enc?.budget;
+  if (W && a.weapon && CONTENT.weapons[a.weapon]?.kind === 'melee' && mine && b && b.action >= 1 && !b.attacks && !b.bonusAttacks) {
+    const left = e.uses?.[W.action.cost?.resource ?? W.id] ?? 0;
+    out.use = { id: W.id, name: W.name, why: left < (W.action.cost?.n ?? 1) ? `${e.name} has no uses of ${(e.feats ?? []).find((f) => f.id === W.action.cost?.resource)?.name ?? W.name} left.` : '' };
+  }
+  return out.brutal || out.cunning || out.use ? out : null;
 }
 
 export const metamagicKnown = (e) => (e.feats ?? []).filter((f) => f.metamagic);
@@ -438,6 +478,32 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     };
   }
 
+
+  // ---------- Font of Inspiration, Wild Resurgence: one thing for another, no action ----------
+  // Each swap the feature offers is a button, greyed with its reason (a greyed one can still be tapped to read why, and sends nothing); a swap that gives a slot asks which level.
+  // The engine checks it all again: what it answers is what the player sees.
+  function swapPanel(e, f) {
+    const st = mem(`${e.id}:${f.id}`, () => ({ swap: null, level: null })), swaps = f.swap.map((x) => ({ x, why: swapWhy(S(), e, f, x) }));
+    if (!swaps.some((w) => w.x.id === st.swap)) st.swap = (swaps.find((w) => !w.why) ?? swaps[0]).x.id;
+    const cur = swaps.find((w) => w.x.id === st.swap), levels = slotLevels(e), draw = () => show(swapPanel(e, f));
+    const needLevel = !!cur.x.give.slot && !cur.why;
+    if (!levels.includes(st.level)) st.level = levels.length === 1 ? levels[0] : null;
+    const list = h('div', { class: 'cp-levels', id: 'cp-swaps', role: 'group', 'aria-label': 'Swap' }, ...swaps.map((w) => h('button', { type: 'button', 'data-swap': w.x.id, 'aria-pressed': String(st.swap === w.x.id), 'aria-disabled': w.why ? 'true' : null, class: w.why ? 'off' : '', onclick: () => { st.swap = w.x.id; draw(); } },
+      h('span', { text: swapText(e, w.x) }), w.why ? h('small', { class: 'cp-why', text: w.why }) : null)));
+    const lv = needLevel ? h('div', { class: 'cp-levels', id: 'cp-give', role: 'group', 'aria-label': 'Slot level to give' }, ...levels.map((l) => h('button', { type: 'button', 'data-level': l, 'aria-pressed': String(st.level === l),
+      text: `Give a level ${l} slot (${e.slots?.[l] ?? 0}/${e.slotsMax?.[l] ?? 0} left)`, onclick: () => { st.level = l; draw(); } }))) : null;
+    return {
+      key: `${e.id}:${f.id}`, title: f.name, note: `${f.text ?? ''} Takes no action.`.trim(),
+      body: [list, lv],
+      buttons: [{ label: 'Swap', primary: true, id: 'cp-use', send: () => {
+        if (cur.why) { show(swapPanel(e, f), cur.why); return null; }
+        if (cur.x.give.slot && !st.level) { show(swapPanel(e, f), 'Choose the slot level to give.'); return null; }
+        return { type: 'feature', actor: e.id, feature: f.id, swap: cur.x.id, ...(cur.x.give.slot ? { slot: st.level } : {}) };
+      } }],
+      reopen: () => swapPanel(e, f),
+    };
+  }
+
   // ---------- Wild Shape: choose a form, or leave it ----------
   function formPanel(e, f) {
     const F = f.action.form, now = formOf(e), forms = formsFor(f), st = mem(`${e.id}:${f.id}`, () => ({ form: null }));
@@ -478,7 +544,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
     const list = freeSpells(f), st = mem(`${e.id}:${f.id}`, () => ({ spell: null })), fc = f.freeCast;
     if (!list.some((s) => s.id === st.spell)) st.spell = list[0]?.id ?? null;
     const sel = h('select', { id: 'cp-spell', 'aria-label': 'Spell', onchange: () => { st.spell = sel.value; } },
-      ...list.map((sp) => h('option', { value: sp.id, text: `${sp.name} (${sp.level ? `level ${sp.level}` : 'cantrip'})`, selected: sp.id === st.spell })));
+      ...list.map((sp) => h('option', { value: sp.id, text: `${sp.name} (${sp.level ? `level ${sp.level}` : 'cantrip'}${rollLabel(sp.roll) ? ` · ${rollLabel(sp.roll)}` : ''})`, selected: sp.id === st.spell })));
     const rules = [fc.atWill ? 'As often as you like, with no spell slot.' : `${usesLeft(e, f)} left. Casts with no spell slot.`, fc.self ? `On ${e.name} only.` : '', fc.dark ? 'Works only in Dim Light or Darkness.' : '',
       fc.sureSave ? 'Its saving throw is a success, with no roll.' : '', fc.time === 'action' ? 'A Magic action.' : ''].filter(Boolean).join(' ');
     return {
@@ -658,15 +724,25 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   }
 
   // ---------- Brutal Strike and Cunning Strike: chosen with an attack ----------
-  const attackExtra = (st) => ({ ...(st.brutal ? { brutal: st.brutal } : {}), ...(st.cunning.length ? { cunning: [...st.cunning] } : {}) });
+  const attackExtra = (st) => ({ ...(st.use ? { use: st.use } : {}), ...(st.brutal ? { brutal: st.brutal } : {}), ...(st.cunning.length ? { cunning: [...st.cunning] } : {}) });
   function strikePanel(e, a) {
-    const ch = strikeChoices(S(), e, a) ?? { brutal: null, cunning: null }, key = `${e.id}:strike:${a.id}`;
-    const st = mem(key, () => ({ brutal: null, cunning: [] }));
+    const ch = strikeChoices(S(), e, a) ?? { brutal: null, cunning: null, use: null }, key = `${e.id}:strike:${a.id}`;
+    const shown = armed(S(), e, a);                      // the numbers as a spell or feature has changed them (imbue.js)
+    const st = mem(key, () => ({ brutal: null, cunning: [], use: null }));
+    if (!ch.use || ch.use.why) st.use = null;
     if (!ch.brutal || ch.brutal.why || !ch.brutal.options.some((o) => o.id === st.brutal)) st.brutal = null;
     if (!ch.cunning || ch.cunning.why) st.cunning = [];
     else st.cunning = st.cunning.filter((id) => ch.cunning.options.some((o) => o.id === id && !optionWhy(e, o)));
     const draw = () => show(strikePanel(e, a));
     const body = [];
+    if (ch.use) {
+      const u = ch.use;
+      body.push(h('div', { class: 'cp-f', 'data-part': 'use' }, h('span', { text: `${u.name}: used with this attack, it changes the weapon for 10 minutes` }),
+        u.why ? h('p', { class: 'cp-note cp-why', text: u.why }) : null,
+        h('label', { class: `cp-check cp-opt${u.why ? ' off' : ''}`, 'data-use': u.id },
+          h('input', { type: 'checkbox', checked: st.use === u.id, disabled: !!u.why, onchange: (ev) => { st.use = ev.target.checked ? u.id : null; draw(); } }),
+          h('span', {}, h('b', { text: u.name })))));
+    }
     if (ch.brutal) {
       const b = ch.brutal;
       body.push(h('div', { class: 'cp-f', 'data-part': 'brutal' }, h('span', { text: `${b.name}: give up Advantage from Reckless Attack for ${b.dice} more damage and one effect` }),
@@ -686,9 +762,9 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
             h('span', {}, h('b', { text: o.name }), ` · costs ${o.cost} ${o.cost === 1 ? 'die' : 'dice'}`, h('small', { text: why || optionNeeds(o).join('. ') })));
         })));
     }
-    const names = [st.brutal ? ch.brutal.options.find((o) => o.id === st.brutal).name : '', ...st.cunning.map((id) => ch.cunning.options.find((o) => o.id === id).name)].filter(Boolean);
+    const names = [st.use ? ch.use.name : '', st.brutal ? ch.brutal.options.find((o) => o.id === st.brutal).name : '', ...st.cunning.map((id) => ch.cunning.options.find((o) => o.id === id).name)].filter(Boolean);
     return {
-      key, title: `${a.name}: strike options`, note: `${signedN(a.bonus)} to hit, ${a.damage} ${a.dtype}. Pick what goes with this attack, then tap the target. Nothing picked is a plain attack.`, body,
+      key, title: `${a.name}: strike options`, note: `${signedN(shown.bonus)} to hit, ${shown.damage} ${shown.alt ? `${shown.dtype} or ${shown.alt.join(' or ')}` : shown.dtype}. Pick what goes with this attack, then tap the target. Nothing picked is a plain attack.`, body,
       buttons: [{ label: names.length ? `Choose target (${names.join(' + ')})` : 'Choose target', primary: true, id: 'cp-use', run: () => { close(); armAttack({ id: a.id, ...(names.length ? { label: names.join(' + '), extra: attackExtra(st) } : {}) }); } }],
       reopen: () => strikePanel(e, a),
     };
@@ -838,7 +914,7 @@ export function initClasses({ act, state, mine, isDM, toast, arm, armAttack, cas
   };
 
   // ---------- the buttons of the action bar ----------
-  const panelOf = (e, f) => ({ modes: modesPanel, choice: choicePanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel, slot: slotPanel })[kindOf(f)](e, f);
+  const panelOf = (e, f) => ({ modes: modesPanel, choice: choicePanel, form: formPanel, pool: poolPanel, targets: targetsPanel, exchange: exchangePanel, swap: swapPanel, free: freePanel, evoker: evokerPanel, repel: repelPanel, prey: preyPanel, hurl: hurlPanel, slot: slotPanel })[kindOf(f)](e, f);
   function buttons(e) {
     const out = chooserButtons(S(), e).map(({ label, sub, cls, why, feature, f }) => ({ label, sub, cls, why, feature, onClick: () => show(panelOf(e, f)) }));
     if (metamagicKnown(e).length && spellsToCast(e).length) {

@@ -173,23 +173,23 @@ test('weapons: a long-range attack, the reach and the refusals, played through a
 }));
 
 test('weapons: only a trained holder may have it on the sheet, and Light, Finesse and Martial Arts are as the reading says', () => withGear(() => {
-  // A wizard has simple weapons only: a martial weapon on the sheet is refused; derive builds it without the Proficiency Bonus.
+  // A wizard has simple weapons only: a martial weapon on the sheet is allowed; derive builds it without the Proficiency Bonus.
   for (const w of PACK.weapons) {
     const w1 = wizard({ weapons: [w.id] });
-    assert.equal(problems(w1, /not proficient/).length, w.category === 'martial' ? 1 : 0, `${w.id}: a wizard`);
+    assert.equal(problems(w1, /not proficient/).length, 0, `${w.id}: a wizard may carry it`);
+    assert.equal(attacksOf(w1)[w.id].untrained === true, w.category === 'martial', `${w.id}: marked untrained for a wizard when martial`);
     const a = attacksOf(w1)[w.id], m = mod(SCORES[abilityFor(w, SCORES)]);
     assert.equal(a.bonus, m + (w.category === 'simple' ? 2 : 0), `${w.id}: a wizard\'s bonus has the Proficiency Bonus only for a simple weapon`);
     assert.equal(problems(fighter({ weapons: [w.id] }), /not proficient/).length, 0, 'a fighter is trained in both');
-    assert.ok(say('weapon', w).includes('A sheet that lists it for a character who is not trained is refused by the engine.'));
+    assert.ok(say('weapon', w).includes('the attack then adds no Proficiency Bonus and the weapon gives no Weapon Mastery property'));
   }
-  const refused = apply(newGame(3), { type: 'setSheet', sheet: wizard({ weapons: ['hb-rk-fen-axe'] }) }, DM);
-  assert.equal(refused.ok, false); assert.match(refused.error, /can't be played yet/);
+  assert.equal(apply(newGame(3), { type: 'setSheet', sheet: wizard({ weapons: ['hb-rk-fen-axe'] }) }, DM).ok, true);
   // A rogue is trained in martial weapons that have Finesse or Light only.
   const trainedRogue = PACK.weapons.filter((w) => w.category === 'simple' || w.properties.includes('finesse') || w.properties.includes('light')).map((w) => w.id).sort();
-  assert.deepEqual(PACK.weapons.filter((w) => problems(rogue({ weapons: [w.id] }), /not proficient/).length === 0).map((w) => w.id).sort(), trainedRogue, 'a rogue: martial with Finesse or Light');
+  assert.deepEqual(PACK.weapons.filter((w) => !attacksOf(rogue({ weapons: [w.id] }))[w.id].untrained).map((w) => w.id).sort(), trainedRogue, 'a rogue: martial with Finesse or Light');
   // A monk is trained in simple weapons and martial weapons that have Light.
   const trainedMonk = PACK.weapons.filter((w) => w.category === 'simple' || w.properties.includes('light')).map((w) => w.id).sort();
-  assert.deepEqual(PACK.weapons.filter((w) => problems(monk({ weapons: [w.id] }), /not proficient/).length === 0).map((w) => w.id).sort(), trainedMonk, 'a monk: simple, or martial with Light');
+  assert.deepEqual(PACK.weapons.filter((w) => !attacksOf(monk({ weapons: [w.id] }))[w.id].untrained).map((w) => w.id).sort(), trainedMonk, 'a monk: simple, or martial with Light');
   const light = say('weapon', W['hb-rk-quill-lance']);
   assert.match(light, /Light: for a martial weapon, a class whose training names martial weapons that have Light counts as trained in it\./);
   // Martial Arts: a monk with no armor and no Shield treats a simple or Light melee weapon as a monk weapon: the better of Strength and Dexterity (dex 16 > str 10) and the larger die.
@@ -277,12 +277,14 @@ test('armour: training, the category on the table, and a Shield that is a mark o
     const cat = a.category;
     // A wizard has no armor training; a fighter has all of it.
     const wiz = a.category === 'shield' ? wizard({ shield: true }) : wizard({ armour: a.id });
-    assert.equal(problems(wiz, /no training/).length, 1, `${a.id}: a wizard is refused`);
+    assert.equal(problems(wiz, /no training/).length, 0, `${a.id}: a wizard may wear it`);
+    assert.equal(rec(wiz).untrained?.length, cat === 'shield' ? undefined : 1, `${a.id}: armour is worn untrained, a Shield only loses its AC`);
+    assert.equal(rec(a.category === 'shield' ? fighter({ shield: true }) : fighter({ armour: a.id })).untrained, undefined, `${a.id}: a fighter does not`);
     assert.equal(problems(a.category === 'shield' ? fighter({ shield: true }) : fighter({ armour: a.id }), /no training/).length, 0, `${a.id}: a fighter is not`);
-    assert.ok(say('armour', a).includes(`A sheet that has a wearer in it who is not trained in ${cat === 'shield' ? 'Shields' : `${cat} armor`} is refused by the engine.`));
+    assert.ok(say('armour', a).includes(cat === 'shield' ? 'A wearer who is not trained in Shields may still hold it, but it gives no Armor Class.' : `A wearer who is not trained in ${cat} armor may still wear it, with Disadvantage on every D20 Test that uses Strength or Dexterity and no spellcasting.`));
     if (cat !== 'shield') assert.equal(rec(fighter({ armour: a.id })).armour, cat, `${a.id}: the wearer's armor category on the table`);
   }
-  assert.equal(apply(newGame(3), { type: 'setSheet', sheet: wizard({ armour: 'hb-rk-barkplate' }) }, DM).ok, false);
+  assert.equal(apply(newGame(3), { type: 'setSheet', sheet: wizard({ armour: 'hb-rk-barkplate' }) }, DM).ok, true);
   // A Shield: `shield: true` is the SRD Shield, +2 whatever this entry says; named as body armor it is refused; made an item's base it is the entry's number (#454).
   const sh = AR['hb-rk-lantern-shield'];
   assert.equal(rec(fighter({ shield: true })).ac, rec(fighter()).ac + 2, 'a Shield adds 2, not the entry\'s number');

@@ -97,7 +97,7 @@ test("freeCast forms, across the pack: it needs a spell with a summon step of fo
 const warlock = (inv = ["pact-of-the-chain"]) => ({ name: "Mor", class: "warlock", level: 5, abilities: { str: 8, dex: 14, con: 14, int: 10, wis: 12, cha: 18 }, skills: ["arcana", "deception"],
   spells: ["eldritch-blast", "chill-touch", "hex"], choices: { "eldritch-invocations": inv } });
 const PACT = "eldritch-invocations-pact-of-the-chain";
-const wizardSheet = { name: "Ven", class: "wizard", level: 5, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, skills: [], armour: "leather-armor", weapons: ["quarterstaff"], spells: ["find-familiar"] };
+const wizardSheet = { name: "Ven", class: "wizard", level: 5, abilities: { str: 10, dex: 14, con: 14, int: 16, wis: 12, cha: 10 }, skills: [], weapons: ["quarterstaff"], spells: ["find-familiar"] };
 function table(id, sheet, grid) {
   const s = grid ? newGame(7, { grid }) : newGame(7);
   for (const k of Object.keys(s.entities)) delete s.entities[k];
