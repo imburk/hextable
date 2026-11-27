@@ -29,6 +29,7 @@ const REGISTRY = {
   aimrange: ['aimrange'],
   objectaim: ['objectaim'],
   walls: ['walls'],
+  circle: ['circle'],
   healthbars: ['healthbars'],
   dieconfirm: ['dieconfirm'],
   spellcard: ['spellcard'],
