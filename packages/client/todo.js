@@ -15,6 +15,18 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const TYPES = ['untyped', 'acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder'];
 const TOOLS = [['place', 'Place'], ['harm', 'Damage'], ['mend', 'Heal'], ['cond', 'Condition'], ['ac', 'AC']];
 
+// What a badge counts, in words (#844): `things` are the short phrases of what waits ("Ana asks to join", "rewards to settle"), `cards` the open
+// to-do cards. One place for the title and aria-label of both badges and for the DM tools' first row. -> { n, text: "2 waiting: Ana asks to join; rewards to settle" }
+export function waitingWords(things = [], cards = []) {
+  const parts = [...things];
+  if (cards.length) {
+    const names = cards.map((c) => String(c.name || 'a note'));
+    parts.push(cards.length === 1 ? `a to-do card (${names[0]})` : `${cards.length} to-do cards (${names.slice(0, 3).join(', ')}${names.length > 3 ? ', ...' : ''})`);
+  }
+  const n = things.length + cards.length;
+  return { n, text: n ? `${n} waiting: ${parts.join('; ')}` : '' };
+}
+
 export function initTodo({ mount, state, isDM, act, toast, place, waitLine = null }) {
   let edit = null;                 // { n, id, tool }: the tool open under a creature of a card
   let sig = null, seen = null;     // what was drawn last; the newest card number the DM has been told of
@@ -111,5 +123,5 @@ export function initTodo({ mount, state, isDM, act, toast, place, waitLine = nul
     waitLine.textContent = w.length ? `${text}: waiting for the DM` : '';
   }
 
-  return { sync, count: () => (isDM() ? open().length : 0), waiting };
+  return { sync, count: () => (isDM() ? open().length : 0), cards: () => (isDM() ? open() : []), waiting };
 }

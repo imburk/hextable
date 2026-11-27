@@ -172,6 +172,9 @@
     </section>
     <section id="dm" class="tabpanel" role="region" aria-labelledby="drawer-title" data-sec="" data-acc hidden>
   <!-- DM tools (docs/specs/one-token-menu.md, M5): what waits is on top (the to-do tray is under "Waiting for you" on the first level since M6); then a list of seven screens, one tap each (the menu's third level, drawer.js). Every id is kept. -->
+  <ul id="dm-waiting-ul" class="menu-list" aria-label="Waiting for you">
+    <li id="dm-waiting-li" hidden><button type="button" class="menu-row" id="dm-waiting"><span class="mr-name">Waiting for you (<span id="dm-waiting-n"></span>)</span><span class="mr-sum" id="dm-waiting-says"></span><span class="mr-chev" aria-hidden="true">&rsaquo;</span></button></li>
+  </ul>
   <div id="dm-table"></div>
   <section id="dm-fallen" hidden><h3>The party has fallen</h3>
     <p class="note">Everyone in the party is dead or down and stable. The card with your choices can be brought back.</p>

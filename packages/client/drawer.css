@@ -346,3 +346,10 @@ body[data-menu-shape="columns"] .menu-level { padding-bottom: 12px; }
 /* a character's sigil (Decision 4b): a letter on its colour inside its health ring; the same ring as the die's, on the strip, the arc and More */
 .pr-sig { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--good, #5a9a5a) var(--hp, 100%), var(--line) 0); }
 .pr-sig b { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--c, #888); color: #fff; text-shadow: 0 1px 2px #0008; font-size: 15px; }
+#dm-waiting-li .menu-row { border-color: var(--accent); }      /* #844: the first row of the DM tools, only while something waits */
+#dm-waiting-ul { padding: 0; margin: 0 0 10px; list-style: none; }
+#dm-waiting-ul[hidden] { display: none; }
+#dm-waiting .mr-sum { position: static; font-size: 13px; color: inherit; display: block; text-align: left; pointer-events: auto; }
+#dm-waiting { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 56px; width: 100%; text-align: left; }
+#dm-waiting .mr-name { white-space: normal; }
+#dm-waiting .mr-chev { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
