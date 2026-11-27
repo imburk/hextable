@@ -10,7 +10,7 @@ import { noteManual, tidy } from './todo.js';
 import { FT, ground, under } from './space.js';
 import { fightEndsScene } from './scenes.js';
 import { remember, sightRule, unknown } from './vision.js';
-import { mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
+import { BETWEEN_OK, mayAsk, opportunityAttack, WHILE_WAITING } from './reactions.js';
 import { control, controllerOf, current, fail, homebrewBlock, homebrewCreatures, homebrewSources, ownerOf, Pause, RuleError, RUN, setRun } from './engine/shared.js';
 import { aloft, lookAround, mayBeHeavy } from './engine/world.js';
 import { checkEvents, startWork, stopWork, WorkLimit } from './effects.js';
@@ -29,6 +29,7 @@ import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
 import { handlers as travel } from './engine/travel.js';
 import { handlers as trade, settleShops } from './engine/trade.js';
+import { handlers as legendary, BETWEEN_REFUSAL } from './engine/legendary.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
 export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, controllerOf, FLY_CEILING, hbId, homebrewBlock, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
@@ -54,7 +55,7 @@ export { opportunityAttack };
 
 // Every action's handler, from the domain modules in engine/ (CLAUDE.md, Engine layout). An action
 // type is defined in one module only: if two defined it, the later spread would win silently.
-const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, travel, trade, {
+const handlers = buildHandlers([movement, attacks, casting, features, characters, rests, dm, companions, travel, trade, legendary, {
   // { type: 'react', prompt, take: reactionId | null, slot? }: the answer to the reaction an action
   // is waiting on (`pending`; reactions.js). Given by the reacting creature's controller or the DM
   // (the DM's answer overrides). `prompt` is the number it was asked under, so an answer to an
@@ -166,6 +167,8 @@ function dispatch(s, action, ctx, ev) {
   if (type === 'move' && s.map?.holding) fail(NO_WALK);
   // While an action waits for a reaction, nothing that could change how it comes out may happen.
   if (s.pending && !WHILE_WAITING.has(action.type)) fail('The table is waiting for a reaction to be answered.');
+  // Between turns, while a legendary creature may act (engine/legendary.js): nobody has a turn, and only BETWEEN_OK may be done.
+  if (s.encounter?.between && !BETWEEN_OK.has(action.type)) fail(BETWEEN_REFUSAL);
   h(s, action, ctx, ev);
 }
 

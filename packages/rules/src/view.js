@@ -229,6 +229,8 @@ function viewEncounter(state) {
     // A flag that names a creature the party does not know of (`hit:<attacker>:<target>`, `attacked:<id>`) is left out.
     flags: activeHidden ? {} : Object.fromEntries(Object.entries(enc.flags).filter(([k]) => !k.split(':').some((x) => state.entities[x] && classify(state, x) === 'hidden'))),
     order,
+    // The table waits between two turns for a legendary creature (engine/legendary.js): that it waits, never for whom or what is offered.
+    ...(enc.between ? { between: true } : {}),
   };
 }
 

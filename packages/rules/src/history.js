@@ -389,6 +389,9 @@ export function describeStep(action, events, before, after) {
     case 'mount': label = `${who} mounted ${name(a.mount)}`; break;
     case 'place': if (a.node !== undefined) { const r = ev('relocated'), ids = r?.ids ?? []; label = { label: `${names(ids, name)} ${ids.length === 1 ? 'was' : 'were'} placed at ${place(r)}`, shown: told(names(ids, name, true), shownIds(ids).length === 1 ? 'was placed' : 'were placed') }; break; }
       label = `${who} ${ACTS.place}`; break;
+    // The legendary window (engine/legendary.js): the DM's; players are told nothing of a skip, of closing it or of setting a creature's counters.
+    case 'legendary': label = { label: a.done ? 'The legendary window was closed' : `Skipped ${who}'s legendary action`, shown: null }; break;
+    case 'legendarySet': label = { label: `${who}'s legendary counters were set`, shown: null }; break;
     case 'dismount': label = `${who} dismounted`; break;
     case 'companion': label = a.auto ? `${who} was left to the engine to play` : `${who} waits for its player again`; break;
     default: label = ACTS[a.type] ? `${who} ${ACTS[a.type]}` : `${a.type} (an action)`;

@@ -548,7 +548,7 @@ const base = {
       sc || fail(`${e.name} has nothing that ends a condition at the end of its turn.`);
       (typeof a.cure === 'string' && can.includes(a.cure)) || fail(can.length ? `${sc.name} can end ${can.map(conditionName).join(' or ')} on ${e.name} now.` : `${e.name} has none of the conditions ${sc.name} ends.`);
     }
-    if (finishTurn(s, e, ev, a.cure)) advanceTurn(s, ev);
+    if (finishTurn(s, e, ev, a.cure)) advanceTurn(s, ev, e.id);
   },
 };
 

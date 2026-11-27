@@ -52,6 +52,10 @@ export const WHEN = {
 // what changes nothing the waiting action could depend on (talk, notes, handouts, seats).
 export const WHILE_WAITING = new Set(['react', 'say', 'ping', 'note', 'claim', 'release', 'handout', 'showHandout', 'hideHandout', 'removeHandout', 'askCheck']);
 
+// Actions the table may take while a window for legendary actions is open (docs/specs/legendary.md, Decision 3): nobody has a turn, so only what
+// changes nothing about whose turn it is. What waits for a reaction is allowed too (a legendary action may ask), and the DM may end the fight.
+export const BETWEEN_OK = new Set([...WHILE_WAITING, 'legendary', 'legendarySet', 'reactions', 'harm', 'mend', 'setHp', 'condition', 'setAc', 'place', 'save', 'todoDone', 'endEncounter']);
+
 // Addition H of docs/specs/homebrew-subclasses.md: the feature of `o` that lets it move after its Opportunity Attack hits (`triggers.opportunityHit`), or null.
 // What it gives is feet of movement, kept on the fight's turn flags as `rmove:<creature>` until the next turn begins (engine/movement.js).
 export const OWED_MOVE = 'rmove';

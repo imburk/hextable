@@ -425,8 +425,16 @@ export function checkEnd(s, ev) {
   if (!foes || !party) endEncounter(s, ev, !foes ? 'victory' : 'defeat');
 }
 
-export function advanceTurn(s, ev) {
+// The window for legendary actions (engine/legendary.js, docs/specs/legendary.md, Decision 3) is opened from here, but it is made in a module
+// above this one (it plays turns, so it imports advanceTurn): it hands its opener over when it loads (engine.js imports it), so no import cycle.
+export const HOOKS = { window: null };
+// `taken` is the creature whose turn has just been taken (ended by `endTurn`, played for it as set aside, or a death save rolled): the table may then
+// stop for a legendary creature (HOOKS.window, which sets `enc.between` and says so), and goes on from where it stopped when the DM closes the window
+// (legendary.js calls this again, with nothing taken). A fight with no legendary creature that could act goes by exactly as it did.
+export function advanceTurn(s, ev, taken = null) {
   const enc = s.encounter;
+  delete enc.between;                                                    // a turn begins: a window still open (a creature that left the order) goes with it
+  if (taken !== null && HOOKS.window?.(s, ev, taken)) return;
   settleOrder(s);
   // `idle` counts turns nobody can take (the dead, the down); two laps of them end the fight in a
   // stalemate. `auto` counts turns the engine settles for creatures set aside (stepping away, below):
@@ -445,8 +453,9 @@ export function advanceTurn(s, ev) {
     let stepped = false;
     if (e.hp <= 0) {
       turnSteps(s, ev, KIT, e); stepped = true;
-      if (e.hp <= 0 && !e.cond.stable) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
-      if (e.hp <= 0) { idle++; continue; }
+      const rolled = e.hp <= 0 && !e.cond.stable;
+      if (rolled) { deathSave(s, e, ev); checkEnd(s, ev); if (!s.encounter) return; }   // the last of the party may have died or become Stable
+      if (e.hp <= 0) { idle++; if (rolled && HOOKS.window?.(s, ev, e.id)) return; continue; }   // a death save is a turn taken
     }
     const how = auto < enc.order.length ? awayHow(s, e) : null, late = enc.moved?.[e.id];
     if (late?.turn && late.round === enc.round) {                       // a turn set aside part-way through goes on where it stopped
@@ -472,6 +481,7 @@ export function advanceTurn(s, ev) {
     // action and stays where it is, and its turn ends.
     auto++;
     if (!awayTurn(s, e, ev)) return;
+    if (HOOKS.window?.(s, ev, e.id)) return;                             // a turn played for it is a turn taken
   }
   endEncounter(s, ev, 'stalemate');
 }
