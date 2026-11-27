@@ -25,6 +25,7 @@ Last checked against the code: 2026-11-20 (tested by `packages/rules/test/guides
 | [Starting page](start-page.md) | Play and Tools, Carry on | Draft |
 | [Flying and swimming control](fly-swim-control.md) | A column of translucent cubes to pick a height, then a plane of reachable cells; swimming needs one engine step | Draft; nothing built |
 | [Keyboard](keyboard.md) | WASD and arrows, follow camera, key maps | Built (#357) |
+| [Pop-out windows](popout-windows.md) | Turn order, log, dice and a sheet in their own windows on a computer; the map later | Draft; owner's answers of 21 November; not built |
 | [Feedback button](feedback.md) | A comment with what the player was just shown | Built (first version) |
 | [Portable characters](portable-characters.md) | A character file with a signed history and level meter; it carries its own homebrew (#592) | Draft; nothing built |
 | [Homebrew](homebrew.md) | Table packs, the registry, reader, dry run, builder; a character file may carry its own pieces, which the DM allows one by one (#592) | Draft; B1 to B7 and the CLI built; builder (B9 to B11) not |
