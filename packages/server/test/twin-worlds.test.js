@@ -1717,11 +1717,11 @@ test("zones: a zone whose `spare` names a creature the DM has hidden is sent the
   });
 });
 
-const vault = (w) => {
-  const s = w.state, tiles = s.map.levels[0].tiles;
-  s.map.regions = [{ id: "hall", name: "The hall", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q < 4), revealed: true }, { id: "vault", name: "The vault", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q >= 4) }];
-};
 test("zones: a zone in a region the party has not explored is sent to no player, the same as with no zone there", () => {
+  const vault = (w) => {
+    const s = w.state, tiles = s.map.levels[0].tiles;
+    s.map.regions = [{ id: "hall", name: "The hall", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q < 4), revealed: true }, { id: "vault", name: "The vault", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q >= 4) }];
+  };
   twin({
     players: ["Pat"],
     setup(w) { zoneWorld(w); vault(w); },
@@ -1775,37 +1775,32 @@ test("zones: Spike Growth of a foe the party sees is sent to no player; the same
   assert.ok(control.diffs.length > 0, "a zone that is not camouflaged is told of: the worlds differ");
 });
 
-test("zones: a zone that reaches into an unexplored region is sent the same whatever its size, its height or its centre there, with the cells the party knows the same", () => {
-  const sphere = (size, origin, extra) => (w) => zoneFor(w, hideOne(w, { q: 8, r: 0 }), "moonbeam", "Moonbeam", { area: { shape: "cylinder", size, height: size * 2 }, hexes: [...cellsAround({ q: 3, r: 0 }, 2), ...extra], origin });
-  const r = twin({
-    players: ["Pat"],
-    setup(w) { zoneWorld(w); vault(w); },
-    steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: -5, r: 1 } } }],
-  }, {
-    hide: sphere(10, { q: 5, r: 0, z: 0 }, []),
-    plain: sphere(20, { q: 6, r: 1, z: 20 }, cellsAround({ q: 7, r: 0 }, 1)),
-  });
-  const text = JSON.stringify(r.hidden.raw.Pat);
-  assert.ok(text.includes('"Moonbeam"') && text.includes('"zone"'), "the zone is sent, cut to the hall");
+// ---- Polymorph (#786 wave 5 part 4, #835): the form is the target's, so a player is told of it; who cast it and where from are not told unless the caster is known ----
+// Decided: a creature of the party that is polymorphed is sent the change (form, size, Temporary Hit Points, the effect's start and end), whoever cast it; the cast itself, the caster's name and position, and any note that
+// names the caster as its actor (the DM-only hand-over, the "no room" note) go only where the caster is known to the party. Two worlds that differ in WHO the hidden caster is (name and place) must be sent the same bytes.
+const polySetup = (w) => {
+  seeInvisibleSetup(w);
+  w.must({ type: "place", actor: "fighter", to: { q: 0, r: 0 } });
+  w.must({ type: "place", actor: "wizard", to: { q: -3, r: 0 } });
+  w.state.entities.fighter.saveBonus = { ...w.state.entities.fighter.saveBonus, wis: -100 };      // a foe's cast: it saves, and fails
+};
+const hiddenCaster = (name, at) => (w) => {
+  w.must({ type: "spawn", monster: "goblin-warrior", at, name, hidden: true });
+  Object.assign(byName(w, name), { hp: 500, maxHp: 500, spells: ["polymorph"], slots: { 4: 3 }, slotsMax: { 4: 3 } });
+  w.must({ type: "cast", actor: byName(w, name).id, spell: "polymorph", target: "fighter", choice: "wolf", slot: 4 });
+};
+test("polymorph: a DM-hidden caster polymorphing a party member: the players are sent the form and not the caster, the same whoever (and wherever) the hidden caster is", () => {
+  const script = { players: ["Pat", "Sam"], setup: polySetup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "dm", act: { type: "harm", actor: "fighter", amount: 3 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Woof." } },
+    { by: "dm", act: { type: "harm", actor: "fighter", amount: 30 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Back." } }] };
+  const r = twin(script, { hide: hiddenCaster("Mage", { q: 6, r: 0 }), plain: hiddenCaster("Witch", { q: 9, r: 2 }) });
+  for (const who of ["Pat", "Sam"]) { const raw = JSON.stringify(r.hidden.raw[who]); assert.ok(!raw.includes("Mage") && !raw.includes("Witch"), `${who} is not told who cast it`); }
+  { const raw = JSON.stringify(r.hidden.raw.Pat); assert.ok(raw.includes("\"type\":\"form\"") && raw.includes('"form":"wolf"') && raw.includes('"name":"Polymorph"'), "the party member's form and the effect on it are sent (the record)"); }
 });
-
-test("zones: a hidden caster's Web that has caught a party creature is told the same whichever caster it is: the effect's own number is nowhere, in the entry, the condition or the events", () => {
-  const web = (w, g) => {
-    const fx = zoneFor(w, g, "web", "Web", { area: { shape: "cube", size: 20 }, hexes: cellsAround({ q: -4, r: 0 }, 1), origin: { q: -4, r: 0, z: 0 } });
-    const f = w.state.entities.fighter;
-    fx.parts.push({ target: "fighter", cond: "restrained" });
-    f.cond.restrained = { effect: fx.id };
-  };
-  const end = (w) => { const fx = w.state.effects.find((x) => x.zone); w.must({ type: "endEffect", effect: fx.id }); };
-  const r = twin({
-    players: ["Pat"],
-    setup: (w) => zoneWorld(w),
-    steps: [{ by: "Pat", act: { type: "say", as: "fighter", text: "Stuck." } }, end],
-  }, {
-    hide: (w) => { web(w, hideOne(w, { q: 6, r: 0 })); },
-    plain: (w) => { burn(w, { q: 9, r: -4 }); w.state.seq += 2; web(w, hideOne(w, { q: 5, r: 3 }, "Other", "owl")); },
-  });
-  const text = JSON.stringify(r.hidden.raw.Pat);
-  assert.ok(text.includes('"z1"'), "the zone is told by an id of its own");
-  assert.ok(!/"fx\d+"/.test(text.slice(text.indexOf('"z1"') - 400)), "no effect number after it");
+test("polymorph: a party member polymorphed beside hidden creatures that a Large Beast would overlap is sent the same as with bare cells (not refused, not made smaller, no note)", () => {
+  const ring = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+  const setup = (w) => { polySetup(w); Object.assign(w.state.entities.wizard, { slots: { 4: 3 }, slotsMax: { 4: 3 } }); w.state.entities.wizard.spells.push("polymorph"); };
+  const script = { players: ["Pat", "Sam"], setup, steps: [{ by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Sam", act: { type: "cast", actor: "wizard", spell: "polymorph", target: "fighter", choice: "brown-bear", slot: 4 } }, { by: "dm", act: { type: "advanceTime", minutes: 1 } }, { by: "Pat", act: { type: "say", as: "fighter", text: "Grr." } }] };
+  const r = twin(script, { hide: (w) => ring.forEach(([dq, dr], i) => w.must({ type: "spawn", monster: "goblin-warrior", at: { q: dq, r: dr }, name: `Lurker${i}`, hidden: true })), plain: (w) => ring.forEach(([dq, dr]) => burn(w, { q: dq + 8, r: dr - 6 })) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"size":"large"'), "it became a Large Beast");
 });

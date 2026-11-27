@@ -4,7 +4,8 @@
 import { noteRuns } from '../todo.js';
 import { gridOf, col } from '../grid.js';
 import { d20Faces, die, rand, roll } from '../rng.js';
-import { CONTENT, MONSTERS, SPELLS, summonTemplate, TILES } from '../content/index.js';
+import { CONTENT, MONSTERS, MONSTER_ACTIONS, SPELLS, summonTemplate, TILES } from '../content/index.js';
+import { leaveForm, takeForm } from '../forms.js';
 import { DAMAGE_TYPES } from '../content/schema.js';
 import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, turnSteps, walk as walkSteps } from '../effects.js';
@@ -1078,6 +1079,9 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
     if (!dying) t.hp = Math.max(0, t.hp - (n - soak));
     ev.push({ type: 'damage', target: t.id, amount: n, dtype: p.type, ...(p.spell ? { from: p.from } : {}), hp: dying ? 0 : t.hp, note, ...(noted[pi].length ? { adjusted: noted[pi] } : {}), ...(soak ? { temp: soak, tempHp: t.tempHp } : {}), ...rolledOf(p, n) });
   }
+  // A whole form (Polymorph) ends on the creature when its Temporary Hit Points are gone, whoever gave them last: what is left of the damage has gone on to its real Hit Points above, as the rule for Temporary Hit Points says.
+  const poly = t.form?.whole === true && !(t.tempHp > 0) ? effectsOf(s).find((x) => x.id === t.form.fx) : null;
+  if (poly) endEffect(s, ev, poly, `${t.name} has no Temporary Hit Points left`);
   if (t.tempFx && !(t.tempHp > 0)) delete t.tempFx;
   const dealtBy = parts.find((p) => typeof p.by === 'string')?.by ?? null;
   if (total > 0 && dealtBy !== null) endWards(s, ev, dealtBy, `${s.entities[dealtBy]?.name ?? 'The warded creature'} dealt damage`);        // Sanctuary: the warded creature deals damage
@@ -2465,8 +2469,60 @@ function whyNobody(src) {
   return area?.shape === 'cube' && area.size > CUBE_AIM_MAX ? 'Its area is a cube of more than 1,000 feet, which the engine does not place. The DM places the area, picks the creatures it catches and applies the effect. ' : '';
 }
 ON.sizeEnd = sizeEnd;
+
+// ---------- Polymorph (a `polymorph` step; docs/specs/rules-expansion.md, "Build notes: wave 5 part 4") ----------
+// The Challenge Rating a creature counts as for Polymorph: its stat block's, or its level (a character's total level) where it has none.
+const crOf = (t) => { const m = Object.hasOwn(CONTENT.monsters, t.tpl ?? '') ? CONTENT.monsters[t.tpl] : null; return m && typeof m.cr === 'number' ? m.cr : (t.level ?? 0); };
+const crWord = (n) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' })[n] ?? String(n);
+// Why the Beast `id` is not one Polymorph may turn `t` into (null if it is). Reads the target's Challenge Rating or level, so a cast must not say it to a player about a creature that is not of the party.
+export function beastWhy(t, id) {
+  const m = Object.hasOwn(CONTENT.monsters, id) ? CONTENT.monsters[id] : null;
+  if (!m || m.type !== 'beast') return `${id} is not a Beast.`;
+  const cap = crOf(t);
+  return m.cr <= cap ? null : `The ${m.name} has Challenge Rating ${crWord(m.cr)}, and ${t.name}'s is ${crWord(cap)}${Object.hasOwn(CONTENT.monsters, t.tpl ?? '') ? '' : ' (its level)'}: Polymorph turns a creature only into a Beast of its own Challenge Rating or lower.`;
+}
+// The largest size, no bigger than the Beast's own, that `t` fits in where it stands, judged on what the caster's side knows: a creature the DM keeps hidden or the party cannot know of is never counted (a refusal or a smaller size would tell the
+// players it is there), and the DM is told of it instead (`told`). The same rule as Enlarge's (world.js `inTheWay`), over every size down from the Beast's.
+function fitFor(s, t, size) {
+  const G = gridOf(s.map), order = Object.keys(SIZES), B = barriers(s.map);
+  for (let i = Math.max(0, order.indexOf(SIZES[size] ? size : 'medium')); i >= 0; i--) {
+    const body = { ...t, size: order[i] }, told = [];
+    let found = false;
+    for (const o of living(s)) {
+      if (o.id === t.id || !o.pos || !overlapAt(o, o.pos, body, t.pos, G)) continue;
+      if (o.side !== 'party' && (o.hidden || unknown(s, o))) told.push(o); else found = true;
+    }
+    if (!found && (!ground(s.map, t.pos) || fitsOn(s.map, body, t.pos, B))) return { size: order[i], told };
+  }
+  return { size: order[0], told: [] };
+}
+// `polymorph: <Beast id>` (the spell's choice put in by the cast): the creature takes the Beast's whole stat block (forms.js, `takeForm` with `whole`) for as long as the lasting effect runs, and the Beast's Hit Points as Temporary Hit Points
+// tied to that effect, which ends it on the creature when they are gone (`damage`, above). A Beast too strong for the creature does nothing and the DM alone is told. A Beast that does not fit is taken at the largest size that does.
+export function polymorph(s, t, step, f, ev) {
+  const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
+  if (!fx || fx.bound) return false;
+  if (t.dead || t.object || !t.pos) return true;
+  const id = step.polymorph, tpl = MONSTERS[id], m = CONTENT.monsters[id], name = f.src.name;
+  if (!tpl || !m) return false;
+  const dm = (text) => ev.push({ type: 'manual', actor: f.actor ?? t.id, name, partial: true, text });
+  const why = beastWhy(t, id);
+  if (why) { dm(`${why} ${name} did nothing to ${t.name}.`); return true; }
+  const { size, told } = fitFor(s, t, m.size);
+  // Already in a form (Wild Shape, or another Polymorph): the new one takes its place.
+  const holding = t.form ? effectsOf(s).find((x) => x.id === t.form.fx) : null;
+  if (holding) endEffect(s, ev, holding, `${t.name} took another form`); else if (t.form) leaveForm(t);
+  const was = t.size;
+  fx.parts.push({ target: t.id, form: true });
+  takeForm(t, id, m.name, tpl, MONSTER_ACTIONS[id] ?? [], fx.id, { whole: true, size });
+  ev.push({ type: 'form', id: t.id, form: id, name: m.name });
+  if (t.size !== was) ev.push({ type: 'size', id: t.id, size: t.size });
+  if (size !== m.size) ev.push({ type: 'note', id: t.id, ...(f.actor ? { actor: f.actor } : {}), text: `${name}: there is no room for ${t.name} as a ${m.name} (${m.size}), so it takes the largest size that fits (${size})` });
+  if (told.length) dm(`${t.name} became a ${m.name} in ${name}, and ${told.map((o) => o.name).join(', ')} (which the party does not know of) is in its new space. The engine did not count ${told.length === 1 ? 'it' : 'them'}, so as not to tell the players: the DM moves whoever should not be there.`);
+  tempHp(s, t, tpl.hp, ev, f, null, { replace: true });
+  return true;
+}
 // "A creature you can see" (Conjure Animals, zones.js `seen`): `c` sees `t` by the sight rules (sight.js), and `t` is not hiding from it; for a caster of the party, not a creature the DM hid or one the party does not
 // know of either (what the players could not be shown is not forced to save). Judged on what the caster's side knows, never on who is there.
 const seenBy = (s, c, t) => canSee(s, c, t) !== 'no' && !hiddenFrom(t, c) && !(c.side === 'party' && (t.hidden || unknown(s, t)));
-export const KIT = { seen: seenBy, resize, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
+export const KIT = { seen: seenBy, resize, polymorph, meldInto, expelMelded, confuse, wardCheck, endWards, stabilise, shine, dispel, revive, hold, heldCondition, creatureType, whyNobody, evades, rollToHit, savingThrow, rerollSave, damage, dealt, heal, tempHp, condition, modifier, eachTurn, endSpell, arm, ward, command, imbue, judge, objectActor, objectStep, cutWall, sense, fall, push, reveal, renew, teleport, cure, kill, breakConcentration, summon };
 

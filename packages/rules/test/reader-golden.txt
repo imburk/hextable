@@ -500,6 +500,28 @@ When it is cast, the DM is shown the author's description (unless a step has alr
 Not checked against any rulebook.
 DM: Whatever the description says beyond the steps above.
 
+== hb-test-beast-shape
+"Beast Shape" (level 4 transmutation, 60 feet, action, 1 hour, concentration).
+Components: Verbal and Somatic (speaking it gives away a hidden caster).
+On the spell lists of: wizard.
+Sorted under: utility.
+Its roll: the target makes a Wisdom saving throw (read from its steps, since the entry does not say).
+When casting it, the caster chooses a Beast to take the form of (any Beast the game has); a step below that says "chosen" uses that Beast.
+One creature within 60 feet makes a Wisdom saving throw. This happens only if the target is on another side than the caster.
+On a failure:
+  It takes the form of the Beast the caster chose, if that Beast's Challenge Rating is no higher than its own (or its level, if it has none; one that is too high does nothing, and a player's cast is refused when the target is on the caster's side). The Beast's stat block replaces its game statistics, its Intelligence, Wisdom, Charisma, saves and skills too; it keeps its alignment, personality, creature type, Hit Points and Hit Point Dice. It gains Temporary Hit Points equal to the Beast's Hit Points, in place of any it had, and the form ends on it as soon as it has none left (what is left of the damage goes on to its real Hit Points). It cannot speak or cast spells, and its gear gives it nothing.
+The form goes when the spell ends (the caster's Concentration breaking, or the effect ended), and the creature has its own statistics and the Hit Points it has. A room that is too small for the Beast gives it the largest size that fits, as far as the caster's side knows: the engine tells the DM alone if a creature the party does not know of is in its space.
+It takes the form of the Beast the caster chose, if that Beast's Challenge Rating is no higher than its own (or its level, if it has none; one that is too high does nothing, and a player's cast is refused when the target is on the caster's side). The Beast's stat block replaces its game statistics, its Intelligence, Wisdom, Charisma, saves and skills too; it keeps its alignment, personality, creature type, Hit Points and Hit Point Dice. It gains Temporary Hit Points equal to the Beast's Hit Points, in place of any it had, and the form ends on it as soon as it has none left (what is left of the damage goes on to its real Hit Points). It cannot speak or cast spells, and its gear gives it nothing. This happens only if the target is on the caster's side.
+The form goes when the spell ends (the caster's Concentration breaking, or the effect ended), and the creature has its own statistics and the Hit Points it has. A room that is too small for the Beast gives it the largest size that fits, as far as the caster's side knows: the engine tells the DM alone if a creature the party does not know of is in its space.
+The caster picks the creatures, each one only once; a wall between the caster and a creature keeps it from being picked.
+Saving throws are against the caster's spell save DC.
+It lasts up to 1 hour. The engine times it, and when it ends, so does everything it put on creatures.
+It needs Concentration: it also ends if the caster loses Concentration or begins concentrating on another spell.
+Tier: assist. The engine applies the steps above; the DM applies the rest of the description.
+When it is cast, the DM is shown the author's description (unless a step has already handed something to the DM) to apply what the steps do not.
+Not checked against any rulebook.
+DM: Whatever the description says beyond the steps above.
+
 == hb-test-glow-pebble
 "Glow Pebble" (evocation cantrip, touch, action, 1 hour).
 Components: Verbal and Somatic (speaking it gives away a hidden caster).

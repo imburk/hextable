@@ -150,11 +150,12 @@ const UNSEEN = { dark: 'in darkness', 'out of sight': 'out of sight', hidden: 'h
 // Temporary Hit Points: they do not add up. A creature keeps the larger of what it has and what
 // it is given (the SRD lets it choose; nobody would choose fewer). From a lasting effect, they
 // vanish when it ends. They never wake a creature at 0 Hit Points.
-export function tempHp(s, t, amount, ev, f = null, r = null) {
+// `opts.replace` (Polymorph): the Beast's Hit Points are the creature's Temporary Hit Points whatever it had, for the form is held by them and ends when they are gone.
+export function tempHp(s, t, amount, ev, f = null, r = null, opts = {}) {
   if (t.dead) return;
   if (noAmount(t, amount, 'Temporary Hit Points', ev, f)) return;
   const had = t.tempHp ?? 0;
-  if (amount <= had) return ev.push({ type: 'tempHp', id: t.id, amount: 0, tempHp: had, kept: true, ...rolledOf(r, 0) });
+  if (amount <= had && !opts.replace) return ev.push({ type: 'tempHp', id: t.id, amount: 0, tempHp: had, kept: true, ...rolledOf(r, 0) });
   const fx = f?.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null;
   t.tempHp = amount;
   if (fx) { t.tempFx = fx.id; fx.parts.push({ target: t.id, temp: true }); } else delete t.tempFx;
@@ -227,6 +228,7 @@ export function rerollSave(s, t, abil, dc, onFail, from, ev) {
 // not barred from spells (Rage), and has not spent a spell slot already this turn (SRD: one a
 // turn). A cantrip needs none: [0]. Empty if it cannot.
 export function slotsFor(s, e, sp) {
+  if (e.form?.whole) return [];                                // a whole form (Polymorph) can't speak or cast spells
   if (untrainedGear(e).length) return [];                      // armour worn without training bars spellcasting (SRD "Armor Training")
   if (effectsOf(s).some((fx) => fx.source === e.id && fx.noSpells)) return [];
   if (sp.def.components?.includes('v') && silentAt(s, e.pos)) return [];       // Silence: no Verbal component can be spoken in the sphere (a reaction spell is neither offered nor cast)
