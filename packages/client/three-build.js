@@ -111,9 +111,22 @@ export function sightSig(sight) {
   for (let i = 0; i < t.length; i++) n = (Math.imul(n, 31) + t.charCodeAt(i)) | 0;
   return String(n);
 }
+// Water drawn by depth (#850): a tile's `depth` (feet, surface to bed) puts it in one of three steps, and the step tints the theme's
+// water colour: shallow (5-10 ft) lighter, middling (15-30 ft) as the theme has it, deep (35 ft and more) darker. Pure.
+export const WATER_STEPS = [{ upTo: 10, name: 'shallow', mix: 0.22, dim: 1 }, { upTo: 30, name: 'middling', mix: 0, dim: 1 }, { upTo: Infinity, name: 'deep', mix: 0, dim: 0.66 }];
+export const waterStep = (depth) => {
+  const d = Number.isFinite(depth) ? depth : 10;           // water with no depth is the 10 ft the engine gives it
+  return WATER_STEPS.findIndex((s) => d <= s.upTo);
+};
+// The colour (r, g, b in 0..1) for a tile of this theme colour: water by its depth, anything else untouched.
+export const tintWater = (tile, base) => {
+  if (!tile || tile.t !== 'water') return base;
+  const s = WATER_STEPS[waterStep(tile.depth)];
+  return base.map((v) => (v + (1 - v) * s.mix) * s.dim);
+};
 export function tileSig(map) {
   let n = 0;
-  for (const l of map.levels) for (const k in l.tiles) { const t = l.tiles[k]; n = (Math.imul(n, 31) + (t.t.charCodeAt(0) * 7 + t.t.length) * 131 + Math.round(((t.h ?? 0) + (t.lift ?? 0)) * 4) + 17) | 0; }
+  for (const l of map.levels) for (const k in l.tiles) { const t = l.tiles[k]; n = (Math.imul(n, 31) + (t.t.charCodeAt(0) * 7 + t.t.length) * 131 + Math.round(((t.h ?? 0) + (t.lift ?? 0)) * 4) + (t.t === 'water' ? (t.depth ?? 10) * 3 : 0) + 17) | 0; }
   return n;
 }
 
@@ -247,7 +260,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
     const t = h.tile, w = G.toWorld(h), locked = enc && !enc.arena[cellCol(h)], y = surfY(h.z, t), room = rooms.has(h.level.id);
     const lowest = surfaces(map, h)[0].z === h.z;
     const j = room ? 1 : 0.94 + jitter(h.q, h.r) * 0.12;
-    let c = th.tiles[t.t].map((v) => v * j);
+    let c = tintWater(t, th.tiles[t.t]).map((v) => v * j);
     if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
     if (!shown(map, h.level.id, h)) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
     const f = seenShade(h.level.id, cellCol(h));
@@ -277,7 +290,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
       const y = pa.top * UNIT;
       for (const cell of pa.cells) {
         const t = lv.tiles[cell.hex], key = cell.hex, locked = enc && !enc.arena[key], hex = cellParse(key), hz = lv.z + (t.h ?? 0);
-        let c = th.tiles[t.t].slice();
+        let c = tintWater(t, th.tiles[t.t]).slice();
         if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
         if (!shown(map, lv.id, { ...hex, z: hz })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
@@ -292,7 +305,7 @@ export function buildTerrain({ map, enc, sight, theme: th, ceiling, hasPicture =
         if (e.kind !== 'open' && e.kind !== 'drop') continue;
         if (e.kind === 'open' && caves.has(fl.id)) continue;
         const t = lv.tiles[e.hex], key = e.hex, locked = enc && !enc.arena[key];
-        let c = th.tiles[t.t].slice();
+        let c = tintWater(t, th.tiles[t.t]).slice();
         if (locked) { const g = (c[0] + c[1] + c[2]) / 3; c = c.map((v) => (v * 0.35 + g * 0.65) * 0.5); }
         if (!shown(map, lv.id, { ...cellParse(key), z: lv.z + (t.h ?? 0) })) c = c.map((v, i) => v * 0.45 + (i === 2 ? 0.1 : 0.02));
         const f = seenShade(lv.id, key);
@@ -317,7 +330,7 @@ function drawCave(b, cv, lv, tintOf, th) {
   for (const { closed, points } of cv.chains) {
     const m = closed ? points.length : points.length - 1;
     for (let i = 0; i < m; i++) {
-      const a = points[i], c = points[(i + 1) % points.length], y = a.z * UNIT, top = a.top * UNIT, floor = tintOf(lv, a.hex, th.tiles[lv.tiles[a.hex].t]);
+      const a = points[i], c = points[(i + 1) % points.length], y = a.z * UNIT, top = a.top * UNIT, floor = tintOf(lv, a.hex, tintWater(lv.tiles[a.hex], th.tiles[lv.tiles[a.hex].t]));
       b.quad(wpt(a.p, y), wpt(c.p, y), wpt(c.q, y), wpt(a.q, y), [...floor, 1]);
       const rc = tintOf(lv, a.hex, rock), v = 0.8 + 0.2 * noise(a.q, 0), mid = y + (top - y) * 0.4;
       b.quad(wpt(a.q, y), wpt(c.q, y), wpt(c.q, mid), wpt(a.q, mid), lit(rc, 0.55 * v));

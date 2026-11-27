@@ -504,3 +504,8 @@ from the SRD: "Suffocation" (Hazards), "Underwater Combat", "Swimming", the spel
   creature that is not the party's, nothing: the events name it (`id`, `actor`) and `view.js` drops them; the notes are not even made for it; the DM is told by a `partial` `manual`. Twin
   tests: `packages/server/test/twin-worlds.test.js` (a hidden creature running out of breath, gaining Exhaustion, and surfacing, by time and by the rounds of a fight).
 - **Not built, with reasons:** DEBT T110.
+
+## Build notes (water depth in the client, #850)
+
+- **Editor** (`packages/client/editor.js`): with Paint on Water a Depth select (5 to 200 in 5s, default 10, kept while the editor is open) sets `depth` on what is painted ("Depth 10 ft (to the bed)"); painting water of another depth over water repaints it; painting another terrain over water drops the key. The Properties tool on a water tile (no object on it) shows its Depth and changes it with a `tile` op carrying the tile with its new `depth`. DEBT T109 (1).
+- **Drawing** (`waterdepth` helpers in `packages/client/three-build.js`): three steps from the theme's water colour, by `depth`: 5-10 ft lighter, 15-30 ft as the theme has it, 35 ft and more darker. A tint per tile; no new geometry or texture. `tileSig` includes a water tile's depth so a change redraws.
