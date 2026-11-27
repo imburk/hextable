@@ -83,7 +83,7 @@ export function settleWindow(s, ev) {
   if (s.encounter?.between) settle(s, ev);
 }
 
-// What the engine tells of an option's part it could not go on with: the DM's, as a `manual` for a foe, a note for the party's own.
+// What the engine tells of an option's part it could not go on with: a `manual` event (partial), whoever runs the creature.
 const tell = (e, name, text) => ({ type: 'manual', actor: e.id, name, partial: true, text });
 
 // Takes one option (Decision 5): everything is checked first, and a refusal (a RuleError, which `apply` puts back from its copy) changes nothing. A question put to a
