@@ -17,6 +17,7 @@ const types = (r) => r.events.map((e) => e.type);
 function dragonFight(seed = 5, { monster = "adult-green-dragon", fight = true } = {}) {
   const s = newGame(seed);
   ok(s, { type: "setting", key: "autoEngage", value: false });
+  ok(s, { type: "setting", key: "legendaryWindows", value: true });
   const f = s.entities.fighter.pos;
   ok(s, { type: "spawn", monster, at: { q: f.q + 3, r: f.r }, name: "Verdigris" });
   const d = Object.values(s.entities).find((e) => e.name === "Verdigris");
@@ -311,4 +312,12 @@ test("a legendary creature the party does not know of is offered no window", () 
   assert.deepEqual(offeredAfter(s, current(s)), [], "melded into the stone: not known, not offered");
   const r = end(s);
   assert.ok(r.ok && !s.encounter.between && r.events.some((e) => e.type === "turn"), "the next turn starts in the same action");
+});
+
+test("with the table setting legendaryWindows off (the default) a dragon's fight has no window", () => {
+  const { s, d } = dragonFight();
+  assert.ok(offeredAfter(s, s.encounter.order.find((o) => o.id !== d.id).id).includes(d.id), "it could act");
+  assert.equal(apply(s, { type: "setting", key: "legendaryWindows", value: false }, DM).ok, true);
+  for (let i = 0; i < 8; i++) { const r = end(s); assert.ok(r.ok, r.error); assert.ok(!s.encounter.between); assert.ok(!r.events.some((e) => e.type === "legendaryWindow")); }
+  assert.equal(newGame(5).settings.legendaryWindows, undefined, "absent in a new game: no state changes");
 });

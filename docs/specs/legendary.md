@@ -246,6 +246,8 @@ that has `legendary.actions` and:
 
 **Lead's default (V025), for the owner to confirm:** a legendary creature hidden from the party (one the party does not know of: DM-hidden, hiding, melded, unseen) is offered no window; its legendary actions wait until it is known. So a fight with only such creatures goes on exactly as a world without them, and players are never sent that the table waits for what they cannot see.
 
+**Until stage L4 lands the window is off unless the DM turns it on** (lead, V025): the table setting `legendaryWindows` is `false` when absent, and with it off every fight plays exactly as it did. L4 turns the default on.
+
 **If nobody is offered, nothing opens** and the next turn starts exactly as today, in the same
 action, with the same events. A fight with no legendary creature is byte for byte what it was.
 

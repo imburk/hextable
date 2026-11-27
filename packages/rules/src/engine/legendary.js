@@ -49,6 +49,7 @@ export function offeredAfter(s, after) {
 
 // Opens the window after `after`'s turn, if anyone is offered. True: it is open and the table waits; false: nothing was done at all.
 function openWindow(s, ev, after) {
+  if (s.settings?.legendaryWindows !== true) return false;      // off until the DM's screen for it exists (stage L4): the table plays as it always did
   const enc = s.encounter, offered = offeredAfter(s, after);
   if (!offered.length) return false;
   enc.between = { after, round: enc.round, offered, done: [] };

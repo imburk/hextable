@@ -2062,6 +2062,7 @@ test("legendary: a window open for a dragon is sent the same whatever it has spe
   const setup = (w) => {
     for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
     w.must({ type: "setting", key: "autoEngage", value: false });
+    w.must({ type: "setting", key: "legendaryWindows", value: true });
     w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: -3, r: 2 }, name: "Verdigris" });
     w.must({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 8 });
   };
@@ -2100,6 +2101,7 @@ test("legendary: a dragon out of the party's sight, in a fight's order, opens no
     w.must({ type: "loadMap", map: wallMap() });
     w.must({ type: "setting", key: "autoEngage", value: false });
     w.must({ type: "setting", key: "sight", value: "los" });
+    w.must({ type: "setting", key: "legendaryWindows", value: true });
     w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 2 }, name: "Foe" });
     w.putIn();
   };

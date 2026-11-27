@@ -117,7 +117,7 @@ const SENSE2 = [
   { pre: (s) => apply(s, { type: "mapEdit", ops: [{ op: "region", region: { id: "r1", name: "R", level: "ground", hexes: ["0,0", "1,0"] } }] }, DM), a: { type: "revealRegion", region: "r1", revealed: true } },
   // Legendary actions (docs/specs/legendary.md, L1b): a dragon among them; its counters set by the DM, and in a fight, its window open after a turn and skipped.
   { pre: (s) => apply(s, { type: "spawn", monster: "adult-green-dragon", at: { q: 0, r: 4 } }, DM), a: (s) => ({ type: "legendarySet", actor: dragonOf(s), set: { acts: 1 } }) },
-  { pre: (s) => { apply(s, { type: "spawn", monster: "adult-green-dragon", at: { q: 0, r: 4 } }, DM); for (let i = 0; i < 12 && s.encounter && !s.encounter.between; i++) apply(s, { type: "endTurn", actor: current(s) }, DM); }, a: (s) => ({ type: "legendary", actor: dragonOf(s), skip: true }) },
+  { pre: (s) => { apply(s, { type: "setting", key: "legendaryWindows", value: true }, DM); apply(s, { type: "spawn", monster: "adult-green-dragon", at: { q: 0, r: 4 } }, DM); for (let i = 0; i < 12 && s.encounter && !s.encounter.between; i++) apply(s, { type: "endTurn", actor: current(s) }, DM); }, a: (s) => ({ type: "legendary", actor: dragonOf(s), skip: true }) },
   // The DM's to-do tray (#675): a card from a note the engine handed over (a setting that changes nothing on the map), then Done.
   { pre: (s) => apply(s, { type: "setting", key: "hpMethod", value: "rolled" }, DM), a: (s) => ({ type: "todoDone", n: s.todo?.cards?.[0]?.n }) },
   // The water (#849, E3): the stone floor flooded 5 feet over the fighter's cell, a tide set, and a tide stopped. It changes the terrain by putting a new map in whole.

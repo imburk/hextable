@@ -487,7 +487,10 @@ export const SETTINGS = { sight: SIGHT_RULES,
   // Characters people bring (docs/specs/portable-characters.md, Decision 5; engine/characters.js, offer and admit): 'own-trusted' (the default, so first), where the
   // DM ticks each offered character whose history is not vouched for; 'own', any offer admitted on the DM's say; 'new', no offers. The adventure's level range
   // is the setting `level`, which the `setting` action takes as a level or { min, max } (above). Words in SETTING_TEXT.
-  characters: ['own-trusted', 'own', 'new'] };
+  characters: ['own-trusted', 'own', 'new'],
+  // Legendary actions (engine/legendary.js, docs/specs/legendary.md, Decision 3): whether the table stops after a turn for a legendary creature that could act.
+  // Off (the first, and the default when absent) until the DM's screen for it exists (stage L4); then the DM turns it on.
+  legendaryWindows: [false, true] };
 // What the square-map settings and the stepping-away rules mean, in words a DM reads beside the choice.
 export const SETTING_TEXT = {
   characters: {
