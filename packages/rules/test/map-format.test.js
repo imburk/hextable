@@ -20,11 +20,11 @@ const formatOne = (doc) => { const { format, id, name, grid, cellFeet, ...rest }
 const stand = (s, id) => [...moveOptions(s, s.entities[id])].find(([, o]) => o.canStop)[1].h;
 const isHexHeader = (map) => {
   assert.deepEqual(Object.keys(map).slice(0, 5), HEADER);
-  assert.deepEqual([map.format, map.grid, map.cellFeet, "hexFeet" in map], [2, "hex", 5, false]);
+  assert.deepEqual([map.format, map.grid, map.cellFeet, "hexFeet" in map], [MAP_FORMAT, "hex", 5, false]);
 };
 
-test("a new map, the valley and every stock map are format 2 hex maps of 5-foot cells", () => {
-  assert.equal(MAP_FORMAT, 2);
+test("a new map, the valley and every stock map are hex maps of 5-foot cells, in the current format (3 since #836)", () => {
+  assert.equal(MAP_FORMAT, 3);
   assert.equal(VERSION, 31);
   for (const map of [newMap(), newGame(1).map, ...STOCK_MAPS.map((m) => m.map).filter((x) => x.grid === "hex")]) {
     isHexHeader(map);
@@ -34,7 +34,7 @@ test("a new map, the valley and every stock map are format 2 hex maps of 5-foot 
 
 test("migrateMap: a format 1 document becomes format 2 on hexes, with nothing else changed", () => {
   const now = tavern(), old = formatOne(now);
-  assert.deepEqual(lintMap(old)[0], "Its format is 1; this game reads format 2.");
+  assert.deepEqual(lintMap(old)[0], "Its format is 1; this game reads format 3.");
   const doc = migrateMap(structuredClone(old));
   isHexHeader(doc);
   assert.deepEqual(doc, now);
@@ -49,10 +49,10 @@ test("migrateMap: a format 1 document becomes format 2 on hexes, with nothing el
   isHexHeader(sheet);
   assert.deepEqual(lintMap(sheet), []);
   // A newer format than this build reads is left alone, and refused by its format.
-  const later = { ...structuredClone(now), format: 3 };
+  const later = { ...structuredClone(now), format: 4 };
   assert.equal(migrateMap(later), later);
-  assert.equal(later.format, 3);
-  assert.deepEqual(lintMap(later)[0], "Its format is 3; this game reads format 2.");
+  assert.equal(later.format, 4);
+  assert.deepEqual(lintMap(later)[0], "Its format is 4; this game reads format 3.");
   for (const x of [null, undefined, 7, "map", []]) assert.equal(migrateMap(x), x);
 });
 
@@ -106,18 +106,18 @@ test("players are sent the grid and the cell size with the rest of the map heade
   for (const ctx of [DM, { role: "player", userId: "pat" }]) {
     const map = view(s, ctx).map;
     assert.deepEqual(Object.keys(map).slice(0, 5), HEADER, ctx.role);
-    assert.deepEqual([map.format, map.grid, map.cellFeet, "hexFeet" in map], [2, "hex", 5, false], ctx.role);
+    assert.deepEqual([map.format, map.grid, map.cellFeet, "hexFeet" in map], [MAP_FORMAT, "hex", 5, false], ctx.role);
   }
 });
 
-// What a version 20 state becomes: the same apart from its version and its map's header.
+// What a version 20 state becomes: the same apart from its version, its map's header and the depth of its water (format 3, #836).
 function sameButHeader(was, now) {
   assert.equal(was.version, 20);
   assert.deepEqual([was.map.format, was.map.hexFeet, "grid" in was.map], [1, 5, false]);
   assert.equal(now.version, VERSION);
   isHexHeader(now.map);
   assert.deepEqual(lintMap(now.map), []);
-  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey", "markets", "shops"]) delete c[k]; if (c.settings) delete c.settings.strikeFirst; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; return c; };
+  const strip = (s) => { const c = structuredClone(s); delete c.version; delete c.packs; delete c.scoreRolls; for (const k of ["world", "place", "parked", "journey", "markets", "shops"]) delete c[k]; if (c.settings) delete c.settings.strikeFirst; for (const k of ["format", "grid", "cellFeet", "hexFeet"]) delete c.map[k]; for (const l of c.map.levels) for (const t of Object.values(l.tiles)) delete t.depth; /* format 3 (#836) */ return c; };
   assert.deepEqual(now.packs, []);                  // version 24 (#390)
   assert.deepEqual([now.world, now.place, now.parked, now.journey], [null, null, {}, null]);   // version 26 (#579)
   assert.equal(now.settings.strikeFirst, was.settings.autoEngage !== false ? "casts" : "off");   // version 27 (#585): the table rule strikeFirst, as its autoEngage was

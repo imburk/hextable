@@ -24,7 +24,7 @@ const DM = { role: 'dm', userId: 'dm' };
 const ok = (r) => { assert.ok(r.ok, r.error); return r; };
 function world({ water = false } = {}) {
   const ground = Object.fromEntries(H.range({ q: 0, r: 0 }, 6).map((h) => [H.col(h), { t: 'stone' }]));
-  if (water) ground['0,2'] = { t: 'water' };
+  if (water) ground['0,2'] = { t: 'water', depth: 10 };
   const map = newMap({ id: 'field', name: 'Field', starts: [{ q: -1, r: 0 }], levels: [{ id: 'ground', name: 'Ground', z: 0, tiles: ground }, { id: 'roof', name: 'Roof', z: 10, tiles: { '3,0': { t: 'stone' }, '4,0': { t: 'stone' } } }] });
   const s = newGame(12);
   ok(apply(s, { type: 'loadMap', map }, DM));

@@ -92,7 +92,9 @@ test("saves made by main's code before C7 load unchanged and the brain plays on 
     assert.deepEqual({ markets, shops }, { markets: [], shops: [] });                 // version 27 (#596) adds the markets and shops, empty
     assert.equal(rest.settings.strikeFirst, state.settings.autoEngage !== false ? "casts" : "off"); // version 27 (#585) adds the table rule `strikeFirst`: "casts" where `autoEngage` was on, else "off"
     const { strikeFirst, ...settings } = rest.settings;
-    assert.equal(json({ ...rest, settings, version: state.version }), raw, `${grid} ${at}: loads unchanged`);
+    // #836 (swimming): loading raises the map to format 3 and gives each water tile `"depth":10`; read back as format 2 without it, the save is as it was.
+    const asSaved = (x) => x.replace(/,"depth":10/g, '').replace(/"format":3/g, '"format":2');
+    assert.equal(asSaved(json({ ...rest, settings, version: state.version })), raw, `${grid} ${at}: loads unchanged`);
     const id = current(s), e = s.entities[id];
     assert.equal(brainMode(s, e), e.bond.kind === "undead" ? "guard" : "protect", `${grid} ${at}`);
     assert.ok(autoPlays(s, id));

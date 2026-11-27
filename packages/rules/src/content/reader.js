@@ -1522,8 +1522,8 @@ function summonLines(st, at, depth, say) {
 // ====================================================================================================
 export const SIZE_WORDS = { tiny: 'Tiny', small: 'Small', medium: 'Medium', large: 'Large', huge: 'Huge', gargantuan: 'Gargantuan' };
 export const MOVE_WORDS = { walk: 'walk', climb: 'climb', swim: 'swim', fly: 'fly', burrow: 'burrow' };
-// Which of the ways to move the engine moves a creature by (engine/world.js reads walk, fly and climb; nothing reads swim or burrow).
-export const MOVE_ENGINE = { walk: true, climb: true, swim: false, fly: true, burrow: false };
+// Which of the ways to move the engine moves a creature by (engine/world.js reads walk, fly, climb and, since swimming, #836, swim; nothing reads burrow).
+export const MOVE_ENGINE = { walk: true, climb: true, swim: true, fly: true, burrow: false };
 // What the engine does with each special sense (sight.js reads three; ai.js reads tremorsense).
 export const SENSE_WORDS = {
   darkvision: 'it sees in the dark as in dim light, out to that range',
@@ -1651,7 +1651,8 @@ class MonsterReading extends Reading {
       this.dm(`Moving it by its ${m} speed.`);
     }
     if (ok.some(([m, v]) => m === 'climb' && v > 0)) this.line('It climbs by its climb speed only where the table allows climbing.');
-    if (!(s.walk > 0) && !(s.fly > 0)) this.line('It has no walking or flying speed, so the engine will not let it move.');
+    if (ok.some(([m, v]) => m === 'swim' && v > 0)) this.line('It swims by its swim speed, 5 feet of it for each 5 feet through water, between the bed and the surface of water that has a depth.');
+    if (!(s.walk > 0) && !(s.fly > 0)) this.line(s.swim > 0 ? 'It has no walking or flying speed, so the engine moves it only through water.' : 'It has no walking or flying speed, so the engine will not let it move.');
   }
   fHover() {
     const h = this.def.hover;
@@ -2215,14 +2216,14 @@ export const GRANT_WORDS = {
   speeds(v, at) {
     if (Array.isArray(v)) {
       this.line(`A ${list(v.filter((m) => ['climb', 'swim'].includes(m)))} speed equal to the holder's Speed.`, 1);
-      if (v.includes('swim')) { this.line('The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.', 2); this.dm('Moving the holder by its swim speed.'); }
+      if (v.includes('swim') && !MOVE_ENGINE.swim) { this.line('The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.', 2); this.dm('Moving the holder by its swim speed.'); }
       return;
     }
     if (!isObj(v)) return this.bad(`${at} is not a list or a table of speeds.`);
     const ok = Object.entries(v).filter(([m, x]) => ['climb', 'swim', 'fly'].includes(m) && isInt(x));
     for (const [m, x] of ok) this.num(`${at}.${m}`, x, 'feet');
     this.line(`Speeds: ${list(ok.map(([m, x]) => `${m} ${x} feet`))}, each at least that, never less than the holder already has.`, 1);
-    if (ok.some(([m]) => m === 'swim')) { this.line('The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.', 2); this.dm('Moving the holder by its swim speed.'); }
+    if (ok.some(([m]) => m === 'swim') && !MOVE_ENGINE.swim) { this.line('The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.', 2); this.dm('Moving the holder by its swim speed.'); }
   },
   senses(v, at) {
     if (!isObj(v)) return this.bad(`${at} is not a table of senses.`);

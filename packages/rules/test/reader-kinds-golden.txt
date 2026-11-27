@@ -5,9 +5,9 @@ Armor Class 13: one fixed number. Modifiers from its traits and from effects on 
 Hit Points 30: one fixed number. The entry holds no Hit Dice, so the engine never rolls its Hit Points.
 Proficiency Bonus +2. The saves and skills below carry their own bonuses, so the engine uses this one only where a rule asks for it.
 Speed: walk 40 feet, climb 20 feet, swim 30 feet and burrow 10 feet.
-The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.
 The engine does not move a creature by a burrow speed: it stays on the sheet, and the DM lets it burrow by hand.
 It climbs by its climb speed only where the table allows climbing.
+It swims by its swim speed, 5 feet of it for each 5 feet through water, between the bed and the surface of water that has a depth.
 Ability scores: Strength 15 (+2), Dexterity 14 (+2), Constitution 13 (+1), Intelligence 3 (-4), Wisdom 12 (+1), Charisma 6 (-2).
 Initiative +3: the entry's own number, used in place of its Dexterity modifier.
 Saving throws: Constitution +4 and Wisdom +2. The engine uses each as the whole bonus for that save, in place of the ability modifier; every other save is the plain modifier.
@@ -100,10 +100,9 @@ Action "Smoke Step": a Bonus Action. In a fight it spends the creature's Bonus A
     It ends when it takes damage. Nothing else ends it: it stays through the end of a fight and a rest until then, or until the DM ends it.
   The monster AI never picks this action by itself: the DM sends it.
 Tier: assist. The engine runs what is listed above as run by the engine; the DM runs the rest.
-Why: 1 trait only the DM runs; 4 things the DM does by hand, listed below.
+Why: 1 trait only the DM runs; 3 things the DM does by hand, listed below.
 The author's description is shown beside this reading; whatever it says beyond the lines above, the DM runs.
 Not checked against any rulebook.
-DM: Moving it by its swim speed.
 DM: Moving it by its burrow speed.
 DM: The trait "Ember Memory": text only.
 DM: Step actions.5.effects.3: ending spells on an object, a zone or changed ground, and magic that is no spell cast through the engine.

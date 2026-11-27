@@ -42,14 +42,14 @@ const bad = (over, want) => {
   assert.ok(!got.some((x) => x.includes("undefined") || x.includes("[object")), `a sentence, not a stringified value: ${JSON.stringify(got)}`);
 };
 
-test("a map with shop areas is clean, the field is optional, and the format stays 2", () => {
+test("a map with shop areas is clean, the field is optional, and the format is the current one, 3 since #836", () => {
   assert.deepEqual(lintMap(field()), []);
   const { areas, ...plain } = field();
   assert.deepEqual(lintMap(plain), []);
-  assert.equal(MAP_FORMAT, 2);
+  assert.equal(MAP_FORMAT, 3);
   // Migration keeps the areas as they are and stamps nothing new.
   const m = migrateMap(structuredClone(field()));
-  assert.equal(m.format, 2);
+  assert.equal(m.format, 3);
   assert.deepEqual(m.areas, field().areas);
   // Areas may overlap a region, several regions, and each other (three stalls in one square).
   assert.deepEqual(lintMap(field({ areas: [...field().areas, { id: "b", name: "B", level: "ground", hexes: ["3,0", "-1,0"] }] })), []);
@@ -216,7 +216,7 @@ test("a parked place (travel W2) holding a map with areas keeps them, migrates a
   const { format, grid, cellFeet, ...rest } = old.parked.field.map;
   old.parked.field.map = { format: 1, ...rest, hexFeet: 5 };
   const up = migrate(old);
-  assert.equal(up.parked.field.map.format, 2);
+  assert.equal(up.parked.field.map.format, 3);
   assert.deepEqual(up.parked.field.map.areas, field().areas);
   assert.deepEqual(lintMap(up.parked.field.map), []);
   ok(apply(s, { type: "loadMap", node: "field" }, DM));

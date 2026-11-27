@@ -97,7 +97,12 @@ A creature's position becomes `{ q, r, z }`, with `z` in feet.
 - **Movement modes.** A record has a speed per mode: walk, climb, swim, fly,
   burrow, plus `hover`. Climbing a tree, a wall or a ladder and flying are
   the same mechanism moving through `z`, which is why fighting from a tree
-  or a balcony needs no separate code.
+  or a balcony needs no separate code. Swimming is the same again (#836,
+  `docs/specs/fly-swim-control.md`, "Build notes (E1)"): a water tile has a
+  `depth` (map format 3), a position between its bed and its surface is in the
+  water, and a creature swims through it in 5 foot steps level, up and down
+  (5 feet a step from a Swim Speed, 10 from the walking Speed without one).
+  Burrowing has no rules yet.
 - **Distance** uses all three axes. How vertical distance combines with
   horizontal is a table rule, since tables differ.
 - **Falling.** A creature with nothing under it and no way to stay up falls
@@ -527,8 +532,8 @@ Where the build settled a detail the design left open, or changed it.
 - **Floors block** (M6). An attack or spell is refused if a floor lies between
   the two creatures. A wall blocks only if neither is above its top. Both are
   centre to centre and are replaced by the sight spec.
-- Not built from decision 2: swimming and burrowing have speeds but no rules of
-  their own yet, and two creatures landing in one hex are left for the DM.
+- Not built from decision 2: burrowing has a speed but no rules of its own yet
+  (swimming is built, #836), and two creatures landing in one hex are left for the DM.
 
 - **Footprints** (M7) are 1, 3, 7 and 12 hexes: the hex, a triangle, the hex and
   its six neighbours, the triangle and everything around it. Heights are 5, 10,

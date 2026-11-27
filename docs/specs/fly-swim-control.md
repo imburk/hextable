@@ -1,6 +1,6 @@
 # Spec: flying and swimming control (a column of cubes, a plane of cells)
 
-Status: C1 to C4 are built (#716, flying); E1 and C5 (swimming) are not. The owner answered questions 1 to 8 with the defaults (board, 23 November 2026). What was
+Status: C1 to C4 are built (#716, flying) and E1 (the swimming engine, #836); C5 (the swimming control) is not. The owner answered questions 1 to 8 with the defaults (board, 23 November 2026). What was
 settled while building is in "Build notes" at the end.
 
 Written 22 November 2026, after the owner's game night. It sits beside `maps-and-objects.md` (the rules for height, M6),
@@ -41,7 +41,7 @@ height that is a picture, not a number (a design problem). The recommendation be
   costs the rise as well, doubled without a Climb Speed. There is no "straight up a wall" with no ledge to stop on.
 - **Falling.** After every action, whatever has nothing under it and cannot stay up falls and takes damage
   (`engine/resolve.js`). A creature that is still `aloft` never falls; a flyer knocked Prone, or whose Fly Speed ends, does.
-- **Swimming is not built.** A `water` tile has cost `Infinity` (`content/terrain.js`): nobody enters it, and a creature
+- **Swimming (built since #836, see "Build notes (E1)").** Before it, a `water` tile had cost `Infinity` (`content/terrain.js`): nobody enters it, and a creature
   can only be placed over it by the DM. A Swim Speed is kept on the sheet and read by nothing (`content/reader.js`
   `MOVE_ENGINE.swim = false`; debt items T54 (6) and P3). There is no depth to water and no "in the water" position.
 - **The monster AI flies**, because it reads the same `moveOptions`: every place a flyer could stop is a candidate, and a
@@ -431,3 +431,36 @@ What was settled while building, where the text above left room or the code turn
   through `inset` (2 px of inset is 1 px of picture) until the top block is under the aim bar or the creature's cell would go under the menu's strip.
 - **Multiplayer.** No state was added and nothing is sent but the ordinary `move`, so there is no `twin()` test.
 - **Not built, with reasons:** DEBT T105.
+
+## Build notes (E1, #836)
+
+What was settled while building the swimming engine (the owner said yes to question 1 on 26 November 2026).
+
+- **Depth.** A water tile has `depth`, in feet from its surface to the bed: a multiple of 5 from 5 to 200 (`WATER_DEPTH` in `content/terrain.js`). The map format is 3
+  (`map.js`); `migrateMap` gives every water tile of a format 1 or 2 map 10 feet, without writing to the document it is given. The linter wants a depth on every water
+  tile (and on no other). A save needs no new state version: `migrate.js` already runs `migrateMap` on the table's map and on each parked place's on every load. A water
+  tile with no depth (a hand-built map in a test; the linter refuses it) is read as before swimming: a surface, and no one enters it. A `mapEdit` that paints water with no
+  depth gives it 10 feet (the editor's Depth field is a client follow-up, DEBT T109).
+- **In the water** (`space.js`). `waterAt(map, pos)` is the water volume a position is in: over a water tile with a depth, at or below its surface and at or above its bed. The
+  nearest surface at or above the position decides, so a floor of another level between it and the water is not water. `submerged(s, e)` is true below the surface (false at
+  it; E2 reads it for breath), `inWater(s, e)` at or below it. `ground()` returns the water's own record for a position in the water below its surface, so the water holds a
+  creature up whatever its speeds (`gravity` and `drop` look at `ground` first); `under()` returns it too, so a creature under the water is in the water's level: its region
+  (and what players are sent of it), its light.
+- **Falling into water** stops at the surface, as it always did (the surface is a surface); the fall's damage is the engine's as before (DEBT T109 (3)).
+- **Moving** (`engine/world.js`, `moveOptions`). From the shore it steps onto the water's surface (a rise or drop up to 5 feet), as from any water position it steps in the grid's
+  directions level, up or down 5 feet, or straight up or down, between the bed and the surface (the same shape as the flying steps). It leaves the water onto a shore from the
+  surface by a walking step; from under the surface there is no walking out (it swims up first). Cost: with a Swim Speed 5 feet a step from that Speed; without it, 10 feet a
+  step from the walking Speed (a creature with both may use either, whichever gets it further); one more foot where the space is Difficult Terrain (a hostile creature that can be
+  passed, ground a spell made difficult): 15 without a Swim Speed, 10 with one (Freedom of Movement takes that away). The turn's feet are shared as for flying and climbing
+  (`limit.swim`, `left(speed)`); a Dash doubles them. Not where only the ground is used (a formation's places, a creature that drags another) and not for a creature standing
+  on water by Water Walk, which keeps to the surface. A Speed 0 creature goes nowhere; one with only a Swim Speed moves through water and nowhere else. A big creature goes
+  where its whole footprint is in water. The monster brain swims by the same costs but does not choose to end a turn under the water with no Swim Speed.
+- **Squares.** A diagonal step in the water is open to a swimmer past a corner of water (`cornerFree`'s `swim`); the true length (5 x root 2) doubled is the cost, as on land.
+- **Water Walk** works as before; when it ends on a creature standing on water, the creature is in the water at the surface and swims (the spell's text says so).
+- **Acrobatic Movement** is as before (it crosses water and may not stop in it); it does not swim in from the shore (DEBT T109 (5)).
+- **A hidden creature under the water** is sent to no player: `under()` gives a submerged creature its level, so a creature under the water in a region the party has not seen is
+  concealed as on land. A party mover that names a column of water without a height chooses its place among those the party knows (`move`), so a creature the party does not
+  know of, in the nearest place, does not send the mover to another place of the column. Twin tests: `packages/server/test/twin-worlds.test.js`.
+- **Reader.** `MOVE_ENGINE.swim` is true: a swim speed is no longer handed to the DM, and a monster's reading says how it swims; the goldens moved.
+- **Not built, with reasons:** DEBT T109.
+

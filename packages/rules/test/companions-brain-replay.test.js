@@ -71,7 +71,9 @@ test("the monster AI is byte-identical to main for creatures with no bond: the r
     const { packs, scoreRolls, fightSeq, ...rest } = s;      // (`fightSeq` is taken out: see `apply` above)
     // `diedAt` (#762, Revivify) is new on a creature that died since this was recorded: taken off, as the fields above are.
     const entities = Object.fromEntries(Object.entries(rest.entities).map(([k, e]) => { const { diedAt, ...more } = e; return [k, more]; }));
-    assert.equal(sha({ ...rest, entities, version: 23 }), want.state, `${sc.name}: the end state`);
+    // #836 (swimming): the map is format 3 and each water tile has `depth: 10`; both are put back as they were (format 2, no depth) before hashing.
+    const map = JSON.parse(JSON.stringify(rest.map, (k, v) => (k === "depth" && v === 10 ? undefined : v))); map.format = 2;
+    assert.equal(sha({ ...rest, map, entities, version: 23 }), want.state, `${sc.name}: the end state`);
     assert.equal(!s.encounter, want.ended);
   }
 });

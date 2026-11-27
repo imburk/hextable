@@ -64,7 +64,6 @@ Its damage is radiant damage, in place of the weapon's own type, while it is act
 It has the weapon properties finesse and light, while it is active.
 While it is active, the holder gets what follows (the engine makes these a feature of the holder, as for a feat).
   Speeds: climb 20 feet and swim 30 feet, each at least that, never less than the holder already has.
-    The engine does not move a creature by a swim speed: it stays on the sheet, and the DM lets it swim by hand.
   Proficiency in Wisdom saving throws.
   +1 to the holder's attack rolls with ranged weapons (not thrown ones).
   The holder may hide as a Bonus Action.
@@ -72,9 +71,8 @@ While it is active, the holder gets what follows (the engine makes these a featu
   Constitution becomes 15, unless it is already as high.
   +1 Armor Class while the holder wears no armor and holds no Shield.
 It has nothing to use: its magic works while it is active.
-Tier: auto, but the engine hands the parts listed for the DM to the DM.
+Tier: auto. The engine applies everything above.
 Not checked against any rulebook.
-DM: Moving the holder by its swim speed.
 
 == item hb-rk-tideglass-vial
 "Tideglass Vial" (common potion).

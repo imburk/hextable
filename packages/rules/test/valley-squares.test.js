@@ -29,7 +29,12 @@ const MAIN = {
 };
 
 // The digests were taken at state version 21; the version has moved since (22, #300) and nothing else.
-const asMain = (s) => { const { packs, scoreRolls, ...rest } = s; return { ...rest, version: 21 }; };   // `packs: []` (24, #390) and `scoreRolls` (25, #557) are new too
+// The map is format 2 there too (water has a depth since format 3, #836): `format` back to 2 and the water tiles without `depth`.
+const asMain = (s) => {
+  const { packs, scoreRolls, ...rest } = s;       // `packs: []` (24, #390) and `scoreRolls` (25, #557) are new too
+  const levels = rest.map.levels.map((l) => ({ ...l, tiles: Object.fromEntries(Object.entries(l.tiles).map(([k, { depth, ...t }]) => [k, t])) }));
+  return { ...rest, version: 21, map: { ...rest.map, format: 2, levels } };
+};
 test("the default valley is the hex valley, byte for byte what main made, for several seeds", () => {
   for (const [seed, digest] of Object.entries(MAIN)) {
     assert.equal(sha(asMain(typedGame(Number(seed)))), digest, `seed ${seed}`);

@@ -5,7 +5,7 @@ import { HEX, gridOf, col, key, pathTo, reachable, boxMiddle, boxOf, squareAlong
 import { d20Faces, die } from '../rng.js';
 import { CONTENT, SPELLS, TILES } from '../content/index.js';
 import { actionProfile, CUBE_AIM_MAX, loadOf, rangeAt, scaleSteps, targetCount, WORK } from '../effects.js';
-import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT } from '../space.js';
+import { apart, apartAt, concealed, footprint, FT, gap, ground, hasColumn, HEADROOM, landing, measure, overlapAt, regionAt, rise, shapeOf, shown, sizeOf, STEP_FREE, STEP_MAX, surfaces, under, unseenAt, WALL_HEIGHT, waterIn } from '../space.js';
 import { SIZES } from '../content/sizes.js';
 import { difficultAt, inShell, shellsOf, terrainsOf } from '../terrain.js';
 import { objectKnown, regionsInSight, sightRule, tileSent, unknown } from '../vision.js';
@@ -213,10 +213,12 @@ const DIAGONAL_FT = FT * Math.SQRT2;
 // solid standing in it (a pillar, a statue, a tree) or by ground that cannot be entered (rock, deep
 // water), or by ground that rises above a step. A creature is not a terrain feature, and a square
 // with no floor at all, or one lower down, does not fill the space.
-export function cornerFree(map, G, B, a, b, z) {
+// `swim`: the step is a swimmer's, through water: water with a depth that holds it at this height does not fill the space (stage E1).
+export function cornerFree(map, G, B, a, b, z, swim = false) {
   for (const c of G.beside(a, b)) {
     const column = surfaces(map, c);
     if (!column.length) continue;
+    if (swim && waterIn(column, z)) continue;
     const near = column.find((sf) => Math.abs(sf.z - z) <= STEP_MAX);
     if (near ? TILES[near.tile.t].cost === Infinity || B.solid(near.level.id, c) : column[0].z > z) return false;
   }
@@ -310,7 +312,9 @@ export function moveOptions(s, e, opts = {}) {
   const steed = mountOf(s, e);
   if (steed && !steed.riding) return moveOptions(s, steed, opts);
   const walk = e && up(e) ? speedOf(s, e) : 0, flying = !!e && aloft(s, e), flySpeed = flying ? speedOf(s, e, 'fly') : 0;
-  if (!e || !up(e) || (walk === 0 && !flying)) return new Map();
+  // A Swim Speed alone (a fish: Speed 0, Swim 40) moves it through water and nowhere else (stage E1).
+  const swimSpeed = e && up(e) ? speedOf(s, e, 'swim') : 0;
+  if (!e || !up(e) || (walk === 0 && !flying && swimSpeed === 0)) return new Map();
   // What it drags: every step of the route costs 1 extra foot a foot for each creature held that is not exempt (dragExtra), added to
   // the step's own cost as the SRD adds such extras ("1 extra foot (2 extra feet in Difficult Terrain)", Crawling, Climbing).
   const dragged = draggedBy(s, e), toll = dragged.reduce((n, { g, t }) => n + (g ? dragExtra(g, t) : 0), 0), dragging = dragged.length > 0, grounded = dragging && !opts.aerial, checked = dragging && !opts.unchecked;
@@ -348,7 +352,7 @@ export function moveOptions(s, e, opts = {}) {
   // A diagonal step on squares, by every part of the creature, passes no corner (cornerFree).
   const square = G.kind === 'square';
   const diagonal = (from, n) => square && G.beside(from, n).length > 0;
-  const cornersFree = (from, h) => (big ? footprint(e, from, G).map((f, i) => [f, footprint(e, h, G)[i]]) : [[from, h]]).every(([a, b]) => cornerFree(map, G, B, a, b, from.z));
+  const cornersFree = (from, h, swim = false) => (big ? footprint(e, from, G).map((f, i) => [f, footprint(e, h, G)[i]]) : [[from, h]]).every(([a, b]) => cornerFree(map, G, B, a, b, from.z, swim));
   // Acrobatic Movement (`surfaces`): with no armour or Shield, across water without falling in. It may
   // not end its move there: the engine has nowhere for a creature in water to be. Vertical surfaces are
   // climbed as anyone climbs (the maps have heights, not wall faces).
@@ -360,8 +364,14 @@ export function moveOptions(s, e, opts = {}) {
   // What each way of moving has left this turn. A creature that changes from one to another has
   // already used, of the new one, whatever it has moved so far.
   const left = (speed) => (fighting ? bud.move + (speed - walk) * (1 + (bud.dashes | 0)) : EXPLORE_BUDGET);
-  const limit = { walk: left(walk), climb: left(climbSpeed > 0 ? climbSpeed : walk), fly: fighting ? left(flySpeed) : Math.max(60, flySpeed) };
-  const budget = Math.max(limit.walk, limit.climb, flying ? limit.fly : 0);
+  // Swimming (stage E1, docs/specs/fly-swim-control.md): water is a volume (space.js `waterAt`), and everyone can swim: with a Swim Speed a step costs
+  // 5 ft from that Speed; without it, 10 ft from the walking Speed (SRD "Swimming": each foot costs 1 extra foot; Difficult Terrain 1 more). It shares the turn's
+  // feet with the rest as flying and climbing do (`left`). Not for a creature that stands on water (Water Walk keeps to the surface), nor where only the ground is
+  // used (`footing`: a formation's places; a creature that drags another).
+  // A creature that drags another may swim (the SRD charges each foot of dragging one more, `toll`); a Water Walker swims only while under the surface (see `steps`).
+  const swimsAny = !opts.footing, swims = swimsAny && !walker;
+  const limit = { walk: left(walk), climb: left(climbSpeed > 0 ? climbSpeed : walk), fly: fighting ? left(flySpeed) : Math.max(60, flySpeed), swim: left(swimSpeed > 0 ? swimSpeed : walk) };
+  const budget = Math.max(limit.walk, limit.climb, flying ? limit.fly : 0, swimsAny && swimSpeed > 0 ? limit.swim : 0);
   // Traps this creature knows of: the party knows the ones it has spotted; everyone else knows them all.
   const hazards = new Set();
   for (const o of map.objects) {
@@ -375,12 +385,37 @@ export function moveOptions(s, e, opts = {}) {
     const fromKey = key(from), there = checked ? layout.get(fromKey) : null;
     // A trap the party has spotted can be stepped onto on purpose, but no path runs across it.
     if (here && from !== e.pos && onHazard(here.id, from)) return out;
-    if (here && walk > 0) {
+    // In the water (at the surface or under it): the way on is swimming. Under the surface, there is no walking.
+    // Water Walk: on the surface it is on foot; below it (it fell in), it swims like anyone, up to the surface. Standing on the surface again is the DM's (docs/DEBT.md T109).
+    const wsw = swimsAny ? waterIn(columnOf(from), from.z) : null, wat = wsw && (!walker || from.z < wsw.z) ? wsw : null, sub = !!wat && from.z < wat.z;
+    // One step through water to `h` (in column `n`, whose water is `w`): what it costs and what it is spent from (see `swims`).
+    const swim = (h, n, w, diag, level) => {
+      const hard = !easy && (crowded(h) || spelled(h)) ? 1 : 0;
+      let next = null;
+      if (checked) { const d = dragStep(there ?? s, e, h); if (d.blocked) return; next = d.next; }                    // what it holds could not follow
+      const fl = [];
+      if (swimSpeed > 0) fl.push([1 + hard + toll, limit.swim]);
+      if (walk > 0) fl.push([2 + hard + toll, limit.walk]);
+      for (const [flat, max] of fl) out.push({ h, cost: flat * FT, max, flat, extra: 0, diag, level });
+      if (checked && fl.length) { const c = (dist.get(fromKey) ?? 0) + Math.min(...fl.map((f) => f[0])) * FT, k = key(h); if (c < (dist.get(k) ?? Infinity)) { dist.set(k, c); layout.set(k, next); } }
+    };
+    const wetFits = (h) => !big || footprint(e, h, G).every((f) => waterIn(columnOf(f), h.z));
+    if (here && walk > 0 && !sub) {
       for (const n of G.neighbors(from)) {
         if (fighting && !enc.arena[col(n)]) continue;                     // the arena is locked
         const column = columnOf(n);
         for (const sf of column) {
-          const dz = sf.z - from.z, up_ = Math.abs(dz), water = (acrobat || walker) && sf.tile.t === 'water', terrain = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
+          const dz = sf.z - from.z, up_ = Math.abs(dz);
+          // From the shore into the water, at its surface (the Acrobatic Movement of a Monk keeps to the old way across, below).
+          if (swims && !wat && !acrobat && sf.tile.t === 'water' && up_ <= STEP_MAX && waterIn(column, sf.z) && !B.solid(sf.level.id, n)) {
+            const h = { q: n.q, r: n.r, z: sf.z };
+            if (!wetFits(h) || blocks(h) || shelled(from, h) || B.blocked(here.id, from, n) || (sf.level !== here && B.blocked(sf.level.id, from, n))) continue;
+            const diag = diagonal(from, n);
+            if (diag && !cornersFree(from, h, true)) continue;
+            swim(h, n, sf, diag, up_ <= STEP_FREE);
+            continue;
+          }
+          const water = (acrobat || walker) && sf.tile.t === 'water', terrain = water || (easy && TILES[sf.tile.t].cost !== Infinity) ? 1 : TILES[sf.tile.t].cost;
           if (terrain === Infinity || B.solid(sf.level.id, n)) continue;
           const h = { q: n.q, r: n.r, z: sf.z };
           if (water && !walker) wet.add(key(h));
@@ -416,6 +451,24 @@ export function moveOptions(s, e, opts = {}) {
         if (!h || (fighting && !enc.arena[col(h)]) || blocks(h) || shelled(from, h) || !fitsOn(map, e, h, B)) continue;
         const cost = Math.max(FT, Math.abs(a.z - b.z)) * (climbSpeed > 0 ? 1 : 2);
         out.push({ h, cost, max: limit.climb, flat: 0, extra: cost, diag: false });
+      }
+    }
+    if (wat) {
+      // Through the water: any of the grid's directions level, up or down 5 ft, or straight up or down, between the bed and the surface (space.js `waterIn`).
+      // It leaves the water onto a shore as walking does (above), from the surface.
+      const around = G.neighbors(from);
+      for (const dz of [0, FT, -FT]) for (let i = dz ? -1 : 0; i < G.DIRS.length; i++) {
+        const n = i < 0 ? from : around[i];
+        if (fighting && !enc.arena[col(n)]) continue;
+        const h = { q: n.q, r: n.r, z: from.z + dz }, column = columnOf(n), w = waterIn(column, h.z);
+        if (!w || !wetFits(h)) continue;
+        if (dz > 0 && column.some((sf) => sf.tile.t !== 'water' && sf.z > from.z && sf.z <= h.z)) continue;          // no passing through a floor on the way up or down
+        if (dz < 0 && column.some((sf) => sf.tile.t !== 'water' && sf.z > h.z && sf.z <= from.z)) continue;
+        if (n !== from && (B.solid(w.level.id, n) || B.blocked(wat.level.id, from, n) || (w.level !== wat.level && B.blocked(w.level.id, from, n)))) continue;
+        if (blocks(h) || shelled(from, h)) continue;
+        const diag = diagonal(from, n);
+        if (diag && !cornersFree(from, h, true)) continue;
+        swim(h, n, w, diag, dz === 0);
       }
     }
     if (flying && !grounded) {

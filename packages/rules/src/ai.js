@@ -5,11 +5,12 @@
 // It is called again after each action until it ends the turn. It is simple and deterministic:
 // the same state always gives the same answer. Whoever calls it ends the turn if the engine
 // refuses what it returns, so a refusal can never loop.
-import { moveOptions, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, aimArea, castAbilOf, dying, mod, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack, shelledReach } from './engine.js';
+import { moveOptions as ways, holdsOf, current, up, hostile, inFight, unblocked, FT, fromPool, actionSpent, partRefusal, areaTargets, aimArea, castAbilOf, dying, mod, hideProblem, ownerOf, awayHow, commandedNow, steering, opportunityAttack, shelledReach } from './engine.js';
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { SPELLS } from './content/index.js';
 import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effects.js';
-import { flyby, incapacitatedBy, untrainedGear } from './modifiers.js';
+import { flyby, incapacitatedBy, speedOf, untrainedGear } from './modifiers.js';
+import { waterAt } from './space.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
 import { silentAt } from './terrain.js';
@@ -87,6 +88,16 @@ function escaping(s, e, canHit) {
 // Ties between foes at one distance break by the lower Hit Points for a monster, as ever. A party creature never reads a foe's
 // Hit Points (players are not sent them: ai-casting.md, Decision 2): it breaks them by id.
 const byHp = (e, x, y) => (e.side === 'party' ? 0 : x.hp - y.hp);
+
+// The places the brain may choose to stop at: what the engine allows, less the water under its surface for a creature with no Swim Speed. Swimming is
+// in the engine (stage E1) and the brain may swim through water at the engine's costs, but it does not end a turn under the water without the Speed to swim:
+// breath is stage E2's, and a creature that would be drowning there is not a place to send it. A creature already under the water is not held to it.
+function moveOptions(s, e, opts) {
+  const reach = ways(s, e, opts);
+  if (speedOf(s, e, 'swim') > 0) return reach;
+  for (const v of reach.values()) if (v.canStop) { const w = waterAt(s.map, v.h); if (w && (v.h.z ?? 0) < w.z) v.canStop = false; }
+  return reach;
+}
 
 // Move to the spot that brings it nearest to any foe, if that is nearer than where it stands.
 function approach(s, e, foes) {
