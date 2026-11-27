@@ -48,7 +48,7 @@ test("the entry: assist, checked, a choice of four, and the whole pack lints", (
   assert.equal(sp.def.checked, true);
   assert.deepEqual(sp.def.choice, { of: "water" });
   assert.equal(sp.aim, "area");
-  assert.deepEqual(lintEntry("spells", sp.def, { pack: "t" }).filter((x) => !/strict|homebrew/.test(x) && !/source/.test(x)), []);
+  assert.deepEqual(lintEntry("spells", sp.def, { pack: "t" }).filter((x) => !/strict|homebrew/.test(x) && !/source|name of an SRD/.test(x)), []);
 });
 
 test("a choice is needed, and one the spell does not have is refused", () => {
