@@ -9,6 +9,7 @@
 import * as THREE from './vendor/three/three.module.js';
 import { HEX, gridOf } from './shared/grid.js';
 import { footprint, ground, surfaces, under } from './shared/space.js';
+import { breathView } from './breath.js';
 import { barriers, objectBlocks, objectSegment } from './shared/walls.js';
 import { tileAlongRay } from './tilepick.js';
 import { createGovernor, shadowLevels } from './governor.js';
@@ -255,7 +256,7 @@ export class ThreeRenderer {
       const w = e.melded ? this.#sunk(e, state.map) : spot(state.map, e, e.pos), calm = snap || !!e.hidden;
       if (!a) {
         const el = document.createElement('div');
-        el.className = 'label'; el.innerHTML = '<span></span><button type="button" class="alt" hidden></button><div class="bar"><i></i></div><em class="marks"></em>';
+        el.className = 'label'; el.innerHTML = '<span></span><button type="button" class="alt" hidden></button><div class="bar"><i></i></div><div class="breath" hidden role="img"><i></i></div><em class="marks"></em>';
         // The height tag of a creature off the ground (fly-swim-control.md): a tap on it asks the app for the column of heights. The renderer only says which tag (a page event, as the arena flash is).
         el.querySelector('.alt').addEventListener('click', (ev) => { ev.stopPropagation(); window.dispatchEvent(new CustomEvent('hextable-height-tag', { detail: { id: e.id } })); });
         this.labels.append(el);
@@ -288,6 +289,8 @@ export class ThreeRenderer {
       { const tag = a.el.querySelector('.alt'), up = sf && !e.dead ? e.pos.z - sf.z : 0; tag.hidden = !(up > 0); if (up > 0) { tag.textContent = `\u2191${up} ft`; tag.setAttribute('aria-label', `${shown}: ${up} ft up. Choose a height`); } }
       { const bar = barFor(e, { ...state.barRule, fight: !!state.encounter }), el = a.el.querySelector('.bar');
         el.hidden = !bar.show; el.classList.toggle('notch', bar.notch); a.el.querySelector('i').style.width = `${bar.frac * 100}%`; }
+      { const air = e.dead ? null : breathView(state, e), el = a.el.querySelector('.breath');       // under the surface and holding breath (breath.js): a bar that empties, in the warning colour in the last two rounds
+        el.hidden = !air; if (air) { el.classList.toggle('warn', air.warn); el.firstChild.style.width = `${air.frac * 100}%`; el.setAttribute('aria-label', `${shown}: ${air.words}`); el.title = air.words; } }
       const marks = e.dead ? [] : [e.hp <= 0 && !e.cond.stable && 'dying', e.cond.prone && e.hp > 0 && 'prone', e.cond.dodging && 'dodging', e.follow && !state.encounter && 'following'].filter(Boolean);
       const mk = marks.join();
       if (mk !== a.marks) { a.marks = mk; a.el.lastChild.replaceChildren(...marks.map((m) => Object.assign(document.createElement('b'), { className: m, textContent: MARKS[m] }))); }

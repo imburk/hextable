@@ -45,6 +45,9 @@ input { background: var(--panel-2); border: 1px solid var(--line); border-radius
 .bar.notch::after { content: ''; position: absolute; left: calc(50% - 1px); top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px #000a; } .label.dead { opacity: .35; } .label.dead .bar { display: none; }
 .label.down span::after { content: ' (down)'; font-weight: 400; }
 .bar { height: 6px; background: #0008; border-radius: 3px; overflow: hidden; border: 1px solid #0006; }
+.label .breath { width: 44px; height: 5px; background: #0008; border-radius: 3px; overflow: hidden; border: 1px solid #0006; } .label .breath[hidden] { display: none; }
+.label .breath i { display: block; height: 100%; background: #8fd0e8; transition: width .3s; } .label .breath.warn i { background: var(--bad); }
+#c-breath { margin: 4px 0 0; font-size: 13px; font-weight: 700; } #c-breath.warn { color: var(--bad); } #c-breath[hidden] { display: none; }
 .bar i { display: block; height: 100%; background: var(--good); transition: width .3s; }
 .label[data-side="foe"] .bar i { background: var(--bad); }
 .floater { position: absolute; left: 0; top: 0; font: 700 20px var(--display); color: #fff; text-shadow: 0 2px 0 #000, 0 0 6px #000; white-space: nowrap; }
@@ -142,7 +145,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text
 button.quiet { background: transparent; }
 #toast { position: fixed; left: 50%; bottom: 46%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 10px 16px; border-radius: var(--radius); font-weight: 600; max-width: calc(100% - 32px); text-align: center; z-index: 20; box-shadow: 0 4px 20px #0006; }
 @media (max-width: 480px) { #cam { top: 38%; } }
-@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .bar i, .label .breath i { transition: none; } }
 #toast.info { background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); bottom: auto; top: 30%; }
 
 /* who plays whom, leaving */
