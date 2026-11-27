@@ -18,7 +18,7 @@ const sample = () => JSON.parse(readFileSync(SAMPLE, "utf8"));
 test("lint: a good pack prints ok and exits 0", () => {
   const r = hb("lint", SAMPLE);
   assert.equal(r.code, 0);
-  assert.match(r.out, /Sample Pack: ok \(21 spells\)/);
+  assert.match(r.out, /Sample Pack: ok \(22 spells\)/);
   assert.equal(r.err, "");
 });
 
@@ -53,7 +53,7 @@ test("read: prints each spell's reading, the tier and the author's text, and exi
   assert.match(r.out, /^Latch Wisp \[manual\]$/m);
   assert.match(r.out, /The DM does: .*latch, bolt or lock/);
   assert.match(r.out, /Author's text: "A wisp of light/);
-  assert.equal(r.out.match(/^[A-Z][A-Za-z' ]+ \[(auto|assist|manual)\]$/gm).length, 21);
+  assert.equal(r.out.match(/^[A-Z][A-Za-z' ]+ \[(auto|assist|manual)\]$/gm).length, 22);
   assert.equal(hb("read", file("bad2.json", JSON.stringify({ ...sample(), v: 2 }))).code, 1);
 });
 
@@ -128,7 +128,7 @@ test("dryrun: prints each spell's cast, is the same twice for a seed, and differ
   assert.match(a.out, /Tavin \(level 1\) casts Ember Dart\./);
   assert.match(a.out, /Over 3 casts \(seeds 7 to 9\)/);
   assert.match(a.out, /The DM does this \(Latch Wisp\)/);
-  assert.equal((a.out.match(/^== /gm) ?? []).length, 21);
+  assert.equal((a.out.match(/^== /gm) ?? []).length, 22);
   const ev = hb("dryrun", SAMPLE, "--runs", "1", "--events");
   assert.match(ev.out, /^ {2}\{"type":"cast"/m);
 });

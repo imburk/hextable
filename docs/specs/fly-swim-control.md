@@ -504,6 +504,11 @@ from the SRD: "Suffocation" (Hazards), "Underwater Combat", "Swimming", the spel
   creature that is not the party's, nothing: the events name it (`id`, `actor`) and `view.js` drops them; the notes are not even made for it; the DM is told by a `partial` `manual`. Twin
   tests: `packages/server/test/twin-worlds.test.js` (a hidden creature running out of breath, gaining Exhaustion, and surfacing, by time and by the rounds of a fight).
 - **Not built, with reasons:** DEBT T110.
+- **The client shows the breath** (#857, `packages/client/breath.js`, pure and tested in Node). `breathView(S, e)` reads the record the engine sends and the limit from `breathOf` (the rules'
+  own, through `./shared/modifiers.js`, never recomputed) and gives the share left, the rounds left and the words: "Holding breath: 2 rounds left" (a long breath, over 20 rounds, in
+  minutes) and "Out of breath". It gives nothing for a creature not under the surface (`submerged`), dead, that breathes water or that the engine cannot judge, or whose `breath` was not sent
+  (a foe, for a player; the DM's view is the whole state, so the DM sees it for every creature that has a record). Over the token (`render-three.js`) a bar under the health bar empties as the
+  breath goes and turns to `--bad` (the theme's warning colour) in the last two rounds and when out; the words are a line under the Hit Points on the character's page (`app.js` `breathLine`).
 
 ## Build notes (E3, #849)
 
@@ -534,7 +539,29 @@ What was settled while building water that rises and falls (the Cliff Keep's sea
 - **Players are sent** the tiles as any map edit sends them, **without `dry`** (`view.js` strips it: it is the DM's record of what the ground was, and a drained cell's `dry` would say how deep
   water used to be, in a place that may be unseen when it was). Never `state.tides`: a player's view is an allow list and has no such field. Twin test (`twin-worlds.test.js`, "tides:"): a hidden
   creature lifted by a tide and a tide in a region the party has not seen; it fails if the lift event names the creature, and passes as built.
+- **The DM's control** (#854, `packages/client/water.js`): a Water section on DM tools' Map screen. Cells are chosen by tapping or dragging on the map (a drag adds, or takes out if it starts on a chosen hex; one level at a time) or by room name; Raise 5 ft, Lower 5 ft, Set surface, and Start a tide (by +5/+10/-5/-10 to a height, optionally from a surface) each send one `water` action; running tides (`state.tides`) are listed with Stop. A refusal is shown in the section as well as in the toast. The log line comes from `history.js` ("The water changed", "A tide was set", "A tide was stopped").
 - **Not built, with reasons:** DEBT T111.
+
+## Build notes (E4, #853)
+
+What was settled while building Control Water's Flood and Part Water on the water of E3 (`control-water` in `spells-4.js` is `assist`, `checked: true`: every number compared with `reference/srd52/srd52-flow.txt`, "Control Water": level 4, Action, 300 feet, V S M, Concentration up to 10 minutes, a Cube up to 100 feet, a rise of up to 20 feet, the wave 20 feet tall and 25 percent to capsize, the whirlpool 5, 50 and 25 feet, 25 feet of pull, 10 feet pulled, 2d8 Bludgeoning, a Strength save).
+
+- **The step.** `{ water: { mode: 'flood', by?: 5..20, size } }` or `{ water: { mode: 'part', size } }` (`schema.js` `STEPS`, `reader.js`, `HOMEBREW_RANGES` `water.by` 5 to 20 and `water.size` 5 to 200). `size` is the cube's side, the spell's own: the engine runs a step knowing only the cast, not
+  the spell's area (`effects.js` may not import the content index: a new import cycle), so the step carries it and the linter holds it equal to `target.area.size` (a `water` step needs a cube target and a range). `by` defaults to 20. It is a step for a spell that lasts.
+- **The choice.** `choice: { of: 'water' }` with `WATERS = flood, part, redirect, whirlpool` (`CHOICES.water`), and `ifChoice` on the steps. `casting.js` `chooseIn` strips the steps of the other choices for a curse, an affliction, a shape and a resize,
+   `effects.js` `exec` reads the choice from the cast event (`ev`, `choice`) and leaves out a step whose `ifChoice` does not list it. One line of `chooseIn` would let the cast strip them as it does for the others (DEBT T112 (1)).
+- **Once for the cast.** An area spell runs its steps for each creature in the area, and for none if nobody is there. `begin` (`effects.js`) puts a frame of its own on the stack, run first, for a spell with a `water` step: it runs the `water` and `manual` steps once whether or not a creature stands in the
+  area (the `told` marks are shared with the creatures' frames, so a note is said once); a creature's frame leaves a `water` step alone. The cube's cells are those the `cast` event names (`hexes`, laid out and clipped to the map by `casting.js`, Globe of Invulnerability's included); its base is the aimed point's height (`src.origin`).
+- **What is in the cube.** A cell on any level whose tile holds standing water (a water tile with a depth: the engine has no flowing water) any of which lies in the cube's height: its surface is at or above the cube's base, and its bed at or below its top. Water that the cube only reaches into counts; a cell wholly above or below does not.
+  Flood adds `by` to each such cell's surface (`setSurface`, so `dry` is kept and a creature at the surface rises with it, as `carry` does for a tide); a cell that would be deeper than 200 feet, or whose bed is off the 5-foot steps, is left and the DM is told (a `partial` `manual`). Part Water sets the surface at the cell's bed: the bed tile as a drained cell has it (stone), the creatures come down to it.
+- **It lasts with the spell.** Each level changed is a part of the lasting effect (`{ target: caster, water: { mode, map, level, cells: { key: { was, now } } } }`, whole tiles, `durations.js` `endPart`). When the effect ends for any reason (Concentration, ten minutes, the DM's `endEffect`), `tides.js` `endWater` undoes it:
+  a cell whose tile is still `now` goes back **exactly** to `was` (the lake tile with no `dry` kept). **The rule chosen for a cell something else has changed since** (a tide, the DM's `water`, a second Control Water): a flooded cell that still holds water comes down by what this spell raised it, **never below its floor and keeping what the other change did** (flood +20, the DM takes 5 off, the spell ends: 15 less 20 is 5 feet under where it began);
+  a cell the water has left, or a trench that has been filled or changed, is not touched. The map in play is not the one it was made on: the water is left and the DM is told.
+- **When.** The SRD says only the trench "slowly fills in ... over the course of the next round". A trench that ends in a fight is recorded in `state.refills` (`{ map, level, fx, name, source, cells }`, an optional field: no migration) and fills at the start of the next round (`stepTides`, which `resolve.js` already calls each round); outside a fight, at once.
+  **A flood comes down at once**: the SRD says nothing of a delay, and the creatures at its surface come down with it. A trench still waiting when the fight ends fills then (`endEncounter` calls `refill`); a map cannot change in a fight, so none outlives it. `water` parts are never sent to players (`view.js` `viewEffects`).
+- **Players are sent** the tiles as any water change sends them, without `dry`; never the effect's parts, `refills`, the `water` events (the DM's), or the carried creature's `moved` for a creature they may not know of. An area spell reveals the creatures it catches (`casting.js`'s own rule, Fireball's too), so the twin tests put a hidden creature in the water after the cast, and ending the spell carries it.
+  Twin tests (`twin-worlds.test.js`, "control water:"): a Flood, and a Part Water, cast by a DM-hidden caster, then a hidden creature at the surface or on the bed, then the spell ends; each fails when a note of the end is let through.
+- **Not built, with reasons:** DEBT T112. Redirect Flow and Whirlpool, the wave in a large body of water and a later-turn change of effect are `manual` steps for the DM.
 
 ## Build notes (water depth in the client, #850)
 

@@ -550,6 +550,8 @@ function viewEffects(state) {
         delete q.born;
         // `turn` is what the part runs at the start of its creature's turns, with its caster's numbers (effects.js, turnSteps): never sent.
         delete q.turn;
+        // `water` is what Control Water changed (every cell's tile before and after, `dry` tiles and depths, cells of places not yet seen): the DM's record, never sent (tides.js).
+        delete q.water;
         if (q.ends?.who !== undefined && classify(state, q.ends.who) === 'hidden') delete q.ends.who;
         // A modifier that holds against, or not for, a creature they do not know of: that it does, never who.
         for (const k of ['against', 'except']) if (typeof q[k] === 'string' && classify(state, q[k]) === 'hidden') q[k] = 'someone';

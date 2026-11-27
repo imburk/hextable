@@ -13,6 +13,7 @@ import { BRANCHES, SIZES, SPELL_KINDS, SPELL_ROLLS, STEPS } from './content/sche
 import { roll } from './rng.js';
 import { srcOf } from './homebrew.js';
 import { effectsOf, useUp } from './durations.js';
+import { controlWater } from './tides.js';
 
 // A target above a step's `largest` (#495). The note about it names the creature that acted (`actor`), so the player's view keeps it only where it
 // keeps that creature's own events (view.js drops an event whose actor the party cannot see, as it drops the attack): a hidden wolf's Bite says nothing.
@@ -157,6 +158,7 @@ function summarise(def) {
   if (kind === 'command') return { short: 'command', long: 'The target follows a one-word command on its next turn' };
   if (kind === 'confuse') return { short: 'confused', long: `The target can take no Bonus Action or Reaction and acts at random on its turns for ${def.duration}${def.concentration ? ' (Concentration)' : ''}` };
   if (kind === 'arm') return { short: `${step.arm.damage} ${step.arm.type}`, long: `Gives the caster a ${step.arm.range ? `ranged spell attack within ${step.arm.range} feet` : 'melee spell attack'} for ${step.arm.damage}${step.arm.addMod ? ' plus the spellcasting modifier' : ''} ${step.arm.type} damage for as long as it lasts` };
+  if (kind === 'water') return { short: step.water.mode === 'flood' ? 'flood the water' : 'part the water', long: step.water.mode === 'flood' ? `Raises the standing water in the area by up to ${step.water.by ?? 20} feet for ${def.duration}${def.concentration ? ' (Concentration)' : ''}; it comes down when the spell ends` : `Parts the water in the area to its bed for ${def.duration}${def.concentration ? ' (Concentration)' : ''}; the trench fills in when the spell ends` };
   if (kind === 'light') return { short: `${step.light.bright} ft light`, long: `Sheds Bright Light for ${step.light.bright} feet and Dim Light for ${step.light.dim} feet more` };
   if (kind === 'cure') return { short: 'end a condition', long: `Ends ${step.cure.includes('chosen') ? 'a chosen condition' : step.cure.map((c) => (c === 'exhaustionLevel' ? 'one Exhaustion level' : c === 'curse' ? 'one curse' : c === 'curses' ? 'all curses' : c)).join(', ')}` };
   if (kind === 'modifier') {
@@ -376,6 +378,13 @@ export function begin(s, { steps, actor, targets, src, shared = null }) {
   (s.stack ??= []).push(targets === null
     ? { kind: 'seq', steps, path: '', i: 0, actor, target: null, src, shared }       // nothing to aim at: the DM applies it
     : { kind: 'each', steps, t: 0, actor, targets, src, shared });
+  // A `water` step (Control Water) acts once for the cast, on the cells of its area, whether or not a creature stands in the area: it has a frame of its own, run first (the stack runs the last
+  // pushed), which also says the spell's `manual` steps (they are said once, the `told` marks being shared with the creatures' frames, and an area with nobody in it would say nothing).
+  if (targets !== null && steps.some((st) => 'water' in st || st.once === true)) {
+    const told = {};
+    s.stack.at(-1).told = told;
+    s.stack.push({ kind: 'seq', steps, path: '', i: 0, actor, target: null, src, shared: null, told, once: true });
+  }
 }
 
 // A creature's turn starts: the steps its lasting effects run then (an `eachTurn` step put a part on it: Heroism, Regenerate; engine/rolls.js `eachTurn`),
@@ -419,15 +428,32 @@ export function run(s, ev, kit, floor = 0) {
   if (!floor) delete s.stack;
 }
 
+// A `water` step (tides.js `controlWater`): the cells of the cube are those the cast event names; the change is a part of the lasting effect the cast made, which puts the water back when it ends.
+function controlWaterStep(s, ev, f, step, handOver) {
+  const cast = ev.findLast((x) => x.type === 'cast' && x.actor === f.actor && x.spell === f.src.spell), fx = f.src.fx ? effectsOf(s).find((x) => x.id === f.src.fx) : null, origin = f.src.origin;
+  if (!cast?.hexes || !origin || !fx || !s.map || s.map.holding) return handOver(`${f.src.name} changes the water of its area, which the engine cannot find on this map (or the spell has no lasting effect to hang it on). The DM changes the water with the water action and puts it back.`);
+  const w = step.water, r = controlWater(s, { mode: w.mode, by: w.by, hexes: cast.hexes, origin, size: w.size }, ev, { fx: fx.id });
+  for (const part of r.parts) fx.parts.push({ target: f.actor, water: part });
+  const cells = r.parts.reduce((n, p) => n + Object.keys(p.cells).length, 0);
+  if (!cells) ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text: `${f.src.name} found no standing water in its area for the ${w.mode === 'flood' ? 'flood to raise' : 'water to part'}.${r.skipped ? ` ${r.skipped} cell${r.skipped === 1 ? '' : 's'} of water could not be changed (too deep, or off the 5-foot steps); the DM changes ${r.skipped === 1 ? 'it' : 'them'}.` : ''}`, partial: true });
+  else if (r.skipped) ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text: `${r.skipped} cell${r.skipped === 1 ? '' : 's'} of water in the area of ${f.src.name} could not be changed (the water would be deeper than the deepest there is, or the bed is off the 5-foot steps). The DM changes ${r.skipped === 1 ? 'it' : 'them'} if it should.`, partial: true });
+}
+
 function exec(s, ev, kit, f, step, at) {
   const t = f.target === null ? null : s.entities[f.target];
   const kind = stepKind(step);
+  if (f.once && kind !== 'water' && kind !== 'manual') return;      // the once-only frame of `begin`: the rest is for the creatures
   const handOver = (text) => ev.push({ type: 'manual', actor: f.actor, name: f.src.name, text });
   const branch = (name, extra = {}) => {
     if (step[name]) s.stack.push({ kind: 'seq', steps: step[name], path: `${at}.${name}.`, i: 0, actor: f.actor, target: f.target, src: f.src, shared: f.shared,
       crit: f.crit, mode: f.mode, half: f.half, evade: f.evade, told: f.told, hit: f.hit, weapon: f.weapon, n: f.n, ...extra });
   };
 
+  // Control Water: once for the cast, on the cells of the area (a creature's frame leaves it to the frame of its own, `begin`).
+  if (kind === 'water') {
+    if (f.target !== null) return;
+    return controlWaterStep(s, ev, f, step, handOver);
+  }
   // Teleport (the Teleportation Outcome table): the engine rolls 1d100 for the familiarity the caster chose. A Mishap (3d10 Force damage to the caster, then a new roll) is applied;
   // Similar Area and Off Target are told to the DM alone (Off Target with its distance and direction rolled), who places the caster; On Target goes to the space the cast named.
   // What the roll was reaches no player: the note is partial. The other travellers are the DM's (the spell's own manual step says so).

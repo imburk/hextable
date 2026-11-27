@@ -43,6 +43,7 @@ import { localTransport, serverTransport, savedSession, lastSession, hasSoloGame
 import { claimWriter } from './solowriter.js';
 import { Editor } from './editor.js';
 import { initQuickEntry } from './quickentry.js';
+import { initWater } from './water.js';
 import { initHandouts } from './handouts.js';
 import { initTodo, waitingWords } from './todo.js';
 import { initPacks } from './packmanager.js';
@@ -59,6 +60,7 @@ import { dmLine, tableRule } from './shared/scores.js';
 import { initTableControls, importLine, gridWords, aimedWords } from './tablecontrols.js';
 import { initMyCharacters, ROOT as SOLO_ROOT, PARTY_KEY, readSheet, classNames } from './mycharacters.js';
 import { levelOf } from './shared/derive.js';
+import { breathView } from './breath.js';
 import { SETTINGS, SETTING_TEXT } from './shared/engine.js';
 import { titleOf as trailTitle, loadDraft, saveDraft, keepFront, hasDraft } from './startflow.js';
 import { initDefeat } from './defeat.js';
@@ -993,6 +995,15 @@ function deadLine(e) {
   const html = on ? `${esc(shownName(S, e))} has died. ${isDM() ? 'You decide what happens next.' : 'Your DM decides what happens next.'} <button type="button" class="link" data-menu-open="log">Open the log</button>` : '';
   if (d.dataset.sig !== html) { d.dataset.sig = html; d.innerHTML = html; }
 }
+// Breath under water (breath.js, DEBT T110 (1)): a line under the character's Hit Points, "Holding breath: 2 rounds left" or "Out of breath". It is made here, beside the
+// status pills, and is empty for a creature not under the surface, one that needs no air, or one whose breath we were not sent.
+function breathLine(e) {
+  let p = $('c-breath');
+  if (!p) { p = document.createElement('p'); p.id = 'c-breath'; p.setAttribute('role', 'status'); p.hidden = true; $('c-hp').after(p); }
+  const v = e ? breathView(S, e) : null;
+  p.hidden = !v; p.classList.toggle('warn', !!v?.warn);
+  if (p.textContent !== (v?.words ?? '')) p.textContent = v?.words ?? '';
+}
 // #717: the quick actions of the turn line. On a turn of mine, for the selected creature when the turn is its own: up to three rows that need the map next, so a fight
 // action is the quick action and then the target. They are the action panel's own rows (AP.quick), and a tap is a tap on the row.
 function showQuick() {
@@ -1054,6 +1065,7 @@ function refresh() {
   let hint = '', go = false, multi = null;
   choicesNow = e && mine(e) && !ED.on ? choicesFor() : null;
   AP.render(e, mode, { my: !!e && mine(e), full: !!e?.abil });
+  breathLine(e);
   showQuick();
   if (e) {
     // full: we were sent this creature's whole record (a party member, or anything if we are the DM).
@@ -1144,6 +1156,7 @@ function refresh() {
     { const row = flyRow(e); hl.move = reachOf(S, e, (v) => inRow(S.map, row, v.h)); }
   } else if (!hint && mode === MOVE && waits.length) { owedUi = 'wait'; owedWho = waits.map((w) => w.id); hint = waitWords(waits); }
   if (hint && mode.kind === 'spell' && S.entities[selId]) hint += CLS.hint(S.entities[selId], mode.id);
+  if (WT.picking() && isDM()) hint = WT.hint();
   if (mode.kind === 'spawn') hint = gridWords(`Tap a hex to add a ${MONSTERS[mode.monster].name}`, gridOf(S.map));
   if (mode.kind === 'place') hint = gridWords(`Tap a hex to place ${name(selId)}`, gridOf(S.map));
   if (mode.kind === 'encounter') hint = gridWords('Tap the hex where the fight breaks out', gridOf(S.map));
@@ -1164,6 +1177,8 @@ function refresh() {
   openChoices();
   R.setCeiling(ED.on ? ED.ceiling() : S.entities[selId] ? S.entities[selId].pos.z + 9 : Infinity);     // floors above whoever is selected are lifted out of the way
   if (FM.isOpen()) hl.move = [...(hl.move ?? []), ...FM.ghosts()];     // the places being chosen, as faint cells on the map
+  { const w = ED.on ? [] : WT.marks(); if (w.length) hl.area = [...(hl.area ?? []), ...w]; }      // the cells the DM chose for the water
+  if (!ED.on && mode.kind !== 'fly') { if (WT.picking()) R.onDrag = WT.drag; else if (R.onDrag === WT.drag) R.onDrag = null; }
   R.setHighlights(ED.on ? ED.marks() : hl);
   sizeDock();
   ED.sync();
@@ -1275,7 +1290,7 @@ function renderDM() {
   $('dm-size').disabled = !picked; if (picked) $('dm-size').value = picked.size ?? 'medium';
   $('dm-fly').disabled = !picked; $('dm-fly').textContent = picked?.speeds?.fly ? 'Take flight from selected' : 'Give selected flight';
   syncBond(picked);
-  QE.sync(S, selId);
+  QE.sync(S, selId); WT.sync(S);
   $('dm-solo').hidden = !T.solo;
   const lb = T.lobby || { members: [], pending: [] }, table = $('dm-table');
   const owed = lb.pending.length + (S.conclusion && S.conclusion.published === false ? 1 : 0) + TD.count();       // players waiting to be let in, and rewards waiting to be settled
@@ -1501,6 +1516,7 @@ R.onTap = (hit) => {
   const e = S.entities[selId], seen = id ? S.entities[id] : null, tapped = seen?.melded && mode.kind !== 'move' ? null : seen;       // a creature merged with stone (Meld into Stone) is no target: a tap on its marker only selects it
   const inZone = [...new Set(R.zonesAt(hex))];
   if (inZone.length && mode.kind === 'move') toast(inZone.join(', '), true);      // a lasting zone's name, for a tap (hover shows it on a mouse)
+  if (WT.tap(hex)) return;
   if (CP.tap(mode, hex, id)) return;
   if (mode.kind === 'spawn') { FIND.note(mode.monster); return act({ type: 'spawn', monster: mode.monster, at: hex, hidden: $('dm-hidden').checked }); }
   if (mode.kind === 'place') { act({ type: 'place', actor: selId, to: hex }); return setMode(MOVE); }
@@ -1600,7 +1616,7 @@ $('c-end').onclick = () => endTurn(selId);       // Self-Restoration with a choi
 new ResizeObserver(() => document.documentElement.style.setProperty('--turn-h', `${$('turnline').offsetHeight}px`)).observe($('turnline'));
 $('join-yes').onclick = () => { const id = S?.encounter?.id; joinNo = id ?? null; act({ type: 'joinFight' }); refresh(); };
 $('join-no').onclick = () => { joinNo = S?.encounter?.id ?? null; refresh(); };
-$('hint-cancel').onclick = () => (owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
+$('hint-cancel').onclick = () => (WT.picking() ? (WT.stop(), refresh()) : owedUi === 'offer' ? act({ type: 'forgoMove', actor: selId }) : setMode(MOVE));
 $('hint-go').onclick = () => {      // only the movement an Opportunity Attack gave (Move up to, Give it up): every other confirm is the die's (#750)
   if (owedUi === 'offer') return setMode(OWED);
   if (owedUi === 'wait') return owedWho.forEach((id) => act({ type: 'forgoMove', actor: id }));      // the DM gives it up for them; the engine lets the DM
@@ -1899,6 +1915,7 @@ addEventListener('blur', () => KB.release());
 document.addEventListener('visibilitychange', () => { if (document.hidden) KB.release(); });
 setInterval(() => KB.tick(), 30);
 
+const WT = initWater({ act, toast: (m) => toast(m), getState: () => S, closeMenu: () => closeDM(), refresh: () => refresh(), tileHex: (x, y, l) => R.tileHex(x, y, l), dmLevel: () => dmLevel() });      // the DM's water and tides (water.js)
 const QE = initQuickEntry({ act, toast, getState: () => S, getSelected: () => selId, me: () => T?.you?.userId });
 // Homebrew packs (packmanager.js): kept installed while a table is open. When they change, what names a pack's entry is dropped or drawn again.
 const PK = initPacks({ transport: () => T, isDM, toast, changed: () => {
@@ -1985,7 +2002,7 @@ function start(transport, map = null) {
     if (confirming) { confirming = 0; aimRefusal = String(msg).replace(/\.?$/, '.'); if (S) refresh(); }       // #750: a refused confirm changes nothing: the choices stay, with the reason
     if (aiSent && S && current(S) === aiSent && !expired) { const id = aiSent; aiSent = null; act({ type: 'endTurn', actor: id }); }
     if (offerSent && Date.now() - offerSent.at < 5000) { offerForget(); if (S) renderPick(); }      // the offer itself was refused: nothing is waiting
-    KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
+    WT.refused(msg); KB.refused(); CLS.refused(msg); DF.refused(msg); CC.refused(msg); SC.refused(); RP.refused(msg); QE.refused(msg);
     if (expired) { if (rejoinedLast) forgetLastSession(); rejoinedLast = false; TL.skip(); S = null; PK.clear(); lobbyBusy(false); showLobby(msg); }
     else if (/arena is locked/i.test(msg)) {       // the fight's rule, said in words, and the edge nearest the tap lights up (three-build.js, arenaFlashCells)
       toast(`${msg} Nobody leaves the lit area of the fight before then.`);

@@ -111,17 +111,9 @@ function carry(s, from, to, levelId, changed, ev) {
   }
 }
 
-// Put the water of some cells at the given surfaces ({ key: surface }). Returns a sentence if it cannot be done, else the number of cells that changed
-// (the terrain and the creatures are changed only then).
-function flood(s, levelId, surfaces, bed, ev, extra = {}) {
-  const groups = new Map();
-  for (const [k, z] of Object.entries(surfaces)) { if (!groups.has(z)) groups.set(z, []); groups.get(z).push(k); }
-  const level = s.map.levels.find((l) => l.id === levelId), next = {};
-  for (const [z, keys] of groups) {
-    const r = setSurface(s.map, levelId, keys, z, { bed });
-    if (r.problem) return r.problem;
-    Object.assign(next, r.tiles);
-  }
+// Put new tiles in some cells of a level ({ key: tile }), the map whole as `mapEdit` does, and carry the creatures with the water. Returns the number of cells that changed.
+function put(s, levelId, next, ev, extra = {}) {
+  const level = s.map.levels.find((l) => l.id === levelId);
   const changed = new Set(Object.keys(next).filter((k) => JSON.stringify(next[k]) !== JSON.stringify(level.tiles[k])));
   if (!changed.size) return 0;
   const tiles = { ...level.tiles };
@@ -131,6 +123,90 @@ function flood(s, levelId, surfaces, bed, ev, extra = {}) {
   ev.push({ type: 'water', level: levelId, cells: changed.size, ...extra });
   carry(s, from, s.map, levelId, changed, ev);
   return changed.size;
+}
+
+// Put the water of some cells at the given surfaces ({ key: surface }). Returns a sentence if it cannot be done, else the number of cells that changed
+// (the terrain and the creatures are changed only then).
+function flood(s, levelId, surfaces, bed, ev, extra = {}) {
+  const groups = new Map();
+  for (const [k, z] of Object.entries(surfaces)) { if (!groups.has(z)) groups.set(z, []); groups.get(z).push(k); }
+  const next = {};
+  for (const [z, keys] of groups) {
+    const r = setSurface(s.map, levelId, keys, z, { bed });
+    if (r.problem) return r.problem;
+    Object.assign(next, r.tiles);
+  }
+  return put(s, levelId, next, ev, extra);
+}
+
+// ---------- Control Water (docs/specs/fly-swim-control.md, stage E4) ----------
+// The spell's `water` step (effects.js) changes the water of the cube's cells through the same tiles as a tide, and records on the lasting effect what each cell was and
+// what the spell made it (`{ was, now }`, whole tiles): the end of the effect (durations.js `endWater`) reads that. `hexes` are the cube's cells, `origin` the point it was
+// aimed at (its base is at `origin.z`), `size` its side. A cell is changed if it holds standing water (a water tile with a depth) any of which lies within the cube's height.
+// Flood: the surface rises by `by`; a cell it would make deeper than the deepest water, or whose floor is not a multiple of 5, is left as it is and counted in `skipped`.
+// Part Water: the water goes down to the cell's bed (its floor), which becomes the bed tile as a drained cell does. Returns { parts, skipped } (parts: one record for each level).
+export function controlWater(s, { mode, by = 20, hexes, origin, size }, ev, extra = {}) {
+  const keys = [...new Set(hexes.map((h) => col(h)))], low = origin.z ?? 0, high = low + size, parts = [];
+  let skipped = 0;
+  for (const level of s.map.levels) {
+    const target = {}, cells = {};
+    for (const k of keys) {
+      const tile = level.tiles[k];
+      if (!tile || tile.t !== 'water' || !depthOk(tile.depth)) continue;
+      const surface = topOf(level, tile);
+      if (surface < low || surface - tile.depth > high) continue;                      // none of its water lies in the cube
+      const to = mode === 'flood' ? surface + by : floorOf(level, tile), r = setSurface(s.map, level.id, [k], to);
+      if (r.problem) { skipped++; continue; }
+      target[k] = to; cells[k] = { was: copy(tile), now: r.tiles[k] };
+    }
+    if (!Object.keys(target).length) continue;
+    const r = flood(s, level.id, target, undefined, ev, extra);
+    if (typeof r === 'string') { skipped += Object.keys(target).length; continue; }   // cannot happen: each cell was tried; nothing was changed
+    parts.push({ mode, map: s.map.id, level: level.id, cells });
+  }
+  return { parts, skipped };
+}
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// Undo one record of Control Water on the cells whose tile is still the one the spell left: they are put back exactly as they were (`was`). A flooded cell that
+// something has changed since (a tide, the DM) and still holds water comes down by what the spell raised it, never below its floor (a tide's own change stays); a cell
+// the water has left is not touched, and neither is a trench that has been filled or changed. Returns the number of cells changed.
+function undo(s, rec, ev, extra) {
+  const level = s.map?.id === rec.map ? s.map.levels.find((l) => l.id === rec.level) : null;
+  if (!level) return 0;
+  const next = {}, lower = {};
+  for (const [k, c] of Object.entries(rec.cells)) {
+    const tile = level.tiles[k];
+    if (!tile) continue;
+    if (same(tile, c.now)) next[k] = copy(c.was);
+    else if (rec.mode === 'flood' && tile.t === 'water' && depthOk(tile.depth) && c.was.t === 'water') {
+      const to = topOf(level, tile) - (topOf(level, c.now) - topOf(level, c.was));
+      if (!setSurface(s.map, rec.level, [k], to).problem) lower[k] = to;
+    }
+  }
+  let n = put(s, rec.level, next, ev, extra);
+  if (Object.keys(lower).length) { const r = flood(s, rec.level, lower, undefined, ev, extra); if (typeof r === 'number') n += r; }
+  return n;
+}
+
+// The lasting effect that made a `water` part ends (durations.js). A flood comes down at once; a trench fills in over the next round (SRD: "slowly fills in the trench over the
+// course of the next round"): at the start of the next round in a fight (`stepTides`), at once outside one.
+export function endWater(s, ev, fx, rec) {
+  if (s.map?.id !== rec.map || !s.map.levels.some((l) => l.id === rec.level)) {
+    ev.push({ type: 'manual', actor: fx.source, name: fx.name, text: `${fx.name} ended, but the map it changed the water of is not the one in play, so the engine left the water as it is. The DM puts it back.`, partial: true });
+    return;
+  }
+  if (rec.mode === 'part' && s.encounter) { (s.refills ??= []).push({ map: rec.map, level: rec.level, fx: fx.id, name: fx.name, source: fx.source, cells: rec.cells }); return; }
+  undo(s, rec, ev, { fx: fx.id, end: true });
+}
+
+// The start of a round, and the end of a fight (engine/resolve.js `endEncounter`: a map cannot change in a fight, so no trench outlives one): every trench Control Water opened (and let go of since) fills in. A trench of a map that is not the one in play is dropped with its map.
+export function refill(s, ev) {
+  if (!Array.isArray(s.refills)) return;
+  const list = s.refills;
+  delete s.refills;
+  for (const rec of list) if (rec.map === s.map?.id) undo(s, { ...rec, mode: 'part' }, ev, { fx: rec.fx, end: true });
 }
 
 const nextTide = (list) => `T${list.reduce((n, t) => Math.max(n, Number(/^T(\d+)$/.exec(t.id)?.[1] ?? 0)), 0) + 1}`;
@@ -189,6 +265,7 @@ export function waterChange(s, a, ev) {
 // A new round of a fight (engine/resolve.js): every tide moves by its step, to where it stops, and one that has reached its end is removed. A tide whose
 // map is not the one in play waits (outside a fight nothing moves: DEBT). A tide that cannot go on (the water would be deeper than the deepest) stops.
 export function stepTides(s, ev) {
+  refill(s, ev);
   if (!Array.isArray(s.tides)) return;
   for (const t of [...s.tides]) {
     if (t.map !== s.map?.id || !s.map.levels.some((l) => l.id === t.level)) continue;

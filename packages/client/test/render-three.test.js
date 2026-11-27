@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url)), client = join(here, '..'), tmp = mkdtempSync(join(tmpdir(), 'render-three-'));
 cpSync(join(here, '../../rules/src'), join(tmp, 'shared'), { recursive: true });
-for (const f of ['renderer.js', 'render-three.js', 'three-build.js', 'tilepick.js', 'floors.js', 'governor.js', 'models.js']) cpSync(join(client, f), join(tmp, f));
+for (const f of ['renderer.js', 'render-three.js', 'three-build.js', 'tilepick.js', 'floors.js', 'governor.js', 'models.js', 'breath.js']) cpSync(join(client, f), join(tmp, f));
 cpSync(join(client, 'vendor'), join(tmp, 'vendor'), { recursive: true });
 writeFileSync(join(tmp, 'package.json'), '{"type":"module"}');
 after(() => rmSync(tmp, { recursive: true, force: true }));

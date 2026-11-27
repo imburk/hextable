@@ -31,7 +31,7 @@ import { armed, weaponKey } from '../imbue.js';
 import { handsFull, heavyWeak, isUnarmed, steadiest } from '../weapons.js';
 import { investIn } from '../summons.js';
 import { nextFight } from '../shopids.js';
-import { stepTides } from '../tides.js';
+import { refill, stepTides } from '../tides.js';
 
 // ---------- objects, falls, pushes and teleports (the effect steps that move things) ----------
 
@@ -411,6 +411,7 @@ export function endEncounter(s, ev, result) {
   // Stepping away is for a fight: whoever was set aside, or asked to be, is back when it ends.
   for (const e of Object.values(s.entities)) if (e.away) { delete e.away; ev.push({ type: 'back', id: e.id, why: 'fightOver' }); }
   ev.push({ type: 'encounterEnd', result, rounds: s.encounter.round, fight: s.encounter.id });
+  refill(s, ev);                                       // a trench Control Water left to fill by the next round fills now (tides.js)
   fightOver(s, ev);
   concludeFight(s, ev, result, s.encounter, fighters(s), tryLand);      // XP and loot for a fight won or ended (rewards.js)
   s.encounter = null;

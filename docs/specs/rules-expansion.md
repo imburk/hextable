@@ -2291,3 +2291,13 @@ Tests in `packages/rules/test/wave5p4-polymorph.test.js` and two twin scenarios 
 **Twins** (`twin-worlds.test.js`), each forced open and seen to fail: a DM-hidden caster polymorphing a party member, the two worlds differing in who and where the caster is (a note naming the caster fails it); a party member polymorphed into a Large Beast beside six hidden creatures against six bare cells (counting the hidden creatures, or sending the DM's note as a public one, fails it).
 
 **Existing tests changed:** `reader.test.js` and `reader-golden.txt` (a golden spell for the step and the choice; the golden file only gains lines), `reader-kinds.test.js` (a creature's action may not hold a `polymorph` step), `homebrew-subclass.test.js` (the two hashes), `fixtures/sample-pack.json` (Stone Hide). `content/dryrun.js` (a `beast` entry in its table of first choices) is outside the issue's list: the dry run needs one for a spell with that choice. Not edited: `engine.js`, `tables.js`, `view.js`, `world.js`, `modifiers.js`, the client.
+
+#### Build notes: Control Water (amendment, #786, #853)
+
+Tests in `packages/rules/test/control-water.test.js` and two twin scenarios in `packages/server/test/twin-worlds.test.js`. Numbers compared with `reference/srd52/srd52-flow.txt` ("Control Water", `checked: true`). The mechanism, the rulings (what is in the cube, how the water goes back, when a trench fills) and the leftovers are in `docs/specs/fly-swim-control.md`, "Build notes (E4, #853)", and DEBT T112.
+
+| Spell | Before | After | What the DM still does |
+|---|---|---|---|
+| Control Water | manual | assist | Redirect Flow, Whirlpool, the wave in a large body of water and the vehicles it carries, a change of effect on a later turn, a Flood of less than 20 feet |
+
+**Vocabulary added.** Step `water: { mode, by?, size }` (`STEPS`; `schema.js` shape `water`, `water.by` 5 to 20 and `water.size` 5 to 200 in `HOMEBREW_RANGES`) and the choice `water` (`WATERS`, `CHOICES.water`; a spell with it may use `ifChoice`). **Existing tests changed:** `reader.test.js` and `reader-golden.txt` (a golden spell for the step and the choice; the golden file only gains lines), `reader-kinds.test.js` (a creature's action may not hold a `water` step), `dryrun.test.js`, `hb-cli.test.js`, `homebrew-subclass.test.js` (pinned hashes) and `scripts/smoke/homebrew.mjs` (the sample pack gained Rising Pool: 22 spells, not 21).
