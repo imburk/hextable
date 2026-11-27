@@ -1565,7 +1565,7 @@ export const TRAIT_ID_WORDS = {
 export const MONSTER_FIELDS = {
   id: 'skip', name: 'skip', source: 'skip', size: 'header', type: 'header', cr: 'header', xp: 'header', ac: 'fAc', hp: 'fHp', pb: 'fPb', speed: 'fSpeed', hover: 'fHover',
   abilities: 'fAbilities', initiative: 'fInitiative', saves: 'fSaves', skills: 'fSkills', senses: 'fSenses', resist: 'fResist', vulnerable: 'fVulnerable', immune: 'fImmune',
-  conditionImmune: 'fConditionImmune', languages: 'fLanguages', mount: 'fMount', traits: 'fTraits', actions: 'fActions', tier: 'fTier', checked: 'fChecked', text: 'skip',
+  conditionImmune: 'fConditionImmune', languages: 'fLanguages', mount: 'fMount', traits: 'fTraits', actions: 'fActions', legendary: 'fLegendary', tier: 'fTier', checked: 'fChecked', text: 'skip',
 };
 export const TRAIT_FIELDS = { id: 'skip', name: 'skip', text: 'skip', modifiers: 'modifiers', reaction: 'reaction', dragFree: 'dragFree', flyby: 'flyby' };
 export const ACTION_FIELDS = { id: 'skip', name: 'skip', text: 'skip', time: 'head', target: 'aim', effects: 'steps', uses: 'limits', recharge: 'limits', multiattack: 'multi' };
@@ -1580,7 +1580,10 @@ export const MONSTER_TIER_WORDS = {
 // `modifiers()`, which no code calls for these: a Hit Point maximum is changed only by a step, and nothing reads carrying capacity).
 export const TRAIT_DEAD_HOOKS = ['hp.max', 'carry'];
 const HEADER = ['size', 'type', 'cr', 'xp'];
+// A trait that is legendary, lair or mythic text. Until the window of legendary actions lands (docs/specs/legendary.md, L1b) the seven SRD monsters that
+// carry a `legendary` block keep their two traits as well, and the reading still hands those to the DM; L1b narrows this to a trait that is not backed by a block.
 const LEGENDARY = /legendary[ -]actions?|lair|mythic/i;
+const LEGENDARY_SPEED_WORDS = { half: 'half ', full: '' };
 const crText = (cr) => ({ 0.125: '1/8', 0.25: '1/4', 0.5: '1/2' }[cr] ?? String(cr));
 const abilMod = (n) => Math.floor((n - 10) / 2);
 const diceAvg = (d) => {
@@ -1846,6 +1849,94 @@ class MonsterReading extends Reading {
       this.line(`The rest of it is the DM's: "${m ?? '(no text)'}"`, 1);
       this.dm(`"${m ?? '(no text)'}"`);
     }
+  }
+
+  // ----- legendary actions and Legendary Resistance (docs/specs/legendary.md, Decisions 1 and 2) -----
+  fLegendary() {
+    const L = this.def.legendary;
+    if (L === undefined) return;
+    if (!isObj(L) || !Object.keys(L).length) return this.bad('`legendary` is { actions?, resistance?, lair? }.');
+    this.odd(L, ['actions', 'resistance', 'lair'], 'The legendary block');
+    const A = L.actions, R = L.resistance, Z = L.lair;
+    if (A !== undefined) this.legActions(A);
+    if (R !== undefined) {
+      if (isObj(R) && isInt(R.day) && R.day >= 1) {
+        this.odd(R, ['day'], 'Legendary Resistance');
+        this.num('legendary.resistance.day', R.day, 'uses');
+        this.line(`Legendary Resistance, ${R.day} a day: when it fails a saving throw it can choose to succeed instead. The uses it has spent come back when the DM gives it a Long Rest.`);
+        this.line('The engine does not offer the choice yet: the DM decides and counts the uses.', 1);
+        this.dm('Legendary Resistance: the choice to succeed on a failed save, and counting the uses.');
+      } else this.bad('`legendary.resistance` is { day }, a whole number of uses.');
+    }
+    if (Z !== undefined) this.legLair(Z, A, R);
+  }
+  legActions(A) {
+    if (!isObj(A) || !isInt(A.uses) || A.uses < 1 || !Array.isArray(A.options) || !A.options.length) return this.bad('`legendary.actions` is { uses, options }: a whole number of uses and a list of options.');
+    this.odd(A, ['uses', 'options'], 'The legendary actions');
+    this.num('legendary.actions.uses', A.uses, 'uses');
+    const names = A.options.map((o) => (isObj(o) && typeof o.name === 'string' && o.name.trim() ? qt(o.name, 60) : '(no name)'));
+    this.line(`Legendary actions, ${A.uses} use${A.uses > 1 ? 's' : ''} a round: ${list(names)}. Immediately after another creature's turn it may spend a use on one of them, one at a time; it regains all the uses it spent at the start of each of its turns.`);
+    this.line('The engine does not offer them yet: the DM runs them from the options below, and counts the uses.', 1);
+    this.dm('Its legendary actions, after other creatures\' turns, and counting the uses.');
+    A.options.forEach((o, i) => this.legOption(o, i, A));
+  }
+  legOption(o, i, A) {
+    const at = `legendary.actions.options.${i}`;
+    if (!isObj(o)) { this.bad(`${at} is not an option.`); return this.line('(A legendary action the reader cannot read.)', 1); }
+    this.odd(o, ['id', 'name', 'text', 'cost', 'move', 'use', 'target', 'effects', 'again', 'manual'], `Legendary action ${i + 1}`);
+    const name = typeof o.name === 'string' && o.name.trim() ? qt(o.name, 60) : '(no name)';
+    const cost = o.cost === undefined ? 1 : o.cost;
+    if (!isInt(cost) || cost < 1) this.bad(`${at}: \`cost\` is a whole number of uses.`);
+    else if (o.cost !== undefined) this.num(`${at}.cost`, o.cost, 'uses');
+    this.line(`Legendary action ${name}: costs ${isInt(cost) && cost > 0 ? cost : '(an unreadable number of)'} use${cost === 1 ? '' : 's'}.`, 1);
+    const sub = this.base;
+    this.base = sub + 2;
+    try {
+      if (o.move !== undefined) this.legMove(o.move, at);
+      if (o.use !== undefined) {
+        const ids = Array.isArray(o.use) ? o.use : null;
+        if (!ids || !ids.length || !ids.every((id) => typeof id === 'string')) this.bad(`${at}: \`use\` is a list of ids of the creature's own actions.`);
+        else {
+          const names2 = ids.map((id) => this.nameOfAction(id));
+          for (const id of ids) { const a = this.byId?.get(id); if (!a) this.bad(`${at}: \`use\` names ${shown(id)}, which is not one of its actions.`); else if (a.multiattack !== undefined) this.bad(`${at}: \`use\` names a Multiattack, which an option never uses.`); }
+          this.line(`${o.move !== undefined ? 'Then it' : 'It'} makes one use of ${ids.length > 1 ? `one of its actions: ${list(names2)}` : `its action ${names2[0]}`}, as that action is written, with its own limits (a spent recharge or daily use cannot be used here).`);
+        }
+        if (o.target !== undefined || o.effects !== undefined) this.bad(`${at}: an option that uses an action has no target or steps of its own.`);
+      } else if (o.target !== undefined || o.effects !== undefined) {
+        this.single(o, at);
+      }
+      if (o.again !== undefined) {
+        if (o.again === 'nextTurn') this.line('It cannot take this one again until the start of its next turn.');
+        else this.bad(`${at}: \`again\` is "nextTurn".`);
+      }
+      if (o.manual !== undefined) {
+        const m = typeof o.manual === 'string' && o.manual.trim() ? plain(o.manual, READER_LIMITS.quote) : null;
+        if (!m) this.bad(`${at}: \`manual\` is not text.`);
+        this.line(`${o.use !== undefined || o.effects !== undefined || o.move !== undefined ? 'The rest of it' : 'All of it'} is the DM's: "${m ?? '(no text)'}"`);
+        this.dm(`"${m ?? '(no text)'}"`);
+      }
+      if (o.use === undefined && o.effects === undefined && o.manual === undefined) this.bad(`${at}: the option does nothing: it needs \`use\`, \`effects\` or \`manual\`.`);
+    } finally { this.base = sub; }
+  }
+  legMove(m, at) {
+    if (!isObj(m) || !Object.hasOwn(LEGENDARY_SPEED_WORDS, m.speed)) return this.bad(`${at}: \`move\` is { speed: "half" or "full", mode?, provokes?, after? }.`);
+    this.odd(m, ['speed', 'mode', 'provokes', 'after'], 'The move');
+    if (m.mode !== undefined && !(typeof m.mode === 'string' && Object.hasOwn(MOVE_WORDS, m.mode) && this.def.speed?.[m.mode] > 0)) this.bad(`${at}: \`move.mode\` is a way of moving the creature has.`);
+    if (m.provokes !== undefined && m.provokes !== false) this.bad(`${at}: \`move.provokes\` is false or left out.`);
+    if (m.after !== undefined && m.after !== true) this.bad(`${at}: \`move.after\` is true or left out.`);
+    const by = typeof m.mode === 'string' && Object.hasOwn(MOVE_WORDS, m.mode) ? `its ${MOVE_WORDS[m.mode]} Speed` : 'its Speed';
+    this.line(`${m.after === true ? 'After the rest, it' : 'It first'} moves up to ${LEGENDARY_SPEED_WORDS[m.speed]}${by}${m.provokes === false ? ', without provoking Opportunity Attacks' : ''}.`);
+  }
+  legLair(Z, A, R) {
+    if (!isObj(Z) || !Object.keys(Z).length) return this.bad('`legendary.lair` is { uses?, resistance?, xp? }.');
+    this.odd(Z, ['uses', 'resistance', 'xp'], 'The lair numbers');
+    const bits = [];
+    if (Z.uses !== undefined) { if (isInt(Z.uses) && Z.uses >= 1) { this.num('legendary.lair.uses', Z.uses, 'uses'); bits.push(`${Z.uses} legendary action uses`); } else this.bad('`legendary.lair.uses` is a whole number.'); }
+    if (Z.resistance !== undefined) { if (isInt(Z.resistance) && Z.resistance >= 1) { this.num('legendary.lair.resistance', Z.resistance, 'uses'); bits.push(`Legendary Resistance ${Z.resistance} a day`); } else this.bad('`legendary.lair.resistance` is a whole number.'); }
+    if (Z.xp !== undefined) { if (isInt(Z.xp) && Z.xp >= 0) { this.num('legendary.lair.xp', Z.xp, 'XP'); bits.push(`${Z.xp} XP when defeated`); } else this.bad('`legendary.lair.xp` is a whole number.'); }
+    if (Z.uses !== undefined && !isObj(A)) this.bad('`legendary.lair.uses` needs `legendary.actions`.');
+    if (Z.resistance !== undefined && !isObj(R)) this.bad('`legendary.lair.resistance` needs `legendary.resistance`.');
+    this.line(`In its lair the numbers are: ${bits.join(', ') || 'none the reader can read'}. The DM marks a creature as in its lair; the engine does not do anything with these yet.`);
   }
 
   // ----- actions -----

@@ -1208,6 +1208,7 @@ function lintLegendary(e, say) {
           if (o.target !== undefined || o.effects !== undefined) {
             if (o.use === undefined) {
               lintTarget(o.target, so);
+              if (o.target?.creature && typeof o.target.creature === 'object' && o.target.creature.reach === undefined && o.target.creature.range === undefined) so('a creature target needs `reach` (feet, for a melee attack) or `range` ([normal, long] feet)');
               const sn = lintSteps(o.effects, so, undefined, false, true);
               if (Array.isArray(o.effects)) walkSteps(o.effects, (st) => { if (st && 'attack' in st && st.kind === 'spell') so('an option has no spell attack bonus: make it a weapon attack with the bonus the stat block gives'); });
               if (e.tier === 'auto' && sn.manual) so('the monster is marked auto but this option has a manual step');

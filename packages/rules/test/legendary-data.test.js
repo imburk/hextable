@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CONTENT, PACKS } from "../src/content/index.js";
+import { readEntry } from "../src/content/reader.js";
 import { HOMEBREW_LENGTHS, HOMEBREW_RANGES, LEGENDARY_AGAIN, LEGENDARY_LIMITS, LEGENDARY_SPEEDS, lintEntry, lintBaked } from "../src/content/schema.js";
 
 const SRD = PACKS[0].monsters;
@@ -80,4 +81,24 @@ test("a bad block is refused", () => {
 test("a block is not for a baked summon block's lint to trip on, and an entry with none lints as before", () => {
   assert.deepEqual(lintBaked({ ...structuredClone(CONTENT.monsters.goblin), cr: null, xp: 0 }).filter((p) => /legendary/.test(p)), []);
   assert.deepEqual(strict({ ...structuredClone(CONTENT.monsters["goblin-warrior"]), id: "hb-x-gob", source: SRC, checked: false, name: "Zz Gob" }), []);
+});
+
+test("the reader says a block in plain words, and a bad one with a problem", () => {
+  const r = readEntry("monster", green());
+  const text = r.lines.join("\n");
+  assert.deepEqual(r.problems, []);
+  assert.match(text, /Legendary actions, 3 uses a round: "Mind Invasion", "Noxious Miasma" and "Pounce"\./);
+  assert.match(text, /Legendary action "Pounce": costs 1 use\./);
+  assert.match(text, /It first moves up to half its Speed\./);
+  assert.match(text, /Each creature in a 20-foot sphere makes a Constitution saving throw against DC 17\./);
+  assert.match(text, /It cannot take this one again until the start of its next turn\./);
+  assert.match(text, /All of it is the DM's: "Uses Spellcasting to cast Mind Spike/);
+  assert.match(text, /Legendary Resistance, 3 a day: when it fails a saving throw it can choose to succeed instead\./);
+  assert.match(text, /In its lair the numbers are: 4 legendary action uses, Legendary Resistance 4 a day, 15000 XP when defeated\./);
+  assert.ok(r.doesNot.some((x) => /Legendary Resistance: the choice/.test(x)), "the DM is told what the engine does not do yet");
+  for (const n of ["legendary.actions.uses", "legendary.resistance.day", "legendary.lair.xp", "legendary.actions.options.1.effects.0.dc", "legendary.actions.options.1.target.area.range"]) assert.ok(r.numbers.some((x) => x.at === n), n);
+  const bad = green((l) => { l.actions.options[2].use = ["multiattack"]; l.actions.options.push({ id: "idle", name: "Idle", text: "x" }); });
+  assert.match(readEntry("monster", bad).problems.join("\n"), /names a Multiattack, which an option never uses/);
+  assert.match(readEntry("monster", bad).problems.join("\n"), /the option does nothing/);
+  assert.match(readEntry("monster", green((l) => { l.nope = 1; })).problems.join("\n"), /has a key "nope" the engine does not use/);
 });

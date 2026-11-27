@@ -885,7 +885,73 @@
             }
           ]
         }
-      ]
+      ],
+      "legendary": {
+        "actions": {
+          "uses": 3,
+          "options": [
+            {
+              "id": "swoop",
+              "name": "Swoop",
+              "cost": 2,
+              "move": {
+                "speed": "full",
+                "mode": "fly",
+                "provokes": false
+              },
+              "use": [
+                "slash",
+                "gloom-bolt"
+              ],
+              "text": "Swoops, then makes one slash or one gloom bolt."
+            },
+            {
+              "id": "dusk-pulse",
+              "name": "Dusk Pulse",
+              "again": "nextTurn",
+              "target": {
+                "area": {
+                  "shape": "sphere",
+                  "size": 15,
+                  "range": 60
+                }
+              },
+              "effects": [
+                {
+                  "save": "wis",
+                  "dc": 13,
+                  "half": false,
+                  "onFail": [
+                    {
+                      "damage": "2d6",
+                      "type": "psychic"
+                    }
+                  ]
+                }
+              ],
+              "text": "A 15-foot sphere within 60 feet: Wisdom save or psychic damage. Not again before its next turn."
+            },
+            {
+              "id": "vanish-step",
+              "name": "Vanish Step",
+              "move": {
+                "speed": "half",
+                "after": true
+              },
+              "manual": "It turns invisible until the start of its next turn.",
+              "text": "Moves up to half its Speed, then turns invisible until its next turn."
+            }
+          ]
+        },
+        "resistance": {
+          "day": 2
+        },
+        "lair": {
+          "uses": 4,
+          "resistance": 3,
+          "xp": 900
+        }
+      }
     },
     {
       "id": "hb-rk-hollow-reaver",
