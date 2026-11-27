@@ -71,10 +71,10 @@ export const SETTING_FIELDS = {
 //               where its cell is one that is sent, else its height alone; `area` and `ward` are cut to the fields below.
 //   'withheld'  not sent: how the zone works, and anything that names a creature or holds the caster's numbers.
 export const ZONE_FIELDS = {
-  area: 'scrubbed',            // shape, size, height, width, space, placed; never `range`, `types`, `exceptCaster` (how it was aimed, or whom it works on)
+  area: 'scrubbed',            // shape, space, placed, and size, height, width only when every cell of the zone is sent; never `range`, `types`, `exceptCaster` (how it was aimed, or whom it works on)
   hexes: 'sent',               // the laid-out cells, only those sent of the map
   body: 'sent',                // a pack's own cells (`area.space`), likewise
-  origin: 'scrubbed',          // the place and height it was laid out at; the place only where it is a cell that is sent
+  origin: 'scrubbed',          // the place and height it was laid out at, where its cell is sent; else the height of the lowest surface of a sent cell
   follows: 'scrubbed',         // who an Emanation moves with: never sent, the cells it covers now are
   ward: 'sent',                // Magic Circle: the types it bars and whether reversed; the runes glow on the floor
   move: 'sent',                // how far it can be rolled (Flaming Sphere): the caster's player is offered the roll

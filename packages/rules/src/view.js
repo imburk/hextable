@@ -12,7 +12,7 @@
 import { HEX, boxOf, gridOf, col, parse, squareAround } from './grid.js';
 import { conditionDef, visibleConditions } from './modifiers.js';
 import { DAMAGE_TYPES } from './content/schema.js';
-import { FT, concealed, footprint, inArea } from './space.js';
+import { FT, concealed, footprint, inArea, surfaces } from './space.js';
 import { memoryOf, partyView, seenName, sightRule, tileSent } from './vision.js';
 import { lightAt, lightSources } from './sight.js';
 import { shownTo } from './handouts.js';
@@ -345,7 +345,7 @@ function scrub(x, hidden) {
 const hiddenIds = (state) => new Set(Object.keys(state.entities).filter((id) => classify(state, id) === 'hidden'));
 
 export function playerView(state) {
-  const entities = {}, hidden = hiddenIds(state);
+  const entities = {}, hidden = hiddenIds(state), alias = zoneAliases(state);
   for (const [id, e] of Object.entries(state.entities)) {
     const c = classify(state, id);
     if (c === 'open') {
@@ -362,6 +362,7 @@ export function playerView(state) {
       Object.assign(entities[id], acShown(state, e));
       Object.assign(entities[id], heldBy(state, e));
       scrub(entities[id], hidden);
+      for (const k of Object.values(entities[id].cond ?? {})) if (alias.has(k?.effect)) k.effect = alias.get(k.effect);      // the effect of a zone they do not know the caster of, by its id for them
     }
     else if (c === 'seen') entities[id] = seenRecord(e, state);
   }
@@ -531,7 +532,7 @@ function shownMap(state) {
 // it does they see everything on their own characters and, on other creatures, only the
 // conditions they could see by looking.
 function viewEffects(state) {
-  const out = [], hidden = hiddenIds(state), zones = viewZones(state);
+  const out = [], hidden = hiddenIds(state), zones = viewZones(state), alias = zoneAliases(state);
   for (const fx of state.effects ?? []) {
     const src = classify(state, fx.source), zone = zones.get(fx.id);
     // An effect that is not theirs is sent only for its zone, if it has one they can see (below): as a zone and nothing else.
@@ -556,8 +557,8 @@ function viewEffects(state) {
       }
       else if (c === 'seen' && p.cond && conditionDef(p.cond)?.visible) parts.push({ target: p.target, cond: p.cond, ...(p.ended ? { ended: true } : {}) });
     }
-    out.push({ id: fx.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? {} : { source: fx.source }), conc: fx.conc, lasts: fx.lasts,
-      until: fx.until ? { ...fx.until } : null, parts, ...(zone ? { zone: zone.zone } : {}) });
+    // A zone of a caster they do not know of is told as such whatever it holds of theirs: no concentration, no end, an id of its own.
+    out.push({ id: alias.get(fx.id) ?? fx.id, name: fx.name, spell: fx.spell, ...(src === 'hidden' ? {} : { source: fx.source }), ...(alias.has(fx.id) ? { conc: false, lasts: null, until: null } : { conc: fx.conc, lasts: fx.lasts, until: fx.until ? { ...fx.until } : null }), parts, ...(zone ? { zone: zone.zone } : {}) });
   }
   return out;
 }
@@ -609,14 +610,18 @@ function zoneRecord(state, fx, seen) {
     cells = emanationCells(state, c, z.area.size);
     origin = { q: c.pos.q, r: c.pos.r, z: c.pos.z ?? 0 };
   } else { cells = z.hexes ?? []; origin = z.origin; }
-  const hexes = cells.filter((k) => seen.has(k));
+  const hexes = cells.filter((k) => seen.has(k)), whole = hexes.length === cells.length;
   if (!hexes.length) return null;
   const rec = {};
   for (const k of Object.keys(ZONE_FIELDS)) {
     if (ZONE_FIELDS[k] === 'withheld' || k === 'follows') continue;
-    if (k === 'area') rec.area = structuredClone(Object.fromEntries(ZONE_AREA_FIELDS.filter((f) => z.area[f] !== undefined).map((f) => [f, z.area[f]])));
+    // How big it is (`size`, `height`, `width`) only when every cell of it is sent: else two zones that differ only in a part nobody has seen would be told apart by them.
+    if (k === 'area') rec.area = structuredClone(Object.fromEntries(ZONE_AREA_FIELDS.filter((f) => z.area[f] !== undefined && (whole || !['size', 'height', 'width'].includes(f))).map((f) => [f, z.area[f]])));
     else if (k === 'hexes') rec.hexes = hexes;
-    else if (k === 'origin') { if (origin) rec.origin = seen.has(col(origin)) ? { q: origin.q, r: origin.r, z: origin.z ?? 0 } : { z: origin.z ?? 0 }; }
+    else if (k === 'origin') {
+      // The place where its cell is sent; else only a height, the lowest surface of a cell of it that is sent (the client draws from the cells), never the origin's own.
+      if (origin) rec.origin = seen.has(col(origin)) ? { q: origin.q, r: origin.r, z: origin.z ?? 0 } : { z: surfaces(state.map, parse(hexes[0]))[0]?.z ?? 0 };
+    }
     else if (k === 'body') { if (z.body) rec.body = z.body.filter((x) => seen.has(x)); }
     else if (z[k] !== undefined) rec[k] = structuredClone(z[k]);
   }
@@ -625,17 +630,25 @@ function zoneRecord(state, fx, seen) {
 }
 // The cells that are sent of the map, which a zone's cells are cut to: under `rooms` the tiles of revealed regions, under los and light those in view now.
 const seenCols = (state) => { const sm = shownMap(state); return sightRule(state) === 'rooms' ? sm.cols : sm.nowCols; };
-// Every zone a player is sent: Map(effect id -> { id, zone }). `id` is the effect's own, or for a zone of a caster they do not know of, with nothing
-// else of the effect that would be sent, `z` and its place among such zones.
-function viewZones(state) {
+// The effects of a zone of a caster the party does not know of, that a player is sent in any way (its zone, or a part on one of theirs), by an id of their own
+// (`z1`, `z2`, in the order of the state): the effect's own number comes from the counter creatures share (T11). Map(effect id -> alias). The alias goes wherever
+// players are told of the effect: its entry in `effects`, a condition's `effect`, and the events `effectStart`, `effectEnd` and `zoneMoved`.
+function zoneAliases(state) {
   const out = new Map(), seen = seenCols(state);
   let n = 0;
   for (const fx of state.effects ?? []) {
+    if (!fx.zone || classify(state, fx.source) !== 'hidden') continue;
+    if (zoneRecord(state, fx, seen) || fx.parts.some((p) => classify(state, p.target) === 'open')) out.set(fx.id, `z${++n}`);
+  }
+  return out;
+}
+// Every zone a player is sent: Map(effect id -> { id, zone }), `id` as `effects` names the effect.
+function viewZones(state) {
+  const out = new Map(), seen = seenCols(state), alias = zoneAliases(state);
+  for (const fx of state.effects ?? []) {
     if (!fx.zone) continue;
     const zone = zoneRecord(state, fx, seen);
-    if (!zone) continue;
-    const theirs = classify(state, fx.source) === 'open' || fx.parts.some((p) => classify(state, p.target) === 'open');
-    out.set(fx.id, { id: !theirs && classify(state, fx.source) === 'hidden' ? `z${++n}` : fx.id, zone });
+    if (zone) out.set(fx.id, { id: alias.get(fx.id) ?? fx.id, zone });
   }
   return out;
 }
@@ -908,6 +921,7 @@ function viewEventsOf(events, state, viewer) {
         const unknownIds = [...(unknownCaster ? [ev.source] : []), ...(ev.targets || []).filter((id) => typeof id === 'string' && cls(id) === 'hidden')];
         if (cls(ev.source) === 'open' || targets.some((id) => cls(id) === 'open')) {
           const e = { ...pick(ev, ['type', 'fx', 'name', 'conc', 'lasts', ...(unknownCaster ? [] : ['source']), ...(unknownIds.length ? [] : ['why'])]), targets };
+          if (unknownCaster) delete e.fx;      // its number comes from the counter creatures share, and a zone's own id for them is not kept once it has ended
           if (unknownIds.length && ev.why !== undefined) e.why = unknownIds.some((id) => !namesOf(id).length || namesOf(id).some((n) => n && String(ev.why).includes(n))) ? 'it ended' : ev.why;
           // Keys in the event's own order whatever was withheld, so the bytes are not a tell (#748).
           const ordered = {};

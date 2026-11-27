@@ -1717,11 +1717,11 @@ test("zones: a zone whose `spare` names a creature the DM has hidden is sent the
   });
 });
 
+const vault = (w) => {
+  const s = w.state, tiles = s.map.levels[0].tiles;
+  s.map.regions = [{ id: "hall", name: "The hall", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q < 4), revealed: true }, { id: "vault", name: "The vault", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q >= 4) }];
+};
 test("zones: a zone in a region the party has not explored is sent to no player, the same as with no zone there", () => {
-  const vault = (w) => {
-    const s = w.state, tiles = s.map.levels[0].tiles;
-    s.map.regions = [{ id: "hall", name: "The hall", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q < 4), revealed: true }, { id: "vault", name: "The vault", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q >= 4) }];
-  };
   twin({
     players: ["Pat"],
     setup(w) { zoneWorld(w); vault(w); },
@@ -1773,4 +1773,39 @@ test("zones: Spike Growth of a foe the party sees is sent to no player; the same
   twin(script(), put("spike-growth", "Spike Growth", { shape: "sphere", size: 20 }));
   const control = twinRun(script(), put("moonbeam", "Moonbeam", { shape: "cylinder", size: 5, height: 40 }));
   assert.ok(control.diffs.length > 0, "a zone that is not camouflaged is told of: the worlds differ");
+});
+
+test("zones: a zone that reaches into an unexplored region is sent the same whatever its size, its height or its centre there, with the cells the party knows the same", () => {
+  const sphere = (size, origin, extra) => (w) => zoneFor(w, hideOne(w, { q: 8, r: 0 }), "moonbeam", "Moonbeam", { area: { shape: "cylinder", size, height: size * 2 }, hexes: [...cellsAround({ q: 3, r: 0 }, 2), ...extra], origin });
+  const r = twin({
+    players: ["Pat"],
+    setup(w) { zoneWorld(w); vault(w); },
+    steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: -5, r: 1 } } }],
+  }, {
+    hide: sphere(10, { q: 5, r: 0, z: 0 }, []),
+    plain: sphere(20, { q: 6, r: 1, z: 20 }, cellsAround({ q: 7, r: 0 }, 1)),
+  });
+  const text = JSON.stringify(r.hidden.raw.Pat);
+  assert.ok(text.includes('"Moonbeam"') && text.includes('"zone"'), "the zone is sent, cut to the hall");
+});
+
+test("zones: a hidden caster's Web that has caught a party creature is told the same whichever caster it is: the effect's own number is nowhere, in the entry, the condition or the events", () => {
+  const web = (w, g) => {
+    const fx = zoneFor(w, g, "web", "Web", { area: { shape: "cube", size: 20 }, hexes: cellsAround({ q: -4, r: 0 }, 1), origin: { q: -4, r: 0, z: 0 } });
+    const f = w.state.entities.fighter;
+    fx.parts.push({ target: "fighter", cond: "restrained" });
+    f.cond.restrained = { effect: fx.id };
+  };
+  const end = (w) => { const fx = w.state.effects.find((x) => x.zone); w.must({ type: "endEffect", effect: fx.id }); };
+  const r = twin({
+    players: ["Pat"],
+    setup: (w) => zoneWorld(w),
+    steps: [{ by: "Pat", act: { type: "say", as: "fighter", text: "Stuck." } }, end],
+  }, {
+    hide: (w) => { web(w, hideOne(w, { q: 6, r: 0 })); },
+    plain: (w) => { burn(w, { q: 9, r: -4 }); w.state.seq += 2; web(w, hideOne(w, { q: 5, r: 3 }, "Other", "owl")); },
+  });
+  const text = JSON.stringify(r.hidden.raw.Pat);
+  assert.ok(text.includes('"z1"'), "the zone is told by an id of its own");
+  assert.ok(!/"fx\d+"/.test(text.slice(text.indexOf('"z1"') - 400)), "no effect number after it");
 });
