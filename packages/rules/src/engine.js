@@ -29,7 +29,7 @@ import { handlers as dm } from './engine/dm.js';
 import { handlers as companions } from './engine/companions.js';
 import { handlers as travel } from './engine/travel.js';
 import { handlers as trade, settleShops } from './engine/trade.js';
-import { handlers as legendary, BETWEEN_REFUSAL } from './engine/legendary.js';
+import { handlers as legendary, BETWEEN_REFUSAL, settleWindow } from './engine/legendary.js';
 // What the engine exports lives in engine/ by domain (see CLAUDE.md, Engine layout); importers
 // keep importing it from here.
 export { ARENA_RADIUS, blocked, castAbilOf, clear, commandedNow, current, dying, EXPLORE_BUDGET, fallen, featOf, controllerOf, FLY_CEILING, hbId, homebrewBlock, hostile, inFight, living, mod, ownerOf, spellStats, steering, unblocked, up } from './engine/shared.js';
@@ -278,6 +278,7 @@ function applyInner(s, action, ctx) {
   startWork();
   try {
     dispatch(s, action, ctx, ev);
+    settleWindow(s, ev);                             // an open legendary window whose creatures are all gone closes (engine/legendary.js)
     checkEvents(ev);
   } catch (err) {
     stopWork();

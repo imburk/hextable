@@ -88,7 +88,7 @@ export const handlers = {
       advanceTurn(s, ev);
       return;
     }
-    if (how === 'hold' ? finishTurn(s, e, ev) : awayTurn(s, e, ev)) advanceTurn(s, ev, how === 'hold' ? null : e.id);   // a held turn is not a turn taken (no legendary window)   // a turn under way is not held: it ends
+    if (how === 'hold' ? finishTurn(s, e, ev) : awayTurn(s, e, ev)) advanceTurn(s, ev, how === 'hold' ? null : e.id);   // a turn under way is not held: it ends; a held turn is not a turn taken (no legendary window)
   },
   // { type: 'stepBack', actor }: the creature is back (or its request to step away is taken back). By
   // the DM, or by its player when the player stepped it aside (a player does not undo the DM's).

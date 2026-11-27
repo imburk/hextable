@@ -11,6 +11,7 @@ import { ent, control, fail, up } from './shared.js';
 import { advanceTurn, HOOKS } from './resolve.js';
 import { actionSpent } from './attacks.js';
 import { incapacitatedBy } from '../modifiers.js';
+import { unknown } from '../vision.js';
 
 export const BETWEEN_REFUSAL = 'Between turns: the DM is deciding on legendary actions.';
 
@@ -24,6 +25,7 @@ export const resistMax = (e) => (e.legend?.lair && e.legendary?.lair?.resistance
 // checked when an option is taken, L1c, and refuse it then).
 function couldAct(s, e) {
   if (!e || !e.legendary?.actions || !up(e) || e.away || incapacitatedBy(e)) return false;
+  if (unknown(s, e)) return false;                     // one the party does not know of is offered no window: the table never waits for what it cannot see (Decision 3)
   const left = usesLeft(e);
   if (left < 1) return false;
   const foes = Object.values(s.entities).some((o) => !o.object && up(o) && o.side !== e.side && !o.melded);
@@ -56,7 +58,7 @@ function openWindow(s, ev, after) {
 HOOKS.window = openWindow;
 
 // Who still stands in the window: an offered creature that was dropped, died or left in the meantime is taken off it.
-const stillOffered = (s, id) => { const e = s.entities[id]; return !!e && up(e) && !e.away && !incapacitatedBy(e); };
+const stillOffered = (s, id) => { const e = s.entities[id]; return !!e && up(e) && !e.away && !incapacitatedBy(e) && !unknown(s, e); };
 
 // Closes the window and begins the next turn: `advanceTurn` goes on from where it stopped.
 function close(s, ev) {
@@ -68,6 +70,12 @@ function settle(s, ev) {
   const w = s.encounter.between;
   w.offered = w.offered.filter((id) => w.done.includes(id) || stillOffered(s, id));
   if (w.offered.every((id) => w.done.includes(id))) close(s, ev);
+}
+
+// Run after every action (engine.js): a creature offered in an open window that was dropped, killed, made Incapacitated or taken from the map by what the
+// DM did meanwhile (BETWEEN_OK) leaves it, and when nobody is left to ask the window closes and the next turn begins, as `done` does.
+export function settleWindow(s, ev) {
+  if (s.encounter?.between) settle(s, ev);
 }
 
 const SET_KEYS = ['acts', 'resisted', 'lair', 'show'];

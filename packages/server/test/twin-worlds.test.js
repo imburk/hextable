@@ -2085,3 +2085,35 @@ test("legendary: a window open for a dragon is sent the same whatever it has spe
   assert.ok(JSON.stringify(r.hidden.raw.Pat).includes("deciding on legendary actions"), "the refusal is the same sentence");
   for (const d of r.diffs) assert.fail(describe([d]));
 });
+
+// A legendary creature the party does not know of is offered no window (docs/specs/legendary.md, Decision 3, lead's default): a fight in which an adult
+// green dragon behind a wall, out of the party's sight, has its place in the order is sent to every player as one in which a goblin has, windows,
+// refusals and message counts included.
+test("legendary: a dragon out of the party's sight, in a fight's order, opens no window: every player is sent the same as with a goblin there", () => {
+  const putIn = (monster) => (w) => {
+    w.must({ type: "spawn", monster, at: { q: 4, r: -3 }, name: "Verdigris" });
+    const e = byName(w, "Verdigris");
+    e.abil = { ...e.abil, dex: 12 }; e.initBonus = 1;
+  };
+  const setup = (w) => {
+    for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+    w.must({ type: "loadMap", map: wallMap() });
+    w.must({ type: "setting", key: "autoEngage", value: false });
+    w.must({ type: "setting", key: "sight", value: "los" });
+    w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 2 }, name: "Foe" });
+    w.putIn();
+  };
+  const r = twinRun({
+    setup,
+    steps: [
+      { by: "dm", act: { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 } },
+      (w) => { for (let i = 0; i < 6; i++) w.must({ type: "endTurn", actor: current(w.state) }); },
+      { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+      { by: "Pat", send: { t: "history", limit: 200 } },
+    ],
+  }, { hide: putIn("adult-green-dragon"), plain: putIn("goblin-warrior") });
+  const d = byName(r.hidden.w, "Verdigris");
+  assert.ok(d.legendary && r.hidden.w.state.encounter.order.some((o) => o.id === d.id), "the dragon is in the fight, for the DM");
+  assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes('"between":true'), "no window is sent");
+  for (const x of r.diffs) assert.fail(describe([x]));
+});

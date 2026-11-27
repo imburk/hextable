@@ -286,3 +286,29 @@ test("a player is sent only that the table waits (between: true), never for whom
   ok(s, { type: "legendary", actor: d.id, skip: true });
   assert.ok(!("between" in view(s, { role: "player", userId: "u1" }).encounter));
 });
+
+test("an offered creature that the DM's tools drop, stun or kill leaves the window, and an empty window closes and the next turn begins", () => {
+  const openOne = () => { const g = dragonFight(); while (current(g.s) === g.d.id) end(g.s); ok(g.s, { type: "endTurn", actor: current(g.s) }); assert.ok(g.s.encounter.between); return g; };
+  for (const [name, act] of [["set to 0 Hit Points", (d) => ({ type: "setHp", actor: d, hp: 0 })], ["stunned", (d) => ({ type: "condition", actor: d, condition: "stunned", on: true })], ["paralyzed", (d) => ({ type: "condition", actor: d, condition: "paralyzed", on: true })]]) {
+    const { s, d } = openOne(), after = s.encounter.between.after;
+    const r = ok(s, act(d.id));
+    if (name === "set to 0 Hit Points" && !s.encounter) continue;       // the last foe down ends the fight, and the window with it
+    assert.equal(s.encounter.between, undefined, `${name}: the window is closed`);
+    assert.ok(r.events.some((e) => e.type === "turn"), `${name}: the next turn began in the same action`);
+    assert.notEqual(current(s), after);
+  }
+  // a creature of the window that is still there keeps it open
+  const { s } = openOne();
+  ok(s, { type: "harm", actor: "rogue", amount: 1 });
+  assert.ok(s.encounter.between, "harm to someone else leaves the window");
+});
+
+test("a legendary creature the party does not know of is offered no window", () => {
+  const { s, d } = dragonFight();
+  while (current(s) === d.id) end(s);
+  assert.deepEqual(offeredAfter(s, current(s)), [d.id]);
+  s.entities[d.id].melded = true;
+  assert.deepEqual(offeredAfter(s, current(s)), [], "melded into the stone: not known, not offered");
+  const r = end(s);
+  assert.ok(r.ok && !s.encounter.between && r.events.some((e) => e.type === "turn"), "the next turn starts in the same action");
+});
