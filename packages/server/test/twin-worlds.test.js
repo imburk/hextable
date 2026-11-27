@@ -2119,3 +2119,81 @@ test("legendary: a dragon out of the party's sight, in a fight's order, opens no
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes('"between":true'), "no window is sent");
   for (const x of r.diffs) assert.fail(describe([x]));
 });
+
+// ---- legendary actions, L1d: what players are sent (docs/specs/legendary.md, Decision 9 and test 12 without Legendary Resistance) ----
+// Worlds that differ only in the dragon's counters (uses spent 1 or 0, both under the 3 it has), its lair mark, an option the DM did not take (a
+// spare one on its block), and `show` off, send every player the same bytes through a window, an option taken, and its undo and redo. With `show` on
+// the count is sent.
+const legendSetup = (w) => {
+  for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  w.must({ type: "setting", key: "legendaryWindows", value: true });
+  w.must({ type: "spawn", monster: "adult-green-dragon", at: { q: -3, r: 2 }, name: "Verdigris" });
+  w.must({ type: "startEncounter", center: { q: -6, r: 2 }, radius: 8 });
+  for (const e of Object.values(w.state.entities)) if (e.side === "party") e.hp = e.maxHp = 900;
+};
+const legendSteps = [
+  (w) => { for (let i = 0; i < 12 && !w.state.encounter.between; i++) w.must({ type: "endTurn", actor: current(w.state) }); },
+  { by: "Pat", act: { type: "endTurn", actor: "fighter" }, allowError: true },
+  { by: "dm", act: (w) => ({ type: "legendary", actor: byName(w, "Verdigris").id, option: "pounce", to: { q: -5, r: 2 }, target: "fighter" }) },
+  { by: "Sam", act: { type: "say", as: "cleric", text: "It moved!" } },
+  { by: "dm", send: { t: "undo" } }, { by: "dm", send: { t: "redo" } },
+  { by: "Pat", send: { t: "history", limit: 200 } },
+];
+const legendSet = (set, extra = false) => (w) => {
+  const d = byName(w, "Verdigris");
+  w.must({ type: "legendarySet", actor: d.id, set });
+  if (extra) d.legendary.actions.options.push({ ...structuredClone(d.legendary.actions.options[0]), id: "spare", name: "Spare" });
+};
+
+test("legendary: an option taken is sent the same whatever the dragon has spent, its lair mark and the options it did not take", () => {
+  const r = twinRun({ setup: legendSetup, steps: legendSteps }, { hide: legendSet({ acts: 1, lair: true }, true), plain: legendSet({ acts: 0 }) });
+  const raw = JSON.stringify(r.hidden.raw.Pat);
+  assert.ok(raw.includes('"type":"legendary"') && raw.includes("Pounce"), "the players were told who took which option");
+  for (const bad of ["\"option\":\"pounce\"", "\"type\":\"legendarySkip", "\"type\":\"legendaryWindow\"", "Spare"]) assert.ok(!raw.includes(bad), `${bad} was sent`);
+  for (const d of r.diffs) assert.fail(describe([d]));
+});
+
+test("legendary: with `show` on the count is sent; with it off nothing of it is", () => {
+  const r = twinRun({ setup: legendSetup, steps: legendSteps }, { hide: legendSet({ show: true }), plain: legendSet({ show: false }) });
+  assert.ok(JSON.stringify(r.hidden.raw.Pat).includes('"legend":{"left":'), "the count is sent with show on");
+  assert.ok(!JSON.stringify(r.plain.raw.Pat).includes('"legend"'), "and not with it off");
+  assert.ok(r.diffs.length > 0, "the worlds differ for the players, as the DM chose");
+  const on = (w) => { w.must({ type: "legendarySet", actor: byName(w, "Verdigris").id, set: { show: true } }); };
+  const same = twinRun({ setup: legendSetup, steps: [on, ...legendSteps] }, { hide: legendSet({ acts: 1 }), plain: legendSet({ acts: 0 }) });
+  assert.ok(same.diffs.length > 0, "with show on a different count is a different thing to be told");
+  assert.ok(JSON.stringify(same.hidden.raw.Pat).includes('"legend":{"left":'));
+});
+
+// A legendary creature the party does not know of (behind a wall, or hidden by the DM): in V025 both engine jobs leaked through this case.
+// The dragon is in both worlds; they differ only in what it has spent, its lair mark, its spare option and `show` ON (never sent for a creature
+// they do not know of); the DM's tries and settings of it send the players nothing either.
+for (const [how, spawn] of [["behind a wall", { at: { q: 4, r: -3 } }], ["hidden in the fight", { at: { q: 5, r: 3 } }]]) {
+  test(`legendary: a dragon the party does not know of (${how}) is sent the same whatever it has spent, its lair mark, its options and show`, () => {
+    const setup = (w) => {
+      for (const [n, id] of [["Pat", "fighter"], ["Sam", "cleric"]]) w.state.entities[id].owner = w.ids[n];
+      if (how === "behind a wall") { w.must({ type: "loadMap", map: wallMap() }); w.must({ type: "setting", key: "sight", value: "los" }); }
+      w.must({ type: "setting", key: "autoEngage", value: false });
+      w.must({ type: "setting", key: "legendaryWindows", value: true });
+      w.must({ type: "spawn", monster: "adult-green-dragon", name: "Verdigris", ...spawn });
+      w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 2 }, name: "Foe" });
+    };
+    const hideIt = (w) => { if (how !== "behind a wall") byName(w, "Verdigris").hidden = true; };      // a fight's start brings a creature the DM hid into it, and the DM cannot hide one in a fight: the mark is set directly, once the fight has begun
+    const r = twinRun({
+      setup,
+      steps: [
+        { by: "dm", act: { type: "startEncounter", center: { q: 0, r: 0 }, radius: 8 } },
+        (w) => { for (let i = 0; i < 6; i++) w.must({ type: "endTurn", actor: current(w.state) }); },
+        { by: "dm", act: (w) => ({ type: "legendary", actor: byName(w, "Verdigris").id, option: "pounce", to: { q: -5, r: 2 }, target: "fighter" }), allowError: true },
+        { by: "dm", act: (w) => ({ type: "legendarySet", actor: byName(w, "Verdigris").id, set: { acts: 2 } }) },
+        { by: "Pat", act: { type: "say", as: "fighter", text: "Anything?" } },
+        { by: "Pat", send: { t: "history", limit: 200 } },
+      ],
+    }, { at: 1, hide: (w) => { hideIt(w); legendSet({ acts: 1, lair: true, show: true }, true)(w); }, plain: (w) => { hideIt(w); legendSet({ acts: 0 })(w); } });      // after the fight begins, while the dragon is still known: the counters change after that
+    const d = byName(r.hidden.w, "Verdigris");
+    assert.ok(d.legendary && d.legend.show && r.hidden.w.state.encounter.order.some((o) => o.id === d.id), "the dragon is in the fight, with show on, for the DM");
+    const raw = JSON.stringify(r.hidden.raw.Pat);
+    for (const bad of ["\"between\":true", "\"legend\"", ...(how === "behind a wall" ? ["Verdigris"] : [])]) assert.ok(!raw.includes(bad), `${bad} was sent (${how}): ${raw.slice(Math.max(0, raw.indexOf(bad) - 200), raw.indexOf(bad) + 120)}`);
+    for (const x of r.diffs) assert.fail(describe([x]));
+  });
+}

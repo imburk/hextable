@@ -430,6 +430,29 @@ engine or the server; the DM answers for a player who does not. A spell lost to 
 sends `countered {id,by?}` to players, with `spell` and `name` only if it was theirs. The DM's
 undo of an answer puts the question back.
 
+### Legendary actions
+
+Design: `docs/specs/legendary.md`. With the table setting `legendaryWindows` on (off when absent), a pause
+opens after a taken turn while a legendary creature the party knows of could act: the state's
+`encounter.between`. While it is open only `legendary`, `legendarySet`, `react`, `reactions`, the DM's tools
+and the chat are accepted; any other action is refused with "Between turns: the DM is deciding on legendary
+actions."
+
+| Action | Who | Events (as the DM gets them) |
+|---|---|---|
+| `{type:"legendary", actor, option, to?, target?, targets?, hex?, pick?}` | the creature's controller or the DM | `legendary {actor,option,name,after}`, then the move's and the action's own events |
+| `{type:"legendary", actor, skip:true}` | the same | `legendarySkip {actor}` (DM only) |
+| `{type:"legendary", done:true}` | the DM | `legendarySkip {actor}` for each creature left (DM only) |
+| `{type:"legendarySet", actor, set:{acts?,resisted?,lair?,show?}}` | the DM, in a fight or not | `legendarySet {id,set}` (DM only) |
+
+What a player is sent: `legendary {actor,name}` for a creature the party knows of, as an `act` event is (never
+`option`, never `after`); nothing for one they do not. `legendaryWindow`, `legendarySkip` and `legendarySet` are
+never sent. The fight's view carries `between: true` while the table waits, never for whom or what is offered.
+A foe's record carries nothing of its legendary block; when the DM sets `show` it carries `legend: {left,max}`,
+the uses left now and the most it may spend (the lair's number when it is marked in its lair). The lair mark,
+what was spent and the options not taken are not sent. A history step for an option reads "Verdigris: Pounce" to
+players who know of the creature, and is not shown to the others.
+
 ### Scene actions, events and view
 
 Design: `docs/specs/maps-and-objects.md`, Scenes, and its build notes ("Scenes: for the screen").
