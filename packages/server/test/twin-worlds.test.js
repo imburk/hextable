@@ -15,6 +15,8 @@ import { createAssets } from "../src/assets.js";
 import { worldAssets } from "../src/tables.js";
 import { apply, current, makeEntity } from "../../rules/src/engine.js";
 import { derive } from "../../rules/src/derive.js";
+import { aiStep } from "../../rules/src/ai.js";
+import { submerged } from "../../rules/src/space.js";
 import { startEffect } from "../../rules/src/durations.js";
 import { describe, diffStreams, twin, twinRun } from "./twin.js";
 
@@ -1849,4 +1851,43 @@ for (const [label, z] of [["a hand's breadth under the surface", -5], ["at the b
   ] }, { hide: put, plain: (w) => burn(w, { q: -4, r: 0 }) });
   for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
   assert.deepEqual(r.hidden.w.state.entities.fighter.pos, { q: 3, r: 0, z: 0 }, "the swimmer went where it was sent");
+});
+
+// ---- swimming (#840, E2): a hidden creature under the water runs out of breath, gains Exhaustion, comes up ----
+// The far water of the lake (q 5 and beyond) is a region the party has not seen. A creature the DM hid there under the surface holds its breath (1 minute: Constitution 10),
+// runs out, gains Exhaustion level by level (events, the `cond` of a creature the party does not know of, and its record's `breath`), and is moved to the surface, where the
+// Exhaustion suffocation gave it comes off. The party's own fighter swims under the near water meanwhile and runs out of breath too: that is sent to its players, the same in both
+// worlds. Nothing of the hidden creature's breath, Exhaustion or surfacing is sent: the worlds with and without it are the same in every message.
+const sink = (w) => { w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -4, r: 0 }, name: "Lurker", hidden: true }); Object.assign(byName(w, "Lurker"), { pos: { q: 6, r: 0, z: -10 }, hp: 500, maxHp: 500 }); };
+const onLurker = (f) => (w) => { const l = byName(w, "Lurker"); if (l) f(w, l); };
+test("swimming: a hidden creature that runs out of breath under the far water, gains Exhaustion and surfaces, is sent to no player; the worlds with and without it are the same", () => {
+  const r = twin({ players: ["Pat", "Sam"], setup: lakeScene, steps: [
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 2, r: 0, z: 0 } } },
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 2, r: 0, z: -10 } } },
+    { by: "dm", act: { type: "advanceTime", minutes: 1 } },
+    { by: "dm", act: { type: "advanceTime", minutes: 0.2 } },
+    { by: "Sam", act: { type: "say", as: "wizard", text: "How long can he stay down there?" } },
+    onLurker((w, l) => { assert.ok((l.cond.exhaustion?.level ?? 0) >= 2, "it has run out of breath and suffocates"); assert.ok(l.breath.gave >= 2); }),
+    onLurker((w, l) => w.must({ type: "move", actor: l.id, to: { q: 6, r: 0, z: 0 } })),
+    { by: "dm", act: { type: "advanceTime", minutes: 0.1 } },
+    onLurker((w, l) => { assert.equal(l.cond.exhaustion, undefined, "it came up and took the Exhaustion off"); assert.equal(l.breath, undefined); }),
+    { by: "Pat", act: { type: "move", actor: "fighter", to: { q: 2, r: 0, z: 0 } } },
+    { by: "dm", act: { type: "advanceTime", minutes: 0.1 } },
+  ] }, { hide: sink, plain: (w) => burn(w, { q: -4, r: 0 }) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
+  assert.ok(JSON.stringify(r.hidden.raw.dm).includes("Lurker"), "the DM is told of it");
+  assert.equal(r.hidden.w.state.entities.fighter.cond.exhaustion, undefined, "the party's own fighter came up too, and has none");
+});
+// The same by the rounds of a fight the party is in: the hidden creature is outside the arena (no turns of its own), and the clock moves a round at a time; its Exhaustion
+// comes round by round, and nothing of it, of the round's timing or of its surfacing (the move the brain makes of a creature that would run out of breath) is sent.
+test("swimming: a hidden creature under the far water through the rounds of a fight, and brought up, is sent to no player; the worlds with and without it are the same", () => {
+  const through = (round) => (w) => { while (w.state.encounter.round < round) w.must({ type: "endTurn", actor: current(w.state) }); };
+  const r = twin({ players: ["Pat", "Sam"], setup: (w) => { lakeScene(w); w.must({ type: "spawn", monster: "goblin-warrior", at: { q: -2, r: 0 }, name: "Watcher" }); Object.assign(byName(w, "Watcher"), { hp: 5000, maxHp: 5000 }); w.must({ type: "startEncounter", center: { q: 0, r: 0 }, radius: 3 }); }, steps: [
+    through(14),
+    onLurker((w, l) => { assert.ok((l.cond.exhaustion?.level ?? 0) >= 1 && l.breath.held > 60, "it ran out of breath by the clock of the rounds"); }),
+    onLurker((w, l) => { w.must({ type: "move", actor: l.id, to: { q: 6, r: 0, z: 0 } }); }),
+    through(16),
+    onLurker((w, l) => { assert.equal(l.cond.exhaustion, undefined, "it came up and took the Exhaustion off"); }),
+  ] }, { hide: sink, plain: (w) => burn(w, { q: -4, r: 0 }) });
+  for (const who of ["Pat", "Sam"]) assert.ok(!JSON.stringify(r.hidden.raw[who]).includes("Lurker"), `${who} is told of nothing`);
 });

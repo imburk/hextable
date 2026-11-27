@@ -10,7 +10,7 @@ import { DAMAGE_TYPES } from '../content/schema.js';
 import { srcOf } from '../homebrew.js';
 import { begin, CUBE_AIM_MAX, run, scaleSteps, sharedRolls, turnSteps, walk as walkSteps } from '../effects.js';
 import { breakConcentration, concentrationCheck, confusedNow, concentrationLost, damaged, effectsOf, endEffect, endWards, fightOver, holds, ON, restamp, ROUND, roundStarted, startEffect, thisTurn, turnEnded, turnKey, turnStarted, useUp } from '../durations.js';
-import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, surfaces, under, unseenAt } from '../space.js';
+import { apart, concealed, footprint, FT, ground, hasColumn, landing, overlapAt, paired, STEP_FREE, STEP_MAX, submerged, surfaces, under, unseenAt } from '../space.js';
 import { raised, seenName, sightRule, unknown } from '../vision.js';
 import { concludeFight } from '../rewards.js';
 import { silentAll, silentAt } from '../terrain.js';
@@ -1066,7 +1066,7 @@ export function damage(s, t, amount, dtype, ev, { crit = false, raw = false, cut
   for (const [pi, p] of parts.entries()) {
     const applies = (fromModifiers, own) => fromModifiers === true || fromModifiers.includes(p.type) || own.includes(p.type);
     // SRD order: Resistance (halved, rounded down), then Vulnerability (doubled); each counts once.
-    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced || (warded && DAMAGE_TYPES.includes(p.type))), vulnerable = applies(m.vulnerable, t.vuln);
+    const resisted = !pierce && (applies(m.resist, t.resist) || p.type === braced || (warded && DAMAGE_TYPES.includes(p.type)) || (p.type === 'fire' && submerged(s, t))), vulnerable = applies(m.vulnerable, t.vuln);
     let n = base[pi];
     if (!pierce && (applies(m.immune, t.immune) || (p.type === 'thunder' && silentAll(s, t)))) n = 0;       // Silence: entirely inside the sphere
     else { if (resisted) n = Math.floor(n / 2); if (vulnerable) n *= 2; }
@@ -1252,7 +1252,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   }
   const v = typeof atk.via === 'string' && Object.hasOwn(s.entities, atk.via) ? s.entities[atk.via] : null;
   const from = v ? { ...e, pos: v.pos, size: v.size } : e;
-  let { mode, adv, dis, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
+  let { mode, adv, dis, miss, add, dice, crit: sureCrit, used } = rollMode(s, from, t, extra.opportunity ? { ...atk, opportunity: true } : atk);
   // SRD "Weapon Mastery": a weapon the wielder lacks proficiency with gives no mastery property. The engine applies no mastery property to any
   // weapon (DEBT T60), so there is nothing to withhold; a holder of the feature is told once a fight, so the DM does not apply it by hand.
   if (atk.untrained && e.feats?.some((f) => f.id === 'weapon-mastery') && CONTENT.weapons[atk.weapon]?.mastery && s.encounter && !s.encounter.flags[`nomastery:${e.id}:${atk.weapon}`]) {
@@ -1278,9 +1278,9 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   const cover = e.object ? 'none' : coverOf(s, from, t, v ? living(s).filter((o) => o !== v && o !== e) : living(s)), ac = acOf(s, t) + (COVER[cover] ?? 0);
   // Improved Critical: a weapon attack scores a Critical Hit, and so hits, on a lower roll (`critOn`).
   const critRoll = nat === 20 || (!atk.spell && e.critOn && nat >= e.critOn);
-  let hit = nat !== 1 && (critRoll || nat + bonus >= ac), ac2 = ac, cut = null;
+  let hit = !miss && nat !== 1 && (critRoll || nat + bonus >= ac), ac2 = ac, cut = null;         // `miss`: under water, beyond the weapon's normal range: no roll can hit
   // A die that may turn a miss into a hit (Bardic Inspiration, Peerless Skill); never a natural 1.
-  const lift = !hit && nat !== 1 ? rescue(s, e, 'attack.roll', ac - (nat + bonus), ev) : null;
+  const lift = !hit && !miss && nat !== 1 ? rescue(s, e, 'attack.roll', ac - (nat + bonus), ev) : null;
   if (lift?.success) hit = true;
   const lifted = lift?.add ?? 0;
   // The target may react to being hit (reactions.js): Shield raises its Armor Class against this
@@ -1293,7 +1293,7 @@ function rollToHit(s, e, t, atk, ev, extra = {}, { forgo = false, keepHidden = f
   }
   const crit = hit && (critRoll || sureCrit);
   ev.push({ type: 'attack', actor: e.id, target: t.id, name: atk.name, rolls: r2 ? [r1, r2] : [r1], nat,
-    total: nat + bonus + lifted, ac: ac2, mode, why: mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
+    total: nat + bonus + lifted, ac: ac2, mode, why: miss ? [miss] : mode === 'adv' ? adv : mode === 'dis' ? dis : [], hit, crit, ...(lift ? { rescued: { name: lift.name, dice: lift.dice, add: lift.add } } : {}), ...(cover !== 'none' ? { cover } : {}), ...(more.extra.length ? { extra: more.extra } : {}),
     dice: [...d20Faces(r1, r2, nat), ...more.dice], bonus: atk.bonus + add, ...extra });
   useUp(s, ev, used);
   if (!hit) studied(s, e, t, ev);

@@ -90,7 +90,7 @@ export const HOOK_WORDS = {
   'save.str': 'Strength saving throws', 'save.dex': 'Dexterity saving throws', 'save.con': 'Constitution saving throws', 'save.int': 'Intelligence saving throws',
   'save.wis': 'Wisdom saving throws', 'save.cha': 'Charisma saving throws', 'save.death': 'Death Saving Throws', concentration: 'saving throws to keep Concentration',
   'spell.dc': 'its spell save DC', 'spell.attack': 'its spell attack rolls', 'hp.max': 'its Hit Point maximum', carry: 'its carrying capacity',
-  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain', invisible: 'the Invisible condition', senses: 'its senses', surface: 'the surface it walks on', leap: 'its leaps',
+  'speed.fly': 'its Fly Speed', d20: 'a D20 Test it fails', opportunity: 'Opportunity Attacks', 'hp.zero': 'a drop to 0 Hit Points', condition: 'a condition', terrain: 'Difficult Terrain', invisible: 'the Invisible condition', senses: 'its senses', surface: 'the surface it walks on', breath: 'its breathing', leap: 'its leaps',
 };
 // What a modifier does to that thing. `v` is the value in words, `h` the hook's noun.
 export const OP_WORDS = {
@@ -145,7 +145,7 @@ export const JUDGED_ADVANTAGE_IF = WHERE;
 const SEES = ['target.prone', 'target.unconscious', 'attacker.unseen', 'target.unseen', 'target.seen', 'target.enemy', 'target.ally', 'ally.adjacentToTarget', 'enemy.adjacent', 'target.fought', 'target.notFiend', 'target.fiendOrUndead', 'target.notGrappler', 'target.grappledBySelf', 'within5', 'beyond5', 'self.notIncapacitated'];
 export const ATTACK_HOOKS = ['attack.roll', 'attack.received'];
 export const DAMAGE_HOOKS = ['damage.dealt'];
-export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition', 'terrain', 'invisible', 'senses', 'surface'];
+export const HOLDER_HOOKS = ['check', 'save', 'save.str', 'save.dex', 'save.con', 'save.int', 'save.wis', 'save.cha', 'save.death', 'concentration', 'd20', 'ac', 'damage.taken', 'hp.zero', 'condition', 'terrain', 'invisible', 'senses', 'surface', 'breath'];
 export const BARE_HOOKS = ['speed', 'speed.fly', 'initiative', 'spell.dc', 'spell.attack', 'opportunity'];
 // Hooks nothing calls `modifiers()` for: a trait's modifier there changes nothing (`hp.max` is applied by the step that puts it on, whatever its `when` says).
 export const UNREAD_HOOKS = ['hp.max', 'carry'];
@@ -1349,6 +1349,9 @@ function modPhrase(m, at) {
   // Water Walk (engine/world.js `moveOptions`, modifiers.js `walksOn`).
   if (hook === 'surface' && !(op === 'immune' && isObj(m.scope) && m.scope.surface === 'water' && Object.keys(m.scope).length === 1 && Object.keys(m).length === 3)) { this.bad(`${at}: a modifier on surface is { on: "surface", op: "immune", scope: { surface: "water" } }.`); return 'a surface the reader cannot read'; }
   if (hook === 'surface') return 'the ability to walk across water as if it were solid ground, and to stop on it';
+  // Water Breathing (engine/rolls.js `breathe`, modifiers.js `breathOf`).
+  if (hook === 'breath' && !(op === 'immune' && Object.keys(m).length === 2)) { this.bad(`${at}: a modifier on breath is { on: "breath", op: "immune" }.`); return 'an immunity the reader cannot read'; }
+  if (hook === 'breath') return 'the ability to breathe water as well as its own way of breathing: under water it does not run out of breath';
   // Jump (engine/movement.js `leap`, modifiers.js `leapOf`).
   if (hook === 'leap' && !(op === 'set' && Number.isInteger(m.value) && Object.keys(m).length === 3)) { this.bad(`${at}: a modifier on leap is { on: "leap", op: "set", value: <feet> }.`); return 'a leap the reader cannot read'; }
   if (hook === 'leap') { this.num(`${at}.value`, m.value, 'foot'); return `once on each of its turns, a leap of up to ${m.value} feet for 10 feet of movement, with or without a running start`; }

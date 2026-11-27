@@ -102,6 +102,8 @@ A creature's position becomes `{ q, r, z }`, with `z` in feet.
   `depth` (map format 3), a position between its bed and its surface is in the
   water, and a creature swims through it in 5 foot steps level, up and down
   (5 feet a step from a Swim Speed, 10 from the walking Speed without one).
+  Under the surface it also holds its breath, fights as the SRD's "Underwater
+  Combat" says, and has Resistance to Fire (#840, "Build notes (E2)").
   Burrowing has no rules yet.
 - **Distance** uses all three axes. How vertical distance combines with
   horizontal is a table rule, since tables differ.

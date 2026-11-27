@@ -9,8 +9,8 @@ import { moveOptions as ways, holdsOf, current, up, hostile, inFight, unblocked,
 import { attackRefusal, spareStrike, steadiest } from './weapons.js';
 import { SPELLS } from './content/index.js';
 import { actionProfile, scaleSteps, stepKind, targetCount, walk } from './effects.js';
-import { flyby, incapacitatedBy, speedOf, untrainedGear } from './modifiers.js';
-import { waterAt } from './space.js';
+import { breathOf, flyby, incapacitatedBy, speedOf, untrainedGear } from './modifiers.js';
+import { submerged, waterAt } from './space.js';
 import { apart, apartAt, ground } from './space.js';
 import { canSee, hiddenFrom } from './sight.js';
 import { silentAt } from './terrain.js';
@@ -47,6 +47,9 @@ export function aiStep(s, id, opts) {
   // A party creature acts only on what the party knows (ai-casting.md, Decision 2): it reads the copy the companion brain reads,
   // with the creatures the party is not told of left out. A foe reads the true state, as it always has (`knownTo` returns `s`).
   const k = knownTo(s, e);
+  // About to run out of breath under the surface: it comes up first.
+  const air = surfacing(s, e, k);
+  if (air) return air;
   // It does not act on creatures it has not found.
   const foes = Object.values(k.entities).filter((o) => up(o) && !o.melded && hostile(o, e) && inFight(k, o.id) && aware(k, e, o));      // a creature merged with stone is never picked
   // One whose stat block has Stealth may open the fight by hiding, if it is somewhere it can.
@@ -89,13 +92,32 @@ function escaping(s, e, canHit) {
 // Hit Points (players are not sent them: ai-casting.md, Decision 2): it breaks them by id.
 const byHp = (e, x, y) => (e.side === 'party' ? 0 : x.hp - y.hp);
 
-// The places the brain may choose to stop at: what the engine allows, less the water under its surface for a creature with no Swim Speed. Swimming is
-// in the engine (stage E1) and the brain may swim through water at the engine's costs, but it does not end a turn under the water without the Speed to swim:
-// breath is stage E2's, and a creature that would be drowning there is not a place to send it. A creature already under the water is not held to it.
+// Breath (stage E2, #840; engine/rolls.js `breathe`, modifiers.js `breathOf`). A creature that needs air and has two rounds of it or less left comes up: on its turn,
+// before anything else, it moves to the nearest place it can reach that is not under the surface (and failing that, as far up as it can get), and it does not choose to end a turn
+// under the surface until it is above that again (it has had a breath: surfacing resets the count). A creature the engine cannot judge (the DM's) or one that breathes water
+// is never held to it. No dice, and nothing is read that a player is not sent: the brain reads the true state, as a foe always has.
+const SURFACE_AT = 12;                                                    // seconds of breath left: two rounds
+const wet = (s, h) => { const w = waterAt(s.map, h); return !!w && (h.z ?? 0) < w.z; };
+function breathLeft(s, e) {
+  const air = breathOf(s, e);
+  return air.judged && !air.water ? air.hold - (submerged(s, e) ? e.breath?.held ?? 0 : 0) : Infinity;
+}
+function surfacing(s, e, k = s) {
+  if (!e.pos || !submerged(s, e) || breathLeft(s, e) > SURFACE_AT) return null;
+  const reach = [...ways(k, k.entities[e.id] ?? e).values()].filter((v) => v.canStop);
+  const dry = reach.filter((v) => !wet(s, v.h)).sort((a, b) => a.cost - b.cost);
+  if (dry.length) return { type: 'move', actor: e.id, to: dry[0].h };
+  const best = reach.filter((v) => (v.h.z ?? 0) > (e.pos.z ?? 0)).sort((a, b) => (b.h.z ?? 0) - (a.h.z ?? 0) || a.cost - b.cost)[0];
+  return best ? { type: 'move', actor: e.id, to: best.h } : null;
+}
+
+// The places the brain may choose to stop at: what the engine allows, less the water under its surface for a creature with no Swim Speed, and for one that is about to
+// run out of breath (above). Swimming is in the engine (stage E1) and the brain may swim through water at the engine's costs, but it does not end a turn under the water without
+// the Speed to swim: a creature that would be drowning there is not a place to send it. A creature already under the water is not held to it.
 function moveOptions(s, e, opts) {
   const reach = ways(s, e, opts);
-  if (speedOf(s, e, 'swim') > 0) return reach;
-  for (const v of reach.values()) if (v.canStop) { const w = waterAt(s.map, v.h); if (w && (v.h.z ?? 0) < w.z) v.canStop = false; }
+  if (speedOf(s, e, 'swim') > 0 && !(breathLeft(s, e) <= SURFACE_AT)) return reach;
+  for (const v of reach.values()) if (v.canStop && wet(s, v.h)) v.canStop = false;
   return reach;
 }
 

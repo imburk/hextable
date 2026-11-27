@@ -27,6 +27,7 @@
 // an effect anyway, `bound`, that ends when its parts do.
 // Ending an effect removes its parts. Design: docs/specs/rules-expansion.md.
 import { has, incapacitated } from './modifiers.js';
+import { submerged } from './space.js';
 import { leaveForm } from './forms.js';
 import { homebrewBlock, srcOf } from './homebrew.js';
 
@@ -42,6 +43,8 @@ export function durationMinutes(text) {
   return m ? +m[1] * MINUTES[m[2]] : null;
 }
 
+// Is anyone under the surface of water now (space.js `submerged`)?
+const anyUnder = (s) => Object.values(s.entities ?? {}).some((e) => !e.dead && submerged(s, e));
 export const effectsOf = (s) => (s.effects ??= []);
 const inFight = (s, id) => !!s.encounter && s.encounter.order.some((o) => o.id === id);
 
@@ -63,7 +66,7 @@ export function startEffect(s, { name, spell, source, conc, duration, level }) {
 
 // Things this module cannot do itself because they need the engine's placing and zones (engine/resolve.js sets them when it loads): a creature merged
 // with stone comes out of it (`meldEnd(s, ev, creature, melded)`), at the place it went in or the nearest one free.
-export const ON = { meldEnd: null, sizeEnd: null };
+export const ON = { meldEnd: null, sizeEnd: null, breath: null };
 
 function endPart(s, ev, fx, p) {
   if (p.ended) return;
@@ -153,6 +156,16 @@ function expire(s, ev, fx) {
 
 // The world clock moved: end whatever has run out.
 export function tick(s, ev) {
+  // Everyone under water holds its breath through the time that passed since the clock was last looked at (engine/rolls.js `breathe`). `breathAt` is that moment, kept
+  // from one look to the next. It is written only once a game has had a creature under water (a table that never swims has no new field: its state is what it was), and it is
+  // optional (no state version): a game with none works the first advance out from the `time` or `rest` event it just made, and from nothing else (that one is counted from now).
+  if (Number.isFinite(s.clock) && (Number.isFinite(s.breathAt) || anyUnder(s))) {
+    const told = ev.findLast?.((x) => x?.type === 'time' || x?.type === 'rest');
+    const from = Number.isFinite(s.breathAt) ? s.breathAt : told?.type === 'time' ? s.clock - told.minutes : told?.short === true ? s.clock - 60 : told ? s.clock - 480 : s.clock;
+    const dt = s.clock - from;
+    s.breathAt = s.clock;
+    if (dt > EPS) ON.breath?.(s, ev, null, Math.round(dt * 60), false);
+  }
   // A whole form (Polymorph) ends on the creature when it has no Temporary Hit Points left, however they went (a rest clears them; damage ends it as it soaks).
   for (const e of Object.values(s.entities)) {
     const fx = e.form?.whole === true && !(e.tempHp > 0) ? effectsOf(s).find((x) => x.id === e.form.fx) : null;
@@ -190,8 +203,11 @@ function boundary(s, ev, e, kit, when) {
     if (spent(fx)) endEffect(s, ev, fx, 'nothing is left of it');
   }
 }
-export const turnStarted = (s, ev, e, kit) => boundary(s, ev, e, kit, 'turnStart');
-export const turnEnded = (s, ev, e, kit) => boundary(s, ev, e, kit, 'turnEnd');
+// A turn boundary is also where a swimmer's breath is looked at (`secs` 0: surfacing is noticed here), and where a game with no `breathAt` yet takes the clock as it is, so that
+// the first round of a fight counts.
+const watch = (s, ev, e, turnEnd) => { if (!Number.isFinite(s.breathAt) && Number.isFinite(s.clock) && anyUnder(s)) s.breathAt = s.clock; ON.breath?.(s, ev, e, 0, turnEnd); };
+export const turnStarted = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnStart'); watch(s, ev, e, false); };
+export const turnEnded = (s, ev, e, kit) => { boundary(s, ev, e, kit, 'turnEnd'); watch(s, ev, e, true); };
 
 // The fight is ending (call before the encounter is cleared). Whatever was counted in rounds
 // carries on by the clock, and whatever was waiting for a turn boundary ends now.
