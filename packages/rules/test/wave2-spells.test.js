@@ -297,14 +297,17 @@ test("Flaming Sphere: a zone on the ground that saves a creature ending its turn
   assert.ok(stopped.zone.hexes.includes("8,0") && !stopped.zone.hexes.includes("4,0"));
 });
 
-test("Flaming Sphere: ending Concentration takes it away; players are not sent its place", () => {
+test("Flaming Sphere: ending Concentration takes it away; players are sent its shape and place (#842), never its steps", () => {
   const s = field(), a = spawn(s, "goblin-warrior", 4, 0);
   a.abil.dex = 1;
   fight(s); turnOf(s, "wizard");
   ok(apply(s, { type: "cast", actor: "wizard", spell: "flaming-sphere", slot: 2, hex: { q: 3, r: 0 } }, DM));
   s.entities.wizard.owner = "pat";
   const seen = view(s, { role: "player", userId: "pat" }).effects.find((x) => x.name === "Flaming Sphere");
-  assert.equal("zone" in seen, false, "the zone (and so its place) is not sent");
+  assert.ok(seen.zone, "the zone (its shape and place) is sent, since #842");
+  assert.deepEqual(seen.zone.hexes, fxOf(s, "Flaming Sphere").zone.hexes);
+  assert.equal(seen.zone.look, "fire");
+  assert.ok(!("steps" in seen.zone) && !("src" in seen.zone) && !("last" in seen.zone), "but not how it works");
   ok(apply(s, { type: "endEffect", effect: fxOf(s, "Flaming Sphere").id }, DM));
   assert.equal(fxOf(s, "Flaming Sphere"), undefined);
   assert.match(apply(s, { type: "moveZone", actor: "wizard", to: { q: 5, r: 0 } }, DM).error, /nothing to roll/);

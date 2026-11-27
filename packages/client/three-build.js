@@ -17,13 +17,15 @@ export const girth = (e, G = HEX) => (G.kind === 'square' ? GIRTH_SQUARE : GIRTH
 
 const ZONE_TINT = { acid: [0.55, 0.85, 0.2], cold: [0.45, 0.78, 0.95], fire: [0.98, 0.45, 0.12], force: [0.75, 0.55, 0.95], lightning: [0.4, 0.55, 1], necrotic: [0.45, 0.3, 0.55],
   poison: [0.45, 0.75, 0.3], psychic: [0.9, 0.45, 0.8], radiant: [1, 0.9, 0.5], thunder: [0.65, 0.7, 0.85], bludgeoning: [0.7, 0.6, 0.5], piercing: [0.7, 0.6, 0.5], slashing: [0.7, 0.6, 0.5], neutral: [0.7, 0.75, 0.85] };
-const zoneType = (steps) => {
+// A player's zone carries `look`, the kind of damage it deals (the view sends no steps); the DM's and a solo table's carries its steps.
+const zoneType = (z) => {
+  if (z.look && z.look !== 'neutral' && ZONE_TINT[z.look]) return z.look;
   const walk = (v) => {
     if (Array.isArray(v)) { for (const x of v) { const t = walk(x); if (t) return t; } return null; }
     if (v && typeof v === 'object') { if ('damage' in v && ZONE_TINT[v.type] && v.type !== 'neutral') return v.type; for (const x of Object.values(v)) { const t = walk(x); if (t) return t; } }
     return null;
   };
-  return walk(steps);
+  return walk(z.steps);
 };
 
 // ---- Helpers the renderer, the tracker and the app share (moved here when the hand-written renderer was removed, R14 step 2, #355) ----
@@ -499,7 +501,7 @@ function drawFly(b, x, s, G, hl, th) {
 // The circle's name on the map: "Magic Circle (fey, undead), 1 hour" and "reversed" when it is. A pack's is its name alone.
 export const zoneLabel = (fx) => { const w = fx?.zone?.ward; return w ? `${fx.name} (${(w.types ?? []).join(', ')})${fx.lasts ? `, ${fx.lasts}` : ''}${w.reverse ? ', reversed' : ''}` : fx?.name; };
 // A Magic Circle (`zone.ward`): a ring of runes on the ground round the edge of its cells, in the theme's accent; a faint wash inside. A Conjure Animals pack (`zone.body`): a translucent
-// spectral shape on each cell of its own space, and its 10-ft reach shaded faintly. Nothing here is a model: plain flat shapes, and only what the view carried (a player is sent no zone shape).
+// spectral shape on each cell of its own space, and its 10-ft reach shaded faintly. Nothing here is a model: plain flat shapes, and only what the view carried (a player is sent its public shape, #842).
 const accentOf = (th) => { const c = th.hl?.select ?? [1, 1, 1, 0.9]; return [c[0], c[1], c[2]]; };
 function drawHeld(b, G, s, th, fx, zh) {
   const have = new Set(zh.hexes.map(cellCol)), rgb = accentOf(th), onGround = (h) => stand(s.map, { q: h.q, r: h.r, z: zh.at }).y;
@@ -539,7 +541,7 @@ export function buildOverlay({ state: s, hl, theme: th, pins = [], pinZ = 0, bar
   for (const fx of s.effects ?? []) {
     const zh = zoneHexes(s, fx); if (!zh?.hexes.length) continue;
     if (fx.zone.ward || fx.zone.body) { drawHeld(b, G, s, th, fx, zh); continue; }
-    const t = zoneType(fx.zone.steps), rgb = th.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(cellCol));
+    const t = zoneType(fx.zone), rgb = th.zones?.[t ?? 'neutral'] ?? ZONE_TINT[t ?? 'neutral'], have = new Set(zh.hexes.map(cellCol));
     for (const h of zh.hexes) {
       const w = G.toWorld(h), y = stand(s.map, { q: h.q, r: h.r, z: zh.at }).y + 0.015, rim = G.neighbors(h).some((n) => !have.has(cellCol(n)));
       b.flatHex(w.x, w.z, y, 0, rim ? 0.8 : 1.02, [...rgb, 0.3]);

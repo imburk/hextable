@@ -283,10 +283,10 @@ test("Guardian of Faith: a zone of 20 radiant damage (Dexterity save halves) on 
   assert.equal(hurt[0].amount, 20);
   assert.equal(hurt[0].dtype, "radiant");
   assert.equal(live(s, "guardian-of-faith").zone.spent, 20);
-  // The caster takes nothing, and how much of the 60 is left is on the DM's books only: a player's view of the effect has no zone, budget or count.
+  // The caster takes nothing, and how much of the 60 is left is on the DM's books only: a player's view of the effect has its zone's shape (#842) and no budget or count.
   assert.equal(s.entities.cy.hp, s.entities.cy.maxHp);
   const seen = view(s, { role: "player", userId: "pat" }).effects.find((x) => x.spell === "guardian-of-faith");
-  assert.ok(seen && !("zone" in seen) && !json(seen).includes("budget") && !json(seen).includes("spent"), json(seen));
+  assert.ok(seen && seen.zone && !json(seen).includes("budget") && !json(seen).includes("spent"), json(seen));
 });
 
 test("Guardian of Faith: a success halves it; the guardian vanishes once 60 damage has been dealt, counting what was dealt", () => {
