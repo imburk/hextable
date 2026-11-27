@@ -1656,3 +1656,121 @@ test("magic circle: a party creature of a chosen type giving Charmed to a target
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("Ghost"));
   assert.ok(!JSON.stringify(r.hidden.raw.Pat).includes("keeps"), "no refusal told");
 });
+
+// ---- Lasting zones (#842): what players are sent of a zone, and what they are not ----
+// A zone is put in through the rules, as a cast leaves it (rules zones.js: area, on, follows or hexes and origin, spare, steps, src, last), because a creature the DM
+// has hidden cannot cast in a fight, and one that casts is told of. The players are kept clear of every zone: a creature that walked into one would be hurt by it, and
+// that is a real difference between the worlds.
+const zoneWorld = (w, fighterAt = { q: -4, r: 0 }) => {
+  const s = w.state;
+  for (const id of Object.keys(s.entities)) if (s.entities[id].side !== "party") delete s.entities[id];
+  for (const k of Object.keys(s.map.levels[0].tiles)) s.map.levels[0].tiles[k] = { t: "grass" };
+  w.must({ type: "setting", key: "autoEngage", value: false });
+  for (const [id, q, r] of [["fighter", fighterAt.q, fighterAt.r], ["rogue", -8, 0], ["cleric", -8, 1], ["wizard", -8, 2]]) w.must({ type: "place", actor: id, to: { q, r } });
+  Object.assign(s.entities.fighter, { owner: w.ids.Pat, ownerName: "Pat", hp: 500, maxHp: 500 });
+};
+const STEPS = [{ save: "dex", dc: 14, half: true, onFail: [{ damage: "3d8", type: "radiant" }] }];
+// A zone of `who` as a cast makes it. `shape` is what differs: `follows`, or `hexes` and `origin`, with `area`.
+const zoneFor = (w, who, spell, name, shape, more = {}) => {
+  const fx = startEffect(w.state, { name, spell, source: who.id, conc: true, duration: "1 minute", level: 2 });
+  fx.zone = { on: ["enter", "turnEnd"], spare: [], steps: structuredClone(STEPS), src: { name, dc: 14, range: 60 }, last: {}, ...shape, ...more };
+  return fx;
+};
+const cellsAround = (at, n) => H.range(at, n).map(H.col);
+const hideOne = (w, at, name = "Ghost", monster = "goblin-warrior") => { w.must({ type: "spawn", monster, at, name, hidden: true }); const g = byName(w, name); Object.assign(g, { hp: 500, maxHp: 500 }); return g; };
+const walk = (name, ...to) => to.map((t) => (w) => { const o = byName(w, name) ?? (name === "Ghost" ? byName(w, "Other") : null); if (!o) return; w.must({ type: "move", actor: o.id, to: t }); });
+
+test("zones: Spirit Guardians round a hidden caster that walks about is sent the same as with no caster there, and its cells follow nothing", () => {
+  twin({
+    players: ["Pat"],
+    setup: (w) => zoneWorld(w),
+    steps: [
+      ...walk("Ghost", { q: 5, r: 1 }, { q: 4, r: 3 }, { q: 6, r: -2 }),
+      { by: "Pat", act: { type: "move", actor: "fighter", to: { q: -5, r: 1 } } },
+      ...walk("Ghost", { q: 3, r: 4 }),
+    ],
+  }, {
+    hide: (w) => { const g = hideOne(w, { q: 5, r: 0 }); zoneFor(w, g, "spirit-guardians", "Spirit Guardians", { area: { shape: "emanation", size: 15 }, follows: g.id }); },
+    plain: (w) => { burn(w, { q: 5, r: 0 }); w.state.seq++; },
+  });
+});
+
+test("zones: a zone whose `spare` names a creature the DM has hidden is sent the same as one that names nobody", () => {
+  twin({
+    players: ["Pat"],
+    setup(w) {
+      zoneWorld(w);
+      w.putIn();
+      Object.assign(w.state.entities.cleric, { owner: w.ids.Pat, ownerName: "Pat", spells: [...w.state.entities.cleric.spells, "spirit-guardians"], slots: { ...w.state.entities.cleric.slots, 3: 2 }, slotsMax: { ...w.state.entities.cleric.slotsMax, 3: 2 } });
+      w.must({ type: "place", actor: "cleric", to: { q: -6, r: 0 } });
+      w.must({ type: "startEncounter", center: { q: -6, r: 0 }, radius: 1 });
+      turnOf(w, "cleric");
+    },
+    steps: [
+      // The DM casts for the cleric: a player's own cast that names a creature they cannot see is refused (`No such creature.`), the same whether or not it is there.
+      { by: "dm", act: (w) => ({ type: "cast", actor: "cleric", spell: "spirit-guardians", slot: 3, choice: "radiant", spare: w.variant === "hidden" ? ["fighter", byName(w, "Ghost").id] : ["fighter"] }) },
+      { by: "Pat", act: (w) => ({ type: "endTurn", actor: current(w.state) }), allowError: true },
+    ],
+  }, {
+    hide: (w) => { hideOne(w, { q: 5, r: 0 }); },
+    plain: (w) => { hideOne(w, { q: 5, r: 0 }); },
+  });
+});
+
+test("zones: a zone in a region the party has not explored is sent to no player, the same as with no zone there", () => {
+  const vault = (w) => {
+    const s = w.state, tiles = s.map.levels[0].tiles;
+    s.map.regions = [{ id: "hall", name: "The hall", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q < 4), revealed: true }, { id: "vault", name: "The vault", level: s.map.levels[0].id, hexes: Object.keys(tiles).filter((k) => H.parse(k).q >= 4) }];
+  };
+  twin({
+    players: ["Pat"],
+    setup(w) { zoneWorld(w); vault(w); },
+    steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: -5, r: 1 } } }, ...walk("Ghost", { q: 9, r: 2 })],
+  }, {
+    hide: (w) => { const g = hideOne(w, { q: 8, r: 0 }); zoneFor(w, g, "moonbeam", "Moonbeam", { area: { shape: "cylinder", size: 5, height: 40 }, hexes: cellsAround({ q: 8, r: 3 }, 1), origin: { q: 8, r: 3, z: 0 } }); },
+    plain: (w) => { burn(w, { q: 8, r: 0 }); w.state.seq++; },
+  });
+});
+
+test("zones: a Moonbeam cast by a hidden caster is sent the same whichever hidden caster it was (the zone is in both worlds; only the caster differs)", () => {
+  const moonbeam = (w, g) => zoneFor(w, g, "moonbeam", "Moonbeam", { area: { shape: "cylinder", size: 5, height: 40 }, hexes: cellsAround({ q: 3, r: 1 }, 1), origin: { q: 3, r: 1, z: 0 } });
+  const r = twin({
+    players: ["Pat"],
+    setup: (w) => zoneWorld(w),
+    steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: -5, r: 1 } } }, ...walk("Ghost", { q: 7, r: 0 })],
+  }, {
+    hide: (w) => { moonbeam(w, hideOne(w, { q: 6, r: 0 })); },
+    plain: (w) => { moonbeam(w, hideOne(w, { q: 5, r: 3 }, "Other", "owl")); },
+  });
+  const text = JSON.stringify(r.hidden.raw.Pat);
+  assert.ok(text.includes('"Moonbeam"') && text.includes('"zone"'), "the zone itself is sent, in both worlds");
+  for (const k of ["Ghost", "Other", "\"owl\""]) assert.ok(!text.includes(k), `and nothing of whose it is: ${k} at ${text.indexOf(k)}: ${text.slice(Math.max(0, text.indexOf(k) - 80), text.indexOf(k) + 60)}`);
+});
+
+test("zones: a rolled zone of a hidden caster tells players the zone moved, and never who moved it", () => {
+  const sphere = (w, g) => zoneFor(w, g, "flaming-sphere", "Flaming Sphere", { area: { shape: "sphere", size: 5 }, hexes: cellsAround({ q: 3, r: 1 }, 1), origin: { q: 3, r: 1, z: 0 } }, { move: 30 });
+  const roll = (name, to) => (w) => { const o = byName(w, name) ?? byName(w, "Other"); w.must({ type: "moveZone", actor: o.id, to }); };
+  const r = twin({
+    players: ["Pat"],
+    setup: (w) => zoneWorld(w),
+    steps: [roll("Ghost", { q: 3, r: 3 }), roll("Ghost", { q: 5, r: 3 })],
+  }, {
+    hide: (w) => { sphere(w, hideOne(w, { q: 6, r: 0 })); },
+    plain: (w) => { sphere(w, hideOne(w, { q: 8, r: -3 }, "Other", "owl")); },
+  });
+  const moved = r.hidden.raw.Pat.flatMap((m) => JSON.stringify(m).match(/"type":"zoneMoved"[^}]*}[^}]*}/g) ?? []);
+  assert.ok(moved.length >= 1, "the players were told the zone moved");
+  for (const m of moved) assert.ok(!m.includes('"by"') && !m.includes("Ghost"), m);
+});
+
+test("zones: Spike Growth of a foe the party sees is sent to no player; the same zone as Moonbeam is, so the twin is not empty", () => {
+  const script = (spell, name) => ({
+    players: ["Pat"],
+    setup(w) { zoneWorld(w); w.must({ type: "spawn", monster: "goblin-warrior", at: { q: 6, r: 0 }, name: "Seen" }); Object.assign(byName(w, "Seen"), { hp: 500, maxHp: 500 }); w.putIn(); },
+    steps: [{ by: "Pat", act: { type: "move", actor: "fighter", to: { q: -5, r: 1 } } }],
+  });
+  const put = (spell, name, area) => ({ hide: (w) => { zoneFor(w, byName(w, "Seen"), spell, name, { area, hexes: cellsAround({ q: 3, r: 1 }, 2), origin: { q: 3, r: 1, z: 0 } }); }, plain: (w) => { w.state.seq++; } });
+  twin(script(), put("spike-growth", "Spike Growth", { shape: "sphere", size: 20 }));
+  const control = twinRun(script(), put("moonbeam", "Moonbeam", { shape: "cylinder", size: 5, height: 40 }));
+  assert.ok(control.diffs.length > 0, "a zone that is not camouflaged is told of: the worlds differ");
+});
