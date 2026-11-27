@@ -1,6 +1,6 @@
 # Spec: legendary actions and Legendary Resistance
 
-Status: Draft, by an agent; the owner answered its ten questions on 23 November (see "The owner's answers" at the end). DEBT M5. Docs only: nothing here is
+Status: Agreed (the owner, 26 November on #193: legendary actions next after swimming). Written by an agent; the owner answered its eleven questions on 23 November (see "The owner's answers" at the end). DEBT M5. Docs only: nothing here is
 built. Checked against main on 27 November (state version 31): the code claims below are as of then, and the build plan was cut into smaller stages. Every rule is from `reference/srd52/srd52-flow.txt`; the numbers after a section name are its
 lines.
 
